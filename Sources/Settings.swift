@@ -23,7 +23,7 @@ final class SettingsModel: ObservableObject {
         accounts = saved.isEmpty
             ? [AccountEntry(id: "main", name: "main", label: "MAIN", configDir: "~/.claude")]
             : saved
-        selection = accounts.first?.id
+        selection = Self.dashboardID
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.tick += 1 }
     }
 
@@ -32,7 +32,18 @@ final class SettingsModel: ObservableObject {
         guard !needsApply else { return }
         let fresh = Store.load()
         if !fresh.isEmpty, fresh != accounts { saved = fresh; accounts = fresh }
-        if !accounts.contains(where: { $0.id == selection }) { selection = accounts.first?.id }
+        if !isValid(selection) { selection = Self.dashboardID }
+    }
+
+    /// A selection that still points at something: an account, the Dashboard tile, or a new account being set up.
+    func isValid(_ id: String?) -> Bool {
+        id == Self.dashboardID || (id == Self.newID && draft != nil) || accounts.contains { $0.id == id }
+    }
+
+    /// Settings opened from inside the app: the Dashboard tile, unless a new account is being set up.
+    func openDefault() {
+        reloadIfClean()
+        if !(selection == Self.newID && draft != nil) { selection = Self.dashboardID }
     }
 
     /// What an icon app is made of (which apps exist, their names and labels). Changing it needs Apply.

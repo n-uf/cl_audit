@@ -357,6 +357,8 @@ enum MainPage: Hashable { case dashboard, settings }
 
 final class WindowNav: ObservableObject {
     @Published var page: MainPage = .dashboard
+    /// Set when code (not the Dashboard/Settings switch) opened Settings and already chose its page.
+    var keepSettingsSelection = false
 }
 
 /// The one cl_audit window: a top bar to switch between Dashboard and Settings, and the page.
@@ -388,7 +390,9 @@ struct MainWindowView: View {
         }
         .frame(minWidth: 940, minHeight: 600)
         .onChange(of: nav.page) { p in
-            if p == .dashboard { actions.refresh() } else { settings.reloadIfClean() }
+            if p == .dashboard { actions.refresh() }
+            else if nav.keepSettingsSelection { nav.keepSettingsSelection = false }
+            else { settings.openDefault() }
         }
     }
 }
@@ -683,10 +687,13 @@ final class ManagerUI {
         closePalette()
         model.reload()
         wireFilter()
+        // The switch's own handler would pick the Dashboard tile; skip it once (only an open window runs it).
+        if page == .settings && nav.page != .settings && mainWindow != nil { nav.keepSettingsSelection = true }
         nav.page = page
         if page == .settings {
-            settings.reloadIfClean()
-            if let account, settings.accounts.contains(where: { $0.id == account }) { settings.selection = account }
+            // From an icon: that account's page. From inside the app: the Dashboard tile.
+            if let account, settings.accounts.contains(where: { $0.id == account }) { settings.reloadIfClean(); settings.selection = account }
+            else { settings.openDefault() }
         }
         if mainWindow == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 820),
