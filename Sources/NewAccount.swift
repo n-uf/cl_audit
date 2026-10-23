@@ -249,7 +249,7 @@ struct NewAccountView: View {
         let _ = model.tick                                // re-check the steps every few seconds
         GeometryReader { geo in
             let w = geo.size.width
-            let width: Width = w >= 1060 ? .wide : w >= 600 ? .medium : .narrow
+            let width: Width = w >= 1100 ? .wide : w >= 600 ? .medium : .narrow
             Group {
                 if width == .wide { wide(w) } else { column(narrow: width == .narrow) }
             }
@@ -294,12 +294,14 @@ struct NewAccountView: View {
 
     private func wide(_ w: CGFloat) -> some View {
         let col3: CGFloat = 360, gaps: CGFloat = 12 * 2 + 28
-        let rest = max(500, w - col3 - gaps)
+        let rest = max(700, w - col3 - gaps)
+        // The first column never gets narrower than its widest row (the window switch), so its cards line up.
+        let col1 = max(350, rest * 0.42)
         return ScrollView {
             HStack(alignment: .top, spacing: 12) {
                 VStack(spacing: 10) { accountCard(labelWidth: 76, stacked: false); windowCard(labelWidth: 76, stacked: false) }
-                    .frame(width: rest * 0.42)
-                folderCard(labelWidth: 76, stacked: false).frame(width: rest * 0.58)
+                    .frame(width: col1)
+                folderCard(labelWidth: 76, stacked: false).frame(width: rest - col1)
                 stepsPanel.frame(width: col3)
             }
             .padding(14)
@@ -384,7 +386,7 @@ struct NewAccountView: View {
                 .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.09)))
                 .padding(.top, 6)
             }
-            statusLines(checks(.folder), indent: stacked || labelWidth < 100 ? 0 : labelWidth + 10).padding(.top, 4)
+            statusLines(checks(.folder), indent: stacked ? 0 : labelWidth + 10).padding(.top, 4)
             if draft.source == .new {
                 FormRow(label: "Share from main", width: labelWidth, stacked: stacked || labelWidth < 100,
                         info: "Linked from ~/.claude, so changes there show up in every account. The login, plugins and usage stay separate.") {
@@ -407,10 +409,10 @@ struct NewAccountView: View {
                          disabled: standardOwner == nil ? [] : [.standard]) { $0 == .standard ? "Standard" : $0 == .separate ? "Separate" : "None" }
                     .disabled(draft.started)
             }
-            statusLines(checks(.window), indent: stacked || labelWidth < 100 ? 0 : labelWidth + 10).padding(.top, 2)
+            statusLines(checks(.window), indent: stacked ? 0 : labelWidth + 10).padding(.top, 2)
             if let o = standardOwner, draft.window != .standard {
                 Text("Standard is \(o.name)'s").font(.system(size: 11)).foregroundStyle(.secondary)
-                    .padding(.leading, 19 + (stacked || labelWidth < 100 ? 0 : labelWidth + 10)).frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 19 + (stacked ? 0 : labelWidth + 10)).frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
@@ -465,7 +467,7 @@ struct NewAccountView: View {
                     }
                 }
             }
-            stepRow(5, state: current == 5 ? .now : .todo, title: "Add the Dock icon", detail: "Finish installs “cl_audit \(draft.name)”") { EmptyView() }
+            stepRow(5, state: current == 5 ? .now : .todo, title: "Add the Dock icon", detail: "Finish installs “cl_audit \(draft.name.isEmpty ? "…" : draft.name)”") { EmptyView() }
 
             actionBar(hint: false).padding(.top, 8)
         }
@@ -677,11 +679,18 @@ struct NewAccountView: View {
         VStack(alignment: .leading, spacing: 3) {
             ForEach(list) { c in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: c.state == .ok ? "checkmark" : c.state == .bad ? "xmark" : c.state == .warn ? "exclamationmark.triangle.fill" : "circle.dotted")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(c.state == .ok ? Color(nsColor: Painter.green) : c.state == .bad ? Color.red : c.state == .warn ? Color.orange : Color.secondary)
-                        .frame(width: 13)
-                    Text(c.text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                    Group {
+                        if c.state == .wait {
+                            Circle().fill(Color.secondary.opacity(0.6)).frame(width: 5, height: 5).alignmentGuide(.firstTextBaseline) { $0.height / 2 + 4 }
+                        } else {
+                            Image(systemName: c.state == .ok ? "checkmark" : c.state == .bad ? "xmark" : "exclamationmark.triangle.fill")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(c.state == .ok ? Color(nsColor: Painter.green) : c.state == .bad ? Color.red : Color.orange)
+                        }
+                    }
+                    .frame(width: 13)
+                    Text(c.text).font(.system(size: 12)).foregroundStyle(c.state == .wait ? Color.secondary : Color.primary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
