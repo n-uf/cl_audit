@@ -4,7 +4,7 @@
 //   ~/Library/Application Support/usage-n-uf/accounts.json   the accounts (edited by the settings window)
 //   ~/Library/Application Support/usage-n-uf/status/<id>.json what each icon last saw (no secrets)
 //
-// The settings app ("cl-audit") has no account of its own. Each icon app is a copy of it whose
+// The settings app ("cl_audit") has no account of its own. Each icon app is a copy of it whose
 // Info.plist carries UsageAccountID, so it knows which entry of accounts.json it shows.
 
 import AppKit
@@ -328,7 +328,7 @@ enum Installer {
     static var oldAppsFolders: [URL] { [URL(fileURLWithPath: expand("~/Applications"))] }
 
     static func appURL(_ e: AccountEntry) -> URL {
-        appsFolder.appendingPathComponent("cl-audit \(e.name.trimmingCharacters(in: .whitespaces)).app")
+        appsFolder.appendingPathComponent("cl_audit \(e.name.trimmingCharacters(in: .whitespaces)).app")
     }
 
     static func bundleID(_ e: AccountEntry) -> String { "\(managerID).\(e.id)" }
@@ -445,7 +445,7 @@ enum Installer {
     /// Asks every icon app to fetch its numbers now.
     static let refreshAllNote = Notification.Name("local.usage-n-uf.refresh-all")
 
-    /// Open the dashboard of the "cl-audit" app (it opens on the dashboard when it starts).
+    /// Open the dashboard of the "cl_audit" app (it opens on the dashboard when it starts).
     static func openDashboard() {
         if let app = NSRunningApplication.runningApplications(withBundleIdentifier: managerID).first {
             DistributedNotificationCenter.default().postNotificationName(openDashboardNote, object: nil, userInfo: nil,
@@ -458,7 +458,7 @@ enum Installer {
         }
     }
 
-    /// Open the settings window of the "cl-audit" app (it lives next to the icon apps).
+    /// Open the settings window of the "cl_audit" app (it lives next to the icon apps).
     static func openSettings() {
         if !NSRunningApplication.runningApplications(withBundleIdentifier: managerID).isEmpty {
             DistributedNotificationCenter.default().postNotificationName(openSettingsNote, object: nil, userInfo: nil,

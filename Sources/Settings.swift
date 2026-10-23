@@ -1,4 +1,4 @@
-// Settings: the Settings page of the cl-audit window. Accounts across the top; the selected account's
+// Settings: the Settings page of the cl_audit window. Accounts across the top; the selected account's
 // settings in three columns of compact cards. Changes are saved as you make them; only a new name or
 // label, or adding and removing accounts, needs Apply (that installs, renames or removes icon apps).
 
@@ -193,7 +193,7 @@ struct SettingsPage: View {
 
     var removalText: String {
         guard let e = model.pendingRemoval else { return "" }
-        var t = "Its Dock icon “cl-audit \(e.name)” is quit and deleted, with its open-at-login entry and saved status."
+        var t = "Its Dock icon “cl_audit \(e.name)” is quit and deleted, with its open-at-login entry and saved status."
         t += "\n\nNot touched: the Claude Code folder \(e.configDir) and its login"
         t += e.desktop == .separate && !e.desktopDataDir.isEmpty ? ", and the Claude window's data folder." : "."
         if model.needsApply { t += "\n\nOther changes waiting for Apply are applied too." }
@@ -434,7 +434,7 @@ struct AccountSettings: View {
             SRow(label: "Name", first: true) {
                 TextField("", text: $entry.name).textFieldStyle(.plain).multilineTextAlignment(.trailing).frame(maxWidth: 150)
             }
-            SRow(label: "Icon label", info: "Drawn on the icon, up to 6 letters. The Dock shows the app as “cl-audit \(entry.name)”.") {
+            SRow(label: "Icon label", info: "Drawn on the icon, up to 6 letters. The Dock shows the app as “cl_audit \(entry.name)”.") {
                 TextField("", text: Binding(get: { entry.label },
                                             set: { entry.label = String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) }))
                     .textFieldStyle(.plain).multilineTextAlignment(.trailing).frame(maxWidth: 90)
@@ -807,7 +807,7 @@ func preview(_ e: AccountEntry, status: IconStatus?, style: IconStyle? = nil, ti
     return Painter.image(m, pixels: 128)
 }
 
-/// Settings is a page of the one cl-audit window, not a window of its own.
+/// Settings is a page of the one cl_audit window, not a window of its own.
 enum SettingsWindow {
     static func show() {
         (NSApp.delegate as? AppDelegate)?.manager.showMain(page: .settings)
@@ -822,7 +822,7 @@ enum MainMenu {
         let app = NSMenu()
         app.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettingsWindow), keyEquivalent: ",")
         app.addItem(.separator())
-        app.addItem(withTitle: "Quit cl-audit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        app.addItem(withTitle: "Quit cl_audit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = app
 
         let editItem = NSMenuItem(); main.addItem(editItem)

@@ -1,4 +1,4 @@
-# cl-audit
+# cl_audit
 
 Usage audit for all your Claude accounts: Dock icons that show Claude plan usage, one icon per account. Each icon shows how much of the
 5-hour and weekly limits is used, and a click opens that account's Claude desktop window.
@@ -6,17 +6,17 @@ Usage audit for all your Claude accounts: Dock icons that show Claude plan usage
 ## Install
 
 ```bash
-./build.sh              # build "cl-audit", install it into /Applications, update the icons
+./build.sh              # build "cl_audit", install it into /Applications, update the icons
 ./build.sh --no-install # build into ./build only
 ```
 
-Open **cl-audit** and add your accounts. **Apply** saves the list and creates one
-"cl-audit &lt;name&gt;" icon app per account in `/Applications`, where Spotlight finds them. Drag them into the Dock and choose
+Open **cl_audit** and add your accounts. **Apply** saves the list and creates one
+"cl_audit &lt;name&gt;" icon app per account in `/Applications`, where Spotlight finds them. Drag them into the Dock and choose
 Options ▸ Keep in Dock.
 
 ## Settings
 
-Settings is a page of the same cl-audit window as the dashboard (switch at the top, or ⌘,).
+Settings is a page of the same cl_audit window as the dashboard (switch at the top, or ⌘,).
 The accounts run across the top (＋ adds one, right-click removes); the selected account's settings
 sit below in compact cards. Changes are saved as you make them and the icons follow at once; only new
 names, labels or accounts need **Apply**, because that installs or renames icon apps.
@@ -53,13 +53,13 @@ already uses is flagged with a Sign out button. Each step ticks itself off as it
 
 The list is saved on this Mac only, in
 `~/Library/Application Support/usage-n-uf/accounts.json` (format: `accounts.example.json`).
-## The cl-audit app
+## The cl_audit app
 
-Opening **cl-audit** shows the dashboard: a card per account (its icon, both limits, Desktop and
+Opening **cl_audit** shows the dashboard: a card per account (its icon, both limits, Desktop and
 Terminal buttons, Log in… when needed) and a summary (closest to a limit, most room, next reset).
 It stays in the Dock as a launcher:
 
-| On the cl-audit icon | What happens |
+| On the cl_audit icon | What happens |
 |---|---|
 | Click | The launcher palette: every account with its icon and mini bars; ↑↓, ↩ desktop, ⌘↩ terminal, ⌘1–9, type to filter |
 | Press and hold | The dashboard |
@@ -116,5 +116,5 @@ The usage endpoint is not publicly documented and may change.
 
 ---
 
-cl-audit is an independent tool. It is not affiliated with, endorsed by or sponsored by Anthropic.
+cl_audit is an independent tool. It is not affiliated with, endorsed by or sponsored by Anthropic.
 "Claude" is a trademark of Anthropic.

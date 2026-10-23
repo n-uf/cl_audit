@@ -9,7 +9,7 @@ let args = CommandLine.arguments
 
 if args.count >= 2, args[1] == "--sync" {
     guard Store.exists else {
-        print("No accounts yet: open “cl-audit” to add them.")
+        print("No accounts yet: open “cl_audit” to add them.")
         exit(0)
     }
     let log = Installer.sync(Store.load())

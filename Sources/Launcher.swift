@@ -1,4 +1,4 @@
-// Launcher: what the "cl-audit" app itself shows.
+// Launcher: what the "cl_audit" app itself shows.
 //   Click on its Dock icon  → the launcher palette: every account with its real icon and mini bars.
 //   Press and hold          → the main screen: a card per account plus a summary.
 //   Click an account's icon → opens Claude for that account (desktop window).
@@ -347,7 +347,7 @@ final class WindowNav: ObservableObject {
     @Published var page: MainPage = .dashboard
 }
 
-/// The one cl-audit window: a top bar to switch between Dashboard and Settings, and the page.
+/// The one cl_audit window: a top bar to switch between Dashboard and Settings, and the page.
 struct MainWindowView: View {
     @ObservedObject var nav: WindowNav
     @ObservedObject var model: LauncherModel
@@ -358,7 +358,7 @@ struct MainWindowView: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 12) {
-                Text("cl-audit").font(.system(size: 17, weight: .bold))
+                Text("cl_audit").font(.system(size: 17, weight: .bold))
                 if nav.page == .dashboard {
                     if model.rows.count > 1 { AccountChips(model: model) }
                     UpdatedButton(model: model, refresh: actions.refreshAll)
@@ -544,7 +544,7 @@ final class ManagerUI {
         }
     }
 
-    /// Click on the cl-audit icon. The palette and the dashboard show the same accounts, so they never
+    /// Click on the cl_audit icon. The palette and the dashboard show the same accounts, so they never
     /// appear together: with the dashboard open, the click brings the dashboard forward instead.
     func togglePalette() {
         if paletteShown { closePalette(); return }
@@ -621,7 +621,7 @@ final class ManagerUI {
         if mainWindow == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 820),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-            w.title = "cl-audit"
+            w.title = "cl_audit"
             w.tabbingMode = .disallowed
             w.contentViewController = NSHostingController(rootView: MainWindowView(
                 nav: nav, model: model, stats: stats, settings: settings, actions: actions))

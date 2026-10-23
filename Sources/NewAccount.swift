@@ -157,7 +157,7 @@ struct NewAccountView: View {
 
         HStack(alignment: .top, spacing: 10) {
             SCard(title: "New Claude account") {
-                SRow(label: "Name", info: "Shown in the Dock as “cl-audit \(draft.name)”; also names the folders.", first: true) {
+                SRow(label: "Name", info: "Shown in the Dock as “cl_audit \(draft.name)”; also names the folders.", first: true) {
                     TextField("e.g. personal", text: $draft.name)
                         .textFieldStyle(.plain).multilineTextAlignment(.trailing).frame(maxWidth: 160)
                         .disabled(draft.started)        // the folders are named after it
@@ -222,7 +222,7 @@ struct NewAccountView: View {
                     Button(window ? "Show" : "Open window") { Launcher.openClaude(Account(draft.entry)) }
                         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(!folders)
                 }
-                step(done: false, title: "Add the Dock icon", note: "Finish adds the account and installs “cl-audit \(draft.name)”.") {
+                step(done: false, title: "Add the Dock icon", note: "Finish adds the account and installs “cl_audit \(draft.name)”.") {
                     EmptyView()
                 }
                 HStack {

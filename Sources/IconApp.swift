@@ -7,7 +7,7 @@ import UserNotifications
 // MARK: - App
 //
 // The same binary plays two roles. Without UsageAccountID in its Info.plist it is the settings app
-// ("cl-audit"): it shows the settings window and quits when that closes. With it, it is one
+// ("cl_audit"): it shows the settings window and quits when that closes. With it, it is one
 // account's Dock icon.
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
