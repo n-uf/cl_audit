@@ -25,16 +25,19 @@ names, labels or accounts need **Apply**, because that installs or renames icon 
 addresses are then left out of the launcher, dashboard, panels and Dock menus; Settings still shows
 them blurred (hover one to see it).
 
-**Adding an account** (＋): one page with the details on the left, and checks and steps on the right.
+**Adding an account** (＋): in a wide window, three columns: the account and its window, the Claude Code
+folder, and a summary with the live icon and five numbered steps. Narrower, one column with a progress strip
+on top and the next action pinned at the bottom; each check sits under the field it's about, and one button
+does the next step (Create/Connect, Sign in…, Finish). The icon label comes from the name and can be edited.
 - **Where it lives:** a *new* Claude Code folder (`~/.claude-<name>`, optionally linking instructions, agents,
   skills, commands or memory from `~/.claude`), or an *existing* one: any Claude Code folder on this Mac,
   the default `~/.claude` too, or one you pick in Finder (a Claude Code folder, or an empty one).
 - **Its Claude window:** the standard window, a separate one with its own sign-in and data folder, or none.
 - **One account per folder and per window.** Folders are compared after resolving `~`, links and letter
   case; a folder inside (or around) another account's folder counts as the same. Folders and windows
-  another account uses are shown as such and can't be picked; the Checks card says why. A sign-in that
+  another account uses are shown as such and can't be picked; the line under the field says why. A sign-in that
   another account also uses is only a warning (both icons would show the same usage).
-- **Close Claude first.** A banner lists every Claude desktop app and Claude Code session still running
+- **Close Claude first.** Step 1 (or, in one column, a red bar above the actions) lists every Claude desktop app and Claude Code session still running
   (in the desktop app's Code tab or in Terminal) with the folder each uses, checking every 2 s. It can quit
   the desktop apps; Terminal sessions need `/exit`. Create/Connect and Finish wait until it's green, or
   after “Continue anyway…”.

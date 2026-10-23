@@ -227,18 +227,18 @@ struct SettingsPage: View {
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
             Divider().opacity(0.5)
-            ScrollView {
+            if model.selection == SettingsModel.newID, model.draft != nil {
+                // The add-account page scrolls itself, so its action bar can stay pinned at the bottom.
+                NewAccountView(draft: Binding(get: { model.draft ?? NewAccountDraft() }, set: { model.draft = $0 }), model: model)
+            } else { ScrollView {
                 if model.selection == SettingsModel.dashboardID {
                     DashboardSettings().padding(14)
-                } else if model.selection == SettingsModel.newID, model.draft != nil {
-                    NewAccountView(draft: Binding(get: { model.draft ?? NewAccountDraft() }, set: { model.draft = $0 }), model: model)
-                        .padding(14)
                 } else if let id = model.selection, let entry = model.binding(id) {
                     AccountSettings(entry: entry, model: model).padding(14)
                 } else {
                     Text("Add an account with ＋").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(40)
                 }
-            }
+            } }
         }
     }
 
