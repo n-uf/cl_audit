@@ -813,7 +813,7 @@ struct Swatch: View {
             }
         }
         .frame(width: size, height: size)
-        .overlay(Circle().stroke(selected ? Color.primary : Color.secondary.opacity(0.3), lineWidth: selected ? 2 : 1).padding(-3))
+        .overlay(Circle().stroke(selected ? Color.primary.opacity(0.85) : Color.clear, lineWidth: 1.5).padding(-3))
         .padding(3)
         .contentShape(Circle())
     }
@@ -838,11 +838,12 @@ struct NoneSwatch: View {
 }
 
 /// The icon as the Dock would show it, with the account's latest numbers or sample ones.
-func preview(_ e: AccountEntry, status: IconStatus?, style: IconStyle? = nil, tick: Int = 0) -> NSImage {
+/// The account's Dock icon; without a status it shows sample usage (23 % and 41 %), or none when `sample` is off.
+func preview(_ e: AccountEntry, status: IconStatus?, style: IconStyle? = nil, tick: Int = 0, sample: Bool = true) -> NSImage {
     let expected = Account.expectedEmail(configDir: e.configDir)
     let warn = status?.loginEmail.map { $0.lowercased() != expected?.lowercased() } ?? false
     let m = TileModel(label: e.label.isEmpty ? "?" : e.label,
-                      fiveHour: status?.fiveHour ?? 23, weekly: status?.weekly ?? 41,
+                      fiveHour: status?.fiveHour ?? (sample ? 23 : nil), weekly: status?.weekly ?? (sample ? 41 : nil),
                       stale: false, style: style ?? e.style, warn: warn && expected != nil, tint: e.color,
                       frame: e.frame)
     return Painter.image(m, pixels: 128)

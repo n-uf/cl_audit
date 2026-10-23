@@ -100,9 +100,8 @@ enum NewAccountSetup {
     static func checks(_ d: NewAccountDraft, accounts: [AccountEntry], runs: [ClaudeRun], checked: Bool) -> [SetupCheck] {
         var out: [SetupCheck] = []
         let name = d.name.trimmingCharacters(in: .whitespaces)
-        if name.isEmpty { out.append(.init(section: .account, state: .wait, text: "Give the account a name.")) }
-        else if accounts.contains(where: { $0.name.lowercased() == name.lowercased() }) { out.append(.init(section: .account, state: .bad, text: "Another account is already called “\(name)”.")) }
-        else { out.append(.init(section: .account, state: .ok, text: "The name “\(name)” isn't taken")) }
+        // the name: only a clash is worth a line (the caption under the field says what it's for)
+        if accounts.contains(where: { $0.name.lowercased() == name.lowercased() }) { out.append(.init(section: .account, state: .bad, text: "Another account is already called “\(name)”")) }
 
         // the Claude Code folder
         if d.source == .new {
@@ -111,7 +110,7 @@ enum NewAccountSetup {
             } else if exists(d.configDir) && d.createdConfigDir == nil {
                 out.append(.init(section: .folder, state: .bad, text: "\(d.configDir) already exists. Choose “Existing folder” to connect it, or pick another name."))
             } else if !name.isEmpty {
-                out.append(.init(section: .folder, state: .ok, text: "\(d.configDir) is new and no other account uses it"))
+                out.append(.init(section: .folder, state: .ok, text: "New folder \(d.configDir)"))
             }
         } else if let dir = d.existingDir {
             if let owner = FolderRules.configOwner(dir, among: accounts) {
@@ -122,34 +121,34 @@ enum NewAccountSetup {
                 case .missing: out.append(.init(section: .folder, state: .bad, text: "\(dir) doesn't exist."))
                 case .other: out.append(.init(section: .folder, state: .bad, text: "\(dir) isn't a Claude Code folder and isn't empty."))
                 case .empty:
-                    out.append(.init(section: .folder, state: .ok, text: "\(dir) isn't used by another account, and isn't inside or around one"))
-                    out.append(.init(section: .folder, state: .ok, text: "It's empty: Claude Code sets it up when you sign in"))
+                    out.append(.init(section: .folder, state: .ok, text: "Free · empty, Claude Code sets it up when you sign in"))
                 case .claudeCode:
-                    out.append(.init(section: .folder, state: .ok, text: "\(dir) isn't used by another account, and isn't inside or around one"))
-                    out.append(.init(section: .folder, state: .ok, text: "It's a Claude Code folder"))
+                    out.append(.init(section: .folder, state: .ok, text: "Free · a Claude Code folder"))
                 }
             }
         } else {
-            out.append(.init(section: .folder, state: .wait, text: "Pick the folder to connect."))
+            out.append(.init(section: .folder, state: .wait, text: "Pick the folder to connect"))
         }
 
         // the desktop window
         switch d.window {
-        case .none: out.append(.init(section: .window, state: .ok, text: "No desktop window, Claude Code only"))
+        case .none: out.append(.init(section: .window, state: .ok, text: "Claude Code only, no desktop window"))
         default:
             if let owner = FolderRules.windowOwner(d.window, d.dataDir, among: accounts) {
-                out.append(.init(section: .window, state: .bad, text: d.window == .standard ? "The standard Claude window is already “\(owner.name)”'s. Choose a separate window." : "\(d.dataDir) is already “\(owner.name)”'s window."))
+                out.append(.init(section: .window, state: .bad, text: d.window == .standard ? "The standard window is “\(owner.name)”'s: choose Separate" : "\(d.dataDir) is already “\(owner.name)”'s window"))
             } else {
-                out.append(.init(section: .window, state: .ok, text: d.window == .standard ? "The standard Claude window isn't used by another account" : "The window's data folder isn't used by another account"))
+                let standardOwner = FolderRules.windowOwner(.standard, FolderKey.standardDataDir, among: accounts)
+                out.append(.init(section: .window, state: .ok, text: d.window == .standard ? "The standard Claude window and its sign-in"
+                                 : "Own window and sign-in" + (standardOwner.map { " · standard is \($0.name)'s" } ?? "")))
             }
         }
 
         // the sign-in: shared is allowed, but both icons would show the same usage
         if let email = signedInEmail(d) {
             if let owner = FolderRules.signInOwner(email, among: accounts) {
-                out.append(.init(section: .signIn, state: .warn, text: "Signed in as \(Privacy.masked(email)), which “\(owner.name)” also uses: both icons would show the same usage."))
+                out.append(.init(section: .signIn, state: .warn, text: "Signed in as \(Privacy.masked(email)), like “\(owner.name)”: both icons would show the same usage"))
             } else {
-                out.append(.init(section: .signIn, state: .ok, text: "The sign-in \(Privacy.masked(email)) isn't used by another account"))
+                out.append(.init(section: .signIn, state: .ok, text: "Signed in as \(Privacy.masked(email))"))
             }
         }
 
@@ -277,7 +276,7 @@ struct NewAccountView: View {
     private var blocked: Bool { checks.contains { $0.blocks } }
     private var running: Bool { monitor.checked && !monitor.runs.isEmpty && !draft.continueAnyway }
     private var folders: Bool { NewAccountSetup.foldersReady(draft) && NewAccountSetup.linksReady(draft) }
-    private var signedIn: String? { NewAccountSetup.signedInEmail(draft) }
+    private var signedIn: String? { checks(.folder).contains { $0.blocks } ? nil : NewAccountSetup.signedInEmail(draft) }
     private var windowOpen: Bool { NewAccountSetup.foldersReady(draft) && NewAccountSetup.windowOpen(draft) }
     private var tint: Color { Color(nsColor: draft.color.color(fiveHour: nil, stale: false)) }
     private var createTitle: String { draft.source == .new ? "Create" : "Connect" }
@@ -332,6 +331,8 @@ struct NewAccountView: View {
 
     private func accountCard(labelWidth: CGFloat, stacked: Bool) -> some View {
         SCard(title: "Account") {
+          HStack(alignment: .top, spacing: 12) {
+           VStack(spacing: 0) {
             FormRow(label: "Name", width: labelWidth, stacked: stacked) {
                 TextField("e.g. personal", text: $draft.name)
                     .textFieldStyle(.plain).padding(.horizontal, 8).padding(.vertical, 4)
@@ -340,6 +341,8 @@ struct NewAccountView: View {
                     .frame(maxWidth: 240)
                     .disabled(draft.started)
             }
+            nameUse.padding(.leading, stacked ? 0 : labelWidth + 10).padding(.bottom, 4)
+                .frame(maxWidth: .infinity, alignment: .leading)
             FormRow(label: "Colour", width: labelWidth, stacked: stacked) {
                 HStack(spacing: 8) {
                     ForEach([TileColor.orange, .blue, .purple, .teal, .pink], id: \.self) { c in
@@ -347,20 +350,38 @@ struct NewAccountView: View {
                     }
                 }
             }
-            FormRow(label: "Icon label", width: labelWidth, stacked: stacked) {
+           }
+            // The Dock icon as it will look: name, colour and icon text come together here.
+            Image(nsImage: preview(draft.entry, status: nil, sample: false)).resizable().interpolation(.high)
+                .frame(width: 54, height: 54).padding(.top, 2)
+                .help("The Dock icon")
+          }
+            statusLines(checks(.account), indent: stacked ? 0 : labelWidth + 10)
+        }
+    }
+
+    /// What the name is used for: the Dock app's name, and (shortened) the text on its icon, which can be changed.
+    @ViewBuilder private var nameUse: some View {
+        let small = Font.system(size: 11)
+        if draft.name.isEmpty {
+            Text("Names the Dock app “cl_audit …”, its icon and folders").font(small).foregroundStyle(.secondary)
+        } else {
+            HStack(spacing: 4) {
+                Text("Icon text").font(small).foregroundStyle(.secondary)
                 if editingLabel {
                     TextField("", text: Binding(get: { draft.label },
                                                 set: { draft.customLabel = String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) }))
-                        .textFieldStyle(.plain).frame(width: 80)
+                        .textFieldStyle(.plain).font(.system(size: 11, weight: .semibold)).frame(width: 56)
+                        .padding(.horizontal, 4).background(RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.25)))
                         .onSubmit { editingLabel = false }
+                    Button("done") { editingLabel = false }.buttonStyle(.plain).font(small).foregroundStyle(.secondary).underline()
                 } else {
-                    HStack(spacing: 6) {
-                        Text(draft.label.isEmpty ? "–" : draft.label).font(.system(size: 12, weight: .semibold))
-                        Button("edit") { editingLabel = true }.buttonStyle(.plain).font(.system(size: 11.5)).foregroundStyle(.secondary).underline()
-                    }
+                    Text(draft.label).font(.system(size: 11, weight: .semibold))
+                    Button("change") { editingLabel = true }.buttonStyle(.plain).font(small).foregroundStyle(.secondary).underline()
+                        .help("The icon has room for up to 6 letters")
                 }
             }
-            statusLines(checks(.account), indent: stacked ? 0 : labelWidth + 10)
+            .lineLimit(1)
         }
     }
 
@@ -390,7 +411,7 @@ struct NewAccountView: View {
             if draft.source == .new {
                 FormRow(label: "Share from main", width: labelWidth, stacked: stacked || labelWidth < 100,
                         info: "Linked from ~/.claude, so changes there show up in every account. The login, plugins and usage stay separate.") {
-                    WrapChips(items: SharedItem.allCases.map { ($0.title, draft.share.contains($0)) }) { i in
+                    WrapChips(items: SharedItem.allCases.map { ($0.title, draft.share.contains($0)) }, tint: tint) { i in
                         let item = SharedItem.allCases[i]
                         if draft.share.contains(item) { draft.share.remove(item) } else { draft.share.insert(item) }
                     }
@@ -405,15 +426,12 @@ struct NewAccountView: View {
         let standardOwner = FolderRules.windowOwner(.standard, FolderKey.standardDataDir, among: model.accounts)
         return SCard(title: "Claude window", info: "Only one account can use the standard window; a separate window has its own sign-in and data folder.") {
             FormRow(label: "Window", width: labelWidth, stacked: stacked) {
-                Segments(options: [DesktopMode.standard, .separate, .none], selection: $draft.window,
-                         disabled: standardOwner == nil ? [] : [.standard]) { $0 == .standard ? "Standard" : $0 == .separate ? "Separate" : "None" }
+                // Standard is offered only while no other account has it.
+                Segments(options: standardOwner == nil ? [DesktopMode.standard, .separate, .none] : [.separate, .none],
+                         selection: $draft.window) { $0 == .standard ? "Standard" : $0 == .separate ? "Separate" : "None" }
                     .disabled(draft.started)
             }
             statusLines(checks(.window), indent: stacked ? 0 : labelWidth + 10).padding(.top, 2)
-            if let o = standardOwner, draft.window != .standard {
-                Text("Standard is \(o.name)'s").font(.system(size: 11)).foregroundStyle(.secondary)
-                    .padding(.leading, 19 + (stacked ? 0 : labelWidth + 10)).frame(maxWidth: .infinity, alignment: .leading)
-            }
         }
     }
 
@@ -432,16 +450,6 @@ struct NewAccountView: View {
 
     private var stepsPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Image(nsImage: preview(draft.entry, status: nil)).resizable().frame(width: 60, height: 60)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("cl_audit \(draft.name.isEmpty ? "…" : draft.name)").font(.system(size: 15, weight: .semibold))
-                    Text([draft.configDir.isEmpty ? "no folder yet" : draft.configDir,
-                          draft.window == .standard ? "standard window" : draft.window == .separate ? "separate window" : "no window"].joined(separator: " · "))
-                        .font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                }
-            }
-            .padding(.bottom, 10)
 
             stepRow(1, state: monitor.checked ? (monitor.runs.isEmpty ? .done : draft.continueAnyway ? .warn : .bad) : .todo,
                     title: "Close Claude",
@@ -511,12 +519,19 @@ struct NewAccountView: View {
 
     /// The "Claude is running" warning, attached to step 1.
     private var warningBox: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ForEach(runLines, id: \.self) { Text($0).font(.system(size: 11.5)) }
-            Text("They write sign-in and settings while running, which could overwrite the folder being set up.")
-                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.top, 2)
-            if monitor.runs.contains(where: { $0.kind == .terminal }) {
-                Text("Terminal sessions: type /exit in them.").font(.system(size: 11)).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Running Claude writes sign-in and settings, which could overwrite the folder being set up.")
+                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(runGroups, id: \.title) { g in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(g.title).font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 76, alignment: .leading)
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(g.items, id: \.self) { Text($0).font(.system(size: 11.5)).lineLimit(1).truncationMode(.middle) }
+                            if let n = g.note { Text(n).font(.system(size: 10.5)).foregroundStyle(.secondary) }
+                        }
+                    }
+                }
             }
             HStack {
                 if monitor.runs.contains(where: { $0.kind != .terminal }) {
@@ -598,7 +613,7 @@ struct NewAccountView: View {
                     do { try NewAccountSetup.createOrConnect(&draft); error = nil; model.tick += 1 }
                     catch { self.error = error.localizedDescription }
                 }
-                .buttonStyle(.pill(tint, compact: true)).disabled(blocked)
+                .buttonStyle(.pill(tint, compact: true)).disabled(blocked || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
             } else if signedIn == nil {
                 Button("Finish") { model.finishNew() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(blocked || model.discarding)
                     .help("You can finish now and sign in later")
@@ -619,7 +634,7 @@ struct NewAccountView: View {
     private var nextHint: String {
         switch current {
         case 1: return monitor.checked ? "Next: close Claude" : "Checking what's running…"
-        case 2: return blocked ? "Fix the red lines to go on" : draft.source == .new ? "Next: create the folder and links" : "Next: connect the folder"
+        case 2: return draft.name.isEmpty ? "Next: name the account" : blocked ? "Fix the red lines to go on" : draft.source == .new ? "Next: create the folder and links" : "Next: connect the folder"
         case 3: return "Next: sign in (or finish and sign in later)"
         default: return "Next: add the Dock icon"
         }
@@ -684,12 +699,13 @@ struct NewAccountView: View {
                             Circle().fill(Color.secondary.opacity(0.6)).frame(width: 5, height: 5).alignmentGuide(.firstTextBaseline) { $0.height / 2 + 4 }
                         } else {
                             Image(systemName: c.state == .ok ? "checkmark" : c.state == .bad ? "xmark" : "exclamationmark.triangle.fill")
-                                .font(.system(size: 10, weight: .bold))
+                                .font(.system(size: 9, weight: .bold))
                                 .foregroundStyle(c.state == .ok ? Color(nsColor: Painter.green) : c.state == .bad ? Color.red : Color.orange)
                         }
                     }
-                    .frame(width: 13)
-                    Text(c.text).font(.system(size: 12)).foregroundStyle(c.state == .wait ? Color.secondary : Color.primary)
+                    .frame(width: 12)
+                    Text(c.text).font(.system(size: 11.5))
+                        .foregroundStyle(c.state == .bad ? Color.red : c.state == .warn ? Color.orange : Color.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -704,24 +720,25 @@ struct NewAccountView: View {
             .compactMap { $0 }.joined(separator: " · ")
     }
 
-    /// One line per desktop app, then the Claude Code sessions grouped by where they run and which folder they use.
-    private var runLines: [String] {
-        var out: [String] = []
-        for r in monitor.runs where r.kind == .desktop {
+    /// What's running, one group per place: the desktop apps, the Code tab, Terminal.
+    private var runGroups: [(title: String, items: [String], note: String?)] {
+        var out: [(String, [String], String?)] = []
+        let apps = monitor.runs.filter { $0.kind == .desktop }.map { r -> String in
             let key = FolderKey.canonical(r.folder)
             let owner = model.accounts.first { FolderRules.windowKey($0.desktop, $0.desktopDataDir) == key }
             let which = key == FolderKey.canonical(FolderKey.standardDataDir) ? "standard window" : "separate window"
-            out.append("Claude desktop app · " + (owner.map { "\($0.name) · " } ?? "") + which)
+            return (owner.map { "\($0.name) · " } ?? "") + which
         }
-        var parts: [String] = []
-        for kind in [ClaudeRun.Kind.codeTab, .terminal] {
-            for (folder, rs) in Dictionary(grouping: monitor.runs.filter { $0.kind == kind }, by: \.folder).sorted(by: { $0.key < $1.key }) {
-                parts.append("\(rs.count) in \(kind == .codeTab ? "the Code tab" : "Terminal") on \(folder)")
-            }
+        if !apps.isEmpty { out.append((apps.count == 1 ? "Desktop app" : "Desktop apps", apps, nil)) }
+        for (kind, title, note) in [(ClaudeRun.Kind.codeTab, "Code tab", "closes with its app" as String?), (.terminal, "Terminal", "type /exit in each")] {
+            let groups = Dictionary(grouping: monitor.runs.filter { $0.kind == kind }, by: \.folder).sorted { $0.key < $1.key }
+            guard !groups.isEmpty else { continue }
+            out.append((title, groups.map { "\($0.value.count) session\($0.value.count == 1 ? "" : "s") · \($0.key)" }, note))
         }
-        if !parts.isEmpty { out.append("Claude Code · " + parts.joined(separator: " · ")) }
         return out
     }
+
+    private var runLines: [String] { runGroups.map { "\($0.title): " + $0.items.joined(separator: ", ") } }
 
     /// Signs out the folder's login so the sign-in can be done again (only a folder this setup created).
     private func signOut() {
@@ -803,17 +820,25 @@ struct Segments<Value: Hashable>: View {
 /// Toggle chips that wrap onto more lines when narrow.
 struct WrapChips: View {
     let items: [(String, Bool)]
+    var tint: Color = .accentPill
     let toggle: (Int) -> Void
 
     var body: some View {
         FlowLayout(spacing: 6) {
             ForEach(items.indices, id: \.self) { i in
+                // Selected: a check and a filled pill. Not selected: a plus and an outline only.
+                let on = items[i].1
                 Button { toggle(i) } label: {
-                    Text(items[i].0).font(.system(size: 11.5))
-                        .padding(.horizontal, 10).padding(.vertical, 3)
-                        .background(Capsule().fill(items[i].1 ? Color.accentPill.opacity(0.22) : Color.primary.opacity(0.06)))
-                        .overlay(Capsule().stroke(items[i].1 ? Color.accentPill.opacity(0.6) : Color.primary.opacity(0.1)))
-                        .foregroundStyle(items[i].1 ? Color.primary : Color.secondary)
+                    HStack(spacing: 4) {
+                        Image(systemName: on ? "checkmark" : "plus").font(.system(size: 9, weight: .bold))
+                        Text(items[i].0).font(.system(size: 11.5, weight: on ? .medium : .regular))
+                    }
+                    .padding(.leading, 8).padding(.trailing, 10).padding(.vertical, 3)
+                    .background(Capsule().fill(on ? tint.opacity(0.22) : Color.clear))
+                    .overlay(Capsule().strokeBorder(on ? tint.opacity(0.55) : Color.secondary.opacity(0.4),
+                                                    style: StrokeStyle(lineWidth: 1, dash: on ? [] : [3, 2])))
+                    .foregroundStyle(on ? Color.primary : Color.secondary)
+                    .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
             }
