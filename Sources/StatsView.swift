@@ -13,6 +13,7 @@ enum StatsFormat {
 
 struct StatsSection: View {
     @ObservedObject var stats: StatsModel
+    @ObservedObject private var prefs = DashboardPrefs.shared
 
     var names: [String: String] { Dictionary(uniqueKeysWithValues: stats.accounts.map { ($0.id, $0.name) }) }
 
@@ -26,19 +27,25 @@ struct StatsSection: View {
                     .font(.caption).foregroundStyle(.secondary)
                 PillPicker(options: StatsRange.allCases, selection: $stats.range) { $0.title }
             }
+            if prefs.showHeatmap {
             ChartCard(title: "When you use Claude", note: "replies per hour · colour mixes the accounts") {
                 Heatmap(stats: stats)
             }
+            }
+            if prefs.showTokens {
             ChartCard(title: stats.range == .day ? "Tokens per hour" : "Tokens per day",
                       note: "input + cache writes + output · cache reads not counted") {
                 TokenChart(stats: stats, names: names)
             }
+            }
+            if prefs.showShares {
             ChartCard(title: "Where it goes", note: "share of tokens in the period") {
                 HStack(alignment: .top, spacing: 18) {
                     ShareList(title: "By project", rows: stats.breakdown.projects)
                     ShareList(title: "By model", rows: stats.breakdown.models)
                     ShareList(title: "By surface", rows: stats.breakdown.surfaces)
                 }
+            }
             }
             HStack(spacing: 14) {
                 ForEach(stats.accounts) { e in
@@ -52,6 +59,9 @@ struct StatsSection: View {
             }
             .font(.caption).foregroundStyle(.secondary)
         }
+        // the period set in Settings ▸ Dashboard
+        .onAppear { if stats.range != prefs.range { stats.range = prefs.range } }
+        .onChange(of: prefs.range) { r in if stats.range != r { stats.range = r } }
     }
 }
 

@@ -8,6 +8,7 @@ import SwiftUI
 final class SettingsModel: ObservableObject {
     @Published var accounts: [AccountEntry] { didSet { scheduleSave() } }
     @Published var selection: String?
+    static let dashboardID = "__dashboard__"
     @Published var message = ""
     @Published var tick = 0                 // bumped every few seconds so icon status re-reads
     private(set) var saved: [AccountEntry]
@@ -205,6 +206,8 @@ struct SettingsPage: View {
             HStack(spacing: 8) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
+                        DashboardTile(selected: model.selection == SettingsModel.dashboardID)
+                            .onTapGesture { model.selection = SettingsModel.dashboardID }
                         ForEach(model.accounts) { a in AccountTile(entry: a, selected: a.id == model.selection, model: model) }
                         if model.draft != nil {
                             NewTile(selected: model.selection == SettingsModel.newID).onTapGesture { model.selection = SettingsModel.newID }
@@ -225,7 +228,9 @@ struct SettingsPage: View {
             .padding(.horizontal, 16).padding(.vertical, 10)
             Divider().opacity(0.5)
             ScrollView {
-                if model.selection == SettingsModel.newID, model.draft != nil {
+                if model.selection == SettingsModel.dashboardID {
+                    DashboardSettings().padding(14)
+                } else if model.selection == SettingsModel.newID, model.draft != nil {
                     NewAccountView(draft: Binding(get: { model.draft ?? NewAccountDraft() }, set: { model.draft = $0 }), model: model)
                         .padding(14)
                 } else if let id = model.selection, let entry = model.binding(id) {
@@ -241,6 +246,7 @@ struct SettingsPage: View {
     var snapshot: some View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
+                DashboardTile(selected: model.selection == SettingsModel.dashboardID)
                 ForEach(model.accounts) { a in AccountTile(entry: a, selected: a.id == model.selection, model: model) }
                 Spacer()
                 applyBar
@@ -248,7 +254,8 @@ struct SettingsPage: View {
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
             Divider().opacity(0.5)
-            if let id = model.selection, let entry = model.binding(id) { AccountSettings(entry: entry, model: model).padding(14) }
+            if model.selection == SettingsModel.dashboardID { DashboardSettings().padding(14) }
+            else if let id = model.selection, let entry = model.binding(id) { AccountSettings(entry: entry, model: model).padding(14) }
         }
     }
 

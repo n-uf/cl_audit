@@ -40,6 +40,11 @@ them blurred (hover one to see it).
   after “Continue anyway…”.
 - **Cancel** undoes only what the setup created: an existing folder is never deleted or signed out.
 
+**Dashboard settings** (Settings ▸ Dashboard): one card style for every account card on the dashboard
+(Glow, Rings, Numbers, Segments or Pace; each account's own panel design is for its panels), the history
+period (the dashboard's 24 h / 7 d / 30 d switch changes it too) and which history charts to show. Cards in
+a row always share one height, with their buttons lined up at the bottom.
+
 The same rules apply in Settings: the Folder, Claude window and Data folder menus mark what other accounts
 use, and the account bar refuses to apply two accounts sharing a folder or a window.
 

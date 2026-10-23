@@ -393,7 +393,7 @@ struct MainScreenView: View {
 
     var content: some View {
             VStack(alignment: .leading, spacing: 14) {
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 270), spacing: 12)], spacing: 12) {
+                CardGrid(minWidth: 270, spacing: 12) {
                     ForEach(model.shownRows) { AccountCard(row: $0, actions: actions) }
                 }
                 if model.rows.isEmpty {
@@ -407,12 +407,51 @@ struct MainScreenView: View {
     }
 }
 
+/// Cards in columns of at least `minWidth`; every card in a row gets the row's tallest height, so the
+/// cards line up whatever panel design each account uses.
+struct CardGrid: Layout {
+    var minWidth: CGFloat = 270
+    var spacing: CGFloat = 12
+
+    private func grid(_ subviews: Subviews, width: CGFloat) -> (cols: Int, colWidth: CGFloat, heights: [CGFloat]) {
+        let cols = max(1, min(subviews.count, Int((width + spacing) / (minWidth + spacing))))
+        let colWidth = (width - CGFloat(cols - 1) * spacing) / CGFloat(cols)
+        let heights = stride(from: 0, to: subviews.count, by: cols).map { start in
+            subviews[start..<min(start + cols, subviews.count)]
+                .map { $0.sizeThatFits(ProposedViewSize(width: colWidth, height: nil)).height }.max() ?? 0
+        }
+        return (cols, colWidth, heights)
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? (minWidth * 2 + spacing)
+        let g = grid(subviews, width: width)
+        return CGSize(width: width, height: g.heights.reduce(0, +) + CGFloat(max(0, g.heights.count - 1)) * spacing)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let g = grid(subviews, width: bounds.width)
+        var y = bounds.minY
+        for (r, h) in g.heights.enumerated() {
+            for c in 0..<g.cols {
+                let i = r * g.cols + c
+                guard i < subviews.count else { break }
+                subviews[i].place(at: CGPoint(x: bounds.minX + CGFloat(c) * (g.colWidth + spacing), y: y),
+                                  proposal: ProposedViewSize(width: g.colWidth, height: h))
+            }
+            y += h + spacing
+        }
+    }
+}
+
 struct AccountCard: View {
     let row: AccountRow
     let actions: LauncherActions
+    @ObservedObject private var prefs = DashboardPrefs.shared
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
+          VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Button { actions.open(row) } label: {
                     Image(nsImage: row.icon).resizable().frame(width: 48, height: 48)
@@ -442,7 +481,10 @@ struct AccountCard: View {
                         .background(Color.primary.opacity(0.08), in: Capsule())
                 }
             }
-            LimitsView(limits: row.limits, design: row.entry.panelDesign, large: false)
+            // one style for every card on the dashboard (Settings ▸ Dashboard); each account's panel design is for its panels
+            LimitsView(limits: row.limits, design: prefs.cardStyle, large: false)
+          }
+            Spacer(minLength: 12)         // cards in a row share one height; the buttons stay at the bottom
             HStack(spacing: 6) {
                 if row.needsLogin { Button("Log in…") { actions.logIn(row) }.buttonStyle(.pill(.red)) }
                 Button(row.activity.desktopOpen ? "Show Desktop" : "Open Desktop") { actions.open(row) }
@@ -455,6 +497,7 @@ struct AccountCard: View {
             }
             .controlSize(.small)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 14).fill(Color.primary.opacity(0.05)))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.primary.opacity(0.08)))

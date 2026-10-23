@@ -149,7 +149,10 @@ struct Breakdown {
 }
 
 final class StatsModel: ObservableObject {
-    @Published var range: StatsRange = .week { didSet { reload() } }
+    // the dashboard's period is a dashboard setting (Settings ▸ Dashboard) too
+    @Published var range: StatsRange = DashboardPrefs.shared.range {
+        didSet { if DashboardPrefs.shared.range != range { DashboardPrefs.shared.range = range }; reload() }
+    }
     @Published var loading = false
     @Published var bars: [TokenBar] = []
     @Published var heat: [[[String: Int]]] = []     // [day row][hour] → replies per account
