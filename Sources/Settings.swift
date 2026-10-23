@@ -91,6 +91,7 @@ final class SettingsModel: ObservableObject {
             var d = NewAccountDraft()
             let used = Set(accounts.map(\.color))
             d.color = TileColor.accents.first { !used.contains($0) } ?? .purple
+            d.template = accounts.first(where: { $0.id == selection }) ?? accounts.first
             draft = d
         }
         selection = Self.newID

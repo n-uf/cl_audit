@@ -53,7 +53,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     var accent: TileColor? = nil     // the account's own colour; nil = see accentColor
     var clickAction: ClickAction = .peekThenOpen
     var peekSeconds: Double = 3
-    var longPressDetails: Bool = false   // experimental: press-and-hold shows the details panel
+    var longPressDetails: Bool = true    // press-and-hold shows the details panel
     var panelDesign: PanelDesign = .glow
 
     init(id: String, name: String, label: String, configDir: String) {
@@ -83,7 +83,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         frame = try c.decodeIfPresent(TileColor.self, forKey: .frame)
         accent = try c.decodeIfPresent(TileColor.self, forKey: .accent)
         peekSeconds = try c.decodeIfPresent(Double.self, forKey: .peekSeconds) ?? 3
-        longPressDetails = try c.decodeIfPresent(Bool.self, forKey: .longPressDetails) ?? false
+        longPressDetails = try c.decodeIfPresent(Bool.self, forKey: .longPressDetails) ?? true
         panelDesign = try c.decodeIfPresent(PanelDesign.self, forKey: .panelDesign) ?? .glow
         if let action = try c.decodeIfPresent(ClickAction.self, forKey: .clickAction) {
             clickAction = action

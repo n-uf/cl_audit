@@ -41,6 +41,9 @@ struct NewAccountDraft: Equatable {
 
     var id: String { Store.newID(from: name, taken: []) }
     var customLabel: String?            // the icon label, if edited (otherwise it comes from the name)
+    /// An existing account whose behaviour settings (click, press and hold, panel design, icon style, refresh,
+    /// notifications, login item, renewal) the new one starts with, so it acts like the others.
+    var template: AccountEntry?
     var label: String { customLabel ?? String(name.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(6)) }
     var newConfigDir: String { "~/.claude-\(id)" }
     var configDir: String { source == .existing ? (existingDir ?? "") : newConfigDir }
@@ -54,6 +57,11 @@ struct NewAccountDraft: Equatable {
 
     var entry: AccountEntry {
         var e = AccountEntry(id: id, name: name, label: label.isEmpty ? "NEW" : label, configDir: configDir)
+        if let t = template {
+            e.style = t.style; e.pollMinutes = t.pollMinutes; e.notify = t.notify; e.notifyPercent = t.notifyPercent
+            e.openAtLogin = t.openAtLogin; e.autoRenew = t.autoRenew; e.clickAction = t.clickAction
+            e.peekSeconds = t.peekSeconds; e.longPressDetails = t.longPressDetails; e.panelDesign = t.panelDesign
+        }
         e.desktop = window
         e.desktopDataDir = window == .separate ? dataDir : ""
         e.color = color
