@@ -240,6 +240,7 @@ struct NewAccountView: View {
     @State private var confirmAnyway = false
     @State private var signingOut = false
     @State private var customFolders: [String] = []
+    @State private var showHidden = false
 
     private enum Width { case wide, medium, narrow }
 
@@ -422,15 +423,35 @@ struct NewAccountView: View {
             .background(Color.black.opacity(0.18))
             .clipShape(RoundedRectangle(cornerRadius: 8))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.09)))
-            let taken = folderChoices.compactMap { p in FolderRules.configOwner(p, among: model.accounts).map { "\(p) (\($0.name))" } }
-            let unusable = folderChoices.filter { FolderRules.configOwner($0, among: model.accounts) == nil && !canTake($0) }
-            if !taken.isEmpty || !unusable.isEmpty {
-                VStack(alignment: .leading, spacing: 2) {
-                    if !taken.isEmpty { Text("Already another account's: " + taken.joined(separator: ", ")) }
-                    if !unusable.isEmpty { Text("Not Claude Code folders: " + unusable.joined(separator: ", ")) }
+            // Folders that can't be taken: one line, opening a compact list (stays short with many accounts).
+            let hidden: [(path: String, why: String)] = folderChoices.compactMap { p in
+                if let o = FolderRules.configOwner(p, among: model.accounts) { return (p, o.name) }
+                return canTake(p) ? nil : (p, "not a Claude Code folder")
+            }
+            if !hidden.isEmpty {
+                Button { withAnimation(.easeOut(duration: 0.15)) { showHidden.toggle() } } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: "chevron.right").font(.system(size: 8.5, weight: .bold))
+                            .rotationEffect(.degrees(showHidden ? 90 : 0))
+                        Text("\(hidden.count) folder\(hidden.count == 1 ? "" : "s") " + (hidden.allSatisfy { $0.why != "not a Claude Code folder" }
+                             ? "already used by other accounts" : "not offered"))
+                    }
+                    .font(.system(size: 11)).foregroundStyle(.secondary).contentShape(Rectangle())
                 }
-                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 5).padding(.horizontal, 2).frame(maxWidth: .infinity, alignment: .leading)
+                .buttonStyle(.plain)
+                .padding(.top, 7)
+                if showHidden {
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(hidden, id: \.path) { h in
+                            HStack(spacing: 8) {
+                                Text(h.path).font(.system(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.middle)
+                                Spacer(minLength: 6)
+                                Text(h.why).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                    }
+                    .padding(.leading, 14).padding(.top, 4)
+                }
             }
         }
     }
