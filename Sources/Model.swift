@@ -60,6 +60,17 @@ struct Account {
         return oauth["emailAddress"] as? String
     }
 
+    /// The claude.ai account id Claude Code recorded for the folder (to compare with the desktop app's).
+    static func expectedAccountUuid(configDir: String) -> String? {
+        let dir = expand(configDir)
+        let file = dir == expand("~/.claude") ? expand("~/.claude.json")
+                                              : (dir as NSString).appendingPathComponent(".claude.json")
+        guard let data = FileManager.default.contents(atPath: file),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let oauth = j["oauthAccount"] as? [String: Any] else { return nil }
+        return oauth["accountUuid"] as? String
+    }
+
     static func sha8(_ s: String) -> String {
         SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined().prefix(8).description
     }

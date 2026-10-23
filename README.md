@@ -37,10 +37,14 @@ does the next step (Create/Connect, Sign in…, Finish). Each choice says what i
   case; a folder inside (or around) another account's folder counts as the same. Folders and windows
   another account uses are shown as such and can't be picked; the line under the field says why. A sign-in that
   another account also uses is only a warning (both icons would show the same usage).
-- **Quit the Claude app first.** While open, the Claude app writes its sign-in and settings, so step 1 lists its
-  windows (and their Code tab sessions), checking every 2 s; it can quit the app, and Check again looks at once.
-  Claude Code in Terminal doesn't get in the way and isn't listed. Create/Connect and Finish wait until the
-  app is quit.
+- **Quit the desktop app first.** Until the folder is created or connected, the Claude desktop app must be closed:
+  while open it writes its sign-in and settings. Step 1 lists its windows (and their Code tab sessions), checking
+  every 2 s, with Quit the desktop app and Check again. Claude Code in Terminal doesn't get in the way and isn't
+  listed. Once the folder exists, the desktop app can stay open.
+- **Sign in, in two parts.** a · Claude Code: Terminal runs `claude auth login` for the folder. b · Desktop app
+  (only with its own Claude window): open that window and sign in to the same claude.ai account; the page checks
+  every 2 s that the window is signed in and that its account id matches Claude Code's (no email or token is
+  read). One button does the next part; "Finish now" leaves sign-in for later.
 - **Cancel** undoes only what the setup created: an existing folder is never deleted or signed out.
 
 **Removing an account** (Settings ▸ account ▸ Remove account…, or right-click its tile) always removes its

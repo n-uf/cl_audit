@@ -161,14 +161,16 @@ enum NewAccountSetup {
             }
         }
 
-        // The Claude app open: it writes sign-in and settings. Claude Code in Terminal doesn't get in the way.
+        // The desktop app open: it writes sign-in and settings, which matters only until the folders exist.
+        // Claude Code in Terminal doesn't get in the way.
         let appRuns = runs.filter { $0.kind != .terminal }
-        if !checked { out.append(.init(section: .running, state: .wait, text: "Checking whether the Claude app is open…")) }
-        else if appRuns.isEmpty { out.append(.init(section: .running, state: .ok, text: "The Claude app is closed")) }
+        if foldersReady(d) { return out }
+        if !checked { out.append(.init(section: .running, state: .wait, text: "Checking whether the desktop app is open…")) }
+        else if appRuns.isEmpty { out.append(.init(section: .running, state: .ok, text: "The desktop app is closed")) }
         else {
             let apps = appRuns.filter { $0.kind == .desktop }.count
             out.append(.init(section: .running, state: d.continueAnyway ? .warn : .bad,
-                             text: "The Claude app is open (\(apps) window\(apps == 1 ? "" : "s"))"))
+                             text: "The desktop app is open (\(apps) window\(apps == 1 ? "" : "s"))"))
         }
         return out
     }
@@ -204,6 +206,22 @@ enum NewAccountSetup {
             try? fm.removeItem(at: ClaudeCLI.loginScript(dir))
         }
         if let dir = d.createdDataDir { try? fm.removeItem(at: URL(fileURLWithPath: expand(dir))) }
+    }
+
+    /// Whether this account's own Claude window is signed in, and to the same claude.ai account as Claude Code.
+    enum DesktopSignIn { case notChecked, notSignedIn, same, different, unknown }
+
+    /// Reads the window's config.json only for whether a login is stored and which account it last used
+    /// (an account id); nothing from it is kept or shown. The standard window and Terminal only aren't checked.
+    static func desktopSignIn(_ d: NewAccountDraft) -> DesktopSignIn {
+        guard d.window == .separate, foldersReady(d) else { return .notChecked }
+        let file = (expand(d.dataDir) as NSString).appendingPathComponent("config.json")
+        guard let data = FileManager.default.contents(atPath: file),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              j.keys.contains(where: { $0.hasPrefix("oauth:tokenCache") }),
+              let desktop = j["lastKnownAccountUuid"] as? String else { return .notSignedIn }
+        guard let code = Account.expectedAccountUuid(configDir: d.configDir) else { return .unknown }
+        return desktop == code ? .same : .different
     }
 
     static func windowOpen(_ d: NewAccountDraft) -> Bool {
@@ -268,10 +286,10 @@ struct NewAccountView: View {
             Button(draft.createdConfigDir != nil || draft.createdDataDir != nil ? "Cancel and clean up" : "Cancel setup", role: .destructive) { model.cancelNew() }
             Button("Keep setting up", role: .cancel) {}
         } message: { Text(NewAccountSetup.discardSummary(draft)) }
-        .alert("Quit the Claude app?", isPresented: $confirmQuit) {
+        .alert("Quit the desktop app?", isPresented: $confirmQuit) {
             Button("Quit them", role: .destructive) { ClaudeRuns.quitDesktopApps(); DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { monitor.refresh() } }
             Button("Not now", role: .cancel) {}
-        } message: { Text("Every Claude app window closes, with the Claude Code sessions in its Code tab. Unsent messages there may be lost.") }
+        } message: { Text("Every Claude window closes, with the Claude Code sessions in its Code tab. Unsent messages there may be lost.") }
     }
 
     // MARK: state
@@ -281,18 +299,23 @@ struct NewAccountView: View {
     private var checks: [SetupCheck] { NewAccountSetup.checks(draft, accounts: model.accounts, runs: appRuns, checked: monitor.checked) }
     private func checks(_ s: SetupCheck.Section) -> [SetupCheck] { checks.filter { $0.section == s } }
     private var blocked: Bool { checks.contains { $0.blocks } }
-    private var running: Bool { monitor.checked && !appRuns.isEmpty && !draft.continueAnyway }
+    /// The desktop app open while the folders don't exist yet (afterwards it can stay open).
+    private var running: Bool { monitor.checked && !appRuns.isEmpty && !draft.continueAnyway && !NewAccountSetup.foldersReady(draft) }
+    private var desktop: NewAccountSetup.DesktopSignIn { NewAccountSetup.desktopSignIn(draft) }
+    private var needsDesktop: Bool { draft.window == .separate }
+    private var desktopDone: Bool { !needsDesktop || desktop == .same || desktop == .unknown }
     private var folders: Bool { NewAccountSetup.foldersReady(draft) && NewAccountSetup.linksReady(draft) }
     private var signedIn: String? { checks(.folder).contains { $0.blocks } ? nil : NewAccountSetup.signedInEmail(draft) }
     private var windowOpen: Bool { NewAccountSetup.foldersReady(draft) && NewAccountSetup.windowOpen(draft) }
     private var tint: Color { Color(nsColor: draft.color.color(fiveHour: nil, stale: false)) }
     private var createTitle: String { draft.source == .new ? "Create" : "Connect" }
 
-    /// Which step is next (1…5), for the progress strip and the one primary button.
+    /// What's next: 1 quit the desktop app, 2 folder, 3 Claude Code sign-in, 4 desktop app sign-in, 5 Dock icon.
     private var current: Int {
-        if running || !monitor.checked { return 1 }
+        if !NewAccountSetup.foldersReady(draft) && (running || !monitor.checked) { return 1 }
         if !folders { return 2 }
         if signedIn == nil { return 3 }
+        if !desktopDone { return 4 }
         return 5
     }
 
@@ -323,13 +346,13 @@ struct NewAccountView: View {
                     accountCard(labelWidth: lw, stacked: narrow)
                     folderCard(labelWidth: lw, stacked: narrow)
                     windowCard(labelWidth: lw, stacked: narrow)
-                    if signedIn != nil || folders { signInCard }
+                    if folders { signInCard }
                 }
                 .frame(maxWidth: 700)
                 .padding(14)
                 .frame(maxWidth: .infinity)
             }
-            if monitor.checked && !appRuns.isEmpty { warningBar(narrow: narrow) }
+            if running { warningBar(narrow: narrow) }
             actionBar(hint: true)
         }
     }
@@ -485,9 +508,9 @@ struct NewAccountView: View {
     private func windowCard(labelWidth: CGFloat, stacked: Bool) -> some View {
         let standardFree = FolderRules.windowOwner(.standard, FolderKey.standardDataDir, among: model.accounts) == nil
         // The standard window is offered only while no other account has it.
-        let options: [(DesktopMode, String, String)] = (standardFree ? [(.standard, "Your usual Claude app", "Opened as always, signed in to this account")] : [])
-            + [(.separate, "Claude app in its own window", "Your installed Claude app, opened separately with this account's sign-in"),
-               (.none, "Terminal only", "No Claude app for this account; Claude Code in Terminal")]
+        let options: [(DesktopMode, String, String)] = (standardFree ? [(.standard, "The standard Claude window", "The desktop app as you usually open it, signed in to this account")] : [])
+            + [(.separate, "Its own Claude window", "The desktop app opened separately, with this account's sign-in"),
+               (.none, "Terminal only", "No desktop app for this account; Claude Code in Terminal")]
         return SCard(title: "Claude desktop app") {
             VStack(spacing: 1) {
                 ForEach(options, id: \.0) { o in
@@ -506,15 +529,84 @@ struct NewAccountView: View {
         }
     }
 
-    /// Medium and narrow layouts show the sign-in state as a card (wide shows it in the steps).
+    /// Medium and narrow layouts show the sign-in as a card (wide shows it in step 3).
     private var signInCard: some View {
-        SCard(title: "Sign in") {
-            if signedIn == nil {
-                Text("Opens Terminal; you approve in the browser. For a different claude.ai account, open the link Terminal shows in a private window.")
-                    .font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        SCard(title: "Sign in") { signInParts }
+    }
+
+    /// The two parts of signing in: a · Claude Code (Terminal), b · the desktop app (its own window).
+    private var signInParts: some View {
+        let owner = signedIn.flatMap { FolderRules.signInOwner($0, among: model.accounts) }
+        return VStack(spacing: 1) {
+            part(signedIn == nil ? (current == 3 ? .now : .todo) : owner != nil ? .warn : .done, current: current == 3,
+                 title: "a · Claude Code") {
+                if let email = signedIn {
+                    sub(Privacy.masked(email) + (draft.source == .existing && !draft.started ? ", already in the folder" : ""))
+                    if let o = owner {
+                        Text("“\(o.name)” uses this sign-in too: both icons would show the same usage")
+                            .font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                        if draft.createdConfigDir != nil {
+                            Button(signingOut ? "Signing out…" : "use another account") { signOut() }
+                                .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary).underline().disabled(signingOut)
+                        }
+                    }
+                } else {
+                    sub("Terminal opens; approve in the browser")
+                }
             }
-            statusLines(checks(.signIn), indent: 0)
+            if draft.window == .standard {
+                part(.todo, current: false, title: "b · Desktop app") { sub("Uses the standard Claude window and its sign-in") }
+            } else if needsDesktop {
+                let state: StepState = signedIn == nil ? .todo : desktopDone ? .done : desktop == .different ? .warn : current == 4 ? .now : .todo
+                part(state, current: current == 4, title: "b · Desktop app") {
+                    if signedIn == nil {
+                        sub("After Claude Code")
+                    } else {
+                        switch desktop {
+                        case .same: Text("Its window is signed in to the same account").font(.system(size: 11.5)).foregroundStyle(Color(nsColor: Painter.green))
+                            .fixedSize(horizontal: false, vertical: true)
+                        case .unknown: sub("Its window is signed in")
+                        case .different:
+                            Text("Its window is signed in to a different account").font(.system(size: 11.5)).foregroundStyle(.orange)
+                                .fixedSize(horizontal: false, vertical: true)
+                            sub("In that window: Settings ▸ Log out, then sign in as \(Privacy.masked(signedIn ?? ""))")
+                        default:
+                            sub("Sign in to its own Claude window as \(Privacy.masked(signedIn ?? ""))")
+                            if windowOpen {
+                                HStack(spacing: 5) { ProgressView().controlSize(.mini); sub("waiting for the sign-in") }
+                            }
+                        }
+                    }
+                }
+            }
         }
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.08)))
+    }
+
+    private func sub(_ s: String) -> some View {
+        Text(s).font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+    }
+
+    private func part<C: View>(_ state: StepState, current: Bool, title: String, @ViewBuilder content: () -> C) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            ZStack {
+                switch state {
+                case .done: Circle().fill(Color(nsColor: Painter.green)); Image(systemName: "checkmark").font(.system(size: 7.5, weight: .heavy)).foregroundStyle(.black.opacity(0.7))
+                case .warn, .bad: Circle().fill(Color.orange); Text("!").font(.system(size: 9, weight: .heavy)).foregroundStyle(.black.opacity(0.7))
+                case .now: Circle().strokeBorder(tint, lineWidth: 2)
+                default: Circle().strokeBorder(Color.secondary.opacity(0.6), lineWidth: 1.3)
+                }
+            }
+            .frame(width: 14, height: 14).padding(.top, 2)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(state == .todo ? Color.secondary : Color.primary)
+                content()
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(Color.primary.opacity(current ? 0.08 : 0.03))
     }
 
     // MARK: steps (wide)
@@ -522,31 +614,25 @@ struct NewAccountView: View {
     private var stepsPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
 
-            stepRow(1, state: monitor.checked ? (appRuns.isEmpty ? .done : draft.continueAnyway ? .warn : .bad) : .todo,
-                    title: "Quit the Claude app",
-                    detail: !monitor.checked ? "checking…" : appRuns.isEmpty ? "closed" : draft.continueAnyway ? "continuing while it's open" : nil,
+            let ready = NewAccountSetup.foldersReady(draft)
+            stepRow(1, state: ready ? .done : monitor.checked ? (appRuns.isEmpty ? .done : draft.continueAnyway ? .warn : .bad) : .todo,
+                    title: "Quit the desktop app",
+                    detail: ready ? "done · it can stay open now" : !monitor.checked ? "checking…" : appRuns.isEmpty ? "closed" : nil,
                     connector: running) {
                 if running { warningBox }
             }
             stepRow(2, state: folders ? .done : current == 2 ? .now : running ? .held : .todo,
                     title: draft.source == .new ? "Create the folder" + (draft.share.isEmpty ? "" : " and links") : "Connect the folder",
-                    detail: folders ? draft.configDir : running ? "held until the Claude app is quit" : checks.contains(where: { $0.blocks && $0.section != .running }) ? "fix the red lines first" : nil,
-                    detailBad: running) { EmptyView() }
-            stepRow(3, state: signedIn == nil ? (current == 3 ? .now : .todo) : (FolderRules.signInOwner(signedIn, among: model.accounts) != nil ? .warn : .done),
-                    title: signedIn == nil ? "Sign in to Claude Code" : "Signed in",
-                    detail: signedIn.map { Privacy.masked($0) + (draft.source == .existing && !draft.started ? ", already in the folder" : "") } ?? "Terminal, then approve in the browser") {
-                if let w = checks(.signIn).first(where: { $0.state == .warn }) {
-                    Text(w.text).font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
-                }
+                    detail: folders ? draft.configDir : running ? "held until the desktop app is quit" : checks.contains(where: { $0.blocks && $0.section != .running }) ? "fix the red lines first" : nil,
+                    detailBad: running && !folders) { EmptyView() }
+            stepRow(3, state: !folders ? .todo
+                        : (signedIn.flatMap { FolderRules.signInOwner($0, among: model.accounts) } != nil || (needsDesktop && signedIn != nil && desktop == .different)) ? .warn
+                        : current == 3 || current == 4 ? .now : .done,
+                    title: "Sign in",
+                    detail: folders ? nil : draft.window == .separate ? "Claude Code, then the desktop app" : "Claude Code") {
+                if folders { signInParts.padding(.top, 3) }
             }
-            if draft.window != .none {
-                stepRow(4, state: windowOpen ? .done : .todo, title: "Open its Claude window", detail: windowOpen ? "open" : "optional") {
-                    if NewAccountSetup.foldersReady(draft) && !windowOpen {
-                        Button("Open window") { Launcher.openClaude(Account(draft.entry)) }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
-                    }
-                }
-            }
-            stepRow(5, state: current == 5 ? .now : .todo, title: "Add the Dock icon", detail: "Finish installs “cl_audit \(draft.name.isEmpty ? "…" : draft.name)”") { EmptyView() }
+            stepRow(4, state: current == 5 ? .now : .todo, title: "Add the Dock icon", detail: "Finish installs “cl_audit \(draft.name.isEmpty ? "…" : draft.name)”") { EmptyView() }
 
             actionBar(hint: false).padding(.top, 8)
         }
@@ -574,7 +660,7 @@ struct NewAccountView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 4) {
                     Text(title).font(.system(size: 13, weight: .semibold))
-                    if state == .bad { Text("· still open").font(.system(size: 12)).foregroundStyle(.red) }
+                    if state == .bad && n == 1 { Text("· still open").font(.system(size: 12)).foregroundStyle(.red) }
                 }
                 if let detail { Text(detail).font(.system(size: 11.5)).foregroundStyle(detailBad ? Color.red : Color.secondary).lineLimit(2) }
                 extra()
@@ -588,10 +674,10 @@ struct NewAccountView: View {
         .overlay(alignment: .top) { if n > 1 { Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1) } }
     }
 
-    /// The "Claude app is open" warning, attached to step 1.
+    /// The "desktop app is open" warning, attached to step 1 (only until the folder exists).
     private var warningBox: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("While open, the Claude app writes its sign-in and settings, which could overwrite the folder being set up.")
+            Text("While open, the desktop app writes its sign-in and settings, which could overwrite the folder being set up. It can stay open once the folder exists.")
                 .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(runGroups, id: \.title) { g in
@@ -606,7 +692,7 @@ struct NewAccountView: View {
             }
             HStack {
                 if appRuns.contains(where: { $0.kind != .terminal }) {
-                    Button("Quit the Claude app") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
+                    Button("Quit the desktop app") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
                 }
                 Spacer()
                 checkAgain
@@ -622,22 +708,26 @@ struct NewAccountView: View {
     // MARK: medium and narrow
 
     private func progressStrip(compact: Bool) -> some View {
-        let names = ["Quit Claude app", draft.source == .new ? "Create folder" : "Connect folder", "Sign in", "Window", "Dock icon"]
-        let done = [monitor.checked && appRuns.isEmpty, folders, signedIn != nil, windowOpen, false]
+        let ready = NewAccountSetup.foldersReady(draft)
+        // (name, done, the `current` value it stands for); the desktop app part only with its own window.
+        let items: [(String, Bool, Int)] = [("Quit desktop app", ready || (monitor.checked && appRuns.isEmpty), 1),
+                                            (draft.source == .new ? "Create folder" : "Connect folder", folders, 2),
+                                            ("Claude Code", signedIn != nil, 3)]
+            + (needsDesktop ? [("Desktop app", signedIn != nil && desktopDone, 4)] : []) + [("Dock icon", false, 5)]
         return HStack(spacing: 6) {
-            ForEach(0..<5, id: \.self) { i in
-                let n = i + 1, now = n == current, bad = n == 1 && running
+            ForEach(items.indices, id: \.self) { i in
+                let it = items[i], now = it.2 == current, bad = it.2 == 1 && running
                 HStack(spacing: 4) {
                     ZStack {
-                        Circle().fill(done[i] ? Color(nsColor: Painter.green) : bad ? Color.red : Color.clear)
-                        Circle().strokeBorder(done[i] || bad ? Color.clear : now ? tint : Color.secondary.opacity(0.6), lineWidth: now ? 2 : 1.2)
-                        Text(done[i] ? "✓" : bad ? "!" : "\(n)").font(.system(size: 9.5, weight: .bold))
-                            .foregroundStyle(done[i] ? Color.black.opacity(0.7) : bad ? .white : now ? .primary : .secondary)
+                        Circle().fill(it.1 ? Color(nsColor: Painter.green) : bad ? Color.red : Color.clear)
+                        Circle().strokeBorder(it.1 || bad ? Color.clear : now ? tint : Color.secondary.opacity(0.6), lineWidth: now ? 2 : 1.2)
+                        Text(it.1 ? "✓" : bad ? "!" : "\(i + 1)").font(.system(size: 9.5, weight: .bold))
+                            .foregroundStyle(it.1 ? Color.black.opacity(0.7) : bad ? .white : now ? .primary : .secondary)
                     }
                     .frame(width: 16, height: 16)
-                    if !compact || now { Text(names[i]).font(.system(size: 11.5)).foregroundStyle(bad ? Color.red : now ? Color.primary : Color.secondary) }
+                    if !compact || now { Text(it.0).font(.system(size: 11.5)).foregroundStyle(bad ? Color.red : now ? Color.primary : Color.secondary) }
                 }
-                if i < 4 { Text("›").foregroundStyle(.tertiary) }
+                if i < items.count - 1 { Text("›").foregroundStyle(.tertiary) }
             }
         }
     }
@@ -645,14 +735,14 @@ struct NewAccountView: View {
     private func warningBar(narrow: Bool) -> some View {
         let message = HStack(alignment: .firstTextBaseline, spacing: 8) {
             Circle().fill(draft.continueAnyway ? Color.orange : Color.red).frame(width: 8, height: 8)
-            (Text(draft.continueAnyway ? "Continuing while the Claude app is open" : "The Claude app is open").bold()
+            (Text(draft.continueAnyway ? "Continuing while the desktop app is open" : "The desktop app is open").bold()
              + Text(" · " + runSummary + (draft.continueAnyway ? "" : ": \(createTitle) waits until it's quit")).foregroundColor(.secondary))
                 .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
         }
         let buttons = HStack(spacing: 10) {
             if !draft.continueAnyway {
                 if appRuns.contains(where: { $0.kind != .terminal }) {
-                    Button("Quit the Claude app") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
+                    Button("Quit the desktop app") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
                 }
                 checkAgain
             }
@@ -687,10 +777,9 @@ struct NewAccountView: View {
         .disabled(checking)
     }
 
-    /// Cancel on the left, the one next action on the right.
+    /// Cancel on the left, the one next action on the right ("Finish now" stays next to it once the folder exists).
     private func actionBar(hint: Bool) -> some View {
-        let taken = signedIn.flatMap { FolderRules.signInOwner($0, among: model.accounts) }
-        return HStack(spacing: 8) {
+        HStack(spacing: 8) {
             Button(model.discarding ? "Cancelling…" : "Cancel") { confirmCancel = true }
                 .buttonStyle(.plain).foregroundStyle(.secondary).disabled(model.discarding)
             Spacer(minLength: 6)
@@ -702,16 +791,19 @@ struct NewAccountView: View {
                     catch { self.error = error.localizedDescription }
                 }
                 .buttonStyle(.pill(tint, compact: true)).disabled(blocked || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
-            } else if signedIn == nil {
-                Button("Finish") { model.finishNew() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(blocked || model.discarding)
-                    .help("You can finish now and sign in later")
-                Button("Sign in…") { if let c = model.claudePath { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: nil) } }
-                    .buttonStyle(.pill(tint, compact: true)).disabled(model.claudePath == nil)
-            } else {
-                if taken != nil, draft.createdConfigDir != nil {
-                    Button(signingOut ? "Signing out…" : "Sign out") { signOut() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(signingOut)
-                }
+            } else if current == 5 {
                 Button("Finish") { model.finishNew() }.buttonStyle(.pill(.green, compact: true)).disabled(blocked || model.discarding)
+            } else {
+                Button(desktop == .different ? "Finish anyway" : "Finish now") { model.finishNew() }
+                    .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(blocked || model.discarding)
+                    .help("Sign-in can be finished later from Settings")
+                if signedIn == nil {
+                    Button("Sign in to Claude Code…") { if let c = model.claudePath { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: nil) } }
+                        .buttonStyle(.pill(tint, compact: true)).disabled(model.claudePath == nil)
+                } else {
+                    Button(windowOpen ? "Show Claude window" : "Open Claude window") { Launcher.openClaude(Account(draft.entry)) }
+                        .buttonStyle(.pill(tint, compact: true))
+                }
             }
         }
         .padding(.horizontal, hint ? 16 : 0).padding(.vertical, hint ? 10 : 0)
@@ -721,9 +813,10 @@ struct NewAccountView: View {
 
     private var nextHint: String {
         switch current {
-        case 1: return monitor.checked ? "Next: quit the Claude app" : "Checking the Claude app…"
+        case 1: return monitor.checked ? "Next: quit the desktop app" : "Checking the desktop app…"
         case 2: return draft.name.isEmpty ? "Next: name the account" : draft.source == .existing && draft.existingDir == nil ? "Next: pick a folder" : blocked ? "Fix the red lines to go on" : draft.source == .new ? "Next: create the folder and links" : "Next: connect the folder"
-        case 3: return "Next: sign in (or finish and sign in later)"
+        case 3: return "Next: sign in to Claude Code"
+        case 4: return desktop == .different ? "Its Claude window uses another account" : "Next: sign in to the desktop app"
         default: return "Next: add the Dock icon"
         }
     }
