@@ -283,16 +283,17 @@ struct NewTile: View {
     let selected: Bool
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "sparkles").frame(width: 30, height: 30)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.purple.opacity(0.25)))
+            // Styled like the other tiles: highlighted only while selected, and the dashed icon says it isn't an account yet.
+            Image(systemName: "plus").font(.system(size: 13, weight: .medium)).foregroundStyle(.secondary).frame(width: 30, height: 30)
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 2])))
             VStack(alignment: .leading, spacing: 0) {
                 Text("New account").font(.system(size: 12.5, weight: .semibold))
-                Text("setting up…").font(.system(size: 10.5)).foregroundStyle(.secondary)
+                Text("not added yet").font(.system(size: 10.5)).foregroundStyle(.secondary)
             }
         }
         .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.purple.opacity(selected ? 0.16 : 0.06)))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.purple.opacity(selected ? 0.7 : 0.3), lineWidth: selected ? 1.5 : 1))
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(selected ? 0.12 : 0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(selected ? 0.3 : 0.07), lineWidth: selected ? 1.5 : 1))
         .contentShape(Rectangle())
     }
 }

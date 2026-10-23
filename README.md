@@ -28,7 +28,7 @@ them blurred (hover one to see it).
 **Adding an account** (＋): in a wide window, three columns: the account and its window, the Claude Code
 folder, and a summary with the live icon and five numbered steps. Narrower, one column with a progress strip
 on top and the next action pinned at the bottom; each check sits under the field it's about, and one button
-does the next step (Create/Connect, Sign in…, Finish). The Account card shows the Dock icon as it will look; its text comes from the name and can be changed. Standard is offered only while no other account uses it.
+does the next step (Create/Connect, Sign in…, Finish). Each choice says what it means (New or Existing folder; its own, the standard or no Claude window), and the chosen one opens its details. The standard window is offered only while no other account uses it, and only folders the account can take are listed (the others are named underneath with whose they are). The icon label comes from the name; change it later in Settings.
 - **Where it lives:** a *new* Claude Code folder (`~/.claude-<name>`, optionally linking instructions, agents,
   skills, commands or memory from `~/.claude`), or an *existing* one: any Claude Code folder on this Mac,
   the default `~/.claude` too, or one you pick in Finder (a Claude Code folder, or an empty one).

@@ -239,7 +239,6 @@ struct NewAccountView: View {
     @State private var confirmQuit = false
     @State private var confirmAnyway = false
     @State private var signingOut = false
-    @State private var editingLabel = false
     @State private var customFolders: [String] = []
 
     private enum Width { case wide, medium, narrow }
@@ -331,107 +330,132 @@ struct NewAccountView: View {
 
     private func accountCard(labelWidth: CGFloat, stacked: Bool) -> some View {
         SCard(title: "Account") {
-          HStack(alignment: .top, spacing: 12) {
-           VStack(spacing: 0) {
-            FormRow(label: "Name", width: labelWidth, stacked: stacked) {
-                TextField("e.g. personal", text: $draft.name)
-                    .textFieldStyle(.plain).padding(.horizontal, 8).padding(.vertical, 4)
+          // No row labels: a name field and colour swatches say what they are.
+           VStack(alignment: .leading, spacing: 10) {
+                TextField("Name, e.g. personal", text: $draft.name)
+                    .textFieldStyle(.plain).font(.system(size: 13)).padding(.horizontal, 9).padding(.vertical, 5)
                     .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.25)))
                     .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.primary.opacity(0.14)))
-                    .frame(maxWidth: 240)
+                    .frame(maxWidth: 260)
                     .disabled(draft.started)
-            }
-            nameUse.padding(.leading, stacked ? 0 : labelWidth + 10).padding(.bottom, 4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            FormRow(label: "Colour", width: labelWidth, stacked: stacked) {
                 HStack(spacing: 8) {
                     ForEach([TileColor.orange, .blue, .purple, .teal, .pink], id: \.self) { c in
                         Swatch(color: c, selected: draft.color == c, size: 16).onTapGesture { draft.color = c }
                     }
                 }
-            }
+                .padding(.leading, -3)
            }
-            // The Dock icon as it will look: name, colour and icon text come together here.
-            Image(nsImage: preview(draft.entry, status: nil, sample: false)).resizable().interpolation(.high)
-                .frame(width: 54, height: 54).padding(.top, 2)
-                .help("The Dock icon")
-          }
-            statusLines(checks(.account), indent: stacked ? 0 : labelWidth + 10)
-        }
-    }
-
-    /// What the name is used for: the Dock app's name, and (shortened) the text on its icon, which can be changed.
-    @ViewBuilder private var nameUse: some View {
-        let small = Font.system(size: 11)
-        if draft.name.isEmpty {
-            Text("Names the Dock app “cl_audit …”, its icon and folders").font(small).foregroundStyle(.secondary)
-        } else {
-            HStack(spacing: 4) {
-                Text("Icon text").font(small).foregroundStyle(.secondary)
-                if editingLabel {
-                    TextField("", text: Binding(get: { draft.label },
-                                                set: { draft.customLabel = String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) }))
-                        .textFieldStyle(.plain).font(.system(size: 11, weight: .semibold)).frame(width: 56)
-                        .padding(.horizontal, 4).background(RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.25)))
-                        .onSubmit { editingLabel = false }
-                    Button("done") { editingLabel = false }.buttonStyle(.plain).font(small).foregroundStyle(.secondary).underline()
-                } else {
-                    Text(draft.label).font(.system(size: 11, weight: .semibold))
-                    Button("change") { editingLabel = true }.buttonStyle(.plain).font(small).foregroundStyle(.secondary).underline()
-                        .help("The icon has room for up to 6 letters")
-                }
-            }
-            .lineLimit(1)
+           .frame(maxWidth: .infinity, alignment: .leading)
+           .padding(.top, 2)
+            statusLines(checks(.account), indent: 0).padding(.top, 4)
         }
     }
 
     private func folderCard(labelWidth: CGFloat, stacked: Bool) -> some View {
-        SCard(title: "Claude Code folder", info: "A new folder starts fresh. An existing one, the default ~/.claude too, keeps its sign-in, settings and history. A folder can belong to only one account.") {
-            FormRow(label: "Folder", width: labelWidth, stacked: stacked) {
-                PillPicker(options: [FolderSource.new, .existing], selection: $draft.source, compact: true) { $0 == .new ? "New" : "Existing" }
-                    .disabled(draft.started)
-            }
-            if draft.source == .existing {
-                VStack(spacing: 1) {
-                    ForEach(folderChoices, id: \.self) { path in folderRow(path) }
-                    listRow(selected: false, disabled: draft.started) {
-                        Text("Choose another folder…").font(.system(size: 12))
-                    } action: {
-                        if let p = pickFolder() {
-                            if !folderChoices.contains(where: { FolderKey.canonical($0) == FolderKey.canonical(p) }) { customFolders.append(p) }
-                            draft.existingDir = folderChoices.first { FolderKey.canonical($0) == FolderKey.canonical(p) } ?? p
+        SCard(title: "Claude Code folder") {
+            // Its sign-in, settings and history live here; one account per folder. The chosen option opens its details.
+            let options: [(FolderSource, String, String)] = [
+                (.new, "New folder", draft.name.isEmpty ? "Starts fresh" : "Starts fresh in \(draft.newConfigDir)"),
+                (.existing, "Existing folder", "Keeps its sign-in, settings and history")]
+            VStack(spacing: 1) {
+                ForEach(options, id: \.0) { o in
+                    VStack(spacing: 0) {
+                        listRow(selected: draft.source == o.0, disabled: draft.started) {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(o.1).font(.system(size: 12.5, weight: draft.source == o.0 ? .medium : .regular))
+                                Text(o.2).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                            }
+                        } action: { draft.source = o.0 }
+                        if draft.source == o.0 {
+                            Group { if o.0 == .new { shareChoice } else { existingChoice } }
+                                .padding(.leading, 32).padding(.trailing, 10).padding(.top, 2).padding(.bottom, 10)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color.primary.opacity(0.1))
                         }
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 9))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.09)))
-                .padding(.top, 6)
             }
-            statusLines(checks(.folder), indent: stacked ? 0 : labelWidth + 10).padding(.top, 4)
-            if draft.source == .new {
-                FormRow(label: "Share from main", width: labelWidth, stacked: stacked || labelWidth < 100,
-                        info: "Linked from ~/.claude, so changes there show up in every account. The login, plugins and usage stay separate.") {
-                    WrapChips(items: SharedItem.allCases.map { ($0.title, draft.share.contains($0)) }, tint: tint) { i in
-                        let item = SharedItem.allCases[i]
-                        if draft.share.contains(item) { draft.share.remove(item) } else { draft.share.insert(item) }
-                    }
-                    .disabled(NewAccountSetup.foldersReady(draft))
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.09)))
+            .padding(.top, 2)
+            statusLines(checks(.folder).filter { $0.state == .bad || $0.state == .warn }, indent: 0).padding(.top, 4)
+        }
+    }
+
+    /// Under “New folder”: what to link from the main folder.
+    private var shareChoice: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 5) {
+                Text("Share from ~/.claude").font(.system(size: 11)).foregroundStyle(.secondary)
+                InfoDot(text: "Linked, so changes there show up in every account. The login, plugins and usage stay separate.")
+            }
+            WrapChips(items: SharedItem.allCases.map { ($0.title, draft.share.contains($0)) }, tint: tint) { i in
+                let item = SharedItem.allCases[i]
+                if draft.share.contains(item) { draft.share.remove(item) } else { draft.share.insert(item) }
+            }
+            .disabled(NewAccountSetup.foldersReady(draft))
+        }
+    }
+
+    /// Under “Existing folder”: the folders this account can take.
+    @ViewBuilder private var existingChoice: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            // Only folders this account can take are offered; the rest are named underneath with the reason.
+            let offered = folderChoices.filter { canTake($0) || isSelected($0) }
+            VStack(spacing: 1) {
+                ForEach(offered, id: \.self) { path in folderRow(path) }
+                if offered.isEmpty {
+                    Text("No free Claude Code folder on this Mac")
+                        .font(.system(size: 11.5)).foregroundStyle(.secondary)
+                        .padding(.horizontal, 10).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Color.primary.opacity(0.03))
                 }
-                .padding(.top, 6)
+                listRow(selected: false, disabled: draft.started) {
+                    Text("Choose another folder…").font(.system(size: 12))
+                } action: {
+                    if let p = pickFolder() {
+                        if !folderChoices.contains(where: { FolderKey.canonical($0) == FolderKey.canonical(p) }) { customFolders.append(p) }
+                        draft.existingDir = folderChoices.first { FolderKey.canonical($0) == FolderKey.canonical(p) } ?? p
+                    }
+                }
+            }
+            .background(Color.black.opacity(0.18))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.09)))
+            let taken = folderChoices.compactMap { p in FolderRules.configOwner(p, among: model.accounts).map { "\(p) (\($0.name))" } }
+            let unusable = folderChoices.filter { FolderRules.configOwner($0, among: model.accounts) == nil && !canTake($0) }
+            if !taken.isEmpty || !unusable.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    if !taken.isEmpty { Text("Already another account's: " + taken.joined(separator: ", ")) }
+                    if !unusable.isEmpty { Text("Not Claude Code folders: " + unusable.joined(separator: ", ")) }
+                }
+                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .padding(.top, 5).padding(.horizontal, 2).frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
 
     private func windowCard(labelWidth: CGFloat, stacked: Bool) -> some View {
-        let standardOwner = FolderRules.windowOwner(.standard, FolderKey.standardDataDir, among: model.accounts)
-        return SCard(title: "Claude window", info: "Only one account can use the standard window; a separate window has its own sign-in and data folder.") {
-            FormRow(label: "Window", width: labelWidth, stacked: stacked) {
-                // Standard is offered only while no other account has it.
-                Segments(options: standardOwner == nil ? [DesktopMode.standard, .separate, .none] : [.separate, .none],
-                         selection: $draft.window) { $0 == .standard ? "Standard" : $0 == .separate ? "Separate" : "None" }
-                    .disabled(draft.started)
+        let standardFree = FolderRules.windowOwner(.standard, FolderKey.standardDataDir, among: model.accounts) == nil
+        // The standard window is offered only while no other account has it.
+        let options: [(DesktopMode, String, String)] = (standardFree ? [(.standard, "Standard Claude window", "The usual Claude app, signed in to this account")] : [])
+            + [(.separate, "Its own Claude window", "A second Claude app window with its own sign-in"),
+               (.none, "No Claude window", "Claude Code only")]
+        return SCard(title: "Claude desktop app") {
+            VStack(spacing: 1) {
+                ForEach(options, id: \.0) { o in
+                    listRow(selected: draft.window == o.0, disabled: draft.started) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(o.1).font(.system(size: 12.5, weight: draft.window == o.0 ? .medium : .regular))
+                            Text(o.2).font(.system(size: 11)).foregroundStyle(.secondary)
+                        }
+                    } action: { draft.window = o.0 }
+                }
             }
-            statusLines(checks(.window), indent: stacked ? 0 : labelWidth + 10).padding(.top, 2)
+            .clipShape(RoundedRectangle(cornerRadius: 9))
+            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.09)))
+            .padding(.top, 2)
+            statusLines(checks(.window).filter { $0.state != .ok }, indent: 0).padding(.top, 4)
         }
     }
 
@@ -634,7 +658,7 @@ struct NewAccountView: View {
     private var nextHint: String {
         switch current {
         case 1: return monitor.checked ? "Next: close Claude" : "Checking what's running…"
-        case 2: return draft.name.isEmpty ? "Next: name the account" : blocked ? "Fix the red lines to go on" : draft.source == .new ? "Next: create the folder and links" : "Next: connect the folder"
+        case 2: return draft.name.isEmpty ? "Next: name the account" : draft.source == .existing && draft.existingDir == nil ? "Next: pick a folder" : blocked ? "Fix the red lines to go on" : draft.source == .new ? "Next: create the folder and links" : "Next: connect the folder"
         case 3: return "Next: sign in (or finish and sign in later)"
         default: return "Next: add the Dock icon"
         }
@@ -649,6 +673,16 @@ struct NewAccountView: View {
         return list
     }
 
+    /// A folder this account can connect: no other account uses it, and it's a Claude Code folder or empty.
+    private func canTake(_ path: String) -> Bool {
+        guard FolderRules.configOwner(path, among: model.accounts) == nil else { return false }
+        switch FolderKind.of(path) { case .claudeCode, .empty: return true; default: return false }
+    }
+
+    private func isSelected(_ path: String) -> Bool {
+        draft.existingDir.map { FolderKey.canonical($0) == FolderKey.canonical(path) } ?? false
+    }
+
     private func folderRow(_ path: String) -> some View {
         let owner = FolderRules.configOwner(path, among: model.accounts)
         let kind = FolderKind.of(path)
@@ -661,15 +695,12 @@ struct NewAccountView: View {
         }
         if FolderKey.canonical(path) == FolderKey.canonical("~/.claude") { detail = "default · " + detail }
         if let used = FolderKind.lastUsed(path) { detail += " · " + Self.ago(used) }
-        let selected = draft.existingDir.map { FolderKey.canonical($0) == FolderKey.canonical(path) } ?? false
-        let (tag, color): (String, Color) = owner.map { ($0.name, .red) } ?? (kind == .other || kind == .missing ? ("can't use", .red) : ("free", .green))
+        let selected = isSelected(path)
         return listRow(selected: selected, disabled: owner != nil || draft.started) {
             HStack(spacing: 6) {
                 Text(path).font(.system(size: 11.5, design: .monospaced)).lineLimit(1).layoutPriority(1)
                 Text("· " + detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
-                Spacer(minLength: 4)
-                Text(tag).font(.system(size: 10.5, weight: .semibold)).foregroundStyle(color)
-                    .padding(.horizontal, 7).padding(.vertical, 1).background(color.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
+                Spacer(minLength: 0)
             }
         } action: { draft.existingDir = path }
     }
