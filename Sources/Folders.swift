@@ -118,11 +118,8 @@ enum ClaudeRuns {
     static func scan() -> [ClaudeRun] {
         var runs: [ClaudeRun] = []
         for app in NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID) {
-            let args = Launcher.commandLine(of: app.processIdentifier)
-            var folder = FolderKey.standardDataDir
-            if let r = args.range(of: "--user-data-dir=") {
-                folder = tilde(String(args[r.upperBound...]).components(separatedBy: " --").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? folder)
-            }
+            let dir = Launcher.arguments(of: app.processIdentifier).first { $0.hasPrefix("--user-data-dir=") }
+            let folder = dir.map { tilde(String($0.dropFirst("--user-data-dir=".count))) } ?? FolderKey.standardDataDir
             runs.append(ClaudeRun(id: app.processIdentifier, kind: .desktop, folder: folder))
         }
         for pid in pids(named: "claude") {

@@ -14,12 +14,12 @@ enum Launcher {
 
     /// A process's arguments, read from the kernel (KERN_PROCARGS2). No helper process, so it's safe to call
     /// while SwiftUI draws: waiting for `ps` ran the run loop and redrew windows mid-update, which crashed.
-    static func commandLine(of pid: pid_t) -> String {
+    static func arguments(of pid: pid_t) -> [String] {
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
         var size = 0
-        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return "" }
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return [] }
         var buf = [UInt8](repeating: 0, count: size)
-        guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return "" }
+        guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return [] }
         let argc = Int(buf.withUnsafeBytes { $0.load(as: Int32.self) })
         var i = MemoryLayout<Int32>.size
         while i < size && buf[i] != 0 { i += 1 }        // the executable path
@@ -31,14 +31,26 @@ enum Launcher {
             args.append(String(decoding: buf[start..<i], as: UTF8.self))
             i += 1
         }
-        return args.joined(separator: " ")
+        return args
+    }
+
+    static func commandLine(of pid: pid_t) -> String { arguments(of: pid).joined(separator: " ") }
+
+    /// The data folder a running Claude desktop app was started with (nil = the standard window), as one
+    /// comparable key. Exact, so "Claude-work" never matches "Claude-work-2".
+    static func dataDirKey(of pid: pid_t) -> String {
+        let dir = arguments(of: pid).first { $0.hasPrefix("--user-data-dir=") }.map { String($0.dropFirst("--user-data-dir=".count)) }
+        return FolderKey.canonical(dir ?? FolderKey.standardDataDir)
+    }
+
+    /// The key of the window an account opens (its own data folder, or the standard one).
+    static func dataDirKey(of account: Account) -> String {
+        FolderKey.canonical(account.claudeUserDataDir ?? FolderKey.standardDataDir)
     }
 
     /// Whether a running Claude desktop app is this account's window (its own data folder, or the standard one).
     static func isWindow(of account: Account, _ app: NSRunningApplication) -> Bool {
-        let args = commandLine(of: app.processIdentifier)
-        if let dir = account.claudeUserDataDir { return args.contains("--user-data-dir=\(dir)") }
-        return !args.contains("--user-data-dir")
+        dataDirKey(of: app.processIdentifier) == dataDirKey(of: account)
     }
 
     /// Brings the account's Claude window to the front, or starts it.
@@ -73,14 +85,9 @@ enum Launcher {
 
     static func activity(for accounts: [Account]) -> [String: Activity] {
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: claudeBundleID)
-        let args = running.map { commandLine(of: $0.processIdentifier) }
+        let keys = Set(running.map { dataDirKey(of: $0.processIdentifier) })
         var result: [String: Activity] = [:]
-        for a in accounts {
-            result[a.configDir] = Activity(desktopOpen: args.contains { cmd in
-                if let dir = a.claudeUserDataDir { return cmd.contains("--user-data-dir=\(dir)") }
-                return !cmd.contains("--user-data-dir")
-            })
-        }
+        for a in accounts { result[a.configDir] = Activity(desktopOpen: keys.contains(dataDirKey(of: a))) }
         return result
     }
 
