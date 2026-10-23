@@ -438,9 +438,9 @@ struct NewAccountView: View {
     private func windowCard(labelWidth: CGFloat, stacked: Bool) -> some View {
         let standardFree = FolderRules.windowOwner(.standard, FolderKey.standardDataDir, among: model.accounts) == nil
         // The standard window is offered only while no other account has it.
-        let options: [(DesktopMode, String, String)] = (standardFree ? [(.standard, "Standard Claude window", "The usual Claude app, signed in to this account")] : [])
-            + [(.separate, "Its own Claude window", "A second Claude app window with its own sign-in"),
-               (.none, "No Claude window", "Claude Code only")]
+        let options: [(DesktopMode, String, String)] = (standardFree ? [(.standard, "Your usual Claude app", "Opened as always, signed in to this account")] : [])
+            + [(.separate, "Claude app in its own window", "Your installed Claude app, opened separately with this account's sign-in"),
+               (.none, "Terminal only", "No Claude app for this account; Claude Code in Terminal")]
         return SCard(title: "Claude desktop app") {
             VStack(spacing: 1) {
                 ForEach(options, id: \.0) { o in
