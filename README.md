@@ -37,9 +37,10 @@ does the next step (Create/Connect, Sign in…, Finish). Each choice says what i
   case; a folder inside (or around) another account's folder counts as the same. Folders and windows
   another account uses are shown as such and can't be picked; the line under the field says why. A sign-in that
   another account also uses is only a warning (both icons would show the same usage).
-- **Close Claude first.** Step 1 (or, in one column, a red bar above the actions) lists every Claude desktop app and Claude Code session still running
-  (in the desktop app's Code tab or in Terminal) with the folder each uses, checking every 2 s. It can quit
-  the desktop apps; Terminal sessions need `/exit`. Create/Connect and Finish wait until nothing is running.
+- **Quit the Claude app first.** While open, the Claude app writes its sign-in and settings, so step 1 lists its
+  windows (and their Code tab sessions), checking every 2 s; it can quit the app, and Check again looks at once.
+  Claude Code in Terminal doesn't get in the way and isn't listed. Create/Connect and Finish wait until the
+  app is quit.
 - **Cancel** undoes only what the setup created: an existing folder is never deleted or signed out.
 
 **Removing an account** (Settings ▸ account ▸ Remove account…, or right-click its tile) always removes its
