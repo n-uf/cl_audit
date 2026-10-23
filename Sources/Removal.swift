@@ -49,18 +49,22 @@ enum AccountRemoval {
 
     static let lsregister = "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"
 
-    /// Takes the app out of the Dock's kept icons, so no "?" stays behind. Restarts the Dock only if it was there.
+    /// Takes the app out of the Dock: its kept (pinned) icon and its place among recent apps, so no "?" stays
+    /// behind. Only entries pointing at exactly this app are touched; the Dock restarts only if one was there.
     static func unpinFromDock(_ app: URL) {
-        let key = "persistent-apps" as CFString, dock = "com.apple.dock" as CFString
-        guard let items = CFPreferencesCopyAppValue(key, dock) as? [[String: Any]] else { return }
+        let dock = "com.apple.dock" as CFString
         let target = app.standardizedFileURL.path
-        let kept = items.filter { item in
-            guard let tile = item["tile-data"] as? [String: Any], let file = tile["file-data"] as? [String: Any],
-                  let s = file["_CFURLString"] as? String, let u = URL(string: s) else { return true }
-            return u.standardizedFileURL.path != target
+        var changed = false
+        for key in ["persistent-apps", "recent-apps"] as [CFString] {
+            guard let items = CFPreferencesCopyAppValue(key, dock) as? [[String: Any]] else { continue }
+            let kept = items.filter { item in
+                guard let tile = item["tile-data"] as? [String: Any], let file = tile["file-data"] as? [String: Any],
+                      let s = file["_CFURLString"] as? String, let u = URL(string: s) else { return true }
+                return u.standardizedFileURL.path != target
+            }
+            if kept.count != items.count { CFPreferencesSetAppValue(key, kept as CFArray, dock); changed = true }
         }
-        guard kept.count != items.count else { return }
-        CFPreferencesSetAppValue(key, kept as CFArray, dock)
+        guard changed else { return }
         CFPreferencesAppSynchronize(dock)
         Installer.run("/usr/bin/killall", ["Dock"])
     }

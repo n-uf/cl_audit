@@ -49,7 +49,7 @@ does the next step (Create/Connect, Sign in…, Finish). Each choice says what i
 
 **Removing an account** (Settings ▸ account ▸ Remove account…, or right-click its tile) always removes its
 Dock icon app and what macOS keeps for it: the open-at-login entry, preferences, caches, network storage,
-saved window state, its pin in the Dock and its Launch Services record, plus its saved usage, Terminal scripts
+saved window state, its pin and recent-apps entry in the Dock (only that exact app; the Dock restarts only if one was there) and its Launch Services record, plus its saved usage, Terminal scripts
 and place on the dashboard. **Delete its folders too** also signs its Claude Code folder out (its Keychain
 login goes) and deletes that folder and its Claude window's data folder; links inside are removed, never what
 they point to. The default `~/.claude`, the standard window, and a folder another account shares items from
