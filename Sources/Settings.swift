@@ -11,8 +11,8 @@ final class SettingsModel: ObservableObject {
     @Published var message = ""
     @Published var tick = 0                 // bumped every few seconds so icon status re-reads
     private(set) var saved: [AccountEntry]
-    let configFolders = Detect.configFolders()
-    let dataFolders = Detect.desktopDataFolders()
+    var configFolders: [FolderChoice] { Detect.configFolders() }
+    var dataFolders: [FolderChoice] { Detect.desktopDataFolders() }
     let claudePath = ClaudeCLI.find()
     private var timer: Timer?
     private var saveWork: DispatchWorkItem?
@@ -60,7 +60,7 @@ final class SettingsModel: ObservableObject {
         for a in accounts { if let p = a.problem { return "\(a.name.isEmpty ? "New account" : a.name): \(p)" } }
         let names = accounts.map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() }
         if Set(names).count != names.count { return "Two accounts have the same name." }
-        return nil
+        return FolderRules.clash(in: accounts)          // one account per Claude Code folder and per window
     }
 
     func binding(_ id: String) -> Binding<AccountEntry>? {
@@ -460,11 +460,21 @@ struct AccountSettings: View {
               info: "The icon reads this folder's Claude Code login from the Keychain, read-only, through Apple's security tool, the same way Claude Code does. No Keychain permission is added.") {
             SRow(label: "Folder", first: true) {
                 HStack(spacing: 4) {
-                    Picker("", selection: $entry.configDir) {
-                        ForEach(model.choices(model.configFolders, current: entry.configDir), id: \.path) { Text($0.path).tag($0.path) }
-                    }
-                    .smallMenu()
-                    Button { if let p = chooseFolder() { entry.configDir = p } } label: { Image(systemName: "folder") }
+                    Menu {
+                        ForEach(model.choices(model.configFolders, current: entry.configDir), id: \.path) { c in
+                            let owner = FolderRules.configOwner(c.path, among: model.accounts, except: entry.id)
+                            Button {
+                                entry.configDir = c.path
+                            } label: {
+                                Text(c.title + (owner.map { "  —  used by \($0.name)" } ?? FolderKey.canonical(c.path) == FolderKey.canonical(entry.configDir) ? "  ✓" : ""))
+                            }
+                            .disabled(owner != nil)
+                        }
+                        Divider()
+                        Button("Choose another folder…") { useFolder(pickFolder()) }
+                    } label: { Text(entry.configDir.isEmpty ? "Choose…" : entry.configDir) }
+                    .menuStyle(.button).controlSize(.small).fixedSize()
+                    Button { useFolder(pickFolder()) } label: { Image(systemName: "folder") }
                         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Choose another folder…")
                 }
             }
@@ -517,22 +527,41 @@ struct AccountSettings: View {
                 Toggle("", isOn: $entry.longPressDetails).smallSwitch()
             }
             SRow(label: "Claude window", info: "Which Claude desktop window this account opens. A separate window has its own sign-in and uses this account's settings folder in its Code tab.") {
-                Picker("", selection: $entry.desktop) {
-                    Text("Standard").tag(DesktopMode.standard)
-                    Text("Separate").tag(DesktopMode.separate)
-                    Text("None").tag(DesktopMode.none)
-                }
-                .smallMenu()
+                Menu {
+                    ForEach([DesktopMode.standard, .separate, .none]) { mode in
+                        let owner = mode == .standard ? FolderRules.windowOwner(.standard, "", among: model.accounts, except: entry.id) : nil
+                        Button {
+                            entry.desktop = mode
+                        } label: {
+                            Text((mode == .standard ? "Standard" : mode == .separate ? "Separate" : "None")
+                                 + (owner.map { "  —  used by \($0.name)" } ?? (entry.desktop == mode ? "  ✓" : "")))
+                        }
+                        .disabled(owner != nil)
+                    }
+                } label: { Text(entry.desktop == .standard ? "Standard" : entry.desktop == .separate ? "Separate" : "None") }
+                .menuStyle(.button).controlSize(.small).fixedSize()
             }
             if entry.desktop == .separate {
                 SRow(label: "Data folder") {
-                    Picker("", selection: $entry.desktopDataDir) {
-                        Text("Choose…").tag("")
-                        ForEach(model.choices(model.dataFolders, current: entry.desktopDataDir), id: \.path) {
-                            Text(($0.path as NSString).lastPathComponent).tag($0.path)
+                    Menu {
+                        ForEach(model.choices(model.dataFolders, current: entry.desktopDataDir), id: \.path) { c in
+                            let owner = FolderRules.windowOwner(.separate, c.path, among: model.accounts, except: entry.id)
+                            Button {
+                                entry.desktopDataDir = c.path
+                            } label: {
+                                Text((c.path as NSString).lastPathComponent + (owner.map { "  —  used by \($0.name)" } ?? ""))
+                            }
+                            .disabled(owner != nil)
                         }
-                    }
-                    .smallMenu()
+                        Divider()
+                        Button("New: Claude-\(entry.id)") {
+                            let dir = "~/Library/Application Support/Claude-\(entry.id)"
+                            try? FileManager.default.createDirectory(atPath: expand(dir), withIntermediateDirectories: true)
+                            entry.desktopDataDir = dir
+                        }
+                        .disabled(FolderRules.windowOwner(.separate, "~/Library/Application Support/Claude-\(entry.id)", among: model.accounts, except: entry.id) != nil)
+                    } label: { Text(entry.desktopDataDir.isEmpty ? "Choose…" : (entry.desktopDataDir as NSString).lastPathComponent) }
+                    .menuStyle(.button).controlSize(.small).fixedSize()
                 }
             }
         }
@@ -601,14 +630,19 @@ struct AccountSettings: View {
             design: entry.panelDesign, accent: entry.accentNSColor)
     }
 
-    func chooseFolder() -> String? {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.showsHiddenFiles = true
-        panel.directoryURL = URL(fileURLWithPath: NSHomeDirectory())
-        panel.prompt = "Use folder"
-        return panel.runModal() == .OK ? panel.url.map { tilde($0.path) } : nil
+    /// A folder picked in Finder, used only if no other account has it and it's a Claude Code folder (or empty).
+    func useFolder(_ path: String?) {
+        guard let path else { return }
+        if let owner = FolderRules.configOwner(path, among: model.accounts, except: entry.id) {
+            model.message = FolderKey.canonical(owner.configDir) == FolderKey.canonical(path)
+                ? "\(path) is already used by “\(owner.name)”." : "\(path) is inside, or contains, “\(owner.name)”'s folder."
+            return
+        }
+        switch FolderKind.of(path) {
+        case .other: model.message = "\(path) isn't a Claude Code folder and isn't empty."
+        case .missing: model.message = "\(path) doesn't exist."
+        default: entry.configDir = path
+        }
     }
 }
 

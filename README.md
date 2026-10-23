@@ -25,13 +25,23 @@ names, labels or accounts need **Apply**, because that installs or renames icon 
 addresses are then left out of the launcher, dashboard, panels and Dock menus; Settings still shows
 them blurred (hover one to see it).
 
-**New account from scratch** (＋): one page with the details on the left and a checklist on the right.
-It creates the Claude Code folder (`~/.claude-<name>`) and a desktop data folder, links the items you
-choose from `~/.claude` (instructions, agents, skills, commands, memory & history), opens the Claude Code
-sign-in, opens the account's own Claude window, and on **Finish** adds the account and its Dock icon.
-There is no email to type: the account is whichever one the browser approves the sign-in with (its current
-claude.ai session), so use a private window for a different account. A login that another account here
-already uses is flagged with a Sign out button. Each step ticks itself off as it completes.
+**Adding an account** (＋): one page with the details on the left, and checks and steps on the right.
+- **Where it lives:** a *new* Claude Code folder (`~/.claude-<name>`, optionally linking instructions, agents,
+  skills, commands or memory from `~/.claude`), or an *existing* one: any Claude Code folder on this Mac,
+  the default `~/.claude` too, or one you pick in Finder (a Claude Code folder, or an empty one).
+- **Its Claude window:** the standard window, a separate one with its own sign-in and data folder, or none.
+- **One account per folder and per window.** Folders are compared after resolving `~`, links and letter
+  case; a folder inside (or around) another account's folder counts as the same. Folders and windows
+  another account uses are shown as such and can't be picked; the Checks card says why. A sign-in that
+  another account also uses is only a warning (both icons would show the same usage).
+- **Close Claude first.** A banner lists every Claude desktop app and Claude Code session still running
+  (in the desktop app's Code tab or in Terminal) with the folder each uses, checking every 2 s. It can quit
+  the desktop apps; Terminal sessions need `/exit`. Create/Connect and Finish wait until it's green, or
+  after “Continue anyway…”.
+- **Cancel** undoes only what the setup created: an existing folder is never deleted or signed out.
+
+The same rules apply in Settings: the Folder, Claude window and Data folder menus mark what other accounts
+use, and the account bar refuses to apply two accounts sharing a folder or a window.
 
 - **Name** and **icon label** (up to 6 letters, drawn on the icon).
 - **Colour**: the account's own colour in the launcher, the dashboard (chips, cards, charts) and the
