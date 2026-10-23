@@ -154,7 +154,7 @@ enum ClaudeCLI {
         p.arguments = ["-lc", "command -v claude"]
         let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice
         guard (try? p.run()) != nil else { return nil }
-        p.waitUntilExit()
+        p.waitQuietly()
         let path = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return fm.isExecutableFile(atPath: path) ? path : nil
@@ -196,7 +196,7 @@ enum ClaudeCLI {
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         guard (try? p.run()) != nil else { return false }
-        p.waitUntilExit()
+        p.waitQuietly()
         return p.terminationStatus == 0
     }
 
@@ -490,7 +490,7 @@ enum Installer {
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         do { try p.run() } catch { return -1 }
-        p.waitUntilExit()
+        p.waitQuietly()
         return p.terminationStatus
     }
 }

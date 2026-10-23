@@ -12,14 +12,26 @@ import SwiftUI
 enum Launcher {
     static let claudeBundleID = "com.anthropic.claudefordesktop"
 
+    /// A process's arguments, read from the kernel (KERN_PROCARGS2). No helper process, so it's safe to call
+    /// while SwiftUI draws: waiting for `ps` ran the run loop and redrew windows mid-update, which crashed.
     static func commandLine(of pid: pid_t) -> String {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/ps")
-        p.arguments = ["-o", "args=", "-p", "\(pid)"]
-        let out = Pipe(); p.standardOutput = out; p.standardError = Pipe()
-        do { try p.run() } catch { return "" }
-        p.waitUntilExit()
-        return String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return "" }
+        var buf = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return "" }
+        let argc = Int(buf.withUnsafeBytes { $0.load(as: Int32.self) })
+        var i = MemoryLayout<Int32>.size
+        while i < size && buf[i] != 0 { i += 1 }        // the executable path
+        while i < size && buf[i] == 0 { i += 1 }        // its padding
+        var args: [String] = []
+        while args.count < argc && i < size {
+            let start = i
+            while i < size && buf[i] != 0 { i += 1 }
+            args.append(String(decoding: buf[start..<i], as: UTF8.self))
+            i += 1
+        }
+        return args.joined(separator: " ")
     }
 
     /// Whether a running Claude desktop app is this account's window (its own data folder, or the standard one).

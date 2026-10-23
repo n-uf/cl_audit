@@ -130,7 +130,7 @@ enum Login {
         p.standardInput = FileHandle.nullDevice
         guard (try? p.run()) != nil else { return (-1, Data()) }
         let data = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
+        p.waitQuietly()
         return (p.terminationStatus, data)
     }
 
@@ -219,3 +219,9 @@ enum UsageParser {
     }
 }
 
+
+extension Process {
+    /// Waits for the process to end without running the run loop. `waitUntilExit` runs it, and on the main
+    /// thread that can redraw a SwiftUI window in the middle of an update, which crashes.
+    func waitQuietly() { while isRunning { usleep(5_000) } }
+}

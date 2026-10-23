@@ -158,7 +158,7 @@ enum ClaudeRuns {
         let out = Pipe(); p.standardOutput = out; p.standardError = Pipe()
         do { try p.run() } catch { return "" }
         let data = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
+        p.waitQuietly()
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
     }
 }
