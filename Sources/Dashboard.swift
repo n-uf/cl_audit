@@ -68,14 +68,13 @@ struct DashboardTile: View {
     let selected: Bool
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "rectangle.3.group").font(.system(size: 15)).frame(width: 30, height: 30)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.08)))
             VStack(alignment: .leading, spacing: 0) {
                 Text("Dashboard").font(.system(size: 12.5, weight: .semibold))
                 Text("cards · history").font(.system(size: 10.5)).foregroundStyle(.secondary)
             }
+            .frame(minHeight: 30)
         }
-        .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 5)
+        .padding(.horizontal, 12).padding(.vertical, 5)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(selected ? 0.12 : 0.04)))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(selected ? 0.3 : 0.07), lineWidth: selected ? 1.5 : 1))
         .contentShape(Rectangle())
