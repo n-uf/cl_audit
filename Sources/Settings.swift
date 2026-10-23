@@ -90,7 +90,7 @@ final class SettingsModel: ObservableObject {
         if draft == nil {
             var d = NewAccountDraft()
             let used = Set(accounts.map(\.color))
-            d.color = [TileColor.orange, .blue, .purple, .teal, .pink].first { !used.contains($0) } ?? .purple
+            d.color = TileColor.accents.first { !used.contains($0) } ?? .purple
             draft = d
         }
         selection = Self.newID
@@ -448,7 +448,7 @@ struct AccountSettings: View {
             }
             SRow(label: "Colour", info: "This account's colour in the launcher, the dashboard (chips, cards and charts) and the panels. The icon has its own colour, under Icon.") {
                 HStack(spacing: 6) {
-                    ForEach([TileColor.orange, .blue, .purple, .teal, .pink], id: \.self) { c in
+                    ForEach(TileColor.accents, id: \.self) { c in
                         Swatch(color: c, selected: entry.accentColor == c, size: 14)
                             .onTapGesture { entry.accent = c }
                             .help(c.rawValue.capitalized)

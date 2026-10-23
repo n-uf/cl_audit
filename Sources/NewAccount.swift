@@ -338,8 +338,8 @@ struct NewAccountView: View {
                     .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.primary.opacity(0.14)))
                     .frame(maxWidth: 260)
                     .disabled(draft.started)
-                HStack(spacing: 8) {
-                    ForEach([TileColor.orange, .blue, .purple, .teal, .pink], id: \.self) { c in
+                FlowLayout(spacing: 6) {
+                    ForEach(TileColor.accents, id: \.self) { c in
                         Swatch(color: c, selected: draft.color == c, size: 16).onTapGesture { draft.color = c }
                     }
                 }

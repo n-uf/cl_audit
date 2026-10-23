@@ -93,8 +93,10 @@ extension IconStyle {
 /// The account's colour: the Big number tile, the label in Two numbers, the border in Rings.
 /// `usage` colours by the 5-hour level instead (green, amber, red).
 enum TileColor: String, CaseIterable, Codable, Identifiable {
-    case orange, blue, purple, teal, pink, graphite, usage
+    case orange, yellow, lime, teal, cyan, blue, indigo, purple, fuchsia, pink, graphite, usage
     var id: String { rawValue }
+    /// The colours offered for an account, in hue order (no plain red or green: those mean usage levels).
+    static let accents: [TileColor] = [.orange, .yellow, .lime, .teal, .cyan, .blue, .indigo, .purple, .fuchsia, .pink]
     var title: String { self == .usage ? "By usage" : rawValue.capitalized }
 
     static func hex(_ v: UInt32) -> NSColor {
@@ -106,6 +108,11 @@ enum TileColor: String, CaseIterable, Codable, Identifiable {
     func color(fiveHour: Double?, stale: Bool) -> NSColor {
         switch self {
         case .orange: return Painter.orange
+        case .yellow: return Self.hex(0xeab308)
+        case .lime: return Self.hex(0x84cc16)
+        case .cyan: return Self.hex(0x06b6d4)
+        case .indigo: return Self.hex(0x6366f1)
+        case .fuchsia: return Self.hex(0xd946ef)
         case .blue: return Self.hex(0x3b82f6)
         case .purple: return Self.hex(0x8b5cf6)
         case .teal: return Self.hex(0x14b8a6)
