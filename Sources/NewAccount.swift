@@ -1,8 +1,8 @@
 // Adding a Claude account: one page in Settings. The account lives in a new Claude Code folder or in one
 // that already exists (the default ~/.claude too); a folder and a desktop window can belong to only one
-// account, which the Checks card verifies live. A banner lists every Claude app and Claude Code session
+// account, which the Checks card verifies live. A banner lists every desktop app window and its Code tab sessions
 // open: the steps that write folders wait until it's quit (Claude Code in Terminal doesn't matter).
-// Steps: quit the Claude app → create or connect the folder → sign in → open its Claude window → add the Dock icon.
+// Steps: quit the desktop app → create or connect the folder → sign in (Claude Code, then the desktop app) → add the Dock icon.
 
 import AppKit
 import SwiftUI
@@ -253,7 +253,7 @@ enum NewAccountSetup {
 }
 
 /// The add-account page. Wide windows: three columns (account and window · Claude Code folder · summary and
-/// steps, with the "Claude app is open" warning attached to step 1). Narrower: one column with a progress
+/// steps, with the "desktop app is open" warning attached to step 1). Narrower: one column with a progress
 /// strip on top and the warning and action bar pinned at the bottom; very narrow: labels above controls.
 /// Each check sits under the field it's about; one button does the next step.
 struct NewAccountView: View {
@@ -913,7 +913,7 @@ struct NewAccountView: View {
             .compactMap { $0 }.joined(separator: " · ")
     }
 
-    /// What's open, by place: the Claude app's windows and their Code tab sessions.
+    /// What's open, by place: the desktop app's windows and their Code tab sessions.
     private var runGroups: [(title: String, items: [String], note: String?)] {
         var out: [(String, [String], String?)] = []
         let apps = appRuns.filter { $0.kind == .desktop }.map { r -> String in
