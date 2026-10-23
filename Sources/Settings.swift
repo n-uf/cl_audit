@@ -129,17 +129,26 @@ final class SettingsModel: ObservableObject {
 
     func askRemove(_ id: String) { pendingRemoval = accounts.first { $0.id == id } }
 
-    /// After confirmation: drop the account and apply at once, so its icon app, login item, status and
-    /// preferences go right away (Installer.sync removes them). Claude's own folders aren't touched.
-    func confirmRemove() {
-        guard let e = pendingRemoval else { return }
-        pendingRemoval = nil
+    /// Drops the account and applies at once: Installer.sync quits and deletes its icon app and everything macOS
+    /// keeps for it. Then its Terminal scripts go and, if asked, its folders (signed out first). Other changes
+    /// waiting for Apply are applied with it.
+    func removeAccount(_ e: AccountEntry, deleteFolders: Bool) {
         remove(e.id)
         var hidden = UserDefaults.standard.stringArray(forKey: "dashboardHidden") ?? []
         hidden.removeAll { $0 == e.id }
         UserDefaults.standard.set(hidden, forKey: "dashboardHidden")
-        apply()
-        message = "Removed \(e.name)"
+        let claude = claudePath
+        apply {
+            self.message = deleteFolders ? "Removed \(e.name); deleting its folders…" : "Removed \(e.name)"
+            DispatchQueue.global(qos: .userInitiated).async {
+                let failed = deleteFolders ? AccountRemoval.deleteFolders(e, claude: claude) : []
+                AccountRemoval.removeScripts(e.configDir)
+                DispatchQueue.main.async {
+                    self.message = !failed.isEmpty ? "Removed \(e.name), but couldn't delete " + failed.joined(separator: ", ")
+                        : deleteFolders ? "Removed \(e.name) and deleted its folders" : "Removed \(e.name); its folders are kept"
+                }
+            }
+        }
     }
 
     func remove(_ id: String) {
@@ -154,7 +163,7 @@ final class SettingsModel: ObservableObject {
         message = ""
     }
 
-    func apply() {
+    func apply(then done: (() -> Void)? = nil) {
         guard problem == nil else { return }
         do {
             try Store.save(accounts)
@@ -164,6 +173,7 @@ final class SettingsModel: ObservableObject {
             DispatchQueue.main.async {
                 let log = Installer.sync(list)
                 self.message = log.isEmpty ? "Icons are up to date" : log.joined(separator: ", ")
+                done?()
             }
         } catch {
             message = "Couldn't save: \(error.localizedDescription)"
@@ -183,22 +193,7 @@ struct SettingsPage: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
-        page.alert(model.pendingRemoval.map { "Remove “\($0.name)”?" } ?? "",
-                   isPresented: Binding(get: { model.pendingRemoval != nil }, set: { if !$0 { model.pendingRemoval = nil } })) {
-            Button("Remove", role: .destructive) { model.confirmRemove() }
-            Button("Cancel", role: .cancel) { model.pendingRemoval = nil }
-        } message: {
-            Text(removalText)
-        }
-    }
-
-    var removalText: String {
-        guard let e = model.pendingRemoval else { return "" }
-        var t = "Its Dock icon “cl_audit \(e.name)” is quit and deleted, with its open-at-login entry and saved status."
-        t += "\n\nNot touched: the Claude Code folder \(e.configDir) and its login"
-        t += e.desktop == .separate && !e.desktopDataDir.isEmpty ? ", and the Claude window's data folder." : "."
-        if model.needsApply { t += "\n\nOther changes waiting for Apply are applied too." }
-        return t
+        page.sheet(item: $model.pendingRemoval) { e in RemoveAccountSheet(entry: e, model: model) }
     }
 
     var page: some View {
@@ -270,7 +265,7 @@ struct SettingsPage: View {
             }
             if model.needsApply {
                 Button("Revert", action: model.revert).buttonStyle(PillButtonStyle(tint: nil, compact: true))
-                Button("Apply", action: model.apply).buttonStyle(.pill(.green, compact: true))
+                Button("Apply") { model.apply() }.buttonStyle(.pill(.green, compact: true))
                     .keyboardShortcut(.defaultAction).disabled(model.problem != nil)
             }
         }

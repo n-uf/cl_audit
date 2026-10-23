@@ -358,11 +358,20 @@ enum Installer {
             stop(url)
             try? FileManager.default.removeItem(at: url)
             if wanted[id] == nil {
-                // The account is gone: its status file and the icon app's own preferences go too.
-                Store.removeStatus(id)
-                run("/usr/bin/defaults", ["delete", "\(managerID).\(id)"])
+                // The account is gone: everything macOS and the app kept for it goes too.
+                AccountRemoval.purgeApp(id: id, app: url)
+            } else {
+                // Renamed: the old name's Dock pin and Launch Services record would point at nothing.
+                AccountRemoval.unpinFromDock(url)
+                run(AccountRemoval.lsregister, ["-u", url.path])
             }
             log.append("removed \(url.deletingPathExtension().lastPathComponent)")
+        }
+        // Leftovers of accounts removed by earlier versions.
+        let live = Set(accounts.map(\.id)).union(installed().map(\.id))
+        for id in AccountRemoval.orphanIDs(keeping: live) {
+            AccountRemoval.purgeApp(id: id, app: appsFolder.appendingPathComponent("cl_audit \(id).app"))
+            log.append("cleaned up \(id)")
         }
         for e in accounts {
             let dst = appURL(e)
