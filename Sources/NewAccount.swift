@@ -241,6 +241,7 @@ struct NewAccountView: View {
     @State private var signingOut = false
     @State private var customFolders: [String] = []
     @State private var showHidden = false
+    @State private var checking = false
 
     private enum Width { case wide, medium, narrow }
 
@@ -598,6 +599,7 @@ struct NewAccountView: View {
                     Button("Quit the apps") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
                 }
                 Spacer()
+                checkAgain
             }
             .padding(.top, 4)
         }
@@ -642,6 +644,7 @@ struct NewAccountView: View {
                 if monitor.runs.contains(where: { $0.kind != .terminal }) {
                     Button("Quit the apps") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
                 }
+                checkAgain
             }
         }
         return Group {
@@ -655,6 +658,23 @@ struct NewAccountView: View {
         .background((draft.continueAnyway ? Color.orange : Color.red).opacity(0.12))
         .overlay(alignment: .top) { Rectangle().fill((draft.continueAnyway ? Color.orange : Color.red).opacity(0.35)).frame(height: 1) }
         .help(runLines.joined(separator: "\n"))
+    }
+
+    /// Looks again right away (it also looks every 2 s), with a short "checking" state so the click shows.
+    private var checkAgain: some View {
+        Button {
+            checking = true
+            monitor.refresh()
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { checking = false }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.clockwise").font(.system(size: 9.5, weight: .semibold))
+                    .rotationEffect(.degrees(checking ? 360 : 0)).animation(checking ? .linear(duration: 0.8) : nil, value: checking)
+                Text(checking ? "Checking…" : "Check again")
+            }
+        }
+        .buttonStyle(PillButtonStyle(tint: nil, compact: true))
+        .disabled(checking)
     }
 
     /// Cancel on the left, the one next action on the right.
