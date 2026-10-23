@@ -467,15 +467,17 @@ enum Installer {
         }
     }
 
-    /// Open the settings window of the "cl_audit" app (it lives next to the icon apps).
-    static func openSettings() {
+    /// Open the settings window of the "cl_audit" app (it lives next to the icon apps), on `account`'s page.
+    static func openSettings(account: String? = nil) {
+        // macOS 14+ lets an app come forward only when the active one hands over.
+        if #available(macOS 14, *) { NSApp.yieldActivation(toApplicationWithBundleIdentifier: managerID) }
         if !NSRunningApplication.runningApplications(withBundleIdentifier: managerID).isEmpty {
-            DistributedNotificationCenter.default().postNotificationName(openSettingsNote, object: nil, userInfo: nil,
+            DistributedNotificationCenter.default().postNotificationName(openSettingsNote, object: account, userInfo: nil,
                                                                          deliverImmediately: true)
             NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == managerID }?.activate(options: [])
         } else if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: managerID) {
             let cfg = NSWorkspace.OpenConfiguration()
-            cfg.arguments = ["--settings"]
+            cfg.arguments = ["--settings"] + (account.map { ["--account=\($0)"] } ?? [])
             NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, _ in }
         } else {
             NSSound.beep()

@@ -96,7 +96,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                                 name: Installer.openSettingsNote, object: nil)
             DistributedNotificationCenter.default().addObserver(self, selector: #selector(showMainScreen),
                                                                 name: Installer.openDashboardNote, object: nil)
-            if CommandLine.arguments.contains("--settings") { SettingsWindow.show() } else { manager.showMain() }
+            if CommandLine.arguments.contains("--settings") {
+                let account = CommandLine.arguments.first { $0.hasPrefix("--account=") }.map { String($0.dropFirst("--account=".count)) }
+                manager.showMain(page: .settings, account: account)
+            } else { manager.showMain() }
             return
         }
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(configChanged), name: Store.changed, object: nil)
@@ -120,7 +123,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         try? SMAppService.mainApp.unregister()
     }
 
-    @objc func showSettingsWindow() { manager.closePalette(); SettingsWindow.show() }
+    /// From the menu (no account) or an icon app's "Settings…" and gear (its account id as the object).
+    @objc func showSettingsWindow(_ note: Any?) {
+        manager.closePalette()
+        manager.showMain(page: .settings, account: (note as? Notification)?.object as? String)
+    }
     @objc func showMainScreen() { manager.showMain() }
     @objc func showLauncher() { manager.togglePalette() }
     @objc func openAccountFromMenu(_ item: NSMenuItem) {
@@ -171,7 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             details.peek(detailsInfo(), seconds: entry.peekSeconds)
             if account.opensDesktop { openClaude() }
         case .open:
-            if account.opensDesktop { openClaude() } else { Installer.openSettings() }
+            if account.opensDesktop { openClaude() } else { Installer.openSettings(account: accountID) }
         }
         return false
     }
@@ -197,7 +204,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DetailsActions(
             openClaude: { [weak self] in self?.openClaude() },
             refresh: { [weak self] in self?.refreshNow() },
-            settings: { Installer.openSettings() },
+            settings: { [accountID] in Installer.openSettings(account: accountID) },
             logIn: { [weak self] in self?.logIn() },
             dashboard: { Installer.openDashboard() })
     }
@@ -478,7 +485,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func toggleNotify() { change { $0.notify.toggle() } }
     @objc func toggleLogin() { change { $0.openAtLogin.toggle() } }
     @objc func toggleRenew() { change { $0.autoRenew.toggle() }; if state == .expired { maybeRenew() } }
-    @objc func showSettings() { Installer.openSettings() }
+    @objc func showSettings() { Installer.openSettings(account: accountID) }
     @objc func showDashboard() { details.close(); Installer.openDashboard() }
     @objc func logIn() {
         guard let claude = ClaudeCLI.find() else { NSSound.beep(); return }

@@ -679,12 +679,15 @@ final class ManagerUI {
         }
     }
 
-    func showMain(page: MainPage = .dashboard) {
+    func showMain(page: MainPage = .dashboard, account: String? = nil) {
         closePalette()
         model.reload()
         wireFilter()
         nav.page = page
-        if page == .settings { settings.reloadIfClean() }
+        if page == .settings {
+            settings.reloadIfClean()
+            if let account, settings.accounts.contains(where: { $0.id == account }) { settings.selection = account }
+        }
         if mainWindow == nil {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 820),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
