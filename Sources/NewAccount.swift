@@ -28,6 +28,7 @@ struct NewAccountDraft: Equatable {
     var name = ""
     var color: TileColor = .purple
     var share: Set<SharedItem> = [.instructions, .agents, .skills, .commands]
+    var shareFrom = "~/.claude"         // the Claude Code folder the shared items are linked from
     var source: FolderSource = .new
     var existingDir: String?            // the chosen folder, when connecting an existing one
     var window: DesktopMode = .separate
@@ -74,7 +75,7 @@ struct SetupCheck: Identifiable {
 
 /// What has been done so far, read from disk each time (so it stays right if things happen elsewhere).
 enum NewAccountSetup {
-    static let shared = URL(fileURLWithPath: expand("~/.claude"))
+    static func shared(_ d: NewAccountDraft) -> URL { URL(fileURLWithPath: expand(d.shareFrom)) }
 
     static func exists(_ path: String) -> Bool { !path.isEmpty && FileManager.default.fileExists(atPath: expand(path)) }
 
@@ -86,7 +87,7 @@ enum NewAccountSetup {
 
     static func linksReady(_ d: NewAccountDraft) -> Bool {
         d.source == .existing || d.share.allSatisfy { item in
-            !FileManager.default.fileExists(atPath: shared.appendingPathComponent(item.rawValue).path)
+            !FileManager.default.fileExists(atPath: shared(d).appendingPathComponent(item.rawValue).path)
                 || exists((d.configDir as NSString).appendingPathComponent(item.rawValue))
         }
     }
@@ -209,7 +210,7 @@ enum NewAccountSetup {
             let config = URL(fileURLWithPath: expand(d.configDir))
             if !exists(d.configDir) { try fm.createDirectory(at: config, withIntermediateDirectories: true); d.createdConfigDir = d.configDir }
             for item in d.share {
-                let src = shared.appendingPathComponent(item.rawValue)
+                let src = shared(d).appendingPathComponent(item.rawValue)
                 let dst = config.appendingPathComponent(item.rawValue)
                 guard fm.fileExists(atPath: src.path), !fm.fileExists(atPath: dst.path),
                       (try? fm.destinationOfSymbolicLink(atPath: dst.path)) == nil else { continue }
@@ -237,7 +238,6 @@ struct NewAccountView: View {
     @State private var error: String?
     @State private var confirmCancel = false
     @State private var confirmQuit = false
-    @State private var confirmAnyway = false
     @State private var signingOut = false
     @State private var customFolders: [String] = []
     @State private var showHidden = false
@@ -263,10 +263,6 @@ struct NewAccountView: View {
             Button("Quit them", role: .destructive) { ClaudeRuns.quitDesktopApps(); DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { monitor.refresh() } }
             Button("Not now", role: .cancel) {}
         } message: { Text("Every Claude desktop app closes, with the Claude Code sessions in their Code tab. Unsent messages there may be lost. Claude Code in Terminal keeps running: type /exit there.") }
-        .alert("Set up while Claude is running?", isPresented: $confirmAnyway) {
-            Button("Continue anyway") { draft.continueAnyway = true }
-            Button("Wait", role: .cancel) {}
-        } message: { Text("A running Claude can overwrite settings in the folders being set up. Continue only if none of them uses this account's folders.") }
     }
 
     // MARK: state
@@ -386,8 +382,27 @@ struct NewAccountView: View {
     /// Under “New folder”: what to link from the main folder.
     private var shareChoice: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 5) {
-                Text("Share from ~/.claude").font(.system(size: 11)).foregroundStyle(.secondary)
+            HStack(spacing: 4) {
+                Text("Share from").font(.system(size: 11)).foregroundStyle(.secondary)
+                // Any Claude Code folder on this Mac can be the source.
+                Menu {
+                    ForEach(shareSources, id: \.self) { p in
+                        let owner = model.accounts.first { FolderKey.canonical($0.configDir) == FolderKey.canonical(p) }
+                        Button(p + (owner.map { "  ·  \($0.name)" } ?? "") + (FolderKey.canonical(p) == FolderKey.canonical(draft.shareFrom) ? "  ✓" : "")) {
+                            draft.shareFrom = p
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(draft.shareFrom).font(.system(size: 11, weight: .medium))
+                        Image(systemName: "chevron.down").font(.system(size: 7.5, weight: .bold))
+                    }
+                    .foregroundStyle(Color.primary.opacity(0.85))
+                    .padding(.horizontal, 7).padding(.vertical, 2)
+                    .background(Capsule().fill(Color.primary.opacity(0.08)))
+                }
+                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+                .disabled(NewAccountSetup.foldersReady(draft))
                 InfoDot(text: "Linked, so changes there show up in every account. The login, plugins and usage stay separate.")
             }
             WrapChips(items: SharedItem.allCases.map { ($0.title, draft.share.contains($0)) }, tint: tint) { i in
@@ -583,7 +598,6 @@ struct NewAccountView: View {
                     Button("Quit the apps") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
                 }
                 Spacer()
-                Button("continue anyway…") { confirmAnyway = true }.buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary).underline()
             }
             .padding(.top, 4)
         }
@@ -628,7 +642,6 @@ struct NewAccountView: View {
                 if monitor.runs.contains(where: { $0.kind != .terminal }) {
                     Button("Quit the apps") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
                 }
-                Button("continue anyway…") { confirmAnyway = true }.buttonStyle(.plain).font(.system(size: 11.5)).foregroundStyle(.secondary).underline()
             }
         }
         return Group {
@@ -692,6 +705,11 @@ struct NewAccountView: View {
         var list = Detect.configFolders().map(\.path)
         for p in customFolders where !list.contains(where: { FolderKey.canonical($0) == FolderKey.canonical(p) }) { list.append(p) }
         return list
+    }
+
+    /// Claude Code folders the shared items can be linked from.
+    private var shareSources: [String] {
+        Detect.configFolders().map(\.path).filter { if case .claudeCode = FolderKind.of($0) { return true }; return false }
     }
 
     /// A folder this account can connect: no other account uses it, and it's a Claude Code folder or empty.

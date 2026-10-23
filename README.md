@@ -30,7 +30,7 @@ folder, and a summary with the live icon and five numbered steps. Narrower, one 
 on top and the next action pinned at the bottom; each check sits under the field it's about, and one button
 does the next step (Create/Connect, Sign in…, Finish). Each choice says what it means (New or Existing folder; its own, the standard or no Claude window), and the chosen one opens its details. The standard window is offered only while no other account uses it, and only folders the account can take are listed (the others are named underneath with whose they are). The icon label comes from the name; change it later in Settings.
 - **Where it lives:** a *new* Claude Code folder (`~/.claude-<name>`, optionally linking instructions, agents,
-  skills, commands or memory from `~/.claude`), or an *existing* one: any Claude Code folder on this Mac,
+  skills, commands or memory from `~/.claude` or another Claude Code folder), or an *existing* one: any Claude Code folder on this Mac,
   the default `~/.claude` too, or one you pick in Finder (a Claude Code folder, or an empty one).
 - **Its Claude window:** the standard window, a separate one with its own sign-in and data folder, or none.
 - **One account per folder and per window.** Folders are compared after resolving `~`, links and letter
@@ -39,8 +39,7 @@ does the next step (Create/Connect, Sign in…, Finish). Each choice says what i
   another account also uses is only a warning (both icons would show the same usage).
 - **Close Claude first.** Step 1 (or, in one column, a red bar above the actions) lists every Claude desktop app and Claude Code session still running
   (in the desktop app's Code tab or in Terminal) with the folder each uses, checking every 2 s. It can quit
-  the desktop apps; Terminal sessions need `/exit`. Create/Connect and Finish wait until it's green, or
-  after “Continue anyway…”.
+  the desktop apps; Terminal sessions need `/exit`. Create/Connect and Finish wait until nothing is running.
 - **Cancel** undoes only what the setup created: an existing folder is never deleted or signed out.
 
 **Dashboard settings** (Settings ▸ Dashboard): one card style for every account card on the dashboard
