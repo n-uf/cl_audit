@@ -413,8 +413,20 @@ struct CardGrid: Layout {
     var minWidth: CGFloat = 270
     var spacing: CGFloat = 12
 
-    private func grid(_ subviews: Subviews, width: CGFloat) -> (cols: Int, colWidth: CGFloat, heights: [CGFloat]) {
-        let cols = max(1, min(subviews.count, Int((width + spacing) / (minWidth + spacing))))
+    /// A usable width: SwiftUI also asks with no width or an infinite one (e.g. inside a scroll view while it
+    /// measures), which can't be turned into a number of columns; then it's the width of up to three cards.
+    private func usable(_ width: CGFloat?, count: Int) -> CGFloat {
+        guard let width, width.isFinite, width > 0 else {
+            let n = CGFloat(max(1, min(count, 3)))
+            return n * minWidth + (n - 1) * spacing
+        }
+        return width
+    }
+
+    private func grid(_ subviews: Subviews, width rawWidth: CGFloat) -> (cols: Int, colWidth: CGFloat, heights: [CGFloat]) {
+        let width = usable(rawWidth, count: subviews.count)
+        let fit = ((width + spacing) / (minWidth + spacing)).rounded(.down)
+        let cols = max(1, min(subviews.count, fit.isFinite ? Int(min(fit, 1000)) : 1))
         let colWidth = (width - CGFloat(cols - 1) * spacing) / CGFloat(cols)
         let heights = stride(from: 0, to: subviews.count, by: cols).map { start in
             subviews[start..<min(start + cols, subviews.count)]
@@ -424,7 +436,7 @@ struct CardGrid: Layout {
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? (minWidth * 2 + spacing)
+        let width = usable(proposal.width, count: subviews.count)
         let g = grid(subviews, width: width)
         return CGSize(width: width, height: g.heights.reduce(0, +) + CGFloat(max(0, g.heights.count - 1)) * spacing)
     }
