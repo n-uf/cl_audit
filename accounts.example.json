@@ -1,0 +1,24 @@
+{
+  "accounts" : [
+    {
+      "configDir" : "~/.claude",
+      "desktop" : "standard",
+      "id" : "main",
+      "label" : "MAIN",
+      "name" : "main"
+    },
+    {
+      "configDir" : "~/.claude-work",
+      "desktop" : "separate",
+      "desktopDataDir" : "~/Library/Application Support/Claude-work",
+      "id" : "work",
+      "label" : "WORK",
+      "name" : "work",
+      "notify" : true,
+      "notifyPercent" : 90,
+      "openAtLogin" : true,
+      "pollMinutes" : 5,
+      "style" : "bars"
+    }
+  ]
+}
