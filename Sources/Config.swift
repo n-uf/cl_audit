@@ -441,6 +441,9 @@ enum Installer {
         try fm.createDirectory(at: appsFolder, withIntermediateDirectories: true)
         if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
         try fm.copyItem(at: source, to: dst)
+        // A downloaded cl_audit carries macOS's download mark, and the copy would too: every Dock icon app
+        // would then ask to be allowed in Privacy & Security. The copy is made here, so it isn't a download.
+        run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", dst.path])
 
         let plistURL = dst.appendingPathComponent("Contents/Info.plist")
         guard let plist = NSMutableDictionary(contentsOf: plistURL) else { throw CocoaError(.fileReadCorruptFile) }

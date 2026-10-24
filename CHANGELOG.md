@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+- **Direct download:** each release now has a ready-built `cl_audit.zip` on its GitHub Release, and
+  <https://github.com/n-uf/cl_audit/releases/latest/download/cl_audit.zip> always gets the newest.
+  It isn't signed with an Apple Developer ID yet: the first time, allow it in System Settings ▸
+  Privacy & Security ▸ Open Anyway. The Dock icon apps it makes for your profiles open without asking.
 - Settings: changing a setting that has no picture of its own (Renew if expired, Claude window, Data
   folder, Folder, Refresh every, Notify at, Click, Show usage for, Press and hold, Show in the Dock,
   Open at login, Show emails) shows a short note at the bottom of the page saying what it now does.

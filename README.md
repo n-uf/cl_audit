@@ -8,20 +8,30 @@ Home: <https://cl-audit.n-uf.com> · Changes: [CHANGELOG.md](CHANGELOG.md) · Ve
 
 ## Install
 
-Requires Apple silicon, macOS 13 or later, the Xcode Command Line Tools (`xcode-select --install`) and
-Claude Code. The Claude desktop app is optional (for Claude windows).
+Requires a Mac with Apple silicon, macOS 13 or later, and Claude Code. The Claude desktop app is optional
+(for Claude windows).
+
+**Download** (easiest): [cl_audit.zip](https://github.com/n-uf/cl_audit/releases/latest/download/cl_audit.zip),
+the latest release, ready-built. Unzip it, move **cl_audit** to Applications and open it. cl_audit isn't
+signed with an Apple Developer ID yet, so the first time macOS says it can't verify the app: open System
+Settings ▸ Privacy & Security and click **Open Anyway** (once). The Dock icon apps cl_audit makes for your
+profiles are created on your Mac and open without asking.
+
+**Or build it from source**, to read every line before it runs (needs the Xcode Command Line Tools,
+`xcode-select --install`):
 
 ```bash
 git clone https://github.com/n-uf/cl_audit.git
 cd cl_audit
-./build.sh              # build cl_audit, install it into /Applications, update the Dock icon apps
-./build.sh --no-install # build into ./build only
+git checkout v26.10.1     # optional: exactly a released version (see CHANGELOG.md)
+./build.sh                # build cl_audit, install it into /Applications, update the Dock icon apps
+./build.sh --no-install   # build into ./build only
 ```
 
-Open **cl_audit**, go to Settings and add a profile (**New profile**). cl_audit installs one
+Then open **cl_audit**, go to Settings and add a profile (**New profile**). cl_audit installs one
 "cl_audit &lt;profile&gt;" app per profile in `/Applications` and starts it; drag it into the Dock (or let
-General settings ▸ Dock pin it for you). To update, pull and run `./build.sh` again; profiles and
-settings are kept.
+General settings ▸ Dock pin it for you). To update, download the new zip (or pull and run `./build.sh`
+again); profiles and settings are kept.
 
 ## Words used here
 
@@ -209,8 +219,9 @@ To release:
 
 - `scripts/release.sh --dry-run` prints the next version.
 - `scripts/release.sh --push` bumps `VERSION`, turns the Unreleased notes into the release's section,
-  commits `release X`, tags `vX` and pushes both. Without `--push` it stops before pushing; `--nobump`
-  keeps the current number.
+  commits `release X`, tags `vX`, pushes both and publishes the GitHub Release with a ready-built
+  `cl_audit.zip` (the download link above always gets the newest). Without `--push` it stops before
+  pushing; `--nobump` keeps the current number.
 
 A version can't signal a breaking change, so read the notes before updating.
 

@@ -7,7 +7,8 @@
 #   scripts/release.sh             bump VERSION, date the CHANGELOG's Unreleased notes,
 #                                  commit "release X" and tag vX
 #   scripts/release.sh --nobump    the same without changing VERSION
-#   scripts/release.sh --push      also push main and the tag
+#   scripts/release.sh --push      also push main and the tag, and publish the GitHub Release with a
+#                                  ready-built cl_audit.zip for direct download
 # Test overrides: CALENDAR_VERSION_TODAY=YYYY-MM-DD, CALENDAR_VERSION_CURRENT=YY.M.R
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -69,4 +70,17 @@ if [ $push = 1 ]; then
   git push -q origin main
   git push -q origin "v$next"
   echo "pushed main and v$next"
+
+  # The ready-built app for direct download. The file name never changes, so
+  # https://github.com/n-uf/cl_audit/releases/latest/download/cl_audit.zip always gets the newest.
+  ./build.sh --no-install >/dev/null
+  mkdir -p dist && rm -f dist/cl_audit.zip
+  ditto -c -k --keepParent build/cl_audit.app dist/cl_audit.zip
+  section="$(awk -v h="## $next " 'index($0, h) == 1 {f=1; next} /^## /{f=0} f' CHANGELOG.md)"
+  gh release create "v$next" dist/cl_audit.zip --repo n-uf/cl_audit --title "cl_audit $next" --notes "$section
+
+---
+
+**Download:** \`cl_audit.zip\` below (Apple silicon, macOS 13 or later). Unzip it, move **cl_audit** to Applications and open it. The first time, macOS says it can't verify the app: open System Settings ▸ Privacy & Security and click **Open Anyway** (once). Or build it from source, see the README."
+  echo "published the GitHub Release v$next with cl_audit.zip"
 fi
