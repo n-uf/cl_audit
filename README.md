@@ -83,7 +83,9 @@ Dock icon apps. **Show emails** (top bar) off leaves email addresses out of the 
 panels and Dock menus, and blurs them in Settings (hover one to see it), for screen sharing.
 
 Cards are at most one column wide: three columns from about 1180 pt, two from 800, one below. Controls
-sit next to their labels; every (i) opens a short explanation, some with a picture.
+sit next to their labels; every (i) opens a short explanation, some with a picture. Changing a setting that
+has no picture of its own shows a short note at the bottom of the page saying what it now does; it floats
+over the page, so nothing moves, and closes after 6 s or with ×.
 
 ### Profile settings
 

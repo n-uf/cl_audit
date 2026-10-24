@@ -3,11 +3,12 @@
 // label, or adding and removing accounts, needs Apply (that installs, renames or removes icon apps).
 
 import AppKit
+import Combine
 import SwiftUI
 
 final class SettingsModel: ObservableObject {
     @Published var accounts: [AccountEntry] { didSet { scheduleSave() } }
-    @Published var selection: String?
+    @Published var selection: String? { didSet { if oldValue != selection, note != nil { hideNote() } } }
     static let dashboardID = "__dashboard__"
     @Published var message = ""
     @Published var tick = 0                 // bumped every few seconds so icon status re-reads
@@ -18,6 +19,32 @@ final class SettingsModel: ObservableObject {
     private var timer: Timer?
     private var saveWork: DispatchWorkItem?
 
+    /// "What this does now", after a change to a setting without a picture of its own.
+    @Published var note: SettingNote?
+    private var noteHide: DispatchWorkItem?
+    private var noteHovered = false
+    private var emailsWatch: AnyCancellable?
+
+    func showNote(_ n: SettingNote) {
+        withAnimation(.easeOut(duration: 0.18)) { note = n }
+        scheduleNoteHide()
+    }
+    func hideNote() {
+        noteHide?.cancel()
+        withAnimation(.easeIn(duration: 0.15)) { note = nil }
+    }
+    func hoverNote(_ on: Bool) {
+        noteHovered = on
+        if on { noteHide?.cancel() } else { scheduleNoteHide() }
+    }
+    private func scheduleNoteHide() {
+        noteHide?.cancel()
+        guard !noteHovered else { return }
+        let w = DispatchWorkItem { [weak self] in self?.hideNote() }
+        noteHide = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6, execute: w)
+    }
+
     init() {
         saved = Store.load()
         accounts = saved.isEmpty
@@ -25,6 +52,8 @@ final class SettingsModel: ObservableObject {
             : saved
         selection = Self.dashboardID
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.tick += 1 }
+        emailsWatch = Privacy.shared.$show.dropFirst().removeDuplicates()
+            .sink { [weak self] on in self?.showNote(SettingNotes.emails(on)) }
     }
 
     /// Picks up changes made elsewhere (e.g. an icon's own Options menu) when nothing is pending here.
@@ -79,7 +108,12 @@ final class SettingsModel: ObservableObject {
         guard accounts.contains(where: { $0.id == id }) else { return nil }
         return Binding(
             get: { self.accounts.first { $0.id == id } ?? AccountEntry(id: id, name: "", label: "", configDir: "") },
-            set: { new in if let i = self.accounts.firstIndex(where: { $0.id == id }) { self.accounts[i] = new } })
+            set: { new in
+                guard let i = self.accounts.firstIndex(where: { $0.id == id }) else { return }
+                let old = self.accounts[i]
+                self.accounts[i] = new
+                if let n = SettingNotes.note(from: old, to: new) { self.showNote(n) }
+            })
     }
 
     func add() {
@@ -246,7 +280,16 @@ struct SettingsPage: View {
                 } else {
                     Text("Add a profile with ＋").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(40)
                 }
-            } } }
+            } }
+            // floats over the page, so showing it never moves anything
+            .overlay(alignment: .bottom) {
+                if let n = model.note {
+                    SettingNoteBanner(note: n, hover: model.hoverNote, close: model.hideNote)
+                        .id(n.id)
+                        .padding(.horizontal, 16).padding(.bottom, 16)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            } }
         }
     }
 

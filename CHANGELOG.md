@@ -8,7 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- Settings: changing a setting that has no picture of its own (Renew if expired, Claude window, Data
+  folder, Folder, Refresh every, Notify at, Click, Show usage for, Press and hold, Show in the Dock,
+  Open at login, Show emails) shows a short note at the bottom of the page saying what it now does.
+  It floats over the page, so nothing moves, and closes after 6 s or with ×.
 
 ## 26.10.0 — 2026-10-24
 
