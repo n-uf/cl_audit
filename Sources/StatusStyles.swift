@@ -28,7 +28,7 @@ extension Painter {
     }
 
     static func bigNumber(_ p: Double?, baseline: CGFloat = 40.5, size: CGFloat = 25, color: NSColor = .white) {
-        text(pct(p), sans(size, .heavy), color, x: 32, baseline: baseline, align: .center)
+        text(pct(p), sans(size, .heavy), color, x: 32, baseline: baseline, align: .center, fit: 50)
     }
 
     /// The week as a pill in its own level colour, outlined so it shows on a tile of the same colour.
@@ -37,7 +37,7 @@ extension Painter {
         let p = NSBezierPath(roundedRect: r, xRadius: 7, yRadius: 7)
         level(m.weekly, stale: m.stale).setFill(); p.fill()
         p.lineWidth = 1.5; NSColor.white.withAlphaComponent(0.85).setStroke(); p.stroke()
-        text("wk \(pct(m.weekly))", sans(11, .bold), .white, x: 32, baseline: 56, align: .center)
+        text("wk \(pct(m.weekly))", sans(11, .bold), .white, x: 32, baseline: 56, align: .center, fit: 42)
     }
 
     /// A horizontal progress bar: dark track, fill length = value, fill colour = its level, optional text on top.
@@ -52,7 +52,7 @@ extension Painter {
         NSGradient(starting: c.blended(withFraction: 0.25, of: .white) ?? c, ending: c)?.draw(in: filled, angle: 0)
         NSGraphicsContext.restoreGraphicsState()
         shape.lineWidth = 1; NSColor.white.withAlphaComponent(0.8).setStroke(); shape.stroke()
-        if let t { text(t, sans(size, .bold), .white, x: r.midX, baseline: r.midY + size * 0.36, align: .center) }
+        if let t { text(t, sans(size, .bold), .white, x: r.midX, baseline: r.midY + size * 0.36, align: .center, fit: r.width - 6) }
     }
 
     /// A vertical progress bar filling from the bottom, with its number inside.
@@ -67,7 +67,7 @@ extension Painter {
             .draw(in: NSRect(x: r.minX, y: r.maxY - h, width: r.width, height: h), angle: 90)
         NSGraphicsContext.restoreGraphicsState()
         shape.lineWidth = 1; NSColor.white.withAlphaComponent(0.8).setStroke(); shape.stroke()
-        text(num(p), sans(13.5, .heavy), .white, x: r.midX, baseline: r.midY + 5, align: .center)
+        text(num(p), sans(13.5, .heavy), .white, x: r.midX, baseline: r.midY + 5, align: .center, fit: r.width - 4)
     }
 
     // 1 · Status tile: tile = 5-hour level, week pill in its own colour.

@@ -23,7 +23,7 @@ extension Painter {
                 let col = color(p, stale: m.stale)
                 glow(col) { col.setStroke(); arc.stroke() }
             }
-            text(num(p), sans(11.5, .heavy), .white, x: cx, baseline: 40.5, align: .center)
+            text(num(p), sans(11.5, .heavy), .white, x: cx, baseline: 40.5, align: .center, fit: 17)
             text(tag, sans(9, .bold), faint, x: cx, baseline: 59, align: .center)
         }
     }

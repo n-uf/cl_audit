@@ -629,8 +629,8 @@ struct AccountSettings: View {
             }
             SRow(label: "Panel design", stacked: true) {
                 PillPicker(options: PanelDesign.allCases, selection: $entry.panelDesign, compact: true) { $0.shortTitle }
-                CompactView(info: sampleInfo).scaleEffect(0.92, anchor: .topLeading)
-                    .frame(height: 114, alignment: .topLeading).padding(.top, 4)
+                // at its own size, so the card grows with the taller designs (Pace, Segments)
+                CompactView(info: sampleInfo).fixedSize().padding(.top, 4)
             }
         }
     }

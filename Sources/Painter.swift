@@ -217,9 +217,15 @@ enum Painter {
 
     enum Align { case left, center, right }
 
+    /// `fit`: the widest the text may be; a longer one (such as "100%") is drawn smaller, on the same baseline.
     static func text(_ s: String, _ font: NSFont, _ color: NSColor, x: CGFloat, baseline: CGFloat,
-                     align: Align = .left, kern: CGFloat = 0) {
-        let a = NSAttributedString(string: s, attributes: [.font: font, .foregroundColor: color, .kern: kern])
+                     align: Align = .left, kern: CGFloat = 0, fit: CGFloat? = nil) {
+        var font = font
+        var a = NSAttributedString(string: s, attributes: [.font: font, .foregroundColor: color, .kern: kern])
+        if let fit, a.size().width > fit, let smaller = NSFont(descriptor: font.fontDescriptor, size: font.pointSize * fit / a.size().width) {
+            font = smaller
+            a = NSAttributedString(string: s, attributes: [.font: font, .foregroundColor: color, .kern: kern])
+        }
         let w = a.size().width
         let left = align == .left ? x : align == .center ? x - w / 2 : x - w
         a.draw(at: NSPoint(x: left, y: baseline - font.ascender))
@@ -284,17 +290,17 @@ enum Painter {
         }
         ring(24, m.fiveHour)
         ring(15.5, m.weekly)
-        text(num(m.fiveHour), sans(15, .heavy), .white, x: 32, baseline: 37.5, align: .center)
+        text(num(m.fiveHour), sans(15, .heavy), .white, x: 32, baseline: 37.5, align: .center, fit: 21)
     }
 
     /// Big number: the 5-hour % large on Claude orange, the weekly % in a pill below.
     static func number(_ m: TileModel) {
         tile(m.stale ? NSColor(srgbRed: 0x52/255, green: 0x52/255, blue: 0x5b/255, alpha: 1) : m.accent, stroke: nil)
         text(m.label, mono(10), NSColor.white.withAlphaComponent(0.9), x: 32, baseline: 14, align: .center, kern: 0.5)
-        text(pct(m.fiveHour), sans(25, .heavy), .white, x: 32, baseline: 40.5, align: .center)
+        text(pct(m.fiveHour), sans(25, .heavy), .white, x: 32, baseline: 40.5, align: .center, fit: 50)
         NSColor.black.withAlphaComponent(0.25).setFill()
         NSBezierPath(roundedRect: NSRect(x: 8, y: 45, width: 48, height: 14), xRadius: 7, yRadius: 7).fill()
-        text("wk \(pct(m.weekly))", sans(11, .bold), .white, x: 32, baseline: 56, align: .center)
+        text("wk \(pct(m.weekly))", sans(11, .bold), .white, x: 32, baseline: 56, align: .center, fit: 42)
     }
 
     static func image(_ m: TileModel, pixels: Int) -> NSImage {
