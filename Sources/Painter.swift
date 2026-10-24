@@ -134,6 +134,7 @@ struct TileModel {
     var frame: TileColor? = nil      // nil = no frame
     var fiveHourElapsed: Double? = nil   // % of the 5-hour window already gone (Pace bars)
     var weeklyElapsed: Double? = nil
+    var windowOpen = false               // this account's Claude window is open (a dot at the top-left)
 
     var accent: NSColor { tint.color(fiveHour: fiveHour, stale: stale) }
 }
@@ -183,6 +184,12 @@ enum Painter {
             p.lineWidth = 2.5
             f.color(fiveHour: m.fiveHour, stale: m.stale).setStroke()
             p.stroke()
+        }
+        if m.windowOpen {
+            // A small Claude-orange dot on a dark ring, overlapping the top-left corner like the "!" on the right.
+            tileBg.setFill(); NSBezierPath(ovalIn: NSRect(x: 2, y: 2, width: 15, height: 15)).fill()
+            TileColor.orange.color(fiveHour: nil, stale: false).setFill()
+            NSBezierPath(ovalIn: NSRect(x: 4.5, y: 4.5, width: 10, height: 10)).fill()
         }
         if m.warn {
             red.setFill()

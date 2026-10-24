@@ -34,6 +34,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let claudeBundleID = "com.anthropic.claudefordesktop"
 
     var usage: Usage?
+    var claudeOpen = false        // this account's Claude window is running (drawn as a dot on the tile)
     var state: FetchState = .idle
     var plan: String?
     var loginEmail: String?
@@ -103,6 +104,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(configChanged), name: Store.changed, object: nil)
+        let ws = NSWorkspace.shared.notificationCenter
+        ws.addObserver(self, selector: #selector(appsChanged), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
+        ws.addObserver(self, selector: #selector(appsChanged), name: NSWorkspace.didTerminateApplicationNotification, object: nil)
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(refreshNow), name: Installer.refreshAllNote, object: nil)
         tileView = TileView(model: model())
         NSApp.dockTile.contentView = tileView
@@ -230,7 +234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                   stale: isStale || state == .expired || state == .noLogin, style: style, warn: mismatch,
                   tint: entry.color, frame: entry.frame,
                   fiveHourElapsed: windowElapsed(usage?.fiveHourResets, 5 * 3600),
-                  weeklyElapsed: windowElapsed(usage?.weeklyResets, 7 * 86400))
+                  weeklyElapsed: windowElapsed(usage?.weeklyResets, 7 * 86400), windowOpen: claudeOpen)
     }
 
     func redraw() {
@@ -247,7 +251,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.dockTile.display()
     }
 
+    /// Whether this account's Claude window is running; redraws the tile when that changes.
+    func refreshWindowState() {
+        let open = account.opensDesktop && (Launcher.activity(for: [account])[account.configDir]?.desktopOpen ?? false)
+        if open != claudeOpen { claudeOpen = open; redraw() }
+    }
+
+    @objc func appsChanged(_ note: Notification) {
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+              app.bundleIdentifier == Launcher.claudeBundleID else { return }
+        // A window that just started has its arguments a moment later; a quitting one is gone right away.
+        refreshWindowState()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in self?.refreshWindowState() }
+    }
+
     func tick() {
+        refreshWindowState()
         if let local = UsageParser.fromStatusLine(account), local.fetchedAt > (usage?.fetchedAt ?? .distantPast) {
             usage = local
         }

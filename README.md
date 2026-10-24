@@ -25,6 +25,10 @@ names, labels or accounts need **Apply**, because that installs or renames icon 
 addresses are then left out of the launcher, dashboard, panels and Dock menus; Settings still shows
 them blurred (hover one to see it).
 
+**Window-open dot.** A small Claude-orange dot at the top-left of an account's icon means its Claude window is
+open; it appears and goes as the window starts and quits. The icon and its Claude window are otherwise
+independent: the icon keeps showing usage (which counts Claude Code in Terminal too) with the window closed.
+
 **Adding an account** (＋): in a wide window, three columns: the account and its window, the Claude Code
 folder, and a summary with the live icon and five numbered steps. Narrower, one column with a progress strip
 on top and the next action pinned at the bottom; each check sits under the field it's about, and one button
