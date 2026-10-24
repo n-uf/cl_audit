@@ -75,7 +75,7 @@ extension IconStyle {
         switch self {
         case .bars: return "5-hour and week as two numbers with colour markers."
         case .rings: return "Outer ring 5-hour, inner ring week, 5-hour number inside."
-        case .number: return "The 5-hour % large on the account colour, the week below."
+        case .number: return "The 5-hour % large on the profile colour, the week below."
         case .twinRings: return "A ring per limit side by side, its number inside."
         case .segmented: return "Large numbers with eight segments that light up green → amber → red."
         case .pace: return "Large numbers with bars and a white tick for the time already passed."

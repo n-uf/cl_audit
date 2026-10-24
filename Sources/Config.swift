@@ -23,6 +23,16 @@ enum ClickAction: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// How a profile's cl_usage and its Claude window open and close: on their own, one following the other
+/// (one-way), or both following each other (lockstep, two-way).
+enum Lifecycle: String, Codable, CaseIterable {
+    case independent, usageFollows, windowFollows, lockstep
+    /// The Claude window opens or quits → cl_usage starts or quits.
+    var usageFollowsWindow: Bool { self == .usageFollows || self == .lockstep }
+    /// cl_usage starts or quits → its Claude window opens or quits.
+    var windowFollowsUsage: Bool { self == .windowFollows || self == .lockstep }
+}
+
 enum DesktopMode: String, Codable, CaseIterable, Identifiable {
     case standard, separate, none
     var id: String { rawValue }
@@ -56,13 +66,15 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     var longPressDetails: Bool = true    // press-and-hold shows the details panel
     var panelDesign: PanelDesign = .glow
     var windowDot: Bool = true           // the icon shows a dot while this account's Claude window is open
+    var iconHidden: Bool = false         // cl_usage runs without a Dock tile (still refreshes and alerts)
+    var lifecycle: Lifecycle = .independent   // how cl_usage and its Claude window open and close together
 
     init(id: String, name: String, label: String, configDir: String) {
         self.id = id; self.name = name; self.label = label; self.configDir = configDir
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, openAtLogin, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot
+        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, openAtLogin, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, lifecycle
     }
     private enum LegacyKeys: String, CodingKey { case clickShowsDetails }
 
@@ -87,6 +99,8 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         longPressDetails = try c.decodeIfPresent(Bool.self, forKey: .longPressDetails) ?? true
         panelDesign = try c.decodeIfPresent(PanelDesign.self, forKey: .panelDesign) ?? .glow
         windowDot = try c.decodeIfPresent(Bool.self, forKey: .windowDot) ?? true
+        iconHidden = try c.decodeIfPresent(Bool.self, forKey: .iconHidden) ?? false
+        lifecycle = try c.decodeIfPresent(Lifecycle.self, forKey: .lifecycle) ?? .independent
         if let action = try c.decodeIfPresent(ClickAction.self, forKey: .clickAction) {
             clickAction = action
         } else if let legacy = try decoder.container(keyedBy: LegacyKeys.self).decodeIfPresent(Bool.self, forKey: .clickShowsDetails) {
@@ -101,7 +115,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     var accentNSColor: NSColor { accentColor.color(fiveHour: nil, stale: false) }
 
     var problem: String? {
-        if name.trimmingCharacters(in: .whitespaces).isEmpty { return "Give the account a name." }
+        if name.trimmingCharacters(in: .whitespaces).isEmpty { return "Give the profile a name." }
         if name.contains("/") || name.contains(":") { return "The name can't contain / or :." }
         if label.isEmpty { return "Give the icon a label." }
         if configDir.isEmpty { return "Pick a Claude Code settings folder." }
@@ -382,9 +396,26 @@ enum Installer {
                 do { try install(e, at: dst, source: source); log.append("installed \(dst.deletingPathExtension().lastPathComponent)") }
                 catch { log.append("couldn't install \(e.name): \(error.localizedDescription)"); continue }
             }
-            if !isRunning(dst) { run("/usr/bin/open", [dst.path]) }
+            // Started in the background and without opening its Claude window ("Window follows" is for you starting
+            // it). One that follows its window isn't started while that window is closed.
+            if !isRunning(dst), !waitsForWindow(e) { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
         }
         return log
+    }
+
+    /// cl_usage set to follow its Claude window, while that window is closed: it isn't started.
+    static func waitsForWindow(_ e: AccountEntry) -> Bool {
+        let a = Account(e)
+        return e.lifecycle.usageFollowsWindow && a.opensDesktop && !(Launcher.activity(for: [a])[a.configDir]?.desktopOpen ?? false)
+    }
+
+    /// A Claude window just started: start the cl_usage of profiles that follow it (cl_audit does this, since a
+    /// cl_usage that isn't running can't notice).
+    static func startFollowers() {
+        for e in Store.load() where e.lifecycle.usageFollowsWindow && !waitsForWindow(e) {
+            let dst = appURL(e)
+            if FileManager.default.fileExists(atPath: dst.path), !isRunning(dst) { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
+        }
     }
 
     static func needsInstall(_ e: AccountEntry, at dst: URL, source: URL) -> Bool {
@@ -443,6 +474,10 @@ enum Installer {
     static func stop(_ url: URL) {
         let apps = running(url)
         guard !apps.isEmpty else { return }
+        if let id = info(url)?["UsageAccountID"] as? String {
+            DistributedNotificationCenter.default().postNotificationName(quietQuitNote, object: id, userInfo: nil, deliverImmediately: true)
+            RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+        }
         apps.forEach { $0.terminate() }
         let deadline = Date().addingTimeInterval(3)
         while apps.contains(where: { !$0.isTerminated }) && Date() < deadline {
@@ -452,6 +487,9 @@ enum Installer {
     }
 
     static let openSettingsNote = Notification.Name("local.usage-n-uf.open-settings")
+    /// Sent to a cl_usage app (object: its profile id) before cl_audit quits it to reinstall: quit without
+    /// taking the Claude window along.
+    static let quietQuitNote = Notification.Name("local.usage-n-uf.quiet-quit")
     static let openDashboardNote = Notification.Name("local.usage-n-uf.open-dashboard")
     /// Asks every icon app to fetch its numbers now.
     static let refreshAllNote = Notification.Name("local.usage-n-uf.refresh-all")

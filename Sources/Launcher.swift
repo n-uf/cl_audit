@@ -110,10 +110,41 @@ enum Launcher {
 
 // MARK: - Accounts as the launcher shows them
 
+/// Where a profile's cl_usage is: in the Dock, running but not pinned, hidden (running, no tile), not running,
+/// or its app missing.
+enum UsageIconState {
+    case inDock, notPinned, hidden, notRunning, missing
+    var text: String {
+        switch self {
+        case .inDock: return "cl_usage in Dock"
+        case .notPinned: return "cl_usage unpinned"
+        case .hidden: return "cl_usage hidden"
+        case .notRunning: return "cl_usage stopped"
+        case .missing: return "cl_usage missing"
+        }
+    }
+    var color: Color {
+        switch self {
+        case .inDock: return Color(nsColor: Painter.green)
+        case .hidden: return .secondary.opacity(0.5)
+        case .notPinned, .notRunning, .missing: return .orange
+        }
+    }
+
+    static func of(_ e: AccountEntry) -> UsageIconState {
+        let app = Installer.appURL(e)
+        guard FileManager.default.fileExists(atPath: app.path) else { return .missing }
+        guard Installer.isRunning(app) else { return .notRunning }
+        if e.iconHidden { return .hidden }
+        return DockManager.isPinned(app) ? .inDock : .notPinned
+    }
+}
+
 struct AccountRow: Identifiable {
     let entry: AccountEntry
     let status: IconStatus?
     var activity = Launcher.Activity()
+    var usageIcon: UsageIconState = .inDock
     var id: String { entry.id }
     var account: Account { Account(entry) }
 
@@ -136,7 +167,8 @@ struct AccountRow: Identifiable {
         Painter.image(TileModel(label: entry.label.isEmpty ? "?" : entry.label, fiveHour: fiveHour, weekly: weekly,
                                 stale: stale, style: entry.style, warn: mismatch, tint: entry.color, frame: entry.frame,
                                 fiveHourElapsed: windowElapsed(status?.fiveHourResets, 5 * 3600),
-                                weeklyElapsed: windowElapsed(status?.weeklyResets, 7 * 86400)), pixels: 128)
+                                weeklyElapsed: windowElapsed(status?.weeklyResets, 7 * 86400),
+                                windowOpen: activity.desktopOpen && entry.windowDot && entry.desktop != .none), pixels: 128)
     }
 
     var limits: [Limit] {
@@ -172,7 +204,7 @@ final class LauncherModel: ObservableObject {
         let entries = Store.load()
         let acts = Launcher.activity(for: entries.map(Account.init))
         rows = entries.map {
-            AccountRow(entry: $0, status: Store.status($0.id), activity: acts[Account($0).configDir] ?? .init())
+            AccountRow(entry: $0, status: Store.status($0.id), activity: acts[Account($0).configDir] ?? .init(), usageIcon: UsageIconState.of($0))
         }
         selected = min(selected, max(filtered.count - 1, 0))
     }
@@ -196,6 +228,11 @@ struct LauncherActions {
     var settings: () -> Void
     var refresh: () -> Void = {}
     var refreshAll: () -> Void = {}
+    var quitWindow: (AccountRow) -> Void = { _ in }
+    var startUsage: (AccountRow) -> Void = { _ in }       // start, or reinstall when the app is missing
+    var setHidden: (AccountRow, Bool) -> Void = { _, _ in }
+    var pin: (AccountRow) -> Void = { _ in }
+    var profileSettings: (AccountRow) -> Void = { _ in }
 }
 
 /// "Updated 1 min ago": the age of the newest numbers on the dashboard; a click asks every icon to fetch now.
@@ -420,10 +457,10 @@ struct MainScreenView: View {
                     ForEach(model.shownRows) { AccountCard(row: $0, actions: actions) }
                 }
                 if model.rows.isEmpty {
-                    Text("No accounts yet. Open Settings to add them.").foregroundStyle(.secondary)
+                    Text("No profiles yet. Open Settings to add one.").foregroundStyle(.secondary)
                 }
                 if !model.rows.isEmpty && model.shownRows.isEmpty {
-                    Text("No account selected: pick one or more above.").foregroundStyle(.secondary)
+                    Text("No profile selected: pick one or more above.").foregroundStyle(.secondary)
                 } else if let stats { StatsSection(stats: stats).padding(.top, 6) }
             }
             .padding(18)
@@ -502,10 +539,18 @@ struct AccountCard: View {
                     Text(row.subtitle).font(.caption).lineLimit(1)
                         .foregroundStyle(row.needsLogin ? Color.red : Color.secondary)
                         .hidesEmail(row.subtitle.contains("@"))
-                    HStack(spacing: 5) {
-                        Circle().fill(row.activity.desktopOpen ? Color.green : Color.secondary.opacity(0.4))
-                            .frame(width: 6, height: 6)
-                        Text(row.activity.desktopOpen ? "Desktop open" : "Desktop closed")
+                    // Its Claude window and its cl_usage, each with a dot.
+                    HStack(spacing: 10) {
+                        if row.entry.desktop != .none {
+                            HStack(spacing: 5) {
+                                Circle().fill(row.activity.desktopOpen ? Color(nsColor: Painter.green) : Color.secondary.opacity(0.4)).frame(width: 6, height: 6)
+                                Text(row.activity.desktopOpen ? "Window open" : "Window closed")
+                            }
+                        }
+                        HStack(spacing: 5) {
+                            Circle().fill(row.usageIcon.color).frame(width: 6, height: 6)
+                            Text(row.usageIcon.text)
+                        }
                     }
                     .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
@@ -521,10 +566,16 @@ struct AccountCard: View {
           }
             Spacer(minLength: 12)         // cards in a row share one height; the buttons stay at the bottom
             HStack(spacing: 6) {
-                if row.needsLogin { Button("Log in…") { actions.logIn(row) }.buttonStyle(.pill(.red)) }
-                Button(row.activity.desktopOpen ? "Show Desktop" : "Open Desktop") { actions.open(row) }
-                    .buttonStyle(.pill(row.accent))
+                // One main button, the most useful next step; the rest is in "⋯".
+                switch mainAction {
+                case .signIn: Button("Sign in…") { actions.logIn(row) }.buttonStyle(.pill(.red))
+                case .start: Button("Start cl_usage") { actions.startUsage(row) }.buttonStyle(.pill(row.accent))
+                case .reinstall: Button("Reinstall cl_usage") { actions.startUsage(row) }.buttonStyle(.pill(row.accent))
+                case .window: Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }.buttonStyle(.pill(row.accent))
+                case .none: EmptyView()
+                }
                 Button("Terminal") { actions.terminal(row) }.buttonStyle(.pill)
+                moreMenu
                 Spacer()
                 if let u = row.status?.updatedAt {
                     Text(DetailsFormat.ago(u)).font(.caption2).foregroundStyle(.secondary).lineLimit(1).fixedSize()
@@ -536,6 +587,40 @@ struct AccountCard: View {
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 14).fill(Color.primary.opacity(0.05)))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.primary.opacity(0.08)))
+    }
+
+    private enum MainAction { case signIn, start, reinstall, window, none }
+    private var mainAction: MainAction {
+        if row.needsLogin { return .signIn }
+        if row.usageIcon == .missing { return .reinstall }
+        if row.usageIcon == .notRunning && !Installer.waitsForWindow(row.entry) { return .start }
+        return row.entry.desktop != .none ? .window : .none
+    }
+
+    /// Everything else for this profile: the window and cl_usage actions that aren't the main button, and settings.
+    private var moreMenu: some View {
+        Menu {
+            if row.entry.desktop != .none {
+                if mainAction != .window { Button(row.activity.desktopOpen ? "Show Claude window" : "Open Claude window") { actions.open(row) } }
+                if row.activity.desktopOpen { Button("Quit Claude window") { actions.quitWindow(row) } }
+                Divider()
+            }
+            switch row.usageIcon {
+            case .inDock: Button("Hide cl_usage") { actions.setHidden(row, true) }
+            case .notPinned: Button("Pin cl_usage") { actions.pin(row) }; Button("Hide cl_usage") { actions.setHidden(row, true) }
+            case .hidden: Button("Show cl_usage") { actions.setHidden(row, false) }
+            case .notRunning: if mainAction != .start { Button("Start cl_usage") { actions.startUsage(row) } }
+            case .missing: if mainAction != .reinstall { Button("Reinstall cl_usage") { actions.startUsage(row) } }
+            }
+            Divider()
+            Button("Profile settings…") { actions.profileSettings(row) }
+        } label: {
+            Image(systemName: "ellipsis").font(.system(size: 11, weight: .semibold)).frame(width: 26, height: 20)
+                .background(Capsule().fill(Color.primary.opacity(0.08)))
+                .overlay(Capsule().stroke(Color.primary.opacity(0.1)))
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+        .help("More for \(row.entry.name)")
     }
 }
 
@@ -607,7 +692,28 @@ final class ManagerUI {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
                 self.model.reload(); self.stats.reload(); self.model.refreshing = false
             }
-        })
+        },
+        quitWindow: { [weak self] r in
+            NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
+                .filter { Launcher.isWindow(of: r.account, $0) }.forEach { $0.terminate() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self?.model.reload() }
+        },
+        startUsage: { [weak self] r in
+            let app = Installer.appURL(r.entry)
+            if FileManager.default.fileExists(atPath: app.path) { Installer.run("/usr/bin/open", [app.path]) }
+            else { Installer.sync(Store.load()) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self?.model.reload() }
+        },
+        setHidden: { [weak self] r, hidden in
+            var e = r.entry; e.iconHidden = hidden; Store.update(e)
+            if !hidden, !Installer.isRunning(Installer.appURL(e)) { Installer.run("/usr/bin/open", ["-g", Installer.appURL(e).path, "--args", "--no-follow"]) }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self?.model.reload() }
+        },
+        pin: { [weak self] r in
+            DockManager.pin(Installer.appURL(r.entry))
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self?.model.reload() }
+        },
+        profileSettings: { [weak self] r in self?.showMain(page: .settings, account: r.id) })
 
     var paletteShown: Bool { palette?.isVisible == true }
     var dashboardShown: Bool { mainWindow?.isVisible == true && mainWindow?.isMiniaturized == false }

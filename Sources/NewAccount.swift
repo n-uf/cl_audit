@@ -111,7 +111,7 @@ enum NewAccountSetup {
         var out: [SetupCheck] = []
         let name = d.name.trimmingCharacters(in: .whitespaces)
         // the name: only a clash is worth a line (the caption under the field says what it's for)
-        if accounts.contains(where: { $0.name.lowercased() == name.lowercased() }) { out.append(.init(section: .account, state: .bad, text: "Another account is already called “\(name)”")) }
+        if accounts.contains(where: { $0.name.lowercased() == name.lowercased() }) { out.append(.init(section: .account, state: .bad, text: "Another profile is already called “\(name)”")) }
 
         // the Claude Code folder
         if d.source == .new {
@@ -283,7 +283,7 @@ struct NewAccountView: View {
         }
         .onAppear { monitor.start() }
         .onDisappear { monitor.stop() }
-        .alert("Cancel the new account\(draft.name.isEmpty ? "" : " “\(draft.name)”")?", isPresented: $confirmCancel) {
+        .alert("Cancel the new profile\(draft.name.isEmpty ? "" : " “\(draft.name)”")?", isPresented: $confirmCancel) {
             Button(draft.createdConfigDir != nil || draft.createdDataDir != nil ? "Cancel and clean up" : "Cancel setup", role: .destructive) { model.cancelNew() }
             Button("Keep setting up", role: .cancel) {}
         } message: { Text(NewAccountSetup.discardSummary(draft)) }
@@ -361,7 +361,7 @@ struct NewAccountView: View {
     // MARK: cards
 
     private func accountCard(labelWidth: CGFloat, stacked: Bool) -> some View {
-        SCard(title: "Account") {
+        SCard(title: "Profile") {
           // No row labels: a name field and colour swatches say what they are.
            VStack(alignment: .leading, spacing: 10) {
                 TextField("Name, e.g. personal", text: $draft.name)
@@ -438,7 +438,7 @@ struct NewAccountView: View {
                 }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
                 .disabled(NewAccountSetup.foldersReady(draft))
-                InfoDot(text: "Linked, so edits there show up in this account too. Sign-in, plugins and usage stay separate.")
+                InfoDot(text: "Linked, so edits there show up in this profile too. Sign-in, plugins and usage stay separate.")
             }
             WrapChips(items: SharedItem.allCases.map { ($0.title, draft.share.contains($0)) }, tint: tint) { i in
                 let item = SharedItem.allCases[i]
@@ -484,7 +484,7 @@ struct NewAccountView: View {
                         Image(systemName: "chevron.right").font(.system(size: 8.5, weight: .bold))
                             .rotationEffect(.degrees(showHidden ? 90 : 0))
                         Text("\(hidden.count) folder\(hidden.count == 1 ? "" : "s") " + (hidden.allSatisfy { $0.why != "not a Claude Code folder" }
-                             ? "already used by other accounts" : "not offered"))
+                             ? "already used by other profiles" : "not offered"))
                     }
                     .font(.system(size: 11)).foregroundStyle(.secondary).contentShape(Rectangle())
                 }
@@ -510,8 +510,8 @@ struct NewAccountView: View {
         let standardFree = FolderRules.windowOwner(.standard, FolderKey.standardDataDir, among: model.accounts) == nil
         // The standard window is offered only while no other account has it.
         let options: [(DesktopMode, String, String)] = (standardFree ? [(.standard, "The standard Claude window", "The desktop app as you usually open it, signed in to this account")] : [])
-            + [(.separate, "Its own Claude window", "The desktop app opened separately, with this account's sign-in"),
-               (.none, "Terminal only", "No desktop app for this account; Claude Code in Terminal")]
+            + [(.separate, "Its own Claude window", "The desktop app opened separately, with this profile's sign-in"),
+               (.none, "Terminal only", "No desktop app for this profile; Claude Code in Terminal")]
         return SCard(title: "Claude desktop app") {
             VStack(spacing: 1) {
                 ForEach(options, id: \.0) { o in
@@ -815,7 +815,7 @@ struct NewAccountView: View {
     private var nextHint: String {
         switch current {
         case 1: return monitor.checked ? "Next: quit the desktop app" : "Checking the desktop app…"
-        case 2: return draft.name.isEmpty ? "Next: name the account" : draft.source == .existing && draft.existingDir == nil ? "Next: pick a folder" : blocked ? "Fix the red lines to go on" : draft.source == .new ? "Next: create the folder and links" : "Next: connect the folder"
+        case 2: return draft.name.isEmpty ? "Next: name the profile" : draft.source == .existing && draft.existingDir == nil ? "Next: pick a folder" : blocked ? "Fix the red lines to go on" : draft.source == .new ? "Next: create the folder and links" : "Next: connect the folder"
         case 3: return "Next: sign in to Claude Code"
         case 4: return desktop == .different ? "Its Claude window uses another account" : "Next: sign in to the desktop app"
         default: return "Next: add the Dock icon"

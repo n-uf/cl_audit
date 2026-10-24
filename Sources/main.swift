@@ -17,6 +17,12 @@ if args.count >= 2, args[1] == "--sync" {
     exit(0)
 }
 
+if args.count >= 3, args[1] == "--pin" {
+    // --pin APP [NEIGHBOUR|-] : pin an app in the Dock (used when a hidden cl_usage is shown again)
+    DockManager.pinFromHelper(URL(fileURLWithPath: args[2]), after: args.count > 3 && args[3] != "-" ? args[3] : nil)
+    exit(0)
+}
+
 if args.count >= 3, args[1] == "--render-iconset" {
     Painter.writeIconset(label: args.count >= 4 ? args[3] : "USAGE", to: URL(fileURLWithPath: args[2]))
     exit(0)

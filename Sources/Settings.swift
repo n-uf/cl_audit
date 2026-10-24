@@ -69,9 +69,9 @@ final class SettingsModel: ObservableObject {
     }
 
     var problem: String? {
-        for a in accounts { if let p = a.problem { return "\(a.name.isEmpty ? "New account" : a.name): \(p)" } }
+        for a in accounts { if let p = a.problem { return "\(a.name.isEmpty ? "New profile" : a.name): \(p)" } }
         let names = accounts.map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() }
-        if Set(names).count != names.count { return "Two accounts have the same name." }
+        if Set(names).count != names.count { return "Two profiles have the same name." }
         return FolderRules.clash(in: accounts)          // one account per Claude Code folder and per window
     }
 
@@ -84,8 +84,8 @@ final class SettingsModel: ObservableObject {
 
     func add() {
         var n = accounts.count + 1
-        while accounts.contains(where: { $0.name == "account \(n)" }) { n += 1 }
-        let name = "account \(n)"
+        while accounts.contains(where: { $0.name == "profile \(n)" }) { n += 1 }
+        let name = "profile \(n)"
         let id = Store.newID(from: name, taken: accounts.map(\.id))
         let used = Set(accounts.map { expand($0.configDir) })     // suggest a settings folder no account uses yet
         let folder = configFolders.first { !used.contains(expand($0.path)) }?.path ?? ""
@@ -93,7 +93,7 @@ final class SettingsModel: ObservableObject {
         selection = id
     }
 
-    /// A new account being set up from scratch (the "New account" tile), not yet in `accounts`.
+    /// A new account being set up from scratch (the "New profile" tile), not yet in `accounts`.
     @Published var draft: NewAccountDraft?
     static let newID = "__new__"
 
@@ -121,7 +121,7 @@ final class SettingsModel: ObservableObject {
                 self.discarding = false
                 self.draft = nil
                 self.selection = self.accounts.first?.id
-                self.message = "Cancelled \(d.name.isEmpty ? "the new account" : d.name); its folders and login were removed"
+                self.message = "Cancelled \(d.name.isEmpty ? "the new profile" : d.name); its folders and login were removed"
             }
         }
     }
@@ -226,12 +226,11 @@ struct SettingsPage: View {
                                 .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08)))
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain).foregroundStyle(.secondary).help("Set up a new Claude account")
+                        .buttonStyle(.plain).foregroundStyle(.secondary).help("Add a profile")
                     }
                     .padding(.vertical, 2)
                 }
                 applyBar
-                ShowEmailsSwitch().padding(.leading, 6)
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
             Divider().opacity(0.5)
@@ -245,7 +244,7 @@ struct SettingsPage: View {
                 } else if let id = model.selection, let entry = model.binding(id) {
                     AccountSettings(entry: entry, model: model, width: w).padding(14)
                 } else {
-                    Text("Add an account with ＋").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(40)
+                    Text("Add a profile with ＋").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(40)
                 }
             } } }
         }
@@ -259,7 +258,6 @@ struct SettingsPage: View {
                 ForEach(model.accounts) { a in AccountTile(entry: a, selected: a.id == model.selection, model: model) }
                 Spacer()
                 applyBar
-                ShowEmailsSwitch().padding(.leading, 6)
             }
             .padding(.horizontal, 16).padding(.vertical, 10)
             Divider().opacity(0.5)
@@ -273,7 +271,7 @@ struct SettingsPage: View {
             if let p = model.problem {
                 Label(p, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).font(.caption).lineLimit(2)
             } else if model.needsApply {
-                Text("New names, labels or accounts need Apply").font(.caption).foregroundStyle(.secondary)
+                Text("New names, labels or profiles need Apply").font(.caption).foregroundStyle(.secondary)
             } else if !model.message.isEmpty {
                 Text(model.message).font(.caption).foregroundStyle(.secondary).lineLimit(1)
             }
@@ -294,7 +292,7 @@ struct NewTile: View {
         HStack(spacing: 8) {
             // Styled like the other tiles (highlighted only while selected), text only.
             VStack(alignment: .leading, spacing: 0) {
-                Text("New account").font(.system(size: 12.5, weight: .semibold))
+                Text("New profile").font(.system(size: 12.5, weight: .semibold))
                 Text("not added yet").font(.system(size: 10.5)).foregroundStyle(.secondary)
             }
             .frame(minHeight: 30)
@@ -315,7 +313,7 @@ struct AccountTile: View {
         HStack(spacing: 8) {
             Image(nsImage: preview(entry, status: Store.status(entry.id), tick: model.tick)).resizable().frame(width: 30, height: 30)
             VStack(alignment: .leading, spacing: 0) {
-                Text(entry.name.isEmpty ? "New account" : entry.name).font(.system(size: 12.5, weight: .semibold))
+                Text(entry.name.isEmpty ? "New profile" : entry.name).font(.system(size: 12.5, weight: .semibold))
                 Text(entry.configDir).font(.system(size: 10.5)).foregroundStyle(.secondary)
             }
         }
@@ -497,23 +495,23 @@ struct AccountSettings: View {
     /// one when narrow; cards never get wider than a column.
     var body: some View {
         SettingsColumns(width: width,
-                        three: [[AnyView(accountCard), AnyView(codeCard), AnyView(updatesCard)], [AnyView(iconCard)], [AnyView(clickCard)]],
-                        two: [[AnyView(accountCard), AnyView(codeCard), AnyView(clickCard), AnyView(updatesCard)], [AnyView(iconCard)]],
-                        one: [AnyView(accountCard), AnyView(codeCard), AnyView(iconCard), AnyView(clickCard), AnyView(updatesCard)])
+                        three: [[AnyView(accountCard), AnyView(codeCard), AnyView(updatesCard)], [AnyView(iconCard)], [AnyView(clickCard), AnyView(lifecycleCard)]],
+                        two: [[AnyView(accountCard), AnyView(codeCard), AnyView(clickCard), AnyView(updatesCard)], [AnyView(iconCard), AnyView(lifecycleCard)]],
+                        one: [AnyView(accountCard), AnyView(codeCard), AnyView(iconCard), AnyView(clickCard), AnyView(lifecycleCard), AnyView(updatesCard)])
     }
 
     // Account
     var accountCard: some View {
-        SCard(title: "Account") {
+        SCard(title: "Profile") {
             SRow(label: "Name", first: true) { SField(placeholder: "name", text: $entry.name) }
             SRow(label: "Icon label", info: "Up to 6 letters drawn on the icon. The Dock names the app “cl_audit \(entry.name)”.") {
                 SField(placeholder: "LABEL", text: Binding(get: { entry.label },
                                                            set: { entry.label = String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) }), width: 80)
             }
-            SRow(label: "Colour", info: "This account's colour in the launcher, the dashboard and the panels. The icon's own colour is under Icon.") {
+            SRow(label: "Colour", info: "This profile's colour in the launcher, the dashboard and the panels. The icon's own colour is under Icon.") {
                 SwatchRow(colors: TileColor.accents, selected: entry.accentColor) { if let c = $0 { entry.accent = c } }
             }
-            Button("Remove account…") { model.askRemove(entry.id) }
+            Button("Remove profile…") { model.askRemove(entry.id) }
                 .buttonStyle(.plain).font(.system(size: 11.5)).foregroundStyle(.red.opacity(0.85))
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8).padding(.bottom, 2)
         }
@@ -554,10 +552,10 @@ struct AccountSettings: View {
             }
             SRow(label: "Renew if expired",
                  info: model.claudePath == nil ? "Needs Claude Code installed; it wasn't found."
-                    : "When the login expires, the icon runs Claude Code once with a one-line Haiku prompt so it renews, at most every 30 min. Uses a little of this account's usage." + (status?.renewNote.map { "\nLast: \($0)" } ?? "")) {
+                    : "When the login expires, the icon runs Claude Code once with a one-line Haiku prompt so it renews, at most every 30 min. Uses a little of this profile's usage." + (status?.renewNote.map { "\nLast: \($0)" } ?? "")) {
                 Toggle("", isOn: $entry.autoRenew).smallSwitch().disabled(model.claudePath == nil)
             }
-            SRow(label: "Claude window", info: "Which Claude window this account opens: the standard one, its own (with its own sign-in and data), or none.", picture: AnyView(WindowPicture(mode: entry.desktop))) {
+            SRow(label: "Claude window", info: "Which Claude window this profile opens: the standard one, its own (with its own sign-in and data), or none.", picture: AnyView(WindowPicture(mode: entry.desktop))) {
                 Menu {
                     ForEach([DesktopMode.standard, .separate, .none]) { mode in
                         let owner = mode == .standard ? FolderRules.windowOwner(.standard, "", among: model.accounts, except: entry.id) : nil
@@ -637,6 +635,20 @@ struct AccountSettings: View {
         }
     }
 
+    // cl_usage and its Claude window
+    var lifecycleCard: some View {
+        SCard(title: "cl_usage and Claude window") {
+            SRow(label: "cl_usage icon", info: "Hidden: cl_usage keeps running without a Dock tile, so it still refreshes and alerts. Show it again here or from its dashboard card.", first: true) {
+                PillPicker(options: [false, true], selection: $entry.iconHidden, compact: true) { $0 ? "Hidden" : "Shown" }
+            }
+            if entry.desktop != .none {
+                SRow(label: "Open and close", stacked: true) {
+                    LifecycleChooser(selection: $entry.lifecycle)
+                }
+            }
+        }
+    }
+
     // Updates and alerts
     var updatesCard: some View {
         SCard(title: "Updates and alerts") {
@@ -661,13 +673,13 @@ struct AccountSettings: View {
     var iconCard: some View {
         SCard(title: "Icon") {
             IconGallery(entry: $entry, status: status)
-            SRow(label: "Colour", info: entry.color == .usage ? "By usage: follows the 5-hour level." : "Tells the accounts apart on the label, the Big number tile and the panels' dot.", stacked: true) {
+            SRow(label: "Colour", info: entry.color == .usage ? "By usage: follows the 5-hour level." : "Tells the profiles apart on the label, the Big number tile and the panels' dot.", stacked: true) {
                 SwatchRow(colors: TileColor.allCases, selected: entry.color) { if let c = $0 { entry.color = c } }
             }
             SRow(label: "Frame", stacked: true) {
                 SwatchRow(colors: TileColor.allCases, selected: entry.frame, none: true) { entry.frame = $0 }
             }
-            SRow(label: "Window-open dot", info: "A small orange dot at the icon's top-left while this account's Claude window is open.",
+            SRow(label: "Window-open dot", info: "A small orange dot at the icon's top-left while this profile's Claude window is open.",
                  picture: AnyView(DotPicture(entry: entry))) {
                 Toggle("", isOn: $entry.windowDot).smallSwitch()
             }
@@ -678,7 +690,7 @@ struct AccountSettings: View {
     var sampleInfo: DetailsInfo {
         let s = status
         return DetailsInfo(
-            name: entry.name.isEmpty ? "account" : entry.name, icon: preview(entry, status: s),
+            name: entry.name.isEmpty ? "profile" : entry.name, icon: preview(entry, status: s),
             login: s?.loginEmail, expected: expected, mismatch: false, plan: s?.plan,
             fiveHour: s?.fiveHour ?? 23, fiveHourResets: s?.fiveHourResets ?? Date().addingTimeInterval(3 * 3600 + 20 * 60),
             weekly: s?.weekly ?? 58, weeklyResets: s?.weeklyResets ?? Date().addingTimeInterval(2 * 86400 + 5 * 3600),

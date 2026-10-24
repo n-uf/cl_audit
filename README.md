@@ -25,6 +25,22 @@ names, labels or accounts need **Apply**, because that installs or renames icon 
 addresses are then left out of the launcher, dashboard, panels and Dock menus; Settings still shows
 them blurred (hover one to see it).
 
+**Profiles.** A profile is one Claude setup in cl_audit: its sign-in, Claude Code folder, Claude window and its
+Dock icon app ("cl_audit <profile>"). "Account" means only the claude.ai account a profile is signed in to.
+Each profile's dashboard card shows its Claude window (open/closed) and its Dock icon (in Dock, unpinned, hidden,
+stopped, missing), with one main button for the next step (Sign in…, Start or Reinstall, Show or Open window),
+Terminal, and "⋯" for the rest (Quit Claude window, Hide/Show/Pin the icon, Profile settings…).
+
+**The icon and its Claude window** (profile settings ▸ cl_usage and Claude window). The icon can be **Hidden**: it
+keeps running without a Dock tile, so it still refreshes and alerts; hiding and showing restart it, and
+showing puts its pin back where it was (after about 10 s). **Open and close** picks one of four:
+Independent; the icon follows the window (window opens or quits → icon starts or quits, after 10 s; starting needs
+cl_audit running); the window follows the icon (icon starts or quits → window opens or quits; not at login, and a
+normal quit so Claude can ask about unsent work); or lockstep (both). With the window following, the icon's Dock
+menu has "Quit and keep Claude window". When cl_audit starts it reinstalls missing icon apps and starts the
+ones that should run. The icon's Dock menu now holds only actions; its options are in profile settings, and
+app-wide ones (dashboard card style, Dock, Show emails) in Settings ▸ General.
+
 **Window-open dot.** A small Claude-orange dot at the top-left of an account's icon means its Claude window is
 open; it appears and goes as the window starts and quits. Each account can turn it off (Settings ▸ account ▸
 Icon ▸ Window-open dot). The icon and its Claude window are otherwise

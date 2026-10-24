@@ -35,6 +35,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     var usage: Usage?
     var claudeOpen = false        // this account's Claude window is running (drawn as a dot on the tile)
+    var quietQuit = false         // quit without taking the Claude window along (cl_audit reinstalling, or "Quit and keep")
+    var quitForWindow = false     // quitting because the Claude window quit ("cl_usage follows")
+    var windowQuitWork: DispatchWorkItem?
+    var appliedHidden: Bool?
     var state: FetchState = .idle
     var plan: String?
     var loginEmail: String?
@@ -62,8 +66,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applyEntry() {
         account = Account(entry)
         applyLoginItem()
+        applyVisibility()
         if entry.notify { UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in } }
         redraw()
+    }
+
+    /// Shown: a normal app with its Dock tile. Hidden: a background app (no tile), still refreshing and alerting.
+    /// The mode is set once, at launch (switching it while running is unreliable on macOS); a change restarts
+    /// cl_usage. Hiding takes its pin out and remembers the place; showing puts it back there.
+    func applyVisibility() {
+        guard !isSettingsApp else { return }
+        let hide = entry.iconHidden
+        if let applied = appliedHidden {
+            guard applied != hide else { return }
+            relaunch()
+            return
+        }
+        appliedHidden = hide
+        NSApp.setActivationPolicy(hide ? .accessory : .regular)
+        if hide { DockManager.unpinRemembering(Bundle.main.bundleURL, defaults: defaults) }
+        else { DockManager.repin(Bundle.main.bundleURL, defaults: defaults) }
+    }
+
+    /// Quits and starts again a moment later (in the background, without opening its Claude window).
+    func relaunch() {
+        quietQuit = true
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", "sleep 1.5; /usr/bin/open -g \"$0\" --args --no-follow", Bundle.main.bundlePath]
+        try? p.run()
+        NSApp.terminate(nil)
     }
 
     @objc func configChanged() {
@@ -89,7 +121,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ note: Notification) {
-        NSApp.setActivationPolicy(.regular)
+        // A hidden cl_usage starts as a background app, so its tile never flashes up.
+        NSApp.setActivationPolicy(isSettingsApp || !entry.iconHidden ? .regular : .accessory)
         if isSettingsApp {
             NSWindow.allowsAutomaticWindowTabbing = false   // Settings and Dashboard are separate windows
             MainMenu.install()
@@ -97,6 +130,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                                 name: Installer.openSettingsNote, object: nil)
             DistributedNotificationCenter.default().addObserver(self, selector: #selector(showMainScreen),
                                                                 name: Installer.openDashboardNote, object: nil)
+            // cl_usage that follows its Claude window: started here when that window opens.
+            NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { note in
+                guard (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier == Launcher.claudeBundleID else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { Installer.startFollowers() }
+            }
+            // On start: reinstall missing cl_usage apps and start the ones that should run.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if Store.exists { Installer.sync(Store.load()) } }
             if CommandLine.arguments.contains("--settings") {
                 let account = CommandLine.arguments.first { $0.hasPrefix("--account=") }.map { String($0.dropFirst("--account=".count)) }
                 manager.showMain(page: .settings, account: account)
@@ -108,6 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ws.addObserver(self, selector: #selector(appsChanged), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         ws.addObserver(self, selector: #selector(appsChanged), name: NSWorkspace.didTerminateApplicationNotification, object: nil)
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(refreshNow), name: Installer.refreshAllNote, object: nil)
+        DistributedNotificationCenter.default().addObserver(self, selector: #selector(quietQuitAsked(_:)), name: Installer.quietQuitNote, object: accountID)
         tileView = TileView(model: model())
         NSApp.dockTile.contentView = tileView
         NSApp.dockTile.display()
@@ -116,16 +157,36 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.tick() }
         tick()
         applyEntry()
+        // "Window follows": starting cl_usage opens its Claude window, but not at login and not when cl_audit
+        // starts it (it passes --no-follow), so neither opens every window at once.
+        let atLogin = ProcessInfo.processInfo.systemUptime < 180
+        if entry.lifecycle.windowFollowsUsage, account.opensDesktop, !claudeOpen,
+           !CommandLine.arguments.contains("--no-follow"), !atLogin {
+            Launcher.openClaude(account)
+        }
     }
+
+    @objc func quietQuitAsked(_ note: Notification) { quietQuit = true }
 
     // The settings app stays in the Dock after its windows close: its icon is the launcher.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    /// An icon app quit because its account was removed takes its open-at-login entry with it.
+    /// An icon app quit because its account was removed takes its open-at-login entry with it. Otherwise, with
+    /// "Window follows" or "Lockstep", quitting cl_usage quits its Claude window too (a normal quit, so Claude can
+    /// ask about unsent work), unless it's quitting because of that window, or was asked to keep it.
     func applicationWillTerminate(_ note: Notification) {
-        guard !isSettingsApp, let id = accountID, !Store.load().contains(where: { $0.id == id }) else { return }
-        try? SMAppService.mainApp.unregister()
+        guard !isSettingsApp, let id = accountID else { return }
+        guard Store.load().contains(where: { $0.id == id }) else { try? SMAppService.mainApp.unregister(); return }
+        if entry.lifecycle.windowFollowsUsage, account.opensDesktop, !quietQuit, !quitForWindow { quitClaudeWindow() }
     }
+
+    @objc func quitClaudeWindow() {
+        NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
+            .filter { Launcher.isWindow(of: account, $0) }
+            .forEach { $0.terminate() }
+    }
+
+    @objc func quitKeepingWindow() { quietQuit = true; NSApp.terminate(nil) }
 
     /// From the menu (no account) or an icon app's "Settings…" and gear (its account id as the object).
     @objc func showSettingsWindow(_ note: Any?) {
@@ -253,8 +314,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Whether this account's Claude window is running; redraws the tile when that changes.
     func refreshWindowState() {
-        let open = account.opensDesktop && (Launcher.activity(for: [account])[account.configDir]?.desktopOpen ?? false)
+        let open = windowIsOpen()
         if open != claudeOpen { claudeOpen = open; redraw() }
+        // "cl_usage follows": its window quit → quit too, after 10 s (a Claude update restarts the window).
+        if entry.lifecycle.usageFollowsWindow, account.opensDesktop, !open {
+            guard windowQuitWork == nil else { return }
+            let work = DispatchWorkItem { [weak self] in
+                guard let self else { return }
+                self.windowQuitWork = nil
+                if self.entry.lifecycle.usageFollowsWindow, !self.windowIsOpen() { self.quitForWindow = true; NSApp.terminate(nil) }
+            }
+            windowQuitWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: work)
+        } else {
+            windowQuitWork?.cancel(); windowQuitWork = nil
+        }
+    }
+
+    func windowIsOpen() -> Bool {
+        account.opensDesktop && (Launcher.activity(for: [account])[account.configDir]?.desktopOpen ?? false)
     }
 
     @objc func appsChanged(_ note: Notification) {
@@ -375,7 +453,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             let ok = ClaudeCLI.renew(claude, account: acct)
             DispatchQueue.main.async {
                 self.renewing = false
-                self.renewNote = ok ? "Login renewed at \(Self.when(Date()))" : "Couldn't renew the login: run Claude Code for this account once"
+                self.renewNote = ok ? "Login renewed at \(Self.when(Date()))" : "Couldn't renew the login: run Claude Code for this profile once"
                 self.nextFetch = .distantPast
                 self.forceLoginRead = true
                 self.tick()
@@ -429,7 +507,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if entry.longPressDetails, leftDown, !NSEvent.modifierFlags.contains(.control) {
             DispatchQueue.main.async { self.details.openBesideDockMenu(self.detailsInfo(), self.detailsActions()) }
             let short = NSMenu(); short.autoenablesItems = false
-            let settings = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: "")
+            let settings = NSMenuItem(title: "Profile settings…", action: #selector(showSettings), keyEquivalent: "")
             settings.target = self; short.addItem(settings)
             return short
         }
@@ -454,45 +532,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         m.addItem(.separator())
 
+        // Actions only; how the icon looks and behaves is set in its profile settings.
+        func add(_ title: String, _ action: Selector, enabled: Bool = true) {
+            let i = NSMenuItem(title: title, action: action, keyEquivalent: ""); i.target = self; i.isEnabled = enabled; m.addItem(i)
+        }
         if account.opensDesktop {
-            let open = NSMenuItem(title: "Open Claude (\(account.name))", action: #selector(openClaude), keyEquivalent: "")
-            open.target = self; m.addItem(open)
+            add(claudeOpen ? "Show Claude window" : "Open Claude window", #selector(openClaude))
+            if claudeOpen { add("Quit Claude window", #selector(quitClaudeWindow)) }
         }
-        let refresh = NSMenuItem(title: "Refresh now", action: #selector(refreshNow), keyEquivalent: "")
-        refresh.target = self; m.addItem(refresh)
-        if state == .expired {
-            let renew = NSMenuItem(title: renewing ? "Renewing login…" : "Renew login now (uses a little usage)",
-                                   action: #selector(renewLogin), keyEquivalent: "")
-            renew.target = self; renew.isEnabled = !renewing; m.addItem(renew)
+        add("Refresh now", #selector(refreshNow))
+        if state == .expired { add(renewing ? "Renewing login…" : "Renew login now (uses a little usage)", #selector(renewLogin), enabled: !renewing) }
+        m.addItem(.separator())
+        add("Dashboard", #selector(showDashboard))
+        add("Profile settings…", #selector(showSettings))
+        if entry.lifecycle.windowFollowsUsage, account.opensDesktop {
+            m.addItem(.separator())
+            add("Quit and keep Claude window", #selector(quitKeepingWindow))
         }
-
-        let options = NSMenu(); options.autoenablesItems = false
-        options.addItem(info("Style"))
-        for s in IconStyle.allCases {
-            let i = NSMenuItem(title: s.title, action: #selector(pickStyle(_:)), keyEquivalent: "")
-            i.target = self; i.representedObject = s.rawValue; i.state = s == style ? .on : .off; i.indentationLevel = 1
-            options.addItem(i)
-        }
-        options.addItem(.separator())
-        options.addItem(info("Refresh every"))
-        for n in [2, 5, 10, 15] {
-            let i = NSMenuItem(title: "\(n) minutes", action: #selector(pickPoll(_:)), keyEquivalent: "")
-            i.target = self; i.tag = n; i.state = n == pollMinutes ? .on : .off; i.indentationLevel = 1
-            options.addItem(i)
-        }
-        options.addItem(.separator())
-        let notify = NSMenuItem(title: "Notify at \(entry.notifyPercent)%", action: #selector(toggleNotify), keyEquivalent: "")
-        notify.target = self; notify.state = entry.notify ? .on : .off; options.addItem(notify)
-        let auto = NSMenuItem(title: "Renew expired login automatically", action: #selector(toggleRenew), keyEquivalent: "")
-        auto.target = self; auto.state = entry.autoRenew ? .on : .off; options.addItem(auto)
-        let login = NSMenuItem(title: "Open at login", action: #selector(toggleLogin), keyEquivalent: "")
-        login.target = self; login.state = entry.openAtLogin ? .on : .off; options.addItem(login)
-        let opts = NSMenuItem(title: "Icon options", action: nil, keyEquivalent: "")
-        opts.submenu = options; m.addItem(opts)
-        let dashboard = NSMenuItem(title: "Dashboard", action: #selector(showDashboard), keyEquivalent: "")
-        dashboard.target = self; m.addItem(dashboard)
-        let settings = NSMenuItem(title: "Settings…", action: #selector(showSettings), keyEquivalent: "")
-        settings.target = self; m.addItem(settings)
         return m
     }
 

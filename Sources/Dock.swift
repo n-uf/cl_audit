@@ -1,6 +1,6 @@
-// Managing the Dock (Settings ▸ Dashboard ▸ Dock, off by default): keeps the cl_audit icons pinned together in
+// Managing the Dock (Settings ▸ Dashboard ▸ Dock, off by default): keeps the profile icons pinned together in
 // account order with the cl_audit app last, and keeps at most one Claude pin, placed before the group. macOS ties
-// running Claude windows to Claude pins in its own order, so several pins get mixed up; the cl_audit icons are
+// running Claude windows to Claude pins in its own order, so several pins get mixed up; the profile icons are
 // the reliable way to reach each account's window. Only the Dock's pin list (com.apple.dock persistent-apps)
 // is changed, and the Dock restarts once, only when it doesn't match the settings. The list is saved before the first
 // change so it can be restored.
@@ -195,7 +195,7 @@ enum DockManager {
         Set(after.indices).subtracting(kept(now, after).after)
     }
 
-    /// Whether the cl_audit icons are pinned side by side, in account order, with the cl_audit app last.
+    /// Whether the profile icons are pinned side by side, in profile order, with the cl_audit app last.
     static func iconsInOrder(_ tiles: [[String: Any]], accounts: [AccountEntry]) -> Bool {
         let wanted = (accounts.map { Installer.appURL($0) } + [settingsURL]).filter { FileManager.default.fileExists(atPath: $0.path) }.map(key)
         let paths = tiles.map(path)
@@ -211,15 +211,15 @@ enum DockManager {
         let claudePins = current.filter { path($0) == key(claudeURL) }.count
         if same(current, plan(current, accounts: accounts, prefs: prefs)) {
             return (true, "Claude pinned \(claudePins == 0 ? "nowhere" : claudePins == 1 ? "once" : "\(claudePins) times")"
-                    + (prefs.icons == .together ? ", cl_audit icons together" : ""))
+                    + (prefs.icons == .together ? ", profile icons together" : ""))
         }
         var parts: [String] = []
         if prefs.claude == .one && claudePins != 1 { parts.append(claudePins == 0 ? "Claude isn't pinned" : "Claude is pinned \(claudePins) times") }
-        if prefs.claude == .one && claudePins == 1 && prefs.icons == .together { parts.append("Claude is pinned, but not just before the cl_audit icons") }
+        if prefs.claude == .one && claudePins == 1 && prefs.icons == .together { parts.append("Claude is pinned, but not just before the profile icons") }
         if prefs.claude == .none && claudePins > 0 { parts.append("Claude is pinned \(claudePins == 1 ? "once" : "\(claudePins) times")") }
-        if prefs.icons == .together && !iconsInOrder(current, accounts: accounts) { parts.append("the cl_audit icons are apart or out of order") }
-        if parts.count > 1, parts.contains("Claude is pinned, but not just before the cl_audit icons"), parts.contains("the cl_audit icons are apart or out of order") {
-            parts.removeAll { $0 == "Claude is pinned, but not just before the cl_audit icons" }
+        if prefs.icons == .together && !iconsInOrder(current, accounts: accounts) { parts.append("the profile icons are apart or out of order") }
+        if parts.count > 1, parts.contains("Claude is pinned, but not just before the profile icons"), parts.contains("the profile icons are apart or out of order") {
+            parts.removeAll { $0 == "Claude is pinned, but not just before the profile icons" }
         }
         let reason = parts.isEmpty ? "the pins differ" : parts.joined(separator: "; ")
         return (false, reason.prefix(1).uppercased() + reason.dropFirst())
@@ -241,6 +241,60 @@ enum DockManager {
         guard DockPrefs.shared.manage else { return }
         tidy(accounts: accounts)
     }
+
+    /// Takes one app's pin out of the Dock (hiding cl_usage) and remembers its left neighbour, to put it back there.
+    static func unpinRemembering(_ app: URL, defaults: UserDefaults) {
+        let list = pins(), k = key(app)
+        guard let i = list.firstIndex(where: { path($0) == k }) else { return }
+        defaults.set(true, forKey: "dockWasPinned")
+        defaults.set(i > 0 ? (path(list[i - 1]) ?? "") : "", forKey: "dockLeftNeighbour")
+        var kept = list; kept.remove(at: i)
+        write(kept)
+    }
+
+    /// Puts back a pin taken out by `unpinRemembering`. The app has just become a Dock app again, and the Dock
+    /// rewrites its list around that, so this waits a moment, pins, and checks once more.
+    static func repin(_ app: URL, defaults: UserDefaults) {
+        guard defaults.bool(forKey: "dockWasPinned") else { return }
+        let neighbour = defaults.string(forKey: "dockLeftNeighbour")
+        defaults.removeObject(forKey: "dockWasPinned"); defaults.removeObject(forKey: "dockLeftNeighbour")
+        // Done by a short helper process (this app started with --pin): inside the app that just became a Dock app
+        // again, the Dock overwrote the change.
+        guard let exe = Bundle.main.executableURL else { return }
+        let p = Process()
+        p.executableURL = exe
+        p.arguments = ["--pin", app.path, neighbour ?? "-"]
+        try? p.run()
+    }
+
+    /// The helper's work: wait for the Dock to settle, pin, check, and try once more.
+    static func pinFromHelper(_ app: URL, after neighbour: String?) {
+        // The Dock is busy with the app that just started, and rewrites its list as it restarts: pin once it has
+        // settled, then check after the restart and try again (up to three times).
+        Thread.sleep(forTimeInterval: 4)
+        for _ in 0..<3 {
+            pin(app, after: neighbour)
+            Thread.sleep(forTimeInterval: 6)
+            if isPinned(app) { return }
+        }
+    }
+
+    /// Pins an app if it isn't pinned: after `neighbour` ("" = first), or else right after the other cl_usage icons.
+    static func pin(_ app: URL, after neighbour: String? = nil) {
+        var list = pins()
+        let k = key(app)
+        guard !list.contains(where: { path($0) == k }) else { return }
+        var at = list.count
+        if let n = neighbour {
+            if n.isEmpty { at = 0 } else if let j = list.firstIndex(where: { path($0) == n }) { at = j + 1 }
+        } else if let j = list.lastIndex(where: { t in path(t).map { $0 != key(settingsURL) && isIconApp($0) } ?? false }) {
+            at = j + 1
+        }
+        list.insert(tile(app), at: min(at, list.count))
+        write(list)
+    }
+
+    static func isPinned(_ app: URL) -> Bool { pins().contains { path($0) == key(app) } }
 
     static func restore(prefs: DockPrefs = .shared) {
         guard let list = prefs.backup else { return }
@@ -277,7 +331,7 @@ struct DockCard: View {
                             .background(Capsule().fill(Color.orange.opacity(0.15)))
                             .overlay(Capsule().stroke(Color.orange.opacity(0.5)))
                     }
-                    Text("Pins the cl_audit icons side by side, in account order, with at most one Claude pin before them. Several Claude pins get mixed up between Claude windows; the cl_audit icons always open the right one. Redone when you add or remove an account.")
+                    Text("Pins the profile icons side by side, in profile order, with at most one Claude pin before them. Several Claude pins get mixed up between Claude windows; the profile icons always open the right one. Redone when you add or remove an account.")
                         .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
                         Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9.5)).foregroundStyle(.orange)
@@ -322,13 +376,13 @@ struct DockCard: View {
 
                 divider
                 choices(title: "Claude pins", options: [
-                    (DockPrefs.ClaudePins.one, "One Claude pin, just before the cl_audit icons", "It opens the standard Claude window"),
+                    (DockPrefs.ClaudePins.one, "One Claude pin, just before the profile icons", "It opens the standard Claude window"),
                     (.none, "No Claude pin", "Open each Claude window from its cl_audit icon"),
                     (.leave, "Don't touch Claude pins", "Leave them as you placed them")],
                         selected: prefs.claude) { prefs.claude = $0; DockManager.tidy(accounts: accounts); refreshSoon() }
                 divider
-                choices(title: "cl_audit icons", options: [
-                    (DockPrefs.Icons.together, "Side by side, in account order", "The cl_audit app last"),
+                choices(title: "Profile icons", options: [
+                    (DockPrefs.Icons.together, "Side by side, in profile order", "The cl_audit app last"),
                     (.leave, "Don't move them", "Leave them as you placed them")],
                         selected: prefs.icons) { prefs.icons = $0; DockManager.tidy(accounts: accounts); refreshSoon() }
             }

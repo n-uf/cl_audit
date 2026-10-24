@@ -23,7 +23,7 @@ final class DashboardPrefs: ObservableObject {
     }
 }
 
-/// Settings ▸ Dashboard: Dashboard cards · Dock. The history period and which charts to show are set on the
+/// Settings ▸ General: Dashboard cards · Emails · Dock. The history period and which charts to show are set on the
 /// dashboard itself, as filters.
 struct DashboardSettings: View {
     @ObservedObject private var prefs = DashboardPrefs.shared
@@ -31,13 +31,22 @@ struct DashboardSettings: View {
 
     var body: some View {
         SettingsColumns(width: width,
-                        three: [[AnyView(cardsCard)], [AnyView(DockCard())]],
-                        two: [[AnyView(cardsCard)], [AnyView(DockCard())]],
-                        one: [AnyView(cardsCard), AnyView(DockCard())])
+                        three: [[AnyView(cardsCard), AnyView(emailsCard)], [AnyView(DockCard())]],
+                        two: [[AnyView(cardsCard), AnyView(emailsCard)], [AnyView(DockCard())]],
+                        one: [AnyView(cardsCard), AnyView(emailsCard), AnyView(DockCard())])
+    }
+
+    @ObservedObject private var privacy = Privacy.shared
+    var emailsCard: some View {
+        SCard(title: "Emails") {
+            SRow(label: "Show emails", info: "Off: email addresses are left out of the launcher, dashboard, panels and Dock menus, and blurred in Settings (hover to see one).", first: true) {
+                Toggle("", isOn: Binding(get: { privacy.show }, set: { privacy.set(show: $0) })).smallSwitch()
+            }
+        }
     }
 
     var cardsCard: some View {
-        SCard(title: "Dashboard cards", info: "One card style for every account on the dashboard. Each account's panel design is set under its Panels.") {
+        SCard(title: "Dashboard cards", info: "One card style for every profile on the dashboard. Each profile's panel design is set in its profile settings.") {
             SRow(label: "Card style", first: true, stacked: true) {
                 PillPicker(options: PanelDesign.allCases, selection: $prefs.cardStyle, compact: true) { Self.short($0) }
                 LimitsView(limits: Self.sampleLimits, design: prefs.cardStyle, large: false)
@@ -65,8 +74,8 @@ struct DashboardTile: View {
     var body: some View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Dashboard").font(.system(size: 12.5, weight: .semibold))
-                Text("cards · Dock").font(.system(size: 10.5)).foregroundStyle(.secondary)
+                Text("General").font(.system(size: 12.5, weight: .semibold))
+                Text("dashboard · Dock · emails").font(.system(size: 10.5)).foregroundStyle(.secondary)
             }
             .frame(minHeight: 30)
         }

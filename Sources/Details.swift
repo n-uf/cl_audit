@@ -121,7 +121,7 @@ struct DetailsView: View {
             HStack(spacing: 8) {
                 if info.canOpenClaude {
                     Button("Claude", action: actions.openClaude).buttonStyle(.pill(Color(nsColor: info.accent), compact: true))
-                        .keyboardShortcut(.defaultAction).help("Open Claude for this account")
+                        .keyboardShortcut(.defaultAction).help("Open Claude for this profile")
                 }
                 Button("Dashboard", action: actions.dashboard).buttonStyle(PillButtonStyle(tint: nil, compact: true))
                 if info.needsLogin { Button("Log in…", action: actions.logIn).buttonStyle(.pill(.red, compact: true)) }

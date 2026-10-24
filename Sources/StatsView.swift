@@ -167,7 +167,7 @@ struct TokenChart: View {
         let known = Set(ids)
         let bars = stats.bars.filter { known.contains($0.account) }
         if ids.isEmpty {
-            Text("No account selected").font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 190)
+            Text("No profile selected").font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 190)
         } else {
             chart(bars, ids: ids)
         }

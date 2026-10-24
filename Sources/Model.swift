@@ -93,7 +93,7 @@ enum FetchState: Equatable {
     var menuText: String? {
         switch self {
         case .idle, .ok: return nil
-        case .noLogin: return "No Claude Code login for this account"
+        case .noLogin: return "No Claude Code login for this profile"
         case .expired: return "Login expired: use Claude Code once to renew it"
         case .denied: return "Keychain access was not allowed"
         case .rateLimited: return "Usage service busy, retrying later"
