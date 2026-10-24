@@ -110,17 +110,17 @@ enum Launcher {
 
 // MARK: - Accounts as the launcher shows them
 
-/// Where a profile's cl_usage is: in the Dock, running but not pinned, hidden (running, no tile), not running,
+/// Where a profile's Dock icon app is: in the Dock, running but not pinned, hidden (running, no tile), not running,
 /// or its app missing.
 enum UsageIconState {
     case inDock, notPinned, hidden, notRunning, missing
     var text: String {
         switch self {
-        case .inDock: return "cl_usage in Dock"
-        case .notPinned: return "cl_usage unpinned"
-        case .hidden: return "cl_usage hidden"
-        case .notRunning: return "cl_usage stopped"
-        case .missing: return "cl_usage missing"
+        case .inDock: return "in the Dock"
+        case .notPinned: return "unpinned"
+        case .hidden: return "hidden"
+        case .notRunning: return "stopped"
+        case .missing: return "missing"
         }
     }
     var color: Color {
@@ -539,20 +539,6 @@ struct AccountCard: View {
                     Text(row.subtitle).font(.caption).lineLimit(1)
                         .foregroundStyle(row.needsLogin ? Color.red : Color.secondary)
                         .hidesEmail(row.subtitle.contains("@"))
-                    // Its Claude window and its cl_usage, each with a dot.
-                    HStack(spacing: 10) {
-                        if row.entry.desktop != .none {
-                            HStack(spacing: 5) {
-                                Circle().fill(row.activity.desktopOpen ? Color(nsColor: Painter.green) : Color.secondary.opacity(0.4)).frame(width: 6, height: 6)
-                                Text(row.activity.desktopOpen ? "Window open" : "Window closed")
-                            }
-                        }
-                        HStack(spacing: 5) {
-                            Circle().fill(row.usageIcon.color).frame(width: 6, height: 6)
-                            Text(row.usageIcon.text)
-                        }
-                    }
-                    .font(.caption2).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 0)
                 if let plan = row.status?.plan {
@@ -561,18 +547,18 @@ struct AccountCard: View {
                         .background(Color.primary.opacity(0.08), in: Capsule())
                 }
             }
-            // one style for every card on the dashboard (Settings ▸ Dashboard); each account's panel design is for its panels
+            // Its Claude window and its Dock icon, as switches (or the button that fixes a problem).
+            ProfileControls(row: row, actions: actions)
+            // one style for every card on the dashboard (Settings ▸ General); each profile's panel design is for its panels
             LimitsView(limits: row.limits, design: prefs.cardStyle, large: false)
           }
             Spacer(minLength: 12)         // cards in a row share one height; the buttons stay at the bottom
             HStack(spacing: 6) {
-                // One main button, the most useful next step; the rest is in "⋯".
-                switch mainAction {
-                case .signIn: Button("Sign in…") { actions.logIn(row) }.buttonStyle(.pill(.red))
-                case .start: Button("Start cl_usage") { actions.startUsage(row) }.buttonStyle(.pill(row.accent))
-                case .reinstall: Button("Reinstall cl_usage") { actions.startUsage(row) }.buttonStyle(.pill(row.accent))
-                case .window: Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }.buttonStyle(.pill(row.accent))
-                case .none: EmptyView()
+                // One main button: sign in when needed, otherwise bring the Claude window forward.
+                if row.needsLogin {
+                    Button("Sign in…") { actions.logIn(row) }.buttonStyle(.pill(.red))
+                } else if row.entry.desktop != .none {
+                    Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }.buttonStyle(.pill(row.accent))
                 }
                 Button("Terminal") { actions.terminal(row) }.buttonStyle(.pill)
                 moreMenu
@@ -589,29 +575,10 @@ struct AccountCard: View {
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.primary.opacity(0.08)))
     }
 
-    private enum MainAction { case signIn, start, reinstall, window, none }
-    private var mainAction: MainAction {
-        if row.needsLogin { return .signIn }
-        if row.usageIcon == .missing { return .reinstall }
-        if row.usageIcon == .notRunning && !Installer.waitsForWindow(row.entry) { return .start }
-        return row.entry.desktop != .none ? .window : .none
-    }
-
-    /// Everything else for this profile: the window and cl_usage actions that aren't the main button, and settings.
+    /// The rest for this profile.
     private var moreMenu: some View {
         Menu {
-            if row.entry.desktop != .none {
-                if mainAction != .window { Button(row.activity.desktopOpen ? "Show Claude window" : "Open Claude window") { actions.open(row) } }
-                if row.activity.desktopOpen { Button("Quit Claude window") { actions.quitWindow(row) } }
-                Divider()
-            }
-            switch row.usageIcon {
-            case .inDock: Button("Hide cl_usage") { actions.setHidden(row, true) }
-            case .notPinned: Button("Pin cl_usage") { actions.pin(row) }; Button("Hide cl_usage") { actions.setHidden(row, true) }
-            case .hidden: Button("Show cl_usage") { actions.setHidden(row, false) }
-            case .notRunning: if mainAction != .start { Button("Start cl_usage") { actions.startUsage(row) } }
-            case .missing: if mainAction != .reinstall { Button("Reinstall cl_usage") { actions.startUsage(row) } }
-            }
+            Button("Refresh now") { actions.refreshAll() }
             Divider()
             Button("Profile settings…") { actions.profileSettings(row) }
         } label: {
@@ -831,5 +798,58 @@ final class ManagerUI {
                 if self.ticks % 6 == 0, self.mainWindow?.isVisible == true { self.stats.reload() }   // every minute
             }
         }
+    }
+}
+
+/// A profile card's two controls: its Claude window and its Dock icon, each a switch. A Dock icon that needs
+/// fixing (stopped, missing, unpinned) shows the button that fixes it instead.
+struct ProfileControls: View {
+    let row: AccountRow
+    let actions: LauncherActions
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if row.entry.desktop != .none {
+                chip(glyph: AnyView(RoundedRectangle(cornerRadius: 2).fill(LinearGradient(colors: [Color(red: 0.88, green: 0.54, blue: 0.41), Color(red: 0.79, green: 0.39, blue: 0.25)], startPoint: .top, endPoint: .bottom)).frame(width: 15, height: 10)),
+                     title: "Claude window", sub: row.activity.desktopOpen ? "open" : "closed", on: row.activity.desktopOpen, warn: false) {
+                    Toggle("", isOn: Binding(get: { row.activity.desktopOpen },
+                                             set: { $0 ? actions.open(row) : actions.quitWindow(row) })).smallSwitch()
+                        .help(row.activity.desktopOpen ? "Quit this profile's Claude window" : "Open this profile's Claude window")
+                }
+            }
+            let s = row.usageIcon
+            chip(glyph: AnyView(RoundedRectangle(cornerRadius: 3).fill(LinearGradient(colors: [Color(white: 0.2), Color(white: 0.08)], startPoint: .top, endPoint: .bottom))
+                                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.35))).frame(width: 12, height: 12)),
+                 title: "Dock icon", sub: s.text, on: s == .inDock, warn: s == .notRunning || s == .missing || s == .notPinned) {
+                switch s {
+                case .inDock, .hidden:
+                    Toggle("", isOn: Binding(get: { s == .inDock }, set: { actions.setHidden(row, !$0) })).smallSwitch()
+                        .help(s == .inDock ? "Hide it: it keeps running in the background and still alerts" : "Show it in the Dock again")
+                case .notPinned: fix("Pin") { actions.pin(row) }
+                case .notRunning: fix("Start") { actions.startUsage(row) }
+                case .missing: fix("Reinstall") { actions.startUsage(row) }
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func fix(_ title: String, _ action: @escaping () -> Void) -> some View {
+        Button(title, action: action).buttonStyle(.pill(.orange, compact: true))
+    }
+
+    private func chip<C: View>(glyph: AnyView, title: String, sub: String, on: Bool, warn: Bool, @ViewBuilder trailing: () -> C) -> some View {
+        HStack(spacing: 7) {
+            glyph.opacity(on ? 1 : 0.4)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(title).font(.system(size: 11.5)).lineLimit(1).fixedSize()
+                Text(sub).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+            }
+            trailing()
+        }
+        .padding(.leading, 9).padding(.trailing, 6).padding(.vertical, 4)
+        .fixedSize()
+        .background(RoundedRectangle(cornerRadius: 9).fill(warn ? Color.orange.opacity(0.1) : Color.primary.opacity(0.05)))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(warn ? Color.orange.opacity(0.5) : Color.primary.opacity(0.08)))
     }
 }

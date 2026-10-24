@@ -27,23 +27,26 @@ them blurred (hover one to see it).
 
 **Profiles.** A profile is one Claude setup in cl_audit: its sign-in, Claude Code folder, Claude window and its
 Dock icon app ("cl_audit <profile>"). "Account" means only the claude.ai account a profile is signed in to.
-Each profile's dashboard card shows its Claude window (open/closed) and its Dock icon (in Dock, unpinned, hidden,
-stopped, missing), with one main button for the next step (Sign in…, Start or Reinstall, Show or Open window),
-Terminal, and "⋯" for the rest (Quit Claude window, Hide/Show/Pin the icon, Profile settings…).
+Each profile's dashboard card has two switches on one row: **Claude window** (open or quit it) and **Dock icon**
+(show or hide it). When the Dock icon needs fixing the switch becomes a button: **Pin** (unpinned), **Start**
+(stopped) or **Reinstall** (missing). Below them: Sign in… or Show/Open window, Terminal, and "⋯" (Refresh now,
+Profile settings…).
 
-**The icon and its Claude window** (profile settings ▸ cl_usage and Claude window). The icon can be **Hidden**: it
-keeps running without a Dock tile, so it still refreshes and alerts; hiding and showing restart it, and
-showing puts its pin back where it was (after about 10 s). **Open and close** picks one of four:
-Independent; the icon follows the window (window opens or quits → icon starts or quits, after 10 s; starting needs
-cl_audit running); the window follows the icon (icon starts or quits → window opens or quits; not at login, and a
-normal quit so Claude can ask about unsent work); or lockstep (both). With the window following, the icon's Dock
-menu has "Quit and keep Claude window". When cl_audit starts it reinstalls missing icon apps and starts the
-ones that should run. The icon's Dock menu now holds only actions; its options are in profile settings, and
-app-wide ones (dashboard card style, Dock, Show emails) in Settings ▸ General.
+**Dock icon** (profile settings ▸ Dock icon). **Show in the Dock** off hides the icon: it keeps running without a
+Dock tile, so it still refreshes and alerts; hiding and showing restart it, and showing puts its pin back where it
+was (after about 10 s). **Open at login** and **Now** (its current state) sit in the same card.
 
-**Window-open dot.** A small Claude-orange dot at the top-left of an account's icon means its Claude window is
-open; it appears and goes as the window starts and quits. Each account can turn it off (Settings ▸ account ▸
-Icon ▸ Window-open dot). The icon and its Claude window are otherwise
+**Opening and closing** (profile settings ▸ Opening and closing) asks two questions: when the Claude window opens
+or quits, start or quit the Dock icon too (it quits 10 s after the window; starting needs cl_audit running); and
+when the Dock icon starts or quits, open or quit the Claude window too (not at login, and a normal quit so Claude
+can ask about unsent work). A table under them shows what each of the four actions then does. With the window
+following, the icon's Dock menu has "Quit and keep Claude window". When cl_audit starts it reinstalls missing icon
+apps and starts the ones that should run. The icon's Dock menu holds only actions; its options are in profile
+settings, and app-wide ones (dashboard card style, Dock, Show emails) in General settings.
+
+**Claude open dot.** A small Claude-orange dot at the top-left of a profile's icon means its Claude window is open;
+it appears and goes as the window starts and quits. Pick it per profile like the colour (profile settings ▸ Icon ▸
+Claude open dot: none or while open). Otherwise the icon and its Claude window are
 independent: the icon keeps showing usage (which counts Claude Code in Terminal too) with the window closed.
 
 **Adding an account** (＋): in a wide window, three columns: the account and its window, the Claude Code

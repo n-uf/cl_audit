@@ -131,16 +131,23 @@ struct WindowPicture: View {
     }
 }
 
-/// The account's icon with and without the window-open dot.
-struct DotPicture: View {
-    let entry: AccountEntry
+/// The Claude open dot, picked like a colour: the profile's icon without and with the dot.
+struct DotChoice: View {
+    @Binding var entry: AccountEntry
     var body: some View {
-        HStack(spacing: 14) {
-            ForEach([false, true], id: \.self) { open in
-                VStack(spacing: 3) {
-                    Image(nsImage: tile(open)).resizable().frame(width: 40, height: 40)
-                    Text(open ? "window open" : "window closed").font(.system(size: 10)).foregroundStyle(.secondary)
+        HStack(spacing: 8) {
+            ForEach([false, true], id: \.self) { on in
+                Button { entry.windowDot = on } label: {
+                    VStack(spacing: 3) {
+                        Image(nsImage: tile(on)).resizable().frame(width: 30, height: 30)
+                        Text(on ? "while open" : "none").font(.system(size: 10, weight: entry.windowDot == on ? .semibold : .regular))
+                            .foregroundStyle(entry.windowDot == on ? Color.primary : Color.secondary)
+                    }
+                    .padding(.horizontal, 7).padding(.vertical, 5)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(entry.windowDot == on ? Color.primary.opacity(0.1) : .clear))
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
         }
     }
@@ -152,96 +159,109 @@ struct DotPicture: View {
     }
 }
 
-// MARK: - cl_usage and its Claude window
+// MARK: - Opening and closing
 
-/// The four ways a profile's cl_usage and its Claude window can open and close, as pictures:
-/// cl_usage on the left, the Claude window on the right, the arrow pointing at whoever follows.
-struct LifecycleChooser: View {
-    @Binding var selection: Lifecycle
+/// Two plain questions, one per cause, and a table of what each action then does to the other one.
+struct OpenCloseQuestions: View {
+    let profile: String
+    @Binding var lifecycle: Lifecycle
 
-    private static let options: [(Lifecycle, String, String)] = [
-        (.independent, "Independent", "each on its own"),
-        (.usageFollows, "cl_usage follows", "the window leads"),
-        (.windowFollows, "Window follows", "cl_usage leads"),
-        (.lockstep, "Lockstep", "either one leads")]
+    private var iconFollows: Bool { lifecycle.usageFollowsWindow }
+    private var windowFollows: Bool { lifecycle.windowFollowsUsage }
+    private func set(iconFollows a: Bool, windowFollows b: Bool) {
+        lifecycle = a ? (b ? .lockstep : .usageFollows) : (b ? .windowFollows : .independent)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 6) {
-                ForEach(Self.options, id: \.0) { o in tile(o.0, o.1, o.2) }
-            }
-            VStack(alignment: .leading, spacing: 3) {
-                ForEach(Self.lines(selection), id: \.self) { l in
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Text("→").foregroundStyle(Color.accentPill)
-                        Text(l).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 6) {
+            question("When \(profile)'s Claude window opens or quits", options: [
+                ("leave the Dock icon alone", nil),
+                ("start or quit the Dock icon too", "it quits 10 s after the window; starting needs cl_audit running")],
+                     selected: iconFollows ? 1 : 0) { set(iconFollows: $0 == 1, windowFollows: windowFollows) }
+            question("When \(profile)'s Dock icon starts or quits", options: [
+                ("leave the Claude window alone", nil),
+                ("open or quit the Claude window too", "not at login; Claude asks about unsent work")],
+                     selected: windowFollows ? 1 : 0) { set(iconFollows: iconFollows, windowFollows: $0 == 1) }
+            result
+        }
+    }
+
+    private func question(_ title: String, options: [(String, String?)], selected: Int, pick: @escaping (Int) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title).font(.system(size: 11.5)).foregroundStyle(.secondary)
+            ForEach(options.indices, id: \.self) { i in
+                Button { pick(i) } label: {
+                    HStack(alignment: .top, spacing: 7) {
+                        Circle().strokeBorder(i == selected ? Color.primary : Color.secondary, lineWidth: i == selected ? 4 : 1.3)
+                            .frame(width: 12, height: 12).padding(.top, 2)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(options[i].0).font(.system(size: 12, weight: i == selected ? .medium : .regular))
+                            if let note = options[i].1 { Text(note).font(.system(size: 10)).foregroundStyle(.secondary) }
+                        }
+                        Spacer(minLength: 0)
                     }
-                    .font(.system(size: 11))
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
             }
-            .padding(.horizontal, 8).padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.04)))
         }
+        .padding(.horizontal, 10).padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.04)))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.07)))
     }
 
-    /// What the chosen mode does, spelled out.
-    static func lines(_ m: Lifecycle) -> [String] {
-        switch m {
-        case .independent: return ["cl_usage and its Claude window open and close on their own"]
-        case .usageFollows: return ["Claude window opens → cl_usage starts (while cl_audit runs)",
-                                    "Claude window quits → cl_usage quits, after 10 s",
-                                    "cl_usage on its own → the window isn't touched"]
-        case .windowFollows: return ["cl_usage starts → its Claude window opens (not at login)",
-                                     "cl_usage quits → its Claude window quits; Claude asks about unsent work",
-                                     "the window on its own → cl_usage isn't touched"]
-        case .lockstep: return ["either one opens → the other opens (cl_usage: while cl_audit runs; window: not at login)",
-                                "either one quits → the other quits",
-                                "cl_usage menu ▸ Quit and keep Claude window: quits only cl_usage"]
-        }
-    }
-
-    private func tile(_ m: Lifecycle, _ title: String, _ sub: String) -> some View {
-        let on = selection == m
-        return Button { selection = m } label: {
-            VStack(spacing: 6) {
-                HStack(spacing: 3) {
-                    RoundedRectangle(cornerRadius: 5).fill(LinearGradient(colors: [Color(white: 0.2), Color(white: 0.08)], startPoint: .top, endPoint: .bottom))
-                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(Color.primary.opacity(0.2)))
-                        .frame(width: 18, height: 18)
-                    FollowArrow(mode: m).frame(width: 30, height: 10)
-                    RoundedRectangle(cornerRadius: 3)
-                        .fill(LinearGradient(colors: [Color(red: 0.88, green: 0.54, blue: 0.41), Color(red: 0.79, green: 0.39, blue: 0.25)], startPoint: .top, endPoint: .bottom))
-                        .frame(width: 24, height: 16)
+    /// The four things you can do and what happens to the other one.
+    private var result: some View {
+        let title: String = {
+            switch lifecycle {
+            case .independent: return "Independent"
+            case .usageFollows: return "The Dock icon follows the window"
+            case .windowFollows: return "The window follows the Dock icon"
+            case .lockstep: return "Together"
+            }
+        }()
+        let rows: [(Bool, String, String?, String?)] = [
+            (true, "You open the window", iconFollows ? "Dock icon starts" : nil, nil),
+            (true, "You quit the window", iconFollows ? "Dock icon quits" : nil, "10 s later"),
+            (false, "You start the Dock icon", windowFollows ? "window opens" : nil, "not at login"),
+            (false, "You quit the Dock icon", windowFollows ? "window quits" : nil, iconFollows ? "or ⌥ Quit and keep" : "Claude may ask")]
+        return VStack(spacing: 0) {
+            HStack {
+                Text(title).font(.system(size: 12, weight: .bold))
+                Spacer()
+                Text(profile).font(.system(size: 10.5)).foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 10).padding(.vertical, 7)
+            .background(Color.accentPill.opacity(0.14))
+            ForEach(rows.indices, id: \.self) { i in
+                let r = rows[i]
+                HStack(spacing: 8) {
+                    Group {
+                        if r.0 {
+                            RoundedRectangle(cornerRadius: 2).fill(LinearGradient(colors: [Color(red: 0.88, green: 0.54, blue: 0.41), Color(red: 0.79, green: 0.39, blue: 0.25)], startPoint: .top, endPoint: .bottom)).frame(width: 14, height: 10)
+                        } else {
+                            RoundedRectangle(cornerRadius: 3).fill(Color(white: 0.12)).overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.35))).frame(width: 10, height: 10)
+                        }
+                    }
+                    .frame(width: 14)
+                    Text(r.1).font(.system(size: 11.5)).foregroundStyle(Color.primary.opacity(0.8)).frame(width: 150, alignment: .leading)
+                    if let effect = r.2 {
+                        Text(effect).font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(nsColor: Painter.green))
+                            .padding(.horizontal, 8).padding(.vertical, 1)
+                            .background(Capsule().fill(Color(nsColor: Painter.green).opacity(0.16)))
+                        if let note = r.3 { Text(note).font(.system(size: 10)).foregroundStyle(.secondary) }
+                    } else {
+                        Text("not touched").font(.system(size: 11)).foregroundStyle(.tertiary)
+                    }
+                    Spacer(minLength: 0)
                 }
-                Text(title).font(.system(size: 11, weight: on ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.85)
-                Text(sub).font(.system(size: 9.5)).foregroundStyle(.secondary).lineLimit(1)
+                .padding(.horizontal, 10).padding(.vertical, 5)
+                .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1) }
             }
-            .padding(.vertical, 7).padding(.horizontal, 4)
-            .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 9).fill(on ? Color.accentPill.opacity(0.12) : Color.primary.opacity(0.04)))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(on ? Color.accentPill.opacity(0.75) : Color.primary.opacity(0.1), lineWidth: on ? 1.5 : 1))
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-    }
-}
-
-/// The line between cl_usage (left) and its window (right): dashed when independent, arrowheads at the follower.
-struct FollowArrow: View {
-    let mode: Lifecycle
-    var body: some View {
-        Canvas { ctx, size in
-            let y = size.height / 2, w = size.width
-            var line = Path(); line.move(to: CGPoint(x: 2, y: y)); line.addLine(to: CGPoint(x: w - 2, y: y))
-            let color: Color = mode == .independent ? .secondary.opacity(0.6) : .primary
-            ctx.stroke(line, with: .color(color), style: StrokeStyle(lineWidth: 1.4, dash: mode == .independent ? [2, 3] : []))
-            func head(_ x: CGFloat, _ dir: CGFloat) {
-                var p = Path(); p.move(to: CGPoint(x: x + 4 * dir, y: y - 3.5)); p.addLine(to: CGPoint(x: x, y: y)); p.addLine(to: CGPoint(x: x + 4 * dir, y: y + 3.5))
-                ctx.stroke(p, with: .color(color), lineWidth: 1.4)
-            }
-            if mode.usageFollowsWindow { head(2, 1) }        // points at cl_usage: it follows
-            if mode.windowFollowsUsage { head(w - 2, -1) }   // points at the window: it follows
-        }
+        .clipShape(RoundedRectangle(cornerRadius: 9))
+        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.09)))
+        .padding(.top, 4)
     }
 }

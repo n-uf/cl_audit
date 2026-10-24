@@ -495,9 +495,9 @@ struct AccountSettings: View {
     /// one when narrow; cards never get wider than a column.
     var body: some View {
         SettingsColumns(width: width,
-                        three: [[AnyView(accountCard), AnyView(codeCard), AnyView(updatesCard)], [AnyView(iconCard)], [AnyView(clickCard), AnyView(lifecycleCard)]],
-                        two: [[AnyView(accountCard), AnyView(codeCard), AnyView(clickCard), AnyView(updatesCard)], [AnyView(iconCard), AnyView(lifecycleCard)]],
-                        one: [AnyView(accountCard), AnyView(codeCard), AnyView(iconCard), AnyView(clickCard), AnyView(lifecycleCard), AnyView(updatesCard)])
+                        three: [[AnyView(accountCard), AnyView(codeCard), AnyView(updatesCard), AnyView(clickCard)], [AnyView(iconCard)], [AnyView(dockIconCard), AnyView(openCloseCard)]],
+                        two: [[AnyView(accountCard), AnyView(codeCard), AnyView(updatesCard), AnyView(clickCard)], [AnyView(iconCard), AnyView(dockIconCard), AnyView(openCloseCard)]],
+                        one: [AnyView(accountCard), AnyView(codeCard), AnyView(iconCard), AnyView(dockIconCard), AnyView(openCloseCard), AnyView(updatesCard), AnyView(clickCard)])
     }
 
     // Account
@@ -635,16 +635,33 @@ struct AccountSettings: View {
         }
     }
 
-    // cl_usage and its Claude window
-    var lifecycleCard: some View {
-        SCard(title: "cl_usage and Claude window") {
-            SRow(label: "cl_usage icon", info: "Hidden: cl_usage keeps running without a Dock tile, so it still refreshes and alerts. Show it again here or from its dashboard card.", first: true) {
-                PillPicker(options: [false, true], selection: $entry.iconHidden, compact: true) { $0 ? "Hidden" : "Shown" }
-            }
-            if entry.desktop != .none {
-                SRow(label: "Open and close", stacked: true) {
-                    LifecycleChooser(selection: $entry.lifecycle)
+    // Dock icon: whether it shows in the Dock and starts at login, and where it is now
+    var dockIconCard: some View {
+        let state = UsageIconState.of(entry)
+        return SCard(title: "Dock icon") {
+            SRow(label: "Show in the Dock", first: true) {
+                HStack(spacing: 8) {
+                    Toggle("", isOn: Binding(get: { !entry.iconHidden }, set: { entry.iconHidden = !$0 })).smallSwitch()
+                    Text(entry.iconHidden ? "runs in the background; still refreshes and alerts" : "shown in the Dock")
+                        .font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(2)
                 }
+            }
+            SRow(label: "Open at login") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
+            SRow(label: "Now") {
+                HStack(spacing: 6) {
+                    Circle().fill(state.color).frame(width: 7, height: 7)
+                    Text(state == .inDock ? "running, in the Dock" : state == .hidden ? "running, hidden" : state.text.prefix(1).uppercased() + state.text.dropFirst())
+                        .font(.system(size: 12))
+                }
+            }
+        }
+    }
+
+    // Opening and closing: how the Dock icon and the Claude window follow each other
+    @ViewBuilder var openCloseCard: some View {
+        if entry.desktop != .none {
+            SCard(title: "Opening and closing") {
+                OpenCloseQuestions(profile: entry.name.isEmpty ? "this profile" : entry.name, lifecycle: $entry.lifecycle)
             }
         }
     }
@@ -665,7 +682,6 @@ struct AccountSettings: View {
                     }
                 }
             }
-            SRow(label: "Open at login") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
         }
     }
 
@@ -679,9 +695,8 @@ struct AccountSettings: View {
             SRow(label: "Frame", stacked: true) {
                 SwatchRow(colors: TileColor.allCases, selected: entry.frame, none: true) { entry.frame = $0 }
             }
-            SRow(label: "Window-open dot", info: "A small orange dot at the icon's top-left while this profile's Claude window is open.",
-                 picture: AnyView(DotPicture(entry: entry))) {
-                Toggle("", isOn: $entry.windowDot).smallSwitch()
+            SRow(label: "Claude open dot", info: "An orange dot at the icon's corner while this profile's Claude window is open. Shown on every icon above while picked.", stacked: true) {
+                DotChoice(entry: $entry)
             }
         }
     }
@@ -728,7 +743,7 @@ struct IconGallery: View {
     func model(_ st: IconStyle, _ h: Double? = nil, _ w: Double? = nil) -> TileModel {
         TileModel(label: entry.label.isEmpty ? "?" : entry.label, fiveHour: h ?? status?.fiveHour ?? 58,
                   weekly: w ?? status?.weekly ?? 62, stale: false, style: st, tint: entry.color, frame: entry.frame,
-                  fiveHourElapsed: 45, weeklyElapsed: 60)
+                  fiveHourElapsed: 45, weeklyElapsed: 60, windowOpen: entry.windowDot && entry.desktop != .none)
     }
 
     var body: some View {

@@ -36,7 +36,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var usage: Usage?
     var claudeOpen = false        // this account's Claude window is running (drawn as a dot on the tile)
     var quietQuit = false         // quit without taking the Claude window along (cl_audit reinstalling, or "Quit and keep")
-    var quitForWindow = false     // quitting because the Claude window quit ("cl_usage follows")
+    var quitForWindow = false     // quitting because the Claude window quit ("the Dock icon follows the window")
     var windowQuitWork: DispatchWorkItem?
     var appliedHidden: Bool?
     var state: FetchState = .idle
@@ -317,7 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func refreshWindowState() {
         let open = windowIsOpen()
         if open != claudeOpen { claudeOpen = open; redraw() }
-        // "cl_usage follows": its window quit → quit too, after 10 s (a Claude update restarts the window).
+        // "The Dock icon follows the window": its window quit → quit too, after 10 s (a Claude update restarts the window).
         if entry.lifecycle.usageFollowsWindow, account.opensDesktop, !open {
             guard windowQuitWork == nil else { return }
             let work = DispatchWorkItem { [weak self] in
