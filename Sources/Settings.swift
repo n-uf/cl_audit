@@ -238,15 +238,16 @@ struct SettingsPage: View {
             if model.selection == SettingsModel.newID, model.draft != nil {
                 // The add-account page scrolls itself, so its action bar can stay pinned at the bottom.
                 NewAccountView(draft: Binding(get: { model.draft ?? NewAccountDraft() }, set: { model.draft = $0 }), model: model)
-            } else { ScrollView {
+            } else { GeometryReader { geo in ScrollView {
+                let w = geo.size.width - 28
                 if model.selection == SettingsModel.dashboardID {
-                    DashboardSettings().padding(14)
+                    DashboardSettings(width: w).padding(14)
                 } else if let id = model.selection, let entry = model.binding(id) {
-                    AccountSettings(entry: entry, model: model).padding(14)
+                    AccountSettings(entry: entry, model: model, width: w).padding(14)
                 } else {
                     Text("Add an account with ＋").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(40)
                 }
-            } }
+            } } }
         }
     }
 
@@ -350,29 +351,63 @@ struct SCard<Content: View>: View {
     }
 }
 
+/// A settings row: the label in a fixed column and the control right after it (never pushed to the card's
+/// far edge), or, for wide controls, the label above the control.
 struct SRow<Control: View>: View {
     let label: String
     var info: String? = nil
     var first = false
+    var stacked = false
+    var picture: AnyView? = nil        // a small illustration inside the (i)
     @ViewBuilder let control: Control
+
+    static var labelWidth: CGFloat { 128 }
 
     var body: some View {
         VStack(spacing: 0) {
             if !first { Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1) }
-            HStack(spacing: 8) {
-                Text(label).font(.system(size: 12)).foregroundStyle(Color.primary.opacity(0.82)).lineLimit(1)
-                if let info { InfoDot(text: info) }
-                Spacer(minLength: 6)
-                control
+            if stacked {
+                VStack(alignment: .leading, spacing: 6) { title; control }
+                    .padding(.vertical, 6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(spacing: 10) {
+                    title.frame(width: Self.labelWidth, alignment: .leading)
+                    control
+                    Spacer(minLength: 0)
+                }
+                .frame(minHeight: 28)
             }
-            .frame(minHeight: 28)
         }
+    }
+
+    private var title: some View {
+        HStack(spacing: 5) {
+            Text(label).font(.system(size: 12)).foregroundStyle(Color.primary.opacity(0.82)).lineLimit(1)
+            if let info { InfoDot(text: info, picture: picture) }
+        }
+    }
+}
+
+/// A small text field for settings rows (name, icon label).
+struct SField: View {
+    let placeholder: String
+    @Binding var text: String
+    var width: CGFloat = 180
+    var body: some View {
+        TextField(placeholder, text: $text)
+            .textFieldStyle(.plain).font(.system(size: 12))
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.22)))
+            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.12)))
+            .frame(width: width)
     }
 }
 
 /// The (i) next to a setting: click it for a short explanation in a popover (hover shows it too).
 struct InfoDot: View {
     let text: String
+    var picture: AnyView? = nil
     @State private var open = false
     @State private var hover = false
 
@@ -389,8 +424,11 @@ struct InfoDot: View {
         .help(text)
         .accessibilityLabel("About this setting")
         .popover(isPresented: $open, arrowEdge: .bottom) {
-            Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
-                .frame(width: 260, alignment: .leading).padding(12)
+            VStack(alignment: .leading, spacing: 9) {
+                Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                if let picture { picture }
+            }
+            .frame(width: 260, alignment: .leading).padding(12)
         }
     }
 }
@@ -445,6 +483,7 @@ extension PanelDesign {
 struct AccountSettings: View {
     @Binding var entry: AccountEntry
     @ObservedObject var model: SettingsModel
+    var width: CGFloat = 1280
 
     var status: IconStatus? { _ = model.tick; return Store.status(entry.id) }
     var expected: String? { Account.expectedEmail(configDir: entry.configDir) }
@@ -453,43 +492,36 @@ struct AccountSettings: View {
         return a.lowercased() != b.lowercased()
     }
 
+    /// Five cards in the order they're set: Account · Claude Code and window · Icon · Clicking and panels ·
+    /// Updates and alerts. Three columns when wide (the tall Icon card alone in the middle), two when medium,
+    /// one when narrow; cards never get wider than a column.
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(spacing: 10) { accountCard; loginCard }.frame(maxWidth: .infinity)
-            VStack(spacing: 10) { clickCard; behaviourCard }.frame(maxWidth: .infinity)
-            VStack(spacing: 10) { iconCard; panelsCard }.frame(maxWidth: .infinity)
-        }
+        SettingsColumns(width: width,
+                        three: [[AnyView(accountCard), AnyView(codeCard), AnyView(updatesCard)], [AnyView(iconCard)], [AnyView(clickCard)]],
+                        two: [[AnyView(accountCard), AnyView(codeCard), AnyView(clickCard), AnyView(updatesCard)], [AnyView(iconCard)]],
+                        one: [AnyView(accountCard), AnyView(codeCard), AnyView(iconCard), AnyView(clickCard), AnyView(updatesCard)])
     }
 
     // Account
     var accountCard: some View {
         SCard(title: "Account") {
-            SRow(label: "Name", first: true) {
-                TextField("", text: $entry.name).textFieldStyle(.plain).multilineTextAlignment(.trailing).frame(maxWidth: 150)
-            }
+            SRow(label: "Name", first: true) { SField(placeholder: "name", text: $entry.name) }
             SRow(label: "Icon label", info: "Up to 6 letters drawn on the icon. The Dock names the app “cl_audit \(entry.name)”.") {
-                TextField("", text: Binding(get: { entry.label },
-                                            set: { entry.label = String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) }))
-                    .textFieldStyle(.plain).multilineTextAlignment(.trailing).frame(maxWidth: 90)
+                SField(placeholder: "LABEL", text: Binding(get: { entry.label },
+                                                           set: { entry.label = String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) }), width: 80)
             }
             SRow(label: "Colour", info: "This account's colour in the launcher, the dashboard and the panels. The icon's own colour is under Icon.") {
-                HStack(spacing: 6) {
-                    ForEach(TileColor.accents, id: \.self) { c in
-                        Swatch(color: c, selected: entry.accentColor == c, size: 14)
-                            .onTapGesture { entry.accent = c }
-                            .help(c.rawValue.capitalized)
-                    }
-                }
+                SwatchRow(colors: TileColor.accents, selected: entry.accentColor) { if let c = $0 { entry.accent = c } }
             }
-            SRow(label: "") {
-                Button("Remove account…") { model.askRemove(entry.id) }.buttonStyle(.plain).font(.caption).foregroundStyle(.red.opacity(0.85))
-            }
+            Button("Remove account…") { model.askRemove(entry.id) }
+                .buttonStyle(.plain).font(.system(size: 11.5)).foregroundStyle(.red.opacity(0.85))
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8).padding(.bottom, 2)
         }
     }
 
-    // Login
-    var loginCard: some View {
-        SCard(title: "Claude Code login",
+    // Claude Code and window
+    var codeCard: some View {
+        SCard(title: "Claude Code and window",
               info: "The icon reads this folder's Claude Code login from the Keychain, read-only, the same way Claude Code does. No new Keychain permission.") {
             SRow(label: "Folder", first: true) {
                 HStack(spacing: 4) {
@@ -513,53 +545,19 @@ struct AccountSettings: View {
             }
             SRow(label: "Login") { loginStatus }
             if mismatch || status?.state == "noLogin" || status?.state == "expired" {
-                SRow(label: mismatch ? "Folder is for \(expected ?? "another account")" : "Sign in again") {
+                SRow(label: mismatch ? "Wrong account" : "Sign in again") {
                     Button("Log in…") {
                         if let claude = model.claudePath { ClaudeCLI.openLogin(claude, account: Account(entry), email: expected) }
                     }
                     .buttonStyle(.pill(.red, compact: true)).disabled(model.claudePath == nil)
                 }
             }
-            SRow(label: "Renew expired login",
+            SRow(label: "Renew if expired",
                  info: model.claudePath == nil ? "Needs Claude Code installed; it wasn't found."
                     : "When the login expires, the icon runs Claude Code once with a one-line Haiku prompt so it renews, at most every 30 min. Uses a little of this account's usage." + (status?.renewNote.map { "\nLast: \($0)" } ?? "")) {
                 Toggle("", isOn: $entry.autoRenew).smallSwitch().disabled(model.claudePath == nil)
             }
-        }
-    }
-
-    @ViewBuilder var loginStatus: some View {
-        if mismatch {
-            Label(status?.loginEmail ?? "", systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red).lineLimit(1)
-                .settingsEmail()
-        } else if status?.state == "expired" {
-            Label("expired", systemImage: "clock.badge.exclamationmark").font(.caption).foregroundStyle(.orange)
-        } else if let e = status?.loginEmail {
-            Label(e, systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(Color(nsColor: Painter.green)).lineLimit(1)
-                .settingsEmail()
-        } else {
-            Text(expected ?? "not logged in yet").font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                .settingsEmail(expected != nil)
-        }
-    }
-
-    // Clicks
-    var clickCard: some View {
-        SCard(title: "Clicking the icon") {
-            SRow(label: "Click", first: true) {
-                Picker("", selection: $entry.clickAction) { ForEach(ClickAction.allCases) { Text($0.shortTitle).tag($0) } }.smallMenu()
-            }
-            if entry.clickAction == .peekThenOpen {
-                SRow(label: "Show usage for") {
-                    MiniStepper(text: PeekDuration.text(entry.peekSeconds),
-                                down: { entry.peekSeconds = PeekDuration.down(entry.peekSeconds) },
-                                up: { entry.peekSeconds = PeekDuration.up(entry.peekSeconds) })
-                }
-            }
-            SRow(label: "Press and hold", info: "Press and hold the icon for its details panel and a short menu. Double-click or ⌥-click also opens the panel; right-click shows the full menu.") {
-                Toggle("", isOn: $entry.longPressDetails).smallSwitch()
-            }
-            SRow(label: "Claude window", info: "Which Claude window this account opens: the standard one, its own (with its own sign-in and data), or none.") {
+            SRow(label: "Claude window", info: "Which Claude window this account opens: the standard one, its own (with its own sign-in and data), or none.", picture: AnyView(WindowPicture(mode: entry.desktop))) {
                 Menu {
                     ForEach([DesktopMode.standard, .separate, .none]) { mode in
                         let owner = mode == .standard ? FolderRules.windowOwner(.standard, "", among: model.accounts, except: entry.id) : nil
@@ -600,18 +598,59 @@ struct AccountSettings: View {
         }
     }
 
-    // Behaviour
-    var behaviourCard: some View {
-        SCard(title: "Behaviour") {
+    @ViewBuilder var loginStatus: some View {
+        if mismatch {
+            Label(status?.loginEmail ?? "", systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red).lineLimit(1)
+                .settingsEmail()
+        } else if status?.state == "expired" {
+            Label("expired", systemImage: "clock.badge.exclamationmark").font(.caption).foregroundStyle(.orange)
+        } else if let e = status?.loginEmail {
+            Label(e, systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(Color(nsColor: Painter.green)).lineLimit(1)
+                .settingsEmail()
+        } else {
+            Text(expected ?? "not logged in yet").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                .settingsEmail(expected != nil)
+        }
+    }
+
+    // Clicking and panels
+    var clickCard: some View {
+        SCard(title: "Clicking and panels", info: "Click: this panel briefly. Double-click, ⌥-click or press and hold: the large panel in the same design.") {
+            SRow(label: "Click", first: true, picture: AnyView(ClickPicture(action: entry.clickAction, seconds: entry.peekSeconds))) {
+                Picker("", selection: $entry.clickAction) { ForEach(ClickAction.allCases) { Text($0.shortTitle).tag($0) } }.smallMenu()
+            }
+            if entry.clickAction == .peekThenOpen {
+                SRow(label: "Show usage for") {
+                    MiniStepper(text: PeekDuration.text(entry.peekSeconds),
+                                down: { entry.peekSeconds = PeekDuration.down(entry.peekSeconds) },
+                                up: { entry.peekSeconds = PeekDuration.up(entry.peekSeconds) })
+                }
+            }
+            SRow(label: "Press and hold", info: "Press and hold the icon for its details panel and a short menu. Double-click or ⌥-click also opens the panel; right-click shows the full menu.") {
+                Toggle("", isOn: $entry.longPressDetails).smallSwitch()
+            }
+            SRow(label: "Panel design", stacked: true) {
+                PillPicker(options: PanelDesign.allCases, selection: $entry.panelDesign, compact: true) { $0.shortTitle }
+                CompactView(info: sampleInfo).scaleEffect(0.92, anchor: .topLeading)
+                    .frame(height: 114, alignment: .topLeading).padding(.top, 4)
+            }
+        }
+    }
+
+    // Updates and alerts
+    var updatesCard: some View {
+        SCard(title: "Updates and alerts") {
             SRow(label: "Refresh every", first: true) {
                 Picker("", selection: $entry.pollMinutes) { ForEach([2, 5, 10, 15], id: \.self) { Text("\($0) min").tag($0) } }.smallMenu()
             }
-            SRow(label: "Notify near a limit") { Toggle("", isOn: $entry.notify).smallSwitch() }
-            if entry.notify {
-                SRow(label: "Notify at") {
-                    MiniStepper(text: "\(entry.notifyPercent)%",
-                                down: { entry.notifyPercent = max(50, entry.notifyPercent - 5) },
-                                up: { entry.notifyPercent = min(100, entry.notifyPercent + 5) })
+            SRow(label: "Notify at", info: "A notification when the 5-hour or weekly limit reaches this level.") {
+                HStack(spacing: 8) {
+                    Toggle("", isOn: $entry.notify).smallSwitch()
+                    if entry.notify {
+                        MiniStepper(text: "\(entry.notifyPercent)%",
+                                    down: { entry.notifyPercent = max(50, entry.notifyPercent - 5) },
+                                    up: { entry.notifyPercent = min(100, entry.notifyPercent + 5) })
+                    }
                 }
             }
             SRow(label: "Open at login") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
@@ -622,31 +661,12 @@ struct AccountSettings: View {
     var iconCard: some View {
         SCard(title: "Icon") {
             IconGallery(entry: $entry, status: status)
-            SRow(label: "Colour", info: entry.color == .usage ? "By usage: follows the 5-hour level." : "Tells the accounts apart on the label, the Big number tile and the panels' dot.") {
-                HStack(spacing: 2) {
-                    ForEach(TileColor.allCases) { c in
-                        Swatch(color: c, selected: entry.color == c, size: 14).onTapGesture { entry.color = c }.help(c.title)
-                    }
-                }
+            SRow(label: "Colour", info: entry.color == .usage ? "By usage: follows the 5-hour level." : "Tells the accounts apart on the label, the Big number tile and the panels' dot.", stacked: true) {
+                SwatchRow(colors: TileColor.allCases, selected: entry.color) { if let c = $0 { entry.color = c } }
             }
-            SRow(label: "Frame") {
-                HStack(spacing: 2) {
-                    NoneSwatch(selected: entry.frame == nil, size: 14).onTapGesture { entry.frame = nil }.help("No frame")
-                    ForEach(TileColor.allCases) { c in
-                        Swatch(color: c, selected: entry.frame == c, size: 14).onTapGesture { entry.frame = c }.help(c.title)
-                    }
-                }
+            SRow(label: "Frame", stacked: true) {
+                SwatchRow(colors: TileColor.allCases, selected: entry.frame, none: true) { entry.frame = $0 }
             }
-        }
-    }
-
-    // Panels
-    var panelsCard: some View {
-        SCard(title: "Panels", info: "Click: this panel briefly. Double-click, ⌥-click or press and hold: the large panel in the same design.") {
-            PillPicker(options: PanelDesign.allCases, selection: $entry.panelDesign, compact: true) { $0.shortTitle }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            CompactView(info: sampleInfo).scaleEffect(0.92, anchor: .topLeading)
-                .frame(height: 134, alignment: .topLeading).padding(.top, 8)
         }
     }
 

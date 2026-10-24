@@ -121,6 +121,48 @@ enum DockManager {
 
     static func same(_ a: [[String: Any]], _ b: [[String: Any]]) -> Bool { a.map(path) == b.map(path) }
 
+    static func fileURL(_ tile: [String: Any]) -> URL? {
+        guard let t = tile["tile-data"] as? [String: Any], let f = t["file-data"] as? [String: Any],
+              let s = f["_CFURLString"] as? String else { return nil }
+        return s.hasPrefix("file://") ? URL(string: s) : URL(fileURLWithPath: s)
+    }
+
+    private static var icons: [String: NSImage] = [:]
+    static func icon(_ url: URL) -> NSImage {
+        if let i = icons[url.path] { return i }
+        let i = NSWorkspace.shared.icon(forFile: url.path)
+        icons[url.path] = i
+        return i
+    }
+
+    /// Pins in `now` that `after` drops (the extra copies of a path).
+    static func removedMarks(_ now: [[String: Any]], _ after: [[String: Any]]) -> Set<Int> {
+        var left = Dictionary(after.compactMap(path).map { ($0, 1) }, uniquingKeysWith: +)
+        var out = Set<Int>()
+        for (i, t) in now.enumerated() {
+            guard let p = path(t) else { continue }
+            if (left[p] ?? 0) > 0 { left[p]! -= 1 } else { out.insert(i) }
+        }
+        return out
+    }
+
+    /// Pins in `after` that are new, or whose neighbour on the left changed (moved).
+    static func changedMarks(_ now: [[String: Any]], _ after: [[String: Any]]) -> Set<Int> {
+        let n = now.map(path), a = after.map(path)
+        var out = Set<Int>()
+        var seen: [String: Int] = [:]
+        for (i, p) in a.enumerated() {
+            guard let p else { continue }
+            let k = seen[p, default: 0]; seen[p] = k + 1
+            let positions = n.indices.filter { n[$0] == p }
+            guard k < positions.count else { out.insert(i); continue }      // added
+            let before = positions[k] > 0 ? n[positions[k] - 1] : nil
+            let left = i > 0 ? a[i - 1] : nil
+            if before != left { out.insert(i) }
+        }
+        return out
+    }
+
     /// One line for the card: whether the Dock already matches, and what differs.
     static func status(accounts: [AccountEntry], prefs: DockPrefs) -> (tidy: Bool, text: String) {
         let current = pins()
@@ -175,6 +217,8 @@ struct DockCard: View {
         let _ = tick
         let accounts = Store.load()
         let st = DockManager.status(accounts: accounts, prefs: prefs)
+        let now = DockManager.pins()
+        let after = DockManager.plan(now, accounts: accounts, prefs: prefs)
         return SCard(title: "Dock") {
             SRow(label: "Manage the Dock", info: "Keeps the cl_audit icons pinned together and Claude pinned at most once. With several Claude windows open, macOS mixes up which Claude pin is which; the cl_audit icons always open the right window.", first: true) {
                 Toggle("", isOn: Binding(get: { prefs.manage }, set: { on in
@@ -189,31 +233,34 @@ struct DockCard: View {
                 }
                 SRow(label: "Claude pins", info: "One pin opens the standard Claude window. More pins get mixed up between windows.") {
                     PillPicker(options: DockPrefs.ClaudePins.allCases, selection: Binding(get: { prefs.claude }, set: { prefs.claude = $0; DockManager.tidy(accounts: accounts); refreshSoon() }),
-                               compact: true) { $0 == .one ? "One, before the group" : $0 == .none ? "None" : "Leave as is" }
+                               compact: true) { $0 == .one ? "One" : $0 == .none ? "None" : "Leave" }
                 }
-                HStack(spacing: 8) {
-                    Circle().fill(st.tidy ? Color(nsColor: Painter.green) : Color.orange).frame(width: 7, height: 7)
-                    Text(st.text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 6)
-                    if !st.tidy {
-                        Text("restarts the Dock once").font(.system(size: 11)).foregroundStyle(.secondary)
-                        Button("Tidy now") { DockManager.tidy(accounts: accounts); refreshSoon() }
-                            .buttonStyle(.pill(Color(red: 0.85, green: 0.47, blue: 0.34), compact: true))
+                SRow(label: "Now") {
+                    HStack(spacing: 6) {
+                        Circle().fill(st.tidy ? Color(nsColor: Painter.green) : Color.orange).frame(width: 7, height: 7)
+                        Text(st.tidy ? "Tidy" : "Not tidy").font(.system(size: 12)).help(st.text)
+                        if !st.tidy {
+                            Button("Tidy now") { DockManager.tidy(accounts: accounts); refreshSoon() }
+                                .buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                                .help("Restarts the Dock once")
+                                .padding(.leading, 6)
+                        }
                     }
                 }
-                .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 9).fill((st.tidy ? Color.green : Color.orange).opacity(0.08)))
-                .overlay(RoundedRectangle(cornerRadius: 9).stroke((st.tidy ? Color.green : Color.orange).opacity(0.3)))
-                .padding(.vertical, 6)
+                if !st.tidy {
+                    VStack(alignment: .leading, spacing: 4) {
+                        DockStrip(label: "now", tiles: now, marks: DockManager.removedMarks(now, after), color: .red)
+                        DockStrip(label: "after", tiles: after, marks: DockManager.changedMarks(now, after), color: Color(nsColor: Painter.green))
+                        Text("Your Dock's pinned apps; red: pins removed, green: pins moved or added. Hover an icon for its name.")
+                            .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.bottom, 6)
+                }
             }
             if let date = prefs.backupDate {
-                HStack {
-                    Text("Your Dock as it was on \(date.formatted(.dateTime.day().month(.abbreviated).hour().minute())), before cl_audit changed it")
-                        .font(.system(size: 11.5)).foregroundStyle(.secondary)
-                    Spacer()
+                SRow(label: "Before cl_audit", info: "Your Dock's pins as they were on \(date.formatted(.dateTime.day().month(.abbreviated).hour().minute())), saved before cl_audit first changed them.") {
                     Button("Restore my Dock") { DockManager.restore(); refreshSoon() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
                 }
-                .padding(.top, 2)
             }
         }
         .onAppear { tick += 1 }
@@ -223,5 +270,32 @@ struct DockCard: View {
     private func refreshSoon() {
         tick += 1
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { tick += 1 }
+    }
+}
+
+/// A row of pinned apps drawn with their real icons; marked ones get a coloured outline.
+struct DockStrip: View {
+    let label: String
+    let tiles: [[String: Any]]
+    let marks: Set<Int>
+    let color: Color
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(label).font(.system(size: 10.5)).foregroundStyle(.secondary).frame(width: 30, alignment: .leading)
+            HStack(spacing: 3) {
+                ForEach(tiles.indices, id: \.self) { i in
+                    let url = DockManager.fileURL(tiles[i])
+                    Image(nsImage: url.map { DockManager.icon($0) } ?? NSImage())
+                        .resizable().interpolation(.high).frame(width: 18, height: 18)
+                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(marks.contains(i) ? color : .clear, lineWidth: 1.5).padding(-1.5))
+                        .opacity(marks.contains(i) && color == .red ? 0.55 : 1)
+                        .help(url?.deletingPathExtension().lastPathComponent ?? "")
+                }
+            }
+            .padding(.horizontal, 6).padding(.vertical, 4)
+            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.28)))
+            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.08)))
+        }
     }
 }

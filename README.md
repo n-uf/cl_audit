@@ -63,6 +63,12 @@ they point to. The default `~/.claude`, the standard window, and a folder anothe
 are never deleted, and Claude using the folders must be closed first. Each sync also cleans up leftovers of
 accounts removed by older versions.
 
+**Settings layout.** Every row keeps its control right next to the label; wide controls (card style, panel design,
+colours) sit under their label. Cards are at most one column wide: three columns from about 1180 pt, two from 800,
+one below. An account has five cards: Account, Claude Code and window, Icon, Clicking and panels, Updates and
+alerts. Charts are picked by clicking their thumbnails; the Dock card shows your Dock now and after a tidy, with
+your real app icons; some (i) explanations include a small picture.
+
 **Dashboard settings** (Settings ▸ Dashboard): one card style for every account card on the dashboard
 (Glow, Rings, Numbers, Segments or Pace; each account's own panel design is for its panels), the history
 period (the dashboard's 24 h / 7 d / 30 d switch changes it too) and which history charts to show. Cards in
