@@ -105,6 +105,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         entry = fresh
         if refetch { loginEmail = nil; profileFor = nil; nextFetch = .distantPast; cachedLogin = nil }
         applyEntry()
+        refreshWindowState()          // a new open/close mode applies right away, not at the next refresh
         if refetch { tick() }
         if entry.autoRenew && state == .expired { maybeRenew() }
     }
