@@ -127,6 +127,33 @@ enum DockManager {
         return s.hasPrefix("file://") ? URL(string: s) : URL(fileURLWithPath: s)
     }
 
+    static let finderURL = URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app")
+
+    /// What the Dock shows for a pinned app: a cl_audit icon app's live tile (its account's numbers), otherwise
+    /// the app's icon.
+    static func tileImage(_ url: URL) -> NSImage {
+        if let e = Store.load().first(where: { key(Installer.appURL($0)) == key(url) }) {
+            return preview(e, status: Store.status(e.id))
+        }
+        return icon(url)
+    }
+
+    /// Running apps the Dock shows after its divider: apps that aren't pinned, and extra windows of a pinned app
+    /// (each Claude window is its own app), in launch order.
+    static func running(besides tiles: [[String: Any]]) -> [(image: NSImage, name: String)] {
+        var pinned = Dictionary(tiles.compactMap(path).map { ($0, 1) }, uniquingKeysWith: +)
+        pinned[key(finderURL)] = 1
+        return NSWorkspace.shared.runningApplications
+            .filter { $0.activationPolicy == .regular && $0.bundleURL != nil }
+            .sorted { ($0.launchDate ?? .distantPast) < ($1.launchDate ?? .distantPast) }
+            .compactMap { app in
+                let k = key(app.bundleURL!)
+                if let n = pinned[k], n > 0 { pinned[k] = n - 1; return nil }
+                let image = Store.load().contains { key(Installer.appURL($0)) == k } ? tileImage(app.bundleURL!) : (app.icon ?? icon(app.bundleURL!))
+                return (image, app.localizedName ?? app.bundleURL!.deletingPathExtension().lastPathComponent)
+            }
+    }
+
     private static var icons: [String: NSImage] = [:]
     static func icon(_ url: URL) -> NSImage {
         if let i = icons[url.path] { return i }
@@ -141,32 +168,31 @@ enum DockManager {
         return Set(tiles.indices.filter { i in path(tiles[i]).map { ours.contains($0) || isIconApp($0) } ?? false })
     }
 
-    /// Pins in `now` that `after` drops (the extra copies of a path).
-    static func removedMarks(_ now: [[String: Any]], _ after: [[String: Any]]) -> Set<Int> {
-        var left = Dictionary(after.compactMap(path).map { ($0, 1) }, uniquingKeysWith: +)
-        var out = Set<Int>()
-        for (i, t) in now.enumerated() {
-            guard let p = path(t) else { continue }
-            if (left[p] ?? 0) > 0 { left[p]! -= 1 } else { out.insert(i) }
+    /// The pins that keep their order between `now` and `after` (longest common run), by index on each side.
+    static func kept(_ now: [[String: Any]], _ after: [[String: Any]]) -> (now: Set<Int>, after: Set<Int>) {
+        let n = now.map { path($0) ?? "" }, a = after.map { path($0) ?? "" }
+        var table = Array(repeating: Array(repeating: 0, count: a.count + 1), count: n.count + 1)
+        for i in stride(from: n.count - 1, through: 0, by: -1) {
+            for j in stride(from: a.count - 1, through: 0, by: -1) {
+                table[i][j] = n[i] == a[j] ? table[i + 1][j + 1] + 1 : max(table[i + 1][j], table[i][j + 1])
+            }
         }
-        return out
+        var kn = Set<Int>(), ka = Set<Int>(), i = 0, j = 0
+        while i < n.count && j < a.count {
+            if n[i] == a[j] { kn.insert(i); ka.insert(j); i += 1; j += 1 }
+            else if table[i + 1][j] >= table[i][j + 1] { i += 1 } else { j += 1 }
+        }
+        return (kn, ka)
     }
 
-    /// Pins in `after` that are new, or whose neighbour on the left changed (moved).
+    /// Pins in `now` that go: removed, or moved away from here.
+    static func removedMarks(_ now: [[String: Any]], _ after: [[String: Any]]) -> Set<Int> {
+        Set(now.indices).subtracting(kept(now, after).now)
+    }
+
+    /// Pins in `after` that are new, or moved here.
     static func changedMarks(_ now: [[String: Any]], _ after: [[String: Any]]) -> Set<Int> {
-        let n = now.map(path), a = after.map(path)
-        var out = Set<Int>()
-        var seen: [String: Int] = [:]
-        for (i, p) in a.enumerated() {
-            guard let p else { continue }
-            let k = seen[p, default: 0]; seen[p] = k + 1
-            let positions = n.indices.filter { n[$0] == p }
-            guard k < positions.count else { out.insert(i); continue }      // added
-            let before = positions[k] > 0 ? n[positions[k] - 1] : nil
-            let left = i > 0 ? a[i - 1] : nil
-            if before != left { out.insert(i) }
-        }
-        return out
+        Set(after.indices).subtracting(kept(now, after).after)
     }
 
     /// Whether the cl_audit icons are pinned side by side, in account order, with the cl_audit app last.
@@ -189,8 +215,12 @@ enum DockManager {
         }
         var parts: [String] = []
         if prefs.claude == .one && claudePins != 1 { parts.append(claudePins == 0 ? "Claude isn't pinned" : "Claude is pinned \(claudePins) times") }
+        if prefs.claude == .one && claudePins == 1 && prefs.icons == .together { parts.append("Claude is pinned, but not just before the cl_audit icons") }
         if prefs.claude == .none && claudePins > 0 { parts.append("Claude is pinned \(claudePins == 1 ? "once" : "\(claudePins) times")") }
         if prefs.icons == .together && !iconsInOrder(current, accounts: accounts) { parts.append("the cl_audit icons are apart or out of order") }
+        if parts.count > 1, parts.contains("Claude is pinned, but not just before the cl_audit icons"), parts.contains("the cl_audit icons are apart or out of order") {
+            parts.removeAll { $0 == "Claude is pinned, but not just before the cl_audit icons" }
+        }
         let reason = parts.isEmpty ? "the pins differ" : parts.joined(separator: "; ")
         return (false, reason.prefix(1).uppercased() + reason.dropFirst())
     }
@@ -240,9 +270,21 @@ struct DockCard: View {
         return SCard(title: "Dock") {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Keep the Dock in order").font(.system(size: 12.5, weight: .medium))
+                    HStack(spacing: 6) {
+                        Text("Keep the Dock in order").font(.system(size: 12.5, weight: .medium))
+                        Text("EXPERIMENTAL").font(.system(size: 9, weight: .bold)).tracking(0.5).foregroundStyle(.orange)
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(Capsule().fill(Color.orange.opacity(0.15)))
+                            .overlay(Capsule().stroke(Color.orange.opacity(0.5)))
+                    }
                     Text("Pins the cl_audit icons side by side, in account order, with at most one Claude pin before them. Several Claude pins get mixed up between Claude windows; the cl_audit icons always open the right one. Redone when you add or remove an account.")
                         .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    HStack(alignment: .firstTextBaseline, spacing: 5) {
+                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9.5)).foregroundStyle(.orange)
+                        Text("Invasive and error-prone: it rewrites your Dock's pin list and restarts the Dock, and macOS can misplace or drop pins along the way. “Restore my Dock” puts back the pins saved before the first change.")
+                            .font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.top, 2)
                 }
                 Spacer(minLength: 6)
                 Toggle("", isOn: Binding(get: { prefs.manage }, set: { on in
@@ -268,12 +310,12 @@ struct DockCard: View {
                     }
                     if st.tidy {
                         DockStrip(label: "now", tiles: now, marks: DockManager.managedMarks(now, accounts: accounts), color: Color(nsColor: Painter.green))
-                        caption("Your pinned apps. Outlined: the ones cl_audit keeps in order. Hover an icon for its name.")
+                        caption("Your Dock: pinned apps, then running ones after the divider. Outlined: the pins cl_audit keeps in order. Hover an icon for its name.")
                     } else {
                         caption(st.text, color: .orange)
                         DockStrip(label: "now", tiles: now, marks: DockManager.removedMarks(now, after), color: .red)
                         DockStrip(label: "after", tiles: after, marks: DockManager.changedMarks(now, after), color: Color(nsColor: Painter.green))
-                        caption("Red: pins Arrange Dock removes. Green: pins it moves or adds. Other apps stay where they are.")
+                        caption("Red: pins Arrange Dock removes or moves away. Green: where they go, and new pins. Running apps are shown in launch order; the Dock may order them differently.")
                     }
                 }
                 .padding(.vertical, 8)
@@ -355,19 +397,30 @@ struct DockStrip: View {
     var body: some View {
         HStack(spacing: 6) {
             Text(label).font(.system(size: 10.5)).foregroundStyle(.secondary).frame(width: 30, alignment: .leading)
+            // As the Dock shows it: Finder, the pinned apps, a divider, then running apps that aren't pinned.
             HStack(spacing: 3) {
+                tile(DockManager.icon(DockManager.finderURL), name: "Finder", mark: false)
                 ForEach(tiles.indices, id: \.self) { i in
                     let url = DockManager.fileURL(tiles[i])
-                    Image(nsImage: url.map { DockManager.icon($0) } ?? NSImage())
-                        .resizable().interpolation(.high).frame(width: 18, height: 18)
-                        .overlay(RoundedRectangle(cornerRadius: 5).stroke(marks.contains(i) ? color : .clear, lineWidth: 1.5).padding(-1.5))
-                        .opacity(marks.contains(i) && color == .red ? 0.55 : 1)
-                        .help(url?.deletingPathExtension().lastPathComponent ?? "")
+                    tile(url.map { DockManager.tileImage($0) } ?? NSImage(), name: url?.deletingPathExtension().lastPathComponent ?? "", mark: marks.contains(i))
+                }
+                let running = DockManager.running(besides: tiles)
+                if !running.isEmpty {
+                    Rectangle().fill(Color.primary.opacity(0.3)).frame(width: 1, height: 16).padding(.horizontal, 3)
+                    ForEach(running.indices, id: \.self) { i in tile(running[i].image, name: running[i].name + " (running)", mark: false) }
                 }
             }
             .padding(.horizontal, 6).padding(.vertical, 4)
             .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.28)))
             .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.08)))
         }
+    }
+
+    private func tile(_ image: NSImage, name: String, mark: Bool) -> some View {
+        Image(nsImage: image)
+            .resizable().interpolation(.high).frame(width: 18, height: 18)
+            .overlay(RoundedRectangle(cornerRadius: 5).stroke(mark ? color : .clear, lineWidth: 1.5).padding(-1.5))
+            .opacity(mark && color == .red ? 0.55 : 1)
+            .help(name)
     }
 }

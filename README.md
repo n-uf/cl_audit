@@ -47,12 +47,13 @@ does the next step (Create/Connect, Sign in…, Finish). Each choice says what i
   read). One button does the next part; "Finish now" leaves sign-in for later.
 - **Cancel** undoes only what the setup created: an existing folder is never deleted or signed out.
 
-**Managing the Dock** (Settings ▸ Dashboard ▸ Dock, off by default). macOS ties running Claude windows to Claude
+**Managing the Dock** (Settings ▸ Dashboard ▸ Dock, off by default; experimental, invasive and error-prone: it rewrites the Dock's pin list and restarts the Dock, and macOS can misplace or drop pins). macOS ties running Claude windows to Claude
 pins in its own order, so several Claude pins get mixed up between windows; the cl_audit icons are the reliable way
 to reach each account's window. When on, cl_audit keeps its icons pinned together in account order (the cl_audit
 app last) and keeps one Claude pin before them (or none), and redoes it after accounts are added, removed or
 renamed. Other apps keep their places. Only the Dock's pin list changes, the Dock restarts once and only when
-something differs, and the list is saved before the first change ("Restore my Dock").
+something differs, and the list is saved before the first change ("Restore my Dock"). A cl_audit icon you removed
+from the Dock comes back with "Arrange Dock"; without the setting, use Options ▸ Keep in Dock or drag it from /Applications.
 
 **Removing an account** (Settings ▸ account ▸ Remove account…, or right-click its tile) always removes its
 Dock icon app and what macOS keeps for it: the open-at-login entry, preferences, caches, network storage,
