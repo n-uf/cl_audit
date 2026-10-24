@@ -27,6 +27,24 @@ struct StatsSection: View {
                     .font(.caption).foregroundStyle(.secondary)
                 PillPicker(options: StatsRange.allCases, selection: $stats.range) { $0.title }
             }
+            // Which charts to show: filters for this view, kept between launches.
+            HStack(spacing: 8) {
+                Text("Show").font(.caption).foregroundStyle(.secondary)
+                WrapChips(items: [("When you use Claude", prefs.showHeatmap),
+                                  (stats.range == .day ? "Tokens per hour" : "Tokens per day", prefs.showTokens),
+                                  ("Where it goes", prefs.showShares)]) { i in
+                    switch i {
+                    case 0: prefs.showHeatmap.toggle()
+                    case 1: prefs.showTokens.toggle()
+                    default: prefs.showShares.toggle()
+                    }
+                }
+            }
+            if !prefs.showHeatmap && !prefs.showTokens && !prefs.showShares {
+                Text("All charts are hidden; pick one above.").font(.callout).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity).padding(.vertical, 18)
+                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.03)))
+            }
             if prefs.showHeatmap {
             ChartCard(title: "When you use Claude", note: "replies per hour · colour mixes the accounts") {
                 Heatmap(stats: stats)
@@ -59,7 +77,7 @@ struct StatsSection: View {
             }
             .font(.caption).foregroundStyle(.secondary)
         }
-        // the period set in Settings ▸ Dashboard
+        // the period is remembered between launches
         .onAppear { if stats.range != prefs.range { stats.range = prefs.range } }
         .onChange(of: prefs.range) { r in if stats.range != r { stats.range = r } }
     }

@@ -149,7 +149,7 @@ struct Breakdown {
 }
 
 final class StatsModel: ObservableObject {
-    // the dashboard's period is a dashboard setting (Settings ▸ Dashboard) too
+    // the period, picked on the dashboard and remembered between launches
     @Published var range: StatsRange = DashboardPrefs.shared.range {
         didSet { if DashboardPrefs.shared.range != range { DashboardPrefs.shared.range = range }; reload() }
     }

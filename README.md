@@ -66,13 +66,13 @@ accounts removed by older versions.
 **Settings layout.** Every row keeps its control right next to the label; wide controls (card style, panel design,
 colours) sit under their label. Cards are at most one column wide: three columns from about 1180 pt, two from 800,
 one below. An account has five cards: Account, Claude Code and window, Icon, Clicking and panels, Updates and
-alerts. Charts are picked by clicking their thumbnails; the Dock card shows your Dock now and after a tidy, with
+alerts. The Dock card shows your Dock now and after a tidy, with
 your real app icons; some (i) explanations include a small picture.
 
-**Dashboard settings** (Settings ▸ Dashboard): one card style for every account card on the dashboard
-(Glow, Rings, Numbers, Segments or Pace; each account's own panel design is for its panels), the history
-period (the dashboard's 24 h / 7 d / 30 d switch changes it too) and which history charts to show. Cards in
-a row always share one height, with their buttons lined up at the bottom.
+**Dashboard settings** (Settings ▸ Dashboard): one card style for every account card on the dashboard (Glow, Rings,
+Numbers, Segments or Pace; each account's own panel design is for its panels), and the Dock. The history period
+(24 h / 7 d / 30 d) and which charts to show ("Show" chips) are filters on the dashboard itself, kept between
+launches. Cards in a row always share one height, with their buttons lined up at the bottom.
 
 The same rules apply in Settings: the Folder, Claude window and Data folder menus mark what other accounts
 use, and the account bar refuses to apply two accounts sharing a folder or a window.
