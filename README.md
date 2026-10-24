@@ -66,8 +66,8 @@ accounts removed by older versions.
 **Settings layout.** Every row keeps its control right next to the label; wide controls (card style, panel design,
 colours) sit under their label. Cards are at most one column wide: three columns from about 1180 pt, two from 800,
 one below. An account has five cards: Account, Claude Code and window, Icon, Clicking and panels, Updates and
-alerts. The Dock card shows your Dock now and after a tidy, with
-your real app icons; some (i) explanations include a small picture.
+alerts. The Dock card always shows your pinned apps with their real icons (the ones cl_audit looks after outlined), and,
+when the Dock doesn't match its settings, the Dock now and after "Arrange Dock"; some (i) explanations include a small picture.
 
 **Dashboard settings** (Settings ▸ Dashboard): one card style for every account card on the dashboard (Glow, Rings,
 Numbers, Segments or Pace; each account's own panel design is for its panels), and the Dock. The history period

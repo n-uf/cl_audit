@@ -2,7 +2,7 @@
 // account order with the cl_audit app last, and keeps at most one Claude pin, placed before the group. macOS ties
 // running Claude windows to Claude pins in its own order, so several pins get mixed up; the cl_audit icons are
 // the reliable way to reach each account's window. Only the Dock's pin list (com.apple.dock persistent-apps)
-// is changed, and the Dock restarts once, only when something differs. The list is saved before the first
+// is changed, and the Dock restarts once, only when it doesn't match the settings. The list is saved before the first
 // change so it can be restored.
 
 import AppKit
@@ -75,7 +75,7 @@ enum DockManager {
         Installer.info(URL(fileURLWithPath: "/" + p))?["UsageAccountID"] != nil
     }
 
-    /// The pin list as it should be, from the current one. Apps that aren't cl_audit's or Claude stay in place.
+    /// The pin list as these settings want it, from the current one. Apps that aren't cl_audit's or Claude stay in place.
     static func plan(_ current: [[String: Any]], accounts: [AccountEntry], prefs: DockPrefs) -> [[String: Any]] {
         let claudeKey = key(claudeURL)
         let ours = accounts.map { key(Installer.appURL($0)) } + [key(settingsURL)]
@@ -135,6 +135,12 @@ enum DockManager {
         return i
     }
 
+    /// Pins cl_audit looks after: its icon apps and Claude.
+    static func managedMarks(_ tiles: [[String: Any]], accounts: [AccountEntry]) -> Set<Int> {
+        let ours = Set(accounts.map { key(Installer.appURL($0)) } + [key(settingsURL), key(claudeURL)])
+        return Set(tiles.indices.filter { i in path(tiles[i]).map { ours.contains($0) || isIconApp($0) } ?? false })
+    }
+
     /// Pins in `now` that `after` drops (the extra copies of a path).
     static func removedMarks(_ now: [[String: Any]], _ after: [[String: Any]]) -> Set<Int> {
         var left = Dictionary(after.compactMap(path).map { ($0, 1) }, uniquingKeysWith: +)
@@ -163,19 +169,30 @@ enum DockManager {
         return out
     }
 
+    /// Whether the cl_audit icons are pinned side by side, in account order, with the cl_audit app last.
+    static func iconsInOrder(_ tiles: [[String: Any]], accounts: [AccountEntry]) -> Bool {
+        let wanted = (accounts.map { Installer.appURL($0) } + [settingsURL]).filter { FileManager.default.fileExists(atPath: $0.path) }.map(key)
+        let paths = tiles.map(path)
+        let found = paths.indices.filter { i in paths[i].map { wanted.contains($0) || isIconApp($0) } ?? false }
+        guard let first = found.first else { return wanted.isEmpty }
+        let contiguous = found == Array(first..<(first + found.count))
+        return contiguous && found.compactMap { paths[$0] } == wanted
+    }
+
     /// One line for the card: whether the Dock already matches, and what differs.
     static func status(accounts: [AccountEntry], prefs: DockPrefs) -> (tidy: Bool, text: String) {
         let current = pins()
         let claudePins = current.filter { path($0) == key(claudeURL) }.count
         if same(current, plan(current, accounts: accounts, prefs: prefs)) {
-            return (true, "Tidy: Claude pinned \(claudePins == 0 ? "nowhere" : claudePins == 1 ? "once" : "\(claudePins) times")"
+            return (true, "Claude pinned \(claudePins == 0 ? "nowhere" : claudePins == 1 ? "once" : "\(claudePins) times")"
                     + (prefs.icons == .together ? ", cl_audit icons together" : ""))
         }
         var parts: [String] = []
         if prefs.claude == .one && claudePins != 1 { parts.append(claudePins == 0 ? "Claude isn't pinned" : "Claude is pinned \(claudePins) times") }
         if prefs.claude == .none && claudePins > 0 { parts.append("Claude is pinned \(claudePins == 1 ? "once" : "\(claudePins) times")") }
-        if prefs.icons == .together { parts.append("the cl_audit icons are apart or out of order") }
-        return (false, "Not tidy: " + (parts.isEmpty ? "the pins differ" : parts.joined(separator: "; ")))
+        if prefs.icons == .together && !iconsInOrder(current, accounts: accounts) { parts.append("the cl_audit icons are apart or out of order") }
+        let reason = parts.isEmpty ? "the pins differ" : parts.joined(separator: "; ")
+        return (false, reason.prefix(1).uppercased() + reason.dropFirst())
     }
 
     /// Writes the planned list and restarts the Dock, only if it differs. Saves the original list first.
@@ -208,7 +225,8 @@ enum DockManager {
     }
 }
 
-/// Settings ▸ Dashboard ▸ Dock.
+/// Settings ▸ Dashboard ▸ Dock. Written so each part says what it does: one switch with its effect spelled
+/// out, the Dock as a picture, then the two choices as plain options, and an undo.
 struct DockCard: View {
     @ObservedObject private var prefs = DockPrefs.shared
     @State private var tick = 0
@@ -220,50 +238,104 @@ struct DockCard: View {
         let now = DockManager.pins()
         let after = DockManager.plan(now, accounts: accounts, prefs: prefs)
         return SCard(title: "Dock") {
-            SRow(label: "Manage the Dock", info: "Keeps the cl_audit icons pinned together and Claude pinned at most once. With several Claude windows open, macOS mixes up which Claude pin is which; the cl_audit icons always open the right window.", first: true) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Keep the Dock in order").font(.system(size: 12.5, weight: .medium))
+                    Text("Pins the cl_audit icons side by side, in account order, with at most one Claude pin before them. Several Claude pins get mixed up between Claude windows; the cl_audit icons always open the right one. Redone when you add or remove an account.")
+                        .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 6)
                 Toggle("", isOn: Binding(get: { prefs.manage }, set: { on in
                     prefs.manage = on
                     if on { DockManager.tidy(accounts: accounts); refreshSoon() }
                 })).smallSwitch()
             }
+            .padding(.vertical, 4)
+
             if prefs.manage {
-                SRow(label: "cl_audit icons", info: "Pinned side by side in account order, the cl_audit app last. Pins follow as accounts are added or removed.") {
-                    PillPicker(options: DockPrefs.Icons.allCases, selection: Binding(get: { prefs.icons }, set: { prefs.icons = $0; DockManager.tidy(accounts: accounts); refreshSoon() }),
-                               compact: true) { $0 == .together ? "Together" : "Leave as is" }
-                }
-                SRow(label: "Claude pins", info: "One pin opens the standard Claude window. More pins get mixed up between windows.") {
-                    PillPicker(options: DockPrefs.ClaudePins.allCases, selection: Binding(get: { prefs.claude }, set: { prefs.claude = $0; DockManager.tidy(accounts: accounts); refreshSoon() }),
-                               compact: true) { $0 == .one ? "One" : $0 == .none ? "None" : "Leave" }
-                }
-                SRow(label: "Now") {
+                divider
+                // The Dock as it is (and as it would be), with its status and the one action.
+                VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
                         Circle().fill(st.tidy ? Color(nsColor: Painter.green) : Color.orange).frame(width: 7, height: 7)
-                        Text(st.tidy ? "Tidy" : "Not tidy").font(.system(size: 12)).help(st.text)
+                        Text(st.tidy ? "Your Dock matches these choices" : "Your Dock doesn't match yet").font(.system(size: 12))
+                        Spacer(minLength: 6)
                         if !st.tidy {
-                            Button("Tidy now") { DockManager.tidy(accounts: accounts); refreshSoon() }
+                            Button("Arrange Dock") { DockManager.tidy(accounts: accounts); refreshSoon() }
                                 .buttonStyle(PillButtonStyle(tint: nil, compact: true))
-                                .help("Restarts the Dock once")
-                                .padding(.leading, 6)
+                                .help("Rearranges the pins as chosen below; the Dock restarts once")
                         }
                     }
-                }
-                if !st.tidy {
-                    VStack(alignment: .leading, spacing: 4) {
+                    if st.tidy {
+                        DockStrip(label: "now", tiles: now, marks: DockManager.managedMarks(now, accounts: accounts), color: Color(nsColor: Painter.green))
+                        caption("Your pinned apps. Outlined: the ones cl_audit keeps in order. Hover an icon for its name.")
+                    } else {
+                        caption(st.text, color: .orange)
                         DockStrip(label: "now", tiles: now, marks: DockManager.removedMarks(now, after), color: .red)
                         DockStrip(label: "after", tiles: after, marks: DockManager.changedMarks(now, after), color: Color(nsColor: Painter.green))
-                        Text("Your Dock's pinned apps; red: pins removed, green: pins moved or added. Hover an icon for its name.")
-                            .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        caption("Red: pins Arrange Dock removes. Green: pins it moves or adds. Other apps stay where they are.")
                     }
-                    .padding(.bottom, 6)
                 }
+                .padding(.vertical, 8)
+
+                divider
+                choices(title: "Claude pins", options: [
+                    (DockPrefs.ClaudePins.one, "One Claude pin, just before the cl_audit icons", "It opens the standard Claude window"),
+                    (.none, "No Claude pin", "Open each Claude window from its cl_audit icon"),
+                    (.leave, "Don't touch Claude pins", "Leave them as you placed them")],
+                        selected: prefs.claude) { prefs.claude = $0; DockManager.tidy(accounts: accounts); refreshSoon() }
+                divider
+                choices(title: "cl_audit icons", options: [
+                    (DockPrefs.Icons.together, "Side by side, in account order", "The cl_audit app last"),
+                    (.leave, "Don't move them", "Leave them as you placed them")],
+                        selected: prefs.icons) { prefs.icons = $0; DockManager.tidy(accounts: accounts); refreshSoon() }
             }
+
             if let date = prefs.backupDate {
-                SRow(label: "Before cl_audit", info: "Your Dock's pins as they were on \(date.formatted(.dateTime.day().month(.abbreviated).hour().minute())), saved before cl_audit first changed them.") {
+                divider
+                HStack(spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Undo cl_audit's Dock changes").font(.system(size: 12))
+                        caption("Puts back your pins as they were on \(date.formatted(.dateTime.day().month(.abbreviated).hour().minute()))")
+                    }
+                    Spacer(minLength: 6)
                     Button("Restore my Dock") { DockManager.restore(); refreshSoon() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
                 }
+                .padding(.vertical, 6)
             }
         }
         .onAppear { tick += 1 }
+    }
+
+    private var divider: some View { Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1) }
+
+    private func caption(_ s: String, color: Color = .secondary) -> some View {
+        Text(s).font(.system(size: 11)).foregroundStyle(color).fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// A small group of radio choices, each with a one-line note.
+    private func choices<T: Hashable>(title: String, options: [(T, String, String)], selected: T, pick: @escaping (T) -> Void) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.system(size: 11)).foregroundStyle(.secondary).padding(.bottom, 2)
+            ForEach(options.indices, id: \.self) { i in
+                let o = options[i], on = o.0 == selected
+                Button { pick(o.0) } label: {
+                    HStack(alignment: .top, spacing: 8) {
+                        Circle().strokeBorder(on ? Color.primary : Color.secondary, lineWidth: on ? 4 : 1.3)
+                            .frame(width: 12, height: 12).padding(.top, 2)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(o.1).font(.system(size: 12, weight: on ? .medium : .regular))
+                            Text(o.2).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 3)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
     }
 
     /// The Dock rewrites its list as it restarts; look again shortly after.
