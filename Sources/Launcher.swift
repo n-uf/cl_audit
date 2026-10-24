@@ -145,6 +145,13 @@ struct AccountRow: Identifiable {
     let status: IconStatus?
     var activity = Launcher.Activity()
     var usageIcon: UsageIconState = .inDock
+    /// A change cl_audit started and is still waiting for (the switch shows it at once, with a spinner).
+    var busy: CardChange?
+    var notice: CardNotice?
+    /// Seconds until the Dock icon quits with its window (Opening and closing), or nil.
+    var followQuitIn: TimeInterval?
+    /// The window just opened and the Dock icon is about to start with it.
+    var followStarting = false
     var id: String { entry.id }
     var account: Account { Account(entry) }
 
@@ -184,6 +191,35 @@ struct AccountRow: Identifiable {
     }
 }
 
+/// What a card switch is waiting for after a click. Showing has two stages: restarting, then pinning.
+enum CardChange: Equatable {
+    case opening, quitting, hiding, showing, pinning, starting
+    var text: String {
+        switch self {
+        case .opening: return "opening…"
+        case .quitting: return "quitting…"
+        case .hiding: return "hiding…"
+        case .showing: return "showing…"
+        case .pinning: return "pinning…"
+        case .starting: return "starting…"
+        }
+    }
+    /// Where the switch points while it waits.
+    var target: Bool { self != .quitting && self != .hiding }
+    /// How long to wait before giving up and showing the real state.
+    var limit: TimeInterval {
+        switch self {
+        case .opening: return 30
+        case .quitting: return 5
+        case .hiding, .showing: return 25
+        case .pinning, .starting: return 12
+        }
+    }
+}
+
+/// What a change that ran out of time left behind.
+enum CardNotice { case openFailed, claudeAsking }
+
 final class LauncherModel: ObservableObject {
     @Published var rows: [AccountRow] = []
     @Published var refreshing = false
@@ -203,10 +239,92 @@ final class LauncherModel: ObservableObject {
     func reload() {
         let entries = Store.load()
         let acts = Launcher.activity(for: entries.map(Account.init))
+        let now = Date()
         rows = entries.map {
-            AccountRow(entry: $0, status: Store.status($0.id), activity: acts[Account($0).configDir] ?? .init(), usageIcon: UsageIconState.of($0))
+            var r = AccountRow(entry: $0, status: Store.status($0.id), activity: acts[Account($0).configDir] ?? .init(), usageIcon: UsageIconState.of($0))
+            settle(&r, now)
+            return r
         }
         selected = min(selected, max(filtered.count - 1, 0))
+        if pending.isEmpty && followQuit.isEmpty && followStart.isEmpty { fastTimer?.invalidate(); fastTimer = nil }
+    }
+
+    // MARK: Changes in progress
+
+    private struct Pending {
+        let change: CardChange
+        let started = Date()
+        let oldPID: pid_t?          // the Dock icon's process when the change began; hiding and showing restart it
+    }
+    private var pending: [String: Pending] = [:]
+    private var notices: [String: CardNotice] = [:]
+    private var followQuit: [String: Date] = [:]     // when the Dock icon quits, following its window
+    private var followStart: [String: Date] = [:]    // when the window opened that the Dock icon starts with
+    private var lastOpen: [String: Bool] = [:]
+    private var fastTimer: Timer?
+
+    /// A card switch was flipped: show the change at once and look every 0.5 s until it is done or out of time.
+    func begin(_ id: String, _ change: CardChange) {
+        notices[id] = nil
+        let pid = rows.first { $0.id == id }.flatMap { Installer.running(Installer.appURL($0.entry)).first?.processIdentifier }
+        pending[id] = Pending(change: change, oldPID: pid)
+        reload()
+        startFast()
+    }
+
+    private func startFast() {
+        guard fastTimer == nil else { return }
+        fastTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.reload() }
+    }
+
+    private func settle(_ r: inout AccountRow, _ now: Date) {
+        let id = r.id, e = r.entry
+        let open = r.activity.desktopOpen
+        let running = r.usageIcon != .notRunning && r.usageIcon != .missing
+
+        // The window opened or quit: with the Dock icon following it, say what comes next.
+        if let was = lastOpen[id], was != open, e.lifecycle.usageFollowsWindow, e.desktop != .none {
+            if open { followStart[id] = now; followQuit[id] = nil } else { followQuit[id] = now + 10; followStart[id] = nil }
+            startFast()
+        }
+        lastOpen[id] = open
+
+        if let p = pending[id] {
+            let age = now.timeIntervalSince(p.started)
+            let pid = Installer.running(Installer.appURL(e)).first?.processIdentifier
+            let restarted = pid != nil && pid != p.oldPID
+            var done: Bool
+            var shown = p.change
+            switch p.change {
+            case .opening: done = open
+            case .quitting: done = !open
+            case .hiding: done = restarted && r.usageIcon == .hidden
+            case .showing:
+                done = restarted && r.usageIcon == .inDock
+                if restarted && r.usageIcon == .notPinned { shown = .pinning }
+            case .pinning: done = r.usageIcon == .inDock
+            case .starting: done = running
+            }
+            if !done && age > p.change.limit {
+                done = true
+                if p.change == .opening { notices[id] = .openFailed }
+                if p.change == .quitting { notices[id] = .claudeAsking }
+            }
+            if done { pending[id] = nil } else { r.busy = shown }
+        }
+
+        if notices[id] == .openFailed && open { notices[id] = nil }
+        if notices[id] == .claudeAsking && !open { notices[id] = nil }
+        r.notice = notices[id]
+
+        if let t = followQuit[id] {
+            if open || !running || now.timeIntervalSince(t) > 15 { followQuit[id] = nil }
+            else { r.followQuitIn = max(0, t.timeIntervalSince(now)) }
+        }
+        if let t = followStart[id] {
+            if !open || running || now.timeIntervalSince(t) > 15 { followStart[id] = nil }
+            else { r.followStarting = true }
+        }
     }
 
     var filtered: [AccountRow] {
@@ -229,6 +347,7 @@ struct LauncherActions {
     var refresh: () -> Void = {}
     var refreshAll: () -> Void = {}
     var quitWindow: (AccountRow) -> Void = { _ in }
+    var showClaude: (AccountRow) -> Void = { _ in }       // bring the running window forward, no change tracked
     var startUsage: (AccountRow) -> Void = { _ in }       // start, or reinstall when the app is missing
     var setHidden: (AccountRow, Bool) -> Void = { _, _ in }
     var pin: (AccountRow) -> Void = { _ in }
@@ -641,7 +760,11 @@ final class ManagerUI {
     private var timer: Timer?
 
     lazy var actions = LauncherActions(
-        open: { [weak self] r in self?.closePalette(); Launcher.openClaude(r.account) },
+        open: { [weak self] r in
+            self?.closePalette()
+            if !r.activity.desktopOpen && r.entry.desktop != .none { self?.model.begin(r.id, .opening) }
+            Launcher.openClaude(r.account)
+        },
         terminal: { [weak self] r in self?.closePalette(); Launcher.openTerminal(r.account) },
         logIn: { [weak self] r in
             self?.closePalette()
@@ -661,30 +784,32 @@ final class ManagerUI {
             }
         },
         quitWindow: { [weak self] r in
+            self?.model.begin(r.id, .quitting)
             NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
                 .filter { Launcher.isWindow(of: r.account, $0) }.forEach { $0.terminate() }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { self?.model.reload() }
         },
+        showClaude: { r in Launcher.openClaude(r.account) },
         startUsage: { [weak self] r in
+            self?.model.begin(r.id, .starting)
             let app = Installer.appURL(r.entry)
             if FileManager.default.fileExists(atPath: app.path) { Installer.run("/usr/bin/open", [app.path]) }
             else { Installer.sync(Store.load()) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self?.model.reload() }
         },
         setHidden: { [weak self] r, hidden in
+            self?.model.begin(r.id, hidden ? .hiding : .showing)
             var e = r.entry; e.iconHidden = hidden; Store.update(e)
             if !hidden, !Installer.isRunning(Installer.appURL(e)) { Installer.run("/usr/bin/open", ["-g", Installer.appURL(e).path, "--args", "--no-follow"]) }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self?.model.reload() }
         },
         pin: { [weak self] r in
+            self?.model.begin(r.id, .pinning)
             DockManager.pin(Installer.appURL(r.entry))
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self?.model.reload() }
         },
         profileSettings: { [weak self] r in self?.showMain(page: .settings, account: r.id) })
 
     var paletteShown: Bool { palette?.isVisible == true }
     var dashboardShown: Bool { mainWindow?.isVisible == true && mainWindow?.isMiniaturized == false }
     private var othersObserver: NSObjectProtocol?
+    private var appObservers: [NSObjectProtocol] = []
 
     init() {
         // An account icon opening its panel closes the palette (and the palette closes theirs).
@@ -692,6 +817,16 @@ final class ManagerUI {
             forName: DetailsController.panelOpened, object: nil, queue: .main) { [weak self] note in
             guard (note.object as? String) != Bundle.main.bundleIdentifier else { return }
             self?.closePalette()
+        }
+        // A Claude window or Dock icon starting or quitting shows on the cards right away, not at the next check.
+        let ws = NSWorkspace.shared.notificationCenter
+        for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
+            appObservers.append(ws.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                guard let self, self.dashboardShown || self.paletteShown,
+                      let id = (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier,
+                      id == Launcher.claudeBundleID || id.hasPrefix(Installer.managerID + ".") else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.model.reload() }
+            })
         }
     }
 
@@ -808,34 +943,73 @@ struct ProfileControls: View {
     let actions: LauncherActions
 
     var body: some View {
-        HStack(spacing: 6) {
-            if row.entry.desktop != .none {
-                chip(glyph: AnyView(RoundedRectangle(cornerRadius: 2).fill(LinearGradient(colors: [Color(red: 0.88, green: 0.54, blue: 0.41), Color(red: 0.79, green: 0.39, blue: 0.25)], startPoint: .top, endPoint: .bottom)).frame(width: 15, height: 10)),
-                     title: "Claude window", sub: row.activity.desktopOpen ? "open" : "closed", on: row.activity.desktopOpen, warn: false) {
-                    Toggle("", isOn: Binding(get: { row.activity.desktopOpen },
-                                             set: { $0 ? actions.open(row) : actions.quitWindow(row) })).smallSwitch()
-                        .help(row.activity.desktopOpen ? "Quit this profile's Claude window" : "Open this profile's Claude window")
-                }
+        // side by side; the Dock icon moves under the window when the card is narrow
+        FlowLayout(spacing: 6) {
+            if row.entry.desktop != .none { windowChip }
+            dockChip
+        }
+    }
+
+    private var windowGlyph: AnyView {
+        AnyView(RoundedRectangle(cornerRadius: 2).fill(LinearGradient(colors: [Color(red: 0.88, green: 0.54, blue: 0.41), Color(red: 0.79, green: 0.39, blue: 0.25)], startPoint: .top, endPoint: .bottom)).frame(width: 15, height: 10))
+    }
+    private var dockGlyph: AnyView {
+        AnyView(RoundedRectangle(cornerRadius: 3).fill(LinearGradient(colors: [Color(white: 0.2), Color(white: 0.08)], startPoint: .top, endPoint: .bottom))
+            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.35))).frame(width: 12, height: 12))
+    }
+
+    @ViewBuilder private var windowChip: some View {
+        let open = row.activity.desktopOpen
+        if let c = row.busy, c == .opening || c == .quitting {
+            chip(glyph: windowGlyph, title: "Claude window", sub: c.text, on: c.target, warn: false) { BusySwitch(on: c.target) }
+        } else if row.notice == .openFailed {
+            chip(glyph: windowGlyph, title: "Claude window", sub: "didn't open", on: false, warn: true) { fix("Retry") { actions.open(row) } }
+        } else if row.notice == .claudeAsking {
+            chip(glyph: windowGlyph, title: "Claude window", sub: "Claude is asking", on: true, warn: true) {
+                fix("Show") { actions.showClaude(row) }.help("Claude asks before quitting, for example about unsent work; answer it there")
             }
-            let s = row.usageIcon
-            chip(glyph: AnyView(RoundedRectangle(cornerRadius: 3).fill(LinearGradient(colors: [Color(white: 0.2), Color(white: 0.08)], startPoint: .top, endPoint: .bottom))
-                                    .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.35))).frame(width: 12, height: 12)),
-                 title: "Dock icon", sub: s.text, on: s == .inDock, warn: s == .notRunning || s == .missing || s == .notPinned) {
+        } else {
+            chip(glyph: windowGlyph, title: "Claude window", sub: open ? "open" : "closed", on: open, warn: false) {
+                Toggle("", isOn: Binding(get: { open }, set: { $0 ? actions.open(row) : actions.quitWindow(row) })).smallSwitch()
+                    .help(open ? "Quit this profile's Claude window" : "Open this profile's Claude window")
+            }
+        }
+    }
+
+    @ViewBuilder private var dockChip: some View {
+        let s = row.usageIcon
+        let follows = row.entry.lifecycle.usageFollowsWindow && row.entry.desktop != .none
+        if let c = row.busy, c != .opening && c != .quitting {
+            // cl_audit is in the middle of it: no orange fix buttons until it is done or out of time
+            chip(glyph: dockGlyph, title: "Dock icon", sub: c.text, on: c.target, warn: false) { BusySwitch(on: c.target) }
+        } else if row.followStarting && s == .notRunning {
+            chip(glyph: dockGlyph, title: "Dock icon", sub: "starting…", on: true, warn: false) { BusySwitch(on: true).help("Starting with its Claude window") }
+        } else if s == .notRunning && follows && !row.activity.desktopOpen {
+            chip(glyph: dockGlyph, title: "Dock icon", sub: "waits for the window", on: false, warn: false) {
+                Button("Start") { actions.startUsage(row) }.buttonStyle(PillButtonStyle(compact: true)).fixedSize()
+                    .help("It stopped with its Claude window and starts again when the window opens (profile settings ▸ Opening and closing)")
+            }
+        } else {
+            let sub: String = {
+                guard let t = row.followQuitIn, s == .inDock || s == .hidden || s == .notPinned else { return s.text }
+                return t < 0.5 ? "quitting…" : "quits in \(Int(t.rounded(.up))) s"
+            }()
+            chip(glyph: dockGlyph, title: "Dock icon", sub: sub, on: s == .inDock, warn: s == .notRunning || s == .missing || s == .notPinned) {
                 switch s {
                 case .inDock, .hidden:
                     Toggle("", isOn: Binding(get: { s == .inDock }, set: { actions.setHidden(row, !$0) })).smallSwitch()
-                        .help(s == .inDock ? "Hide it: it keeps running in the background and still alerts" : "Show it in the Dock again")
+                        .help(row.followQuitIn != nil ? "It quits with its Claude window (profile settings ▸ Opening and closing)"
+                              : s == .inDock ? "Hide it: it keeps running in the background and still alerts" : "Show it in the Dock again")
                 case .notPinned: fix("Pin") { actions.pin(row) }
                 case .notRunning: fix("Start") { actions.startUsage(row) }
                 case .missing: fix("Reinstall") { actions.startUsage(row) }
                 }
             }
-            Spacer(minLength: 0)
         }
     }
 
     private func fix(_ title: String, _ action: @escaping () -> Void) -> some View {
-        Button(title, action: action).buttonStyle(.pill(.orange, compact: true))
+        Button(title, action: action).buttonStyle(.pill(.orange, compact: true)).fixedSize()
     }
 
     private func chip<C: View>(glyph: AnyView, title: String, sub: String, on: Bool, warn: Bool, @ViewBuilder trailing: () -> C) -> some View {
@@ -851,5 +1025,27 @@ struct ProfileControls: View {
         .fixedSize()
         .background(RoundedRectangle(cornerRadius: 9).fill(warn ? Color.orange.opacity(0.1) : Color.primary.opacity(0.05)))
         .overlay(RoundedRectangle(cornerRadius: 9).stroke(warn ? Color.orange.opacity(0.5) : Color.primary.opacity(0.08)))
+    }
+}
+
+/// A small switch already pointing where it is going, its knob a spinner, while cl_audit waits for the change.
+/// It takes no clicks.
+struct BusySwitch: View {
+    let on: Bool
+    var body: some View {
+        TimelineView(.animation) { ctx in
+            let turn = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.8) / 0.8 * 360
+            ZStack(alignment: on ? .trailing : .leading) {
+                Capsule().fill(on ? Color(nsColor: Painter.green).opacity(0.55) : Color.primary.opacity(0.16))
+                Circle().trim(from: 0, to: 0.72)
+                    .stroke(Color.white, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
+                    .frame(width: 9, height: 9)
+                    .rotationEffect(.degrees(turn))
+                    .padding(.horizontal, 3)
+            }
+            .frame(width: 26, height: 15)
+        }
+        .help("Working on it…")
+        .accessibilityLabel("Working")
     }
 }
