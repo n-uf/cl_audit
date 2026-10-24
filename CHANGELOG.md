@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.10.0 — 2026-10-24
+
 First calendar-versioned release; earlier builds called themselves 0.2.
 
 ### Profiles
