@@ -77,9 +77,16 @@ if [ $push = 1 ]; then
   mkdir -p dist && rm -f dist/cl_audit.zip
   ditto -c -k --keepParent build/cl_audit.app dist/cl_audit.zip
   section="$(awk -v h="## $next " 'index($0, h) == 1 {f=1; next} /^## /{f=0} f' CHANGELOG.md)"
+  # The Claude versions on this Mac, which this release was checked with (they can drift: see README ▸ Install).
+  cc="$(claude --version 2>/dev/null | awk '{print $1}')"
+  app="$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" /Applications/Claude.app/Contents/Info.plist 2>/dev/null)"
+  checked="Checked with Claude Code ${cc:-?} and the Claude app ${app:-?}. A newer Claude version can change how Claude Code saves its login or the usage figures; if something stops working, update cl_audit."
+  echo "$checked  (update README ▸ Install and the site's checkedWith if these changed)"
   gh release create "v$next" dist/cl_audit.zip --repo n-uf/cl_audit --title "cl_audit $next" --notes "$section
 
 ---
+
+$checked
 
 **Download:** \`cl_audit.zip\` below (Apple silicon, macOS 13 or later). Unzip it, move **cl_audit** to Applications and open it. The first time, macOS says it can't verify the app: open System Settings ▸ Privacy & Security and click **Open Anyway** (once). Or build it from source, see the README."
   echo "published the GitHub Release v$next with cl_audit.zip"

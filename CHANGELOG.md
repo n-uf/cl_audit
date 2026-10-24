@@ -8,6 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
+- Release notes and the README say which Claude Code and Claude app versions a release was checked with
+  (now Claude Code 2.1.310 and the Claude app 3.6556.2): a newer Claude version can change how Claude
+  Code saves its login or the usage figures.
 Nothing pending.
 
 ## 26.10.1 — 2026-10-24
