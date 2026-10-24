@@ -370,10 +370,28 @@ struct SRow<Control: View>: View {
     }
 }
 
+/// The (i) next to a setting: click it for a short explanation in a popover (hover shows it too).
 struct InfoDot: View {
     let text: String
+    @State private var open = false
+    @State private var hover = false
+
     var body: some View {
-        Image(systemName: "info.circle").font(.system(size: 10.5)).foregroundStyle(.tertiary).help(text)
+        Button { open.toggle() } label: {
+            Image(systemName: open ? "info.circle.fill" : "info.circle")
+                .font(.system(size: 10.5))
+                .foregroundStyle(hover || open ? Color.secondary : Color.secondary.opacity(0.6))
+                .frame(width: 16, height: 16)          // a bigger target than the glyph
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .help(text)
+        .accessibilityLabel("About this setting")
+        .popover(isPresented: $open, arrowEdge: .bottom) {
+            Text(text).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
+                .frame(width: 260, alignment: .leading).padding(12)
+        }
     }
 }
 
@@ -449,12 +467,12 @@ struct AccountSettings: View {
             SRow(label: "Name", first: true) {
                 TextField("", text: $entry.name).textFieldStyle(.plain).multilineTextAlignment(.trailing).frame(maxWidth: 150)
             }
-            SRow(label: "Icon label", info: "Drawn on the icon, up to 6 letters. The Dock shows the app as “cl_audit \(entry.name)”.") {
+            SRow(label: "Icon label", info: "Up to 6 letters drawn on the icon. The Dock names the app “cl_audit \(entry.name)”.") {
                 TextField("", text: Binding(get: { entry.label },
                                             set: { entry.label = String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) }))
                     .textFieldStyle(.plain).multilineTextAlignment(.trailing).frame(maxWidth: 90)
             }
-            SRow(label: "Colour", info: "This account's colour in the launcher, the dashboard (chips, cards and charts) and the panels. The icon has its own colour, under Icon.") {
+            SRow(label: "Colour", info: "This account's colour in the launcher, the dashboard and the panels. The icon's own colour is under Icon.") {
                 HStack(spacing: 6) {
                     ForEach(TileColor.accents, id: \.self) { c in
                         Swatch(color: c, selected: entry.accentColor == c, size: 14)
@@ -472,7 +490,7 @@ struct AccountSettings: View {
     // Login
     var loginCard: some View {
         SCard(title: "Claude Code login",
-              info: "The icon reads this folder's Claude Code login from the Keychain, read-only, through Apple's security tool, the same way Claude Code does. No Keychain permission is added.") {
+              info: "The icon reads this folder's Claude Code login from the Keychain, read-only, the same way Claude Code does. No new Keychain permission.") {
             SRow(label: "Folder", first: true) {
                 HStack(spacing: 4) {
                     Menu {
@@ -504,7 +522,7 @@ struct AccountSettings: View {
             }
             SRow(label: "Renew expired login",
                  info: model.claudePath == nil ? "Needs Claude Code installed; it wasn't found."
-                    : "When the login has expired, the icon runs Claude Code once with a one-line Haiku prompt so Claude Code renews it, at most every 30 minutes. Uses a little of this account's usage." + (status?.renewNote.map { "\nLast: \($0)" } ?? "")) {
+                    : "When the login expires, the icon runs Claude Code once with a one-line Haiku prompt so it renews, at most every 30 min. Uses a little of this account's usage." + (status?.renewNote.map { "\nLast: \($0)" } ?? "")) {
                 Toggle("", isOn: $entry.autoRenew).smallSwitch().disabled(model.claudePath == nil)
             }
         }
@@ -538,10 +556,10 @@ struct AccountSettings: View {
                                 up: { entry.peekSeconds = PeekDuration.up(entry.peekSeconds) })
                 }
             }
-            SRow(label: "Press and hold", info: "Experimental: press and hold shows the details panel next to a short Dock menu. Double-click or ⌥-click always shows it; right-click shows the full menu.") {
+            SRow(label: "Press and hold", info: "Press and hold the icon for its details panel and a short menu. Double-click or ⌥-click also opens the panel; right-click shows the full menu.") {
                 Toggle("", isOn: $entry.longPressDetails).smallSwitch()
             }
-            SRow(label: "Claude window", info: "Which Claude desktop window this account opens. A separate window has its own sign-in and uses this account's settings folder in its Code tab.") {
+            SRow(label: "Claude window", info: "Which Claude window this account opens: the standard one, its own (with its own sign-in and data), or none.") {
                 Menu {
                     ForEach([DesktopMode.standard, .separate, .none]) { mode in
                         let owner = mode == .standard ? FolderRules.windowOwner(.standard, "", among: model.accounts, except: entry.id) : nil
@@ -604,7 +622,7 @@ struct AccountSettings: View {
     var iconCard: some View {
         SCard(title: "Icon") {
             IconGallery(entry: $entry, status: status)
-            SRow(label: "Colour", info: entry.color == .usage ? "By usage: the colour follows the 5-hour level." : "Tells the accounts apart: the label, the Big number tile, the panels' dot.") {
+            SRow(label: "Colour", info: entry.color == .usage ? "By usage: follows the 5-hour level." : "Tells the accounts apart on the label, the Big number tile and the panels' dot.") {
                 HStack(spacing: 2) {
                     ForEach(TileColor.allCases) { c in
                         Swatch(color: c, selected: entry.color == c, size: 14).onTapGesture { entry.color = c }.help(c.title)
@@ -624,7 +642,7 @@ struct AccountSettings: View {
 
     // Panels
     var panelsCard: some View {
-        SCard(title: "Panels", info: "Click: this panel for a moment. Double-click, ⌥-click or long press: the large panel in the same design.") {
+        SCard(title: "Panels", info: "Click: this panel briefly. Double-click, ⌥-click or press and hold: the large panel in the same design.") {
             PillPicker(options: PanelDesign.allCases, selection: $entry.panelDesign, compact: true) { $0.shortTitle }
                 .frame(maxWidth: .infinity, alignment: .leading)
             CompactView(info: sampleInfo).scaleEffect(0.92, anchor: .topLeading)

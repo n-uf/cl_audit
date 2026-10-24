@@ -176,18 +176,18 @@ struct DockCard: View {
         let accounts = Store.load()
         let st = DockManager.status(accounts: accounts, prefs: prefs)
         return SCard(title: "Dock") {
-            SRow(label: "Manage the Dock", info: "Keeps the cl_audit icons pinned together and the Claude pins from getting mixed up. macOS ties running Claude windows to Claude pins in its own order, so the cl_audit icons are the way to reach each account's window.", first: true) {
+            SRow(label: "Manage the Dock", info: "Keeps the cl_audit icons pinned together and Claude pinned at most once. With several Claude windows open, macOS mixes up which Claude pin is which; the cl_audit icons always open the right window.", first: true) {
                 Toggle("", isOn: Binding(get: { prefs.manage }, set: { on in
                     prefs.manage = on
                     if on { DockManager.tidy(accounts: accounts); refreshSoon() }
                 })).smallSwitch()
             }
             if prefs.manage {
-                SRow(label: "cl_audit icons", info: "Pinned side by side in account order, with the cl_audit app last; added and removed with accounts.") {
+                SRow(label: "cl_audit icons", info: "Pinned side by side in account order, the cl_audit app last. Pins follow as accounts are added or removed.") {
                     PillPicker(options: DockPrefs.Icons.allCases, selection: Binding(get: { prefs.icons }, set: { prefs.icons = $0; DockManager.tidy(accounts: accounts); refreshSoon() }),
                                compact: true) { $0 == .together ? "Together" : "Leave as is" }
                 }
-                SRow(label: "Claude pins", info: "One pin always stands for the standard Claude window; more pins get mixed up between windows.") {
+                SRow(label: "Claude pins", info: "One pin opens the standard Claude window. More pins get mixed up between windows.") {
                     PillPicker(options: DockPrefs.ClaudePins.allCases, selection: Binding(get: { prefs.claude }, set: { prefs.claude = $0; DockManager.tidy(accounts: accounts); refreshSoon() }),
                                compact: true) { $0 == .one ? "One, before the group" : $0 == .none ? "None" : "Leave as is" }
                 }

@@ -437,7 +437,7 @@ struct NewAccountView: View {
                 }
                 .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
                 .disabled(NewAccountSetup.foldersReady(draft))
-                InfoDot(text: "Linked, so changes there show up in every account. The login, plugins and usage stay separate.")
+                InfoDot(text: "Linked, so edits there show up in this account too. Sign-in, plugins and usage stay separate.")
             }
             WrapChips(items: SharedItem.allCases.map { ($0.title, draft.share.contains($0)) }, tint: tint) { i in
                 let item = SharedItem.allCases[i]

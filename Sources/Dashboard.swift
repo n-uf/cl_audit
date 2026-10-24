@@ -30,7 +30,7 @@ struct DashboardSettings: View {
     var body: some View {
         VStack(spacing: 10) {
         HStack(alignment: .top, spacing: 10) {
-            SCard(title: "Dashboard cards", info: "One style for every account card on the dashboard. Each account's own panel design (Settings ▸ account ▸ Panels) is for its panels.") {
+            SCard(title: "Dashboard cards", info: "One card style for every account on the dashboard. Each account's panel design is set under its Panels.") {
                 SRow(label: "Card style", first: true) {
                     PillPicker(options: PanelDesign.allCases, selection: $prefs.cardStyle, compact: true) { Self.short($0) }
                 }
@@ -42,7 +42,7 @@ struct DashboardSettings: View {
             .frame(maxWidth: .infinity)
 
             SCard(title: "Usage history") {
-                SRow(label: "History period", info: "The period the dashboard opens with; the 24 h / 7 d / 30 d switch there changes it too.", first: true) {
+                SRow(label: "History period", info: "The period the dashboard opens with. Its 24 h / 7 d / 30 d switch changes it too.", first: true) {
                     PillPicker(options: StatsRange.allCases, selection: $prefs.range, compact: true) { $0.title }
                 }
                 SRow(label: "When you use Claude") { Toggle("", isOn: $prefs.showHeatmap).smallSwitch() }
