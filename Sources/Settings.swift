@@ -185,6 +185,7 @@ final class SettingsModel: ObservableObject {
             DispatchQueue.main.async {
                 let log = Installer.sync(list)
                 self.message = log.isEmpty ? "Icons are up to date" : log.joined(separator: ", ")
+                DockManager.afterAccountsChanged(list)       // pins a new icon into the group, when managed
                 done?()
             }
         } catch {

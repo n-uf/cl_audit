@@ -1,6 +1,6 @@
 // Dashboard settings (app-wide, in the settings app's preferences): one card style for every account card,
 // the history period (the dashboard's 24 h / 7 d / 30 d switch is the same setting), and which history
-// charts to show. Edited on Settings ▸ Dashboard.
+// charts to show, and the Dock (Dock.swift). Edited on Settings ▸ Dashboard.
 
 import SwiftUI
 
@@ -28,6 +28,7 @@ struct DashboardSettings: View {
     @ObservedObject private var prefs = DashboardPrefs.shared
 
     var body: some View {
+        VStack(spacing: 10) {
         HStack(alignment: .top, spacing: 10) {
             SCard(title: "Dashboard cards", info: "One style for every account card on the dashboard. Each account's own panel design (Settings ▸ account ▸ Panels) is for its panels.") {
                 SRow(label: "Card style", first: true) {
@@ -50,6 +51,8 @@ struct DashboardSettings: View {
             }
             .frame(maxWidth: .infinity)
         }
+        DockCard()
+        }
     }
 
     static func short(_ d: PanelDesign) -> String {
@@ -70,7 +73,7 @@ struct DashboardTile: View {
         HStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 0) {
                 Text("Dashboard").font(.system(size: 12.5, weight: .semibold))
-                Text("cards · history").font(.system(size: 10.5)).foregroundStyle(.secondary)
+                Text("cards · history · Dock").font(.system(size: 10.5)).foregroundStyle(.secondary)
             }
             .frame(minHeight: 30)
         }
