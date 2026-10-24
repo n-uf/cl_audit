@@ -479,6 +479,7 @@ extension PanelDesign {
 // MARK: - The selected account
 
 struct AccountSettings: View {
+    @State private var dockRestarting = false     // a few seconds after Show in the Dock changes
     @Binding var entry: AccountEntry
     @ObservedObject var model: SettingsModel
     var width: CGFloat = 1280
@@ -638,20 +639,37 @@ struct AccountSettings: View {
     // Dock icon: whether it shows in the Dock and starts at login, and where it is now
     var dockIconCard: some View {
         let state = UsageIconState.of(entry)
+        let app = Installer.appURL(entry)
         return SCard(title: "Dock icon") {
             SRow(label: "Show in the Dock", first: true) {
-                HStack(spacing: 8) {
-                    Toggle("", isOn: Binding(get: { !entry.iconHidden }, set: { entry.iconHidden = !$0 })).smallSwitch()
-                    Text(entry.iconHidden ? "runs in the background; still refreshes and alerts" : "shown in the Dock")
-                        .font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(2)
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(spacing: 8) {
+                        Toggle("", isOn: Binding(get: { !entry.iconHidden }, set: { on in
+                            entry.iconHidden = !on
+                            dockRestarting = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { dockRestarting = false }
+                        })).smallSwitch()
+                        Text(entry.iconHidden ? "runs in the background; still refreshes and alerts" : "shown in the Dock")
+                            .font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                    // Hiding takes the pin out and showing puts it back; both rewrite the Dock's list and restart it.
+                    Label(dockRestarting ? "restarting the Dock…" : "Changing this restarts the Dock (takes the pin out or puts it back)",
+                          systemImage: "arrow.clockwise")
+                        .font(.system(size: 10.5)).foregroundStyle(Color.orange.opacity(dockRestarting ? 0.7 : 0.95))
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             SRow(label: "Open at login") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
             SRow(label: "Now") {
                 HStack(spacing: 6) {
                     Circle().fill(state.color).frame(width: 7, height: 7)
-                    Text(state == .inDock ? "running, in the Dock" : state == .hidden ? "running, hidden" : state.text.prefix(1).uppercased() + state.text.dropFirst())
+                    Text(state == .inDock ? "running, in the Dock" : state == .hidden ? "running, hidden"
+                         : state == .notPinned ? "running, not pinned" : state.text.prefix(1).uppercased() + state.text.dropFirst())
                         .font(.system(size: 12))
+                    if state == .notPinned {
+                        Button("Pin") { DockManager.pin(app) }.buttonStyle(.pill(.orange, compact: true)).fixedSize()
+                            .help("Pin it in the Dock, after the other cl_audit icons. This restarts the Dock.")
+                    }
                 }
             }
         }
