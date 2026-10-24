@@ -1,187 +1,221 @@
 # cl_audit
 
-Usage audit for all your Claude accounts: Dock icons that show Claude plan usage, one icon per account. Each icon shows how much of the
-5-hour and weekly limits is used, and a click opens that account's Claude desktop window.
+Usage audit for all your Claude setups on one Mac. Each **profile** gets its own Dock icon showing how
+much of its 5-hour and weekly limits is used; a click opens that profile's Claude window. The cl_audit
+app adds a dashboard, a launcher and the settings.
+
+Home: <https://cl-audit.n-uf.com> · Changes: [CHANGELOG.md](CHANGELOG.md) · Version: see [Versioning](#versioning)
 
 ## Install
 
+Requires Apple silicon, macOS 13 or later, the Xcode Command Line Tools (`xcode-select --install`) and
+Claude Code. The Claude desktop app is optional (for Claude windows).
+
 ```bash
-./build.sh              # build "cl_audit", install it into /Applications, update the icons
+git clone https://github.com/n-uf/cl_audit.git
+cd cl_audit
+./build.sh              # build cl_audit, install it into /Applications, update the Dock icon apps
 ./build.sh --no-install # build into ./build only
 ```
 
-Open **cl_audit** and add your accounts. **Apply** saves the list and creates one
-"cl_audit &lt;name&gt;" icon app per account in `/Applications`, where Spotlight finds them. Drag them into the Dock and choose
-Options ▸ Keep in Dock.
+Open **cl_audit**, go to Settings and add a profile (**New profile**). cl_audit installs one
+"cl_audit &lt;profile&gt;" app per profile in `/Applications` and starts it; drag it into the Dock (or let
+General settings ▸ Dock pin it for you). To update, pull and run `./build.sh` again; profiles and
+settings are kept.
 
-## Settings
+## Words used here
 
-Settings is a page of the same cl_audit window as the dashboard (switch at the top, or ⌘,).
-The accounts run across the top (＋ adds one, right-click removes); the selected account's settings
-sit below in compact cards. Changes are saved as you make them and the icons follow at once; only new
-names, labels or accounts need **Apply**, because that installs or renames icon apps.
+- **Profile:** one Claude setup in cl_audit: its Claude Code folder and sign-in, its Claude window and its
+  Dock icon. **Account** means only the claude.ai account a profile is signed in to; several profiles
+  can use one account.
+- **Dock icon:** the profile's own small app ("cl_audit &lt;profile&gt;") that shows its usage.
+- **Claude window:** the profile's running Claude desktop app: the standard one, or a separate one with its
+  own sign-in and data folder.
+- **Profile settings** (Settings ▸ a profile) and **General settings** (Settings ▸ General, app-wide).
 
-**Show emails** (right of the account strip in Settings): turn it off for screen sharing and screenshots. Email
-addresses are then left out of the launcher, dashboard, panels and Dock menus; Settings still shows
-them blurred (hover one to see it).
+## The dashboard
 
-**Profiles.** A profile is one Claude setup in cl_audit: its sign-in, Claude Code folder, Claude window and its
-Dock icon app ("cl_audit <profile>"). "Account" means only the claude.ai account a profile is signed in to.
-Each profile's dashboard card has two switches on one row: **Claude window** (open or quit it) and **Dock icon**
-(show or hide it). When the Dock icon needs fixing the switch becomes a button: **Pin** (unpinned), **Start**
-(stopped) or **Reinstall** (missing). Below them: Sign in… or Show/Open window, Terminal, and "⋯" (Refresh now,
-Profile settings…).
+Opening **cl_audit** shows a card per profile: its icon, both limits and two switches.
 
-**Dock icon** (profile settings ▸ Dock icon). **Show in the Dock** off hides the icon: it keeps running without a
-Dock tile, so it still refreshes and alerts; hiding and showing restart it, and showing puts its pin back where it
-was (after about 10 s). **Open at login** and **Now** (its current state) sit in the same card.
+- **Claude window:** open or quit the profile's Claude window.
+- **Dock icon:** start or quit the profile's Dock icon app. Pins are never touched, so the Dock doesn't
+  restart. While it's stopped the profile doesn't refresh or alert. A missing app shows **Reinstall**.
+- A flipped switch stays where you put it, with a spinner, until the change is done. Quitting a window
+  that Claude asks about (for example unsent work) shows "Claude is asking" with **Show**; a window that
+  doesn't open within 30 s offers **Retry**.
+- Changes made by Opening and closing are announced on the other switch: "quits in 8 s",
+  "starting…", or "waits for the window" when the Dock icon stopped with its window.
+- Under the limits: **Sign in…** when needed, otherwise **Open/Show window**, then **Terminal**, and "⋯"
+  (Refresh now, Profile settings…).
 
-**Opening and closing** (profile settings ▸ Opening and closing) asks two questions: when the Claude window opens
-or quits, start or quit the Dock icon too (it quits 10 s after the window; starting needs cl_audit running); and
-when the Dock icon starts or quits, open or quit the Claude window too (not at login, and a normal quit so Claude
-can ask about unsent work). A table under them shows what each of the four actions then does. With the window
-following, the icon's Dock menu has "Quit and keep Claude window". When cl_audit starts it reinstalls missing icon
-apps and starts the ones that should run. The icon's Dock menu holds only actions; its options are in profile
-settings, and app-wide ones (dashboard card style, Dock, Show emails) in General settings.
+Below the cards, **Usage history** (24 h / 7 d / 30 d) is read from the session files Claude Code writes
+on this Mac (only time, model, token counts, project folder and surface of each reply): when you use
+Claude, tokens per day per profile, and where they go (by project, model and surface). The period and
+the **Show** chips next to it filter the charts and are kept between launches. Usage from claude.ai
+chats, other computers or cloud sessions isn't there.
 
-**Claude open dot.** A small Claude-orange dot at the top-left of a profile's icon means its Claude window is open;
-it appears and goes as the window starts and quits. Pick it per profile like the colour (profile settings ▸ Icon ▸
-Claude open dot: none or while open). Otherwise the icon and its Claude window are
-independent: the icon keeps showing usage (which counts Claude Code in Terminal too) with the window closed.
-
-**Adding an account** (＋): in a wide window, three columns: the account and its window, the Claude Code
-folder, and a summary with the live icon and five numbered steps. Narrower, one column with a progress strip
-on top and the next action pinned at the bottom; each check sits under the field it's about, and one button
-does the next step (Create/Connect, Sign in…, Finish). Each choice says what it means (New or Existing folder; its own, the standard or no Claude window), and the chosen one opens its details. The standard window is offered only while no other account uses it, and only folders the account can take are listed (the others are named underneath with whose they are). The icon label comes from the name; change it later in Settings.
-- **Where it lives:** a *new* Claude Code folder (`~/.claude-<name>`, optionally linking instructions, agents,
-  skills, commands or memory from `~/.claude` or another Claude Code folder), or an *existing* one: any Claude Code folder on this Mac,
-  the default `~/.claude` too, or one you pick in Finder (a Claude Code folder, or an empty one).
-- **Its Claude window:** the standard window, a separate one with its own sign-in and data folder, or none.
-- **One account per folder and per window.** Folders are compared after resolving `~`, links and letter
-  case; a folder inside (or around) another account's folder counts as the same. Folders and windows
-  another account uses are shown as such and can't be picked; the line under the field says why. A sign-in that
-  another account also uses is only a warning (both icons would show the same usage).
-- **Quit the desktop app first.** Until the folder is created or connected, the Claude desktop app must be closed:
-  while open it writes its sign-in and settings. Step 1 lists its windows (and their Code tab sessions), checking
-  every 2 s, with Quit the desktop app and Check again. Claude Code in Terminal doesn't get in the way and isn't
-  listed. Once the folder exists, the desktop app can stay open.
-- **Sign in, in two parts.** a · Claude Code: Terminal runs `claude auth login` for the folder. b · Desktop app
-  (only with its own Claude window): open that window and sign in to the same claude.ai account; the page checks
-  every 2 s that the window is signed in and that its account id matches Claude Code's (no email or token is
-  read). One button does the next part; "Finish now" leaves sign-in for later.
-- **Cancel** undoes only what the setup created: an existing folder is never deleted or signed out.
-
-**Managing the Dock** (Settings ▸ Dashboard ▸ Dock, off by default; experimental, invasive and error-prone: it rewrites the Dock's pin list and restarts the Dock, and macOS can misplace or drop pins). macOS ties running Claude windows to Claude
-pins in its own order, so several Claude pins get mixed up between windows; the cl_audit icons are the reliable way
-to reach each account's window. When on, cl_audit keeps its icons pinned together in account order (the cl_audit
-app last) and keeps one Claude pin before them (or none), and redoes it after accounts are added, removed or
-renamed. Other apps keep their places. Only the Dock's pin list changes, the Dock restarts once and only when
-something differs, and the list is saved before the first change ("Restore my Dock"). A cl_audit icon you removed
-from the Dock comes back with "Arrange Dock"; without the setting, use Options ▸ Keep in Dock or drag it from /Applications.
-
-**Removing an account** (Settings ▸ account ▸ Remove account…, or right-click its tile) always removes its
-Dock icon app and what macOS keeps for it: the open-at-login entry, preferences, caches, network storage,
-saved window state, its pin and recent-apps entry in the Dock (only that exact app; the Dock restarts only if one was there) and its Launch Services record, plus its saved usage, Terminal scripts
-and place on the dashboard. **Delete its folders too** also signs its Claude Code folder out (its Keychain
-login goes) and deletes that folder and its Claude window's data folder; links inside are removed, never what
-they point to. The default `~/.claude`, the standard window, and a folder another account shares items from
-are never deleted, and Claude using the folders must be closed first. Each sync also cleans up leftovers of
-accounts removed by older versions.
-
-**Settings layout.** Every row keeps its control right next to the label; wide controls (card style, panel design,
-colours) sit under their label. Cards are at most one column wide: three columns from about 1180 pt, two from 800,
-one below. An account has five cards: Account, Claude Code and window, Icon, Clicking and panels, Updates and
-alerts. The Dock card always shows your pinned apps with their real icons (the ones cl_audit looks after outlined), and,
-when the Dock doesn't match its settings, the Dock now and after "Arrange Dock"; some (i) explanations include a small picture.
-
-**Dashboard settings** (Settings ▸ Dashboard): one card style for every account card on the dashboard (Glow, Rings,
-Numbers, Segments or Pace; each account's own panel design is for its panels), and the Dock. The history period
-(24 h / 7 d / 30 d) and which charts to show ("Show" chips) are filters on the dashboard itself, kept between
-launches. Cards in a row always share one height, with their buttons lined up at the bottom.
-
-The same rules apply in Settings: the Folder, Claude window and Data folder menus mark what other accounts
-use, and the account bar refuses to apply two accounts sharing a folder or a window.
-
-- **Name** and **icon label** (up to 6 letters, drawn on the icon).
-- **Colour**: the account's own colour in the launcher, the dashboard (chips, cards, charts) and the
-  panels. The icon has its own colour setting.
-- **Claude Code settings folder**: `~/.claude` or a `CLAUDE_CONFIG_DIR` folder. The window lists the
-  folders it finds and the account each is set up for, and shows which login the icon actually found.
-- **Clicking the icon**: what a click does (show usage briefly for N seconds while Claude opens,
-  just open Claude, or show the details panel), and which Claude window opens: the standard one,
-  a separate one with its own sign-in (`--user-data-dir`), or none.
-- **Icon**: style, account colour, frame colour (none by default), refresh interval, notification
-  threshold, open at login. Each style is previewed in one row from good to bad usage:
-  - Two numbers, Rings (outer = 5-hour, inner = week), Big number;
-  - matching the panel designs: Twin rings, Segmented, Pace bars (a white tick for how much of
-    the window has passed);
-  - status styles, where colours follow the levels and the week has its own colour: Status tile,
-    Gauge, Worst of two, Status + week bar, Number + bars, Batteries, Gauge + week bar.
-- **Renew an expired login automatically** (opt-in) and **Log in…** for a missing, expired or
-  mismatched login.
-
-The list is saved on this Mac only, in
-`~/Library/Application Support/usage-n-uf/accounts.json` (format: `accounts.example.json`).
-## The cl_audit app
-
-Opening **cl_audit** shows the dashboard: a card per account (its icon, both limits, Desktop and
-Terminal buttons, Log in… when needed) and a summary (closest to a limit, most room, next reset).
-It stays in the Dock as a launcher:
+cl_audit stays in the Dock as a launcher:
 
 | On the cl_audit icon | What happens |
 |---|---|
-| Click | The launcher palette: every account with its icon and mini bars; ↑↓, ↩ desktop, ⌘↩ terminal, ⌘1–9, type to filter |
+| Click | The launcher palette: every profile with its icon and mini bars; ↑↓, ↩ Claude window, ⌘↩ Terminal, ⌘1–9, type to filter |
 | Press and hold | The dashboard |
-| Right-click | Open Claude for any account, Dashboard, Launcher, Settings… |
+| Right-click | Open Claude for any profile, Dashboard, Launcher, Settings… |
 
-The dashboard also shows **Usage history** (24 h / 7 d / 30 d), read from the session files Claude Code
-writes on this Mac (only time, model, token counts, project folder and surface of each reply):
-when you use Claude (hours × days, coloured by account), tokens per day per account, and where they go
-(by project, model and surface). Usage from claude.ai chats, other computers or cloud sessions isn't there.
-
-Clicking an account's icon in the palette or on a card opens Claude for that account. Settings: the gear,
-⌘, or Settings… in any menu. Both screens read the numbers the icon apps save, so they need no login.
-
-## Clicking an account icon
+## A profile's Dock icon
 
 | Action | What happens |
 |---|---|
-| Click | The account's click action (by default a compact usage panel for 3 s while Claude opens) |
-| Double-click or ⌥-click | The full details panel: both limits with bars and reset times, the login, Open Claude / Log in / Refresh / Settings |
-| Press and hold | Experimental, per account: the details panel next to a short Dock menu |
-| Right-click | The menu: numbers, reset times, login, Options, Settings… |
+| Click | The profile's click action; by default its usage for 3 s while its Claude window opens |
+| Double-click or ⌥-click | The details panel: both limits with bars and reset times, the sign-in, Open Claude, Sign in, Refresh, Settings |
+| Press and hold | The details panel next to a short Dock menu (on by default, per profile) |
+| Right-click | The menu: numbers, reset times, the sign-in, and actions (Open or Show Claude window, Quit Claude window, Refresh now, Dashboard, Profile settings…, and Quit and keep Claude window when the window follows the Dock icon) |
 
 Press and hold has no event of its own: the Dock asks the app for its menu on both right-click and
 press-and-hold, and the icon checks which mouse button is down at that moment.
 
+## Settings
+
+Settings is a page of the same window as the dashboard (switch at the top, or ⌘,). The profiles run along
+the top, with **General** first and **New profile** last. Changes are saved as you make them and the
+icons follow at once; only new names, labels or profiles need **Apply**, because that installs or renames
+Dock icon apps. **Show emails** (top bar) off leaves email addresses out of the launcher, dashboard,
+panels and Dock menus, and blurs them in Settings (hover one to see it), for screen sharing.
+
+Cards are at most one column wide: three columns from about 1180 pt, two from 800, one below. Controls
+sit next to their labels; every (i) opens a short explanation, some with a picture.
+
+### Profile settings
+
+- **Profile:** name, icon label (up to 6 letters, drawn on the icon), the profile's colour (launcher,
+  dashboard, panels), and **Remove profile…**.
+- **Claude Code and window:** the Claude Code folder (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder) and the
+  sign-in found there; **Renew if expired** (opt-in); which **Claude window** opens (standard, separate
+  with its own sign-in and data folder, or none) and its data folder. Folders and windows other profiles
+  use are marked and can't be picked; two profiles can't share a folder or a window.
+- **Updates and alerts:** how often to refresh, and a notification when a limit reaches a set level.
+- **Clicking and panels:** what a click does (usage for N seconds while Claude opens, just open Claude,
+  or the details panel), press and hold, and the panel design (Glow, Rings, Numbers, Segments, Pace),
+  previewed at full size.
+- **Icon:** the style, previewed as the limit fills up:
+  - classic: Two numbers, Rings (outer = 5-hour, inner = week), Big number;
+  - like the panels: Twin rings, Segmented, Pace bars (a white tick for how much of the window has passed);
+  - status colours, where colours follow the levels: Tile, Gauge, Worst, Tile + bar, Bars, Batteries,
+    Gauge + bar.
+
+  Then the icon's colour, an optional frame colour and the **Claude open dot**: none, or a Claude-orange
+  dot at the top-left while the profile's Claude window is open.
+- **Dock icon:** **Show in the Dock** (off: it runs without a Dock tile and still refreshes and alerts;
+  changing it restarts the Dock, because the pin is taken out or put back), **Open at login**, and what
+  it's doing **Now**, with **Pin** when it runs unpinned.
+- **Opening and closing** (with a Claude window): two questions. When the Claude window opens or quits,
+  start or quit the Dock icon too (it quits 10 s after the window; starting needs cl_audit running)? When
+  the Dock icon starts or quits, open or quit the Claude window too (not at login; a normal quit, so
+  Claude can ask about unsent work)? A table shows what each of the four actions then does. With the
+  window following, the Dock icon's menu has **Quit and keep Claude window**.
+
+### General settings
+
+- **Dashboard cards:** one card style for every profile (Glow, Rings, Numbers, Segments or Pace).
+- **Emails:** Show emails.
+- **About:** the version and build, and a link to what's new.
+- **Dock** (off by default; experimental and invasive: it rewrites the Dock's pin list and restarts the
+  Dock, and macOS can misplace or drop pins). macOS ties running Claude windows to Claude pins in its own
+  order, so several Claude pins get mixed up; the Dock icons are the reliable way to reach each profile's
+  window. When on, cl_audit keeps its Dock icons pinned together in profile order (the cl_audit app last)
+  with one Claude pin before them (or none), and redoes it after profiles are added, removed or renamed.
+  Other apps keep their places. The card pictures your Dock with the changes marked; **Arrange Dock**
+  applies them, and **Restore my Dock** puts back the pins saved before the first change.
+
+### Adding a profile
+
+**New profile** opens a page: in a wide window three columns (the profile and its window, the Claude Code
+folder, a summary with the live icon and numbered steps); narrower, one column with the next step pinned
+at the bottom.
+
+- **Where it lives:** a *new* Claude Code folder (`~/.claude-<name>`, optionally sharing instructions,
+  agents, skills, commands or memory from another Claude Code folder), or an *existing* one, including
+  `~/.claude` or one you pick in Finder. Folders are compared after resolving `~`, links and letter case;
+  a folder inside or around another profile's folder counts as the same.
+- **Its Claude window:** the standard one (only while no other profile uses it), a separate one, or none.
+- **Quit the Claude app first,** until the folder is created or connected: while open it writes its
+  sign-in and settings. The page lists its windows, checking every 2 s, with Quit and Check again.
+  Claude Code in Terminal doesn't get in the way.
+- **Sign in, in two parts:** Claude Code (Terminal runs `claude auth login` for the folder), then, with a
+  separate window, that window, signed in to the same claude.ai account (checked by account id; no email
+  or token is read). "Finish now" leaves sign-in for later.
+- New profiles start with an existing profile's click and panel settings. **Cancel** undoes only what
+  the page created: an existing folder is never deleted or signed out.
+
+### Removing a profile
+
+**Remove profile…** (profile settings, or right-click its tile) removes its Dock icon app and what macOS
+keeps for it: the open-at-login entry, preferences, caches, saved window state, its pin and recent-apps
+entry in the Dock (the Dock restarts only if one was there) and its Launch Services record, plus its saved
+usage, Terminal scripts and place on the dashboard. **Delete its folders too** also signs its Claude Code
+folder out (its Keychain login goes) and deletes that folder and its Claude window's data folder; links
+inside are removed, never what they point to. The default `~/.claude`, the standard window and a folder
+another profile shares items from are never deleted, and Claude must be closed first.
+
+Profiles are saved on this Mac only, in `~/Library/Application Support/usage-n-uf/accounts.json`
+(format: `accounts.example.json`). When cl_audit starts it reinstalls missing Dock icon apps and starts
+the ones that should run.
+
 ## How it works
 
-- **Numbers:** every few minutes the icon asks Anthropic's usage endpoint
-  (`api.anthropic.com/api/oauth/usage`), using the account's existing Claude Code login.
+- **Numbers:** every few minutes each Dock icon asks Anthropic's usage endpoint
+  (`api.anthropic.com/api/oauth/usage`), using the profile's existing Claude Code login.
   The login is read from the macOS Keychain, read-only: it is never refreshed, written, logged or sent
   anywhere else. It is read with `/usr/bin/security`, the way Claude Code reads it: Claude Code stores the
-  item through that tool, so the item already trusts it. No prompt appears and the icons get no Keychain
-  permission of their own (reading through the Keychain API needed "Always Allow", which macOS forgets
-  every time Claude Code re-saves a renewed login). The login is kept in memory and read again only
-  when it has expired or was refused.
+  item through that tool, so the item already trusts it, no prompt appears and the icons get no Keychain
+  permission of their own. The login is kept in memory and read again only when it has expired or was
+  refused.
 - **Which login:** Claude Code names its Keychain item after the settings folder. The default
   `~/.claude` uses `Claude Code-credentials`; a `CLAUDE_CONFIG_DIR` folder uses
   `Claude Code-credentials-<first 8 hex of SHA-256 of the folder path>`.
-- **Account check:** the icon looks up which e-mail its login belongs to and compares it with the
-  account the folder is set up for (`oauthAccount` in its `.claude.json`). On a mismatch it shows a
-  red "!", and the window and menu say how to fix it.
+- **Account check:** the icon looks up which email its login belongs to and compares it with the account
+  the folder is set up for (`oauthAccount` in its `.claude.json`). On a mismatch it shows a red "!", and
+  the panel and menu say how to fix it.
+- **Which Claude window:** running Claude apps are matched to profiles by their exact `--user-data-dir`,
+  read from the process arguments (no `ps`); the standard window is the one without it.
 - **Fallback:** `statusline/usage-statusline.sh` is a Claude Code status line script that writes
-  `<settings folder>/usage.json` after every reply in terminal sessions. The icon uses that file
-  when the endpoint can't be reached. The desktop app's Code tab doesn't run status lines.
-  To use it, add to the folder's `settings.json`:
+  `<settings folder>/usage.json` after every reply in Terminal sessions. The icon uses that file when the
+  endpoint can't be reached. The Claude app's Code tab doesn't run status lines. To use it, add to the
+  folder's `settings.json`:
   `{ "statusLine": { "type": "command", "command": "~/.claude/bin/usage-statusline.sh" } }`
-- **One app per icon:** macOS gives each running app one Dock icon, so every account gets its own copy
-  of the app (same binary, its own bundle id and `UsageAccountID`), signed ad hoc.
+- **One app per Dock icon:** macOS gives each running app one Dock icon, so every profile gets its own
+  copy of the app (same binary, its own bundle id and `UsageAccountID`), signed ad hoc.
 
-`build/UsageDock --render-preview out.png STYLE LABEL 23 41 [COLOR [FRAME]]` renders a sample icon
-(STYLE is one of bars, rings, number, statusTile, gauge, worst, statusBar, thinBars, batteries, gaugeBar).
+`build/UsageDock --render-preview out.png STYLE LABEL 23 41 [COLOR [FRAME]]` renders a sample icon (STYLE
+is one of bars, rings, twinRings, number, segmented, pace, statusTile, gauge, worst, statusBar, thinBars,
+batteries, gaugeBar).
 
 The usage endpoint is not publicly documented and may change.
+
+## Versioning
+
+cl_audit uses calendar versions, `YY.M.R`, like the other n-uf projects:
+
+- `YY` is the year of the release date (`26` for 2026).
+- `M` is the month of the release date, without a leading zero: a release made in October 2026 is
+  `26.10.x`, never "the last month + 1".
+- `R` counts releases within that month and starts again at `0` in a new month.
+
+The number lives in `VERSION`; `build.sh` puts it in the app (General settings ▸ About), with the commit
+count as the build number. Changes go into [CHANGELOG.md](CHANGELOG.md) under "Unreleased" as they land.
+To release:
+
+- `scripts/release.sh --dry-run` prints the next version.
+- `scripts/release.sh --push` bumps `VERSION`, turns the Unreleased notes into the release's section,
+  commits `release X`, tags `vX` and pushes both. Without `--push` it stops before pushing; `--nobump`
+  keeps the current number.
+
+A version can't signal a breaking change, so read the notes before updating.
+
+## License
+
+[PolyForm Perimeter 1.0.1](LICENSE): source-available. You may use, change and share it, but not to
+build a product that competes with cl_audit.
 
 ---
 

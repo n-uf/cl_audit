@@ -31,9 +31,9 @@ struct DashboardSettings: View {
 
     var body: some View {
         SettingsColumns(width: width,
-                        three: [[AnyView(cardsCard), AnyView(emailsCard)], [AnyView(DockCard())]],
-                        two: [[AnyView(cardsCard), AnyView(emailsCard)], [AnyView(DockCard())]],
-                        one: [AnyView(cardsCard), AnyView(emailsCard), AnyView(DockCard())])
+                        three: [[AnyView(cardsCard), AnyView(emailsCard), AnyView(aboutCard)], [AnyView(DockCard())]],
+                        two: [[AnyView(cardsCard), AnyView(emailsCard), AnyView(aboutCard)], [AnyView(DockCard())]],
+                        one: [AnyView(cardsCard), AnyView(emailsCard), AnyView(DockCard()), AnyView(aboutCard)])
     }
 
     @ObservedObject private var privacy = Privacy.shared
@@ -41,6 +41,22 @@ struct DashboardSettings: View {
         SCard(title: "Emails") {
             SRow(label: "Show emails", info: "Off: email addresses are left out of the launcher, dashboard, panels and Dock menus, and blurred in Settings (hover to see one).", first: true) {
                 Toggle("", isOn: Binding(get: { privacy.show }, set: { privacy.set(show: $0) })).smallSwitch()
+            }
+        }
+    }
+
+    // About: which build this is, and where its changes are listed
+    var aboutCard: some View {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info?["CFBundleVersion"] as? String ?? "?"
+        return SCard(title: "About") {
+            SRow(label: "Version", info: "Calendar versions: year, month of the release, then a counter within the month.", first: true) {
+                Text("\(version) (build \(build))").font(.system(size: 12)).textSelection(.enabled)
+            }
+            SRow(label: "Changes") {
+                Link("What's new", destination: URL(string: "https://github.com/n-uf/cl_audit/blob/main/CHANGELOG.md")!)
+                    .font(.system(size: 12))
             }
         }
     }
