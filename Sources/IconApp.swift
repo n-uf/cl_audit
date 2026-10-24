@@ -234,7 +234,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                   stale: isStale || state == .expired || state == .noLogin, style: style, warn: mismatch,
                   tint: entry.color, frame: entry.frame,
                   fiveHourElapsed: windowElapsed(usage?.fiveHourResets, 5 * 3600),
-                  weeklyElapsed: windowElapsed(usage?.weeklyResets, 7 * 86400), windowOpen: claudeOpen)
+                  weeklyElapsed: windowElapsed(usage?.weeklyResets, 7 * 86400), windowOpen: claudeOpen && entry.windowDot)
     }
 
     func redraw() {

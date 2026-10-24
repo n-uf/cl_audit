@@ -61,6 +61,7 @@ struct NewAccountDraft: Equatable {
             e.style = t.style; e.pollMinutes = t.pollMinutes; e.notify = t.notify; e.notifyPercent = t.notifyPercent
             e.openAtLogin = t.openAtLogin; e.autoRenew = t.autoRenew; e.clickAction = t.clickAction
             e.peekSeconds = t.peekSeconds; e.longPressDetails = t.longPressDetails; e.panelDesign = t.panelDesign
+            e.windowDot = t.windowDot
         }
         e.desktop = window
         e.desktopDataDir = window == .separate ? dataDir : ""

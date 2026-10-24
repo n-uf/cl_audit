@@ -130,3 +130,24 @@ struct WindowPicture: View {
         }
     }
 }
+
+/// The account's icon with and without the window-open dot.
+struct DotPicture: View {
+    let entry: AccountEntry
+    var body: some View {
+        HStack(spacing: 14) {
+            ForEach([false, true], id: \.self) { open in
+                VStack(spacing: 3) {
+                    Image(nsImage: tile(open)).resizable().frame(width: 40, height: 40)
+                    Text(open ? "window open" : "window closed").font(.system(size: 10)).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+    private func tile(_ open: Bool) -> NSImage {
+        var m = TileModel(label: entry.label.isEmpty ? "?" : entry.label, fiveHour: 26, weekly: 12, stale: false,
+                          style: entry.style, tint: entry.color, frame: entry.frame, fiveHourElapsed: 40, weeklyElapsed: 50)
+        m.windowOpen = open
+        return Painter.image(m, pixels: 96)
+    }
+}

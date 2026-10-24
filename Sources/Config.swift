@@ -55,13 +55,14 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     var peekSeconds: Double = 3
     var longPressDetails: Bool = true    // press-and-hold shows the details panel
     var panelDesign: PanelDesign = .glow
+    var windowDot: Bool = true           // the icon shows a dot while this account's Claude window is open
 
     init(id: String, name: String, label: String, configDir: String) {
         self.id = id; self.name = name; self.label = label; self.configDir = configDir
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, openAtLogin, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign
+        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, openAtLogin, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot
     }
     private enum LegacyKeys: String, CodingKey { case clickShowsDetails }
 
@@ -85,6 +86,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         peekSeconds = try c.decodeIfPresent(Double.self, forKey: .peekSeconds) ?? 3
         longPressDetails = try c.decodeIfPresent(Bool.self, forKey: .longPressDetails) ?? true
         panelDesign = try c.decodeIfPresent(PanelDesign.self, forKey: .panelDesign) ?? .glow
+        windowDot = try c.decodeIfPresent(Bool.self, forKey: .windowDot) ?? true
         if let action = try c.decodeIfPresent(ClickAction.self, forKey: .clickAction) {
             clickAction = action
         } else if let legacy = try decoder.container(keyedBy: LegacyKeys.self).decodeIfPresent(Bool.self, forKey: .clickShowsDetails) {

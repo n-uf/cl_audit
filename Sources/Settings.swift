@@ -667,6 +667,10 @@ struct AccountSettings: View {
             SRow(label: "Frame", stacked: true) {
                 SwatchRow(colors: TileColor.allCases, selected: entry.frame, none: true) { entry.frame = $0 }
             }
+            SRow(label: "Window-open dot", info: "A small orange dot at the icon's top-left while this account's Claude window is open.",
+                 picture: AnyView(DotPicture(entry: entry))) {
+                Toggle("", isOn: $entry.windowDot).smallSwitch()
+            }
         }
     }
 
