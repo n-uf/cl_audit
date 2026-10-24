@@ -4,6 +4,9 @@ Usage audit for all your Claude setups on one Mac. Each **profile** gets its own
 much of its 5-hour and weekly limits is used; a click opens that profile's Claude window. The cl_audit
 app adds a dashboard, a launcher and the settings.
 
+**Your login stays with Claude:** you sign in with Claude's own sign-in, cl_audit never sees your password,
+and it reads the saved login read-only and sends it only to Anthropic ([details](#your-claude-login)).
+
 Home: <https://cl-audit.n-uf.com> · Changes: [CHANGELOG.md](CHANGELOG.md) · Version: see [Versioning](#versioning)
 
 ## Install
@@ -32,6 +35,32 @@ Then open **cl_audit**, go to Settings and add a profile (**New profile**). cl_a
 "cl_audit &lt;profile&gt;" app per profile in `/Applications` and starts it; drag it into the Dock (or let
 General settings ▸ Dock pin it for you). To update, download the new zip (or pull and run `./build.sh`
 again); profiles and settings are kept.
+
+## Your Claude login
+
+**You sign in with Claude's own sign-in, never with cl_audit.** Claude Code's sign-in (`claude auth login`
+in Terminal) and the Claude app's sign-in window are Anthropic's. cl_audit only opens them. Everything you
+type to sign in goes straight to Anthropic; cl_audit never sees it.
+
+**What cl_audit reads, and how.** Claude Code saves its login in your macOS Keychain, in an item called
+`Claude Code-credentials` (`Claude Code-credentials-<8 characters>` for a profile's own Claude Code folder).
+cl_audit reads that item with Apple's `/usr/bin/security` tool, read-only, exactly the way Claude Code reads
+it. It asks for no Keychain permission; macOS shows no prompt because the item already trusts that tool.
+It keeps only the short-lived access token, in memory, and discards the rest (including the long-lived
+renewal token). It never writes, renews, copies or logs your login. On your Mac only, it also reads the
+account email in Claude Code's settings file (`.claude.json`) and, for the usage history, Claude Code's
+session logs (only time, model, token counts, project folder and surface of each reply).
+
+**Where it goes: only to Anthropic.** cl_audit uses the token for two requests to Anthropic's own server:
+`api.anthropic.com/api/oauth/usage` (your 5-hour and weekly figures) and `api.anthropic.com/api/oauth/profile`
+(which account a profile is signed in to). There is no cl_audit server, no analytics and no sign-up, and
+nothing else goes over the network. **Renew if expired** (off by default) runs one small Claude Code request
+and lets Claude Code renew its own login.
+
+**What it doesn't change.** Any app running under your macOS user can read Claude Code's saved login the
+same way; that is how Claude Code stores it. cl_audit makes it neither safer nor more exposed, so install
+only software you trust. cl_audit's code is open to check: `Login.read` in `Sources/Model.swift` and
+`request` in `Sources/IconApp.swift`.
 
 ## Words used here
 
@@ -175,13 +204,9 @@ the ones that should run.
 
 ## How it works
 
-- **Numbers:** every few minutes each Dock icon asks Anthropic's usage endpoint
-  (`api.anthropic.com/api/oauth/usage`), using the profile's existing Claude Code login.
-  The login is read from the macOS Keychain, read-only: it is never refreshed, written, logged or sent
-  anywhere else. It is read with `/usr/bin/security`, the way Claude Code reads it: Claude Code stores the
-  item through that tool, so the item already trusts it, no prompt appears and the icons get no Keychain
-  permission of their own. The login is kept in memory and read again only when it has expired or was
-  refused.
+- **Numbers:** every few minutes each Dock icon asks Anthropic's usage endpoint with the profile's
+  Claude Code login (see [Your Claude login](#your-claude-login)). The login is kept in memory and read
+  again only when it has expired or was refused.
 - **Which login:** Claude Code names its Keychain item after the settings folder. The default
   `~/.claude` uses `Claude Code-credentials`; a `CLAUDE_CONFIG_DIR` folder uses
   `Claude Code-credentials-<first 8 hex of SHA-256 of the folder path>`.
