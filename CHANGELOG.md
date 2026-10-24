@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.10.1 — 2026-10-24
+
 - **Direct download:** each release now has a ready-built `cl_audit.zip` on its GitHub Release, and
   <https://github.com/n-uf/cl_audit/releases/latest/download/cl_audit.zip> always gets the newest.
   It isn't signed with an Apple Developer ID yet: the first time, allow it in System Settings ▸
