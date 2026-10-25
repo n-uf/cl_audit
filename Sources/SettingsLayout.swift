@@ -3,28 +3,69 @@
 
 import SwiftUI
 
-/// Cards in three columns from 1180 pt, two from 800, one below. A column is at most 460 pt wide, so a very
-/// wide window gets empty space on the right, not long rows.
+/// Settings cards laid out like blocks: as many columns as fit (each 340–460 pt wide, never stretched past
+/// that), every card going into the shortest column in turn, so a wide window gets more columns instead of
+/// wider cards. `one` is the order; `three` and `two` are kept for callers that still pass them.
 struct SettingsColumns: View {
     let width: CGFloat
     let three: [[AnyView]]
     let two: [[AnyView]]
     let one: [AnyView]
 
+    static let minColumn: CGFloat = 340
     static let maxColumn: CGFloat = 460
 
     var body: some View {
-        let cols = width >= 1180 ? three : width >= 800 ? two : [one]
-        HStack(alignment: .top, spacing: 10) {
-            ForEach(cols.indices, id: \.self) { i in
-                VStack(spacing: 10) {
-                    ForEach(cols[i].indices, id: \.self) { j in cols[i][j] }
-                }
-                .fixedSize(horizontal: false, vertical: true)    // a short column never stretches to a tall one's height
-                .frame(maxWidth: Self.maxColumn, alignment: .top)
-            }
+        Masonry(minColumn: Self.minColumn, maxColumn: Self.maxColumn, spacing: 10) {
+            ForEach(one.indices, id: \.self) { i in one[i] }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+/// Columns of a fixed width; each child goes into the shortest column (empty children take no room).
+struct Masonry: Layout {
+    var minColumn: CGFloat = 340
+    var maxColumn: CGFloat = 460
+    var spacing: CGFloat = 10
+
+    private func columns(_ width: CGFloat) -> (n: Int, w: CGFloat) {
+        let n = max(1, Int(((width + spacing) / (minColumn + spacing)).rounded(.down)))
+        return (n, min(maxColumn, (width - CGFloat(n - 1) * spacing) / CGFloat(n)))
+    }
+
+    private func arrange(_ subviews: Subviews, width: CGFloat) -> (points: [CGPoint], w: CGFloat, size: CGSize) {
+        let (n, w) = columns(width)
+        var heights = Array(repeating: CGFloat(0), count: n)
+        var points: [CGPoint] = []
+        for s in subviews {
+            let h = s.sizeThatFits(ProposedViewSize(width: w, height: nil)).height
+            guard h >= 1 else { points.append(.zero); continue }
+            let c = heights.indices.min { heights[$0] < heights[$1] } ?? 0
+            let y = heights[c] == 0 ? 0 : heights[c] + spacing
+            points.append(CGPoint(x: CGFloat(c) * (w + spacing), y: y))
+            heights[c] = y + h
+        }
+        let used = heights.filter { $0 > 0 }.count
+        return (points, w, CGSize(width: CGFloat(max(used, 1)) * w + CGFloat(max(used, 1) - 1) * spacing, height: heights.max() ?? 0))
+    }
+
+    private func usable(_ proposal: ProposedViewSize) -> CGFloat {
+        guard let w = proposal.width, w.isFinite, w > 0 else { return 3 * maxColumn + 2 * spacing }
+        return w
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let a = arrange(subviews, width: usable(proposal))
+        return CGSize(width: proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? a.size.width, height: a.size.height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let a = arrange(subviews, width: bounds.width)
+        for (i, s) in subviews.enumerated() {
+            s.place(at: CGPoint(x: bounds.minX + a.points[i].x, y: bounds.minY + a.points[i].y),
+                    proposal: ProposedViewSize(width: a.w, height: nil))
+        }
     }
 }
 
@@ -221,11 +262,12 @@ struct OpenCloseQuestions: View {
             case .lockstep: return "Together"
             }
         }()
+        // cause → what then happens to the other one (or that it is left alone)
         let rows: [(Bool, String, String?, String?)] = [
-            (true, "You open the window", iconFollows ? "Dock icon starts" : nil, nil),
-            (true, "You quit the window", iconFollows ? "Dock icon quits" : nil, "10 s later"),
-            (false, "You start the Dock icon", windowFollows ? "window opens" : nil, "not at login"),
-            (false, "You quit the Dock icon", windowFollows ? "window quits" : nil, iconFollows ? "or ⌥ Quit and keep" : "Claude may ask")]
+            (true, "Claude window opens", iconFollows ? "Dock icon starts" : nil, nil),
+            (true, "Claude window quits", iconFollows ? "Dock icon quits" : nil, "10 s later"),
+            (false, "Dock icon starts", windowFollows ? "Claude window opens" : nil, "not at login"),
+            (false, "Dock icon quits", windowFollows ? "Claude window quits" : nil, iconFollows ? "or ⌥ Quit and keep" : "Claude may ask")]
         return VStack(spacing: 0) {
             HStack {
                 Printed(text: title, size: 9)
@@ -237,24 +279,18 @@ struct OpenCloseQuestions: View {
             ForEach(rows.indices, id: \.self) { i in
                 let r = rows[i]
                 HStack(spacing: 8) {
-                    Group {
-                        if r.0 {
-                            RoundedRectangle(cornerRadius: 2).fill(LinearGradient(colors: [Color(red: 0.88, green: 0.54, blue: 0.41), Color(red: 0.79, green: 0.39, blue: 0.25)], startPoint: .top, endPoint: .bottom)).frame(width: 14, height: 10)
-                        } else {
-                            RoundedRectangle(cornerRadius: 3).fill(Color(white: 0.12)).overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.35))).frame(width: 10, height: 10)
-                        }
-                    }
-                    .frame(width: 14)
-                    Text(r.1).font(.system(size: 11.5)).foregroundStyle(face.soft).frame(width: 150, alignment: .leading)
+                    Text(r.1).font(.system(size: 11.5)).foregroundStyle(face.soft).lineLimit(1)
+                        .frame(width: 128, alignment: .leading)
+                    Image(systemName: "arrow.right").font(.system(size: 8.5, weight: .semibold)).foregroundStyle(face.faint)
                     if let effect = r.2 {
                         // the effect glows like a display's printing
                         Text(effect).font(.system(size: 9.5, weight: .semibold, design: .monospaced)).tracking(0.6).textCase(.uppercase)
                             .foregroundStyle(face.displayText)
                             .shadow(color: face.displayGlow ? face.displayText.opacity(0.6) : .clear, radius: 1.5)
                             .lineLimit(1).fixedSize()
-                        if let note = r.3 { Text(note).font(.system(size: 10)).foregroundStyle(face.muted) }
+                        if let note = r.3 { Text(note).font(.system(size: 10)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true) }
                     } else {
-                        Text("not touched").font(.system(size: 11)).foregroundStyle(face.faint)
+                        Text(r.0 ? "Dock icon left alone" : "Claude window left alone").font(.system(size: 11)).foregroundStyle(face.faint)
                     }
                     Spacer(minLength: 0)
                 }

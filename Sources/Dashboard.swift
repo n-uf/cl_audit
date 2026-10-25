@@ -23,7 +23,7 @@ final class DashboardPrefs: ObservableObject {
     }
 }
 
-/// Settings ▸ General: Dashboard cards · Emails · Dock. The history period and which charts to show are set on the
+/// Settings ▸ General: Face · Dashboard cards · About · Dock. Show emails is the Emails key in the window's top strip. The history period and which charts to show are set on the
 /// dashboard itself, as filters.
 struct DashboardSettings: View {
     @ObservedObject private var prefs = DashboardPrefs.shared
@@ -31,12 +31,11 @@ struct DashboardSettings: View {
 
     var body: some View {
         SettingsColumns(width: width,
-                        three: [[AnyView(faceCard), AnyView(cardsCard), AnyView(emailsCard), AnyView(aboutCard)], [AnyView(DockCard())]],
-                        two: [[AnyView(faceCard), AnyView(cardsCard), AnyView(emailsCard), AnyView(aboutCard)], [AnyView(DockCard())]],
-                        one: [AnyView(faceCard), AnyView(cardsCard), AnyView(emailsCard), AnyView(DockCard()), AnyView(aboutCard)])
+                        three: [[AnyView(faceCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(DockCard())]],
+                        two: [[AnyView(faceCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(DockCard())]],
+                        one: [AnyView(faceCard), AnyView(cardsCard), AnyView(DockCard()), AnyView(aboutCard)])
     }
 
-    @ObservedObject private var privacy = Privacy.shared
     @Environment(\.face) private var face
 
     // Face: the look of this window (Faces.swift)
@@ -50,14 +49,6 @@ struct DashboardSettings: View {
             .padding(.top, 2).padding(.bottom, 4)
         }
     }
-    var emailsCard: some View {
-        SCard(title: "Emails") {
-            SRow(label: "Show emails", info: "Off: email addresses are left out of the launcher, dashboard, panels and Dock menus, and blurred in Settings (hover to see one).", first: true) {
-                Toggle("", isOn: Binding(get: { privacy.show }, set: { privacy.set(show: $0) })).smallSwitch()
-            }
-        }
-    }
-
     // About: which build this is, and where its changes are listed
     var aboutCard: some View {
         let info = Bundle.main.infoDictionary
@@ -105,6 +96,6 @@ struct DashboardSettings: View {
 struct DashboardTile: View {
     let selected: Bool
     var body: some View {
-        TileKey(selected: selected) { TileText(title: "General", sub: "face · dashboard · Dock · emails") }
+        TileKey(selected: selected) { TileText(title: "General", sub: "face · dashboard · Dock") }
     }
 }

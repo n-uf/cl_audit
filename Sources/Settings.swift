@@ -282,15 +282,7 @@ struct SettingsPage: View {
                     Text("Add a profile with ＋").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(40)
                 }
             } }
-            // floats over the page, so showing it never moves anything
-            .overlay(alignment: .bottom) {
-                if let n = model.note {
-                    SettingNoteBanner(note: n, hover: model.hoverNote, close: model.hideNote)
-                        .id(n.id)
-                        .padding(.horizontal, 16).padding(.bottom, 16)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-            } }
+            } // the setting note floats over the whole window (MainWindowView), so the Emails key shows it on the dashboard too
         }
     }
 
@@ -314,6 +306,7 @@ struct SettingsPage: View {
 
     var applyBar: some View {
         HStack(spacing: 8) {
+            // the explanation; Revert and Apply sit in the window's top strip (SettingsStatus)
             if let p = model.problem {
                 Label(p, systemImage: "exclamationmark.triangle.fill").foregroundStyle(face.danger).font(.caption).lineLimit(2)
             } else if model.needsApply {
@@ -321,13 +314,48 @@ struct SettingsPage: View {
             } else if !model.message.isEmpty {
                 Text(model.message).font(.caption).foregroundStyle(face.muted).lineLimit(1)
             }
-            if model.needsApply {
-                Button("Revert", action: model.revert).buttonStyle(PillButtonStyle(tint: nil, compact: true))
-                Button("Apply") { model.apply() }.buttonStyle(.primaryKey(compact: true))
-                    .keyboardShortcut(.defaultAction).disabled(model.problem != nil)
-            }
         }
         .fixedSize()
+    }
+}
+
+/// "What this does now": the setting note after a change, floating at the bottom of the window on every page.
+struct SettingNoteOverlay: View {
+    @ObservedObject var model: SettingsModel
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            Color.clear.allowsHitTesting(false)
+            if let n = model.note {
+                SettingNoteBanner(note: n, hover: model.hoverNote, close: model.hideNote)
+                    .id(n.id)
+                    .padding(.horizontal, 16).padding(.bottom, 16)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+    }
+}
+
+/// Settings in the window's top strip: whether everything is saved, in a display window, and Revert and Apply.
+/// Both keys always sit there (dimmed while there's nothing to apply), so the strip keeps its shape.
+struct SettingsStatus: View {
+    @ObservedObject var model: SettingsModel
+
+    var body: some View {
+        let pending = model.needsApply
+        HStack(spacing: 6) {
+            Group {
+                if model.problem != nil { DisplayWindow(text: "Can't apply", dim: "· see below", tone: .warn, height: TopStrip.height, width: UpdatedButton.width) }
+                else if pending { DisplayWindow(text: "Apply needed", tone: .amber, height: TopStrip.height, width: UpdatedButton.width) }
+                else if model.selection == SettingsModel.newID { DisplayWindow(text: "New profile", dim: "· not added yet", height: TopStrip.height, width: UpdatedButton.width) }
+                else { DisplayWindow(text: "Saved", dim: "· as you change", height: TopStrip.height, width: UpdatedButton.width) }
+            }
+            .help(model.problem ?? (pending ? "New names, labels or profiles need Apply" : "Settings are saved as you change them"))
+            Button("Revert", action: model.revert).buttonStyle(PillButtonStyle())
+                .disabled(!pending)
+            Button("Apply") { model.apply() }
+                .buttonStyle(PillButtonStyle(primary: pending && model.problem == nil))
+                .keyboardShortcut(.defaultAction).disabled(!pending || model.problem != nil)
+        }
     }
 }
 
@@ -730,24 +758,28 @@ struct AccountSettings: View {
         let state = UsageIconState.of(entry)
         let app = Installer.appURL(entry)
         return SCard(title: "Dock icon") {
-            SRow(label: "Show in the Dock", first: true) {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 8) {
-                        Toggle("", isOn: Binding(get: { !entry.iconHidden }, set: { on in
-                            entry.iconHidden = !on
-                            dockRestarting = true
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 6) { dockRestarting = false }
-                        })).smallSwitch()
-                        Text(entry.iconHidden ? "runs in the background; still refreshes and alerts" : "shown in the Dock")
-                            .font(.system(size: 11)).foregroundStyle(face.muted).lineLimit(2)
-                    }
-                    // Hiding takes the pin out and showing puts it back; both rewrite the Dock's list and restart it.
-                    Label(dockRestarting ? "restarting the Dock…" : "Changing this restarts the Dock (takes the pin out or puts it back)",
-                          systemImage: "arrow.clockwise")
-                        .font(.system(size: 10.5)).foregroundStyle(face.caution.opacity(dockRestarting ? 0.75 : 1))
-                        .fixedSize(horizontal: false, vertical: true)
+            // the label, the switch and what it does now on one line; the note about the Dock under the whole row
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 10) {
+                    Text("Show in the Dock").font(.system(size: 12.5)).foregroundStyle(face.soft).lineLimit(1)
+                        .frame(width: SRow<EmptyView>.labelWidth, alignment: .leading)
+                    Toggle("", isOn: Binding(get: { !entry.iconHidden }, set: { on in
+                        entry.iconHidden = !on
+                        dockRestarting = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { dockRestarting = false }
+                    })).smallSwitch()
+                    Text(entry.iconHidden ? "runs in the background; still refreshes and alerts" : "shown in the Dock")
+                        .font(.system(size: 11)).foregroundStyle(face.muted).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 0)
                 }
+                .frame(minHeight: 32)
+                // Hiding takes the pin out and showing puts it back; both rewrite the Dock's list and restart it.
+                Label(dockRestarting ? "restarting the Dock…" : "Changing this restarts the Dock (takes the pin out or puts it back)",
+                      systemImage: "arrow.clockwise")
+                    .font(.system(size: 10.5)).foregroundStyle(face.caution.opacity(dockRestarting ? 0.75 : 1))
+                    .fixedSize(horizontal: false, vertical: true)
             }
+            .padding(.bottom, 7)
             SRow(label: "Open at login") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
             SRow(label: "Now") {
                 HStack(spacing: 6) {

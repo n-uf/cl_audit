@@ -410,6 +410,7 @@ struct AccountChips: View {
 struct TopStrip: View {
     static let height: CGFloat = 26
     @ObservedObject var model: LauncherModel
+    var settings: SettingsModel? = nil      // on the Settings page: its status and Revert / Apply
     let dashboard: Bool
     var fill = false              // narrow window: the strip spans its own row, Updated at its right end
     let refresh: () -> Void
@@ -421,7 +422,9 @@ struct TopStrip: View {
             if dashboard && model.rows.count > 1 { AccountChips(model: model); StripDivider() }
             emailsKey
             if fill { Spacer(minLength: 6) }
-            if dashboard { StripDivider(); UpdatedButton(model: model, refresh: refresh) }
+            StripDivider()
+            if dashboard { UpdatedButton(model: model, refresh: refresh) }
+            else if let settings { SettingsStatus(model: settings) }
         }
         .padding(4)
         .frame(maxWidth: fill ? .infinity : nil)
@@ -437,7 +440,8 @@ struct TopStrip: View {
             }
         }
         .buttonStyle(PressableKey())
-        .help(privacy.show ? "Hide email addresses (blurred in Settings)" : "Show email addresses")
+        .help(privacy.show ? "Emails shown. Off: email addresses are left out of the launcher, dashboard, panels and Dock menus, and blurred in Settings (hover to see one)."
+                           : "Emails hidden: left out of the launcher, dashboard, panels and Dock menus, and blurred in Settings. Click to show them.")
     }
 }
 
@@ -578,7 +582,7 @@ struct MainWindowView: View {
 
     /// On the dashboard: profile keys, Emails, Updated. On Settings only Emails stays (it also blurs emails there).
     private var strip: some View {
-        TopStrip(model: model, dashboard: nav.page == .dashboard, refresh: actions.refreshAll)
+        TopStrip(model: model, settings: settings, dashboard: nav.page == .dashboard, refresh: actions.refreshAll)
     }
 
     var body: some View {
@@ -589,23 +593,25 @@ struct MainWindowView: View {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
                     brand
-                    if nav.page == .dashboard { strip }
+                    strip                       // the same place on every page
                     Spacer(minLength: 8)
-                    if nav.page == .settings { strip }
                     pageKeys
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 12) { brand; Spacer(minLength: 8); pageKeys }
-                    TopStrip(model: model, dashboard: nav.page == .dashboard, fill: true, refresh: actions.refreshAll)
+                    TopStrip(model: model, settings: settings, dashboard: nav.page == .dashboard, fill: true, refresh: actions.refreshAll)
                 }
             }
             .padding(.horizontal, 16).padding(.top, 2).padding(.bottom, 11)
             EngravedRule(dark: .black(facePrefs.face.isLight ? 0.3 : 0.6))
-            if nav.page == .dashboard {
-                MainScreenView(model: model, stats: stats, actions: actions)
-            } else {
-                SettingsPage(model: settings)
+            Group {
+                if nav.page == .dashboard {
+                    MainScreenView(model: model, stats: stats, actions: actions)
+                } else {
+                    SettingsPage(model: settings)
+                }
             }
+            .overlay(alignment: .bottom) { SettingNoteOverlay(model: settings) }
         }
         .background(ChassisBackground())
         .face(facePrefs.face)

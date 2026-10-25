@@ -123,7 +123,7 @@ press-and-hold, and the icon checks which mouse button is down at that moment.
 Settings is a page of the same window as the dashboard (switch at the top, or ⌘,). The profiles run along
 the top, with **General** first and **New profile** last. Changes are saved as you make them and the
 icons follow at once; only new names, labels or profiles need **Apply**, because that installs or renames
-Dock icon apps. **Show emails** (top bar) off leaves email addresses out of the launcher, dashboard,
+Dock icon apps. **Emails** (the key in the window's top strip) off leaves email addresses out of the launcher, dashboard,
 panels and Dock menus, and blurs them in Settings (hover one to see it), for screen sharing.
 
 Cards are at most one column wide: three columns from about 1180 pt, two from 800, one below. Controls
@@ -166,7 +166,6 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   default), **Black** (black anodised) or **Silver** (light brushed silver; the window takes the Mac's light
   appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.
 - **Dashboard cards:** one card style for every profile (Glow, Rings, Numbers, Segments or Pace).
-- **Emails:** Show emails.
 - **About:** the version and build, and a link to what's new.
 - **Dock** (off by default; experimental and invasive: it rewrites the Dock's pin list and restarts the
   Dock, and macOS can misplace or drop pins). macOS ties running Claude windows to Claude pins in its own
