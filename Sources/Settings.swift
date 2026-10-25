@@ -729,6 +729,29 @@ struct AccountSettings: View {
     // Dock icon clicks
     var clickCard: some View {
         SCard(title: "Dock icon clicks", info: "What a click on this profile's Dock icon does, and how the usage panel it opens looks. Double-click or ⌥-click always opens the large panel.") {
+            // hidden from the Dock there's nothing to click: say so, offer the way back, and dim the rest
+            if entry.iconHidden {
+                HStack(spacing: 10) {
+                    Text("Not in use · show in the Dock to click it").font(.system(size: 8.5, weight: .semibold)).tracking(1.3)
+                        .textCase(.uppercase).foregroundStyle(face.print).lineLimit(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 6)
+                    Button("Show in the Dock") { showInDock(true) }.buttonStyle(PillButtonStyle(compact: true))
+                        .help("Puts this Dock icon back in the Dock (the Dock restarts)")
+                }
+                .padding(.leading, 10).padding(.trailing, 6).padding(.vertical, 6)
+                .faceWindow(radius: 6)
+                .padding(.bottom, 6)
+            }
+            clickRows
+                .disabled(entry.iconHidden)
+                .opacity(entry.iconHidden ? 0.45 : 1)
+                .animation(.easeOut(duration: 0.15), value: entry.iconHidden)
+        }
+    }
+
+    @ViewBuilder private var clickRows: some View {
+        VStack(spacing: 0) {
             SRow(label: "Click", info: "Usage, then Claude: the usage panel for a moment, then the Claude window. Open Claude: the Claude window straight away. Details panel: the large usage panel, and Claude only when you ask.", first: true, picture: AnyView(ClickPicture(action: entry.clickAction, seconds: entry.peekSeconds))) {
                 Menu {
                     Picker("", selection: $entry.clickAction) { ForEach(ClickAction.allCases) { Text($0.shortTitle).tag($0) } }
@@ -758,6 +781,13 @@ struct AccountSettings: View {
         }
     }
 
+    /// Shows or hides the Dock icon; the Dock restarts, so "Restarting the Dock…" shows for a few seconds.
+    func showInDock(_ on: Bool) {
+        entry.iconHidden = !on
+        dockRestarting = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { dockRestarting = false }
+    }
+
     // Dock icon: whether it shows in the Dock and starts at login, and where it is now
     var dockIconCard: some View {
         let state = UsageIconState.of(entry)
@@ -766,29 +796,26 @@ struct AccountSettings: View {
             // the label, the switch and what it does now on one line; the Dock restart is said in the (i), and shown
             // in a display window while it happens
             SRow(label: "Show in the Dock", info: "Off: the Dock icon keeps running in the background (it still refreshes and alerts) but has no place in the Dock. Changing this restarts the Dock, which takes the pin out or puts it back.", first: true) {
-                HStack(spacing: 10) {
-                    Toggle("", isOn: Binding(get: { !entry.iconHidden }, set: { on in
-                        entry.iconHidden = !on
-                        dockRestarting = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { dockRestarting = false }
-                    })).smallSwitch()
-                    if dockRestarting {
-                        DisplayWindow(text: "Restarting the Dock…", tone: .amber)
-                    } else if entry.iconHidden {
-                        // off: say what still happens
-                        Text("runs in the background; still refreshes and alerts")
-                            .font(.system(size: 11)).foregroundStyle(face.muted).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                    }
-                }
+                Toggle("", isOn: Binding(get: { !entry.iconHidden }, set: { showInDock($0) })).smallSwitch()
             }
             SRow(label: "Open at login", info: "Starts this Dock icon when you log in to the Mac, so its usage refreshes and alerts keep working without opening cl_audit.") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
+            // one display, the full width of the row whatever it says: what the Dock icon is doing now
             SRow(label: "Now") {
                 HStack(spacing: 6) {
-                    DisplayWindow(text: state == .inDock ? "running · in the Dock" : state == .hidden ? "running · hidden"
-                                  : state == .notPinned ? "running · not pinned" : state.text,
-                                  tone: state == .inDock || state == .hidden ? .ok : state == .notPinned ? .amber : .normal)
-                    if state == .notPinned {
-                        Button("Pin") { DockManager.pin(app) }.buttonStyle(.pill(.orange, compact: true)).fixedSize()
+                    Group {
+                        if dockRestarting { DisplayWindow(text: "Restarting the Dock…", tone: .amber, fill: true) }
+                        else {
+                            switch state {
+                            case .inDock: DisplayWindow(text: "Running", dim: "· in the Dock", tone: .ok, fill: true, dimTone: .ok)
+                            case .hidden: DisplayWindow(text: "Running", dim: "· hidden", tone: .ok, fill: true, dimTone: .amber)
+                            case .notPinned: DisplayWindow(text: "Running", dim: "· unpinned", tone: .ok, fill: true, dimTone: .amber)
+                            case .notRunning: DisplayWindow(text: "Stopped", fill: true)
+                            case .missing: DisplayWindow(text: "Missing", dim: "· reinstall", tone: .warn, fill: true, dimTone: .warn)
+                            }
+                        }
+                    }
+                    if state == .notPinned && !dockRestarting {
+                        Button("Pin") { DockManager.pin(app) }.buttonStyle(.pill(FaceTheme.led, compact: true)).fixedSize()
                             .help("Pin it in the Dock, after the other cl_audit icons. This restarts the Dock.")
                     }
                 }

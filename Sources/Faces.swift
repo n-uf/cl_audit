@@ -438,10 +438,21 @@ struct DisplayWindow: View {
     var height: CGFloat = 22
     var size: CGFloat = 10
     var width: CGFloat? = nil       // a fixed width keeps it still while its text changes
+    var fill = false                // take the whole width it's given (still the same whatever the text)
+    var dimTone: Tone? = nil        // the second part in its own colour at full strength (RUNNING · HIDDEN)
     var black = false               // black glass with light printing on every face (the history totals)
     @Environment(\.face) private var outer
 
     enum Tone { case normal, amber, ok, warn }
+
+    private func toneColor(_ t: Tone) -> Color {
+        switch t {
+        case .normal: return face.displayText
+        case .amber: return face.light ? .hex(0xa85f00) : .hex(0xffb24a)
+        case .ok: return face.light ? .hex(0x11743a) : FaceTheme.ledOn
+        case .warn: return face.light ? .hex(0xb42318) : .hex(0xff8a7a)
+        }
+    }
 
     private var face: FaceTheme {
         guard black && outer.light else { return outer }
@@ -451,19 +462,19 @@ struct DisplayWindow: View {
     }
 
     var body: some View {
-        let color: Color = {
-            switch tone {
-            case .normal: return face.displayText
-            case .amber: return face.light ? .hex(0xa85f00) : .hex(0xffb24a)
-            case .ok: return face.light ? .hex(0x11743a) : FaceTheme.ledOn
-            case .warn: return face.light ? .hex(0xb42318) : .hex(0xff8a7a)
-            }
-        }()
+        let color = toneColor(tone)
         HStack(spacing: 7) {
             Text(text).foregroundStyle(color)
                 .shadow(color: face.displayGlow ? color.opacity(black && outer.light ? 0.35 : 0.75) : .clear, radius: 1.5)
                 .shadow(color: face.displayGlow && !(black && outer.light) ? color.opacity(0.35) : .clear, radius: 4.5)
-            if let dim { Text(dim).foregroundStyle(color.opacity(face.light ? 0.45 : 0.4)) }
+            if let dim {
+                if let dimTone {
+                    let c2 = toneColor(dimTone)
+                    Text(dim).foregroundStyle(c2).shadow(color: face.displayGlow ? c2.opacity(0.7) : .clear, radius: 1.5)
+                } else {
+                    Text(dim).foregroundStyle(color.opacity(face.light ? 0.45 : 0.4))
+                }
+            }
         }
         .font(.system(size: size, weight: .semibold, design: .monospaced))
         .tracking(size * 0.14)
@@ -471,6 +482,7 @@ struct DisplayWindow: View {
         .lineLimit(1).fixedSize()
         .padding(.horizontal, 9)
         .frame(width: width, height: height, alignment: .leading)
+        .frame(maxWidth: fill ? .infinity : nil, alignment: .leading)
         .background(DisplayGlass(radius: 4).environment(\.face, face))
         .clipped()
     }
