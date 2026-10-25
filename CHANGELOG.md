@@ -8,6 +8,8 @@ the notes before updating.
 
 ## Unreleased
 
+- Clicking cl_audit's own Dock icon with its window open: behind other windows, the window comes to the front
+  on the page it was showing; already in front, it goes to the Dashboard (it always went to the Dashboard).
 - Hidden from the Dock, a profile's **Icon** and **Dock icon clicks** cards are faded and locked, each with a
   Show in the Dock key: nothing in the Dock to see or click. Everything about the running Dock icon app
   (Open at login, Opening and closing, updates and alerts) stays as it is.

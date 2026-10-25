@@ -877,11 +877,17 @@ final class ManagerUI {
         }
     }
 
-    /// Click on the cl_audit icon. The palette and the dashboard show the same accounts, so they never
-    /// appear together: with the dashboard open, the click brings the dashboard forward instead.
-    func togglePalette() {
+    /// Click on cl_audit's own Dock icon. With its window open (or in the Dock, minimised): a click while it's
+    /// behind other windows brings it to the front as it is (Dashboard or Settings, whatever was showing); a
+    /// click while it's already in front goes to the Dashboard. Without a window: the launcher palette (the
+    /// palette and the window show the same profiles, so they never appear together).
+    func togglePalette(wasInFront: Bool = false) {
         if paletteShown { closePalette(); return }
-        if dashboardShown { showMain(); return }
+        if let w = mainWindow, w.isVisible || w.isMiniaturized {
+            if wasInFront && !w.isMiniaturized { showMain(page: .dashboard) }
+            else { bringForward() }
+            return
+        }
         if Date().timeIntervalSince(closedAt) < 0.4 { return }   // the click that just closed it
         model.reload()
         model.query = ""
@@ -943,6 +949,16 @@ final class ManagerUI {
                 return e
             }
         }
+    }
+
+    /// The window to the front, on whatever page it shows.
+    func bringForward() {
+        guard let w = mainWindow else { showMain(); return }
+        closePalette()
+        if w.isMiniaturized { w.deminiaturize(nil) }
+        NSApp.activate(ignoringOtherApps: true)
+        w.makeKeyAndOrderFront(nil)
+        model.reload()
     }
 
     func showMain(page: MainPage = .dashboard, account: String? = nil) {

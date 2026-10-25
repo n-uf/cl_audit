@@ -103,6 +103,7 @@ cl_audit stays in the Dock as a launcher:
 | On the cl_audit icon | What happens |
 |---|---|
 | Click | The launcher palette: every profile with its icon and mini bars; ↑↓, ↩ Claude window, ⌘↩ Terminal, ⌘1–9, type to filter |
+| Click, with the cl_audit window open | Behind other windows: brings it to the front as it was (Dashboard or Settings). Already in front: goes to the Dashboard |
 | Press and hold | The dashboard |
 | Right-click | Open Claude for any profile, Dashboard, Launcher, Settings… |
 

@@ -20,6 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let details = DetailsController()
     lazy var manager = ManagerUI()          // the settings app's launcher palette and main screen
     var lastClick = Date.distantPast
+    /// When cl_audit last came to the front: a Dock click that did this found its window behind others.
+    var activatedAt = Date.distantPast
     // The login is kept in memory and the Keychain is read only when it's needed: at the start, when the
     // kept login has expired or was refused (then at most every 10 minutes), or on Refresh now.
     // Reads go through /usr/bin/security like Claude Code's own, so they don't prompt.
@@ -230,8 +232,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return m
     }
 
+    func applicationDidBecomeActive(_ note: Notification) { activatedAt = Date() }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
-        if isSettingsApp { manager.togglePalette(); return false }
+        if isSettingsApp {
+            // the click also brings cl_audit to the front, before or after this call: it was in front only if it is
+            // active now and didn't just become so
+            manager.togglePalette(wasInFront: NSApp.isActive && Date().timeIntervalSince(activatedAt) > 0.5)
+            return false
+        }
         // Click: the account's click action. Double-click or ⌥-click: the full details panel.
         // (Press-and-hold and right-click open the Dock menu; macOS doesn't pass those on.)
         let now = Date()
