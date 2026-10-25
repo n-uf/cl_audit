@@ -61,7 +61,7 @@ struct DashboardSettings: View {
         SCard(title: "App icon") {
             VStack(alignment: .leading, spacing: 8) {
                 AppIconPicker()
-                Text("The cl_audit icon in the Dock and the app switcher, so it stands apart from the profile Dock icons. While cl_audit isn't running, the Dock shows Front panel.")
+                Text("The cl_audit icon in the Dock and the app switcher, so it stands apart from the profile Dock icons. While cl_audit isn't running, the Dock shows the plain Front panel.")
                     .font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 2).padding(.bottom, 4)

@@ -4,7 +4,7 @@ import AppKit
 //   --sync                       install/update one icon app per account in accounts.json, then exit
 //   --render-iconset DIR LABEL   write the static icon as an .iconset folder
 //   --render-app-iconset DIR [STYLE]   the app's own icon (AppIcon.swift) as an .iconset folder
-//   --render-app-icon OUT.png STYLE [PIXELS [DISPLAY KEYS SLOT]]   one app icon design (the last three: orange plate)
+//   --render-app-icon OUT.png STYLE [PIXELS [PLATE DISPLAY KEYS SLOT]]   one app icon design (the last four: Front panel's look)
 //   --render-preview OUT.png STYLE LABEL FIVEHOUR WEEKLY [COLOR [FRAME]]   one sample icon
 
 let args = CommandLine.arguments
@@ -37,11 +37,12 @@ if args.count >= 3, args[1] == "--render-app-iconset" {
 
 if args.count >= 4, args[1] == "--render-app-icon" {
     let px = args.count >= 5 ? Int(args[4]) ?? 256 : 256
-    var plate = PlateLook()   // the orange plate's choices: DISPLAY KEYS SLOT
-    if args.count >= 6, let v = PlateDisplay(rawValue: args[5]) { plate.display = v }
-    if args.count >= 7, let v = PlateKeys(rawValue: args[6]) { plate.keys = v }
-    if args.count >= 8, let v = PlateSlot(rawValue: args[7]) { plate.slot = v }
-    try? AppIcon.png(AppIconStyle(rawValue: args[3]) ?? .standard, plate: plate, pixels: px)?.write(to: URL(fileURLWithPath: args[2]))
+    var look = PanelLook()   // Front panel's choices: PLATE DISPLAY KEYS SLOT
+    if args.count >= 6, let v = PanelPlate(rawValue: args[5]) { look.plate = v }
+    if args.count >= 7, let v = PanelDisplay(rawValue: args[6]) { look.display = v }
+    if args.count >= 8, let v = PanelKeys(rawValue: args[7]) { look.keys = v }
+    if args.count >= 9, let v = PanelSlot(rawValue: args[8]) { look.slot = v }
+    try? AppIcon.png(AppIconStyle(rawValue: args[3]) ?? .standard, look: look, pixels: px)?.write(to: URL(fileURLWithPath: args[2]))
     exit(0)
 }
 
