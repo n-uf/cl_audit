@@ -5,13 +5,14 @@ import AppKit
 import SwiftUI
 
 enum AppIconStyle: String, CaseIterable, Identifiable {
-    case panel, panelLit, stack, meter, levels, knob, monogram
+    case panel, panelLit, orange, stack, meter, levels, knob, monogram
     var id: String { rawValue }
     static let standard: AppIconStyle = .panel
     var title: String {
         switch self {
         case .panel: return "Front panel"
         case .panelLit: return "Lit frame"
+        case .orange: return "Orange plate"
         case .stack: return "Stack"
         case .meter: return "VU meter"
         case .levels: return "Level meter"
@@ -21,14 +22,51 @@ enum AppIconStyle: String, CaseIterable, Identifiable {
     }
 }
 
+/// The orange plate's own choices: what its display shows, its keys and its slot.
+enum PlateDisplay: String, CaseIterable, Identifiable {
+    case cyan, bluish, orange, levels
+    var id: String { rawValue }
+    var title: String { self == .levels ? "Levels" : rawValue.capitalized }
+}
+enum PlateKeys: String, CaseIterable, Identifiable {
+    case classic, graphite, strip, round, tonal, wide
+    var id: String { rawValue }
+    var title: String { self == .tonal ? "Orange" : rawValue.capitalized }
+}
+enum PlateSlot: String, CaseIterable, Identifiable {
+    case light, dark
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+}
+struct PlateLook: Equatable {
+    var display: PlateDisplay = .cyan
+    var keys: PlateKeys = .strip
+    var slot: PlateSlot = .light
+}
+
 final class AppIconPrefs: ObservableObject {
     static let shared = AppIconPrefs()
     private let key = "appIconStyle"
     @Published var style: AppIconStyle { didSet { UserDefaults.standard.set(style.rawValue, forKey: key); apply() } }
-    private init() { style = AppIconStyle(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .standard }
+    @Published var plate: PlateLook {
+        didSet {
+            let d = UserDefaults.standard
+            d.set(plate.display.rawValue, forKey: "appIconPlateDisplay")
+            d.set(plate.keys.rawValue, forKey: "appIconPlateKeys")
+            d.set(plate.slot.rawValue, forKey: "appIconPlateSlot")
+            apply()
+        }
+    }
+    private init() {
+        let d = UserDefaults.standard
+        style = AppIconStyle(rawValue: d.string(forKey: key) ?? "") ?? .standard
+        plate = PlateLook(display: PlateDisplay(rawValue: d.string(forKey: "appIconPlateDisplay") ?? "") ?? .cyan,
+                          keys: PlateKeys(rawValue: d.string(forKey: "appIconPlateKeys") ?? "") ?? .strip,
+                          slot: PlateSlot(rawValue: d.string(forKey: "appIconPlateSlot") ?? "") ?? .light)
+    }
 
     /// The Dock and the app switcher show the chosen icon while the app runs.
-    func apply() { NSApp.applicationIconImage = AppIcon.image(style, pixels: 512) }
+    func apply() { NSApp.applicationIconImage = AppIcon.image(style, plate: plate, pixels: 512) }
 }
 
 enum AppIcon {
@@ -46,7 +84,7 @@ enum AppIcon {
     // MARK: output
 
     /// Draws in a 64×64, y-down space (the context must be flipped), scaled to fit `rect`.
-    static func draw(_ style: AppIconStyle, in rect: NSRect) {
+    static func draw(_ style: AppIconStyle, plate: PlateLook = PlateLook(), in rect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         let s = min(rect.width, rect.height) / 64
         ctx.saveGState()
@@ -56,6 +94,7 @@ enum AppIcon {
         switch style {
         case .panel: panel(ctx)
         case .panelLit: panel(ctx); litFrame(ctx)
+        case .orange: orangePlate(ctx, plate)
         case .stack: stack(ctx)
         case .meter: meter(ctx)
         case .levels: levels(ctx)
@@ -65,17 +104,17 @@ enum AppIcon {
         ctx.restoreGState()
     }
 
-    static func image(_ style: AppIconStyle, pixels: Int) -> NSImage {
-        NSImage(size: NSSize(width: pixels, height: pixels), flipped: true) { r in draw(style, in: r); return true }
+    static func image(_ style: AppIconStyle, plate: PlateLook = PlateLook(), pixels: Int) -> NSImage {
+        NSImage(size: NSSize(width: pixels, height: pixels), flipped: true) { r in draw(style, plate: plate, in: r); return true }
     }
 
-    static func png(_ style: AppIconStyle, pixels px: Int) -> Data? {
+    static func png(_ style: AppIconStyle, plate: PlateLook = PlateLook(), pixels px: Int) -> Data? {
         guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: px, pixelsHigh: px, bitsPerSample: 8,
                                          samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                          colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0) else { return nil }
         NSGraphicsContext.saveGraphicsState()
         NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-        image(style, pixels: px).draw(in: NSRect(x: 0, y: 0, width: px, height: px))
+        image(style, plate: plate, pixels: px).draw(in: NSRect(x: 0, y: 0, width: px, height: px))
         NSGraphicsContext.restoreGraphicsState()
         return rep.representation(using: .png, properties: [:])
     }
@@ -215,6 +254,96 @@ enum AppIcon {
         stroke(c, p, TileColor.hex(0xffb08a), 0.9)
     }
 
+    /// Orange plate: Front panel with the plate in the profile frame's orange (flat, with the tiles' soft top light),
+    /// a grey slot, and its own display colour and keys (Settings ▸ General ▸ App icon).
+    static func orangePlate(_ c: CGContext, _ look: PlateLook) {
+        let plateC: [(CGFloat, NSColor)] = [(0, TileColor.hex(0xdf8d72)), (0.5, Painter.orange), (1, TileColor.hex(0xbf694d))]
+        let alu: [(CGFloat, NSColor)] = [(0, TileColor.hex(0xd9d9d5)), (1, TileColor.hex(0x9e9e99))]
+        let brown = TileColor.hex(0x5a2a1a)
+        vfill(c, rr(2, 2, 60, 60, 14), plateC, 2, 62)
+        vstroke(c, rr(2.6, 2.6, 58.8, 58.8, 13.4), 1.2, highlight, 2.6, 17.3)
+
+        // the slot: an unlit grey bar set into the plate, or a dark groove
+        if look.slot == .light {
+            fill(c, rr(16.8, 7.1, 30.4, 5, 2.5), .black.withAlphaComponent(0.16))
+            vfill(c, rr(18, 8, 28, 3.4, 1.7), [(0, TileColor.hex(0xececea)), (1, TileColor.hex(0xa7a7a3))], 8, 11.4)
+        } else {
+            vfill(c, rr(18, 8, 28, 3.4, 1.7), [(0, TileColor.hex(0x1c1c1e)), (1, TileColor.hex(0x3a3a3d))], 8, 11.4)
+            fill(c, rr(18.4, 11.5, 27.2, 0.6, 0.3), .white.withAlphaComponent(0.28))
+        }
+
+        // the display
+        let win = rr(8, 16, 48, 29, 4)
+        vfill(c, win, glass, 16, 45)
+        stroke(c, win, brown, 0.8)
+        func segColor(_ i: Int) -> NSColor {
+            switch look.display {
+            case .cyan: return cyan
+            case .bluish: return TileColor.hex(0x8cbcff)
+            case .orange: return TileColor.hex(0xf29a77)
+            case .levels: return i < 4 ? Painter.green : i < 6 ? Painter.amber : Painter.red
+            }
+        }
+        func seg(_ row: Int, _ i: Int) -> CGPath { rr(12 + CGFloat(i) * 5, 21.5 + CGFloat(row) * 7.5, 4, 4.6, 0.6) }
+        let lit = [7, 4, 6]
+        for (row, n) in lit.enumerated() { for i in n..<8 { fill(c, seg(row, i), segColor(i).withAlphaComponent(0.14)) } }
+        for i in 0..<8 {   // grouped by column so each colour gets its own glow
+            let rows = lit.indices.filter { i < lit[$0] }
+            guard !rows.isEmpty else { continue }
+            glow(c, segColor(i)) { for row in rows { fill(c, seg(row, i), segColor(i)) } }
+        }
+        fill(c, rr(8, 16, 48, 12, 4), .white.withAlphaComponent(0.05))
+
+        // the keys; their lit strip takes the display's colour (green for the levels)
+        let led = look.display == .levels ? Painter.green : segColor(0)
+        func ledStrip(_ x: CGFloat, _ w: CGFloat) { glow(c, led) { fill(c, rr(x, 51.2, w, 1.6, 0.8), led) } }
+        switch look.keys {
+        case .classic:
+            for x: CGFloat in [10, 34] { let k = rr(x, 49, 20, 8, 1.8); vfill(c, k, alu, 49, 57); stroke(c, k, brown, 0.7) }
+            fill(c, rr(14, 51, 12, 1.6, 0.8), Painter.orange)
+        case .graphite:
+            for x: CGFloat in [10, 34] {
+                fill(c, rr(x, 49.6, 20, 8, 2), .black.withAlphaComponent(0.22))
+                vfill(c, rr(x, 48.8, 20, 8, 2), [(0, TileColor.hex(0x3c3c3f)), (1, TileColor.hex(0x1d1d1f))], 48.8, 56.8)
+                fill(c, rr(x + 1, 49.3, 18, 0.5, 0.25), .white.withAlphaComponent(0.22))
+            }
+            ledStrip(14, 12)
+        case .strip:
+            fill(c, rr(8, 47.4, 48, 11.4, 3.4), .black.withAlphaComponent(0.2))
+            fill(c, rr(8, 58.3, 48, 0.6, 0.3), .white.withAlphaComponent(0.22))
+            for x: CGFloat in [9.6, 32.8] {
+                vfill(c, rr(x, 49, 21.6, 8, 2), alu, 49, 57)
+                fill(c, rr(x + 0.8, 49.4, 20, 0.5, 0.25), .white.withAlphaComponent(0.8))
+                fill(c, rr(x, 56.3, 21.6, 0.7, 0.35), .black.withAlphaComponent(0.25))
+            }
+            ledStrip(14.4, 12)
+        case .round:
+            for (i, x) in [CGFloat(17), 32, 47].enumerated() {
+                fill(c, circle(x, 53.6, 4.6), .black.withAlphaComponent(0.2))
+                let b = circle(x, 53, 4.2)
+                c.saveGState(); c.addPath(b); c.clip()
+                c.drawRadialGradient(gradient([(0, TileColor.hex(0xf4f4f2)), (0.6, TileColor.hex(0xcfcfcb)), (1, TileColor.hex(0x9a9a96))]),
+                                     startCenter: CGPoint(x: x - 0.84, y: 51.32), startRadius: 0,
+                                     endCenter: CGPoint(x: x - 0.84, y: 51.32), endRadius: 6.72, options: [.drawsAfterEndLocation])
+                c.restoreGState()
+                stroke(c, b, .white.withAlphaComponent(0.5), 0.5)
+                if i == 0 { glow(c, led) { stroke(c, circle(x, 53, 5.4), led, 1.1) } }
+            }
+        case .tonal:
+            for x: CGFloat in [10, 34] {
+                fill(c, rr(x, 49.8, 20, 8, 2), TileColor.hex(0x7a3520).withAlphaComponent(0.45))
+                vfill(c, rr(x, 48.8, 20, 8, 2), [(0, TileColor.hex(0xeda78c)), (1, TileColor.hex(0xcd7a5e))], 48.8, 56.8)
+                fill(c, rr(x + 1, 49.3, 18, 0.5, 0.25), .white.withAlphaComponent(0.45))
+            }
+            ledStrip(14, 12)
+        case .wide:
+            fill(c, rr(10, 49.8, 44, 8, 2.2), .black.withAlphaComponent(0.22))
+            vfill(c, rr(10, 48.8, 44, 8, 2.2), alu, 48.8, 56.8)
+            fill(c, rr(11, 49.3, 42, 0.5, 0.25), .white.withAlphaComponent(0.8))
+            ledStrip(20, 24)
+        }
+    }
+
     /// Stack: three profile tiles fanned behind each other — all your profiles in one place.
     static func stack(_ c: CGContext) {
         let bg: [(CGFloat, NSColor)] = [(0, TileColor.hex(0x2b2b2f)), (1, TileColor.hex(0x121214))]
@@ -330,7 +459,7 @@ struct AppIconPicker: View {
                 let on = prefs.style == s
                 Button { prefs.style = s } label: {
                     VStack(spacing: 6) {
-                        Image(nsImage: AppIcon.image(s, pixels: 96)).resizable().frame(width: 44, height: 44)
+                        Image(nsImage: AppIcon.image(s, plate: prefs.plate, pixels: 96)).resizable().frame(width: 44, height: 44)
                         KeyLook(kind: .page, latched: on, height: 20, hPad: 8) { Text(s.title) }
                     }
                     .frame(maxWidth: .infinity)
@@ -340,6 +469,43 @@ struct AppIconPicker: View {
                 }
                 .buttonStyle(PressableKey())
                 .help("\(s.title) app icon")
+            }
+        }
+        if prefs.style == .orange { plateOptions.padding(.top, 4) }
+    }
+
+    /// The orange plate's display, keys and slot: each choice drawn as the icon it gives.
+    var plateOptions: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            optionRow("Display", PlateDisplay.allCases, \.display) { $0.title }
+            optionRow("Keys", PlateKeys.allCases, \.keys) { $0.title }
+            optionRow("Slot", PlateSlot.allCases, \.slot) { $0.title }
+        }
+        .padding(8)
+        .background(SurfaceShape(surface: face.strip, radius: 7))
+    }
+
+    func optionRow<V: Hashable>(_ label: String, _ options: [V], _ path: WritableKeyPath<PlateLook, V>,
+                                title: @escaping (V) -> String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.system(size: 9.5, weight: .semibold)).tracking(1).textCase(.uppercase).foregroundStyle(face.muted)
+            HStack(spacing: 4) {
+                ForEach(options, id: \.self) { o in
+                    let on = prefs.plate[keyPath: path] == o
+                    Button { prefs.plate[keyPath: path] = o } label: {
+                        VStack(spacing: 3) {
+                            Image(nsImage: AppIcon.image(.orange, plate: { var l = prefs.plate; l[keyPath: path] = o; return l }(), pixels: 64))
+                                .resizable().frame(width: 30, height: 30)
+                            Text(title(o)).font(.system(size: 9, weight: on ? .semibold : .regular))
+                                .foregroundStyle(on ? face.text : face.muted).lineLimit(1).fixedSize()
+                        }
+                        .padding(.horizontal, 4).padding(.vertical, 4)
+                        .background { if on { WellShape(well: face.win, radius: 5) } }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PressableKey())
+                    .help("\(label): \(title(o))")
+                }
             }
         }
     }
