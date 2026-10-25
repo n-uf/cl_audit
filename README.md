@@ -5,7 +5,7 @@ much of its 5-hour and weekly limits is used; a click opens that profile's Claud
 app adds a dashboard, a launcher and the settings.
 
 **Claude login:** sign-in happens in Claude's own screens, so cl_audit never sees the password. It reads
-Claude Code's saved login read-only and sends it only to Anthropic ([details](#how-cl_audit-handles-the-claude-login)).
+Claude Code's saved login read-only and sends it only to Anthropic ([details](#security-how-cl_audit-handles-the-claude-login)).
 
 Home: <https://cl-audit.n-uf.com> · Changes: [CHANGELOG.md](CHANGELOG.md) · Version: see [Versioning](#versioning)
 
@@ -41,7 +41,7 @@ Then open **cl_audit**, go to Settings and add a profile (**New profile**). cl_a
 General settings ▸ Dock pin it for you). To update, download the new zip (or pull and run `./build.sh`
 again); profiles and settings are kept.
 
-## How cl_audit handles the Claude login
+## Security: how cl_audit handles the Claude login
 
 **You sign in with Claude's own sign-in, never with cl_audit.** Claude Code's sign-in (`claude auth login`
 in Terminal) and the Claude app's sign-in window are Anthropic's. cl_audit only opens them. Everything you
@@ -210,7 +210,7 @@ the ones that should run.
 ## How it works
 
 - **Numbers:** every few minutes each Dock icon asks Anthropic's usage endpoint with the profile's
-  Claude Code login (see [How cl_audit handles the Claude login](#how-cl_audit-handles-the-claude-login)). The login is kept in memory and read
+  Claude Code login (see [Security](#security-how-cl_audit-handles-the-claude-login)). The login is kept in memory and read
   again only when it has expired or was refused.
 - **Which login:** Claude Code names its Keychain item after the settings folder. The default
   `~/.claude` uses `Claude Code-credentials`; a `CLAUDE_CONFIG_DIR` folder uses
