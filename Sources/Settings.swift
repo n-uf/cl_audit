@@ -808,8 +808,11 @@ struct AccountSettings: View {
                         dockRestarting = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { dockRestarting = false }
                     })).smallSwitch()
-                    Text(entry.iconHidden ? "runs in the background; still refreshes and alerts" : "shown in the Dock")
-                        .font(.system(size: 11)).foregroundStyle(face.muted).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    // on, the label says it all; off, say what still happens
+                    if entry.iconHidden {
+                        Text("runs in the background; still refreshes and alerts")
+                            .font(.system(size: 11)).foregroundStyle(face.muted).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
                     Spacer(minLength: 0)
                 }
                 .frame(minHeight: 32)
