@@ -515,6 +515,9 @@ struct LEDSwitchStyle: ToggleStyle {
 struct LEDSwitchKey: View {
     let on: Bool
     var blinking = false
+    /// Working on a change: the key takes no clicks and its LED pulses, green while turning on, amber while
+    /// turning off. Not faded: it's busy, not unavailable.
+    var pulse: Color? = nil
     let action: () -> Void
     @Environment(\.isEnabled) private var enabled
 
@@ -522,7 +525,12 @@ struct LEDSwitchKey: View {
         Button(action: action) {
             KeyLook(pressed: on, height: 22, radius: 4, hPad: 0) {
                 Group {
-                    if blinking {
+                    if let pulse {
+                        TimelineView(.animation) { ctx in
+                            let phase = (sin(ctx.date.timeIntervalSinceReferenceDate * 2 * .pi / 1.1) + 1) / 2
+                            LED(color: pulse).opacity(0.25 + 0.75 * phase)
+                        }
+                    } else if blinking {
                         TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
                             LED(color: FaceTheme.ledOn, lit: Int(ctx.date.timeIntervalSinceReferenceDate * 2) % 2 == 0)
                         }
@@ -534,9 +542,15 @@ struct LEDSwitchKey: View {
             }
         }
         .buttonStyle(.plain)
-        .opacity(enabled ? 1 : 0.45)
-        .accessibilityValue(on ? "on" : "off")
+        .allowsHitTesting(pulse == nil)
+        .opacity(enabled || pulse != nil ? 1 : 0.45)
+        .accessibilityValue(pulse != nil ? "changing" : on ? "on" : "off")
     }
+}
+
+extension FaceTheme {
+    /// The amber of an LED turning something off.
+    static let ledAmber = Color(.sRGB, red: 1, green: 178 / 255, blue: 74 / 255, opacity: 1)
 }
 
 /// A menu's button: a dark recess with the value and small arrows; the list that opens is macOS's own.

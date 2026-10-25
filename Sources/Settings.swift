@@ -808,9 +808,12 @@ struct AccountSettings: View {
             // the label, the switch and what it does now on one line; the Dock restart is said in the (i), and shown
             // in a display window while it happens
             SRow(label: "Show in the Dock", info: "On: pinned in the Dock, there even while it's stopped (a click starts it). Off: no place in the Dock; it still runs in the background, refreshing and alerting. Changing this restarts the Dock, which takes the pin out or puts it back.", first: true) {
-                Toggle("", isOn: Binding(get: { !entry.iconHidden }, set: { showInDock($0) })).smallSwitch()
-                    .disabled(dockRestarting)
-                    .help(dockRestarting ? "Restarting the Dock: wait a few seconds" : "")
+                // while the change is applied: no clicks, the LED pulses (green turning on, amber turning off)
+                LEDSwitchKey(on: !entry.iconHidden,
+                             pulse: dockRestarting ? (entry.iconHidden ? FaceTheme.ledAmber : FaceTheme.ledOn) : nil) {
+                    showInDock(entry.iconHidden)
+                }
+                .help(dockRestarting ? (entry.iconHidden ? "Taking it out of the Dock…" : "Putting it in the Dock…") : "")
             }
             SRow(label: "Open at login", info: "Starts this Dock icon when you log in to the Mac, so its usage refreshes and alerts keep working without opening cl_audit.") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
             // one display, the full width of the row whatever it says: what the Dock icon is doing now
