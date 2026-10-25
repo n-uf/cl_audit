@@ -18,26 +18,50 @@ struct StatsSection: View {
 
     var names: [String: String] { Dictionary(uniqueKeysWithValues: stats.accounts.map { ($0.id, $0.name) }) }
 
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Text("Usage history").font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
-                if stats.loading { ProgressView().controlSize(.small) }
-                Spacer()
-                DisplayWindow(text: "\(stats.totalReplies.formatted()) replies", dim: "· \(StatsFormat.tokens(stats.totalTokens)) tokens")
-                PillPicker(options: StatsRange.allCases, selection: $stats.range) { $0.title }
-            }
-            // Which charts to show: filters for this view, kept between launches.
-            HStack(spacing: 8) {
-                Printed(text: "Show")
-                WrapChips(items: [("When you use Claude", prefs.showHeatmap),
-                                  (stats.range == .day ? "Tokens per hour" : "Tokens per day", prefs.showTokens),
-                                  ("Where it goes", prefs.showShares)]) { i in
+    private var title: some View {
+        HStack(spacing: 8) {
+            Text("Usage history").font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text).fixedSize()
+            if stats.loading { ProgressView().controlSize(.small) }
+        }
+    }
+
+    /// Which charts to show (kept between launches): a key each, latched while shown.
+    private var chartKeys: some View {
+        HStack(spacing: 6) {
+            ForEach(0..<3, id: \.self) { i in
+                let (name, on): (String, Bool) = [("When you use Claude", prefs.showHeatmap),
+                                                  (stats.range == .day ? "Tokens per hour" : "Tokens per day", prefs.showTokens),
+                                                  ("Where it goes", prefs.showShares)][i]
+                Button {
                     switch i {
                     case 0: prefs.showHeatmap.toggle()
                     case 1: prefs.showTokens.toggle()
                     default: prefs.showShares.toggle()
                     }
+                } label: { KeyLook(latched: on, height: 22, hPad: 10) { Text(name) } }
+                .buttonStyle(PressableKey())
+            }
+        }
+        .fixedSize()
+    }
+
+    /// Replies and tokens in the period: black glass (on Silver too), like the site.
+    private var totals: some View {
+        DisplayWindow(text: "\(stats.totalReplies.formatted()) replies", dim: "· \(StatsFormat.tokens(stats.totalTokens)) tokens", black: true)
+    }
+
+    private var period: some View {
+        KeyPicker(options: StatsRange.allCases, selection: $stats.range) { $0.title }.fixedSize()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // one line: the title, which charts to show, the totals and the period; two lines when narrow
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) { title; chartKeys; Spacer(minLength: 8); totals; period }
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) { title; Spacer(minLength: 8); totals; period }
+                    chartKeys
                 }
             }
             if !prefs.showHeatmap && !prefs.showTokens && !prefs.showShares {

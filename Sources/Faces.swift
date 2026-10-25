@@ -399,8 +399,7 @@ struct KeyLook<Content: View>: View {
             .frame(height: height)
             .background(RaisedShape(finish: finish, radius: radius, pressed: down))
             .overlay { if latched { LampStrip(color: lamp) } else if kind == .primary { LampStrip(color: lamp).padding(.horizontal, 1) } }
-            .offset(y: down ? 1 : 0)
-            .padding(.bottom, 2)      // room for the hard edge under the key
+            .offset(y: down ? 1 : 0)   // pressed or latched: a point lower; the hard edge is drawn outside the frame
     }
 }
 
@@ -435,9 +434,18 @@ struct DisplayWindow: View {
     var tone: Tone = .normal
     var height: CGFloat = 22
     var size: CGFloat = 10
-    @Environment(\.face) private var face
+    var width: CGFloat? = nil       // a fixed width keeps it still while its text changes
+    var black = false               // black glass with light printing on every face (the history totals)
+    @Environment(\.face) private var outer
 
     enum Tone { case normal, amber, ok, warn }
+
+    private var face: FaceTheme {
+        guard black && outer.light else { return outer }
+        var t = Face.std.theme
+        t.displayText = .hex(0xeef1f3)
+        return t
+    }
 
     var body: some View {
         let color: Color = {
@@ -450,8 +458,8 @@ struct DisplayWindow: View {
         }()
         HStack(spacing: 7) {
             Text(text).foregroundStyle(color)
-                .shadow(color: face.displayGlow ? color.opacity(0.75) : .clear, radius: 1.5)
-                .shadow(color: face.displayGlow ? color.opacity(0.35) : .clear, radius: 4.5)
+                .shadow(color: face.displayGlow ? color.opacity(black && outer.light ? 0.35 : 0.75) : .clear, radius: 1.5)
+                .shadow(color: face.displayGlow && !(black && outer.light) ? color.opacity(0.35) : .clear, radius: 4.5)
             if let dim { Text(dim).foregroundStyle(color.opacity(face.light ? 0.45 : 0.4)) }
         }
         .font(.system(size: size, weight: .semibold, design: .monospaced))
@@ -459,8 +467,9 @@ struct DisplayWindow: View {
         .textCase(.uppercase)
         .lineLimit(1).fixedSize()
         .padding(.horizontal, 9)
-        .frame(height: height)
-        .background(DisplayGlass(radius: 4))
+        .frame(width: width, height: height, alignment: .leading)
+        .background(DisplayGlass(radius: 4).environment(\.face, face))
+        .clipped()
     }
 }
 
@@ -670,5 +679,26 @@ extension FaceTheme {
     var meterOff: AnyShapeStyle {
         active ? AnyShapeStyle(segOff.shadow(.inner(color: .black(light ? 0.12 : 0.5), radius: 0.6, y: 0.6)))
                : AnyShapeStyle(Color.primary.opacity(0.1))
+    }
+}
+
+/// A picker drawn as separate keys in a strip, the chosen one latched with its strip lit (the history period).
+struct KeyPicker<Value: Hashable>: View {
+    let options: [Value]
+    @Binding var selection: Value
+    let title: (Value) -> String
+    @Environment(\.face) private var face
+
+    var body: some View {
+        HStack(spacing: 5) {
+            ForEach(options, id: \.self) { o in
+                Button { selection = o } label: {
+                    KeyLook(latched: o == selection, height: 22, hPad: 10) { Text(title(o)) }
+                }
+                .buttonStyle(PressableKey())
+            }
+        }
+        .padding(4)
+        .background(SurfaceShape(surface: face.strip, radius: 6))
     }
 }

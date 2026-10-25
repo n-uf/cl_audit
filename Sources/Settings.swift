@@ -273,11 +273,11 @@ struct SettingsPage: View {
                 // The add-account page scrolls itself, so its action bar can stay pinned at the bottom.
                 NewAccountView(draft: Binding(get: { model.draft ?? NewAccountDraft() }, set: { model.draft = $0 }), model: model)
             } else { GeometryReader { geo in ScrollView {
-                let w = geo.size.width - 28
+                let w = geo.size.width - 32
                 if model.selection == SettingsModel.dashboardID {
-                    DashboardSettings(width: w).padding(14)
+                    DashboardSettings(width: w).padding(.horizontal, 16).padding(.vertical, 14)
                 } else if let id = model.selection, let entry = model.binding(id) {
-                    AccountSettings(entry: entry, model: model, width: w).padding(14)
+                    AccountSettings(entry: entry, model: model, width: w).padding(.horizontal, 16).padding(.vertical, 14)
                 } else {
                     Text("Add a profile with ＋").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(40)
                 }
@@ -375,7 +375,6 @@ struct TileKey<Content: View>: View {
             .background(RaisedShape(finish: selected ? face.keyDown : face.key, radius: 4, pressed: selected))
             .overlay { if selected { LampStrip() } }
             .offset(y: selected ? 1 : 0)
-            .padding(.bottom, 2)
             .contentShape(Rectangle())
     }
 }

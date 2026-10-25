@@ -324,18 +324,20 @@ struct NewAccountView: View {
     // MARK: layouts
 
     private func wide(_ w: CGFloat) -> some View {
-        let col3: CGFloat = 360, gaps: CGFloat = 12 * 2 + 28
+        let col3: CGFloat = 400, gaps: CGFloat = 12 * 2 + 16 * 2   // 400: room for the two keys in the warning box
         let rest = max(700, w - col3 - gaps)
         // The first column never gets narrower than its widest row (the window switch), so its cards line up.
         let col1 = max(350, rest * 0.42)
+        // the folder card takes what is left, so the steps pane keeps the same gap to the window's edge
         return ScrollView {
             HStack(alignment: .top, spacing: 12) {
                 VStack(spacing: 10) { accountCard(labelWidth: 76, stacked: false); windowCard(labelWidth: 76, stacked: false) }
                     .frame(width: col1)
-                folderCard(labelWidth: 76, stacked: false).frame(width: rest - col1)
+                folderCard(labelWidth: 76, stacked: false).frame(minWidth: 0, maxWidth: .infinity)
                 stepsPanel.frame(width: col3)
             }
-            .padding(14)
+            .frame(width: max(0, w - 32), alignment: .topLeading)   // never wider than the window
+            .padding(.horizontal, 16).padding(.vertical, 14)
         }
     }
 

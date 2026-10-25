@@ -362,14 +362,16 @@ struct UpdatedButton: View {
     let refresh: () -> Void
 
     var newest: Date? { model.shownRows.compactMap { $0.status?.updatedAt }.max() }
+    static let width: CGFloat = 206     // fits "UPDATED · 23 H 59 MIN AGO"
 
     /// The age in a display window, and a key that refreshes.
     var body: some View {
         HStack(spacing: 6) {
             Group {
-                if model.refreshing { DisplayWindow(text: "Updating…") }
-                else if let d = newest { DisplayWindow(text: "Updated", dim: "· \(DetailsFormat.ago(d))") }
-                else { DisplayWindow(text: "Not updated yet") }
+                // one width for every text, so nothing next to it moves when it changes
+                if model.refreshing { DisplayWindow(text: "Updating…", width: Self.width) }
+                else if let d = newest { DisplayWindow(text: "Updated", dim: "· \(DetailsFormat.ago(d))", width: Self.width) }
+                else { DisplayWindow(text: "Not updated yet", width: Self.width) }
             }
             Button(action: refresh) { Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold)).frame(width: 8) }
                 .buttonStyle(PillButtonStyle(compact: true))
@@ -399,7 +401,7 @@ struct AccountChips: View {
                 .help(on ? "Hide \(row.entry.name) from the dashboard" : "Show \(row.entry.name) on the dashboard")
             }
         }
-        .padding(.leading, 6).padding(.trailing, 6).padding(.top, 5).padding(.bottom, 3)
+        .padding(.horizontal, 6).padding(.vertical, 4)
         .background(SurfaceShape(surface: face.strip, radius: 6))
     }
 }
@@ -573,7 +575,7 @@ struct MainScreenView: View {
 
     var content: some View {
             VStack(alignment: .leading, spacing: 14) {
-                CardGrid(minWidth: 270, spacing: 12) {
+                CardGrid(minWidth: 352, spacing: 12) {
                     ForEach(model.shownRows) { AccountCard(row: $0, actions: actions) }
                 }
                 if model.rows.isEmpty {
@@ -606,7 +608,8 @@ struct CardGrid: Layout {
     private func grid(_ subviews: Subviews, width rawWidth: CGFloat) -> (cols: Int, colWidth: CGFloat, heights: [CGFloat]) {
         let width = usable(rawWidth, count: subviews.count)
         let fit = ((width + spacing) / (minWidth + spacing)).rounded(.down)
-        let cols = max(1, min(subviews.count, fit.isFinite ? Int(min(fit, 1000)) : 1))
+        // empty columns stay empty, so a single card keeps a column's width instead of filling the window
+        let cols = max(1, fit.isFinite ? Int(min(fit, 1000)) : 1)
         let colWidth = (width - CGFloat(cols - 1) * spacing) / CGFloat(cols)
         let heights = stride(from: 0, to: subviews.count, by: cols).map { start in
             subviews[start..<min(start + cols, subviews.count)]
@@ -945,10 +948,7 @@ struct ProfileControls: View {
 
     var body: some View {
         // side by side, sharing the card's width; one above the other when the card is narrow
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) { chips }
-            VStack(spacing: 6) { chips }
-        }
+        HStack(spacing: 6) { chips }
     }
 
     @ViewBuilder private var chips: some View {
@@ -1020,7 +1020,8 @@ struct ProfileControls: View {
                 Text(sub).font(.system(size: 9.5, weight: .semibold, design: .monospaced)).tracking(0.6).textCase(.uppercase)
                     .foregroundStyle(subColor.opacity(on || warn ? 1 : 0.5))
                     .shadow(color: face.displayGlow && (on || warn) ? subColor.opacity(0.6) : .clear, radius: 1.5)
-                    .lineLimit(1).fixedSize()
+                    .lineLimit(1).truncationMode(.tail)
+                    .help(sub)
             }
             Spacer(minLength: 4)
             trailing()
