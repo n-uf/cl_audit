@@ -8,6 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
+- Hidden from the Dock, a profile's **Icon** and **Dock icon clicks** cards are faded and locked, each with a
+  Show in the Dock key: nothing in the Dock to see or click. Everything about the running Dock icon app
+  (Open at login, Opening and closing, updates and alerts) stays as it is.
 - **Claude window** is no longer a setting: the profile using `~/.claude` opens the usual Claude app, every
   other profile its own Claude window. "None (Terminal only)" is gone; a profile set that way gets its own
   window.

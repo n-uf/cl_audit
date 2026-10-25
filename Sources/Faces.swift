@@ -730,3 +730,10 @@ struct StripDivider: View {
         .padding(.vertical, 2).padding(.horizontal, 3)
     }
 }
+
+extension View {
+    /// Settings that only act on the Dock icon: faded and locked while it's hidden from the Dock.
+    func dockOnly(_ hidden: Bool) -> some View {
+        disabled(hidden).opacity(hidden ? 0.45 : 1).animation(.easeOut(duration: 0.15), value: hidden)
+    }
+}

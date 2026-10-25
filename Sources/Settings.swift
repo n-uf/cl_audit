@@ -730,23 +730,8 @@ struct AccountSettings: View {
     var clickCard: some View {
         SCard(title: "Dock icon clicks", info: "What a click on this profile's Dock icon does, and how the usage panel it opens looks. Double-click or ⌥-click always opens the large panel.") {
             // hidden from the Dock there's nothing to click: say so, offer the way back, and dim the rest
-            if entry.iconHidden {
-                HStack(spacing: 10) {
-                    Text("Not in use · show in the Dock to click it").font(.system(size: 8.5, weight: .semibold)).tracking(1.3)
-                        .textCase(.uppercase).foregroundStyle(face.print).lineLimit(2)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Spacer(minLength: 6)
-                    Button("Show in the Dock") { showInDock(true) }.buttonStyle(PillButtonStyle(compact: true))
-                        .help("Puts this Dock icon back in the Dock (the Dock restarts)")
-                }
-                .padding(.leading, 10).padding(.trailing, 6).padding(.vertical, 6)
-                .faceWindow(radius: 6)
-                .padding(.bottom, 6)
-            }
-            clickRows
-                .disabled(entry.iconHidden)
-                .opacity(entry.iconHidden ? 0.45 : 1)
-                .animation(.easeOut(duration: 0.15), value: entry.iconHidden)
+            notInUse("click it")
+            clickRows.dockOnly(entry.iconHidden)
         }
     }
 
@@ -778,6 +763,24 @@ struct AccountSettings: View {
                 .padding(7)
                 .background(SurfaceShape(surface: face.strip, radius: 7))
             }
+        }
+    }
+
+    /// While the Dock icon is hidden, at the top of a card that's only about the Dock: why it's faded, and the key
+    /// that puts the icon back.
+    @ViewBuilder func notInUse(_ what: String) -> some View {
+        if entry.iconHidden {
+            HStack(spacing: 10) {
+                Text("Not in use · show in the Dock to \(what)").font(.system(size: 8.5, weight: .semibold)).tracking(1.3)
+                    .textCase(.uppercase).foregroundStyle(face.print).lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 6)
+                Button("Show in the Dock") { showInDock(true) }.buttonStyle(PillButtonStyle(compact: true))
+                    .help("Puts this Dock icon back in the Dock (the Dock restarts)")
+            }
+            .padding(.leading, 10).padding(.trailing, 6).padding(.vertical, 6)
+            .faceWindow(radius: 6)
+            .padding(.bottom, 6)
         }
     }
 
@@ -858,6 +861,14 @@ struct AccountSettings: View {
     // Icon: style, colour, frame
     var iconCard: some View {
         SCard(title: "Icon") {
+            // how it looks in the Dock: nothing to see while it's hidden
+            notInUse("see it")
+            iconRows.dockOnly(entry.iconHidden)
+        }
+    }
+
+    @ViewBuilder private var iconRows: some View {
+        VStack(spacing: 0) {
             IconGallery(entry: $entry, status: status)
             SRow(label: "Colour", info: "The colour of this profile's Dock icon: its label and tiles. By usage (the last swatch): it follows the 5-hour level, green to red. The profile's colour inside cl_audit is under Profile.", stacked: true) {
                 SwatchRow(colors: TileColor.allCases, selected: entry.color) { if let c = $0 { entry.color = c } }
