@@ -134,6 +134,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(isSettingsApp || !entry.iconHidden ? .regular : .accessory)
         if isSettingsApp {
             NSWindow.allowsAutomaticWindowTabbing = false   // Settings and Dashboard are separate windows
+            AppIconPrefs.shared.apply()                    // the chosen app icon (Settings ▸ General ▸ App icon)
             MainMenu.install()
             DistributedNotificationCenter.default().addObserver(self, selector: #selector(showSettingsWindow),
                                                                 name: Installer.openSettingsNote, object: nil)

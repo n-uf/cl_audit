@@ -3,6 +3,8 @@ import AppKit
 // Command-line modes, used by build.sh and for checking icon styles:
 //   --sync                       install/update one icon app per account in accounts.json, then exit
 //   --render-iconset DIR LABEL   write the static icon as an .iconset folder
+//   --render-app-iconset DIR [STYLE]   the app's own icon (AppIcon.swift) as an .iconset folder
+//   --render-app-icon OUT.png STYLE [PIXELS]   one app icon design
 //   --render-preview OUT.png STYLE LABEL FIVEHOUR WEEKLY [COLOR [FRAME]]   one sample icon
 
 let args = CommandLine.arguments
@@ -25,6 +27,17 @@ if args.count >= 3, args[1] == "--pin" {
 
 if args.count >= 3, args[1] == "--render-iconset" {
     Painter.writeIconset(label: args.count >= 4 ? args[3] : "USAGE", to: URL(fileURLWithPath: args[2]))
+    exit(0)
+}
+
+if args.count >= 3, args[1] == "--render-app-iconset" {
+    AppIcon.writeIconset(args.count >= 4 ? AppIconStyle(rawValue: args[3]) ?? .standard : .standard, to: URL(fileURLWithPath: args[2]))
+    exit(0)
+}
+
+if args.count >= 4, args[1] == "--render-app-icon" {
+    let px = args.count >= 5 ? Int(args[4]) ?? 256 : 256
+    try? AppIcon.png(AppIconStyle(rawValue: args[3]) ?? .standard, pixels: px)?.write(to: URL(fileURLWithPath: args[2]))
     exit(0)
 }
 
