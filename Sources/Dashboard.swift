@@ -55,7 +55,7 @@ struct DashboardSettings: View {
         let version = info?["CFBundleShortVersionString"] as? String ?? "?"
         let build = info?["CFBundleVersion"] as? String ?? "?"
         return SCard(title: "About") {
-            SRow(label: "Version", info: "Calendar versions: year, month of the release, then a counter within the month.", first: true) {
+            SRow(label: "Version", info: "Calendar version: the year and month of the release, then a counter within that month (26.10.1 = the second release in October 2026). The build counts every change.", first: true) {
                 DisplayWindow(text: version, dim: "· build \(build)").textSelection(.enabled)
             }
             SRow(label: "Changes") {
@@ -66,7 +66,7 @@ struct DashboardSettings: View {
     }
 
     var cardsCard: some View {
-        SCard(title: "Dashboard cards", info: "One card style for every profile on the dashboard. Each profile's panel design is set in its profile settings.") {
+        SCard(title: "Dashboard cards", info: "How the 5-hour and weekly limits look on every profile's dashboard card. Each profile's own usage panel has its design in that profile's settings.") {
             SRow(label: "Card style", first: true, stacked: true) {
                 // the keys and, under them, their preview, together in one pane
                 VStack(spacing: 7) {

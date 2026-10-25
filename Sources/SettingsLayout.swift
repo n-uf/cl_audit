@@ -158,7 +158,7 @@ struct WindowPicture: View {
         HStack(alignment: .top, spacing: 10) {
             switch mode {
             case .standard:
-                MiniWindow(label: "standard, shared")
+                MiniWindow(label: "standard")
             case .separate:
                 MiniWindow(label: "standard")
                 MiniWindow(label: "its own", hue: 140)

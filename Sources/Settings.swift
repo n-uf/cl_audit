@@ -646,16 +646,16 @@ struct AccountSettings: View {
     // Account
     var accountCard: some View {
         SCard(title: "Profile") {
-            SRow(label: "Name", first: true) {
+            SRow(label: "Name", info: "What cl_audit calls this profile; its Dock icon app is “cl_audit \(entry.name.isEmpty ? "…" : entry.name)”. Saved when you press Return or click elsewhere (Esc puts it back); saving restarts that Dock icon.", first: true) {
                 SField(placeholder: "name", text: $entry.name, width: 170,
                        commit: { v in save("Dock icon renamed") { $0.name = v } }, cancel: { model.unsaved = nil })
             }
-            SRow(label: "Icon label", info: "Up to 6 letters drawn on the icon. The Dock names the app “cl_audit \(entry.name)”.") {
+            SRow(label: "Icon label", info: "Up to 6 letters printed on this profile's Dock icon, like MAIN or WORK, so you can tell the icons apart. Saved when you press Return or click elsewhere (Esc puts it back).") {
                 SField(placeholder: "LABEL", text: $entry.label, width: 80, mono: true,
                        transform: { String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) },
                        commit: { v in save("icon label changed") { $0.label = v } }, cancel: { model.unsaved = nil })
             }
-            SRow(label: "Colour", info: "This profile's colour in the launcher, the dashboard and the panels. The icon's own colour is under Icon.") {
+            SRow(label: "Colour", info: "This profile's colour inside cl_audit: the dot by its name on the dashboard and in the launcher, its Show key, its share of the history charts and the dot on its usage panel. The Dock icon's own colour is under Icon.") {
                 SwatchRow(colors: TileColor.accents, selected: entry.accentColor) { if let c = $0 { entry.accent = c } }
             }
             Button("Remove profile…") { model.askRemove(entry.id) }
@@ -668,8 +668,8 @@ struct AccountSettings: View {
     // Claude Code and window
     var codeCard: some View {
         SCard(title: "Claude Code and window",
-              info: "The icon reads this folder's Claude Code login from the Keychain, read-only, the same way Claude Code does. No new Keychain permission.") {
-            SRow(label: "Folder", first: true) {
+              info: "Which Claude Code folder this profile uses, its sign-in, and which Claude window it opens.") {
+            SRow(label: "Folder", info: "The Claude Code folder for this profile, like ~/.claude: its sign-in, settings and history live there. One profile per folder.", first: true) {
                 HStack(spacing: 6) {
                     Menu {
                         ForEach(model.choices(model.configFolders, current: entry.configDir), id: \.path) { c in
@@ -689,7 +689,7 @@ struct AccountSettings: View {
                         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Choose another folder…")
                 }
             }
-            SRow(label: "Login") { loginStatus }
+            SRow(label: "Login", info: "The claude.ai account this folder is signed in to. The Dock icon reads the sign-in from the Keychain, read-only, the same way Claude Code does; no new Keychain permission.") { loginStatus }
             if mismatch || status?.state == "noLogin" || status?.state == "expired" {
                 SRow(label: mismatch ? "Wrong account" : "Sign in again") {
                     Button("Log in…") {
@@ -700,26 +700,26 @@ struct AccountSettings: View {
             }
             SRow(label: "Renew if expired",
                  info: model.claudePath == nil ? "Needs Claude Code installed; it wasn't found."
-                    : "When the login expires, the icon runs Claude Code once with a one-line Haiku prompt so it renews, at most every 30 min. Uses a little of this profile's usage." + (status?.renewNote.map { "\nLast: \($0)" } ?? "")) {
+                    : "When the sign-in expires, the Dock icon runs Claude Code once with a one-line Haiku prompt so it renews, at most every 30 min. Uses a little of this profile's usage. Off: you sign in again yourself." + (status?.renewNote.map { "\nLast: \($0)" } ?? "")) {
                 Toggle("", isOn: $entry.autoRenew).smallSwitch().disabled(model.claudePath == nil)
             }
-            SRow(label: "Claude window", info: "Which Claude window this profile opens: the standard one, its own (with its own sign-in and data), or none.", picture: AnyView(WindowPicture(mode: entry.desktop))) {
+            SRow(label: "Claude window", info: "The Claude window this profile opens from its Dock icon and the dashboard. Standard: the usual Claude app, with its sign-in (one profile only). Its own: a second Claude window with its own sign-in, chats and settings, kept in its own window folder. None: no window; Claude Code in Terminal only.", picture: AnyView(WindowPicture(mode: entry.desktop))) {
                 Menu {
                     ForEach([DesktopMode.standard, .separate, .none]) { mode in
                         let owner = mode == .standard ? FolderRules.windowOwner(.standard, "", among: model.accounts, except: entry.id) : nil
                         Button {
                             entry.desktop = mode
                         } label: {
-                            Text((mode == .standard ? "Standard" : mode == .separate ? "Separate" : "None")
+                            Text(Self.windowTitle(mode, long: true)
                                  + (owner.map { "  —  used by \($0.name)" } ?? (entry.desktop == mode ? "  ✓" : "")))
                         }
                         .disabled(owner != nil)
                     }
-                } label: { MenuWell(text: entry.desktop == .standard ? "Standard" : entry.desktop == .separate ? "Separate" : "None") }
+                } label: { MenuWell(text: Self.windowTitle(entry.desktop, long: false)) }
                 .faceMenu()
             }
             if entry.desktop == .separate {
-                SRow(label: "Data folder") {
+                SRow(label: "Window folder", info: "Where this profile's own Claude window keeps its sign-in, chats and settings (a Claude-… folder in ~/Library/Application Support). Each own window needs a folder of its own.") {
                     Menu {
                         ForEach(model.choices(model.dataFolders, current: entry.desktopDataDir), id: \.path) { c in
                             let owner = FolderRules.windowOwner(.separate, c.path, among: model.accounts, except: entry.id)
@@ -730,13 +730,15 @@ struct AccountSettings: View {
                             }
                             .disabled(owner != nil)
                         }
-                        Divider()
-                        Button("New: Claude-\(entry.id)") {
-                            let dir = "~/Library/Application Support/Claude-\(entry.id)"
-                            try? FileManager.default.createDirectory(atPath: expand(dir), withIntermediateDirectories: true)
-                            entry.desktopDataDir = dir
+                        // a new one only while this profile's own folder doesn't exist yet
+                        let mine = "~/Library/Application Support/Claude-\(entry.id)"
+                        if !model.dataFolders.contains(where: { $0.path == mine }) {
+                            Divider()
+                            Button("New folder: Claude-\(entry.id)") {
+                                try? FileManager.default.createDirectory(atPath: expand(mine), withIntermediateDirectories: true)
+                                entry.desktopDataDir = mine
+                            }
                         }
-                        .disabled(FolderRules.windowOwner(.separate, "~/Library/Application Support/Claude-\(entry.id)", among: model.accounts, except: entry.id) != nil)
                     } label: { MenuWell(text: entry.desktopDataDir.isEmpty ? "Choose…" : (entry.desktopDataDir as NSString).lastPathComponent) }
                     .faceMenu()
                 }
@@ -763,8 +765,8 @@ struct AccountSettings: View {
 
     // Clicking and panels
     var clickCard: some View {
-        SCard(title: "Clicking and panels", info: "Click: this panel briefly. Double-click, ⌥-click or press and hold: the large panel in the same design.") {
-            SRow(label: "Click", first: true, picture: AnyView(ClickPicture(action: entry.clickAction, seconds: entry.peekSeconds))) {
+        SCard(title: "Clicking and panels", info: "What a click on this profile's Dock icon does, and how its usage panel looks. Double-click or ⌥-click always opens the large panel.") {
+            SRow(label: "Click", info: "Usage, then Claude: the usage panel for a moment, then the Claude window. Open Claude: the Claude window straight away. Details panel: the large usage panel, and Claude only when you ask.", first: true, picture: AnyView(ClickPicture(action: entry.clickAction, seconds: entry.peekSeconds))) {
                 Menu {
                     Picker("", selection: $entry.clickAction) { ForEach(ClickAction.allCases) { Text($0.shortTitle).tag($0) } }
                         .pickerStyle(.inline).labelsHidden()
@@ -772,7 +774,7 @@ struct AccountSettings: View {
                 .faceMenu()
             }
             if entry.clickAction == .peekThenOpen {
-                SRow(label: "Show usage for") {
+                SRow(label: "Show usage for", info: "How long the usage panel stays up after a click before the Claude window opens.") {
                     MiniStepper(text: PeekDuration.text(entry.peekSeconds),
                                 down: { entry.peekSeconds = PeekDuration.down(entry.peekSeconds) },
                                 up: { entry.peekSeconds = PeekDuration.up(entry.peekSeconds) })
@@ -781,7 +783,7 @@ struct AccountSettings: View {
             SRow(label: "Press and hold", info: "Press and hold the icon for its details panel and a short menu. Double-click or ⌥-click also opens the panel; right-click shows the full menu.") {
                 Toggle("", isOn: $entry.longPressDetails).smallSwitch()
             }
-            SRow(label: "Panel design", stacked: true) {
+            SRow(label: "Panel design", info: "How this profile's usage panel looks when you click or press and hold its Dock icon. The dashboard's cards have one style for all profiles, in General.", stacked: true) {
                 // the keys and, under them, the panel at its own size (the card grows with the taller designs)
                 VStack(spacing: 7) {
                     PillPicker(options: PanelDesign.allCases, selection: $entry.panelDesign, compact: true, fill: true) { $0.shortTitle }
@@ -823,7 +825,7 @@ struct AccountSettings: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.bottom, 7)
-            SRow(label: "Open at login") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
+            SRow(label: "Open at login", info: "Starts this Dock icon when you log in to the Mac, so its usage refreshes and alerts keep working without opening cl_audit.") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
             SRow(label: "Now") {
                 HStack(spacing: 6) {
                     DisplayWindow(text: state == .inDock ? "running · in the Dock" : state == .hidden ? "running · hidden"
@@ -850,14 +852,14 @@ struct AccountSettings: View {
     // Updates and alerts
     var updatesCard: some View {
         SCard(title: "Updates and alerts") {
-            SRow(label: "Refresh every", first: true) {
+            SRow(label: "Refresh every", info: "How often the Dock icon asks Anthropic for this profile's usage. Shorter is fresher; each check is one small request.", first: true) {
                 Menu {
                     Picker("", selection: $entry.pollMinutes) { ForEach([2, 5, 10, 15], id: \.self) { Text("\($0) min").tag($0) } }
                         .pickerStyle(.inline).labelsHidden()
                 } label: { MenuWell(text: "\(entry.pollMinutes) min") }
                 .faceMenu()
             }
-            SRow(label: "Notify at", info: "A notification when the 5-hour or weekly limit reaches this level.") {
+            SRow(label: "Notify at", info: "A Mac notification when this profile's 5-hour or weekly usage reaches this level. Off: no notifications.") {
                 HStack(spacing: 8) {
                     Toggle("", isOn: $entry.notify).smallSwitch()
                     if entry.notify {
@@ -874,15 +876,24 @@ struct AccountSettings: View {
     var iconCard: some View {
         SCard(title: "Icon") {
             IconGallery(entry: $entry, status: status)
-            SRow(label: "Colour", info: entry.color == .usage ? "By usage: follows the 5-hour level." : "Tells the profiles apart on the label, the Big number tile and the panels' dot.", stacked: true) {
+            SRow(label: "Colour", info: "The colour of this profile's Dock icon: its label and tiles. By usage (the last swatch): it follows the 5-hour level, green to red. The profile's colour inside cl_audit is under Profile.", stacked: true) {
                 SwatchRow(colors: TileColor.allCases, selected: entry.color) { if let c = $0 { entry.color = c } }
             }
-            SRow(label: "Frame", stacked: true) {
+            SRow(label: "Frame", info: "A thin ring in this colour round the Dock icon, to spot it quickly among the others. The crossed circle: no ring.", stacked: true) {
                 SwatchRow(colors: TileColor.allCases, selected: entry.frame, none: true) { entry.frame = $0 }
             }
-            SRow(label: "Claude open dot", info: "An orange dot at the icon's corner while this profile's Claude window is open. Shown on every icon above while picked.", stacked: true) {
+            SRow(label: "Claude open dot", info: "An orange dot at the Dock icon's top-left corner while this profile's Claude window is open. While you pick it here, the icons above show it too.", stacked: true) {
                 DotChoice(entry: $entry)
             }
+        }
+    }
+
+    /// The Claude window choices, in the words New profile and the (i) picture use.
+    static func windowTitle(_ m: DesktopMode, long: Bool) -> String {
+        switch m {
+        case .standard: return long ? "Standard Claude window" : "Standard"
+        case .separate: return long ? "Its own Claude window" : "Its own"
+        case .none: return long ? "None (Terminal only)" : "None"
         }
     }
 
