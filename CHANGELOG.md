@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.10.2 — 2026-10-25
+
 - **Faces:** the cl_audit window now looks like the home site's hi-fi front panel, in three faces chosen in
   General settings ▸ Face: Std (dark, the default), Black and Silver (light). Buttons are keys, pickers are
   tracks with the chosen item raised, switches are keys with an LED, and status lines sit in glowing display
