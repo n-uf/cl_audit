@@ -370,6 +370,7 @@ struct KeyLook<Content: View>: View {
     var kind: KeyKind = .plain
     var pressed = false
     var latched = false
+    var held = false              // the down face without a strip (an on/off key with its own LED)
     var lamp: Color = FaceTheme.led
     var height: CGFloat = 24
     var radius: CGFloat = 3
@@ -378,7 +379,7 @@ struct KeyLook<Content: View>: View {
     @Environment(\.face) private var face
 
     var body: some View {
-        let down = pressed || latched
+        let down = pressed || latched || held
         let finish: Finish = {
             switch kind {
             case .plain: return down ? face.keyDown : face.key
@@ -395,11 +396,13 @@ struct KeyLook<Content: View>: View {
             .foregroundStyle(legend)
             .shadow(color: kind == .primary ? .clear : face.legendShadow, radius: 0, y: face.legendShadowY)
             .padding(.horizontal, hPad)
-            .padding(.top, latched || kind == .primary ? 2.5 : 0)
+            .padding(.top, kind == .primary ? 2.5 : 0)     // a latched key's legend stays centred, like its neighbours
             .frame(height: height)
             .background(RaisedShape(finish: finish, radius: radius, pressed: down))
             .overlay { if latched { LampStrip(color: lamp) } else if kind == .primary { LampStrip(color: lamp).padding(.horizontal, 1) } }
-            .offset(y: down ? 1 : 0)   // pressed or latched: a point lower; the hard edge is drawn outside the frame
+            // only a key being pressed moves; a latched key stays level (its darker face and lit strip say "on"),
+            // so keys, displays and strips in a row keep one centre line. The hard edge is drawn outside the frame.
+            .offset(y: pressed ? 1 : 0)
     }
 }
 
@@ -588,13 +591,14 @@ struct ChassisBackground: View {
 struct PageKeys<Value: Hashable>: View {
     let options: [Value]
     @Binding var selection: Value
+    var height: CGFloat = 28
     let title: (Value) -> String
 
     var body: some View {
         HStack(spacing: 6) {
             ForEach(options, id: \.self) { o in
                 Button { selection = o } label: {
-                    KeyLook(kind: .page, latched: o == selection, height: 28, hPad: 13) { Text(title(o)) }
+                    KeyLook(kind: .page, latched: o == selection, height: height, hPad: 13) { Text(title(o)) }
                 }
                 .buttonStyle(PressableKey())
             }
@@ -700,5 +704,17 @@ struct KeyPicker<Value: Hashable>: View {
         }
         .padding(4)
         .background(SurfaceShape(surface: face.strip, radius: 6))
+    }
+}
+
+/// A thin engraved upright line between groups of keys in a strip.
+struct StripDivider: View {
+    @Environment(\.face) private var face
+    var body: some View {
+        HStack(spacing: 0) {
+            Rectangle().fill(face.light ? Color.black(0.28) : Color.black(0.5)).frame(width: 1)
+            Rectangle().fill(face.light ? Color.white(0.5) : Color.white(0.07)).frame(width: 1)
+        }
+        .padding(.vertical, 2).padding(.horizontal, 3)
     }
 }

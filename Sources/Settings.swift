@@ -370,11 +370,9 @@ struct TileKey<Content: View>: View {
             .foregroundStyle(face.legend)
             .shadow(color: face.legendShadow, radius: 0, y: face.legendShadowY)
             .padding(.leading, leading).padding(.trailing, trailing)
-            .padding(.top, selected ? 2 : 0)
             .frame(minHeight: 42)
             .background(RaisedShape(finish: selected ? face.keyDown : face.key, radius: 4, pressed: selected))
             .overlay { if selected { LampStrip() } }
-            .offset(y: selected ? 1 : 0)
             .contentShape(Rectangle())
     }
 }

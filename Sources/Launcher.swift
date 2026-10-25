@@ -369,12 +369,14 @@ struct UpdatedButton: View {
         HStack(spacing: 6) {
             Group {
                 // one width for every text, so nothing next to it moves when it changes
-                if model.refreshing { DisplayWindow(text: "Updating…", width: Self.width) }
-                else if let d = newest { DisplayWindow(text: "Updated", dim: "· \(DetailsFormat.ago(d))", width: Self.width) }
-                else { DisplayWindow(text: "Not updated yet", width: Self.width) }
+                if model.refreshing { DisplayWindow(text: "Updating…", height: TopStrip.height, width: Self.width) }
+                else if let d = newest { DisplayWindow(text: "Updated", dim: "· \(DetailsFormat.ago(d))", height: TopStrip.height, width: Self.width) }
+                else { DisplayWindow(text: "Not updated yet", height: TopStrip.height, width: Self.width) }
             }
-            Button(action: refresh) { Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold)).frame(width: 8) }
-                .buttonStyle(PillButtonStyle(compact: true))
+            Button(action: refresh) {
+                KeyLook(height: TopStrip.height, hPad: 0) { Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold)).frame(width: TopStrip.height) }
+            }
+                .buttonStyle(PressableKey())
                 .keyboardShortcut("r", modifiers: .command)
                 .help("Refresh now (⌘R)")
         }
@@ -388,21 +390,54 @@ struct AccountChips: View {
 
     @Environment(\.face) private var face
 
-    /// A strip of keys, one per profile; a shown profile's key is latched, its strip lit in the profile's colour.
+    /// A key per profile; a shown profile's key is latched, its strip lit in the profile's colour.
     var body: some View {
         HStack(spacing: 6) {
-            Printed(text: "Show").padding(.leading, 3).padding(.trailing, 2)
             ForEach(model.rows) { row in
                 let on = !model.hidden.contains(row.id)
                 Button { model.toggle(row.id) } label: {
-                    KeyLook(latched: on, lamp: row.accent, height: 22, hPad: 10) { Text(row.entry.name) }
+                    KeyLook(latched: on, lamp: row.accent, height: TopStrip.height, hPad: 11) { Text(row.entry.name) }
                 }
                 .buttonStyle(PressableKey())
                 .help(on ? "Hide \(row.entry.name) from the dashboard" : "Show \(row.entry.name) on the dashboard")
             }
         }
-        .padding(.horizontal, 6).padding(.vertical, 4)
+    }
+}
+
+/// The top row's sunken strip: the profile keys, the Emails key and the Updated display with its refresh key,
+/// every control 26 pt high on one centre line.
+struct TopStrip: View {
+    static let height: CGFloat = 26
+    @ObservedObject var model: LauncherModel
+    let dashboard: Bool
+    var fill = false              // narrow window: the strip spans its own row, Updated at its right end
+    let refresh: () -> Void
+    @ObservedObject private var privacy = Privacy.shared
+    @Environment(\.face) private var face
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if dashboard && model.rows.count > 1 { AccountChips(model: model); StripDivider() }
+            emailsKey
+            if fill { Spacer(minLength: 6) }
+            if dashboard { StripDivider(); UpdatedButton(model: model, refresh: refresh) }
+        }
+        .padding(4)
+        .frame(maxWidth: fill ? .infinity : nil)
         .background(SurfaceShape(surface: face.strip, radius: 6))
+        .fixedSize(horizontal: !fill, vertical: true)
+    }
+
+    /// Show emails: held down with its LED green while emails are shown.
+    private var emailsKey: some View {
+        Button { privacy.set(show: !privacy.show) } label: {
+            KeyLook(held: privacy.show, height: Self.height, hPad: 11) {
+                HStack(spacing: 7) { LED(color: FaceTheme.ledOn, lit: privacy.show); Text("Emails") }
+            }
+        }
+        .buttonStyle(PressableKey())
+        .help(privacy.show ? "Hide email addresses (blurred in Settings)" : "Show email addresses")
     }
 }
 
@@ -528,22 +563,43 @@ struct MainWindowView: View {
     let actions: LauncherActions
     @ObservedObject private var facePrefs = FacePrefs.shared
 
+    private var brand: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("cl_audit").font(.system(size: 17, weight: .bold)).foregroundStyle(facePrefs.face.theme.text)
+            Printed(text: "Usage audit for Claude profiles", size: 8)
+        }
+        .fixedSize()
+    }
+
+    private var pageKeys: some View {
+        PageKeys(options: [MainPage.dashboard, .settings], selection: $nav.page, height: TopStrip.height) { $0 == .dashboard ? "Dashboard" : "Settings" }
+            .fixedSize()
+    }
+
+    /// On the dashboard: profile keys, Emails, Updated. On Settings only Emails stays (it also blurs emails there).
+    private var strip: some View {
+        TopStrip(model: model, dashboard: nav.page == .dashboard, refresh: actions.refreshAll)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             // the front panel's top strip: the name, the page's own controls, the page keys
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("cl_audit").font(.system(size: 17, weight: .bold)).foregroundStyle(facePrefs.face.theme.text)
-                    Printed(text: "Usage audit for Claude profiles", size: 8)
+            // one row: the name, one sunken strip (profile keys | Emails | Updated and refresh), the page keys;
+            // when the window is narrow the strip takes its own row under them
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 12) {
+                    brand
+                    if nav.page == .dashboard { strip }
+                    Spacer(minLength: 8)
+                    if nav.page == .settings { strip }
+                    pageKeys
                 }
-                if nav.page == .dashboard {
-                    if model.rows.count > 1 { AccountChips(model: model) }
-                    UpdatedButton(model: model, refresh: actions.refreshAll)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 12) { brand; Spacer(minLength: 8); pageKeys }
+                    TopStrip(model: model, dashboard: nav.page == .dashboard, fill: true, refresh: actions.refreshAll)
                 }
-                Spacer()
-                PageKeys(options: [MainPage.dashboard, .settings], selection: $nav.page) { $0 == .dashboard ? "Dashboard" : "Settings" }
             }
-            .padding(.horizontal, 16).padding(.top, 2).padding(.bottom, 10)
+            .padding(.horizontal, 16).padding(.top, 2).padding(.bottom, 11)
             EngravedRule(dark: .black(facePrefs.face.isLight ? 0.3 : 0.6))
             if nav.page == .dashboard {
                 MainScreenView(model: model, stats: stats, actions: actions)
