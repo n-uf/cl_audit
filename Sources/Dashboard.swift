@@ -23,14 +23,14 @@ final class DashboardPrefs: ObservableObject {
     }
 }
 
-/// Settings ▸ General: Emails · Face · Dashboard cards · About · Dock. The history period and which charts to show are set on the
+/// Settings ▸ General: Emails · Face · App icon · Dashboard cards · About · Dock. The history period and which charts to show are set on the
 /// dashboard itself, as filters.
 struct DashboardSettings: View {
     @ObservedObject private var prefs = DashboardPrefs.shared
     var width: CGFloat = 1280
 
     var body: some View {
-        SettingsColumns(width: width, groups: [[AnyView(emailsCard), AnyView(faceCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(DockCard())]])
+        SettingsColumns(width: width, groups: [[AnyView(emailsCard), AnyView(faceCard), AnyView(appIconCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(DockCard())]])
     }
 
     @Environment(\.face) private var face
@@ -51,6 +51,17 @@ struct DashboardSettings: View {
             VStack(alignment: .leading, spacing: 8) {
                 FacePicker()
                 Text("The look of this window, its settings and the dashboard. Silver is a light face: the window takes the Mac's light appearance. The Dock icons keep their own designs.")
+                    .font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 2).padding(.bottom, 4)
+        }
+    }
+    // App icon: the cl_audit app's own icon (AppIcon.swift), unlike the profiles' Dock icons
+    var appIconCard: some View {
+        SCard(title: "App icon") {
+            VStack(alignment: .leading, spacing: 8) {
+                AppIconPicker()
+                Text("The cl_audit icon in the Dock and the app switcher, so it stands apart from the profile Dock icons. While cl_audit isn't running, the Dock shows Front panel.")
                     .font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
             }
             .padding(.top, 2).padding(.bottom, 4)

@@ -26,7 +26,7 @@ swiftc -O -swift-version 5 -target arm64-apple-macos13.0 \
 app="$out/$name.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$out/UsageDock" "$app/Contents/MacOS/UsageDock"
-"$out/UsageDock" --render-iconset "$out/AppIcon.iconset" USAGE
+"$out/UsageDock" --render-app-iconset "$out/AppIcon.iconset" panel   # the default app icon (Settings ▸ General ▸ App icon)
 iconutil -c icns -o "$app/Contents/Resources/AppIcon.icns" "$out/AppIcon.iconset"
 
 cat > "$app/Contents/Info.plist" <<PLIST
