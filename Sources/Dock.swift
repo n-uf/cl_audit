@@ -270,8 +270,9 @@ enum DockManager {
     /// Puts back a pin taken out by `unpinRemembering`. The app has just become a Dock app again, and the Dock
     /// rewrites its list around that, so this waits a moment, pins, and checks once more.
     static func repin(_ app: URL, defaults: UserDefaults) {
-        guard defaults.bool(forKey: "dockWasPinned") else { dockLog.log("repin \(key(app), privacy: .public): wasn't pinned"); return }
-        let neighbour = defaults.string(forKey: "dockLeftNeighbour")
+        // shown means in the Dock: back where it was, or, never pinned before, after the other cl_audit icons
+        guard !isPinned(app) else { dockLog.log("repin \(key(app), privacy: .public): already pinned"); return }
+        let neighbour = defaults.bool(forKey: "dockWasPinned") ? defaults.string(forKey: "dockLeftNeighbour") : nil
         defaults.removeObject(forKey: "dockWasPinned"); defaults.removeObject(forKey: "dockLeftNeighbour")
         // Done by a short helper process (this app started with --pin): inside the app that just became a Dock app
         // again, the Dock overwrote the change.

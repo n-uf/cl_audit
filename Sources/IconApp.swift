@@ -86,8 +86,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appliedHidden = hide
         dockLog.log("\(self.entry.id, privacy: .public): started \(hide ? "hidden" : "shown", privacy: .public)")
         NSApp.setActivationPolicy(hide ? .accessory : .regular)
+        // hidden is never pinned; shown is pinned when the switch was just turned on (a normal start leaves the Dock
+        // as you arranged it, so taking it out of the Dock by hand sticks)
         if hide { DockManager.unpinRemembering(Bundle.main.bundleURL, defaults: defaults) }
-        else { DockManager.repin(Bundle.main.bundleURL, defaults: defaults) }
+        else if CommandLine.arguments.contains("--dock-changed") { DockManager.repin(Bundle.main.bundleURL, defaults: defaults) }
     }
 
     /// Quits and starts again a moment later (in the background, without opening its Claude window).
@@ -95,7 +97,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quietQuit = true
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = ["-c", "sleep 1.5; /usr/bin/open -g \"$0\" --args --no-follow", Bundle.main.bundlePath]
+        // --dock-changed: the new process pins itself if Show in the Dock was just turned on
+        p.arguments = ["-c", "sleep 1.5; /usr/bin/open -g \"$0\" --args --no-follow --dock-changed", Bundle.main.bundlePath]
         try? p.run()
         NSApp.terminate(nil)
     }

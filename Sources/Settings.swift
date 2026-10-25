@@ -807,7 +807,7 @@ struct AccountSettings: View {
         return SCard(title: "Dock icon") {
             // the label, the switch and what it does now on one line; the Dock restart is said in the (i), and shown
             // in a display window while it happens
-            SRow(label: "Show in the Dock", info: "Off: the Dock icon keeps running in the background (it still refreshes and alerts) but has no place in the Dock. Changing this restarts the Dock, which takes the pin out or puts it back.", first: true) {
+            SRow(label: "Show in the Dock", info: "On: pinned in the Dock, there even while it's stopped (a click starts it). Off: no place in the Dock; it still runs in the background, refreshing and alerting. Changing this restarts the Dock, which takes the pin out or puts it back.", first: true) {
                 Toggle("", isOn: Binding(get: { !entry.iconHidden }, set: { showInDock($0) })).smallSwitch()
                     .disabled(dockRestarting)
                     .help(dockRestarting ? "Restarting the Dock: wait a few seconds" : "")
@@ -823,7 +823,10 @@ struct AccountSettings: View {
                             case .inDock: DisplayWindow(text: "Running", dim: "· in the Dock", tone: .ok, fill: true, dimTone: .ok)
                             case .hidden: DisplayWindow(text: "Running", dim: "· hidden", tone: .ok, fill: true, dimTone: .amber)
                             case .notPinned: DisplayWindow(text: "Running", dim: "· unpinned", tone: .ok, fill: true, dimTone: .amber)
-                            case .notRunning: DisplayWindow(text: "Stopped", fill: true)
+                            case .notRunning:
+                                if entry.iconHidden { DisplayWindow(text: "Stopped", dim: "· hidden", fill: true, dimTone: .amber) }
+                                else if DockManager.isPinned(app) { DisplayWindow(text: "Stopped", dim: "· in the Dock", fill: true) }
+                                else { DisplayWindow(text: "Stopped", dim: "· not in the Dock", fill: true, dimTone: .amber) }
                             case .missing: DisplayWindow(text: "Missing", dim: "· reinstall", tone: .warn, fill: true, dimTone: .warn)
                             }
                         }
