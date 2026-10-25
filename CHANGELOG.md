@@ -8,6 +8,11 @@ the notes before updating.
 
 ## Unreleased
 
+- **Faces:** the cl_audit window now looks like the home site's hi-fi front panel, in three faces chosen in
+  General settings ▸ Face: Std (dark, the default), Black and Silver (light). Buttons are keys, pickers are
+  tracks with the chosen item raised, switches are keys with an LED, and status lines sit in glowing display
+  windows. Std and Black keep the window dark and Silver light, whatever the Mac's appearance. The Dock icons
+  and their panels don't change.
 - **Show in the Dock follows the Dock:** drag a profile's Dock icon out of the Dock and its switch turns off
   (the icon keeps running in the background); keep it in the Dock by hand and the switch turns on. On means
   pinned, so the icon is there even while stopped. "Keep the Dock in order" no longer pins hidden icons.
@@ -21,11 +26,6 @@ the notes before updating.
   window.
 - **Renew sign-in** (was Renew if expired) explains what it does: Claude Code swaps its short-lived access key
   when it runs, so the Dock icon runs it once with a tiny prompt when the key has run out.
-- **Faces:** the cl_audit window now looks like the home site's hi-fi front panel, in three faces chosen in
-  General settings ▸ Face: Std (dark, the default), Black and Silver (light). Buttons are keys, pickers are
-  tracks with the chosen item raised, switches are keys with an LED, and status lines sit in glowing display
-  windows. Std and Black keep the window dark and Silver light, whatever the Mac's appearance. The Dock icons
-  and their panels don't change.
 - The window's top strip: on the dashboard, which profiles it shows and the last update with a refresh
   key; in Settings, whether everything is saved.
 - No more Apply: a profile's name or icon label is saved when you press Return or click elsewhere (Esc puts
@@ -33,7 +33,6 @@ the notes before updating.
 - Release notes and the README say which Claude Code and Claude app versions a release was checked with
   (now Claude Code 2.1.310 and the Claude app 3.6556.2): a newer Claude version can change how Claude
   Code saves its login or the usage figures.
-Nothing pending.
 
 ## 26.10.1 — 2026-10-24
 
