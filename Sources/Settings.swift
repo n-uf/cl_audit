@@ -787,6 +787,13 @@ struct AccountSettings: View {
     /// Shows or hides the Dock icon; the Dock restarts, so "Restarting the Dock…" shows for a few seconds.
     func showInDock(_ on: Bool) {
         entry.iconHidden = !on
+        // a running Dock icon app applies it itself (it restarts); one that isn't running would only at its next
+        // start, so its pin is taken out or put back here, in its own preferences' place
+        let app = Installer.appURL(entry)
+        if !Installer.isRunning(app), let d = UserDefaults(suiteName: Installer.bundleID(entry)) {
+            dockLog.log("\(entry.id, privacy: .public): Show in the Dock \(on ? "on" : "off", privacy: .public) while stopped")
+            if on { DockManager.repin(app, defaults: d) } else { DockManager.unpinRemembering(app, defaults: d) }
+        }
         dockRestarting = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { dockRestarting = false }
     }

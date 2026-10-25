@@ -79,10 +79,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let hide = entry.iconHidden
         if let applied = appliedHidden {
             guard applied != hide else { return }
+            dockLog.log("\(self.entry.id, privacy: .public): Show in the Dock \(hide ? "off" : "on", privacy: .public), relaunching")
             relaunch()
             return
         }
         appliedHidden = hide
+        dockLog.log("\(self.entry.id, privacy: .public): started \(hide ? "hidden" : "shown", privacy: .public)")
         NSApp.setActivationPolicy(hide ? .accessory : .regular)
         if hide { DockManager.unpinRemembering(Bundle.main.bundleURL, defaults: defaults) }
         else { DockManager.repin(Bundle.main.bundleURL, defaults: defaults) }

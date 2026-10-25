@@ -7,6 +7,10 @@
 
 import AppKit
 import SwiftUI
+import os
+
+/// What cl_audit does to the Dock, for `log show --predicate 'subsystem == "local.usage-n-uf"'`.
+let dockLog = Logger(subsystem: "local.usage-n-uf", category: "dock")
 
 final class DockPrefs: ObservableObject {
     static let shared = DockPrefs()
@@ -245,17 +249,27 @@ enum DockManager {
     /// Takes one app's pin out of the Dock (hiding cl_usage) and remembers its left neighbour, to put it back there.
     static func unpinRemembering(_ app: URL, defaults: UserDefaults) {
         let list = pins(), k = key(app)
-        guard let i = list.firstIndex(where: { path($0) == k }) else { return }
+        guard let i = list.firstIndex(where: { path($0) == k }) else { dockLog.log("unpin \(k, privacy: .public): not pinned"); return }
         defaults.set(true, forKey: "dockWasPinned")
         defaults.set(i > 0 ? (path(list[i - 1]) ?? "") : "", forKey: "dockLeftNeighbour")
         var kept = list; kept.remove(at: i)
+        dockLog.log("unpin \(k, privacy: .public): at \(i), writing")
         write(kept)
+        // the Dock may still be settling (the app has just started): look again, and once more if it came back
+        DispatchQueue.global(qos: .utility).async {
+            for attempt in 1...3 {
+                Thread.sleep(forTimeInterval: 3)
+                guard isPinned(app) else { dockLog.log("unpin \(k, privacy: .public): gone (check \(attempt))"); return }
+                dockLog.log("unpin \(k, privacy: .public): still pinned (check \(attempt)), writing again")
+                write(pins().filter { path($0) != k })
+            }
+        }
     }
 
     /// Puts back a pin taken out by `unpinRemembering`. The app has just become a Dock app again, and the Dock
     /// rewrites its list around that, so this waits a moment, pins, and checks once more.
     static func repin(_ app: URL, defaults: UserDefaults) {
-        guard defaults.bool(forKey: "dockWasPinned") else { return }
+        guard defaults.bool(forKey: "dockWasPinned") else { dockLog.log("repin \(key(app), privacy: .public): wasn't pinned"); return }
         let neighbour = defaults.string(forKey: "dockLeftNeighbour")
         defaults.removeObject(forKey: "dockWasPinned"); defaults.removeObject(forKey: "dockLeftNeighbour")
         // Done by a short helper process (this app started with --pin): inside the app that just became a Dock app
@@ -264,7 +278,8 @@ enum DockManager {
         let p = Process()
         p.executableURL = exe
         p.arguments = ["--pin", app.path, neighbour ?? "-"]
-        try? p.run()
+        do { try p.run(); dockLog.log("repin \(key(app), privacy: .public): helper started") }
+        catch { dockLog.error("repin \(key(app), privacy: .public): helper failed \(error.localizedDescription, privacy: .public)") }
     }
 
     /// The helper's work: wait for the Dock to settle, pin, check, and try once more.
@@ -272,10 +287,11 @@ enum DockManager {
         // The Dock is busy with the app that just started, and rewrites its list as it restarts: pin once it has
         // settled, then check after the restart and try again (up to three times).
         Thread.sleep(forTimeInterval: 4)
-        for _ in 0..<3 {
+        for attempt in 1...3 {
             pin(app, after: neighbour)
             Thread.sleep(forTimeInterval: 6)
-            if isPinned(app) { return }
+            if isPinned(app) { dockLog.log("pin \(key(app), privacy: .public): pinned (try \(attempt))"); return }
+            dockLog.log("pin \(key(app), privacy: .public): not there after try \(attempt)")
         }
     }
 
@@ -304,7 +320,8 @@ enum DockManager {
 
     private static func write(_ list: [[String: Any]]) {
         CFPreferencesSetAppValue(key, list as CFArray, dock)
-        CFPreferencesAppSynchronize(dock)
+        let ok = CFPreferencesAppSynchronize(dock)
+        dockLog.log("write \(list.count) pins, synced \(ok), restarting the Dock")
         Installer.run("/usr/bin/killall", ["Dock"])
     }
 }
