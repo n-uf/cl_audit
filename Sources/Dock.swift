@@ -259,6 +259,7 @@ enum DockManager {
         DispatchQueue.global(qos: .utility).async {
             for attempt in 1...3 {
                 Thread.sleep(forTimeInterval: 3)
+                if wantsShown(app) == true { dockLog.log("unpin \(k, privacy: .public): switched on meanwhile, stopping"); return }
                 guard isPinned(app) else { dockLog.log("unpin \(k, privacy: .public): gone (check \(attempt))"); return }
                 dockLog.log("unpin \(k, privacy: .public): still pinned (check \(attempt)), writing again")
                 write(pins().filter { path($0) != k })
@@ -282,12 +283,22 @@ enum DockManager {
         catch { dockLog.error("repin \(key(app), privacy: .public): helper failed \(error.localizedDescription, privacy: .public)") }
     }
 
+    /// Whether this Dock icon app's profile wants it in the Dock right now (nil: not a profile's app).
+    /// Read fresh each time, so a pin or unpin still under way stops when the switch has been flipped back.
+    static func wantsShown(_ app: URL) -> Bool? {
+        guard let id = Installer.info(app)?["UsageAccountID"] as? String,
+              let e = Store.load().first(where: { $0.id == id }) else { return nil }
+        return !e.iconHidden
+    }
+
     /// The helper's work: wait for the Dock to settle, pin, check, and try once more.
     static func pinFromHelper(_ app: URL, after neighbour: String?) {
         // The Dock is busy with the app that just started, and rewrites its list as it restarts: pin once it has
-        // settled, then check after the restart and try again (up to three times).
+        // settled, then check after the restart and try again (up to three times). Stops as soon as the profile
+        // no longer wants it shown (the switch was flipped back meanwhile).
         Thread.sleep(forTimeInterval: 4)
         for attempt in 1...3 {
+            if wantsShown(app) == false { dockLog.log("pin \(key(app), privacy: .public): switched off meanwhile, stopping"); return }
             pin(app, after: neighbour)
             Thread.sleep(forTimeInterval: 6)
             if isPinned(app) { dockLog.log("pin \(key(app), privacy: .public): pinned (try \(attempt))"); return }

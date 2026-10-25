@@ -775,7 +775,7 @@ struct AccountSettings: View {
                     .textCase(.uppercase).foregroundStyle(face.print).lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 6)
-                Button("Show in the Dock") { showInDock(true) }.buttonStyle(PillButtonStyle(compact: true))
+                Button("Show in the Dock") { showInDock(true) }.buttonStyle(PillButtonStyle(compact: true)).disabled(dockRestarting)
                     .help("Puts this Dock icon back in the Dock (the Dock restarts)")
             }
             .padding(.leading, 10).padding(.trailing, 6).padding(.vertical, 6)
@@ -794,8 +794,10 @@ struct AccountSettings: View {
             dockLog.log("\(entry.id, privacy: .public): Show in the Dock \(on ? "on" : "off", privacy: .public) while stopped")
             if on { DockManager.repin(app, defaults: d) } else { DockManager.unpinRemembering(app, defaults: d) }
         }
+        // the Dock icon app restarts, then the Dock (twice when putting a pin back): about 10 s, during which the
+        // switch waits, so quick flips can't start changes that undo each other
         dockRestarting = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 6) { dockRestarting = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { dockRestarting = false }
     }
 
     // Dock icon: whether it shows in the Dock and starts at login, and where it is now
@@ -807,6 +809,8 @@ struct AccountSettings: View {
             // in a display window while it happens
             SRow(label: "Show in the Dock", info: "Off: the Dock icon keeps running in the background (it still refreshes and alerts) but has no place in the Dock. Changing this restarts the Dock, which takes the pin out or puts it back.", first: true) {
                 Toggle("", isOn: Binding(get: { !entry.iconHidden }, set: { showInDock($0) })).smallSwitch()
+                    .disabled(dockRestarting)
+                    .help(dockRestarting ? "Restarting the Dock: wait a few seconds" : "")
             }
             SRow(label: "Open at login", info: "Starts this Dock icon when you log in to the Mac, so its usage refreshes and alerts keep working without opening cl_audit.") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
             // one display, the full width of the row whatever it says: what the Dock icon is doing now
