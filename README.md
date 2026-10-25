@@ -123,7 +123,7 @@ press-and-hold, and the icon checks which mouse button is down at that moment.
 Settings is a page of the same window as the dashboard (switch at the top, or ⌘,). The profiles run along
 the top, with **General** first and **New profile** last. Changes are saved as you make them and the
 icons follow at once; a profile's name or icon label is saved when you press Return or click elsewhere (Esc puts it back),
-because that renames its Dock icon app; the top strip says when it's done. **Emails** (the key in the window's top strip) off leaves email addresses out of the launcher, dashboard,
+because that renames its Dock icon app; the top strip says when it's done. **Show emails** (the key in the window's top strip) off leaves email addresses out of the launcher, dashboard,
 panels and Dock menus, and blurs them in Settings (hover one to see it), for screen sharing.
 
 Cards are at most one column wide: three columns from about 1180 pt, two from 800, one below. Controls
@@ -140,7 +140,7 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   with its own sign-in and data folder, or none) and its data folder. Folders and windows other profiles
   use are marked and can't be picked; two profiles can't share a folder or a window.
 - **Updates and alerts:** how often to refresh, and a notification when a limit reaches a set level.
-- **Clicking and panels:** what a click does (usage for N seconds while Claude opens, just open Claude,
+- **Dock icon clicks:** what a click does (usage for N seconds while Claude opens, just open Claude,
   or the details panel), press and hold, and the panel design (Glow, Rings, Numbers, Segments, Pace),
   previewed at full size.
 - **Icon:** the style, previewed as the limit fills up:

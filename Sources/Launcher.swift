@@ -436,7 +436,7 @@ struct TopStrip: View {
     private var emailsKey: some View {
         Button { privacy.set(show: !privacy.show) } label: {
             KeyLook(held: privacy.show, height: Self.height, hPad: 11) {
-                HStack(spacing: 7) { LED(color: FaceTheme.ledOn, lit: privacy.show); Text("Emails") }
+                HStack(spacing: 7) { LED(color: FaceTheme.ledOn, lit: privacy.show); Text("Show emails") }
             }
         }
         .buttonStyle(PressableKey())

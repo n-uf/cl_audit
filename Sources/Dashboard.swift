@@ -30,10 +30,7 @@ struct DashboardSettings: View {
     var width: CGFloat = 1280
 
     var body: some View {
-        SettingsColumns(width: width,
-                        three: [[AnyView(faceCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(DockCard())]],
-                        two: [[AnyView(faceCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(DockCard())]],
-                        one: [AnyView(faceCard), AnyView(cardsCard), AnyView(DockCard()), AnyView(aboutCard)])
+        SettingsColumns(width: width, groups: [[AnyView(faceCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(DockCard())]])
     }
 
     @Environment(\.face) private var face

@@ -3,69 +3,33 @@
 
 import SwiftUI
 
-/// Settings cards laid out like blocks: as many columns as fit (each 340–460 pt wide, never stretched past
-/// that), every card going into the shortest column in turn, so a wide window gets more columns instead of
-/// wider cards. `one` is the order; `three` and `two` are kept for callers that still pass them.
+/// Settings cards in groups, a group per column, in reading order: as many columns as fit (each 340–460 pt,
+/// never stretched). When there are fewer columns than groups, the later groups stack in the last column;
+/// with one column everything follows in order. Extra width stays empty rather than widening cards.
 struct SettingsColumns: View {
     let width: CGFloat
-    let three: [[AnyView]]
-    let two: [[AnyView]]
-    let one: [AnyView]
+    let groups: [[AnyView]]
 
     static let minColumn: CGFloat = 340
     static let maxColumn: CGFloat = 460
+    static let spacing: CGFloat = 10
 
     var body: some View {
-        Masonry(minColumn: Self.minColumn, maxColumn: Self.maxColumn, spacing: 10) {
-            ForEach(one.indices, id: \.self) { i in one[i] }
+        let n = max(1, Int(((width + Self.spacing) / (Self.minColumn + Self.spacing)).rounded(.down)))
+        let w = min(Self.maxColumn, (width - CGFloat(n - 1) * Self.spacing) / CGFloat(n))
+        let cols: [[AnyView]] = n >= groups.count ? groups
+            : n == 1 ? [groups.flatMap { $0 }]
+            : Array(groups.prefix(n - 1)) + [groups.dropFirst(n - 1).flatMap { $0 }]
+        HStack(alignment: .top, spacing: Self.spacing) {
+            ForEach(cols.indices, id: \.self) { i in
+                VStack(spacing: Self.spacing) {
+                    ForEach(cols[i].indices, id: \.self) { j in cols[i][j] }
+                }
+                .frame(width: w)
+                .fixedSize(horizontal: false, vertical: true)    // each card keeps its own height
+            }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
-    }
-}
-
-/// Columns of a fixed width; each child goes into the shortest column (empty children take no room).
-struct Masonry: Layout {
-    var minColumn: CGFloat = 340
-    var maxColumn: CGFloat = 460
-    var spacing: CGFloat = 10
-
-    private func columns(_ width: CGFloat) -> (n: Int, w: CGFloat) {
-        let n = max(1, Int(((width + spacing) / (minColumn + spacing)).rounded(.down)))
-        return (n, min(maxColumn, (width - CGFloat(n - 1) * spacing) / CGFloat(n)))
-    }
-
-    private func arrange(_ subviews: Subviews, width: CGFloat) -> (points: [CGPoint], w: CGFloat, size: CGSize) {
-        let (n, w) = columns(width)
-        var heights = Array(repeating: CGFloat(0), count: n)
-        var points: [CGPoint] = []
-        for s in subviews {
-            let h = s.sizeThatFits(ProposedViewSize(width: w, height: nil)).height
-            guard h >= 1 else { points.append(.zero); continue }
-            let c = heights.indices.min { heights[$0] < heights[$1] } ?? 0
-            let y = heights[c] == 0 ? 0 : heights[c] + spacing
-            points.append(CGPoint(x: CGFloat(c) * (w + spacing), y: y))
-            heights[c] = y + h
-        }
-        let used = heights.filter { $0 > 0 }.count
-        return (points, w, CGSize(width: CGFloat(max(used, 1)) * w + CGFloat(max(used, 1) - 1) * spacing, height: heights.max() ?? 0))
-    }
-
-    private func usable(_ proposal: ProposedViewSize) -> CGFloat {
-        guard let w = proposal.width, w.isFinite, w > 0 else { return 3 * maxColumn + 2 * spacing }
-        return w
-    }
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let a = arrange(subviews, width: usable(proposal))
-        return CGSize(width: proposal.width.flatMap { $0.isFinite ? $0 : nil } ?? a.size.width, height: a.size.height)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let a = arrange(subviews, width: bounds.width)
-        for (i, s) in subviews.enumerated() {
-            s.place(at: CGPoint(x: bounds.minX + a.points[i].x, y: bounds.minY + a.points[i].y),
-                    proposal: ProposedViewSize(width: a.w, height: nil))
-        }
     }
 }
 

@@ -52,7 +52,10 @@ final class SettingsModel: ObservableObject {
             : saved
         selection = Self.dashboardID
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.tick += 1 }
+        // after the change, not inside it: an animated note started while the window is redrawing for the
+        // change itself left the Emails key and the cards showing the old state
         emailsWatch = Privacy.shared.$show.dropFirst().removeDuplicates()
+            .receive(on: DispatchQueue.main)
             .sink { [weak self] on in self?.showNote(SettingNotes.emails(on)) }
     }
 
@@ -633,14 +636,14 @@ struct AccountSettings: View {
         return a.lowercased() != b.lowercased()
     }
 
-    /// Five cards in the order they're set: Account · Claude Code and window · Icon · Clicking and panels ·
-    /// Updates and alerts. Three columns when wide (the tall Icon card alone in the middle), two when medium,
-    /// one when narrow; cards never get wider than a column.
+    /// The cards in three groups, a column each when there's room: the profile (Profile · Claude Code and window ·
+    /// Updates and alerts), its Dock icon (Dock icon · Opening and closing · Dock icon clicks), and Icon.
     var body: some View {
-        SettingsColumns(width: width,
-                        three: [[AnyView(accountCard), AnyView(codeCard), AnyView(updatesCard), AnyView(clickCard)], [AnyView(iconCard)], [AnyView(dockIconCard), AnyView(openCloseCard)]],
-                        two: [[AnyView(accountCard), AnyView(codeCard), AnyView(updatesCard), AnyView(clickCard)], [AnyView(iconCard), AnyView(dockIconCard), AnyView(openCloseCard)]],
-                        one: [AnyView(accountCard), AnyView(codeCard), AnyView(iconCard), AnyView(dockIconCard), AnyView(openCloseCard), AnyView(updatesCard), AnyView(clickCard)])
+        // the profile itself, then its Dock icon (what it does, how clicks work), then how the icon looks
+        SettingsColumns(width: width, groups: [
+            [AnyView(accountCard), AnyView(codeCard), AnyView(updatesCard)],
+            [AnyView(dockIconCard), AnyView(openCloseCard), AnyView(clickCard)],
+            [AnyView(iconCard)]])
     }
 
     // Account
@@ -763,9 +766,9 @@ struct AccountSettings: View {
         }
     }
 
-    // Clicking and panels
+    // Dock icon clicks
     var clickCard: some View {
-        SCard(title: "Clicking and panels", info: "What a click on this profile's Dock icon does, and how its usage panel looks. Double-click or ⌥-click always opens the large panel.") {
+        SCard(title: "Dock icon clicks", info: "What a click on this profile's Dock icon does, and how the usage panel it opens looks. Double-click or ⌥-click always opens the large panel.") {
             SRow(label: "Click", info: "Usage, then Claude: the usage panel for a moment, then the Claude window. Open Claude: the Claude window straight away. Details panel: the large usage panel, and Claude only when you ask.", first: true, picture: AnyView(ClickPicture(action: entry.clickAction, seconds: entry.peekSeconds))) {
                 Menu {
                     Picker("", selection: $entry.clickAction) { ForEach(ClickAction.allCases) { Text($0.shortTitle).tag($0) } }
@@ -774,7 +777,7 @@ struct AccountSettings: View {
                 .faceMenu()
             }
             if entry.clickAction == .peekThenOpen {
-                SRow(label: "Show usage for", info: "How long the usage panel stays up after a click before the Claude window opens.") {
+                SRow(label: "Usage shows for", info: "How long the usage panel stays up after a click before the Claude window opens.") {
                     MiniStepper(text: PeekDuration.text(entry.peekSeconds),
                                 down: { entry.peekSeconds = PeekDuration.down(entry.peekSeconds) },
                                 up: { entry.peekSeconds = PeekDuration.up(entry.peekSeconds) })
@@ -783,7 +786,7 @@ struct AccountSettings: View {
             SRow(label: "Press and hold", info: "Press and hold the icon for its details panel and a short menu. Double-click or ⌥-click also opens the panel; right-click shows the full menu.") {
                 Toggle("", isOn: $entry.longPressDetails).smallSwitch()
             }
-            SRow(label: "Panel design", info: "How this profile's usage panel looks when you click or press and hold its Dock icon. The dashboard's cards have one style for all profiles, in General.", stacked: true) {
+            SRow(label: "Usage panel", info: "How the usage panel looks when you click or press and hold this Dock icon. The dashboard's cards have one style for all profiles, in General.", stacked: true) {
                 // the keys and, under them, the panel at its own size (the card grows with the taller designs)
                 VStack(spacing: 7) {
                     PillPicker(options: PanelDesign.allCases, selection: $entry.panelDesign, compact: true, fill: true) { $0.shortTitle }

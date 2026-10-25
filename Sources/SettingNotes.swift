@@ -57,7 +57,7 @@ enum SettingNotes {
         }
         if a.peekSeconds != b.peekSeconds {
             let t = PeekDuration.text(b.peekSeconds)
-            return SettingNote(title: "Show usage for · \(t)", text: "After a click the usage stays up for \(t), then the Claude window comes forward.")
+            return SettingNote(title: "Usage shows for · \(t)", text: "After a click the usage stays up for \(t), then the Claude window comes forward.")
         }
         if a.longPressDetails != b.longPressDetails {
             return SettingNote(title: "Press and hold · \(b.longPressDetails ? "on" : "off")", text: b.longPressDetails
