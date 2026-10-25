@@ -31,7 +31,6 @@ struct NewAccountDraft: Equatable {
     var shareFrom = "~/.claude"         // the Claude Code folder the shared items are linked from
     var source: FolderSource = .new
     var existingDir: String?            // the chosen folder, when connecting an existing one
-    var window: DesktopMode = .separate
     var continueAnyway = false          // set up while Claude is still running
     /// What this setup did; Cancel undoes exactly this (an existing folder is never deleted or signed out).
     var createdConfigDir: String?
@@ -47,11 +46,12 @@ struct NewAccountDraft: Equatable {
     var label: String { customLabel ?? String(name.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(6)) }
     var newConfigDir: String { "~/.claude-\(id)" }
     var configDir: String { source == .existing ? (existingDir ?? "") : newConfigDir }
+    /// The usual Claude app for ~/.claude, its own Claude window for any other folder.
+    var window: DesktopMode { .for(configDir: configDir) }
     var dataDir: String {
         switch window {
         case .separate: return "~/Library/Application Support/Claude-\(id)"
         case .standard: return FolderKey.standardDataDir
-        case .none: return ""
         }
     }
 
@@ -141,14 +141,12 @@ enum NewAccountSetup {
         }
 
         // the desktop window
-        switch d.window {
-        case .none: out.append(.init(section: .window, state: .ok, text: "Claude Code only, no desktop window"))
-        default:
+        do {
             if let owner = FolderRules.windowOwner(d.window, d.dataDir, among: accounts) {
-                out.append(.init(section: .window, state: .bad, text: d.window == .standard ? "The standard window is “\(owner.name)”'s: choose Separate" : "\(d.dataDir) is already “\(owner.name)”'s window"))
+                out.append(.init(section: .window, state: .bad, text: d.window == .standard ? "The usual Claude app is “\(owner.name)”'s window" : "\(d.dataDir) is already “\(owner.name)”'s window"))
             } else {
                 let standardOwner = FolderRules.windowOwner(.standard, FolderKey.standardDataDir, among: accounts)
-                out.append(.init(section: .window, state: .ok, text: d.window == .standard ? "The standard Claude window and its sign-in"
+                out.append(.init(section: .window, state: .ok, text: d.window == .standard ? "The usual Claude app and its sign-in"
                                  : "Own window and sign-in" + (standardOwner.map { " · standard is \($0.name)'s" } ?? "")))
             }
         }
@@ -213,7 +211,7 @@ enum NewAccountSetup {
     enum DesktopSignIn { case notChecked, notSignedIn, same, different, unknown }
 
     /// Reads the window's config.json only for whether a login is stored and which account it last used
-    /// (an account id); nothing from it is kept or shown. The standard window and Terminal only aren't checked.
+    /// (an account id); nothing from it is kept or shown. The usual Claude app isn't checked.
     static func desktopSignIn(_ d: NewAccountDraft) -> DesktopSignIn {
         guard d.window == .separate, foldersReady(d) else { return .notChecked }
         let file = (expand(d.dataDir) as NSString).appendingPathComponent("config.json")
@@ -226,7 +224,7 @@ enum NewAccountSetup {
     }
 
     static func windowOpen(_ d: NewAccountDraft) -> Bool {
-        d.window != .none && (Launcher.activity(for: [Account(d.entry)])[expand(d.configDir)]?.desktopOpen ?? false)
+        Launcher.activity(for: [Account(d.entry)])[expand(d.configDir)]?.desktopOpen ?? false
     }
 
     /// Creates the new folder (with links from ~/.claude) or connects the existing one, and creates the
@@ -331,7 +329,7 @@ struct NewAccountView: View {
         // the folder card takes what is left, so the steps pane keeps the same gap to the window's edge
         return ScrollView {
             HStack(alignment: .top, spacing: 12) {
-                VStack(spacing: 10) { accountCard(labelWidth: 76, stacked: false); windowCard(labelWidth: 76, stacked: false) }
+                VStack(spacing: 10) { accountCard(labelWidth: 76, stacked: false) }
                     .frame(width: col1)
                 folderCard(labelWidth: 76, stacked: false).frame(minWidth: 0, maxWidth: .infinity)
                 stepsPanel.frame(width: col3)
@@ -349,7 +347,6 @@ struct NewAccountView: View {
                     progressStrip(compact: narrow)
                     accountCard(labelWidth: lw, stacked: narrow)
                     folderCard(labelWidth: lw, stacked: narrow)
-                    windowCard(labelWidth: lw, stacked: narrow)
                     if folders { signInCard }
                 }
                 .frame(maxWidth: 700)
@@ -379,6 +376,8 @@ struct NewAccountView: View {
            .frame(maxWidth: .infinity, alignment: .leading)
            .padding(.top, 2)
             statusLines(checks(.account), indent: 0).padding(.top, 4)
+            // the Claude window comes from the folder; only a clash needs saying
+            statusLines(checks(.window).filter { $0.state != .ok }, indent: 0)
         }
     }
 
@@ -505,30 +504,6 @@ struct NewAccountView: View {
         }
     }
 
-    private func windowCard(labelWidth: CGFloat, stacked: Bool) -> some View {
-        let standardFree = FolderRules.windowOwner(.standard, FolderKey.standardDataDir, among: model.accounts) == nil
-        // The standard window is offered only while no other account has it.
-        let options: [(DesktopMode, String, String)] = (standardFree ? [(.standard, "The standard Claude window", "The desktop app as you usually open it, signed in to this account")] : [])
-            + [(.separate, "Its own Claude window", "The desktop app opened separately, with this profile's sign-in"),
-               (.none, "Terminal only", "No desktop app for this profile; Claude Code in Terminal")]
-        return SCard(title: "Claude desktop app") {
-            VStack(spacing: 1) {
-                ForEach(options, id: \.0) { o in
-                    listRow(selected: draft.window == o.0, disabled: draft.started) {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(o.1).font(.system(size: 12.5, weight: draft.window == o.0 ? .medium : .regular))
-                            Text(o.2).font(.system(size: 11)).foregroundStyle(.secondary)
-                        }
-                    } action: { draft.window = o.0 }
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .faceWindow(radius: 6)
-            .padding(.top, 2)
-            statusLines(checks(.window).filter { $0.state != .ok }, indent: 0).padding(.top, 4)
-        }
-    }
-
     /// Medium and narrow layouts show the sign-in as a card (wide shows it in step 3).
     private var signInCard: some View {
         SCard(title: "Sign in") { signInParts }
@@ -555,7 +530,7 @@ struct NewAccountView: View {
                 }
             }
             if draft.window == .standard {
-                part(.todo, current: false, title: "b · Desktop app") { sub("Uses the standard Claude window and its sign-in") }
+                part(.todo, current: false, title: "b · Desktop app") { sub("Uses the usual Claude app and its sign-in") }
             } else if needsDesktop {
                 let state: StepState = signedIn == nil ? .todo : desktopDone ? .done : desktop == .different ? .warn : current == 4 ? .now : .todo
                 part(state, current: current == 4, title: "b · Desktop app") {

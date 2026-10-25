@@ -20,7 +20,6 @@ struct DetailsInfo {
     var source: String?
     var problem: String?
     var renewNote: String?
-    var canOpenClaude: Bool
     var needsLogin: Bool
     var design: PanelDesign = .glow
     var accent: NSColor = Painter.orange
@@ -119,10 +118,8 @@ struct DetailsView: View {
             }
 
             HStack(spacing: 8) {
-                if info.canOpenClaude {
-                    Button("Claude", action: actions.openClaude).buttonStyle(.pill(Color(nsColor: info.accent), compact: true))
-                        .keyboardShortcut(.defaultAction).help("Open Claude for this profile")
-                }
+                Button("Claude", action: actions.openClaude).buttonStyle(.pill(Color(nsColor: info.accent), compact: true))
+                    .keyboardShortcut(.defaultAction).help("Open Claude for this profile")
                 Button("Dashboard", action: actions.dashboard).buttonStyle(PillButtonStyle(tint: nil, compact: true))
                 if info.needsLogin { Button("Log in…", action: actions.logIn).buttonStyle(.pill(.red, compact: true)) }
                 Spacer(minLength: 4)
@@ -248,7 +245,7 @@ extension DetailsController {
                                mismatch: false, plan: "max", fiveHour: 24,
                                fiveHourResets: Date().addingTimeInterval(3 * 3600 + 57 * 60),
                                weekly: 58, weeklyResets: Date().addingTimeInterval(2 * 3600 + 7 * 60), updated: Date(),
-                               source: "Anthropic", problem: nil, renewNote: nil, canOpenClaude: true, needsLogin: false,
+                               source: "Anthropic", problem: nil, renewNote: nil, needsLogin: false,
                                design: design, accent: Painter.orange)
         let actions = DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})
         let view = Group {

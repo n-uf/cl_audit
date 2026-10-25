@@ -8,6 +8,11 @@ the notes before updating.
 
 ## Unreleased
 
+- **Claude window** is no longer a setting: the profile using `~/.claude` opens the usual Claude app, every
+  other profile its own Claude window. "None (Terminal only)" is gone; a profile set that way gets its own
+  window.
+- **Renew sign-in** (was Renew if expired) explains what it does: Claude Code swaps its short-lived access key
+  when it runs, so the Dock icon runs it once with a tiny prompt when the key has run out.
 - **Faces:** the cl_audit window now looks like the home site's hi-fi front panel, in three faces chosen in
   General settings ▸ Face: Std (dark, the default), Black and Silver (light). Buttons are keys, pickers are
   tracks with the chosen item raised, switches are keys with an LED, and status lines sit in glowing display

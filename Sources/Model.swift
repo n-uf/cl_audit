@@ -27,7 +27,6 @@ struct Account {
     let configDir: String          // expanded
     let isDefaultDir: Bool         // plain ~/.claude, used without CLAUDE_CONFIG_DIR
     let claudeUserDataDir: String? // separate desktop window's data folder (expanded); nil = standard window
-    let opensDesktop: Bool
 
     init(_ e: AccountEntry) {
         label = e.label.isEmpty ? String(e.name.uppercased().prefix(6)) : e.label
@@ -35,7 +34,6 @@ struct Account {
         configDir = expand(e.configDir.isEmpty ? "~/.claude" : e.configDir)
         isDefaultDir = configDir == expand("~/.claude")
         claudeUserDataDir = e.desktop == .separate && !e.desktopDataDir.isEmpty ? expand(e.desktopDataDir) : nil
-        opensDesktop = e.desktop != .none
     }
 
     /// Claude Code names the Keychain item after the config folder: the plain name for the

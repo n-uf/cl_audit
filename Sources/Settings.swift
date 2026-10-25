@@ -636,7 +636,7 @@ struct AccountSettings: View {
         return a.lowercased() != b.lowercased()
     }
 
-    /// The cards in three groups, a column each when there's room: the profile (Profile · Claude Code and window ·
+    /// The cards in three groups, a column each when there's room: the profile (Profile · Claude Code ·
     /// Updates and alerts), its Dock icon (Dock icon · Opening and closing · Dock icon clicks), and Icon.
     var body: some View {
         // the profile itself, then its Dock icon (what it does, how clicks work), then how the icon looks
@@ -670,8 +670,8 @@ struct AccountSettings: View {
 
     // Claude Code and window
     var codeCard: some View {
-        SCard(title: "Claude Code and window",
-              info: "Which Claude Code folder this profile uses, its sign-in, and which Claude window it opens.") {
+        SCard(title: "Claude Code",
+              info: "The Claude Code folder this profile uses and its sign-in. Its Claude window comes with it: the usual Claude app for the profile using ~/.claude, its own Claude window (own sign-in, chats and settings) for any other.") {
             SRow(label: "Folder", info: "The Claude Code folder for this profile, like ~/.claude: its sign-in, settings and history live there. One profile per folder.", first: true) {
                 HStack(spacing: 6) {
                     Menu {
@@ -701,50 +701,10 @@ struct AccountSettings: View {
                     .buttonStyle(.pill(.red, compact: true)).disabled(model.claudePath == nil)
                 }
             }
-            SRow(label: "Renew if expired",
+            SRow(label: "Renew sign-in",
                  info: model.claudePath == nil ? "Needs Claude Code installed; it wasn't found."
-                    : "When the sign-in expires, the Dock icon runs Claude Code once with a one-line Haiku prompt so it renews, at most every 30 min. Uses a little of this profile's usage. Off: you sign in again yourself." + (status?.renewNote.map { "\nLast: \($0)" } ?? "")) {
+                    : "Claude Code's sign-in uses a short-lived access key, which Claude Code swaps for a fresh one whenever it runs. The Dock icon only reads that key, so after a while without Claude Code it runs out and the usage stops updating. On: the Dock icon then runs Claude Code once in the background (a one-line prompt, \"Reply with OK.\", on Haiku, nothing saved) so it swaps the key; at most every 30 min, using a sliver of this profile's usage. Off: the usage waits until you next use Claude Code." + (status?.renewNote.map { "\nLast: \($0)" } ?? "")) {
                 Toggle("", isOn: $entry.autoRenew).smallSwitch().disabled(model.claudePath == nil)
-            }
-            SRow(label: "Claude window", info: "The Claude window this profile opens from its Dock icon and the dashboard. Standard: the usual Claude app, with its sign-in (one profile only). Its own: a second Claude window with its own sign-in, chats and settings, kept in its own window folder. None: no window; Claude Code in Terminal only.", picture: AnyView(WindowPicture(mode: entry.desktop))) {
-                Menu {
-                    ForEach([DesktopMode.standard, .separate, .none]) { mode in
-                        let owner = mode == .standard ? FolderRules.windowOwner(.standard, "", among: model.accounts, except: entry.id) : nil
-                        Button {
-                            entry.desktop = mode
-                        } label: {
-                            Text(Self.windowTitle(mode, long: true)
-                                 + (owner.map { "  —  used by \($0.name)" } ?? (entry.desktop == mode ? "  ✓" : "")))
-                        }
-                        .disabled(owner != nil)
-                    }
-                } label: { MenuWell(text: Self.windowTitle(entry.desktop, long: false)) }
-                .faceMenu()
-            }
-            if entry.desktop == .separate {
-                SRow(label: "Window folder", info: "Where this profile's own Claude window keeps its sign-in, chats and settings (a Claude-… folder in ~/Library/Application Support). Each own window needs a folder of its own.") {
-                    Menu {
-                        ForEach(model.choices(model.dataFolders, current: entry.desktopDataDir), id: \.path) { c in
-                            let owner = FolderRules.windowOwner(.separate, c.path, among: model.accounts, except: entry.id)
-                            Button {
-                                entry.desktopDataDir = c.path
-                            } label: {
-                                Text((c.path as NSString).lastPathComponent + (owner.map { "  —  used by \($0.name)" } ?? ""))
-                            }
-                            .disabled(owner != nil)
-                        }
-                        // a new one only while this profile's own folder doesn't exist yet
-                        let mine = "~/Library/Application Support/Claude-\(entry.id)"
-                        if !model.dataFolders.contains(where: { $0.path == mine }) {
-                            Divider()
-                            Button("New folder: Claude-\(entry.id)") {
-                                try? FileManager.default.createDirectory(atPath: expand(mine), withIntermediateDirectories: true)
-                                entry.desktopDataDir = mine
-                            }
-                        }
-                    } label: { MenuWell(text: entry.desktopDataDir.isEmpty ? "Choose…" : (entry.desktopDataDir as NSString).lastPathComponent) }
-                    .faceMenu()
-                }
             }
         }
     }
@@ -803,31 +763,24 @@ struct AccountSettings: View {
         let state = UsageIconState.of(entry)
         let app = Installer.appURL(entry)
         return SCard(title: "Dock icon") {
-            // the label, the switch and what it does now on one line; the note about the Dock under the whole row
-            VStack(alignment: .leading, spacing: 5) {
+            // the label, the switch and what it does now on one line; the Dock restart is said in the (i), and shown
+            // in a display window while it happens
+            SRow(label: "Show in the Dock", info: "Off: the Dock icon keeps running in the background (it still refreshes and alerts) but has no place in the Dock. Changing this restarts the Dock, which takes the pin out or puts it back.", first: true) {
                 HStack(spacing: 10) {
-                    Text("Show in the Dock").font(.system(size: 12.5)).foregroundStyle(face.soft).lineLimit(1)
-                        .frame(width: SRow<EmptyView>.labelWidth, alignment: .leading)
                     Toggle("", isOn: Binding(get: { !entry.iconHidden }, set: { on in
                         entry.iconHidden = !on
                         dockRestarting = true
                         DispatchQueue.main.asyncAfter(deadline: .now() + 6) { dockRestarting = false }
                     })).smallSwitch()
-                    // on, the label says it all; off, say what still happens
-                    if entry.iconHidden {
+                    if dockRestarting {
+                        DisplayWindow(text: "Restarting the Dock…", tone: .amber)
+                    } else if entry.iconHidden {
+                        // off: say what still happens
                         Text("runs in the background; still refreshes and alerts")
                             .font(.system(size: 11)).foregroundStyle(face.muted).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     }
-                    Spacer(minLength: 0)
                 }
-                .frame(minHeight: 32)
-                // Hiding takes the pin out and showing puts it back; both rewrite the Dock's list and restart it.
-                Label(dockRestarting ? "restarting the Dock…" : "Changing this restarts the Dock (takes the pin out or puts it back)",
-                      systemImage: "arrow.clockwise")
-                    .font(.system(size: 10.5)).foregroundStyle(face.caution.opacity(dockRestarting ? 0.75 : 1))
-                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(.bottom, 7)
             SRow(label: "Open at login", info: "Starts this Dock icon when you log in to the Mac, so its usage refreshes and alerts keep working without opening cl_audit.") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
             SRow(label: "Now") {
                 HStack(spacing: 6) {
@@ -845,7 +798,7 @@ struct AccountSettings: View {
 
     // Opening and closing: how the Dock icon and the Claude window follow each other
     @ViewBuilder var openCloseCard: some View {
-        if entry.desktop != .none {
+        do {
             SCard(title: "Opening and closing") {
                 OpenCloseQuestions(profile: entry.name.isEmpty ? "this profile" : entry.name, lifecycle: $entry.lifecycle)
             }
@@ -891,15 +844,6 @@ struct AccountSettings: View {
         }
     }
 
-    /// The Claude window choices, in the words New profile and the (i) picture use.
-    static func windowTitle(_ m: DesktopMode, long: Bool) -> String {
-        switch m {
-        case .standard: return long ? "Standard Claude window" : "Standard"
-        case .separate: return long ? "Its own Claude window" : "Its own"
-        case .none: return long ? "None (Terminal only)" : "None"
-        }
-    }
-
     /// A name or label edit, saved at once; if it clashes with another profile it isn't kept and the reason shows.
     func save(_ what: String, _ change: (inout AccountEntry) -> Void) -> String? {
         let old = entry
@@ -922,7 +866,7 @@ struct AccountSettings: View {
             fiveHour: s?.fiveHour ?? 23, fiveHourResets: s?.fiveHourResets ?? Date().addingTimeInterval(3 * 3600 + 20 * 60),
             weekly: s?.weekly ?? 58, weeklyResets: s?.weeklyResets ?? Date().addingTimeInterval(2 * 86400 + 5 * 3600),
             updated: s?.updatedAt, source: nil, problem: nil, renewNote: nil,
-            canOpenClaude: true, needsLogin: false,
+            needsLogin: false,
             design: entry.panelDesign, accent: entry.accentNSColor)
     }
 
@@ -956,7 +900,7 @@ struct IconGallery: View {
     func model(_ st: IconStyle, _ h: Double? = nil, _ w: Double? = nil) -> TileModel {
         TileModel(label: entry.label.isEmpty ? "?" : entry.label, fiveHour: h ?? status?.fiveHour ?? 58,
                   weekly: w ?? status?.weekly ?? 62, stale: false, style: st, tint: entry.color, frame: entry.frame,
-                  fiveHourElapsed: 45, weeklyElapsed: 60, windowOpen: entry.windowDot && entry.desktop != .none)
+                  fiveHourElapsed: 45, weeklyElapsed: 60, windowOpen: entry.windowDot)
     }
 
     var body: some View {

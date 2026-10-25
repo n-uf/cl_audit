@@ -59,8 +59,8 @@ session logs (only time, model, token counts, project folder and surface of each
 **Where it goes: only to Anthropic.** cl_audit uses the token for two requests to Anthropic's own server:
 `api.anthropic.com/api/oauth/usage` (your 5-hour and weekly figures) and `api.anthropic.com/api/oauth/profile`
 (which account a profile is signed in to). There is no cl_audit server, no analytics and no sign-up, and
-nothing else goes over the network. **Renew if expired** (off by default) runs one small Claude Code request
-and lets Claude Code renew its own login.
+nothing else goes over the network. **Renew sign-in** (off by default) runs Claude Code once with a tiny prompt
+when the saved access key has run out, so Claude Code fetches a fresh one itself; cl_audit never writes it.
 
 **What it doesn't change.** Any app running under your macOS user can read Claude Code's saved login the
 same way; that is how Claude Code stores it. cl_audit makes it neither safer nor more exposed, so install
@@ -73,8 +73,8 @@ only software you trust. cl_audit's code is open to check: `Login.read` in `Sour
   Dock icon. **Account** means only the claude.ai account a profile is signed in to; several profiles
   can use one account.
 - **Dock icon:** the profile's own small app ("cl_audit &lt;profile&gt;") that shows its usage.
-- **Claude window:** the profile's running Claude desktop app: the standard one, or a separate one with its
-  own sign-in and data folder.
+- **Claude window:** the profile's running Claude desktop app: the usual Claude app for the profile using
+  `~/.claude`, its own Claude window (own sign-in, chats and settings) for every other profile.
 - **Profile settings** (Settings ▸ a profile) and **General settings** (Settings ▸ General, app-wide).
 
 ## The dashboard
@@ -135,10 +135,9 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
 - **Profile:** name, icon label (up to 6 letters, drawn on the icon), the profile's colour (launcher,
   dashboard, panels), and **Remove profile…**.
-- **Claude Code and window:** the Claude Code folder (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder) and the
-  sign-in found there; **Renew if expired** (opt-in); which **Claude window** opens (standard, separate
-  with its own sign-in and data folder, or none) and its data folder. Folders and windows other profiles
-  use are marked and can't be picked; two profiles can't share a folder or a window.
+- **Claude Code:** the Claude Code folder (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder) and the sign-in
+  found there; **Renew sign-in** (opt-in). Folders other profiles use are marked and can't be picked. The
+  Claude window follows from the folder (see Profile above); it isn't a setting.
 - **Updates and alerts:** how often to refresh, and a notification when a limit reaches a set level.
 - **Dock icon clicks:** what a click does (usage for N seconds while Claude opens, just open Claude,
   or the details panel), press and hold, and the panel design (Glow, Rings, Numbers, Segments, Pace),
@@ -186,7 +185,8 @@ at the bottom.
   agents, skills, commands or memory from another Claude Code folder), or an *existing* one, including
   `~/.claude` or one you pick in Finder. Folders are compared after resolving `~`, links and letter case;
   a folder inside or around another profile's folder counts as the same.
-- **Its Claude window:** the standard one (only while no other profile uses it), a separate one, or none.
+- **Its Claude window** isn't asked: `~/.claude` gets the usual Claude app, any other folder its own Claude
+  window.
 - **Quit the Claude app first,** until the folder is created or connected: while open it writes its
   sign-in and settings. The page lists its windows, checking every 2 s, with Quit and Check again.
   Claude Code in Terminal doesn't get in the way.

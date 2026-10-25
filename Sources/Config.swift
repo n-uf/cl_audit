@@ -33,15 +33,16 @@ enum Lifecycle: String, Codable, CaseIterable {
     var windowFollowsUsage: Bool { self == .windowFollows || self == .lockstep }
 }
 
-enum DesktopMode: String, Codable, CaseIterable, Identifiable {
-    case standard, separate, none
+/// Which Claude window a profile opens. Every profile has one: the usual Claude app for the profile using
+/// ~/.claude, its own Claude window (own sign-in, chats and settings in its own folder) for the others.
+/// Not a setting: New profile picks it from the folder.
+enum DesktopMode: String, Codable, Identifiable {
+    case standard, separate
     var id: String { rawValue }
-    var title: String {
-        switch self {
-        case .standard: return "Standard Claude window"
-        case .separate: return "Separate Claude window"
-        case .none: return "Nothing"
-        }
+
+    /// The window for a profile using this Claude Code folder.
+    static func `for`(configDir: String) -> DesktopMode {
+        FolderKey.canonical(configDir) == FolderKey.canonical("~/.claude") ? .standard : .separate
     }
 }
 
@@ -84,8 +85,15 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         name = try c.decodeIfPresent(String.self, forKey: .name) ?? id
         label = try c.decodeIfPresent(String.self, forKey: .label) ?? String(id.uppercased().prefix(6))
         configDir = try c.decodeIfPresent(String.self, forKey: .configDir) ?? "~/.claude"
-        desktop = try c.decodeIfPresent(DesktopMode.self, forKey: .desktop) ?? .standard
         desktopDataDir = try c.decodeIfPresent(String.self, forKey: .desktopDataDir) ?? ""
+        // "none" (Terminal only) is gone: such a profile gets its own Claude window
+        switch try c.decodeIfPresent(String.self, forKey: .desktop) {
+        case "separate"?: desktop = .separate
+        case "none"?:
+            desktop = .separate
+            if desktopDataDir.isEmpty { desktopDataDir = "~/Library/Application Support/Claude-\(id)" }
+        default: desktop = .standard
+        }
         style = try c.decodeIfPresent(IconStyle.self, forKey: .style) ?? .bars
         pollMinutes = try c.decodeIfPresent(Int.self, forKey: .pollMinutes) ?? 5
         notify = try c.decodeIfPresent(Bool.self, forKey: .notify) ?? true
@@ -119,7 +127,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         if name.contains("/") || name.contains(":") { return "The name can't contain / or :." }
         if label.isEmpty { return "Give the icon a label." }
         if configDir.isEmpty { return "Pick a Claude Code settings folder." }
-        if desktop == .separate && desktopDataDir.isEmpty { return "Pick a data folder for the separate Claude window." }
+        if desktop == .separate && desktopDataDir.isEmpty { return "This profile's Claude window has no folder yet." }
         return nil
     }
 }
@@ -406,7 +414,7 @@ enum Installer {
     /// cl_usage set to follow its Claude window, while that window is closed: it isn't started.
     static func waitsForWindow(_ e: AccountEntry) -> Bool {
         let a = Account(e)
-        return e.lifecycle.usageFollowsWindow && a.opensDesktop && !(Launcher.activity(for: [a])[a.configDir]?.desktopOpen ?? false)
+        return e.lifecycle.usageFollowsWindow && !(Launcher.activity(for: [a])[a.configDir]?.desktopOpen ?? false)
     }
 
     /// A Claude window just started: start the cl_usage of profiles that follow it (cl_audit does this, since a

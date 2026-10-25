@@ -34,10 +34,9 @@ enum FolderRules {
         return accounts.first { $0.id != id && !$0.configDir.isEmpty && FolderKey.overlaps($0.configDir, path) }
     }
 
-    /// The desktop window an account opens, as one key: the standard window, its data folder, or nothing.
+    /// The desktop window an account opens, as one key: the standard window or its own window's folder.
     static func windowKey(_ mode: DesktopMode, _ dataDir: String) -> String? {
         switch mode {
-        case .none: return nil
         case .standard: return FolderKey.canonical(FolderKey.standardDataDir)
         case .separate: return dataDir.isEmpty ? nil : FolderKey.canonical(dataDir)
         }

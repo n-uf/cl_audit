@@ -16,23 +16,9 @@ enum SettingNotes {
         guard a.id == b.id else { return nil }
         let p = b.name.trimmingCharacters(in: .whitespaces).isEmpty ? "this profile" : b.name
         if a.autoRenew != b.autoRenew {
-            return SettingNote(title: "Renew if expired · \(b.autoRenew ? "on" : "off")", text: b.autoRenew
-                ? "When \(p)'s Claude Code login expires, cl_audit renews it with one tiny Claude Code request (it uses a little usage)."
-                : "An expired login stays expired until you sign in again; the card shows Sign in…")
-        }
-        if a.desktop != b.desktop {
-            switch b.desktop {
-            case .standard:
-                return SettingNote(title: "Claude window · Standard", text: "Opens the standard Claude app with whatever account it is signed in to. Only one profile can use it.")
-            case .separate:
-                return SettingNote(title: "Claude window · Separate", text: "Opens \(p)'s own Claude app, with its own sign-in and data folder, side by side with the others.")
-            case .none:
-                return SettingNote(title: "Claude window · None", text: "No Claude window: \(p) is Claude Code in Terminal only. A click shows its usage.")
-            }
-        }
-        if a.desktopDataDir != b.desktopDataDir, b.desktop == .separate {
-            return SettingNote(title: "Data folder · \((b.desktopDataDir as NSString).lastPathComponent)",
-                               text: "\(p)'s own Claude window keeps its sign-in and data in this folder.")
+            return SettingNote(title: "Renew sign-in · \(b.autoRenew ? "on" : "off")", text: b.autoRenew
+                ? "When \(p)'s access key runs out, the Dock icon runs Claude Code once with a tiny prompt so it fetches a fresh one (a sliver of usage)."
+                : "When \(p)'s access key runs out, the usage waits until you next use Claude Code.")
         }
         if a.configDir != b.configDir {
             return SettingNote(title: "Folder · \(b.configDir)", text: "\(p) now reads its sign-in and usage from this Claude Code folder.")

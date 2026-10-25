@@ -177,7 +177,7 @@ struct AccountRow: Identifiable {
                                 stale: stale, style: entry.style, warn: mismatch, tint: entry.color, frame: entry.frame,
                                 fiveHourElapsed: windowElapsed(status?.fiveHourResets, 5 * 3600),
                                 weeklyElapsed: windowElapsed(status?.weeklyResets, 7 * 86400),
-                                windowOpen: activity.desktopOpen && entry.windowDot && entry.desktop != .none), pixels: 128)
+                                windowOpen: activity.desktopOpen && entry.windowDot), pixels: 128)
     }
 
     var limits: [Limit] {
@@ -268,7 +268,7 @@ final class LauncherModel: ObservableObject {
         notices[id] = nil
         pending[id] = Pending(change: change)
         // With "open or quit the Claude window too", the window follows the Dock icon: show that on its switch.
-        if let r = rows.first(where: { $0.id == id }), r.entry.lifecycle.windowFollowsUsage, r.entry.desktop != .none {
+        if let r = rows.first(where: { $0.id == id }), r.entry.lifecycle.windowFollowsUsage {
             if change == .starting && !r.activity.desktopOpen { windowFollow[id] = Pending(change: .opening) }
             if change == .stopping && r.activity.desktopOpen { windowFollow[id] = Pending(change: .quitting) }
         }
@@ -287,7 +287,7 @@ final class LauncherModel: ObservableObject {
         let running = r.usageIcon != .notRunning && r.usageIcon != .missing
 
         // The window opened or quit: with the Dock icon following it, say what comes next.
-        if let was = lastOpen[id], was != open, e.lifecycle.usageFollowsWindow, e.desktop != .none {
+        if let was = lastOpen[id], was != open, e.lifecycle.usageFollowsWindow {
             if open { followStart[id] = now; followQuit[id] = nil } else { followQuit[id] = now + 10; followStart[id] = nil }
             startFast()
         }
@@ -726,7 +726,7 @@ struct AccountCard: View {
                 // One main button: sign in when needed, otherwise bring the Claude window forward.
                 if row.needsLogin {
                     Button("Sign in…") { actions.logIn(row) }.buttonStyle(.pill(.red))
-                } else if row.entry.desktop != .none {
+                } else {
                     Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }.buttonStyle(.pill(row.accent))
                 }
                 Button("Terminal") { actions.terminal(row) }.buttonStyle(.pill)
@@ -809,7 +809,7 @@ final class ManagerUI {
     lazy var actions = LauncherActions(
         open: { [weak self] r in
             self?.closePalette()
-            if !r.activity.desktopOpen && r.entry.desktop != .none { self?.model.begin(r.id, .opening) }
+            if !r.activity.desktopOpen { self?.model.begin(r.id, .opening) }
             Launcher.openClaude(r.account)
         },
         terminal: { [weak self] r in self?.closePalette(); Launcher.openTerminal(r.account) },
@@ -999,7 +999,7 @@ struct ProfileControls: View {
     }
 
     @ViewBuilder private var chips: some View {
-        if row.entry.desktop != .none { windowChip }
+        windowChip
         dockChip
     }
 
@@ -1032,7 +1032,7 @@ struct ProfileControls: View {
     @ViewBuilder private var dockChip: some View {
         let s = row.usageIcon
         let running = s != .notRunning && s != .missing
-        let follows = row.entry.lifecycle.usageFollowsWindow && row.entry.desktop != .none
+        let follows = row.entry.lifecycle.usageFollowsWindow
         if let c = row.busy, !c.isWindow {
             chip(glyph: dockGlyph, title: "Dock icon", sub: c.text, on: c.target, warn: false) { BusySwitch(on: c.target) }
         } else if row.followStarting && s == .notRunning {

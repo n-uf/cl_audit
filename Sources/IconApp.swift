@@ -161,7 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // "Window follows": starting cl_usage opens its Claude window, but not at login and not when cl_audit
         // starts it (it passes --no-follow), so neither opens every window at once.
         let atLogin = ProcessInfo.processInfo.systemUptime < 180
-        if entry.lifecycle.windowFollowsUsage, account.opensDesktop, !claudeOpen,
+        if entry.lifecycle.windowFollowsUsage, !claudeOpen,
            !CommandLine.arguments.contains("--no-follow"), !atLogin {
             Launcher.openClaude(account)
         }
@@ -178,7 +178,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ note: Notification) {
         guard !isSettingsApp, let id = accountID else { return }
         guard Store.load().contains(where: { $0.id == id }) else { try? SMAppService.mainApp.unregister(); return }
-        if entry.lifecycle.windowFollowsUsage, account.opensDesktop, !quietQuit, !quitForWindow { quitClaudeWindow() }
+        if entry.lifecycle.windowFollowsUsage, !quietQuit, !quitForWindow { quitClaudeWindow() }
     }
 
     @objc func quitClaudeWindow() {
@@ -242,9 +242,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             details.toggle(detailsInfo(), detailsActions())
         case .peekThenOpen:
             details.peek(detailsInfo(), seconds: entry.peekSeconds)
-            if account.opensDesktop { openClaude() }
+            openClaude()
         case .open:
-            if account.opensDesktop { openClaude() } else { Installer.openSettings(account: accountID) }
+            openClaude()
         }
         return false
     }
@@ -258,7 +258,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             weekly: usage?.weekly, weeklyResets: usage?.weeklyResets,
             updated: usage?.fetchedAt, source: usage?.source,
             problem: state.menuText, renewNote: renewNote,
-            canOpenClaude: account.opensDesktop,
             needsLogin: mismatch || state == .noLogin || state == .expired,
             design: entry.panelDesign,
             accent: entry.accentNSColor,
@@ -318,7 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let open = windowIsOpen()
         if open != claudeOpen { claudeOpen = open; redraw() }
         // "The Dock icon follows the window": its window quit → quit too, after 10 s (a Claude update restarts the window).
-        if entry.lifecycle.usageFollowsWindow, account.opensDesktop, !open {
+        if entry.lifecycle.usageFollowsWindow, !open {
             guard windowQuitWork == nil else { return }
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
@@ -333,7 +332,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func windowIsOpen() -> Bool {
-        account.opensDesktop && (Launcher.activity(for: [account])[account.configDir]?.desktopOpen ?? false)
+        Launcher.activity(for: [account])[account.configDir]?.desktopOpen ?? false
     }
 
     @objc func appsChanged(_ note: Notification) {
@@ -537,7 +536,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         func add(_ title: String, _ action: Selector, enabled: Bool = true) {
             let i = NSMenuItem(title: title, action: action, keyEquivalent: ""); i.target = self; i.isEnabled = enabled; m.addItem(i)
         }
-        if account.opensDesktop {
+        do {
             add(claudeOpen ? "Show Claude window" : "Open Claude window", #selector(openClaude))
             if claudeOpen { add("Quit Claude window", #selector(quitClaudeWindow)) }
         }
@@ -546,7 +545,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         m.addItem(.separator())
         add("Dashboard", #selector(showDashboard))
         add("Profile settings…", #selector(showSettings))
-        if entry.lifecycle.windowFollowsUsage, account.opensDesktop {
+        if entry.lifecycle.windowFollowsUsage {
             m.addItem(.separator())
             add("Quit and keep Claude window", #selector(quitKeepingWindow))
         }

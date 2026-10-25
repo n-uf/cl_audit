@@ -114,28 +114,6 @@ struct ClickPicture: View {
     }
 }
 
-/// Which Claude window an account opens.
-struct WindowPicture: View {
-    let mode: DesktopMode
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            switch mode {
-            case .standard:
-                MiniWindow(label: "standard")
-            case .separate:
-                MiniWindow(label: "standard")
-                MiniWindow(label: "its own", hue: 140)
-            case .none:
-                RoundedRectangle(cornerRadius: 4).fill(Color.black.opacity(0.6))
-                    .overlay(Text(">_").font(.system(size: 9, design: .monospaced)).foregroundStyle(.green).padding(4), alignment: .topLeading)
-                    .frame(width: 36, height: 24)
-                Text("Claude Code in Terminal only").font(.system(size: 10)).foregroundStyle(.secondary).padding(.top, 5)
-            }
-        }
-    }
-}
-
 /// The Claude open dot, picked like a colour: the profile's icon without and with the dot.
 struct DotChoice: View {
     @Binding var entry: AccountEntry
