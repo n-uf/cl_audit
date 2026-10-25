@@ -82,6 +82,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let applied = appliedHidden {
             guard applied != hide else { return }
             dockLog.log("\(self.entry.id, privacy: .public): Show in the Dock \(hide ? "off" : "on", privacy: .public), relaunching")
+            DockManager.markChange(Bundle.main.bundleURL)
             relaunch()
             return
         }
@@ -359,6 +360,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func tick() {
         refreshWindowState()
+        // Show in the Dock follows the Dock: dragged out by hand → background; kept in the Dock by hand → shown
+        if !isSettingsApp, let hidden = DockManager.adoptDock(entry) { change { $0.iconHidden = hidden } }
         if let local = UsageParser.fromStatusLine(account), local.fetchedAt > (usage?.fetchedAt ?? .distantPast) {
             usage = local
         }

@@ -51,12 +51,25 @@ final class SettingsModel: ObservableObject {
             ? [AccountEntry(id: "main", name: "main", label: "MAIN", configDir: "~/.claude")]
             : saved
         selection = Self.dashboardID
-        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in self?.tick += 1 }
+        timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.tick += 1
+            self.followDock()
+        }
         // after the change, not inside it: an animated note started while the window is redrawing for the
         // change itself left the Emails key and the cards showing the old state
         emailsWatch = Privacy.shared.$show.dropFirst().removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] on in self?.showNote(SettingNotes.emails(on)) }
+    }
+
+    /// Show in the Dock follows the Dock (see DockManager.adoptDock); saved like any other change.
+    static var followsDock = true          // off in offscreen renders, which must never save
+    func followDock() {
+        guard Self.followsDock, !needsApply, problem == nil else { return }
+        for i in accounts.indices {
+            if let hidden = DockManager.adoptDock(accounts[i]) { accounts[i].iconHidden = hidden }
+        }
     }
 
     /// Picks up changes made elsewhere (e.g. an icon's own Options menu) when nothing is pending here.
@@ -790,6 +803,7 @@ struct AccountSettings: View {
         // a running Dock icon app applies it itself (it restarts); one that isn't running would only at its next
         // start, so its pin is taken out or put back here, in its own preferences' place
         let app = Installer.appURL(entry)
+        DockManager.markChange(app)
         if !Installer.isRunning(app), let d = UserDefaults(suiteName: Installer.bundleID(entry)) {
             dockLog.log("\(entry.id, privacy: .public): Show in the Dock \(on ? "on" : "off", privacy: .public) while stopped")
             if on { DockManager.repin(app, defaults: d) } else { DockManager.unpinRemembering(app, defaults: d) }

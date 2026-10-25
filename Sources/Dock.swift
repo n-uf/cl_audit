@@ -83,7 +83,8 @@ enum DockManager {
     static func plan(_ current: [[String: Any]], accounts: [AccountEntry], prefs: DockPrefs) -> [[String: Any]] {
         let claudeKey = key(claudeURL)
         let ours = accounts.map { key(Installer.appURL($0)) } + [key(settingsURL)]
-        let oursURLs = accounts.map { Installer.appURL($0) } + [settingsURL]
+        // a profile whose Dock icon is hidden is never pinned: its pin (if any) is dropped, not placed in the group
+        let oursURLs = accounts.filter { !$0.iconHidden }.map { Installer.appURL($0) } + [settingsURL]
         func isOurs(_ p: String?) -> Bool { p.map { ours.contains($0) || isIconApp($0) } ?? false }
         func isClaude(_ p: String?) -> Bool { p == claudeKey }
 
@@ -249,6 +250,7 @@ enum DockManager {
     /// Takes one app's pin out of the Dock (hiding cl_usage) and remembers its left neighbour, to put it back there.
     static func unpinRemembering(_ app: URL, defaults: UserDefaults) {
         let list = pins(), k = key(app)
+        markChange(app)
         guard let i = list.firstIndex(where: { path($0) == k }) else { dockLog.log("unpin \(k, privacy: .public): not pinned"); return }
         defaults.set(true, forKey: "dockWasPinned")
         defaults.set(i > 0 ? (path(list[i - 1]) ?? "") : "", forKey: "dockLeftNeighbour")
@@ -271,6 +273,7 @@ enum DockManager {
     /// rewrites its list around that, so this waits a moment, pins, and checks once more.
     static func repin(_ app: URL, defaults: UserDefaults) {
         // shown means in the Dock: back where it was, or, never pinned before, after the other cl_audit icons
+        markChange(app)
         guard !isPinned(app) else { dockLog.log("repin \(key(app), privacy: .public): already pinned"); return }
         let neighbour = defaults.bool(forKey: "dockWasPinned") ? defaults.string(forKey: "dockLeftNeighbour") : nil
         defaults.removeObject(forKey: "dockWasPinned"); defaults.removeObject(forKey: "dockLeftNeighbour")
@@ -282,6 +285,36 @@ enum DockManager {
         p.arguments = ["--pin", app.path, neighbour ?? "-"]
         do { try p.run(); dockLog.log("repin \(key(app), privacy: .public): helper started") }
         catch { dockLog.error("repin \(key(app), privacy: .public): helper failed \(error.localizedDescription, privacy: .public)") }
+    }
+
+    // MARK: Show in the Dock follows the Dock
+
+    /// A Dock icon app's own preferences (where its pin place and change time are kept).
+    static func appDefaults(_ app: URL) -> UserDefaults? {
+        (Installer.info(app)?["CFBundleIdentifier"] as? String).flatMap { UserDefaults(suiteName: $0) }
+    }
+
+    /// cl_audit is changing this icon's place in the Dock (switch flipped, app relaunching, pin retries): for a
+    /// while, a difference between the switch and the Dock is ours, not yours.
+    static func markChange(_ app: URL) { appDefaults(app)?.set(Date(), forKey: "dockChangeAt") }
+
+    static func changing(_ app: URL) -> Bool {
+        guard let d = appDefaults(app) else { return false }
+        d.synchronize()
+        return (d.object(forKey: "dockChangeAt") as? Date).map { Date().timeIntervalSince($0) < 30 } ?? false
+    }
+
+    /// The Dock is the truth: when a profile's switch and the Dock disagree and cl_audit isn't changing it, the
+    /// switch follows the Dock (you dragged the icon out, or kept it in the Dock by hand). Returns the new
+    /// setting, or nil when nothing changes.
+    static func adoptDock(_ e: AccountEntry) -> Bool? {
+        let app = Installer.appURL(e)
+        guard FileManager.default.fileExists(atPath: app.path), !changing(app) else { return nil }
+        let pinned = isPinned(app)
+        guard pinned == e.iconHidden else { return nil }
+        dockLog.log("\(e.id, privacy: .public): Dock \(pinned ? "has" : "lacks", privacy: .public) it, switch follows (\(pinned ? "on" : "off", privacy: .public))")
+        markChange(app)
+        return !pinned
     }
 
     /// Whether this Dock icon app's profile wants it in the Dock right now (nil: not a profile's app).
@@ -300,6 +333,7 @@ enum DockManager {
         Thread.sleep(forTimeInterval: 4)
         for attempt in 1...3 {
             if wantsShown(app) == false { dockLog.log("pin \(key(app), privacy: .public): switched off meanwhile, stopping"); return }
+            markChange(app)
             pin(app, after: neighbour)
             Thread.sleep(forTimeInterval: 6)
             if isPinned(app) { dockLog.log("pin \(key(app), privacy: .public): pinned (try \(attempt))"); return }

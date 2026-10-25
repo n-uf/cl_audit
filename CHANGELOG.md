@@ -8,6 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
+- **Show in the Dock follows the Dock:** drag a profile's Dock icon out of the Dock and its switch turns off
+  (the icon keeps running in the background); keep it in the Dock by hand and the switch turns on. On means
+  pinned, so the icon is there even while stopped. "Keep the Dock in order" no longer pins hidden icons.
 - Clicking cl_audit's own Dock icon with its window open: behind other windows, the window comes to the front
   on the page it was showing; already in front, it goes to the Dashboard (it always went to the Dashboard).
 - Hidden from the Dock, a profile's **Icon** and **Dock icon clicks** cards are faded and locked, each with a
