@@ -13,9 +13,8 @@ the notes before updating.
   tracks with the chosen item raised, switches are keys with an LED, and status lines sit in glowing display
   windows. Std and Black keep the window dark and Silver light, whatever the Mac's appearance. The Dock icons
   and their panels don't change.
-- The window's top strip: which profiles the dashboard shows, a **Show emails** key (moved here
-  from General settings), and on the dashboard the last update with a refresh key; in Settings, whether
-  everything is saved.
+- The window's top strip: on the dashboard, which profiles it shows and the last update with a refresh
+  key; in Settings, whether everything is saved.
 - No more Apply: a profile's name or icon label is saved when you press Return or click elsewhere (Esc puts
   it back), and its Dock icon app is renamed then.
 - Release notes and the README say which Claude Code and Claude app versions a release was checked with

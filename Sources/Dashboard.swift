@@ -23,17 +23,27 @@ final class DashboardPrefs: ObservableObject {
     }
 }
 
-/// Settings ▸ General: Face · Dashboard cards · About · Dock. Show emails is the Emails key in the window's top strip. The history period and which charts to show are set on the
+/// Settings ▸ General: Emails · Face · Dashboard cards · About · Dock. The history period and which charts to show are set on the
 /// dashboard itself, as filters.
 struct DashboardSettings: View {
     @ObservedObject private var prefs = DashboardPrefs.shared
     var width: CGFloat = 1280
 
     var body: some View {
-        SettingsColumns(width: width, groups: [[AnyView(faceCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(DockCard())]])
+        SettingsColumns(width: width, groups: [[AnyView(emailsCard), AnyView(faceCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(DockCard())]])
     }
 
     @Environment(\.face) private var face
+    @ObservedObject private var privacy = Privacy.shared
+
+    // Show emails: for screen sharing and screenshots
+    var emailsCard: some View {
+        SCard(title: "Emails") {
+            SRow(label: "Show emails", info: "Off: email addresses are left out of the dashboard, the launcher, the usage panels and the Dock icon menus, and blurred in Settings (hover one to see it). For screen sharing and screenshots.", first: true) {
+                Toggle("", isOn: Binding(get: { privacy.show }, set: { privacy.set(show: $0) })).smallSwitch()
+            }
+        }
+    }
 
     // Face: the look of this window (Faces.swift)
     var faceCard: some View {
@@ -93,6 +103,6 @@ struct DashboardSettings: View {
 struct DashboardTile: View {
     let selected: Bool
     var body: some View {
-        TileKey(selected: selected) { TileText(title: "General", sub: "face · dashboard · Dock") }
+        TileKey(selected: selected) { TileText(title: "General", sub: "emails · face · dashboard · Dock") }
     }
 }

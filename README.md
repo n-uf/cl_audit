@@ -123,7 +123,7 @@ press-and-hold, and the icon checks which mouse button is down at that moment.
 Settings is a page of the same window as the dashboard (switch at the top, or ⌘,). The profiles run along
 the top, with **General** first and **New profile** last. Changes are saved as you make them and the
 icons follow at once; a profile's name or icon label is saved when you press Return or click elsewhere (Esc puts it back),
-because that renames its Dock icon app; the top strip says when it's done. **Show emails** (the key in the window's top strip) off leaves email addresses out of the launcher, dashboard,
+because that renames its Dock icon app; the top strip says when it's done. **Show emails** (General settings) off leaves email addresses out of the launcher, dashboard,
 panels and Dock menus, and blurs them in Settings (hover one to see it), for screen sharing.
 
 Cards are at most one column wide: three columns from about 1180 pt, two from 800, one below. Controls
@@ -162,6 +162,7 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
 ### General settings
 
+- **Emails:** Show emails (see above).
 - **Face:** the look of the cl_audit window, as on the home site: **Std** (a dark brushed panel, the
   default), **Black** (black anodised) or **Silver** (light brushed silver; the window takes the Mac's light
   appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.

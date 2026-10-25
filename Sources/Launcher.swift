@@ -405,24 +405,21 @@ struct AccountChips: View {
     }
 }
 
-/// The top row's sunken strip: the profile keys, the Emails key and the Updated display with its refresh key,
-/// every control 26 pt high on one centre line.
+/// The top row's sunken strip: on the dashboard the profile keys and the Updated display with its refresh key;
+/// in Settings whether everything is saved. Every control 26 pt high on one centre line.
 struct TopStrip: View {
     static let height: CGFloat = 26
     @ObservedObject var model: LauncherModel
-    var settings: SettingsModel? = nil      // on the Settings page: its status and Revert / Apply
+    var settings: SettingsModel? = nil      // on the Settings page: whether everything is saved
     let dashboard: Bool
-    var fill = false              // narrow window: the strip spans its own row, Updated at its right end
+    var fill = false              // narrow window: the strip spans its own row, the display at its right end
     let refresh: () -> Void
-    @ObservedObject private var privacy = Privacy.shared
     @Environment(\.face) private var face
 
     var body: some View {
         HStack(spacing: 6) {
             if dashboard && model.rows.count > 1 { AccountChips(model: model); StripDivider() }
-            emailsKey
             if fill { Spacer(minLength: 6) }
-            StripDivider()
             if dashboard { UpdatedButton(model: model, refresh: refresh) }
             else if let settings { SettingsStatus(model: settings) }
         }
@@ -430,18 +427,6 @@ struct TopStrip: View {
         .frame(maxWidth: fill ? .infinity : nil)
         .background(SurfaceShape(surface: face.strip, radius: 6))
         .fixedSize(horizontal: !fill, vertical: true)
-    }
-
-    /// Show emails: held down with its LED green while emails are shown.
-    private var emailsKey: some View {
-        Button { privacy.set(show: !privacy.show) } label: {
-            KeyLook(held: privacy.show, height: Self.height, hPad: 11) {
-                HStack(spacing: 7) { LED(color: FaceTheme.ledOn, lit: privacy.show); Text("Show emails") }
-            }
-        }
-        .buttonStyle(PressableKey())
-        .help(privacy.show ? "Emails shown. Off: email addresses are left out of the launcher, dashboard, panels and Dock menus, and blurred in Settings (hover to see one)."
-                           : "Emails hidden: left out of the launcher, dashboard, panels and Dock menus, and blurred in Settings. Click to show them.")
     }
 }
 
@@ -580,7 +565,7 @@ struct MainWindowView: View {
             .fixedSize()
     }
 
-    /// On the dashboard: profile keys, Emails, Updated. On Settings only Emails stays (it also blurs emails there).
+    /// On the dashboard: profile keys and Updated. In Settings: whether everything is saved.
     private var strip: some View {
         TopStrip(model: model, settings: settings, dashboard: nav.page == .dashboard, refresh: actions.refreshAll)
     }
@@ -588,7 +573,7 @@ struct MainWindowView: View {
     var body: some View {
         VStack(spacing: 0) {
             // the front panel's top strip: the name, the page's own controls, the page keys
-            // one row: the name, one sunken strip (profile keys | Emails | Updated and refresh), the page keys;
+            // one row: the name, one sunken strip (profile keys | Updated and refresh), the page keys;
             // when the window is narrow the strip takes its own row under them
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: 12) {
