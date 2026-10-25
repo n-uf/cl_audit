@@ -209,6 +209,28 @@ final class SettingsModel: ObservableObject {
         message = ""
     }
 
+    /// A name or label edit being saved (its Dock icon app is renamed or rebuilt), why the last one couldn't be,
+    /// and what the last one did, for the top strip's display.
+    @Published var saving = false
+    @Published var unsaved: String?
+    @Published var savedNote: String?
+    private var savedNoteClear: DispatchWorkItem?
+
+    /// Saves a name or label change at once (no Apply): the Dock icon apps follow, then the display says so.
+    func saveNow(_ what: String) {
+        saving = true
+        unsaved = nil
+        apply { [weak self] in
+            guard let self else { return }
+            self.saving = false
+            self.savedNote = what
+            self.savedNoteClear?.cancel()
+            let w = DispatchWorkItem { [weak self] in self?.savedNote = nil }
+            self.savedNoteClear = w
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: w)
+        }
+    }
+
     func apply(then done: (() -> Void)? = nil) {
         guard problem == nil else { return }
         do {
@@ -306,11 +328,11 @@ struct SettingsPage: View {
 
     var applyBar: some View {
         HStack(spacing: 8) {
-            // the explanation; Revert and Apply sit in the window's top strip (SettingsStatus)
+            // why a name or label wasn't saved, or what the last save did
             if let p = model.problem {
                 Label(p, systemImage: "exclamationmark.triangle.fill").foregroundStyle(face.danger).font(.caption).lineLimit(2)
-            } else if model.needsApply {
-                Text("New names, labels or profiles need Apply").font(.system(size: 11)).foregroundStyle(face.print)
+            } else if let u = model.unsaved {
+                Label(u, systemImage: "exclamationmark.triangle.fill").foregroundStyle(face.danger).font(.caption).lineLimit(2)
             } else if !model.message.isEmpty {
                 Text(model.message).font(.caption).foregroundStyle(face.muted).lineLimit(1)
             }
@@ -335,27 +357,20 @@ struct SettingNoteOverlay: View {
     }
 }
 
-/// Settings in the window's top strip: whether everything is saved, in a display window, and Revert and Apply.
-/// Both keys always sit there (dimmed while there's nothing to apply), so the strip keeps its shape.
+/// Settings in the window's top strip: whether everything is saved, in a display window.
 struct SettingsStatus: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
-        let pending = model.needsApply
-        HStack(spacing: 6) {
-            Group {
-                if model.problem != nil { DisplayWindow(text: "Can't apply", dim: "· see below", tone: .warn, height: TopStrip.height, width: UpdatedButton.width) }
-                else if pending { DisplayWindow(text: "Apply needed", tone: .amber, height: TopStrip.height, width: UpdatedButton.width) }
-                else if model.selection == SettingsModel.newID { DisplayWindow(text: "New profile", dim: "· not added yet", height: TopStrip.height, width: UpdatedButton.width) }
-                else { DisplayWindow(text: "Saved", dim: "· as you change", height: TopStrip.height, width: UpdatedButton.width) }
-            }
-            .help(model.problem ?? (pending ? "New names, labels or profiles need Apply" : "Settings are saved as you change them"))
-            Button("Revert", action: model.revert).buttonStyle(PillButtonStyle())
-                .disabled(!pending)
-            Button("Apply") { model.apply() }
-                .buttonStyle(PillButtonStyle(primary: pending && model.problem == nil))
-                .keyboardShortcut(.defaultAction).disabled(!pending || model.problem != nil)
+        let w = UpdatedButton.width + 40, h = TopStrip.height
+        Group {
+            if model.saving { DisplayWindow(text: "Saving…", tone: .amber, height: h, width: w) }
+            else if model.unsaved != nil || model.problem != nil { DisplayWindow(text: "Not saved", dim: "· see below", tone: .warn, height: h, width: w) }
+            else if let done = model.savedNote { DisplayWindow(text: "Saved", dim: "· \(done)", tone: .ok, height: h, width: w) }
+            else if model.selection == SettingsModel.newID { DisplayWindow(text: "New profile", dim: "· not added yet", height: h, width: w) }
+            else { DisplayWindow(text: "Saved", dim: "· as you change", height: h, width: w) }
         }
+        .help(model.unsaved ?? model.problem ?? "Settings are saved as you change them; a name or label when you press Return")
     }
 }
 
@@ -482,27 +497,48 @@ struct SRow<Control: View>: View {
     }
 }
 
-/// A small text field for settings rows (name, icon label).
+/// A small text field for settings rows (name, icon label), on an engraved line. Without `commit` every keystroke
+/// goes straight to `text`. With it, the edit is kept here until Return or leaving the field, then handed to
+/// `commit`, which saves it or returns why it can't; Esc puts the old text back.
 struct SField: View {
     let placeholder: String
     @Binding var text: String
     var width: CGFloat = 180
     var mono = false
+    var transform: (String) -> String = { $0 }
+    var commit: ((String) -> String?)? = nil
+    var cancel: (() -> Void)? = nil
+    @State private var draft: String?
+    @State private var problem: String?
+    @FocusState private var focused: Bool
     @Environment(\.face) private var face
-    /// The text on an engraved line (no box).
+
     var body: some View {
-        TextField(placeholder, text: $text)
+        TextField(placeholder, text: Binding(get: { draft ?? text }, set: { v in
+            if commit == nil { text = transform(v) } else { draft = transform(v) }
+        }))
             .textFieldStyle(.plain).font(mono ? .system(size: 12, design: .monospaced) : .system(size: 12.5))
             .foregroundStyle(face.text)
+            .focused($focused)
+            .onSubmit(finish)
+            .onExitCommand { draft = nil; problem = nil; cancel?() }
+            .onChange(of: focused) { f in if !f { finish() } }
             .padding(.vertical, 3)
             .overlay(alignment: .bottom) {
                 VStack(spacing: 0) {
-                    Rectangle().fill(face.light ? Color.black(0.35) : Color.black(0.5)).frame(height: 1)
+                    Rectangle().fill(problem != nil ? face.danger : face.light ? Color.black(0.35) : Color.black(0.5)).frame(height: 1)
                     Rectangle().fill(face.light ? Color.white(0.6) : Color.white(0.04)).frame(height: 1)
                 }
                 .offset(y: 2)
             }
             .frame(width: width)
+            .help(problem ?? (commit != nil ? "Return or click elsewhere saves it; Esc puts it back" : ""))
+    }
+
+    private func finish() {
+        guard let commit, let d = draft else { return }
+        if d == text { draft = nil; problem = nil; return }
+        if let p = commit(d) { problem = p } else { draft = nil; problem = nil }
     }
 }
 
@@ -610,10 +646,14 @@ struct AccountSettings: View {
     // Account
     var accountCard: some View {
         SCard(title: "Profile") {
-            SRow(label: "Name", first: true) { SField(placeholder: "name", text: $entry.name, width: 170) }
+            SRow(label: "Name", first: true) {
+                SField(placeholder: "name", text: $entry.name, width: 170,
+                       commit: { v in save("Dock icon renamed") { $0.name = v } }, cancel: { model.unsaved = nil })
+            }
             SRow(label: "Icon label", info: "Up to 6 letters drawn on the icon. The Dock names the app “cl_audit \(entry.name)”.") {
-                SField(placeholder: "LABEL", text: Binding(get: { entry.label },
-                                                           set: { entry.label = String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) }), width: 80, mono: true)
+                SField(placeholder: "LABEL", text: $entry.label, width: 80, mono: true,
+                       transform: { String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) },
+                       commit: { v in save("icon label changed") { $0.label = v } }, cancel: { model.unsaved = nil })
             }
             SRow(label: "Colour", info: "This profile's colour in the launcher, the dashboard and the panels. The icon's own colour is under Icon.") {
                 SwatchRow(colors: TileColor.accents, selected: entry.accentColor) { if let c = $0 { entry.accent = c } }
@@ -841,6 +881,19 @@ struct AccountSettings: View {
                 DotChoice(entry: $entry)
             }
         }
+    }
+
+    /// A name or label edit, saved at once; if it clashes with another profile it isn't kept and the reason shows.
+    func save(_ what: String, _ change: (inout AccountEntry) -> Void) -> String? {
+        let old = entry
+        change(&entry)
+        if let p = model.problem {
+            entry = old
+            model.unsaved = p
+            return p
+        }
+        model.saveNow(what)
+        return nil
     }
 
     /// The panel preview: this account's latest numbers when known, otherwise samples.

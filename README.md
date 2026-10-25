@@ -122,8 +122,8 @@ press-and-hold, and the icon checks which mouse button is down at that moment.
 
 Settings is a page of the same window as the dashboard (switch at the top, or ⌘,). The profiles run along
 the top, with **General** first and **New profile** last. Changes are saved as you make them and the
-icons follow at once; only new names, labels or profiles need **Apply**, because that installs or renames
-Dock icon apps. **Emails** (the key in the window's top strip) off leaves email addresses out of the launcher, dashboard,
+icons follow at once; a profile's name or icon label is saved when you press Return or click elsewhere (Esc puts it back),
+because that renames its Dock icon app; the top strip says when it's done. **Emails** (the key in the window's top strip) off leaves email addresses out of the launcher, dashboard,
 panels and Dock menus, and blurs them in Settings (hover one to see it), for screen sharing.
 
 Cards are at most one column wide: three columns from about 1180 pt, two from 800, one below. Controls

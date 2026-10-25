@@ -15,7 +15,9 @@ the notes before updating.
   and their panels don't change.
 - The window's top strip: which profiles the dashboard shows, an **Emails** key (Show emails moved here
   from General settings), and on the dashboard the last update with a refresh key; in Settings, whether
-  everything is saved, with **Revert** and **Apply**.
+  everything is saved.
+- No more Apply: a profile's name or icon label is saved when you press Return or click elsewhere (Esc puts
+  it back), and its Dock icon app is renamed then.
 - Release notes and the README say which Claude Code and Claude app versions a release was checked with
   (now Claude Code 2.1.310 and the Claude app 3.6556.2): a newer Claude version can change how Claude
   Code saves its login or the usage figures.
