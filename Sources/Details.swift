@@ -173,13 +173,14 @@ struct LevelBar: View {
     var height: CGFloat = 6
     var glow = true
     var marker: Double? = nil
+    @Environment(\.face) private var face
 
     var body: some View {
         let c = Color(nsColor: Painter.color(p, stale: false))
         let frac = CGFloat(min(max(p ?? 0, 0), 100)) / 100
         GeometryReader { g in
             ZStack(alignment: .leading) {
-                Capsule().fill(Color.primary.opacity(0.12))
+                Capsule().fill(face.active ? face.meterOff : AnyShapeStyle(Color.primary.opacity(0.12)))
                 if frac > 0 {
                     Capsule()
                         .fill(LinearGradient(colors: [c.opacity(0.7), c], startPoint: .leading, endPoint: .trailing))

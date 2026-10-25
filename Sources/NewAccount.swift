@@ -269,6 +269,7 @@ struct NewAccountView: View {
     @State private var customFolders: [String] = []
     @State private var showHidden = false
     @State private var checking = false
+    @Environment(\.face) private var face
 
     private enum Width { case wide, medium, narrow }
 
@@ -364,11 +365,7 @@ struct NewAccountView: View {
         SCard(title: "Profile") {
           // No row labels: a name field and colour swatches say what they are.
            VStack(alignment: .leading, spacing: 10) {
-                TextField("Name, e.g. personal", text: $draft.name)
-                    .textFieldStyle(.plain).font(.system(size: 13)).padding(.horizontal, 9).padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 7).fill(Color.black.opacity(0.25)))
-                    .overlay(RoundedRectangle(cornerRadius: 7).stroke(Color.primary.opacity(0.14)))
-                    .frame(maxWidth: 260)
+                SField(placeholder: "Name, e.g. personal", text: $draft.name, width: 260)
                     .disabled(draft.started)
                 FlowLayout(spacing: 6) {
                     ForEach(TileColor.accents, id: \.self) { c in
@@ -407,8 +404,8 @@ struct NewAccountView: View {
                     }
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.09)))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .faceWindow(radius: 6)
             .padding(.top, 2)
             statusLines(checks(.folder).filter { $0.state == .bad || $0.state == .warn }, indent: 0).padding(.top, 4)
         }
@@ -471,8 +468,8 @@ struct NewAccountView: View {
                 }
             }
             .background(Color.black.opacity(0.18))
-            .clipShape(RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.09)))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .faceWindow(radius: 6)
             // Folders that can't be taken: one line, opening a compact list (stays short with many accounts).
             let hidden: [(path: String, why: String)] = folderChoices.compactMap { p in
                 if let o = FolderRules.configOwner(p, among: model.accounts) { return (p, o.name) }
@@ -523,8 +520,8 @@ struct NewAccountView: View {
                     } action: { draft.window = o.0 }
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.09)))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .faceWindow(radius: 6)
             .padding(.top, 2)
             statusLines(checks(.window).filter { $0.state != .ok }, indent: 0).padding(.top, 4)
         }
@@ -581,8 +578,8 @@ struct NewAccountView: View {
                 }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.08)))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .faceWindow(radius: 6)
     }
 
     private func sub(_ s: String) -> some View {
@@ -638,8 +635,7 @@ struct NewAccountView: View {
             actionBar(hint: false).padding(.top, 8)
         }
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.045)))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(0.07)))
+        .background(RaisedShape(finish: face.module, radius: face.moduleRadius))
     }
 
     private enum StepState { case todo, now, done, bad, warn, held }
@@ -791,9 +787,9 @@ struct NewAccountView: View {
                     do { try NewAccountSetup.createOrConnect(&draft); error = nil; model.tick += 1 }
                     catch { self.error = error.localizedDescription }
                 }
-                .buttonStyle(.pill(tint, compact: true)).disabled(blocked || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
+                .buttonStyle(.primaryKey(compact: true)).disabled(blocked || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
             } else if current == 5 {
-                Button("Finish") { model.finishNew() }.buttonStyle(.pill(.green, compact: true)).disabled(blocked || model.discarding)
+                Button("Finish") { model.finishNew() }.buttonStyle(.primaryKey(compact: true)).disabled(blocked || model.discarding)
             } else {
                 Button(desktop == .different ? "Finish anyway" : "Finish now") { model.finishNew() }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(blocked || model.discarding)
@@ -808,8 +804,8 @@ struct NewAccountView: View {
             }
         }
         .padding(.horizontal, hint ? 16 : 0).padding(.vertical, hint ? 10 : 0)
-        .background(hint ? Color.primary.opacity(0.04) : Color.clear)
-        .overlay(alignment: .top) { if hint { Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1) } }
+        .background(hint ? Color.black(face.light ? 0.03 : 0.12) : Color.clear)
+        .overlay(alignment: .top) { if hint { EngravedRule() } }
     }
 
     private var nextHint: String {
@@ -871,7 +867,7 @@ struct NewAccountView: View {
     private func listRow<C: View>(selected: Bool, disabled: Bool, @ViewBuilder content: () -> C, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 9) {
-                Circle().strokeBorder(selected ? Color.white : Color.secondary, lineWidth: selected ? 4 : 1.4).frame(width: 13, height: 13)
+                LEDRadio(on: selected)
                 content()
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
@@ -961,10 +957,11 @@ struct FormRow<Content: View>: View {
     var stacked = false
     var info: String? = nil
     @ViewBuilder let content: Content
+    @Environment(\.face) private var face
 
     var body: some View {
         let title = HStack(spacing: 5) {
-            Text(label).font(.system(size: 12.5)).foregroundStyle(Color.primary.opacity(0.82))
+            Text(label).font(.system(size: 12.5)).foregroundStyle(face.soft)
             if let info { InfoDot(text: info) }
         }
         if stacked {
@@ -988,25 +985,28 @@ struct Segments<Value: Hashable>: View {
     @Binding var selection: Value
     var disabled: Set<Value> = []
     let title: (Value) -> String
+    @Environment(\.face) private var face
 
+    /// A track like PillPicker's; an option that can't be chosen is printed struck through.
     var body: some View {
         HStack(spacing: 2) {
             ForEach(options, id: \.self) { o in
                 let off = disabled.contains(o), on = o == selection
                 Button { selection = o } label: {
-                    Text(title(o)).font(.system(size: 12, weight: on ? .semibold : .regular))
+                    Text(title(o)).font(.system(size: 9.5, weight: .semibold)).tracking(1).textCase(.uppercase)
                         .strikethrough(off)
-                        .foregroundStyle(on ? Color.primary : off ? Color.secondary.opacity(0.5) : Color.secondary)
-                        .padding(.horizontal, 11).padding(.vertical, 4)
-                        .background(Capsule().fill(on ? Color.primary.opacity(0.16) : .clear))
-                        .contentShape(Capsule())
+                        .foregroundStyle(on ? face.legend : face.trackLegend.opacity(off ? 0.5 : 1))
+                        .shadow(color: on ? face.legendShadow : .clear, radius: 0, y: face.legendShadowY)
+                        .padding(.horizontal, 10).frame(height: 22)
+                        .background { if on { RaisedShape(finish: face.key, radius: 3) } }
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(off)
             }
         }
-        .padding(2)
-        .background(Capsule().fill(Color.primary.opacity(0.06)))
+        .padding(3)
+        .background(WellShape(well: face.track, radius: 5))
         .fixedSize()
     }
 }
@@ -1017,24 +1017,14 @@ struct WrapChips: View {
     var tint: Color = .accentPill
     let toggle: (Int) -> Void
 
+    /// Keys: a chosen one is latched down with its orange strip lit (no ticks, no frames).
     var body: some View {
         FlowLayout(spacing: 6) {
             ForEach(items.indices, id: \.self) { i in
-                // Selected: a check and a filled pill. Not selected: a plus and an outline only.
-                let on = items[i].1
                 Button { toggle(i) } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: on ? "checkmark" : "plus").font(.system(size: 9, weight: .bold))
-                        Text(items[i].0).font(.system(size: 11.5, weight: on ? .medium : .regular))
-                    }
-                    .padding(.leading, 8).padding(.trailing, 10).padding(.vertical, 3)
-                    .background(Capsule().fill(on ? tint.opacity(0.22) : Color.clear))
-                    .overlay(Capsule().strokeBorder(on ? tint.opacity(0.55) : Color.secondary.opacity(0.4),
-                                                    style: StrokeStyle(lineWidth: 1, dash: on ? [] : [3, 2])))
-                    .foregroundStyle(on ? Color.primary : Color.secondary)
-                    .contentShape(Capsule())
+                    KeyLook(latched: items[i].1, height: 22, hPad: 10) { Text(items[i].0) }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressableKey())
             }
         }
     }

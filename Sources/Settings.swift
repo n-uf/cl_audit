@@ -238,6 +238,7 @@ final class SettingsModel: ObservableObject {
 
 struct SettingsPage: View {
     @ObservedObject var model: SettingsModel
+    @Environment(\.face) private var face
 
     var body: some View {
         page.sheet(item: $model.pendingRemoval) { e in RemoveAccountSheet(entry: e, model: model) }
@@ -255,19 +256,19 @@ struct SettingsPage: View {
                             NewTile(selected: model.selection == SettingsModel.newID).onTapGesture { model.selection = SettingsModel.newID }
                         }
                         Button(action: model.startNew) {
-                            Image(systemName: "plus").font(.system(size: 14, weight: .medium)).frame(width: 36, height: 36)
-                                .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.05)))
-                                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.primary.opacity(0.08)))
-                                .contentShape(Rectangle())
+                            TileKey(selected: false, leading: 0, trailing: 0) {
+                                Image(systemName: "plus").font(.system(size: 15, weight: .light)).frame(width: 42)
+                            }
                         }
-                        .buttonStyle(.plain).foregroundStyle(.secondary).help("Add a profile")
+                        .buttonStyle(PressableKey()).help("Add a profile")
                     }
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 3).padding(.horizontal, 2)
                 }
                 applyBar
             }
-            .padding(.horizontal, 16).padding(.vertical, 10)
-            Divider().opacity(0.5)
+            .padding(8)
+            .background(SurfaceShape(surface: face.strip, radius: 7))
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 2)
             if model.selection == SettingsModel.newID, model.draft != nil {
                 // The add-account page scrolls itself, so its action bar can stay pinned at the bottom.
                 NewAccountView(draft: Binding(get: { model.draft ?? NewAccountDraft() }, set: { model.draft = $0 }), model: model)
@@ -299,11 +300,13 @@ struct SettingsPage: View {
             HStack(spacing: 8) {
                 DashboardTile(selected: model.selection == SettingsModel.dashboardID)
                 ForEach(model.accounts) { a in AccountTile(entry: a, selected: a.id == model.selection, model: model) }
+                TileKey(selected: false, leading: 0, trailing: 0) { Image(systemName: "plus").font(.system(size: 15, weight: .light)).frame(width: 42) }
                 Spacer()
                 applyBar
             }
-            .padding(.horizontal, 16).padding(.vertical, 10)
-            Divider().opacity(0.5)
+            .padding(8)
+            .background(SurfaceShape(surface: face.strip, radius: 7))
+            .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 2)
             if model.selection == SettingsModel.dashboardID { DashboardSettings().padding(14) }
             else if let id = model.selection, let entry = model.binding(id) { AccountSettings(entry: entry, model: model).padding(14) }
         }
@@ -312,15 +315,15 @@ struct SettingsPage: View {
     var applyBar: some View {
         HStack(spacing: 8) {
             if let p = model.problem {
-                Label(p, systemImage: "exclamationmark.triangle.fill").foregroundStyle(.red).font(.caption).lineLimit(2)
+                Label(p, systemImage: "exclamationmark.triangle.fill").foregroundStyle(face.danger).font(.caption).lineLimit(2)
             } else if model.needsApply {
-                Text("New names, labels or profiles need Apply").font(.caption).foregroundStyle(.secondary)
+                Text("New names, labels or profiles need Apply").font(.system(size: 11)).foregroundStyle(face.print)
             } else if !model.message.isEmpty {
-                Text(model.message).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                Text(model.message).font(.caption).foregroundStyle(face.muted).lineLimit(1)
             }
             if model.needsApply {
                 Button("Revert", action: model.revert).buttonStyle(PillButtonStyle(tint: nil, compact: true))
-                Button("Apply") { model.apply() }.buttonStyle(.pill(.green, compact: true))
+                Button("Apply") { model.apply() }.buttonStyle(.primaryKey(compact: true))
                     .keyboardShortcut(.defaultAction).disabled(model.problem != nil)
             }
         }
@@ -332,18 +335,8 @@ struct SettingsPage: View {
 struct NewTile: View {
     let selected: Bool
     var body: some View {
-        HStack(spacing: 8) {
-            // Styled like the other tiles (highlighted only while selected), text only.
-            VStack(alignment: .leading, spacing: 0) {
-                Text("New profile").font(.system(size: 12.5, weight: .semibold))
-                Text("not added yet").font(.system(size: 10.5)).foregroundStyle(.secondary)
-            }
-            .frame(minHeight: 30)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(selected ? 0.12 : 0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(selected ? 0.3 : 0.07), lineWidth: selected ? 1.5 : 1))
-        .contentShape(Rectangle())
+        // a wide key like the other tiles, text only
+        TileKey(selected: selected) { TileText(title: "New profile", sub: "not added yet") }
     }
 }
 
@@ -353,42 +346,75 @@ struct AccountTile: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(nsImage: preview(entry, status: Store.status(entry.id), tick: model.tick)).resizable().frame(width: 30, height: 30)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(entry.name.isEmpty ? "New profile" : entry.name).font(.system(size: 12.5, weight: .semibold))
-                Text(entry.configDir).font(.system(size: 10.5)).foregroundStyle(.secondary)
+        TileKey(selected: selected, leading: 5) {
+            HStack(spacing: 9) {
+                Image(nsImage: preview(entry, status: Store.status(entry.id), tick: model.tick)).resizable().frame(width: 32, height: 32)
+                TileText(title: entry.name.isEmpty ? "New profile" : entry.name, sub: entry.configDir)
             }
         }
-        .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(selected ? 0.12 : 0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(selected ? 0.3 : 0.07), lineWidth: selected ? 1.5 : 1))
-        .contentShape(Rectangle())
         .onTapGesture { model.selection = entry.id }
         .contextMenu { Button("Remove \(entry.name)…", role: .destructive) { model.askRemove(entry.id) } }
     }
 }
 
+/// A tile in the profile strip: a wide key; the chosen one latched down with its strip lit.
+struct TileKey<Content: View>: View {
+    let selected: Bool
+    var leading: CGFloat = 12
+    var trailing: CGFloat = 12
+    @ViewBuilder let content: Content
+    @Environment(\.face) private var face
+
+    var body: some View {
+        content
+            .foregroundStyle(face.legend)
+            .shadow(color: face.legendShadow, radius: 0, y: face.legendShadowY)
+            .padding(.leading, leading).padding(.trailing, trailing)
+            .padding(.top, selected ? 2 : 0)
+            .frame(minHeight: 42)
+            .background(RaisedShape(finish: selected ? face.keyDown : face.key, radius: 4, pressed: selected))
+            .overlay { if selected { LampStrip() } }
+            .offset(y: selected ? 1 : 0)
+            .padding(.bottom, 2)
+            .contentShape(Rectangle())
+    }
+}
+
+/// A tile's two lines: its name in spaced capitals and a quieter line under it.
+struct TileText: View {
+    let title: String
+    let sub: String
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.system(size: 10.5, weight: .bold)).tracking(1).textCase(.uppercase).lineLimit(1)
+            Text(sub).font(.system(size: 10.5)).opacity(0.65).lineLimit(1)
+        }
+        .fixedSize()
+    }
+}
+
 // MARK: - Cards and rows
 
+/// A settings card: a raised module with a printed label, an engraved rule after it, and its rows.
 struct SCard<Content: View>: View {
     let title: String
     var info: String? = nil
     @ViewBuilder let content: Content
+    @Environment(\.face) private var face
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: 4) {
-                Text(title.uppercased()).font(.system(size: 10.5, weight: .semibold)).tracking(0.6).foregroundStyle(.secondary)
+            HStack(spacing: 8) {
+                Printed(text: title)
                 if let info { InfoDot(text: info) }
+                EngravedRule(dark: face.light ? .black(0.28) : nil).frame(minWidth: 12)
             }
-            .padding(.bottom, 2)
+            .padding(.bottom, 4)
             VStack(spacing: 0) { content }
         }
-        .padding(.horizontal, 12).padding(.vertical, 10)
+        .padding(.horizontal, 14).padding(.top, 13).padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.035)))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(0.07)))
+        .background(RaisedShape(finish: face.module, radius: face.moduleRadius))
     }
 }
 
@@ -401,12 +427,13 @@ struct SRow<Control: View>: View {
     var stacked = false
     var picture: AnyView? = nil        // a small illustration inside the (i)
     @ViewBuilder let control: Control
+    @Environment(\.face) private var face
 
     static var labelWidth: CGFloat { 128 }
 
     var body: some View {
         VStack(spacing: 0) {
-            if !first { Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1) }
+            if !first { EngravedRule() }
             if stacked {
                 VStack(alignment: .leading, spacing: 6) { title; control }
                     .padding(.vertical, 6)
@@ -417,14 +444,14 @@ struct SRow<Control: View>: View {
                     control
                     Spacer(minLength: 0)
                 }
-                .frame(minHeight: 28)
+                .frame(minHeight: 32)
             }
         }
     }
 
     private var title: some View {
         HStack(spacing: 5) {
-            Text(label).font(.system(size: 12)).foregroundStyle(Color.primary.opacity(0.82)).lineLimit(1)
+            Text(label).font(.system(size: 12.5)).foregroundStyle(face.soft).lineLimit(1)
             if let info { InfoDot(text: info, picture: picture) }
         }
     }
@@ -435,12 +462,21 @@ struct SField: View {
     let placeholder: String
     @Binding var text: String
     var width: CGFloat = 180
+    var mono = false
+    @Environment(\.face) private var face
+    /// The text on an engraved line (no box).
     var body: some View {
         TextField(placeholder, text: $text)
-            .textFieldStyle(.plain).font(.system(size: 12))
-            .padding(.horizontal, 7).padding(.vertical, 3)
-            .background(RoundedRectangle(cornerRadius: 6).fill(Color.black.opacity(0.22)))
-            .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.primary.opacity(0.12)))
+            .textFieldStyle(.plain).font(mono ? .system(size: 12, design: .monospaced) : .system(size: 12.5))
+            .foregroundStyle(face.text)
+            .padding(.vertical, 3)
+            .overlay(alignment: .bottom) {
+                VStack(spacing: 0) {
+                    Rectangle().fill(face.light ? Color.black(0.35) : Color.black(0.5)).frame(height: 1)
+                    Rectangle().fill(face.light ? Color.white(0.6) : Color.white(0.04)).frame(height: 1)
+                }
+                .offset(y: 2)
+            }
             .frame(width: width)
     }
 }
@@ -479,20 +515,21 @@ struct MiniStepper: View {
     let text: String
     let down: () -> Void
     let up: () -> Void
+    /// − and + keys round a small display window.
     var body: some View {
         HStack(spacing: 6) {
-            Button(action: down) { Image(systemName: "minus").frame(width: 18, height: 16) }
-            Text(text).font(.system(size: 12, weight: .medium)).monospacedDigit().frame(minWidth: 34)
-            Button(action: up) { Image(systemName: "plus").frame(width: 18, height: 16) }
+            Button(action: down) { Image(systemName: "minus").font(.system(size: 9, weight: .bold)).frame(width: 8) }
+            DisplayWindow(text: text).frame(minWidth: 54)
+            Button(action: up) { Image(systemName: "plus").font(.system(size: 9, weight: .bold)).frame(width: 8) }
         }
         .buttonStyle(PillButtonStyle(tint: nil, compact: true))
     }
 }
 
 extension View {
-    /// Small switch in the app's green instead of the system accent.
+    /// The on/off switch: a small key with an LED, green while on.
     func smallSwitch() -> some View {
-        toggleStyle(.switch).labelsHidden().controlSize(.mini).tint(Color(nsColor: Painter.green))
+        toggleStyle(LEDSwitchStyle()).labelsHidden()
     }
     func smallMenu() -> some View { labelsHidden().pickerStyle(.menu).controlSize(.small).fixedSize() }
 }
@@ -526,6 +563,7 @@ struct AccountSettings: View {
     @Binding var entry: AccountEntry
     @ObservedObject var model: SettingsModel
     var width: CGFloat = 1280
+    @Environment(\.face) private var face
 
     var status: IconStatus? { _ = model.tick; return Store.status(entry.id) }
     var expected: String? { Account.expectedEmail(configDir: entry.configDir) }
@@ -547,17 +585,18 @@ struct AccountSettings: View {
     // Account
     var accountCard: some View {
         SCard(title: "Profile") {
-            SRow(label: "Name", first: true) { SField(placeholder: "name", text: $entry.name) }
+            SRow(label: "Name", first: true) { SField(placeholder: "name", text: $entry.name, width: 170) }
             SRow(label: "Icon label", info: "Up to 6 letters drawn on the icon. The Dock names the app “cl_audit \(entry.name)”.") {
                 SField(placeholder: "LABEL", text: Binding(get: { entry.label },
-                                                           set: { entry.label = String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) }), width: 80)
+                                                           set: { entry.label = String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) }), width: 80, mono: true)
             }
             SRow(label: "Colour", info: "This profile's colour in the launcher, the dashboard and the panels. The icon's own colour is under Icon.") {
                 SwatchRow(colors: TileColor.accents, selected: entry.accentColor) { if let c = $0 { entry.accent = c } }
             }
             Button("Remove profile…") { model.askRemove(entry.id) }
-                .buttonStyle(.plain).font(.system(size: 11.5)).foregroundStyle(.red.opacity(0.85))
-                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8).padding(.bottom, 2)
+                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(face.danger)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8).padding(.bottom, 4)
+                .overlay(alignment: .top) { EngravedRule() }
         }
     }
 
@@ -566,7 +605,7 @@ struct AccountSettings: View {
         SCard(title: "Claude Code and window",
               info: "The icon reads this folder's Claude Code login from the Keychain, read-only, the same way Claude Code does. No new Keychain permission.") {
             SRow(label: "Folder", first: true) {
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Menu {
                         ForEach(model.choices(model.configFolders, current: entry.configDir), id: \.path) { c in
                             let owner = FolderRules.configOwner(c.path, among: model.accounts, except: entry.id)
@@ -579,9 +618,9 @@ struct AccountSettings: View {
                         }
                         Divider()
                         Button("Choose another folder…") { useFolder(pickFolder()) }
-                    } label: { Text(entry.configDir.isEmpty ? "Choose…" : entry.configDir) }
-                    .menuStyle(.button).controlSize(.small).fixedSize()
-                    Button { useFolder(pickFolder()) } label: { Image(systemName: "folder") }
+                    } label: { MenuWell(text: entry.configDir.isEmpty ? "Choose…" : entry.configDir, mono: true) }
+                    .faceMenu()
+                    Button { useFolder(pickFolder()) } label: { Image(systemName: "folder").font(.system(size: 10.5)) }
                         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Choose another folder…")
                 }
             }
@@ -611,8 +650,8 @@ struct AccountSettings: View {
                         }
                         .disabled(owner != nil)
                     }
-                } label: { Text(entry.desktop == .standard ? "Standard" : entry.desktop == .separate ? "Separate" : "None") }
-                .menuStyle(.button).controlSize(.small).fixedSize()
+                } label: { MenuWell(text: entry.desktop == .standard ? "Standard" : entry.desktop == .separate ? "Separate" : "None") }
+                .faceMenu()
             }
             if entry.desktop == .separate {
                 SRow(label: "Data folder") {
@@ -633,8 +672,8 @@ struct AccountSettings: View {
                             entry.desktopDataDir = dir
                         }
                         .disabled(FolderRules.windowOwner(.separate, "~/Library/Application Support/Claude-\(entry.id)", among: model.accounts, except: entry.id) != nil)
-                    } label: { Text(entry.desktopDataDir.isEmpty ? "Choose…" : (entry.desktopDataDir as NSString).lastPathComponent) }
-                    .menuStyle(.button).controlSize(.small).fixedSize()
+                    } label: { MenuWell(text: entry.desktopDataDir.isEmpty ? "Choose…" : (entry.desktopDataDir as NSString).lastPathComponent) }
+                    .faceMenu()
                 }
             }
         }
@@ -642,15 +681,17 @@ struct AccountSettings: View {
 
     @ViewBuilder var loginStatus: some View {
         if mismatch {
-            Label(status?.loginEmail ?? "", systemImage: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.red).lineLimit(1)
+            Label(status?.loginEmail ?? "", systemImage: "exclamationmark.triangle.fill").font(.system(size: 12)).foregroundStyle(face.danger).lineLimit(1)
                 .settingsEmail()
         } else if status?.state == "expired" {
-            Label("expired", systemImage: "clock.badge.exclamationmark").font(.caption).foregroundStyle(.orange)
+            Label("expired", systemImage: "clock.badge.exclamationmark").font(.system(size: 12)).foregroundStyle(face.caution)
         } else if let e = status?.loginEmail {
-            Label(e, systemImage: "checkmark.circle.fill").font(.caption).foregroundStyle(Color(nsColor: Painter.green)).lineLimit(1)
-                .settingsEmail()
+            HStack(spacing: 7) {
+                LED(color: FaceTheme.ledOn)
+                Text(e).font(.system(size: 12)).foregroundStyle(face.ok).lineLimit(1).settingsEmail()
+            }
         } else {
-            Text(expected ?? "not logged in yet").font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            Text(expected ?? "not logged in yet").font(.system(size: 12)).foregroundStyle(face.muted).lineLimit(1)
                 .settingsEmail(expected != nil)
         }
     }
@@ -659,7 +700,11 @@ struct AccountSettings: View {
     var clickCard: some View {
         SCard(title: "Clicking and panels", info: "Click: this panel briefly. Double-click, ⌥-click or press and hold: the large panel in the same design.") {
             SRow(label: "Click", first: true, picture: AnyView(ClickPicture(action: entry.clickAction, seconds: entry.peekSeconds))) {
-                Picker("", selection: $entry.clickAction) { ForEach(ClickAction.allCases) { Text($0.shortTitle).tag($0) } }.smallMenu()
+                Menu {
+                    Picker("", selection: $entry.clickAction) { ForEach(ClickAction.allCases) { Text($0.shortTitle).tag($0) } }
+                        .pickerStyle(.inline).labelsHidden()
+                } label: { MenuWell(text: entry.clickAction.shortTitle) }
+                .faceMenu()
             }
             if entry.clickAction == .peekThenOpen {
                 SRow(label: "Show usage for") {
@@ -672,9 +717,13 @@ struct AccountSettings: View {
                 Toggle("", isOn: $entry.longPressDetails).smallSwitch()
             }
             SRow(label: "Panel design", stacked: true) {
-                PillPicker(options: PanelDesign.allCases, selection: $entry.panelDesign, compact: true) { $0.shortTitle }
-                // at its own size, so the card grows with the taller designs (Pace, Segments)
-                CompactView(info: sampleInfo).fixedSize().padding(.top, 4)
+                // the keys and, under them, the panel at its own size (the card grows with the taller designs)
+                VStack(spacing: 7) {
+                    PillPicker(options: PanelDesign.allCases, selection: $entry.panelDesign, compact: true, fill: true) { $0.shortTitle }
+                    CompactView(info: sampleInfo).fixedSize().frame(maxWidth: .infinity)
+                }
+                .padding(7)
+                .background(SurfaceShape(surface: face.strip, radius: 7))
             }
         }
     }
@@ -693,22 +742,21 @@ struct AccountSettings: View {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 6) { dockRestarting = false }
                         })).smallSwitch()
                         Text(entry.iconHidden ? "runs in the background; still refreshes and alerts" : "shown in the Dock")
-                            .font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(2)
+                            .font(.system(size: 11)).foregroundStyle(face.muted).lineLimit(2)
                     }
                     // Hiding takes the pin out and showing puts it back; both rewrite the Dock's list and restart it.
                     Label(dockRestarting ? "restarting the Dock…" : "Changing this restarts the Dock (takes the pin out or puts it back)",
                           systemImage: "arrow.clockwise")
-                        .font(.system(size: 10.5)).foregroundStyle(Color.orange.opacity(dockRestarting ? 0.7 : 0.95))
+                        .font(.system(size: 10.5)).foregroundStyle(face.caution.opacity(dockRestarting ? 0.75 : 1))
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }
             SRow(label: "Open at login") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
             SRow(label: "Now") {
                 HStack(spacing: 6) {
-                    Circle().fill(state.color).frame(width: 7, height: 7)
-                    Text(state == .inDock ? "running, in the Dock" : state == .hidden ? "running, hidden"
-                         : state == .notPinned ? "running, not pinned" : state.text.prefix(1).uppercased() + state.text.dropFirst())
-                        .font(.system(size: 12))
+                    DisplayWindow(text: state == .inDock ? "running · in the Dock" : state == .hidden ? "running · hidden"
+                                  : state == .notPinned ? "running · not pinned" : state.text,
+                                  tone: state == .inDock || state == .hidden ? .ok : state == .notPinned ? .amber : .normal)
                     if state == .notPinned {
                         Button("Pin") { DockManager.pin(app) }.buttonStyle(.pill(.orange, compact: true)).fixedSize()
                             .help("Pin it in the Dock, after the other cl_audit icons. This restarts the Dock.")
@@ -731,7 +779,11 @@ struct AccountSettings: View {
     var updatesCard: some View {
         SCard(title: "Updates and alerts") {
             SRow(label: "Refresh every", first: true) {
-                Picker("", selection: $entry.pollMinutes) { ForEach([2, 5, 10, 15], id: \.self) { Text("\($0) min").tag($0) } }.smallMenu()
+                Menu {
+                    Picker("", selection: $entry.pollMinutes) { ForEach([2, 5, 10, 15], id: \.self) { Text("\($0) min").tag($0) } }
+                        .pickerStyle(.inline).labelsHidden()
+                } label: { MenuWell(text: "\(entry.pollMinutes) min") }
+                .faceMenu()
             }
             SRow(label: "Notify at", info: "A notification when the 5-hour or weekly limit reaches this level.") {
                 HStack(spacing: 8) {
@@ -796,6 +848,7 @@ struct AccountSettings: View {
 struct IconGallery: View {
     @Binding var entry: AccountEntry
     var status: IconStatus?
+    @Environment(\.face) private var face
     static let states: [(Double, Double)] = [(5, 12), (30, 45), (58, 62), (84, 78), (97, 94)]
     static let columns = 4
     static let spacing: CGFloat = 4
@@ -810,7 +863,7 @@ struct IconGallery: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             ForEach(IconFamily.allCases) { fam in
-                Text(fam.title).font(.system(size: 10.5)).foregroundStyle(.secondary).padding(.top, 2)
+                Printed(text: fam.title, size: 9).padding(.top, 6).padding(.bottom, 2)
                 let rows = stride(from: 0, to: fam.styles.count, by: Self.columns).map {
                     Array(fam.styles[$0..<min($0 + Self.columns, fam.styles.count)])
                 }
@@ -818,7 +871,8 @@ struct IconGallery: View {
                     if let col = row.firstIndex(of: entry.style) {
                         ZStack(alignment: .topLeading) {
                             TileLaneShape(column: col, columns: Self.columns, spacing: Self.spacing, tileHeight: Self.tileHeight)
-                                .fill(Color.primary.opacity(0.11))
+                                .fill(LinearGradient(stops: face.win.stops, startPoint: .top, endPoint: .bottom)
+                                    .shadow(.inner(color: face.win.inner, radius: face.win.innerRadius, y: face.win.innerY)))
                             VStack(spacing: 0) {
                                 tiles(row)
                                 lane.padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 9)
@@ -848,7 +902,7 @@ struct IconGallery: View {
         return VStack(spacing: 3) {
             Image(nsImage: Painter.image(model(st), pixels: 112)).resizable().frame(width: 48, height: 48)
             Text(st.shortTitle).font(.system(size: 10, weight: on ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.8)
-                .foregroundStyle(on ? Color.primary : Color.secondary)
+                .foregroundStyle(on ? face.text : face.muted)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .contentShape(Rectangle())
@@ -862,7 +916,7 @@ struct IconGallery: View {
         return VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("Preview").font(.system(size: 11, weight: .semibold))
-                Text("as the limit fills up").font(.system(size: 10.5)).foregroundStyle(.secondary)
+                Text("as the limit fills up").font(.system(size: 10.5)).foregroundStyle(face.muted)
             }
             HStack(spacing: 3) {
                 ForEach(0..<segments.count, id: \.self) { i in
@@ -877,7 +931,7 @@ struct IconGallery: View {
                 Spacer()
                 Text("at limit")
             }
-            .font(.system(size: 9.5)).foregroundStyle(.secondary)
+            .font(.system(size: 9.5)).foregroundStyle(face.muted)
             HStack(spacing: 0) {
                 ForEach(Array(Self.states.enumerated()), id: \.offset) { _, v in
                     Image(nsImage: Painter.image(model(entry.style, v.0, v.1), pixels: 96)).resizable().frame(width: 40, height: 40)
@@ -951,9 +1005,18 @@ struct Swatch: View {
             }
         }
         .frame(width: size, height: size)
-        .overlay(Circle().stroke(selected ? Color.primary.opacity(0.85) : Color.clear, lineWidth: 1.5).padding(-3))
-        .padding(3)
+        .overlay(Circle().stroke(Color.black(0.45), lineWidth: 1))
+        .overlay { if selected { SwatchRing() } }
+        .padding(4)
         .contentShape(Circle())
+    }
+}
+
+/// The chosen swatch: a ring lit in the LED's orange, a little apart from the colour.
+struct SwatchRing: View {
+    var body: some View {
+        Circle().stroke(FaceTheme.led, lineWidth: 1.5).padding(-3.5)
+            .shadow(color: FaceTheme.led.opacity(0.55), radius: 3)
     }
 }
 
@@ -965,12 +1028,12 @@ struct NoneSwatch: View {
     var body: some View {
         ZStack {
             Circle().stroke(Color.secondary, lineWidth: 1.5)
-            Rectangle().fill(Color.secondary).frame(width: 1.5, height: size + 2).rotationEffect(.degrees(45))
+            Rectangle().fill(Color.hex(0xf87171)).frame(width: 1.5, height: size + 2).rotationEffect(.degrees(45))
         }
         .frame(width: size, height: size)
         .clipShape(Circle())
-        .overlay(Circle().stroke(selected ? Color.primary : Color.clear, lineWidth: 2).padding(-3))
-        .padding(3)
+        .overlay { if selected { SwatchRing() } }
+        .padding(4)
         .contentShape(Circle())
     }
 }

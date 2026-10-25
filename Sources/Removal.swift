@@ -193,8 +193,8 @@ struct RemoveAccountSheet: View {
                        detail: block ?? (folders.isEmpty ? "Nothing to delete" : "Signs out, then deletes " + folders.map(describe).joined(separator: " and ") + ", with its history"),
                        disabled: block != nil || folders.isEmpty) { deleteFolders = true }
             }
-            .clipShape(RoundedRectangle(cornerRadius: 9))
-            .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.09)))
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+            .faceWindow(radius: 6)
 
             if deleteFolders && !running.isEmpty { runningBox }
 
@@ -240,8 +240,7 @@ struct RemoveAccountSheet: View {
     private func option(selected: Bool, title: String, detail: String, disabled: Bool = false, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(alignment: .top, spacing: 10) {
-                Circle().strokeBorder(selected ? Color.white : Color.secondary, lineWidth: selected ? 4 : 1.4)
-                    .frame(width: 13, height: 13).padding(.top, 2)
+                LEDRadio(on: selected).padding(.top, 2)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.system(size: 12.5, weight: selected ? .medium : .regular))
                     Text(detail).font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

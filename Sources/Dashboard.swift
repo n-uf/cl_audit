@@ -31,12 +31,25 @@ struct DashboardSettings: View {
 
     var body: some View {
         SettingsColumns(width: width,
-                        three: [[AnyView(cardsCard), AnyView(emailsCard), AnyView(aboutCard)], [AnyView(DockCard())]],
-                        two: [[AnyView(cardsCard), AnyView(emailsCard), AnyView(aboutCard)], [AnyView(DockCard())]],
-                        one: [AnyView(cardsCard), AnyView(emailsCard), AnyView(DockCard()), AnyView(aboutCard)])
+                        three: [[AnyView(faceCard), AnyView(cardsCard), AnyView(emailsCard), AnyView(aboutCard)], [AnyView(DockCard())]],
+                        two: [[AnyView(faceCard), AnyView(cardsCard), AnyView(emailsCard), AnyView(aboutCard)], [AnyView(DockCard())]],
+                        one: [AnyView(faceCard), AnyView(cardsCard), AnyView(emailsCard), AnyView(DockCard()), AnyView(aboutCard)])
     }
 
     @ObservedObject private var privacy = Privacy.shared
+    @Environment(\.face) private var face
+
+    // Face: the look of this window (Faces.swift)
+    var faceCard: some View {
+        SCard(title: "Face") {
+            VStack(alignment: .leading, spacing: 8) {
+                FacePicker()
+                Text("The look of this window, its settings and the dashboard. Silver is a light face: the window takes the Mac's light appearance. The Dock icons keep their own designs.")
+                    .font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 2).padding(.bottom, 4)
+        }
+    }
     var emailsCard: some View {
         SCard(title: "Emails") {
             SRow(label: "Show emails", info: "Off: email addresses are left out of the launcher, dashboard, panels and Dock menus, and blurred in Settings (hover to see one).", first: true) {
@@ -52,11 +65,11 @@ struct DashboardSettings: View {
         let build = info?["CFBundleVersion"] as? String ?? "?"
         return SCard(title: "About") {
             SRow(label: "Version", info: "Calendar versions: year, month of the release, then a counter within the month.", first: true) {
-                Text("\(version) (build \(build))").font(.system(size: 12)).textSelection(.enabled)
+                DisplayWindow(text: version, dim: "· build \(build)").textSelection(.enabled)
             }
             SRow(label: "Changes") {
-                Link("What's new", destination: URL(string: "https://github.com/n-uf/cl_audit/blob/main/CHANGELOG.md")!)
-                    .font(.system(size: 12))
+                Button("What's new") { NSWorkspace.shared.open(URL(string: "https://github.com/n-uf/cl_audit/blob/main/CHANGELOG.md")!) }
+                    .buttonStyle(PillButtonStyle(compact: true))
             }
         }
     }
@@ -64,11 +77,15 @@ struct DashboardSettings: View {
     var cardsCard: some View {
         SCard(title: "Dashboard cards", info: "One card style for every profile on the dashboard. Each profile's panel design is set in its profile settings.") {
             SRow(label: "Card style", first: true, stacked: true) {
-                PillPicker(options: PanelDesign.allCases, selection: $prefs.cardStyle, compact: true) { Self.short($0) }
-                LimitsView(limits: Self.sampleLimits, design: prefs.cardStyle, large: false)
-                    .padding(12)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.05)))
-                    .padding(.top, 2)
+                // the keys and, under them, their preview, together in one pane
+                VStack(spacing: 7) {
+                    PillPicker(options: PanelDesign.allCases, selection: $prefs.cardStyle, compact: true, fill: true) { Self.short($0) }
+                    LimitsView(limits: Self.sampleLimits, design: prefs.cardStyle, large: false)
+                        .padding(12)
+                        .faceWindow(radius: 5)
+                }
+                .padding(7)
+                .background(SurfaceShape(surface: face.strip, radius: 7))
             }
         }
     }
@@ -88,16 +105,6 @@ struct DashboardSettings: View {
 struct DashboardTile: View {
     let selected: Bool
     var body: some View {
-        HStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 0) {
-                Text("General").font(.system(size: 12.5, weight: .semibold))
-                Text("dashboard · Dock · emails").font(.system(size: 10.5)).foregroundStyle(.secondary)
-            }
-            .frame(minHeight: 30)
-        }
-        .padding(.horizontal, 12).padding(.vertical, 5)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(selected ? 0.12 : 0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(selected ? 0.3 : 0.07), lineWidth: selected ? 1.5 : 1))
-        .contentShape(Rectangle())
+        TileKey(selected: selected) { TileText(title: "General", sub: "face · dashboard · Dock · emails") }
     }
 }

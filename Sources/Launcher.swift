@@ -360,26 +360,22 @@ struct LauncherActions {
 struct UpdatedButton: View {
     @ObservedObject var model: LauncherModel
     let refresh: () -> Void
-    @State private var hover = false
 
     var newest: Date? { model.shownRows.compactMap { $0.status?.updatedAt }.max() }
 
+    /// The age in a display window, and a key that refreshes.
     var body: some View {
-        Button(action: refresh) {
+        HStack(spacing: 6) {
             Group {
-                if model.refreshing { Text("Updating…") }
-                else if let d = newest { Text("Updated \(DetailsFormat.ago(d))") }
-                else { Text("Not updated yet") }
+                if model.refreshing { DisplayWindow(text: "Updating…") }
+                else if let d = newest { DisplayWindow(text: "Updated", dim: "· \(DetailsFormat.ago(d))") }
+                else { DisplayWindow(text: "Not updated yet") }
             }
-            .font(.system(size: 12)).foregroundStyle(hover ? Color.primary : Color.secondary)
-            .padding(.horizontal, 8).padding(.vertical, 3)
-            .background(Capsule().fill(Color.primary.opacity(hover ? 0.07 : 0)))
-            .contentShape(Capsule())
+            Button(action: refresh) { Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold)).frame(width: 8) }
+                .buttonStyle(PillButtonStyle(compact: true))
+                .keyboardShortcut("r", modifiers: .command)
+                .help("Refresh now (⌘R)")
         }
-        .buttonStyle(.plain)
-        .onHover { hover = $0 }
-        .keyboardShortcut("r", modifiers: .command)
-        .help("Refresh now (⌘R)")
     }
 }
 
@@ -388,28 +384,23 @@ struct UpdatedButton: View {
 struct AccountChips: View {
     @ObservedObject var model: LauncherModel
 
+    @Environment(\.face) private var face
+
+    /// A strip of keys, one per profile; a shown profile's key is latched, its strip lit in the profile's colour.
     var body: some View {
-        HStack(spacing: 4) {
-            Text("Show").font(.callout).foregroundStyle(.secondary).padding(.trailing, 4)
+        HStack(spacing: 6) {
+            Printed(text: "Show").padding(.leading, 3).padding(.trailing, 2)
             ForEach(model.rows) { row in
                 let on = !model.hidden.contains(row.id)
                 Button { model.toggle(row.id) } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: on ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 13))
-                            .foregroundStyle(on ? row.accent : Color.secondary)
-                        Text(row.entry.name).font(.callout)
-                            .foregroundStyle(on ? Color.primary : Color.secondary)
-                    }
-                    .padding(.horizontal, 8).padding(.vertical, 3)
-                    .contentShape(Rectangle())
+                    KeyLook(latched: on, lamp: row.accent, height: 22, hPad: 10) { Text(row.entry.name) }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PressableKey())
                 .help(on ? "Hide \(row.entry.name) from the dashboard" : "Show \(row.entry.name) on the dashboard")
             }
         }
-        .padding(.horizontal, 6).padding(.vertical, 2)
-        .background(Capsule().fill(Color.primary.opacity(0.05)))
+        .padding(.leading, 6).padding(.trailing, 6).padding(.top, 5).padding(.bottom, 3)
+        .background(SurfaceShape(surface: face.strip, radius: 6))
     }
 }
 
@@ -533,26 +524,33 @@ struct MainWindowView: View {
     let stats: StatsModel
     let settings: SettingsModel
     let actions: LauncherActions
+    @ObservedObject private var facePrefs = FacePrefs.shared
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Text("cl_audit").font(.system(size: 17, weight: .bold))
+            // the front panel's top strip: the name, the page's own controls, the page keys
+            HStack(spacing: 14) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("cl_audit").font(.system(size: 17, weight: .bold)).foregroundStyle(facePrefs.face.theme.text)
+                    Printed(text: "Usage audit for Claude profiles", size: 8)
+                }
                 if nav.page == .dashboard {
                     if model.rows.count > 1 { AccountChips(model: model) }
                     UpdatedButton(model: model, refresh: actions.refreshAll)
                 }
                 Spacer()
-                PillPicker(options: [MainPage.dashboard, .settings], selection: $nav.page) { $0 == .dashboard ? "Dashboard" : "Settings" }
+                PageKeys(options: [MainPage.dashboard, .settings], selection: $nav.page) { $0 == .dashboard ? "Dashboard" : "Settings" }
             }
-            .padding(.horizontal, 18).padding(.vertical, 10)
-            Divider().opacity(0.5)
+            .padding(.horizontal, 16).padding(.top, 2).padding(.bottom, 10)
+            EngravedRule(dark: .black(facePrefs.face.isLight ? 0.3 : 0.6))
             if nav.page == .dashboard {
                 MainScreenView(model: model, stats: stats, actions: actions)
             } else {
                 SettingsPage(model: settings)
             }
         }
+        .background(ChassisBackground())
+        .face(facePrefs.face)
         .frame(minWidth: 940, minHeight: 600)
         .onChange(of: nav.page) { p in
             if p == .dashboard { actions.refresh() }
@@ -566,6 +564,7 @@ struct MainScreenView: View {
     @ObservedObject var model: LauncherModel
     var stats: StatsModel? = nil
     let actions: LauncherActions
+    @Environment(\.face) private var face
 
     var body: some View {
         ScrollView { content }
@@ -578,13 +577,13 @@ struct MainScreenView: View {
                     ForEach(model.shownRows) { AccountCard(row: $0, actions: actions) }
                 }
                 if model.rows.isEmpty {
-                    Text("No profiles yet. Open Settings to add one.").foregroundStyle(.secondary)
+                    Text("No profiles yet. Open Settings to add one.").foregroundStyle(face.muted)
                 }
                 if !model.rows.isEmpty && model.shownRows.isEmpty {
-                    Text("No profile selected: pick one or more above.").foregroundStyle(.secondary)
+                    Text("No profile selected: pick one or more above.").foregroundStyle(face.muted)
                 } else if let stats { StatsSection(stats: stats).padding(.top, 6) }
             }
-            .padding(18)
+            .padding(16)
     }
 }
 
@@ -641,6 +640,7 @@ struct AccountCard: View {
     let row: AccountRow
     let actions: LauncherActions
     @ObservedObject private var prefs = DashboardPrefs.shared
+    @Environment(\.face) private var face
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -655,17 +655,15 @@ struct AccountCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         Circle().fill(row.accent).frame(width: 8, height: 8)
-                        Text("Claude \(row.entry.name)").font(.headline)
+                        Text("Claude \(row.entry.name)").font(.system(size: 14.5, weight: .semibold)).foregroundStyle(face.text)
                     }
-                    Text(row.subtitle).font(.caption).lineLimit(1)
-                        .foregroundStyle(row.needsLogin ? Color.red : Color.secondary)
+                    Text(row.subtitle).font(.system(size: 12)).lineLimit(1)
+                        .foregroundStyle(row.needsLogin ? face.danger : face.muted)
                         .hidesEmail(row.subtitle.contains("@"))
                 }
                 Spacer(minLength: 0)
                 if let plan = row.status?.plan {
-                    Text(plan.capitalized).font(.caption2.weight(.medium))
-                        .padding(.horizontal, 6).padding(.vertical, 1)
-                        .background(Color.primary.opacity(0.08), in: Capsule())
+                    DisplayWindow(text: plan).frame(maxHeight: .infinity, alignment: .top)
                 }
             }
             // Its Claude window and its Dock icon, as switches (or the button that fixes a problem).
@@ -674,7 +672,7 @@ struct AccountCard: View {
             LimitsView(limits: row.limits, design: prefs.cardStyle, large: false)
           }
             Spacer(minLength: 12)         // cards in a row share one height; the buttons stay at the bottom
-            HStack(spacing: 6) {
+            HStack(spacing: 7) {
                 // One main button: sign in when needed, otherwise bring the Claude window forward.
                 if row.needsLogin {
                     Button("Sign in…") { actions.logIn(row) }.buttonStyle(.pill(.red))
@@ -685,15 +683,14 @@ struct AccountCard: View {
                 moreMenu
                 Spacer()
                 if let u = row.status?.updatedAt {
-                    Text(DetailsFormat.ago(u)).font(.caption2).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                    Text(DetailsFormat.ago(u)).font(.system(size: 11.5)).foregroundStyle(face.muted).lineLimit(1).fixedSize()
                 }
             }
             .controlSize(.small)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.primary.opacity(0.05)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.primary.opacity(0.08)))
+        .padding(.horizontal, 15).padding(.top, 14).padding(.bottom, 12)
+        .background(RaisedShape(finish: face.module, radius: face.moduleRadius))
     }
 
     /// The rest for this profile.
@@ -703,9 +700,7 @@ struct AccountCard: View {
             Divider()
             Button("Profile settings…") { actions.profileSettings(row) }
         } label: {
-            Image(systemName: "ellipsis").font(.system(size: 11, weight: .semibold)).frame(width: 26, height: 20)
-                .background(Capsule().fill(Color.primary.opacity(0.08)))
-                .overlay(Capsule().stroke(Color.primary.opacity(0.1)))
+            KeyLook(height: 26, radius: 4, hPad: 0) { Image(systemName: "ellipsis").font(.system(size: 11, weight: .semibold)).frame(width: 26) }
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
         .help("More for \(row.entry.name)")
@@ -916,6 +911,8 @@ final class ManagerUI {
             let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 980, height: 820),
                              styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
             w.title = "cl_audit"
+            w.styleMask.insert(.fullSizeContentView)      // the chassis runs under the title bar
+            w.titlebarAppearsTransparent = true
             w.tabbingMode = .disallowed
             w.contentViewController = NSHostingController(rootView: MainWindowView(
                 nav: nav, model: model, stats: stats, settings: settings, actions: actions))
@@ -923,6 +920,7 @@ final class ManagerUI {
             w.setFrameAutosaveName("ClaudeUsageMain")
             if !w.setFrameUsingName("ClaudeUsageMain") { w.center() }
             mainWindow = w
+            FacePrefs.shared.window = w                  // Silver: the light appearance; the others dark
         }
         stats.reload()
         NSApp.activate(ignoringOtherApps: true)
@@ -943,22 +941,24 @@ final class ManagerUI {
 struct ProfileControls: View {
     let row: AccountRow
     let actions: LauncherActions
+    @Environment(\.face) private var face
 
     var body: some View {
-        // side by side; the Dock icon moves under the window when the card is narrow
-        FlowLayout(spacing: 6) {
-            if row.entry.desktop != .none { windowChip }
-            dockChip
+        // side by side, sharing the card's width; one above the other when the card is narrow
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 6) { chips }
+            VStack(spacing: 6) { chips }
         }
     }
 
-    private var windowGlyph: AnyView {
-        AnyView(RoundedRectangle(cornerRadius: 2).fill(LinearGradient(colors: [Color(red: 0.88, green: 0.54, blue: 0.41), Color(red: 0.79, green: 0.39, blue: 0.25)], startPoint: .top, endPoint: .bottom)).frame(width: 15, height: 10))
+    @ViewBuilder private var chips: some View {
+        if row.entry.desktop != .none { windowChip }
+        dockChip
     }
-    private var dockGlyph: AnyView {
-        AnyView(RoundedRectangle(cornerRadius: 3).fill(LinearGradient(colors: [Color(white: 0.2), Color(white: 0.08)], startPoint: .top, endPoint: .bottom))
-            .overlay(RoundedRectangle(cornerRadius: 3).stroke(Color.primary.opacity(0.35))).frame(width: 12, height: 12))
-    }
+
+    // no glyphs: the printed title says which one it is
+    private var windowGlyph: AnyView { AnyView(EmptyView()) }
+    private var dockGlyph: AnyView { AnyView(EmptyView()) }
 
     @ViewBuilder private var windowChip: some View {
         let open = row.activity.desktopOpen
@@ -1008,43 +1008,39 @@ struct ProfileControls: View {
     }
 
     private func fix(_ title: String, _ action: @escaping () -> Void) -> some View {
-        Button(title, action: action).buttonStyle(.pill(.orange, compact: true)).fixedSize()
+        Button(title, action: action).buttonStyle(.pill(FaceTheme.led, compact: true)).fixedSize()
     }
 
+    /// A recess in the card: a printed title, the state glowing like a display, and the switch (or a fix key).
     private func chip<C: View>(glyph: AnyView, title: String, sub: String, on: Bool, warn: Bool, @ViewBuilder trailing: () -> C) -> some View {
-        HStack(spacing: 7) {
-            glyph.opacity(on ? 1 : 0.4)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(title).font(.system(size: 11.5)).lineLimit(1).fixedSize()
-                Text(sub).font(.system(size: 10)).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+        let subColor: Color = warn ? (face.light ? .hex(0xa85f00) : .hex(0xffb24a)) : face.displayText
+        return HStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 3) {
+                Printed(text: title, size: 8.5)
+                Text(sub).font(.system(size: 9.5, weight: .semibold, design: .monospaced)).tracking(0.6).textCase(.uppercase)
+                    .foregroundStyle(subColor.opacity(on || warn ? 1 : 0.5))
+                    .shadow(color: face.displayGlow && (on || warn) ? subColor.opacity(0.6) : .clear, radius: 1.5)
+                    .lineLimit(1).fixedSize()
             }
+            Spacer(minLength: 4)
             trailing()
         }
-        .padding(.leading, 9).padding(.trailing, 6).padding(.vertical, 4)
-        .fixedSize()
-        .background(RoundedRectangle(cornerRadius: 9).fill(warn ? Color.orange.opacity(0.1) : Color.primary.opacity(0.05)))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(warn ? Color.orange.opacity(0.5) : Color.primary.opacity(0.08)))
+        .padding(.leading, 10).padding(.trailing, 7)
+        .frame(maxWidth: .infinity, minHeight: 40)
+        .fixedSize(horizontal: false, vertical: true)
+        .faceWindow(radius: 6)
     }
 }
 
 /// A small switch already pointing where it is going, its knob a spinner, while cl_audit waits for the change.
 /// It takes no clicks.
+/// Drawn as the switch key already where it goes, its LED blinking.
 struct BusySwitch: View {
     let on: Bool
     var body: some View {
-        TimelineView(.animation) { ctx in
-            let turn = ctx.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.8) / 0.8 * 360
-            ZStack(alignment: on ? .trailing : .leading) {
-                Capsule().fill(on ? Color(nsColor: Painter.green).opacity(0.55) : Color.primary.opacity(0.16))
-                Circle().trim(from: 0, to: 0.72)
-                    .stroke(Color.white, style: StrokeStyle(lineWidth: 1.8, lineCap: .round))
-                    .frame(width: 9, height: 9)
-                    .rotationEffect(.degrees(turn))
-                    .padding(.horizontal, 3)
-            }
-            .frame(width: 26, height: 15)
-        }
-        .help("Working on it…")
+        LEDSwitchKey(on: on, blinking: true) {}
+            .allowsHitTesting(false)
+            .help("Working on it…")
         .accessibilityLabel("Working")
     }
 }

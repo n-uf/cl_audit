@@ -8,6 +8,11 @@ the notes before updating.
 
 ## Unreleased
 
+- **Faces:** the cl_audit window now looks like the home site's hi-fi front panel, in three faces chosen in
+  General settings ▸ Face: Std (dark, the default), Black and Silver (light). Buttons are keys, pickers are
+  tracks with the chosen item raised, switches are keys with an LED, and status lines sit in glowing display
+  windows. Std and Black keep the window dark and Silver light, whatever the Mac's appearance. The Dock icons
+  and their panels don't change.
 - Release notes and the README say which Claude Code and Claude app versions a release was checked with
   (now Claude Code 2.1.310 and the Claude app 3.6556.2): a newer Claude version can change how Claude
   Code saves its login or the usage figures.

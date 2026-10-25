@@ -314,6 +314,7 @@ enum DockManager {
 struct DockCard: View {
     @ObservedObject private var prefs = DockPrefs.shared
     @State private var tick = 0
+    @Environment(\.face) private var face
 
     var body: some View {
         let _ = tick
@@ -326,17 +327,14 @@ struct DockCard: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 6) {
                         Text("Keep the Dock in order").font(.system(size: 12.5, weight: .medium))
-                        Text("EXPERIMENTAL").font(.system(size: 9, weight: .bold)).tracking(0.5).foregroundStyle(.orange)
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(Capsule().fill(Color.orange.opacity(0.15)))
-                            .overlay(Capsule().stroke(Color.orange.opacity(0.5)))
+                        DisplayWindow(text: "Experimental", tone: .amber, height: 18, size: 9)
                     }
                     Text("Pins the profile icons side by side, in profile order, with at most one Claude pin before them. Several Claude pins get mixed up between Claude windows; the profile icons always open the right one. Redone when you add or remove an account.")
-                        .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                     HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9.5)).foregroundStyle(.orange)
+                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9.5)).foregroundStyle(face.caution)
                         Text("Invasive and error-prone: it rewrites your Dock's pin list and restarts the Dock, and macOS can misplace or drop pins along the way. “Restore my Dock” puts back the pins saved before the first change.")
-                            .font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                            .font(.system(size: 11)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
                     }
                     .padding(.top, 2)
                 }
@@ -353,7 +351,7 @@ struct DockCard: View {
                 // The Dock as it is (and as it would be), with its status and the one action.
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 6) {
-                        Circle().fill(st.tidy ? Color(nsColor: Painter.green) : Color.orange).frame(width: 7, height: 7)
+                        LED(color: st.tidy ? FaceTheme.ledOn : FaceTheme.led)
                         Text(st.tidy ? "Your Dock matches these choices" : "Your Dock doesn't match yet").font(.system(size: 12))
                         Spacer(minLength: 6)
                         if !st.tidy {
@@ -366,7 +364,7 @@ struct DockCard: View {
                         DockStrip(label: "now", tiles: now, marks: DockManager.managedMarks(now, accounts: accounts), color: Color(nsColor: Painter.green))
                         caption("Your Dock: pinned apps, then running ones after the divider. Outlined: the pins cl_audit keeps in order. Hover an icon for its name.")
                     } else {
-                        caption(st.text, color: .orange)
+                        caption(st.text, color: face.caution)
                         DockStrip(label: "now", tiles: now, marks: DockManager.removedMarks(now, after), color: .red)
                         DockStrip(label: "after", tiles: after, marks: DockManager.changedMarks(now, after), color: Color(nsColor: Painter.green))
                         caption("Red: pins Arrange Dock removes or moves away. Green: where they go, and new pins. Running apps are shown in launch order; the Dock may order them differently.")
@@ -403,25 +401,24 @@ struct DockCard: View {
         .onAppear { tick += 1 }
     }
 
-    private var divider: some View { Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1) }
+    private var divider: some View { EngravedRule() }
 
-    private func caption(_ s: String, color: Color = .secondary) -> some View {
-        Text(s).font(.system(size: 11)).foregroundStyle(color).fixedSize(horizontal: false, vertical: true)
+    private func caption(_ s: String, color: Color? = nil) -> some View {
+        Text(s).font(.system(size: 11)).foregroundStyle(color ?? face.muted).fixedSize(horizontal: false, vertical: true)
     }
 
     /// A small group of radio choices, each with a one-line note.
     private func choices<T: Hashable>(title: String, options: [(T, String, String)], selected: T, pick: @escaping (T) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 11)).foregroundStyle(.secondary).padding(.bottom, 2)
+            Text(title).font(.system(size: 11)).foregroundStyle(face.muted).padding(.bottom, 2)
             ForEach(options.indices, id: \.self) { i in
                 let o = options[i], on = o.0 == selected
                 Button { pick(o.0) } label: {
                     HStack(alignment: .top, spacing: 8) {
-                        Circle().strokeBorder(on ? Color.primary : Color.secondary, lineWidth: on ? 4 : 1.3)
-                            .frame(width: 12, height: 12).padding(.top, 2)
+                        LEDRadio(on: on).padding(.top, 2)
                         VStack(alignment: .leading, spacing: 1) {
                             Text(o.1).font(.system(size: 12, weight: on ? .medium : .regular))
-                            Text(o.2).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                            Text(o.2).font(.system(size: 10.5)).foregroundStyle(face.muted)
                         }
                         Spacer(minLength: 0)
                     }
@@ -447,10 +444,11 @@ struct DockStrip: View {
     let tiles: [[String: Any]]
     let marks: Set<Int>
     let color: Color
+    @Environment(\.face) private var face
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(label).font(.system(size: 10.5)).foregroundStyle(.secondary).frame(width: 30, alignment: .leading)
+            Printed(text: label, size: 8.5).frame(width: 34, alignment: .leading)
             // As the Dock shows it: Finder, the pinned apps, a divider, then running apps that aren't pinned.
             HStack(spacing: 3) {
                 tile(DockManager.icon(DockManager.finderURL), name: "Finder", mark: false)
@@ -465,8 +463,7 @@ struct DockStrip: View {
                 }
             }
             .padding(.horizontal, 6).padding(.vertical, 4)
-            .background(RoundedRectangle(cornerRadius: 8).fill(Color.black.opacity(0.28)))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.08)))
+            .faceWindow(radius: 6)
         }
     }
 

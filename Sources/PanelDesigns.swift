@@ -50,6 +50,7 @@ struct LimitsView: View {
     let limits: [Limit]
     let design: PanelDesign
     let large: Bool
+    @Environment(\.face) private var face
 
     var body: some View {
         switch design {
@@ -68,7 +69,7 @@ struct LimitsView: View {
 
     func pct(_ l: Limit, _ size: CGFloat) -> some View {
         Text(Painter.pct(l.p)).font(.system(size: size, weight: .bold, design: .rounded)).monospacedDigit()
-            .foregroundStyle(l.p == nil ? Color.secondary : l.color)
+            .foregroundStyle(l.p == nil ? Color.secondary : face.levelColor(l.p))
     }
 
     func resets(_ l: Limit) -> some View {
@@ -165,6 +166,7 @@ struct SegmentBar: View {
     let p: Double?
     var height: CGFloat = 9
     let count = 12
+    @Environment(\.face) private var face
 
     var body: some View {
         let lit = Int(((p ?? 0) / 100 * Double(count)).rounded())
@@ -172,9 +174,11 @@ struct SegmentBar: View {
             ForEach(0..<count, id: \.self) { i in
                 let zone = Double(i + 1) / Double(count) * 100
                 let c = Color(nsColor: zone > 80 ? Painter.red : zone > 50 ? Painter.amber : Painter.green)
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(i < lit ? c : Color.primary.opacity(0.1))
-                    .shadow(color: i < lit ? c.opacity(0.5) : .clear, radius: 2.5)
+                // inside the window an unlit segment is sunk into the plate
+                RoundedRectangle(cornerRadius: face.active ? 1.5 : 2)
+                    .fill(i < lit ? AnyShapeStyle(c) : face.meterOff)
+                    .brightness(i < lit && face.active && face.light ? -0.08 : 0)
+                    .shadow(color: i < lit && !(face.active && face.light) ? c.opacity(0.5) : .clear, radius: 2.5)
             }
         }
         .frame(height: height)

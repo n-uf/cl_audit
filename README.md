@@ -162,6 +162,9 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
 ### General settings
 
+- **Face:** the look of the cl_audit window, as on the home site: **Std** (a dark brushed panel, the
+  default), **Black** (black anodised) or **Silver** (light brushed silver; the window takes the Mac's light
+  appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.
 - **Dashboard cards:** one card style for every profile (Glow, Rings, Numbers, Segments or Pace).
 - **Emails:** Show emails.
 - **About:** the version and build, and a link to what's new.

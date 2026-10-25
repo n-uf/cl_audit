@@ -134,6 +134,7 @@ struct WindowPicture: View {
 /// The Claude open dot, picked like a colour: the profile's icon without and with the dot.
 struct DotChoice: View {
     @Binding var entry: AccountEntry
+    @Environment(\.face) private var face
     var body: some View {
         HStack(spacing: 8) {
             ForEach([false, true], id: \.self) { on in
@@ -141,10 +142,10 @@ struct DotChoice: View {
                     VStack(spacing: 3) {
                         Image(nsImage: tile(on)).resizable().frame(width: 30, height: 30)
                         Text(on ? "while open" : "none").font(.system(size: 10, weight: entry.windowDot == on ? .semibold : .regular))
-                            .foregroundStyle(entry.windowDot == on ? Color.primary : Color.secondary)
+                            .foregroundStyle(entry.windowDot == on ? face.text : face.muted)
                     }
-                    .padding(.horizontal, 7).padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 8).fill(entry.windowDot == on ? Color.primary.opacity(0.1) : .clear))
+                    .padding(.horizontal, 8).padding(.vertical, 5)
+                    .background { if entry.windowDot == on { WellShape(well: face.win, radius: 6) } }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -165,6 +166,7 @@ struct DotChoice: View {
 struct OpenCloseQuestions: View {
     let profile: String
     @Binding var lifecycle: Lifecycle
+    @Environment(\.face) private var face
 
     private var iconFollows: Bool { lifecycle.usageFollowsWindow }
     private var windowFollows: Bool { lifecycle.windowFollowsUsage }
@@ -188,15 +190,14 @@ struct OpenCloseQuestions: View {
 
     private func question(_ title: String, options: [(String, String?)], selected: Int, pick: @escaping (Int) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.system(size: 11.5)).foregroundStyle(.secondary)
+            Text(title).font(.system(size: 11.5)).foregroundStyle(face.muted).padding(.bottom, 1)
             ForEach(options.indices, id: \.self) { i in
                 Button { pick(i) } label: {
                     HStack(alignment: .top, spacing: 7) {
-                        Circle().strokeBorder(i == selected ? Color.primary : Color.secondary, lineWidth: i == selected ? 4 : 1.3)
-                            .frame(width: 12, height: 12).padding(.top, 2)
+                        LEDRadio(on: i == selected).padding(.top, 2)
                         VStack(alignment: .leading, spacing: 0) {
                             Text(options[i].0).font(.system(size: 12, weight: i == selected ? .medium : .regular))
-                            if let note = options[i].1 { Text(note).font(.system(size: 10)).foregroundStyle(.secondary) }
+                            if let note = options[i].1 { Text(note).font(.system(size: 10)).foregroundStyle(face.muted) }
                         }
                         Spacer(minLength: 0)
                     }
@@ -207,8 +208,7 @@ struct OpenCloseQuestions: View {
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.04)))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.07)))
+        .faceWindow(radius: 6)
     }
 
     /// The four things you can do and what happens to the other one.
@@ -228,12 +228,12 @@ struct OpenCloseQuestions: View {
             (false, "You quit the Dock icon", windowFollows ? "window quits" : nil, iconFollows ? "or ⌥ Quit and keep" : "Claude may ask")]
         return VStack(spacing: 0) {
             HStack {
-                Text(title).font(.system(size: 12, weight: .bold))
+                Printed(text: title, size: 9)
                 Spacer()
-                Text(profile).font(.system(size: 10.5)).foregroundStyle(.secondary)
+                Text(profile).font(.system(size: 10.5)).foregroundStyle(face.muted)
             }
             .padding(.horizontal, 10).padding(.vertical, 7)
-            .background(Color.accentPill.opacity(0.14))
+            .background(Color.black(face.light ? 0.05 : 0.25))
             ForEach(rows.indices, id: \.self) { i in
                 let r = rows[i]
                 HStack(spacing: 8) {
@@ -245,23 +245,25 @@ struct OpenCloseQuestions: View {
                         }
                     }
                     .frame(width: 14)
-                    Text(r.1).font(.system(size: 11.5)).foregroundStyle(Color.primary.opacity(0.8)).frame(width: 150, alignment: .leading)
+                    Text(r.1).font(.system(size: 11.5)).foregroundStyle(face.soft).frame(width: 150, alignment: .leading)
                     if let effect = r.2 {
-                        Text(effect).font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(nsColor: Painter.green))
-                            .padding(.horizontal, 8).padding(.vertical, 1)
-                            .background(Capsule().fill(Color(nsColor: Painter.green).opacity(0.16)))
-                        if let note = r.3 { Text(note).font(.system(size: 10)).foregroundStyle(.secondary) }
+                        // the effect glows like a display's printing
+                        Text(effect).font(.system(size: 9.5, weight: .semibold, design: .monospaced)).tracking(0.6).textCase(.uppercase)
+                            .foregroundStyle(face.displayText)
+                            .shadow(color: face.displayGlow ? face.displayText.opacity(0.6) : .clear, radius: 1.5)
+                            .lineLimit(1).fixedSize()
+                        if let note = r.3 { Text(note).font(.system(size: 10)).foregroundStyle(face.muted) }
                     } else {
-                        Text("not touched").font(.system(size: 11)).foregroundStyle(.tertiary)
+                        Text("not touched").font(.system(size: 11)).foregroundStyle(face.faint)
                     }
                     Spacer(minLength: 0)
                 }
                 .padding(.horizontal, 10).padding(.vertical, 5)
-                .overlay(alignment: .top) { Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1) }
+                .overlay(alignment: .top) { Rectangle().fill(face.light ? Color.black(0.08) : Color.white(0.06)).frame(height: 1) }
             }
         }
-        .clipShape(RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9).stroke(Color.primary.opacity(0.09)))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        .faceWindow(radius: 6)
         .padding(.top, 4)
     }
 }

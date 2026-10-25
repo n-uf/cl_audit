@@ -14,22 +14,22 @@ enum StatsFormat {
 struct StatsSection: View {
     @ObservedObject var stats: StatsModel
     @ObservedObject private var prefs = DashboardPrefs.shared
+    @Environment(\.face) private var face
 
     var names: [String: String] { Dictionary(uniqueKeysWithValues: stats.accounts.map { ($0.id, $0.name) }) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Text("Usage history").font(.title3.weight(.semibold))
+                Text("Usage history").font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
                 if stats.loading { ProgressView().controlSize(.small) }
                 Spacer()
-                Text("\(stats.totalReplies) replies · \(StatsFormat.tokens(stats.totalTokens)) tokens")
-                    .font(.caption).foregroundStyle(.secondary)
+                DisplayWindow(text: "\(stats.totalReplies.formatted()) replies", dim: "· \(StatsFormat.tokens(stats.totalTokens)) tokens")
                 PillPicker(options: StatsRange.allCases, selection: $stats.range) { $0.title }
             }
             // Which charts to show: filters for this view, kept between launches.
             HStack(spacing: 8) {
-                Text("Show").font(.caption).foregroundStyle(.secondary)
+                Printed(text: "Show")
                 WrapChips(items: [("When you use Claude", prefs.showHeatmap),
                                   (stats.range == .day ? "Tokens per hour" : "Tokens per day", prefs.showTokens),
                                   ("Where it goes", prefs.showShares)]) { i in
@@ -41,9 +41,9 @@ struct StatsSection: View {
                 }
             }
             if !prefs.showHeatmap && !prefs.showTokens && !prefs.showShares {
-                Text("All charts are hidden; pick one above.").font(.callout).foregroundStyle(.secondary)
+                Text("All charts are hidden; pick one above.").font(.callout).foregroundStyle(face.muted)
                     .frame(maxWidth: .infinity).padding(.vertical, 18)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.03)))
+                    .faceWindow(radius: 6)
             }
             if prefs.showHeatmap {
             ChartCard(title: "When you use Claude", note: "replies per hour · colour mixes the accounts") {
@@ -57,7 +57,7 @@ struct StatsSection: View {
             }
             }
             if prefs.showShares {
-            ChartCard(title: "Where it goes", note: "share of tokens in the period") {
+            ChartCard(title: "Where it goes", note: "share of tokens in the period", screen: false) {
                 HStack(alignment: .top, spacing: 18) {
                     ShareList(title: "By project", rows: stats.breakdown.projects)
                     ShareList(title: "By model", rows: stats.breakdown.models)
@@ -67,15 +67,15 @@ struct StatsSection: View {
             }
             HStack(spacing: 14) {
                 ForEach(stats.accounts) { e in
-                    HStack(spacing: 5) {
-                        RoundedRectangle(cornerRadius: 3).fill(stats.color(e.id)).frame(width: 10, height: 10)
-                        Text(e.name)
+                    HStack(spacing: 6) {
+                        LED(color: stats.color(e.id))
+                        Text(e.name).foregroundStyle(face.soft)
                     }
                 }
                 Spacer()
                 Text("From the session files on this Mac (terminal, desktop Code tab, VS Code, SDK apps).")
             }
-            .font(.caption).foregroundStyle(.secondary)
+            .font(.caption).foregroundStyle(face.muted)
         }
         // the period is remembered between launches
         .onAppear { if stats.range != prefs.range { stats.range = prefs.range } }
@@ -83,23 +83,25 @@ struct StatsSection: View {
     }
 }
 
+/// A chart module: a printed title and note over a recessed screen.
 struct ChartCard<Content: View>: View {
     let title: String
     let note: String
+    var screen = true
     @ViewBuilder let content: Content
+    @Environment(\.face) private var face
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
-                Text(title).font(.headline)
+                Printed(text: title)
                 Spacer()
-                Text(note).font(.caption2).foregroundStyle(.secondary)
+                Text(note).font(.system(size: 11)).foregroundStyle(face.muted)
             }
-            content
+            if screen { content.padding(10).faceWindow(radius: 6, chart: true) } else { content }
         }
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Color.primary.opacity(0.05)))
-        .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.primary.opacity(0.08)))
+        .background(RaisedShape(finish: face.module, radius: face.moduleRadius))
     }
 }
 
@@ -107,6 +109,7 @@ struct ChartCard<Content: View>: View {
 /// its strength follows the number of replies.
 struct Heatmap: View {
     @ObservedObject var stats: StatsModel
+    @Environment(\.face) private var face
 
     var body: some View {
         let rows = stats.heat.count
@@ -136,7 +139,7 @@ struct Heatmap: View {
                             let total = counts.values.reduce(0, +)
                             let rect = CGRect(x: CGFloat(h) * w + 1.5, y: 1, width: w - 3, height: size.height - 2)
                             let path = Path(roundedRect: rect, cornerRadius: min(4, rect.height / 3))
-                            ctx.fill(path, with: .color(Color.primary.opacity(0.06)))
+                            ctx.fill(path, with: .color(face.light ? Color.black(0.06) : Color.white(0.05)))
                             guard total > 0 else { continue }
                             ctx.fill(path, with: .color(mix(counts).opacity(0.18 + 0.82 * min(1, Double(total) / Double(maxCount)))))
                         }
@@ -206,18 +209,21 @@ struct TokenChart: View {
 struct ShareList: View {
     let title: String
     let rows: [ShareRow]
+    @Environment(\.face) private var face
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Printed(text: title, size: 9)
             if rows.isEmpty { Text("–").foregroundStyle(.secondary) }
             ForEach(rows) { r in
                 HStack(spacing: 8) {
                     Text(r.name).font(.caption).lineLimit(1).frame(width: 110, alignment: .leading)
                     GeometryReader { g in
                         ZStack(alignment: .leading) {
-                            Capsule().fill(Color.primary.opacity(0.08))
-                            Capsule().fill(r.color.opacity(0.9)).frame(width: max(4, g.size.width * r.share))
+                            // a meter sunk into the plate
+                            RoundedRectangle(cornerRadius: 2).fill(face.meterOff)
+                            RoundedRectangle(cornerRadius: 1.5).fill(r.color.opacity(0.9)).frame(width: max(4, g.size.width * r.share))
+                                .padding(1)
                         }
                     }
                     .frame(height: 8)

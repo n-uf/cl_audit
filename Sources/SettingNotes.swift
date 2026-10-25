@@ -90,27 +90,29 @@ struct SettingNoteBanner: View {
     let note: SettingNote
     let hover: (Bool) -> Void
     let close: () -> Void
+    @Environment(\.face) private var outer
 
+    /// A small raised plate over the page: the title in a display window, the explanation, a close key.
+    /// It stays dark on the light Silver face too, like the app's other floating parts.
     var body: some View {
+        let face: FaceTheme = outer.light ? Face.std.theme : outer
         HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "info.circle.fill").font(.system(size: 14)).foregroundStyle(.secondary).padding(.top, 1)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(note.title).font(.system(size: 12.5, weight: .semibold))
-                Text(note.text).font(.system(size: 12)).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                DisplayWindow(text: note.title)
+                Text(note.text).font(.system(size: 12)).foregroundStyle(face.soft)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
-            Button(action: close) {
-                Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
-                    .frame(width: 18, height: 18).background(Circle().fill(Color.primary.opacity(0.08)))
-            }
-            .buttonStyle(.plain).help("Close")
+            Button(action: close) { Image(systemName: "xmark").font(.system(size: 8.5, weight: .bold)).frame(width: 6) }
+                .buttonStyle(PillButtonStyle(compact: true)).help("Close")
         }
-        .padding(.horizontal, 14).padding(.vertical, 11)
+        .padding(.horizontal, 14).padding(.top, 11).padding(.bottom, 10)
         .frame(maxWidth: 520)
-        .background(RoundedRectangle(cornerRadius: 12).fill(.regularMaterial))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.primary.opacity(0.12)))
-        .shadow(color: .black.opacity(0.3), radius: 12, y: 4)
+        .background(RaisedShape(finish: Finish(stops: Finish.stops((0x343437, 0), (0x29292b, 1)), grain: face.module.grain,
+                                               hi: .white(0.1), lo: .black(0.4), ring: .black, shadow: .black(0.6), shadowRadius: 18, shadowY: 10),
+                                radius: face.moduleRadius == 10 ? 8 : 4))
+        .environment(\.face, face)
+        .environment(\.colorScheme, .dark)
         .onHover(perform: hover)
         .accessibilityElement(children: .combine)
     }
