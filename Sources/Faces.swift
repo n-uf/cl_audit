@@ -363,6 +363,17 @@ struct LED: View {
     }
 }
 
+/// An LED that pulses while something is under way (a switch being applied, the numbers being fetched).
+struct PulsingLED: View {
+    let color: Color
+    var body: some View {
+        TimelineView(.animation) { ctx in
+            let phase = (sin(ctx.date.timeIntervalSinceReferenceDate * 2 * .pi / 1.1) + 1) / 2
+            LED(color: color).opacity(0.25 + 0.75 * phase)
+        }
+    }
+}
+
 enum KeyKind { case plain, page, primary }
 
 /// The face of a key, around any content: up, pressed, or latched (held down, its strip lit).
@@ -526,10 +537,7 @@ struct LEDSwitchKey: View {
             KeyLook(pressed: on, height: 22, radius: 4, hPad: 0) {
                 Group {
                     if let pulse {
-                        TimelineView(.animation) { ctx in
-                            let phase = (sin(ctx.date.timeIntervalSinceReferenceDate * 2 * .pi / 1.1) + 1) / 2
-                            LED(color: pulse).opacity(0.25 + 0.75 * phase)
-                        }
+                        PulsingLED(color: pulse)
                     } else if blinking {
                         TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
                             LED(color: FaceTheme.ledOn, lit: Int(ctx.date.timeIntervalSinceReferenceDate * 2) % 2 == 0)

@@ -373,12 +373,20 @@ struct UpdatedButton: View {
                 else if let d = newest { DisplayWindow(text: "Updated", dim: "· \(DetailsFormat.ago(d))", height: TopStrip.height, width: Self.width) }
                 else { DisplayWindow(text: "Not updated yet", height: TopStrip.height, width: Self.width) }
             }
+            // while updating, its arrow becomes a pulsing green LED (and it takes no clicks)
             Button(action: refresh) {
-                KeyLook(height: TopStrip.height, hPad: 0) { Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold)).frame(width: TopStrip.height) }
+                KeyLook(height: TopStrip.height, hPad: 0) {
+                    Group {
+                        if model.refreshing { PulsingLED(color: FaceTheme.ledOn) }
+                        else { Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold)) }
+                    }
+                    .frame(width: TopStrip.height)
+                }
             }
                 .buttonStyle(PressableKey())
+                .allowsHitTesting(!model.refreshing)
                 .keyboardShortcut("r", modifiers: .command)
-                .help("Refresh now (⌘R)")
+                .help(model.refreshing ? "Updating…" : "Refresh now (⌘R)")
         }
     }
 }
