@@ -9,7 +9,8 @@ the notes before updating.
 ## Unreleased
 
 - **Unsaved name or label:** while a typed name or icon label isn't saved yet, its line turns into an amber
-  hairline with "Not saved · Return saves · Esc undoes" under it; when it can't be saved, the line and the reason
+  hairline with "Not saved · Return saves · Esc undoes" under it (Return and Esc as key caps), the label staying
+  level with the text; when it can't be saved, the line and the reason
   (such as "Another profile is called “Work”") are red.
 - **Fixed:** typing a profile's name or icon label and switching to another profile's tab before pressing Return
   showed the typed text in the other profile's field, where Return would have saved it to that profile. Each

@@ -526,6 +526,15 @@ struct SCard<Content: View>: View {
 
 /// A settings row: the label in a fixed column and the control right after it (never pushed to the card's
 /// far edge), or, for wide controls, the label above the control.
+extension VerticalAlignment {
+    private enum RowLine: AlignmentID {
+        static func defaultValue(in d: ViewDimensions) -> CGFloat { d[VerticalAlignment.center] }
+    }
+    /// The line a settings row's label lines up with: the middle of its control, or a field's own line when the field
+    /// has a message under it.
+    static let rowLine = VerticalAlignment(RowLine.self)
+}
+
 struct SRow<Control: View>: View {
     let label: String
     var info: String? = nil
@@ -545,7 +554,7 @@ struct SRow<Control: View>: View {
                     .padding(.vertical, 6)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                HStack(spacing: 10) {
+                HStack(alignment: .rowLine, spacing: 10) {
                     title.frame(width: Self.labelWidth, alignment: .leading)
                     control
                     Spacer(minLength: 0)
@@ -606,11 +615,15 @@ struct SField: View {
                     .offset(y: 2)
                 }
                 .frame(width: width)
+                .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }   // the label stays level with the text
             if let problem {
                 Text(problem).font(.system(size: 10.5)).foregroundStyle(face.danger).fixedSize().padding(.top, 2)
             } else if pending {
-                Text("Not saved · Return saves · Esc undoes").font(.system(size: 10.5)).foregroundStyle(face.caution)
-                    .fixedSize().padding(.top, 2)
+                HStack(spacing: 4) {
+                    Text("Not saved ·"); KeyCap(text: "Return", color: face.caution); Text("saves ·")
+                    KeyCap(text: "Esc", color: face.caution); Text("undoes")
+                }
+                .font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize().padding(.top, 2)
             }
         }
         .help(problem ?? (commit != nil ? "Return or click elsewhere saves it; Esc puts it back" : ""))
@@ -620,6 +633,18 @@ struct SField: View {
         guard let commit, let d = draft else { return }
         if d == text { draft = nil; problem = nil; return }
         if let p = commit(d) { problem = p } else { draft = nil; problem = nil }
+    }
+}
+
+/// A key named in a hint ("Return", "Esc"), drawn as a small key cap in the hint's colour.
+struct KeyCap: View {
+    let text: String
+    let color: Color
+    var body: some View {
+        Text(text).font(.system(size: 9.5, weight: .semibold))
+            .padding(.horizontal, 4).padding(.vertical, 1)
+            .background(RoundedRectangle(cornerRadius: 3).fill(color.opacity(0.12)))
+            .overlay(RoundedRectangle(cornerRadius: 3).stroke(color.opacity(0.55), lineWidth: 0.75))
     }
 }
 
