@@ -24,6 +24,44 @@ final class SettingsModel: ObservableObject {
     private var noteHide: DispatchWorkItem?
     private var noteHovered = false
     private var emailsWatch: AnyCancellable?
+    private var storeWatch: NSObjectProtocol?
+
+    /// The file as saved elsewhere, with this window's own unsaved changes kept on top.
+    func takeInOutsideChanges() {
+        let fresh = Store.load()
+        guard !fresh.isEmpty, fresh != saved else { return }     // our own save, or nothing new
+        let merged = Self.merge(base: saved, local: accounts, remote: fresh)
+        saved = fresh
+        if merged != accounts { accounts = merged }
+        if !isValid(selection) { selection = Self.dashboardID }
+    }
+
+    /// Three-way merge by profile id: the file now (`remote`) plus what changed here (`local`) since the last load
+    /// or save (`base`): edited or added here wins, removed here stays removed, everything else is as in the file.
+    /// Order: this window's, then profiles added elsewhere.
+    static func merge(base: [AccountEntry], local: [AccountEntry], remote: [AccountEntry]) -> [AccountEntry] {
+        let baseByID = Dictionary(base.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let remoteByID = Dictionary(remote.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
+        let localIDs = Set(local.map(\.id))
+        var out: [AccountEntry] = []
+        for e in local {
+            if let b = baseByID[e.id], b == e {
+                if let r = remoteByID[e.id] { out.append(r) }        // untouched here: the file's version, or gone
+            } else {
+                out.append(e)                                         // edited or added here
+            }
+        }
+        for r in remote where !localIDs.contains(r.id) && baseByID[r.id] == nil { out.append(r) }   // added elsewhere
+        return out
+    }
+
+    /// Saves this window's changes merged into the file as it is now (never an older copy over newer changes).
+    private func saveMerged() throws {
+        let merged = Self.merge(base: saved, local: accounts, remote: Store.load())
+        try Store.save(merged)
+        saved = merged
+        if merged != accounts { accounts = merged }
+    }
 
     func showNote(_ n: SettingNote) {
         withAnimation(.easeOut(duration: 0.18)) { note = n }
@@ -58,6 +96,11 @@ final class SettingsModel: ObservableObject {
         }
         // after the change, not inside it: an animated note started while the window is redrawing for the
         // change itself left the Emails key and the cards showing the old state
+        // saved elsewhere (a Dock icon's own menu, Show in the Dock following the Dock in a Dock icon app, --sync):
+        // take it in at once, so this copy never saves an older one over it
+        storeWatch = DistributedNotificationCenter.default().addObserver(forName: Store.changed, object: nil, queue: .main) { [weak self] _ in
+            self?.takeInOutsideChanges()
+        }
         emailsWatch = Privacy.shared.$show.dropFirst().removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] on in self?.showNote(SettingNotes.emails(on)) }
@@ -102,7 +145,7 @@ final class SettingsModel: ObservableObject {
         let work = DispatchWorkItem { [weak self] in
             guard let self, !self.needsApply, self.problem == nil else { return }
             do {
-                try Store.save(self.accounts); self.saved = self.accounts; self.message = "Saved"
+                try self.saveMerged(); self.message = "Saved"
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in   // a brief confirmation
                     if self?.message == "Saved" { self?.message = "" }
                 }
@@ -250,8 +293,7 @@ final class SettingsModel: ObservableObject {
     func apply(then done: (() -> Void)? = nil) {
         guard problem == nil else { return }
         do {
-            try Store.save(accounts)
-            saved = accounts
+            try saveMerged()
             message = "Applying…"
             let list = accounts
             DispatchQueue.main.async {
