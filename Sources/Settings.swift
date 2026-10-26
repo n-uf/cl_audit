@@ -910,7 +910,7 @@ struct AccountSettings: View {
         // start, so its pin is taken out or put back here, in its own preferences' place
         let app = Installer.appURL(entry)
         DockManager.markChange(app)
-        if !Installer.isRunning(app), let d = UserDefaults(suiteName: Installer.bundleID(entry)) {
+        if !Installer.isRunning(entry), let d = UserDefaults(suiteName: Installer.bundleID(entry)) {
             dockLog.log("\(entry.id, privacy: .public): Show in the Dock \(on ? "on" : "off", privacy: .public) while stopped")
             if on { DockManager.repin(app, defaults: d) } else { DockManager.unpinRemembering(app, defaults: d) }
         }

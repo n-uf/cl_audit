@@ -8,6 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
+- **Fixed:** renaming a profile left a second Dock icon behind (the old name's, which then stayed in the Dock) and
+  could switch the renamed one to hidden. A rename now moves the profile's Dock icon app to its new name and keeps
+  its place in the Dock; leftover Dock entries of renamed or removed profiles are cleaned up.
 - **Unsaved name or label:** while a typed name or icon label isn't saved yet, its line turns into an amber
   hairline with "Return saves · Esc undoes" under it; Return and Esc are key caps you can also click. The label
   stays level with the typed text. When it can't be saved, the line and the reason (such as "Another profile is

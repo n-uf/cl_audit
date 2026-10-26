@@ -379,19 +379,29 @@ enum Installer {
         busy += 1
         defer { busy -= 1 }
         var log: [String] = []
+        var restyled: [URL] = []
+        // Last: the Dock's pins follow the profiles by id (a renamed app's pin moves in place, leftovers go, new looks
+        // get a fresh entry), in one Dock restart at most.
+        defer { DockManager.reconcilePins(accounts, renew: restyled) }
         let wanted = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, appURL($0).standardizedFileURL) })
         for (url, id) in installed() where wanted[id] != url.standardizedFileURL {
-            stop(url)
-            try? FileManager.default.removeItem(at: url)
-            if wanted[id] == nil {
-                // The account is gone: everything macOS and the app kept for it goes too.
-                AccountRemoval.purgeApp(id: id, app: url)
-            } else {
-                // Renamed: the old name's Dock pin and Launch Services record would point at nothing.
-                AccountRemoval.unpinFromDock(url)
+            if let to = wanted[id], let e = accounts.first(where: { $0.id == id }) {
+                // Renamed: the same app moves to its new name. Its bundle id, settings, login item and Dock place stay;
+                // the change is cl_audit's, so it mustn't read "not in the Dock" as "hidden".
+                DockManager.markChange(bundleID: bundleID(e))
+                stop(url)
+                if move(url, to: to, for: e) { log.append("renamed \(url.deletingPathExtension().lastPathComponent) → \(to.deletingPathExtension().lastPathComponent)"); continue }
+                // couldn't move it: the old copy goes and a new one is installed below
+                try? FileManager.default.removeItem(at: url)
                 run(AccountRemoval.lsregister, ["-u", url.path])
+                log.append("removed \(url.deletingPathExtension().lastPathComponent)")
+            } else {
+                // The profile is gone: everything macOS and the app kept for it goes too.
+                stop(url)
+                try? FileManager.default.removeItem(at: url)
+                AccountRemoval.purgeApp(id: id, app: url)
+                log.append("removed \(url.deletingPathExtension().lastPathComponent)")
             }
-            log.append("removed \(url.deletingPathExtension().lastPathComponent)")
         }
         // Leftovers of accounts removed by earlier versions.
         let live = Set(accounts.map(\.id)).union(installed().map(\.id))
@@ -399,8 +409,6 @@ enum Installer {
             AccountRemoval.purgeApp(id: id, app: appsFolder.appendingPathComponent("cl_audit \(id).app"))
             log.append("cleaned up \(id)")
         }
-        var restyled: [URL] = []
-        defer { refreshDock(restyled) }
         for e in accounts {
             let dst = appURL(e)
             if needsInstall(e, at: dst, source: source) {
@@ -412,7 +420,7 @@ enum Installer {
             }
             // Started in the background and without opening its Claude window ("Window follows" is for you starting
             // it). One that follows its window isn't started while that window is closed.
-            if !isRunning(dst), !waitsForWindow(e) { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
+            if !isRunning(e), !waitsForWindow(e) { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
         }
         return log
     }
@@ -428,7 +436,7 @@ enum Installer {
     static func startFollowers() {
         for e in Store.load() where e.lifecycle.usageFollowsWindow && !waitsForWindow(e) {
             let dst = appURL(e)
-            if FileManager.default.fileExists(atPath: dst.path), !isRunning(dst) { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
+            if FileManager.default.fileExists(atPath: dst.path), !isRunning(e) { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
         }
     }
 
@@ -439,6 +447,7 @@ enum Installer {
               i["UsageColor"] as? String == e.color.rawValue,
               i["UsageFrame"] as? String == (e.frame?.rawValue ?? "none"),
               i["UsageStyle"] as? String == e.style.rawValue,
+              i["CFBundleName"] as? String == dst.deletingPathExtension().lastPathComponent,
               i["CFBundleIdentifier"] as? String == bundleID(e) else { return true }
         // Signing a copy changes its executable, so copies are matched by the build they were made from.
         return i["UsageBuild"] as? String != buildStamp(source)
@@ -449,6 +458,28 @@ enum Installer {
         guard let data = try? Data(contentsOf: source.appendingPathComponent("Contents/MacOS/UsageDock"),
                                    options: .alwaysMapped) else { return "unknown" }
         return SHA256.hash(data: data).prefix(8).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// A rename: moves the profile's app to its new name and writes that name inside it (re-signed and registered
+    /// again), instead of building a new one. False when it couldn't (then sync installs a fresh copy).
+    static func move(_ from: URL, to: URL, for e: AccountEntry) -> Bool {
+        let fm = FileManager.default
+        if fm.fileExists(atPath: to.path) {
+            // something already at the new name: only a copy of this same profile, or a broken one, may be replaced
+            guard info(to).map({ $0["UsageAccountID"] as? String == e.id }) ?? true else { return false }
+            try? fm.removeItem(at: to)
+        }
+        guard (try? fm.moveItem(at: from, to: to)) != nil else { return false }
+        run(AccountRemoval.lsregister, ["-u", from.path])
+        let plistURL = to.appendingPathComponent("Contents/Info.plist")
+        guard let plist = NSMutableDictionary(contentsOf: plistURL) else { return false }
+        let name = to.deletingPathExtension().lastPathComponent
+        plist["CFBundleName"] = name
+        plist["CFBundleDisplayName"] = name
+        guard (try? plist.write(to: plistURL)) != nil,
+              run("/usr/bin/codesign", ["--force", "--sign", "-", to.path]) == 0 else { return false }
+        forgetOldIcon(to)
+        return true
     }
 
     static func install(_ e: AccountEntry, at dst: URL, source: URL) throws {
@@ -499,7 +530,8 @@ enum Installer {
     /// style, colour or frame changed, its Dock entry is renewed in place and the Dock restarted (once for all of
     /// them), as for Show in the Dock. A copy only reinstalled for a new build keeps its look and leaves the Dock alone.
     static func refreshDock(_ restyled: [URL]) {
-        DockManager.renewTiles(restyled)
+        guard !restyled.isEmpty else { return }
+        DockManager.reconcilePins(Store.load(), renew: restyled)
     }
 
     /// Above zero while `sync` or `refreshLooks` runs (both wait on the run loop while an app quits, so a timer could
@@ -541,7 +573,7 @@ enum Installer {
         defer { refreshDock(restyled) }
         for e in accounts {
             let dst = appURL(e)
-            guard lookDiffers(e, at: dst), !isRunning(dst) else { continue }
+            guard lookDiffers(e, at: dst), !isRunning(e) else { continue }
             do { try install(e, at: dst, source: source); log.append("redrew \(dst.deletingPathExtension().lastPathComponent)") }
             catch { log.append("couldn't redraw \(e.name): \(error.localizedDescription)"); continue }
             restyled.append(dst)
@@ -549,10 +581,20 @@ enum Installer {
         return log
     }
 
-    static func running(_ url: URL) -> [NSRunningApplication] {
-        NSWorkspace.shared.runningApplications.filter { $0.bundleURL?.standardizedFileURL == url.standardizedFileURL }
+    /// A profile's Dock icon app while it runs, by its bundle id: the same before and after a rename.
+    static func running(_ e: AccountEntry) -> [NSRunningApplication] {
+        NSRunningApplication.runningApplications(withBundleIdentifier: bundleID(e))
     }
 
+    /// The app at `url` while it runs: by its bundle id when it's a Dock icon app, else by its path.
+    static func running(_ url: URL) -> [NSRunningApplication] {
+        if let id = info(url)?["CFBundleIdentifier"] as? String, id.hasPrefix(managerID + ".") {
+            return NSRunningApplication.runningApplications(withBundleIdentifier: id)
+        }
+        return NSWorkspace.shared.runningApplications.filter { $0.bundleURL?.standardizedFileURL == url.standardizedFileURL }
+    }
+
+    static func isRunning(_ e: AccountEntry) -> Bool { !running(e).isEmpty }
     static func isRunning(_ url: URL) -> Bool { !running(url).isEmpty }
 
     static func stop(_ url: URL) {

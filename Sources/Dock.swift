@@ -300,6 +300,80 @@ enum DockManager {
     /// cl_audit is changing this icon's place in the Dock (switch flipped, app relaunching, pin retries): for a
     /// while, a difference between the switch and the Dock is ours, not yours.
     static func markChange(_ app: URL) { appDefaults(app)?.set(Date(), forKey: "dockChangeAt") }
+    /// The same, by bundle id (for a copy that is being replaced and has no Info.plist to read right now).
+    static func markChange(bundleID id: String) {
+        (id == Bundle.main.bundleIdentifier ? .standard : UserDefaults(suiteName: id))?.set(Date(), forKey: "dockChangeAt")
+    }
+
+    /// What `reconcilePins` does to the Dock's list, without touching the Dock (so it can be tested).
+    /// - `want`: each profile's bundle id → where its Dock icon app is now (named after the profile).
+    /// - `renew`: bundle ids whose picture changed (their entry is replaced by a fresh one; the Dock keeps a picture
+    ///   with the entry, through restarts).
+    /// - `exists` / `bundleIDAt`: the file system, for pins the Dock hasn't stamped with a bundle id.
+    struct PinPlan { var list: [[String: Any]]; var changed = false; var notes: [String] = []; var marked: [URL] = [] }
+    static func planPins(_ list: [[String: Any]], want: [String: URL], renew: Set<String> = [],
+                         exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
+                         bundleIDAt: (URL) -> String? = { Installer.info($0)?["CFBundleIdentifier"] as? String }) -> PinPlan {
+        var plan = PinPlan(list: [])
+        var seen = Set<String>()
+        for t in list {
+            guard let p = filePath(t) else { plan.list.append(t); continue }
+            let u = URL(fileURLWithPath: p)
+            let bid = ((t["tile-data"] as? [String: Any])?["bundle-identifier"] as? String) ?? (exists(p) ? bundleIDAt(u) : nil)
+            if let bid, let app = want[bid] {
+                if seen.contains(bid) { plan.notes.append("drop second pin of \(bid)"); plan.changed = true; continue }
+                seen.insert(bid)
+                if key(app) != key(u) {
+                    plan.notes.append("pin of \(bid) follows \(u.lastPathComponent) → \(app.lastPathComponent)")
+                    plan.list.append(tile(app)); plan.marked.append(app); plan.changed = true
+                } else if renew.contains(bid) {
+                    plan.notes.append("fresh pin for \(bid) (new look)")
+                    plan.list.append(tile(app)); plan.marked.append(app); plan.changed = true
+                } else {
+                    plan.list.append(t)
+                }
+            } else if isIconAppPath(u) && !exists(p) {
+                plan.notes.append("drop pin of \(u.lastPathComponent), which is gone"); plan.changed = true
+            } else {
+                plan.list.append(t)
+            }
+        }
+        return plan
+    }
+
+    /// Where Dock icon apps live and how they're named: /Applications/cl_audit <name>.app (not cl_audit itself).
+    static func isIconAppPath(_ u: URL) -> Bool {
+        u.deletingLastPathComponent().path == Installer.appsFolder.path && u.pathExtension == "app"
+            && u.lastPathComponent.hasPrefix("cl_audit ")
+    }
+
+    /// The Dock's pins of Dock icon apps, matched to profiles by bundle id (the profile's fixed handle), not by the
+    /// app's name: a pin left at an old name (a rename) moves to the current one in the same place, a second pin of
+    /// the same profile goes, pins of apps that are gone go, and a pin whose picture changed is renewed. Reads the
+    /// Dock fresh; one Dock restart, only when something changed.
+    static func reconcilePins(_ accounts: [AccountEntry], renew: [URL] = []) {
+        let want = Dictionary(accounts.map { (Installer.bundleID($0), Installer.appURL($0)) }, uniquingKeysWith: { a, _ in a })
+        let renewIDs = Set(renew.compactMap { Installer.info($0)?["CFBundleIdentifier"] as? String })
+        let plan = planPins(pins(), want: want, renew: renewIDs)
+        // the recent apps part of the Dock can hold a renamed or removed app's old name too
+        let recents = (CFPreferencesCopyAppValue("recent-apps" as CFString, dock) as? [[String: Any]]) ?? []
+        let keptRecents = recents.filter { t in
+            guard let p = filePath(t) else { return true }
+            return !(isIconAppPath(URL(fileURLWithPath: p)) && !FileManager.default.fileExists(atPath: p))
+        }
+        if keptRecents.count != recents.count { CFPreferencesSetAppValue("recent-apps" as CFString, keptRecents as CFArray, dock) }
+        guard plan.changed || keptRecents.count != recents.count else { return }
+        plan.marked.forEach(markChange)
+        plan.notes.forEach { dockLog.log("\($0, privacy: .public)") }
+        write(plan.list)
+    }
+
+    /// A tile's file path as stored (not lowercased).
+    static func filePath(_ tile: [String: Any]) -> String? {
+        guard let t = tile["tile-data"] as? [String: Any], let f = t["file-data"] as? [String: Any],
+              let s = f["_CFURLString"] as? String else { return nil }
+        return (s.hasPrefix("file://") ? URL(string: s) : URL(fileURLWithPath: s))?.standardizedFileURL.path
+    }
 
     static func changing(_ app: URL) -> Bool {
         guard let d = appDefaults(app) else { return false }
@@ -360,25 +434,6 @@ enum DockManager {
     }
 
     static func isPinned(_ app: URL) -> Bool { pins().contains { path($0) == key(app) } }
-
-    /// The Dock keeps each pinned tile's picture with that tile's entry, through restarts. To show a new icon file,
-    /// the entry is swapped for a fresh one in the same place and the Dock restarted (once for all of them).
-    /// Returns whether anything was pinned.
-    @discardableResult
-    static func renewTiles(_ apps: [URL]) -> Bool {
-        var list = pins()
-        var renewed: [String] = []
-        for app in apps {
-            guard let i = list.firstIndex(where: { path($0) == key(app) }) else { continue }
-            markChange(app)
-            list[i] = tile(app)
-            renewed.append(app.deletingPathExtension().lastPathComponent)
-        }
-        guard !renewed.isEmpty else { return false }
-        dockLog.log("new look for \(renewed.joined(separator: ", "), privacy: .public): fresh Dock tiles")
-        write(list)
-        return true
-    }
 
     static func restore(prefs: DockPrefs = .shared) {
         guard let list = prefs.backup else { return }

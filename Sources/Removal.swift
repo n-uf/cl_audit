@@ -55,6 +55,7 @@ enum AccountRemoval {
         let dock = "com.apple.dock" as CFString
         let target = app.standardizedFileURL.path
         var changed = false
+        CFPreferencesAppSynchronize(dock)      // read the Dock's list as it is now, not this process's older copy
         for key in ["persistent-apps", "recent-apps"] as [CFString] {
             guard let items = CFPreferencesCopyAppValue(key, dock) as? [[String: Any]] else { continue }
             let kept = items.filter { item in

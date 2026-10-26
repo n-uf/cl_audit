@@ -134,7 +134,7 @@ enum UsageIconState {
     static func of(_ e: AccountEntry) -> UsageIconState {
         let app = Installer.appURL(e)
         guard FileManager.default.fileExists(atPath: app.path) else { return .missing }
-        guard Installer.isRunning(app) else { return .notRunning }
+        guard Installer.isRunning(e) else { return .notRunning }
         if e.iconHidden { return .hidden }
         return DockManager.isPinned(app) ? .inDock : .notPinned
     }
@@ -857,7 +857,7 @@ final class ManagerUI {
         quitUsage: { [weak self] r in
             self?.model.begin(r.id, .stopping)
             // a normal quit, so a window that follows its Dock icon quits too; pins and the Dock are not touched
-            Installer.running(Installer.appURL(r.entry)).forEach { $0.terminate() }
+            Installer.running(r.entry).forEach { $0.terminate() }
         },
         profileSettings: { [weak self] r in self?.showMain(page: .settings, account: r.id) })
 
