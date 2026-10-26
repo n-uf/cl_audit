@@ -528,9 +528,10 @@ enum Installer {
             || i["UsageFrame"] as? String != (e.frame?.rawValue ?? "none")
     }
 
-    /// Reinstalls the copies whose look changed, so the picture shown while the app isn't running matches the
-    /// live tile. A running copy is quit quietly (its Claude window stays), reinstalled and started again in the
-    /// background; a stopped one stays stopped. Renames, new and removed profiles are left to `sync`.
+    /// Reinstalls the stopped copies whose look changed, so the picture shown while the app isn't running matches
+    /// the live tile. A running copy draws its own tile, so it's left alone until it quits (cl_audit calls this again
+    /// then): no restart of the app or the Dock while you try styles. Renames, new and removed profiles are left
+    /// to `sync`.
     @discardableResult
     static func refreshLooks(_ accounts: [AccountEntry], source: URL = Bundle.main.bundleURL) -> [String] {
         busy += 1
@@ -540,13 +541,10 @@ enum Installer {
         defer { refreshDock(restyled) }
         for e in accounts {
             let dst = appURL(e)
-            guard lookDiffers(e, at: dst) else { continue }
-            let wasRunning = isRunning(dst)
-            stop(dst)
+            guard lookDiffers(e, at: dst), !isRunning(dst) else { continue }
             do { try install(e, at: dst, source: source); log.append("redrew \(dst.deletingPathExtension().lastPathComponent)") }
             catch { log.append("couldn't redraw \(e.name): \(error.localizedDescription)"); continue }
             restyled.append(dst)
-            if wasRunning { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
         }
         return log
     }

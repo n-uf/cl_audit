@@ -145,9 +145,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier == Launcher.claudeBundleID else { return }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { Installer.startFollowers() }
             }
-            // A profile's style, colour or frame changed (here or in its Dock icon's menu): redraw its icon file.
+            // A profile's style, colour or frame changed (here or in its Dock icon's menu): redraw its icon file, now
+            // for a stopped Dock icon app, when it quits for a running one.
             DistributedNotificationCenter.default().addObserver(forName: Store.changed, object: nil, queue: .main) { _ in
                 Installer.lookMayHaveChanged()
+            }
+            NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { note in
+                let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
+                guard app?.bundleIdentifier?.hasPrefix(Installer.managerID + ".") == true else { return }
+                Installer.lookMayHaveChanged(after: 5)   // past a relaunch (Show in the Dock restarts it after 1.5 s)
             }
             // On start: reinstall missing cl_usage apps and start the ones that should run.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if Store.exists { Installer.sync(Store.load()) } }
