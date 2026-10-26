@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.10.3 — 2026-10-25
+
 - **App icon:** cl_audit has its own icon, no longer the same tile as the profiles' Dock icons, so it stands
   apart in the Dock. Six designs in General settings ▸ App icon: Front panel (the default), Stack, VU meter,
   Level meter, Knob and Monogram. Choosing Front panel opens its own choices under it, as in a profile's Icon
