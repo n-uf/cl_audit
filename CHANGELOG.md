@@ -8,7 +8,16 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Trying Dock icon styles is calm:** while a profile's Dock icon runs, its tile shows a new style, colour or
+  frame at once, and nothing restarts; the closed-app picture and the Dock tile are brought up to date when it
+  quits.
+- **Refresh key:** while the numbers update, its arrow becomes a pulsing green LED.
+- **Dashboard while starting:** Usage history says "Reading the session files…" until the first scan is done,
+  instead of "No profile selected".
+- **Fixed:** turning Show in the Dock on for a running Dock icon that had never been in the Dock was undone at
+  once.
+- **Fixed:** Settings could save an older copy of the profiles over changes made elsewhere (a Dock icon's own
+  menu, Show in the Dock following the Dock); saves now keep those changes.
 
 ## 26.10.4 — 2026-10-25
 
