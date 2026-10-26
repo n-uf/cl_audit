@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.10.4 — 2026-10-25
+
 - **Dock icons keep their look when closed:** a profile's Dock icon now looks the same while its app isn't
   running as while it runs, in the profile's own style, colour and frame (only the numbers and the Claude open
   dot are missing). Before, a closed Dock icon always showed Two numbers, with the colour and frame from the
