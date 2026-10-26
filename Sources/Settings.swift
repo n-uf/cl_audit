@@ -575,7 +575,7 @@ struct SRow<Control: View>: View {
 /// A small text field for settings rows (name, icon label), on an engraved line. Without `commit` every keystroke
 /// goes straight to `text`. With it, the edit is kept here until Return or leaving the field, then handed to
 /// `commit`, which saves it or returns why it can't; Esc puts the old text back. While an edit isn't saved the line
-/// turns into an amber hairline with "Not saved · Return saves · Esc undoes" under it, like a validation message;
+/// turns into an amber hairline with "Return saves · Esc undoes" under it (the caps clickable), like a validation message;
 /// red with the reason when it can't be saved.
 struct SField: View {
     let placeholder: String
@@ -603,7 +603,7 @@ struct SField: View {
                 .foregroundStyle(face.text)
                 .focused($focused)
                 .onSubmit(finish)
-                .onExitCommand { draft = nil; problem = nil; cancel?() }
+                .onExitCommand(perform: undo)
                 .onChange(of: focused) { f in if !f { finish() } }
                 .onDisappear(perform: finish)       // leaving the page counts as clicking elsewhere, for this field's profile
                 .padding(.vertical, 3)
@@ -620,14 +620,18 @@ struct SField: View {
                 Text(problem).font(.system(size: 10.5)).foregroundStyle(face.danger).fixedSize().padding(.top, 2)
             } else if pending {
                 HStack(spacing: 4) {
-                    Text("Not saved ·"); KeyCap(text: "Return", color: face.caution); Text("saves ·")
-                    KeyCap(text: "Esc", color: face.caution); Text("undoes")
+                    KeyCap(text: "Return", color: face.caution, help: "Save it") { finish(); focused = true }
+                    Text("saves ·")
+                    KeyCap(text: "Esc", color: face.caution, help: "Put the saved text back") { undo(); focused = true }
+                    Text("undoes")
                 }
                 .font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize().padding(.top, 2)
             }
         }
         .help(problem ?? (commit != nil ? "Return or click elsewhere saves it; Esc puts it back" : ""))
     }
+
+    private func undo() { draft = nil; problem = nil; cancel?() }
 
     private func finish() {
         guard let commit, let d = draft else { return }
@@ -636,15 +640,27 @@ struct SField: View {
     }
 }
 
-/// A key named in a hint ("Return", "Esc"), drawn as a small key cap in the hint's colour.
+/// A key named in a hint ("Return", "Esc"), drawn as a small key cap in the hint's colour; clicking it does what the
+/// key does. It never takes the focus, so clicking it isn't "clicking elsewhere" for the field.
 struct KeyCap: View {
     let text: String
     let color: Color
+    var help = ""
+    let action: () -> Void
+    @State private var hover = false
+
     var body: some View {
-        Text(text).font(.system(size: 9.5, weight: .semibold))
-            .padding(.horizontal, 4).padding(.vertical, 1)
-            .background(RoundedRectangle(cornerRadius: 3).fill(color.opacity(0.12)))
-            .overlay(RoundedRectangle(cornerRadius: 3).stroke(color.opacity(0.55), lineWidth: 0.75))
+        Button(action: action) {
+            Text(text).font(.system(size: 9.5, weight: .semibold))
+                .padding(.horizontal, 4).padding(.vertical, 1)
+                .background(RoundedRectangle(cornerRadius: 3).fill(color.opacity(hover ? 0.24 : 0.12)))
+                .overlay(RoundedRectangle(cornerRadius: 3).stroke(color.opacity(hover ? 1 : 0.55), lineWidth: 0.75))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .focusable(false)
+        .onHover { hover = $0 }
+        .help(help)
     }
 }
 
