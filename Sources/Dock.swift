@@ -289,9 +289,12 @@ enum DockManager {
 
     // MARK: Show in the Dock follows the Dock
 
-    /// A Dock icon app's own preferences (where its pin place and change time are kept).
+    /// A Dock icon app's own preferences (where its pin place and change time are kept). Inside that app (and its
+    /// --pin helper) they are the standard ones: macOS gives no suite named after the app's own bundle id, so the
+    /// change mark was neither written nor read there, and turning Show in the Dock on was undone at once.
     static func appDefaults(_ app: URL) -> UserDefaults? {
-        (Installer.info(app)?["CFBundleIdentifier"] as? String).flatMap { UserDefaults(suiteName: $0) }
+        guard let id = Installer.info(app)?["CFBundleIdentifier"] as? String else { return nil }
+        return id == Bundle.main.bundleIdentifier ? .standard : UserDefaults(suiteName: id)
     }
 
     /// cl_audit is changing this icon's place in the Dock (switch flipped, app relaunching, pin retries): for a
