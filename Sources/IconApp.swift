@@ -145,6 +145,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 guard (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier == Launcher.claudeBundleID else { return }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { Installer.startFollowers() }
             }
+            // A profile's style, colour or frame changed (here or in its Dock icon's menu): redraw its icon file.
+            DistributedNotificationCenter.default().addObserver(forName: Store.changed, object: nil, queue: .main) { _ in
+                Installer.lookMayHaveChanged()
+            }
             // On start: reinstall missing cl_usage apps and start the ones that should run.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if Store.exists { Installer.sync(Store.load()) } }
             if CommandLine.arguments.contains("--settings") {

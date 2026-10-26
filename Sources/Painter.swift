@@ -319,10 +319,11 @@ enum Painter {
         return rep.representation(using: .png, properties: [:])
     }
 
-    /// The static icon (shown while the app isn't running), as an .iconset folder for iconutil.
-    static func writeIconset(label: String, tint: TileColor = .orange, frame: TileColor? = nil, to dir: URL) {
+    /// The static icon (shown while the app isn't running), as an .iconset folder for iconutil: the profile's own
+    /// style, colour and frame, without numbers. Not drawn as out of date, so a Big number tile keeps its colour.
+    static func writeIconset(label: String, style: IconStyle = .bars, tint: TileColor = .orange, frame: TileColor? = nil, to dir: URL) {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        let m = TileModel(label: label, fiveHour: nil, weekly: nil, stale: true, style: .bars, tint: tint, frame: frame)
+        let m = TileModel(label: label, fiveHour: nil, weekly: nil, stale: false, style: style, tint: tint, frame: frame)
         for base in [16, 32, 128, 256, 512] {
             for scale in [1, 2] {
                 let name = scale == 1 ? "icon_\(base)x\(base).png" : "icon_\(base)x\(base)@2x.png"

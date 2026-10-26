@@ -358,6 +358,25 @@ enum DockManager {
 
     static func isPinned(_ app: URL) -> Bool { pins().contains { path($0) == key(app) } }
 
+    /// The Dock keeps each pinned tile's picture with that tile's entry, through restarts. To show a new icon file,
+    /// the entry is swapped for a fresh one in the same place and the Dock restarted (once for all of them).
+    /// Returns whether anything was pinned.
+    @discardableResult
+    static func renewTiles(_ apps: [URL]) -> Bool {
+        var list = pins()
+        var renewed: [String] = []
+        for app in apps {
+            guard let i = list.firstIndex(where: { path($0) == key(app) }) else { continue }
+            markChange(app)
+            list[i] = tile(app)
+            renewed.append(app.deletingPathExtension().lastPathComponent)
+        }
+        guard !renewed.isEmpty else { return false }
+        dockLog.log("new look for \(renewed.joined(separator: ", "), privacy: .public): fresh Dock tiles")
+        write(list)
+        return true
+    }
+
     static func restore(prefs: DockPrefs = .shared) {
         guard let list = prefs.backup else { return }
         write(list)

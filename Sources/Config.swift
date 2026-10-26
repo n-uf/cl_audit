@@ -376,6 +376,8 @@ enum Installer {
     /// then start the ones that aren't running. `source` is the app to copy (this one).
     @discardableResult
     static func sync(_ accounts: [AccountEntry], source: URL = Bundle.main.bundleURL) -> [String] {
+        busy += 1
+        defer { busy -= 1 }
         var log: [String] = []
         let wanted = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, appURL($0).standardizedFileURL) })
         for (url, id) in installed() where wanted[id] != url.standardizedFileURL {
@@ -397,12 +399,16 @@ enum Installer {
             AccountRemoval.purgeApp(id: id, app: appsFolder.appendingPathComponent("cl_audit \(id).app"))
             log.append("cleaned up \(id)")
         }
+        var restyled: [URL] = []
+        defer { refreshDock(restyled) }
         for e in accounts {
             let dst = appURL(e)
             if needsInstall(e, at: dst, source: source) {
+                let lookChanged = lookDiffers(e, at: dst)
                 stop(dst)
                 do { try install(e, at: dst, source: source); log.append("installed \(dst.deletingPathExtension().lastPathComponent)") }
                 catch { log.append("couldn't install \(e.name): \(error.localizedDescription)"); continue }
+                if lookChanged { restyled.append(dst) }
             }
             // Started in the background and without opening its Claude window ("Window follows" is for you starting
             // it). One that follows its window isn't started while that window is closed.
@@ -432,6 +438,7 @@ enum Installer {
               i["UsageLabel"] as? String == e.label,
               i["UsageColor"] as? String == e.color.rawValue,
               i["UsageFrame"] as? String == (e.frame?.rawValue ?? "none"),
+              i["UsageStyle"] as? String == e.style.rawValue,
               i["CFBundleIdentifier"] as? String == bundleID(e) else { return true }
         // Signing a copy changes its executable, so copies are matched by the build they were made from.
         return i["UsageBuild"] as? String != buildStamp(source)
@@ -463,17 +470,85 @@ enum Installer {
         plist["UsageLabel"] = e.label
         plist["UsageColor"] = e.color.rawValue
         plist["UsageFrame"] = e.frame?.rawValue ?? "none"
+        plist["UsageStyle"] = e.style.rawValue
         plist["UsageBuild"] = buildStamp(source)
         try plist.write(to: plistURL)
 
         let tmp = fm.temporaryDirectory.appendingPathComponent("usage-n-uf-\(e.id).iconset")
         try? fm.removeItem(at: tmp)
-        Painter.writeIconset(label: e.label, tint: e.color, frame: e.frame, to: tmp)
+        Painter.writeIconset(label: e.label, style: e.style, tint: e.color, frame: e.frame, to: tmp)
         run("/usr/bin/iconutil", ["-c", "icns", "-o", dst.appendingPathComponent("Contents/Resources/AppIcon.icns").path, tmp.path])
         try? fm.removeItem(at: tmp)
 
         // The copy's Info.plist changed, so its signature must be redone (ad hoc, like the build).
         if run("/usr/bin/codesign", ["--force", "--sign", "-", dst.path]) != 0 { throw CocoaError(.fileWriteUnknown) }
+        forgetOldIcon(dst)
+    }
+
+    /// macOS keeps showing an app's old icon after the file changed: a new date on the bundle and registering it
+    /// again with Launch Services make Cmd-Tab and Finder read the new icon file. The Dock needs `refreshDock`.
+    static func forgetOldIcon(_ app: URL) {
+        try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: app.path)
+        run(AccountRemoval.lsregister, ["-f", app.path])
+    }
+
+    // MARK: Redrawing the icon file when a profile's look changes
+
+    /// The Dock keeps the picture of a pinned tile with its Dock entry, even through restarts: re-registering, a new
+    /// date, a renamed icon file, starting the app or restarting the Dock don't reach it. So once a pinned copy's
+    /// style, colour or frame changed, its Dock entry is renewed in place and the Dock restarted (once for all of
+    /// them), as for Show in the Dock. A copy only reinstalled for a new build keeps its look and leaves the Dock alone.
+    static func refreshDock(_ restyled: [URL]) {
+        DockManager.renewTiles(restyled)
+    }
+
+    /// Above zero while `sync` or `refreshLooks` runs (both wait on the run loop while an app quits, so a timer could
+    /// otherwise start one inside the other).
+    private static var busy = 0
+    private static var lookWork: DispatchWorkItem?
+
+    /// Called by cl_audit whenever the profiles were saved (Settings, or a Dock icon's own menu): a moment after the
+    /// last change, redraws the icon file of each profile whose style, colour or frame changed. Waiting lets a run
+    /// of clicks through the styles end in one reinstall, not one per click.
+    static func lookMayHaveChanged(after delay: TimeInterval = 2.5) {
+        lookWork?.cancel()
+        let w = DispatchWorkItem {
+            if busy > 0 { lookMayHaveChanged(after: 1); return }
+            refreshLooks(Store.load())
+        }
+        lookWork = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: w)
+    }
+
+    /// The installed copy shows a different style, colour or frame than its profile has now.
+    static func lookDiffers(_ e: AccountEntry, at dst: URL) -> Bool {
+        guard let i = info(dst), i["UsageAccountID"] as? String == e.id else { return false }
+        return i["UsageStyle"] as? String != e.style.rawValue
+            || i["UsageColor"] as? String != e.color.rawValue
+            || i["UsageFrame"] as? String != (e.frame?.rawValue ?? "none")
+    }
+
+    /// Reinstalls the copies whose look changed, so the picture shown while the app isn't running matches the
+    /// live tile. A running copy is quit quietly (its Claude window stays), reinstalled and started again in the
+    /// background; a stopped one stays stopped. Renames, new and removed profiles are left to `sync`.
+    @discardableResult
+    static func refreshLooks(_ accounts: [AccountEntry], source: URL = Bundle.main.bundleURL) -> [String] {
+        busy += 1
+        defer { busy -= 1 }
+        var log: [String] = []
+        var restyled: [URL] = []
+        defer { refreshDock(restyled) }
+        for e in accounts {
+            let dst = appURL(e)
+            guard lookDiffers(e, at: dst) else { continue }
+            let wasRunning = isRunning(dst)
+            stop(dst)
+            do { try install(e, at: dst, source: source); log.append("redrew \(dst.deletingPathExtension().lastPathComponent)") }
+            catch { log.append("couldn't redraw \(e.name): \(error.localizedDescription)"); continue }
+            restyled.append(dst)
+            if wasRunning { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
+        }
+        return log
     }
 
     static func running(_ url: URL) -> [NSRunningApplication] {
