@@ -8,7 +8,12 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Dock icons keep their look when closed:** a profile's Dock icon now looks the same while its app isn't
+  running as while it runs, in the profile's own style, colour and frame (only the numbers and the Claude open
+  dot are missing). Before, a closed Dock icon always showed Two numbers, with the colour and frame from the
+  last Apply. Changing the style, colour or frame redraws it a moment after the last click; a pinned Dock icon
+  then gets a fresh place in the Dock and the Dock restarts once, since the Dock otherwise keeps the old picture.
+- **Icon preview:** Settings ▸ Icon ▸ Preview starts with the Dock icon as it looks while not running.
 
 ## 26.10.3 — 2026-10-25
 
