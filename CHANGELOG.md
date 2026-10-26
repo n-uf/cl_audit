@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.10.7 — 2026-10-26
+
 - **Fixed:** renaming a profile left a second Dock icon behind (the old name's, which then stayed in the Dock) and
   could switch the renamed one to hidden. A rename now moves the profile's Dock icon app to its new name and keeps
   its place in the Dock; leftover Dock entries of renamed or removed profiles are cleaned up.
