@@ -69,13 +69,14 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     var windowDot: Bool = true           // the icon shows a dot while this account's Claude window is open
     var iconHidden: Bool = false         // cl_usage runs without a Dock tile (still refreshes and alerts)
     var lifecycle: Lifecycle = .independent   // how cl_usage and its Claude window open and close together
+    var seat: Seat? = nil                     // the Claude account seat this profile is linked to (nil: not yet)
 
     init(id: String, name: String, label: String, configDir: String) {
         self.id = id; self.name = name; self.label = label; self.configDir = configDir
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, openAtLogin, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, lifecycle
+        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, openAtLogin, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, lifecycle, seat
     }
     private enum LegacyKeys: String, CodingKey { case clickShowsDetails }
 
@@ -109,6 +110,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         windowDot = try c.decodeIfPresent(Bool.self, forKey: .windowDot) ?? true
         iconHidden = try c.decodeIfPresent(Bool.self, forKey: .iconHidden) ?? false
         lifecycle = try c.decodeIfPresent(Lifecycle.self, forKey: .lifecycle) ?? .independent
+        seat = try c.decodeIfPresent(Seat.self, forKey: .seat)
         if let action = try c.decodeIfPresent(ClickAction.self, forKey: .clickAction) {
             clickAction = action
         } else if let legacy = try decoder.container(keyedBy: LegacyKeys.self).decodeIfPresent(Bool.self, forKey: .clickShowsDetails) {

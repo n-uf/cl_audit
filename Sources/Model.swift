@@ -21,6 +21,18 @@ func tilde(_ path: String) -> String {
 
 // MARK: - Account
 
+/// A Claude account seat: an account in an organisation. Usage limits belong to it, so a personal plan and a team
+/// seat on the same email are two seats. Every set-up profile is linked to exactly one, and no two profiles share one.
+struct Seat: Codable, Equatable, Hashable {
+    var account: String            // Claude's accountUuid
+    var organization: String?      // its organizationUuid (nil when Claude recorded none)
+    var email: String?             // shown only; checks compare the ids
+    var linkedAt: Date?
+
+    /// The same seat (the ids; not the email or when it was linked).
+    func same(_ o: Seat?) -> Bool { o.map { account == $0.account && organization == $0.organization } ?? false }
+}
+
 struct Account {
     let label: String
     let name: String
@@ -47,6 +59,18 @@ struct Account {
     /// The account Claude Code says this folder is logged in to (oauthAccount in its .claude.json).
     /// The default folder keeps that file in the home folder, not inside ~/.claude.
     func expectedEmail() -> String? { Self.expectedEmail(configDir: configDir) }
+
+    /// The seat Claude Code says the folder is signed in to now (its .claude.json), or nil when it isn't.
+    static func signedInSeat(configDir: String) -> Seat? {
+        let dir = expand(configDir)
+        let file = dir == expand("~/.claude") ? expand("~/.claude.json")
+                                              : (dir as NSString).appendingPathComponent(".claude.json")
+        guard let data = FileManager.default.contents(atPath: file),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let oauth = j["oauthAccount"] as? [String: Any],
+              let account = oauth["accountUuid"] as? String, !account.isEmpty else { return nil }
+        return Seat(account: account, organization: oauth["organizationUuid"] as? String, email: oauth["emailAddress"] as? String)
+    }
 
     static func expectedEmail(configDir: String) -> String? {
         let dir = expand(configDir)

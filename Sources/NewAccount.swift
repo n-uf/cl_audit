@@ -151,10 +151,10 @@ enum NewAccountSetup {
             }
         }
 
-        // the sign-in: shared is allowed, but both icons would show the same usage
+        // the sign-in: one profile per Claude account seat
         if let email = signedInEmail(d) {
-            if let owner = FolderRules.signInOwner(email, among: accounts) {
-                out.append(.init(section: .signIn, state: .warn, text: "Signed in as \(Privacy.masked(email)), like “\(owner.name)”: both icons would show the same usage"))
+            if let owner = FolderRules.seatOwner(Account.signedInSeat(configDir: d.configDir), among: accounts) {
+                out.append(.init(section: .signIn, state: .bad, text: "Signed in as \(Privacy.masked(email)), the Claude account of “\(owner.name)”: one profile per account"))
             } else {
                 out.append(.init(section: .signIn, state: .ok, text: "Signed in as \(Privacy.masked(email))"))
             }
@@ -511,15 +511,15 @@ struct NewAccountView: View {
 
     /// The two parts of signing in: a · Claude Code (Terminal), b · the desktop app (its own window).
     private var signInParts: some View {
-        let owner = signedIn.flatMap { FolderRules.signInOwner($0, among: model.accounts) }
+        let owner = signedIn.flatMap { _ in FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) }
         return VStack(spacing: 1) {
             part(signedIn == nil ? (current == 3 ? .now : .todo) : owner != nil ? .warn : .done, current: current == 3,
                  title: "a · Claude Code") {
                 if let email = signedIn {
                     sub(Privacy.masked(email) + (draft.source == .existing && !draft.started ? ", already in the folder" : ""))
                     if let o = owner {
-                        Text("“\(o.name)” uses this sign-in too: both icons would show the same usage")
-                            .font(.system(size: 11)).foregroundStyle(.orange).fixedSize(horizontal: false, vertical: true)
+                        Text("“\(o.name)” is linked to this Claude account. One profile per account: sign in with another account.")
+                            .font(.system(size: 11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
                         if draft.createdConfigDir != nil {
                             Button(signingOut ? "Signing out…" : "use another account") { signOut() }
                                 .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary).underline().disabled(signingOut)
@@ -601,7 +601,7 @@ struct NewAccountView: View {
                     detail: folders ? draft.configDir : running ? "held until the desktop app is quit" : checks.contains(where: { $0.blocks && $0.section != .running }) ? "fix the red lines first" : nil,
                     detailBad: running && !folders) { EmptyView() }
             stepRow(3, state: !folders ? .todo
-                        : (signedIn.flatMap { FolderRules.signInOwner($0, among: model.accounts) } != nil || (needsDesktop && signedIn != nil && desktop == .different)) ? .warn
+                        : (signedIn.flatMap { _ in FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) } != nil || (needsDesktop && signedIn != nil && desktop == .different)) ? .warn
                         : current == 3 || current == 4 ? .now : .done,
                     title: "Sign in",
                     detail: folders ? nil : draft.window == .separate ? "Claude Code, then the desktop app" : "Claude Code") {

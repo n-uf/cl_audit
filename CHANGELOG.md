@@ -11,6 +11,10 @@ the notes before updating.
 - **Fixed:** after renaming a profile whose Dock icon was running, the Dock could keep the old name's icon and show
   the renamed one separately (and then switch it to hidden). The Dock put its old list back each time it restarted;
   cl_audit now restarts it so that it can't.
+- **Profiles are linked to their Claude account:** each profile now records the Claude account seat (account and
+  organisation) its Claude Code folder is signed in to, linked once and kept. One profile per seat: New profile
+  refuses to finish when another profile already has the account it's signed in to, and a profile left out that way
+  says so in its Profile card. A personal plan and a team seat on the same email are two seats.
 
 ## 26.10.7 — 2026-10-26
 

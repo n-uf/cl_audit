@@ -99,6 +99,7 @@ final class SettingsModel: ObservableObject {
             guard let self else { return }
             self.tick += 1
             self.followDock()
+            self.linkSeats()
         }
         // after the change, not inside it: an animated note started while the window is redrawing for the
         // change itself left the Emails key and the cards showing the old state
@@ -119,6 +120,14 @@ final class SettingsModel: ObservableObject {
         for i in accounts.indices {
             if let hidden = DockManager.adoptDock(accounts[i]) { accounts[i].iconHidden = hidden }
         }
+    }
+
+    /// Profiles not linked to a Claude account seat yet get the one their folder is signed in to (one profile per
+    /// seat: see FolderRules.linkSeats). Saved like any other change; only cl_audit does this.
+    func linkSeats() {
+        guard Self.followsDock, !needsApply, problem == nil else { return }
+        let linked = FolderRules.linkSeats(accounts)
+        if linked != accounts { accounts = linked }
     }
 
     /// Picks up changes made elsewhere (e.g. an icon's own Options menu) when nothing is pending here.
@@ -228,7 +237,12 @@ final class SettingsModel: ObservableObject {
     /// Adds the new account and installs its Dock icon.
     func finishNew() {
         guard let d = draft else { return }
-        accounts.append(d.entry)
+        var e = d.entry
+        // linked to the seat its folder is signed in to (Finish is refused while another profile has that seat)
+        if var s = Account.signedInSeat(configDir: e.configDir), FolderRules.seatOwner(s, among: accounts) == nil {
+            s.linkedAt = Date(); e.seat = s
+        }
+        accounts.append(e)
         draft = nil
         selection = d.entry.id
         apply()
@@ -779,6 +793,11 @@ struct AccountSettings: View {
             }
             SRow(label: "Colour", info: "This profile's colour inside cl_audit: the dot by its name on the dashboard and in the launcher, its Show key, its share of the history charts and the dot on its usage panel. The Dock icon's own colour is under Icon.") {
                 SwatchRow(colors: TileColor.accents, selected: entry.accentColor) { if let c = $0 { entry.accent = c } }
+            }
+            if let other = FolderRules.seatTaken(entry, among: model.accounts) {
+                Text("Its Claude Code folder is signed in to the same Claude account as “\(other.name)”. One profile per account: sign this folder in with another account, or remove this profile.")
+                    .font(.system(size: 11)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
+                    .padding(.vertical, 4)
             }
             Button("Remove profile…") { model.askRemove(entry.id) }
                 .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(face.danger)

@@ -48,10 +48,37 @@ enum FolderRules {
         return accounts.first { $0.id != id && windowKey($0.desktop, $0.desktopDataDir) == key }
     }
 
-    /// The other account signed in with the same email (allowed, but both icons show the same usage).
-    static func signInOwner(_ email: String?, among accounts: [AccountEntry], except id: String? = nil) -> AccountEntry? {
-        guard let email, !email.isEmpty else { return nil }
-        return accounts.first { $0.id != id && Account.expectedEmail(configDir: $0.configDir)?.lowercased() == email.lowercased() }
+    /// The profile (other than `id`) that has this seat: linked to it, or, not linked yet, signed in to it.
+    static func seatOwner(_ seat: Seat?, among accounts: [AccountEntry], except id: String? = nil,
+                          signedIn: (String) -> Seat? = Account.signedInSeat) -> AccountEntry? {
+        guard let seat else { return nil }
+        return accounts.first { $0.id != id && seat.same($0.seat) }
+            ?? accounts.first { $0.id != id && $0.seat == nil && seat.same(signedIn($0.configDir)) }
+    }
+
+    /// Profiles not linked yet get the seat their folder is signed in to now, unless an earlier profile has it
+    /// (linked, or signed in to it and not linked yet). Linked profiles are left as they are.
+    static func linkSeats(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = Account.signedInSeat,
+                          now: Date = Date()) -> [AccountEntry] {
+        var out = accounts
+        for i in out.indices where out[i].seat == nil {
+            guard var s = signedIn(out[i].configDir) else { continue }
+            if out.indices.contains(where: { $0 != i && s.same(out[$0].seat) }) { continue }
+            if out.indices.contains(where: { $0 < i && out[$0].seat == nil && s.same(signedIn(out[$0].configDir)) }) { continue }
+            s.linkedAt = now
+            out[i].seat = s
+        }
+        return out
+    }
+
+    /// A profile that can't be linked because another profile has the seat its folder is signed in to.
+    static func seatTaken(_ e: AccountEntry, among accounts: [AccountEntry],
+                          signedIn: (String) -> Seat? = Account.signedInSeat) -> AccountEntry? {
+        guard e.seat == nil, let s = signedIn(e.configDir) else { return nil }
+        // the first profile signed in to it gets it: only later ones are the ones left out
+        if let linked = accounts.first(where: { $0.id != e.id && s.same($0.seat) }) { return linked }
+        guard let i = accounts.firstIndex(where: { $0.id == e.id }) else { return nil }
+        return accounts[..<i].first { $0.seat == nil && s.same(signedIn($0.configDir)) }
     }
 
     /// Clashes between saved accounts, as one message for the Settings bar (nil when all is well).
