@@ -14,6 +14,7 @@ if args.count >= 2, args[1] == "--sync" {
         print("No accounts yet: open “cl_audit” to add them.")
         exit(0)
     }
+    DockWriter.inline = true             // the Dock is changed before this run ends
     let log = Installer.sync(Store.load())
     print(log.isEmpty ? "icons are up to date" : log.joined(separator: "\n"))
     exit(0)
@@ -21,6 +22,7 @@ if args.count >= 2, args[1] == "--sync" {
 
 if args.count >= 3, args[1] == "--pin" {
     // --pin APP [NEIGHBOUR|-] : pin an app in the Dock (used when a hidden cl_usage is shown again)
+    DockWriter.inline = true
     DockManager.pinFromHelper(URL(fileURLWithPath: args[2]), after: args.count > 3 && args[3] != "-" ? args[3] : nil)
     exit(0)
 }

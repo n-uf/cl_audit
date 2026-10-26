@@ -237,7 +237,10 @@ enum DockManager {
         let wanted = plan(current, accounts: accounts, prefs: prefs)
         guard !same(current, wanted) else { return false }
         prefs.saveBackup(current)
-        write(wanted)
+        DockWriter.update("arrange the Dock") { l in
+            let w = plan(l.pinned, accounts: accounts, prefs: prefs)
+            if !same(l.pinned, w) { l.pinned = w }
+        }
         return true
     }
 
@@ -254,18 +257,12 @@ enum DockManager {
         guard let i = list.firstIndex(where: { path($0) == k }) else { dockLog.log("unpin \(k, privacy: .public): not pinned"); return }
         defaults.set(true, forKey: "dockWasPinned")
         defaults.set(i > 0 ? (path(list[i - 1]) ?? "") : "", forKey: "dockLeftNeighbour")
-        var kept = list; kept.remove(at: i)
-        dockLog.log("unpin \(k, privacy: .public): at \(i), writing")
-        write(kept)
-        // the Dock may still be settling (the app has just started): look again, and once more if it came back
-        DispatchQueue.global(qos: .utility).async {
-            for attempt in 1...3 {
-                Thread.sleep(forTimeInterval: 3)
-                if wantsShown(app) == true { dockLog.log("unpin \(k, privacy: .public): switched on meanwhile, stopping"); return }
-                guard isPinned(app) else { dockLog.log("unpin \(k, privacy: .public): gone (check \(attempt))"); return }
-                dockLog.log("unpin \(k, privacy: .public): still pinned (check \(attempt)), writing again")
-                write(pins().filter { path($0) != k })
-            }
+        dockLog.log("unpin \(k, privacy: .public): at \(i)")
+        // the writer checks after the Dock restarts and writes again if the Dock put it back; flipped back on
+        // meanwhile, nothing is taken out
+        DockWriter.update("unpin \(k)") { l in
+            guard wantsShown(app) != true else { return }
+            l.pinned.removeAll { path($0) == k }
         }
     }
 
@@ -307,11 +304,12 @@ enum DockManager {
 
     /// What `reconcilePins` does to the Dock's list, without touching the Dock (so it can be tested).
     /// - `want`: each profile's bundle id → where its Dock icon app is now (named after the profile).
+    /// - `hidden`: bundle ids of profiles whose Show in the Dock is off.
     /// - `renew`: bundle ids whose picture changed (their entry is replaced by a fresh one; the Dock keeps a picture
     ///   with the entry, through restarts).
     /// - `exists` / `bundleIDAt`: the file system, for pins the Dock hasn't stamped with a bundle id.
     struct PinPlan { var list: [[String: Any]]; var changed = false; var notes: [String] = []; var marked: [URL] = [] }
-    static func planPins(_ list: [[String: Any]], want: [String: URL], renew: Set<String> = [],
+    static func planPins(_ list: [[String: Any]], want: [String: URL], hidden: Set<String> = [], renew: Set<String> = [],
                          exists: (String) -> Bool = { FileManager.default.fileExists(atPath: $0) },
                          bundleIDAt: (URL) -> String? = { Installer.info($0)?["CFBundleIdentifier"] as? String }) -> PinPlan {
         var plan = PinPlan(list: [])
@@ -320,7 +318,10 @@ enum DockManager {
             guard let p = filePath(t) else { plan.list.append(t); continue }
             let u = URL(fileURLWithPath: p)
             let bid = ((t["tile-data"] as? [String: Any])?["bundle-identifier"] as? String) ?? (exists(p) ? bundleIDAt(u) : nil)
-            if let bid, let app = want[bid] {
+            if let bid, hidden.contains(bid) {
+                // a hidden profile isn't in the Dock: its pin goes (wherever it points), it never moves
+                plan.notes.append("drop pin of \(bid), which is hidden"); plan.changed = true
+            } else if let bid, let app = want[bid] {
                 if seen.contains(bid) { plan.notes.append("drop second pin of \(bid)"); plan.changed = true; continue }
                 seen.insert(bid)
                 if key(app) != key(u) {
@@ -353,19 +354,20 @@ enum DockManager {
     /// Dock fresh; one Dock restart, only when something changed.
     static func reconcilePins(_ accounts: [AccountEntry], renew: [URL] = []) {
         let want = Dictionary(accounts.map { (Installer.bundleID($0), Installer.appURL($0)) }, uniquingKeysWith: { a, _ in a })
+        let hidden = Set(accounts.filter(\.iconHidden).map(Installer.bundleID))
         let renewIDs = Set(renew.compactMap { Installer.info($0)?["CFBundleIdentifier"] as? String })
-        let plan = planPins(pins(), want: want, renew: renewIDs)
-        // the recent apps part of the Dock can hold a renamed or removed app's old name too
-        let recents = (CFPreferencesCopyAppValue("recent-apps" as CFString, dock) as? [[String: Any]]) ?? []
-        let keptRecents = recents.filter { t in
-            guard let p = filePath(t) else { return true }
-            return !(isIconAppPath(URL(fileURLWithPath: p)) && !FileManager.default.fileExists(atPath: p))
+        var renewLeft = renewIDs            // a fresh entry once, not again on the writer's check
+        DockWriter.update("Dock icons") { l in
+            let plan = planPins(l.pinned, want: want, hidden: hidden, renew: renewLeft)
+            if plan.changed {
+                plan.marked.forEach(markChange)
+                plan.notes.forEach { dockLog.log("\($0, privacy: .public)") }
+                l.pinned = plan.list
+                renewLeft = []
+            }
+            // the recent apps part of the Dock can hold a renamed or removed app's old name too
+            l.recent.removeAll { t in filePath(t).map { isIconAppPath(URL(fileURLWithPath: $0)) && !FileManager.default.fileExists(atPath: $0) } ?? false }
         }
-        if keptRecents.count != recents.count { CFPreferencesSetAppValue("recent-apps" as CFString, keptRecents as CFArray, dock) }
-        guard plan.changed || keptRecents.count != recents.count else { return }
-        plan.marked.forEach(markChange)
-        plan.notes.forEach { dockLog.log("\($0, privacy: .public)") }
-        write(plan.list)
     }
 
     /// A tile's file path as stored (not lowercased).
@@ -408,45 +410,40 @@ enum DockManager {
         // settled, then check after the restart and try again (up to three times). Stops as soon as the profile
         // no longer wants it shown (the switch was flipped back meanwhile).
         Thread.sleep(forTimeInterval: 4)
-        for attempt in 1...3 {
-            if wantsShown(app) == false { dockLog.log("pin \(key(app), privacy: .public): switched off meanwhile, stopping"); return }
-            markChange(app)
-            pin(app, after: neighbour)
-            Thread.sleep(forTimeInterval: 6)
-            if isPinned(app) { dockLog.log("pin \(key(app), privacy: .public): pinned (try \(attempt))"); return }
-            dockLog.log("pin \(key(app), privacy: .public): not there after try \(attempt)")
+        markChange(app)
+        DockWriter.updateNow("pin \(key(app))") { l in
+            guard wantsShown(app) != false else { return }
+            l.pinned = pinned(l.pinned, app, after: neighbour)
         }
     }
 
     /// Pins an app if it isn't pinned: after `neighbour` ("" = first), or else right after the other cl_usage icons.
     static func pin(_ app: URL, after neighbour: String? = nil) {
-        var list = pins()
+        DockWriter.update("pin \(key(app))") { l in l.pinned = pinned(l.pinned, app, after: neighbour) }
+    }
+
+    /// The list with `app` pinned (unchanged if it already is).
+    static func pinned(_ list: [[String: Any]], _ app: URL, after neighbour: String? = nil) -> [[String: Any]] {
         let k = key(app)
-        guard !list.contains(where: { path($0) == k }) else { return }
-        var at = list.count
+        guard !list.contains(where: { path($0) == k }) else { return list }
+        var out = list, at = list.count
         if let n = neighbour {
             if n.isEmpty { at = 0 } else if let j = list.firstIndex(where: { path($0) == n }) { at = j + 1 }
         } else if let j = list.lastIndex(where: { t in path(t).map { $0 != key(settingsURL) && isIconApp($0) } ?? false }) {
             at = j + 1
         }
-        list.insert(tile(app), at: min(at, list.count))
-        write(list)
+        out.insert(tile(app), at: min(at, list.count))
+        return out
     }
 
     static func isPinned(_ app: URL) -> Bool { pins().contains { path($0) == key(app) } }
 
     static func restore(prefs: DockPrefs = .shared) {
         guard let list = prefs.backup else { return }
-        write(list)
-        prefs.clearBackup()
+        DockWriter.update("restore the Dock", { l in if !same(l.pinned, list) { l.pinned = list } },
+                          done: { ok in if ok { prefs.clearBackup() } })
     }
 
-    private static func write(_ list: [[String: Any]]) {
-        CFPreferencesSetAppValue(key, list as CFArray, dock)
-        let ok = CFPreferencesAppSynchronize(dock)
-        dockLog.log("write \(list.count) pins, synced \(ok), restarting the Dock")
-        Installer.run("/usr/bin/killall", ["Dock"])
-    }
 }
 
 /// Settings ▸ Dashboard ▸ Dock. Written so each part says what it does: one switch with its effect spelled

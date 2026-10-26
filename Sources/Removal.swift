@@ -52,22 +52,12 @@ enum AccountRemoval {
     /// Takes the app out of the Dock: its kept (pinned) icon and its place among recent apps, so no "?" stays
     /// behind. Only entries pointing at exactly this app are touched; the Dock restarts only if one was there.
     static func unpinFromDock(_ app: URL) {
-        let dock = "com.apple.dock" as CFString
         let target = app.standardizedFileURL.path
-        var changed = false
-        CFPreferencesAppSynchronize(dock)      // read the Dock's list as it is now, not this process's older copy
-        for key in ["persistent-apps", "recent-apps"] as [CFString] {
-            guard let items = CFPreferencesCopyAppValue(key, dock) as? [[String: Any]] else { continue }
-            let kept = items.filter { item in
-                guard let tile = item["tile-data"] as? [String: Any], let file = tile["file-data"] as? [String: Any],
-                      let s = file["_CFURLString"] as? String, let u = URL(string: s) else { return true }
-                return u.standardizedFileURL.path != target
-            }
-            if kept.count != items.count { CFPreferencesSetAppValue(key, kept as CFArray, dock); changed = true }
+        func isApp(_ item: [String: Any]) -> Bool { DockManager.filePath(item) == target }
+        DockWriter.update("take \(app.lastPathComponent) out of the Dock") { l in
+            l.pinned.removeAll(where: isApp)
+            l.recent.removeAll(where: isApp)
         }
-        guard changed else { return }
-        CFPreferencesAppSynchronize(dock)
-        Installer.run("/usr/bin/killall", ["Dock"])
     }
 
     // MARK: the account's folders
