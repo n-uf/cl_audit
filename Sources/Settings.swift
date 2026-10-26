@@ -8,7 +8,13 @@ import SwiftUI
 
 final class SettingsModel: ObservableObject {
     @Published var accounts: [AccountEntry] { didSet { scheduleSave() } }
-    @Published var selection: String? { didSet { if oldValue != selection, note != nil { hideNote() } } }
+    @Published var selection: String? {
+        didSet {
+            guard oldValue != selection else { return }
+            if note != nil { hideNote() }
+            unsaved = nil            // why another profile's name or label wasn't saved
+        }
+    }
     static let dashboardID = "__dashboard__"
     @Published var message = ""
     @Published var tick = 0                 // bumped every few seconds so icon status re-reads
@@ -357,7 +363,9 @@ struct SettingsPage: View {
                 if model.selection == SettingsModel.dashboardID {
                     DashboardSettings(width: w).padding(.horizontal, 16).padding(.vertical, 14)
                 } else if let id = model.selection, let entry = model.binding(id) {
-                    AccountSettings(entry: entry, model: model, width: w).padding(.horizontal, 16).padding(.vertical, 14)
+                    // one identity per profile: switching tabs starts with fresh view state (a half-typed name, the
+                    // Dock restart pulse, an open (i)), so nothing from one profile shows up, or is saved, on another
+                    AccountSettings(entry: entry, model: model, width: w).id(id).padding(.horizontal, 16).padding(.vertical, 14)
                 } else {
                     Text("Add a profile with ＋").foregroundStyle(.secondary).frame(maxWidth: .infinity).padding(40)
                 }
@@ -380,7 +388,7 @@ struct SettingsPage: View {
             .background(SurfaceShape(surface: face.strip, radius: 7))
             .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 2)
             if model.selection == SettingsModel.dashboardID { DashboardSettings().padding(14) }
-            else if let id = model.selection, let entry = model.binding(id) { AccountSettings(entry: entry, model: model).padding(14) }
+            else if let id = model.selection, let entry = model.binding(id) { AccountSettings(entry: entry, model: model).id(id).padding(14) }
         }
     }
 
@@ -581,6 +589,7 @@ struct SField: View {
             .onSubmit(finish)
             .onExitCommand { draft = nil; problem = nil; cancel?() }
             .onChange(of: focused) { f in if !f { finish() } }
+            .onDisappear(perform: finish)       // leaving the page counts as clicking elsewhere, for this field's profile
             .padding(.vertical, 3)
             .overlay(alignment: .bottom) {
                 VStack(spacing: 0) {

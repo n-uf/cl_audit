@@ -8,7 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Fixed:** typing a profile's name or icon label and switching to another profile's tab before pressing Return
+  showed the typed text in the other profile's field, where Return would have saved it to that profile. Each
+  profile's settings now start fresh, and the typed text is saved to the profile it was typed for when you leave.
 
 ## 26.10.6 — 2026-10-25
 
