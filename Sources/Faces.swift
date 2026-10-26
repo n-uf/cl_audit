@@ -374,6 +374,22 @@ struct PulsingLED: View {
     }
 }
 
+/// A key's symbol lit like an LED and pulsing while something is under way (the refresh arrow while updating).
+struct PulsingSymbol: View {
+    let name: String
+    var size: CGFloat = 10
+    var color: Color = FaceTheme.ledOn
+    var body: some View {
+        TimelineView(.animation) { ctx in
+            let phase = (sin(ctx.date.timeIntervalSinceReferenceDate * 2 * .pi / 1.1) + 1) / 2
+            Image(systemName: name).font(.system(size: size, weight: .bold))
+                .foregroundStyle(color)
+                .shadow(color: color.opacity(0.85), radius: 3)
+                .opacity(0.3 + 0.7 * phase)
+        }
+    }
+}
+
 enum KeyKind { case plain, page, primary }
 
 /// The face of a key, around any content: up, pressed, or latched (held down, its strip lit).

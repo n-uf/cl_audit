@@ -373,11 +373,11 @@ struct UpdatedButton: View {
                 else if let d = newest { DisplayWindow(text: "Updated", dim: "· \(DetailsFormat.ago(d))", height: TopStrip.height, width: Self.width) }
                 else { DisplayWindow(text: "Not updated yet", height: TopStrip.height, width: Self.width) }
             }
-            // while updating, its arrow becomes a pulsing green LED (and it takes no clicks)
+            // while updating, its arrow lights up green and pulses like an LED (and it takes no clicks)
             Button(action: refresh) {
                 KeyLook(height: TopStrip.height, hPad: 0) {
                     Group {
-                        if model.refreshing { PulsingLED(color: FaceTheme.ledOn) }
+                        if model.refreshing { PulsingSymbol(name: "arrow.clockwise") }
                         else { Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold)) }
                     }
                     .frame(width: TopStrip.height)
