@@ -1,7 +1,9 @@
 // DockWriter: the one way cl_audit, its Dock icon apps and their helper processes change the Dock's lists.
 //
-// The Dock keeps its lists in memory and saves them as it quits, so a list written while it runs can be lost
-// when it restarts (several writes within seconds made that happen). Every change therefore goes through here:
+// The Dock keeps its lists in memory and saves them as it quits, so a list written while it runs is lost when it
+// is asked to quit: right after a Dock icon app quit and started again (a rename), it saved its old list over ours
+// on every try. So the Dock is stopped with SIGKILL, which it can't intercept to save; macOS starts it again at
+// once and it reads the lists as written. Every change therefore goes through here:
 // one writer at a time (a lock file shared by all cl_audit processes), the lists read fresh, the change applied,
 // the Dock restarted and waited for, and the change applied again to what the Dock kept. When the Dock lost it,
 // it is written again (three tries at most). Changes say what the lists should become ("pin X", "drop Y"), so
@@ -103,7 +105,8 @@ extension DockWriter.Backend {
         },
         restart: {
             let old = NSRunningApplication.runningApplications(withBundleIdentifier: "com.apple.dock").first?.processIdentifier
-            Installer.run("/usr/bin/killall", ["Dock"])
+            // SIGKILL: a normal quit lets the Dock save its in-memory lists over the ones just written
+            Installer.run("/usr/bin/killall", ["-KILL", "Dock"])
             // the new Dock: started (another process id) and given a moment to read and settle its lists
             let deadline = Date().addingTimeInterval(10)
             while Date() < deadline {

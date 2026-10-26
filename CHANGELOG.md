@@ -8,7 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Fixed:** after renaming a profile whose Dock icon was running, the Dock could keep the old name's icon and show
+  the renamed one separately (and then switch it to hidden). The Dock put its old list back each time it restarted;
+  cl_audit now restarts it so that it can't.
 
 ## 26.10.7 — 2026-10-26
 
