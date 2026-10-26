@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.10.6 — 2026-10-25
+
 - **Refresh key:** while the numbers update, its arrow itself lights up green and pulses, like an LED.
 
 ## 26.10.5 — 2026-10-25
