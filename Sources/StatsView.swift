@@ -47,7 +47,9 @@ struct StatsSection: View {
 
     /// Replies and tokens in the period: black glass (on Silver too), like the site.
     private var totals: some View {
-        DisplayWindow(text: "\(stats.totalReplies.formatted()) replies", dim: "· \(StatsFormat.tokens(stats.totalTokens)) tokens", black: true)
+        stats.loaded
+            ? DisplayWindow(text: "\(stats.totalReplies.formatted()) replies", dim: "· \(StatsFormat.tokens(stats.totalTokens)) tokens", black: true)
+            : DisplayWindow(text: "Reading…", dim: "session files", black: true)
     }
 
     private var period: some View {
@@ -194,7 +196,7 @@ struct TokenChart: View {
         let known = Set(ids)
         let bars = stats.bars.filter { known.contains($0.account) }
         if ids.isEmpty {
-            Text("No profile selected").font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 190)
+            Text(stats.loaded ? "No profile selected" : "Reading the session files…").font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 190)
         } else {
             chart(bars, ids: ids)
         }

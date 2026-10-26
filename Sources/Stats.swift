@@ -154,6 +154,9 @@ final class StatsModel: ObservableObject {
         didSet { if DashboardPrefs.shared.range != range { DashboardPrefs.shared.range = range }; reload() }
     }
     @Published var loading = false
+    /// The first scan has finished: until then the charts are empty because nothing was read yet, not because
+    /// no profile is selected.
+    @Published private(set) var loaded = false
     @Published var bars: [TokenBar] = []
     @Published var heat: [[[String: Int]]] = []     // [day row][hour] → replies per account
     @Published var heatDays: [Date] = []
@@ -192,6 +195,7 @@ final class StatsModel: ObservableObject {
                     models: self.shares(result.byModel, top: 4, palette: [.purple, .blue, .pink, .green]),
                     surfaces: self.shares(result.bySurface, top: 4, palette: [.orange, .blue, .gray, .teal]))
                 self.loading = false
+                self.loaded = true
             }
         }
     }
