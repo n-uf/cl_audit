@@ -565,7 +565,9 @@ struct SRow<Control: View>: View {
 
 /// A small text field for settings rows (name, icon label), on an engraved line. Without `commit` every keystroke
 /// goes straight to `text`. With it, the edit is kept here until Return or leaving the field, then handed to
-/// `commit`, which saves it or returns why it can't; Esc puts the old text back.
+/// `commit`, which saves it or returns why it can't; Esc puts the old text back. While an edit isn't saved the line
+/// turns into an amber hairline with "Not saved · Return saves · Esc undoes" under it, like a validation message;
+/// red with the reason when it can't be saved.
 struct SField: View {
     let placeholder: String
     @Binding var text: String
@@ -579,27 +581,39 @@ struct SField: View {
     @FocusState private var focused: Bool
     @Environment(\.face) private var face
 
+    /// Typed but not saved yet.
+    private var pending: Bool { commit != nil && draft != nil && draft != text }
+    private var lineColor: Color? { problem != nil ? face.danger : pending ? face.caution : nil }
+
     var body: some View {
-        TextField(placeholder, text: Binding(get: { draft ?? text }, set: { v in
-            if commit == nil { text = transform(v) } else { draft = transform(v) }
-        }))
-            .textFieldStyle(.plain).font(mono ? .system(size: 12, design: .monospaced) : .system(size: 12.5))
-            .foregroundStyle(face.text)
-            .focused($focused)
-            .onSubmit(finish)
-            .onExitCommand { draft = nil; problem = nil; cancel?() }
-            .onChange(of: focused) { f in if !f { finish() } }
-            .onDisappear(perform: finish)       // leaving the page counts as clicking elsewhere, for this field's profile
-            .padding(.vertical, 3)
-            .overlay(alignment: .bottom) {
-                VStack(spacing: 0) {
-                    Rectangle().fill(problem != nil ? face.danger : face.light ? Color.black(0.35) : Color.black(0.5)).frame(height: 1)
-                    Rectangle().fill(face.light ? Color.white(0.6) : Color.white(0.04)).frame(height: 1)
+        VStack(alignment: .leading, spacing: 5) {
+            TextField(placeholder, text: Binding(get: { draft ?? text }, set: { v in
+                if commit == nil { text = transform(v) } else { draft = transform(v); problem = nil }
+            }))
+                .textFieldStyle(.plain).font(mono ? .system(size: 12, design: .monospaced) : .system(size: 12.5))
+                .foregroundStyle(face.text)
+                .focused($focused)
+                .onSubmit(finish)
+                .onExitCommand { draft = nil; problem = nil; cancel?() }
+                .onChange(of: focused) { f in if !f { finish() } }
+                .onDisappear(perform: finish)       // leaving the page counts as clicking elsewhere, for this field's profile
+                .padding(.vertical, 3)
+                .overlay(alignment: .bottom) {
+                    VStack(spacing: 0) {
+                        Rectangle().fill(lineColor ?? (face.light ? Color.black(0.35) : Color.black(0.5))).frame(height: 1)
+                        Rectangle().fill(face.light ? Color.white(0.6) : Color.white(0.04)).frame(height: 1)
+                    }
+                    .offset(y: 2)
                 }
-                .offset(y: 2)
+                .frame(width: width)
+            if let problem {
+                Text(problem).font(.system(size: 10.5)).foregroundStyle(face.danger).fixedSize().padding(.top, 2)
+            } else if pending {
+                Text("Not saved · Return saves · Esc undoes").font(.system(size: 10.5)).foregroundStyle(face.caution)
+                    .fixedSize().padding(.top, 2)
             }
-            .frame(width: width)
-            .help(problem ?? (commit != nil ? "Return or click elsewhere saves it; Esc puts it back" : ""))
+        }
+        .help(problem ?? (commit != nil ? "Return or click elsewhere saves it; Esc puts it back" : ""))
     }
 
     private func finish() {
@@ -969,9 +983,14 @@ struct AccountSettings: View {
         let old = entry
         change(&entry)
         if let p = model.problem {
+            let tried = entry
             entry = old
-            model.unsaved = p
-            return p
+            // said about this field when the name is the problem: which name is taken
+            func key(_ n: String) -> String { n.trimmingCharacters(in: .whitespaces).lowercased() }
+            let taken = tried.name != old.name && model.accounts.contains { $0.id != tried.id && key($0.name) == key(tried.name) }
+            let said = taken ? "Another profile is called “\(tried.name.trimmingCharacters(in: .whitespaces))”" : p
+            model.unsaved = said
+            return said
         }
         model.saveNow(what)
         return nil
