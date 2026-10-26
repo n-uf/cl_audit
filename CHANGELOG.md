@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.10.5 — 2026-10-25
+
 - **Trying Dock icon styles is calm:** while a profile's Dock icon runs, its tile shows a new style, colour or
   frame at once, and nothing restarts; the closed-app picture and the Dock tile are brought up to date when it
   quits.
