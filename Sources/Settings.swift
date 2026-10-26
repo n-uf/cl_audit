@@ -1022,14 +1022,32 @@ struct IconGallery: View {
         .help("\(st.title): \(st.blurb)")
     }
 
-    /// The chosen style at about Dock size as the 5-hour limit fills up, under a bar in the level colours.
+    /// The chosen style at about Dock size: first as the Dock shows it while the app isn't running (its icon
+    /// file), then as the 5-hour limit fills up, under a bar in the level colours.
     var lane: some View {
-        let segments = [Painter.green, Painter.green, Painter.amber, Painter.red, Painter.red]
-        return VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("Preview").font(.system(size: 11, weight: .semibold))
-                Text("as the limit fills up").font(.system(size: 10.5)).foregroundStyle(face.muted)
+                Text("not running, then as the limit fills up").font(.system(size: 10.5)).foregroundStyle(face.muted)
             }
+            HStack(alignment: .bottom, spacing: 10) {
+                VStack(spacing: 4) {
+                    Text("not running").font(.system(size: 9.5)).foregroundStyle(face.muted).fixedSize()
+                    Image(nsImage: Painter.image(Painter.notRunning(label: entry.label.isEmpty ? "?" : entry.label, style: entry.style,
+                                                                     tint: entry.color, frame: entry.frame), pixels: 96))
+                        .resizable().frame(width: 40, height: 40)
+                        .help("What the Dock shows while this Dock icon isn't running")
+                }
+                Rectangle().fill(face.muted.opacity(0.35)).frame(width: 1, height: 56).padding(.bottom, 2)
+                fillingUp
+            }
+        }
+    }
+
+    /// The five live tiles under the level bar.
+    var fillingUp: some View {
+        let segments = [Painter.green, Painter.green, Painter.amber, Painter.red, Painter.red]
+        return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 3) {
                 ForEach(0..<segments.count, id: \.self) { i in
                     Capsule().fill(Color(nsColor: segments[i])).frame(height: 3)
