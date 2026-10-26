@@ -51,14 +51,20 @@ enum SettingNotes {
                 : "Press and hold shows only the Dock menu.")
         }
         if a.iconHidden != b.iconHidden {
-            return SettingNote(title: "Show in the Dock · \(b.iconHidden ? "off" : "on")", text: b.iconHidden
-                ? "The Dock icon keeps running without a tile, so it still refreshes and alerts. The Dock restarts to take its pin out."
-                : "The Dock icon gets its tile back. The Dock restarts to put the pin where it was.")
+            return SettingNote(title: "Usage in the Dock · \(b.iconHidden ? "off" : "on")", text: b.iconHidden
+                ? "No Dock icon for \(p). Its usage still shows on the dashboard, in the launcher and in alerts; its app keeps reading in the background. The Dock restarts to take the icon out."
+                : "A Dock icon shows \(p)'s usage again, back where it was. The Dock restarts to put it in.")
+        }
+        if a.claudeWindow != b.claudeWindow {
+            return SettingNote(title: "Claude window · \(b.claudeWindow ? "on" : "off")", text: b.claudeWindow
+                ? "\(p) has a Claude window again, signed in to its account; open it from the dashboard or the Dock icon."
+                : "No Claude window for \(p): nothing opens one. Its sign-in is kept, so turning it back on needs no new sign-in.")
         }
         if a.openAtLogin != b.openAtLogin {
             return SettingNote(title: "Open at login · \(b.openAtLogin ? "on" : "off")", text: b.openAtLogin
                 ? "\(p)'s Dock icon starts when you log in to your Mac."
-                : "\(p)'s Dock icon starts only when you start it, or with its Claude window.")
+                : b.claudeWindow ? "\(p)'s Dock icon starts only when you start it, or with its Claude window."
+                                 : "\(p)'s Dock icon starts only when you start it.")
         }
         return nil
     }

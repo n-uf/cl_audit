@@ -69,9 +69,11 @@ only software you trust. cl_audit's code is open to check: `Login.read` in `Sour
 
 ## Words used here
 
-- **Profile:** one Claude setup in cl_audit: its Claude Code folder and sign-in, its Claude window and its
-  Dock icon. **Account** means only the claude.ai account a profile is signed in to; several profiles
-  can use one account.
+- **Profile:** one Claude setup in cl_audit: its Claude Code folder and sign-in, and, if you want them, a Dock
+  icon and a Claude window. **Account** means only the claude.ai account a profile is signed in to: each
+  profile is linked to one account seat (account and organisation), and no two profiles share one.
+- **Usage only:** a profile with **Usage in the Dock** and **Claude window** both off: its usage shows on the
+  dashboard, in the launcher and in alerts, with nothing in the Dock and no window.
 - **Dock icon:** the profile's own small app ("cl_audit &lt;profile&gt;") that shows its usage.
 - **Claude window:** the profile's running Claude desktop app: the usual Claude app for the profile using
   `~/.claude`, its own Claude window (own sign-in, chats and settings) for every other profile.
@@ -79,7 +81,9 @@ only software you trust. cl_audit's code is open to check: `Login.read` in `Sour
 
 ## The dashboard
 
-Opening **cl_audit** shows a card per profile: its icon, both limits and two switches.
+Opening **cl_audit** shows a card per profile: its icon, both limits and two switches (only the Dock icon one
+without a Claude window). A usage only profile has no switches: one display says "Usage only · not in the
+Dock · no window", with **Start** when its background app isn't running.
 
 - **Claude window:** open or quit the profile's Claude window.
 - **Dock icon:** start or quit the profile's Dock icon app. Pins are never touched, so the Dock doesn't
@@ -89,8 +93,8 @@ Opening **cl_audit** shows a card per profile: its icon, both limits and two swi
   doesn't open within 30 s offers **Retry**.
 - Changes made by Opening and closing are announced on the other switch: "quits in 8 s",
   "starting…", or "waits for the window" when the Dock icon stopped with its window.
-- Under the limits: **Sign in…** when needed, otherwise **Open/Show window**, then **Terminal**, and "⋯"
-  (Refresh now, Profile settings…).
+- Under the limits: **Sign in…** when needed, otherwise **Open/Show window** (with a Claude window), then
+  **Terminal**, and "⋯" (Refresh now, Profile settings…); a usage only profile has just "⋯".
 
 Below the cards, **Usage history** (24 h / 7 d / 30 d) is read from the session files Claude Code writes
 on this Mac (only time, model, token counts, project folder and surface of each reply): when you use
@@ -135,14 +139,25 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 ### Profile settings
 
 - **Profile:** name, icon label (up to 6 letters, drawn on the icon), the profile's colour (launcher,
-  dashboard, panels), and **Remove profile…**.
+  dashboard, panels), then two keys, each with a line under it saying what the current choice does:
+  - **Usage in the Dock:** on, a Dock icon shows the profile's usage (click it for details); off, no Dock
+    icon, and its app keeps reading usage in the background, refreshing and alerting. Changing it restarts
+    the Dock; the main display says "Restarting the Dock…" and the keys wait meanwhile.
+  - **Claude window:** on, a Claude window signed in to the profile's account; off, none, and nothing opens
+    one. Its folder and sign-in are kept, so turning it back on needs no new sign-in.
+
+  Turning either off never deletes anything; that happens only in **Remove profile…**. Both off is usage
+  only. What the profile is doing now shows in the main display at the top: "Running · in the Dock",
+  "Stopped · in the Dock", "Reading usage · every N min" (no Dock icon), "Stopped · not reading", or
+  "Missing · reinstall"; while a change goes through it says "Saving…", then "Saved" and what changed.
 - **Claude Code:** the Claude Code folder (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder) and the sign-in
   found there; **Renew sign-in** (opt-in). Folders other profiles use are marked and can't be picked. The
   Claude window follows from the folder (see Profile above); it isn't a setting.
 - **Updates and alerts:** how often to refresh, and a notification when a limit reaches a set level.
 - **Dock icon clicks:** what a click does (usage for N seconds while Claude opens, just open Claude,
   or the details panel), press and hold, and the panel design (Glow, Rings, Numbers, Segments, Pace),
-  previewed at full size.
+  previewed at full size. Without a Claude window a click only shows the usage ("just open Claude" shows
+  the details panel).
 - **Icon:** the style, previewed as the limit fills up:
   - classic: Two numbers, Rings (outer = 5-hour, inner = week), Big number;
   - like the panels: Twin rings, Segmented, Pace bars (a white tick for how much of the window has passed);
@@ -151,14 +166,14 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
   Then the icon's colour, an optional frame colour and the **Claude open dot**: none, or a Claude-orange
   dot at the top-left while the profile's Claude window is open.
-- **Dock icon:** **Show in the Dock** (off: it runs without a Dock tile and still refreshes and alerts;
-  changing it restarts the Dock, because the pin is taken out or put back), **Open at login**, and what
-  it's doing **Now**, with **Pin** when it runs unpinned.
-- **Opening and closing** (with a Claude window): two questions. When the Claude window opens or quits,
+- **Opening and closing:** **Open at login** (a usage only profile always starts at login), then, with a
+  Claude window, two questions. When the Claude window opens or quits,
   start or quit the Dock icon too (it quits 10 s after the window; starting needs cl_audit running)? When
   the Dock icon starts or quits, open or quit the Claude window too (not at login; a normal quit, so
   Claude can ask about unsent work)? A table shows what each of the four actions then does. With the
-  window following, the Dock icon's menu has **Quit and keep Claude window**.
+  window following, the Dock icon's menu has **Quit and keep Claude window**. Cards that don't apply fade, with
+  a strip saying why and a key: usage only fades Opening and closing and Dock icon clicks (**Show in the
+  Dock**); a Dock icon without a Claude window fades only the two questions (**Add Claude window**).
 
 ### General settings
 
@@ -186,14 +201,17 @@ at the bottom.
   agents, skills, commands or memory from another Claude Code folder), or an *existing* one, including
   `~/.claude` or one you pick in Finder. Folders are compared after resolving `~`, links and letter case;
   a folder inside or around another profile's folder counts as the same.
-- **Its Claude window** isn't asked: `~/.claude` gets the usual Claude app, any other folder its own Claude
-  window.
+- **Usage in the Dock** and **Claude window**, the same two keys as in profile settings. Which Claude window
+  isn't asked: `~/.claude` gets the usual Claude app, any other folder its own Claude window. With Claude
+  window off, the Claude app sign-in step drops out; with Usage in the Dock off, the last step is **Start
+  reading usage**, which installs the background app and never pins it, so the Dock isn't restarted.
 - **Quit the Claude app first,** until the folder is created or connected: while open it writes its
   sign-in and settings. The page lists its windows, checking every 2 s, with Quit and Check again.
   Claude Code in Terminal doesn't get in the way.
 - **Sign in, in two parts:** Claude Code (Terminal runs `claude auth login` for the folder), then, with a
   separate window, that window, signed in to the same claude.ai account (checked by account id; no email
-  or token is read). "Finish now" leaves sign-in for later.
+  or token is read). "Finish now" leaves sign-in for later. An account another profile already has is
+  refused: one profile per account.
 - New profiles start with an existing profile's click and panel settings. **Cancel** undoes only what
   the page created: an existing folder is never deleted or signed out.
 

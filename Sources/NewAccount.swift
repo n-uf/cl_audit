@@ -32,6 +32,8 @@ struct NewAccountDraft: Equatable {
     var source: FolderSource = .new
     var existingDir: String?            // the chosen folder, when connecting an existing one
     var continueAnyway = false          // set up while Claude is still running
+    var usageInDock = true              // off: no Dock icon, usage read in the background ("Start reading usage")
+    var claudeWindow = true             // off: no Claude window, so no Claude app sign-in step
     /// What this setup did; Cancel undoes exactly this (an existing folder is never deleted or signed out).
     var createdConfigDir: String?
     var createdDataDir: String?
@@ -67,6 +69,8 @@ struct NewAccountDraft: Equatable {
         e.desktopDataDir = window == .separate ? dataDir : ""
         e.color = color
         e.accent = color
+        e.iconHidden = !usageInDock
+        e.claudeWindow = claudeWindow
         return e
     }
 }
@@ -244,7 +248,7 @@ enum NewAccountSetup {
         } else {
             d.connected = true
         }
-        if d.window == .separate, !exists(d.dataDir) {
+        if d.window == .separate, d.claudeWindow, !exists(d.dataDir) {     // no Claude window: no folder for one
             try fm.createDirectory(at: URL(fileURLWithPath: expand(d.dataDir)), withIntermediateDirectories: true)
             d.createdDataDir = d.dataDir
         }
@@ -302,13 +306,15 @@ struct NewAccountView: View {
     /// The desktop app open while the folders don't exist yet (afterwards it can stay open).
     private var running: Bool { monitor.checked && !appRuns.isEmpty && !draft.continueAnyway && !NewAccountSetup.foldersReady(draft) }
     private var desktop: NewAccountSetup.DesktopSignIn { NewAccountSetup.desktopSignIn(draft) }
-    private var needsDesktop: Bool { draft.window == .separate }
+    private var needsDesktop: Bool { draft.window == .separate && draft.claudeWindow }
     private var desktopDone: Bool { !needsDesktop || desktop == .same || desktop == .unknown }
     private var folders: Bool { NewAccountSetup.foldersReady(draft) && NewAccountSetup.linksReady(draft) }
     private var signedIn: String? { checks(.folder).contains { $0.blocks } ? nil : NewAccountSetup.signedInEmail(draft) }
     private var windowOpen: Bool { NewAccountSetup.foldersReady(draft) && NewAccountSetup.windowOpen(draft) }
     private var tint: Color { Color(nsColor: draft.color.color(fiveHour: nil, stale: false)) }
     private var createTitle: String { draft.source == .new ? "Create" : "Connect" }
+    /// The last step: a Dock icon, or (Usage in the Dock off) the background app that reads usage.
+    private var finishStep: String { draft.usageInDock ? "Add the Dock icon" : "Start reading usage" }
 
     /// What's next: 1 quit the desktop app, 2 folder, 3 Claude Code sign-in, 4 desktop app sign-in, 5 Dock icon.
     private var current: Int {
@@ -372,6 +378,9 @@ struct NewAccountView: View {
                     }
                 }
                 .padding(.leading, -3)
+                ProfileSwitches(usageInDock: draft.usageInDock, claudeWindow: draft.claudeWindow,
+                                setUsageInDock: { draft.usageInDock = $0 }, setClaudeWindow: { draft.claudeWindow = $0 })
+                    .padding(.top, 2)
            }
            .frame(maxWidth: .infinity, alignment: .leading)
            .padding(.top, 2)
@@ -529,7 +538,9 @@ struct NewAccountView: View {
                     sub("Terminal opens; approve in the browser")
                 }
             }
-            if draft.window == .standard {
+            if !draft.claudeWindow {
+                part(.todo, current: false, title: "b · Desktop app", droppedOut: true) { sub("Only when the profile has a Claude window") }
+            } else if draft.window == .standard {
                 part(.todo, current: false, title: "b · Desktop app") { sub("Uses the usual Claude app and its sign-in") }
             } else if needsDesktop {
                 let state: StepState = signedIn == nil ? .todo : desktopDone ? .done : desktop == .different ? .warn : current == 4 ? .now : .todo
@@ -563,7 +574,7 @@ struct NewAccountView: View {
         Text(s).font(.system(size: 11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 
-    private func part<C: View>(_ state: StepState, current: Bool, title: String, @ViewBuilder content: () -> C) -> some View {
+    private func part<C: View>(_ state: StepState, current: Bool, title: String, droppedOut: Bool = false, @ViewBuilder content: () -> C) -> some View {
         HStack(alignment: .top, spacing: 8) {
             ZStack {
                 switch state {
@@ -576,10 +587,12 @@ struct NewAccountView: View {
             .frame(width: 14, height: 14).padding(.top, 2)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: 12, weight: .medium)).foregroundStyle(state == .todo ? Color.secondary : Color.primary)
+                    .strikethrough(droppedOut)
                 content()
             }
             Spacer(minLength: 0)
         }
+        .opacity(droppedOut ? 0.45 : 1)
         .padding(.horizontal, 10).padding(.vertical, 7)
         .background(Color.primary.opacity(current ? 0.08 : 0.03))
     }
@@ -604,10 +617,12 @@ struct NewAccountView: View {
                         : (signedIn.flatMap { _ in FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) } != nil || (needsDesktop && signedIn != nil && desktop == .different)) ? .warn
                         : current == 3 || current == 4 ? .now : .done,
                     title: "Sign in",
-                    detail: folders ? nil : draft.window == .separate ? "Claude Code, then the desktop app" : "Claude Code") {
+                    detail: folders ? nil : needsDesktop ? "Claude Code, then the desktop app" : "Claude Code") {
                 if folders { signInParts.padding(.top, 3) }
             }
-            stepRow(4, state: current == 5 ? .now : .todo, title: "Add the Dock icon", detail: "Finish installs “cl_audit \(draft.name.isEmpty ? "…" : draft.name)”") { EmptyView() }
+            stepRow(4, state: current == 5 ? .now : .todo, title: finishStep,
+                    detail: draft.usageInDock ? "Finish installs “cl_audit \(draft.name.isEmpty ? "…" : draft.name)”"
+                                              : "Installs its small background app; nothing goes in the Dock, so the Dock isn't touched") { EmptyView() }
 
             actionBar(hint: false).padding(.top, 8)
         }
@@ -687,7 +702,7 @@ struct NewAccountView: View {
         let items: [(String, Bool, Int)] = [("Quit desktop app", ready || (monitor.checked && appRuns.isEmpty), 1),
                                             (draft.source == .new ? "Create folder" : "Connect folder", folders, 2),
                                             ("Claude Code", signedIn != nil, 3)]
-            + (needsDesktop ? [("Desktop app", signedIn != nil && desktopDone, 4)] : []) + [("Dock icon", false, 5)]
+            + (needsDesktop ? [("Desktop app", signedIn != nil && desktopDone, 4)] : []) + [(draft.usageInDock ? "Dock icon" : "Read usage", false, 5)]
         return HStack(spacing: 6) {
             ForEach(items.indices, id: \.self) { i in
                 let it = items[i], now = it.2 == current, bad = it.2 == 1 && running
@@ -766,7 +781,7 @@ struct NewAccountView: View {
                 }
                 .buttonStyle(.primaryKey(compact: true)).disabled(blocked || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
             } else if current == 5 {
-                Button("Finish") { model.finishNew() }.buttonStyle(.primaryKey(compact: true)).disabled(blocked || model.discarding)
+                Button(draft.usageInDock ? "Finish" : "Start reading usage") { model.finishNew() }.buttonStyle(.primaryKey(compact: true)).disabled(blocked || model.discarding)
             } else {
                 Button(desktop == .different ? "Finish anyway" : "Finish now") { model.finishNew() }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(blocked || model.discarding)
@@ -774,7 +789,7 @@ struct NewAccountView: View {
                 if signedIn == nil {
                     Button("Sign in to Claude Code…") { if let c = model.claudePath { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: nil) } }
                         .buttonStyle(.pill(tint, compact: true)).disabled(model.claudePath == nil)
-                } else {
+                } else if draft.claudeWindow {
                     Button(windowOpen ? "Show Claude window" : "Open Claude window") { Launcher.openClaude(Account(draft.entry)) }
                         .buttonStyle(.pill(tint, compact: true))
                 }
@@ -791,7 +806,7 @@ struct NewAccountView: View {
         case 2: return draft.name.isEmpty ? "Next: name the profile" : draft.source == .existing && draft.existingDir == nil ? "Next: pick a folder" : blocked ? "Fix the red lines to go on" : draft.source == .new ? "Next: create the folder and links" : "Next: connect the folder"
         case 3: return "Next: sign in to Claude Code"
         case 4: return desktop == .different ? "Its Claude window uses another account" : "Next: sign in to the desktop app"
-        default: return "Next: add the Dock icon"
+        default: return draft.usageInDock ? "Next: add the Dock icon" : "Next: start reading usage"
         }
     }
 

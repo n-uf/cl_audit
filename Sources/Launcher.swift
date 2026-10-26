@@ -55,6 +55,7 @@ enum Launcher {
 
     /// Brings the account's Claude window to the front, or starts it.
     static func openClaude(_ account: Account) {
+        guard account.hasWindow else { return }        // a profile without a Claude window never opens one
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: claudeBundleID)
         if let app = running.first(where: { isWindow(of: account, $0) }) {
             app.unhide()
@@ -268,7 +269,7 @@ final class LauncherModel: ObservableObject {
         notices[id] = nil
         pending[id] = Pending(change: change)
         // With "open or quit the Claude window too", the window follows the Dock icon: show that on its switch.
-        if let r = rows.first(where: { $0.id == id }), r.entry.lifecycle.windowFollowsUsage {
+        if let r = rows.first(where: { $0.id == id }), r.entry.follows.windowFollowsUsage {
             if change == .starting && !r.activity.desktopOpen { windowFollow[id] = Pending(change: .opening) }
             if change == .stopping && r.activity.desktopOpen { windowFollow[id] = Pending(change: .quitting) }
         }
@@ -287,7 +288,7 @@ final class LauncherModel: ObservableObject {
         let running = r.usageIcon != .notRunning && r.usageIcon != .missing
 
         // The window opened or quit: with the Dock icon following it, say what comes next.
-        if let was = lastOpen[id], was != open, e.lifecycle.usageFollowsWindow {
+        if let was = lastOpen[id], was != open, e.follows.usageFollowsWindow {
             if open { followStart[id] = now; followQuit[id] = nil } else { followQuit[id] = now + 10; followStart[id] = nil }
             startFast()
         }
@@ -732,12 +733,13 @@ struct AccountCard: View {
             Spacer(minLength: 12)         // cards in a row share one height; the buttons stay at the bottom
             HStack(spacing: 7) {
                 // One main button: sign in when needed, otherwise bring the Claude window forward.
+                // (a profile without a Claude window has no window to bring forward; usage only has just the menu)
                 if row.needsLogin {
                     Button("Sign in…") { actions.logIn(row) }.buttonStyle(.pill(.red))
-                } else {
+                } else if row.entry.claudeWindow {
                     Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }.buttonStyle(.pill(row.accent))
                 }
-                Button("Terminal") { actions.terminal(row) }.buttonStyle(.pill)
+                if !row.entry.usageOnly { Button("Terminal") { actions.terminal(row) }.buttonStyle(.pill) }
                 moreMenu
                 Spacer()
                 if let u = row.status?.updatedAt {
@@ -1023,8 +1025,32 @@ struct ProfileControls: View {
     }
 
     @ViewBuilder private var chips: some View {
-        windowChip
-        dockChip
+        if row.entry.usageOnly { usageOnlyDisplay }
+        else {
+            if row.entry.claudeWindow { windowChip }
+            dockChip
+        }
+    }
+
+    /// Usage only: no switches, one display that says what the profile includes; a stopped one can be started here
+    /// (it otherwise starts at the next login), a missing one reinstalled.
+    private var usageOnlyDisplay: some View {
+        let s = row.usageIcon
+        return HStack(spacing: 8) {
+            Printed(text: "Profile", size: 8.5)
+            Group {
+                switch s {
+                case .missing: DisplayWindow(text: "Missing", dim: "· reinstall", tone: .warn, fill: true, dimTone: .warn)
+                case .notRunning: DisplayWindow(text: "Stopped", dim: "· not reading", tone: .amber, fill: true)
+                default: DisplayWindow(text: "Usage only", dim: "· not in the Dock · no window", tone: .ok, fill: true)
+                }
+            }
+            if s == .missing { fix("Reinstall") { actions.startUsage(row) } }
+            else if s == .notRunning { fix("Start") { actions.startUsage(row) }.help("Starts reading this profile's usage (it also starts at the next login)") }
+        }
+        .padding(.leading, 10).padding(.trailing, 7)
+        .frame(maxWidth: .infinity, minHeight: 40)
+        .faceWindow(radius: 6)
     }
 
     // no glyphs: the printed title says which one it is
@@ -1052,11 +1078,11 @@ struct ProfileControls: View {
     }
 
     /// The Dock icon switch starts and quits the Dock icon app. It never touches pins, so the Dock is never
-    /// restarted; hiding is in profile settings ▸ Dock icon. Only a missing app gets an orange button.
+    /// restarted; Usage in the Dock (in profile settings) takes it in or out. Only a missing app gets an orange button.
     @ViewBuilder private var dockChip: some View {
         let s = row.usageIcon
         let running = s != .notRunning && s != .missing
-        let follows = row.entry.lifecycle.usageFollowsWindow
+        let follows = row.entry.follows.usageFollowsWindow
         if let c = row.busy, !c.isWindow {
             chip(glyph: dockGlyph, title: "Dock icon", sub: c.text, on: c.target, warn: false) { BusySwitch(on: c.target) }
         } else if row.followStarting && s == .notRunning {

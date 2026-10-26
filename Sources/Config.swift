@@ -70,13 +70,14 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     var iconHidden: Bool = false         // cl_usage runs without a Dock tile (still refreshes and alerts)
     var lifecycle: Lifecycle = .independent   // how cl_usage and its Claude window open and close together
     var seat: Seat? = nil                     // the Claude account seat this profile is linked to (nil: not yet)
+    var claudeWindow: Bool = true             // the profile has a Claude window (off: none; its folder and sign-in are kept)
 
     init(id: String, name: String, label: String, configDir: String) {
         self.id = id; self.name = name; self.label = label; self.configDir = configDir
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, openAtLogin, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, lifecycle, seat
+        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, openAtLogin, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, lifecycle, seat, claudeWindow
     }
     private enum LegacyKeys: String, CodingKey { case clickShowsDetails }
 
@@ -111,6 +112,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         iconHidden = try c.decodeIfPresent(Bool.self, forKey: .iconHidden) ?? false
         lifecycle = try c.decodeIfPresent(Lifecycle.self, forKey: .lifecycle) ?? .independent
         seat = try c.decodeIfPresent(Seat.self, forKey: .seat)
+        claudeWindow = try c.decodeIfPresent(Bool.self, forKey: .claudeWindow) ?? true
         if let action = try c.decodeIfPresent(ClickAction.self, forKey: .clickAction) {
             clickAction = action
         } else if let legacy = try decoder.container(keyedBy: LegacyKeys.self).decodeIfPresent(Bool.self, forKey: .clickShowsDetails) {
@@ -121,6 +123,13 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     /// What's wrong with this entry, if anything, in words for the settings window.
     /// The account's colour in the launcher, the dashboard (chips, cards, charts) and the panels.
     /// Unset: the icon colour when it's a plain one, else orange.
+    /// Usage in the Dock off and no Claude window: its usage shows on the dashboard, in the launcher and in alerts.
+    var usageOnly: Bool { iconHidden && !claudeWindow }
+    /// How its Dock icon and Claude window follow each other: only with a Claude window to follow.
+    var follows: Lifecycle { claudeWindow ? lifecycle : .independent }
+    /// A usage-only profile's background app always starts at login, so its usage keeps being read.
+    var startsAtLogin: Bool { openAtLogin || usageOnly }
+
     var accentColor: TileColor { accent ?? ([.usage, .graphite].contains(color) ? .orange : color) }
     var accentNSColor: NSColor { accentColor.color(fiveHour: nil, stale: false) }
 
@@ -430,13 +439,13 @@ enum Installer {
     /// cl_usage set to follow its Claude window, while that window is closed: it isn't started.
     static func waitsForWindow(_ e: AccountEntry) -> Bool {
         let a = Account(e)
-        return e.lifecycle.usageFollowsWindow && !(Launcher.activity(for: [a])[a.configDir]?.desktopOpen ?? false)
+        return e.follows.usageFollowsWindow && !(Launcher.activity(for: [a])[a.configDir]?.desktopOpen ?? false)
     }
 
     /// A Claude window just started: start the cl_usage of profiles that follow it (cl_audit does this, since a
     /// cl_usage that isn't running can't notice).
     static func startFollowers() {
-        for e in Store.load() where e.lifecycle.usageFollowsWindow && !waitsForWindow(e) {
+        for e in Store.load() where e.follows.usageFollowsWindow && !waitsForWindow(e) {
             let dst = appURL(e)
             if FileManager.default.fileExists(atPath: dst.path), !isRunning(e) { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
         }

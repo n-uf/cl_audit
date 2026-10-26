@@ -122,11 +122,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let svc = SMAppService.mainApp
         // The entry points at the app's location, so an app that moved or was renamed registers again.
         let here = Bundle.main.bundlePath, key = "loginItemPath"
-        if entry.openAtLogin, svc.status != .enabled || defaults.string(forKey: key) != here {
+        if entry.startsAtLogin, svc.status != .enabled || defaults.string(forKey: key) != here {
             if svc.status == .enabled { try? svc.unregister() }
             if (try? svc.register()) != nil { defaults.set(here, forKey: key) }
         }
-        if !entry.openAtLogin, svc.status == .enabled { try? svc.unregister(); defaults.removeObject(forKey: key) }
+        if !entry.startsAtLogin, svc.status == .enabled { try? svc.unregister(); defaults.removeObject(forKey: key) }
     }
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -180,7 +180,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // "Window follows": starting cl_usage opens its Claude window, but not at login and not when cl_audit
         // starts it (it passes --no-follow), so neither opens every window at once.
         let atLogin = ProcessInfo.processInfo.systemUptime < 180
-        if entry.lifecycle.windowFollowsUsage, !claudeOpen,
+        if entry.follows.windowFollowsUsage, !claudeOpen,
            !CommandLine.arguments.contains("--no-follow"), !atLogin {
             Launcher.openClaude(account)
         }
@@ -197,7 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ note: Notification) {
         guard !isSettingsApp, let id = accountID else { return }
         guard Store.load().contains(where: { $0.id == id }) else { try? SMAppService.mainApp.unregister(); return }
-        if entry.lifecycle.windowFollowsUsage, !quietQuit, !quitForWindow { quitClaudeWindow() }
+        if entry.follows.windowFollowsUsage, !quietQuit, !quitForWindow { quitClaudeWindow() }
     }
 
     @objc func quitClaudeWindow() {
@@ -263,7 +263,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             details.open(detailsInfo(), detailsActions())
             return false
         }
-        switch entry.clickAction {
+        // Without a Claude window a click can only show the usage: "Opens Claude" shows the details panel instead,
+        // and "Usage, then Claude" the usage alone (opening Claude does nothing then).
+        let action: ClickAction = entry.claudeWindow || entry.clickAction != .open ? entry.clickAction : .details
+        switch action {
         case .details:
             details.toggle(detailsInfo(), detailsActions())
         case .peekThenOpen:
@@ -343,12 +346,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let open = windowIsOpen()
         if open != claudeOpen { claudeOpen = open; redraw() }
         // "The Dock icon follows the window": its window quit → quit too, after 10 s (a Claude update restarts the window).
-        if entry.lifecycle.usageFollowsWindow, !open {
+        if entry.follows.usageFollowsWindow, !open {
             guard windowQuitWork == nil else { return }
             let work = DispatchWorkItem { [weak self] in
                 guard let self else { return }
                 self.windowQuitWork = nil
-                if self.entry.lifecycle.usageFollowsWindow, !self.windowIsOpen() { self.quitForWindow = true; NSApp.terminate(nil) }
+                if self.entry.follows.usageFollowsWindow, !self.windowIsOpen() { self.quitForWindow = true; NSApp.terminate(nil) }
             }
             windowQuitWork = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: work)
@@ -564,7 +567,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         func add(_ title: String, _ action: Selector, enabled: Bool = true) {
             let i = NSMenuItem(title: title, action: action, keyEquivalent: ""); i.target = self; i.isEnabled = enabled; m.addItem(i)
         }
-        do {
+        if entry.claudeWindow {
             add(claudeOpen ? "Show Claude window" : "Open Claude window", #selector(openClaude))
             if claudeOpen { add("Quit Claude window", #selector(quitClaudeWindow)) }
         }
@@ -573,7 +576,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         m.addItem(.separator())
         add("Dashboard", #selector(showDashboard))
         add("Profile settings…", #selector(showSettings))
-        if entry.lifecycle.windowFollowsUsage {
+        if entry.follows.windowFollowsUsage {
             m.addItem(.separator())
             add("Quit and keep Claude window", #selector(quitKeepingWindow))
         }

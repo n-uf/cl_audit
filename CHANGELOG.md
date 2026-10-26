@@ -8,6 +8,18 @@ the notes before updating.
 
 ## Unreleased
 
+- **What a profile includes:** two keys in a profile's settings, **Usage in the Dock** and **Claude window**, each
+  with a line saying what the current choice does. With both off a profile is *usage only*: its usage shows on the
+  dashboard, in the launcher and in alerts, with nothing in the Dock and no window. Turning either off never deletes
+  anything (its app, window folder and sign-in are kept); that happens only in Remove profile. New profile has the
+  same keys: without a Claude window its Claude app sign-in step drops out, and without Usage in the Dock the last
+  step is **Start reading usage**, which doesn't touch the Dock.
+- **No Dock icon card:** Usage in the Dock replaces Show in the Dock, **Open at login** moves to the top of Opening
+  and closing, and what the profile is doing now, or the change going through, shows in the main display at the
+  top ("Running · in the Dock", "Reading usage · every 2 min", "Restarting the Dock…", "Saved · Claude window off").
+  Cards that don't apply fade with a strip and a key (Show in the Dock, Add Claude window).
+- **Dashboard:** a usage only profile's card has no switches, just "Usage only · not in the Dock · no window"
+  (with Start when it isn't reading).
 - **Fixed:** after renaming a profile whose Dock icon was running, the Dock could keep the old name's icon and show
   the renamed one separately (and then switch it to hidden). The Dock put its old list back each time it restarted;
   cl_audit now restarts it so that it can't.

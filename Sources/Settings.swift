@@ -157,8 +157,11 @@ final class SettingsModel: ObservableObject {
     private func scheduleSave() {
         saveWork?.cancel()
         guard !needsApply, problem == nil, accounts != saved else { return }
+        autosaving = true
         let work = DispatchWorkItem { [weak self] in
-            guard let self, !self.needsApply, self.problem == nil else { return }
+            guard let self else { return }
+            self.autosaving = false
+            guard !self.needsApply, self.problem == nil else { return }
             do {
                 try self.saveMerged(); self.message = "Saved"
                 DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in   // a brief confirmation
@@ -295,6 +298,18 @@ final class SettingsModel: ObservableObject {
     @Published var savedNote: String?
     private var savedNoteClear: DispatchWorkItem?
 
+    /// A setting just changed and is about to be saved (a moment after the change).
+    @Published var autosaving = false
+
+    /// "Saved · <what>" in the main display for a moment, then the profile's state again.
+    func showSaved(_ what: String, for seconds: Double = 2) {
+        savedNote = what
+        savedNoteClear?.cancel()
+        let w = DispatchWorkItem { [weak self] in self?.savedNote = nil }
+        savedNoteClear = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + seconds, execute: w)
+    }
+
     /// Saves a name or label change at once (no Apply): the Dock icon apps follow, then the display says so.
     func saveNow(_ what: String) {
         saving = true
@@ -302,12 +317,51 @@ final class SettingsModel: ObservableObject {
         apply { [weak self] in
             guard let self else { return }
             self.saving = false
-            self.savedNote = what
-            self.savedNoteClear?.cancel()
-            let w = DispatchWorkItem { [weak self] in self?.savedNote = nil }
-            self.savedNoteClear = w
-            DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: w)
+            self.showSaved(what)
         }
+    }
+
+    /// The profile whose Usage in the Dock was just switched, while the Dock takes its icon in or out (about 10 s):
+    /// the main display says "Restarting the Dock…" and the profile keys wait, so quick flips can't start changes
+    /// that undo each other.
+    @Published var dockRestarting: String?
+
+    /// Usage in the Dock: on, a Dock icon in the Dock; off, no Dock icon, while its app keeps reading usage in the
+    /// background (refreshing and alerting). Nothing is deleted either way.
+    func setUsageInDock(_ id: String, _ on: Bool) {
+        guard dockRestarting == nil, let i = accounts.firstIndex(where: { $0.id == id }) else { return }
+        let before = accounts[i]
+        accounts[i].iconHidden = !on
+        if let n = SettingNotes.note(from: before, to: accounts[i]) { showNote(n) }
+        let e = accounts[i], app = Installer.appURL(e)
+        // a running Dock icon app applies it itself (it restarts); one that isn't running would only at its next
+        // start, so its pin is taken out or put back here, in its own preferences' place
+        DockManager.markChange(app)
+        if !Installer.isRunning(e), let d = UserDefaults(suiteName: Installer.bundleID(e)) {
+            dockLog.log("\(e.id, privacy: .public): Usage in the Dock \(on ? "on" : "off", privacy: .public) while stopped")
+            if on { DockManager.repin(app, defaults: d) } else { DockManager.unpinRemembering(app, defaults: d) }
+        }
+        dockRestarting = id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+            guard let self, self.dockRestarting == id else { return }
+            self.dockRestarting = nil
+            self.showSaved("Usage in the Dock \(on ? "on" : "off")")
+        }
+    }
+
+    /// Claude window: on, the profile has a Claude window signed in to its account; off, none. Turning it off keeps
+    /// the window's folder and sign-in, so turning it back on needs no new sign-in.
+    func setClaudeWindow(_ id: String, _ on: Bool) {
+        guard let i = accounts.firstIndex(where: { $0.id == id }) else { return }
+        let before = accounts[i]
+        accounts[i].claudeWindow = on
+        if let n = SettingNotes.note(from: before, to: accounts[i]) { showNote(n) }
+        let e = accounts[i]
+        if on, e.desktop == .separate, !e.desktopDataDir.isEmpty {
+            // a profile made without one gets its window's folder now (its sign-in comes with the first start)
+            try? FileManager.default.createDirectory(at: URL(fileURLWithPath: expand(e.desktopDataDir)), withIntermediateDirectories: true)
+        }
+        showSaved("Claude window \(on ? "on" : "off")")
     }
 
     func apply(then done: (() -> Void)? = nil) {
@@ -437,20 +491,38 @@ struct SettingNoteOverlay: View {
     }
 }
 
-/// Settings in the window's top strip: whether everything is saved, in a display window.
+/// The main display in the window's top strip, by priority: a change in progress (saving, the Dock restarting, what
+/// was just saved), then a problem, then what the selected profile is doing now.
 struct SettingsStatus: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
         let w = UpdatedButton.width + 40, h = TopStrip.height
+        let _ = model.tick                        // the profile's state is read again every few seconds
         Group {
-            if model.saving { DisplayWindow(text: "Saving…", tone: .amber, height: h, width: w) }
-            else if model.unsaved != nil || model.problem != nil { DisplayWindow(text: "Not saved", dim: "· see below", tone: .warn, height: h, width: w) }
+            if model.saving || model.autosaving { DisplayWindow(text: "Saving…", tone: .amber, height: h, width: w) }
+            else if model.dockRestarting != nil { DisplayWindow(text: "Restarting the Dock…", tone: .amber, height: h, width: w) }
             else if let done = model.savedNote { DisplayWindow(text: "Saved", dim: "· \(done)", tone: .ok, height: h, width: w) }
+            else if model.unsaved != nil || model.problem != nil { DisplayWindow(text: "Not saved", dim: "· see below", tone: .warn, height: h, width: w) }
             else if model.selection == SettingsModel.newID { DisplayWindow(text: "New profile", dim: "· not added yet", height: h, width: w) }
+            else if let id = model.selection, let e = model.accounts.first(where: { $0.id == id }) { profileState(e, w: w, h: h) }
             else { DisplayWindow(text: "Saved", dim: "· as you change", height: h, width: w) }
         }
         .help(model.unsaved ?? model.problem ?? "Settings are saved as you change them; a name or label when you press Return")
+    }
+
+    /// What the selected profile is doing now.
+    @ViewBuilder func profileState(_ e: AccountEntry, w: CGFloat, h: CGFloat) -> some View {
+        switch UsageIconState.of(e) {
+        case .missing: DisplayWindow(text: "Missing", dim: "· reinstall", tone: .warn, height: h, width: w, dimTone: .warn)
+        case .hidden: DisplayWindow(text: "Reading usage", dim: "· every \(max(e.pollMinutes, 1)) min", tone: .ok, height: h, width: w)
+        case .inDock: DisplayWindow(text: "Running", dim: "· in the Dock", tone: .ok, height: h, width: w)
+        case .notPinned: DisplayWindow(text: "Running", dim: "· not in the Dock", tone: .ok, height: h, width: w, dimTone: .amber)
+        case .notRunning:
+            if e.iconHidden { DisplayWindow(text: "Stopped", dim: "· not reading", tone: .amber, height: h, width: w) }
+            else if DockManager.isPinned(Installer.appURL(e)) { DisplayWindow(text: "Stopped", dim: "· in the Dock", height: h, width: w) }
+            else { DisplayWindow(text: "Stopped", dim: "· not in the Dock", height: h, width: w, dimTone: .amber) }
+        }
     }
 }
 
@@ -472,7 +544,7 @@ struct AccountTile: View {
         TileKey(selected: selected, leading: 5) {
             HStack(spacing: 9) {
                 Image(nsImage: preview(entry, status: Store.status(entry.id), tick: model.tick)).resizable().frame(width: 32, height: 32)
-                TileText(title: entry.name.isEmpty ? "New profile" : entry.name, sub: entry.configDir)
+                TileText(title: entry.name.isEmpty ? "New profile" : entry.name, sub: entry.usageOnly ? "usage only" : entry.configDir)
             }
         }
         .onTapGesture { model.selection = entry.id }
@@ -497,6 +569,66 @@ struct TileKey<Content: View>: View {
             .background(RaisedShape(finish: selected ? face.keyDown : face.key, radius: 4, pressed: selected))
             .overlay { if selected { LampStrip() } }
             .contentShape(Rectangle())
+    }
+}
+
+/// What a profile includes: Usage in the Dock and Claude window, two keys side by side with what the current choice
+/// does under each. Both off is "usage only". Turning one off never deletes anything.
+struct ProfileSwitches: View {
+    let usageInDock: Bool
+    let claudeWindow: Bool
+    var waiting = false                 // the Dock is taking an icon in or out: the keys wait
+    let setUsageInDock: (Bool) -> Void
+    let setClaudeWindow: (Bool) -> Void
+    @Environment(\.face) private var face
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 8) {
+            column(SwitchKey(title: "Usage in the Dock", on: usageInDock) { setUsageInDock(!usageInDock) }.disabled(waiting),
+                   usageInDock ? "A Dock icon shows this profile's usage; click it for details."
+                               : "No Dock icon. Usage still shows on the dashboard, in the launcher and in alerts. Its app is kept, so it comes back as it was.")
+            column(SwitchKey(title: "Claude window", on: claudeWindow) { setClaudeWindow(!claudeWindow) }.disabled(waiting),
+                   claudeWindow ? "A Claude window for this profile, signed in to its account; open it from the dashboard or the Dock icon."
+                                : "No Claude window. Its sign-in is kept, so turning it back on needs no new sign-in.")
+        }
+    }
+
+    private func column(_ key: some View, _ says: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            key
+            Text(says).font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+/// A key that's on or off, like the profile tiles: raised, with a lamp strip on top, green when on, dark when off.
+struct SwitchKey: View {
+    let title: String
+    let on: Bool
+    let action: () -> Void
+    @Environment(\.face) private var face
+    @Environment(\.isEnabled) private var enabled
+
+    var body: some View {
+        Button(action: action) {
+            Text(title).font(.system(size: 10, weight: .bold)).tracking(1).textCase(.uppercase).lineLimit(1).minimumScaleFactor(0.8)
+                .foregroundStyle(face.legend)
+                .shadow(color: face.legendShadow, radius: 0, y: face.legendShadowY)
+                .frame(maxWidth: .infinity).frame(height: 30)
+                .background(RaisedShape(finish: face.key, radius: 4, pressed: false))
+                .overlay {
+                    if on { LampStrip(color: FaceTheme.ledOn) }
+                    else {
+                        Capsule().fill(face.ledOff).frame(height: 2).padding(.horizontal, 5).padding(.top, 3)
+                            .frame(maxHeight: .infinity, alignment: .top).allowsHitTesting(false)
+                    }
+                }
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableKey())
+        .opacity(enabled ? 1 : 0.6)
+        .accessibilityValue(on ? "on" : "off")
     }
 }
 
@@ -756,7 +888,6 @@ extension PanelDesign {
 // MARK: - The selected account
 
 struct AccountSettings: View {
-    @State private var dockRestarting = false     // a few seconds after Show in the Dock changes
     @Binding var entry: AccountEntry
     @ObservedObject var model: SettingsModel
     var width: CGFloat = 1280
@@ -769,13 +900,13 @@ struct AccountSettings: View {
         return a.lowercased() != b.lowercased()
     }
 
-    /// The cards in three groups, a column each when there's room: the profile (Profile · Claude Code ·
-    /// Updates and alerts), its Dock icon (Dock icon · Opening and closing · Dock icon clicks), and Icon.
+    /// The cards in three groups, a column each when there's room: the profile (Profile with its Usage in the Dock
+    /// and Claude window keys · Claude Code · Updates and alerts), how its Dock icon and window behave (Opening and
+    /// closing · Dock icon clicks), and Icon. What the profile is doing now is in the main display at the top.
     var body: some View {
-        // the profile itself, then its Dock icon (what it does, how clicks work), then how the icon looks
         SettingsColumns(width: width, groups: [
             [AnyView(accountCard), AnyView(codeCard), AnyView(updatesCard)],
-            [AnyView(dockIconCard), AnyView(openCloseCard), AnyView(clickCard)],
+            [AnyView(openCloseCard), AnyView(clickCard)],
             [AnyView(iconCard)]])
     }
 
@@ -794,6 +925,10 @@ struct AccountSettings: View {
             SRow(label: "Colour", info: "This profile's colour inside cl_audit: the dot by its name on the dashboard and in the launcher, its Show key, its share of the history charts and the dot on its usage panel. The Dock icon's own colour is under Icon.") {
                 SwatchRow(colors: TileColor.accents, selected: entry.accentColor) { if let c = $0 { entry.accent = c } }
             }
+            ProfileSwitches(usageInDock: !entry.iconHidden, claudeWindow: entry.claudeWindow, waiting: model.dockRestarting != nil,
+                            setUsageInDock: { model.setUsageInDock(entry.id, $0) },
+                            setClaudeWindow: { model.setClaudeWindow(entry.id, $0) })
+                .padding(.top, 4).padding(.bottom, 6)
             if let other = FolderRules.seatTaken(entry, among: model.accounts) {
                 Text("Its Claude Code folder is signed in to the same Claude account as “\(other.name)”. One profile per account: sign this folder in with another account, or remove this profile.")
                     .font(.system(size: 11)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
@@ -867,8 +1002,10 @@ struct AccountSettings: View {
     // Dock icon clicks
     var clickCard: some View {
         SCard(title: "Dock icon clicks", info: "What a click on this profile's Dock icon does, and how the usage panel it opens looks. Double-click or ⌥-click always opens the large panel.") {
-            // hidden from the Dock there's nothing to click: say so, offer the way back, and dim the rest
-            notInUse("click it")
+            // no Dock icon, nothing to click: say so, offer the way back, and fade the rest
+            if entry.iconHidden {
+                notInUse("show in the Dock to click it", key: "Show in the Dock") { model.setUsageInDock(entry.id, true) }
+            }
             clickRows.dockOnly(entry.iconHidden)
         }
     }
@@ -904,90 +1041,43 @@ struct AccountSettings: View {
         }
     }
 
-    /// While the Dock icon is hidden, at the top of a card that's only about the Dock: why it's faded, and the key
-    /// that puts the icon back.
-    @ViewBuilder func notInUse(_ what: String) -> some View {
-        if entry.iconHidden {
-            HStack(spacing: 10) {
-                Text("Not in use · show in the Dock to \(what)").font(.system(size: 8.5, weight: .semibold)).tracking(1.3)
-                    .textCase(.uppercase).foregroundStyle(face.print).lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 6)
-                Button("Show in the Dock") { showInDock(true) }.buttonStyle(PillButtonStyle(compact: true)).disabled(dockRestarting)
-                    .help("Puts this Dock icon back in the Dock (the Dock restarts)")
-            }
-            .padding(.leading, 10).padding(.trailing, 6).padding(.vertical, 6)
-            .faceWindow(radius: 6)
-            .padding(.bottom, 6)
+    /// At the top of a card that doesn't apply now: why it's faded, and the key that makes it apply.
+    @ViewBuilder func notInUse(_ why: String, key: String, action: @escaping () -> Void) -> some View {
+        HStack(spacing: 10) {
+            Text("Not in use · \(why)").font(.system(size: 8.5, weight: .semibold)).tracking(1.3)
+                .textCase(.uppercase).foregroundStyle(face.print).lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 6)
+            Button(key, action: action).buttonStyle(PillButtonStyle(compact: true)).disabled(model.dockRestarting != nil)
         }
+        .padding(.leading, 10).padding(.trailing, 6).padding(.vertical, 6)
+        .faceWindow(radius: 6)
+        .padding(.bottom, 6)
     }
 
-    /// Shows or hides the Dock icon; the Dock restarts, so "Restarting the Dock…" shows for a few seconds.
-    func showInDock(_ on: Bool) {
-        entry.iconHidden = !on
-        // a running Dock icon app applies it itself (it restarts); one that isn't running would only at its next
-        // start, so its pin is taken out or put back here, in its own preferences' place
-        let app = Installer.appURL(entry)
-        DockManager.markChange(app)
-        if !Installer.isRunning(entry), let d = UserDefaults(suiteName: Installer.bundleID(entry)) {
-            dockLog.log("\(entry.id, privacy: .public): Show in the Dock \(on ? "on" : "off", privacy: .public) while stopped")
-            if on { DockManager.repin(app, defaults: d) } else { DockManager.unpinRemembering(app, defaults: d) }
-        }
-        // the Dock icon app restarts, then the Dock (twice when putting a pin back): about 10 s, during which the
-        // switch waits, so quick flips can't start changes that undo each other
-        dockRestarting = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { dockRestarting = false }
-    }
-
-    // Dock icon: whether it shows in the Dock and starts at login, and where it is now
-    var dockIconCard: some View {
-        let state = UsageIconState.of(entry)
-        let app = Installer.appURL(entry)
-        return SCard(title: "Dock icon") {
-            // the label, the switch and what it does now on one line; the Dock restart is said in the (i), and shown
-            // in a display window while it happens
-            SRow(label: "Show in the Dock", info: "On: pinned in the Dock, there even while it's stopped (a click starts it). Off: no place in the Dock; it still runs in the background, refreshing and alerting. Changing this restarts the Dock, which takes the pin out or puts it back.", first: true) {
-                // while the change is applied: no clicks, the LED pulses (green turning on, amber turning off)
-                LEDSwitchKey(on: !entry.iconHidden,
-                             pulse: dockRestarting ? (entry.iconHidden ? FaceTheme.ledAmber : FaceTheme.ledOn) : nil) {
-                    showInDock(entry.iconHidden)
-                }
-                .help(dockRestarting ? (entry.iconHidden ? "Taking it out of the Dock…" : "Putting it in the Dock…") : "")
+    // Opening and closing: starting at login, and how the Dock icon and the Claude window follow each other
+    var openCloseCard: some View {
+        SCard(title: "Opening and closing") {
+            // usage only: its background app starts at login on its own and there's nothing to link
+            if entry.usageOnly {
+                notInUse("usage only starts at login on its own", key: "Show in the Dock") { model.setUsageInDock(entry.id, true) }
             }
-            SRow(label: "Open at login", info: "Starts this Dock icon when you log in to the Mac, so its usage refreshes and alerts keep working without opening cl_audit.") { Toggle("", isOn: $entry.openAtLogin).smallSwitch() }
-            // one display, the full width of the row whatever it says: what the Dock icon is doing now
-            SRow(label: "Now") {
-                HStack(spacing: 6) {
-                    Group {
-                        if dockRestarting { DisplayWindow(text: "Restarting the Dock…", tone: .amber, fill: true) }
-                        else {
-                            switch state {
-                            case .inDock: DisplayWindow(text: "Running", dim: "· in the Dock", tone: .ok, fill: true, dimTone: .ok)
-                            case .hidden: DisplayWindow(text: "Running", dim: "· hidden", tone: .ok, fill: true, dimTone: .amber)
-                            case .notPinned: DisplayWindow(text: "Running", dim: "· unpinned", tone: .ok, fill: true, dimTone: .amber)
-                            case .notRunning:
-                                if entry.iconHidden { DisplayWindow(text: "Stopped", dim: "· hidden", fill: true, dimTone: .amber) }
-                                else if DockManager.isPinned(app) { DisplayWindow(text: "Stopped", dim: "· in the Dock", fill: true) }
-                                else { DisplayWindow(text: "Stopped", dim: "· not in the Dock", fill: true, dimTone: .amber) }
-                            case .missing: DisplayWindow(text: "Missing", dim: "· reinstall", tone: .warn, fill: true, dimTone: .warn)
-                            }
-                        }
-                    }
-                    if state == .notPinned && !dockRestarting {
-                        Button("Pin") { DockManager.pin(app) }.buttonStyle(.pill(FaceTheme.led, compact: true)).fixedSize()
-                            .help("Pin it in the Dock, after the other cl_audit icons. This restarts the Dock.")
-                    }
+            SRow(label: "Open at login", info: "Starts this profile's Dock icon when you log in to the Mac, so its usage refreshes and alerts keep working without opening cl_audit. A usage only profile always starts at login.", first: true) {
+                HStack(spacing: 8) {
+                    Toggle("", isOn: $entry.openAtLogin).smallSwitch()
+                    Text(entry.iconHidden ? "starts reading usage when you log in to the Mac" : "starts the Dock icon when you log in to the Mac")
+                        .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                 }
             }
-        }
-    }
-
-    // Opening and closing: how the Dock icon and the Claude window follow each other
-    @ViewBuilder var openCloseCard: some View {
-        do {
-            SCard(title: "Opening and closing") {
-                OpenCloseQuestions(profile: entry.name.isEmpty ? "this profile" : entry.name, lifecycle: $entry.lifecycle)
+            .dockOnly(entry.usageOnly)
+            // a Dock icon without a Claude window: nothing to link the Dock icon to
+            if !entry.usageOnly && !entry.claudeWindow {
+                notInUse("add a Claude window to link the two", key: "Add Claude window") { model.setClaudeWindow(entry.id, true) }
+                    .padding(.top, 6)
             }
+            OpenCloseQuestions(profile: entry.name.isEmpty ? "this profile" : entry.name, lifecycle: $entry.lifecycle)
+                .padding(.top, 6)
+                .dockOnly(!entry.claudeWindow)
         }
     }
 
@@ -1017,9 +1107,7 @@ struct AccountSettings: View {
     // Icon: style, colour, frame
     var iconCard: some View {
         SCard(title: "Icon") {
-            // how it looks in the Dock: nothing to see while it's hidden
-            notInUse("see it")
-            iconRows.dockOnly(entry.iconHidden)
+            iconRows
         }
     }
 
