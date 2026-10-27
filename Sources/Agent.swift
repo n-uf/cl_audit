@@ -79,27 +79,42 @@ enum Agent {
         NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist"))?["CFBundleVersion"] as? String
     }
 
-    /// Run by cl_audit when it starts and after an install: registers the agent once (macOS then starts it now and
-    /// at every login), and restarts it when it runs an older build than this cl_audit.app holds.
+    /// Run by cl_audit when it starts and after an install (blocks up to ~25 s, so off the main thread): registers the
+    /// agent once (macOS then starts it now and at every login), and restarts it when it runs an older build than
+    /// this cl_audit.app holds. An update changes only the agent, not the launcher launchd starts, so a restart is
+    /// enough. Only if the launcher itself changed (a new compiler) does macOS refuse it: then it's registered
+    /// again, which shows macOS's "background item added" notice once.
     @discardableResult
     static func ensureRunning() -> String {
         let app = Bundle.main.bundleURL
-        guard FileManager.default.fileExists(atPath: helperURL(in: app).path) else { return "agent: none in this build" }
-        let svc = service
-        var log = "agent: \(statusText(svc.status))"
-        if svc.status != .enabled {
-            do { try svc.register(); log += " → registered, \(statusText(svc.status))" }
-            catch { log += " → couldn't register: \(error.localizedDescription)" }
-            agentLog.log("\(log, privacy: .public)")
+        guard FileManager.default.fileExists(atPath: helperURL(in: app).path), let want = build(of: app) else {
+            return "agent: none in this build"
+        }
+        var log = "agent: \(statusText(service.status))"
+        defer { agentLog.log("\(log, privacy: .public)") }
+        if service.status != .enabled {
+            log += register() ? " → registered" : " → couldn't register"
+            log += waitForMark(build: want) ? ", build \(want) running" : ", build \(want) didn't start"
             return log
         }
-        if let want = build(of: app), let m = readMark(), m.build != want || !isAlive(m) {
-            log += isAlive(m) ? " · running build \(m.build), restarting for \(want)" : " · not running, starting"
-            restart()
-            log += waitForMark(build: want) ? " → build \(want) running" : " → build \(want) didn't start"
-        }
-        agentLog.log("\(log, privacy: .public)")
+        if let m = readMark(), m.build == want, isAlive(m) { return log + " · build \(want) running" }
+        log += isAlive(readMark()) ? " · running build \(readMark()?.build ?? "?"), restarting for \(want)" : " · not running, starting"
+        restart()
+        if waitForMark(build: want) { return log + " → build \(want) running" }
+        // macOS knows a program it may start by its exact hash: let Launch Services see this copy, give the
+        // background-item records a moment to catch up, then register again.
+        log += " → refused; registering again"
+        Installer.run(AccountRemoval.lsregister, ["-f", app.path])
+        Thread.sleep(forTimeInterval: 10)
+        try? service.unregister()
+        Thread.sleep(forTimeInterval: 2)
+        log += register() && waitForMark(build: want) ? " → build \(want) running" : " → build \(want) didn't start"
         return log
+    }
+
+    private static func register() -> Bool {
+        do { try service.register(); return true }
+        catch { agentLog.error("agent: couldn't register: \(error.localizedDescription, privacy: .public)"); return false }
     }
 
     /// Waits up to `seconds` for a fresh mark from `build`.
