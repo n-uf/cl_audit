@@ -83,7 +83,7 @@ if args.count >= 4, args[1] == "--render-launcher" {
 if args.count >= 2, args[1] == "--agent-status" {
     // the agent's login item and its alive mark, for checking
     let m = Agent.readMark()
-    print("login item: \(Agent.statusText(Agent.service.status))")
+    print("background item: \(Agent.statusText(Agent.service.status))")
     if let m {
         print("mark: pid \(m.pid), build \(m.build), started \(Int(-m.started.timeIntervalSinceNow)) s ago, beat \(Int(-m.beat.timeIntervalSinceNow)) s ago, \(Agent.isAlive(m) ? "alive" : "not alive")")
     } else { print("mark: none") }
