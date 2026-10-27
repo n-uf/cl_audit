@@ -94,9 +94,13 @@ Opening **cl_audit** shows a card per profile: its icon, both limits and a switc
 Claude window, its Dock icon). A usage only profile has no switches: one display says "Usage only · not in
 the Dock · no window".
 
-The top strip says what the agent is doing: "Reading usage · 2 profiles · every 2–5 min", "Anthropic didn't
-answer · 1 profile", or "cl_audit agent stopped" with **Start**; then how old the newest numbers are, with a
-refresh key.
+The top strip is the profile keys, one display and the refresh key. The display shows one thing at a time, most
+important first: "Not updating · agent won't start · numbers 7 min old" (red; a click opens Settings ▸ General with
+the reason), "Starting the agent…", "Not updating · agent paused until 14:32" (after repeated crashes),
+"Updating…", "Updated · 2 min ago · Work: no answer" (Anthropic didn't answer for that profile), or "Updated · 2
+min ago" (its hover says how many profiles the agent reads, and how often). There's no Start key: cl_audit starts
+its agent itself when its window opens and whenever the agent has been silent for 90 s, and the refresh key always
+works: it refreshes, starts the agent first, or (paused) starts it now.
 
 - **Claude window:** open or quit the profile's Claude window.
 - **Dock icon:** start or quit only the profile's Dock icon app; its usage keeps being read. Pins are never
@@ -166,9 +170,9 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
   Turning either off never deletes anything; that happens only in **Remove profile…**. Both off is usage
   only. What the profile is doing now shows in the main display at the top: "Running · in the Dock",
-  "Stopped · in the Dock", "Reading usage · every N min" (no Dock icon), "Missing · reinstall", or "Not
-  reading · cl_audit agent stopped"; while a change goes through it says "Saving…", then "Saved" and what
-  changed.
+  "Stopped · in the Dock", "Reading usage · every N min" (no Dock icon), "Missing · reinstall", or the agent's
+  state in the dashboard's words ("Starting the agent…", "Not updating · agent won't start"); while a change goes
+  through it says "Saving…", then "Saved" and what changed.
 - **Claude Code:** the Claude Code folder (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder) and the sign-in
   found there; **Renew sign-in** (opt-in). Folders other profiles use are marked and can't be picked. The
   Claude window follows from the folder (see Profile above); it isn't a setting.
@@ -208,6 +212,7 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.
 - **Dashboard cards:** one card style for every profile (Glow, Rings, Numbers, Segments or Pace).
 - **About:** the version and build, and a link to what's new.
+- **Agent:** what the background agent is doing; when it won't start, why and what to do.
 - **Clean-up:** when the agent last tidied up ("Cleaned up 2 leftovers · 26 Oct"; the (i) lists what went),
   and **Uninstall cl_audit…** (see [Uninstalling](#uninstalling)).
 - **Dock** (off by default; experimental and invasive: it rewrites the Dock's pin list and restarts the

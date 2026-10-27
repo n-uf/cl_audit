@@ -333,78 +333,204 @@ struct LauncherActions {
     var profileSettings: (AccountRow) -> Void = { _ in }
 }
 
-/// "Updated 1 min ago": the age of the newest numbers on the dashboard; a click asks every icon to fetch now.
-struct UpdatedButton: View {
-    @ObservedObject var model: LauncherModel
-    let refresh: () -> Void
+/// Starts the cl_audit agent from the cl_audit window: when the window opens, and whenever the agent's mark has been
+/// silent for 90 s. There's no Start key: after three starts that didn't bring it up the display turns red, and the
+/// refresh key tries again.
+final class AgentStarter: ObservableObject {
+    static let shared = AgentStarter()
+    @Published private(set) var starting = false
+    @Published private(set) var failures = 0
+    /// What the last start found (for Settings ▸ General), in words.
+    @Published private(set) var lastResult = ""
+    /// Off while cl_audit uninstalls itself.
+    var suspended = false
+    private var timer: Timer?
 
-    var newest: Date? { model.shownRows.compactMap { $0.status?.updatedAt }.max() }
-    static let width: CGFloat = 206     // fits "UPDATED · 23 H 59 MIN AGO"
+    func watch() {
+        guard timer == nil else { return }
+        timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.check() }
+    }
 
-    /// The age in a display window, and a key that refreshes.
-    var body: some View {
-        HStack(spacing: 6) {
-            Group {
-                // one width for every text, so nothing next to it moves when it changes
-                if model.refreshing { DisplayWindow(text: "Updating…", height: TopStrip.height, width: Self.width) }
-                else if let d = newest { DisplayWindow(text: "Updated", dim: "· \(DetailsFormat.ago(d))", height: TopStrip.height, width: Self.width) }
-                else { DisplayWindow(text: "Not updated yet", height: TopStrip.height, width: Self.width) }
+    /// Silent for 90 s (not alive) and not given up on: start it.
+    func check() {
+        guard !suspended, !starting, failures < 3, !Agent.isAlive(Agent.readMark()) else { return }
+        start(reason: "silent")
+    }
+
+    /// Registers or restarts the agent (Agent.ensureRunning, off the main thread), then `then`.
+    func start(reason: String, then: (() -> Void)? = nil) {
+        guard !suspended, !starting else { return }
+        starting = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            let log = Agent.ensureRunning()
+            let ok = Agent.isAlive(Agent.readMark())
+            DispatchQueue.main.async {
+                self.starting = false
+                self.failures = ok ? 0 : self.failures + 1
+                self.lastResult = log
+                agentLog.log("cl_audit: started the agent (\(reason, privacy: .public)): \(ok ? "running" : "not running", privacy: .public)")
+                then?()
             }
-            // while updating, its arrow lights up green and pulses like an LED (and it takes no clicks)
-            Button(action: refresh) {
-                KeyLook(height: TopStrip.height, hPad: 0) {
-                    Group {
-                        if model.refreshing { PulsingSymbol(name: "arrow.clockwise") }
-                        else { Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold)) }
-                    }
-                    .frame(width: TopStrip.height)
-                }
-            }
-                .buttonStyle(PressableKey())
-                .allowsHitTesting(!model.refreshing)
-                .keyboardShortcut("r", modifiers: .command)
-                .help(model.refreshing ? "Updating…" : "Refresh now (⌘R)")
+        }
+    }
+
+    /// Paused after crashes: restarted now, skipping the pause (a restart cl_audit asks for doesn't count as a crash).
+    func startNow(then: (() -> Void)? = nil) {
+        guard !starting else { return }
+        starting = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            Agent.restart()
+            let ok = Agent.waitForMark(build: Agent.readMark()?.build ?? "")
+            DispatchQueue.main.async { self.starting = false; if !ok { self.failures += 1 }; then?() }
         }
     }
 }
 
-/// What the cl_audit agent is doing, from its mark: reading every profile's usage, Anthropic not answering, or not
-/// running at all (with a key that starts it). Old numbers alone can't tell these apart.
-struct AgentDisplay: View {
-    @ObservedObject var model: LauncherModel
-    @State private var starting = false
-    static let width: CGFloat = 392     // fits "READING USAGE · 12 PROFILES · EVERY 2–15 MIN"
+/// What the dashboard's one display says: one thing at a time, most important first.
+enum StripState: Equatable {
+    case wontStart(age: String)                       // red: three starts didn't bring the agent up
+    case starting(age: String)                        // amber: cl_audit is starting it
+    case paused(until: Date, age: String)             // amber: it crashed several times in a row
+    case updating
+    case noAnswer(ago: String, names: [String], tip: String)   // amber: Anthropic didn't answer for these
+    case updated(ago: String?, tip: String)
 
-    var body: some View {
-        let h = TopStrip.height, w = Self.width
-        HStack(spacing: 6) {
-            switch Agent.health(model.agent) {
-            case let .reading(n, lo, hi):
-                DisplayWindow(text: "Reading usage", dim: "· \(n) profile\(n == 1 ? "" : "s") · every \(lo == hi ? "\(lo)" : "\(lo)–\(hi)") min", tone: .ok, height: h, width: w)
-                    .help("The cl_audit agent reads every profile's usage on its own schedule and sends the alerts, with or without Dock icons or Claude windows")
-            case .failing(let n):
-                DisplayWindow(text: "Anthropic didn't answer", dim: "· \(n) profile\(n == 1 ? "" : "s")", tone: .amber, height: h, width: w, dimTone: .amber)
-                    .help("The last request for these profiles' usage failed; the agent tries again on its schedule")
-            case .paused(let until):
-                DisplayWindow(text: "cl_audit agent paused", dim: "· crashed, again at \(UsageReader.when(until))", tone: .warn, height: h, width: w, dimTone: .warn)
-                    .help("The agent crashed several times in a row, so it waits before reading again")
-            case .stopped:
-                DisplayWindow(text: starting ? "Starting the agent…" : "cl_audit agent stopped", dim: starting ? nil : "· start", tone: .amber, height: h, width: w, dimTone: .amber)
-                    .help("Nothing reads the usage or sends alerts while the agent is stopped")
-                Button { start() } label: {
-                    KeyLook(height: h, hPad: 10) { Text("Start").font(.system(size: 10, weight: .semibold)) }
-                }
-                .buttonStyle(PressableKey()).disabled(starting)
-                .help("Start the cl_audit agent")
-            }
+    static func of(_ model: LauncherModel, _ starter: AgentStarter) -> StripState {
+        let newest = model.rows.compactMap { $0.status?.updatedAt }.max()
+        let age = newest.map(Self.age) ?? "no numbers yet"
+        let health = Agent.health(model.agent)
+        if case .stopped = health {
+            return starter.failures >= 3 && !starter.starting ? .wontStart(age: age) : .starting(age: age)
+        }
+        if starter.starting { return .starting(age: age) }
+        if case let .paused(until) = health { return .paused(until: until, age: age) }
+        if model.refreshing { return .updating }
+        let ago = newest.map { DetailsFormat.ago($0) }
+        let failing = Set(model.agent?.failing ?? [])
+        let bad = model.rows.filter { failing.contains($0.id) }
+        if let first = bad.first, let ago {
+            return .noAnswer(ago: ago, names: bad.map(\.entry.name),
+                             tip: "The last request for \(bad.map(\.entry.name).joined(separator: " and "))'s usage failed; the agent tries again in \(max(first.entry.pollMinutes, 1)) min")
+        }
+        var tip = "Reading usage in the background"
+        if case let .reading(n, lo, hi) = health {
+            tip = "Reading usage for \(n) profile\(n == 1 ? "" : "s"), every \(lo == hi ? "\(lo)" : "\(lo)–\(hi)") min, in the background"
+        }
+        return .updated(ago: ago, tip: tip)
+    }
+
+    /// "numbers 7 min old"
+    static func age(_ d: Date) -> String {
+        let m = Int(Date().timeIntervalSince(d) / 60)
+        return m < 1 ? "numbers just read" : m < 60 ? "numbers \(m) min old" : "numbers \(m / 60) h \(m % 60) min old"
+    }
+
+    static func time(_ d: Date) -> String { let f = DateFormatter(); f.timeStyle = .short; f.dateStyle = .none; return f.string(from: d) }
+
+    /// The display's words: (text, the dimmer part, tone, hover).
+    var words: (text: String, dim: String?, tone: StripDisplay.Tone, help: String) {
+        switch self {
+        case .wontStart(let age):
+            return ("Not updating", "· agent won't start · \(age)", .red, "cl_audit couldn't start its background agent three times; click for Settings ▸ General, where the reason is")
+        case .starting(let age):
+            return ("Starting the agent…", "· \(age)", .amber, "cl_audit noticed its background agent wasn't running and is starting it")
+        case let .paused(until, age):
+            return ("Not updating", "· agent paused until \(Self.time(until)) · \(age)", .amber, "The agent crashed several times in a row, so it waits before reading again")
+        case .updating:
+            return ("Updating…", nil, .normal, "Reading every profile's usage now")
+        case let .noAnswer(ago, names, tip):
+            return ("Updated", "· \(ago) · " + (names.count == 1 ? "\(names[0]): no answer" : "\(names.count) profiles: no answer"), .amber, tip)
+        case let .updated(ago, tip):
+            return (ago == nil ? "Not updated yet" : "Updated", ago.map { "· \($0)" }, .normal, tip)
+        }
+    }
+}
+
+/// The dashboard strip's one display: how fresh the numbers are, or what's wrong. It fills the space between the
+/// profile keys and the refresh key; long words end in "…" rather than pushing anything.
+struct StripDisplay: View {
+    enum Tone { case normal, amber, red }
+    let state: StripState
+    var open: (() -> Void)? = nil           // the red state: a click opens Settings ▸ General
+    @Environment(\.face) private var face
+
+    private func color(_ t: Tone) -> Color {
+        switch t {
+        case .normal: return face.displayText
+        case .amber: return face.light ? .hex(0xa85f00) : .hex(0xffb24a)
+        case .red: return face.light ? .hex(0xb42318) : .hex(0xff6b5e)
         }
     }
 
-    private func start() {
-        starting = true
-        DispatchQueue.global(qos: .userInitiated).async {
-            Agent.ensureRunning()
-            DispatchQueue.main.async { starting = false; model.reload() }
+    var body: some View {
+        let w = state.words, c = color(w.tone)
+        let dimColor = w.tone == .normal ? c.opacity(face.light ? 0.45 : 0.4) : c.opacity(0.55)
+        let label = HStack(spacing: 8) {
+            Text(w.text).foregroundStyle(c)
+                .shadow(color: face.displayGlow ? c.opacity(0.75) : .clear, radius: 1.5)
+                .shadow(color: face.displayGlow ? c.opacity(0.35) : .clear, radius: 4.5)
+                .layoutPriority(1)
+            if let d = w.dim { Text(d).foregroundStyle(dimColor) }
+        }
+        .font(.system(size: 10.5, weight: .semibold, design: .monospaced))
+        .tracking(10.5 * 0.14)
+        .textCase(.uppercase)
+        .lineLimit(1).truncationMode(.tail)
+        .padding(.horizontal, 12)
+        // the same ideal width whatever it says, so the window's layout doesn't jump between one row and two
+        .frame(minWidth: 300, idealWidth: 300, maxWidth: .infinity, minHeight: TopStrip.height, maxHeight: TopStrip.height, alignment: .leading)
+        .background(DisplayGlass(radius: 4))
+        .clipped()
+        .help(w.help)
+        if let open, case .wontStart = state {
+            Button(action: open) { label }.buttonStyle(.plain)
+        } else {
+            label
+        }
+    }
+}
+
+/// The strip's one key: make the numbers current. It refreshes; with the agent down it starts it first (and tries
+/// again after three failed starts); paused, it starts it now. While cl_audit starts the agent it waits, lit amber.
+struct RefreshKey: View {
+    @ObservedObject var model: LauncherModel
+    @ObservedObject var starter: AgentStarter
+    let state: StripState
+    let refresh: () -> Void
+
+    var body: some View {
+        let waiting: Bool = { if case .starting = state { return true }; return false }()
+        Button(action: press) {
+            KeyLook(latched: waiting, lamp: waiting ? .hex(0xffb24a) : FaceTheme.led, height: TopStrip.height, hPad: 0) {
+                Group {
+                    if case .updating = state { PulsingSymbol(name: "arrow.clockwise") }
+                    else { Image(systemName: "arrow.clockwise").font(.system(size: 10, weight: .semibold)) }
+                }
+                .frame(width: TopStrip.height)
+            }
+        }
+        .buttonStyle(PressableKey())
+        .allowsHitTesting(!waiting && !model.refreshing)
+        .keyboardShortcut("r", modifiers: .command)
+        .help(help)
+    }
+
+    private var help: String {
+        switch state {
+        case .wontStart: return "Try again"
+        case .starting: return "Waiting for the agent to start"
+        case .paused: return "Start the agent now, skipping the pause"
+        case .updating: return "Updating…"
+        default: return Agent.isAlive(model.agent) ? "Refresh now (⌘R)" : "Start the agent and refresh (⌘R)"
+        }
+    }
+
+    private func press() {
+        switch state {
+        case .paused: starter.startNow(then: refresh)
+        case .wontStart: starter.start(reason: "the key", then: refresh)
+        default:
+            if Agent.isAlive(Agent.readMark()) { refresh() } else { starter.start(reason: "the key", then: refresh) }
         }
     }
 }
@@ -440,19 +566,27 @@ struct TopStrip: View {
     let dashboard: Bool
     var fill = false              // narrow window: the strip spans its own row, the display at its right end
     let refresh: () -> Void
+    var openGeneral: (() -> Void)? = nil
+    @ObservedObject private var starter = AgentStarter.shared
     @Environment(\.face) private var face
 
     var body: some View {
         HStack(spacing: 6) {
             if dashboard && model.rows.count > 1 { AccountChips(model: model); StripDivider() }
-            if fill { Spacer(minLength: 6) }
-            if dashboard { AgentDisplay(model: model); UpdatedButton(model: model, refresh: refresh) }
-            else if let settings { SettingsStatus(model: settings) }
+            if dashboard {
+                // profile keys | one display | the refresh key
+                let st = StripState.of(model, starter)
+                StripDisplay(state: st, open: openGeneral)
+                RefreshKey(model: model, starter: starter, state: st, refresh: refresh)
+            } else if let settings {
+                if fill { Spacer(minLength: 6) }
+                SettingsStatus(model: settings)
+            }
         }
         .padding(4)
-        .frame(maxWidth: fill ? .infinity : nil)
+        .frame(maxWidth: fill || dashboard ? .infinity : nil)
         .background(SurfaceShape(surface: face.strip, radius: 6))
-        .fixedSize(horizontal: !fill, vertical: true)
+        .fixedSize(horizontal: !fill && !dashboard, vertical: true)
     }
 }
 
@@ -593,7 +727,7 @@ struct MainWindowView: View {
 
     /// On the dashboard: profile keys and Updated. In Settings: whether everything is saved.
     private var strip: some View {
-        TopStrip(model: model, settings: settings, dashboard: nav.page == .dashboard, refresh: actions.refreshAll)
+        TopStrip(model: model, settings: settings, dashboard: nav.page == .dashboard, refresh: actions.refreshAll, openGeneral: actions.settings)
     }
 
     var body: some View {
@@ -610,7 +744,7 @@ struct MainWindowView: View {
                 }
                 VStack(alignment: .leading, spacing: 10) {
                     HStack(spacing: 12) { brand; Spacer(minLength: 8); pageKeys }
-                    TopStrip(model: model, settings: settings, dashboard: nav.page == .dashboard, fill: true, refresh: actions.refreshAll)
+                    TopStrip(model: model, settings: settings, dashboard: nav.page == .dashboard, fill: true, refresh: actions.refreshAll, openGeneral: actions.settings)
                 }
             }
             .padding(.horizontal, 16).padding(.top, 2).padding(.bottom, 11)

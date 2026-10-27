@@ -491,7 +491,7 @@ struct SettingsStatus: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
-        let w = UpdatedButton.width + 40, h = TopStrip.height
+        let w: CGFloat = 246, h = TopStrip.height
         let _ = model.tick                        // the profile's state is read again every few seconds
         Group {
             if model.saving || model.autosaving { DisplayWindow(text: "Saving…", tone: .amber, height: h, width: w) }
@@ -507,8 +507,14 @@ struct SettingsStatus: View {
 
     /// What the selected profile is doing now: its usage (read by the agent) and, with one, its Dock icon.
     @ViewBuilder func profileState(_ e: AccountEntry, w: CGFloat, h: CGFloat) -> some View {
-        if !Agent.isAlive(Agent.readMark()) {
-            DisplayWindow(text: "Not reading", dim: "· cl_audit agent stopped", tone: .amber, height: h, width: w, dimTone: .amber)
+        // the agent first, in the dashboard's words
+        let health = Agent.health()
+        if case .stopped = health, AgentStarter.shared.failures >= 3, !AgentStarter.shared.starting {
+            DisplayWindow(text: "Not updating", dim: "· agent won't start", tone: .warn, height: h, width: w)
+        } else if case .stopped = health {
+            DisplayWindow(text: "Starting the agent…", tone: .amber, height: h, width: w)
+        } else if case let .paused(until) = health {
+            DisplayWindow(text: "Not updating", dim: "· agent paused until \(StripState.time(until))", tone: .amber, height: h, width: w)
         } else {
             switch UsageIconState.of(e) {
             case .off: DisplayWindow(text: "Reading usage", dim: "· every \(max(e.pollMinutes, 1)) min", tone: .ok, height: h, width: w)

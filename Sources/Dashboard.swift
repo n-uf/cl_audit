@@ -30,11 +30,50 @@ struct DashboardSettings: View {
     var width: CGFloat = 1280
 
     var body: some View {
-        SettingsColumns(width: width, groups: [[AnyView(emailsCard), AnyView(faceCard), AnyView(appIconCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(DockCard()), AnyView(cleanupCard)]])
+        SettingsColumns(width: width, groups: [[AnyView(emailsCard), AnyView(faceCard), AnyView(appIconCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(agentCard), AnyView(DockCard()), AnyView(cleanupCard)]])
     }
 
     @Environment(\.face) private var face
     @ObservedObject private var privacy = Privacy.shared
+
+    // The agent: what it's doing, and when it won't start, why and what to do
+    @ObservedObject private var starter = AgentStarter.shared
+    var agentCard: some View {
+        let _ = cleanupTick
+        let health = Agent.health()
+        let line: String = {
+            switch health {
+            case let .reading(n, lo, hi): return "Reading usage · \(n) profile\(n == 1 ? "" : "s") · every \(lo == hi ? "\(lo)" : "\(lo)–\(hi)") min"
+            case .failing(let n): return "Reading usage · Anthropic didn't answer for \(n) profile\(n == 1 ? "" : "s")"
+            case .paused(let until): return "Not updating · paused until \(StripState.time(until)) after crashes"
+            case .stopped: return starter.failures >= 3 ? "Not updating · agent won't start" : "Starting the agent…"
+            }
+        }()
+        return SCard(title: "Agent", info: "cl_audit's background agent reads every profile's usage, renews sign-ins, sends the alerts and runs Opening and closing. macOS starts it at login and after a crash; cl_audit starts it too when its window opens and whenever it has been silent for 90 s.") {
+            SRow(label: "Now", first: true) {
+                Text(line).font(.system(size: 12)).foregroundStyle(starter.failures >= 3 && health == .stopped ? face.danger : face.soft)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if case .stopped = health, starter.failures >= 3 {
+                SRow(label: "Why", stacked: true) {
+                    Text(Self.reason()).font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .onAppear { cleanupTick += 1 }
+    }
+
+    /// Why the agent won't start, and the fix, in words.
+    static func reason() -> String {
+        switch Agent.service.status {
+        case .requiresApproval:
+            return "macOS needs you to allow cl_audit to run in the background: System Settings ▸ General ▸ Login Items & Extensions ▸ Allow in the Background ▸ cl_audit. Then press the refresh key."
+        case .notRegistered, .notFound:
+            return "cl_audit's background item isn't registered. Quit and reopen cl_audit, or reinstall it; then press the refresh key."
+        default:
+            return "macOS didn't start it. Make sure cl_audit is in /Applications (not in the Trash or a download folder), then press the refresh key. If it still won't start, restart the Mac or reinstall cl_audit."
+        }
+    }
 
     // Clean-up and Uninstall: what the agent tidies on its own, and taking cl_audit off this Mac
     @State private var cleanupTick = 0

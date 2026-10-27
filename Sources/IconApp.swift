@@ -120,8 +120,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // On start: bring the Dock icon apps up to date (the agent starts the ones that should run).
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 if let list = Store.loadChecked() { Installer.sync(list) }   // never with a bad read: it removes apps
-                // the one login item; restarted when it runs an older build (waits for it, so off the main thread)
-                DispatchQueue.global(qos: .utility).async { Agent.ensureRunning() }
+                // the agent: registered or restarted now (an older build too), and watched while cl_audit is open
+                AgentStarter.shared.start(reason: "cl_audit opened")
+                AgentStarter.shared.watch()
             }
             // alerts come from cl_audit: macOS asks once, here, while the window is open (when a profile has them on)
             if Store.load().contains(where: \.notify) {

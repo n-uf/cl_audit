@@ -24,9 +24,11 @@ the notes before updating.
   is open (before, "start the Dock icon with its window" needed cl_audit running). Old settings carry over:
   Open at login on → At login; "start or quit the Dock icon too" → With its window; both off → When started;
   "open or quit the Claude window too" → the window switch.
-- **The top strip says what's reading:** "Reading usage · 2 profiles · every 2–5 min", "Anthropic didn't
-  answer · 1 profile", or "cl_audit agent stopped" with **Start**. Profile settings say "Not reading · cl_audit
-  agent stopped" when that's the case.
+- **One display in the dashboard's top strip:** the profile keys, one display and the refresh key. It shows one
+  thing at a time, most important first: the agent won't start (red, with the numbers' age), starting the agent,
+  paused after crashes, updating, a profile Anthropic didn't answer for, or "Updated · 2 min ago". No Start key:
+  cl_audit starts its agent itself when its window opens and whenever it has been silent for 90 s, and the
+  refresh key always works. Settings ▸ General ▸ Agent says why it won't start, and what to do.
 - **New profile:** a new profile's Dock icon is put in the Dock (it could otherwise be taken for one dragged
   out, and switched off). **Start reading usage** (Usage in the Dock off) installs nothing.
 - **Fixed:** an alert could come again for the same limit and reset, because Anthropic's reset time differs by

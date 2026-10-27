@@ -300,6 +300,7 @@ struct UninstallSheet: View {
     private func go() {
         let c = config, w = window, claude = model.claudePath, app = Bundle.main.bundleURL
         working = "Uninstalling…"
+        AgentStarter.shared.suspended = true          // the agent is meant to stop now
         DispatchQueue.global(qos: .userInitiated).async {
             let kept = Uninstall.run(deleteConfig: c, deleteWindow: w, trash: app, claude: claude,
                                      log: { line in DispatchQueue.main.async { working = line } })
