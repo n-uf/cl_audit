@@ -64,7 +64,7 @@ struct PillPicker<Value: Hashable>: View {
                         .lineLimit(1).fixedSize()
                         .foregroundStyle(on ? face.legend : face.trackLegend)
                         .shadow(color: on ? face.legendShadow : .clear, radius: 0, y: face.legendShadowY)
-                        .padding(.horizontal, compact ? 8 : 10)
+                        .padding(.horizontal, fill ? 6 : compact ? 8 : 10)      // stretched choices share any extra width
                         .frame(maxWidth: fill ? .infinity : nil)
                         .frame(height: compact ? 20 : 22)
                         .background { if on { RaisedShape(finish: face.key, radius: 3) } }

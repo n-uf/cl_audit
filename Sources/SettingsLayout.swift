@@ -4,21 +4,26 @@
 import SwiftUI
 
 /// Settings cards in groups, a group per column, in reading order: as many columns as fit (each 340–460 pt,
-/// never stretched). When there are fewer columns than groups, the later groups stack in the last column;
-/// with one column everything follows in order. Extra width stays empty rather than widening cards.
+/// never stretched). When there are fewer columns than groups, the later groups stack in the last column, or, for
+/// two columns, the `two` arrangement when one is given; with one column everything follows in order. Extra width
+/// stays empty rather than widening cards.
 struct SettingsColumns: View {
     let width: CGFloat
     let groups: [[AnyView]]
+    var two: [[AnyView]]? = nil
 
     static let minColumn: CGFloat = 340
     static let maxColumn: CGFloat = 460
     static let spacing: CGFloat = 10
 
     var body: some View {
-        let n = max(1, Int(((width + Self.spacing) / (Self.minColumn + Self.spacing)).rounded(.down)))
+        // as many columns as fit, never more than there are groups: the width is shared by the columns in use, so cards
+        // grow to 460 pt as the window widens instead of dropping back to 340 when a fourth column would fit
+        let n = min(groups.count, max(1, Int(((width + Self.spacing) / (Self.minColumn + Self.spacing)).rounded(.down))))
         let w = min(Self.maxColumn, (width - CGFloat(n - 1) * Self.spacing) / CGFloat(n))
         let cols: [[AnyView]] = n >= groups.count ? groups
             : n == 1 ? [groups.flatMap { $0 }]
+            : n == 2 && two != nil ? two!
             : Array(groups.prefix(n - 1)) + [groups.dropFirst(n - 1).flatMap { $0 }]
         HStack(alignment: .top, spacing: Self.spacing) {
             ForEach(cols.indices, id: \.self) { i in

@@ -24,18 +24,22 @@ final class DashboardPrefs: ObservableObject {
     }
 }
 
-/// Settings ▸ General: Usage in the background · Emails · Dock · Face · Dashboard cards · App icon · About. The history
+/// Settings ▸ General: Usage in the background · About | Emails · Face · Dashboard cards | App icon · Dock. The history
 /// period and which charts to show are set on the dashboard itself, as filters.
 struct DashboardSettings: View {
     @ObservedObject private var prefs = DashboardPrefs.shared
     var width: CGFloat = 1280
 
-    /// Most important first, read left to right and top to bottom (two columns and one keep the order): how it runs
-    /// (Usage in the background, Emails, Dock), how it looks (Face, Dashboard cards), the rest (App icon, About).
+    /// Column 1 is the app (Usage in the background, About), column 2 what you see (Emails, Face, Dashboard cards),
+    /// column 3 the Dock (App icon, Dock). In two columns App icon goes under column 1 and Dock under column 2, so both
+    /// stay about equal; one column keeps the three-column order, top to bottom.
     var body: some View {
-        SettingsColumns(width: width, groups: [[AnyView(usageCard), AnyView(emailsCard), AnyView(DockCard())],
-                                               [AnyView(faceCard), AnyView(cardsCard)],
-                                               [AnyView(appIconCard), AnyView(aboutCard)]])
+        SettingsColumns(width: width,
+                        groups: [[AnyView(usageCard), AnyView(aboutCard)],
+                                 [AnyView(emailsCard), AnyView(faceCard), AnyView(cardsCard)],
+                                 [AnyView(appIconCard), AnyView(DockCard())]],
+                        two: [[AnyView(usageCard), AnyView(aboutCard), AnyView(appIconCard)],
+                              [AnyView(emailsCard), AnyView(faceCard), AnyView(cardsCard), AnyView(DockCard())]])
     }
 
     @Environment(\.face) private var face
@@ -49,6 +53,7 @@ struct DashboardSettings: View {
     /// Offscreen renders only: a made-up state for the card (the real agent is never touched).
     struct UsagePreview { var health: Agent.Health; var allowed: Bool; var newest: Date?; var stoppedSince: Date? }
     static var usagePreview: UsagePreview? = nil
+    static var cleanupPreview: CleanupRecord? = nil
 
     var usageCard: some View {
         let _ = tick
@@ -63,9 +68,11 @@ struct DashboardSettings: View {
             Group {
                 switch health {
                 case let .reading(n, lo, hi):
-                    DisplayWindow(text: "Reading usage", dim: "· \(n) profile\(n == 1 ? "" : "s") · every \(lo == hi ? "\(lo)" : "\(lo)–\(hi)") min", tone: .ok, height: 24)
+                    let profiles = "· \(n) profile\(n == 1 ? "" : "s")", every = "\(lo == hi ? "\(lo)" : "\(lo)–\(hi)") min"
+                    usageDisplay("Reading usage", [profiles + " · every " + every, profiles + " · " + every, profiles], .ok)
                 case .failing(let n):
-                    DisplayWindow(text: "Reading usage", dim: "· Anthropic didn't answer for \(n) profile\(n == 1 ? "" : "s")", tone: .amber, height: 24)
+                    let profiles = "\(n) profile\(n == 1 ? "" : "s")"
+                    usageDisplay("Reading usage", ["· Anthropic didn't answer for " + profiles, "· no answer for " + profiles, "· no answer"], .amber)
                 case .paused(let until):
                     DisplayWindow(text: "Not reading", dim: "· paused until \(StripState.time(until))", tone: .amber, height: 24)
                 case .stopped:
@@ -80,10 +87,10 @@ struct DashboardSettings: View {
                 .padding(.top, 7).padding(.bottom, 4)
             SRow(label: "Alerts", info: "Alerts come from cl_audit when a limit reaches the level set for each profile. macOS asks once; you can change it in System Settings ▸ Notifications ▸ cl_audit.", first: true) {
                 if allowed == false {
-                    // side by side when there's room, the key under the display when not
+                    // one line: in a narrow column the display's printing is a size smaller
                     ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 8) { notAllowed; openNotifications }
-                        VStack(alignment: .leading, spacing: 6) { notAllowed; openNotifications }
+                        HStack(spacing: 8) { DisplayWindow(text: "Not allowed", tone: .amber); allowKey }
+                        HStack(spacing: 6) { DisplayWindow(text: "Not allowed", tone: .amber, size: 9); allowKey }
                     }
                 } else if allowed == true {
                     DisplayWindow(text: "Allowed", tone: .ok)
@@ -92,24 +99,20 @@ struct DashboardSettings: View {
                 }
             }
             SRow(label: "Last read") {
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(newest.map { DetailsFormat.ago($0) } ?? "not yet").font(.system(size: 12)).foregroundStyle(face.soft)
-                    if stopped { Text("the cards show older numbers").font(.system(size: 11)).foregroundStyle(face.muted) }
-                }
+                Text(newest.map { DetailsFormat.ago($0) } ?? "not yet").font(.system(size: 12)).lineLimit(1)
+                    .foregroundStyle(stopped ? face.caution : face.soft)
             }
             if stopped {
                 SRow(label: "Start it") {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Button("Start reading") { starter.start(reason: "Settings") }.buttonStyle(PillButtonStyle(compact: true))
-                        Text("cl_audit tries by itself every minute").font(.system(size: 11)).foregroundStyle(face.muted)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.vertical, 4)
+                    Button("Start reading") { starter.start(reason: "Settings") }.buttonStyle(PillButtonStyle(compact: true))
                 }
-                if starter.failures >= 3 {
-                    Text(Self.reason()).font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
+                // any longer note goes under the rows, at the card's full width
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("The cards show the numbers from the last read. cl_audit also retries by itself every minute.")
+                    if starter.failures >= 3 { Text(Self.reason()) }
                 }
+                .font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
             }
         }
         .onAppear { tick += 1; alerts.refresh() }
@@ -117,10 +120,16 @@ struct DashboardSettings: View {
         .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in tick += 1 }
     }
 
-    private var notAllowed: some View { DisplayWindow(text: "Not allowed", tone: .amber) }
-    private var openNotifications: some View {
-        Button("Open Notifications…") { AlertsPermission.openSettings() }.buttonStyle(PillButtonStyle(compact: true))
+    private var allowKey: some View {
+        Button("Allow…") { AlertsPermission.openSettings() }.buttonStyle(PillButtonStyle(compact: true))
             .help("System Settings ▸ Notifications ▸ cl_audit")
+    }
+
+    /// The card's display on one line: the first wording that fits the column (a display never shrinks its text).
+    private func usageDisplay(_ text: String, _ dims: [String], _ tone: DisplayWindow.Tone) -> some View {
+        ViewThatFits(in: .horizontal) {
+            ForEach(dims, id: \.self) { DisplayWindow(text: text, dim: $0, tone: tone, height: 24) }
+        }
     }
 
     /// Why the agent won't start, and the fix, in words.
@@ -179,14 +188,19 @@ struct DashboardSettings: View {
                 Button("What's new") { NSWorkspace.shared.open(URL(string: "https://github.com/n-uf/cl_audit/blob/main/CHANGELOG.md")!) }
                     .buttonStyle(PillButtonStyle(compact: true))
             }
-            let r = Cleanup.lastRecord()
+            let r = Self.cleanupPreview ?? Cleanup.lastRecord()
             let items = (r?.removed ?? []).prefix(6).joined(separator: "\n")
             SRow(label: "Clean-up", info: "The agent tidies up on its own: at login, after every change and every 6 hours. It removes only what is provably cl_audit's: Dock icon apps no profile wants, second copies, what macOS keeps for them, saved usage of removed profiles, Dock pins of apps that are gone and old Terminal scripts. Never a Claude Code folder, a Claude window's data or a sign-in." + (items.isEmpty ? "" : "\nLast removed:\n" + items)) {
-                Text(Cleanup.summary(r)).font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+                // one line: the full words, or the short ones in a narrow column
+                ViewThatFits(in: .horizontal) {
+                    Text(Cleanup.summary(r)).fixedSize()
+                    Text(Cleanup.summary(r, short: true)).lineLimit(1)
+                }
+                .font(.system(size: 12)).foregroundStyle(face.soft)
             }
             SRow(label: "Uninstall", info: "Removes every Dock icon app and its pin, the agent, saved usage, settings and caches, then moves cl_audit to the Trash. You choose per profile whether its Claude Code folder (signed out first) and its own Claude window's data go too; ~/.claude and the standard window are never deleted.") {
-                Button("Uninstall cl_audit…") { UninstallUI.shared.show = true }
-                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(face.danger)
+                Button { UninstallUI.shared.show = true } label: { Text("Uninstall cl_audit…").foregroundStyle(face.danger) }
+                    .buttonStyle(PillButtonStyle(compact: true))
             }
         }
     }
@@ -222,7 +236,7 @@ struct DashboardSettings: View {
 struct DashboardTile: View {
     let selected: Bool
     var body: some View {
-        TileKey(selected: selected) { TileText(title: "General", sub: "reading · emails · Dock · face · cards") }
+        TileKey(selected: selected) { TileText(title: "General", sub: "reading · about · emails · face · Dock") }
     }
 }
 

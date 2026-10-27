@@ -206,27 +206,31 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
 ### General settings
 
-The cards come most important first, read left to right and top to bottom (two columns and one keep the order):
+Column 1 is the app (Usage in the background, About), column 2 what you see (Emails, Face, Dashboard cards),
+column 3 the Dock (App icon, Dock). In two columns App icon goes under column 1 and Dock under column 2; one column
+keeps the same order, top to bottom. Every row is one line.
 
 - **Usage in the background:** whether usage is being read ("Reading usage · 2 profiles · every 2–5 min", or red
-  "Not reading · stopped 12 min ago"), then whether **Alerts** reach you (Allowed, or "Not allowed" with **Open
-  Notifications…**), **Last read**, and only while reading has stopped **Start reading** (cl_audit also tries by
-  itself every minute) with the reason it won't start. The dashboard's red display opens this card.
+  "Not reading · stopped 12 min ago"), then whether **Alerts** reach you (Allowed, or "Not allowed" with **Allow…**,
+  which opens System Settings ▸ Notifications ▸ cl_audit), **Last read**, and only while reading has stopped
+  **Start reading**, with a note under the rows (cl_audit also retries by itself every minute) and the reason it
+  won't start. The dashboard's red display opens this card.
+- **About:** the version and build, a link to what's new, when the agent last cleaned up ("Nothing to clean up ·
+  11:38", "Cleaned up 2 leftovers · Thu 09:00"; the (i) lists what went) and **Uninstall cl_audit…** (see
+  [Uninstalling](#uninstalling)).
 - **Emails:** Show emails (see above).
-- **Dock** (off by default; experimental and invasive: it rewrites the Dock's pin list and restarts the
-  Dock, and macOS can misplace or drop pins). macOS ties running Claude windows to Claude pins in its own
-  order, so several Claude pins get mixed up; the Dock icons are the reliable way to reach each profile's
-  window. When on, cl_audit keeps its Dock icons pinned together in profile order (the cl_audit app last)
-  with one Claude pin before them (or none), and redoes it after profiles are added, removed or renamed.
-  Other apps keep their places. The card pictures your Dock with the changes marked; **Arrange Dock**
-  applies them, and **Restore my Dock** puts back the pins saved before the first change.
 - **Face:** the look of the cl_audit window, as on the home site: **Std** (a dark brushed panel, the
   default), **Black** (black anodised) or **Silver** (light brushed silver; the window takes the Mac's light
   appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.
 - **Dashboard cards:** one card style for every profile (Glow, Rings, Numbers, Segments or Pace).
 - **App icon:** six designs in one row; Front panel's Plate, Display, Keys and Slot below it.
-- **About:** the version and build, a link to what's new, when the agent last cleaned up ("Cleaned up 2
-  leftovers · 26 Oct"; the (i) lists what went) and **Uninstall cl_audit…** (see [Uninstalling](#uninstalling)).
+- **Dock:** **Keep in order** (off by default; experimental and invasive: it rewrites the Dock's pin list and
+  restarts the Dock, and macOS can misplace or drop pins). macOS ties running Claude windows to Claude pins in its
+  own order, so several Claude pins get mixed up; the Dock icons are the reliable way to reach each profile's
+  window. When on, cl_audit keeps its Dock icons pinned together in profile order (the cl_audit app last)
+  with one Claude pin before them (or none), and redoes it after profiles are added, removed or renamed.
+  Other apps keep their places. The card pictures your Dock with the changes marked; **Arrange Dock**
+  applies them, and **Restore my Dock** puts back the pins saved before the first change.
 
 ### Adding a profile
 

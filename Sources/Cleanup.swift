@@ -128,16 +128,28 @@ enum Cleanup {
         apps.filter { !$0.isTerminated }.forEach { $0.forceTerminate() }
     }
 
-    /// "Cleaned up 2 leftovers · 26 Oct", or "Nothing to clean up · checked 26 Oct 21:40", for General settings.
-    /// Within a week of a run that removed something: that run; otherwise when it last checked.
-    static func summary(_ r: CleanupRecord?) -> String {
+    /// "Cleaned up 2 leftovers · Thu 09:00", or "Nothing to clean up · 11:38", for General settings, on one line
+    /// ("2 removed · Thu 09:00", "All clean · Thu 09:00" when short). Within a week of a run that removed something:
+    /// that run; otherwise when it last checked.
+    static func summary(_ r: CleanupRecord?, short: Bool = false, now: Date = Date()) -> String {
         guard let r else { return "Not run yet" }
-        let f = DateFormatter()
-        if let at = r.removedAt, !r.removed.isEmpty, Date().timeIntervalSince(at) < 7 * 86400 {
-            f.setLocalizedDateFormatFromTemplate("d MMM")
-            return "Cleaned up \(r.removed.count) leftover\(r.removed.count == 1 ? "" : "s") · \(f.string(from: at))"
+        if let at = r.removedAt, !r.removed.isEmpty, now.timeIntervalSince(at) < 7 * 86400 {
+            let n = r.removed.count
+            return (short ? "\(n) removed" : "Cleaned up \(n) leftover\(n == 1 ? "" : "s")") + " · \(when(at, now: now))"
         }
-        f.setLocalizedDateFormatFromTemplate("d MMM HH:mm")
-        return "Nothing to clean up · checked \(f.string(from: r.at))"
+        return (short ? "All clean" : "Nothing to clean up") + " · \(when(r.at, now: now))"
+    }
+
+    /// A fixed, short time, as on the at-limit box: today "11:38", in the last 6 days "Thu 09:00", earlier "11 Nov",
+    /// another year "12 Jan 2027".
+    static func when(_ d: Date, now: Date = Date()) -> String {
+        let cal = Calendar.current
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: now)).day ?? 0
+        f.dateFormat = days == 0 ? "HH:mm"
+            : (1...6).contains(days) ? "EEE HH:mm"
+            : cal.component(.year, from: d) == cal.component(.year, from: now) ? "d MMM" : "d MMM yyyy"
+        return f.string(from: d)
     }
 }

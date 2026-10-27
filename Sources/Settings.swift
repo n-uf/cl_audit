@@ -706,9 +706,8 @@ struct SRow<Control: View>: View {
                 HStack(alignment: .rowLine, spacing: 10) {
                     title.frame(width: Self.labelWidth, alignment: .leading)
                     control
-                    Spacer(minLength: 0)
                 }
-                .frame(minHeight: 32)
+                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)     // no spacer: its spacing would take 10 pt
             }
         }
     }
