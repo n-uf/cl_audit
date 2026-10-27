@@ -298,14 +298,9 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         beat()
     }
 
-    /// Alerts come from cl_audit, so macOS asks once to allow them (only when some profile has them on).
-    private func askForAlerts(_ list: [AccountEntry]) {
-        guard !askedForAlerts, list.contains(where: \.notify) else { return }
-        askedForAlerts = true
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, err in
-            agentLog.log("agent: alerts \(granted ? "allowed" : "not allowed", privacy: .public)\(err.map { " (\($0.localizedDescription))" } ?? "", privacy: .public)")
-        }
-    }
+    /// Alerts are sent as cl_audit itself (Reader.post), and the cl_audit window asks for permission (it stays open
+    /// while you answer; a question from this helper could be dismissed by an update restarting it).
+    private func askForAlerts(_ list: [AccountEntry]) {}
 
     func beat() {
         let info = Bundle.main.infoDictionary

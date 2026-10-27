@@ -12,8 +12,8 @@ the notes before updating.
   reads the usage, checks the account, renews the sign-in and sends every alert, for all profiles, whatever
   is open, quit or hidden. Quitting a Dock icon or a Claude window never stops a profile's usage or alerts
   any more. macOS starts the agent at login and again if it crashes; updates restart it with no new prompt.
-  Alerts now come from cl_audit, so macOS asks once (System Settings ▸ Notifications ▸ cl_audit); the old
-  per-profile entries there can be removed.
+  Alerts now come from cl_audit itself, so macOS asks once, when you open cl_audit (System Settings ▸
+  Notifications ▸ cl_audit); the old per-profile entries there can be removed.
 - **Dock icons only show.** A Dock icon draws what the agent saved and asks it for Refresh now and Renew login;
   it no longer reads the Keychain or the network. Usage in the Dock off quits the icon, unpins it and removes its
   app with what macOS keeps for it (no hidden app any more); turn it back on and it's installed again in the

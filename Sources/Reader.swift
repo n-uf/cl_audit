@@ -244,23 +244,36 @@ final class UsageReader {
             c.title = "Claude \(account.name): \(title) at \(Int(p.rounded()))%"
             if let resets { c.body = "Resets \(Self.when(resets))" }
             c.threadIdentifier = id
-            let center = UNUserNotificationCenter.current(), me = id, d = defaults
-            center.getNotificationSettings { settings in
-                guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
-                    DispatchQueue.main.async { [weak self] in self?.alerting.remove(k) }
-                    agentLog.log("\(me, privacy: .public): alert waits: notifications for cl_audit aren't allowed")
-                    return
+            let me = id, d = defaults
+            // sent by cl_audit's own program, so the alert comes from cl_audit in /Applications (the app System
+            // Settings ▸ Notifications lists), not from this helper inside it
+            DispatchQueue.global(qos: .utility).async {
+                let code = Self.post(id: "\(me).\(key).\(mark)", title: c.title, body: c.body, thread: me)
+                DispatchQueue.main.async { [weak self] in
+                    self?.alerting.remove(k)
+                    if code == 0, self?.stopped != true { d.set(mark, forKey: k) }
                 }
-                center.add(UNNotificationRequest(identifier: "\(me).\(key).\(mark)", content: c, trigger: nil)) { err in
-                    DispatchQueue.main.async { [weak self] in
-                        self?.alerting.remove(k)
-                        if err == nil, self?.stopped != true { d.set(mark, forKey: k) }
-                    }
-                    if let err { agentLog.error("\(me, privacy: .public): alert not sent: \(err.localizedDescription, privacy: .public)") }
-                    else { agentLog.log("\(me, privacy: .public): alert sent: \(title, privacy: .public) at \(Int(p.rounded()))%") }
+                switch code {
+                case 0: agentLog.log("\(me, privacy: .public): alert sent: \(title, privacy: .public) at \(Int(p.rounded()))%")
+                case 2: agentLog.log("\(me, privacy: .public): alert waits: notifications for cl_audit aren't allowed")
+                default: agentLog.error("\(me, privacy: .public): alert not sent (\(code))")
                 }
             }
         }
+    }
+
+    /// Hands one alert to cl_audit's own program (UsageDock --post-alert). 0 sent, 2 not allowed, else failed.
+    static func post(id: String, title: String, body: String, thread: String) -> Int32 {
+        guard let app = LegacyCleanup.agentParentApp() else { return 1 }
+        let p = Process()
+        p.executableURL = app.appendingPathComponent("Contents/MacOS/UsageDock")
+        p.arguments = ["--post-alert", id, title, body, thread]
+        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return 1 }
+        let deadline = Date().addingTimeInterval(20)
+        while p.isRunning && Date() < deadline { usleep(50_000) }
+        if p.isRunning { p.terminate(); return 1 }
+        return p.terminationStatus
     }
 
     static func sameReset(_ old: String, _ stamp: Int?) -> Bool {

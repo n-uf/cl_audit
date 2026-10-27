@@ -1,5 +1,6 @@
 import AppKit
 import ServiceManagement
+import UserNotifications
 
 // MARK: - App
 //
@@ -121,6 +122,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 if let list = Store.loadChecked() { Installer.sync(list) }   // never with a bad read: it removes apps
                 // the one login item; restarted when it runs an older build (waits for it, so off the main thread)
                 DispatchQueue.global(qos: .utility).async { Agent.ensureRunning() }
+            }
+            // alerts come from cl_audit: macOS asks once, here, while the window is open (when a profile has them on)
+            if Store.load().contains(where: \.notify) {
+                let center = UNUserNotificationCenter.current()
+                center.getNotificationSettings { s in
+                    guard s.authorizationStatus == .notDetermined else {
+                        agentLog.log("cl_audit: alerts \(s.authorizationStatus == .authorized ? "allowed" : "not allowed (System Settings ▸ Notifications ▸ cl_audit)", privacy: .public)")
+                        return
+                    }
+                    center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+                        agentLog.log("cl_audit: alerts \(granted ? "allowed" : "not allowed", privacy: .public)")
+                    }
+                }
             }
             if CommandLine.arguments.contains("--settings") {
                 let account = CommandLine.arguments.first { $0.hasPrefix("--account=") }.map { String($0.dropFirst("--account=".count)) }

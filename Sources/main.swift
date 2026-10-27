@@ -1,4 +1,5 @@
 import AppKit
+import UserNotifications
 
 // Command-line modes, used by build.sh and for checking icon styles:
 //   --sync                       install/update one icon app per account in accounts.json, then exit
@@ -9,6 +10,7 @@ import AppKit
 //   --agent-status | --agent-register | --agent-unregister   the cl_audit agent's background item, for checking
 //   --forget-login-item          (in a Dock icon copy) remove the login item older versions registered for it
 //   --cleanup [--dry-run]        the agent's clean-up now (or only list what it would remove)
+//   --post-alert ID TITLE [BODY [THREAD]]   (run by the agent) one alert from cl_audit, if alerts are allowed
 //   --uninstall [--yes] [--delete-folders=ID,ID]   list what Uninstall removes, or (--yes) do it
 
 let args = CommandLine.arguments
@@ -83,6 +85,27 @@ if args.count >= 3, args[1] == "--render-settings" {
 if args.count >= 4, args[1] == "--render-launcher" {
     if #available(macOS 14, *) { MainActor.assumeIsolated { ManagerUI.renderSample(to: args[2], main: args[3] == "main") } }
     exit(0)
+}
+
+if args.count >= 4, args[1] == "--post-alert" {
+    // --post-alert ID TITLE [BODY [THREAD]]: run by the agent, so alerts come from cl_audit itself (the app in
+    // /Applications, listed in System Settings ▸ Notifications). Exit 0 sent, 2 not allowed (yet), 1 failed.
+    // Never asks for permission (a question asked by a process that ends at once would be dismissed).
+    _ = NSApplication.shared
+    let center = UNUserNotificationCenter.current()
+    let done = DispatchSemaphore(value: 0)
+    var code: Int32 = 1
+    center.getNotificationSettings { s in
+        guard s.authorizationStatus == .authorized || s.authorizationStatus == .provisional else { code = 2; done.signal(); return }
+        let c = UNMutableNotificationContent()
+        c.title = args[3]
+        if args.count > 4, !args[4].isEmpty { c.body = args[4] }
+        if args.count > 5 { c.threadIdentifier = args[5] }
+        c.sound = .default
+        center.add(UNNotificationRequest(identifier: args[2], content: c, trigger: nil)) { err in code = err == nil ? 0 : 1; done.signal() }
+    }
+    _ = done.wait(timeout: .now() + 15)
+    exit(code)
 }
 
 if args.count >= 2, args[1] == "--uninstall" {
