@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.10.8 — 2026-10-26
+
 - **What a profile includes:** two keys in a profile's settings, **Usage in the Dock** and **Claude window**, each
   with a line saying what the current choice does. With both off a profile is *usage only*: its usage shows on the
   dashboard, in the launcher and in alerts, with nothing in the Dock and no window. Turning either off never deletes
