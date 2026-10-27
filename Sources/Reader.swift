@@ -204,9 +204,12 @@ final class UsageReader {
         for (key, title, p, resets) in [("n5h", "5-hour limit", u.fiveHour, u.fiveHourResets),
                                         ("nwk", "Weekly limit", u.weekly, u.weeklyResets)] {
             guard let p, p >= limit else { continue }
-            let mark = resets.map { "\(Int($0.timeIntervalSince1970))" } ?? "unknown"
+            let stamp = resets.map { Int($0.timeIntervalSince1970.rounded()) }
+            let mark = stamp.map(String.init) ?? "unknown"
             let k = "\(key).\(id)"
-            if defaults.string(forKey: k) == mark { continue }
+            // one alert per reset: Anthropic's reset time wobbles by a fraction of a second between replies, so
+            // marks within 10 minutes of each other are the same reset (windows are hours apart)
+            if let old = defaults.string(forKey: k), old == mark || Self.sameReset(old, stamp) { continue }
             defaults.set(mark, forKey: k)
             let c = UNMutableNotificationContent()
             c.title = "Claude \(account.name): \(title) at \(Int(p.rounded()))%"
@@ -217,6 +220,11 @@ final class UsageReader {
                 else { agentLog.log("\(self.id, privacy: .public): alert sent: \(title, privacy: .public) at \(Int(p.rounded()))%") }
             }
         }
+    }
+
+    static func sameReset(_ old: String, _ stamp: Int?) -> Bool {
+        guard let a = Int(old), let b = stamp else { return false }
+        return abs(a - b) < 600
     }
 
     /// The marks the profile's own Dock icon app kept before the agent read usage (its last alert per limit, its last
