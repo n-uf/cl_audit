@@ -97,13 +97,12 @@ final class SettingsModel: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.tick += 1
-            self.followDock()
             self.linkSeats()
         }
         // after the change, not inside it: an animated note started while the window is redrawing for the
         // change itself left the Emails key and the cards showing the old state
-        // saved elsewhere (a Dock icon's own menu, Show in the Dock following the Dock in a Dock icon app, --sync):
-        // take it in at once, so this copy never saves an older one over it
+        // saved elsewhere (the agent recording a Dock icon dragged out by hand): take it in at once, so this copy never
+        // saves an older one over it
         storeWatch = DistributedNotificationCenter.default().addObserver(forName: Store.changed, object: nil, queue: .main) { [weak self] _ in
             self?.takeInOutsideChanges()
         }
@@ -112,14 +111,8 @@ final class SettingsModel: ObservableObject {
             .sink { [weak self] on in self?.showNote(SettingNotes.emails(on)) }
     }
 
-    /// Show in the Dock follows the Dock (see DockManager.adoptDock); saved like any other change.
-    static var followsDock = true          // off in offscreen renders, which must never save
-    func followDock() {
-        guard Self.followsDock, !needsApply, problem == nil else { return }
-        for i in accounts.indices {
-            if let hidden = DockManager.adoptDock(accounts[i]) { accounts[i].iconHidden = hidden }
-        }
-    }
+    /// Off in offscreen renders, which must never save.
+    static var followsDock = true
 
     /// Profiles not linked to a Claude account seat yet get the one their folder is signed in to (one profile per
     /// seat: see FolderRules.linkSeats). Saved like any other change; only cl_audit does this.
@@ -325,21 +318,18 @@ final class SettingsModel: ObservableObject {
     /// that undo each other.
     @Published var dockRestarting: String?
 
-    /// Usage in the Dock: on, a Dock icon in the Dock; off, no Dock icon, while its app keeps reading usage in the
-    /// background (refreshing and alerting). Nothing is deleted either way.
+    /// Usage in the Dock: on, a Dock icon in the Dock; off, none. The agent does it (it quits and unpins the Dock
+    /// icon, or pins and starts it) and reads the usage either way; this only saves the switch, and installs the
+    /// profile's Dock icon app the first time. Nothing is deleted either way.
     func setUsageInDock(_ id: String, _ on: Bool) {
         guard dockRestarting == nil, let i = accounts.firstIndex(where: { $0.id == id }) else { return }
         let before = accounts[i]
         accounts[i].iconHidden = !on
         if let n = SettingNotes.note(from: before, to: accounts[i]) { showNote(n) }
-        let e = accounts[i], app = Installer.appURL(e)
-        // a running Dock icon app applies it itself (it restarts); one that isn't running would only at its next
-        // start, so its pin is taken out or put back here, in its own preferences' place
-        DockManager.markChange(app)
-        if !Installer.isRunning(e), let d = UserDefaults(suiteName: Installer.bundleID(e)) {
-            dockLog.log("\(e.id, privacy: .public): Usage in the Dock \(on ? "on" : "off", privacy: .public) while stopped")
-            if on { DockManager.repin(app, defaults: d) } else { DockManager.unpinRemembering(app, defaults: d) }
-        }
+        let e = accounts[i]
+        DockManager.markChange(Installer.appURL(e))
+        dockLog.log("\(e.id, privacy: .public): Usage in the Dock \(on ? "on" : "off", privacy: .public)")
+        if on && !FileManager.default.fileExists(atPath: Installer.appURL(e).path) { apply() }   // no app yet: install it
         dockRestarting = id
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
             guard let self, self.dockRestarting == id else { return }
@@ -510,17 +500,20 @@ struct SettingsStatus: View {
         .help(model.unsaved ?? model.problem ?? "Settings are saved as you change them; a name or label when you press Return")
     }
 
-    /// What the selected profile is doing now.
+    /// What the selected profile is doing now: its usage (read by the agent) and, with one, its Dock icon.
     @ViewBuilder func profileState(_ e: AccountEntry, w: CGFloat, h: CGFloat) -> some View {
-        switch UsageIconState.of(e) {
-        case .missing: DisplayWindow(text: "Missing", dim: "· reinstall", tone: .warn, height: h, width: w, dimTone: .warn)
-        case .hidden: DisplayWindow(text: "Reading usage", dim: "· every \(max(e.pollMinutes, 1)) min", tone: .ok, height: h, width: w)
-        case .inDock: DisplayWindow(text: "Running", dim: "· in the Dock", tone: .ok, height: h, width: w)
-        case .notPinned: DisplayWindow(text: "Running", dim: "· not in the Dock", tone: .ok, height: h, width: w, dimTone: .amber)
-        case .notRunning:
-            if e.iconHidden { DisplayWindow(text: "Stopped", dim: "· not reading", tone: .amber, height: h, width: w) }
-            else if DockManager.isPinned(Installer.appURL(e)) { DisplayWindow(text: "Stopped", dim: "· in the Dock", height: h, width: w) }
-            else { DisplayWindow(text: "Stopped", dim: "· not in the Dock", height: h, width: w, dimTone: .amber) }
+        if !Agent.isAlive(Agent.readMark()) {
+            DisplayWindow(text: "Not reading", dim: "· cl_audit agent stopped", tone: .amber, height: h, width: w, dimTone: .amber)
+        } else {
+            switch UsageIconState.of(e) {
+            case .off: DisplayWindow(text: "Reading usage", dim: "· every \(max(e.pollMinutes, 1)) min", tone: .ok, height: h, width: w)
+            case .missing: DisplayWindow(text: "Missing", dim: "· reinstall", tone: .warn, height: h, width: w, dimTone: .warn)
+            case .inDock: DisplayWindow(text: "Running", dim: "· in the Dock", tone: .ok, height: h, width: w)
+            case .notPinned: DisplayWindow(text: "Running", dim: "· not in the Dock", tone: .ok, height: h, width: w, dimTone: .amber)
+            case .notRunning:
+                if DockManager.isPinned(Installer.appURL(e)) { DisplayWindow(text: "Stopped", dim: "· in the Dock", height: h, width: w) }
+                else { DisplayWindow(text: "Stopped", dim: "· not in the Dock", height: h, width: w, dimTone: .amber) }
+            }
         }
     }
 }
@@ -964,7 +957,7 @@ struct AccountSettings: View {
                         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Choose another folder…")
                 }
             }
-            SRow(label: "Login", info: "The claude.ai account this folder is signed in to. The Dock icon reads the sign-in from the Keychain, read-only, the same way Claude Code does; no new Keychain permission.") { loginStatus }
+            SRow(label: "Login", info: "The claude.ai account this folder is signed in to. cl_audit's background agent reads the sign-in from the Keychain, read-only, the same way Claude Code does; no new Keychain permission.") { loginStatus }
             if mismatch || status?.state == "noLogin" || status?.state == "expired" {
                 SRow(label: mismatch ? "Wrong account" : "Sign in again") {
                     Button("Log in…") {
@@ -975,7 +968,7 @@ struct AccountSettings: View {
             }
             SRow(label: "Renew sign-in",
                  info: model.claudePath == nil ? "Needs Claude Code installed; it wasn't found."
-                    : "Claude Code's sign-in uses a short-lived access key, which Claude Code swaps for a fresh one whenever it runs. The Dock icon only reads that key, so after a while without Claude Code it runs out and the usage stops updating. On: the Dock icon then runs Claude Code once in the background (a one-line prompt, \"Reply with OK.\", on Haiku, nothing saved) so it swaps the key; at most every 30 min, using a sliver of this profile's usage. Off: the usage waits until you next use Claude Code." + (status?.renewNote.map { "\nLast: \($0)" } ?? "")) {
+                    : "Claude Code's sign-in uses a short-lived access key, which Claude Code swaps for a fresh one whenever it runs. cl_audit only reads that key, so after a while without Claude Code it runs out and the usage stops updating. On: cl_audit then runs Claude Code once in the background (a one-line prompt, \"Reply with OK.\", on Haiku, nothing saved) so it swaps the key; at most every 30 min, using a sliver of this profile's usage. Off: the usage waits until you next use Claude Code." + (status?.renewNote.map { "\nLast: \($0)" } ?? "")) {
                 Toggle("", isOn: $entry.autoRenew).smallSwitch().disabled(model.claudePath == nil)
             }
         }
@@ -1054,39 +1047,57 @@ struct AccountSettings: View {
         .padding(.bottom, 6)
     }
 
-    // Opening and closing: starting at login, and how the Dock icon and the Claude window follow each other
+    // Opening and closing: when the Dock icon runs, and whether the Claude window opens and quits with it. The agent
+    // runs these rules (whether or not cl_audit is open); the usage is read for every profile, always.
     var openCloseCard: some View {
-        SCard(title: "Opening and closing") {
-            // no Dock icon: its background app starts at login on its own and nothing opens or quits with it, so the
-            // whole card fades under one strip (the saved choices stay stored)
+        let name = entry.name.isEmpty ? "this profile" : entry.name
+        return SCard(title: "Opening and closing", info: "When \(name)'s Dock icon runs, and whether its Claude window opens and quits with it. The cl_audit agent does this, whether or not cl_audit is open. Starting or quitting a Dock icon never stops the usage: cl_audit reads it for every profile, always.") {
+            // no Dock icon: nothing to open or close, so the whole card fades under one strip (the choices stay stored)
             if entry.iconHidden {
-                notInUse("no Dock icon · reads usage from login", key: "Show in the Dock") { model.setUsageInDock(entry.id, true) }
+                notInUse("no Dock icon to open or close", key: "Show in the Dock") { model.setUsageInDock(entry.id, true) }
             }
             VStack(spacing: 0) {
-                SRow(label: "Open at login", info: "Starts this profile's Dock icon when you log in to the Mac, so its usage refreshes and alerts keep working without opening cl_audit. With Usage in the Dock off it always starts at login.", first: true) {
-                    HStack(spacing: 8) {
-                        Toggle("", isOn: $entry.openAtLogin).smallSwitch()
-                        Text("starts the Dock icon when you log in to the Mac")
+                SRow(label: "Dock icon runs", info: "At login: always there, from when you log in to the Mac. With its window: starts when \(name)'s Claude window opens and quits 10 s after it quits (a Claude update restarts the window). When started: only when you start it (a click on its Dock tile, or its switch on the dashboard).", first: true, stacked: true) {
+                    VStack(alignment: .leading, spacing: 5) {
+                        PillPicker(options: DockRuns.allCases, selection: $entry.dockRuns, compact: true, fill: true) { $0.title }
+                        Text(entry.dockRuns == .withWindow && !entry.claudeWindow
+                             ? "With its window: \(name) has no Claude window, so its Dock icon runs only when you start it."
+                             : "At login: always there, from when you log in. With its window: starts and quits with the Claude window. When started: only when you start it.")
                             .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                // a Dock icon without a Claude window: nothing to link the Dock icon to
+                // a Dock icon without a Claude window: no window to open or quit with it
                 if !entry.iconHidden && !entry.claudeWindow {
-                    notInUse("add a Claude window to link the two", key: "Add Claude window") { model.setClaudeWindow(entry.id, true) }
+                    notInUse("no Claude window to open with it", key: "Add Claude window") { model.setClaudeWindow(entry.id, true) }
                         .padding(.top, 6)
                 }
-                OpenCloseQuestions(profile: entry.name.isEmpty ? "this profile" : entry.name, lifecycle: $entry.lifecycle)
-                    .padding(.top, 6)
-                    .dockOnly(!entry.iconHidden && !entry.claudeWindow)
+                SRow(label: "Claude window", info: "On: starting \(name)'s Dock icon (a click on its Dock tile, or its switch on the dashboard) opens its Claude window, and quitting it quits the window too; Claude can ask about unsent work first. Not at login. The Dock icon's menu then has “Quit and keep Claude window”.") {
+                    HStack(alignment: .top, spacing: 8) {
+                        Toggle("", isOn: $entry.windowFollowsDock).smallSwitch()
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("opens and quits with the Dock icon").font(.system(size: 12)).foregroundStyle(face.soft)
+                            Text("not at login; Claude asks about unsent work").font(.system(size: 10.5)).foregroundStyle(face.muted)
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 4)
+                }
+                .dockOnly(!entry.iconHidden && !entry.claudeWindow)
             }
             .dockOnly(entry.iconHidden)
+            if entry.iconHidden {
+                SRow(label: "Usage", info: "The cl_audit agent reads every profile's usage on its own schedule, with or without a Dock icon or a Claude window, and sends the alerts.") {
+                    Text("read by cl_audit for every profile, always").font(.system(size: 12)).foregroundStyle(face.soft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
         }
     }
 
     // Updates and alerts
     var updatesCard: some View {
         SCard(title: "Updates and alerts") {
-            SRow(label: "Refresh every", info: "How often the Dock icon asks Anthropic for this profile's usage. Shorter is fresher; each check is one small request.", first: true) {
+            SRow(label: "Refresh every", info: "How often cl_audit asks Anthropic for this profile's usage, with or without its Dock icon. Shorter is fresher; each check is one small request.", first: true) {
                 Menu {
                     Picker("", selection: $entry.pollMinutes) { ForEach([2, 5, 10, 15], id: \.self) { Text("\($0) min").tag($0) } }
                         .pickerStyle(.inline).labelsHidden()

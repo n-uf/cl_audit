@@ -17,7 +17,7 @@ enum SettingNotes {
         let p = b.name.trimmingCharacters(in: .whitespaces).isEmpty ? "this profile" : b.name
         if a.autoRenew != b.autoRenew {
             return SettingNote(title: "Renew sign-in · \(b.autoRenew ? "on" : "off")", text: b.autoRenew
-                ? "When \(p)'s access key runs out, the Dock icon runs Claude Code once with a tiny prompt so it fetches a fresh one (a sliver of usage)."
+                ? "When \(p)'s access key runs out, cl_audit runs Claude Code once with a tiny prompt so it fetches a fresh one (a sliver of usage)."
                 : "When \(p)'s access key runs out, the usage waits until you next use Claude Code.")
         }
         if a.configDir != b.configDir {
@@ -52,19 +52,28 @@ enum SettingNotes {
         }
         if a.iconHidden != b.iconHidden {
             return SettingNote(title: "Usage in the Dock · \(b.iconHidden ? "off" : "on")", text: b.iconHidden
-                ? "No Dock icon for \(p). Its usage still shows on the dashboard, in the launcher and in alerts; its app keeps reading in the background. The Dock restarts to take the icon out."
-                : "A Dock icon shows \(p)'s usage again, back where it was. The Dock restarts to put it in.")
+                ? "No Dock icon for \(p). Its usage still shows on the dashboard, in the launcher and in alerts: cl_audit reads it for every profile. The Dock restarts once to take the icon out."
+                : "A Dock icon shows \(p)'s usage again, back where it was. The Dock restarts once to put it in.")
         }
         if a.claudeWindow != b.claudeWindow {
             return SettingNote(title: "Claude window · \(b.claudeWindow ? "on" : "off")", text: b.claudeWindow
                 ? "\(p) has a Claude window again, signed in to its account; open it from the dashboard or the Dock icon."
                 : "No Claude window for \(p): nothing opens one. Its sign-in is kept, so turning it back on needs no new sign-in.")
         }
-        if a.openAtLogin != b.openAtLogin {
-            return SettingNote(title: "Open at login · \(b.openAtLogin ? "on" : "off")", text: b.openAtLogin
-                ? "\(p)'s Dock icon starts when you log in to your Mac."
-                : b.claudeWindow ? "\(p)'s Dock icon starts only when you start it, or with its Claude window."
-                                 : "\(p)'s Dock icon starts only when you start it.")
+        if a.dockRuns != b.dockRuns {
+            let text: String
+            switch b.dockRuns {
+            case .atLogin: text = "\(p)'s Dock icon starts when you log in to your Mac and stays until you quit it."
+            case .withWindow: text = b.claudeWindow ? "\(p)'s Dock icon starts when its Claude window opens and quits 10 s after the window quits."
+                                                    : "\(p) has no Claude window, so its Dock icon runs only when you start it."
+            case .whenStarted: text = "\(p)'s Dock icon runs only when you start it. Its usage is read either way."
+            }
+            return SettingNote(title: "Dock icon runs · \(b.dockRuns.title)", text: text)
+        }
+        if a.windowFollowsDock != b.windowFollowsDock {
+            return SettingNote(title: "Claude window · \(b.windowFollowsDock ? "with the Dock icon" : "on its own")", text: b.windowFollowsDock
+                ? "Starting \(p)'s Dock icon opens its Claude window, and quitting it quits the window (not at login; Claude can ask about unsent work)."
+                : "\(p)'s Claude window opens and quits only when you open or quit it.")
         }
         return nil
     }

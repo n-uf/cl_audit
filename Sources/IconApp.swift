@@ -26,10 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Refresh now was asked: "Updating…" until the agent saves newer numbers (at most 15 s).
     var refreshAsked: Date?
     var claudeOpen = false        // this account's Claude window is running (drawn as a dot on the tile)
-    var quietQuit = false         // quit without taking the Claude window along (cl_audit reinstalling, or "Quit and keep")
-    var quitForWindow = false     // quitting because the Claude window quit ("the Dock icon follows the window")
-    var windowQuitWork: DispatchWorkItem?
-    var appliedHidden: Bool?
+    var quietQuit = false         // quit without taking the Claude window along (asked by cl_audit or the agent, or "Quit and keep")
     var tileView: TileView!
     var timer: Timer?
 
@@ -77,7 +74,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applyEntry() {
         account = Account(entry)
-        applyVisibility()
         redraw()
     }
 
@@ -89,39 +85,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         UserDefaults.standard.removeObject(forKey: "loginItemPath")
     }
 
-    /// Shown: a normal app with its Dock tile. Hidden: a background app (no tile).
-    /// The mode is set once, at launch (switching it while running is unreliable on macOS); a change restarts
-    /// the app. Hiding takes its pin out and remembers the place; showing puts it back there.
-    func applyVisibility() {
-        guard !isSettingsApp else { return }
-        let hide = entry.iconHidden
-        if let applied = appliedHidden {
-            guard applied != hide else { return }
-            dockLog.log("\(self.entry.id, privacy: .public): Show in the Dock \(hide ? "off" : "on", privacy: .public), relaunching")
-            DockManager.markChange(Bundle.main.bundleURL)
-            relaunch()
-            return
-        }
-        appliedHidden = hide
-        dockLog.log("\(self.entry.id, privacy: .public): started \(hide ? "hidden" : "shown", privacy: .public)")
-        NSApp.setActivationPolicy(hide ? .accessory : .regular)
-        // hidden is never pinned; shown is pinned when the switch was just turned on (a normal start leaves the Dock
-        // as you arranged it, so taking it out of the Dock by hand sticks)
-        if hide { DockManager.unpinRemembering(Bundle.main.bundleURL, defaults: defaults) }
-        else if CommandLine.arguments.contains("--dock-changed") { DockManager.repin(Bundle.main.bundleURL, defaults: defaults) }
-    }
-
-    /// Quits and starts again a moment later (in the background, without opening its Claude window).
-    func relaunch() {
-        quietQuit = true
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        // --dock-changed: the new process pins itself if Show in the Dock was just turned on
-        p.arguments = ["-c", "sleep 1.5; /usr/bin/open -g \"$0\" --args --no-follow --dock-changed", Bundle.main.bundlePath]
-        try? p.run()
-        NSApp.terminate(nil)
-    }
-
     @objc func configChanged() {
         // a removed profile: quit quietly (cl_audit takes the app away), never carry on with default settings
         guard let fresh = Store.loadChecked()?.first(where: { $0.id == entry.id }) else {
@@ -131,12 +94,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard fresh != entry else { return }
         entry = fresh
         applyEntry()
-        refreshWindowState()          // a new open/close mode applies right away, not at the next refresh
     }
 
     func applicationDidFinishLaunching(_ note: Notification) {
-        // A hidden cl_usage starts as a background app, so its tile never flashes up.
-        NSApp.setActivationPolicy(isSettingsApp || !entry.iconHidden ? .regular : .accessory)
+        NSApp.setActivationPolicy(.regular)
         if isSettingsApp {
             NSWindow.allowsAutomaticWindowTabbing = false   // Settings and Dashboard are separate windows
             AppIconPrefs.shared.apply()                    // the chosen app icon (Settings ▸ General ▸ App icon)
@@ -145,11 +106,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                                 name: Installer.openSettingsNote, object: nil)
             DistributedNotificationCenter.default().addObserver(self, selector: #selector(showMainScreen),
                                                                 name: Installer.openDashboardNote, object: nil)
-            // cl_usage that follows its Claude window: started here when that window opens.
-            NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didLaunchApplicationNotification, object: nil, queue: .main) { note in
-                guard (note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication)?.bundleIdentifier == Launcher.claudeBundleID else { return }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { Installer.startFollowers() }
-            }
             // A profile's style, colour or frame changed (here or in its Dock icon's menu): redraw its icon file, now
             // for a stopped Dock icon app, when it quits for a running one.
             DistributedNotificationCenter.default().addObserver(forName: Store.changed, object: nil, queue: .main) { _ in
@@ -158,9 +114,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didTerminateApplicationNotification, object: nil, queue: .main) { note in
                 let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication
                 guard app?.bundleIdentifier?.hasPrefix(Installer.managerID + ".") == true else { return }
-                Installer.lookMayHaveChanged(after: 5)   // past a relaunch (Show in the Dock restarts it after 1.5 s)
+                Installer.lookMayHaveChanged(after: 5)
             }
-            // On start: reinstall missing cl_usage apps and start the ones that should run.
+            // On start: bring the Dock icon apps up to date (the agent starts the ones that should run).
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 if Store.exists { Installer.sync(Store.load()) }
                 // the one login item; restarted when it runs an older build (waits for it, so off the main thread)
@@ -187,12 +143,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.tick() }
         tick()
         applyEntry()
-        // "Window follows": starting cl_usage opens its Claude window, but not at login and not when cl_audit
-        // starts it (it passes --no-follow), so neither opens every window at once.
-        let atLogin = ProcessInfo.processInfo.systemUptime < 180
-        if entry.follows.windowFollowsUsage, !claudeOpen,
-           !CommandLine.arguments.contains("--no-follow"), !atLogin {
-            Launcher.openClaude(account)
+        // Usage in the Dock off: no Dock icon for this profile (opened from Finder, say). Its settings say how to
+        // bring it back; this copy quits, its window left alone.
+        if !entry.runs.dockIcon {
+            Installer.openSettings(account: accountID)
+            quietQuit = true
+            DispatchQueue.main.async { NSApp.terminate(nil) }
         }
     }
 
@@ -201,13 +157,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // The settings app stays in the Dock after its windows close: its icon is the launcher.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
-    /// An icon app quit because its account was removed takes its open-at-login entry with it. Otherwise, with
-    /// "Window follows" or "Lockstep", quitting cl_usage quits its Claude window too (a normal quit, so Claude can
-    /// ask about unsent work), unless it's quitting because of that window, or was asked to keep it.
+    /// A normal quit tells the agent, which quits the Claude window too when it follows the Dock icon (Claude can ask
+    /// about unsent work). Not when cl_audit or the agent asked for it (a reinstall, Usage in the Dock off, its window
+    /// quit) or with "Quit and keep Claude window".
     func applicationWillTerminate(_ note: Notification) {
         guard !isSettingsApp, let id = accountID else { return }
         guard Store.load().contains(where: { $0.id == id }) else { Self.forgetLoginItem(); return }
-        if entry.follows.windowFollowsUsage, !quietQuit, !quitForWindow { quitClaudeWindow() }
+        if !quietQuit {
+            DistributedNotificationCenter.default().postNotificationName(Installer.iconQuitNote, object: id, userInfo: nil,
+                                                                         deliverImmediately: true)
+        }
     }
 
     @objc func quitClaudeWindow() {
@@ -344,23 +303,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.dockTile.display()
     }
 
-    /// Whether this account's Claude window is running; redraws the tile when that changes.
+    /// Whether this account's Claude window is running, for the open dot; redraws the tile when that changes.
+    /// (Starting and quitting with the window is the agent's.)
     func refreshWindowState() {
         let open = windowIsOpen()
         if open != claudeOpen { claudeOpen = open; redraw() }
-        // "The Dock icon follows the window": its window quit → quit too, after 10 s (a Claude update restarts the window).
-        if entry.follows.usageFollowsWindow, !open {
-            guard windowQuitWork == nil else { return }
-            let work = DispatchWorkItem { [weak self] in
-                guard let self else { return }
-                self.windowQuitWork = nil
-                if self.entry.follows.usageFollowsWindow, !self.windowIsOpen() { self.quitForWindow = true; NSApp.terminate(nil) }
-            }
-            windowQuitWork = work
-            DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: work)
-        } else {
-            windowQuitWork?.cancel(); windowQuitWork = nil
-        }
     }
 
     func windowIsOpen() -> Bool {
@@ -377,8 +324,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func tick() {
         refreshWindowState()
-        // Show in the Dock follows the Dock: dragged out by hand → background; kept in the Dock by hand → shown
-        if !isSettingsApp, let hidden = DockManager.adoptDock(entry) { Store.update(entry.id) { $0.iconHidden = hidden } }
         loadStatus()                  // also redraws: the staleness and the agent's state change with time
     }
 
@@ -450,7 +395,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         m.addItem(.separator())
         add("Dashboard", #selector(showDashboard))
         add("Profile settings…", #selector(showSettings))
-        if entry.follows.windowFollowsUsage {
+        if entry.runs.windowFollowsDock {
             m.addItem(.separator())
             add("Quit and keep Claude window", #selector(quitKeepingWindow))
         }

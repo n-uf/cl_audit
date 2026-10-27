@@ -26,6 +26,7 @@ struct AgentMark: Codable, Equatable {
     var failing: [String]? = nil      // profiles Anthropic didn't answer for the last time
     var pollRange: [Int]? = nil       // the shortest and longest refresh interval, in minutes
     var pausedUntil: Date? = nil      // it crashed several times in a row and waits before reading again
+    var actions: [String: AgentAction]? = nil   // what it's doing for a profile now (Opening and closing)
 }
 
 enum Agent {
@@ -144,6 +145,8 @@ enum Agent {
 
     /// Asks the agent to renew a profile's sign-in now (object: the profile id).
     static let renewNote = Notification.Name("local.usage-n-uf.renew")
+    /// Posted when the agent starts or ends something it shows on the dashboard (its mark's actions).
+    static let actionsChangedNote = Notification.Name("local.usage-n-uf.agent-actions")
 
     /// What the agent is doing, for the window's main display.
     enum Health: Equatable {
@@ -172,6 +175,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     var readers: [String: UsageReader] = [:]
     var order: [String] = []
     var pausedUntil: Date?
+    var rules: AgentRules?
     private var observers: [NSObjectProtocol] = []
     private var askedForAlerts = false
 
@@ -201,6 +205,13 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             self?.readers[id]?.renewLogin()
         })
         reload()
+        // Opening and closing and Usage in the Dock (Rules.swift)
+        let r = AgentRules(defaults: defaults)
+        r.onChange = { [weak self] in
+            self?.beat()
+            DistributedNotificationCenter.default().postNotificationName(Agent.actionsChangedNote, object: nil, userInfo: nil, deliverImmediately: true)
+        }
+        rules = r
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: Agent.beatSeconds, repeats: true) { [weak self] _ in self?.tick() }
         // once the readers run: what older versions left behind (per-profile login items, usage only apps)
@@ -234,11 +245,13 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         }
         order = list.map(\.id)
         askForAlerts(list)
+        rules?.update(list)
         beat()
     }
 
     func tick() {
         for id in order { readers[id]?.tick() }
+        rules?.tick()
         beat()
         // ten minutes without crashing: earlier starts no longer count towards a pause
         if Date().timeIntervalSince(started) > 600 { defaults.removeObject(forKey: "agentStarts") }
@@ -268,7 +281,8 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
                                   profiles: pausedUntil == nil ? order.count : 0,
                                   failing: order.filter { readers[$0]?.failing == true },
                                   pollRange: polls.isEmpty ? nil : [polls.min()!, polls.max()!],
-                                  pausedUntil: pausedUntil))
+                                  pausedUntil: pausedUntil,
+                                  actions: rules?.actions))
     }
 
     // MARK: crashing again and again

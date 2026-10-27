@@ -250,7 +250,7 @@ enum DockManager {
         tidy(accounts: accounts)
     }
 
-    /// Takes one app's pin out of the Dock (hiding cl_usage) and remembers its left neighbour, to put it back there.
+    /// Takes one app's pin out of the Dock (Usage in the Dock off) and remembers its left neighbour, to put it back there.
     static func unpinRemembering(_ app: URL, defaults: UserDefaults) {
         let list = pins(), k = key(app)
         markChange(app)
@@ -266,22 +266,16 @@ enum DockManager {
         }
     }
 
-    /// Puts back a pin taken out by `unpinRemembering`. The app has just become a Dock app again, and the Dock
-    /// rewrites its list around that, so this waits a moment, pins, and checks once more.
-    static func repin(_ app: URL, defaults: UserDefaults) {
-        // shown means in the Dock: back where it was, or, never pinned before, after the other cl_audit icons
+    /// Puts back a pin taken out by `unpinRemembering` (the agent, when Usage in the Dock is turned on): back where it
+    /// was, or, never pinned before, after the other cl_audit icons. In the background: it waits for the Dock to
+    /// settle, pins, and checks after the Dock restarts.
+    static func repinInBackground(_ app: URL) {
         markChange(app)
         guard !isPinned(app) else { dockLog.log("repin \(key(app), privacy: .public): already pinned"); return }
-        let neighbour = defaults.bool(forKey: "dockWasPinned") ? defaults.string(forKey: "dockLeftNeighbour") : nil
-        defaults.removeObject(forKey: "dockWasPinned"); defaults.removeObject(forKey: "dockLeftNeighbour")
-        // Done by a short helper process (this app started with --pin): inside the app that just became a Dock app
-        // again, the Dock overwrote the change.
-        guard let exe = Bundle.main.executableURL else { return }
-        let p = Process()
-        p.executableURL = exe
-        p.arguments = ["--pin", app.path, neighbour ?? "-"]
-        do { try p.run(); dockLog.log("repin \(key(app), privacy: .public): helper started") }
-        catch { dockLog.error("repin \(key(app), privacy: .public): helper failed \(error.localizedDescription, privacy: .public)") }
+        let d = appDefaults(app)
+        let neighbour = d?.bool(forKey: "dockWasPinned") == true ? d?.string(forKey: "dockLeftNeighbour") : nil
+        d?.removeObject(forKey: "dockWasPinned"); d?.removeObject(forKey: "dockLeftNeighbour")
+        DispatchQueue.global(qos: .utility).async { pinFromHelper(app, after: neighbour) }
     }
 
     // MARK: Show in the Dock follows the Dock

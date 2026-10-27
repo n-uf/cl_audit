@@ -23,14 +23,24 @@ enum ClickAction: String, Codable, CaseIterable, Identifiable {
     }
 }
 
-/// How a profile's cl_usage and its Claude window open and close: on their own, one following the other
-/// (one-way), or both following each other (lockstep, two-way).
-enum Lifecycle: String, Codable, CaseIterable {
+/// When a profile's Dock icon runs (Opening and closing). The agent starts and quits it by this.
+enum DockRuns: String, Codable, CaseIterable, Identifiable {
+    case atLogin, withWindow, whenStarted
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .atLogin: return "At login"
+        case .withWindow: return "With its window"
+        case .whenStarted: return "When started"
+        }
+    }
+}
+
+/// The opening settings before "Dock icon runs" (decoded once to migrate them; never written).
+private enum LegacyLifecycle: String, Decodable {
     case independent, usageFollows, windowFollows, lockstep
-    /// The Claude window opens or quits → cl_usage starts or quits.
-    var usageFollowsWindow: Bool { self == .usageFollows || self == .lockstep }
-    /// cl_usage starts or quits → its Claude window opens or quits.
-    var windowFollowsUsage: Bool { self == .windowFollows || self == .lockstep }
+    var dockFollowsWindow: Bool { self == .usageFollows || self == .lockstep }
+    var windowFollowsDock: Bool { self == .windowFollows || self == .lockstep }
 }
 
 /// Which Claude window a profile opens. Every profile has one: the usual Claude app for the profile using
@@ -57,7 +67,6 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     var pollMinutes: Int = 5
     var notify: Bool = true
     var notifyPercent: Int = 90
-    var openAtLogin: Bool = true
     var autoRenew: Bool = false
     var color: TileColor = .orange
     var frame: TileColor? = nil      // nil = no frame (the default)
@@ -67,8 +76,9 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     var longPressDetails: Bool = true    // press-and-hold shows the details panel
     var panelDesign: PanelDesign = .glow
     var windowDot: Bool = true           // the icon shows a dot while this account's Claude window is open
-    var iconHidden: Bool = false         // cl_usage runs without a Dock tile (still refreshes and alerts)
-    var lifecycle: Lifecycle = .independent   // how cl_usage and its Claude window open and close together
+    var iconHidden: Bool = false         // Usage in the Dock off: no Dock icon (the agent still reads the usage)
+    var dockRuns: DockRuns = .atLogin         // when its Dock icon runs
+    var windowFollowsDock: Bool = false       // its Claude window opens and quits with the Dock icon
     var seat: Seat? = nil                     // the Claude account seat this profile is linked to (nil: not yet)
     var claudeWindow: Bool = true             // the profile has a Claude window (off: none; its folder and sign-in are kept)
 
@@ -77,9 +87,9 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, openAtLogin, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, lifecycle, seat, claudeWindow
+        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, seat, claudeWindow
     }
-    private enum LegacyKeys: String, CodingKey { case clickShowsDetails }
+    private enum LegacyKeys: String, CodingKey { case clickShowsDetails, openAtLogin, lifecycle }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -100,7 +110,6 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         pollMinutes = try c.decodeIfPresent(Int.self, forKey: .pollMinutes) ?? 5
         notify = try c.decodeIfPresent(Bool.self, forKey: .notify) ?? true
         notifyPercent = try c.decodeIfPresent(Int.self, forKey: .notifyPercent) ?? 90
-        openAtLogin = try c.decodeIfPresent(Bool.self, forKey: .openAtLogin) ?? true
         autoRenew = try c.decodeIfPresent(Bool.self, forKey: .autoRenew) ?? false
         color = try c.decodeIfPresent(TileColor.self, forKey: .color) ?? .orange
         frame = try c.decodeIfPresent(TileColor.self, forKey: .frame)
@@ -110,13 +119,20 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         panelDesign = try c.decodeIfPresent(PanelDesign.self, forKey: .panelDesign) ?? .glow
         windowDot = try c.decodeIfPresent(Bool.self, forKey: .windowDot) ?? true
         iconHidden = try c.decodeIfPresent(Bool.self, forKey: .iconHidden) ?? false
-        lifecycle = try c.decodeIfPresent(Lifecycle.self, forKey: .lifecycle) ?? .independent
+        // Before "Dock icon runs": Open at login on → At login; "start or quit the Dock icon too" → With its window;
+        // both off → When started; "open or quit the Claude window too" → the window switch.
+        let legacy = try decoder.container(keyedBy: LegacyKeys.self)
+        let oldLogin = try legacy.decodeIfPresent(Bool.self, forKey: .openAtLogin) ?? true
+        let oldLife = (try? legacy.decodeIfPresent(LegacyLifecycle.self, forKey: .lifecycle)) ?? .independent
+        dockRuns = try c.decodeIfPresent(DockRuns.self, forKey: .dockRuns)
+            ?? (oldLogin ? .atLogin : oldLife.dockFollowsWindow ? .withWindow : .whenStarted)
+        windowFollowsDock = try c.decodeIfPresent(Bool.self, forKey: .windowFollowsDock) ?? oldLife.windowFollowsDock
         seat = try c.decodeIfPresent(Seat.self, forKey: .seat)
         claudeWindow = try c.decodeIfPresent(Bool.self, forKey: .claudeWindow) ?? true
         if let action = try c.decodeIfPresent(ClickAction.self, forKey: .clickAction) {
             clickAction = action
-        } else if let legacy = try decoder.container(keyedBy: LegacyKeys.self).decodeIfPresent(Bool.self, forKey: .clickShowsDetails) {
-            clickAction = legacy ? .details : .open
+        } else if let old = try legacy.decodeIfPresent(Bool.self, forKey: .clickShowsDetails) {
+            clickAction = old ? .details : .open
         }
     }
 
@@ -124,17 +140,12 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     /// reads its usage whatever this says. Saved choices stay stored while a switch makes them not apply.
     var runs: ProfileRuns {
         let dock = !iconHidden, win = claudeWindow
-        return ProfileRuns(dockIcon: dock, window: win, atLogin: dock && openAtLogin,
-                           withWindow: dock && win && lifecycle.usageFollowsWindow,
-                           windowFollowsDock: dock && win && lifecycle.windowFollowsUsage)
+        return ProfileRuns(dockIcon: dock, window: win, atLogin: dock && dockRuns == .atLogin,
+                           withWindow: dock && win && dockRuns == .withWindow,
+                           windowFollowsDock: dock && win && windowFollowsDock)
     }
     /// Usage in the Dock off and no Claude window: its usage shows on the dashboard, in the launcher and in alerts.
     var usageOnly: Bool { runs.usageOnly }
-    /// How its Dock icon and Claude window follow each other, from `runs`.
-    var follows: Lifecycle {
-        let r = runs
-        return r.withWindow ? (r.windowFollowsDock ? .lockstep : .usageFollows) : (r.windowFollowsDock ? .windowFollows : .independent)
-    }
 
     /// The account's colour in the launcher, the dashboard (chips, cards, charts) and the panels.
     /// Unset: the icon colour when it's a plain one, else orange.
@@ -440,7 +451,11 @@ enum Installer {
         var restyled: [URL] = []
         // Last: the Dock's pins follow the profiles by id (a renamed app's pin moves in place, leftovers go, new looks
         // get a fresh entry), in one Dock restart at most.
-        defer { DockManager.reconcilePins(accounts, renew: restyled) }
+        defer {
+            DockManager.reconcilePins(accounts, renew: restyled)
+            // the agent pins and starts what this sync just installed
+            DistributedNotificationCenter.default().postNotificationName(appsChangedNote, object: nil, userInfo: nil, deliverImmediately: true)
+        }
         let wanted = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, appURL($0).standardizedFileURL) })
         for (url, id) in installed() where wanted[id] != url.standardizedFileURL {
             if let to = wanted[id], let e = accounts.first(where: { $0.id == id }) {
@@ -486,21 +501,6 @@ enum Installer {
             }
         }
         return log
-    }
-
-    /// cl_usage set to follow its Claude window, while that window is closed: it isn't started.
-    static func waitsForWindow(_ e: AccountEntry) -> Bool {
-        let a = Account(e)
-        return e.follows.usageFollowsWindow && !(Launcher.activity(for: [a])[a.configDir]?.desktopOpen ?? false)
-    }
-
-    /// A Claude window just started: start the cl_usage of profiles that follow it (cl_audit does this, since a
-    /// cl_usage that isn't running can't notice).
-    static func startFollowers() {
-        for e in Store.load() where e.follows.usageFollowsWindow && !waitsForWindow(e) {
-            let dst = appURL(e)
-            if FileManager.default.fileExists(atPath: dst.path), !isRunning(e) { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
-        }
     }
 
     static func needsInstall(_ e: AccountEntry, at dst: URL, source: URL) -> Bool {
@@ -679,8 +679,12 @@ enum Installer {
     }
 
     static let openSettingsNote = Notification.Name("local.usage-n-uf.open-settings")
-    /// Sent to a cl_usage app (object: its profile id) before cl_audit quits it to reinstall: quit without
-    /// taking the Claude window along.
+    /// Posted after cl_audit installed, renamed or removed Dock icon apps.
+    static let appsChangedNote = Notification.Name("local.usage-n-uf.apps-changed")
+    /// Posted by a Dock icon app quitting normally (object: its profile id), so a window that follows it can quit too.
+    static let iconQuitNote = Notification.Name("local.usage-n-uf.icon-quit")
+    /// Sent to a Dock icon app (object: its profile id) before cl_audit or the agent quits it (a reinstall, Usage in
+    /// the Dock off, its window quit): quit without taking the Claude window along.
     static let quietQuitNote = Notification.Name("local.usage-n-uf.quiet-quit")
     static let openDashboardNote = Notification.Name("local.usage-n-uf.open-dashboard")
     /// Asks every icon app to fetch its numbers now.

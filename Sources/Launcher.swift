@@ -111,32 +111,16 @@ enum Launcher {
 
 // MARK: - Accounts as the launcher shows them
 
-/// Where a profile's Dock icon app is: in the Dock, running but not pinned, hidden (running, no tile), not running,
+/// Where a profile's Dock icon is: none (Usage in the Dock off), in the Dock, running but not pinned, not running,
 /// or its app missing.
 enum UsageIconState {
-    case inDock, notPinned, hidden, notRunning, missing
-    var text: String {
-        switch self {
-        case .inDock: return "in the Dock"
-        case .notPinned: return "unpinned"
-        case .hidden: return "hidden"
-        case .notRunning: return "stopped"
-        case .missing: return "missing"
-        }
-    }
-    var color: Color {
-        switch self {
-        case .inDock: return Color(nsColor: Painter.green)
-        case .hidden: return .secondary.opacity(0.5)
-        case .notPinned, .notRunning, .missing: return .orange
-        }
-    }
+    case off, inDock, notPinned, notRunning, missing
 
     static func of(_ e: AccountEntry) -> UsageIconState {
+        guard e.runs.dockIcon else { return .off }
         let app = Installer.appURL(e)
         guard FileManager.default.fileExists(atPath: app.path) else { return .missing }
         guard Installer.isRunning(e) else { return .notRunning }
-        if e.iconHidden { return .hidden }
         return DockManager.isPinned(app) ? .inDock : .notPinned
     }
 }
@@ -148,12 +132,12 @@ struct AccountRow: Identifiable {
     var usageIcon: UsageIconState = .inDock
     /// A change cl_audit started and is still waiting for (the switch shows it at once, with a spinner).
     var busy: CardChange?
-    /// The window opening or quitting because its Dock icon started or quit (Opening and closing).
+    /// The window opening or quitting because its Dock icon started or quit (the agent, Opening and closing).
     var windowFollowing: CardChange?
     var notice: CardNotice?
-    /// Seconds until the Dock icon quits with its window (Opening and closing), or nil.
+    /// Seconds until the agent quits the Dock icon with its window (Opening and closing), or nil.
     var followQuitIn: TimeInterval?
-    /// The window just opened and the Dock icon is about to start with it.
+    /// The agent is starting the Dock icon with its window.
     var followStarting = false
     var id: String { entry.id }
     var account: Account { Account(entry) }
@@ -237,62 +221,63 @@ final class LauncherModel: ObservableObject {
         if hidden.contains(id) { hidden.remove(id) } else { hidden.insert(id) }
     }
 
+    /// The agent's mark, read with the rows: what it's doing (Opening and closing) and whether it's reading at all.
+    @Published var agent: AgentMark?
+
     func reload() {
         let entries = Store.load()
         let acts = Launcher.activity(for: entries.map(Account.init))
         let now = Date()
+        agent = Agent.readMark()
+        let doing = Agent.isAlive(agent) ? agent?.actions ?? [:] : [:]
         rows = entries.map {
             var r = AccountRow(entry: $0, status: Store.status($0.id), activity: acts[Account($0).configDir] ?? .init(), usageIcon: UsageIconState.of($0))
-            settle(&r, now)
+            settle(&r, now, doing[$0.id])
             return r
         }
         selected = min(selected, max(filtered.count - 1, 0))
-        if pending.isEmpty && windowFollow.isEmpty && followQuit.isEmpty && followStart.isEmpty { fastTimer?.invalidate(); fastTimer = nil }
+        if !doing.isEmpty { startFast() }
+        else if pending.isEmpty && windowFollow.isEmpty { fastTimer?.invalidate(); fastTimer = nil }
     }
 
     // MARK: Changes in progress
 
     private struct Pending {
         let change: CardChange
-        let started = Date()
+        var started = Date()
     }
     private var pending: [String: Pending] = [:]
-    private var windowFollow: [String: Pending] = [:]   // the window following a Dock icon that was started or quit
+    private var windowFollow: [String: Pending] = [:]   // the agent opening or quitting the window with its Dock icon
+    private var seenAction: [String: Date] = [:]
     private var notices: [String: CardNotice] = [:]
-    private var followQuit: [String: Date] = [:]     // when the Dock icon quits, following its window
-    private var followStart: [String: Date] = [:]    // when the window opened that the Dock icon starts with
-    private var lastOpen: [String: Bool] = [:]
     private var fastTimer: Timer?
 
     /// A card switch was flipped: show the change at once and look every 0.5 s until it is done or out of time.
+    /// What the agent does next (a window following its Dock icon) shows as it starts.
     func begin(_ id: String, _ change: CardChange) {
         notices[id] = nil
         pending[id] = Pending(change: change)
-        // With "open or quit the Claude window too", the window follows the Dock icon: show that on its switch.
-        if let r = rows.first(where: { $0.id == id }), r.entry.follows.windowFollowsUsage {
-            if change == .starting && !r.activity.desktopOpen { windowFollow[id] = Pending(change: .opening) }
-            if change == .stopping && r.activity.desktopOpen { windowFollow[id] = Pending(change: .quitting) }
-        }
         reload()
         startFast()
     }
 
-    private func startFast() {
+    func startFast() {
         guard fastTimer == nil else { return }
         fastTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in self?.reload() }
     }
 
-    private func settle(_ r: inout AccountRow, _ now: Date) {
-        let id = r.id, e = r.entry
+    private func settle(_ r: inout AccountRow, _ now: Date, _ doing: AgentAction?) {
+        let id = r.id
         let open = r.activity.desktopOpen
-        let running = r.usageIcon != .notRunning && r.usageIcon != .missing
+        let running = r.usageIcon != .notRunning && r.usageIcon != .missing && r.usageIcon != .off
 
-        // The window opened or quit: with the Dock icon following it, say what comes next.
-        if let was = lastOpen[id], was != open, e.follows.usageFollowsWindow {
-            if open { followStart[id] = now; followQuit[id] = nil } else { followQuit[id] = now + 10; followStart[id] = nil }
-            startFast()
+        // what the agent is doing for this profile: a window following its Dock icon is tracked like a flipped switch
+        if let a = doing, a.kind == .windowOpens || a.kind == .windowQuits, seenAction[id] != a.at {
+            seenAction[id] = a.at
+            windowFollow[id] = Pending(change: a.kind == .windowOpens ? .opening : .quitting, started: a.at)
         }
-        lastOpen[id] = open
+        if doing?.kind == .dockQuits, let at = doing?.at, running, !open { r.followQuitIn = max(0, at.timeIntervalSince(now)) }
+        if doing?.kind == .dockStarts, !running { r.followStarting = true }
 
         if let p = pending[id] {
             let done: Bool
@@ -320,15 +305,6 @@ final class LauncherModel: ObservableObject {
         if notices[id] == .openFailed && open { notices[id] = nil }
         if notices[id] == .claudeAsking && !open { notices[id] = nil }
         r.notice = notices[id]
-
-        if let t = followQuit[id] {
-            if open || !running || now.timeIntervalSince(t) > 15 { followQuit[id] = nil }
-            else { r.followQuitIn = max(0, t.timeIntervalSince(now)) }
-        }
-        if let t = followStart[id] {
-            if !open || running || now.timeIntervalSince(t) > 15 { followStart[id] = nil }
-            else { r.followStarting = true }
-        }
     }
 
     var filtered: [AccountRow] {
@@ -847,18 +823,16 @@ final class ManagerUI {
         },
         showClaude: { r in Launcher.openClaude(r.account) },
         startUsage: { [weak self] r in
+            // a normal start, so the agent opens a window that follows its Dock icon; a missing app is installed first
             let app = Installer.appURL(r.entry)
-            if FileManager.default.fileExists(atPath: app.path) {
-                self?.model.begin(r.id, .starting)
-                Installer.run("/usr/bin/open", ["-g", app.path])      // a normal start: a following window opens too
-            } else {
-                Installer.sync(Store.load())
-                self?.model.begin(r.id, .starting)
-            }
+            if !FileManager.default.fileExists(atPath: app.path) { Installer.sync(Store.load()) }
+            self?.model.begin(r.id, .starting)
+            Installer.run("/usr/bin/open", ["-g", app.path])
         },
         quitUsage: { [weak self] r in
             self?.model.begin(r.id, .stopping)
-            // a normal quit, so a window that follows its Dock icon quits too; pins and the Dock are not touched
+            // only the Dock icon: its usage keeps being read; a normal quit, so the agent quits a window that follows
+            // it; pins and the Dock are not touched
             Installer.running(r.entry).forEach { $0.terminate() }
         },
         profileSettings: { [weak self] r in self?.showMain(page: .settings, account: r.id) })
@@ -874,6 +848,14 @@ final class ManagerUI {
             forName: DetailsController.panelOpened, object: nil, queue: .main) { [weak self] note in
             guard (note.object as? String) != Bundle.main.bundleIdentifier else { return }
             self?.closePalette()
+        }
+        // What the agent saves and does shows on the cards right away, not at the next check.
+        let dn = DistributedNotificationCenter.default()
+        for name in [Agent.actionsChangedNote, Store.statusChanged] {
+            appObservers.append(dn.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                guard let self, self.dashboardShown || self.paletteShown else { return }
+                self.model.reload()
+            })
         }
         // A Claude window or Dock icon starting or quitting shows on the cards right away, not at the next check.
         let ws = NSWorkspace.shared.notificationCenter
@@ -1024,33 +1006,27 @@ struct ProfileControls: View {
         HStack(spacing: 6) { chips }
     }
 
+    /// What the profile has (AccountEntry.runs): its Claude window and its Dock icon, each a switch; usage only, one
+    /// display. The usage itself is read by the agent whatever these do.
     @ViewBuilder private var chips: some View {
-        if row.entry.usageOnly { usageOnlyDisplay }
+        let r = row.entry.runs
+        if r.usageOnly { usageOnlyDisplay }
         else {
-            if row.entry.claudeWindow { windowChip }
-            dockChip
+            if r.window { windowChip }
+            if r.dockIcon { dockChip }
         }
     }
 
-    /// Usage only: no switches, one display that says what the profile includes; a stopped one can be started here
-    /// (it otherwise starts at the next login), a missing one reinstalled.
+    /// Usage only: no switches, one display that says what the profile includes (nothing of its own is installed).
     private var usageOnlyDisplay: some View {
-        let s = row.usageIcon
-        return HStack(spacing: 8) {
+        HStack(spacing: 8) {
             Printed(text: "Profile", size: 8.5)
-            Group {
-                switch s {
-                case .missing: DisplayWindow(text: "Missing", dim: "· reinstall", tone: .warn, fill: true, dimTone: .warn)
-                case .notRunning: DisplayWindow(text: "Stopped", dim: "· not reading", tone: .amber, fill: true)
-                default: DisplayWindow(text: "Usage only", dim: "· not in the Dock · no window", tone: .ok, fill: true)
-                }
-            }
-            if s == .missing { fix("Reinstall") { actions.startUsage(row) } }
-            else if s == .notRunning { fix("Start") { actions.startUsage(row) }.help("Starts reading this profile's usage (it also starts at the next login)") }
+            DisplayWindow(text: "Usage only", dim: "· not in the Dock · no window", tone: .ok, fill: true)
         }
         .padding(.leading, 10).padding(.trailing, 7)
         .frame(maxWidth: .infinity, minHeight: 40)
         .faceWindow(radius: 6)
+        .help("Its usage is read by cl_audit and shows here, in the launcher and in alerts")
     }
 
     // no glyphs: the printed title says which one it is
@@ -1077,12 +1053,13 @@ struct ProfileControls: View {
         }
     }
 
-    /// The Dock icon switch starts and quits the Dock icon app. It never touches pins, so the Dock is never
-    /// restarted; Usage in the Dock (in profile settings) takes it in or out. Only a missing app gets an orange button.
+    /// The Dock icon switch starts and quits only the Dock icon app: the usage keeps being read. It never touches pins,
+    /// so the Dock is never restarted; Usage in the Dock (in profile settings) takes it in or out. Only a missing app
+    /// gets an orange button.
     @ViewBuilder private var dockChip: some View {
         let s = row.usageIcon
-        let running = s != .notRunning && s != .missing
-        let follows = row.entry.follows.usageFollowsWindow
+        let running = s == .inDock || s == .notPinned
+        let follows = row.entry.runs.withWindow
         if let c = row.busy, !c.isWindow {
             chip(glyph: dockGlyph, title: "Dock icon", sub: c.text, on: c.target, warn: false) { BusySwitch(on: c.target) }
         } else if row.followStarting && s == .notRunning {
@@ -1092,14 +1069,14 @@ struct ProfileControls: View {
         } else {
             let sub: String = {
                 if running, let t = row.followQuitIn { return t < 0.5 ? "quitting…" : "quits in \(Int(t.rounded(.up))) s" }
-                if running { return s == .hidden ? "running, hidden" : "running" }
-                return follows && !row.activity.desktopOpen ? "waits for the window" : "stopped · no alerts"
+                if running { return "running" }
+                return follows && !row.activity.desktopOpen ? "starts with its window" : "stopped"
             }()
             chip(glyph: dockGlyph, title: "Dock icon", sub: sub, on: running, warn: false) {
                 Toggle("", isOn: Binding(get: { running }, set: { $0 ? actions.startUsage(row) : actions.quitUsage(row) })).smallSwitch()
                     .help(row.followQuitIn != nil ? "It quits with its Claude window (profile settings ▸ Opening and closing)"
-                          : running ? "Quit it: no refreshes or alerts for this profile until it starts again; its Dock pin stays"
-                          : follows ? "It starts when the Claude window opens; or start it now" : "Start it")
+                          : running ? "Quit the Dock icon; its usage keeps being read and its Dock pin stays"
+                          : follows ? "It starts when its Claude window opens; or start it now" : "Start it")
             }
         }
     }
