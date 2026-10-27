@@ -145,6 +145,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.tick() }
         tick()
         applyEntry()
+        // cl_audit itself was moved to the Trash (or is gone) and its agent isn't running: offer to remove what
+        // belongs to it, after a moment and a second look (an update replaces cl_audit for a few seconds)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10) {
+            guard !Agent.isAlive(Agent.readMark()) else { return }
+            let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: Installer.managerID)
+            let gone = url.map { Uninstall.inTrash($0.path) } ?? ([Installer.appsFolder, URL(fileURLWithPath: expand("~/Applications"))]
+                .allSatisfy { !FileManager.default.fileExists(atPath: $0.appendingPathComponent("cl_audit.app").path) })
+            if gone { Uninstall.offerTrashCleanup(defaults: .standard, where: url?.path ?? "gone") }
+        }
         // Usage in the Dock off: no Dock icon for this profile (opened from Finder, say). Its settings say how to
         // bring it back; this copy quits, its window left alone.
         if !entry.runs.dockIcon {
@@ -185,6 +194,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         manager.showMain(page: .settings, account: (note as? Notification)?.object as? String)
     }
     @objc func showMainScreen() { manager.showMain() }
+    /// Settings ▸ General with the Uninstall sheet.
+    @objc func showUninstall() {
+        manager.showMain(page: .settings)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { UninstallUI.shared.show = true }
+    }
     @objc func showLauncher() { manager.togglePalette() }
     @objc func openAccountFromMenu(_ item: NSMenuItem) {
         if let id = item.representedObject as? String, let e = Store.load().first(where: { $0.id == id }) {

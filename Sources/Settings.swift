@@ -385,8 +385,11 @@ struct SettingsPage: View {
     @ObservedObject var model: SettingsModel
     @Environment(\.face) private var face
 
+    @ObservedObject private var uninstall = UninstallUI.shared
+
     var body: some View {
         page.sheet(item: $model.pendingRemoval) { e in RemoveAccountSheet(entry: e, model: model) }
+            .sheet(isPresented: $uninstall.show) { UninstallSheet(model: model) }
     }
 
     var page: some View {
@@ -1427,6 +1430,8 @@ enum MainMenu {
         let appItem = NSMenuItem(); main.addItem(appItem)
         let app = NSMenu()
         app.addItem(withTitle: "Settings…", action: #selector(AppDelegate.showSettingsWindow), keyEquivalent: ",")
+        app.addItem(.separator())
+        app.addItem(withTitle: "Uninstall cl_audit…", action: #selector(AppDelegate.showUninstall), keyEquivalent: "")
         app.addItem(.separator())
         app.addItem(withTitle: "Quit cl_audit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         appItem.submenu = app

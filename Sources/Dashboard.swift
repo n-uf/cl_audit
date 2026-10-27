@@ -30,11 +30,29 @@ struct DashboardSettings: View {
     var width: CGFloat = 1280
 
     var body: some View {
-        SettingsColumns(width: width, groups: [[AnyView(emailsCard), AnyView(faceCard), AnyView(appIconCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(DockCard())]])
+        SettingsColumns(width: width, groups: [[AnyView(emailsCard), AnyView(faceCard), AnyView(appIconCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(DockCard()), AnyView(cleanupCard)]])
     }
 
     @Environment(\.face) private var face
     @ObservedObject private var privacy = Privacy.shared
+
+    // Clean-up and Uninstall: what the agent tidies on its own, and taking cl_audit off this Mac
+    @State private var cleanupTick = 0
+    var cleanupCard: some View {
+        let _ = cleanupTick
+        let r = Cleanup.lastRecord()
+        let items = (r?.removed ?? []).prefix(6).joined(separator: "\n")
+        return SCard(title: "Clean-up", info: "The cl_audit agent tidies up on its own: at login, after every change and every 6 hours. It removes only what is provably cl_audit's: Dock icon apps no profile wants, second copies, what macOS keeps for them, saved usage of removed profiles, Dock pins of apps that are gone and old Terminal scripts. Never a Claude Code folder, a Claude window's data, a Keychain sign-in or anything else.") {
+            SRow(label: "Last run", info: items.isEmpty ? "Nothing removed in the last week." : "Removed:\n" + items, first: true) {
+                Text(Cleanup.summary(r)).font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+            }
+            SRow(label: "Uninstall", info: "Removes every Dock icon app and its pin, the agent, saved usage, settings and caches, then moves cl_audit to the Trash. You choose per profile whether its Claude Code folder (signed out first) and its own Claude window's data go too; ~/.claude and the standard window are never deleted.") {
+                Button("Uninstall cl_audit…") { UninstallUI.shared.show = true }
+                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(face.danger)
+            }
+        }
+        .onAppear { cleanupTick += 1 }
+    }
 
     // Show emails: for screen sharing and screenshots
     var emailsCard: some View {

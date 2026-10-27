@@ -8,6 +8,8 @@ import AppKit
 //   --render-preview OUT.png STYLE LABEL FIVEHOUR WEEKLY [COLOR [FRAME]]   one sample icon
 //   --agent-status | --agent-register | --agent-unregister   the cl_audit agent's background item, for checking
 //   --forget-login-item          (in a Dock icon copy) remove the login item older versions registered for it
+//   --cleanup [--dry-run]        the agent's clean-up now (or only list what it would remove)
+//   --uninstall [--yes] [--delete-folders=ID,ID]   list what Uninstall removes, or (--yes) do it
 
 let args = CommandLine.arguments
 
@@ -80,6 +82,19 @@ if args.count >= 3, args[1] == "--render-settings" {
 
 if args.count >= 4, args[1] == "--render-launcher" {
     if #available(macOS 14, *) { MainActor.assumeIsolated { ManagerUI.renderSample(to: args[2], main: args[3] == "main") } }
+    exit(0)
+}
+
+if args.count >= 2, args[1] == "--uninstall" {
+    // what Uninstall removes; --yes does it; --delete-folders=<profile ids> adds those profiles' folders
+    exit(Uninstall.commandLine(args))
+}
+
+if args.count >= 2, args[1] == "--cleanup" {
+    // the agent's clean-up now (--dry-run: only list what it would remove)
+    let dry = args.contains("--dry-run")
+    let out = Cleanup.run("from the command line", dry: dry)
+    print(out.isEmpty ? "nothing to clean up" : (dry ? "would remove:\n  " : "removed:\n  ") + out.joined(separator: "\n  "))
     exit(0)
 }
 

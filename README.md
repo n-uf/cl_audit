@@ -208,6 +208,8 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.
 - **Dashboard cards:** one card style for every profile (Glow, Rings, Numbers, Segments or Pace).
 - **About:** the version and build, and a link to what's new.
+- **Clean-up:** when the agent last tidied up ("Cleaned up 2 leftovers · 26 Oct"; the (i) lists what went),
+  and **Uninstall cl_audit…** (see [Uninstalling](#uninstalling)).
 - **Dock** (off by default; experimental and invasive: it rewrites the Dock's pin list and restarts the
   Dock, and macOS can misplace or drop pins). macOS ties running Claude windows to Claude pins in its own
   order, so several Claude pins get mixed up; the Dock icons are the reliable way to reach each profile's
@@ -251,6 +253,22 @@ folder out (its Keychain login goes) and deletes that folder and its Claude wind
 inside are removed, never what they point to. The default `~/.claude`, the standard window and a folder
 another profile shares items from are never deleted, and Claude must be closed first.
 
+### Uninstalling
+
+**Uninstall cl_audit…** (Settings ▸ General, or the cl_audit menu) always removes every Dock icon app and its pin
+(your other pins stay), the agent and its background item, saved usage, settings, caches and preferences, the
+Terminal scripts cl_audit wrote, and then moves cl_audit itself to the Trash. Per profile, off by default, it can
+also delete its Claude Code folder (signed out first) and its own Claude window's data; `~/.claude` and the standard
+window are never offered, a folder another profile shares items from goes only together with that profile's, and
+Claude must be closed first where it uses a folder that goes. A note at the end lists what was kept.
+
+From Terminal: `/Applications/cl_audit.app/Contents/MacOS/UsageDock --uninstall` lists what would go; add `--yes`
+to do it, and `--delete-folders=work,starpay` (profile ids) for those profiles' folders.
+
+Dragged cl_audit to the Trash instead? While its agent still runs (it does until you log out), it offers once to
+remove the Dock icon apps, the agent and the settings; later, the first Dock icon you open does. It never deletes
+a folder. macOS can't start the agent again from the Trash, so nothing of cl_audit keeps reading after that.
+
 Profiles are saved on this Mac only, in `~/Library/Application Support/usage-n-uf/accounts.json`
 (format: `accounts.example.json`). Only the cl_audit window edits it (and the agent, to record a Dock icon
 dragged out by hand), through one locked write. When cl_audit starts it brings the Dock icon apps up to
@@ -282,6 +300,14 @@ One program in three roles: **cl_audit** (the window: dashboard, settings, launc
   the folder is set up for (`oauthAccount` in its `.claude.json`). On a mismatch the icon shows a red "!",
   and the panel and menu say how to fix it.
 - **Alerts:** one source, cl_audit, so macOS asks once. One alert per limit and reset.
+- **Clean-up:** the agent tidies up at login, after every saved change and every 6 hours. It removes only what
+  is provably cl_audit's (Dock icon apps in `/Applications` or `~/Applications` with a bundle id under
+  `local.usage-n-uf.` and a profile id): apps no profile wants, second copies, the files macOS keeps under their
+  id in six places in `~/Library`, saved usage of removed profiles, Dock pins and recent-app entries of apps that
+  are gone (one Dock change, only when there is one) and Terminal scripts older than a day. Never a Claude Code
+  folder, a Claude window's data, a Keychain sign-in or anything without cl_audit's id. With the profiles file
+  missing or unreadable it removes nothing, and it leaves an app installed or renamed in the last minute alone.
+  `UsageDock --cleanup --dry-run` lists what it would remove.
 - **Which Claude window:** running Claude apps are matched to profiles by their exact `--user-data-dir`,
   read from the process arguments (no `ps`); the standard window is the one without it.
 - **Fallback:** `statusline/usage-statusline.sh` is a Claude Code status line script that writes

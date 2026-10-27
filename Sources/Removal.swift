@@ -22,12 +22,23 @@ enum AccountRemoval {
 
     /// Removes what an icon app leaves behind once the app itself is gone.
     static func purgeApp(id: String, app: URL) {
-        let fm = FileManager.default
-        Installer.run("/usr/bin/defaults", ["delete", "\(Installer.managerID).\(id)"])
-        for u in leftovers(id) where fm.fileExists(atPath: u.path) { try? fm.removeItem(at: u) }
+        purgeFiles(id)
         Store.removeStatus(id)
         unpinFromDock(app)
         Installer.run(lsregister, ["-u", app.path])
+    }
+
+    /// The files macOS keeps for any bundle id in ~/Library (cl_audit's own and the agent's, at Uninstall).
+    static func libraryFiles(bundleID b: String) -> [URL] {
+        ["Caches/\(b)", "HTTPStorages/\(b)", "HTTPStorages/\(b).binarycookies", "Preferences/\(b).plist",
+         "Saved Application State/\(b).savedState", "WebKit/\(b)", "Application Support/\(b)"].map { library.appendingPathComponent($0) }
+    }
+
+    /// The files macOS keeps for a Dock icon app's bundle id (its preferences, also from cfprefsd's memory).
+    static func purgeFiles(_ id: String) {
+        let fm = FileManager.default
+        Installer.run("/usr/bin/defaults", ["delete", "\(Installer.managerID).\(id)"])
+        for u in leftovers(id) where fm.fileExists(atPath: u.path) { try? fm.removeItem(at: u) }
     }
 
     /// Usage in the Dock off: the profile's Dock icon app goes, with what macOS keeps for it (a login item from older
@@ -52,7 +63,7 @@ enum AccountRemoval {
     static func orphanIDs(keeping ids: Set<String>) -> [String] {
         let prefix = "\(Installer.managerID)."
         var found = Set<String>()
-        for sub in ["Caches", "HTTPStorages", "Preferences", "Saved Application State"] {
+        for sub in ["Caches", "HTTPStorages", "Preferences", "Saved Application State", "WebKit", "Application Support"] {
             let names = (try? FileManager.default.contentsOfDirectory(atPath: library.appendingPathComponent(sub).path)) ?? []
             for var n in names {
                 // Strip the extension first, so the settings app's own "local.usage-n-uf.plist" isn't read as an id.
@@ -140,15 +151,15 @@ enum AccountRemoval {
     /// Signs the Claude Code folder out (its Keychain login goes), quits its Claude window and deletes the
     /// folders. Links inside are removed, never what they point to. Blocks; call off the main thread.
     /// Returns what couldn't be deleted.
-    static func deleteFolders(_ e: AccountEntry, claude: String?) -> [String] {
+    static func deleteFolders(_ e: AccountEntry, claude: String?, config: Bool = true, window: Bool = true) -> [String] {
         let fm = FileManager.default
-        let dirs = folders(e)
+        let dirs = folders(e).filter { $0 == e.configDir ? config : window }
         if dirs.contains(e.configDir), let claude, Account.expectedEmail(configDir: e.configDir) != nil {
             ClaudeCLI.logout(claude, configDir: e.configDir)
         }
         let account = Account(e)
         let apps = NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
-            .filter { e.desktop == .separate && Launcher.isWindow(of: account, $0) }
+            .filter { window && e.desktop == .separate && Launcher.isWindow(of: account, $0) }
         apps.forEach { $0.terminate() }
         let deadline = Date().addingTimeInterval(5)
         while apps.contains(where: { !$0.isTerminated }) && Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
@@ -191,7 +202,7 @@ struct RemoveAccountSheet: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text("ALWAYS REMOVED").font(.system(size: 10, weight: .semibold)).tracking(0.6).foregroundStyle(.secondary)
                 bullet("Its Dock icon “cl_audit \(entry.name)”, and its pin in the Dock")
-                bullet("Its open-at-login entry, saved usage, preferences and caches")
+                bullet("Its saved usage, the alert marks cl_audit keeps for it, preferences and caches")
                 bullet("Its place on the dashboard")
             }
 

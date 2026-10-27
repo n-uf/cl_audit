@@ -36,6 +36,14 @@ the notes before updating.
   room is short, "Updated 3 min ago" becomes "3 min ago".
 - **Clean-up of older installs, once:** each Dock icon's own login item, and the hidden apps of usage only
   profiles.
+- **Automatic clean-up:** the agent tidies up at login, after every change and every 6 hours: Dock icon apps no
+  profile wants, second copies, what macOS keeps for them (now in all six places), saved usage of removed profiles,
+  Dock pins of apps that are gone and old Terminal scripts. Only what is provably cl_audit's; never a Claude Code
+  folder, a Claude window's data or a sign-in. General settings shows the last run.
+- **Uninstall cl_audit…** (Settings ▸ General, the cl_audit menu, or `UsageDock --uninstall`): removes everything
+  cl_audit made and moves it to the Trash; per profile you choose whether its folders go too. Dragged to the Trash
+  instead, cl_audit offers once to remove its Dock icons, agent and settings.
+- **Fixed:** restarting the agent could hang (launchctl waits for ever on a job that couldn't start).
 
 ## 26.10.10 — 2026-10-26
 

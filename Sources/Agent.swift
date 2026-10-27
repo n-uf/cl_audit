@@ -154,7 +154,8 @@ enum Agent {
     /// the agent doesn't count it as a crash.
     static func restart() {
         UserDefaults(suiteName: bundleID)?.set(Date(), forKey: "plannedRestart")
-        Installer.run("/bin/launchctl", ["kickstart", "-k", "gui/\(getuid())/\(bundleID)"])
+        // launchctl can wait for ever on a job that couldn't start (after cl_audit was in the Trash, say)
+        Installer.run("/bin/launchctl", ["kickstart", "-k", "gui/\(getuid())/\(bundleID)"], timeout: 10)
     }
 
     /// Asks the agent to renew a profile's sign-in now (object: the profile id).
@@ -190,6 +191,8 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     var order: [String] = []
     var pausedUntil: Date?
     var rules: AgentRules?
+    private var cleanupWork: DispatchWorkItem?
+    private var cleanupTimer: Timer?
     private var observers: [NSObjectProtocol] = []
     private var askedForAlerts = false
     private let myStamp = Installer.buildStamp(Bundle.main.bundleURL)
@@ -232,11 +235,20 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         rules = r
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: Agent.beatSeconds, repeats: true) { [weak self] _ in self?.tick() }
-        // once the readers run: what older versions left behind (per-profile login items, usage only apps)
+        // once the readers run: what older versions left behind (per-profile login items), then the clean-up
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             guard let self else { return }
             LegacyCleanup.run(Store.load(), defaults: self.defaults)
+            Cleanup.runSoon("start")
         }
+        // the clean-up again after every saved change (a moment later, once) and every 6 hours
+        observers.append(dn.addObserver(forName: Store.changed, object: nil, queue: .main) { [weak self] _ in
+            self?.cleanupWork?.cancel()
+            let w = DispatchWorkItem { Cleanup.runSoon("after a change") }
+            self?.cleanupWork = w
+            DispatchQueue.main.asyncAfter(deadline: .now() + 8, execute: w)
+        })
+        cleanupTimer = Timer.scheduledTimer(withTimeInterval: 6 * 3600, repeats: true) { _ in Cleanup.runSoon("every 6 hours") }
     }
 
     /// The profiles file changed: a reader for each profile, in the file's order; a removed profile's reader,
@@ -269,6 +281,10 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     }
 
     func tick() {
+        // cl_audit was moved to the Trash (the agent runs inside it): offer to remove what belongs to it
+        if let p = Uninstall.currentExecutablePath(), Uninstall.inTrash(p) {
+            Uninstall.offerTrashCleanup(defaults: defaults, where: p.components(separatedBy: "/Contents/").first ?? p)
+        }
         for id in order { readers[id]?.tick() }
         rules?.tick()
         beat()

@@ -431,13 +431,15 @@ enum Installer {
         NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist"))
     }
 
-    /// Icon apps already installed (here or in an old location), by the account id in their Info.plist.
+    /// Dock icon apps installed (here or in an old location): provably cl_audit's, by a bundle id under
+    /// local.usage-n-uf. and the profile id in their Info.plist.
     static func installed() -> [(url: URL, id: String)] {
         let urls = ([appsFolder] + oldAppsFolders).flatMap {
             (try? FileManager.default.contentsOfDirectory(at: $0, includingPropertiesForKeys: nil)) ?? []
         }
         return urls.compactMap { u in
-            guard u.pathExtension == "app", let id = info(u)?["UsageAccountID"] as? String else { return nil }
+            guard u.pathExtension == "app", let i = info(u), let id = i["UsageAccountID"] as? String,
+                  (i["CFBundleIdentifier"] as? String)?.hasPrefix(managerID + ".") == true else { return nil }
             return (u, id)
         }
     }
@@ -721,14 +723,20 @@ enum Installer {
         }
     }
 
+    /// Runs a tool and waits for it; with `timeout`, stops it after that many seconds (and returns -1).
     @discardableResult
-    static func run(_ tool: String, _ args: [String]) -> Int32 {
+    static func run(_ tool: String, _ args: [String], timeout: TimeInterval? = nil) -> Int32 {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: tool)
         p.arguments = args
         p.standardOutput = FileHandle.nullDevice
         p.standardError = FileHandle.nullDevice
         do { try p.run() } catch { return -1 }
+        if let timeout {
+            let deadline = Date().addingTimeInterval(timeout)
+            while p.isRunning && Date() < deadline { usleep(20_000) }
+            if p.isRunning { p.terminate(); usleep(200_000); return -1 }
+        }
         p.waitQuietly()
         return p.terminationStatus
     }
