@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.10.9 — 2026-10-26
+
 - **New profile without a Claude window:** no "Quit the desktop app" step. With Claude window off the only new
   folder is the Claude Code folder, which the desktop app never writes, so the open app no longer holds up
   Create; the remaining steps are numbered on from 1. With a Claude window the step is as before.
