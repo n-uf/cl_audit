@@ -6,6 +6,7 @@ import AppKit
 //   --render-app-iconset DIR [STYLE]   the app's own icon (AppIcon.swift) as an .iconset folder
 //   --render-app-icon OUT.png STYLE [PIXELS [PLATE DISPLAY KEYS SLOT]]   one app icon design (the last four: Front panel's look)
 //   --render-preview OUT.png STYLE LABEL FIVEHOUR WEEKLY [COLOR [FRAME]]   one sample icon
+//   --agent-status | --agent-register | --agent-unregister   the cl_audit agent's background item, for checking
 
 let args = CommandLine.arguments
 
