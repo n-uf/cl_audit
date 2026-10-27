@@ -90,6 +90,12 @@ if args.count >= 2, args[1] == "--agent-status" {
     exit(0)
 }
 
+if args.count >= 2, args[1] == "--agent-register" {
+    do { try Agent.service.register(); print("registered: \(Agent.statusText(Agent.service.status))") }
+    catch { print("couldn't register: \(error.localizedDescription) (\((error as NSError).code))") }
+    exit(0)
+}
+
 if args.count >= 2, args[1] == "--agent-unregister" {
     do { try Agent.service.unregister(); print("unregistered") } catch { print("couldn't unregister: \(error.localizedDescription)") }
     exit(0)
