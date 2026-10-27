@@ -80,7 +80,7 @@ cat > "$app/Contents/Library/LaunchAgents/local.usage-n-uf-agent.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>Label</key><string>local.usage-n-uf-agent</string>
-  <key>BundleProgram</key><string>Contents/Library/LoginItems/$name Agent.app/Contents/MacOS/UsageDock</string>
+  <key>BundleProgram</key><string>Contents/Helpers/cl_audit-agent</string>
   <key>AssociatedBundleIdentifiers</key><array><string>local.usage-n-uf</string></array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
@@ -89,6 +89,11 @@ cat > "$app/Contents/Library/LaunchAgents/local.usage-n-uf-agent.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+# What launchd starts: a tiny launcher (Launcher/main.c) that hands over to the agent. Built the same way it comes
+# out byte for byte the same, so an update doesn't change it and macOS goes on accepting it without a new notice.
+mkdir -p "$app/Contents/Helpers"
+clang -O2 -arch arm64 -mmacosx-version-min=13.0 -o "$app/Contents/Helpers/cl_audit-agent" "$here/Launcher/main.c"
+codesign --force --sign - --identifier local.usage-n-uf-agent-launcher "$app/Contents/Helpers/cl_audit-agent" 2>/dev/null
 codesign --force --sign - "$helper" 2>/dev/null
 codesign --force --sign - "$app" 2>/dev/null
 echo "built $name $version ($build)"

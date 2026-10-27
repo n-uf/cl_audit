@@ -502,6 +502,7 @@ enum Installer {
         try fm.copyItem(at: source, to: dst)
         // The agent lives only in cl_audit.app: a Dock icon copy doesn't carry it (it's signed again below).
         try? fm.removeItem(at: dst.appendingPathComponent("Contents/Library"))
+        try? fm.removeItem(at: dst.appendingPathComponent("Contents/Helpers"))
         // A downloaded cl_audit carries macOS's download mark, and the copy would too: every Dock icon app
         // would then ask to be allowed in Privacy & Security. The copy is made here, so it isn't a download.
         run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", dst.path])
