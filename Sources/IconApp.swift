@@ -62,7 +62,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func loadStatus() {
-        status = Store.status(entry.id)
+        let fresh = Store.status(entry.id)
+        if fresh?.updatedAt != status?.updatedAt, let at = fresh?.updatedAt {
+            dockLog.log("\(self.entry.id, privacy: .public): shows the agent's numbers from \(Int(-at.timeIntervalSinceNow)) s ago")
+        }
+        status = fresh
         redraw()
     }
 

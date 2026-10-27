@@ -203,7 +203,6 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         reload()
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: Agent.beatSeconds, repeats: true) { [weak self] _ in self?.tick() }
-        tick()
         // once the readers run: what older versions left behind (per-profile login items, usage only apps)
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             guard let self else { return }
@@ -225,7 +224,13 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         var fresh = 0
         for e in list {
             if let r = readers[e.id] { r.update(e) }
-            else { readers[e.id] = UsageReader(e, defaults: defaults, startIn: Double(fresh) * 2); fresh += 1 }
+            else {
+                // new readers start a couple of seconds apart, each read on time (not at the next tick)
+                let r = UsageReader(e, defaults: defaults, startIn: Double(fresh) * 2)
+                readers[e.id] = r
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(fresh) * 2 + 0.1) { [weak r] in r?.tick() }
+                fresh += 1
+            }
         }
         order = list.map(\.id)
         askForAlerts(list)
