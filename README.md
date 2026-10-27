@@ -156,10 +156,11 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 - **Profile:** name, icon label (up to 6 letters, drawn on the icon), the profile's colour (launcher,
   dashboard, panels), then two keys, each with a line under it saying what the current choice does:
   - **Usage in the Dock:** on, a Dock icon shows the profile's usage (click it for details); off, no Dock
-    icon: it quits and is unpinned, and its app stays installed, so it comes back as it was. The agent reads
-    the usage either way. Changing it restarts the Dock once, to pin or unpin; the main display says
-    "Restarting the Dock…" and the keys wait meanwhile. Dragging the icon out of the Dock by hand turns it
-    off too.
+    icon: it quits, is unpinned and its app is removed with what macOS keeps for it. Turn it back on and the
+    app is installed again and returns to its place in the Dock, with the same look and click settings (they
+    live in the profile). The agent reads the usage either way. Changing it restarts the Dock once, to pin
+    or unpin; the main display says "Restarting the Dock…" and the keys wait meanwhile. Dragging the icon out
+    of the Dock by hand turns it off too.
   - **Claude window:** on, a Claude window signed in to the profile's account; off, none, and nothing opens
     one. Its folder and sign-in are kept, so turning it back on needs no new sign-in.
 
@@ -290,8 +291,9 @@ One program in three roles: **cl_audit** (the window: dashboard, settings, launc
   `{ "statusLine": { "type": "command", "command": "~/.claude/bin/usage-statusline.sh" } }`
 - **One app per Dock icon:** macOS gives each running app one Dock icon, so a profile with Usage in the
   Dock on gets its own copy of the app (same binary, its own bundle id and `UsageAccountID`), signed ad hoc.
-  Earlier versions made each copy its own login item and kept a hidden copy for usage only profiles; the
-  agent removes those once.
+  Only those profiles have one: with Usage in the Dock off the copy is removed (its Dock place is kept by the
+  agent). Earlier versions made each copy its own login item and kept a hidden copy with Usage in the Dock
+  off; the agent removes those once.
 
 `build/UsageDock --render-preview out.png STYLE LABEL 23 41 [COLOR [FRAME]]` renders a sample icon (STYLE
 is one of bars, rings, twinRings, number, segmented, pace, statusTile, gauge, worst, statusBar, thinBars,

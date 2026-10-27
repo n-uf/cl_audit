@@ -15,9 +15,10 @@ the notes before updating.
   Alerts now come from cl_audit, so macOS asks once (System Settings ▸ Notifications ▸ cl_audit); the old
   per-profile entries there can be removed.
 - **Dock icons only show.** A Dock icon draws what the agent saved and asks it for Refresh now and Renew login;
-  it no longer reads the Keychain or the network. Usage in the Dock off quits the icon and unpins it (no
-  hidden app, no restart of the app); the app stays installed, so it comes back as it was. A usage only
-  profile installs nothing at all.
+  it no longer reads the Keychain or the network. Usage in the Dock off quits the icon, unpins it and removes its
+  app with what macOS keeps for it (no hidden app any more); turn it back on and it's installed again in the
+  same place in the Dock, with its look and click settings. A usage only profile installs nothing at all.
+  Apps older versions kept for profiles with Usage in the Dock off are removed once.
 - **Opening and closing, simplified:** **Dock icon runs** At login, With its window or When started, and one
   switch, **Claude window opens and quits with the Dock icon**. The agent runs these, whether or not cl_audit
   is open (before, "start the Dock icon with its window" needed cl_audit running). Old settings carry over:

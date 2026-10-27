@@ -30,6 +30,24 @@ enum AccountRemoval {
         Installer.run(lsregister, ["-u", app.path])
     }
 
+    /// Usage in the Dock off: the profile's Dock icon app goes, with what macOS keeps for it (a login item from older
+    /// versions, preferences, caches, saved state, its Launch Services record). Its settings, saved usage and the
+    /// agent's alert marks and Dock place stay, so turning it back on brings it back as it was. The agent takes it
+    /// out of the Dock first (DockManager.unpin).
+    static func removeDockApp(id: String, app: URL) {
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: app.path) else { return }
+        // only a copy of this build knows --forget-login-item (an older one would just start)
+        if let this = LegacyCleanup.thisApp, Installer.info(app)?["UsageBuild"] as? String == Installer.buildStamp(this) {
+            Installer.run(app.appendingPathComponent("Contents/MacOS/UsageDock").path, ["--forget-login-item"])
+        }
+        Installer.stop(app)
+        try? fm.removeItem(at: app)
+        Installer.run(lsregister, ["-u", app.path])
+        Installer.run("/usr/bin/defaults", ["delete", "\(Installer.managerID).\(id)"])
+        for u in leftovers(id) where fm.fileExists(atPath: u.path) { try? fm.removeItem(at: u) }
+    }
+
     /// Ids that still have files in ~/Library but no account (left by older versions); cleaned on each sync.
     static func orphanIDs(keeping ids: Set<String>) -> [String] {
         let prefix = "\(Installer.managerID)."
@@ -282,13 +300,15 @@ struct RemoveAccountSheet: View {
 
 // MARK: - What older versions left behind
 
-/// Before the agent, each Dock icon app read its own usage: it was its own login item, and a usage only profile had a
-/// hidden app just for that. The agent clears these once.
+/// Before the agent, each Dock icon app read its own usage and was its own login item. The agent clears these once
+/// (the apps kept for profiles with Usage in the Dock off go in Rules.swift: they aren't kept any more).
 enum LegacyCleanup {
     static func run(_ accounts: [AccountEntry], defaults: UserDefaults) {
         forgetLoginItems(defaults: defaults)
-        removeUsageOnlyApps(accounts, defaults: defaults)
     }
+
+    /// The cl_audit.app this process belongs to (the agent's parent, or cl_audit itself).
+    static var thisApp: URL? { Agent.isAgent ? agentParentApp() : Bundle.main.bundleURL }
 
     /// The login item each Dock icon copy registered for itself. macOS lets only an app remove its own, so each copy's
     /// program does it (--forget-login-item); only copies of this build know how, so older ones wait for cl_audit to
@@ -303,23 +323,6 @@ enum LegacyCleanup {
             if ok { defaults.set(stamp, forKey: key) }
             agentLog.log("agent: \(id, privacy: .public): old login item \(ok ? "removed" : "not removed", privacy: .public)")
         }
-    }
-
-    /// A usage only profile's hidden app: the agent reads its usage now, so the app goes (its saved status and alert
-    /// marks stay). Once, after its login item went.
-    static func removeUsageOnlyApps(_ accounts: [AccountEntry], defaults: UserDefaults) {
-        guard !defaults.bool(forKey: "usageOnlyAppsRemoved") else { return }
-        var waiting = false
-        for e in accounts where e.usageOnly {
-            let url = Installer.appURL(e)
-            guard FileManager.default.fileExists(atPath: url.path) else { continue }
-            guard defaults.string(forKey: "loginItemForgotten.\(e.id)") != nil else { waiting = true; continue }
-            Installer.stop(url)
-            try? FileManager.default.removeItem(at: url)
-            Installer.run(AccountRemoval.lsregister, ["-u", url.path])
-            agentLog.log("agent: \(e.id, privacy: .public): usage only, its hidden app removed")
-        }
-        if !waiting { defaults.set(true, forKey: "usageOnlyAppsRemoved") }
     }
 
     /// The cl_audit.app the agent runs from (…/cl_audit.app/Contents/Library/LoginItems/cl_audit Agent.app).

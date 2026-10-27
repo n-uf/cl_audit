@@ -250,31 +250,32 @@ enum DockManager {
         tidy(accounts: accounts)
     }
 
-    /// Takes one app's pin out of the Dock (Usage in the Dock off) and remembers its left neighbour, to put it back there.
-    static func unpinRemembering(_ app: URL, defaults: UserDefaults) {
+    /// Where an app is pinned now: its left neighbour's path ("" = first in the Dock), or nil when it isn't pinned.
+    /// The agent keeps this per profile, so a Dock icon removed with Usage in the Dock off comes back to its place.
+    static func place(of app: URL) -> String? {
         let list = pins(), k = key(app)
-        markChange(app)
-        guard let i = list.firstIndex(where: { path($0) == k }) else { dockLog.log("unpin \(k, privacy: .public): not pinned"); return }
-        defaults.set(true, forKey: "dockWasPinned")
-        defaults.set(i > 0 ? (path(list[i - 1]) ?? "") : "", forKey: "dockLeftNeighbour")
-        dockLog.log("unpin \(k, privacy: .public): at \(i)")
-        // the writer checks after the Dock restarts and writes again if the Dock put it back; flipped back on
-        // meanwhile, nothing is taken out
-        DockWriter.update("unpin \(k)") { l in
-            guard wantsShown(app) != true else { return }
-            l.pinned.removeAll { path($0) == k }
-        }
+        guard let i = list.firstIndex(where: { path($0) == k }) else { return nil }
+        return i > 0 ? (path(list[i - 1]) ?? "") : ""
     }
 
-    /// Puts back a pin taken out by `unpinRemembering` (the agent, when Usage in the Dock is turned on): back where it
-    /// was, or, never pinned before, after the other cl_audit icons. In the background: it waits for the Dock to
-    /// settle, pins, and checks after the Dock restarts.
-    static func repinInBackground(_ app: URL) {
+    /// Usage in the Dock off: the app's pin and any recent-apps entry out, in one Dock write (one restart, none when
+    /// it's in neither). Turned back on meanwhile, nothing is taken out. `done` runs on the main thread.
+    static func unpin(_ app: URL, done: @escaping () -> Void) {
+        let k = key(app)
         markChange(app)
-        guard !isPinned(app) else { dockLog.log("repin \(key(app), privacy: .public): already pinned"); return }
-        let d = appDefaults(app)
-        let neighbour = d?.bool(forKey: "dockWasPinned") == true ? d?.string(forKey: "dockLeftNeighbour") : nil
-        d?.removeObject(forKey: "dockWasPinned"); d?.removeObject(forKey: "dockLeftNeighbour")
+        DockWriter.update("unpin \(k)", { l in
+            guard wantsShown(app) != true else { return }
+            l.pinned.removeAll { path($0) == k }
+            l.recent.removeAll { path($0) == k }
+        }, done: { _ in done() })
+    }
+
+    /// Usage in the Dock on: pins the app at its remembered place (after `neighbour`; nil, or a neighbour that's gone:
+    /// after the other cl_audit icons). In the background: it waits for the Dock to settle, pins, and checks after
+    /// the Dock restarts.
+    static func pinInBackground(_ app: URL, after neighbour: String?) {
+        markChange(app)
+        guard !isPinned(app) else { dockLog.log("pin \(key(app), privacy: .public): already pinned"); return }
         DispatchQueue.global(qos: .utility).async { pinFromHelper(app, after: neighbour) }
     }
 
@@ -411,7 +412,7 @@ enum DockManager {
         }
     }
 
-    /// Pins an app if it isn't pinned: after `neighbour` ("" = first), or else right after the other cl_usage icons.
+    /// Pins an app if it isn't pinned: after `neighbour` ("" = first), or else right after the other cl_audit icons.
     static func pin(_ app: URL, after neighbour: String? = nil) {
         DockWriter.update("pin \(key(app))") { l in l.pinned = pinned(l.pinned, app, after: neighbour) }
     }
@@ -420,13 +421,15 @@ enum DockManager {
     static func pinned(_ list: [[String: Any]], _ app: URL, after neighbour: String? = nil) -> [[String: Any]] {
         let k = key(app)
         guard !list.contains(where: { path($0) == k }) else { return list }
-        var out = list, at = list.count
+        var out = list
+        var at: Int?
         if let n = neighbour {
             if n.isEmpty { at = 0 } else if let j = list.firstIndex(where: { path($0) == n }) { at = j + 1 }
-        } else if let j = list.lastIndex(where: { t in path(t).map { $0 != key(settingsURL) && isIconApp($0) } ?? false }) {
+        }
+        if at == nil, let j = list.lastIndex(where: { t in path(t).map { $0 != key(settingsURL) && isIconApp($0) } ?? false }) {
             at = j + 1
         }
-        out.insert(tile(app), at: min(at, list.count))
+        out.insert(tile(app), at: min(at ?? list.count, list.count))
         return out
     }
 

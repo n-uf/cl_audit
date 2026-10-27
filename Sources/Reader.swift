@@ -243,7 +243,7 @@ final class UsageReader {
 
     /// Everything the agent keeps for a removed profile.
     static func forget(_ id: String, in d: UserDefaults) {
-        for k in ["n5h", "nwk", "lastRenewAttempt", "adopted", "loginItemForgotten"] { d.removeObject(forKey: "\(k).\(id)") }
+        for k in ["n5h", "nwk", "lastRenewAttempt", "adopted", "loginItemForgotten", "dockPlace"] { d.removeObject(forKey: "\(k).\(id)") }
     }
 
     // MARK: saved status

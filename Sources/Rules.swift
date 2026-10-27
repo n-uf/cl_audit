@@ -8,8 +8,9 @@
 //   Claude window opens and quits with the Dock icon
 //                                      a Dock icon you start opens its window (not at login); one that quits normally
 //                                      quits it too (Claude can ask about unsent work)
-//   Usage in the Dock off              its Dock icon quits (the window left alone) and is unpinned; the app stays
-//                                      installed. On again: pinned back where it was, and started if it runs now.
+//   Usage in the Dock off              its Dock icon quits (the window left alone), is unpinned and its app removed,
+//                                      with what macOS keeps for it; its place in the Dock is remembered here. On
+//                                      again: cl_audit installs it, and it's pinned back in its place and started.
 //   A Dock icon dragged out of the Dock by hand turns Usage in the Dock off (kept in the Dock by hand: on); only the
 //   agent records that, through the one locked write of the profiles file.
 // None of this touches the usage: the agent reads it for every profile, always. Starting or quitting a Dock icon
@@ -32,11 +33,14 @@ final class AgentRules {
     private var quitWork: [String: DispatchWorkItem] = [:]
     private var observers: [NSObjectProtocol] = []
     private let loginAt: Date?
+    private let defaults: UserDefaults                  // the agent's: each profile's Dock place ("dockPlace.<id>")
+    private var removing: Set<String> = []
     /// What it's doing now, for the dashboard (written into the agent's mark).
     private(set) var actions: [String: AgentAction] = [:] { didSet { if actions != oldValue { onChange?() } } }
     var onChange: (() -> Void)?
 
     init(defaults: UserDefaults) {
+        self.defaults = defaults
         loginAt = Self.consoleLoginTime()
         let stored = defaults.double(forKey: "loginSession")
         let newSession = loginAt.map { abs($0.timeIntervalSince1970 - stored) > 1 } ?? (ProcessInfo.processInfo.systemUptime < 300)
@@ -79,9 +83,10 @@ final class AgentRules {
         applyDockSwitches()
     }
 
-    /// Every 30 s: a Dock icon moved by hand, and actions that are over.
+    /// Every 30 s: a Dock icon moved by hand, where each one is, and actions that are over.
     func tick() {
         adoptDock()
+        rememberPlaces()
         tidy()
         let now = Date()
         actions = actions.filter { _, a in a.kind == .dockQuits ? a.at > now - 2 : now.timeIntervalSince(a.at) < 30 }
@@ -197,17 +202,14 @@ final class AgentRules {
             if on {
                 guard exists else { lastDock[e.id] = lastDock[e.id] ?? false; continue }   // cl_audit installs it first
                 lastDock[e.id] = true
-                agentLog.log("agent: \(e.id, privacy: .public): Usage in the Dock on, pinning")
-                DockManager.markChange(app)
-                DockManager.repinInBackground(app)
-                let r = e.runs
-                if r.atLogin || (r.withWindow && windowOpen(e)) { startDock(e, reason: "Usage in the Dock on") }
+                let place = defaults.object(forKey: "dockPlace.\(e.id)") as? String
+                agentLog.log("agent: \(e.id, privacy: .public): Usage in the Dock on, pinning \(place == nil ? "after the other icons" : "in its place", privacy: .public) and starting")
+                DockManager.pinInBackground(app, after: place)
+                startDock(e, reason: "Usage in the Dock on")
             } else {
                 lastDock[e.id] = false
-                agentLog.log("agent: \(e.id, privacy: .public): Usage in the Dock off, quitting and unpinning")
-                DockManager.markChange(app)
-                quitDock(e, reason: "Usage in the Dock off")
-                if exists, let d = DockManager.appDefaults(app) { DockManager.unpinRemembering(app, defaults: d) }
+                agentLog.log("agent: \(e.id, privacy: .public): Usage in the Dock off")
+                removeApp(e)
             }
         }
         let ids = Set(accounts.map(\.id))
@@ -215,22 +217,49 @@ final class AgentRules {
         lastOpen = lastOpen.filter { ids.contains($0.key) }
     }
 
-    /// The switch follows the Dock: a Dock icon dragged out by hand → Usage in the Dock off (and the icon quits);
+    /// Usage in the Dock off: its place in the Dock remembered, the Dock icon quit (its window left alone), unpinned
+    /// in one Dock write, and its app removed with what macOS keeps for it. Turned back on meanwhile, it stays.
+    private func removeApp(_ e: AccountEntry) {
+        let app = Installer.appURL(e)
+        guard FileManager.default.fileExists(atPath: app.path), !removing.contains(e.id) else { return }
+        removing.insert(e.id)
+        if let p = DockManager.place(of: app) { defaults.set(p, forKey: "dockPlace.\(e.id)") }
+        agentLog.log("agent: \(e.id, privacy: .public): quitting, unpinning and removing its Dock icon app")
+        Installer.stop(app)
+        DockManager.unpin(app) { [weak self] in
+            self?.removing.remove(e.id)
+            guard let now = Store.loadChecked()?.first(where: { $0.id == e.id }), !now.runs.dockIcon else { return }
+            AccountRemoval.removeDockApp(id: e.id, app: app)
+            agentLog.log("agent: \(e.id, privacy: .public): Dock icon app removed")
+        }
+    }
+
+    /// Where each pinned Dock icon is, so one that goes (Usage in the Dock off, or dragged out) comes back there.
+    private func rememberPlaces() {
+        for e in accounts where e.runs.dockIcon {
+            if let p = DockManager.place(of: Installer.appURL(e)) { defaults.set(p, forKey: "dockPlace.\(e.id)") }
+        }
+    }
+
+    /// The switch follows the Dock: a Dock icon dragged out by hand → Usage in the Dock off (and its app goes);
     /// kept in the Dock by hand → on.
     private func adoptDock() {
         for e in accounts {
             guard let hidden = DockManager.adoptDock(e) else { continue }
             Store.update(e.id) { $0.iconHidden = hidden }
             lastDock[e.id] = !hidden            // the Dock already shows it as it is
-            if hidden { quitDock(e, reason: "dragged out of the Dock") }
+            if hidden { var off = e; off.iconHidden = true; removeApp(off) }
         }
     }
 
-    /// A Dock icon running while its profile's Usage in the Dock is off isn't supposed to exist (an older version's
-    /// hidden app, or one opened from Finder): it quits, its window left alone.
+    /// A Dock icon app for a profile whose Usage in the Dock is off isn't supposed to exist (one an older version
+    /// kept, or hid): it goes, its window left alone. Read fresh, so a profile just turned on is never touched.
     private func tidy() {
-        for e in accounts where !e.runs.dockIcon && Installer.isRunning(e) && !DockManager.changing(Installer.appURL(e)) {
-            quitDock(e, reason: "Usage in the Dock is off")
+        guard let fresh = Store.loadChecked() else { return }
+        for e in fresh where !e.runs.dockIcon {
+            let app = Installer.appURL(e)
+            guard FileManager.default.fileExists(atPath: app.path), !DockManager.changing(app) else { continue }
+            removeApp(e)
         }
     }
 

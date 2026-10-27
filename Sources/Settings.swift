@@ -318,9 +318,9 @@ final class SettingsModel: ObservableObject {
     /// that undo each other.
     @Published var dockRestarting: String?
 
-    /// Usage in the Dock: on, a Dock icon in the Dock; off, none. The agent does it (it quits and unpins the Dock
-    /// icon, or pins and starts it) and reads the usage either way; this only saves the switch, and installs the
-    /// profile's Dock icon app the first time. Nothing is deleted either way.
+    /// Usage in the Dock: on, a Dock icon in the Dock; off, none. The agent does it (off: it quits, unpins and removes
+    /// the Dock icon app, remembering its place; on: it pins it back there and starts it) and reads the usage either
+    /// way; this saves the switch and, turning it on, installs the app. The profile's settings are kept either way.
     func setUsageInDock(_ id: String, _ on: Bool) {
         guard dockRestarting == nil, let i = accounts.firstIndex(where: { $0.id == id }) else { return }
         let before = accounts[i]
@@ -578,7 +578,7 @@ struct ProfileSwitches: View {
         HStack(alignment: .top, spacing: 8) {
             column(SwitchKey(title: "Usage in the Dock", on: usageInDock) { setUsageInDock(!usageInDock) }.disabled(waiting),
                    usageInDock ? "A Dock icon shows this profile's usage; click it for details."
-                               : "No Dock icon. Usage still shows on the dashboard, in the launcher and in alerts. Its app is kept, so it comes back as it was.")
+                               : "No Dock icon. Usage still shows on the dashboard, in the launcher and in alerts; turn it back on and the icon returns to its place.")
             column(SwitchKey(title: "Claude window", on: claudeWindow) { setClaudeWindow(!claudeWindow) }.disabled(waiting),
                    claudeWindow ? "A Claude window for this profile, signed in to its account; open it from the dashboard or the Dock icon."
                                 : "No Claude window. Its sign-in is kept, so turning it back on needs no new sign-in.")

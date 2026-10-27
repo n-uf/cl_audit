@@ -52,8 +52,8 @@ enum SettingNotes {
         }
         if a.iconHidden != b.iconHidden {
             return SettingNote(title: "Usage in the Dock · \(b.iconHidden ? "off" : "on")", text: b.iconHidden
-                ? "No Dock icon for \(p). Its usage still shows on the dashboard, in the launcher and in alerts: cl_audit reads it for every profile. The Dock restarts once to take the icon out."
-                : "A Dock icon shows \(p)'s usage again, back where it was. The Dock restarts once to put it in.")
+                ? "No Dock icon for \(p): its app is removed and the Dock restarts once to take it out. Its usage still shows on the dashboard, in the launcher and in alerts; turn it back on and the icon returns to its place."
+                : "A Dock icon shows \(p)'s usage again, back in its place. The Dock restarts once to put it in.")
         }
         if a.claudeWindow != b.claudeWindow {
             return SettingNote(title: "Claude window · \(b.claudeWindow ? "on" : "off")", text: b.claudeWindow
