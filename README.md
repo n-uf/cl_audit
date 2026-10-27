@@ -205,9 +205,10 @@ at the bottom.
   isn't asked: `~/.claude` gets the usual Claude app, any other folder its own Claude window. With Claude
   window off, the Claude app sign-in step drops out; with Usage in the Dock off, the last step is **Start
   reading usage**, which installs the background app and never pins it, so the Dock isn't restarted.
-- **Quit the Claude app first,** until the folder is created or connected: while open it writes its
-  sign-in and settings. The page lists its windows, checking every 2 s, with Quit and Check again.
-  Claude Code in Terminal doesn't get in the way.
+- **Quit the Claude app first** (with a Claude window), until the folder is created or connected: while open
+  it writes its sign-in and settings. The page lists its windows, checking every 2 s, with Quit and Check
+  again. Without a Claude window this step isn't there: the only new folder is the Claude Code folder, which
+  the Claude app never writes. Claude Code in Terminal doesn't get in the way.
 - **Sign in, in two parts:** Claude Code (Terminal runs `claude auth login` for the folder), then, with a
   separate window, that window, signed in to the same claude.ai account (checked by account id; no email
   or token is read). "Finish now" leaves sign-in for later. An account another profile already has is

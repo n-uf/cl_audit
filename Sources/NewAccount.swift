@@ -164,10 +164,12 @@ enum NewAccountSetup {
             }
         }
 
-        // The desktop app open: it writes sign-in and settings, which matters only until the folders exist.
+        // The desktop app open: it writes sign-in and settings, which matters only until the folders exist, and only
+        // for a profile with a Claude window. Without one the only new folder is the Claude Code folder, which the
+        // desktop app never writes (its Code tab uses ~/.claude, sign-in runs in Terminal, shared items are links).
         // Claude Code in Terminal doesn't get in the way.
         let appRuns = runs.filter { $0.kind != .terminal }
-        if foldersReady(d) { return out }
+        if foldersReady(d) || !d.claudeWindow { return out }
         if !checked { out.append(.init(section: .running, state: .wait, text: "Checking whether the desktop app is open…")) }
         else if appRuns.isEmpty { out.append(.init(section: .running, state: .ok, text: "The desktop app is closed")) }
         else {
@@ -304,7 +306,9 @@ struct NewAccountView: View {
     private func checks(_ s: SetupCheck.Section) -> [SetupCheck] { checks.filter { $0.section == s } }
     private var blocked: Bool { checks.contains { $0.blocks } }
     /// The desktop app open while the folders don't exist yet (afterwards it can stay open).
-    private var running: Bool { monitor.checked && !appRuns.isEmpty && !draft.continueAnyway && !NewAccountSetup.foldersReady(draft) }
+    private var running: Bool { draft.claudeWindow && monitor.checked && !appRuns.isEmpty && !draft.continueAnyway && !NewAccountSetup.foldersReady(draft) }
+    /// "Quit the desktop app" is a step only for a profile with a Claude window (see NewAccountSetup.checks).
+    private var quitStep: Bool { draft.claudeWindow }
     private var desktop: NewAccountSetup.DesktopSignIn { NewAccountSetup.desktopSignIn(draft) }
     private var needsDesktop: Bool { draft.window == .separate && draft.claudeWindow }
     private var desktopDone: Bool { !needsDesktop || desktop == .same || desktop == .unknown }
@@ -318,7 +322,7 @@ struct NewAccountView: View {
 
     /// What's next: 1 quit the desktop app, 2 folder, 3 Claude Code sign-in, 4 desktop app sign-in, 5 Dock icon.
     private var current: Int {
-        if !NewAccountSetup.foldersReady(draft) && (running || !monitor.checked) { return 1 }
+        if quitStep && !NewAccountSetup.foldersReady(draft) && (running || !monitor.checked) { return 1 }
         if !folders { return 2 }
         if signedIn == nil { return 3 }
         if !desktopDone { return 4 }
@@ -603,24 +607,27 @@ struct NewAccountView: View {
         VStack(alignment: .leading, spacing: 0) {
 
             let ready = NewAccountSetup.foldersReady(draft)
-            stepRow(1, state: ready ? .done : monitor.checked ? (appRuns.isEmpty ? .done : draft.continueAnyway ? .warn : .bad) : .todo,
-                    title: "Quit the desktop app",
-                    detail: ready ? "done · it can stay open now" : !monitor.checked ? "checking…" : appRuns.isEmpty ? "closed" : nil,
-                    connector: running) {
-                if running { warningBox }
+            let n = quitStep ? 0 : -1           // without a Claude window there's no "Quit the desktop app" step
+            if quitStep {
+                stepRow(1, state: ready ? .done : monitor.checked ? (appRuns.isEmpty ? .done : draft.continueAnyway ? .warn : .bad) : .todo,
+                        title: "Quit the desktop app",
+                        detail: ready ? "done · it can stay open now" : !monitor.checked ? "checking…" : appRuns.isEmpty ? "closed" : nil,
+                        connector: running) {
+                    if running { warningBox }
+                }
             }
-            stepRow(2, state: folders ? .done : current == 2 ? .now : running ? .held : .todo,
+            stepRow(2 + n, state: folders ? .done : current == 2 ? .now : running ? .held : .todo,
                     title: draft.source == .new ? "Create the folder" + (draft.share.isEmpty ? "" : " and links") : "Connect the folder",
                     detail: folders ? draft.configDir : running ? "held until the desktop app is quit" : checks.contains(where: { $0.blocks && $0.section != .running }) ? "fix the red lines first" : nil,
                     detailBad: running && !folders) { EmptyView() }
-            stepRow(3, state: !folders ? .todo
+            stepRow(3 + n, state: !folders ? .todo
                         : (signedIn.flatMap { _ in FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) } != nil || (needsDesktop && signedIn != nil && desktop == .different)) ? .warn
                         : current == 3 || current == 4 ? .now : .done,
                     title: "Sign in",
                     detail: folders ? nil : needsDesktop ? "Claude Code, then the desktop app" : "Claude Code") {
                 if folders { signInParts.padding(.top, 3) }
             }
-            stepRow(4, state: current == 5 ? .now : .todo, title: finishStep,
+            stepRow(4 + n, state: current == 5 ? .now : .todo, title: finishStep,
                     detail: draft.usageInDock ? "Finish installs “cl_audit \(draft.name.isEmpty ? "…" : draft.name)”"
                                               : "Installs its small background app; nothing goes in the Dock, so the Dock isn't touched") { EmptyView() }
 
@@ -699,8 +706,8 @@ struct NewAccountView: View {
     private func progressStrip(compact: Bool) -> some View {
         let ready = NewAccountSetup.foldersReady(draft)
         // (name, done, the `current` value it stands for); the desktop app part only with its own window.
-        let items: [(String, Bool, Int)] = [("Quit desktop app", ready || (monitor.checked && appRuns.isEmpty), 1),
-                                            (draft.source == .new ? "Create folder" : "Connect folder", folders, 2),
+        let items: [(String, Bool, Int)] = (quitStep ? [("Quit desktop app", ready || (monitor.checked && appRuns.isEmpty), 1)] : [])
+                                            + [(draft.source == .new ? "Create folder" : "Connect folder", folders, 2),
                                             ("Claude Code", signedIn != nil, 3)]
             + (needsDesktop ? [("Desktop app", signedIn != nil && desktopDone, 4)] : []) + [(draft.usageInDock ? "Dock icon" : "Read usage", false, 5)]
         return HStack(spacing: 6) {
