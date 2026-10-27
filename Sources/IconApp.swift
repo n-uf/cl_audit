@@ -158,7 +158,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             // On start: reinstall missing cl_usage apps and start the ones that should run.
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                 if Store.exists { Installer.sync(Store.load()) }
-                Agent.ensureRunning()      // the one login item; restarted when it runs an older build
+                // the one login item; restarted when it runs an older build (waits for it, so off the main thread)
+                DispatchQueue.global(qos: .utility).async { Agent.ensureRunning() }
             }
             if CommandLine.arguments.contains("--settings") {
                 let account = CommandLine.arguments.first { $0.hasPrefix("--account=") }.map { String($0.dropFirst("--account=".count)) }

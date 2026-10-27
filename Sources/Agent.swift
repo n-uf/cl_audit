@@ -90,12 +90,23 @@ enum Agent {
             agentLog.log("\(log, privacy: .public)")
             return log
         }
-        if let m = readMark(), isAlive(m), let want = build(of: app), m.build != want {
-            log += " · running build \(m.build), restarting for \(want)"
+        if let want = build(of: app), let m = readMark(), m.build != want || !isAlive(m) {
+            log += isAlive(m) ? " · running build \(m.build), restarting for \(want)" : " · not running, starting"
             restart()
+            log += waitForMark(build: want) ? " → build \(want) running" : " → build \(want) didn't start"
         }
         agentLog.log("\(log, privacy: .public)")
         return log
+    }
+
+    /// Waits up to `seconds` for a fresh mark from `build`.
+    static func waitForMark(build: String, seconds: TimeInterval = 8) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        repeat {
+            if let m = readMark(), m.build == build, isAlive(m) { return true }
+            Thread.sleep(forTimeInterval: 0.25)
+        } while Date() < deadline
+        return false
     }
 
     /// launchd stops and starts the agent's job (it keeps the agent's label = its bundle id).
