@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.10.10 — 2026-10-26
+
 - **Fixed:** with Usage in the Dock off, quitting a profile's Claude window could quit its background app too
   (when Opening and closing linked the two), so its usage and alerts stopped until it was started again. With
   Usage in the Dock off a profile now always starts at login and its Claude window opens and quits on its own;
