@@ -17,6 +17,7 @@ if args.count >= 2, args[1] == "--sync" {
     DockWriter.inline = true             // the Dock is changed before this run ends
     let log = Installer.sync(Store.load())
     print(log.isEmpty ? "icons are up to date" : log.joined(separator: "\n"))
+    print(Agent.ensureRunning())
     exit(0)
 }
 
@@ -79,7 +80,24 @@ if args.count >= 4, args[1] == "--render-launcher" {
     exit(0)
 }
 
+if args.count >= 2, args[1] == "--agent-status" {
+    // the agent's login item and its alive mark, for checking
+    let m = Agent.readMark()
+    print("login item: \(Agent.statusText(Agent.service.status))")
+    if let m {
+        print("mark: pid \(m.pid), build \(m.build), started \(Int(-m.started.timeIntervalSinceNow)) s ago, beat \(Int(-m.beat.timeIntervalSinceNow)) s ago, \(Agent.isAlive(m) ? "alive" : "not alive")")
+    } else { print("mark: none") }
+    exit(0)
+}
+
+if args.count >= 2, args[1] == "--agent-unregister" {
+    do { try Agent.service.unregister(); print("unregistered") } catch { print("couldn't unregister: \(error.localizedDescription)") }
+    exit(0)
+}
+
+// Three roles: the agent (the helper inside cl_audit.app), a profile's Dock icon (UsageAccountID in its
+// Info.plist) and cl_audit itself.
 let app = NSApplication.shared
-let delegate = AppDelegate()
+let delegate: NSApplicationDelegate = Agent.isAgent ? AgentDelegate() : AppDelegate()
 app.delegate = delegate
 app.run()

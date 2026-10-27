@@ -156,7 +156,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 Installer.lookMayHaveChanged(after: 5)   // past a relaunch (Show in the Dock restarts it after 1.5 s)
             }
             // On start: reinstall missing cl_usage apps and start the ones that should run.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { if Store.exists { Installer.sync(Store.load()) } }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                if Store.exists { Installer.sync(Store.load()) }
+                Agent.ensureRunning()      // the one login item; restarted when it runs an older build
+            }
             if CommandLine.arguments.contains("--settings") {
                 let account = CommandLine.arguments.first { $0.hasPrefix("--account=") }.map { String($0.dropFirst("--account=".count)) }
                 manager.showMain(page: .settings, account: account)
