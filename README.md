@@ -166,14 +166,15 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
   Then the icon's colour, an optional frame colour and the **Claude open dot**: none, or a Claude-orange
   dot at the top-left while the profile's Claude window is open.
-- **Opening and closing:** **Open at login** (a usage only profile always starts at login), then, with a
-  Claude window, two questions. When the Claude window opens or quits,
+- **Opening and closing:** **Open at login**, then, with a Claude window, two questions. When the Claude window opens or quits,
   start or quit the Dock icon too (it quits 10 s after the window; starting needs cl_audit running)? When
   the Dock icon starts or quits, open or quit the Claude window too (not at login; a normal quit, so
   Claude can ask about unsent work)? A table shows what each of the four actions then does. With the
   window following, the Dock icon's menu has **Quit and keep Claude window**. Cards that don't apply fade, with
-  a strip saying why and a key: usage only fades Opening and closing and Dock icon clicks (**Show in the
-  Dock**); a Dock icon without a Claude window fades only the two questions (**Add Claude window**).
+  a strip saying why and a key: with Usage in the Dock off, Opening and closing and Dock icon clicks fade
+  whole (**Show in the Dock**): its background app always starts at login, and its Claude window, if it has
+  one, opens and quits on its own, so nothing can stop its usage. A Dock icon without a Claude window fades
+  only the two questions (**Add Claude window**). Saved choices stay stored and apply again when they can.
 
 ### General settings
 

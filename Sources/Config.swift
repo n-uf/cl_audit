@@ -125,10 +125,12 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     /// Unset: the icon colour when it's a plain one, else orange.
     /// Usage in the Dock off and no Claude window: its usage shows on the dashboard, in the launcher and in alerts.
     var usageOnly: Bool { iconHidden && !claudeWindow }
-    /// How its Dock icon and Claude window follow each other: only with a Claude window to follow.
-    var follows: Lifecycle { claudeWindow ? lifecycle : .independent }
-    /// A usage-only profile's background app always starts at login, so its usage keeps being read.
-    var startsAtLogin: Bool { openAtLogin || usageOnly }
+    /// How its Dock icon and Claude window follow each other: only with both shown. With Usage in the Dock off its
+    /// app runs hidden and reads the usage, so a window quitting must never quit it. The saved choice stays stored.
+    var follows: Lifecycle { claudeWindow && !iconHidden ? lifecycle : .independent }
+    /// With Usage in the Dock off its background app always starts at login, so its usage keeps being read.
+    /// The saved Open at login stays stored.
+    var startsAtLogin: Bool { openAtLogin || iconHidden }
 
     var accentColor: TileColor { accent ?? ([.usage, .graphite].contains(color) ? .orange : color) }
     var accentNSColor: NSColor { accentColor.color(fiveHour: nil, stale: false) }

@@ -8,7 +8,11 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Fixed:** with Usage in the Dock off, quitting a profile's Claude window could quit its background app too
+  (when Opening and closing linked the two), so its usage and alerts stopped until it was started again. With
+  Usage in the Dock off a profile now always starts at login and its Claude window opens and quits on its own;
+  the Opening and closing card fades whole under "Not in use · no Dock icon" with a **Show in the Dock** key.
+  The saved choices are kept and apply again once the Dock icon is back.
 
 ## 26.10.9 — 2026-10-26
 

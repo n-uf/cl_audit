@@ -1058,26 +1058,29 @@ struct AccountSettings: View {
     // Opening and closing: starting at login, and how the Dock icon and the Claude window follow each other
     var openCloseCard: some View {
         SCard(title: "Opening and closing") {
-            // usage only: its background app starts at login on its own and there's nothing to link
-            if entry.usageOnly {
-                notInUse("usage only starts at login on its own", key: "Show in the Dock") { model.setUsageInDock(entry.id, true) }
+            // no Dock icon: its background app starts at login on its own and nothing opens or quits with it, so the
+            // whole card fades under one strip (the saved choices stay stored)
+            if entry.iconHidden {
+                notInUse("no Dock icon · reads usage from login", key: "Show in the Dock") { model.setUsageInDock(entry.id, true) }
             }
-            SRow(label: "Open at login", info: "Starts this profile's Dock icon when you log in to the Mac, so its usage refreshes and alerts keep working without opening cl_audit. A usage only profile always starts at login.", first: true) {
-                HStack(spacing: 8) {
-                    Toggle("", isOn: $entry.openAtLogin).smallSwitch()
-                    Text(entry.iconHidden ? "starts reading usage when you log in to the Mac" : "starts the Dock icon when you log in to the Mac")
-                        .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+            VStack(spacing: 0) {
+                SRow(label: "Open at login", info: "Starts this profile's Dock icon when you log in to the Mac, so its usage refreshes and alerts keep working without opening cl_audit. With Usage in the Dock off it always starts at login.", first: true) {
+                    HStack(spacing: 8) {
+                        Toggle("", isOn: $entry.openAtLogin).smallSwitch()
+                        Text("starts the Dock icon when you log in to the Mac")
+                            .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-            }
-            .dockOnly(entry.usageOnly)
-            // a Dock icon without a Claude window: nothing to link the Dock icon to
-            if !entry.usageOnly && !entry.claudeWindow {
-                notInUse("add a Claude window to link the two", key: "Add Claude window") { model.setClaudeWindow(entry.id, true) }
+                // a Dock icon without a Claude window: nothing to link the Dock icon to
+                if !entry.iconHidden && !entry.claudeWindow {
+                    notInUse("add a Claude window to link the two", key: "Add Claude window") { model.setClaudeWindow(entry.id, true) }
+                        .padding(.top, 6)
+                }
+                OpenCloseQuestions(profile: entry.name.isEmpty ? "this profile" : entry.name, lifecycle: $entry.lifecycle)
                     .padding(.top, 6)
+                    .dockOnly(!entry.iconHidden && !entry.claudeWindow)
             }
-            OpenCloseQuestions(profile: entry.name.isEmpty ? "this profile" : entry.name, lifecycle: $entry.lifecycle)
-                .padding(.top, 6)
-                .dockOnly(!entry.claudeWindow)
+            .dockOnly(entry.iconHidden)
         }
     }
 
