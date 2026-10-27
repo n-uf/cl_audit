@@ -368,6 +368,47 @@ struct UpdatedButton: View {
     }
 }
 
+/// What the cl_audit agent is doing, from its mark: reading every profile's usage, Anthropic not answering, or not
+/// running at all (with a key that starts it). Old numbers alone can't tell these apart.
+struct AgentDisplay: View {
+    @ObservedObject var model: LauncherModel
+    @State private var starting = false
+    static let width: CGFloat = 392     // fits "READING USAGE · 12 PROFILES · EVERY 2–15 MIN"
+
+    var body: some View {
+        let h = TopStrip.height, w = Self.width
+        HStack(spacing: 6) {
+            switch Agent.health(model.agent) {
+            case let .reading(n, lo, hi):
+                DisplayWindow(text: "Reading usage", dim: "· \(n) profile\(n == 1 ? "" : "s") · every \(lo == hi ? "\(lo)" : "\(lo)–\(hi)") min", tone: .ok, height: h, width: w)
+                    .help("The cl_audit agent reads every profile's usage on its own schedule and sends the alerts, with or without Dock icons or Claude windows")
+            case .failing(let n):
+                DisplayWindow(text: "Anthropic didn't answer", dim: "· \(n) profile\(n == 1 ? "" : "s")", tone: .amber, height: h, width: w, dimTone: .amber)
+                    .help("The last request for these profiles' usage failed; the agent tries again on its schedule")
+            case .paused(let until):
+                DisplayWindow(text: "cl_audit agent paused", dim: "· crashed, again at \(UsageReader.when(until))", tone: .warn, height: h, width: w, dimTone: .warn)
+                    .help("The agent crashed several times in a row, so it waits before reading again")
+            case .stopped:
+                DisplayWindow(text: starting ? "Starting the agent…" : "cl_audit agent stopped", dim: starting ? nil : "· start", tone: .amber, height: h, width: w, dimTone: .amber)
+                    .help("Nothing reads the usage or sends alerts while the agent is stopped")
+                Button { start() } label: {
+                    KeyLook(height: h, hPad: 10) { Text("Start").font(.system(size: 10, weight: .semibold)) }
+                }
+                .buttonStyle(PressableKey()).disabled(starting)
+                .help("Start the cl_audit agent")
+            }
+        }
+    }
+
+    private func start() {
+        starting = true
+        DispatchQueue.global(qos: .userInitiated).async {
+            Agent.ensureRunning()
+            DispatchQueue.main.async { starting = false; model.reload() }
+        }
+    }
+}
+
 /// Which accounts the dashboard shows: "Show" followed by a checkbox per account (several can be on).
 /// Drawn as a filter, not as account buttons, so it doesn't look like it opens Claude.
 struct AccountChips: View {
@@ -405,7 +446,7 @@ struct TopStrip: View {
         HStack(spacing: 6) {
             if dashboard && model.rows.count > 1 { AccountChips(model: model); StripDivider() }
             if fill { Spacer(minLength: 6) }
-            if dashboard { UpdatedButton(model: model, refresh: refresh) }
+            if dashboard { AgentDisplay(model: model); UpdatedButton(model: model, refresh: refresh) }
             else if let settings { SettingsStatus(model: settings) }
         }
         .padding(4)

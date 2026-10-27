@@ -317,7 +317,7 @@ struct NewAccountView: View {
     private var windowOpen: Bool { NewAccountSetup.foldersReady(draft) && NewAccountSetup.windowOpen(draft) }
     private var tint: Color { Color(nsColor: draft.color.color(fiveHour: nil, stale: false)) }
     private var createTitle: String { draft.source == .new ? "Create" : "Connect" }
-    /// The last step: a Dock icon, or (Usage in the Dock off) the background app that reads usage.
+    /// The last step: a Dock icon, or (Usage in the Dock off) only reading its usage, which installs nothing.
     private var finishStep: String { draft.usageInDock ? "Add the Dock icon" : "Start reading usage" }
 
     /// What's next: 1 quit the desktop app, 2 folder, 3 Claude Code sign-in, 4 desktop app sign-in, 5 Dock icon.
@@ -628,8 +628,8 @@ struct NewAccountView: View {
                 if folders { signInParts.padding(.top, 3) }
             }
             stepRow(4 + n, state: current == 5 ? .now : .todo, title: finishStep,
-                    detail: draft.usageInDock ? "Finish installs “cl_audit \(draft.name.isEmpty ? "…" : draft.name)”"
-                                              : "Installs its small background app; nothing goes in the Dock, so the Dock isn't touched") { EmptyView() }
+                    detail: draft.usageInDock ? "Finish installs “cl_audit \(draft.name.isEmpty ? "…" : draft.name)” and puts it in the Dock"
+                                              : "cl_audit reads its usage from now on; nothing is installed and the Dock isn't touched") { EmptyView() }
 
             actionBar(hint: false).padding(.top, 8)
         }

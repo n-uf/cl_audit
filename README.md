@@ -1,8 +1,9 @@
 # cl_audit
 
-Usage audit for all your Claude setups on one Mac. Each **profile** gets its own Dock icon showing how
-much of its 5-hour and weekly limits is used; a click opens that profile's Claude window. The cl_audit
-app adds a dashboard, a launcher and the settings.
+Usage audit for all your Claude setups on one Mac. A small background agent inside cl_audit reads how much
+of each **profile**'s 5-hour and weekly limits is used and sends the alerts. Each profile can have its own
+Dock icon showing its usage (a click opens that profile's Claude window). The cl_audit app adds a dashboard,
+a launcher and the settings.
 
 **Claude login:** sign-in happens in Claude's own screens, so cl_audit never sees the password. It reads
 Claude Code's saved login read-only and sends it only to Anthropic ([details](#security-how-cl_audit-handles-the-claude-login)).
@@ -36,10 +37,12 @@ git checkout v26.10.1     # optional: exactly a released version (see CHANGELOG.
 ./build.sh --no-install   # build into ./build only
 ```
 
-Then open **cl_audit**, go to Settings and add a profile (**New profile**). cl_audit installs one
-"cl_audit &lt;profile&gt;" app per profile in `/Applications` and starts it; drag it into the Dock (or let
-General settings ▸ Dock pin it for you). To update, download the new zip (or pull and run `./build.sh`
-again); profiles and settings are kept.
+Then open **cl_audit**, go to Settings and add a profile (**New profile**). With **Usage in the Dock** on,
+cl_audit installs "cl_audit &lt;profile&gt;" in `/Applications` and puts it in the Dock. The first time,
+macOS says cl_audit added an item that can run in the background (its agent, see [How it works](#how-it-works)),
+and asks once to allow notifications for cl_audit (System Settings ▸ Notifications ▸ cl_audit, if you
+missed it). To update, download the new zip (or pull and run `./build.sh` again); profiles and settings are
+kept, and the agent restarts with the new version on its own.
 
 ## Security: how cl_audit handles the Claude login
 
@@ -50,7 +53,9 @@ type to sign in goes straight to Anthropic; cl_audit never sees it.
 **What cl_audit reads, and how.** Claude Code saves its login in your macOS Keychain, in an item called
 `Claude Code-credentials` (`Claude Code-credentials-<8 characters>` for a profile's own Claude Code folder).
 cl_audit reads that item with Apple's `/usr/bin/security` tool, read-only, exactly the way Claude Code reads
-it. It asks for no Keychain permission; macOS shows no prompt because the item already trusts that tool.
+it. Only cl_audit's background agent reads it, one reader for every profile; the Dock icons and the cl_audit
+window never do. It asks for no Keychain permission; macOS shows no prompt because the item already trusts
+that tool.
 It keeps only the short-lived access token, in memory, and discards the rest (including the long-lived
 renewal token). It never writes, renews, copies or logs your login. On your Mac only, it also reads the
 account email in Claude Code's settings file (`.claude.json`) and, for the usage history, Claude Code's
@@ -65,7 +70,7 @@ when the saved access key has run out, so Claude Code fetches a fresh one itself
 **What it doesn't change.** Any app running under your macOS user can read Claude Code's saved login the
 same way; that is how Claude Code stores it. cl_audit makes it neither safer nor more exposed, so install
 only software you trust. cl_audit's code is open to check: `Login.read` in `Sources/Model.swift` and
-`request` in `Sources/IconApp.swift`.
+`request` in `Sources/Reader.swift`.
 
 ## Words used here
 
@@ -74,25 +79,33 @@ only software you trust. cl_audit's code is open to check: `Login.read` in `Sour
   profile is linked to one account seat (account and organisation), and no two profiles share one.
 - **Usage only:** a profile with **Usage in the Dock** and **Claude window** both off: its usage shows on the
   dashboard, in the launcher and in alerts, with nothing in the Dock and no window.
-- **Dock icon:** the profile's own small app ("cl_audit &lt;profile&gt;") that shows its usage.
+- **Dock icon:** the profile's own small app ("cl_audit &lt;profile&gt;") that shows its usage. It only shows:
+  quitting it never stops the usage or the alerts.
+- **cl_audit agent:** the helper inside cl_audit that reads every profile's usage, renews sign-ins, sends
+  the alerts and starts and quits Dock icons and Claude windows by the Opening and closing rules. It has no
+  window or Dock icon; macOS starts it at login and again if it crashes.
 - **Claude window:** the profile's running Claude desktop app: the usual Claude app for the profile using
   `~/.claude`, its own Claude window (own sign-in, chats and settings) for every other profile.
 - **Profile settings** (Settings ▸ a profile) and **General settings** (Settings ▸ General, app-wide).
 
 ## The dashboard
 
-Opening **cl_audit** shows a card per profile: its icon, both limits and two switches (only the Dock icon one
-without a Claude window). A usage only profile has no switches: one display says "Usage only · not in the
-Dock · no window", with **Start** when its background app isn't running.
+Opening **cl_audit** shows a card per profile: its icon, both limits and a switch for each thing it has (its
+Claude window, its Dock icon). A usage only profile has no switches: one display says "Usage only · not in
+the Dock · no window".
+
+The top strip says what the agent is doing: "Reading usage · 2 profiles · every 2–5 min", "Anthropic didn't
+answer · 1 profile", or "cl_audit agent stopped" with **Start**; then how old the newest numbers are, with a
+refresh key.
 
 - **Claude window:** open or quit the profile's Claude window.
-- **Dock icon:** start or quit the profile's Dock icon app. Pins are never touched, so the Dock doesn't
-  restart. While it's stopped the profile doesn't refresh or alert. A missing app shows **Reinstall**.
+- **Dock icon:** start or quit only the profile's Dock icon app; its usage keeps being read. Pins are never
+  touched, so the Dock doesn't restart. A missing app shows **Reinstall**.
 - A flipped switch stays where you put it, with a spinner, until the change is done. Quitting a window
   that Claude asks about (for example unsent work) shows "Claude is asking" with **Show**; a window that
   doesn't open within 30 s offers **Retry**.
-- Changes made by Opening and closing are announced on the other switch: "quits in 8 s",
-  "starting…", or "waits for the window" when the Dock icon stopped with its window.
+- What the agent does by Opening and closing shows on the switches: "quits in 8 s", "starting…", "opening…",
+  or "starts with its window" for a Dock icon that runs with its window.
 - Under the limits: **Sign in…** when needed, otherwise **Open/Show window** (with a Claude window), then
   **Terminal**, and "⋯" (Refresh now, Profile settings…); a usage only profile has just "⋯".
 
@@ -120,6 +133,8 @@ cl_audit stays in the Dock as a launcher:
 | Press and hold | The details panel next to a short Dock menu (on by default, per profile) |
 | Right-click | The menu: numbers, reset times, the sign-in, and actions (Open or Show Claude window, Quit Claude window, Refresh now, Dashboard, Profile settings…, and Quit and keep Claude window when the window follows the Dock icon) |
 
+A Dock icon draws what the agent saved for its profile, and asks the agent for Refresh now and Renew login.
+
 Press and hold has no event of its own: the Dock asks the app for its menu on both right-click and
 press-and-hold, and the icon checks which mouse button is down at that moment.
 
@@ -141,19 +156,23 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 - **Profile:** name, icon label (up to 6 letters, drawn on the icon), the profile's colour (launcher,
   dashboard, panels), then two keys, each with a line under it saying what the current choice does:
   - **Usage in the Dock:** on, a Dock icon shows the profile's usage (click it for details); off, no Dock
-    icon, and its app keeps reading usage in the background, refreshing and alerting. Changing it restarts
-    the Dock; the main display says "Restarting the Dock…" and the keys wait meanwhile.
+    icon: it quits and is unpinned, and its app stays installed, so it comes back as it was. The agent reads
+    the usage either way. Changing it restarts the Dock once, to pin or unpin; the main display says
+    "Restarting the Dock…" and the keys wait meanwhile. Dragging the icon out of the Dock by hand turns it
+    off too.
   - **Claude window:** on, a Claude window signed in to the profile's account; off, none, and nothing opens
     one. Its folder and sign-in are kept, so turning it back on needs no new sign-in.
 
   Turning either off never deletes anything; that happens only in **Remove profile…**. Both off is usage
   only. What the profile is doing now shows in the main display at the top: "Running · in the Dock",
-  "Stopped · in the Dock", "Reading usage · every N min" (no Dock icon), "Stopped · not reading", or
-  "Missing · reinstall"; while a change goes through it says "Saving…", then "Saved" and what changed.
+  "Stopped · in the Dock", "Reading usage · every N min" (no Dock icon), "Missing · reinstall", or "Not
+  reading · cl_audit agent stopped"; while a change goes through it says "Saving…", then "Saved" and what
+  changed.
 - **Claude Code:** the Claude Code folder (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder) and the sign-in
   found there; **Renew sign-in** (opt-in). Folders other profiles use are marked and can't be picked. The
   Claude window follows from the folder (see Profile above); it isn't a setting.
-- **Updates and alerts:** how often to refresh, and a notification when a limit reaches a set level.
+- **Updates and alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
+  reaches a set level (once per limit and reset).
 - **Dock icon clicks:** what a click does (usage for N seconds while Claude opens, just open Claude,
   or the details panel), press and hold, and the panel design (Glow, Rings, Numbers, Segments, Pace),
   previewed at full size. Without a Claude window a click only shows the usage ("just open Claude" shows
@@ -166,15 +185,19 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
   Then the icon's colour, an optional frame colour and the **Claude open dot**: none, or a Claude-orange
   dot at the top-left while the profile's Claude window is open.
-- **Opening and closing:** **Open at login**, then, with a Claude window, two questions. When the Claude window opens or quits,
-  start or quit the Dock icon too (it quits 10 s after the window; starting needs cl_audit running)? When
-  the Dock icon starts or quits, open or quit the Claude window too (not at login; a normal quit, so
-  Claude can ask about unsent work)? A table shows what each of the four actions then does. With the
-  window following, the Dock icon's menu has **Quit and keep Claude window**. Cards that don't apply fade, with
-  a strip saying why and a key: with Usage in the Dock off, Opening and closing and Dock icon clicks fade
-  whole (**Show in the Dock**): its background app always starts at login, and its Claude window, if it has
-  one, opens and quits on its own, so nothing can stop its usage. A Dock icon without a Claude window fades
-  only the two questions (**Add Claude window**). Saved choices stay stored and apply again when they can.
+- **Opening and closing** (run by the agent, whether or not cl_audit is open):
+  - **Dock icon runs:** **At login** (always there, from when you log in), **With its window** (starts when
+    the profile's Claude window opens and quits 10 s after it quits, since a Claude update restarts the
+    window) or **When started** (only when you start it: a click on its Dock tile, or its dashboard switch).
+  - **Claude window opens and quits with the Dock icon:** starting the Dock icon opens its window (not at
+    login), and quitting it quits the window too, so Claude can ask about unsent work; the Dock icon's menu
+    then has **Quit and keep Claude window**.
+
+  With Usage in the Dock off the card fades under "Not in use · no Dock icon to open or close" with **Show
+  in the Dock**; without a Claude window the window switch fades (**Add Claude window**). Saved choices stay
+  stored and apply again when they can. Older settings carried over: Open at login on → At login; "start or
+  quit the Dock icon too" → With its window; both off → When started; "open or quit the Claude window too" →
+  the window switch.
 
 ### General settings
 
@@ -205,7 +228,7 @@ at the bottom.
 - **Usage in the Dock** and **Claude window**, the same two keys as in profile settings. Which Claude window
   isn't asked: `~/.claude` gets the usual Claude app, any other folder its own Claude window. With Claude
   window off, the Claude app sign-in step drops out; with Usage in the Dock off, the last step is **Start
-  reading usage**, which installs the background app and never pins it, so the Dock isn't restarted.
+  reading usage**, which installs nothing and leaves the Dock alone: the agent reads its usage from then on.
 - **Quit the Claude app first** (with a Claude window), until the folder is created or connected: while open
   it writes its sign-in and settings. The page lists its windows, checking every 2 s, with Quit and Check
   again. Without a Claude window this step isn't there: the only new folder is the Claude Code folder, which
@@ -220,37 +243,55 @@ at the bottom.
 ### Removing a profile
 
 **Remove profile…** (profile settings, or right-click its tile) removes its Dock icon app and what macOS
-keeps for it: the open-at-login entry, preferences, caches, saved window state, its pin and recent-apps
-entry in the Dock (the Dock restarts only if one was there) and its Launch Services record, plus its saved
-usage, Terminal scripts and place on the dashboard. **Delete its folders too** also signs its Claude Code
+keeps for it: preferences, caches, saved window state, its pin and recent-apps entry in the Dock (the Dock
+restarts only if one was there) and its Launch Services record, plus its saved usage, the agent's alert
+marks for it, Terminal scripts and place on the dashboard. **Delete its folders too** also signs its Claude Code
 folder out (its Keychain login goes) and deletes that folder and its Claude window's data folder; links
 inside are removed, never what they point to. The default `~/.claude`, the standard window and a folder
 another profile shares items from are never deleted, and Claude must be closed first.
 
 Profiles are saved on this Mac only, in `~/Library/Application Support/usage-n-uf/accounts.json`
-(format: `accounts.example.json`). When cl_audit starts it reinstalls missing Dock icon apps and starts
-the ones that should run.
+(format: `accounts.example.json`). Only the cl_audit window edits it (and the agent, to record a Dock icon
+dragged out by hand), through one locked write. When cl_audit starts it brings the Dock icon apps up to
+date; the agent starts the ones that should run.
 
 ## How it works
 
-- **Numbers:** every few minutes each Dock icon asks Anthropic's usage endpoint with the profile's
-  Claude Code login (see [Security](#security-how-cl_audit-handles-the-claude-login)). The login is kept in memory and read
-  again only when it has expired or was refused.
+One program in three roles: **cl_audit** (the window: dashboard, settings, launcher), the **cl_audit agent**
+(a helper inside cl_audit.app) and each profile's **Dock icon** (a copy of the app with its own bundle id).
+
+- **The agent:** `cl_audit.app/Contents/Library/LoginItems/cl_audit Agent.app`, registered with macOS as
+  cl_audit's one background item (a launch agent, `SMAppService`). launchd starts it at login and again
+  right after a crash; started four times within ten minutes it waits before reading again (1 min, doubling
+  up to 30 min). launchd actually starts `Contents/Helpers/cl_audit-agent`, a small launcher that hands over
+  to the agent: macOS knows an ad hoc signed program it may start by its exact fingerprint, and the
+  launcher's never changes, so an update needs no new approval and shows no new notice. cl_audit restarts the
+  agent after an update.
+- **Numbers:** the agent asks Anthropic's usage endpoint for every profile on its own interval (and backs
+  off when Anthropic is busy), with the profile's Claude Code login (see
+  [Security](#security-how-cl_audit-handles-the-claude-login)). The login is kept in memory and read again
+  only when it has expired or was refused. What it sees goes to
+  `~/Library/Application Support/usage-n-uf/status/<profile>.json` (no secrets), and it writes an "alive"
+  mark (`agent.json`) every 30 s, so cl_audit can tell "nothing is reading" from "Anthropic didn't answer".
+  The Dock icons and the window only read these files.
 - **Which login:** Claude Code names its Keychain item after the settings folder. The default
   `~/.claude` uses `Claude Code-credentials`; a `CLAUDE_CONFIG_DIR` folder uses
   `Claude Code-credentials-<first 8 hex of SHA-256 of the folder path>`.
-- **Account check:** the icon looks up which email its login belongs to and compares it with the account
-  the folder is set up for (`oauthAccount` in its `.claude.json`). On a mismatch it shows a red "!", and
-  the panel and menu say how to fix it.
+- **Account check:** the agent looks up which email a login belongs to and compares it with the account
+  the folder is set up for (`oauthAccount` in its `.claude.json`). On a mismatch the icon shows a red "!",
+  and the panel and menu say how to fix it.
+- **Alerts:** one source, cl_audit, so macOS asks once. One alert per limit and reset.
 - **Which Claude window:** running Claude apps are matched to profiles by their exact `--user-data-dir`,
   read from the process arguments (no `ps`); the standard window is the one without it.
 - **Fallback:** `statusline/usage-statusline.sh` is a Claude Code status line script that writes
-  `<settings folder>/usage.json` after every reply in Terminal sessions. The icon uses that file when the
+  `<settings folder>/usage.json` after every reply in Terminal sessions. The agent uses that file when the
   endpoint can't be reached. The Claude app's Code tab doesn't run status lines. To use it, add to the
   folder's `settings.json`:
   `{ "statusLine": { "type": "command", "command": "~/.claude/bin/usage-statusline.sh" } }`
-- **One app per Dock icon:** macOS gives each running app one Dock icon, so every profile gets its own
-  copy of the app (same binary, its own bundle id and `UsageAccountID`), signed ad hoc.
+- **One app per Dock icon:** macOS gives each running app one Dock icon, so a profile with Usage in the
+  Dock on gets its own copy of the app (same binary, its own bundle id and `UsageAccountID`), signed ad hoc.
+  Earlier versions made each copy its own login item and kept a hidden copy for usage only profiles; the
+  agent removes those once.
 
 `build/UsageDock --render-preview out.png STYLE LABEL 23 41 [COLOR [FRAME]]` renders a sample icon (STYLE
 is one of bars, rings, twinRings, number, segmented, pace, statusTile, gauge, worst, statusBar, thinBars,

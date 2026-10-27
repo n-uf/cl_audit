@@ -16,9 +16,10 @@
       "name" : "work",
       "notify" : true,
       "notifyPercent" : 90,
-      "openAtLogin" : true,
+      "dockRuns" : "atLogin",
       "pollMinutes" : 5,
-      "style" : "bars"
+      "style" : "bars",
+      "windowFollowsDock" : false
     }
   ]
 }

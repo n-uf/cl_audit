@@ -101,6 +101,7 @@ enum Agent {
         }
         var log = "agent: \(statusText(service.status))"
         defer { agentLog.log("\(log, privacy: .public)") }
+        clearDownloadMark(app)
         if service.status != .enabled {
             log += register() ? " → registered" : " → couldn't register"
             log += waitForMark(build: want) ? ", build \(want) running" : ", build \(want) didn't start"
@@ -119,6 +120,17 @@ enum Agent {
         Thread.sleep(forTimeInterval: 2)
         log += register() && waitForMark(build: want) ? " → build \(want) running" : " → build \(want) didn't start"
         return log
+    }
+
+    /// A downloaded cl_audit carries macOS's download mark on every file in it, the agent's too. You allowed cl_audit
+    /// itself when you first opened it; launchd starts the agent's launcher directly, so the mark is taken off the
+    /// agent's parts here (as for the Dock icon copies). The code signature doesn't cover it and stays valid.
+    static func clearDownloadMark(_ app: URL) {
+        for part in ["Contents/Helpers", "Contents/Library"] {
+            let u = app.appendingPathComponent(part)
+            guard FileManager.default.fileExists(atPath: u.path) else { continue }
+            Installer.run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", u.path])
+        }
     }
 
     private static func register() -> Bool {

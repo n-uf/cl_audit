@@ -8,7 +8,30 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **One background agent reads every profile's usage.** A helper inside cl_audit, its one background item,
+  reads the usage, checks the account, renews the sign-in and sends every alert, for all profiles, whatever
+  is open, quit or hidden. Quitting a Dock icon or a Claude window never stops a profile's usage or alerts
+  any more. macOS starts the agent at login and again if it crashes; updates restart it with no new prompt.
+  Alerts now come from cl_audit, so macOS asks once (System Settings ▸ Notifications ▸ cl_audit); the old
+  per-profile entries there can be removed.
+- **Dock icons only show.** A Dock icon draws what the agent saved and asks it for Refresh now and Renew login;
+  it no longer reads the Keychain or the network. Usage in the Dock off quits the icon and unpins it (no
+  hidden app, no restart of the app); the app stays installed, so it comes back as it was. A usage only
+  profile installs nothing at all.
+- **Opening and closing, simplified:** **Dock icon runs** At login, With its window or When started, and one
+  switch, **Claude window opens and quits with the Dock icon**. The agent runs these, whether or not cl_audit
+  is open (before, "start the Dock icon with its window" needed cl_audit running). Old settings carry over:
+  Open at login on → At login; "start or quit the Dock icon too" → With its window; both off → When started;
+  "open or quit the Claude window too" → the window switch.
+- **The top strip says what's reading:** "Reading usage · 2 profiles · every 2–5 min", "Anthropic didn't
+  answer · 1 profile", or "cl_audit agent stopped" with **Start**. Profile settings say "Not reading · cl_audit
+  agent stopped" when that's the case.
+- **New profile:** a new profile's Dock icon is put in the Dock (it could otherwise be taken for one dragged
+  out, and switched off). **Start reading usage** (Usage in the Dock off) installs nothing.
+- **Fixed:** an alert could come again for the same limit and reset, because Anthropic's reset time differs by
+  a fraction of a second between replies.
+- **Clean-up of older installs, once:** each Dock icon's own login item, and the hidden apps of usage only
+  profiles.
 
 ## 26.10.10 — 2026-10-26
 
