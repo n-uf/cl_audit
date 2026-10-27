@@ -279,3 +279,52 @@ struct RemoveAccountSheet: View {
         .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.red.opacity(0.35)))
     }
 }
+
+// MARK: - What older versions left behind
+
+/// Before the agent, each Dock icon app read its own usage: it was its own login item, and a usage only profile had a
+/// hidden app just for that. The agent clears these once.
+enum LegacyCleanup {
+    static func run(_ accounts: [AccountEntry], defaults: UserDefaults) {
+        forgetLoginItems(defaults: defaults)
+        removeUsageOnlyApps(accounts, defaults: defaults)
+    }
+
+    /// The login item each Dock icon copy registered for itself. macOS lets only an app remove its own, so each copy's
+    /// program does it (--forget-login-item); only copies of this build know how, so older ones wait for cl_audit to
+    /// update them. Once per copy and build.
+    static func forgetLoginItems(defaults: UserDefaults) {
+        guard let app = agentParentApp() else { return }
+        let stamp = Installer.buildStamp(app)
+        for (url, id) in Installer.installed() {
+            let key = "loginItemForgotten.\(id)"
+            guard Installer.info(url)?["UsageBuild"] as? String == stamp, defaults.string(forKey: key) != stamp else { continue }
+            let ok = Installer.run(url.appendingPathComponent("Contents/MacOS/UsageDock").path, ["--forget-login-item"]) == 0
+            if ok { defaults.set(stamp, forKey: key) }
+            agentLog.log("agent: \(id, privacy: .public): old login item \(ok ? "removed" : "not removed", privacy: .public)")
+        }
+    }
+
+    /// A usage only profile's hidden app: the agent reads its usage now, so the app goes (its saved status and alert
+    /// marks stay). Once, after its login item went.
+    static func removeUsageOnlyApps(_ accounts: [AccountEntry], defaults: UserDefaults) {
+        guard !defaults.bool(forKey: "usageOnlyAppsRemoved") else { return }
+        var waiting = false
+        for e in accounts where e.usageOnly {
+            let url = Installer.appURL(e)
+            guard FileManager.default.fileExists(atPath: url.path) else { continue }
+            guard defaults.string(forKey: "loginItemForgotten.\(e.id)") != nil else { waiting = true; continue }
+            Installer.stop(url)
+            try? FileManager.default.removeItem(at: url)
+            Installer.run(AccountRemoval.lsregister, ["-u", url.path])
+            agentLog.log("agent: \(e.id, privacy: .public): usage only, its hidden app removed")
+        }
+        if !waiting { defaults.set(true, forKey: "usageOnlyAppsRemoved") }
+    }
+
+    /// The cl_audit.app the agent runs from (…/cl_audit.app/Contents/Library/LoginItems/cl_audit Agent.app).
+    static func agentParentApp() -> URL? {
+        let u = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        return u.pathExtension == "app" ? u : nil
+    }
+}

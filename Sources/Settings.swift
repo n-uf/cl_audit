@@ -63,8 +63,7 @@ final class SettingsModel: ObservableObject {
 
     /// Saves this window's changes merged into the file as it is now (never an older copy over newer changes).
     private func saveMerged() throws {
-        let merged = Self.merge(base: saved, local: accounts, remote: Store.load())
-        try Store.save(merged)
+        let merged = try Store.edit { remote in Self.merge(base: saved, local: accounts, remote: remote) }
         saved = merged
         if merged != accounts { accounts = merged }
     }

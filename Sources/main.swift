@@ -7,6 +7,7 @@ import AppKit
 //   --render-app-icon OUT.png STYLE [PIXELS [PLATE DISPLAY KEYS SLOT]]   one app icon design (the last four: Front panel's look)
 //   --render-preview OUT.png STYLE LABEL FIVEHOUR WEEKLY [COLOR [FRAME]]   one sample icon
 //   --agent-status | --agent-register | --agent-unregister   the cl_audit agent's background item, for checking
+//   --forget-login-item          (in a Dock icon copy) remove the login item older versions registered for it
 
 let args = CommandLine.arguments
 
@@ -78,6 +79,12 @@ if args.count >= 3, args[1] == "--render-settings" {
 
 if args.count >= 4, args[1] == "--render-launcher" {
     if #available(macOS 14, *) { MainActor.assumeIsolated { ManagerUI.renderSample(to: args[2], main: args[3] == "main") } }
+    exit(0)
+}
+
+if args.count >= 2, args[1] == "--forget-login-item" {
+    // run in a Dock icon copy by the agent, once: the login item it registered for itself before the agent
+    AppDelegate.forgetLoginItem()
     exit(0)
 }
 

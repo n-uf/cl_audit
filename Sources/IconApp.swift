@@ -1,8 +1,5 @@
 import AppKit
-import CryptoKit
-import Security
 import ServiceManagement
-import UserNotifications
 
 // MARK: - App
 //
@@ -15,39 +12,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var isSettingsApp: Bool { accountID == nil }
     lazy var entry: AccountEntry = Self.loadEntry(accountID ?? "")
     lazy var account = Account(entry)
-    var lastStatus: Data?
-    var renewing = false
     let details = DetailsController()
     lazy var manager = ManagerUI()          // the settings app's launcher palette and main screen
     var lastClick = Date.distantPast
     /// When cl_audit last came to the front: a Dock click that did this found its window behind others.
     var activatedAt = Date.distantPast
-    // The login is kept in memory and the Keychain is read only when it's needed: at the start, when the
-    // kept login has expired or was refused (then at most every 10 minutes), or on Refresh now.
-    // Reads go through /usr/bin/security like Claude Code's own, so they don't prompt.
-    var cachedLogin: Login?
-    var lastLoginRead = Date.distantPast
-    var loginRejected = false
-    var forceLoginRead = false
-    var renewNote: String?
-    /// At most one automatic renewal per this many seconds, even across restarts.
-    let renewSpacing: TimeInterval = 30 * 60
     let defaults = UserDefaults.standard
     let claudeBundleID = "com.anthropic.claudefordesktop"
 
-    var usage: Usage?
+    // A Dock icon only shows what the cl_audit agent saved for its profile (status/<id>.json): it never reads the
+    // Keychain or the network, sends no alerts and has no login item. Refresh and renew are asked of the agent.
+    var status: IconStatus?
+    /// Refresh now was asked: "Updating…" until the agent saves newer numbers (at most 15 s).
+    var refreshAsked: Date?
     var claudeOpen = false        // this account's Claude window is running (drawn as a dot on the tile)
     var quietQuit = false         // quit without taking the Claude window along (cl_audit reinstalling, or "Quit and keep")
     var quitForWindow = false     // quitting because the Claude window quit ("the Dock icon follows the window")
     var windowQuitWork: DispatchWorkItem?
     var appliedHidden: Bool?
-    var state: FetchState = .idle
-    var plan: String?
-    var loginEmail: String?
-    var profileFor: String?        // short hash of the token the e-mail was looked up for
-    var nextFetch = Date.distantPast
-    var backoff: TimeInterval = 0
-    var inFlight = false
     var tileView: TileView!
     var timer: Timer?
 
@@ -58,24 +40,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Store.load().first { $0.id == id } ?? AccountEntry(id: id, name: id, label: "?", configDir: "~/.claude")
     }
 
-    /// Change this icon's own options and save them to the shared config.
-    func change(_ edit: (inout AccountEntry) -> Void) {
-        edit(&entry)
-        Store.update(entry)
-        applyEntry()
+    // MARK: what the agent saved
+
+    var usage: Usage? {
+        guard let s = status, let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil else { return nil }
+        return Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly, weeklyResets: s.weeklyResets,
+                     fetchedAt: at, source: s.source ?? "Anthropic")
+    }
+    var loginEmail: String? { status?.loginEmail }
+    var plan: String? { status?.plan }
+    var expired: Bool { status?.state == "expired" }
+    var noLogin: Bool { status?.state == "noLogin" }
+    var renewing: Bool { status?.renewing == true }
+    var refreshing: Bool {
+        guard let t = refreshAsked else { return false }
+        return Date().timeIntervalSince(t) < 15 && (status?.updatedAt ?? .distantPast) < t
+    }
+    /// Why the numbers aren't fresh, in words: the agent not running comes first.
+    var problem: String? {
+        Agent.isAlive(Agent.readMark()) ? status?.problem : "Not updating: the cl_audit agent isn't running (open cl_audit)"
+    }
+
+    func loadStatus() {
+        status = Store.status(entry.id)
+        redraw()
+    }
+
+    @objc func statusChanged(_ note: Notification) {
+        guard (note.object as? String) == accountID else { return }
+        loadStatus()
     }
 
     func applyEntry() {
         account = Account(entry)
-        applyLoginItem()
         applyVisibility()
-        if entry.notify { UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in } }
         redraw()
     }
 
-    /// Shown: a normal app with its Dock tile. Hidden: a background app (no tile), still refreshing and alerting.
+    /// Before the agent, each Dock icon app was its own login item; macOS only lets an app remove its own, so each copy
+    /// does it when it runs (and the agent runs each copy once with --forget-login-item).
+    static func forgetLoginItem() {
+        let svc = SMAppService.mainApp
+        if svc.status == .enabled || svc.status == .requiresApproval { try? svc.unregister() }
+        UserDefaults.standard.removeObject(forKey: "loginItemPath")
+    }
+
+    /// Shown: a normal app with its Dock tile. Hidden: a background app (no tile).
     /// The mode is set once, at launch (switching it while running is unreliable on macOS); a change restarts
-    /// cl_usage. Hiding takes its pin out and remembers the place; showing puts it back there.
+    /// the app. Hiding takes its pin out and remembers the place; showing puts it back there.
     func applyVisibility() {
         guard !isSettingsApp else { return }
         let hide = entry.iconHidden
@@ -107,26 +119,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func configChanged() {
-        let fresh = Self.loadEntry(entry.id)
+        // a removed profile: quit quietly (cl_audit takes the app away), never carry on with default settings
+        guard let fresh = Store.loadChecked()?.first(where: { $0.id == entry.id }) else {
+            if Store.loadChecked() != nil { quietQuit = true; NSApp.terminate(nil) }
+            return
+        }
         guard fresh != entry else { return }
-        let refetch = fresh.configDir != entry.configDir || fresh.pollMinutes != entry.pollMinutes
         entry = fresh
-        if refetch { loginEmail = nil; profileFor = nil; nextFetch = .distantPast; cachedLogin = nil }
         applyEntry()
         refreshWindowState()          // a new open/close mode applies right away, not at the next refresh
-        if refetch { tick() }
-        if entry.autoRenew && state == .expired { maybeRenew() }
-    }
-
-    func applyLoginItem() {
-        let svc = SMAppService.mainApp
-        // The entry points at the app's location, so an app that moved or was renamed registers again.
-        let here = Bundle.main.bundlePath, key = "loginItemPath"
-        if entry.startsAtLogin, svc.status != .enabled || defaults.string(forKey: key) != here {
-            if svc.status == .enabled { try? svc.unregister() }
-            if (try? svc.register()) != nil { defaults.set(here, forKey: key) }
-        }
-        if !entry.startsAtLogin, svc.status == .enabled { try? svc.unregister(); defaults.removeObject(forKey: key) }
     }
 
     func applicationDidFinishLaunching(_ note: Notification) {
@@ -167,16 +168,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else { manager.showMain() }
             return
         }
+        Self.forgetLoginItem()
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(configChanged), name: Store.changed, object: nil)
+        DistributedNotificationCenter.default().addObserver(self, selector: #selector(statusChanged(_:)), name: Store.statusChanged, object: nil)
         let ws = NSWorkspace.shared.notificationCenter
         ws.addObserver(self, selector: #selector(appsChanged), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         ws.addObserver(self, selector: #selector(appsChanged), name: NSWorkspace.didTerminateApplicationNotification, object: nil)
-        DistributedNotificationCenter.default().addObserver(self, selector: #selector(refreshNow), name: Installer.refreshAllNote, object: nil)
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(quietQuitAsked(_:)), name: Installer.quietQuitNote, object: accountID)
+        status = Store.status(entry.id)
         tileView = TileView(model: model())
         NSApp.dockTile.contentView = tileView
         NSApp.dockTile.display()
-        usage = UsageParser.fromStatusLine(account)
         redraw()
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.tick() }
         tick()
@@ -200,7 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// ask about unsent work), unless it's quitting because of that window, or was asked to keep it.
     func applicationWillTerminate(_ note: Notification) {
         guard !isSettingsApp, let id = accountID else { return }
-        guard Store.load().contains(where: { $0.id == id }) else { try? SMAppService.mainApp.unregister(); return }
+        guard Store.load().contains(where: { $0.id == id }) else { Self.forgetLoginItem(); return }
         if entry.follows.windowFollowsUsage, !quietQuit, !quitForWindow { quitClaudeWindow() }
     }
 
@@ -290,11 +292,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
             weekly: usage?.weekly, weeklyResets: usage?.weeklyResets,
             updated: usage?.fetchedAt, source: usage?.source,
-            problem: state.menuText, renewNote: renewNote,
-            needsLogin: mismatch || state == .noLogin || state == .expired,
+            problem: problem, renewNote: status?.renewNote,
+            needsLogin: mismatch || noLogin || expired,
             design: entry.panelDesign,
             accent: entry.accentNSColor,
-            refreshing: inFlight)
+            refreshing: refreshing)
         return info
     }
 
@@ -315,7 +317,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return Date().timeIntervalSince(usage.fetchedAt) > limit
     }
 
-    var expectedEmail: String? { account.expectedEmail() }
+    var expectedEmail: String? { status?.expectedEmail ?? account.expectedEmail() }
 
     /// The login in the Keychain belongs to a different account than this folder is set up for.
     var mismatch: Bool {
@@ -325,7 +327,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func model() -> TileModel {
         TileModel(label: account.label, fiveHour: usage?.fiveHour, weekly: usage?.weekly,
-                  stale: isStale || state == .expired || state == .noLogin, style: style, warn: mismatch,
+                  stale: isStale || expired || noLogin, style: style, warn: mismatch,
                   tint: entry.color, frame: entry.frame,
                   fiveHourElapsed: windowElapsed(usage?.fiveHourResets, 5 * 3600),
                   weeklyElapsed: windowElapsed(usage?.weeklyResets, 7 * 86400), windowOpen: claudeOpen && entry.windowDot)
@@ -334,13 +336,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func redraw() {
         guard !isSettingsApp, tileView != nil else { return }
         if details.isShown { details.update(detailsInfo(), detailsActions()) }   // an open panel follows along
-        // What this icon sees, for the settings window (no secrets).
-        let status = IconStatus(loginEmail: loginEmail, expectedEmail: expectedEmail, state: "\(state)",
-                                fiveHour: usage?.fiveHour, weekly: usage?.weekly, updatedAt: usage?.fetchedAt,
-                                renewNote: renewNote, fiveHourResets: usage?.fiveHourResets,
-                                weeklyResets: usage?.weeklyResets, plan: plan)
-        let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970; enc.outputFormatting = [.sortedKeys]
-        if let data = try? enc.encode(status), data != lastStatus { lastStatus = Store.writeStatus(entry.id, status) }
         tileView.model = model()
         NSApp.dockTile.display()
     }
@@ -379,137 +374,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func tick() {
         refreshWindowState()
         // Show in the Dock follows the Dock: dragged out by hand → background; kept in the Dock by hand → shown
-        if !isSettingsApp, let hidden = DockManager.adoptDock(entry) { change { $0.iconHidden = hidden } }
-        if let local = UsageParser.fromStatusLine(account), local.fetchedAt > (usage?.fetchedAt ?? .distantPast) {
-            usage = local
-        }
-        if Date() >= nextFetch { fetch() }
-        redraw()
-    }
-
-    func fetch() {
-        guard !inFlight else { return }
-        nextFetch = Date().addingTimeInterval(TimeInterval(pollMinutes * 60) + backoff)
-        let login = currentLogin()
-        guard case let .token(token, expiresAt, plan) = login else {
-            state = login.isDenied ? .denied : .noLogin
-            redraw(); return
-        }
-        self.plan = plan
-        if let expiresAt, expiresAt < Date() { state = .expired; redraw(); maybeRenew(); return }
-        if profileFor != Account.sha8(token) { lookUpEmail(token) }
-
-        inFlight = true
-        URLSession.shared.dataTask(with: request("usage", token: token)) { [weak self] data, resp, err in
-            DispatchQueue.main.async { self?.finish(data: data, response: resp as? HTTPURLResponse, error: err) }
-        }.resume()
-    }
-
-    func currentLogin() -> Login {
-        var usable = false
-        if case let .token(_, expiresAt, _)? = cachedLogin {
-            usable = !loginRejected && (expiresAt ?? .distantFuture) > Date().addingTimeInterval(60)
-        }
-        let wait: TimeInterval = cachedLogin == nil ? 0 : 10 * 60
-        if forceLoginRead || (!usable && Date().timeIntervalSince(lastLoginRead) >= wait) {
-            cachedLogin = Login.read(account)
-            lastLoginRead = Date()
-            loginRejected = false
-            forceLoginRead = false
-        }
-        return cachedLogin ?? .notFound
-    }
-
-    func request(_ path: String, token: String) -> URLRequest {
-        var req = URLRequest(url: URL(string: "https://api.anthropic.com/api/oauth/\(path)")!)
-        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        req.setValue("oauth-2025-04-20", forHTTPHeaderField: "anthropic-beta")
-        req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.setValue("usage-dock/0.1", forHTTPHeaderField: "User-Agent")
-        req.timeoutInterval = 20
-        return req
-    }
-
-    func lookUpEmail(_ token: String) {
-        let key = Account.sha8(token)
-        URLSession.shared.dataTask(with: request("profile", token: token)) { [weak self] data, resp, _ in
-            let ok = (resp as? HTTPURLResponse)?.statusCode == 200
-            let email = ok ? data.flatMap(UsageParser.email) : nil
-            DispatchQueue.main.async {
-                guard let self else { return }
-                if let email { self.loginEmail = email; self.profileFor = key }
-                self.redraw()
-            }
-        }.resume()
-    }
-
-    func finish(data: Data?, response: HTTPURLResponse?, error: Error?) {
-        inFlight = false
-        defer { redraw() }
-        if let error { state = .failed(error.localizedDescription); return }
-        switch response?.statusCode ?? 0 {
-        case 200:
-            guard let data, let u = UsageParser.fromAPI(data) else { state = .failed("unexpected reply"); return }
-            usage = u; state = .ok; backoff = 0
-            checkThresholds(u)
-        case 401, 403:
-            state = .expired
-            loginRejected = true
-            maybeRenew()
-        case 429:
-            state = .rateLimited
-            backoff = min(max(backoff * 2, 120), 1800)
-            nextFetch = Date().addingTimeInterval(TimeInterval(pollMinutes * 60) + backoff)
-        case let code:
-            state = .failed("HTTP \(code)")
-        }
-    }
-
-    // MARK: renewing an expired login
-
-    func maybeRenew() {
-        guard entry.autoRenew, !renewing else { return }
-        if let last = defaults.object(forKey: "lastRenewAttempt") as? Date,
-           Date().timeIntervalSince(last) < renewSpacing { return }
-        renewLogin()
-    }
-
-    @objc func renewLogin() {
-        guard !renewing else { return }
-        guard let claude = ClaudeCLI.find() else {
-            renewNote = "Couldn't renew: Claude Code isn't installed"; redraw(); return
-        }
-        renewing = true
-        defaults.set(Date(), forKey: "lastRenewAttempt")
-        renewNote = "Renewing the login through Claude Code…"
-        redraw()
-        let acct = account
-        DispatchQueue.global(qos: .utility).async {
-            let ok = ClaudeCLI.renew(claude, account: acct)
-            DispatchQueue.main.async {
-                self.renewing = false
-                self.renewNote = ok ? "Login renewed at \(Self.when(Date()))" : "Couldn't renew the login: run Claude Code for this profile once"
-                self.nextFetch = .distantPast
-                self.forceLoginRead = true
-                self.tick()
-            }
-        }
-    }
-
-    func checkThresholds(_ u: Usage) {
-        guard entry.notify else { return }
-        let limit = Double(entry.notifyPercent)
-        for (key, title, p, resets) in [("n5h", "5-hour limit", u.fiveHour, u.fiveHourResets),
-                                        ("nwk", "Weekly limit", u.weekly, u.weeklyResets)] {
-            guard let p, p >= limit else { continue }
-            let mark = resets.map { "\(Int($0.timeIntervalSince1970))" } ?? "unknown"
-            if defaults.string(forKey: key) == mark { continue }
-            defaults.set(mark, forKey: key)
-            let c = UNMutableNotificationContent()
-            c.title = "Claude \(account.name): \(title) at \(Int(p.rounded()))%"
-            if let resets { c.body = "Resets \(Self.when(resets))" }
-            UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: key + mark, content: c, trigger: nil))
-        }
+        if !isSettingsApp, let hidden = DockManager.adoptDock(entry) { Store.update(entry.id) { $0.iconHidden = hidden } }
+        loadStatus()                  // also redraws: the staleness and the agent's state change with time
     }
 
     // MARK: opening Claude
@@ -555,13 +421,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         line("5-hour limit", usage?.fiveHour, usage?.fiveHourResets)
         line("Weekly limit", usage?.weekly, usage?.weeklyResets)
         if let usage { m.addItem(info("Updated \(Self.ago(usage.fetchedAt)) · \(usage.source)")) }
-        if let why = state.menuText { m.addItem(info(why)) }
-        if let note = renewNote { m.addItem(info(note)) }
+        if let why = problem { m.addItem(info(why)) }
+        if let note = status?.renewNote { m.addItem(info(note)) }
         if Privacy.shared.show || loginEmail == nil { m.addItem(info("Login: \(loginEmail ?? "checking…")")) }
         if mismatch, let want = expectedEmail {
             m.addItem(info(Privacy.shared.show ? "⚠︎ This folder is set up for \(want)" : "⚠︎ This folder is set up for a different account"))
         }
-        if mismatch || state == .noLogin || state == .expired {
+        if mismatch || noLogin || expired {
             let login = NSMenuItem(title: "Log in…", action: #selector(logIn), keyEquivalent: "")
             login.target = self; m.addItem(login)
         }
@@ -576,7 +442,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if claudeOpen { add("Quit Claude window", #selector(quitClaudeWindow)) }
         }
         add("Refresh now", #selector(refreshNow))
-        if state == .expired { add(renewing ? "Renewing login…" : "Renew login now (uses a little usage)", #selector(renewLogin), enabled: !renewing) }
+        if expired { add(renewing ? "Renewing login…" : "Renew login now (uses a little usage)", #selector(renewLogin), enabled: !renewing) }
         m.addItem(.separator())
         add("Dashboard", #selector(showDashboard))
         add("Profile settings…", #selector(showSettings))
@@ -587,14 +453,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return m
     }
 
-    @objc func refreshNow() { nextFetch = .distantPast; forceLoginRead = true; tick() }
-    @objc func pickStyle(_ item: NSMenuItem) {
-        if let r = item.representedObject as? String, let s = IconStyle(rawValue: r) { change { $0.style = s } }
+    /// Asks the agent to read this profile now; the panel says "Updating…" until it has.
+    @objc func refreshNow() {
+        refreshAsked = Date()
+        DistributedNotificationCenter.default().postNotificationName(Installer.refreshAllNote, object: accountID, userInfo: nil,
+                                                                     deliverImmediately: true)
+        redraw()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15.5) { [weak self] in self?.redraw() }
     }
-    @objc func pickPoll(_ item: NSMenuItem) { change { $0.pollMinutes = item.tag }; nextFetch = Date(); tick() }
-    @objc func toggleNotify() { change { $0.notify.toggle() } }
-    @objc func toggleLogin() { change { $0.openAtLogin.toggle() } }
-    @objc func toggleRenew() { change { $0.autoRenew.toggle() }; if state == .expired { maybeRenew() } }
+    /// Asks the agent to renew this profile's sign-in through Claude Code now.
+    @objc func renewLogin() {
+        DistributedNotificationCenter.default().postNotificationName(Agent.renewNote, object: accountID, userInfo: nil,
+                                                                     deliverImmediately: true)
+    }
     @objc func showSettings() { Installer.openSettings(account: accountID) }
     @objc func showDashboard() { details.close(); Installer.openDashboard() }
     @objc func logIn() {

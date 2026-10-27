@@ -120,21 +120,28 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         }
     }
 
-    /// What's wrong with this entry, if anything, in words for the settings window.
+    /// What runs for this profile: the one place that works it out from its switches (see ProfileRuns). The agent
+    /// reads its usage whatever this says. Saved choices stay stored while a switch makes them not apply.
+    var runs: ProfileRuns {
+        let dock = !iconHidden, win = claudeWindow
+        return ProfileRuns(dockIcon: dock, window: win, atLogin: dock && openAtLogin,
+                           withWindow: dock && win && lifecycle.usageFollowsWindow,
+                           windowFollowsDock: dock && win && lifecycle.windowFollowsUsage)
+    }
+    /// Usage in the Dock off and no Claude window: its usage shows on the dashboard, in the launcher and in alerts.
+    var usageOnly: Bool { runs.usageOnly }
+    /// How its Dock icon and Claude window follow each other, from `runs`.
+    var follows: Lifecycle {
+        let r = runs
+        return r.withWindow ? (r.windowFollowsDock ? .lockstep : .usageFollows) : (r.windowFollowsDock ? .windowFollows : .independent)
+    }
+
     /// The account's colour in the launcher, the dashboard (chips, cards, charts) and the panels.
     /// Unset: the icon colour when it's a plain one, else orange.
-    /// Usage in the Dock off and no Claude window: its usage shows on the dashboard, in the launcher and in alerts.
-    var usageOnly: Bool { iconHidden && !claudeWindow }
-    /// How its Dock icon and Claude window follow each other: only with both shown. With Usage in the Dock off its
-    /// app runs hidden and reads the usage, so a window quitting must never quit it. The saved choice stays stored.
-    var follows: Lifecycle { claudeWindow && !iconHidden ? lifecycle : .independent }
-    /// With Usage in the Dock off its background app always starts at login, so its usage keeps being read.
-    /// The saved Open at login stays stored.
-    var startsAtLogin: Bool { openAtLogin || iconHidden }
-
     var accentColor: TileColor { accent ?? ([.usage, .graphite].contains(color) ? .orange : color) }
     var accentNSColor: NSColor { accentColor.color(fiveHour: nil, stale: false) }
 
+    /// What's wrong with this entry, if anything, in words for the settings window.
     var problem: String? {
         if name.trimmingCharacters(in: .whitespaces).isEmpty { return "Give the profile a name." }
         if name.contains("/") || name.contains(":") { return "The name can't contain / or :." }
@@ -143,6 +150,17 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         if desktop == .separate && desktopDataDir.isEmpty { return "This profile's Claude window has no folder yet." }
         return nil
     }
+}
+
+/// What runs for a profile, from its two switches and its opening choices. Worked out only in AccountEntry.runs, and
+/// asked by every process (the agent, the Dock icons, the cl_audit window), so a special case is handled once.
+struct ProfileRuns: Equatable {
+    var dockIcon: Bool            // Usage in the Dock: its Dock icon app is installed and in the Dock
+    var window: Bool              // it has a Claude window
+    var atLogin: Bool             // the agent starts the Dock icon when you log in
+    var withWindow: Bool          // the agent starts and quits the Dock icon with its Claude window
+    var windowFollowsDock: Bool   // the agent opens and quits the Claude window with the Dock icon (not at login)
+    var usageOnly: Bool { !dockIcon && !window }
 }
 
 /// The compact panel's duration: quarter seconds up to 3 s, whole seconds above.
@@ -161,7 +179,7 @@ struct ConfigFile: Codable {
     var accounts: [AccountEntry]
 }
 
-/// What an icon last saw, for the settings window. No secrets.
+/// What the agent last saw for a profile, for its Dock icon and the cl_audit window. No secrets.
 struct IconStatus: Codable {
     var loginEmail: String?
     var expectedEmail: String?
@@ -173,6 +191,9 @@ struct IconStatus: Codable {
     var fiveHourResets: Date?
     var weeklyResets: Date?
     var plan: String?
+    var source: String? = nil          // where the numbers came from ("Anthropic", "Claude Code status line")
+    var problem: String? = nil         // why it couldn't update, in words
+    var renewing: Bool? = nil          // renewing the sign-in through Claude Code now
 }
 
 // MARK: - Renewing an expired login through Claude Code
@@ -269,28 +290,51 @@ enum Store {
     static var configURL: URL { folder.appendingPathComponent("accounts.json") }
     static var statusFolder: URL { folder.appendingPathComponent("status") }
     static let changed = Notification.Name("local.usage-n-uf.config-changed")
+    /// Posted by the agent after it saved a profile's status (object: the profile id).
+    static let statusChanged = Notification.Name("local.usage-n-uf.status-changed")
 
     static var exists: Bool { FileManager.default.fileExists(atPath: configURL.path) }
 
-    static func load() -> [AccountEntry] {
-        guard let data = try? Data(contentsOf: configURL) else { return [] }
-        return (try? JSONDecoder().decode(ConfigFile.self, from: data))?.accounts ?? []
+    static func load() -> [AccountEntry] { loadChecked() ?? [] }
+
+    /// The profiles, or nil when the file is missing or can't be read (so a reader never takes a bad read for
+    /// "every profile was removed").
+    static func loadChecked() -> [AccountEntry]? {
+        guard let data = try? Data(contentsOf: configURL) else { return nil }
+        return (try? JSONDecoder().decode(ConfigFile.self, from: data))?.accounts
     }
 
-    static func save(_ accounts: [AccountEntry]) throws {
+    /// The one way the profiles file is written: under a lock shared by every cl_audit process, the file read fresh,
+    /// `change` applied to it, and saved, so no process writes an older copy over another one's change.
+    @discardableResult
+    static func edit(_ change: ([AccountEntry]) -> [AccountEntry]) throws -> [AccountEntry] {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let fd = Darwin.open(folder.appendingPathComponent("accounts.lock").path, O_RDWR | O_CREAT, 0o600)
+        if fd >= 0 {
+            let deadline = Date().addingTimeInterval(10)
+            while flock(fd, LOCK_EX | LOCK_NB) != 0 && Date() < deadline { usleep(20_000) }
+        }
+        defer { if fd >= 0 { flock(fd, LOCK_UN); Darwin.close(fd) } }
+        let before = load()
+        let after = change(before)
+        guard after != before || !exists else { return after }
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try enc.encode(ConfigFile(accounts: accounts)).write(to: configURL, options: .atomic)
+        try enc.encode(ConfigFile(accounts: after)).write(to: configURL, options: .atomic)
         DistributedNotificationCenter.default().postNotificationName(changed, object: nil, userInfo: nil, deliverImmediately: true)
+        return after
     }
 
-    /// Change one entry and save, keeping the others as they are on disk.
-    static func update(_ entry: AccountEntry) {
-        var all = load()
-        guard let i = all.firstIndex(where: { $0.id == entry.id }) else { return }
-        all[i] = entry
-        try? save(all)
+    /// Replaces the whole list (the cl_audit window, after merging its changes into the file as it is).
+    static func save(_ accounts: [AccountEntry]) throws { try edit { _ in accounts } }
+
+    /// Change one entry, keeping the others as they are on disk.
+    static func update(_ id: String, _ change: @escaping (inout AccountEntry) -> Void) {
+        _ = try? edit { all in
+            var all = all
+            if let i = all.firstIndex(where: { $0.id == id }) { change(&all[i]) }
+            return all
+        }
     }
 
     static func status(_ id: String) -> IconStatus? {
@@ -304,6 +348,7 @@ enum Store {
         guard let data = try? enc.encode(s) else { return nil }
         try? FileManager.default.createDirectory(at: statusFolder, withIntermediateDirectories: true)
         try? data.write(to: statusFolder.appendingPathComponent("\(id).json"), options: .atomic)
+        DistributedNotificationCenter.default().postNotificationName(statusChanged, object: id, userInfo: nil, deliverImmediately: true)
         return data
     }
 
@@ -424,16 +469,21 @@ enum Installer {
         }
         for e in accounts {
             let dst = appURL(e)
+            // A copy is made once Usage in the Dock is on; one already made is kept (and kept up to date) when it's
+            // turned off, so it comes back as it was. The agent reads the usage either way.
+            let exists = FileManager.default.fileExists(atPath: dst.path)
+            guard e.runs.dockIcon || exists else { continue }
             if needsInstall(e, at: dst, source: source) {
                 let lookChanged = lookDiffers(e, at: dst)
+                let wasRunning = isRunning(e)
                 stop(dst)
                 do { try install(e, at: dst, source: source); log.append("installed \(dst.deletingPathExtension().lastPathComponent)") }
                 catch { log.append("couldn't install \(e.name): \(error.localizedDescription)"); continue }
                 if lookChanged { restyled.append(dst) }
+                // as it was: running again if it ran (in the background, its window left as it is); nothing else is
+                // started here, the agent runs the opening rules
+                if wasRunning && e.runs.dockIcon { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
             }
-            // Started in the background and without opening its Claude window ("Window follows" is for you starting
-            // it). One that follows its window isn't started while that window is closed.
-            if !isRunning(e), !waitsForWindow(e) { run("/usr/bin/open", ["-g", dst.path, "--args", "--no-follow"]) }
         }
         return log
     }
