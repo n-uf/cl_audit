@@ -206,15 +206,13 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
 ### General settings
 
+The cards come most important first, read left to right and top to bottom (two columns and one keep the order):
+
+- **Usage in the background:** whether usage is being read ("Reading usage · 2 profiles · every 2–5 min", or red
+  "Not reading · stopped 12 min ago"), then whether **Alerts** reach you (Allowed, or "Not allowed" with **Open
+  Notifications…**), **Last read**, and only while reading has stopped **Start reading** (cl_audit also tries by
+  itself every minute) with the reason it won't start. The dashboard's red display opens this card.
 - **Emails:** Show emails (see above).
-- **Face:** the look of the cl_audit window, as on the home site: **Std** (a dark brushed panel, the
-  default), **Black** (black anodised) or **Silver** (light brushed silver; the window takes the Mac's light
-  appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.
-- **Dashboard cards:** one card style for every profile (Glow, Rings, Numbers, Segments or Pace).
-- **About:** the version and build, and a link to what's new.
-- **Agent:** what the background agent is doing; when it won't start, why and what to do.
-- **Clean-up:** when the agent last tidied up ("Cleaned up 2 leftovers · 26 Oct"; the (i) lists what went),
-  and **Uninstall cl_audit…** (see [Uninstalling](#uninstalling)).
 - **Dock** (off by default; experimental and invasive: it rewrites the Dock's pin list and restarts the
   Dock, and macOS can misplace or drop pins). macOS ties running Claude windows to Claude pins in its own
   order, so several Claude pins get mixed up; the Dock icons are the reliable way to reach each profile's
@@ -222,6 +220,13 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   with one Claude pin before them (or none), and redoes it after profiles are added, removed or renamed.
   Other apps keep their places. The card pictures your Dock with the changes marked; **Arrange Dock**
   applies them, and **Restore my Dock** puts back the pins saved before the first change.
+- **Face:** the look of the cl_audit window, as on the home site: **Std** (a dark brushed panel, the
+  default), **Black** (black anodised) or **Silver** (light brushed silver; the window takes the Mac's light
+  appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.
+- **Dashboard cards:** one card style for every profile (Glow, Rings, Numbers, Segments or Pace).
+- **App icon:** six designs in one row; Front panel's Plate, Display, Keys and Slot below it.
+- **About:** the version and build, a link to what's new, when the agent last cleaned up ("Cleaned up 2
+  leftovers · 26 Oct"; the (i) lists what went) and **Uninstall cl_audit…** (see [Uninstalling](#uninstalling)).
 
 ### Adding a profile
 

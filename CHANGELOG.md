@@ -28,7 +28,11 @@ the notes before updating.
   thing at a time, most important first: the agent won't start (red, with the numbers' age), starting the agent,
   paused after crashes, updating, a profile Anthropic didn't answer for, or "Updated · 2 min ago". No Start key:
   cl_audit starts its agent itself when its window opens and whenever it has been silent for 90 s, and the
-  refresh key always works. Settings ▸ General ▸ Agent says why it won't start, and what to do.
+  refresh key always works.
+- **General settings, grouped:** most important first, in columns of about equal height: Usage in the background
+  (new: is usage being read, do alerts reach you, when it last read; the dashboard's red display opens it), Emails,
+  Dock, Face, Dashboard cards, App icon (now one row of designs with Front panel's choices under it) and About
+  (with the clean-up's last run and Uninstall). Every value starts on the same line.
 - **New profile:** a new profile's Dock icon is put in the Dock (it could otherwise be taken for one dragged
   out, and switched off). **Start reading usage** (Usage in the Dock off) installs nothing.
 - **Fixed:** an alert could come again for the same limit and reset, because Anthropic's reset time differs by

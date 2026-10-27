@@ -461,27 +461,26 @@ struct DockCard: View {
         let now = DockManager.pins()
         let after = DockManager.plan(now, accounts: accounts, prefs: prefs)
         return SCard(title: "Dock") {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Text("Keep the Dock in order").font(.system(size: 12.5, weight: .medium))
-                        DisplayWindow(text: "Experimental", tone: .amber, height: 18, size: 9)
-                    }
-                    Text("Pins the profile icons side by side, in profile order, with at most one Claude pin before them. Several Claude pins get mixed up between Claude windows; the profile icons always open the right one. Redone when you add or remove an account.")
-                        .font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                    HStack(alignment: .firstTextBaseline, spacing: 5) {
-                        Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9.5)).foregroundStyle(face.caution)
-                        Text("Invasive and error-prone: it rewrites your Dock's pin list and restarts the Dock, and macOS can misplace or drop pins along the way. “Restore my Dock” puts back the pins saved before the first change.")
-                            .font(.system(size: 11)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.top, 2)
+            // the title row with its badge and switch, then what it does and the warning at the card's full width
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 8) {
+                    Text("Keep the Dock in order").font(.system(size: 12.5, weight: .medium))
+                    DisplayWindow(text: "Experimental", tone: .amber, height: 18, size: 9)
+                    Spacer(minLength: 6)
+                    Toggle("", isOn: Binding(get: { prefs.manage }, set: { on in
+                        prefs.manage = on
+                        if on { DockManager.tidy(accounts: accounts); refreshSoon() }
+                    })).smallSwitch()
                 }
-                Spacer(minLength: 6)
-                Toggle("", isOn: Binding(get: { prefs.manage }, set: { on in
-                    prefs.manage = on
-                    if on { DockManager.tidy(accounts: accounts); refreshSoon() }
-                })).smallSwitch()
+                Text("Pins the profile icons side by side, in profile order, with at most one Claude pin before them. Redone when you add or remove a profile.")
+                    .font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                HStack(alignment: .firstTextBaseline, spacing: 5) {
+                    Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 9.5)).foregroundStyle(face.caution)
+                    Text("Invasive: it rewrites your Dock's pin list and restarts the Dock. “Restore my Dock” puts back the pins saved before the first change.")
+                        .font(.system(size: 11)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
+                }
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
 
             if prefs.manage {

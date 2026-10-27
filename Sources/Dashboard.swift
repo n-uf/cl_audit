@@ -3,6 +3,7 @@
 // charts to show, and the Dock (Dock.swift). Edited on Settings ▸ Dashboard.
 
 import SwiftUI
+import UserNotifications
 
 final class DashboardPrefs: ObservableObject {
     static let shared = DashboardPrefs()
@@ -23,74 +24,115 @@ final class DashboardPrefs: ObservableObject {
     }
 }
 
-/// Settings ▸ General: Emails · Face · App icon · Dashboard cards · About · Dock. The history period and which charts to show are set on the
-/// dashboard itself, as filters.
+/// Settings ▸ General: Usage in the background · Emails · Dock · Face · Dashboard cards · App icon · About. The history
+/// period and which charts to show are set on the dashboard itself, as filters.
 struct DashboardSettings: View {
     @ObservedObject private var prefs = DashboardPrefs.shared
     var width: CGFloat = 1280
 
+    /// Most important first, read left to right and top to bottom (two columns and one keep the order): how it runs
+    /// (Usage in the background, Emails, Dock), how it looks (Face, Dashboard cards), the rest (App icon, About).
     var body: some View {
-        SettingsColumns(width: width, groups: [[AnyView(emailsCard), AnyView(faceCard), AnyView(appIconCard), AnyView(cardsCard), AnyView(aboutCard)], [AnyView(agentCard), AnyView(DockCard()), AnyView(cleanupCard)]])
+        SettingsColumns(width: width, groups: [[AnyView(usageCard), AnyView(emailsCard), AnyView(DockCard())],
+                                               [AnyView(faceCard), AnyView(cardsCard)],
+                                               [AnyView(appIconCard), AnyView(aboutCard)]])
     }
 
     @Environment(\.face) private var face
     @ObservedObject private var privacy = Privacy.shared
 
-    // The agent: what it's doing, and when it won't start, why and what to do
+    // Usage in the background: is usage being read, do alerts reach you (the dashboard display opens this when
+    // reading stops). A key only when something needs you.
     @ObservedObject private var starter = AgentStarter.shared
-    var agentCard: some View {
-        let _ = cleanupTick
-        let health = Agent.health()
-        let line: String = {
-            switch health {
-            case let .reading(n, lo, hi): return "Reading usage · \(n) profile\(n == 1 ? "" : "s") · every \(lo == hi ? "\(lo)" : "\(lo)–\(hi)") min"
-            case .failing(let n): return "Reading usage · Anthropic didn't answer for \(n) profile\(n == 1 ? "" : "s")"
-            case .paused(let until): return "Not updating · paused until \(StripState.time(until)) after crashes"
-            case .stopped: return starter.failures >= 3 ? "Not updating · agent won't start" : "Starting the agent…"
+    @ObservedObject private var alerts = AlertsPermission.shared
+    @State private var tick = 0
+    /// Offscreen renders only: a made-up state for the card (the real agent is never touched).
+    struct UsagePreview { var health: Agent.Health; var allowed: Bool; var newest: Date?; var stoppedSince: Date? }
+    static var usagePreview: UsagePreview? = nil
+
+    var usageCard: some View {
+        let _ = tick
+        let p = Self.usagePreview
+        let mark = p == nil ? Agent.readMark() : nil
+        let health = p?.health ?? Agent.health(mark)
+        let newest = p.map { $0.newest } ?? Store.load().compactMap { Store.status($0.id)?.updatedAt }.max()
+        let stoppedSince = p.map { $0.stoppedSince } ?? mark?.beat
+        let allowed = p.map { Optional($0.allowed) } ?? alerts.allowed
+        let stopped: Bool = { if case .stopped = health { return !starter.starting }; return false }()
+        return SCard(title: "Usage in the background", info: "cl_audit's background agent reads every profile's usage on each profile's own schedule, renews sign-ins, sends the alerts and runs Opening and closing. macOS starts it when you log in and again after a crash; cl_audit starts it too when this window opens and whenever it has been silent for 90 s.") {
+            Group {
+                switch health {
+                case let .reading(n, lo, hi):
+                    DisplayWindow(text: "Reading usage", dim: "· \(n) profile\(n == 1 ? "" : "s") · every \(lo == hi ? "\(lo)" : "\(lo)–\(hi)") min", tone: .ok, height: 24)
+                case .failing(let n):
+                    DisplayWindow(text: "Reading usage", dim: "· Anthropic didn't answer for \(n) profile\(n == 1 ? "" : "s")", tone: .amber, height: 24)
+                case .paused(let until):
+                    DisplayWindow(text: "Not reading", dim: "· paused until \(StripState.time(until))", tone: .amber, height: 24)
+                case .stopped:
+                    if starter.starting { DisplayWindow(text: "Starting the agent…", tone: .amber, height: 24) }
+                    else { DisplayWindow(text: "Not reading", dim: stoppedSince.map { "· stopped \(DetailsFormat.ago($0))" } ?? "· not started yet", tone: .warn, height: 24) }
+                }
             }
-        }()
-        return SCard(title: "Agent", info: "cl_audit's background agent reads every profile's usage, renews sign-ins, sends the alerts and runs Opening and closing. macOS starts it at login and after a crash; cl_audit starts it too when its window opens and whenever it has been silent for 90 s.") {
-            SRow(label: "Now", first: true) {
-                Text(line).font(.system(size: 12)).foregroundStyle(starter.failures >= 3 && health == .stopped ? face.danger : face.soft)
-                    .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Text("cl_audit reads every profile's usage and sends the alerts on its own, even with this window and the Dock icons closed. It starts when you log in.")
+                .font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 7).padding(.bottom, 4)
+            SRow(label: "Alerts", info: "Alerts come from cl_audit when a limit reaches the level set for each profile. macOS asks once; you can change it in System Settings ▸ Notifications ▸ cl_audit.", first: true) {
+                if allowed == false {
+                    // side by side when there's room, the key under the display when not
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 8) { notAllowed; openNotifications }
+                        VStack(alignment: .leading, spacing: 6) { notAllowed; openNotifications }
+                    }
+                } else if allowed == true {
+                    DisplayWindow(text: "Allowed", tone: .ok)
+                } else {
+                    Text("checking…").font(.system(size: 12)).foregroundStyle(face.muted)
+                }
             }
-            if case .stopped = health, starter.failures >= 3 {
-                SRow(label: "Why", stacked: true) {
-                    Text(Self.reason()).font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+            SRow(label: "Last read") {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(newest.map { DetailsFormat.ago($0) } ?? "not yet").font(.system(size: 12)).foregroundStyle(face.soft)
+                    if stopped { Text("the cards show older numbers").font(.system(size: 11)).foregroundStyle(face.muted) }
+                }
+            }
+            if stopped {
+                SRow(label: "Start it") {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Button("Start reading") { starter.start(reason: "Settings") }.buttonStyle(PillButtonStyle(compact: true))
+                        Text("cl_audit tries by itself every minute").font(.system(size: 11)).foregroundStyle(face.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    .padding(.vertical, 4)
+                }
+                if starter.failures >= 3 {
+                    Text(Self.reason()).font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
                 }
             }
         }
-        .onAppear { cleanupTick += 1 }
+        .onAppear { tick += 1; alerts.refresh() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in alerts.refresh(); tick += 1 }
+        .onReceive(Timer.publish(every: 5, on: .main, in: .common).autoconnect()) { _ in tick += 1 }
+    }
+
+    private var notAllowed: some View { DisplayWindow(text: "Not allowed", tone: .amber) }
+    private var openNotifications: some View {
+        Button("Open Notifications…") { AlertsPermission.openSettings() }.buttonStyle(PillButtonStyle(compact: true))
+            .help("System Settings ▸ Notifications ▸ cl_audit")
     }
 
     /// Why the agent won't start, and the fix, in words.
     static func reason() -> String {
         switch Agent.service.status {
         case .requiresApproval:
-            return "macOS needs you to allow cl_audit to run in the background: System Settings ▸ General ▸ Login Items & Extensions ▸ Allow in the Background ▸ cl_audit. Then press the refresh key."
+            return "macOS needs you to allow cl_audit to run in the background: System Settings ▸ General ▸ Login Items & Extensions ▸ Allow in the Background ▸ cl_audit."
         case .notRegistered, .notFound:
-            return "cl_audit's background item isn't registered. Quit and reopen cl_audit, or reinstall it; then press the refresh key."
+            return "cl_audit's background item isn't registered. Quit and reopen cl_audit, or reinstall it."
         default:
-            return "macOS didn't start it. Make sure cl_audit is in /Applications (not in the Trash or a download folder), then press the refresh key. If it still won't start, restart the Mac or reinstall cl_audit."
+            return "macOS didn't start it. Make sure cl_audit is in /Applications (not in the Trash or a download folder). If it still won't start, restart the Mac or reinstall cl_audit."
         }
-    }
-
-    // Clean-up and Uninstall: what the agent tidies on its own, and taking cl_audit off this Mac
-    @State private var cleanupTick = 0
-    var cleanupCard: some View {
-        let _ = cleanupTick
-        let r = Cleanup.lastRecord()
-        let items = (r?.removed ?? []).prefix(6).joined(separator: "\n")
-        return SCard(title: "Clean-up", info: "The cl_audit agent tidies up on its own: at login, after every change and every 6 hours. It removes only what is provably cl_audit's: Dock icon apps no profile wants, second copies, what macOS keeps for them, saved usage of removed profiles, Dock pins of apps that are gone and old Terminal scripts. Never a Claude Code folder, a Claude window's data, a Keychain sign-in or anything else.") {
-            SRow(label: "Last run", info: items.isEmpty ? "Nothing removed in the last week." : "Removed:\n" + items, first: true) {
-                Text(Cleanup.summary(r)).font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
-            }
-            SRow(label: "Uninstall", info: "Removes every Dock icon app and its pin, the agent, saved usage, settings and caches, then moves cl_audit to the Trash. You choose per profile whether its Claude Code folder (signed out first) and its own Claude window's data go too; ~/.claude and the standard window are never deleted.") {
-                Button("Uninstall cl_audit…") { UninstallUI.shared.show = true }
-                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(face.danger)
-            }
-        }
-        .onAppear { cleanupTick += 1 }
     }
 
     // Show emails: for screen sharing and screenshots
@@ -137,6 +179,15 @@ struct DashboardSettings: View {
                 Button("What's new") { NSWorkspace.shared.open(URL(string: "https://github.com/n-uf/cl_audit/blob/main/CHANGELOG.md")!) }
                     .buttonStyle(PillButtonStyle(compact: true))
             }
+            let r = Cleanup.lastRecord()
+            let items = (r?.removed ?? []).prefix(6).joined(separator: "\n")
+            SRow(label: "Clean-up", info: "The agent tidies up on its own: at login, after every change and every 6 hours. It removes only what is provably cl_audit's: Dock icon apps no profile wants, second copies, what macOS keeps for them, saved usage of removed profiles, Dock pins of apps that are gone and old Terminal scripts. Never a Claude Code folder, a Claude window's data or a sign-in." + (items.isEmpty ? "" : "\nLast removed:\n" + items)) {
+                Text(Cleanup.summary(r)).font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+            }
+            SRow(label: "Uninstall", info: "Removes every Dock icon app and its pin, the agent, saved usage, settings and caches, then moves cl_audit to the Trash. You choose per profile whether its Claude Code folder (signed out first) and its own Claude window's data go too; ~/.claude and the standard window are never deleted.") {
+                Button("Uninstall cl_audit…") { UninstallUI.shared.show = true }
+                    .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(face.danger)
+            }
         }
     }
 
@@ -171,6 +222,28 @@ struct DashboardSettings: View {
 struct DashboardTile: View {
     let selected: Bool
     var body: some View {
-        TileKey(selected: selected) { TileText(title: "General", sub: "emails · face · dashboard · Dock") }
+        TileKey(selected: selected) { TileText(title: "General", sub: "reading · emails · Dock · face · cards") }
+    }
+}
+
+/// Whether macOS lets cl_audit send alerts (asked by the cl_audit window; see IconApp), for Usage in the background.
+final class AlertsPermission: ObservableObject {
+    static let shared = AlertsPermission()
+    @Published private(set) var allowed: Bool?
+
+    func refresh() {
+        guard Bundle.main.bundleIdentifier != nil else { return }      // offscreen renders run outside an app bundle
+        UNUserNotificationCenter.current().getNotificationSettings { s in
+            let ok = s.authorizationStatus == .authorized || s.authorizationStatus == .provisional
+            DispatchQueue.main.async { if self.allowed != ok { self.allowed = ok } }
+        }
+    }
+
+    /// System Settings ▸ Notifications, at cl_audit.
+    static func openSettings() {
+        let deep = URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(Installer.managerID)")!
+        if !NSWorkspace.shared.open(deep) {
+            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")!)
+        }
     }
 }

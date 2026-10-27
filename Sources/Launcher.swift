@@ -351,9 +351,12 @@ final class AgentStarter: ObservableObject {
         timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in self?.check() }
     }
 
-    /// Silent for 90 s (not alive) and not given up on: start it.
+    private var lastTry = Date.distantPast
+
+    /// Silent for 90 s (not alive): start it; after three failed starts, once a minute.
     func check() {
-        guard !suspended, !starting, failures < 3, !Agent.isAlive(Agent.readMark()) else { return }
+        guard !suspended, !starting, !Agent.isAlive(Agent.readMark()) else { return }
+        guard failures < 3 || Date().timeIntervalSince(lastTry) >= 60 else { return }
         start(reason: "silent")
     }
 
@@ -361,6 +364,7 @@ final class AgentStarter: ObservableObject {
     func start(reason: String, then: (() -> Void)? = nil) {
         guard !suspended, !starting else { return }
         starting = true
+        lastTry = Date()
         DispatchQueue.global(qos: .userInitiated).async {
             let log = Agent.ensureRunning()
             let ok = Agent.isAlive(Agent.readMark())

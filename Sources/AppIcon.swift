@@ -451,97 +451,74 @@ enum AppIcon {
 struct AppIconPicker: View {
     @ObservedObject private var prefs = AppIconPrefs.shared
     @Environment(\.face) private var face
-    static let columns = 3
-    static let spacing: CGFloat = 4
-    static let tileHeight: CGFloat = 74
+    static let labelWidth: CGFloat = 50
 
+    /// The six designs in one sunken row (the chosen one raised), then, in one pane, Front panel's choices as label
+    /// rows, or how the chosen design looks at Dock sizes.
     var body: some View {
-        let all = AppIconStyle.allCases
-        let rows = stride(from: 0, to: all.count, by: Self.columns).map { Array(all[$0..<min($0 + Self.columns, all.count)]) }
-        VStack(alignment: .leading, spacing: 4) {
-            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                if let col = row.firstIndex(of: prefs.style) {
-                    ZStack(alignment: .topLeading) {
-                        TileLaneShape(column: col, columns: Self.columns, spacing: Self.spacing, tileHeight: Self.tileHeight)
-                            .fill(LinearGradient(stops: face.win.stops, startPoint: .top, endPoint: .bottom)
-                                .shadow(.inner(color: face.win.inner, radius: face.win.innerRadius, y: face.win.innerY)))
-                        VStack(spacing: 0) {
-                            tiles(row)
-                            lane.padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 9)
-                        }
-                    }
-                    .padding(.bottom, 4)
-                } else {
-                    tiles(row)
-                }
-            }
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 2) { ForEach(AppIconStyle.allCases, id: \.self) { tile($0) } }
+                .padding(4)
+                .faceWindow(radius: 6)
+            lane
+                .padding(.horizontal, 9).padding(.vertical, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(SurfaceShape(surface: face.strip, radius: 7))
         }
-    }
-
-    func tiles(_ row: [AppIconStyle]) -> some View {
-        HStack(spacing: Self.spacing) {
-            ForEach(0..<Self.columns, id: \.self) { i in
-                if i < row.count { tile(row[i]) } else { Color.clear.frame(maxWidth: .infinity) }
-            }
-        }
-        .frame(height: Self.tileHeight)
     }
 
     func tile(_ s: AppIconStyle) -> some View {
         let on = prefs.style == s
         return VStack(spacing: 3) {
-            Image(nsImage: AppIcon.image(s, look: prefs.look, pixels: 112)).resizable().frame(width: 48, height: 48)
-            Text(s.title).font(.system(size: 10, weight: on ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.8)
+            Image(nsImage: AppIcon.image(s, look: prefs.look, pixels: 96)).resizable().frame(width: 36, height: 36)
+            Text(s.title).font(.system(size: 9, weight: on ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.7)
                 .foregroundStyle(on ? face.text : face.muted)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 5).padding(.horizontal, 1)
+        .background { if on { RaisedShape(finish: face.key, radius: 5, pressed: false) } }
         .contentShape(Rectangle())
         .onTapGesture { withAnimation(.easeOut(duration: 0.15)) { prefs.style = s } }
         .help("\(s.title) app icon")
     }
 
-    /// Under the chosen design: Front panel's choices, or how the icon looks at Dock sizes.
     @ViewBuilder var lane: some View {
         if prefs.style == .panel {
-            VStack(alignment: .leading, spacing: 7) {
+            VStack(alignment: .leading, spacing: 6) {
                 optionRow("Plate", PanelPlate.allCases, \.plate) { $0.title }
                 optionRow("Display", PanelDisplay.allCases, \.display) { $0.title }
                 optionRow("Keys", PanelKeys.allCases, \.keys) { $0.title }
                 optionRow("Slot", PanelSlot.allCases, \.slot) { $0.title }
             }
         } else {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text("Preview").font(.system(size: 11, weight: .semibold))
-                    Text("at Dock sizes").font(.system(size: 10.5)).foregroundStyle(face.muted)
-                }
+            HStack(alignment: .center, spacing: 8) {
+                Text("Dock sizes").font(.system(size: 11, weight: .semibold)).frame(width: Self.labelWidth + 14, alignment: .leading)
                 HStack(alignment: .bottom, spacing: 12) {
                     ForEach([48, 40, 32, 24], id: \.self) { pt in
                         Image(nsImage: AppIcon.image(prefs.style, look: prefs.look, pixels: pt * 2)).resizable()
                             .frame(width: CGFloat(pt), height: CGFloat(pt))
                     }
                 }
-                .padding(.top, 2)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
+    /// One of Front panel's choices: its label on the left, the choices after it (wrapping in a narrow column).
     func optionRow<V: Hashable>(_ label: String, _ options: [V], _ path: WritableKeyPath<PanelLook, V>,
                                 title: @escaping (V) -> String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(label).font(.system(size: 11, weight: .semibold))
-            HStack(spacing: 2) {
+        HStack(alignment: .center, spacing: 8) {
+            Text(label).font(.system(size: 11, weight: .semibold)).frame(width: Self.labelWidth, alignment: .leading)
+            FlowLayout(spacing: 2) {
                 ForEach(options, id: \.self) { o in
                     let on = prefs.look[keyPath: path] == o
                     VStack(spacing: 2) {
-                        Image(nsImage: AppIcon.image(.panel, look: { var l = prefs.look; l[keyPath: path] = o; return l }(), pixels: 64))
-                            .resizable().frame(width: 30, height: 30)
-                        Text(title(o)).font(.system(size: 9.5, weight: on ? .semibold : .regular))
+                        Image(nsImage: AppIcon.image(.panel, look: { var l = prefs.look; l[keyPath: path] = o; return l }(), pixels: 56))
+                            .resizable().frame(width: 26, height: 26)
+                        Text(title(o)).font(.system(size: 9, weight: on ? .semibold : .regular))
                             .foregroundStyle(on ? face.text : face.muted).lineLimit(1).fixedSize()
                     }
-                    .padding(.horizontal, 4).padding(.vertical, 3)
-                    .background { if on { SurfaceShape(surface: face.strip, radius: 5) } }
+                    .padding(.horizontal, 3).padding(.vertical, 3)
+                    .background { if on { RaisedShape(finish: face.key, radius: 5, pressed: false) } }
                     .contentShape(Rectangle())
                     .onTapGesture { withAnimation(.easeOut(duration: 0.12)) { prefs.look[keyPath: path] = o } }
                     .help("\(label): \(title(o))")
