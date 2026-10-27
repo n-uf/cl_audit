@@ -29,6 +29,8 @@ final class UsageReader {
     private var backoff: TimeInterval = 0
     private var inFlight = false
     private var lastStatus: Data?
+    private var stopped = false                  // its profile was removed: nothing more is saved
+    private var alerting: Set<String> = []       // alerts being handed to macOS
 
     /// At most one automatic renewal per this many seconds, even across restarts.
     static let renewSpacing: TimeInterval = 30 * 60
@@ -61,7 +63,7 @@ final class UsageReader {
 
     /// The profile's settings changed: a new folder or interval reads again at once.
     func update(_ e: AccountEntry) {
-        guard e != entry else { return }
+        guard e != entry, !stopped else { return }
         let refetch = e.configDir != entry.configDir || e.pollMinutes != entry.pollMinutes
         entry = e
         account = Account(e)
@@ -70,8 +72,12 @@ final class UsageReader {
         save()
     }
 
+    /// The profile was removed: a read or renewal still under way saves nothing.
+    func stop() { stopped = true }
+
     /// Every 30 s: the status line file if it's newer, a fetch when it's due, and the saved status.
     func tick() {
+        guard !stopped else { return }
         if let local = UsageParser.fromStatusLine(account), local.fetchedAt > (usage?.fetchedAt ?? .distantPast) {
             usage = local
         }
@@ -87,34 +93,51 @@ final class UsageReader {
     private func fetch() {
         guard !inFlight else { return }
         nextFetch = Date().addingTimeInterval(TimeInterval(pollMinutes * 60) + backoff)
-        let login = currentLogin()
+        inFlight = true
+        // the Keychain is read off the main thread (a locked Keychain can keep /usr/bin/security waiting), so one
+        // profile never holds up the others or the agent's rules
+        if needsLoginRead() {
+            let acct = account
+            DispatchQueue.global(qos: .utility).async {
+                let login = Login.read(acct)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self else { return }
+                    self.cachedLogin = login
+                    self.lastLoginRead = Date()
+                    self.loginRejected = false
+                    self.forceLoginRead = false
+                    self.ask(with: login)
+                }
+            }
+        } else {
+            ask(with: cachedLogin ?? .notFound)
+        }
+    }
+
+    private func ask(with login: Login) {
+        guard !stopped else { inFlight = false; return }
         guard case let .token(token, expiresAt, plan) = login else {
+            inFlight = false
             state = login.isDenied ? .denied : .noLogin
             save(); return
         }
         self.plan = plan
-        if let expiresAt, expiresAt < Date() { state = .expired; save(); maybeRenew(); return }
+        if let expiresAt, expiresAt < Date() { inFlight = false; state = .expired; save(); maybeRenew(); return }
         if profileFor != Account.sha8(token) { lookUpEmail(token) }
-
-        inFlight = true
         URLSession.shared.dataTask(with: Self.request("usage", token: token)) { [weak self] data, resp, err in
             DispatchQueue.main.async { self?.finish(data: data, response: resp as? HTTPURLResponse, error: err) }
         }.resume()
     }
 
-    private func currentLogin() -> Login {
+    /// The kept sign-in is read again only when needed: none yet, Refresh now, or expired/refused (then at most
+    /// every 10 minutes).
+    private func needsLoginRead() -> Bool {
         var usable = false
         if case let .token(_, expiresAt, _)? = cachedLogin {
             usable = !loginRejected && (expiresAt ?? .distantFuture) > Date().addingTimeInterval(60)
         }
         let wait: TimeInterval = cachedLogin == nil ? 0 : 10 * 60
-        if forceLoginRead || (!usable && Date().timeIntervalSince(lastLoginRead) >= wait) {
-            cachedLogin = Login.read(account)
-            lastLoginRead = Date()
-            loginRejected = false
-            forceLoginRead = false
-        }
-        return cachedLogin ?? .notFound
+        return forceLoginRead || (!usable && Date().timeIntervalSince(lastLoginRead) >= wait)
     }
 
     static func request(_ path: String, token: String) -> URLRequest {
@@ -142,6 +165,7 @@ final class UsageReader {
 
     private func finish(data: Data?, response: HTTPURLResponse?, error: Error?) {
         inFlight = false
+        guard !stopped else { return }
         defer { save() }
         if let error { state = .failed(error.localizedDescription); return }
         switch response?.statusCode ?? 0 {
@@ -172,22 +196,23 @@ final class UsageReader {
         renewLogin()
     }
 
-    /// Runs Claude Code once for this profile's folder so it swaps its access key (see ClaudeCLI.renew).
+    /// Runs Claude Code once for this profile's folder so it swaps its access key (see ClaudeCLI.renew). Finding
+    /// Claude Code and running it happen off the main thread.
     func renewLogin() {
-        guard !renewing else { return }
-        guard let claude = ClaudeCLI.find() else {
-            renewNote = "Couldn't renew: Claude Code isn't installed"; save(); return
-        }
+        guard !renewing, !stopped else { return }
         renewing = true
         defaults.set(Date(), forKey: renewKey)
         renewNote = "Renewing the login through Claude Code…"
         save()
         let acct = account
         DispatchQueue.global(qos: .utility).async {
-            let ok = ClaudeCLI.renew(claude, account: acct)
-            DispatchQueue.main.async {
+            let claude = ClaudeCLI.find()
+            let ok = claude.map { ClaudeCLI.renew($0, account: acct) } ?? false
+            DispatchQueue.main.async { [weak self] in
+                guard let self, !self.stopped else { return }
                 self.renewing = false
-                self.renewNote = ok ? "Login renewed at \(Self.when(Date()))" : "Couldn't renew the login: run Claude Code for this profile once"
+                self.renewNote = claude == nil ? "Couldn't renew: Claude Code isn't installed"
+                    : ok ? "Login renewed at \(Self.when(Date()))" : "Couldn't renew the login: run Claude Code for this profile once"
                 self.nextFetch = .distantPast
                 self.forceLoginRead = true
                 self.tick()
@@ -197,7 +222,9 @@ final class UsageReader {
 
     // MARK: alerts
 
-    /// One alert per limit and reset, from cl_audit (the agent), at the profile's level. No e-mail addresses.
+    /// One alert per limit and reset, from cl_audit (the agent), at the profile's level. No e-mail addresses. The
+    /// reset is marked as alerted only once macOS took the alert, so one that couldn't be shown (alerts not allowed
+    /// yet) comes when they are.
     private func checkThresholds(_ u: Usage) {
         guard entry.notify else { return }
         let limit = Double(entry.notifyPercent)
@@ -205,19 +232,33 @@ final class UsageReader {
                                         ("nwk", "Weekly limit", u.weekly, u.weeklyResets)] {
             guard let p, p >= limit else { continue }
             let stamp = resets.map { Int($0.timeIntervalSince1970.rounded()) }
-            let mark = stamp.map(String.init) ?? "unknown"
+            // no reset time: at most one a day
+            let mark = stamp.map(String.init) ?? "day-\(Int(Date().timeIntervalSince1970 / 86400))"
             let k = "\(key).\(id)"
             // one alert per reset: Anthropic's reset time wobbles by a fraction of a second between replies, so
             // marks within 10 minutes of each other are the same reset (windows are hours apart)
             if let old = defaults.string(forKey: k), old == mark || Self.sameReset(old, stamp) { continue }
-            defaults.set(mark, forKey: k)
+            guard !alerting.contains(k) else { continue }
+            alerting.insert(k)
             let c = UNMutableNotificationContent()
             c.title = "Claude \(account.name): \(title) at \(Int(p.rounded()))%"
             if let resets { c.body = "Resets \(Self.when(resets))" }
             c.threadIdentifier = id
-            UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: "\(id).\(key).\(mark)", content: c, trigger: nil)) { err in
-                if let err { agentLog.error("\(self.id, privacy: .public): alert not sent: \(err.localizedDescription, privacy: .public)") }
-                else { agentLog.log("\(self.id, privacy: .public): alert sent: \(title, privacy: .public) at \(Int(p.rounded()))%") }
+            let center = UNUserNotificationCenter.current(), me = id, d = defaults
+            center.getNotificationSettings { settings in
+                guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else {
+                    DispatchQueue.main.async { [weak self] in self?.alerting.remove(k) }
+                    agentLog.log("\(me, privacy: .public): alert waits: notifications for cl_audit aren't allowed")
+                    return
+                }
+                center.add(UNNotificationRequest(identifier: "\(me).\(key).\(mark)", content: c, trigger: nil)) { err in
+                    DispatchQueue.main.async { [weak self] in
+                        self?.alerting.remove(k)
+                        if err == nil, self?.stopped != true { d.set(mark, forKey: k) }
+                    }
+                    if let err { agentLog.error("\(me, privacy: .public): alert not sent: \(err.localizedDescription, privacy: .public)") }
+                    else { agentLog.log("\(me, privacy: .public): alert sent: \(title, privacy: .public) at \(Int(p.rounded()))%") }
+                }
             }
         }
     }
@@ -250,6 +291,7 @@ final class UsageReader {
 
     /// Writes status/<id>.json when what this reader sees changed (the write posts the "changed" notice).
     func save() {
+        guard !stopped else { return }
         let status = IconStatus(loginEmail: loginEmail, expectedEmail: expectedEmail, state: "\(state)",
                                 fiveHour: usage?.fiveHour, weekly: usage?.weekly, updatedAt: usage?.fetchedAt,
                                 renewNote: renewNote, fiveHourResets: usage?.fiveHourResets,

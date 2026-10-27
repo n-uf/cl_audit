@@ -326,7 +326,8 @@ enum Store {
             while flock(fd, LOCK_EX | LOCK_NB) != 0 && Date() < deadline { usleep(20_000) }
         }
         defer { if fd >= 0 { flock(fd, LOCK_UN); Darwin.close(fd) } }
-        let before = load()
+        // a file that's there but can't be read is never written over (that would lose every profile in it)
+        guard let before = exists ? loadChecked() : [] else { throw CocoaError(.fileReadCorruptFile) }
         let after = change(before)
         guard after != before || !exists else { return after }
         let enc = JSONEncoder()

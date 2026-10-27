@@ -118,7 +118,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
             // On start: bring the Dock icon apps up to date (the agent starts the ones that should run).
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                if Store.exists { Installer.sync(Store.load()) }
+                if let list = Store.loadChecked() { Installer.sync(list) }   // never with a bad read: it removes apps
                 // the one login item; restarted when it runs an older build (waits for it, so off the main thread)
                 DispatchQueue.global(qos: .utility).async { Agent.ensureRunning() }
             }
@@ -135,6 +135,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ws.addObserver(self, selector: #selector(appsChanged), name: NSWorkspace.didLaunchApplicationNotification, object: nil)
         ws.addObserver(self, selector: #selector(appsChanged), name: NSWorkspace.didTerminateApplicationNotification, object: nil)
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(quietQuitAsked(_:)), name: Installer.quietQuitNote, object: accountID)
+        // logging out or shutting down quits every app: not a reason for its window to quit (macOS reopens it)
+        ws.addObserver(self, selector: #selector(quietQuitAsked(_:)), name: NSWorkspace.willPowerOffNotification, object: nil)
         status = Store.status(entry.id)
         tileView = TileView(model: model())
         NSApp.dockTile.contentView = tileView

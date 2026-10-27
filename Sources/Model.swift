@@ -164,6 +164,8 @@ enum Login {
         p.standardError = FileHandle.nullDevice
         p.standardInput = FileHandle.nullDevice
         guard (try? p.run()) != nil else { return (-1, Data()) }
+        // a locked Keychain can keep it waiting; after 30 s it's stopped (the read counts as refused)
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 30) { if p.isRunning { p.terminate() } }
         let data = out.fileHandleForReading.readDataToEndOfFile()
         p.waitQuietly()
         return (p.terminationStatus, data)

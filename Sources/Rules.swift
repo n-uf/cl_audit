@@ -35,6 +35,9 @@ final class AgentRules {
     private let loginAt: Date?
     private let defaults: UserDefaults                  // the agent's: each profile's Dock place ("dockPlace.<id>")
     private var removing: Set<String> = []
+    private var pinning: Set<String> = []
+    private var quietAt: [String: Date] = [:]           // a Dock icon asked to quit without its window
+    private var seeded = false
     /// What it's doing now, for the dashboard (written into the agent's mark).
     private(set) var actions: [String: AgentAction] = [:] { didSet { if actions != oldValue { onChange?() } } }
     var onChange: (() -> Void)?
@@ -43,12 +46,12 @@ final class AgentRules {
         self.defaults = defaults
         loginAt = Self.consoleLoginTime()
         let stored = defaults.double(forKey: "loginSession")
-        let newSession = loginAt.map { abs($0.timeIntervalSince1970 - stored) > 1 } ?? (ProcessInfo.processInfo.systemUptime < 300)
-        if let loginAt { defaults.set(loginAt.timeIntervalSince1970, forKey: "loginSession") }
-        accounts = Store.load()
-        for e in accounts { lastDock[e.id] = e.runs.dockIcon }
-        let acts = Launcher.activity(for: accounts.map(Account.init))
-        for e in accounts { lastOpen[e.id] = acts[Account(e).configDir]?.desktopOpen ?? false }
+        // a new login session (not a restart of the agent within one); the very first run counts only right after
+        // logging in, so installing cl_audit doesn't start Dock icons you quit
+        let newSession: Bool = loginAt.map {
+            abs($0.timeIntervalSince1970 - stored) > 1 && (stored != 0 || Date().timeIntervalSince($0) < 600)
+        } ?? (ProcessInfo.processInfo.systemUptime < 300)
+        if let list = Store.loadChecked() { seed(list) }
 
         let ws = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {
@@ -64,16 +67,43 @@ final class AgentRules {
         observers.append(dn.addObserver(forName: Installer.appsChangedNote, object: nil, queue: .main) { [weak self] _ in
             self?.applyDockSwitches()
         })
+        observers.append(dn.addObserver(forName: Installer.quietQuitNote, object: nil, queue: .main) { [weak self] note in
+            if let id = note.object as? String { self?.quietAt[id] = Date() }
+        })
+        let session = loginAt?.timeIntervalSince1970
         if newSession {
             agentLog.log("agent: new login session, starting the Dock icons that run at login")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in self?.atLogin() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                self?.atLogin()
+                if let session { defaults.set(session, forKey: "loginSession") }    // only once they're started
+            }
+        } else if let session {
+            defaults.set(session, forKey: "loginSession")
         }
         tidy()
+        applyDockSwitches()
+    }
+
+    /// The state the agent starts from. What changed while it wasn't running is caught up: a Dock icon that's on
+    /// and installed but not in the Dock is pinned and started as if just turned on (one that's off is removed by
+    /// `tidy`), so the switch isn't then "adopted" back from the Dock.
+    private func seed(_ list: [AccountEntry]) {
+        seeded = true
+        accounts = list
+        let acts = Launcher.activity(for: list.map(Account.init))
+        for e in list {
+            lastOpen[e.id] = acts[Account(e).configDir]?.desktopOpen ?? false
+            let app = Installer.appURL(e)
+            let behind = e.runs.dockIcon && FileManager.default.fileExists(atPath: app.path) && !DockManager.isPinned(app)
+            lastDock[e.id] = behind ? false : e.runs.dockIcon
+            if behind { DockManager.markChange(app) }
+        }
     }
 
     /// The profiles file changed. A profile seen for the first time starts from its window's state now, so the
     /// window opening later counts as opening.
     func update(_ list: [AccountEntry]) {
+        guard seeded else { seed(list); applyDockSwitches(); return }
         accounts = list
         let fresh = list.filter { lastOpen[$0.id] == nil }
         if !fresh.isEmpty {
@@ -158,8 +188,11 @@ final class AgentRules {
         Launcher.openClaude(Account(e))
     }
 
-    /// A Dock icon quit normally (not a reinstall, not Usage in the Dock off, not "Quit and keep Claude window").
+    /// A Dock icon quit normally (not a reinstall, not Usage in the Dock off, not "Quit and keep Claude window"). A
+    /// quit that was asked to leave the window (by cl_audit or the agent) in the last 10 s is never taken for one,
+    /// even when its own notice came too late.
     private func iconQuit(_ id: String) {
+        if let q = quietAt[id], Date().timeIntervalSince(q) < 10 { return }
         guard let e = accounts.first(where: { $0.id == id }), e.runs.windowFollowsDock, windowOpen(e) else { return }
         agentLog.log("agent: \(id, privacy: .public): Dock icon quit, quitting its window")
         actions[id] = AgentAction(kind: .windowQuits, at: Date())
@@ -182,11 +215,25 @@ final class AgentRules {
 
     /// Quits a Dock icon without taking its window along.
     private func quitDock(_ e: AccountEntry, reason: String) {
-        let apps = Installer.running(e)
-        guard !apps.isEmpty else { return }
+        guard Installer.isRunning(e) else { return }
         agentLog.log("agent: \(e.id, privacy: .public): quitting its Dock icon (\(reason, privacy: .public))")
+        quitQuietly(e) {}
+    }
+
+    /// Asks a Dock icon to quit without its window, waits for it (up to 3 s, then forced) and calls `done`, without
+    /// holding up the main thread.
+    private func quitQuietly(_ e: AccountEntry, then done: @escaping () -> Void) {
+        let apps = Installer.running(e)
+        guard !apps.isEmpty else { done(); return }
+        quietAt[e.id] = Date()
         DistributedNotificationCenter.default().postNotificationName(Installer.quietQuitNote, object: e.id, userInfo: nil, deliverImmediately: true)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { apps.forEach { $0.terminate() } }
+        let deadline = Date() + 3.3
+        func check() {
+            if apps.allSatisfy(\.isTerminated) { done(); return }
+            if Date() > deadline { apps.filter { !$0.isTerminated }.forEach { $0.forceTerminate() }; done(); return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: check)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { apps.forEach { $0.terminate() }; check() }
     }
 
     // MARK: Usage in the Dock
@@ -204,7 +251,8 @@ final class AgentRules {
                 lastDock[e.id] = true
                 let place = defaults.object(forKey: "dockPlace.\(e.id)") as? String
                 agentLog.log("agent: \(e.id, privacy: .public): Usage in the Dock on, pinning \(place == nil ? "after the other icons" : "in its place", privacy: .public) and starting")
-                DockManager.pinInBackground(app, after: place)
+                pinning.insert(e.id)
+                DockManager.pinInBackground(app, after: place) { [weak self] in self?.pinning.remove(e.id) }
                 startDock(e, reason: "Usage in the Dock on")
             } else {
                 lastDock[e.id] = false
@@ -225,12 +273,13 @@ final class AgentRules {
         removing.insert(e.id)
         if let p = DockManager.place(of: app) { defaults.set(p, forKey: "dockPlace.\(e.id)") }
         agentLog.log("agent: \(e.id, privacy: .public): quitting, unpinning and removing its Dock icon app")
-        Installer.stop(app)
-        DockManager.unpin(app) { [weak self] in
-            self?.removing.remove(e.id)
-            guard let now = Store.loadChecked()?.first(where: { $0.id == e.id }), !now.runs.dockIcon else { return }
-            AccountRemoval.removeDockApp(id: e.id, app: app)
-            agentLog.log("agent: \(e.id, privacy: .public): Dock icon app removed")
+        quitQuietly(e) {
+            DockManager.unpin(app) { [weak self] in
+                self?.removing.remove(e.id)
+                guard let now = Store.loadChecked()?.first(where: { $0.id == e.id }), !now.runs.dockIcon else { return }
+                AccountRemoval.removeDockApp(id: e.id, app: app)
+                agentLog.log("agent: \(e.id, privacy: .public): Dock icon app removed")
+            }
         }
     }
 
@@ -244,7 +293,7 @@ final class AgentRules {
     /// The switch follows the Dock: a Dock icon dragged out by hand → Usage in the Dock off (and its app goes);
     /// kept in the Dock by hand → on.
     private func adoptDock() {
-        for e in accounts {
+        for e in accounts where !pinning.contains(e.id) && !removing.contains(e.id) {
             guard let hidden = DockManager.adoptDock(e) else { continue }
             Store.update(e.id) { $0.iconHidden = hidden }
             lastDock[e.id] = !hidden            // the Dock already shows it as it is

@@ -17,7 +17,8 @@ if args.count >= 2, args[1] == "--sync" {
         exit(0)
     }
     DockWriter.inline = true             // the Dock is changed before this run ends
-    let log = Installer.sync(Store.load())
+    guard let list = Store.loadChecked() else { print("The profiles file can't be read; nothing changed."); exit(1) }
+    let log = Installer.sync(list)
     print(log.isEmpty ? "icons are up to date" : log.joined(separator: "\n"))
     print(Agent.ensureRunning())
     exit(0)

@@ -866,7 +866,7 @@ final class ManagerUI {
         startUsage: { [weak self] r in
             // a normal start, so the agent opens a window that follows its Dock icon; a missing app is installed first
             let app = Installer.appURL(r.entry)
-            if !FileManager.default.fileExists(atPath: app.path) { Installer.sync(Store.load()) }
+            if !FileManager.default.fileExists(atPath: app.path), let list = Store.loadChecked() { Installer.sync(list) }
             self?.model.begin(r.id, .starting)
             Installer.run("/usr/bin/open", ["-g", app.path])
         },

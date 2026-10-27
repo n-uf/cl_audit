@@ -53,7 +53,9 @@ final class SettingsModel: ObservableObject {
         for e in local {
             if let b = baseByID[e.id], b == e {
                 if let r = remoteByID[e.id] { out.append(r) }        // untouched here: the file's version, or gone
-            } else {
+            } else if let b = baseByID[e.id], let r = remoteByID[e.id], b.iconHidden == e.iconHidden, r.iconHidden != b.iconHidden {
+                var m = e; m.iconHidden = r.iconHidden; out.append(m) // edited here, but Usage in the Dock changed there
+            } else {                                                  // (the agent recording a Dock icon dragged out)
                 out.append(e)                                         // edited or added here
             }
         }

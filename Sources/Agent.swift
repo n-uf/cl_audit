@@ -27,6 +27,7 @@ struct AgentMark: Codable, Equatable {
     var pollRange: [Int]? = nil       // the shortest and longest refresh interval, in minutes
     var pausedUntil: Date? = nil      // it crashed several times in a row and waits before reading again
     var actions: [String: AgentAction]? = nil   // what it's doing for a profile now (Opening and closing)
+    var stamp: String? = nil          // its program's fingerprint (an update with the same build number differs here)
 }
 
 enum Agent {
@@ -107,7 +108,8 @@ enum Agent {
             log += waitForMark(build: want) ? ", build \(want) running" : ", build \(want) didn't start"
             return log
         }
-        if let m = readMark(), m.build == want, isAlive(m) { return log + " · build \(want) running" }
+        let stamp = Installer.buildStamp(helperURL(in: app))
+        if let m = readMark(), m.build == want, m.stamp.map({ $0 == stamp }) ?? true, isAlive(m) { return log + " · build \(want) running" }
         log += isAlive(readMark()) ? " · running build \(readMark()?.build ?? "?"), restarting for \(want)" : " · not running, starting"
         restart()
         if waitForMark(build: want) { return log + " → build \(want) running" }
@@ -139,7 +141,7 @@ enum Agent {
     }
 
     /// Waits up to `seconds` for a fresh mark from `build`.
-    static func waitForMark(build: String, seconds: TimeInterval = 8) -> Bool {
+    static func waitForMark(build: String, seconds: TimeInterval = 12) -> Bool {
         let deadline = Date().addingTimeInterval(seconds)
         repeat {
             if let m = readMark(), m.build == build, isAlive(m) { return true }
@@ -190,6 +192,10 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     var rules: AgentRules?
     private var observers: [NSObjectProtocol] = []
     private var askedForAlerts = false
+    private let myStamp = Installer.buildStamp(Bundle.main.bundleURL)
+    /// Keeps macOS from napping the agent: its 30 s reads and its alive mark must keep time.
+    private let activity = ProcessInfo.processInfo.beginActivity(options: [.userInitiatedAllowingIdleSystemSleep],
+                                                                 reason: "cl_audit reads Claude usage for every profile")
 
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.prohibited)
@@ -239,6 +245,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         guard let list = Store.loadChecked() else { return }
         let ids = Set(list.map(\.id))
         for id in readers.keys where !ids.contains(id) {
+            readers[id]?.stop()
             readers[id] = nil
             UsageReader.forget(id, in: defaults)
             Store.removeStatus(id)
@@ -294,7 +301,8 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
                                   failing: order.filter { readers[$0]?.failing == true },
                                   pollRange: polls.isEmpty ? nil : [polls.min()!, polls.max()!],
                                   pausedUntil: pausedUntil,
-                                  actions: rules?.actions))
+                                  actions: rules?.actions,
+                                  stamp: myStamp))
     }
 
     // MARK: crashing again and again

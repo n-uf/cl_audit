@@ -273,10 +273,14 @@ enum DockManager {
     /// Usage in the Dock on: pins the app at its remembered place (after `neighbour`; nil, or a neighbour that's gone:
     /// after the other cl_audit icons). In the background: it waits for the Dock to settle, pins, and checks after
     /// the Dock restarts.
-    static func pinInBackground(_ app: URL, after neighbour: String?) {
+    static func pinInBackground(_ app: URL, after neighbour: String?, done: @escaping () -> Void = {}) {
         markChange(app)
-        guard !isPinned(app) else { dockLog.log("pin \(key(app), privacy: .public): already pinned"); return }
-        DispatchQueue.global(qos: .utility).async { pinFromHelper(app, after: neighbour) }
+        guard !isPinned(app) else { dockLog.log("pin \(key(app), privacy: .public): already pinned"); done(); return }
+        DispatchQueue.global(qos: .utility).async {
+            pinFromHelper(app, after: neighbour)
+            markChange(app)                    // "ours" for a while after the write, too, not only before it
+            DispatchQueue.main.async(execute: done)
+        }
     }
 
     // MARK: Show in the Dock follows the Dock
