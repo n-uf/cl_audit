@@ -10,15 +10,16 @@
 #include <unistd.h>
 
 int main(int argc, char *argv[]) {
-    char path[PATH_MAX], real[PATH_MAX], target[PATH_MAX];
+    char path[PATH_MAX], real[PATH_MAX], target[PATH_MAX], agent[PATH_MAX];
     uint32_t size = sizeof path;
     if (_NSGetExecutablePath(path, &size) != 0 || realpath(path, real) == NULL) return 78;
     char *slash = strrchr(real, '/');          // <app>/Contents/Helpers/cl_audit-agent
     if (slash == NULL) return 78;
     *slash = '\0';
     snprintf(target, sizeof target, "%s/../Library/LoginItems/cl_audit Agent.app/Contents/MacOS/UsageDock", real);
-    argv[0] = target;
-    execv(target, argv);
+    if (realpath(target, agent) == NULL) { perror("cl_audit-agent"); return 78; }
+    argv[0] = agent;
+    execv(agent, argv);
     perror("cl_audit-agent");
     return 78;                                 // EX_CONFIG: launchd tries again later
 }
