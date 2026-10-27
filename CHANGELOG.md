@@ -31,6 +31,9 @@ the notes before updating.
   out, and switched off). **Start reading usage** (Usage in the Dock off) installs nothing.
 - **Fixed:** an alert could come again for the same limit and reset, because Anthropic's reset time differs by
   a fraction of a second between replies.
+- **Fixed:** the details panel's content sat off to the left and stopped short on the right (its bottom row was
+  wider than the panel). Every row now has the same inset on all sides, in every panel design and face; when
+  room is short, "Updated 3 min ago" becomes "3 min ago".
 - **Clean-up of older installs, once:** each Dock icon's own login item, and the hidden apps of usage only
   profiles.
 

@@ -35,7 +35,8 @@ struct DetailsActions {
     var dashboard: () -> Void = {}
 }
 
-/// "Updated 4 min ago": the age of the numbers; a click fetches them again.
+/// "Updated 4 min ago": the age of the numbers; a click fetches them again. In a row that's short of room it gives way
+/// first: "4 min ago", or nothing at all (Refresh is in the Dock menu too), so the row never gets wider than its panel.
 struct AgoButton: View {
     let date: Date?
     var source: String? = nil
@@ -44,8 +45,17 @@ struct AgoButton: View {
     @State private var hover = false
 
     var body: some View {
+        let ago = date.map { DetailsFormat.ago($0) }
+        ViewThatFits(in: .horizontal) {
+            label(refreshing ? "Updating…" : ago.map { "Updated \($0)" } ?? "Not updated yet")
+            label(refreshing ? "Updating…" : ago ?? "Not yet")
+            Color.clear.frame(width: 0, height: 0)
+        }
+    }
+
+    private func label(_ text: String) -> some View {
         Button(action: action) {
-            Text(refreshing ? "Updating…" : date.map { "Updated \(DetailsFormat.ago($0))" } ?? "Not updated yet")
+            Text(text)
                 .font(.system(size: 11.5)).lineLimit(1).fixedSize()
                 .foregroundStyle(hover ? Color.primary : Color.secondary)
                 .padding(.horizontal, 7).padding(.vertical, 3)
@@ -124,13 +134,16 @@ struct DetailsView: View {
                 if info.needsLogin { Button("Log in…", action: actions.logIn).buttonStyle(.pill(.red, compact: true)) }
                 Spacer(minLength: 4)
                 AgoButton(date: info.updated, source: info.source, refreshing: info.refreshing, action: actions.refresh)
+                    .layoutPriority(-1)
                 Button(action: actions.settings) { Image(systemName: "gearshape") }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Settings…")
             }
             .controlSize(.small)
         }
+        // the content's own width, the same 16 pt inset on every side: a row that's short of room gives way inside
+        // it (above, "Updated…"), never pushing the whole panel's content sideways
+        .frame(width: 328, alignment: .leading)
         .padding(16)
-        .frame(width: 360)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.primary.opacity(0.12)))
     }
@@ -156,8 +169,8 @@ struct CompactView: View {
                     .font(.caption2).foregroundStyle(.orange).lineLimit(1)
             }
         }
+        .frame(width: 234, alignment: .leading)
         .padding(14)
-        .frame(width: 262)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.primary.opacity(0.12)))
     }
