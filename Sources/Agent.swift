@@ -36,7 +36,10 @@ enum Agent {
         app.appendingPathComponent("Contents/Library/LoginItems/\(appName)")
     }
 
-    static var service: SMAppService { SMAppService.loginItem(identifier: bundleID) }
+    /// A launch agent (Contents/Library/LaunchAgents in cl_audit.app) that runs the helper: launchd starts it at
+    /// login and again after a crash.
+    static let plistName = "\(bundleID).plist"
+    static var service: SMAppService { SMAppService.agent(plistName: plistName) }
 
     static func statusText(_ s: SMAppService.Status) -> String {
         switch s {

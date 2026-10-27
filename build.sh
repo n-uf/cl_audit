@@ -72,6 +72,23 @@ cat > "$helper/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+# launchd runs the helper from this plist (SMAppService.agent): at login, and again if it crashes.
+mkdir -p "$app/Contents/Library/LaunchAgents"
+cat > "$app/Contents/Library/LaunchAgents/local.usage-n-uf-agent.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>local.usage-n-uf-agent</string>
+  <key>BundleProgram</key><string>Contents/Library/LoginItems/$name Agent.app/Contents/MacOS/UsageDock</string>
+  <key>AssociatedBundleIdentifiers</key><array><string>local.usage-n-uf</string></array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+  <key>LimitLoadToSessionType</key><string>Aqua</string>
+  <key>ProcessType</key><string>Interactive</string>
+</dict>
+</plist>
+PLIST
 codesign --force --sign - "$helper" 2>/dev/null
 codesign --force --sign - "$app" 2>/dev/null
 echo "built $name $version ($build)"
