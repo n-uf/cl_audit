@@ -67,9 +67,15 @@ final class AgentRules {
         tidy()
     }
 
-    /// The profiles file changed.
+    /// The profiles file changed. A profile seen for the first time starts from its window's state now, so the
+    /// window opening later counts as opening.
     func update(_ list: [AccountEntry]) {
         accounts = list
+        let fresh = list.filter { lastOpen[$0.id] == nil }
+        if !fresh.isEmpty {
+            let acts = Launcher.activity(for: fresh.map(Account.init))
+            for e in fresh { lastOpen[e.id] = acts[Account(e).configDir]?.desktopOpen ?? false }
+        }
         applyDockSwitches()
     }
 

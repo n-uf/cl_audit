@@ -292,13 +292,13 @@ enum LegacyCleanup {
 
     /// The login item each Dock icon copy registered for itself. macOS lets only an app remove its own, so each copy's
     /// program does it (--forget-login-item); only copies of this build know how, so older ones wait for cl_audit to
-    /// update them. Once per copy and build.
+    /// update them. Once per copy.
     static func forgetLoginItems(defaults: UserDefaults) {
         guard let app = agentParentApp() else { return }
         let stamp = Installer.buildStamp(app)
         for (url, id) in Installer.installed() {
             let key = "loginItemForgotten.\(id)"
-            guard Installer.info(url)?["UsageBuild"] as? String == stamp, defaults.string(forKey: key) != stamp else { continue }
+            guard Installer.info(url)?["UsageBuild"] as? String == stamp, defaults.string(forKey: key) == nil else { continue }
             let ok = Installer.run(url.appendingPathComponent("Contents/MacOS/UsageDock").path, ["--forget-login-item"]) == 0
             if ok { defaults.set(stamp, forKey: key) }
             agentLog.log("agent: \(id, privacy: .public): old login item \(ok ? "removed" : "not removed", privacy: .public)")
