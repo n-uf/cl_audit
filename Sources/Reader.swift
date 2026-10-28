@@ -31,6 +31,8 @@ final class UsageReader {
     private var lastStatus: Data?
     private var stopped = false                  // its profile was removed: nothing more is saved
     private var alerting: Set<String> = []       // alerts being handed to macOS
+    private var lastAsked = Date.distantPast     // when a fetch last started
+    private var resetRead: DispatchWorkItem?     // reads again the moment a full limit resets
 
     /// At most one automatic renewal per this many seconds, even across restarts.
     static let renewSpacing: TimeInterval = 30 * 60
@@ -59,6 +61,7 @@ final class UsageReader {
             renewNote = s.renewNote
         }
         Self.adoptOldMarks(e.id, into: defaults)
+        scheduleResetRead()
     }
 
     /// The profile's settings changed: a new folder or interval reads again at once.
@@ -73,16 +76,46 @@ final class UsageReader {
     }
 
     /// The profile was removed: a read or renewal still under way saves nothing.
-    func stop() { stopped = true }
+    func stop() { stopped = true; resetRead?.cancel() }
 
-    /// Every 30 s: the status line file if it's newer, a fetch when it's due, and the saved status.
+    /// Every 30 s: the status line file if it's newer, a fetch when it's due, and the saved status. A full limit whose
+    /// reset has passed is read again at once (then at most once a minute until Anthropic's numbers move on).
     func tick() {
         guard !stopped else { return }
         if let local = UsageParser.fromStatusLine(account), local.fetchedAt > (usage?.fetchedAt ?? .distantPast) {
             usage = local
         }
+        if let u = usage, Self.resetPassed(u), !failing, Date().timeIntervalSince(lastAsked) >= 60 { nextFetch = .distantPast }
         if Date() >= nextFetch { fetch() }
         save()
+    }
+
+    /// A limit read as full whose reset time has passed: the numbers are out of date.
+    static func resetPassed(_ u: Usage, now: Date = Date()) -> Bool {
+        (AtLimit.isFull(u.fiveHour) && (u.fiveHourResets.map { $0 <= now } ?? false))
+            || (AtLimit.isFull(u.weekly) && (u.weeklyResets.map { $0 <= now } ?? false))
+    }
+
+    /// While a limit is full, a read the moment it resets (2 s after), so the cards, the Dock icon and the "back"
+    /// alert follow at once rather than at the next scheduled read.
+    private func scheduleResetRead() {
+        resetRead?.cancel(); resetRead = nil
+        guard let u = usage, !stopped else { return }
+        let now = Date()
+        guard let at = Self.resetReadAt(u, now: now) else { return }
+        let item = DispatchWorkItem { [weak self] in
+            guard let self, !self.stopped else { return }
+            self.nextFetch = .distantPast
+            self.tick()
+        }
+        resetRead = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + at.timeIntervalSince(now), execute: item)
+    }
+
+    /// When to read again for a full limit's reset: 2 s after the first full limit resets, or nil.
+    static func resetReadAt(_ u: Usage, now: Date = Date()) -> Date? {
+        [(u.fiveHour, u.fiveHourResets), (u.weekly, u.weeklyResets)]
+            .compactMap { AtLimit.isFull($0.0) ? $0.1 : nil }.filter { $0 > now }.min()?.addingTimeInterval(2)
     }
 
     /// Refresh now (a Dock icon, the dashboard): fetch now and read the sign-in again.
@@ -92,6 +125,7 @@ final class UsageReader {
 
     private func fetch() {
         guard !inFlight else { return }
+        lastAsked = Date()
         nextFetch = Date().addingTimeInterval(TimeInterval(pollMinutes * 60) + backoff)
         inFlight = true
         // the Keychain is read off the main thread (a locked Keychain can keep /usr/bin/security waiting), so one
@@ -171,8 +205,7 @@ final class UsageReader {
         switch response?.statusCode ?? 0 {
         case 200:
             guard let data, let u = UsageParser.fromAPI(data) else { state = .failed("unexpected reply"); return }
-            usage = u; state = .ok; backoff = 0
-            checkThresholds(u)
+            apply(u)
         case 401, 403:
             state = .expired
             loginRejected = true
@@ -184,6 +217,15 @@ final class UsageReader {
         case let code:
             state = .failed("HTTP \(code)")
         }
+    }
+
+    /// A good reading: keep it, send what alerts it calls for, and plan the read at the next reset (saving is the
+    /// caller's).
+    func apply(_ u: Usage) {
+        usage = u; state = .ok; backoff = 0
+        noteBack(u)
+        checkThresholds(u)
+        scheduleResetRead()
     }
 
     // MARK: renewing an expired sign-in
@@ -222,39 +264,48 @@ final class UsageReader {
 
     // MARK: alerts
 
-    /// One alert per limit and reset, from cl_audit (the agent), at the profile's level. No e-mail addresses. The
-    /// reset is marked as alerted only once macOS took the alert, so one that couldn't be shown (alerts not allowed
-    /// yet) comes when they are.
+    /// One alert per limit and reset, from cl_audit (the agent), at the profile's level, and one when the limit is
+    /// full, saying when it's back ("Back at 15:28, in 1h 42m"). No e-mail addresses. The reset is marked as alerted
+    /// only once macOS took the alert, so one that couldn't be shown (alerts not allowed yet) comes when they are.
     private func checkThresholds(_ u: Usage) {
         guard entry.notify else { return }
         let limit = Double(entry.notifyPercent)
-        for (key, title, p, resets) in [("n5h", "5-hour limit", u.fiveHour, u.fiveHourResets),
-                                        ("nwk", "Weekly limit", u.weekly, u.weeklyResets)] {
-            guard let p, p >= limit else { continue }
+        for (key, title, p, resets) in [("5h", "5-hour limit", u.fiveHour, u.fiveHourResets),
+                                        ("wk", "Weekly limit", u.weekly, u.weeklyResets)] {
+            guard let p else { continue }
+            let full = AtLimit.isFull(p)
+            guard full || p >= limit else { continue }
             let stamp = resets.map { Int($0.timeIntervalSince1970.rounded()) }
             // no reset time: at most one a day
             let mark = stamp.map(String.init) ?? "day-\(Int(Date().timeIntervalSince1970 / 86400))"
-            let k = "\(key).\(id)"
+            // the level alert's mark (n5h), and the full one's (f5h): a limit that is full also counts as alerted
+            // for its level
+            let k = "\(full ? "f" : "n")\(key).\(id)", levelKey = "n\(key).\(id)"
             // one alert per reset: Anthropic's reset time wobbles by a fraction of a second between replies, so
             // marks within 10 minutes of each other are the same reset (windows are hours apart)
             if let old = defaults.string(forKey: k), old == mark || Self.sameReset(old, stamp) { continue }
             guard !alerting.contains(k) else { continue }
             alerting.insert(k)
             let c = UNMutableNotificationContent()
-            c.title = "Claude \(account.name): \(title) at \(Int(p.rounded()))%"
-            if let resets { c.body = "Resets \(Self.when(resets))" }
+            if full {
+                c.title = "Claude \(account.name): \(title.prefix(1).lowercased() + title.dropFirst()) full"
+                c.body = resets.map { "Back \(Self.backWords($0)), in \(TimeWords.countdown($0))" } ?? "Reset time unknown"
+            } else {
+                c.title = "Claude \(account.name): \(title) at \(Int(p.rounded()))%"
+                if let resets { c.body = "Resets \(Self.when(resets))" }
+            }
             c.threadIdentifier = id
-            let me = id, d = defaults
+            let me = id, d = defaults, kind = full ? "f" : "n"
             // sent by cl_audit's own program, so the alert comes from cl_audit in /Applications (the app System
             // Settings ▸ Notifications lists), not from this helper inside it
             DispatchQueue.global(qos: .utility).async {
-                let code = Self.post(id: "\(me).\(key).\(mark)", title: c.title, body: c.body, thread: me)
+                let code = Self.post(id: "\(me).\(kind)\(key).\(mark)", title: c.title, body: c.body, thread: me)
                 DispatchQueue.main.async { [weak self] in
                     self?.alerting.remove(k)
-                    if code == 0, self?.stopped != true { d.set(mark, forKey: k) }
+                    if code == 0, self?.stopped != true { d.set(mark, forKey: k); if full { d.set(mark, forKey: levelKey) } }
                 }
                 switch code {
-                case 0: agentLog.log("\(me, privacy: .public): alert sent: \(title, privacy: .public) at \(Int(p.rounded()))%")
+                case 0: agentLog.log("\(me, privacy: .public): alert sent: \(title, privacy: .public) \(full ? "full" : "at \(Int(p.rounded()))%", privacy: .public)")
                 case 2: agentLog.log("\(me, privacy: .public): alert waits: notifications for cl_audit aren't allowed")
                 default: agentLog.error("\(me, privacy: .public): alert not sent (\(code))")
                 }
@@ -262,8 +313,57 @@ final class UsageReader {
         }
     }
 
+    /// "at 15:28" today, else "Thu 09:00", "11 Nov" (after "Back").
+    static func backWords(_ d: Date, now: Date = Date()) -> String {
+        String(TimeWords.back(d, now: now).dropFirst("back ".count))
+    }
+
+    /// Notify when back: a limit read as full is remembered (full5h.<id>: its reset time, or "?"). When it no longer is
+    /// and no other limit still holds the profile back, one alert: "Claude Work is back · The 5-hour limit reset at
+    /// 15:28". Remembered whatever the switch says; sent only with it on, and tried once (a late "back" is no use).
+    private func noteBack(_ u: Usage, now: Date = Date()) {
+        let five = AtLimit.isFull(u.fiveHour), week = AtLimit.isFull(u.weekly)
+        var back: [(name: String, mark: String)] = []
+        for (key, name, full, resets) in [("5h", "5-hour", five, u.fiveHourResets), ("wk", "weekly", week, u.weeklyResets)] {
+            let k = "full\(key).\(id)"
+            if full {
+                let v = resets.map { String(Int($0.timeIntervalSince1970.rounded())) } ?? "?"
+                if defaults.string(forKey: k) != v { defaults.set(v, forKey: k) }
+            } else if let was = defaults.string(forKey: k) {
+                defaults.removeObject(forKey: k)
+                back.append((name, was))
+            }
+        }
+        // the other limit still full: the profile isn't back yet (that one's reset sends it)
+        guard !back.isEmpty, !five, !week, entry.notifyBack, !alerting.contains("back.\(id)") else { return }
+        let title = "Claude \(account.name) is back"
+        let body: String
+        if back.count == 2 {
+            body = "The 5-hour and weekly limits reset"
+        } else if let t = Int(back[0].mark).map({ Date(timeIntervalSince1970: TimeInterval($0)) }) {
+            body = "The \(back[0].name) limit reset at \(TimeWords.when(t, now: now))"
+        } else {
+            body = "The \(back[0].name) limit has room again"
+        }
+        let me = id, k = "back.\(id)", stamp = back.map(\.mark).joined(separator: "-")
+        alerting.insert(k)
+        DispatchQueue.global(qos: .utility).async {
+            let code = Self.post(id: "\(me).back.\(stamp)", title: title, body: body, thread: me)
+            DispatchQueue.main.async { [weak self] in self?.alerting.remove(k) }
+            switch code {
+            case 0: agentLog.log("\(me, privacy: .public): back alert sent")
+            case 2: agentLog.log("\(me, privacy: .public): back alert dropped: notifications for cl_audit aren't allowed")
+            default: agentLog.error("\(me, privacy: .public): back alert not sent (\(code))")
+            }
+        }
+    }
+
+    /// Tests only: takes the alerts instead of macOS (id, title, body, thread).
+    static var testPoster: ((String, String, String, String) -> Int32)?
+
     /// Hands one alert to cl_audit's own program (UsageDock --post-alert). 0 sent, 2 not allowed, else failed.
     static func post(id: String, title: String, body: String, thread: String) -> Int32 {
+        if let t = testPoster { return t(id, title, body, thread) }
         guard let app = LegacyCleanup.agentParentApp() else { return 1 }
         let p = Process()
         p.executableURL = app.appendingPathComponent("Contents/MacOS/UsageDock")
@@ -297,7 +397,9 @@ final class UsageReader {
 
     /// Everything the agent keeps for a removed profile.
     static func forget(_ id: String, in d: UserDefaults) {
-        for k in ["n5h", "nwk", "lastRenewAttempt", "adopted", "loginItemForgotten", "dockPlace"] { d.removeObject(forKey: "\(k).\(id)") }
+        for k in ["n5h", "nwk", "f5h", "fwk", "full5h", "fullwk", "lastRenewAttempt", "adopted", "loginItemForgotten", "dockPlace"] {
+            d.removeObject(forKey: "\(k).\(id)")
+        }
     }
 
     // MARK: saved status
@@ -314,9 +416,5 @@ final class UsageReader {
         if let data = try? enc.encode(status), data != lastStatus { lastStatus = Store.writeStatus(id, status) }
     }
 
-    static func when(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = Calendar.current.isDate(d, inSameDayAs: Date()) ? "HH:mm" : "EEE HH:mm"
-        return f.string(from: d)
-    }
+    static func when(_ d: Date) -> String { TimeWords.when(d) }
 }

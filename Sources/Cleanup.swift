@@ -140,16 +140,6 @@ enum Cleanup {
         return (short ? "All clean" : "Nothing to clean up") + " · \(when(r.at, now: now))"
     }
 
-    /// A fixed, short time, as on the at-limit box: today "11:38", in the last 6 days "Thu 09:00", earlier "11 Nov",
-    /// another year "12 Jan 2027".
-    static func when(_ d: Date, now: Date = Date()) -> String {
-        let cal = Calendar.current
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        let days = cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: now)).day ?? 0
-        f.dateFormat = days == 0 ? "HH:mm"
-            : (1...6).contains(days) ? "EEE HH:mm"
-            : cal.component(.year, from: d) == cal.component(.year, from: now) ? "d MMM" : "d MMM yyyy"
-        return f.string(from: d)
-    }
+    /// A fixed, short time, as on the at-limit box (TimeWords.when).
+    static func when(_ d: Date, now: Date = Date()) -> String { TimeWords.when(d, now: now) }
 }

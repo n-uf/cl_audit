@@ -67,6 +67,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     var pollMinutes: Int = 5
     var notify: Bool = true
     var notifyPercent: Int = 90
+    var notifyBack: Bool = true      // one alert when a full limit resets ("Work is back")
     var autoRenew: Bool = false
     var color: TileColor = .orange
     var frame: TileColor? = nil      // nil = no frame (the default)
@@ -87,7 +88,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, seat, claudeWindow
+        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, notifyBack, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, seat, claudeWindow
     }
     private enum LegacyKeys: String, CodingKey { case clickShowsDetails, openAtLogin, lifecycle }
 
@@ -110,6 +111,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         pollMinutes = try c.decodeIfPresent(Int.self, forKey: .pollMinutes) ?? 5
         notify = try c.decodeIfPresent(Bool.self, forKey: .notify) ?? true
         notifyPercent = try c.decodeIfPresent(Int.self, forKey: .notifyPercent) ?? 90
+        notifyBack = try c.decodeIfPresent(Bool.self, forKey: .notifyBack) ?? true
         autoRenew = try c.decodeIfPresent(Bool.self, forKey: .autoRenew) ?? false
         color = try c.decodeIfPresent(TileColor.self, forKey: .color) ?? .orange
         frame = try c.decodeIfPresent(TileColor.self, forKey: .frame)

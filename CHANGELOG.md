@@ -8,6 +8,14 @@ the notes before updating.
 
 ## Unreleased
 
+- **When a limit is full, when it's back.** While a limit is at 100%, the profile's card shows the limits on the
+  left and one box on the right for the full limit that holds it back: "5-hour full", how long until it's back
+  ("in 1h 42m", updated as it goes) and when ("back at 15:28", or "back Thu 09:00", "back 11 Nov"). "Reset time
+  unknown" when Anthropic doesn't say. The details panel has the same box, the launcher the countdown, the Dock
+  menu both times, and the Dock icon becomes the countdown with a red frame. With nothing full, nothing changes.
+  At the reset the agent reads the profile again at once.
+- **Alerts:** the "limit full" alert says when it's back. New, per profile, on by default: **Notify when back**,
+  one alert when a full limit resets ("Claude Work is back").
 - **One background agent reads every profile's usage.** A helper inside cl_audit, its one background item,
   reads the usage, checks the account, renews the sign-in and sends every alert, for all profiles, whatever
   is open, quit or hidden. Quitting a Dock icon or a Claude window never stops a profile's usage or alerts

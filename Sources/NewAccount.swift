@@ -60,7 +60,7 @@ struct NewAccountDraft: Equatable {
     var entry: AccountEntry {
         var e = AccountEntry(id: id, name: name, label: label.isEmpty ? "NEW" : label, configDir: configDir)
         if let t = template {
-            e.style = t.style; e.pollMinutes = t.pollMinutes; e.notify = t.notify; e.notifyPercent = t.notifyPercent
+            e.style = t.style; e.pollMinutes = t.pollMinutes; e.notify = t.notify; e.notifyPercent = t.notifyPercent; e.notifyBack = t.notifyBack
             e.dockRuns = t.dockRuns; e.windowFollowsDock = t.windowFollowsDock; e.autoRenew = t.autoRenew; e.clickAction = t.clickAction
             e.peekSeconds = t.peekSeconds; e.longPressDetails = t.longPressDetails; e.panelDesign = t.panelDesign
             e.windowDot = t.windowDot

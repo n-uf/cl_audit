@@ -113,6 +113,23 @@ works: it refreshes, starts the agent first, or (paused) starts it now.
 - Under the limits: **Sign in…** when needed, otherwise **Open/Show window** (with a Claude window), then
   **Terminal**, and "⋯" (Refresh now, Profile settings…); a usage only profile has just "⋯".
 
+### When a limit is full
+
+At 100% the percentage stops being useful; what matters is when the profile works again. While a limit is full,
+its card puts the limits on the left (name, reset line, bar, percentage; the full one's line in red) and one box
+on the right for the full limit that holds the profile back, the one that resets last: "5-hour full" (or "Week
+full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, under it ("back at 15:28").
+
+- The countdown updates as it goes and changes form: "in 2d 19h", "in 1h 42m", "in 19m". The time under it is
+  "back at 15:28" today, "back Thu 09:00" within the week, "back 11 Nov" later, "back 12 Jan 2027" another year.
+- Full means 100%. When Anthropic doesn't say when it resets, the box says "full · reset time unknown"; cl_audit
+  never makes up a time.
+- At the reset the agent reads that profile again right away, and the card goes back to its usual layout. With
+  nothing full, the card is as always: no box.
+- The same box is in the details panel; the launcher shows the countdown; the Dock icon's menu starts with "5-hour
+  full · back at 15:28, in 1h 42m"; the Dock icon itself becomes the countdown (the time large, "5H FULL" under
+  it, a red frame).
+
 Below the cards, **Usage history** (24 h / 7 d / 30 d) is read from the session files Claude Code writes
 on this Mac (only time, model, token counts, project folder and surface of each reply): when you use
 Claude, tokens per day per profile, and where they go (by project, model and surface). The period and
@@ -177,7 +194,10 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   found there; **Renew sign-in** (opt-in). Folders other profiles use are marked and can't be picked. The
   Claude window follows from the folder (see Profile above); it isn't a setting.
 - **Updates and alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
-  reaches a set level (once per limit and reset).
+  reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
+  ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"). **Notify when back** (on by default) sends one
+  more when a full limit resets ("Claude Work is back · The 5-hour limit reset at 15:28"); while the other limit
+  is still full, it waits for that one.
 - **Dock icon clicks:** what a click does (usage for N seconds while Claude opens, just open Claude,
   or the details panel), press and hold, and the panel design (Glow, Rings, Numbers, Segments, Pace),
   previewed at full size. Without a Claude window a click only shows the usage ("just open Claude" shows

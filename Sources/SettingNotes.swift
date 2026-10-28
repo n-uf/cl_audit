@@ -32,6 +32,11 @@ enum SettingNotes {
                 ? "A macOS notification when \(p)'s 5-hour or weekly limit reaches \(b.notifyPercent)%."
                 : "No usage notifications for \(p).")
         }
+        if a.notifyBack != b.notifyBack {
+            return SettingNote(title: "Notify when back · \(b.notifyBack ? "on" : "off")", text: b.notifyBack
+                ? "A macOS notification when \(p)'s full 5-hour or weekly limit resets."
+                : "No notification when \(p)'s full limit resets.")
+        }
         if a.clickAction != b.clickAction {
             let text: String
             switch b.clickAction {

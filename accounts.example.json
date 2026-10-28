@@ -16,6 +16,7 @@
       "name" : "work",
       "notify" : true,
       "notifyPercent" : 90,
+      "notifyBack" : true,
       "dockRuns" : "atLogin",
       "pollMinutes" : 5,
       "style" : "bars",

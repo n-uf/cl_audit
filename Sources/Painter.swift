@@ -135,6 +135,7 @@ struct TileModel {
     var fiveHourElapsed: Double? = nil   // % of the 5-hour window already gone (Pace bars)
     var weeklyElapsed: Double? = nil
     var windowOpen = false               // this account's Claude window is open (a dot at the top-left)
+    var countdown: TileCountdown? = nil  // a limit is full: the tile shows how long until it's back (D1), whatever the style
 
     var accent: NSColor { tint.color(fiveHour: fiveHour, stale: stale) }
 }
@@ -164,6 +165,7 @@ enum Painter {
         ctx.translateBy(x: rect.minX + (rect.width - 64 * s) / 2, y: rect.minY + (rect.height - 64 * s) / 2)
         ctx.scaleBy(x: s, y: s)
         unit = s
+        if let c = m.countdown { countdownFace(m, c) } else {
         switch m.style {
         case .bars: bars(m)
         case .rings: rings(m)
@@ -179,7 +181,8 @@ enum Painter {
         case .batteries: batteries(m)
         case .gaugeBar: gauge(m, weekBar: true)
         }
-        if let f = m.frame {
+        }
+        if let f = m.frame, m.countdown == nil {
             let p = NSBezierPath(roundedRect: NSRect(x: 3.25, y: 3.25, width: 57.5, height: 57.5), xRadius: 12.8, yRadius: 12.8)
             p.lineWidth = 2.5
             f.color(fiveHour: m.fiveHour, stale: m.stale).setStroke()
@@ -301,6 +304,30 @@ enum Painter {
         NSColor.black.withAlphaComponent(0.25).setFill()
         NSBezierPath(roundedRect: NSRect(x: 8, y: 45, width: 48, height: 14), xRadius: 7, yRadius: 7).fill()
         text("wk \(pct(m.weekly))", sans(11, .bold), .white, x: 32, baseline: 56, align: .center, fit: 42)
+    }
+
+    /// A limit is full (D1): the label, how long until it's back large ("1" + "h42"), which limit under it, a red frame.
+    static func countdownFace(_ m: TileModel, _ c: TileCountdown) {
+        tile(tileBg, stroke: nil)
+        let ring = NSBezierPath(roundedRect: NSRect(x: 3.75, y: 3.75, width: 56.5, height: 56.5), xRadius: 12.5, yRadius: 12.5)
+        ring.lineWidth = 3.5
+        glow(red, radius: 2) { red.setStroke(); ring.stroke() }
+        text(m.label, mono(10), NSColor.white.withAlphaComponent(0.72), x: 32, baseline: 15, align: .center, kern: 0.5)
+        // the time: the first part large, the second smaller, centred together and shrunk to fit
+        let bigFont = sans(24, .heavy), smallFont = sans(13.5, .bold)
+        let a = NSMutableAttributedString(string: c.big, attributes: [.font: bigFont, .foregroundColor: NSColor.white, .kern: -0.5])
+        if !c.small.isEmpty {
+            a.append(NSAttributedString(string: c.small, attributes: [.font: smallFont, .foregroundColor: NSColor.white.withAlphaComponent(0.85)]))
+        }
+        let w = a.size().width, fit: CGFloat = 50
+        let scale = w > fit ? fit / w : 1
+        NSGraphicsContext.saveGraphicsState()
+        let ctx = NSGraphicsContext.current?.cgContext
+        ctx?.translateBy(x: 32, y: 40.5)
+        ctx?.scaleBy(x: scale, y: scale)
+        a.draw(at: NSPoint(x: -w / 2, y: -bigFont.ascender))
+        NSGraphicsContext.restoreGraphicsState()
+        text(c.footer, mono(9), TileColor.hex(0xff7b6e), x: 32, baseline: 53.5, align: .center, kern: 0.3, fit: 46)
     }
 
     static func image(_ m: TileModel, pixels: Int) -> NSImage {

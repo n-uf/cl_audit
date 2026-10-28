@@ -324,7 +324,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                   stale: isStale || expired || noLogin, style: style, warn: mismatch,
                   tint: entry.color, frame: entry.frame,
                   fiveHourElapsed: windowElapsed(usage?.fiveHourResets, 5 * 3600),
-                  weeklyElapsed: windowElapsed(usage?.weeklyResets, 7 * 86400), windowOpen: claudeOpen && entry.windowDot)
+                  weeklyElapsed: windowElapsed(usage?.weeklyResets, 7 * 86400), windowOpen: claudeOpen && entry.windowDot,
+                  countdown: AtLimit.tileCountdown(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
+                                                   weekly: usage?.weekly, weeklyResets: usage?.weeklyResets))
     }
 
     func redraw() {
@@ -364,11 +366,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: menu
 
-    static func when(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.dateFormat = Calendar.current.isDate(d, inSameDayAs: Date()) ? "HH:mm" : "EEE HH:mm"
-        return f.string(from: d)
-    }
+    static func when(_ d: Date) -> String { TimeWords.when(d) }
 
     static func ago(_ d: Date) -> String {
         let m = Int(Date().timeIntervalSince(d) / 60)
@@ -395,6 +393,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let m = NSMenu(); m.autoenablesItems = false
         m.addItem(info("Claude \(account.name)" + (plan.map { " · \($0)" } ?? "")))
         m.addItem(.separator())
+        // while a limit is full, both times first: "5-hour full · back at 15:28, in 1h 42m"
+        if let full = AtLimit.blocker(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
+                                      weekly: usage?.weekly, weeklyResets: usage?.weeklyResets) {
+            let i = info("\(full.title) · \(full.both())")
+            i.attributedTitle = NSAttributedString(string: i.title, attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: NSColor.systemRed])
+            m.addItem(i)
+        }
         func line(_ title: String, _ p: Double?, _ r: Date?) {
             m.addItem(info("\(title): \(Painter.pct(p))" + (r.map { " · resets \(Self.when($0))" } ?? "")))
         }

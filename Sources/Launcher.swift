@@ -162,7 +162,14 @@ struct AccountRow: Identifiable {
                                 stale: stale, style: entry.style, warn: mismatch, tint: entry.color, frame: entry.frame,
                                 fiveHourElapsed: windowElapsed(status?.fiveHourResets, 5 * 3600),
                                 weeklyElapsed: windowElapsed(status?.weeklyResets, 7 * 86400),
-                                windowOpen: activity.desktopOpen && entry.windowDot), pixels: 128)
+                                windowOpen: activity.desktopOpen && entry.windowDot,
+                                countdown: AtLimit.tileCountdown(fiveHour: fiveHour, fiveHourResets: status?.fiveHourResets,
+                                                                 weekly: weekly, weeklyResets: status?.weeklyResets)), pixels: 128)
+    }
+
+    /// The full limit that holds this profile back now, or nil.
+    var full: FullLimit? {
+        AtLimit.blocker(fiveHour: fiveHour, fiveHourResets: status?.fiveHourResets, weekly: weekly, weeklyResets: status?.weeklyResets)
     }
 
     var limits: [Limit] {
@@ -665,6 +672,12 @@ struct PaletteView: View {
                                 .foregroundStyle(row.needsLogin ? Color.red : Color.secondary)
                                 .hidesEmail(row.subtitle.contains("@"))
                             Spacer(minLength: 0)
+                            // while a limit is full, one value: how long until it's back
+                            if let full = row.full {
+                                Text(full.countdown() ?? "full").font(.system(size: 12, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(Color(nsColor: Painter.red)).lineLimit(1).fixedSize()
+                                    .help("\(full.title) · \(full.both())")
+                            }
                         }
                         MiniLimit(tag: "5h", p: row.fiveHour)
                         MiniLimit(tag: "wk", p: row.weekly)
@@ -880,10 +893,12 @@ struct AccountCard: View {
                     DisplayWindow(text: plan).frame(maxHeight: .infinity, alignment: .top)
                 }
             }
+            .fixedSize(horizontal: false, vertical: true)     // a shorter card in the row grows below, not here
             // Its Claude window and its Dock icon, as switches (or the button that fixes a problem).
             ProfileControls(row: row, actions: actions)
             // one style for every card on the dashboard (Settings ▸ General); each profile's panel design is for its panels
-            LimitsView(limits: row.limits, design: prefs.cardStyle, large: false)
+            // while a limit is full: the limits on the left and one box with when it's back (AtLimit.swift)
+            CardLimits(limits: row.limits, design: prefs.cardStyle)
           }
             Spacer(minLength: 12)         // cards in a row share one height; the buttons stay at the bottom
             HStack(spacing: 7) {

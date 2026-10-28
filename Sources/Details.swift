@@ -113,7 +113,8 @@ struct DetailsView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
 
-            LimitsView(limits: info.limits, design: info.design, large: true)
+            // the card's layout while a limit is full (AtLimit.swift)
+            CardLimits(limits: info.limits, design: info.design, large: true)
 
             if info.mismatch || info.problem != nil || info.renewNote != nil {
                 VStack(alignment: .leading, spacing: 4) {
@@ -141,8 +142,9 @@ struct DetailsView: View {
             .controlSize(.small)
         }
         // the content's own width, the same 16 pt inset on every side: a row that's short of room gives way inside
-        // it (above, "Updated…"), never pushing the whole panel's content sideways
-        .frame(width: 328, alignment: .leading)
+        // it (above, "Updated…"), never pushing the whole panel's content sideways; wider while a limit is full, for
+        // the limits and the box side by side
+        .frame(width: info.full == nil ? 328 : 420, alignment: .leading)
         .padding(16)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 16))
         .overlay(RoundedRectangle(cornerRadius: 16).stroke(Color.primary.opacity(0.12)))
@@ -163,13 +165,13 @@ struct CompactView: View {
                 if let plan = info.plan { Text(plan.capitalized).font(.caption).foregroundStyle(.secondary) }
                 if let onClose { CloseButton(action: onClose) }
             }
-            LimitsView(limits: info.limits, design: info.design, large: false)
+            CardLimits(limits: info.limits, design: info.design)
             if info.mismatch || info.problem != nil {
                 Text(info.mismatch ? "Login is a different account" : info.problem ?? "")
                     .font(.caption2).foregroundStyle(.orange).lineLimit(1)
             }
         }
-        .frame(width: 234, alignment: .leading)
+        .frame(width: info.full == nil ? 234 : 330, alignment: .leading)
         .padding(14)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14))
         .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color.primary.opacity(0.12)))
@@ -400,10 +402,14 @@ final class DetailsController {
             dashboard: { [weak self] in self?.close(); actions.dashboard() })
     }
 
-    /// New numbers for a panel that's open (after a refresh), without closing or moving it.
+    /// New numbers for a panel that's open (after a refresh), without closing it. A panel that changes width (a limit
+    /// filled up or reset) keeps its middle and its edge nearest the Dock.
     func update(_ info: DetailsInfo, _ actions: DetailsActions) {
-        guard isShown, let host = panel?.contentView as? PanelHostingView<DetailsView> else { return }
+        guard isShown, let p = panel, let host = p.contentView as? PanelHostingView<DetailsView> else { return }
         host.rootView = DetailsView(info: info, actions: wrap(actions))
+        let size = host.fittingSize, old = p.frame
+        guard abs(size.width - old.width) > 0.5 || abs(size.height - old.height) > 0.5 else { return }
+        p.setFrame(NSRect(x: old.midX - size.width / 2, y: old.minY, width: size.width, height: size.height), display: true)
     }
 
     private func show(_ info: DetailsInfo, _ actions: DetailsActions, takeFocus: Bool = true) {

@@ -1124,6 +1124,12 @@ struct AccountSettings: View {
                     }
                 }
             }
+            SRow(label: "Notify when back", info: "One Mac notification when this profile's full 5-hour or weekly limit resets, so you know it works again (\"Claude \(entry.name.isEmpty ? "…" : entry.name) is back\"). Only for a limit that was full; while the other limit is still full, it waits for that one.") {
+                HStack(spacing: 8) {
+                    Toggle("", isOn: $entry.notifyBack).smallSwitch()
+                    Text("when a full limit resets").font(.system(size: 11.5)).foregroundStyle(face.muted).lineLimit(1)
+                }
+            }
         }
     }
 

@@ -40,6 +40,11 @@ struct Limit: Identifiable {
 }
 
 extension DetailsInfo {
+    /// The full limit that holds the profile back now, or nil.
+    var full: FullLimit? {
+        AtLimit.blocker(fiveHour: fiveHour, fiveHourResets: fiveHourResets, weekly: weekly, weeklyResets: weeklyResets)
+    }
+
     var limits: [Limit] {
         [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: fiveHour, resets: fiveHourResets, window: 5 * 3600),
          Limit(id: "wk", title: "Week", name: "Week", p: weekly, resets: weeklyResets, window: 7 * 86400)]
