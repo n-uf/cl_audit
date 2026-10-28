@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.10.11 — 2026-10-27
+
 - **When a limit is full, when it's back.** While a limit is at 100%, the profile's card shows the limits on the
   left and one box on the right for the full limit that holds it back: "5-hour full", how long until it's back
   ("in 1h 42m", updated as it goes) and when ("back at 15:28", or "back Thu 09:00", "back 11 Nov"). "Reset time
