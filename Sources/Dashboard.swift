@@ -37,9 +37,20 @@ struct DashboardSettings: View {
         SettingsColumns(width: width,
                         groups: [[AnyView(usageCard), AnyView(aboutCard)],
                                  [AnyView(emailsCard), AnyView(faceCard), AnyView(cardsCard)],
-                                 [AnyView(appIconCard), AnyView(DockCard())]],
-                        two: [[AnyView(usageCard), AnyView(aboutCard), AnyView(appIconCard)],
+                                 [AnyView(appIconCard), AnyView(DockCard()), AnyView(menuBarCard)]],
+                        two: [[AnyView(usageCard), AnyView(aboutCard), AnyView(appIconCard), AnyView(menuBarCard)],
                               [AnyView(emailsCard), AnyView(faceCard), AnyView(cardsCard), AnyView(DockCard())]])
+    }
+
+    @ObservedObject private var menuBar = MenuBarPrefs.shared
+
+    // Menu bar: every profile's limits there too, drawn by the agent (MenuBar.swift)
+    var menuBarCard: some View {
+        SCard(title: "Menu bar") {
+            SRow(label: "Show in the menu bar", info: "An icon in the menu bar with every profile's limits, with or without Dock icons. The icon shows the profile with the least room as two bars (5-hour over week), and while a limit is full, when it's back.", first: true) {
+                Toggle("", isOn: Binding(get: { menuBar.show }, set: { menuBar.set($0) })).smallSwitch()
+            }
+        }
     }
 
     @Environment(\.face) private var face
@@ -236,7 +247,7 @@ struct DashboardSettings: View {
 struct DashboardTile: View {
     let selected: Bool
     var body: some View {
-        TileKey(selected: selected) { TileText(title: "General", sub: "reading · about · emails · face · Dock") }
+        TileKey(selected: selected) { TileText(title: "General", sub: "reading · about · emails · face · Dock · menu bar") }
     }
 }
 

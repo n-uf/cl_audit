@@ -15,6 +15,9 @@ the notes before updating.
 - **Usage credits.** While a profile is spending usage credits, its card, panels and Dock menu say "Using usage
   credits · $4.20 spent". Alerts when a profile starts spending them and when they run out.
 - Three limits side by side in the Rings and Numbers designs are drawn a size smaller, so they fit the panels.
+- **Menu bar item** (Settings ▸ General ▸ Menu bar, off by default). Every profile's limits in the menu bar, with
+  or without Dock icons. The icon is the profile with the least room as two thin bars, with the countdown while a
+  limit is full; the menu lists every profile, then Refresh now and Open cl_audit.
 
 ## 26.10.11 — 2026-10-27
 

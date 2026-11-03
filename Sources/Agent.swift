@@ -193,6 +193,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     var rules: AgentRules?
     private var cleanupWork: DispatchWorkItem?
     private var cleanupTimer: Timer?
+    private var menuBar: MenuBarItem?                   // the optional menu bar item (MenuBar.swift)
     private var observers: [NSObjectProtocol] = []
     private var askedForAlerts = false
     private let myStamp = Installer.buildStamp(Bundle.main.bundleURL)
@@ -224,6 +225,14 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         observers.append(dn.addObserver(forName: Agent.renewNote, object: nil, queue: .main) { [weak self] note in
             guard let id = note.object as? String else { return }
             self?.readers[id]?.renewLogin()
+        })
+        // the menu bar item, when Settings ▸ General ▸ Menu bar says so
+        menuBar = MenuBarItem(profiles: { [weak self] in
+            guard let self else { return [] }
+            return self.order.compactMap { id in self.readers[id].map { MenuBarItem.Profile(entry: $0.entry, usage: $0.usage) } }
+        }, refresh: { [weak self] in self?.refresh(nil) })
+        observers.append(dn.addObserver(forName: MenuBarPrefs.changedNote, object: nil, queue: .main) { [weak self] _ in
+            self?.menuBar?.update()
         })
         reload()
         // Opening and closing and Usage in the Dock (Rules.swift)
@@ -277,6 +286,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         order = list.map(\.id)
         askForAlerts(list)
         rules?.update(list)
+        menuBar?.update()
         beat()
     }
 
@@ -287,6 +297,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         }
         for id in order { readers[id]?.tick() }
         rules?.tick()
+        menuBar?.update()
         beat()
         // ten minutes without crashing: earlier starts no longer count towards a pause
         if Date().timeIntervalSince(started) > 600 { defaults.removeObject(forKey: "agentStarts") }

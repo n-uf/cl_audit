@@ -10,8 +10,8 @@
 
 Usage audit for all your Claude setups on one Mac. A small background agent inside cl_audit reads how much
 of each **profile**'s 5-hour and weekly limits is used and sends the alerts. Each profile can have its own
-Dock icon showing its usage (a click opens that profile's Claude window). The cl_audit app adds a dashboard,
-a launcher and the settings.
+Dock icon showing its usage (a click opens that profile's Claude window), and an optional menu bar item shows
+every profile. The cl_audit app adds a dashboard, a launcher and the settings.
 
 **Claude login:** sign-in happens in Claude's own screens, so cl_audit never sees the password. It reads
 Claude Code's saved login read-only and sends it only to Anthropic ([details](#security-how-cl_audit-handles-the-claude-login)).
@@ -250,8 +250,8 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 ### General settings
 
 Column 1 is the app (Usage in the background, About), column 2 what you see (Emails, Face, Dashboard cards),
-column 3 the Dock (App icon, Dock). In two columns App icon goes under column 1 and Dock under column 2; one column
-keeps the same order, top to bottom. Every row is one line.
+column 3 the Dock and the menu bar (App icon, Dock, Menu bar). In two columns App icon and Menu bar go under column 1
+and Dock under column 2; one column keeps the same order, top to bottom. Every row is one line.
 
 - **Usage in the background:** whether usage is being read ("Reading usage · 2 profiles · every 2–5 min", or red
   "Not reading · stopped 12 min ago"), then whether **Alerts** reach you (Allowed, or "Not allowed" with **Allow…**,
@@ -274,6 +274,11 @@ keeps the same order, top to bottom. Every row is one line.
   with one Claude pin before them (or none), and redoes it after profiles are added, removed or renamed.
   Other apps keep their places. The card pictures your Dock with the changes marked; **Arrange Dock**
   applies them, and **Restore my Dock** puts back the pins saved before the first change.
+- **Menu bar:** **Show in the menu bar** (off by default). An icon in the menu bar with every profile's limits,
+  drawn by the agent, so it works with no Dock icons at all. The icon is the profile with the least room: its
+  5-hour and weekly limits as two thin bars, and while a limit holds it back, the countdown beside them ("1h 42m").
+  A click opens a menu with every profile (its limits, Fable's when the plan has one, when each resets, usage
+  credits while they're spent), then **Refresh now**, **Open cl_audit** and **Hide from the menu bar**.
 
 ### Adding a profile
 
