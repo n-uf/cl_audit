@@ -242,7 +242,7 @@ struct DashboardSettings: View {
 struct DashboardTile: View {
     let selected: Bool
     var body: some View {
-        TileKey(selected: selected) { TileText(title: "General", sub: "reading · about · emails · face · Dock · menu bar") }
+        TileKey(selected: selected) { TileText(title: "General", sub: "cl_audit · looks · widget · Dock · menu bar") }
     }
 }
 
