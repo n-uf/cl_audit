@@ -9,9 +9,10 @@ struct PillButtonStyle: ButtonStyle {
     var tint: Color? = nil          // nil = plain key; a colour = an LED of that colour on the key
     var compact = false
     var primary = false
+    var lit = true                  // false: the LED is there but dark (what it stands for isn't running)
 
     func makeBody(configuration: Configuration) -> some View {
-        KeyBody(configuration: configuration, tint: tint, compact: compact, primary: primary)
+        KeyBody(configuration: configuration, tint: tint, compact: compact, primary: primary, lit: lit)
     }
 
     private struct KeyBody: View {
@@ -19,6 +20,7 @@ struct PillButtonStyle: ButtonStyle {
         let tint: Color?
         let compact: Bool
         let primary: Bool
+        let lit: Bool
         @State private var hover = false
         @Environment(\.isEnabled) private var enabled
 
@@ -26,7 +28,7 @@ struct PillButtonStyle: ButtonStyle {
             KeyLook(kind: primary ? .primary : .plain, pressed: configuration.isPressed,
                     height: compact ? 22 : 26, radius: compact ? 3 : 4, hPad: compact ? 9 : 12) {
                 HStack(spacing: 6) {
-                    if let tint, !primary { LED(color: tint) }
+                    if let tint, !primary { LED(color: tint, lit: lit) }
                     configuration.label
                 }
             }
@@ -40,7 +42,9 @@ struct PillButtonStyle: ButtonStyle {
 
 extension ButtonStyle where Self == PillButtonStyle {
     static var pill: PillButtonStyle { PillButtonStyle() }
-    static func pill(_ tint: Color, compact: Bool = false) -> PillButtonStyle { PillButtonStyle(tint: tint, compact: compact) }
+    static func pill(_ tint: Color, compact: Bool = false, lit: Bool = true) -> PillButtonStyle {
+        PillButtonStyle(tint: tint, compact: compact, lit: lit)
+    }
     /// The one primary action on a page (Apply).
     static func primaryKey(compact: Bool = false) -> PillButtonStyle { PillButtonStyle(compact: compact, primary: true) }
 }

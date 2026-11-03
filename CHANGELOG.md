@@ -18,6 +18,8 @@ the notes before updating.
 - **Menu bar item** (Settings ▸ General ▸ Menu bar, off by default). Every profile's limits in the menu bar, with
   or without Dock icons. The icon is the profile with the least room as two thin bars, with the countdown while a
   limit is full; the menu lists every profile, then Refresh now and Open cl_audit.
+- Dashboard: the Open window key's light stays dark while the Claude window is closed and lights once it's open
+  ("Show window"), like the switches above it; it no longer looks as if the window were running.
 - **Widget** (macOS 14 and later): "Claude usage" in the widget gallery, with every profile's 5-hour and weekly
   limits and when a full one is back, in three sizes. It reads only what the agent saves.
 - **Export the usage history as CSV.** The CSV key next to the period saves one row per day, profile and model

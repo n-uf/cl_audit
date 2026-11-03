@@ -908,7 +908,9 @@ struct AccountCard: View {
                 if row.needsLogin {
                     Button("Sign in…") { actions.logIn(row) }.buttonStyle(.pill(.red))
                 } else if row.entry.claudeWindow {
-                    Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }.buttonStyle(.pill(row.accent))
+                    // on this card a lit LED means running: the key's LED lights only while the window is open
+                    Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }
+                        .buttonStyle(.pill(row.accent, lit: row.activity.desktopOpen))
                 }
                 if !row.entry.usageOnly { Button("Terminal") { actions.terminal(row) }.buttonStyle(.pill) }
                 moreMenu
