@@ -18,6 +18,8 @@ the notes before updating.
 - **Menu bar item** (Settings ▸ General ▸ Menu bar, off by default). Every profile's limits in the menu bar, with
   or without Dock icons. The icon is the profile with the least room as two thin bars, with the countdown while a
   limit is full; the menu lists every profile, then Refresh now and Open cl_audit.
+- **Widget** (macOS 14 and later): "Claude usage" in the widget gallery, with every profile's 5-hour and weekly
+  limits and when a full one is back, in three sizes. It reads only what the agent saves.
 - **Export the usage history as CSV.** The CSV key next to the period saves one row per day, profile and model
   (optionally per project, by folder name), with replies and each kind of token.
 - **Cost estimate at API list prices** in the usage history's totals ("≈ $123 at list prices") and in the CSV:

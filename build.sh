@@ -95,6 +95,34 @@ mkdir -p "$app/Contents/Helpers"
 clang -O2 -arch arm64 -mmacosx-version-min=13.0 -o "$app/Contents/Helpers/cl_audit-agent" "$here/Launcher/main.c"
 codesign --force --sign - --identifier local.usage-n-uf-agent-launcher "$app/Contents/Helpers/cl_audit-agent" 2>/dev/null
 codesign --force --sign - "$helper" 2>/dev/null
+
+# The widget (Widget/Widget.swift): every profile's limits on the desktop or in Notification Center. A sandboxed
+# extension that may only read the agent's folder (one read-only exception, Widget/widget.entitlements). macOS 14
+# and later; signed before cl_audit.app, which seals it. The Dock icon copies leave it out.
+wx="$app/Contents/PlugIns/$name Widget.appex"
+mkdir -p "$wx/Contents/MacOS"
+echo "compiling the widget…"
+swiftc -O -swift-version 5 -target arm64-apple-macos14.0 -application-extension -parse-as-library \
+  -o "$wx/Contents/MacOS/cl_audit-widget" "$here/Widget/Widget.swift" \
+  -framework WidgetKit -framework SwiftUI -Xlinker -e -Xlinker _NSExtensionMain
+cat > "$wx/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>local.usage-n-uf.widget</string>
+  <key>CFBundleName</key><string>$name Widget</string>
+  <key>CFBundleDisplayName</key><string>$name</string>
+  <key>CFBundleExecutable</key><string>cl_audit-widget</string>
+  <key>CFBundlePackageType</key><string>XPC!</string>
+  <key>CFBundleShortVersionString</key><string>$version</string>
+  <key>CFBundleVersion</key><string>$build</string>
+  <key>LSMinimumSystemVersion</key><string>14.0</string>
+  <key>NSExtension</key><dict><key>NSExtensionPointIdentifier</key><string>com.apple.widgetkit-extension</string></dict>
+</dict>
+</plist>
+PLIST
+codesign --force --sign - --entitlements "$here/Widget/widget.entitlements" "$wx" 2>/dev/null
 codesign --force --sign - "$app" 2>/dev/null
 echo "built $name $version ($build)"
 

@@ -138,6 +138,14 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   full · back at 15:28, in 1h 42m"; the Dock icon itself becomes the countdown (the time large, "5H FULL" under
   it, a red frame).
 
+### Widget
+
+cl_audit has a macOS widget (macOS 14 and later), **Claude usage**: every profile's 5-hour and weekly limits as bars,
+and when a full one is back ("back at 15:28"). Add it from the widget gallery (Edit Widgets) to the desktop or
+Notification Center, in three sizes: small (the two profiles with the least room), medium (four) and large (eight,
+with Fable's limit). It only reads what the agent saves, through a read-only sandbox exception for cl_audit's own
+folder; no Keychain, no network. macOS refreshes it every few minutes.
+
 ### Fable's weekly limit and usage credits
 
 Max, Ultra and Team plans also have a **weekly limit of Fable's own**: Fable may use up to a share of the week (half,
