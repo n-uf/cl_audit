@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="docs/logo-light.svg">
+    <img alt="cl_audit by n-uf" src="docs/logo-light.svg" height="60">
+  </picture>
+</p>
+
 # cl_audit
 
 Usage audit for all your Claude setups on one Mac. A small background agent inside cl_audit reads how much
