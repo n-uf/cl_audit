@@ -30,16 +30,19 @@ struct DashboardSettings: View {
     @ObservedObject private var prefs = DashboardPrefs.shared
     var width: CGFloat = 1280
 
-    /// Column 1 is the app (Usage in the background, About), column 2 what you see (Emails, Face, Dashboard cards),
-    /// column 3 the Dock (App icon, Dock). In two columns App icon goes under column 1 and Dock under column 2, so both
-    /// stay about equal; one column keeps the three-column order, top to bottom.
+    /// One subject per column, printed at its top: cl_audit itself (Usage in the background, Privacy, About), how usage
+    /// looks (Face, Dashboard cards), and the Dock and the menu bar (App icon, Dock, Menu bar). In two columns the Dock
+    /// goes under cl_audit and the menu bar under the looks; one column keeps the three-column order, top to bottom.
     var body: some View {
         SettingsColumns(width: width,
-                        groups: [[AnyView(usageCard), AnyView(aboutCard)],
-                                 [AnyView(emailsCard), AnyView(faceCard), AnyView(cardsCard)],
-                                 [AnyView(appIconCard), AnyView(DockCard()), AnyView(menuBarCard)]],
-                        two: [[AnyView(usageCard), AnyView(aboutCard), AnyView(appIconCard), AnyView(menuBarCard)],
-                              [AnyView(emailsCard), AnyView(faceCard), AnyView(cardsCard), AnyView(DockCard())]])
+                        groups: [[AnyView(ColumnHead(text: "cl_audit")), AnyView(usageCard), AnyView(emailsCard), AnyView(aboutCard)],
+                                 [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard)],
+                                 [AnyView(ColumnHead(text: "The Dock and the menu bar")), AnyView(appIconCard), AnyView(DockCard()),
+                                  AnyView(menuBarCard)]],
+                        two: [[AnyView(ColumnHead(text: "cl_audit · the Dock")), AnyView(usageCard), AnyView(emailsCard),
+                               AnyView(aboutCard), AnyView(appIconCard), AnyView(DockCard())],
+                              [AnyView(ColumnHead(text: "How usage looks · the menu bar")), AnyView(faceCard), AnyView(cardsCard),
+                               AnyView(menuBarCard)]])
     }
 
     @ObservedObject private var menuBar = MenuBarPrefs.shared
@@ -75,7 +78,7 @@ struct DashboardSettings: View {
         let stoppedSince = p.map { $0.stoppedSince } ?? mark?.beat
         let allowed = p.map { Optional($0.allowed) } ?? alerts.allowed
         let stopped: Bool = { if case .stopped = health { return !starter.starting }; return false }()
-        return SCard(title: "Usage in the background", info: "cl_audit's background agent reads every profile's usage on each profile's own schedule, renews sign-ins, sends the alerts and runs Opening and closing. macOS starts it when you log in and again after a crash; cl_audit starts it too when this window opens and whenever it has been silent for 90 s.") {
+        return SCard(title: "Usage in the background", info: "cl_audit's background agent reads every profile's usage on each profile's own schedule, renews sign-ins, sends the alerts, and starts and quits Dock icons and Claude windows as each profile says. macOS starts it when you log in and again after a crash; cl_audit starts it too when this window opens and whenever it has been silent for 90 s.") {
             Group {
                 switch health {
                 case let .reading(n, lo, hi):
@@ -157,7 +160,7 @@ struct DashboardSettings: View {
 
     // Show emails: for screen sharing and screenshots
     var emailsCard: some View {
-        SCard(title: "Emails") {
+        SCard(title: "Privacy") {
             SRow(label: "Show emails", info: "Off: email addresses are left out of the dashboard, the launcher, the usage panels and the Dock icon menus, and blurred in Settings (hover one to see it). For screen sharing and screenshots.", first: true) {
                 Toggle("", isOn: Binding(get: { privacy.show }, set: { privacy.set(show: $0) })).smallSwitch()
             }

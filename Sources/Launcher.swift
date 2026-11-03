@@ -1234,7 +1234,7 @@ struct ProfileControls: View {
         let open = row.activity.desktopOpen
         if let c = row.busy?.isWindow == true ? row.busy : row.windowFollowing {
             chip(glyph: windowGlyph, title: "Claude window", sub: c.text, on: c.target, warn: false) {
-                BusySwitch(on: c.target).help(row.windowFollowing != nil ? "Following its Dock icon (profile settings ▸ Opening and closing)" : "Working on it…")
+                BusySwitch(on: c.target).help(row.windowFollowing != nil ? "Following its Dock icon (profile settings ▸ Claude window)" : "Working on it…")
             }
         } else if row.notice == .openFailed {
             chip(glyph: windowGlyph, title: "Claude window", sub: "didn't open", on: false, warn: true) { fix("Retry") { actions.open(row) } }
@@ -1271,7 +1271,7 @@ struct ProfileControls: View {
             }()
             chip(glyph: dockGlyph, title: "Dock icon", sub: sub, on: running, warn: false) {
                 Toggle("", isOn: Binding(get: { running }, set: { $0 ? actions.startUsage(row) : actions.quitUsage(row) })).smallSwitch()
-                    .help(row.followQuitIn != nil ? "It quits with its Claude window (profile settings ▸ Opening and closing)"
+                    .help(row.followQuitIn != nil ? "It quits with its Claude window (profile settings ▸ Dock icon ▸ Runs)"
                           : running ? "Quit the Dock icon; its usage keeps being read and its Dock pin stays"
                           : follows ? "It starts when its Claude window opens; or start it now" : "Start it")
             }

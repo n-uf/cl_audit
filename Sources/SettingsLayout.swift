@@ -7,6 +7,19 @@ import SwiftUI
 /// never stretched). When there are fewer columns than groups, the later groups stack in the last column, or, for
 /// two columns, the `two` arrangement when one is given; with one column everything follows in order. Extra width
 /// stays empty rather than widening cards.
+/// A printed label at the top of a settings column: what its cards are about ("How usage looks").
+struct ColumnHead: View {
+    let text: String
+    @Environment(\.face) private var face
+    var body: some View {
+        Text(text).font(.system(size: 9.5, weight: .bold)).tracking(1.6).textCase(.uppercase)
+            .foregroundStyle(face.active ? FaceTheme.led.opacity(face.light ? 1 : 0.9) : Color.secondary)
+            .lineLimit(1).minimumScaleFactor(0.8)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 4).padding(.top, 2).padding(.bottom, -3)
+    }
+}
+
 struct SettingsColumns: View {
     let width: CGFloat
     let groups: [[AnyView]]

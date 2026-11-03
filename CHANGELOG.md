@@ -18,6 +18,11 @@ the notes before updating.
 - **Menu bar item** (Settings ▸ General ▸ Menu bar, off by default). Every profile's limits in the menu bar, with
   or without Dock icons. The icon is the profile with the least room as two thin bars, with the countdown while a
   limit is full; the menu lists every profile, then Refresh now and Open cl_audit.
+- **Settings, grouped by subject.** Each column has its subject printed at the top. General: cl_audit (Usage in
+  the background, Privacy, About), How usage looks (Face, Dashboard cards), the Dock and the menu bar (App icon,
+  Dock, Menu bar). A profile: Who it is (Profile, Claude Code, Alerts), How it opens (Claude window, Dock icon) and
+  How its Dock icon looks (Icon). "Opening and closing" and "Dock icon clicks" became one **Dock icon** card and a
+  **Claude window** card; "Updates and alerts" is **Alerts**; "Emails" is **Privacy**.
 - Dashboard: the Open window key's light stays dark while the Claude window is closed and lights once it's open
   ("Show window"), like the switches above it; it no longer looks as if the window were running.
 - **Widget** (macOS 14 and later): "Claude usage" in the widget gallery, with every profile's 5-hour and weekly

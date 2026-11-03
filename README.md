@@ -90,7 +90,8 @@ only software you trust. cl_audit's code is open to check: `Login.read` in `Sour
 - **Dock icon:** the profile's own small app ("cl_audit &lt;profile&gt;") that shows its usage. It only shows:
   quitting it never stops the usage or the alerts.
 - **cl_audit agent:** the helper inside cl_audit that reads every profile's usage, renews sign-ins, sends
-  the alerts and starts and quits Dock icons and Claude windows by the Opening and closing rules. It has no
+  the alerts and starts and quits Dock icons and Claude windows as each profile's Dock icon and Claude window
+  settings say. It has no
   window or Dock icon; macOS starts it at login and again if it crashes.
 - **Claude window:** the profile's running Claude desktop app: the usual Claude app for the profile using
   `~/.claude`, its own Claude window (own sign-in, chats and settings) for every other profile.
@@ -116,7 +117,7 @@ works: it refreshes, starts the agent first, or (paused) starts it now.
 - A flipped switch stays where you put it, with a spinner, until the change is done. Quitting a window
   that Claude asks about (for example unsent work) shows "Claude is asking" with **Show**; a window that
   doesn't open within 30 s offers **Retry**.
-- What the agent does by Opening and closing shows on the switches: "quits in 8 s", "starting…", "opening…",
+- What the agent does by those settings shows on the switches: "quits in 8 s", "starting…", "opening…",
   or "starts with its window" for a Dock icon that runs with its window.
 - Under the limits: **Sign in…** when needed, otherwise **Open/Show window** (with a Claude window), then
   **Terminal**, and "⋯" (Refresh now, Profile settings…); a usage only profile has just "⋯".
@@ -229,7 +230,7 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 - **Claude Code:** the Claude Code folder (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder) and the sign-in
   found there; **Renew sign-in** (opt-in). Folders other profiles use are marked and can't be picked. The
   Claude window follows from the folder (see Profile above); it isn't a setting.
-- **Updates and alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
+- **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
   ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"). **Notify when back** (on by default) sends one
   more when a full limit resets ("Claude Work is back · The 5-hour limit reset at 15:28"); while the other limit
@@ -237,10 +238,24 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   full · Back Thu 09:00", "Claude Main: Fable is back"). With alerts on, one more when a profile starts spending
   usage credits ("Claude Work is using usage credits · The 5-hour limit is full · $0.40 spent so far") and one when
   they run out.
-- **Dock icon clicks:** what a click does (usage for N seconds while Claude opens, just open Claude,
-  or the details panel), press and hold, and the panel design (Glow, Rings, Numbers, Segments, Pace),
-  previewed at full size. Without a Claude window a click only shows the usage ("just open Claude" shows
-  the details panel).
+- **Claude window** (run by the agent, whether or not cl_audit is open): **With Dock icon**, the window opens
+  and quits with the Dock icon: starting the Dock icon opens its window (not at login), and quitting it quits the
+  window too, so Claude can ask about unsent work; the Dock icon's menu then has **Quit and keep Claude window**.
+  Without a Claude window the card fades under "Not in use · no Claude window" with **Add Claude window**; without
+  a Dock icon, under "no Dock icon to open it with" with **Show in the Dock**.
+- **Dock icon** (run by the agent, whether or not cl_audit is open):
+  - **Runs:** **At login** (always there, from when you log in), **With its window** (starts when the profile's
+    Claude window opens and quits 10 s after it quits, since a Claude update restarts the window) or **When
+    started** (only when you start it: a click on its Dock tile, or its dashboard switch).
+  - **Click:** what a click does (usage for N seconds while Claude opens, just open Claude, or the details
+    panel), **Press and hold**, and the **Usage panel** design (Glow, Rings, Numbers, Segments, Pace), previewed
+    at full size. Without a Claude window a click only shows the usage ("just open Claude" shows the details
+    panel).
+
+  With Usage in the Dock off the card fades under "Not in use · no Dock icon" with **Show in the Dock**. Saved
+  choices stay stored and apply again when they can. Older settings carried over: Open at login on → At login;
+  "start or quit the Dock icon too" → With its window; both off → When started; "open or quit the Claude window
+  too" → the window switch.
 - **Icon:** the style, previewed as the limit fills up:
   - classic: Two numbers, Rings (outer = 5-hour, inner = week), Big number;
   - like the panels: Twin rings, Segmented, Pace bars (a white tick for how much of the window has passed);
@@ -249,25 +264,15 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
   Then the icon's colour, an optional frame colour and the **Claude open dot**: none, or a Claude-orange
   dot at the top-left while the profile's Claude window is open.
-- **Opening and closing** (run by the agent, whether or not cl_audit is open):
-  - **Dock icon runs:** **At login** (always there, from when you log in), **With its window** (starts when
-    the profile's Claude window opens and quits 10 s after it quits, since a Claude update restarts the
-    window) or **When started** (only when you start it: a click on its Dock tile, or its dashboard switch).
-  - **Claude window opens and quits with the Dock icon:** starting the Dock icon opens its window (not at
-    login), and quitting it quits the window too, so Claude can ask about unsent work; the Dock icon's menu
-    then has **Quit and keep Claude window**.
-
-  With Usage in the Dock off the card fades under "Not in use · no Dock icon to open or close" with **Show
-  in the Dock**; without a Claude window the window switch fades (**Add Claude window**). Saved choices stay
-  stored and apply again when they can. Older settings carried over: Open at login on → At login; "start or
-  quit the Dock icon too" → With its window; both off → When started; "open or quit the Claude window too" →
-  the window switch.
+The cards sit in three columns, each with its subject printed at the top: **Who it is** (Profile, Claude Code,
+Alerts), **How it opens** (Claude window, Dock icon) and **How its Dock icon looks** (Icon).
 
 ### General settings
 
-Column 1 is the app (Usage in the background, About), column 2 what you see (Emails, Face, Dashboard cards),
-column 3 the Dock and the menu bar (App icon, Dock, Menu bar). In two columns App icon and Menu bar go under column 1
-and Dock under column 2; one column keeps the same order, top to bottom. Every row is one line.
+Three columns, each with its subject printed at the top: **cl_audit** (Usage in the background, Privacy, About),
+**How usage looks** (Face, Dashboard cards) and **The Dock and the menu bar** (App icon, Dock, Menu bar). In two
+columns the Dock goes under cl_audit and the menu bar under the looks; one column keeps the same order, top to
+bottom. Every row is one line.
 
 - **Usage in the background:** whether usage is being read ("Reading usage · 2 profiles · every 2–5 min", or red
   "Not reading · stopped 12 min ago"), then whether **Alerts** reach you (Allowed, or "Not allowed" with **Allow…**,
@@ -277,7 +282,7 @@ and Dock under column 2; one column keeps the same order, top to bottom. Every r
 - **About:** the version and build, a link to what's new, when the agent last cleaned up ("Nothing to clean up ·
   11:38", "Cleaned up 2 leftovers · Thu 09:00"; the (i) lists what went) and **Uninstall cl_audit…** (see
   [Uninstalling](#uninstalling)).
-- **Emails:** Show emails (see above).
+- **Privacy:** Show emails (see above).
 - **Face:** the look of the cl_audit window, as on the home site: **Std** (a dark brushed panel, the
   default), **Black** (black anodised) or **Silver** (light brushed silver; the window takes the Mac's light
   appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.
