@@ -8,7 +8,13 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Fable's weekly limit.** Max, Ultra and Team plans have a weekly limit of Fable's own; cl_audit now reads it from
+  Anthropic's reply and shows it as a third row on the cards, the panels and the Dock menu. Full, the row turns red
+  with when it's back, and it alerts like the other two ("Fable weekly limit full · Back Thu 09:00", "Fable is
+  back"). It never takes the full-limit box: the other models still work.
+- **Usage credits.** While a profile is spending usage credits, its card, panels and Dock menu say "Using usage
+  credits · $4.20 spent". Alerts when a profile starts spending them and when they run out.
+- Three limits side by side in the Rings and Numbers designs are drawn a size smaller, so they fit the panels.
 
 ## 26.10.11 — 2026-10-27
 

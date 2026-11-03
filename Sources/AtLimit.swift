@@ -240,13 +240,20 @@ struct CardLimits: View {
     let limits: [Limit]
     let design: PanelDesign
     var large = false
+    var credits: Credits? = nil
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 15)) { ctx in
-            if let full = AtLimit.blocker(limits, now: ctx.date) {
-                FullLimitsView(limits: limits, design: design, full: full, now: ctx.date)
-            } else {
-                LimitsView(limits: limits, design: design, large: large)
+            VStack(alignment: .leading, spacing: large ? 10 : 8) {
+                if let full = AtLimit.blocker(limits, now: ctx.date) {
+                    FullLimitsView(limits: limits, design: design, full: full, now: ctx.date)
+                } else {
+                    LimitsView(limits: limits, design: design, large: large)
+                }
+                if let c = credits, c.inUse(fiveHour: limits.first { $0.id == "5h" }?.p,
+                                            weekly: limits.first { $0.id == "wk" }?.p, now: ctx.date) {
+                    CreditsLine(credits: c)
+                }
             }
         }
     }

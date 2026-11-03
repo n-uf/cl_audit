@@ -109,6 +109,22 @@ struct Usage {
     var weeklyResets: Date?
     var fetchedAt: Date
     var source: String
+    var scoped: [ScopedLimit] = []       // weekly limits of one model (Fable on Max, Ultra and Team), beside the two
+    var credits: Credits? = nil          // usage credits (Credits.swift)
+}
+
+/// A weekly limit of its own for one model: "Fable" may use up to a share of the week. Full, it holds back only that
+/// model; the profile can still work with the others, so it never takes the full-limit box or the countdown face.
+struct ScopedLimit: Codable, Equatable {
+    var name: String                     // "Fable"
+    var percent: Double?
+    var resets: Date?
+
+    /// Alert marks and the limit row's id: "mfable".
+    var key: String { "m" + name.lowercased().filter { $0.isLetter || $0.isNumber } }
+    var limit: Limit {
+        Limit(id: key, title: "\(name) · week", name: name, p: percent, resets: resets, window: 7 * 86400)
+    }
 }
 
 enum FetchState: Equatable {
@@ -226,7 +242,22 @@ enum UsageParser {
                 }
             }
         }
-        return (u.fiveHour == nil && u.weekly == nil) ? nil : u
+        guard u.fiveHour != nil || u.weekly != nil else { return nil }
+        u.scoped = scoped(j)
+        u.credits = Credits.parse(j)
+        return u
+    }
+
+    /// The model limits in limits[]: {kind: "weekly_scoped", percent, resets_at, scope: {model: {display_name}}}.
+    static func scoped(_ j: [String: Any]) -> [ScopedLimit] {
+        guard let limits = j["limits"] as? [[String: Any]] else { return [] }
+        return limits.compactMap { w in
+            guard (w["kind"] as? String) == "weekly_scoped",
+                  let model = (w["scope"] as? [String: Any])?["model"] as? [String: Any],
+                  let name = (model["display_name"] as? String) ?? (model["id"] as? String), !name.isEmpty
+            else { return nil }
+            return ScopedLimit(name: name, percent: percent(w), resets: date(w["resets_at"]))
+        }
     }
 
     /// First e-mail address anywhere in the profile reply (it sits under account.email_address / email).

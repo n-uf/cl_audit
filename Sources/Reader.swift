@@ -55,7 +55,8 @@ final class UsageReader {
         // carry on from what was saved last (the numbers don't blank while the agent restarts)
         if let s = Store.status(e.id), let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil {
             usage = Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly,
-                          weeklyResets: s.weeklyResets, fetchedAt: at, source: s.source ?? "Anthropic")
+                          weeklyResets: s.weeklyResets, fetchedAt: at, source: s.source ?? "Anthropic",
+                          scoped: s.scoped ?? [], credits: s.credits)
             loginEmail = s.loginEmail
             plan = s.plan
             renewNote = s.renewNote
@@ -82,7 +83,9 @@ final class UsageReader {
     /// reset has passed is read again at once (then at most once a minute until Anthropic's numbers move on).
     func tick() {
         guard !stopped else { return }
-        if let local = UsageParser.fromStatusLine(account), local.fetchedAt > (usage?.fetchedAt ?? .distantPast) {
+        if var local = UsageParser.fromStatusLine(account), local.fetchedAt > (usage?.fetchedAt ?? .distantPast) {
+            // the status line has only the two limits: the model limits and credits stay as Anthropic last gave them
+            local.scoped = usage?.scoped ?? []; local.credits = usage?.credits
             usage = local
         }
         if let u = usage, Self.resetPassed(u), !failing, Date().timeIntervalSince(lastAsked) >= 60 { nextFetch = .distantPast }
@@ -221,10 +224,15 @@ final class UsageReader {
 
     /// A good reading: keep it, send what alerts it calls for, and plan the read at the next reset (saving is the
     /// caller's).
-    func apply(_ u: Usage) {
+    func apply(_ u: Usage, now: Date = Date()) {
+        var u = u
+        let before = usage?.credits
+        // the status line file has no credits: keep the last ones Anthropic gave
+        u.credits = Credits.carry(u.credits, from: before, now: now) ?? (u.source == "Anthropic" ? nil : before)
         usage = u; state = .ok; backoff = 0
         noteBack(u)
         checkThresholds(u)
+        noteCredits(u, before: before, now: now)
         scheduleResetRead()
     }
 
@@ -270,8 +278,11 @@ final class UsageReader {
     private func checkThresholds(_ u: Usage) {
         guard entry.notify else { return }
         let limit = Double(entry.notifyPercent)
-        for (key, title, p, resets) in [("5h", "5-hour limit", u.fiveHour, u.fiveHourResets),
-                                        ("wk", "Weekly limit", u.weekly, u.weeklyResets)] {
+        // a model's own weekly limit (Fable) alerts like the two: at the level, and when full with when it's back
+        let all = [("5h", "5-hour limit", "5-hour limit", u.fiveHour, u.fiveHourResets),
+                   ("wk", "Weekly limit", "weekly limit", u.weekly, u.weeklyResets)]
+            + u.scoped.map { ($0.key, "\($0.name) weekly limit", "\($0.name) weekly limit", $0.percent, $0.resets) }
+        for (key, title, fullName, p, resets) in all {
             guard let p else { continue }
             let full = AtLimit.isFull(p)
             guard full || p >= limit else { continue }
@@ -288,7 +299,7 @@ final class UsageReader {
             alerting.insert(k)
             let c = UNMutableNotificationContent()
             if full {
-                c.title = "Claude \(account.name): \(title.prefix(1).lowercased() + title.dropFirst()) full"
+                c.title = "Claude \(account.name): \(fullName) full"
                 c.body = resets.map { "Back \(Self.backWords($0)), in \(TimeWords.countdown($0))" } ?? "Reset time unknown"
             } else {
                 c.title = "Claude \(account.name): \(title) at \(Int(p.rounded()))%"
@@ -334,9 +345,25 @@ final class UsageReader {
                 back.append((name, was))
             }
         }
+        // a model's own limit (Fable) has its own "back": "Claude Main: Fable is back", unless one of the two still holds
+        // the profile back (its reset brings the profile's own "back")
+        for s in u.scoped {
+            let k = "full\(s.key).\(id)"
+            if AtLimit.isFull(s.percent) {
+                let v = s.resets.map { String(Int($0.timeIntervalSince1970.rounded())) } ?? "?"
+                if defaults.string(forKey: k) != v { defaults.set(v, forKey: k) }
+            } else if let was = defaults.string(forKey: k) {
+                defaults.removeObject(forKey: k)
+                guard entry.notifyBack, !five, !week else { continue }
+                let t = Int(was).map { Date(timeIntervalSince1970: TimeInterval($0)) }
+                sendOnce(title: "Claude \(account.name): \(s.name) is back",
+                         body: t.map { "The \(s.name) weekly limit reset at \(TimeWords.when($0, now: now))" }
+                            ?? "The \(s.name) weekly limit has room again",
+                         slot: s.key, stamp: was)
+            }
+        }
         // the other limit still full: the profile isn't back yet (that one's reset sends it)
-        guard !back.isEmpty, !five, !week, entry.notifyBack, !alerting.contains("back.\(id)") else { return }
-        let title = "Claude \(account.name) is back"
+        guard !back.isEmpty, !five, !week, entry.notifyBack else { return }
         let body: String
         if back.count == 2 {
             body = "The 5-hour and weekly limits reset"
@@ -345,16 +372,46 @@ final class UsageReader {
         } else {
             body = "The \(back[0].name) limit has room again"
         }
-        let me = id, k = "back.\(id)", stamp = back.map(\.mark).joined(separator: "-")
+        sendOnce(title: "Claude \(account.name) is back", body: body, slot: "back", stamp: back.map(\.mark).joined(separator: "-"))
+    }
+
+    /// One alert that isn't kept for later ("back", credits): tried once.
+    private func sendOnce(title: String, body: String, slot: String, stamp: String) {
+        let me = id, k = "\(slot).\(id)"
+        guard !alerting.contains(k) else { return }
         alerting.insert(k)
         DispatchQueue.global(qos: .utility).async {
-            let code = Self.post(id: "\(me).back.\(stamp)", title: title, body: body, thread: me)
+            let code = Self.post(id: "\(me).\(slot).\(stamp)", title: title, body: body, thread: me)
             DispatchQueue.main.async { [weak self] in self?.alerting.remove(k) }
             switch code {
-            case 0: agentLog.log("\(me, privacy: .public): back alert sent")
-            case 2: agentLog.log("\(me, privacy: .public): back alert dropped: notifications for cl_audit aren't allowed")
-            default: agentLog.error("\(me, privacy: .public): back alert not sent (\(code))")
+            case 0: agentLog.log("\(me, privacy: .public): \(slot, privacy: .public) alert sent")
+            case 2: agentLog.log("\(me, privacy: .public): \(slot, privacy: .public) alert dropped: notifications for cl_audit aren't allowed")
+            default: agentLog.error("\(me, privacy: .public): \(slot, privacy: .public) alert not sent (\(code))")
             }
+        }
+    }
+
+    /// Usage credits: one alert when the profile starts spending them ("Claude Work is using usage credits"), again
+    /// only after it stopped; one when they run out, seen happen (not when they were already out at the first read).
+    /// At the profile's alerts switch; tried once.
+    private func noteCredits(_ u: Usage, before: Credits?, now: Date = Date()) {
+        guard let c = u.credits else { return }
+        let k = "cr.\(id)"
+        if c.inUse(fiveHour: u.fiveHour, weekly: u.weekly, now: now) {
+            guard defaults.object(forKey: k) == nil else { return }
+            defaults.set(Int(now.timeIntervalSince1970), forKey: k)
+            guard entry.notify else { return }
+            let why = AtLimit.isFull(u.fiveHour) ? "The 5-hour limit is full" : AtLimit.isFull(u.weekly) ? "The weekly limit is full" : nil
+            let body = [why, c.spentWords.map { "\($0) so far" }].compactMap { $0 }.joined(separator: " · ")
+            sendOnce(title: "Claude \(account.name) is using usage credits", body: body.isEmpty ? "Usage credits are paid for" : body,
+                     slot: "credits", stamp: String(Int(now.timeIntervalSince1970)))
+        } else {
+            defaults.removeObject(forKey: k)
+        }
+        if c.out, let before, !before.out, entry.notify {
+            sendOnce(title: "Claude \(account.name) is out of usage credits",
+                     body: "Past a full limit, Claude stops until credits are added or the limit resets",
+                     slot: "creditsOut", stamp: String(Int(now.timeIntervalSince1970)))
         }
     }
 
@@ -397,8 +454,13 @@ final class UsageReader {
 
     /// Everything the agent keeps for a removed profile.
     static func forget(_ id: String, in d: UserDefaults) {
-        for k in ["n5h", "nwk", "f5h", "fwk", "full5h", "fullwk", "lastRenewAttempt", "adopted", "loginItemForgotten", "dockPlace"] {
+        for k in ["n5h", "nwk", "f5h", "fwk", "full5h", "fullwk", "cr", "lastRenewAttempt", "adopted", "loginItemForgotten", "dockPlace"] {
             d.removeObject(forKey: "\(k).\(id)")
+        }
+        // a model's own limit: nm…, fm…, fullm… ("nmfable.<id>")
+        for k in d.dictionaryRepresentation().keys where k.hasSuffix(".\(id)")
+            && (k.hasPrefix("nm") || k.hasPrefix("fm") || k.hasPrefix("fullm")) {
+            d.removeObject(forKey: k)
         }
     }
 
@@ -411,7 +473,8 @@ final class UsageReader {
                                 fiveHour: usage?.fiveHour, weekly: usage?.weekly, updatedAt: usage?.fetchedAt,
                                 renewNote: renewNote, fiveHourResets: usage?.fiveHourResets,
                                 weeklyResets: usage?.weeklyResets, plan: plan,
-                                source: usage?.source, problem: state.menuText, renewing: renewing)
+                                source: usage?.source, problem: state.menuText, renewing: renewing,
+                                scoped: usage.map { $0.scoped.isEmpty ? nil : $0.scoped } ?? nil, credits: usage?.credits)
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970; enc.outputFormatting = [.sortedKeys]
         if let data = try? enc.encode(status), data != lastStatus { lastStatus = Store.writeStatus(id, status) }
     }

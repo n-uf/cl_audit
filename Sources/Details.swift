@@ -24,6 +24,8 @@ struct DetailsInfo {
     var design: PanelDesign = .glow
     var accent: NSColor = Painter.orange
     var refreshing = false
+    var scoped: [ScopedLimit] = []
+    var credits: Credits? = nil
 }
 
 struct DetailsActions {
@@ -114,7 +116,7 @@ struct DetailsView: View {
             .fixedSize(horizontal: false, vertical: true)
 
             // the card's layout while a limit is full (AtLimit.swift)
-            CardLimits(limits: info.limits, design: info.design, large: true)
+            CardLimits(limits: info.limits, design: info.design, large: true, credits: info.credits)
 
             if info.mismatch || info.problem != nil || info.renewNote != nil {
                 VStack(alignment: .leading, spacing: 4) {
@@ -165,7 +167,7 @@ struct CompactView: View {
                 if let plan = info.plan { Text(plan.capitalized).font(.caption).foregroundStyle(.secondary) }
                 if let onClose { CloseButton(action: onClose) }
             }
-            CardLimits(limits: info.limits, design: info.design)
+            CardLimits(limits: info.limits, design: info.design, credits: info.credits)
             if info.mismatch || info.problem != nil {
                 Text(info.mismatch ? "Login is a different account" : info.problem ?? "")
                     .font(.caption2).foregroundStyle(.orange).lineLimit(1)

@@ -43,7 +43,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var usage: Usage? {
         guard let s = status, let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil else { return nil }
         return Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly, weeklyResets: s.weeklyResets,
-                     fetchedAt: at, source: s.source ?? "Anthropic")
+                     fetchedAt: at, source: s.source ?? "Anthropic", scoped: s.scoped ?? [], credits: s.credits)
     }
     var loginEmail: String? { status?.loginEmail }
     var plan: String? { status?.plan }
@@ -290,7 +290,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             needsLogin: mismatch || noLogin || expired,
             design: entry.panelDesign,
             accent: entry.accentNSColor,
-            refreshing: refreshing)
+            refreshing: refreshing,
+            scoped: usage?.scoped ?? [], credits: usage?.credits)
         return info
     }
 
@@ -406,6 +407,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         line("5-hour limit", usage?.fiveHour, usage?.fiveHourResets)
         line("Weekly limit", usage?.weekly, usage?.weeklyResets)
+        for s in usage?.scoped ?? [] {
+            if AtLimit.isFull(s.percent), let r = s.resets {
+                m.addItem(info("\(s.name) weekly limit: full · \(TimeWords.back(r))"))
+            } else {
+                line("\(s.name) weekly limit", s.percent, s.resets)
+            }
+        }
+        if let c = usage?.credits, c.inUse(fiveHour: usage?.fiveHour, weekly: usage?.weekly) {
+            let i = info(c.line)
+            i.attributedTitle = NSAttributedString(string: i.title, attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: NSColor.systemOrange])
+            m.addItem(i)
+        }
         if let usage { m.addItem(info("Updated \(Self.ago(usage.fetchedAt)) · \(usage.source)")) }
         if let why = problem { m.addItem(info(why)) }
         if let note = status?.renewNote { m.addItem(info(note)) }

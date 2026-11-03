@@ -48,6 +48,7 @@ extension DetailsInfo {
     var limits: [Limit] {
         [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: fiveHour, resets: fiveHourResets, window: 5 * 3600),
          Limit(id: "wk", title: "Week", name: "Week", p: weekly, resets: weeklyResets, window: 7 * 86400)]
+            + scoped.map(\.limit)
     }
 }
 
@@ -62,7 +63,8 @@ struct LimitsView: View {
         case .glow:
             VStack(spacing: large ? 12 : 8) { ForEach(limits) { glow($0) } }
         case .rings:
-            HStack(spacing: large ? 28 : 16) { ForEach(limits) { ring($0) } }.frame(maxWidth: .infinity)
+            HStack(spacing: limits.count > 2 ? (large ? 16 : 10) : (large ? 28 : 16)) { ForEach(limits) { ring($0) } }
+                .frame(maxWidth: .infinity)
         case .numbers:
             HStack(alignment: .top, spacing: 16) { ForEach(limits) { number($0) } }
         case .segments:
@@ -79,7 +81,10 @@ struct LimitsView: View {
 
     func resets(_ l: Limit) -> some View {
         Group {
-            if let r = l.resets {
+            if let r = l.resets, AtLimit.isFull(l.p) {
+                // a model's own limit full (the two take the full-limit box instead): when it's back
+                Text(large ? "Full · \(TimeWords.back(r))" : "full · \(TimeWords.back(r))")
+            } else if let r = l.resets {
                 Text(large ? "Resets \(DetailsFormat.until(r))" : "resets in \(DetailsFormat.short(r))")
             } else {
                 Text(" ")
@@ -103,7 +108,8 @@ struct LimitsView: View {
 
     // Twin rings: like Activity rings, the % inside, name and reset time under.
     func ring(_ l: Limit) -> some View {
-        let d: CGFloat = large ? 96 : 66, w: CGFloat = large ? 10 : 7
+        let three = limits.count > 2       // a model's own limit beside the two: a size smaller, so they fit the panel
+        let d: CGFloat = large ? (three ? 82 : 96) : (three ? 60 : 66), w: CGFloat = large ? (three ? 9 : 10) : 7
         return VStack(spacing: 4) {
             ZStack {
                 Circle().stroke(Color.primary.opacity(0.12), lineWidth: w)
@@ -116,7 +122,13 @@ struct LimitsView: View {
             .frame(width: d, height: d)
             .padding(.bottom, 2)
             Text(l.name).font((large ? Font.callout : .caption).weight(.semibold))
-            resets(l)
+            if limits.count > 2, let r = l.resets {
+                // three rings leave less room under each: the short form
+                Text(AtLimit.isFull(l.p) ? TimeWords.back(r) : "in \(DetailsFormat.short(r))")
+                    .font(large ? .caption : .caption2).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
+            } else {
+                resets(l)
+            }
         }
     }
 
@@ -125,9 +137,12 @@ struct LimitsView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(l.name).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
             HStack(alignment: .firstTextBaseline, spacing: 1) {
+                // three numbers side by side: a size smaller, so "100%" stays on one line
+                let k: CGFloat = limits.count > 2 ? 0.78 : 1
                 Text(l.p.map { "\(Int($0.rounded()))" } ?? "–")
-                    .font(.system(size: large ? 42 : 30, weight: .heavy, design: .rounded)).monospacedDigit()
-                Text("%").font(.system(size: large ? 20 : 15, weight: .bold, design: .rounded))
+                    .font(.system(size: (large ? 42 : 30) * k, weight: .heavy, design: .rounded)).monospacedDigit()
+                    .lineLimit(1).minimumScaleFactor(0.6)
+                Text("%").font(.system(size: (large ? 20 : 15) * k, weight: .bold, design: .rounded))
             }
             .foregroundStyle(l.p == nil ? Color.secondary : l.color)
             LevelBar(p: l.p, height: 4, glow: false)
@@ -141,7 +156,10 @@ struct LimitsView: View {
         VStack(alignment: .leading, spacing: 5) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(large ? l.title : l.name).font((large ? Font.body : .callout).weight(.semibold))
-                if let r = l.resets { Text("· in \(DetailsFormat.short(r))").font(.caption).foregroundStyle(.secondary) }
+                if let r = l.resets {
+                    Text(AtLimit.isFull(l.p) ? "· full · \(TimeWords.back(r))" : "· in \(DetailsFormat.short(r))")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.85)
+                }
                 Spacer()
                 pct(l, large ? 15 : 13)
             }
@@ -159,7 +177,9 @@ struct LimitsView: View {
                 pct(l, large ? 15 : 13)
             }
             LevelBar(p: l.p, height: large ? 10 : 8, marker: l.elapsed).padding(.vertical, 4)
-            if let r = l.resets, let e = l.elapsed {
+            if let r = l.resets, AtLimit.isFull(l.p) {
+                Text("full · \(TimeWords.back(r))").font(.caption2).foregroundStyle(.secondary)
+            } else if let r = l.resets, let e = l.elapsed {
                 Text("resets in \(DetailsFormat.short(r)) · \(Int(e.rounded()))% of the window gone")
                     .font(.caption2).foregroundStyle(.secondary)
             }

@@ -207,6 +207,8 @@ struct IconStatus: Codable {
     var source: String? = nil          // where the numbers came from ("Anthropic", "Claude Code status line")
     var problem: String? = nil         // why it couldn't update, in words
     var renewing: Bool? = nil          // renewing the sign-in through Claude Code now
+    var scoped: [ScopedLimit]? = nil   // a model's own weekly limit (Fable)
+    var credits: Credits? = nil        // usage credits
 }
 
 // MARK: - Renewing an expired login through Claude Code

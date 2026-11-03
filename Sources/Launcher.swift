@@ -175,6 +175,7 @@ struct AccountRow: Identifiable {
     var limits: [Limit] {
         [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: fiveHour, resets: status?.fiveHourResets, window: 5 * 3600),
          Limit(id: "wk", title: "Week", name: "Week", p: weekly, resets: status?.weeklyResets, window: 7 * 86400)]
+            + (status?.scoped ?? []).map(\.limit)
     }
 
     var subtitle: String {
@@ -898,7 +899,7 @@ struct AccountCard: View {
             ProfileControls(row: row, actions: actions)
             // one style for every card on the dashboard (Settings ▸ General); each profile's panel design is for its panels
             // while a limit is full: the limits on the left and one box with when it's back (AtLimit.swift)
-            CardLimits(limits: row.limits, design: prefs.cardStyle)
+            CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits)
           }
             Spacer(minLength: 12)         // cards in a row share one height; the buttons stay at the bottom
             HStack(spacing: 7) {

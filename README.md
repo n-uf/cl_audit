@@ -138,6 +138,18 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   full · back at 15:28, in 1h 42m"; the Dock icon itself becomes the countdown (the time large, "5H FULL" under
   it, a red frame).
 
+### Fable's weekly limit and usage credits
+
+Max, Ultra and Team plans also have a **weekly limit of Fable's own**: Fable may use up to a share of the week (half,
+today). When Anthropic's reply has it, the cards, the panels and the Dock icon's menu show a third row, "Fable"
+("Fable · week" in the large panel). Full, the row turns red and says when it's back ("full · back Thu 09:00"); it
+doesn't take the full-limit box or the countdown face, because the profile can still work with the other models. The
+Dock icon keeps its two bars.
+
+**Usage credits** carry a profile on past its plan limits, and they're paid for. While a profile is spending them (credits
+on and a limit full, or the amount spent went up within the hour), its card, panels and Dock menu say so: "Using usage
+credits · $4.20 spent". At other times nothing about credits is shown.
+
 Below the cards, **Usage history** (24 h / 7 d / 30 d) is read from the session files Claude Code writes
 on this Mac (only time, model, token counts, project folder and surface of each reply): when you use
 Claude, tokens per day per profile, and where they go (by project, model and surface). The period and
@@ -205,7 +217,10 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
   ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"). **Notify when back** (on by default) sends one
   more when a full limit resets ("Claude Work is back · The 5-hour limit reset at 15:28"); while the other limit
-  is still full, it waits for that one.
+  is still full, it waits for that one. Fable's weekly limit alerts the same way ("Claude Main: Fable weekly limit
+  full · Back Thu 09:00", "Claude Main: Fable is back"). With alerts on, one more when a profile starts spending
+  usage credits ("Claude Work is using usage credits · The 5-hour limit is full · $0.40 spent so far") and one when
+  they run out.
 - **Dock icon clicks:** what a click does (usage for N seconds while Claude opens, just open Claude,
   or the details panel), press and hold, and the panel design (Glow, Rings, Numbers, Segments, Pace),
   previewed at full size. Without a Claude window a click only shows the usage ("just open Claude" shows
