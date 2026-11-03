@@ -9,10 +9,19 @@ import SwiftUI
 struct Reply {
     let account: String        // account id
     let date: Date
-    let model: String
+    let model: String          // "Opus 5.5"
     let project: String
     let surface: String
     let tokens: Int            // input + cache writes + output (cache reads are left out: they dwarf the rest)
+    // each kind on its own, for the CSV export and the cost estimate
+    var modelID = ""           // "claude-opus-5-5"
+    var input = 0
+    var output = 0
+    var cacheWrite5m = 0
+    var cacheWrite1h = 0
+    var cacheRead = 0
+    var fast = false           // usage.speed "fast"
+    var usOnly = false         // usage.inference_geo "us"
 }
 
 enum StatsScanner {
@@ -75,10 +84,19 @@ enum StatsScanner {
             let id = (msg["id"] as? String) ?? (j["requestId"] as? String) ?? (j["uuid"] as? String) ?? ts
             if !seen.insert(id).inserted { continue }
             func n(_ k: String) -> Int { (usage[k] as? NSNumber)?.intValue ?? 0 }
+            // cache writes: the 5-minute and 1-hour ones apart when the line has them, else all as 5-minute
+            let writes = n("cache_creation_input_tokens"), split = usage["cache_creation"] as? [String: Any]
+            func w(_ k: String) -> Int { (split?[k] as? NSNumber)?.intValue ?? 0 }
+            let w1h = split == nil ? 0 : w("ephemeral_1h_input_tokens")
+            let w5m = split == nil ? writes : w("ephemeral_5m_input_tokens")
             out.append(Reply(account: account, date: date, model: modelName(model),
                              project: projectName(j["cwd"] as? String),
                              surface: surfaceName(j["entrypoint"] as? String),
-                             tokens: n("input_tokens") + n("cache_creation_input_tokens") + n("output_tokens")))
+                             tokens: n("input_tokens") + writes + n("output_tokens"),
+                             modelID: model, input: n("input_tokens"), output: n("output_tokens"),
+                             cacheWrite5m: w5m, cacheWrite1h: w1h, cacheRead: n("cache_read_input_tokens"),
+                             fast: (usage["speed"] as? String) == "fast",
+                             usOnly: (usage["inference_geo"] as? String) == "us"))
         }
         return out
     }

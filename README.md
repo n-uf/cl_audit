@@ -154,7 +154,9 @@ Below the cards, **Usage history** (24 h / 7 d / 30 d) is read from the session 
 on this Mac (only time, model, token counts, project folder and surface of each reply): when you use
 Claude, tokens per day per profile, and where they go (by project, model and surface). The period and
 the **Show** chips next to it filter the charts and are kept between launches. Usage from claude.ai
-chats, other computers or cloud sessions isn't there.
+chats, other computers or cloud sessions isn't there. The **CSV** key saves the period as a CSV file: one row per
+day, profile and model (optionally split by project, by folder name only), with the replies and each kind of token
+(input, output, 5-minute and 1-hour cache writes, cache reads).
 
 cl_audit stays in the Dock as a launcher:
 

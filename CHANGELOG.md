@@ -18,6 +18,8 @@ the notes before updating.
 - **Menu bar item** (Settings ▸ General ▸ Menu bar, off by default). Every profile's limits in the menu bar, with
   or without Dock icons. The icon is the profile with the least room as two thin bars, with the countdown while a
   limit is full; the menu lists every profile, then Refresh now and Open cl_audit.
+- **Export the usage history as CSV.** The CSV key next to the period saves one row per day, profile and model
+  (optionally per project, by folder name), with replies and each kind of token.
 
 ## 26.10.11 — 2026-10-27
 

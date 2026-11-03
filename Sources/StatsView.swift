@@ -56,13 +56,26 @@ struct StatsSection: View {
         KeyPicker(options: StatsRange.allCases, selection: $stats.range) { $0.title }.fixedSize()
     }
 
+    /// The period as a CSV file (Export.swift).
+    private var exportKey: some View {
+        Button { UsageExport.run(range: stats.range, entries: stats.accounts) } label: {
+            KeyLook(height: 22, hPad: 9) {
+                HStack(spacing: 4) { Image(systemName: "square.and.arrow.down").font(.system(size: 10, weight: .semibold)); Text("CSV") }
+            }
+        }
+        .buttonStyle(PressableKey())
+        .fixedSize()
+        .disabled(!stats.loaded || stats.accounts.isEmpty)
+        .help("Export this period as a CSV file: one row per day, profile and model, with each kind of token")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // one line: the title, which charts to show, the totals and the period; two lines when narrow
+            // one line: the title, which charts to show, the totals, the period and the export; two lines when narrow
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 12) { title; chartKeys; Spacer(minLength: 8); totals; period }
+                HStack(spacing: 12) { title; chartKeys; Spacer(minLength: 8); totals; period; exportKey }
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(spacing: 12) { title; Spacer(minLength: 8); totals; period }
+                    HStack(spacing: 12) { title; Spacer(minLength: 8); totals; period; exportKey }
                     chartKeys
                 }
             }
