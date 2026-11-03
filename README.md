@@ -141,11 +141,21 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
 
 ### Widget
 
-cl_audit has a macOS widget (macOS 14 and later), **Claude usage**: every profile's 5-hour and weekly limits as bars,
-and when a full one is back ("back at 15:28"). Add it from the widget gallery (Edit Widgets) to the desktop or
-Notification Center, in three sizes: small (the two profiles with the least room), medium (four) and large (eight,
-with Fable's limit). It only reads what the agent saves, through a read-only sandbox exception for cl_audit's own
-folder; no Keychain, no network. macOS refreshes it every few minutes.
+cl_audit has a macOS widget (macOS 14 and later), **Claude usage**: every profile's 5-hour and weekly limits, and
+when a full one is back ("back at 15:28"). Add it from the widget gallery (click the date in the menu bar, then Edit
+Widgets) to the desktop or Notification Center, in three sizes. Its look is in Settings ▸ General ▸ **Widget**, built
+like the Dashboard cards card, with the real widget as the preview:
+
+- **Limits as:** Glow, Rings, Numbers, Segments or Pace, like the dashboard cards.
+- **Look:** System (the Mac's own widget background, light or dark) or cl_audit's Std, Black and Silver faces.
+- **Layout:** **Fill** (every profile, bigger when there are few; the large size adds the next three resets),
+  **Hero** (the profile with the least room large, the others compact) or **List** (one row per profile, up to
+  eight). Whatever the layout and size, the content spreads over the whole widget.
+- **Reset times**, **Fable's limit** and **Next resets** (the last two in the large size).
+
+It only reads what cl_audit saves (the profiles, their usage and `widget.json` with its look), through a read-only
+sandbox exception for cl_audit's own folder; no Keychain, no network. macOS refreshes it every few minutes, and at
+once when the look changes.
 
 ### Fable's weekly limit and usage credits
 

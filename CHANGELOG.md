@@ -30,7 +30,10 @@ the notes before updating.
 - Dashboard: the Open window key's light stays dark while the Claude window is closed and lights once it's open
   ("Show window"), like the switches above it; it no longer looks as if the window were running.
 - **Widget** (macOS 14 and later): "Claude usage" in the widget gallery, with every profile's 5-hour and weekly
-  limits and when a full one is back, in three sizes. It reads only what the agent saves.
+  limits and when a full one is back, in three sizes. Its look is in Settings ▸ General ▸ Widget, with the real
+  widget as the preview: limits as Glow, Rings, Numbers, Segments or Pace; the System look or cl_audit's Std, Black
+  and Silver faces; Fill, Hero or List; reset times, Fable's limit and the next resets. Every size fills its space.
+  It reads only what cl_audit saves.
 - **Export the usage history as CSV.** The CSV key next to the period saves one row per day, profile and model
   (optionally per project, by folder name), with replies and each kind of token.
 - **Cost estimate at API list prices** in the usage history's totals ("≈ $123 at list prices") and in the CSV:

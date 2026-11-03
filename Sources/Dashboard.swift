@@ -36,13 +36,13 @@ struct DashboardSettings: View {
     var body: some View {
         SettingsColumns(width: width,
                         groups: [[AnyView(ColumnHead(text: "cl_audit")), AnyView(usageCard), AnyView(emailsCard), AnyView(aboutCard)],
-                                 [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard)],
+                                 [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard), AnyView(WidgetCard())],
                                  [AnyView(ColumnHead(text: "The Dock and the menu bar")), AnyView(appIconCard), AnyView(DockCard()),
                                   AnyView(menuBarCard)]],
                         two: [[AnyView(ColumnHead(text: "cl_audit · the Dock")), AnyView(usageCard), AnyView(emailsCard),
                                AnyView(aboutCard), AnyView(appIconCard), AnyView(DockCard())],
                               [AnyView(ColumnHead(text: "How usage looks · the menu bar")), AnyView(faceCard), AnyView(cardsCard),
-                               AnyView(menuBarCard)]])
+                               AnyView(WidgetCard()), AnyView(menuBarCard)]])
     }
 
     // Menu bar: every profile's limits there too, drawn by the agent; its look (MenuBar.swift)
