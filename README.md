@@ -295,9 +295,16 @@ bottom. Every row is one line.
   with one Claude pin before them (or none), and redoes it after profiles are added, removed or renamed.
   Other apps keep their places. The card pictures your Dock with the changes marked; **Arrange Dock**
   applies them, and **Restore my Dock** puts back the pins saved before the first change.
-- **Menu bar:** **Show in the menu bar** (off by default). An icon in the menu bar with every profile's limits,
-  drawn by the agent, so it works with no Dock icons at all. The icon is the profile with the least room: its
-  5-hour and weekly limits as two thin bars, and while a limit holds it back, the countdown beside them ("1h 42m").
+- **Menu bar:** **In the menu bar** (off by default). An icon in the menu bar with every profile's limits,
+  drawn by the agent, so it works with no Dock icons at all. Its look, built like a profile's Icon card (a preview
+  from "no numbers yet" to "full" in a dark and a light menu bar, each choice drawn as it would look):
+  - **Style:** Two bars (5-hour over week), Bars + number, Ring (week outside, 5-hour inside), Ring + number,
+    Number (the fuller limit), Two numbers.
+  - **Colours:** the level colours, Plain (the menu bar's own, like Apple's icons) or the profile's colour; a full
+    limit is red in all three.
+  - **Shows:** the profile with the least room, One profile (picked from a menu), or Every profile side by side.
+  - **Label:** none, or the profile's label before its icon ("MAIN").
+  - **When full:** the countdown beside the icon ("1h 42m"), or red only.
   A click opens a menu with every profile (its limits, Fable's when the plan has one, when each resets, usage
   credits while they're spent), then **Refresh now**, **Open cl_audit** and **Hide from the menu bar**.
 

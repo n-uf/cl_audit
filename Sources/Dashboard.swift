@@ -45,16 +45,8 @@ struct DashboardSettings: View {
                                AnyView(menuBarCard)]])
     }
 
-    @ObservedObject private var menuBar = MenuBarPrefs.shared
-
-    // Menu bar: every profile's limits there too, drawn by the agent (MenuBar.swift)
-    var menuBarCard: some View {
-        SCard(title: "Menu bar") {
-            SRow(label: "Show in the menu bar", info: "An icon in the menu bar with every profile's limits, with or without Dock icons. The icon shows the profile with the least room as two bars (5-hour over week), and while a limit is full, when it's back.", first: true) {
-                Toggle("", isOn: Binding(get: { menuBar.show }, set: { menuBar.set($0) })).smallSwitch()
-            }
-        }
-    }
+    // Menu bar: every profile's limits there too, drawn by the agent; its look (MenuBar.swift)
+    var menuBarCard: some View { MenuBarCard() }
 
     @Environment(\.face) private var face
     @ObservedObject private var privacy = Privacy.shared

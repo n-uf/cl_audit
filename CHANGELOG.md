@@ -23,6 +23,10 @@ the notes before updating.
   Dock, Menu bar). A profile: Who it is (Profile, Claude Code, Alerts), How it opens (Claude window, Dock icon) and
   How its Dock icon looks (Icon). "Opening and closing" and "Dock icon clicks" became one **Dock icon** card and a
   **Claude window** card; "Updates and alerts" is **Alerts**; "Emails" is **Privacy**.
+- **Menu bar looks.** The Menu bar card gets a style gallery (two bars, bars + number, ring, ring + number,
+  number, two numbers), a preview from "no numbers yet" to "full" in a dark and a light menu bar, and choices:
+  colours (levels, plain, the profile's), which profile (least room, one, every), its label, and the countdown or
+  just red when a limit is full.
 - Dashboard: the Open window key's light stays dark while the Claude window is closed and lights once it's open
   ("Show window"), like the switches above it; it no longer looks as if the window were running.
 - **Widget** (macOS 14 and later): "Claude usage" in the widget gallery, with every profile's 5-hour and weekly
