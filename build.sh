@@ -20,8 +20,9 @@ build="$(git -C "$here" rev-list --count HEAD 2>/dev/null || echo 1)"
 rm -rf "$out"; mkdir -p "$out"
 echo "compiling…"
 swiftc -O -swift-version 5 -target arm64-apple-macos13.0 \
-  -o "$out/UsageDock" "$here"/Sources/*.swift \
-  -framework AppKit -framework SwiftUI -framework Charts -framework Security -framework ServiceManagement -framework UserNotifications
+  -o "$out/UsageDock" "$here"/Sources/*.swift "$here/Widget/WidgetViews.swift" \
+  -framework AppKit -framework SwiftUI -framework Charts -framework Security -framework ServiceManagement -framework UserNotifications \
+  -framework WidgetKit
 
 app="$out/$name.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -103,7 +104,7 @@ wx="$app/Contents/PlugIns/$name Widget.appex"
 mkdir -p "$wx/Contents/MacOS"
 echo "compiling the widget…"
 swiftc -O -swift-version 5 -target arm64-apple-macos14.0 -application-extension -parse-as-library \
-  -o "$wx/Contents/MacOS/cl_audit-widget" "$here/Widget/Widget.swift" \
+  -o "$wx/Contents/MacOS/cl_audit-widget" "$here/Widget/Widget.swift" "$here/Widget/WidgetViews.swift" \
   -framework WidgetKit -framework SwiftUI -Xlinker -e -Xlinker _NSExtensionMain
 cat > "$wx/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
