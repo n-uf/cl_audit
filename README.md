@@ -156,7 +156,13 @@ Claude, tokens per day per profile, and where they go (by project, model and sur
 the **Show** chips next to it filter the charts and are kept between launches. Usage from claude.ai
 chats, other computers or cloud sessions isn't there. The **CSV** key saves the period as a CSV file: one row per
 day, profile and model (optionally split by project, by folder name only), with the replies and each kind of token
-(input, output, 5-minute and 1-hour cache writes, cache reads).
+(input, output, 5-minute and 1-hour cache writes, cache reads) and the cost estimate.
+
+The totals next to the title include a **cost estimate at Anthropic's API list prices** ("≈ $123 at list prices"):
+what the same tokens would cost on the API, per model, with 5-minute and 1-hour cache writes and cache reads priced
+apart (fast mode and US-only inference too). It's not your bill: use on a Pro, Max, Ultra or Team plan is paid for
+by the plan. Models without a published price are left out, never guessed. The prices are built in, dated (see
+`Sources/Pricing.swift`), and updated with cl_audit releases.
 
 cl_audit stays in the Dock as a launcher:
 

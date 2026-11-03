@@ -7,7 +7,10 @@ import UniformTypeIdentifiers
 
 enum UsageExport {
     struct Key: Hashable { let day: String; let profile: String; let model: String; let project: String }
-    struct Sum { var replies = 0, input = 0, output = 0, write5m = 0, write1h = 0, read = 0, tokens = 0 }
+    struct Sum {
+        var replies = 0, input = 0, output = 0, write5m = 0, write1h = 0, read = 0, tokens = 0
+        var cost = 0.0, priced = false            // at API list prices (Pricing.swift); empty for a model without one
+    }
 
     /// The CSV text. `byProject` adds a project column and splits the rows by it.
     static func csv(_ replies: [Reply], names: [String: String], byProject: Bool) -> String {
@@ -22,17 +25,19 @@ enum UsageExport {
             s.input += r.input; s.output += r.output
             s.write5m += r.cacheWrite5m; s.write1h += r.cacheWrite1h; s.read += r.cacheRead
             s.tokens += r.tokens
+            if let c = Pricing.cost(r) { s.cost += c; s.priced = true }
             sums[k] = s
         }
         let head = ["date", "profile", "model"] + (byProject ? ["project"] : [])
             + ["replies", "input_tokens", "output_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens",
-               "cache_read_tokens", "total_tokens"]
+               "cache_read_tokens", "total_tokens", "estimated_cost_usd_at_list_prices"]
         var lines = [head.joined(separator: ",")]
         let keys = sums.keys.sorted { ($0.day, $0.profile, $0.model, $0.project) < ($1.day, $1.profile, $1.model, $1.project) }
         for k in keys {
             let s = sums[k]!
             let text = [k.day, k.profile, k.model] + (byProject ? [k.project] : [])
             let numbers = [s.replies, s.input, s.output, s.write5m, s.write1h, s.read, s.tokens].map(String.init)
+                + [s.priced ? String(format: "%.4f", s.cost) : ""]
             lines.append((text.map(field) + numbers).joined(separator: ","))
         }
         return lines.joined(separator: "\n") + "\n"

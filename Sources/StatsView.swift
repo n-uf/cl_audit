@@ -47,9 +47,27 @@ struct StatsSection: View {
 
     /// Replies and tokens in the period: black glass (on Silver too), like the site.
     private var totals: some View {
-        stats.loaded
-            ? DisplayWindow(text: "\(stats.totalReplies.formatted()) replies", dim: "· \(StatsFormat.tokens(stats.totalTokens)) tokens", black: true)
-            : DisplayWindow(text: "Reading…", dim: "session files", black: true)
+        Group {
+            if stats.loaded {
+                // the cost at API list prices, when there's anything to price; the words say it's not a bill
+                let cost = stats.totalCost > 0 ? " · ≈ \(Pricing.words(stats.totalCost)) at list prices" : ""
+                ViewThatFits(in: .horizontal) {
+                    DisplayWindow(text: "\(stats.totalReplies.formatted()) replies",
+                                  dim: "· \(StatsFormat.tokens(stats.totalTokens)) tokens" + cost, black: true)
+                    DisplayWindow(text: "\(stats.totalReplies.formatted()) replies",
+                                  dim: stats.totalCost > 0 ? "· ≈ \(Pricing.words(stats.totalCost))" : "· \(StatsFormat.tokens(stats.totalTokens)) tokens",
+                                  black: true)
+                }
+                .help(costHelp)
+            } else {
+                DisplayWindow(text: "Reading…", dim: "session files", black: true)
+            }
+        }
+    }
+
+    private var costHelp: String {
+        "≈ cost: an estimate at Anthropic's API list prices (\(Pricing.asOf)), not your bill. Use on a Pro, Max, Ultra or Team plan is paid for by the plan; this is what the same tokens would cost on the API."
+            + (stats.unpriced > 0 ? " \(stats.unpriced.formatted()) replies of models without a published price are left out." : "")
     }
 
     private var period: some View {
@@ -112,7 +130,8 @@ struct StatsSection: View {
                     }
                 }
                 Spacer()
-                Text("From the session files on this Mac (terminal, desktop Code tab, VS Code, SDK apps).")
+                Text("From the session files on this Mac (terminal, desktop Code tab, VS Code, SDK apps). ≈ cost: at API list prices, not your bill.")
+                    .help(costHelp)
             }
             .font(.caption).foregroundStyle(face.muted)
         }

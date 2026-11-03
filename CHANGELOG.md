@@ -20,6 +20,9 @@ the notes before updating.
   limit is full; the menu lists every profile, then Refresh now and Open cl_audit.
 - **Export the usage history as CSV.** The CSV key next to the period saves one row per day, profile and model
   (optionally per project, by folder name), with replies and each kind of token.
+- **Cost estimate at API list prices** in the usage history's totals ("≈ $123 at list prices") and in the CSV:
+  what the same tokens would cost on the API, per model, cache writes and reads priced apart. Not your bill;
+  models without a published price are left out.
 
 ## 26.10.11 — 2026-10-27
 

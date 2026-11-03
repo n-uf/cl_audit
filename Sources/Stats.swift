@@ -181,6 +181,8 @@ final class StatsModel: ObservableObject {
     @Published var breakdown = Breakdown()
     @Published var totalTokens = 0
     @Published var totalReplies = 0
+    @Published var totalCost: Double = 0        // the period at API list prices (Pricing.swift), models with a price
+    @Published var unpriced = 0                 // replies of models without a published price, left out of it
     var accounts: [AccountEntry] = []
     var hidden: Set<String> = []            // accounts the dashboard leaves out
     private var generation = 0
@@ -200,6 +202,8 @@ final class StatsModel: ObservableObject {
         DispatchQueue.global(qos: .utility).async {
             let replies = StatsScanner.replies(for: entries, since: range.since)
             let result = Self.aggregate(replies, range: range)
+            let costs = replies.map(Pricing.cost)
+            let cost = costs.compactMap { $0 }.reduce(0, +), unpriced = costs.filter { $0 == nil }.count
             DispatchQueue.main.async {
                 guard gen == self.generation else { return }
                 self.accounts = entries
@@ -208,6 +212,8 @@ final class StatsModel: ObservableObject {
                 self.heatDays = result.days
                 self.totalTokens = result.tokens
                 self.totalReplies = replies.count
+                self.totalCost = cost
+                self.unpriced = unpriced
                 self.breakdown = Breakdown(
                     projects: self.shares(result.byProject, top: 6, palette: nil),
                     models: self.shares(result.byModel, top: 4, palette: [.purple, .blue, .pink, .green]),
