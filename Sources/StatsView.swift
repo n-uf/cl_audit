@@ -225,8 +225,10 @@ struct TokenChart: View {
 
     var body: some View {
         let ids = stats.accounts.map(\.id)
-        let known = Set(ids)
+        let known = Set(ids), rank = ProfileOrder.ranks(ids)
+        // stacked in profile order, the first profile at the bottom of each bar
         let bars = stats.bars.filter { known.contains($0.account) }
+            .sorted { ($0.bucket, rank[$0.account] ?? 0) < ($1.bucket, rank[$1.account] ?? 0) }
         if ids.isEmpty {
             Text(stats.loaded ? "No profile selected" : "Reading the session files…").font(.callout).foregroundStyle(.secondary).frame(maxWidth: .infinity, minHeight: 190)
         } else {

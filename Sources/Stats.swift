@@ -332,7 +332,8 @@ struct WeekSpark: View {
                         RoundedRectangle(cornerRadius: 1).fill(Color.primary.opacity(0.14)).frame(height: 2)
                     } else {
                         VStack(spacing: 0) {
-                            ForEach(d.parts, id: \.account) { p in
+                            // stacked like the dashboard's bars: the first profile at the bottom
+                            ForEach(d.parts.reversed(), id: \.account) { p in
                                 Rectangle().fill(result.colors[p.account] ?? .gray)
                                     .frame(height: max(1, height * CGFloat(p.tokens) / top))
                             }

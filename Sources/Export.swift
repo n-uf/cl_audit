@@ -12,8 +12,9 @@ enum UsageExport {
         var cost = 0.0, priced = false            // at API list prices (Pricing.swift); empty for a model without one
     }
 
-    /// The CSV text. `byProject` adds a project column and splits the rows by it.
-    static func csv(_ replies: [Reply], names: [String: String], byProject: Bool) -> String {
+    /// The CSV text. `byProject` adds a project column and splits the rows by it. Each day's rows are in profile order
+    /// (`order`: the profile ids; any other profile after them, by name).
+    static func csv(_ replies: [Reply], names: [String: String], order: [String] = [], byProject: Bool) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd"
         var sums: [Key: Sum] = [:]
@@ -32,7 +33,12 @@ enum UsageExport {
             + ["replies", "input_tokens", "output_tokens", "cache_write_5m_tokens", "cache_write_1h_tokens",
                "cache_read_tokens", "total_tokens", "estimated_cost_usd_at_list_prices"]
         var lines = [head.joined(separator: ",")]
-        let keys = sums.keys.sorted { ($0.day, $0.profile, $0.model, $0.project) < ($1.day, $1.profile, $1.model, $1.project) }
+        var rank: [String: Int] = [:]          // by the name printed in the profile column
+        for (i, id) in order.enumerated() { let n = names[id] ?? id; if rank[n] == nil { rank[n] = i } }
+        let keys = sums.keys.sorted {
+            ($0.day, rank[$0.profile] ?? Int.max, $0.profile, $0.model, $0.project)
+                < ($1.day, rank[$1.profile] ?? Int.max, $1.profile, $1.model, $1.project)
+        }
         for k in keys {
             let s = sums[k]!
             let text = [k.day, k.profile, k.model] + (byProject ? [k.project] : [])
@@ -69,7 +75,8 @@ enum UsageExport {
         let byProject = split.state == .on
         let names = Dictionary(entries.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
         DispatchQueue.global(qos: .userInitiated).async {
-            let text = csv(StatsScanner.replies(for: entries, since: range.since), names: names, byProject: byProject)
+            let text = csv(StatsScanner.replies(for: entries, since: range.since), names: names, order: entries.map(\.id),
+                           byProject: byProject)
             do { try text.write(to: url, atomically: true, encoding: .utf8) }
             catch { DispatchQueue.main.async { NSAlert(error: error).runModal() } }
         }
