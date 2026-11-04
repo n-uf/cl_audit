@@ -220,6 +220,14 @@ icons follow at once; a profile's name or icon label is saved when you press Ret
 because that renames its Dock icon app; the top strip says when it's done. **Show emails** (General settings) off leaves email addresses out of the launcher, dashboard,
 panels and Dock menus, and blurs them in Settings (hover one to see it), for screen sharing.
 
+**Profile order:** drag a profile's tile left or right along the top (General stays first, ＋ last); the others move
+aside and a lit socket shows where it lands. It's saved when you let go ("Saved · order"); VoiceOver has Move left and
+Move right. The dashboard's cards and profile keys, the launcher and its ⌘1, ⌘2…, the menu bar icons, the widget,
+the usage history (bars, legend, CSV) and cl_audit's Dock menu all follow it. The menu bar icons line up in the new
+order (⌘-drag still moves them after, until the next new order). The Dock icons stay where you put them: move them in
+the Dock (or, with General ▸ Dock ▸ Keep in order on, press Arrange Dock). The order is the order of the profiles in
+`accounts.json`, so there's no setting of its own.
+
 Cards are at most one column wide: three columns from about 1180 pt, two from 800, one below. Controls
 sit next to their labels; every (i) opens a short explanation, some with a picture. Changing a setting that
 has no picture of its own shows a short note at the bottom of the page saying what it now does; it floats
