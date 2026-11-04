@@ -194,6 +194,10 @@ final class StatsModel: ObservableObject {
     var accounts: [AccountEntry] = []
     var hidden: Set<String> = []            // accounts the dashboard leaves out
     private var generation = 0
+    /// One scan at a time: a reload asked for while one is under way runs once it's done. On a busy Mac a scan takes
+    /// longer than the dashboard's one-minute refresh, and scans started side by side each read the same files again.
+    private var scanning = false
+    private var again = false
 
     func color(_ account: String) -> Color {
         guard let e = accounts.first(where: { $0.id == account }) else { return .gray }
@@ -201,18 +205,22 @@ final class StatsModel: ObservableObject {
     }
 
     func reload() {
+        generation += 1
+        loading = true
+        if scanning { again = true; return }
+        scanning = true
         // The accounts change together with the bars (on the main thread, below): a bar for an account the
         // chart doesn't list makes Swift Charts crash.
         let entries = Store.load().filter { !hidden.contains($0.id) }, range = self.range
-        generation += 1
         let gen = generation
-        loading = true
         DispatchQueue.global(qos: .utility).async {
             let replies = StatsScanner.replies(for: entries, since: range.since)
             let result = Self.aggregate(replies, range: range)
             let costs = replies.map(Pricing.cost)
             let cost = costs.compactMap { $0 }.reduce(0, +), unpriced = costs.filter { $0 == nil }.count
             DispatchQueue.main.async {
+                self.scanning = false
+                if self.again { self.again = false; self.reload(); return }     // asked again meanwhile: this one is out of date
                 guard gen == self.generation else { return }
                 self.accounts = entries
                 self.bars = result.bars
