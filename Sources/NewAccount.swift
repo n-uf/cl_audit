@@ -387,9 +387,10 @@ struct NewAccountView: View {
         // the folder card takes what is left, so the steps pane keeps the same gap to the window's edge
         return ScrollView {
             HStack(alignment: .top, spacing: 12) {
-                VStack(spacing: 10) { accountCard(labelWidth: 76, stacked: false) }
+                // layout A: who it is and each part in its own card, the part's switch first
+                VStack(spacing: 10) { profileCard(stacked: false); windowCard(stacked: false); dockCard(stacked: false) }
                     .frame(width: col1)
-                folderCard(labelWidth: 76, stacked: false).frame(minWidth: 0, maxWidth: .infinity)
+                folderCard(stacked: false).frame(minWidth: 0, maxWidth: .infinity)
                 stepsPanel.frame(width: col3)
             }
             .frame(width: max(0, w - 32), alignment: .topLeading)   // never wider than the window
@@ -398,13 +399,14 @@ struct NewAccountView: View {
     }
 
     private func column(narrow: Bool) -> some View {
-        let lw: CGFloat = narrow ? 0 : 120
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
                     progressStrip(compact: narrow)
-                    accountCard(labelWidth: lw, stacked: narrow)
-                    folderCard(labelWidth: lw, stacked: narrow)
+                    profileCard(stacked: narrow)
+                    folderCard(stacked: narrow)
+                    windowCard(stacked: narrow)
+                    dockCard(stacked: narrow)
                     if folders { signInCard }
                 }
                 .frame(maxWidth: 700)
@@ -418,27 +420,45 @@ struct NewAccountView: View {
 
     // MARK: cards
 
-    private func accountCard(labelWidth: CGFloat, stacked: Bool) -> some View {
-        SCard(title: "Profile") {
-          // No row labels: a name field and colour swatches say what they are.
-           VStack(alignment: .leading, spacing: 10) {
-                SField(placeholder: "Name, e.g. personal", text: $draft.name, width: nil)
-                    .disabled(draft.started)
+    /// Profile: who it is (name and colour), in rows like Settings ▸ Profile.
+    private func profileCard(stacked: Bool) -> some View {
+        SCard(title: "Profile", info: "The new profile: one Claude account, with its Claude Code folder and, if you want them, a Claude window and a Dock icon. Its click and panel settings start as \(draft.template?.name ?? "the other profiles'").") {
+            SRow(label: "Name", info: "What cl_audit calls this profile. Its Dock icon is “cl_audit \(draft.name.isEmpty ? "<name>" : draft.name)”, and a new Claude Code folder is \(draft.name.isEmpty ? "~/.claude-<name>" : draft.newConfigDir).", first: true, stacked: stacked) {
+                SField(placeholder: "e.g. personal", text: $draft.name, width: nil).disabled(draft.started)
+            }
+            if let clash = checks(.account).first { SRowLine(text: clash.text, color: face.danger) }
+            SRow(label: "Colour", info: "The profile's colour in the launcher, on the dashboard and in its panels.", stacked: stacked) {
                 FlowLayout(spacing: 6) {
                     ForEach(TileColor.accents, id: \.self) { c in
                         Swatch(color: c, selected: draft.color == c, size: 16).onTapGesture { draft.color = c }
                     }
                 }
-                .padding(.leading, -3)
-                ProfileSwitches(usageInDock: draft.usageInDock, claudeWindow: draft.claudeWindow,
-                                setUsageInDock: { draft.usageInDock = $0 }, setClaudeWindow: { draft.claudeWindow = $0 })
-                    .padding(.top, 2)
-           }
-           .frame(maxWidth: .infinity, alignment: .leading)
-           .padding(.top, 2)
-            statusLines(checks(.account), indent: 0).padding(.top, 4)
-            // the Claude window comes from the folder; only a clash needs saying
-            statusLines(checks(.window).filter { $0.state != .ok }, indent: 0)
+                .padding(.vertical, 6)
+                .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+            }
+        }
+    }
+
+    /// Claude window: its switch first (layout A). Which window follows from the folder: ~/.claude uses the usual Claude
+    /// app, any other folder its own window; only a clash with another profile's window needs a line.
+    private func windowCard(stacked: Bool) -> some View {
+        SCard(title: "Claude window", info: "A Claude window signed in to this profile's account. A folder other than ~/.claude gets its own window, with its own sign-in and Code sidebar; ~/.claude uses the usual Claude app. Off: no window, and no window sign-in step; Claude Code in Terminal still works.") {
+            SRow(label: "Claude window", info: "On: a Claude window for this profile, opened from the dashboard or its Dock icon. Off: none; its folder and sign-in are kept, so turning it on later needs no new setup.", first: true, stacked: stacked) {
+                SSwitch(isOn: $draft.claudeWindow, on: draft.window == .standard ? "the usual Claude app" : "its own window", off: "none")
+                    .disabled(draft.started)
+            }
+            if draft.claudeWindow, let clash = checks(.window).first(where: { $0.state != .ok }) {
+                SRowLine(text: clash.text, color: clash.state == .bad ? face.danger : face.caution)
+            }
+        }
+    }
+
+    /// Dock icon: its switch first (layout A); the rest of its settings start as the template profile's.
+    private func dockCard(stacked: Bool) -> some View {
+        SCard(title: "Dock icon", info: "A Dock icon, “cl_audit \(draft.name.isEmpty ? "<name>" : draft.name)”, showing this profile's usage; how it runs, its click and its look start as \(draft.template?.name ?? "the other profiles'") and are in the profile's settings afterwards.") {
+            SRow(label: "Usage in the Dock", info: "On: Finish installs the Dock icon and puts it in the Dock. Off: nothing is installed and the Dock isn't touched; cl_audit still reads the usage for the dashboard, the launcher and alerts.", first: true, stacked: stacked) {
+                SSwitch(isOn: $draft.usageInDock, on: "shows the usage", off: "no Dock icon")
+            }
         }
     }
 
@@ -447,8 +467,8 @@ struct NewAccountView: View {
     /// uses connects that folder as it is; "Sign in to another account…" signs in, with the address filled in, in a
     /// new folder (~/.claude-<id>). Folders are used where they are: Claude Code names a folder's Keychain sign-in
     /// after its path, so moving one would lose it.
-    private func folderCard(labelWidth: CGFloat, stacked: Bool) -> some View {
-        SCard(title: "Claude Code") {
+    private func folderCard(stacked: Bool) -> some View {
+        SCard(title: "Claude Code", info: "Where this profile's Claude Code sign-in, settings and history live: one folder, signed in to one claude.ai account. Folders are used where they are; Claude Code names a folder's Keychain sign-in after its path, so a moved folder would lose it.") {
             SRow(label: "Account", info: "The claude.ai account this profile is for. Accounts signed in in Claude Code folders on this Mac that no profile uses come with their folder; other profiles' are dimmed (one profile per account). Sign in to another account… opens Claude Code's own sign-in in Terminal with the address filled in; the browser's claude.ai account decides which account it is, checked afterwards by its account and organisation ids.", first: true, stacked: stacked) {
                 accountValue
             }
@@ -456,10 +476,10 @@ struct NewAccountView: View {
             SRow(label: "Folder", info: "The Claude Code folder for this profile: its sign-in, settings and history live there. It follows the account; picking one by hand shows who is signed in there. New folder: ~/.claude-<name>, with the items below linked from another folder.", stacked: stacked) {
                 folderPopup
             }
-            if draft.source == .new {
-                shareChoice.padding(.top, 2).padding(.bottom, 6).frame(maxWidth: .infinity, alignment: .leading)
+            if let c = checks(.folder).first(where: { $0.state == .bad || $0.state == .warn }) {
+                SRowLine(text: c.text, color: c.state == .bad ? face.danger : face.caution)
             }
-            statusLines(checks(.folder).filter { $0.state == .bad || $0.state == .warn }, indent: 0).padding(.top, 4)
+            if draft.source == .new { shareRows(stacked: stacked) }
         }
     }
 
@@ -584,10 +604,7 @@ struct NewAccountView: View {
             if freeAccounts.isEmpty { return ("No free Claude Code folder is signed in on this Mac: Sign in to another account… in the pop-up.", nil) }
             return nil
         }()
-        if let text {
-            Text(text.0).font(.system(size: 10.5)).foregroundStyle(text.1 ?? face.muted)
-                .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 2)
-        }
+        if let text { SRowLine(text: text.0, color: text.1) }
     }
 
     /// The Folder pop-up: a new folder, or one on this Mac with who is signed in there (other profiles' dimmed).
@@ -661,37 +678,29 @@ struct NewAccountView: View {
         draft.asking = true; addressProblem = nil          // the address typed before stays: often the same one, again
     }
 
-    /// Under “New folder”: what to link from the main folder.
-    private var shareChoice: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                Text("Share from").font(.system(size: 11)).foregroundStyle(.secondary)
-                // Any Claude Code folder on this Mac can be the source.
-                Menu {
+    /// A new folder only: which folder to link items from (a pop-up), and which items (keys under the label).
+    @ViewBuilder private func shareRows(stacked: Bool) -> some View {
+        let done = NewAccountSetup.foldersReady(draft)
+        SRow(label: "Share from", info: "The Claude Code folder the items below are linked from, so edits there show up in this profile too. Sign-in, plugins and usage stay separate.", stacked: stacked) {
+            Menu {
+                Picker("", selection: $draft.shareFrom) {
                     ForEach(shareSources, id: \.self) { p in
                         let owner = model.accounts.first { FolderKey.canonical($0.configDir) == FolderKey.canonical(p) }
-                        Button(p + (owner.map { "  ·  \($0.name)" } ?? "") + (FolderKey.canonical(p) == FolderKey.canonical(draft.shareFrom) ? "  ✓" : "")) {
-                            draft.shareFrom = p
-                        }
+                        Text(p + (owner.map { "   \($0.name)'s" } ?? "")).tag(p)
                     }
-                } label: {
-                    HStack(spacing: 3) {
-                        Text(draft.shareFrom).font(.system(size: 11, weight: .medium))
-                        Image(systemName: "chevron.down").font(.system(size: 7.5, weight: .bold))
-                    }
-                    .foregroundStyle(Color.primary.opacity(0.85))
-                    .padding(.horizontal, 7).padding(.vertical, 2)
-                    .background(Capsule().fill(Color.primary.opacity(0.08)))
                 }
-                .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-                .disabled(NewAccountSetup.foldersReady(draft))
-                InfoDot(text: "Linked, so edits there show up in this profile too. Sign-in, plugins and usage stay separate.")
-            }
+                .pickerStyle(.inline).labelsHidden()
+            } label: { MenuWell(text: draft.shareFrom, mono: true, fill: true) }
+            .faceMenuFill()
+            .disabled(done)
+            .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+        }
+        SRow(label: "Shared", info: "Linked into the new folder from the folder above. Lit keys are shared; the rest start empty in the new folder.", stacked: true) {
             WrapChips(items: SharedItem.allCases.map { ($0.title, draft.share.contains($0)) }, tint: tint) { i in
                 let item = SharedItem.allCases[i]
                 if draft.share.contains(item) { draft.share.remove(item) } else { draft.share.insert(item) }
             }
-            .disabled(NewAccountSetup.foldersReady(draft))
+            .disabled(done)
         }
     }
 
@@ -707,16 +716,19 @@ struct NewAccountView: View {
         return VStack(spacing: 1) {
             part(signedIn == nil ? (current == 3 ? .now : .todo) : owner != nil ? .warn : .done, current: current == 3,
                  title: "a · Claude Code") {
-                if let email = signedIn {
-                    sub(Privacy.masked(email) + (draft.source == .existing && !draft.started ? ", already in the folder" : ""))
+                if waiting {
+                    sub("Waiting for \(Privacy.masked(draft.email.isEmpty ? "the sign-in" : draft.email)) in the browser")
+                } else if let email = signedIn {
                     if let o = owner {
-                        Text("“\(o.name)” is linked to this Claude account. One profile per account: sign in with another account.")
-                            .font(.system(size: 11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
+                        Text("\(Privacy.masked(email)) is “\(o.name)”'s account: one profile per account")
+                            .font(.system(size: 11.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
                         if canSignInAgain {
                             // signing in again in the folder this setup made replaces its sign-in; no sign-out first
-                            Button("sign in to another account") { askAddress() }
-                                .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary).underline()
+                            Button("Sign in to another account…") { askAddress() }
+                                .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().padding(.top, 3)
                         }
+                    } else {
+                        sub(Privacy.masked(email) + (draft.source == .existing && !draft.started ? ", already in the folder" : ""))
                     }
                 } else {
                     sub(draft.email.isEmpty ? "Terminal opens; approve in the browser"
@@ -727,28 +739,27 @@ struct NewAccountView: View {
                 part(.todo, current: false, title: "b · Claude window", droppedOut: true) { sub("Only when the profile has a Claude window") }
             } else if needsDesktop {
                 let state: StepState = signedIn == nil ? .todo : desktopDone ? .done : desktop == .different ? .warn : current == 4 ? .now : .todo
-                part(state, current: current == 4, title: "b · Claude window") {
-                    if draft.window == .standard { sub("The usual Claude app") }
+                part(state, current: current == 4, title: draft.window == .standard ? "b · Claude window (the usual Claude app)" : "b · Claude window") {
+                    // one status line: its own sign-in, checked against Claude Code's by account id
                     if signedIn == nil {
                         sub("After Claude Code")
                     } else {
                         switch desktop {
-                        case .same: Text("Its window is signed in to the same account").font(.system(size: 11.5)).foregroundStyle(Color(nsColor: Painter.green))
+                        case .same: Text("Signed in to the same account").font(.system(size: 11.5)).foregroundStyle(face.ok)
                             .fixedSize(horizontal: false, vertical: true)
-                        case .unknown: sub("Its window is signed in")
+                        case .unknown: sub("Signed in")
                         case .different:
-                            Text("Its window is signed in to a different account").font(.system(size: 11.5)).foregroundStyle(.orange)
-                                .fixedSize(horizontal: false, vertical: true)
-                            sub("In that window: Settings ▸ Log out, then sign in as \(Privacy.masked(signedIn ?? ""))")
+                            Text("Signed in to another account: in that window, Settings ▸ Log out, then sign in as \(Privacy.masked(signedIn ?? ""))")
+                                .font(.system(size: 11.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
                         default:
-                            sub("Sign in to \(draft.window == .standard ? "it" : "its own Claude window") as \(Privacy.masked(signedIn ?? "")) (a reminder: the window has its own sign-in)")
-                            if windowOpen {
-                                HStack(spacing: 5) { ProgressView().controlSize(.mini); sub("waiting for the sign-in") }
+                            HStack(spacing: 5) {
+                                if windowOpen { ProgressView().controlSize(.mini) }
+                                sub("Sign in to it as \(Privacy.masked(signedIn ?? "")): the window has its own sign-in")
                             }
                         }
                     }
-                    // Code session records stay in the data folder they were made in
-                    Text(sidebarWords).font(.system(size: 10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    // the one grey line: Code session records stay in the data folder they were made in
+                    Text(sidebarWords).font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                         .padding(.top, 2)
                 }
             }
@@ -1035,30 +1046,6 @@ struct NewAccountView: View {
 
     private func isSelected(_ path: String) -> Bool {
         draft.existingDir.map { FolderKey.canonical($0) == FolderKey.canonical(path) } ?? false
-    }
-
-    private func statusLines(_ list: [SetupCheck], indent: CGFloat) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ForEach(list) { c in
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Group {
-                        if c.state == .wait {
-                            Circle().fill(Color.secondary.opacity(0.6)).frame(width: 5, height: 5).alignmentGuide(.firstTextBaseline) { $0.height / 2 + 4 }
-                        } else {
-                            Image(systemName: c.state == .ok ? "checkmark" : c.state == .bad ? "xmark" : "exclamationmark.triangle.fill")
-                                .font(.system(size: 9, weight: .bold))
-                                .foregroundStyle(c.state == .ok ? Color(nsColor: Painter.green) : c.state == .bad ? Color.red : Color.orange)
-                        }
-                    }
-                    .frame(width: 12)
-                    Text(c.text).font(.system(size: 11.5))
-                        .foregroundStyle(c.state == .bad ? Color.red : c.state == .warn ? Color.orange : Color.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .padding(.leading, indent)
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var runSummary: String {
