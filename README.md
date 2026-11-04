@@ -240,7 +240,13 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   through it says "Saving…", then "Saved" and what changed.
 - **Claude Code:** the Claude Code folder (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder) and the sign-in
   found there; **Renew sign-in** (opt-in). Folders other profiles use are marked and can't be picked. The
-  Claude window follows from the folder (see Profile above); it isn't a setting.
+  Claude window follows from the folder (see Profile above); it isn't a setting. When the folder is signed in to
+  another account than the one the profile is linked to, the Login row turns amber and a note says so, with
+  **Use this account** (links the profile to it; its name, look, Dock icon, Claude window and settings stay) and
+  **Sign back in…** (Claude Code's sign-in for the old account). If another profile already has that account,
+  the note is red, says which profile and offers **Open** it instead: one profile per account. For a week after
+  linking, a line under Login says when and which account it was. See
+  [Moving a profile to another account](#moving-a-profile-to-another-account).
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
   ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"). **Notify when back** (on by default) sends one

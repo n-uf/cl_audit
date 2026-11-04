@@ -124,6 +124,22 @@ final class SettingsModel: ObservableObject {
         if linked != accounts { accounts = linked }
     }
 
+    /// "Use this account": links the profile to the account its Claude Code folder is signed in to now; its name, look,
+    /// Dock icon, Claude window and settings stay (FolderRules.relink). Refused, with a note, when another profile
+    /// has that account. Saved like any other change.
+    @discardableResult
+    func relink(_ id: String) -> Bool {
+        guard Self.followsDock, !needsApply, problem == nil else { return false }
+        guard let out = FolderRules.relink(id, in: accounts) else {
+            if let e = accounts.first(where: { $0.id == id }), let owner = FolderRules.seatMove(e, among: accounts)?.owner {
+                message = "“\(owner.name)” already uses that account"
+            }
+            return false
+        }
+        accounts = out
+        return true
+    }
+
     /// Picks up changes made elsewhere (e.g. an icon's own Options menu) when nothing is pending here.
     func reloadIfClean() {
         guard !needsApply else { return }
@@ -976,7 +992,13 @@ struct AccountSettings: View {
                         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Choose another folder…")
                 }
             }
-            SRow(label: "Login", info: "The claude.ai account this folder is signed in to. cl_audit's background agent reads the sign-in from the Keychain, read-only, the same way Claude Code does; no new Keychain permission.") { loginStatus }
+            SRow(label: "Login", info: "The claude.ai account this folder is signed in to. cl_audit's background agent reads the sign-in from the Keychain, read-only, the same way Claude Code does; no new Keychain permission. Signed in to another account here (claude auth login), the agent reads the new sign-in at once, and this card offers to link the profile to it.") { loginStatus }
+            if let move = seatMove {
+                seatMoveNote(move)
+            } else if let seat = entry.seat, let was = seat.was, let at = seat.linkedAt, Date().timeIntervalSince(at) < 7 * 86400 {
+                Text("Linked \(Self.when(at)) · was \(Privacy.masked(was))")
+                    .font(.system(size: 11)).foregroundStyle(face.muted).frame(maxWidth: .infinity, alignment: .trailing)
+            }
             if mismatch || status?.state == "noLogin" || status?.state == "expired" {
                 SRow(label: mismatch ? "Wrong account" : "Sign in again") {
                     Button("Log in…") {
@@ -993,9 +1015,63 @@ struct AccountSettings: View {
         }
     }
 
+    /// The folder is signed in to another account than the one the profile is linked to (or nil).
+    var seatMove: FolderRules.SeatMove? { _ = model.tick; return FolderRules.seatMove(entry, among: model.accounts) }
+
+    /// "Use this account": what happened, and the way out. Linking keeps everything else; it's refused when another
+    /// profile has the account, and then the note says which.
+    func seatMoveNote(_ move: FolderRules.SeatMove) -> some View {
+        let now = Privacy.masked(move.to.email ?? "another account")
+        let old = entry.seat?.email
+        let signBack = HStack(spacing: 6) {
+            if let old, let claude = model.claudePath {
+                Button("Sign back in…") { _ = ClaudeCLI.openLogin(claude, account: Account(entry), email: old) }
+                    .buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                    .help("Opens Claude Code's own sign-in in Terminal for this folder, with \(Privacy.masked(old)) filled in")
+            }
+        }
+        let tone = move.owner == nil ? face.caution : face.danger
+        return VStack(alignment: .leading, spacing: 8) {
+            if let owner = move.owner {
+                Text("Claude Code here is signed in to \(now), which “\(owner.name)” already uses. One profile per account: sign \(entry.name) back in, or use “\(owner.name)”.")
+                HStack(spacing: 6) {
+                    signBack
+                    Button("Open \(owner.name)") { model.selection = owner.id }
+                        .buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                }
+            } else {
+                Text("Claude Code here is signed in to \(now), but \(entry.name) is linked to \(old.map(Privacy.masked) ?? "another account"). The numbers shown are the new account's.")
+                HStack(spacing: 6) {
+                    Button("Use this account") { model.relink(entry.id) }
+                        .buttonStyle(.pill(.orange, compact: true))
+                        .help("Links \(entry.name) to \(now). Its name, look, Dock icon, Claude window and settings stay.")
+                    signBack
+                }
+            }
+        }
+        .font(.system(size: 11.5)).foregroundStyle(face.text)        // the tone is the frame's: amber on Silver is hard to read
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 7).fill(tone.opacity(0.1)))
+        .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(tone.opacity(0.5), lineWidth: 1))
+        .padding(.vertical, 4)
+    }
+
+    /// "today 14:32", "Mon 14:32".
+    static func when(_ d: Date) -> String {
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_GB")
+        f.dateFormat = Calendar.current.isDateInToday(d) ? "'today' HH:mm" : "EEE HH:mm"
+        return f.string(from: d)
+    }
+
     @ViewBuilder var loginStatus: some View {
         if mismatch {
             Label(status?.loginEmail ?? "", systemImage: "exclamationmark.triangle.fill").font(.system(size: 12)).foregroundStyle(face.danger).lineLimit(1)
+                .settingsEmail()
+        } else if let move = seatMove {
+            Label(move.to.email ?? expected ?? "another account", systemImage: "exclamationmark.triangle.fill").font(.system(size: 12))
+                .foregroundStyle(move.owner == nil ? face.caution : face.danger).lineLimit(1)
                 .settingsEmail()
         } else if status?.state == "expired" {
             Label("expired", systemImage: "clock.badge.exclamationmark").font(.system(size: 12)).foregroundStyle(face.caution)

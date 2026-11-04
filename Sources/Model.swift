@@ -28,6 +28,7 @@ struct Seat: Codable, Equatable, Hashable {
     var organization: String?      // its organizationUuid (nil when Claude recorded none)
     var email: String?             // shown only; checks compare the ids
     var linkedAt: Date?
+    var was: String?               // the email of the seat it replaced, when the profile was linked to another account
 
     /// The same seat (the ids; not the email or when it was linked).
     func same(_ o: Seat?) -> Bool { o.map { account == $0.account && organization == $0.organization } ?? false }

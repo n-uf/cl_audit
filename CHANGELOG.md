@@ -46,6 +46,11 @@ the notes before updating.
   folder (`claude auth login`), the agent sees its `.claude.json` change and reads the new sign-in straight away:
   the old account's numbers go at once, and there's no red "Wrong account" until Refresh now. One Keychain read, as
   at the start; the limit alerts start over for the new account, so the switch itself sends no "is back".
+- **Use this account.** When a profile's Claude Code folder is signed in to another account than the one the
+  profile is linked to, its settings say so (Claude Code ▸ Login, amber) and offer **Use this account**: the
+  profile is linked to the new account and keeps its name, look, Dock icon, Claude window and settings. Refused,
+  in red with the profile's name, when another profile already has that account; **Sign back in…** opens Claude
+  Code's sign-in for the old one.
 
 ## 26.10.11 — 2026-10-27
 

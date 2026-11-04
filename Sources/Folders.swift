@@ -71,6 +71,33 @@ enum FolderRules {
         return out
     }
 
+    /// A linked profile whose folder is now signed in to another seat (Claude Code was signed in to another account
+    /// there): that seat, and the profile that already has it, if any (then linking to it is refused).
+    struct SeatMove: Equatable {
+        let to: Seat
+        let owner: AccountEntry?
+    }
+
+    static func seatMove(_ e: AccountEntry, among accounts: [AccountEntry],
+                         signedIn: (String) -> Seat? = Account.signedInSeat) -> SeatMove? {
+        guard let linked = e.seat, let now = signedIn(e.configDir), !now.same(linked) else { return nil }
+        return SeatMove(to: now, owner: seatOwner(now, among: accounts, except: e.id, signedIn: signedIn))
+    }
+
+    /// "Use this account": links the profile to the seat its folder is signed in to now. Everything else stays (name,
+    /// look, Dock icon and its place, Claude window, settings). nil when there's nothing to link or another profile
+    /// has that seat.
+    static func relink(_ id: String, in accounts: [AccountEntry], signedIn: (String) -> Seat? = Account.signedInSeat,
+                       now: Date = Date()) -> [AccountEntry]? {
+        guard let i = accounts.firstIndex(where: { $0.id == id }),
+              let move = seatMove(accounts[i], among: accounts, signedIn: signedIn), move.owner == nil else { return nil }
+        var out = accounts, s = move.to
+        s.linkedAt = now
+        s.was = accounts[i].seat?.email
+        out[i].seat = s
+        return out
+    }
+
     /// A profile that can't be linked because another profile has the seat its folder is signed in to.
     static func seatTaken(_ e: AccountEntry, among accounts: [AccountEntry],
                           signedIn: (String) -> Seat? = Account.signedInSeat) -> AccountEntry? {
