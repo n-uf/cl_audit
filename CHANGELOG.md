@@ -26,12 +26,22 @@ the notes before updating.
   bars, bars + number, ring, ring + number, number, two numbers); colours in levels, **System** (drawn the way
   macOS draws its own icons), **Accent** (your Mac's accent colour) or the profile's; its label; the countdown or
   just red when a limit is full. The preview draws it the way your menu bar is now. ⌘-drag to arrange them.
-- **Settings, grouped by subject.** Each column has its subject printed at the top. Pop-ups and text fields fill
-  their row (Name, Icon label, Folder, Login, Click, Refresh every), so their right edges line up. General: cl_audit (Usage in
-  the background, Privacy, About), How usage looks (Face, Dashboard cards, Widget), the Dock (App icon, Dock). A
-  profile: Who it is (Profile, Claude Code, Alerts), Its Dock icon (Dock icon, Claude window, Icon) and Its menu bar
-  icon (Menu bar). "Opening and closing" and "Dock icon clicks" became one **Dock icon** card and a **Claude
-  window** card; "Updates and alerts" is **Alerts**; "Emails" is **Privacy**.
+- **Settings, grouped by subject.** General: cl_audit (Usage in the background, Privacy, About), How usage looks
+  (Face, Dashboard cards, Widget), the Dock (App icon, Dock), each column with its subject printed at the top.
+  "Opening and closing" and "Dock icon clicks" became one **Dock icon** card and a **Claude window** card;
+  "Updates and alerts" is **Alerts**; "Emails" is **Privacy**. Pop-ups and text fields fill their row, so their
+  right edges line up.
+- **A profile's settings in one pattern.** Each part is one card with its switch first: the **Dock icon** (when it
+  runs, a click, the usage panel and the icon's look, which was a card of its own, with a preview strip), the
+  **Claude window** (its switch, With Dock icon, Opens from) and the **Menu bar** (style and colours as tiles,
+  label and when full as segments, a preview strip); a part that's off folds its card to the switch row, whose
+  words say what's left. The two big keys at the foot of the Profile card are gone, and so are the column titles.
+  Every row has its label in the same width with an (i), every on/off is the small switch with a few words, and at
+  most one grey line under a row says what the current choice means.
+- **Opens from** (profile ▸ Claude window): **Dock click too**, as before, or **Only when asked**: a click on the
+  Dock icon never opens the Claude window, and neither does starting the Dock icon (a click on its stopped tile
+  shows the usage instead); Open window on the dashboard, the Dock and menu bar menus and the details panel still
+  do. The Click choices with Claude in them are off then, and the stored one comes back with Dock click too.
 - Dashboard: the Open window key's light stays dark while the Claude window is closed and lights once it's open
   ("Show window"), like the switches above it; it no longer looks as if the window were running.
 - **Widget** (macOS 14 and later): "Claude usage" in the widget gallery, with every profile's 5-hour and weekly

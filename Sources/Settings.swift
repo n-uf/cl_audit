@@ -754,7 +754,7 @@ struct SRow<Control: View>: View {
     @ViewBuilder let control: Control
     @Environment(\.face) private var face
 
-    static var labelWidth: CGFloat { 128 }
+    static var labelWidth: CGFloat { 146 }      // the longest label with its (i): "Usage in the Dock"
 
     var body: some View {
         VStack(spacing: 0) {
@@ -996,22 +996,23 @@ struct AccountSettings: View {
         return a.lowercased() != b.lowercased()
     }
 
-    /// One subject per column, printed at its top: who it is (Profile with its Usage in the Dock and Claude window keys,
-    /// Claude Code, Alerts), its Dock icon (when it runs and what a click does, the Claude window with it, its look),
-    /// and its menu bar icon. What the profile is doing now is in the main display at the top.
+    /// Layout A: each part is one card, its switch first, one title per card. Left: Profile, Claude Code, Claude window,
+    /// Alerts; middle: the Dock icon (when it runs, a click, the usage panel, its look, a preview); right: the menu bar
+    /// icon. A part that's off folds its card to the switch row. Two columns: the left cards with the menu bar under
+    /// them, the Dock icon beside; one column: everything in that order. What the profile is doing now is in the main
+    /// display at the top.
     var body: some View {
         SettingsColumns(width: width, groups: [
-            [AnyView(ColumnHead(text: "Who it is")), AnyView(accountCard), AnyView(codeCard), AnyView(updatesCard)],
-            [AnyView(ColumnHead(text: "Its Dock icon")), AnyView(dockIconCard), AnyView(windowCard), AnyView(iconCard)],
-            [AnyView(ColumnHead(text: "Its menu bar icon")), AnyView(MenuBarCard(entry: $entry))]],
-            two: [[AnyView(ColumnHead(text: "Who it is · its menu bar icon")), AnyView(accountCard), AnyView(codeCard),
-                   AnyView(updatesCard), AnyView(MenuBarCard(entry: $entry))],
-                  [AnyView(ColumnHead(text: "Its Dock icon")), AnyView(dockIconCard), AnyView(windowCard), AnyView(iconCard)]])
+            [AnyView(accountCard), AnyView(codeCard), AnyView(windowCard), AnyView(updatesCard)],
+            [AnyView(dockIconCard)],
+            [AnyView(MenuBarCard(entry: $entry))]],
+            two: [[AnyView(accountCard), AnyView(codeCard), AnyView(windowCard), AnyView(updatesCard), AnyView(MenuBarCard(entry: $entry))],
+                  [AnyView(dockIconCard)]])
     }
 
     // Account
     var accountCard: some View {
-        SCard(title: "Profile") {
+        SCard(title: "Profile", info: "Who this profile is in cl_audit: its name, the label on its icons, its colour, and whether Fable's own weekly limit shows.") {
             SRow(label: "Name", info: "What cl_audit calls this profile; its Dock icon app is “cl_audit \(entry.name.isEmpty ? "…" : entry.name)”. Saved when you press Return or click elsewhere (Esc puts it back); saving restarts that Dock icon.", first: true) {
                 SField(placeholder: "name", text: $entry.name, width: nil,
                        commit: { v in save("Dock icon renamed") { $0.name = v } }, cancel: { model.unsaved = nil })
@@ -1025,23 +1026,16 @@ struct AccountSettings: View {
                 SwatchRow(colors: TileColor.accents, selected: entry.accentColor) { if let c = $0 { entry.accent = c } }
             }
             SRow(label: "Fable's limit", info: "Fable's own weekly limit (Max and Ultra plans, premium Team and Enterprise seats): shown on this profile's dashboard card, usage panels, Dock and menu bar menus and the widget, with its alerts. Off: left out everywhere; it still counts in Anthropic's limits.") {
-                HStack(spacing: 8) {
-                    Toggle("", isOn: $entry.showFable).smallSwitch()
-                    Text("shown and alerted").font(.system(size: 11.5)).foregroundStyle(face.muted).lineLimit(1)
-                }
+                SSwitch(isOn: $entry.showFable, on: "shown and alerted", off: "left out")
             }
-            ProfileSwitches(usageInDock: !entry.iconHidden, claudeWindow: entry.claudeWindow, waiting: model.dockRestarting != nil,
-                            setUsageInDock: { model.setUsageInDock(entry.id, $0) },
-                            setClaudeWindow: { model.setClaudeWindow(entry.id, $0) })
-                .padding(.top, 4).padding(.bottom, 6)
             if let other = FolderRules.seatTaken(entry, among: model.accounts) {
                 Text("Its Claude Code folder is signed in to the same Claude account as “\(other.name)”. One profile per account: sign this folder in with another account, or remove this profile.")
                     .font(.system(size: 11)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
                     .padding(.vertical, 4)
             }
             Button("Remove profile…") { model.askRemove(entry.id) }
-                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(face.danger)
-                .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8).padding(.bottom, 4)
+                .buttonStyle(.plain).font(.system(size: 12.5)).foregroundStyle(face.danger)
+                .frame(maxWidth: .infinity, minHeight: 32, alignment: .leading)
                 .overlay(alignment: .top) { EngravedRule() }
         }
     }
@@ -1316,108 +1310,169 @@ struct AccountSettings: View {
     // does. One card for everything about the Dock icon but its look (Icon, below it).
     var dockIconCard: some View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
-        return SCard(title: "Dock icon", info: "When \(name)'s Dock icon runs and what a click on it does. The cl_audit agent starts and quits it, whether or not cl_audit is open. Starting or quitting a Dock icon never stops the usage: cl_audit reads it for every profile, always. Double-click or ⌥-click always opens the large panel.") {
-            // no Dock icon: nothing runs or is clicked, so the card fades under one strip (the choices stay stored)
-            if entry.iconHidden {
-                notInUse("no Dock icon", key: "Show in the Dock") { model.setUsageInDock(entry.id, true) }
+        return SCard(title: "Dock icon", info: "Everything about \(name)'s Dock icon: whether it's there, when it runs, what a click on it does, its usage panel and its look. The cl_audit agent starts and quits it, whether or not cl_audit is open; starting or quitting it never stops the usage, which cl_audit reads for every profile, always. Double-click or ⌥-click always opens the large panel.") {
+            SRow(label: "Usage in the Dock", info: "On: a Dock icon shows \(name)'s usage; click it for details. Off: no Dock icon: it quits, is unpinned and its app is removed; the usage still shows on the dashboard, in the launcher and in alerts, and turning it back on brings the icon back to its place, with the same look and click settings. Changing it restarts the Dock once.", first: true) {
+                SSwitch(isOn: Binding(get: { !entry.iconHidden }, set: { model.setUsageInDock(entry.id, $0) }),
+                        on: "shows the usage", off: "no Dock icon")
+                    .disabled(model.dockRestarting != nil)
             }
-            VStack(spacing: 0) {
-                SRow(label: "Runs", info: "At login: always there, from when you log in to the Mac. With its window: starts when \(name)'s Claude window opens and quits 10 s after it quits (a Claude update restarts the window). When started: only when you start it (a click on its Dock tile, or its switch on the dashboard).", first: true, stacked: true) {
-                    VStack(alignment: .leading, spacing: 5) {
-                        PillPicker(options: DockRuns.allCases, selection: $entry.dockRuns, compact: true, fill: true) { $0.title }
-                        Text(entry.dockRuns == .withWindow && !entry.claudeWindow
-                             ? "With its window: \(name) has no Claude window, so its Dock icon runs only when you start it."
-                             : "At login: always there, from when you log in. With its window: starts and quits with the Claude window. When started: only when you start it.")
-                            .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                    }
+            if !entry.iconHidden {
+                SRow(label: "Runs", info: "At login: always there, from when you log in to the Mac. With its window: starts when \(name)'s Claude window opens and quits 10 s after it quits (a Claude update restarts the window). When started: only when you start it (a click on its Dock tile, or its switch on the dashboard).") {
+                    Menu {
+                        Picker("", selection: $entry.dockRuns) { ForEach(DockRuns.allCases) { Text($0.title).tag($0) } }
+                            .pickerStyle(.inline).labelsHidden()
+                    } label: { MenuWell(text: entry.dockRuns.title, fill: true) }
+                    .faceMenuFill()
                 }
-                clickRows(first: false)
-            }
-            .dockOnly(entry.iconHidden)
-            if entry.iconHidden {
-                SRow(label: "Usage", info: "The cl_audit agent reads every profile's usage on its own schedule, with or without a Dock icon or a Claude window, and sends the alerts.") {
-                    Text("read by cl_audit for every profile, always").font(.system(size: 12)).foregroundStyle(face.soft)
-                        .fixedSize(horizontal: false, vertical: true)
+                SRowLine(text: runsWords)
+                clickRows
+                SRow(label: "Press and hold", info: "Press and hold the icon for its details panel and a short menu. Double-click or ⌥-click also opens the panel; right-click shows the full menu.") {
+                    SSwitch(isOn: $entry.longPressDetails, on: "details and menu", off: "off")
                 }
+                SRow(label: "Usage panel", info: "How the usage panel looks when you click or press and hold this Dock icon. The dashboard's cards have one style for all profiles, in General.", stacked: true) {
+                    STiles(tiles: PanelDesign.allCases.map { d in
+                        .init(id: d, title: d.shortTitle, picture: AnyView(panelPicture(d)))
+                    }, selected: entry.panelDesign, minWidth: 86, pictureHeight: 44) { entry.panelDesign = $0 }
+                }
+                SRow(label: "Icon", info: "How \(name)'s Dock icon draws the usage: numbers, rings, the panels' looks, or tiles in the level colours.", stacked: true) {
+                    STiles(tiles: IconStyle.allCases.map { st in
+                        .init(id: st, title: st.shortTitle, help: "\(st.title): \(st.blurb)",
+                              picture: AnyView(Image(nsImage: Painter.image(iconModel(st), pixels: 96)).resizable().frame(width: 34, height: 34)))
+                    }, selected: entry.style, minWidth: 70) { entry.style = $0 }
+                }
+                SRow(label: "Colour", info: "The colour of this profile's Dock icon: its label and tiles. By usage (the last swatch): it follows the 5-hour level, green to red. The profile's colour inside cl_audit is under Profile.") {
+                    SwatchRow(colors: TileColor.allCases, selected: entry.color) { if let c = $0 { entry.color = c } }
+                }
+                SRow(label: "Frame", info: "A thin ring in this colour round the Dock icon, to spot it quickly among the others. The crossed circle: no ring.") {
+                    SwatchRow(colors: TileColor.allCases, selected: entry.frame, none: true) { entry.frame = $0 }
+                }
+                SRow(label: "Claude open dot", info: "An orange dot at the Dock icon's top-left corner while this profile's Claude window is open.") {
+                    SSwitch(isOn: $entry.windowDot, on: "while its window is open", off: "none")
+                }
+                PreviewStrip(caption: "not running, then as the limit fills up", items: dockPreview)
             }
         }
     }
 
-    @ViewBuilder private func clickRows(first: Bool) -> some View {
-        VStack(spacing: 0) {
-            SRow(label: "Click", info: "Usage, then Claude: the usage panel for a moment, then the Claude window. Open Claude: the Claude window straight away. Details panel: the large usage panel, and Claude only when you ask.", first: first, picture: AnyView(ClickPicture(action: entry.clickAction, seconds: entry.peekSeconds))) {
-                Menu {
+    /// The grey line under Runs: what the current choice means.
+    private var runsWords: String {
+        switch entry.dockRuns {
+        case .atLogin: return "Always there, from when you log in."
+        case .withWindow:
+            return entry.claudeWindow ? "Starts with the Claude window, quits 10 s after it."
+                                      : "No Claude window, so it runs only when you start it."
+        case .whenStarted: return "Only when you start it: its Dock tile, or its switch on the dashboard."
+        }
+    }
+
+    /// Click and, after a brief usage panel, how long it shows. With Opens from ▸ Only when asked (or no Claude window)
+    /// the Claude choices are off: the Dock icon shows the usage only, and the stored choice comes back with the window.
+    @ViewBuilder private var clickRows: some View {
+        let opens = entry.dockClickOpensWindow
+        // what a click does now (without the window: "Open Claude" shows the details panel, as the Dock icon does)
+        let shown = opens ? entry.clickAction.shortTitle
+            : entry.clickAction == .details || (entry.clickAction == .open && !entry.claudeWindow) ? "Details panel" : "Usage panel"
+        let brief = opens ? entry.clickAction == .peekThenOpen : shown == "Usage panel"     // the usage briefly: its duration
+        SRow(label: "Click", info: "Usage, then Claude: the usage panel for a moment, then the Claude window. Open Claude: the Claude window straight away. Details panel: the large usage panel, and Claude only when you ask. Without a Claude window, or with Claude window ▸ Opens from ▸ Only when asked, a click shows the usage only: Usage panel (briefly) or Details panel.", picture: AnyView(ClickPicture(action: entry.clickAction, seconds: entry.peekSeconds))) {
+            Menu {
+                if opens {
                     Picker("", selection: $entry.clickAction) { ForEach(ClickAction.allCases) { Text($0.shortTitle).tag($0) } }
                         .pickerStyle(.inline).labelsHidden()
-                } label: { MenuWell(text: entry.clickAction.shortTitle, fill: true) }
-                .faceMenuFill()
-            }
-            if entry.clickAction == .peekThenOpen {
-                SRow(label: "Usage shows for", info: "How long the usage panel stays up after a click before the Claude window opens.") {
-                    MiniStepper(text: PeekDuration.text(entry.peekSeconds),
-                                down: { entry.peekSeconds = PeekDuration.down(entry.peekSeconds) },
-                                up: { entry.peekSeconds = PeekDuration.up(entry.peekSeconds) })
+                } else {
+                    Toggle("Usage panel", isOn: Binding(get: { shown == "Usage panel" }, set: { _ in
+                        if entry.clickAction == .details || !entry.claudeWindow { entry.clickAction = .peekThenOpen }
+                    }))
+                    Toggle("Details panel", isOn: Binding(get: { shown == "Details panel" }, set: { _ in entry.clickAction = .details }))
+                    Divider()
+                    Button("Usage, then Claude") {}.disabled(true)
+                    Button("Open Claude") {}.disabled(true)
                 }
-            }
-            SRow(label: "Press and hold", info: "Press and hold the icon for its details panel and a short menu. Double-click or ⌥-click also opens the panel; right-click shows the full menu.") {
-                Toggle("", isOn: $entry.longPressDetails).smallSwitch()
-            }
-            SRow(label: "Usage panel", info: "How the usage panel looks when you click or press and hold this Dock icon. The dashboard's cards have one style for all profiles, in General.", stacked: true) {
-                // the keys and, under them, the panel at its own size (the card grows with the taller designs)
-                VStack(spacing: 7) {
-                    PillPicker(options: PanelDesign.allCases, selection: $entry.panelDesign, compact: true, fill: true) { $0.shortTitle }
-                    CompactView(info: sampleInfo).fixedSize().frame(maxWidth: .infinity)
-                }
-                .padding(7)
-                .background(SurfaceShape(surface: face.strip, radius: 7))
+            } label: { MenuWell(text: shown, fill: true) }
+            .faceMenuFill()
+        }
+        if entry.claudeWindow && !entry.opensFromDock {
+            SRowLine(text: "Claude choices are off: Claude window ▸ Opens from is “Only when asked”.")
+        } else if !entry.claudeWindow {
+            SRowLine(text: "No Claude window: a click shows the usage only.")
+        }
+        if brief {
+            SRow(label: "Usage shows for", info: "How long the usage panel stays up after a click" + (opens ? ", before the Claude window opens." : ".")) {
+                MiniStepper(text: PeekDuration.text(entry.peekSeconds),
+                            down: { entry.peekSeconds = PeekDuration.down(entry.peekSeconds) },
+                            up: { entry.peekSeconds = PeekDuration.up(entry.peekSeconds) })
             }
         }
     }
 
-    /// At the top of a card that doesn't apply now: why it's faded, and the key that makes it apply.
-    @ViewBuilder func notInUse(_ why: String, key: String, action: @escaping () -> Void) -> some View {
-        HStack(spacing: 10) {
-            Text("Not in use · \(why)").font(.system(size: 8.5, weight: .semibold)).tracking(1.3)
-                .textCase(.uppercase).foregroundStyle(face.print).lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 6)
-            Button(key, action: action).buttonStyle(PillButtonStyle(compact: true)).disabled(model.dockRestarting != nil)
-        }
-        .padding(.leading, 10).padding(.trailing, 6).padding(.vertical, 6)
-        .faceWindow(radius: 6)
-        .padding(.bottom, 6)
+    /// A usage panel design, small: the two limits drawn the way the panel draws them.
+    private func panelPicture(_ d: PanelDesign) -> some View {
+        let limits = [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: 34, resets: nil, window: 5 * 3600),
+                      Limit(id: "wk", title: "Week", name: "Week", p: 61, resets: nil, window: 7 * 86400)]
+        return CardLimits(limits: limits, design: d)
+            .frame(width: 180).fixedSize(horizontal: false, vertical: true)
+            .scaleEffect(0.4, anchor: .center)
+            .frame(width: 76, height: 44)
+            .clipped()
+            .allowsHitTesting(false)
     }
 
-    // Claude window: whether it opens and quits with the Dock icon (the agent runs this, whether or not cl_audit is
-    // open). Faded with a key when the profile has no Claude window, or no Dock icon to open it with.
+    /// The Dock icon in a style, at the profile's numbers (samples when there are none yet).
+    private func iconModel(_ st: IconStyle, _ h: Double? = nil, _ w: Double? = nil, countdown: TileCountdown? = nil) -> TileModel {
+        TileModel(label: entry.label.isEmpty ? "?" : entry.label, fiveHour: h ?? status?.fiveHour ?? 58,
+                  weekly: w ?? status?.weekly ?? 62, stale: false, style: st, tint: entry.color, frame: entry.frame,
+                  fiveHourElapsed: 45, weeklyElapsed: 60, windowOpen: entry.windowDot, countdown: countdown)
+    }
+
+    /// The Dock icon's preview: not running, then as the limit fills up, full with its countdown.
+    private var dockPreview: [PreviewStrip.Item] {
+        let label = entry.label.isEmpty ? "?" : entry.label
+        func tile(_ m: TileModel) -> AnyView { AnyView(Image(nsImage: Painter.image(m, pixels: 96)).resizable().frame(width: 38, height: 38)) }
+        var items = [PreviewStrip.Item(title: "not running",
+                                       picture: tile(Painter.notRunning(label: label, style: entry.style, tint: entry.color, frame: entry.frame)))]
+        for s in PreviewStrip.states.dropFirst() {
+            let full = (s.five ?? 0) >= 100
+                ? AtLimit.tileCountdown(fiveHour: s.five, fiveHourResets: Date().addingTimeInterval(102 * 60), weekly: s.week, weeklyResets: nil) : nil
+            items.append(.init(title: s.title, picture: tile(iconModel(entry.style, s.five, s.week, countdown: full))))
+        }
+        return items
+    }
+
+    // Claude window: its switch first, then whether it goes with the Dock icon and what may open it (the agent runs
+    // this, whether or not cl_audit is open). Off, the card folds to the switch row.
     var windowCard: some View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
-        return SCard(title: "Claude window", info: "\(name)'s own Claude window (or the usual Claude app for ~/.claude) and whether it opens and quits with the Dock icon. The cl_audit agent does this, whether or not cl_audit is open.") {
-            if !entry.claudeWindow {
-                notInUse("no Claude window", key: "Add Claude window") { model.setClaudeWindow(entry.id, true) }
-            } else if entry.iconHidden {
-                notInUse("no Dock icon to open it with", key: "Show in the Dock") { model.setUsageInDock(entry.id, true) }
+        return SCard(title: "Claude window", info: "\(name)'s Claude window: its own (own sign-in, chats and settings), or the usual Claude app for ~/.claude. Whether it goes with the Dock icon and what may open it; the cl_audit agent does this, whether or not cl_audit is open.") {
+            SRow(label: "Claude window", info: "On: a Claude window signed in to \(name)'s account; open it from the dashboard, the Dock icon or the menu bar icon. Off: none, and nothing opens one; its folder and sign-in are kept, so turning it back on needs no new sign-in.", first: true) {
+                SSwitch(isOn: Binding(get: { entry.claudeWindow }, set: { model.setClaudeWindow(entry.id, $0) }),
+                        on: entry.desktop == .standard ? "the usual Claude app" : "its own window", off: "none")
+                    .disabled(model.dockRestarting != nil)
             }
-            VStack(spacing: 0) {
-                SRow(label: "With Dock icon", info: "On: starting \(name)'s Dock icon (a click on its Dock tile, or its switch on the dashboard) opens its Claude window, and quitting it quits the window too; Claude can ask about unsent work first. Not at login. The Dock icon's menu then has “Quit and keep Claude window”.", first: true) {
-                    HStack(alignment: .top, spacing: 8) {
-                        Toggle("", isOn: $entry.windowFollowsDock).smallSwitch()
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("opens and quits with the Dock icon").font(.system(size: 12)).foregroundStyle(face.soft)
-                            Text("not at login; Claude asks about unsent work").font(.system(size: 10.5)).foregroundStyle(face.muted)
+            if entry.claudeWindow {
+                SRow(label: "With Dock icon", info: "On: quitting \(name)'s Dock icon quits its window too (Claude can ask about unsent work first; the Dock icon's menu then has “Quit and keep Claude window”), and, with Opens from ▸ Dock click too, starting the Dock icon (a click on its Dock tile, or its switch on the dashboard) opens the window. Not at login.") {
+                    SSwitch(isOn: $entry.windowFollowsDock, on: entry.opensFromDock ? "opens and quits with it" : "quits with it", off: "on its own")
+                        .disabled(entry.iconHidden)
+                }
+                if entry.iconHidden { SRowLine(text: "No Dock icon to go with: Usage in the Dock is off.") }
+                SRow(label: "Opens from", info: "Dock click too: a click on the Dock icon opens the window as its Click says, and so does starting the Dock icon with With Dock icon on. Only when asked: a Dock click shows the usage only; the dashboard's Open window key and tile, Open Claude in the Dock icon's and the menu bar icon's menus, and the details panel open it.") {
+                    Menu {
+                        Picker("", selection: $entry.opensFromDock) {
+                            Text("Dock click too").tag(true)
+                            Text("Only when asked").tag(false)
                         }
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                    .padding(.vertical, 4)
+                        .pickerStyle(.inline).labelsHidden()
+                    } label: { MenuWell(text: entry.opensFromDock ? "Dock click too" : "Only when asked", fill: true) }
+                    .faceMenuFill()
+                }
+                if !entry.opensFromDock {
+                    SRowLine(text: "A Dock click shows usage only; Open window and the Dock and menu bar menus open it.")
                 }
             }
-            .dockOnly(!entry.claudeWindow || entry.iconHidden)
         }
     }
 
     // Alerts: how often the usage is read and when a notification comes
     var updatesCard: some View {
-        SCard(title: "Alerts") {
+        SCard(title: "Alerts", info: "How often this profile's usage is read, and its Mac notifications: for the 5-hour, weekly and Fable limits, and for usage credits when they start and run out.") {
             SRow(label: "Refresh every", info: "How often cl_audit asks Anthropic for this profile's usage, with or without its Dock icon. Shorter is fresher; each check is one small request.", first: true) {
                 Menu {
                     Picker("", selection: $entry.pollMinutes) { ForEach([2, 5, 10, 15], id: \.self) { Text("\($0) min").tag($0) } }
@@ -1432,39 +1487,14 @@ struct AccountSettings: View {
                         MiniStepper(text: "\(entry.notifyPercent)%",
                                     down: { entry.notifyPercent = max(50, entry.notifyPercent - 5) },
                                     up: { entry.notifyPercent = min(100, entry.notifyPercent + 5) })
+                    } else {
+                        Text("off").font(.system(size: 11.5)).foregroundStyle(face.muted)
                     }
                 }
+                .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
             }
             SRow(label: "Notify when back", info: "One Mac notification when this profile's full 5-hour or weekly limit resets, so you know it works again (\"Claude \(entry.name.isEmpty ? "…" : entry.name) is back\"). Only for a limit that was full; while the other limit is still full, it waits for that one.") {
-                HStack(spacing: 8) {
-                    Toggle("", isOn: $entry.notifyBack).smallSwitch()
-                    Text("when a full limit resets").font(.system(size: 11.5)).foregroundStyle(face.muted).lineLimit(1)
-                }
-            }
-            Text("For the 5-hour, weekly and Fable limits, and usage credits when they start and run out.")
-                .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                .padding(.top, 4)
-        }
-    }
-
-    // Icon: style, colour, frame
-    var iconCard: some View {
-        SCard(title: "Icon") {
-            iconRows
-        }
-    }
-
-    @ViewBuilder private var iconRows: some View {
-        VStack(spacing: 0) {
-            IconGallery(entry: $entry, status: status)
-            SRow(label: "Colour", info: "The colour of this profile's Dock icon: its label and tiles. By usage (the last swatch): it follows the 5-hour level, green to red. The profile's colour inside cl_audit is under Profile.", stacked: true) {
-                SwatchRow(colors: TileColor.allCases, selected: entry.color) { if let c = $0 { entry.color = c } }
-            }
-            SRow(label: "Frame", info: "A thin ring in this colour round the Dock icon, to spot it quickly among the others. The crossed circle: no ring.", stacked: true) {
-                SwatchRow(colors: TileColor.allCases, selected: entry.frame, none: true) { entry.frame = $0 }
-            }
-            SRow(label: "Claude open dot", info: "An orange dot at the Dock icon's top-left corner while this profile's Claude window is open. While you pick it here, the icons above show it too.", stacked: true) {
-                DotChoice(entry: $entry)
+                SSwitch(isOn: $entry.notifyBack, on: "when a limit resets", off: "off")
             }
         }
     }

@@ -227,20 +227,20 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
 ### Profile settings
 
-- **Profile:** name, icon label (up to 6 letters, drawn on the icon), the profile's colour (launcher,
-  dashboard, panels), **Fable's limit** (on: shown on its card, panels, menus and the widget, and alerted; off:
-  left out everywhere), then two keys, each with a line under it saying what the current choice does:
-  - **Usage in the Dock:** on, a Dock icon shows the profile's usage (click it for details); off, no Dock
-    icon: it quits, is unpinned and its app is removed with what macOS keeps for it. Turn it back on and the
-    app is installed again and returns to its place in the Dock, with the same look and click settings (they
-    live in the profile). The agent reads the usage either way. Changing it restarts the Dock once, to pin
-    or unpin; the main display says "Restarting the Dock…" and the keys wait meanwhile. Dragging the icon out
-    of the Dock by hand turns it off too.
-  - **Claude window:** on, a Claude window signed in to the profile's account; off, none, and nothing opens
-    one. Its folder and sign-in are kept, so turning it back on needs no new sign-in.
+Every card follows one pattern: one title with its (i), then rows, each with its label on the left (with an (i),
+the same width on every card, so the values line up across the page) and its value on the right. On/off is the
+small lamp switch with a few words that follow the state; two or three short choices are segments, longer ones a
+pop-up, pictures tiles under the label; at most one grey line under a row says what the current choice means; a
+card's preview is one strip at its foot (no numbers or not running · plenty left · half used · at limit · full).
+Each part (the Dock icon, the Claude window, the menu bar icon) is one card with its switch first; switched off,
+the card folds to that row, whose words say what's left ("no Dock icon", "none", "no icon").
 
-  Turning either off never deletes anything; that happens only in **Remove profile…**. Both off is usage
-  only. What the profile is doing now shows in the main display at the top: "Running · in the Dock",
+- **Profile:** name, icon label (up to 6 letters, drawn on the icon), the profile's colour (launcher,
+  dashboard, panels), **Fable's limit** ("shown and alerted" on its card, panels, menus and the widget; "left
+  out" everywhere) and **Remove profile…**.
+
+  Turning a part off never deletes anything; that happens only in **Remove profile…**. No Dock icon and no Claude
+  window is usage only. What the profile is doing now shows in the main display at the top: "Running · in the Dock",
   "Stopped · in the Dock", "Reading usage · every N min" (no Dock icon), "Missing · reinstall", or the agent's
   state in the dashboard's words ("Starting the agent…", "Not updating · agent won't start"); while a change goes
   through it says "Saving…", then "Saved" and what changed.
@@ -274,36 +274,47 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   full · Back Thu 09:00", "Claude Main: Fable is back"). With alerts on, one more when a profile starts spending
   usage credits ("Claude Work is using usage credits · The 5-hour limit is full · $0.40 spent so far") and one when
   they run out.
-- **Claude window** (run by the agent, whether or not cl_audit is open): **With Dock icon**, the window opens
-  and quits with the Dock icon: starting the Dock icon opens its window (not at login), and quitting it quits the
-  window too, so Claude can ask about unsent work; the Dock icon's menu then has **Quit and keep Claude window**.
-  Without a Claude window the card fades under "Not in use · no Claude window" with **Add Claude window**; without
-  a Dock icon, under "no Dock icon to open it with" with **Show in the Dock**.
+- **Claude window** (run by the agent, whether or not cl_audit is open):
+  - **Claude window:** on ("its own window", or "the usual Claude app" for `~/.claude`), a Claude window signed
+    in to the profile's account; off ("none"), none, and nothing opens one. Its folder and sign-in are kept, so
+    turning it back on needs no new sign-in.
+  - **With Dock icon:** the window goes with the Dock icon: quitting the Dock icon quits it too, so Claude can ask
+    about unsent work (the Dock icon's menu then has **Quit and keep Claude window**), and, unless Opens from is
+    "Only when asked", starting the Dock icon opens it (not at login). Its words: "opens and quits with it", "quits
+    with it", or "on its own".
+  - **Opens from:** **Dock click too** (the default) or **Only when asked**: a click on the Dock icon then never
+    opens the window, and neither does starting the Dock icon (a click on its stopped tile starts it and shows the
+    usage instead); the dashboard's Open window key and tile, **Open Claude window** in the Dock icon's and the menu
+    bar icon's menus and the details panel's Open Claude open it.
 - **Dock icon** (run by the agent, whether or not cl_audit is open):
-  - **Runs:** **At login** (always there, from when you log in), **With its window** (starts when the profile's
-    Claude window opens and quits 10 s after it quits, since a Claude update restarts the window) or **When
-    started** (only when you start it: a click on its Dock tile, or its dashboard switch).
+  - **Usage in the Dock:** on ("shows the usage"), a Dock icon shows the profile's usage (click it for details);
+    off ("no Dock icon"), it quits, is unpinned and its app is removed with what macOS keeps for it. Turn it back
+    on and the app is installed again and returns to its place in the Dock, with the same look and click settings
+    (they live in the profile). The agent reads the usage either way. Changing it restarts the Dock once, to pin
+    or unpin; the main display says "Restarting the Dock…" and the switches wait meanwhile. Dragging the icon out
+    of the Dock by hand turns it off too.
+  - **Runs** (a pop-up, with a line saying what the choice means): **At login** (always there, from when you log
+    in), **With its window** (starts when the profile's Claude window opens and quits 10 s after it quits, since
+    a Claude update restarts the window) or **When started** (only when you start it: a click on its Dock tile, or
+    its dashboard switch).
   - **Click:** what a click does (usage for N seconds while Claude opens, just open Claude, or the details
-    panel), **Press and hold**, and the **Usage panel** design (Glow, Rings, Numbers, Segments, Pace), previewed
-    at full size. Without a Claude window a click only shows the usage ("just open Claude" shows the details
-    panel).
+    panel), with **Usage shows for** when the usage shows briefly. Without a Claude window, or with Opens from ▸
+    Only when asked, the Claude choices are off and a click shows the usage only: the usage panel briefly or the
+    details panel (the stored choice comes back with the window).
+  - **Press and hold**, then the **Usage panel** design (Glow, Rings, Numbers, Segments, Pace) and the **Icon**
+    style as tiles: Two numbers, Rings (outer = 5-hour, inner = week), Big number; Twin rings, Segmented, Pace
+    bars (a white tick for how much of the window has passed); and, where colours follow the levels, Tile, Gauge,
+    Worst, Tile + bar, Bars, Batteries, Gauge + bar. Then the icon's **Colour**, an optional **Frame** and the
+    **Claude open dot** ("while its window is open" or "none"), and the preview strip: not running, then as the
+    limit fills up.
 
-  With Usage in the Dock off the card fades under "Not in use · no Dock icon" with **Show in the Dock**. Saved
-  choices stay stored and apply again when they can. Older settings carried over: Open at login on → At login;
-  "start or quit the Dock icon too" → With its window; both off → When started; "open or quit the Claude window
-  too" → the window switch.
-- **Icon:** the style, previewed as the limit fills up:
-  - classic: Two numbers, Rings (outer = 5-hour, inner = week), Big number;
-  - like the panels: Twin rings, Segmented, Pace bars (a white tick for how much of the window has passed);
-  - status colours, where colours follow the levels: Tile, Gauge, Worst, Tile + bar, Bars, Batteries,
-    Gauge + bar.
-
-  Then the icon's colour, an optional frame colour and the **Claude open dot**: none, or a Claude-orange
-  dot at the top-left while the profile's Claude window is open.
+  Saved choices stay stored and apply again when they can. Older settings carried over: Open at login on → At
+  login; "start or quit the Dock icon too" → With its window; both off → When started; "open or quit the Claude
+  window too" → the window switch.
 - **Menu bar:** the profile's own icon in the menu bar, exactly like its Dock icon. **In the menu bar** (off by
   default) switches it on; the agent draws it, so it works with or without the Dock icon. ⌘-drag it to move it;
-  macOS remembers where. Its look, built like the Icon card (a preview from "no numbers yet" to "full", drawn the
-  way your menu bar is now, light or dark, then the other way; each choice drawn as it would look):
+  macOS remembers where. Its look, each choice a tile drawn the way your menu bar is now, and the preview strip
+  from "no numbers" to "full":
   - **Style:** Two bars (5-hour over week), Bars + number, Ring (week outside, 5-hour inside), Ring + number,
     Number (the fuller limit), Two numbers.
   - **Colours:** the level colours; **System**, the menu bar's own colour, drawn the way macOS draws its icons
@@ -316,8 +327,9 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   while they're spent), when they were read, then **Open Claude window**, **Refresh now**, **Dashboard**,
   **Profile settings…** and **Hide from the menu bar**.
 
-The cards sit in three columns, each with its subject printed at the top: **Who it is** (Profile, Claude Code,
-Alerts), **Its Dock icon** (Dock icon, Claude window, Icon) and **Its menu bar icon** (Menu bar).
+The cards sit in three columns: Profile, Claude Code, Claude window and Alerts on the left, the Dock icon in the
+middle, the menu bar on the right. In two columns the menu bar goes under the left cards and the Dock icon stays
+beside them; in one column everything follows in that order.
 
 ### General settings
 

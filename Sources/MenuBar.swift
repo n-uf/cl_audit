@@ -406,9 +406,9 @@ struct MenuBarRow: View {
     }
 }
 
-/// A profile's settings ▸ Menu bar: its icon there, switched on and styled like its Icon card: the styles in families,
-/// a preview from "no numbers yet" to "full" drawn the way your menu bar is now (then the other way), and the choices,
-/// each drawn as it would look.
+/// A profile's settings ▸ Menu bar, in the one pattern of every card: its switch first (off, the card folds to it),
+/// Style and Colours as tiles drawn the way your menu bar is now, Label and When full as segments, and the preview
+/// strip at the foot, from "no numbers" to "full".
 struct MenuBarCard: View {
     @Binding var entry: AccountEntry
     @Environment(\.face) private var face
@@ -450,105 +450,49 @@ struct MenuBarCard: View {
             .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(dark ? Color.white.opacity(0.09) : Color.black.opacity(0.12)))
     }
 
-    /// One choice: the icon as it would look in your menu bar, its name under it; the chosen one on a raised key.
-    private func choice(_ title: String, on: Bool, img: NSImage, help: String, enabled: Bool = true,
-                        action: @escaping () -> Void) -> some View {
-        VStack(spacing: 3) {
-            bar(img, dark: dark)
-            Text(title).font(.system(size: 9.5, weight: on ? .semibold : .regular)).foregroundStyle(on ? face.text : face.muted)
-                .lineLimit(1).fixedSize()
-        }
-        .padding(4)
-        .background { if on { RaisedShape(finish: face.key, radius: 5, pressed: false) } }
-        .opacity(enabled ? 1 : 0.4)
-        .contentShape(Rectangle())
-        .onTapGesture { if enabled { action() } }
-        .help(help)
-    }
-
-    private func optionRow<V: Identifiable & Equatable>(_ label: String, _ options: [V], selected: V, title: @escaping (V) -> String,
-                                                       help: @escaping (V) -> String = { _ in "" },
-                                                       enabled: @escaping (V) -> Bool = { _ in true },
-                                                       apply: @escaping (inout MenuBarLook, V) -> Void,
-                                                       state: (five: Double?, week: Double?, full: String?) = (55, 77, nil)) -> some View {
-        HStack(alignment: .center, spacing: 8) {
-            Text(label).font(.system(size: 11, weight: .semibold)).foregroundStyle(face.soft).frame(width: 64, alignment: .leading)
-            FlowLayout(spacing: 4) {
-                ForEach(options) { o in
-                    let l: MenuBarLook = { var l = look; apply(&l, o); return l }()
-                    choice(title(o), on: o == selected, img: glyph(l, state.five, state.week, full: state.full, dark: dark),
-                           help: "\(label): \(title(o))" + (help(o).isEmpty ? "" : ": \(help(o))"), enabled: enabled(o)) { set { apply(&$0, o) } }
-                }
-            }
-        }
-    }
-
     enum LabelChoice: String, Identifiable { case none, label; var id: String { rawValue } }
+
+    /// A look with one choice changed, drawn at sample levels in your menu bar: a tile's picture.
+    private func tilePicture(_ change: (inout MenuBarLook) -> Void) -> AnyView {
+        var l = look; change(&l)
+        return AnyView(bar(glyph(l, 55, 77, dark: dark), dark: dark, shrink: true))
+    }
 
     var body: some View {
         let _ = accentTick
         SCard(title: "Menu bar", info: "An icon for this profile in the menu bar, like its Dock icon: drawn by the cl_audit agent, so it works with or without the Dock icon. Its menu has the limits, Open Claude window, Refresh now and Profile settings. ⌘-drag it to move it; macOS remembers where.") {
-            SRow(label: "In the menu bar", info: "Off: no icon in the menu bar for this profile. The usage is read either way.", first: true) {
-                Toggle("", isOn: $entry.menuBar).smallSwitch()
+            SRow(label: "In the menu bar", info: "On: an icon for this profile in the menu bar. Off: none; the usage is read either way.", first: true) {
+                SSwitch(isOn: $entry.menuBar, on: "shows the usage", off: "no icon")
             }
-            VStack(alignment: .leading, spacing: 10) {
-                // the styles, in families like the Icon card (a family wraps to the next line in a narrow card)
-                FlowLayout(spacing: 12) {
-                    ForEach(MenuBarStyle.families, id: \.title) { fam in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Printed(text: fam.title, size: 9)
-                            HStack(spacing: 2) {
-                                ForEach(fam.styles) { st in
-                                    choice(st.title, on: look.style == st, img: glyph({ var l = look; l.style = st; return l }(), 55, 77, dark: dark),
-                                           help: "\(st.title): \(st.blurb)") { set { $0.style = st } }
-                                }
-                            }
-                        }
-                    }
+            if entry.menuBar {
+                SRow(label: "Style", info: "How the icon draws the usage: two bars (the 5-hour limit over the week), a ring (the week outside, the 5-hour limit inside), with or without the fuller limit as a number, or just numbers.", stacked: true) {
+                    STiles(tiles: MenuBarStyle.allCases.map { st in
+                        .init(id: st, title: st.title, help: "\(st.title): \(st.blurb)", picture: tilePicture { $0.style = st })
+                    }, selected: look.style, minWidth: 96, pictureHeight: 24) { st in set { $0.style = st } }
                 }
-                preview
-                VStack(alignment: .leading, spacing: 6) {
-                    optionRow("Colours", MenuBarColours.allCases, selected: look.colours, title: { $0.title }, help: { $0.blurb },
-                              apply: { $0.colours = $1 })
-                    optionRow("Label", [LabelChoice.none, .label], selected: look.label ? .label : LabelChoice.none,
-                              title: { $0 == .label ? "Profile label" : "None" }, apply: { $0.label = $1 == .label })
-                    optionRow("When full", MenuBarWhenFull.allCases, selected: look.colours == .system ? .countdown : look.whenFull,
-                              title: { $0.title },
-                              help: { $0 == .red && look.colours == .system ? "not with the system's colours: macOS draws those icons in one colour" : "" },
-                              enabled: { $0 == .countdown || look.colours != .system },
-                              apply: { $0.whenFull = $1 }, state: (100, 64, "1h 42m"))
+                SRow(label: "Colours", info: "Levels: green, amber, red as the limits fill up. System: the menu bar's own colour, like Apple's icons (a full limit shows by its countdown, as macOS doesn't colour these icons). Accent: your Mac's accent colour, following it when it changes. Profile colour: this profile's colour.", stacked: true) {
+                    STiles(tiles: MenuBarColours.allCases.map { c in
+                        .init(id: c, title: c.title, help: "\(c.title): \(c.blurb)", picture: tilePicture { $0.colours = c })
+                    }, selected: look.colours, minWidth: 96, pictureHeight: 24) { c in set { $0.colours = c } }
                 }
-                .padding(8)
-                .faceWindow(radius: 6)
+                SRow(label: "Label", info: "The profile's label before its icon (\"MAIN\"), or none.") {
+                    SSegments(options: [LabelChoice.none, .label],
+                              selection: Binding(get: { look.label ? .label : .none }, set: { v in set { $0.label = v == .label } }),
+                              title: { $0 == .label ? "Profile label" : "None" })
+                }
+                SRow(label: "When full", info: "While a full limit holds the profile back: its countdown beside the icon (\"1h 42m\"), or the icon in red only. With the System colours it's always the countdown.") {
+                    SSegments(options: MenuBarWhenFull.allCases,
+                              selection: Binding(get: { look.colours == .system ? .countdown : look.whenFull }, set: { v in set { $0.whenFull = v } }),
+                              enabled: { $0 == .countdown || look.colours != .system }, title: { $0.title })
+                }
+                if look.colours == .system { SRowLine(text: "System colours can't turn red: a full limit shows its countdown.") }
+                PreviewStrip(caption: "your menu bar (\(dark ? "dark" : "light")), then as the limit fills up",
+                             items: Self.lane.map { s in
+                                 .init(title: s.title, picture: AnyView(bar(glyph(look, s.five, s.week, full: s.full, dark: dark), dark: dark, shrink: true)))
+                             })
             }
-            .padding(.top, 8)
-            .opacity(entry.menuBar ? 1 : 0.55)
         }
         .onReceive(DistributedNotificationCenter.default().publisher(for: MacAppearance.changed)) { _ in dark = MacAppearance.dark }
         .onReceive(NotificationCenter.default.publisher(for: NSColor.systemColorsDidChangeNotification)) { _ in accentTick += 1 }
-    }
-
-    /// The chosen look as the limits fill up: first the way your menu bar is now, then the other way.
-    private var preview: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("Preview").font(.system(size: 11, weight: .semibold)).foregroundStyle(face.text)
-                Text("your menu bar (\(dark ? "dark" : "light")), then \(dark ? "light" : "dark")")
-                    .font(.system(size: 10.5)).foregroundStyle(face.muted)
-            }
-            HStack(alignment: .top, spacing: 4) {
-                ForEach(Self.lane.indices, id: \.self) { i in
-                    let s = Self.lane[i]
-                    VStack(spacing: 3) {
-                        bar(glyph(look, s.five, s.week, full: s.full, dark: dark), dark: dark, shrink: true)
-                        bar(glyph(look, s.five, s.week, full: s.full, dark: !dark), dark: !dark, shrink: true).opacity(0.85)
-                        Text(s.title).font(.system(size: 9.5)).foregroundStyle(face.muted).lineLimit(1).minimumScaleFactor(0.7)
-                    }
-                    .frame(maxWidth: .infinity)
-                }
-            }
-        }
-        .padding(8)
-        .faceWindow(radius: 6)
     }
 }
