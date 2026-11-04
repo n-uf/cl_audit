@@ -260,7 +260,15 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
 
     /// Adds, removes and redraws the icons as the profiles say (the agent calls this every 30 s and after a change).
     func update(now: Date = Date()) {
-        let list = profiles().filter { $0.entry.menuBar }
+        let all = profiles()
+        // the profiles in a new order (cl_audit's tile bar): the icons are put up again in it, their ⌘-dragged places
+        // forgotten (ProfileOrder.swift)
+        if MenuBarOrder.reordered(all.map(\.entry.id)) {
+            items.values.forEach { NSStatusBar.system.removeStatusItem($0) }
+            items = [:]
+            MenuBarOrder.forgetPlaces(all.map(\.entry.id))
+        }
+        let list = all.filter { $0.entry.menuBar }
         let ids = Set(list.map(\.entry.id))
         for (id, it) in items where !ids.contains(id) {
             NSStatusBar.system.removeStatusItem(it)
