@@ -903,16 +903,16 @@ struct AccountSettings: View {
     }
 
     /// One subject per column, printed at its top: who it is (Profile with its Usage in the Dock and Claude window keys,
-    /// Claude Code, Alerts), how it opens (Claude window, Dock icon: when it runs and what a click does), and how its
-    /// Dock icon looks (Icon). What the profile is doing now is in the main display at the top.
+    /// Claude Code, Alerts), its Dock icon (when it runs and what a click does, the Claude window with it, its look),
+    /// and its menu bar icon. What the profile is doing now is in the main display at the top.
     var body: some View {
         SettingsColumns(width: width, groups: [
             [AnyView(ColumnHead(text: "Who it is")), AnyView(accountCard), AnyView(codeCard), AnyView(updatesCard)],
-            [AnyView(ColumnHead(text: "How it opens")), AnyView(windowCard), AnyView(dockIconCard)],
-            [AnyView(ColumnHead(text: "How its Dock icon looks")), AnyView(iconCard)]],
-            two: [[AnyView(ColumnHead(text: "Who it is · how it opens")), AnyView(accountCard), AnyView(codeCard),
-                   AnyView(updatesCard), AnyView(windowCard), AnyView(dockIconCard)],
-                  [AnyView(ColumnHead(text: "How its Dock icon looks")), AnyView(iconCard)]])
+            [AnyView(ColumnHead(text: "Its Dock icon")), AnyView(dockIconCard), AnyView(windowCard), AnyView(iconCard)],
+            [AnyView(ColumnHead(text: "Its menu bar icon")), AnyView(MenuBarCard(entry: $entry))]],
+            two: [[AnyView(ColumnHead(text: "Who it is · its menu bar icon")), AnyView(accountCard), AnyView(codeCard),
+                   AnyView(updatesCard), AnyView(MenuBarCard(entry: $entry))],
+                  [AnyView(ColumnHead(text: "Its Dock icon")), AnyView(dockIconCard), AnyView(windowCard), AnyView(iconCard)]])
     }
 
     // Account

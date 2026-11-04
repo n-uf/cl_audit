@@ -32,6 +32,11 @@ enum SettingNotes {
                 ? "A macOS notification when \(p)'s 5-hour or weekly limit reaches \(b.notifyPercent)%."
                 : "No usage notifications for \(p).")
         }
+        if a.menuBar != b.menuBar {
+            return SettingNote(title: "In the menu bar · \(b.menuBar ? "on" : "off")", text: b.menuBar
+                ? "\(p) has its own icon in the menu bar, with its own menu. ⌘-drag it to move it."
+                : "No menu bar icon for \(p). Its usage is read either way.")
+        }
         if a.notifyBack != b.notifyBack {
             return SettingNote(title: "Notify when back · \(b.notifyBack ? "on" : "off")", text: b.notifyBack
                 ? "A macOS notification when \(p)'s full 5-hour or weekly limit resets."

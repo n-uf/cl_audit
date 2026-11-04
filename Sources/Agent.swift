@@ -193,7 +193,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     var rules: AgentRules?
     private var cleanupWork: DispatchWorkItem?
     private var cleanupTimer: Timer?
-    private var menuBar: MenuBarItem?                   // the optional menu bar item (MenuBar.swift)
+    private var menuBar: MenuBarItems?                  // the profiles' menu bar icons (MenuBar.swift)
     private var observers: [NSObjectProtocol] = []
     private var askedForAlerts = false
     private let myStamp = Installer.buildStamp(Bundle.main.bundleURL)
@@ -226,14 +226,20 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             guard let id = note.object as? String else { return }
             self?.readers[id]?.renewLogin()
         })
-        // the menu bar item, when Settings ▸ General ▸ Menu bar says so
-        menuBar = MenuBarItem(profiles: { [weak self] in
+        // each profile's own menu bar icon, as its settings say (MenuBar.swift); the single item older versions had
+        // carries over once
+        MenuBarLegacy.carryOver()
+        menuBar = MenuBarItems(profiles: { [weak self] in
             guard let self else { return [] }
-            return self.order.compactMap { id in self.readers[id].map { MenuBarItem.Profile(entry: $0.entry, usage: $0.usage) } }
-        }, refresh: { [weak self] in self?.refresh(nil) })
-        observers.append(dn.addObserver(forName: MenuBarPrefs.changedNote, object: nil, queue: .main) { [weak self] _ in
-            self?.menuBar?.update()
-        })
+            return self.order.compactMap { id in
+                self.readers[id].map { r in
+                    MenuBarItems.Profile(entry: r.entry, usage: r.usage, problem: r.state.menuText, expired: r.state == .expired)
+                }
+            }
+        }, refresh: { [weak self] id in self?.refresh(id) }, renew: { [weak self] id in self?.readers[id]?.renewLogin() })
+        // the Mac's accent colour changed: the icons in Accent are drawn again
+        observers.append(NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil,
+                                                                queue: .main) { [weak self] _ in self?.menuBar?.update() })
         reload()
         // Opening and closing and Usage in the Dock (Rules.swift)
         let r = AgentRules(defaults: defaults)

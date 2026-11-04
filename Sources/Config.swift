@@ -82,13 +82,15 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     var windowFollowsDock: Bool = false       // its Claude window opens and quits with the Dock icon
     var seat: Seat? = nil                     // the Claude account seat this profile is linked to (nil: not yet)
     var claudeWindow: Bool = true             // the profile has a Claude window (off: none; its folder and sign-in are kept)
+    var menuBar: Bool = false                 // its own icon in the menu bar, drawn by the agent (MenuBar.swift)
+    var menuBarLook = MenuBarLook()           // how that icon looks
 
     init(id: String, name: String, label: String, configDir: String) {
         self.id = id; self.name = name; self.label = label; self.configDir = configDir
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, notifyBack, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, seat, claudeWindow
+        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, notifyBack, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, seat, claudeWindow, menuBar, menuBarLook
     }
     private enum LegacyKeys: String, CodingKey { case clickShowsDetails, openAtLogin, lifecycle }
 
@@ -131,6 +133,8 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         windowFollowsDock = try c.decodeIfPresent(Bool.self, forKey: .windowFollowsDock) ?? oldLife.windowFollowsDock
         seat = try c.decodeIfPresent(Seat.self, forKey: .seat)
         claudeWindow = try c.decodeIfPresent(Bool.self, forKey: .claudeWindow) ?? true
+        menuBar = try c.decodeIfPresent(Bool.self, forKey: .menuBar) ?? false
+        menuBarLook = (try? c.decodeIfPresent(MenuBarLook.self, forKey: .menuBarLook)) ?? MenuBarLook()
         if let action = try c.decodeIfPresent(ClickAction.self, forKey: .clickAction) {
             clickAction = action
         } else if let old = try legacy.decodeIfPresent(Bool.self, forKey: .clickShowsDetails) {

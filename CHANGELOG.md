@@ -15,18 +15,17 @@ the notes before updating.
 - **Usage credits.** While a profile is spending usage credits, its card, panels and Dock menu say "Using usage
   credits · $4.20 spent". Alerts when a profile starts spending them and when they run out.
 - Three limits side by side in the Rings and Numbers designs are drawn a size smaller, so they fit the panels.
-- **Menu bar item** (Settings ▸ General ▸ Menu bar, off by default). Every profile's limits in the menu bar, with
-  or without Dock icons. The icon is the profile with the least room as two thin bars, with the countdown while a
-  limit is full; the menu lists every profile, then Refresh now and Open cl_audit.
+- **Menu bar icons, one per profile.** Like its Dock icon, each profile can have its own icon in the menu bar
+  (profile settings ▸ Menu bar, off by default), drawn by the agent, so it works with or without Dock icons, with
+  its own menu (limits, Open Claude window, Refresh now, Dashboard, Profile settings). Its look: six styles (two
+  bars, bars + number, ring, ring + number, number, two numbers); colours in levels, **System** (drawn the way
+  macOS draws its own icons), **Accent** (your Mac's accent colour) or the profile's; its label; the countdown or
+  just red when a limit is full. The preview draws it the way your menu bar is now. ⌘-drag to arrange them.
 - **Settings, grouped by subject.** Each column has its subject printed at the top. General: cl_audit (Usage in
-  the background, Privacy, About), How usage looks (Face, Dashboard cards), the Dock and the menu bar (App icon,
-  Dock, Menu bar). A profile: Who it is (Profile, Claude Code, Alerts), How it opens (Claude window, Dock icon) and
-  How its Dock icon looks (Icon). "Opening and closing" and "Dock icon clicks" became one **Dock icon** card and a
-  **Claude window** card; "Updates and alerts" is **Alerts**; "Emails" is **Privacy**.
-- **Menu bar looks.** The Menu bar card gets a style gallery (two bars, bars + number, ring, ring + number,
-  number, two numbers), a preview from "no numbers yet" to "full" in a dark and a light menu bar, and choices:
-  colours (levels, plain, the profile's), which profile (least room, one, every), its label, and the countdown or
-  just red when a limit is full.
+  the background, Privacy, About), How usage looks (Face, Dashboard cards, Widget), the Dock (App icon, Dock). A
+  profile: Who it is (Profile, Claude Code, Alerts), Its Dock icon (Dock icon, Claude window, Icon) and Its menu bar
+  icon (Menu bar). "Opening and closing" and "Dock icon clicks" became one **Dock icon** card and a **Claude
+  window** card; "Updates and alerts" is **Alerts**; "Emails" is **Privacy**.
 - Dashboard: the Open window key's light stays dark while the Claude window is closed and lights once it's open
   ("Show window"), like the switches above it; it no longer looks as if the window were running.
 - **Widget** (macOS 14 and later): "Claude usage" in the widget gallery, with every profile's 5-hour and weekly

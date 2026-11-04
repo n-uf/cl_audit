@@ -31,22 +31,18 @@ struct DashboardSettings: View {
     var width: CGFloat = 1280
 
     /// One subject per column, printed at its top: cl_audit itself (Usage in the background, Privacy, About), how usage
-    /// looks (Face, Dashboard cards), and the Dock and the menu bar (App icon, Dock, Menu bar). In two columns the Dock
-    /// goes under cl_audit and the menu bar under the looks; one column keeps the three-column order, top to bottom.
+    /// looks (Face, Dashboard cards, Widget), and the Dock (App icon, Dock). Menu bar icons are each profile's own (its
+    /// settings). In two columns the Dock goes under cl_audit; one column keeps the three-column order, top to bottom.
     var body: some View {
         SettingsColumns(width: width,
                         groups: [[AnyView(ColumnHead(text: "cl_audit")), AnyView(usageCard), AnyView(emailsCard), AnyView(aboutCard)],
                                  [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard), AnyView(WidgetCard())],
-                                 [AnyView(ColumnHead(text: "The Dock and the menu bar")), AnyView(appIconCard), AnyView(DockCard()),
-                                  AnyView(menuBarCard)]],
+                                 [AnyView(ColumnHead(text: "The Dock")), AnyView(appIconCard), AnyView(DockCard())]],
                         two: [[AnyView(ColumnHead(text: "cl_audit · the Dock")), AnyView(usageCard), AnyView(emailsCard),
                                AnyView(aboutCard), AnyView(appIconCard), AnyView(DockCard())],
-                              [AnyView(ColumnHead(text: "How usage looks · the menu bar")), AnyView(faceCard), AnyView(cardsCard),
-                               AnyView(WidgetCard()), AnyView(menuBarCard)]])
+                              [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard),
+                               AnyView(WidgetCard())]])
     }
-
-    // Menu bar: every profile's limits there too, drawn by the agent; its look (MenuBar.swift)
-    var menuBarCard: some View { MenuBarCard() }
 
     @Environment(\.face) private var face
     @ObservedObject private var privacy = Privacy.shared
@@ -242,7 +238,7 @@ struct DashboardSettings: View {
 struct DashboardTile: View {
     let selected: Bool
     var body: some View {
-        TileKey(selected: selected) { TileText(title: "General", sub: "cl_audit · looks · widget · Dock · menu bar") }
+        TileKey(selected: selected) { TileText(title: "General", sub: "cl_audit · looks · widget · Dock") }
     }
 }
 

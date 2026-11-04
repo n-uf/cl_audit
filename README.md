@@ -10,8 +10,8 @@
 
 Usage audit for all your Claude setups on one Mac. A small background agent inside cl_audit reads how much
 of each **profile**'s 5-hour and weekly limits is used and sends the alerts. Each profile can have its own
-Dock icon showing its usage (a click opens that profile's Claude window), and an optional menu bar item shows
-every profile. The cl_audit app adds a dashboard, a launcher and the settings.
+Dock icon showing its usage (a click opens that profile's Claude window) and its own icon in the menu bar. The
+cl_audit app adds a dashboard, a launcher and the settings.
 
 **Claude login:** sign-in happens in Claude's own screens, so cl_audit never sees the password. It reads
 Claude Code's saved login read-only and sends it only to Anthropic ([details](#security-how-cl_audit-handles-the-claude-login)).
@@ -274,15 +274,30 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
   Then the icon's colour, an optional frame colour and the **Claude open dot**: none, or a Claude-orange
   dot at the top-left while the profile's Claude window is open.
+- **Menu bar:** the profile's own icon in the menu bar, exactly like its Dock icon. **In the menu bar** (off by
+  default) switches it on; the agent draws it, so it works with or without the Dock icon. ⌘-drag it to move it;
+  macOS remembers where. Its look, built like the Icon card (a preview from "no numbers yet" to "full", drawn the
+  way your menu bar is now, light or dark, then the other way; each choice drawn as it would look):
+  - **Style:** Two bars (5-hour over week), Bars + number, Ring (week outside, 5-hour inside), Ring + number,
+    Number (the fuller limit), Two numbers.
+  - **Colours:** the level colours; **System**, the menu bar's own colour, drawn the way macOS draws its icons
+    (white or black, dimmed on an inactive screen); **Accent**, your Mac's accent colour, following it when it
+    changes; or the profile's colour. A full limit is red, except in System, where its countdown shows it.
+  - **Label:** none, or the profile's label before its icon ("MAIN").
+  - **When full:** the countdown beside the icon ("1h 42m"), or red only.
+
+  A click opens the profile's menu: its limits (Fable's when the plan has one, when each resets, usage credits
+  while they're spent), when they were read, then **Open Claude window**, **Refresh now**, **Dashboard**,
+  **Profile settings…** and **Hide from the menu bar**.
+
 The cards sit in three columns, each with its subject printed at the top: **Who it is** (Profile, Claude Code,
-Alerts), **How it opens** (Claude window, Dock icon) and **How its Dock icon looks** (Icon).
+Alerts), **Its Dock icon** (Dock icon, Claude window, Icon) and **Its menu bar icon** (Menu bar).
 
 ### General settings
 
 Three columns, each with its subject printed at the top: **cl_audit** (Usage in the background, Privacy, About),
-**How usage looks** (Face, Dashboard cards) and **The Dock and the menu bar** (App icon, Dock, Menu bar). In two
-columns the Dock goes under cl_audit and the menu bar under the looks; one column keeps the same order, top to
-bottom. Every row is one line.
+**How usage looks** (Face, Dashboard cards, Widget) and **The Dock** (App icon, Dock). In two columns the Dock goes
+under cl_audit; one column keeps the same order, top to bottom. Every row is one line.
 
 - **Usage in the background:** whether usage is being read ("Reading usage · 2 profiles · every 2–5 min", or red
   "Not reading · stopped 12 min ago"), then whether **Alerts** reach you (Allowed, or "Not allowed" with **Allow…**,
@@ -305,18 +320,7 @@ bottom. Every row is one line.
   with one Claude pin before them (or none), and redoes it after profiles are added, removed or renamed.
   Other apps keep their places. The card pictures your Dock with the changes marked; **Arrange Dock**
   applies them, and **Restore my Dock** puts back the pins saved before the first change.
-- **Menu bar:** **In the menu bar** (off by default). An icon in the menu bar with every profile's limits,
-  drawn by the agent, so it works with no Dock icons at all. Its look, built like a profile's Icon card (a preview
-  from "no numbers yet" to "full" in a dark and a light menu bar, each choice drawn as it would look):
-  - **Style:** Two bars (5-hour over week), Bars + number, Ring (week outside, 5-hour inside), Ring + number,
-    Number (the fuller limit), Two numbers.
-  - **Colours:** the level colours, Plain (the menu bar's own, like Apple's icons) or the profile's colour; a full
-    limit is red in all three.
-  - **Shows:** the profile with the least room, One profile (picked from a menu), or Every profile side by side.
-  - **Label:** none, or the profile's label before its icon ("MAIN").
-  - **When full:** the countdown beside the icon ("1h 42m"), or red only.
-  A click opens a menu with every profile (its limits, Fable's when the plan has one, when each resets, usage
-  credits while they're spent), then **Refresh now**, **Open cl_audit** and **Hide from the menu bar**.
+- **Widget:** see [Widget](#widget).
 
 ### Adding a profile
 
