@@ -82,8 +82,14 @@ enum SettingNotes {
         }
         if a.windowFollowsDock != b.windowFollowsDock {
             return SettingNote(title: "Claude window · \(b.windowFollowsDock ? "with the Dock icon" : "on its own")", text: b.windowFollowsDock
-                ? "Starting \(p)'s Dock icon opens its Claude window, and quitting it quits the window (not at login; Claude can ask about unsent work)."
+                ? (b.opensFromDock ? "Starting \(p)'s Dock icon opens its Claude window, and quitting it quits the window (not at login; Claude can ask about unsent work)."
+                                   : "Quitting \(p)'s Dock icon quits its Claude window too (Claude can ask about unsent work); starting it doesn't open the window.")
                 : "\(p)'s Claude window opens and quits only when you open or quit it.")
+        }
+        if a.opensFromDock != b.opensFromDock {
+            return SettingNote(title: "Opens from · \(b.opensFromDock ? "Dock click too" : "Only when asked")", text: b.opensFromDock
+                ? "A click on \(p)'s Dock icon can open its Claude window again, as its Click setting says."
+                : "A click on \(p)'s Dock icon shows the usage only. Open window on the dashboard, the Dock and menu bar menus and the details panel open the Claude window.")
         }
         return nil
     }

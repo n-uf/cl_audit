@@ -80,6 +80,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     var iconHidden: Bool = false         // Usage in the Dock off: no Dock icon (the agent still reads the usage)
     var dockRuns: DockRuns = .atLogin         // when its Dock icon runs
     var windowFollowsDock: Bool = false       // its Claude window opens and quits with the Dock icon
+    var opensFromDock: Bool = true            // Opens from: false = "Only when asked", a Dock click never opens the window
     var seat: Seat? = nil                     // the Claude account seat this profile is linked to (nil: not yet)
     var claudeWindow: Bool = true             // the profile has a Claude window (off: none; its folder and sign-in are kept)
     var showFable: Bool = true                // Fable's own weekly limit shown (and alerted) for this profile
@@ -91,7 +92,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, notifyBack, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, seat, claudeWindow, showFable, menuBar, menuBarLook
+        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, notifyBack, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, opensFromDock, seat, claudeWindow, showFable, menuBar, menuBarLook
     }
     private enum LegacyKeys: String, CodingKey { case clickShowsDetails, openAtLogin, lifecycle }
 
@@ -132,6 +133,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         dockRuns = try c.decodeIfPresent(DockRuns.self, forKey: .dockRuns)
             ?? (oldLogin ? .atLogin : oldLife.dockFollowsWindow ? .withWindow : .whenStarted)
         windowFollowsDock = try c.decodeIfPresent(Bool.self, forKey: .windowFollowsDock) ?? oldLife.windowFollowsDock
+        opensFromDock = try c.decodeIfPresent(Bool.self, forKey: .opensFromDock) ?? true
         seat = try c.decodeIfPresent(Seat.self, forKey: .seat)
         claudeWindow = try c.decodeIfPresent(Bool.self, forKey: .claudeWindow) ?? true
         showFable = try c.decodeIfPresent(Bool.self, forKey: .showFable) ?? true
@@ -150,8 +152,12 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         let dock = !iconHidden, win = claudeWindow
         return ProfileRuns(dockIcon: dock, window: win, atLogin: dock && dockRuns == .atLogin,
                            withWindow: dock && win && dockRuns == .withWindow,
-                           windowFollowsDock: dock && win && windowFollowsDock)
+                           windowFollowsDock: dock && win && windowFollowsDock,
+                           windowOpensWithDock: dock && win && windowFollowsDock && opensFromDock)
     }
+
+    /// A click on the Dock icon may open the Claude window: it has one and Opens from isn't "Only when asked".
+    var dockClickOpensWindow: Bool { claudeWindow && opensFromDock }
     /// Usage in the Dock off and no Claude window: its usage shows on the dashboard, in the launcher and in alerts.
     var usageOnly: Bool { runs.usageOnly }
 
@@ -179,6 +185,7 @@ struct ProfileRuns: Equatable {
     var atLogin: Bool             // the agent starts the Dock icon when you log in
     var withWindow: Bool          // the agent starts and quits the Dock icon with its Claude window
     var windowFollowsDock: Bool   // the agent opens and quits the Claude window with the Dock icon (not at login)
+    var windowOpensWithDock: Bool // ... and starting the Dock icon opens it (not with Opens from ▸ Only when asked; quitting still quits it)
     var usageOnly: Bool { !dockIcon && !window }
 }
 

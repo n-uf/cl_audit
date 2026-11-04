@@ -182,7 +182,8 @@ final class AgentRules {
         if actions[e.id]?.kind == .dockStarts { actions[e.id] = nil }
         let byAgent = startedByAgent[e.id].map { Date().timeIntervalSince($0) < 20 } ?? false
         let quiet = Launcher.arguments(of: app.processIdentifier).contains("--no-follow")
-        guard e.runs.windowFollowsDock, !byAgent, !quiet, !loggingIn, !windowOpen(e) else { return }
+        // Opens from ▸ Only when asked: starting the Dock icon never opens the window (quitting it still quits it)
+        guard e.runs.windowOpensWithDock, !byAgent, !quiet, !loggingIn, !windowOpen(e) else { return }
         agentLog.log("agent: \(e.id, privacy: .public): Dock icon started, opening its window")
         actions[e.id] = AgentAction(kind: .windowOpens, at: Date())
         Launcher.openClaude(Account(e))

@@ -158,6 +158,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.dockTile.contentView = tileView
         NSApp.dockTile.display()
         redraw()
+        // Opens from ▸ Only when asked, with the window going with the Dock icon: started by a click on its stopped tile
+        // (the agent starts it with --no-follow), it shows the usage as a click would, never the window
+        if entry.runs.windowFollowsDock, !entry.opensFromDock, !CommandLine.arguments.contains("--no-follow") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak self] in self?.showClickUsage() }
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.tick() }
         tick()
         applyEntry()
@@ -266,17 +271,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         // Without a Claude window a click can only show the usage: "Opens Claude" shows the details panel instead,
         // and "Usage, then Claude" the usage alone (opening Claude does nothing then).
+        // With Opens from ▸ Only when asked the Claude part is left out: "Usage, then Claude" and "Open Claude" show the
+        // usage briefly (the choice stays stored, so switching back restores it).
         let action: ClickAction = entry.claudeWindow || entry.clickAction != .open ? entry.clickAction : .details
+        let opens = entry.dockClickOpensWindow
         switch action {
         case .details:
             details.toggle(detailsInfo(), detailsActions())
         case .peekThenOpen:
             details.peek(detailsInfo(), seconds: entry.peekSeconds)
-            openClaude()
+            if opens { openClaude() }
         case .open:
-            openClaude()
+            if opens { openClaude() } else { details.peek(detailsInfo(), seconds: entry.peekSeconds) }
         }
         return false
+    }
+
+    /// A click's usage part alone: the details panel, or the usage briefly.
+    func showClickUsage() {
+        if entry.clickAction == .details { details.toggle(detailsInfo(), detailsActions()) }
+        else { details.peek(detailsInfo(), seconds: entry.peekSeconds) }
     }
 
     func detailsInfo() -> DetailsInfo {
