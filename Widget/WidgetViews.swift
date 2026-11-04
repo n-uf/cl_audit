@@ -25,6 +25,10 @@ struct WidgetProfile: Identifiable {
     var fable: Double?                  // nil: the plan has none, or the profile doesn't show it
     var plan: String?
     var updated: Date?
+    var noFive = false                  // the plan has no 5-hour limit (Ultra): the week alone, no 5-hour row
+
+    /// The plan as words: Claude's own name as it is ("Ultra"), the sign-in's lower-case one capitalised ("Max").
+    var planWords: String? { plan.map { $0 == $0.lowercased() ? $0.capitalized : $0 } }
 
     /// The full limit that holds the profile back now (the later reset when both are), or nil.
     func full(now: Date) -> (name: String, resets: Date?)? {
@@ -43,7 +47,7 @@ struct WidgetProfile: Identifiable {
     }
 
     /// Whether the 5-hour limit is the fuller of the two.
-    var fullerIsFive: Bool { (five ?? -1) >= (week ?? -1) }
+    var fullerIsFive: Bool { !noFive && (five ?? -1) >= (week ?? -1) }
 }
 
 enum AgentFiles {
@@ -57,7 +61,7 @@ enum AgentFiles {
     private struct Entry: Decodable { let id: String; let name: String; let accent: String?; let showFable: Bool? }
     private struct Status: Decodable {
         let fiveHour: Double?; let fiveHourResets: Double?; let weekly: Double?; let weeklyResets: Double?
-        let updatedAt: Double?; let plan: String?; let scoped: [Scoped]?
+        let updatedAt: Double?; let plan: String?; let scoped: [Scoped]?; let noFiveHour: Bool?
     }
     private struct Scoped: Decodable { let name: String; let percent: Double? }
 
@@ -76,6 +80,7 @@ enum AgentFiles {
                 p.fiveResets = s.fiveHourResets.map { Date(timeIntervalSince1970: $0) }
                 p.weekResets = s.weeklyResets.map { Date(timeIntervalSince1970: $0) }
                 p.updated = s.updatedAt.map { Date(timeIntervalSince1970: $0) }
+                p.noFive = s.noFiveHour ?? false
                 if e.showFable ?? true { p.fable = s.scoped?.first(where: { $0.name == "Fable" })?.percent }
             }
             return p
@@ -464,7 +469,7 @@ struct WidgetContent: View {
             ForEach(Array(profiles.enumerated()), id: \.element.id) { i, p in
                 if i > 0 { Spacer(minLength: few ? 8 : 4); divider; Spacer(minLength: few ? 8 : 4) }
                 VStack(alignment: .leading, spacing: few ? 10 : 6) {
-                    head(p, meta: p.plan?.capitalized)
+                    head(p, meta: p.planWords)
                     limits(p, fable: true, resets: few, across: !few || look.design.round)
                 }
             }
@@ -504,7 +509,8 @@ struct WidgetContent: View {
                             Text(p.name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(theme.ink).lineLimit(1)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        WMini(design: look.design, name: "5h", p: p.five, theme: theme).frame(maxWidth: .infinity, alignment: .leading)
+                        if p.noFive { Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }   // keeps the columns lined up
+                        else { WMini(design: look.design, name: "5h", p: p.five, theme: theme).frame(maxWidth: .infinity, alignment: .leading) }
                         WMini(design: look.design, name: "wk", p: p.week, theme: theme).frame(maxWidth: .infinity, alignment: .leading)
                         if fable { WMini(design: look.design, name: "Fable", p: p.fable, theme: theme).frame(maxWidth: .infinity, alignment: .leading) }
                     }
@@ -550,14 +556,14 @@ struct WidgetContent: View {
         let f = WLimit(design: look.design, name: "Fable", p: p.fable, scale: scale, theme: theme)
         if look.design.round || across {
             HStack(alignment: .top, spacing: look.design.round ? 10 : 16) {
-                limit(p, five: true, resets: resets)
+                if !p.noFive { limit(p, five: true, resets: resets) }
                 limit(p, five: false, resets: resets)
                 if withFable { f }
             }
             .frame(maxWidth: .infinity, alignment: look.design.round ? .center : .leading)
         } else {
             VStack(alignment: .leading, spacing: size == .large ? 7 : 9) {
-                limit(p, five: true, resets: resets)
+                if !p.noFive { limit(p, five: true, resets: resets) }
                 limit(p, five: false, resets: resets)
                 if withFable { f }
             }

@@ -37,6 +37,7 @@ final class UsageReader {
     private var signIn = SignInWatch()
     private var signInChangedAt: Date?           // when the account changed: older numbers and status lines are the old one's
     private var signInRetries = 0                // reads again when the new sign-in hasn't reached the Keychain yet
+    private var planName: String?                // Claude's own name for the plan ("Ultra"), from that same .claude.json
 
     /// At most one automatic renewal per this many seconds, even across restarts.
     static let renewSpacing: TimeInterval = 30 * 60
@@ -60,7 +61,7 @@ final class UsageReader {
         if let s = Store.status(e.id), let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil {
             usage = Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly,
                           weeklyResets: s.weeklyResets, fetchedAt: at, source: s.source ?? "Anthropic",
-                          scoped: s.scoped ?? [], credits: s.credits)
+                          scoped: s.scoped ?? [], credits: s.credits, noFiveHour: s.noFiveHour ?? false)
             loginEmail = s.loginEmail
             plan = s.plan
             renewNote = s.renewNote
@@ -97,6 +98,8 @@ final class UsageReader {
            local.fetchedAt > (signInChangedAt ?? .distantPast) {
             // the status line has only the two limits: the model limits and credits stay as Anthropic last gave them
             local.scoped = usage?.scoped ?? []; local.credits = usage?.credits
+            local.noFiveHour = usage?.noFiveHour ?? false
+            if local.noFiveHour { local.fiveHour = nil; local.fiveHourResets = nil }
             usage = local
         }
         if let u = usage, Self.resetPassed(u), !failing, Date().timeIntervalSince(lastAsked) >= 60 { nextFetch = .distantPast }
@@ -140,7 +143,10 @@ final class UsageReader {
     /// Whether Claude Code was signed in to another account in this folder since the last look.
     private func signInChanged() -> Bool {
         let dir = account.configDir
-        return signIn.look(stamp: SignInWatch.stamp(configDir: dir)) { Account.signedInSeat(configDir: dir) }
+        return signIn.look(stamp: SignInWatch.stamp(configDir: dir)) {
+            planName = Account.planName(configDir: dir)       // read with it: no extra reads
+            return Account.signedInSeat(configDir: dir)
+        }
     }
 
     /// Another account is signed in: the kept sign-in, the numbers and the alert marks are the old account's. Drop
@@ -528,9 +534,10 @@ final class UsageReader {
         let status = IconStatus(loginEmail: loginEmail, expectedEmail: expectedEmail, state: "\(state)",
                                 fiveHour: usage?.fiveHour, weekly: usage?.weekly, updatedAt: usage?.fetchedAt,
                                 renewNote: renewNote, fiveHourResets: usage?.fiveHourResets,
-                                weeklyResets: usage?.weeklyResets, plan: plan,
+                                weeklyResets: usage?.weeklyResets, plan: planName ?? plan,
                                 source: usage?.source, problem: state.menuText, renewing: renewing,
-                                scoped: usage.map { $0.scoped.isEmpty ? nil : $0.scoped } ?? nil, credits: usage?.credits)
+                                scoped: usage.map { $0.scoped.isEmpty ? nil : $0.scoped } ?? nil, credits: usage?.credits,
+                                noFiveHour: usage?.noFiveHour == true ? true : nil)
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970; enc.outputFormatting = [.sortedKeys]
         if let data = try? enc.encode(status), data != lastStatus { lastStatus = Store.writeStatus(id, status) }
     }

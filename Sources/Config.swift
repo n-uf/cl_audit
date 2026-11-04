@@ -215,6 +215,7 @@ struct IconStatus: Codable {
     var renewing: Bool? = nil          // renewing the sign-in through Claude Code now
     var scoped: [ScopedLimit]? = nil   // a model's own weekly limit (Fable)
     var credits: Credits? = nil        // usage credits
+    var noFiveHour: Bool? = nil        // the plan has no 5-hour limit (Ultra): its 5-hour row is left out
 }
 
 // MARK: - Renewing an expired login through Claude Code

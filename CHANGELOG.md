@@ -52,6 +52,11 @@ the notes before updating.
   profile is linked to the new account and keeps its name, look, Dock icon, Claude window and settings. Refused,
   in red with the profile's name, when another profile already has that account; **Sign back in…** opens Claude
   Code's sign-in for the old one.
+- **Claude's own plan name.** The plan badge, the panels and the menus show the plan as Claude names it ("Ultra"),
+  read from the profile's `.claude.json` with the account it already reads; an Ultra account's sign-in says "max".
+  Without that name, the sign-in's as before (Max, Pro, Team).
+- **Plans without a 5-hour limit** (Ultra): Anthropic's reply has no 5-hour window for them, so the cards, panels,
+  Dock and menu bar menus, the menu bar icon and the widget show the week alone instead of an empty 5-hour row.
 - README: **Moving a profile to another account**, step by step: both sign-ins (Claude Code's is the one the usage
   comes from), linking, and, for the usual Claude app only, moving its Code sessions with claude-transplant.
 

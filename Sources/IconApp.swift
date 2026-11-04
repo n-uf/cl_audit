@@ -43,7 +43,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var usage: Usage? {
         guard let s = status, let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil else { return nil }
         return Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly, weeklyResets: s.weeklyResets,
-                     fetchedAt: at, source: s.source ?? "Anthropic", scoped: s.scoped ?? [], credits: s.credits)
+                     fetchedAt: at, source: s.source ?? "Anthropic", scoped: s.scoped ?? [], credits: s.credits,
+                     noFiveHour: s.noFiveHour == true)
     }
     var loginEmail: String? { status?.loginEmail }
     var plan: String? { status?.plan }
@@ -291,7 +292,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             design: entry.panelDesign,
             accent: entry.accentNSColor,
             refreshing: refreshing,
-            scoped: entry.showFable ? usage?.scoped ?? [] : [], credits: usage?.credits)
+            scoped: entry.showFable ? usage?.scoped ?? [] : [], credits: usage?.credits,
+            noFiveHour: status?.noFiveHour == true)
         return info
     }
 
@@ -392,7 +394,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return short
         }
         let m = NSMenu(); m.autoenablesItems = false
-        m.addItem(info("Claude \(account.name)" + (plan.map { " · \($0)" } ?? "")))
+        m.addItem(info("Claude \(account.name)" + (plan.map { " · \(Account.planWords($0))" } ?? "")))
         m.addItem(.separator())
         // while a limit is full, both times first: "5-hour full · back at 15:28, in 1h 42m"
         if let full = AtLimit.blocker(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
@@ -405,7 +407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         func line(_ title: String, _ p: Double?, _ r: Date?) {
             m.addItem(info("\(title): \(Painter.pct(p))" + (r.map { " · resets \(Self.when($0))" } ?? "")))
         }
-        line("5-hour limit", usage?.fiveHour, usage?.fiveHourResets)
+        if usage?.noFiveHour != true { line("5-hour limit", usage?.fiveHour, usage?.fiveHourResets) }
         line("Weekly limit", usage?.weekly, usage?.weeklyResets)
         for s in entry.showFable ? usage?.scoped ?? [] : [] {
             if AtLimit.isFull(s.percent), let r = s.resets {

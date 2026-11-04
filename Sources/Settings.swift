@@ -1271,7 +1271,7 @@ struct AccountSettings: View {
             weekly: s?.weekly ?? 58, weeklyResets: s?.weeklyResets ?? Date().addingTimeInterval(2 * 86400 + 5 * 3600),
             updated: s?.updatedAt, source: nil, problem: nil, renewNote: nil,
             needsLogin: false,
-            design: entry.panelDesign, accent: entry.accentNSColor)
+            design: entry.panelDesign, accent: entry.accentNSColor, noFiveHour: s?.noFiveHour == true)
     }
 
     /// A folder picked in Finder, used only if no other account has it and it's a Claude Code folder (or empty).

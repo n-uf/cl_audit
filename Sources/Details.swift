@@ -26,6 +26,7 @@ struct DetailsInfo {
     var refreshing = false
     var scoped: [ScopedLimit] = []
     var credits: Credits? = nil
+    var noFiveHour = false              // the plan has no 5-hour limit (Ultra): no 5-hour row
 }
 
 struct DetailsActions {
@@ -103,7 +104,7 @@ struct DetailsView: View {
                     Text(info.login ?? "No Claude Code login").font(.caption).foregroundStyle(.secondary)
                         .hidesEmail(info.login != nil)
                     if let plan = info.plan {
-                        Text(plan.capitalized + " plan").font(.caption2.weight(.medium))
+                        Text(Account.planWords(plan) + " plan").font(.caption2.weight(.medium))
                             .padding(.horizontal, 6).padding(.vertical, 1)
                             .background(Color.primary.opacity(0.08), in: Capsule())
                     }
@@ -164,7 +165,7 @@ struct CompactView: View {
                 Circle().fill(Color(nsColor: info.accent)).frame(width: 8, height: 8)
                 Text("Claude \(info.name)").font(.system(size: 13, weight: .semibold))
                 Spacer()
-                if let plan = info.plan { Text(plan.capitalized).font(.caption).foregroundStyle(.secondary) }
+                if let plan = info.plan { Text(Account.planWords(plan)).font(.caption).foregroundStyle(.secondary) }
                 if let onClose { CloseButton(action: onClose) }
             }
             CardLimits(limits: info.limits, design: info.design, credits: info.credits)

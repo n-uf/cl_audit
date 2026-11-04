@@ -99,9 +99,12 @@ only software you trust. cl_audit's code is open to check: `Login.read` in `Sour
 
 ## The dashboard
 
-Opening **cl_audit** shows a card per profile: its icon, both limits and a switch for each thing it has (its
-Claude window, its Dock icon). A usage only profile has no switches: one display says "Usage only · not in
-the Dock · no window".
+Opening **cl_audit** shows a card per profile: its icon, its plan, both limits and a switch for each thing it has
+(its Claude window, its Dock icon). A usage only profile has no switches: one display says "Usage only · not in
+the Dock · no window". The plan is Claude's own name for it, as Claude Code recorded it in the profile's
+`.claude.json` ("Ultra"; the sign-in itself says "max" for an Ultra account), else the sign-in's. A plan without a
+5-hour limit (Ultra) shows the week alone: no empty 5-hour row on the cards, panels, menus, the menu bar icon and
+the widget (the Dock icon still shows "5h –").
 
 The top strip is the profile keys, one display and the refresh key. The display shows one thing at a time, most
 important first: "Not updating · agent won't start · numbers 7 min old" (red; a click opens Settings ▸ General with

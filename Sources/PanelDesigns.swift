@@ -46,8 +46,8 @@ extension DetailsInfo {
     }
 
     var limits: [Limit] {
-        [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: fiveHour, resets: fiveHourResets, window: 5 * 3600),
-         Limit(id: "wk", title: "Week", name: "Week", p: weekly, resets: weeklyResets, window: 7 * 86400)]
+        (noFiveHour ? [] : [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: fiveHour, resets: fiveHourResets, window: 5 * 3600)])
+            + [Limit(id: "wk", title: "Week", name: "Week", p: weekly, resets: weeklyResets, window: 7 * 86400)]
             + scoped.map(\.limit)
     }
 }

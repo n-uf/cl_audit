@@ -122,6 +122,7 @@ struct MenuBarGlyph {
         var five: Double?
         var week: Double?
         var countdown: String?          // set while a full limit holds the profile back ("1h 42m", or "full")
+        var noFive = false              // the plan has no 5-hour limit (Ultra): the week alone
     }
 
     let look: MenuBarLook
@@ -181,12 +182,14 @@ struct MenuBarGlyph {
 
         // the system's colours can't turn red, so a full limit always shows its countdown there
         let showCount = item.countdown != nil && (look.whenFull == .countdown || template)
-        let fuller: Double? = [item.five, item.week].compactMap { $0 }.max()
+        let fuller: Double? = [item.noFive ? nil : item.five, item.week].compactMap { $0 }.max()
         func number() { put(text(fuller.map { "\(Int($0.rounded()))%" } ?? "–", size: 12, weight: .semibold, colour: colour(fuller, dark))) }
         func bars() {
             if !measure {
-                for (i, p) in [item.five, item.week].enumerated() {
-                    let r = NSRect(x: x, y: i == 0 ? mid + 1 : mid - 5, width: 20, height: 4)
+                // the 5-hour bar over the week's; a plan without a 5-hour limit has the week's alone, in the middle
+                let rows: [(Double?, CGFloat)] = item.noFive ? [(item.week, mid - 2)] : [(item.five, mid + 1), (item.week, mid - 5)]
+                for (p, y) in rows {
+                    let r = NSRect(x: x, y: y, width: 20, height: 4)
                     track(dark).setFill(); NSBezierPath(roundedRect: r, xRadius: 2, yRadius: 2).fill()
                     if let p {
                         var f = r; f.size.width = max(4, 20 * CGFloat(min(max(p, 0), 100)) / 100)
@@ -199,7 +202,7 @@ struct MenuBarGlyph {
         func ring() {
             if !measure {
                 let c = NSPoint(x: x + 8, y: mid)
-                for (p, r) in [(item.week, CGFloat(6.5)), (item.five, CGFloat(3))] {
+                for (p, r) in [(item.week, CGFloat(6.5))] + (item.noFive ? [] : [(item.five, CGFloat(3))]) {
                     let t = NSBezierPath(); t.appendArc(withCenter: c, radius: r, startAngle: 0, endAngle: 360)
                     t.lineWidth = 2; track(dark).setStroke(); t.stroke()
                     if let p, p > 0 {
@@ -217,6 +220,8 @@ struct MenuBarGlyph {
         case .ring: ring()
         case .ringNumber: ring(); if !showCount { x += 4; number() }
         case .number: if !showCount { number() }
+        case .twoNumbers where item.noFive:
+            if !showCount { number() }
         case .twoNumbers:
             if !showCount {
                 put(text(item.five.map { "\(Int($0.rounded()))" } ?? "–", size: 11.5, weight: .semibold, colour: colour(item.five, dark)))
@@ -284,7 +289,8 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         let full = u.flatMap { AtLimit.blocker(fiveHour: $0.fiveHour, fiveHourResets: $0.fiveHourResets, weekly: $0.weekly,
                                                weeklyResets: $0.weeklyResets, now: now) }
         return MenuBarGlyph.Item(label: p.entry.label, accent: p.entry.accentNSColor, five: u?.fiveHour, week: u?.weekly,
-                                 countdown: full.map { f in f.resets.map { TimeWords.countdown($0, now: now) } ?? "full" })
+                                 countdown: full.map { f in f.resets.map { TimeWords.countdown($0, now: now) } ?? "full" },
+                                 noFive: u?.noFiveHour ?? false)
     }
 
     private func draw(_ p: Profile, now: Date) {
@@ -353,8 +359,9 @@ struct MenuBarRow: View {
 
     private var limits: [Limit] {
         let u = profile.usage
-        return [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: u?.fiveHour, resets: u?.fiveHourResets, window: 5 * 3600),
-                Limit(id: "wk", title: "Week", name: "Week", p: u?.weekly, resets: u?.weeklyResets, window: 7 * 86400)]
+        return (u?.noFiveHour == true ? []
+                : [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: u?.fiveHour, resets: u?.fiveHourResets, window: 5 * 3600)])
+            + [Limit(id: "wk", title: "Week", name: "Week", p: u?.weekly, resets: u?.weeklyResets, window: 7 * 86400)]
             + (profile.entry.showFable ? u?.scoped ?? [] : []).map(\.limit)
     }
 

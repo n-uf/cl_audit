@@ -175,8 +175,9 @@ struct AccountRow: Identifiable {
     }
 
     var limits: [Limit] {
-        [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: fiveHour, resets: status?.fiveHourResets, window: 5 * 3600),
-         Limit(id: "wk", title: "Week", name: "Week", p: weekly, resets: status?.weeklyResets, window: 7 * 86400)]
+        (status?.noFiveHour == true ? []
+            : [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: fiveHour, resets: status?.fiveHourResets, window: 5 * 3600)])
+            + [Limit(id: "wk", title: "Week", name: "Week", p: weekly, resets: status?.weeklyResets, window: 7 * 86400)]
             + (entry.showFable ? status?.scoped ?? [] : []).map(\.limit)
     }
 
@@ -682,7 +683,11 @@ struct PaletteView: View {
                                     .help("\(full.title) · \(full.both())")
                             }
                         }
-                        MiniLimit(tag: "5h", p: row.fiveHour)
+                        if row.status?.noFiveHour == true {
+                            MiniLimit(tag: "5h", p: nil).hidden()          // no 5-hour limit: the week's stays in its column
+                        } else {
+                            MiniLimit(tag: "5h", p: row.fiveHour)
+                        }
                         MiniLimit(tag: "wk", p: row.weekly)
                     }
                     if i < 9 { Kbd(text: "⌘\(i + 1)") }

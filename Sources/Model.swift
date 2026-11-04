@@ -86,6 +86,19 @@ struct Account {
         return oauth["emailAddress"] as? String
     }
 
+    /// Claude's own name for the folder's plan ("Ultra"), as Claude Code recorded it (oauthAccount.planDisplayName in
+    /// .claude.json), or nil. The sign-in's subscriptionType can be coarser: an Ultra account's says "max".
+    static func planName(configDir: String) -> String? {
+        guard let data = FileManager.default.contents(atPath: claudeJSON(configDir: configDir)),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let oauth = j["oauthAccount"] as? [String: Any],
+              let name = oauth["planDisplayName"] as? String, !name.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
+        return name
+    }
+
+    /// The plan as words: Claude's own name as it is ("Ultra"), the sign-in's lower-case one capitalised ("Max").
+    static func planWords(_ plan: String) -> String { plan == plan.lowercased() ? plan.capitalized : plan }
+
     /// The claude.ai account id Claude Code recorded for the folder (to compare with the desktop app's).
     static func expectedAccountUuid(configDir: String) -> String? {
         guard let data = FileManager.default.contents(atPath: claudeJSON(configDir: configDir)),
@@ -110,6 +123,7 @@ struct Usage {
     var source: String
     var scoped: [ScopedLimit] = []       // weekly limits of one model (Fable on Max, Ultra, premium seats), beside the two
     var credits: Credits? = nil          // usage credits (Credits.swift)
+    var noFiveHour = false               // the plan has no 5-hour limit (Ultra): only the week counts
 }
 
 /// A weekly limit of its own for one model: "Fable" may use up to a share of the week. Full, it holds back only that
@@ -244,7 +258,16 @@ enum UsageParser {
         guard u.fiveHour != nil || u.weekly != nil else { return nil }
         u.scoped = scoped(j)
         u.credits = Credits.parse(j)
+        u.noFiveHour = noFiveHour(j)
         return u
+    }
+
+    /// The plan has no 5-hour limit at all (Ultra): no five_hour window and no "session" kind in limits[]. A plan
+    /// that has one but no session open (Max) still lists the session limit, so it isn't taken for this.
+    static func noFiveHour(_ j: [String: Any]) -> Bool {
+        guard j["five_hour"] as? [String: Any] == nil, let limits = j["limits"] as? [[String: Any]], !limits.isEmpty
+        else { return false }
+        return !limits.contains { ($0["kind"] as? String) == "session" || ($0["group"] as? String) == "session" }
     }
 
     /// The model limits in limits[]: {kind: "weekly_scoped", percent, resets_at, scope: {model: {display_name}}}.
