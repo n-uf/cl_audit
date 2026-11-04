@@ -33,6 +33,10 @@ final class UsageReader {
     private var alerting: Set<String> = []       // alerts being handed to macOS
     private var lastAsked = Date.distantPast     // when a fetch last started
     private var resetRead: DispatchWorkItem?     // reads again the moment a full limit resets
+    // Claude Code signed in to another account in this folder: .claude.json names another seat
+    private var signIn = SignInWatch()
+    private var signInChangedAt: Date?           // when the account changed: older numbers and status lines are the old one's
+    private var signInRetries = 0                // reads again when the new sign-in hasn't reached the Keychain yet
 
     /// At most one automatic renewal per this many seconds, even across restarts.
     static let renewSpacing: TimeInterval = 30 * 60
@@ -62,6 +66,7 @@ final class UsageReader {
             renewNote = s.renewNote
         }
         Self.adoptOldMarks(e.id, into: defaults)
+        _ = signInChanged()                      // the first look: what the folder is signed in to now
         scheduleResetRead()
     }
 
@@ -71,7 +76,11 @@ final class UsageReader {
         let refetch = e.configDir != entry.configDir || e.pollMinutes != entry.pollMinutes
         entry = e
         account = Account(e)
-        if refetch { loginEmail = nil; profileFor = nil; nextFetch = .distantPast; cachedLogin = nil; tick() }
+        if refetch {
+            loginEmail = nil; profileFor = nil; nextFetch = .distantPast; cachedLogin = nil
+            signIn = SignInWatch(); _ = signInChanged()     // another folder: its own sign-in, no change
+            tick()
+        }
         if entry.autoRenew && state == .expired { maybeRenew() }
         save()
     }
@@ -83,7 +92,9 @@ final class UsageReader {
     /// reset has passed is read again at once (then at most once a minute until Anthropic's numbers move on).
     func tick() {
         guard !stopped else { return }
-        if var local = UsageParser.fromStatusLine(account), local.fetchedAt > (usage?.fetchedAt ?? .distantPast) {
+        if signInChanged() { startOver() }
+        if var local = UsageParser.fromStatusLine(account), local.fetchedAt > (usage?.fetchedAt ?? .distantPast),
+           local.fetchedAt > (signInChangedAt ?? .distantPast) {
             // the status line has only the two limits: the model limits and credits stay as Anthropic last gave them
             local.scoped = usage?.scoped ?? []; local.credits = usage?.credits
             usage = local
@@ -124,6 +135,39 @@ final class UsageReader {
     /// Refresh now (a Dock icon, the dashboard): fetch now and read the sign-in again.
     func refreshNow() { nextFetch = .distantPast; forceLoginRead = true; tick() }
 
+    // MARK: another account signed in
+
+    /// Whether Claude Code was signed in to another account in this folder since the last look.
+    private func signInChanged() -> Bool {
+        let dir = account.configDir
+        return signIn.look(stamp: SignInWatch.stamp(configDir: dir)) { Account.signedInSeat(configDir: dir) }
+    }
+
+    /// Another account is signed in: the kept sign-in, the numbers and the alert marks are the old account's. Drop
+    /// them and read the new sign-in now (one Keychain read, as at the start), so no stale numbers and no "Wrong
+    /// account" until Refresh now.
+    private func startOver(now: Date = Date()) {
+        agentLog.log("reader \(self.id, privacy: .public): Claude Code is signed in to another account; reading the new sign-in")
+        cachedLogin = nil; forceLoginRead = true; loginRejected = false
+        loginEmail = nil; profileFor = nil; plan = nil; renewNote = nil
+        usage = nil; state = .idle; backoff = 0
+        signInChangedAt = now; signInRetries = 0
+        resetRead?.cancel(); resetRead = nil
+        Self.forgetLimitMarks(id, in: defaults)   // no "is back" or "full" alert from the switch itself
+        nextFetch = .distantPast
+    }
+
+    /// Right after a change, the Keychain can still hold the old sign-in for a moment (Claude Code writes the two at
+    /// different times): when the sign-in read names another account than .claude.json, read it again a few times.
+    private func checkNewSignIn(_ email: String) {
+        guard let at = signInChangedAt, Date().timeIntervalSince(at) < 5 * 60, signInRetries < 4,
+              let expected = expectedEmail, expected.lowercased() != email.lowercased() else { return }
+        signInRetries += 1
+        forceLoginRead = true
+        nextFetch = Date().addingTimeInterval(TimeInterval(15 * signInRetries))
+        agentLog.log("reader \(self.id, privacy: .public): the Keychain still has the old sign-in; reading it again soon")
+    }
+
     // MARK: fetching
 
     private func fetch() {
@@ -161,8 +205,9 @@ final class UsageReader {
         self.plan = plan
         if let expiresAt, expiresAt < Date() { inFlight = false; state = .expired; save(); maybeRenew(); return }
         if profileFor != Account.sha8(token) { lookUpEmail(token) }
+        let asked = Date()
         URLSession.shared.dataTask(with: Self.request("usage", token: token)) { [weak self] data, resp, err in
-            DispatchQueue.main.async { self?.finish(data: data, response: resp as? HTTPURLResponse, error: err) }
+            DispatchQueue.main.async { self?.finish(data: data, response: resp as? HTTPURLResponse, error: err, asked: asked) }
         }.resume()
     }
 
@@ -188,21 +233,24 @@ final class UsageReader {
     }
 
     private func lookUpEmail(_ token: String) {
-        let key = Account.sha8(token)
+        let key = Account.sha8(token), asked = Date()
         URLSession.shared.dataTask(with: Self.request("profile", token: token)) { [weak self] data, resp, _ in
             let ok = (resp as? HTTPURLResponse)?.statusCode == 200
             let email = ok ? data.flatMap(UsageParser.email) : nil
             DispatchQueue.main.async {
                 guard let self else { return }
-                if let email { self.loginEmail = email; self.profileFor = key }
+                if let at = self.signInChangedAt, asked < at { return }    // the old account's sign-in
+                if let email { self.loginEmail = email; self.profileFor = key; self.checkNewSignIn(email) }
                 self.save()
             }
         }.resume()
     }
 
-    private func finish(data: Data?, response: HTTPURLResponse?, error: Error?) {
+    private func finish(data: Data?, response: HTTPURLResponse?, error: Error?, asked: Date = Date()) {
         inFlight = false
         guard !stopped else { return }
+        // asked with the old account's sign-in, before another account was signed in: not this account's numbers
+        if let at = signInChangedAt, asked < at { nextFetch = .distantPast; return }
         defer { save() }
         if let error { state = .failed(error.localizedDescription); return }
         switch response?.statusCode ?? 0 {
@@ -454,7 +502,15 @@ final class UsageReader {
 
     /// Everything the agent keeps for a removed profile.
     static func forget(_ id: String, in d: UserDefaults) {
-        for k in ["n5h", "nwk", "f5h", "fwk", "full5h", "fullwk", "cr", "lastRenewAttempt", "adopted", "loginItemForgotten", "dockPlace"] {
+        for k in ["lastRenewAttempt", "adopted", "loginItemForgotten", "dockPlace"] {
+            d.removeObject(forKey: "\(k).\(id)")
+        }
+        forgetLimitMarks(id, in: d)
+    }
+
+    /// What the alerts remember about the limits (levels reached, full, credits), as when the profile is new.
+    static func forgetLimitMarks(_ id: String, in d: UserDefaults) {
+        for k in ["n5h", "nwk", "f5h", "fwk", "full5h", "fullwk", "cr"] {
             d.removeObject(forKey: "\(k).\(id)")
         }
         // a model's own limit: nm…, fm…, fullm… ("nmfable.<id>")
@@ -480,4 +536,27 @@ final class UsageReader {
     }
 
     static func when(_ d: Date) -> String { TimeWords.when(d) }
+}
+
+/// Which account a profile's folder is signed in to, looked at on every tick: its .claude.json names a seat. The file
+/// is parsed only when its date or size changed. Signing out (no account named) isn't a change; signing in to another
+/// account after it is.
+struct SignInWatch {
+    private(set) var seen: Seat?                                  // the last account the file named
+    private var stamp: [FileAttributeKey: AnyHashable] = [:]
+
+    /// One look: true when the file names another account than the last one it named.
+    mutating func look(stamp new: [FileAttributeKey: AnyHashable], seat: () -> Seat?) -> Bool {
+        guard new != stamp else { return false }
+        stamp = new
+        guard let now = seat() else { return false }
+        defer { seen = now }
+        return seen.map { !now.same($0) } ?? false
+    }
+
+    /// The .claude.json's date and size (empty when there's none).
+    static func stamp(configDir: String) -> [FileAttributeKey: AnyHashable] {
+        let attrs = (try? FileManager.default.attributesOfItem(atPath: Account.claudeJSON(configDir: configDir))) ?? [:]
+        return attrs.filter { $0.key == .modificationDate || $0.key == .size }.compactMapValues { $0 as? AnyHashable }
+    }
 }

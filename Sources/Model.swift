@@ -62,12 +62,16 @@ struct Account {
     /// The default folder keeps that file in the home folder, not inside ~/.claude.
     func expectedEmail() -> String? { Self.expectedEmail(configDir: configDir) }
 
+    /// The file where Claude Code records which account a folder is signed in to: the default folder keeps it in the
+    /// home folder (~/.claude.json), any other inside the folder.
+    static func claudeJSON(configDir: String) -> String {
+        let dir = expand(configDir)
+        return dir == expand("~/.claude") ? expand("~/.claude.json") : (dir as NSString).appendingPathComponent(".claude.json")
+    }
+
     /// The seat Claude Code says the folder is signed in to now (its .claude.json), or nil when it isn't.
     static func signedInSeat(configDir: String) -> Seat? {
-        let dir = expand(configDir)
-        let file = dir == expand("~/.claude") ? expand("~/.claude.json")
-                                              : (dir as NSString).appendingPathComponent(".claude.json")
-        guard let data = FileManager.default.contents(atPath: file),
+        guard let data = FileManager.default.contents(atPath: claudeJSON(configDir: configDir)),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let oauth = j["oauthAccount"] as? [String: Any],
               let account = oauth["accountUuid"] as? String, !account.isEmpty else { return nil }
@@ -75,10 +79,7 @@ struct Account {
     }
 
     static func expectedEmail(configDir: String) -> String? {
-        let dir = expand(configDir)
-        let file = dir == expand("~/.claude") ? expand("~/.claude.json")
-                                              : (dir as NSString).appendingPathComponent(".claude.json")
-        guard let data = FileManager.default.contents(atPath: file),
+        guard let data = FileManager.default.contents(atPath: claudeJSON(configDir: configDir)),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let oauth = j["oauthAccount"] as? [String: Any] else { return nil }
         return oauth["emailAddress"] as? String
@@ -86,10 +87,7 @@ struct Account {
 
     /// The claude.ai account id Claude Code recorded for the folder (to compare with the desktop app's).
     static func expectedAccountUuid(configDir: String) -> String? {
-        let dir = expand(configDir)
-        let file = dir == expand("~/.claude") ? expand("~/.claude.json")
-                                              : (dir as NSString).appendingPathComponent(".claude.json")
-        guard let data = FileManager.default.contents(atPath: file),
+        guard let data = FileManager.default.contents(atPath: claudeJSON(configDir: configDir)),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let oauth = j["oauthAccount"] as? [String: Any] else { return nil }
         return oauth["accountUuid"] as? String

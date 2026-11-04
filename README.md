@@ -400,7 +400,10 @@ One program in three roles: **cl_audit** (the window: dashboard, settings, launc
 - **Numbers:** the agent asks Anthropic's usage endpoint for every profile on its own interval (and backs
   off when Anthropic is busy), with the profile's Claude Code login (see
   [Security](#security-how-cl_audit-handles-the-claude-login)). The login is kept in memory and read again
-  only when it has expired or was refused. What it sees goes to
+  only when it has expired or was refused, or when Claude Code was signed in to another account in the profile's
+  folder: the agent sees its `.claude.json` name another account (it looks at the file's date on every round and
+  reads it only when that changed), drops the old account's numbers and alert marks at once and reads the new
+  sign-in, so there's no red "Wrong account" waiting for Refresh now. What it sees goes to
   `~/Library/Application Support/usage-n-uf/status/<profile>.json` (no secrets), and it writes an "alive"
   mark (`agent.json`) every 30 s, so cl_audit can tell "nothing is reading" from "Anthropic didn't answer".
   The Dock icons and the window only read these files.
