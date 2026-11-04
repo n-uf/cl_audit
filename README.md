@@ -246,13 +246,21 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   through it says "Saving…", then "Saved" and what changed.
 - **Claude Code:** the Claude Code folder (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder) and the sign-in
   found there; **Renew sign-in** (opt-in). Folders other profiles use are marked and can't be picked. The
-  Claude window follows from the folder (see Profile above); it isn't a setting. When the folder is signed in to
-  another account than the one the profile is linked to, the Login row turns amber and a note says so, with
-  **Use this account** (links the profile to it; its name, look, Dock icon, Claude window and settings stay) and
-  **Sign back in…** (Claude Code's sign-in for the old account). If another profile already has that account,
-  the note is red, says which profile and offers **Open** it instead: one profile per account. For a week after
-  linking, a line under Login says when and which account it was. See
-  [Moving a profile to another account](#moving-a-profile-to-another-account).
+  Claude window follows from the folder (see Profile above); it isn't a setting. **Login** is a pop-up like the
+  Folder one: this profile's account (✓, with its plan), the accounts signed in in Claude Code folders no profile
+  uses (picking one only fills in the sign-in below; no sign-in is ever copied between folders), other profiles'
+  accounts, dimmed, and **Sign in to another account…**. That adds a **New account** row: the address and **Sign
+  in**, which opens Claude Code's own sign-in in Terminal with the address filled in (the profile stays on its
+  account until it's done; Esc cancels). While it waits, Login says "signing in as …" with **Cancel**; as soon as
+  the folder's `.claude.json` names the new account, cl_audit links the profile to it by itself, keeping its name,
+  look, Dock icon, Claude window and settings. Signed in to another account outside cl_audit (Terminal), a **Wrong
+  account** row offers **Use this account** (the same link) and **Log in…** (back to the old one), and the profile
+  shows no numbers until you choose, since they would be the other account's. If another profile has that
+  account, an **Account taken** row names it, with **Open** it and **Log in…**: one profile per account. A
+  **Claude window** row says when the profile's window is signed in to another account than its Claude Code (only
+  the account id is known, from the window's `config.json`; the usual Claude app is checked too). For a week after
+  linking, a line under Login says when, which account it was and what stays with it, with **Add as a profile…**
+  while no profile has the old account. See [Moving a profile to another account](#moving-a-profile-to-another-account).
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
   ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"). **Notify when back** (on by default) sends one
@@ -390,12 +398,13 @@ numbers on the old account.
    reads the Claude app's cookie key from the Keychain and goes to claude.ai). With other Claude windows open it
    can quit the wrong one, hence step 2.
 4. **Sign the Claude window in** to the new account, in its own sign-in window.
-5. **Sign Claude Code in** to the new account, for the profile's folder:
-   `env -u CLAUDE_CONFIG_DIR claude auth login --claudeai --email <new>` for `~/.claude`, or
-   `CLAUDE_CONFIG_DIR=<folder> claude auth login --claudeai --email <new>` for a profile's own folder. cl_audit's
-   agent notices within half a minute and reads the new sign-in.
-6. **Link the profile:** Settings ▸ the profile ▸ Claude Code ▸ **Use this account**. Refused if another profile
-   already has that account. Until then the profile shows the new account's numbers under its old link.
+5. **Sign Claude Code in** to the new account, for the profile's folder: Settings ▸ the profile ▸ Claude Code ▸
+   Login ▸ **Sign in to another account…**, type the address, **Sign in**, and finish in the browser. cl_audit
+   links the profile to it by itself once it's done (refused if another profile already has that account). Or in
+   Terminal: `env -u CLAUDE_CONFIG_DIR claude auth login --claudeai --email <new>` for `~/.claude`,
+   `CLAUDE_CONFIG_DIR=<folder> claude auth login --claudeai --email <new>` for a profile's own folder.
+6. **Signed in from Terminal:** the agent notices within half a minute; the profile then shows no numbers until you
+   press **Use this account** (Claude Code card, Wrong account row), which links it.
 
 Staying with the old account: a CI token from `claude setup-token` (make a new one), claude.ai connectors and MCP
 servers, cloud sessions and environments, synced plugins, and the plan and billing. To keep watching the old

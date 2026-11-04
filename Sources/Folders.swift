@@ -71,6 +71,28 @@ enum FolderRules {
         return out
     }
 
+    /// The claude.ai account id the profile's Claude window last used (lastKnownAccountUuid in its data folder's
+    /// config.json, while a sign-in is stored there), or nil. Only the id: nothing else from that file is read or kept.
+    /// The usual Claude app is checked too.
+    static func windowAccount(_ e: AccountEntry) -> String? {
+        guard e.claudeWindow else { return nil }
+        let dir = Account(e).claudeUserDataDir ?? expand(FolderKey.standardDataDir)
+        guard let data = FileManager.default.contents(atPath: (dir as NSString).appendingPathComponent("config.json")),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              j.keys.contains(where: { $0.hasPrefix("oauth:tokenCache") }),
+              let id = j["lastKnownAccountUuid"] as? String, !id.isEmpty else { return nil }
+        return id
+    }
+
+    /// The profile's Claude window is signed in to another claude.ai account than its Claude Code folder (or, with
+    /// none there, than the account the profile is linked to). Both moved to the same new account is the link's
+    /// business ("Use this account"), not the window's.
+    static func windowOnAnotherAccount(_ e: AccountEntry, signedIn: (String) -> Seat? = Account.signedInSeat,
+                                       window: (AccountEntry) -> String? = windowAccount) -> Bool {
+        guard let w = window(e), let mine = signedIn(e.configDir)?.account ?? e.seat?.account else { return false }
+        return w != mine
+    }
+
     /// A linked profile whose folder is now signed in to another seat (Claude Code was signed in to another account
     /// there): that seat, and the profile that already has it, if any (then linking to it is refused).
     struct SeatMove: Equatable {

@@ -581,10 +581,12 @@ extension FaceTheme {
 struct MenuWell: View {
     let text: String
     var mono = false
+    var tint: Color? = nil          // the value's own colour (the Login pop-up: green signed in, red another account)
     @Environment(\.face) private var face
     var body: some View {
         HStack(spacing: 7) {
             Text(text).font(mono ? .system(size: 11.5, design: .monospaced) : .system(size: 12)).lineLimit(1)
+                .foregroundStyle(tint ?? Color.hex(0xececee))
             Image(systemName: "chevron.up.chevron.down").font(.system(size: 7.5, weight: .semibold)).opacity(0.8)
         }
         .foregroundStyle(Color.hex(0xececee))

@@ -50,11 +50,14 @@ the notes before updating.
   folder (`claude auth login`), the agent sees its `.claude.json` change and reads the new sign-in straight away:
   the old account's numbers go at once, and there's no red "Wrong account" until Refresh now. One Keychain read, as
   at the start; the limit alerts start over for the new account, so the switch itself sends no "is back".
-- **Use this account.** When a profile's Claude Code folder is signed in to another account than the one the
-  profile is linked to, its settings say so (Claude Code ▸ Login, amber) and offer **Use this account**: the
-  profile is linked to the new account and keeps its name, look, Dock icon, Claude window and settings. Refused,
-  in red with the profile's name, when another profile already has that account; **Sign back in…** opens Claude
-  Code's sign-in for the old one.
+- **Changing a profile's account.** Profile ▸ Claude Code ▸ **Login** is now a pop-up: this profile's account, the
+  accounts in unused Claude Code folders, other profiles' (dimmed) and **Sign in to another account…**, which opens
+  Claude Code's own sign-in in Terminal with the address filled in and links the profile to the new account by
+  itself once it's done; name, look, Dock icon, Claude window and settings stay. Signed in elsewhere, a **Wrong
+  account** row offers **Use this account**, and the profile shows no numbers until you choose (they'd be the other
+  account's). Refused, naming the profile, when another profile has that account. A **Claude window** row says when
+  the window is on another account (the usual Claude app is checked too). After linking: when, what it was, what
+  stays with the old account, and **Add as a profile…** for it.
 - **Claude's own plan name.** The plan badge, the panels and the menus show the plan as Claude names it ("Ultra"),
   read from the profile's `.claude.json` with the account it already reads; an Ultra account's sign-in says "max".
   Without that name, the sign-in's as before (Max, Pro, Team).
