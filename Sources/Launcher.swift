@@ -1062,6 +1062,8 @@ final class ManagerUI {
                 self.model.reload()
             })
         }
+        // the profiles in a new order (Settings' tile bar): the dashboard and the launcher follow at once
+        appObservers.append(dn.addObserver(forName: Store.changed, object: nil, queue: .main) { [weak self] _ in self?.followOrder() })
         // A Claude window or Dock icon starting or quitting shows on the cards right away, not at the next check.
         let ws = NSWorkspace.shared.notificationCenter
         for name in [NSWorkspace.didLaunchApplicationNotification, NSWorkspace.didTerminateApplicationNotification] {

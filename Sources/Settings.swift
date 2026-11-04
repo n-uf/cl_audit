@@ -460,7 +460,7 @@ struct SettingsPage: View {
                     HStack(spacing: 8) {
                         DashboardTile(selected: model.selection == SettingsModel.dashboardID)
                             .onTapGesture { model.selection = SettingsModel.dashboardID }
-                        ForEach(model.accounts) { a in AccountTile(entry: a, selected: a.id == model.selection, model: model) }
+                        ProfileTiles(model: model)       // drag one to change the order (ProfileOrder.swift)
                         if model.draft != nil {
                             NewTile(selected: model.selection == SettingsModel.newID).onTapGesture { model.selection = SettingsModel.newID }
                         }
@@ -470,6 +470,7 @@ struct SettingsPage: View {
                             }
                         }
                         .buttonStyle(PressableKey()).help("Add a profile")
+                        ProfileOrderInfo()
                     }
                     .padding(.vertical, 3).padding(.horizontal, 2)
                 }
@@ -502,8 +503,9 @@ struct SettingsPage: View {
         VStack(spacing: 0) {
             HStack(spacing: 8) {
                 DashboardTile(selected: model.selection == SettingsModel.dashboardID)
-                ForEach(model.accounts) { a in AccountTile(entry: a, selected: a.id == model.selection, model: model) }
+                ProfileTiles(model: model)
                 TileKey(selected: false, leading: 0, trailing: 0) { Image(systemName: "plus").font(.system(size: 15, weight: .light)).frame(width: 42) }
+                ProfileOrderInfo()
                 Spacer()
                 applyBar
             }
