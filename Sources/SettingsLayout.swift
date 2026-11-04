@@ -160,3 +160,134 @@ struct DotChoice: View {
         return Painter.image(m, pixels: 96)
     }
 }
+
+// MARK: - One pattern for every settings card (layout A)
+//
+// A card: one title with (i), then rows. A row: its label on the left, regular, with (i), in the same width on every
+// card (SRow.labelWidth), its value on the right. On/off: SSwitch (the small lamp switch and a few words that follow
+// the state). Two or three short words: SSegments beside the label. Longer words or more choices: a pop-up beside the
+// label (MenuWell(fill:) with .faceMenuFill()). Pictures: STiles under the label (SRow(stacked:)). At most one grey line
+// under a row (SRowLine), saying what the current choice means. A card's preview: one PreviewStrip at its foot.
+
+/// On/off in a settings row: the small lamp switch, then a few words that follow the state ("shown and alerted" /
+/// "left out"). Never a switch alone, never two lines beside it.
+struct SSwitch: View {
+    @Binding var isOn: Bool
+    let on: String
+    let off: String
+    @Environment(\.face) private var face
+    @Environment(\.isEnabled) private var enabled
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Toggle("", isOn: $isOn).toggleStyle(LEDSwitchStyle()).labelsHidden()
+            Text(isOn ? on : off).font(.system(size: 11.5)).foregroundStyle(face.muted).lineLimit(1)
+                .opacity(enabled ? 1 : 0.6)
+        }
+        .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+    }
+}
+
+/// Two or three short choices beside a row's label: segments in a recessed track, the chosen one raised.
+struct SSegments<Value: Hashable>: View {
+    let options: [Value]
+    @Binding var selection: Value
+    var enabled: (Value) -> Bool = { _ in true }
+    let title: (Value) -> String
+
+    var body: some View {
+        PillPicker(options: options, selection: Binding(get: { selection }, set: { if enabled($0) { selection = $0 } }),
+                   compact: true, fill: true, title: title)
+            .frame(maxWidth: .infinity)
+            .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+    }
+}
+
+/// Pictures to pick from, under a row's label, the card's full width: a grid of tiles, each a picture and its name; the
+/// chosen one raised like a key, the others in recessed wells.
+struct STiles<ID: Hashable>: View {
+    struct Tile: Identifiable {
+        let id: ID
+        let title: String
+        var help = ""
+        var enabled = true
+        let picture: AnyView
+    }
+    let tiles: [Tile]
+    let selected: ID
+    var minWidth: CGFloat = 92
+    var pictureHeight: CGFloat = 34
+    let pick: (ID) -> Void
+    @Environment(\.face) private var face
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: minWidth), spacing: 5)], spacing: 5) {
+            ForEach(tiles) { t in
+                let on = t.id == selected
+                VStack(spacing: 4) {
+                    t.picture.frame(height: pictureHeight)
+                    Text(t.title).font(.system(size: 10, weight: on ? .semibold : .regular)).lineLimit(1).minimumScaleFactor(0.8)
+                        .foregroundStyle(on ? face.text : face.muted)
+                }
+                .padding(.horizontal, 4).padding(.vertical, 7)
+                .frame(maxWidth: .infinity)
+                .background {
+                    if on { RaisedShape(finish: face.key, radius: 6, pressed: false) } else { WellShape(well: face.win, radius: 6) }
+                }
+                .opacity(t.enabled ? 1 : 0.4)
+                .contentShape(Rectangle())
+                .onTapGesture { if t.enabled { withAnimation(.easeOut(duration: 0.12)) { pick(t.id) } } }
+                .help(t.help.isEmpty ? t.title : t.help)
+            }
+        }
+        .padding(.top, 2).padding(.bottom, 4)
+    }
+}
+
+/// At most one grey line under a row, the card's width: what the current choice means.
+struct SRowLine: View {
+    let text: String
+    var color: Color? = nil
+    @Environment(\.face) private var face
+
+    var body: some View {
+        Text(text).font(.system(size: 10.5)).foregroundStyle(color ?? face.muted)
+            .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.bottom, 4)
+    }
+}
+
+/// A card's preview, at its foot: "Preview" and what it shows, then the same states left to right (not running or no
+/// numbers yet · plenty left · half used · at limit · full), each a picture over its name.
+struct PreviewStrip: View {
+    struct Item { let title: String; let picture: AnyView }
+    let caption: String
+    let items: [Item]
+    @Environment(\.face) private var face
+
+    /// The states every preview shows, in order, with the 5-hour and weekly levels they're drawn at (nil: no numbers).
+    static let states: [(title: String, five: Double?, week: Double?)] =
+        [("no numbers", nil, nil), ("plenty left", 12, 20), ("half used", 58, 45), ("at limit", 88, 78), ("full", 100, 64)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text("Preview").font(.system(size: 11, weight: .semibold)).foregroundStyle(face.text)
+                Text(caption).font(.system(size: 10.5)).foregroundStyle(face.muted).lineLimit(1)
+            }
+            HStack(alignment: .bottom, spacing: 4) {
+                ForEach(items.indices, id: \.self) { i in
+                    VStack(spacing: 3) {
+                        items[i].picture
+                        Text(items[i].title).font(.system(size: 9.5)).foregroundStyle(face.muted).lineLimit(1).minimumScaleFactor(0.7)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+        }
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .faceWindow(radius: 6)
+        .padding(.top, 6)
+    }
+}
