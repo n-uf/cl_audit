@@ -46,9 +46,9 @@ the notes before updating.
 - **Cost estimate at API list prices** in the usage history's totals ("≈ $123 at list prices") and in the CSV:
   what the same tokens would cost on the API, per model, cache writes and reads priced apart. Not your bill;
   models without a published price are left out.
-- **Another account signed in, noticed at once.** When Claude Code is signed in to another account in a profile's
-  folder (`claude auth login`), the agent sees its `.claude.json` change and reads the new sign-in straight away:
-  the old account's numbers go at once, and there's no red "Wrong account" until Refresh now. One Keychain read, as
+- **Another account signed in, noticed by itself.** When Claude Code is signed in to another account in a profile's
+  folder (`claude auth login`), the agent sees its `.claude.json` change within half a minute and reads the new
+  sign-in then: the old account's numbers go, and there's no red "Wrong account" waiting for Refresh now. One Keychain read, as
   at the start; the limit alerts start over for the new account, so the switch itself sends no "is back".
 - **Changing a profile's account.** Profile ▸ Claude Code ▸ **Login** is now a pop-up: this profile's account, the
   accounts in unused Claude Code folders, other profiles' (dimmed) and **Sign in to another account…**, which opens
