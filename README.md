@@ -225,8 +225,9 @@ aside and a lit socket shows where it lands. It's saved when you let go ("Saved 
 Move right. The dashboard's cards and profile keys, the launcher and its ⌘1, ⌘2…, the menu bar icons, the widget,
 the usage history (bars, legend, CSV) and cl_audit's Dock menu all follow it. The menu bar icons line up in the new
 order (⌘-drag still moves them after, until the next new order). The Dock icons stay where you put them: move them in
-the Dock (or, with General ▸ Dock ▸ Keep in order on, press Arrange Dock). The order is the order of the profiles in
-`accounts.json`, so there's no setting of its own.
+the Dock. With General ▸ Dock ▸ Keep in order on, cl_audit puts them in this order the next time it arranges the Dock
+(Arrange Dock, or adding, renaming or removing a profile). The order is the order of the profiles in `accounts.json`,
+so there's no setting of its own.
 
 Cards are at most one column wide: three columns from about 1180 pt, two from 800, one below. Controls
 sit next to their labels; every (i) opens a short explanation, some with a picture. Changing a setting that

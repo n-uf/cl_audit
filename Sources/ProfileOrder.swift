@@ -50,6 +50,8 @@ extension SettingsModel {
         let before = accounts.map(\.id)
         let ids = ProfileOrder.moving(id, to: index, in: before)
         guard ids != before else { return }
+        // nothing saved yet (the first setup, before Apply): the order goes with the rest when Apply saves
+        guard !saved.isEmpty else { accounts = ProfileOrder.apply(ids, to: accounts); return }
         do { try Store.edit { ProfileOrder.apply(ids, to: $0) } }
         catch { message = "Couldn't save: \(error.localizedDescription)"; return }
         takeInOutsideChanges()                       // the file as saved, with any change made here kept on top
@@ -75,7 +77,8 @@ extension ManagerUI {
         guard ProfileOrder.reordered(from: model.rows.map(\.id), to: ids)
                 || ProfileOrder.reordered(from: stats.accounts.map(\.id), to: ids) else { return }
         model.reload()
-        stats.follow(ids)
+        // a scan under way would bring back the order it started with: start it again instead
+        if stats.loading { stats.reload() } else { stats.follow(ids) }
     }
 }
 
@@ -123,7 +126,9 @@ struct ProfileDrag: Equatable {
 /// shows where it lands, and the drop saves the new order. A click still selects; right-click still offers Remove.
 struct ProfileTiles: View {
     @ObservedObject var model: SettingsModel
-    @State private var drag: ProfileDrag?
+    /// Cleared by itself when the drag ends or is cut short (a menu opening, the window losing focus), so a tile is
+    /// never left lifted.
+    @GestureState(resetTransaction: Transaction(animation: .easeOut(duration: 0.18))) private var drag: ProfileDrag? = nil
     @State private var landing = ProfileTilesLayout.Landing()
     /// Offscreen renders only: a tile shown mid-drag (never saved).
     static var renderDrag: ProfileDrag?
@@ -136,8 +141,9 @@ struct ProfileTiles: View {
             ForEach(model.accounts) { a in
                 let lifted = d?.id == a.id
                 AccountTile(entry: a, selected: a.id == model.selection, model: model)
-                    .scaleEffect(lifted ? 1.04 : 1)
-                    .shadow(color: .black.opacity(lifted ? 0.45 : 0), radius: lifted ? 7 : 0, y: lifted ? 4 : 0)
+                    // lifted: a touch bigger, with a short shadow (the bar's scroll view leaves 3 pt above and below)
+                    .scaleEffect(lifted ? 1.03 : 1)
+                    .shadow(color: .black.opacity(lifted ? 0.5 : 0), radius: lifted ? 2.5 : 0, y: lifted ? 2 : 0)
                     .zIndex(lifted ? 1 : 0)
                     // the tile in hand follows the pointer; the others glide aside
                     .transaction { t in if lifted && drag != nil { t.animation = nil } }
@@ -153,17 +159,14 @@ struct ProfileTiles: View {
     /// The window's coordinates, as the tile moves under the pointer; a click (under 4 pt) is still a click.
     private func dragGesture(_ id: String) -> some Gesture {
         DragGesture(minimumDistance: 4, coordinateSpace: .global)
-            .onChanged { v in
+            .updating($drag) { v, drag, _ in
                 guard model.accounts.count > 1 else { return }
-                if drag?.id != id { landing.index = nil }
                 drag = ProfileDrag(id: id, offset: v.translation.width)
             }
             .onEnded { _ in
-                let to = landing.index
-                withAnimation(.easeOut(duration: 0.18)) {
-                    drag = nil
-                    if let to { model.moveProfile(id, to: to) }
-                }
+                // where the last layout put it (only a drag that ends, never one cut short, moves anything)
+                guard let to = landing.index else { return }
+                withAnimation(.easeOut(duration: 0.18)) { model.moveProfile(id, to: to) }
             }
     }
 }
@@ -250,6 +253,6 @@ struct ProfileDragPlan {
 /// The tile bar's ⓘ: what the order does, and what it leaves alone.
 struct ProfileOrderInfo: View {
     var body: some View {
-        InfoDot(text: "Drag a profile left or right to change the order. The dashboard, the launcher (⌘1, ⌘2…), the menu bar icons, the widget, the usage history and the Dock menu follow it. It's saved when you let go.\nThe menu bar icons line up in the new order; ⌘-drag still moves them after.\nThe Dock icons stay where they are: the Dock is macOS's, so move them there. (With General ▸ Dock ▸ Keep in order on, Arrange Dock puts them in this order.)")
+        InfoDot(text: "Drag a profile left or right to change the order. The dashboard, the launcher (⌘1, ⌘2…), the menu bar icons, the widget, the usage history and the Dock menu follow it. It's saved when you let go.\nThe menu bar icons line up in the new order; ⌘-drag still moves them after.\nThe Dock icons stay where they are: the Dock is macOS's, so move them there. (With General ▸ Dock ▸ Keep in order on, cl_audit puts them in this order the next time it arranges the Dock: Arrange Dock, or adding, renaming or removing a profile.)")
     }
 }
