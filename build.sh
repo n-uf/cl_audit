@@ -129,6 +129,8 @@ echo "built $name $version ($build)"
 
 if [ $install = 1 ]; then
   pkill -f "$dest/$name.app/Contents/MacOS/UsageDock" 2>/dev/null || true
+  # the widget: macOS keeps running the copy it started until that process ends, so the new one is used only after
+  pkill -f "$dest/$name.app/Contents/PlugIns/$name Widget.appex/Contents/MacOS/cl_audit-widget" 2>/dev/null || true
   mkdir -p "$dest"
   rm -rf "$dest/$name.app"
   cp -R "$app" "$dest/"
