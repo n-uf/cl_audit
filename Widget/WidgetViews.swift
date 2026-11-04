@@ -3,8 +3,9 @@
 // from Sources/, so both programs build it. Names start with W (or Widget) so they don't meet cl_audit's own.
 //
 // The look is kept in usage-n-uf/widget.json, which cl_audit writes and the widget reads (its sandbox may read that
-// folder only): the plate (System, Std, Black, Silver), the layout (Fill, Hero, List), how the limits are drawn (Glow,
-// Rings, Numbers, Segments, Pace) and what to show (reset times, Fable's limit, the next resets).
+// folder only): the plate (System, Std, Black, Silver) and how the limits are drawn (Glow, Rings, Numbers, Segments,
+// Pace). One layout fits every size: one or two profiles get large limits with their reset times, centred in the
+// widget; more profiles get a row each. Fable's limit shows where the profile's settings say so.
 
 import SwiftUI
 import os
@@ -21,7 +22,7 @@ struct WidgetProfile: Identifiable {
     var fiveResets: Date?
     var week: Double?
     var weekResets: Date?
-    var fable: Double?
+    var fable: Double?                  // nil: the plan has none, or the profile doesn't show it
     var plan: String?
     var updated: Date?
 
@@ -41,7 +42,7 @@ struct WidgetProfile: Identifiable {
         return max(five ?? 0, week ?? 0)
     }
 
-    /// The fuller of the two: "five" or "week".
+    /// Whether the 5-hour limit is the fuller of the two.
     var fullerIsFive: Bool { (five ?? -1) >= (week ?? -1) }
 }
 
@@ -53,7 +54,7 @@ enum AgentFiles {
     }
 
     private struct Accounts: Decodable { let accounts: [Entry] }
-    private struct Entry: Decodable { let id: String; let name: String; let accent: String? }
+    private struct Entry: Decodable { let id: String; let name: String; let accent: String?; let showFable: Bool? }
     private struct Status: Decodable {
         let fiveHour: Double?; let fiveHourResets: Double?; let weekly: Double?; let weeklyResets: Double?
         let updatedAt: Double?; let plan: String?; let scoped: [Scoped]?
@@ -75,7 +76,7 @@ enum AgentFiles {
                 p.fiveResets = s.fiveHourResets.map { Date(timeIntervalSince1970: $0) }
                 p.weekResets = s.weeklyResets.map { Date(timeIntervalSince1970: $0) }
                 p.updated = s.updatedAt.map { Date(timeIntervalSince1970: $0) }
-                p.fable = s.scoped?.first(where: { $0.name == "Fable" })?.percent
+                if e.showFable ?? true { p.fable = s.scoped?.first(where: { $0.name == "Fable" })?.percent }
             }
             return p
         }
@@ -87,7 +88,7 @@ enum AgentFiles {
         WidgetProfile(id: "home", name: "Home", accent: "orange", five: 34, fiveResets: Date().addingTimeInterval(6120), week: 57,
                       weekResets: Date().addingTimeInterval(240_000), fable: 7, plan: "max", updated: Date()),
         WidgetProfile(id: "work", name: "Work", accent: "teal", five: 13, fiveResets: Date().addingTimeInterval(11_000), week: 12,
-                      weekResets: Date().addingTimeInterval(400_000), fable: 0, plan: "team", updated: Date())]
+                      weekResets: Date().addingTimeInterval(400_000), fable: nil, plan: "team", updated: Date())]
 }
 
 // MARK: the look
@@ -98,33 +99,24 @@ struct WidgetLook: Codable, Equatable {
         var id: String { rawValue }
         var title: String { self == .system ? "System" : rawValue.capitalized }
     }
-    enum Layout: String, Codable, CaseIterable, Identifiable {
-        case fill, hero, list
-        var id: String { rawValue }
-        var title: String { rawValue.capitalized }
-        var blurb: String {
-            switch self {
-            case .fill: return "Every profile, bigger when there are few; the large size adds the next resets."
-            case .hero: return "The profile with the least room large, the others compact."
-            case .list: return "One row per profile, for many profiles; the rows spread over the height."
-            }
-        }
-    }
     enum Design: String, Codable, CaseIterable, Identifiable {
         case glow, rings, numbers, segments, pace
         var id: String { rawValue }
         var title: String { rawValue.capitalized }
-        /// Rows and lists draw rings and numbers as bars: there's no room for them.
-        var flat: Design { self == .rings || self == .numbers ? .glow : self }
         var round: Bool { self == .rings || self == .numbers }
     }
 
     var plate: Plate = .system
-    var layout: Layout = .fill
     var design: Design = .glow
-    var resets = true
-    var fable = true
-    var next = true
+
+    init(plate: Plate = .system, design: Design = .glow) { self.plate = plate; self.design = design }
+
+    private enum Keys: String, CodingKey { case plate, design }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        plate = (try? c.decodeIfPresent(Plate.self, forKey: .plate)) ?? .system
+        design = (try? c.decodeIfPresent(Design.self, forKey: .design)) ?? .glow
+    }
 
     static var file: URL { AgentFiles.folder.appendingPathComponent("widget.json") }
 
@@ -141,17 +133,33 @@ struct WidgetLook: Codable, Equatable {
 
 enum WidgetSize { case small, medium, large }
 
-// MARK: colours and words
+// MARK: colours, sizes and words
 
 struct WTheme {
-    let ink: Color, muted: Color, track: Color, panel: Bool
+    let ink: Color, muted: Color, track: Color
+    let printed: Bool       // names as printed uppercase labels (cl_audit's faces)
+    let display: Bool       // big numbers in a glowing display window (the dark faces)
     static func of(_ plate: WidgetLook.Plate) -> WTheme {
         switch plate {
-        case .system: return WTheme(ink: .primary, muted: .secondary, track: Color.primary.opacity(0.13), panel: false)
-        case .std, .black: return WTheme(ink: Color(white: 0.95), muted: Color(white: 1, opacity: 0.55), track: Color(white: 1, opacity: 0.12), panel: true)
-        case .silver: return WTheme(ink: Color(white: 0.11), muted: Color(white: 0, opacity: 0.55), track: Color(white: 0, opacity: 0.13), panel: true)
+        case .system:
+            return WTheme(ink: .primary, muted: .secondary, track: Color.primary.opacity(0.12), printed: false, display: false)
+        case .std, .black:
+            return WTheme(ink: Color(white: 0.95), muted: Color(white: 1, opacity: 0.55), track: Color(white: 1, opacity: 0.12),
+                          printed: true, display: true)
+        case .silver:
+            return WTheme(ink: Color(white: 0.1), muted: Color(white: 0, opacity: 0.55), track: Color(white: 0, opacity: 0.14),
+                          printed: true, display: false)
         }
     }
+}
+
+/// Type and mark sizes: larger when there's room.
+struct WScale {
+    let name, label, pct, bar, ring, number: CGFloat
+    static let small = WScale(name: 12.5, label: 10.5, pct: 12.5, bar: 6, ring: 46, number: 24)
+    static let medium = WScale(name: 13.5, label: 11.5, pct: 14, bar: 7, ring: 48, number: 26)
+    static let large = WScale(name: 14.5, label: 11.5, pct: 14, bar: 7, ring: 54, number: 30)
+    static let largeFour = WScale(name: 12.5, label: 10.5, pct: 12.5, bar: 6, ring: 36, number: 21)   // three or four profiles
 }
 
 enum WKit {
@@ -214,13 +222,13 @@ enum WKit {
     }
 }
 
-// MARK: one limit
+// MARK: the marks
 
 struct WBar: View {
     let design: WidgetLook.Design
     let p: Double?
     var elapsed: Double? = nil
-    var height: CGFloat = 5
+    var height: CGFloat = 6
     let theme: WTheme
 
     var body: some View {
@@ -229,18 +237,18 @@ struct WBar: View {
             let on = Int(((p ?? 0) / 100 * 12).rounded())
             HStack(spacing: 2) {
                 ForEach(0..<12, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 1)
+                    RoundedRectangle(cornerRadius: 1.5)
                         .fill(i < on ? (i < 6 ? WKit.green : i < 9 ? WKit.amber : WKit.red) : theme.track)
                 }
             }
-            .frame(height: height + 1)
+            .frame(height: height)
         default:
             GeometryReader { g in
                 ZStack(alignment: .leading) {
                     Capsule().fill(theme.track)
                     if let p, let c = WKit.level(p) {
                         Capsule().fill(c).frame(width: max(height, g.size.width * CGFloat(min(max(p, 0), 100)) / 100))
-                            .shadow(color: design == .glow ? c.opacity(0.7) : .clear, radius: 3)
+                            .shadow(color: design == .glow ? c.opacity(0.6) : .clear, radius: 3)
                     }
                     if design == .pace, let e = elapsed {
                         RoundedRectangle(cornerRadius: 1).fill(theme.ink).frame(width: 2, height: height + 4)
@@ -256,66 +264,34 @@ struct WBar: View {
 struct WRing: View {
     let p: Double?
     let size: CGFloat
+    var number = true
     let theme: WTheme
     var body: some View {
         ZStack {
-            Circle().stroke(theme.track, lineWidth: size * 0.1)
+            Circle().stroke(theme.track, lineWidth: max(2.5, size * 0.1))
             if let p {
                 Circle().trim(from: 0, to: CGFloat(min(max(p, 0), 100)) / 100)
-                    .stroke(WKit.level(p) ?? theme.track, style: StrokeStyle(lineWidth: size * 0.1, lineCap: .round))
+                    .stroke(WKit.level(p) ?? theme.track, style: StrokeStyle(lineWidth: max(2.5, size * 0.1), lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
-            Text(p.map { "\(Int($0.rounded()))" } ?? "–").font(.system(size: size * 0.28, weight: .bold, design: .rounded))
-                .monospacedDigit().foregroundStyle(theme.ink)
+            if number {
+                Text(p.map { "\(Int($0.rounded()))" } ?? "–").font(.system(size: size * 0.3, weight: .bold, design: .rounded))
+                    .monospacedDigit().foregroundStyle(theme.ink)
+            }
         }
         .frame(width: size, height: size)
     }
 }
 
-/// A limit drawn in a design: name (and, if asked, when it resets), the number and its bar, ring or big number.
-struct WLimit: View {
-    let design: WidgetLook.Design
-    let name: String
+/// The big number: a glowing display window on the dark faces, plain digits in the level colour elsewhere.
+struct WNumber: View {
     let p: Double?
-    var resets: String? = nil
-    var elapsed: Double? = nil
-    var big = false
+    let size: CGFloat
     let theme: WTheme
-
     var body: some View {
-        switch design {
-        case .rings:
-            VStack(spacing: 2) {
-                WRing(p: p, size: big ? 50 : 40, theme: theme)
-                Text(name).font(.system(size: 10)).foregroundStyle(theme.muted)
-                if let resets { Text(resets).font(.system(size: 9.5)).foregroundStyle(theme.muted).lineLimit(1) }
-            }
-        case .numbers:
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.system(size: 10)).foregroundStyle(theme.muted)
-                number
-                WBar(design: .glow, p: p, height: 3, theme: theme)
-                if let resets { Text(resets).font(.system(size: 9.5)).foregroundStyle(theme.muted).lineLimit(1) }
-            }
-        default:
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
-                    Text(name).font(.system(size: big ? 12 : 11)).foregroundStyle(theme.muted)
-                    if let resets { Text("· \(resets)").font(.system(size: 9.5)).foregroundStyle(theme.muted).lineLimit(1) }
-                    Spacer(minLength: 2)
-                    Text(WKit.pct(p)).font(.system(size: big ? 12 : 11, weight: .semibold)).monospacedDigit()
-                        .foregroundStyle(WKit.level(p) ?? theme.ink)
-                }
-                WBar(design: design, p: p, elapsed: elapsed, height: big ? 7 : 5, theme: theme)
-            }
-        }
-    }
-
-    /// The big number: a glowing display window on the panel plates, plain on System.
-    @ViewBuilder private var number: some View {
         let c = WKit.level(p) ?? theme.ink
-        if theme.panel {
-            Text(WKit.pct(p)).font(.system(size: big ? 17 : 14, weight: .semibold, design: .monospaced))
+        if theme.display {
+            Text(WKit.pct(p)).font(.system(size: size * 0.62, weight: .semibold, design: .monospaced))
                 .foregroundStyle(p == nil ? Color(red: 0.5, green: 0.98, blue: 0.92) : c)
                 .shadow(color: c.opacity(0.6), radius: 3)
                 .padding(.horizontal, 6).padding(.vertical, 3)
@@ -323,10 +299,84 @@ struct WLimit: View {
                     colors: [Color(red: 0.01, green: 0.02, blue: 0.03), Color(red: 0.05, green: 0.08, blue: 0.09)], startPoint: .top, endPoint: .bottom)))
         } else {
             HStack(alignment: .firstTextBaseline, spacing: 1) {
-                Text(p.map { "\(Int($0.rounded()))" } ?? "–").font(.system(size: big ? 30 : 22, weight: .heavy, design: .rounded))
-                if p != nil { Text("%").font(.system(size: big ? 15 : 12, weight: .bold, design: .rounded)) }
+                Text(p.map { "\(Int($0.rounded()))" } ?? "–").font(.system(size: size, weight: .heavy, design: .rounded))
+                if p != nil { Text("%").font(.system(size: size * 0.5, weight: .bold, design: .rounded)) }
             }
-            .monospacedDigit().foregroundStyle(c)
+            .monospacedDigit().foregroundStyle(p == nil ? theme.muted : c)
+        }
+    }
+}
+
+/// One limit in the chosen design: its name (and when it resets, if there's room), with a bar, a ring or a big number.
+struct WLimit: View {
+    let design: WidgetLook.Design
+    let name: String
+    let p: Double?
+    var resets: String? = nil
+    var elapsed: Double? = nil
+    let scale: WScale
+    let theme: WTheme
+
+    var body: some View {
+        switch design {
+        case .rings:
+            VStack(spacing: 3) {
+                WRing(p: p, size: scale.ring, theme: theme)
+                Text(name).font(.system(size: scale.label, weight: .medium)).foregroundStyle(theme.muted).lineLimit(1)
+                if let resets { Text(resets).font(.system(size: scale.label - 1.5)).foregroundStyle(theme.muted).lineLimit(1) }
+            }
+        case .numbers:
+            VStack(alignment: .leading, spacing: 3) {
+                Text(name).font(.system(size: scale.label, weight: .medium)).foregroundStyle(theme.muted).lineLimit(1)
+                WNumber(p: p, size: scale.number, theme: theme)
+                if let resets { Text(resets).font(.system(size: scale.label - 1.5)).foregroundStyle(theme.muted).lineLimit(1) }
+            }
+        default:
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text(name).font(.system(size: scale.label, weight: .medium)).foregroundStyle(theme.muted).lineLimit(1)
+                    if let resets { Text("· \(resets)").font(.system(size: scale.label - 1.5)).foregroundStyle(theme.muted).lineLimit(1) }
+                    Spacer(minLength: 2)
+                    Text(WKit.pct(p)).font(.system(size: scale.pct, weight: .semibold, design: .rounded)).monospacedDigit()
+                        .foregroundStyle(WKit.level(p) ?? theme.muted)
+                }
+                WBar(design: design, p: p, elapsed: elapsed, height: scale.bar, theme: theme)
+            }
+        }
+    }
+}
+
+/// A limit in a row (many profiles): a small ring, a number or a bar, as the design says.
+struct WMini: View {
+    let design: WidgetLook.Design
+    let name: String
+    let p: Double?
+    let theme: WTheme
+
+    var body: some View {
+        switch design {
+        case .rings:
+            HStack(spacing: 5) {
+                WRing(p: p, size: 18, number: false, theme: theme)
+                Text(WKit.pct(p)).font(.system(size: 11.5, weight: .semibold, design: .rounded)).monospacedDigit()
+                    .foregroundStyle(WKit.level(p) ?? theme.muted)
+            }
+        case .numbers:
+            HStack(alignment: .firstTextBaseline, spacing: 4) {
+                Text(name).font(.system(size: 10)).foregroundStyle(theme.muted)
+                Text(WKit.pct(p)).font(.system(size: 15, weight: .heavy, design: .rounded)).monospacedDigit()
+                    .foregroundStyle(WKit.level(p) ?? theme.muted)
+            }
+        default:
+            VStack(alignment: .leading, spacing: 3) {
+                HStack {
+                    Text(name).font(.system(size: 10)).foregroundStyle(theme.muted)
+                    Spacer(minLength: 2)
+                    Text(WKit.pct(p)).font(.system(size: 11, weight: .semibold, design: .rounded)).monospacedDigit()
+                        .foregroundStyle(WKit.level(p) ?? theme.muted)
+                }
+                WBar(design: design, p: p, height: 5, theme: theme)
+            }
         }
     }
 }
@@ -341,8 +391,8 @@ struct WidgetContent: View {
     var now = Date()
 
     private var theme: WTheme { WTheme.of(look.plate) }
+    private var scale: WScale { size == .small ? .small : size == .medium ? .medium : profiles.count > 2 ? .largeFour : .large }
     private var sorted: [WidgetProfile] { profiles.sorted { $0.room(now: now) > $1.room(now: now) } }
-    private var many: Bool { profiles.count > 2 }
 
     var body: some View {
         Group {
@@ -352,90 +402,112 @@ struct WidgetContent: View {
                     Text("No profiles yet: open cl_audit to add one.").font(.caption).foregroundStyle(theme.muted)
                         .multilineTextAlignment(.center)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if profiles.count > (size == .large ? 4 : 2) {
+                rows
             } else {
-                content
+                switch size {
+                case .small: small
+                case .medium: medium
+                case .large: large
+                }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    @ViewBuilder private var content: some View {
-        let d = look.design
-        switch (size, look.layout) {
-        case (.small, .list), (.small, _) where many:
-            evenly { smallRows(look.layout == .list ? Array(profiles.prefix(4)) : Array(sorted.prefix(3))) }
-        case (.small, .hero):
-            VStack(alignment: .leading, spacing: 6) {
-                head(sorted[0], meta: "least room")
-                limits(sorted[0], which: .both, short: true, fable: false, resets: false)
-                Spacer(minLength: 0)
-            }
-        case (.small, _):
-            if d.round {
-                HStack(alignment: .top, spacing: 10) {
-                    ForEach(profiles) { p in block(p, which: p.fullerIsFive ? .five : .week, big: true, short: true, fable: false) }
+    // MARK: one or two profiles
+
+    /// Each profile's fuller limit, centred: bars one under the other, rings and numbers side by side.
+    @ViewBuilder private var small: some View {
+        if look.design.round && profiles.count == 2 {
+            HStack(alignment: .top, spacing: 8) {
+                ForEach(profiles) { p in
+                    VStack(spacing: 6) {
+                        head(p, compact: true)
+                        limit(p, five: p.fullerIsFive, resets: false)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxHeight: .infinity)          // centred: rings and numbers don't stretch
-            } else {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(profiles.enumerated()), id: \.element.id) { i, p in
-                        if i > 0 { divider }
-                        block(p, which: p.fullerIsFive ? .five : .week, short: true, fable: false).frame(maxHeight: .infinity)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(Array(profiles.enumerated()), id: \.element.id) { i, p in
+                    if i > 0 { divider }
+                    VStack(alignment: .leading, spacing: 6) {
+                        head(p)
+                        if profiles.count == 1 { limits(p, fable: false, resets: false) }
+                        else { limit(p, five: p.fullerIsFive, resets: false) }
                     }
                 }
             }
-        case (_, .list):
-            evenly { rows(Array(profiles.prefix(size == .large ? 8 : 4)), fable: size == .large && look.fable) }
-        case (.medium, .hero):
-            let h = sorted[0]
-            HStack(alignment: .top, spacing: 14) {
-                VStack(alignment: .leading, spacing: 6) {
-                    head(h, meta: "least room")
-                    limits(h, which: .both, big: !d.round, fable: false, resets: look.resets)
-                    Spacer(minLength: 0)
+        }
+    }
+
+    /// A column per profile with all its limits and when they reset, centred; one profile spreads its limits across.
+    private var medium: some View {
+        HStack(alignment: .top, spacing: 18) {
+            ForEach(profiles) { p in
+                VStack(alignment: .leading, spacing: 8) {
+                    head(p)
+                    limits(p, fable: true, resets: true, across: profiles.count == 1)
                 }
-                .frame(maxWidth: .infinity)
-                evenly { smallRows(Array(sorted.dropFirst().prefix(2))) }.frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-        case (.large, .hero):
-            let h = sorted[0], rest = Array(sorted.dropFirst())
-            VStack(alignment: .leading, spacing: 0) {
-                head(h, meta: "least room").padding(.bottom, 6)
-                limits(h, which: .both, big: true, fable: look.fable, resets: look.resets)
-                Spacer(minLength: 6); divider; Spacer(minLength: 6)
-                if many {
-                    evenly { rows(rest, fable: false) }
-                } else {
-                    ForEach(rest) { p in block(p, which: .both, short: true, fable: false, resets: false) }
-                    if look.next { Spacer(minLength: 6); divider; Spacer(minLength: 6); nextResets }
+        }
+    }
+
+    /// One or two profiles: every limit large with when it resets, then the next resets. Three or four: a block each,
+    /// limits side by side. The room left is shared out between the parts.
+    private var large: some View {
+        let few = profiles.count <= 2
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(profiles.enumerated()), id: \.element.id) { i, p in
+                if i > 0 { Spacer(minLength: few ? 8 : 4); divider; Spacer(minLength: few ? 8 : 4) }
+                VStack(alignment: .leading, spacing: few ? 10 : 6) {
+                    head(p, meta: p.plan?.capitalized)
+                    limits(p, fable: true, resets: few, across: !few || look.design.round)
                 }
             }
-        case (.medium, _):   // fill
-            let cols = many && d.round ? 4 : 2
-            HStack(alignment: .top, spacing: 14) {
-                ForEach(0..<cols, id: \.self) { c in
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(Array(profiles.prefix(4).enumerated()).filter { $0.offset % cols == c }, id: \.element.id) { _, p in
-                            block(p, which: many ? (p.fullerIsFive ? .five : .week) : .both, big: !many, short: many,
-                                  fable: false, resets: look.resets && !many, spread: !many && !d.round)
+            if few {
+                Spacer(minLength: 8); divider; Spacer(minLength: 8)
+                nextResets
+            }
+        }
+    }
+
+    // MARK: many profiles
+
+    /// A row per profile: its name, then 5-hour and week (and Fable in the large size) in the chosen design.
+    private var rows: some View {
+        let list = Array((size == .small ? sorted : profiles).prefix(size == .large ? 8 : size == .medium ? 4 : 3))
+        let fable = size == .large && list.contains { $0.fable != nil }
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(list.enumerated()), id: \.element.id) { i, p in
+                if i > 0 { Spacer(minLength: 4) }
+                if size == .small {
+                    HStack(spacing: 6) {
+                        dot(p)
+                        Text(p.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.ink).lineLimit(1)
+                        Spacer(minLength: 2)
+                        if let f = p.full(now: now) {
+                            Text(WKit.back(f.resets, now: now)).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(WKit.red).lineLimit(1)
+                        } else {
+                            WMini(design: look.design == .numbers || look.design == .rings ? look.design : .glow,
+                                  name: p.fullerIsFive ? "5h" : "wk", p: p.fullerIsFive ? p.five : p.week, theme: theme)
+                                .frame(maxWidth: look.design.round ? nil : 70)
                         }
                     }
-                    // bars spread over the height; rings and numbers keep their size, so they're centred
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: d.round ? .leading : .topLeading)
-                }
-            }
-        case (.large, _):    // fill
-            if many {
-                evenly { rows(Array(profiles.prefix(8)), fable: look.fable) }
-            } else {
-                // the room that's left is shared out between the parts, not left at the bottom
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(profiles.enumerated()), id: \.element.id) { i, p in
-                        if i > 0 { Spacer(minLength: 6); divider; Spacer(minLength: 6) }
-                        block(p, which: .both, meta: p.plan?.capitalized, big: true, fable: look.fable, resets: look.resets)
+                } else {
+                    HStack(alignment: .center, spacing: 12) {
+                        HStack(spacing: 6) {
+                            dot(p)
+                            Text(p.name).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(theme.ink).lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        WMini(design: look.design, name: "5h", p: p.five, theme: theme).frame(maxWidth: .infinity, alignment: .leading)
+                        WMini(design: look.design, name: "wk", p: p.week, theme: theme).frame(maxWidth: .infinity, alignment: .leading)
+                        if fable { WMini(design: look.design, name: "Fable", p: p.fable, theme: theme).frame(maxWidth: .infinity, alignment: .leading) }
                     }
-                    if look.next { Spacer(minLength: 6); divider; Spacer(minLength: 6); nextResets }
                 }
             }
         }
@@ -443,99 +515,51 @@ struct WidgetContent: View {
 
     // MARK: parts
 
-    enum Which { case five, week, both }
+    private var divider: some View { Rectangle().fill(theme.track).frame(height: 1) }
 
-    private var divider: some View { Rectangle().fill(theme.track.opacity(0.6)).frame(height: 1).padding(.vertical, 2) }
+    private func dot(_ p: WidgetProfile) -> some View { Circle().fill(WKit.accent(p.accent)).frame(width: 7, height: 7) }
 
-    private func evenly<C: View>(@ViewBuilder _ c: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 0) { c() }.frame(maxHeight: .infinity)
-    }
-
-    @ViewBuilder private func head(_ p: WidgetProfile, meta: String? = nil) -> some View {
-        HStack(spacing: 5) {
-            Circle().fill(WKit.accent(p.accent)).frame(width: 6, height: 6)
-            Text(theme.panel ? p.name.uppercased() : p.name)
-                .font(theme.panel ? .system(size: 10, weight: .bold) : .system(size: 12.5, weight: .semibold))
-                .tracking(theme.panel ? 1.4 : 0).foregroundStyle(theme.ink).lineLimit(1)
-            Spacer(minLength: 4)
-            if let f = p.full(now: now) {
-                Text(WKit.back(f.resets, now: now)).font(.system(size: 10, weight: .semibold)).foregroundStyle(WKit.red).lineLimit(1)
+    /// A profile's name; compact: just the dot and name, centred (small side by side).
+    private func head(_ p: WidgetProfile, meta: String? = nil, compact: Bool = false) -> some View {
+        HStack(spacing: 6) {
+            dot(p)
+            Text(theme.printed ? p.name.uppercased() : p.name)
+                .font(theme.printed ? .system(size: scale.name - 3, weight: .bold) : .system(size: scale.name, weight: .semibold))
+                .tracking(theme.printed ? 1.4 : 0).foregroundStyle(theme.ink).lineLimit(1)
+            if !compact { Spacer(minLength: 4) }
+            if compact {
+                EmptyView()
+            } else if let f = p.full(now: now) {
+                Text(WKit.back(f.resets, now: now)).font(.system(size: scale.label - 1, weight: .semibold)).foregroundStyle(WKit.red).lineLimit(1)
             } else if let meta {
-                Text(meta).font(.system(size: 10)).foregroundStyle(theme.muted).lineLimit(1)
+                Text(meta).font(.system(size: scale.label - 1)).foregroundStyle(theme.muted).lineLimit(1)
             }
         }
     }
 
-    @ViewBuilder private func limits(_ p: WidgetProfile, which: Which, big: Bool = false, short: Bool = false,
-                                     fable: Bool, resets: Bool, spread: Bool = false) -> some View {
-        let d = look.design
-        let five = WLimit(design: d, name: short ? "5h" : "5-hour", p: p.five, resets: resets ? WKit.resets(p.fiveResets, now: now) : nil,
-                          elapsed: WKit.elapsed(p.fiveResets, window: 5 * 3600, now: now), big: big, theme: theme)
-        let week = WLimit(design: d, name: short ? "wk" : "Week", p: p.week, resets: resets ? WKit.resets(p.weekResets, now: now) : nil,
-                          elapsed: WKit.elapsed(p.weekResets, window: 7 * 86400, now: now), big: big, theme: theme)
-        let showFable = fable && which == .both && p.fable != nil
-        if d.round {
-            HStack(alignment: .top, spacing: 8) {
-                if which != .week { five }
-                if which != .five { week }
-                if showFable { WLimit(design: d, name: "Fable", p: p.fable, big: big, theme: theme) }
+    private func limit(_ p: WidgetProfile, five: Bool, resets: Bool) -> WLimit {
+        five ? WLimit(design: look.design, name: "5-hour", p: p.five, resets: resets ? WKit.resets(p.fiveResets, now: now) : nil,
+                      elapsed: WKit.elapsed(p.fiveResets, window: 5 * 3600, now: now), scale: scale, theme: theme)
+             : WLimit(design: look.design, name: "Week", p: p.week, resets: resets ? WKit.resets(p.weekResets, now: now) : nil,
+                      elapsed: WKit.elapsed(p.weekResets, window: 7 * 86400, now: now), scale: scale, theme: theme)
+    }
+
+    /// A profile's limits: rings and numbers side by side; bars one under the other (or side by side when across).
+    @ViewBuilder private func limits(_ p: WidgetProfile, fable: Bool, resets: Bool, across: Bool = false) -> some View {
+        let withFable = fable && p.fable != nil
+        let f = WLimit(design: look.design, name: "Fable", p: p.fable, scale: scale, theme: theme)
+        if look.design.round || across {
+            HStack(alignment: .top, spacing: look.design.round ? 10 : 16) {
+                limit(p, five: true, resets: resets)
+                limit(p, five: false, resets: resets)
+                if withFable { f }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: look.design.round ? .center : .leading)
         } else {
-            VStack(alignment: .leading, spacing: spread ? 0 : 6) {
-                if which != .week { five }
-                if spread && which == .both { Spacer(minLength: 6) }
-                if which != .five { week }
-                if showFable { WLimit(design: d, name: "Fable", p: p.fable, big: big, theme: theme) }
-            }
-            .frame(maxHeight: spread ? .infinity : nil, alignment: .top)
-        }
-    }
-
-    @ViewBuilder private func block(_ p: WidgetProfile, which: Which, meta: String? = nil, big: Bool = false, short: Bool = false,
-                                    fable: Bool, resets: Bool = false, spread: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            head(p, meta: meta)
-            limits(p, which: which, big: big, short: short, fable: fable, resets: resets, spread: spread)
-        }
-        .frame(maxHeight: spread ? .infinity : nil, alignment: .top)
-    }
-
-    /// One line per profile: its name, its fuller limit and that limit's bar under it.
-    @ViewBuilder private func smallRows(_ ps: [WidgetProfile]) -> some View {
-        ForEach(Array(ps.enumerated()), id: \.element.id) { i, p in
-            if i > 0 { Spacer(minLength: 4) }
-            let five = p.fullerIsFive, v = five ? p.five : p.week
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
-                    Circle().fill(WKit.accent(p.accent)).frame(width: 6, height: 6)
-                    Text(p.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.ink).lineLimit(1)
-                    Spacer(minLength: 2)
-                    if let f = p.full(now: now) {
-                        Text(WKit.back(f.resets, now: now)).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(WKit.red).lineLimit(1)
-                    } else {
-                        Text(five ? "5h" : "wk").font(.system(size: 9.5)).foregroundStyle(theme.muted)
-                        Text(WKit.pct(v)).font(.system(size: 11.5, weight: .semibold)).monospacedDigit().foregroundStyle(WKit.level(v) ?? theme.ink)
-                    }
-                }
-                WBar(design: look.design.flat, p: v, height: 5, theme: theme)
-            }
-        }
-    }
-
-    /// One row per profile: name | 5-hour | week (| Fable).
-    @ViewBuilder private func rows(_ ps: [WidgetProfile], fable: Bool) -> some View {
-        ForEach(Array(ps.enumerated()), id: \.element.id) { i, p in
-            if i > 0 { Spacer(minLength: 4) }
-            HStack(alignment: .center, spacing: 10) {
-                HStack(spacing: 5) {
-                    Circle().fill(WKit.accent(p.accent)).frame(width: 6, height: 6)
-                    Text(p.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.ink).lineLimit(1)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                WLimit(design: look.design.flat, name: "5h", p: p.five, theme: theme).frame(maxWidth: .infinity)
-                WLimit(design: look.design.flat, name: "wk", p: p.week, theme: theme).frame(maxWidth: .infinity)
-                if fable { WLimit(design: look.design.flat, name: "Fable", p: p.fable, theme: theme).frame(maxWidth: .infinity) }
+            VStack(alignment: .leading, spacing: size == .large ? 7 : 9) {
+                limit(p, five: true, resets: resets)
+                limit(p, five: false, resets: resets)
+                if withFable { f }
             }
         }
     }
@@ -546,14 +570,14 @@ struct WidgetContent: View {
             [p.fiveResets.map { (p.name, "5-hour", $0) }, p.weekResets.map { (p.name, "week", $0) }].compactMap { $0 }
         }
         .filter { $0.2 > now }.sorted { $0.2 < $1.2 }
-        return VStack(alignment: .leading, spacing: 3) {
-            Text("NEXT RESETS").font(.system(size: 9, weight: .bold)).tracking(1.4).foregroundStyle(theme.muted)
+        return VStack(alignment: .leading, spacing: 4) {
+            Text("NEXT RESETS").font(.system(size: 9.5, weight: .bold)).tracking(1.4).foregroundStyle(theme.muted)
             ForEach(Array(items.prefix(3).enumerated()), id: \.offset) { _, it in
                 HStack {
-                    Text(it.0).font(.system(size: 11, weight: .semibold)).foregroundColor(theme.ink)
-                    + Text(" \(it.1)").font(.system(size: 11)).foregroundColor(theme.muted)
+                    Text(it.0).font(.system(size: 12, weight: .semibold)).foregroundColor(theme.ink)
+                    + Text(" \(it.1)").font(.system(size: 12)).foregroundColor(theme.muted)
                     Spacer()
-                    Text(WKit.when(it.2, now: now)).font(.system(size: 11)).monospacedDigit().foregroundStyle(theme.muted)
+                    Text(WKit.when(it.2, now: now)).font(.system(size: 12)).monospacedDigit().foregroundStyle(theme.muted)
                 }
             }
         }
@@ -568,7 +592,7 @@ struct WidgetPlate: View {
         case .system: Color.clear
         case .std: LinearGradient(colors: [Color(white: 0.17), Color(white: 0.12)], startPoint: .top, endPoint: .bottom)
         case .black: LinearGradient(colors: [Color(white: 0.115), Color(white: 0.068)], startPoint: .top, endPoint: .bottom)
-        case .silver: LinearGradient(colors: [Color(white: 0.92), Color(white: 0.82)], startPoint: .top, endPoint: .bottom)
+        case .silver: LinearGradient(colors: [Color(white: 0.93), Color(white: 0.84)], startPoint: .top, endPoint: .bottom)
         }
     }
 }

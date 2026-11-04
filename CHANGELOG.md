@@ -11,7 +11,8 @@ the notes before updating.
 - **Fable's weekly limit.** Max, Ultra and Team plans have a weekly limit of Fable's own; cl_audit now reads it from
   Anthropic's reply and shows it as a third row on the cards, the panels and the Dock menu. Full, the row turns red
   with when it's back, and it alerts like the other two ("Fable weekly limit full · Back Thu 09:00", "Fable is
-  back"). It never takes the full-limit box: the other models still work.
+  back"). It never takes the full-limit box: the other models still work. Each profile can leave it out (Profile ▸
+  Fable's limit): off, it's neither shown nor alerted.
 - **Usage credits.** While a profile is spending usage credits, its card, panels and Dock menu say "Using usage
   credits · $4.20 spent". Alerts when a profile starts spending them and when they run out.
 - Three limits side by side in the Rings and Numbers designs are drawn a size smaller, so they fit the panels.
@@ -30,9 +31,9 @@ the notes before updating.
   ("Show window"), like the switches above it; it no longer looks as if the window were running.
 - **Widget** (macOS 14 and later): "Claude usage" in the widget gallery, with every profile's 5-hour and weekly
   limits and when a full one is back, in three sizes. Its look is in Settings ▸ General ▸ Widget, with the real
-  widget as the preview: limits as Glow, Rings, Numbers, Segments or Pace; the System look or cl_audit's Std, Black
-  and Silver faces; Fill, Hero or List; reset times, Fable's limit and the next resets. Every size fills its space.
-  It reads only what cl_audit saves.
+  widget as the preview: limits as Glow, Rings, Numbers, Segments or Pace (rows too); the System look or cl_audit's
+  Std, Black and Silver faces. It fits itself to the size and the number of profiles, centred, with reset times and
+  the next resets where there's room. It reads only what cl_audit saves.
 - **Export the usage history as CSV.** The CSV key next to the period saves one row per day, profile and model
   (optionally per project, by folder name), with replies and each kind of token.
 - **Cost estimate at API list prices** in the usage history's totals ("≈ $123 at list prices") and in the CSV:

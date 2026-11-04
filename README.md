@@ -143,15 +143,15 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
 
 cl_audit has a macOS widget (macOS 14 and later), **Claude usage**: every profile's 5-hour and weekly limits, and
 when a full one is back ("back at 15:28"). Add it from the widget gallery (click the date in the menu bar, then Edit
-Widgets) to the desktop or Notification Center, in three sizes. Its look is in Settings ▸ General ▸ **Widget**, built
-like the Dashboard cards card, with the real widget as the preview:
+Widgets) to the desktop or Notification Center, in three sizes. It fits itself to the size and the number of
+profiles: one or two get large limits with when they reset (the large size adds the next three resets below), up to
+four get a block each in the large size, more get a row each; it is always centred, with no empty space left over.
+Fable's limit shows for the profiles whose settings show it (Profile ▸ Fable's limit). Its look is in Settings ▸
+General ▸ **Widget**, built like the Dashboard cards card, with the real widget as the preview:
 
-- **Limits as:** Glow, Rings, Numbers, Segments or Pace, like the dashboard cards.
-- **Look:** System (the Mac's own widget background, light or dark) or cl_audit's Std, Black and Silver faces.
-- **Layout:** **Fill** (every profile, bigger when there are few; the large size adds the next three resets),
-  **Hero** (the profile with the least room large, the others compact) or **List** (one row per profile, up to
-  eight). Whatever the layout and size, the content spreads over the whole widget.
-- **Reset times**, **Fable's limit** and **Next resets** (the last two in the large size).
+- **Limits as:** Glow, Rings, Numbers, Segments or Pace, like the dashboard cards, in every row too.
+- **Look:** System (the Mac's own widget background, light or dark) or cl_audit's Std, Black and Silver faces
+  (Numbers in a glowing display window on Std and Black).
 
 It only reads what cl_audit saves (the profiles, their usage and `widget.json` with its look), through a read-only
 sandbox exception for cl_audit's own folder; no Keychain, no network. macOS refreshes it every few minutes, and at
@@ -222,7 +222,8 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 ### Profile settings
 
 - **Profile:** name, icon label (up to 6 letters, drawn on the icon), the profile's colour (launcher,
-  dashboard, panels), then two keys, each with a line under it saying what the current choice does:
+  dashboard, panels), **Fable's limit** (on: shown on its card, panels, menus and the widget, and alerted; off:
+  left out everywhere), then two keys, each with a line under it saying what the current choice does:
   - **Usage in the Dock:** on, a Dock icon shows the profile's usage (click it for details); off, no Dock
     icon: it quits, is unpinned and its app is removed with what macOS keeps for it. Turn it back on and the
     app is installed again and returns to its place in the Dock, with the same look and click settings (they
