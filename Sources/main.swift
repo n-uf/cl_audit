@@ -29,6 +29,7 @@ if args.count >= 2, args[1] == "--sync" {
     // macOS redraws placed widgets only when their app asks (or on its own schedule, which can take hours): after an
     // update the widgets get the new widget program's drawing now
     WidgetCenter.shared.reloadAllTimelines()
+    RunLoop.current.run(until: Date().addingTimeInterval(1))     // let the request reach macOS before this run ends
     print("widgets: asked macOS to redraw them")
     exit(0)
 }

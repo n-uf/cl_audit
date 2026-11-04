@@ -135,6 +135,10 @@ if [ $install = 1 ]; then
   rm -rf "$dest/$name.app"
   cp -R "$app" "$dest/"
   echo "installed $dest/$name.app"
+  # Replacing the app drops its widget from macOS ("unknown extension") until something registers it again: register
+  # the app and the widget now, so placed widgets keep working and the redraw asked for by --sync reaches them.
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$dest/$name.app"
+  pluginkit -a "$dest/$name.app/Contents/PlugIns/$name Widget.appex" 2>/dev/null || true
   # Earlier versions were called "Claude Usage" and "cl-audit"; the icon apps are renamed by --sync.
   for old in "Claude Usage" "cl-audit"; do
     if [ "$old" != "$name" ] && [ -d "$dest/$old.app" ]; then
