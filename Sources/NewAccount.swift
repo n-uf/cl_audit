@@ -41,6 +41,9 @@ struct NewAccountDraft: Equatable {
     var email = ""
     var asking = false
     var signInAsked: Date?
+    /// The account the folder was signed in to when Sign in was pressed (nil: none), so signing in again in the
+    /// folder this setup made waits for another account, not just any sign-in.
+    var seatAtAsk: Seat?
     /// What this setup did; Cancel undoes exactly this (an existing folder is never deleted or signed out).
     var createdConfigDir: String?
     var createdDataDir: String?
@@ -115,6 +118,41 @@ enum NewAccountSetup {
     /// Signed in when Claude Code has recorded this folder's account (it writes it right after the login).
     static func signedInEmail(_ d: NewAccountDraft) -> String? {
         exists(d.configDir) || d.configDir == "~/.claude" ? Account.expectedEmail(configDir: d.configDir) : nil
+    }
+
+    /// Accounts signed in in Claude Code folders on this Mac that no profile uses, each with its folder (picking one
+    /// connects that folder as it is). Other profiles' folders, and folders inside or around them, are left out.
+    static func freeAccounts(among accounts: [AccountEntry], folders: [FolderChoice] = Detect.configFolders()) -> [(email: String, path: String)] {
+        folders.compactMap { c in
+            guard let e = c.detail, FolderRules.configOwner(c.path, among: accounts) == nil else { return nil }
+            return (e, c.path)
+        }
+    }
+
+    /// Why Sign in (the address route) can't go with this address, or nil. The address only fills in the sign-in, so
+    /// this is the early, by-address part; afterwards the account and organisation ids decide (checks).
+    static func addressProblem(_ email: String, among accounts: [AccountEntry]) -> String? {
+        let e = email.trimmingCharacters(in: .whitespaces)
+        guard e.contains("@"), !e.hasPrefix("@"), !e.hasSuffix("@"), !e.contains(" ") else { return "Type the account's email address." }
+        if let owner = accounts.first(where: { ($0.seat?.email ?? Account.expectedEmail(configDir: $0.configDir))?.lowercased() == e.lowercased() }) {
+            return "That's the account of “\(owner.name)”. One profile per account."
+        }
+        return nil
+    }
+
+    /// A free folder already signed in to this address, if any: picking it connects that folder, no new sign-in.
+    static func freeFolder(for email: String, among accounts: [AccountEntry], folders: [FolderChoice] = Detect.configFolders()) -> String? {
+        let e = email.trimmingCharacters(in: .whitespaces).lowercased()
+        guard !e.isEmpty else { return nil }
+        return freeAccounts(among: accounts, folders: folders).first { $0.email.lowercased() == e }?.path
+    }
+
+    /// Sign in was pressed and the folder doesn't name another account yet: nothing signed in, or still the account it
+    /// had when Sign in was pressed. Stops waiting after an hour (Sign in can be pressed again).
+    static func waiting(_ d: NewAccountDraft, now: Date = Date(), signedIn: (String) -> Seat? = Account.signedInSeat) -> Bool {
+        guard let asked = d.signInAsked, now.timeIntervalSince(asked) < 3600 else { return false }
+        guard exists(d.configDir) || d.configDir == "~/.claude", let s = signedIn(d.configDir) else { return true }
+        return d.seatAtAsk.map { s.same($0) } ?? false
     }
 
     /// Everything the Checks card shows, in order. Any `.bad` line blocks Create/Connect and Finish.
@@ -279,7 +317,6 @@ struct NewAccountView: View {
     @State private var error: String?
     @State private var confirmCancel = false
     @State private var confirmQuit = false
-    @State private var signingOut = false
     @State private var customFolders: [String] = []
     @State private var checking = false
     @State private var addressProblem: String?      // why Sign in (the address route) can't go yet
@@ -445,12 +482,14 @@ struct NewAccountView: View {
     }
 
     /// Accounts signed in in Claude Code folders on this Mac that no profile uses, with their folder.
-    private var freeAccounts: [(email: String, path: String)] {
-        Detect.configFolders().compactMap { c in
-            guard let e = c.detail, FolderRules.configOwner(c.path, among: model.accounts) == nil else { return nil }
-            return (e, c.path)
-        }
-    }
+    private var freeAccounts: [(email: String, path: String)] { NewAccountSetup.freeAccounts(among: model.accounts) }
+
+    /// Sign in was pressed and the folder doesn't name a new account yet.
+    private var waiting: Bool { NewAccountSetup.waiting(draft) }
+
+    /// The folder was made by this setup, so signing in there again (another address) is allowed; a folder that
+    /// existed before is never signed in again from here.
+    private var canSignInAgain: Bool { draft.createdConfigDir != nil && draft.source == .new }
 
     /// The Account menu's free accounts: "address   in folder", and whether it's the one picked.
     private var freeAccountLines: [(title: String, path: String, picked: Bool)] {
@@ -482,14 +521,14 @@ struct NewAccountView: View {
             AddressRow(email: $draft.email, canSignIn: model.claudePath != nil,
                        signIn: startAddressSignIn, cancel: { draft.asking = false; addressProblem = nil })
                 .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
-        } else if draft.signInAsked != nil, signedIn == nil {
+        } else if waiting {
             HStack(spacing: 8) {
                 TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
                     LED(color: FaceTheme.ledAmber, lit: Int(ctx.date.timeIntervalSinceReferenceDate * 2) % 2 == 0)
                 }
                 Text("signing in…").font(.system(size: 12)).foregroundStyle(face.caution).lineLimit(1)
                 Spacer(minLength: 6)
-                Button("Cancel") { draft.signInAsked = nil }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                Button("Cancel") { draft.signInAsked = nil; draft.seatAtAsk = nil }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
             }
             .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
         } else {
@@ -497,24 +536,24 @@ struct NewAccountView: View {
             let free = freeAccountLines
             let others = otherAccountLines
             Menu {
+                // once a folder is made or connected, the account comes with it: only signing in again in the
+                // folder this setup made is left
                 ForEach(free, id: \.path) { a in
                     if a.picked {
                         Toggle(a.title, isOn: .constant(true))
                     } else {
-                        Button(a.title) { pickFreeAccount(a.path) }
+                        Button(a.title) { pickFreeAccount(a.path) }.disabled(draft.started)
                     }
                 }
                 ForEach(others, id: \.self) { line in Button(line) {}.disabled(true) }
                 Divider()
-                Button("Sign in to another account…") {
-                    draft.source = .new; draft.existingDir = nil; draft.asking = true; addressProblem = nil
-                }
-                .disabled(model.claudePath == nil)
+                Button("Sign in to another account…") { askAddress() }
+                    .disabled(model.claudePath == nil)
             } label: {
                 MenuWell(text: shown.text, tint: shown.tint, icon: shown.icon, fill: true).settingsEmail(shown.text.contains("@"))
             }
             .faceMenuFill()
-            .disabled(draft.started)
+            .disabled(draft.started && !canSignInAgain)
             .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
         }
     }
@@ -523,18 +562,21 @@ struct NewAccountView: View {
     @ViewBuilder private var accountLine: some View {
         let text: (String, Color?)? = {
             if draft.asking {
-                return (addressProblem ?? "Signs in through Claude Code in Terminal, in a new folder. The browser's claude.ai account decides: switch it there first if it shows another one.",
-                        addressProblem == nil ? nil : face.danger)
+                if let p = addressProblem { return (p, face.danger) }
+                if let dir = NewAccountSetup.freeFolder(for: draft.email, among: model.accounts), !draft.started {
+                    return ("\(Privacy.masked(draft.email)) is signed in in \(dir) already: pick it in the pop-up to use that folder as it is.", nil)
+                }
+                return ("Signs in through Claude Code in Terminal, in \(draft.started ? draft.configDir : "a new folder"). The browser's claude.ai account decides: switch it there first if it shows another one.", nil)
             }
-            if draft.signInAsked != nil, signedIn == nil {
+            if waiting {
                 return ("Finish signing in as \(Privacy.masked(draft.email)) in the browser. If it shows another claude.ai account, switch it there first.", nil)
             }
             if let email = signedIn {
                 if let owner = FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) {
-                    return ("\(Privacy.masked(email)) is the account of “\(owner.name)”. One profile per account: sign in with another one.", face.danger)
+                    return ("\(Privacy.masked(email)) is the account of “\(owner.name)”. One profile per account: Sign in to another account… in the pop-up.", face.danger)
                 }
                 if !draft.email.isEmpty, draft.email.lowercased() != email.lowercased() {
-                    return ("Signed in as \(Privacy.masked(email)), not \(Privacy.masked(draft.email)): the browser's claude.ai account decided. Keep it, or use another account and switch the browser first.", face.caution)
+                    return ("Signed in as \(Privacy.masked(email)), not \(Privacy.masked(draft.email)): the browser's claude.ai account decided. Keep it, or sign in again from the pop-up after switching the browser.", face.caution)
                 }
                 return nil
             }
@@ -594,11 +636,10 @@ struct NewAccountView: View {
     /// Sign in (the address route): the new folder is made if it isn't yet, then Terminal runs Claude Code's sign-in
     /// for it with the address filled in. The result is checked afterwards, by account and organisation ids.
     private func startAddressSignIn() {
+        if let p = NewAccountSetup.addressProblem(draft.email, among: model.accounts) { addressProblem = p; return }
         let e = draft.email.trimmingCharacters(in: .whitespaces)
-        guard e.contains("@"), !e.hasPrefix("@"), !e.hasSuffix("@") else { addressProblem = "Type the account's email address."; return }
-        if let owner = model.accounts.first(where: { ($0.seat?.email ?? Account.expectedEmail(configDir: $0.configDir))?.lowercased() == e.lowercased() }) {
-            addressProblem = "That's the account of “\(owner.name)”. One profile per account."; return
-        }
+        // a folder connected as it was is never signed in again from here; the folder this setup made can be
+        guard !draft.started || canSignInAgain else { addressProblem = "This profile uses \(draft.configDir) as it is. Cancel the setup to sign in to another account."; return }
         draft.email = e; draft.source = .new; draft.existingDir = nil
         guard !draft.name.trimmingCharacters(in: .whitespaces).isEmpty else { addressProblem = "Name the profile first."; return }
         if !NewAccountSetup.foldersReady(draft) {
@@ -609,7 +650,15 @@ struct NewAccountView: View {
         guard let claude = model.claudePath, ClaudeCLI.openLogin(claude, account: Account(draft.entry), email: e) else {
             addressProblem = "Terminal didn't open."; return
         }
+        draft.seatAtAsk = Account.signedInSeat(configDir: draft.configDir)     // signing in again waits for another account
         draft.asking = false; draft.signInAsked = Date(); addressProblem = nil; model.tick += 1
+    }
+
+    /// "Sign in to another account…": the one-line address row, in place of the pop-up. Before any folder is made it
+    /// means a new folder; afterwards only the folder this setup made is signed in again.
+    private func askAddress() {
+        if !draft.started { draft.source = .new; draft.existingDir = nil }
+        draft.asking = true; addressProblem = nil          // the address typed before stays: often the same one, again
     }
 
     /// Under “New folder”: what to link from the main folder.
@@ -663,9 +712,10 @@ struct NewAccountView: View {
                     if let o = owner {
                         Text("“\(o.name)” is linked to this Claude account. One profile per account: sign in with another account.")
                             .font(.system(size: 11)).foregroundStyle(.red).fixedSize(horizontal: false, vertical: true)
-                        if draft.createdConfigDir != nil {
-                            Button(signingOut ? "Signing out…" : "use another account") { signOut() }
-                                .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary).underline().disabled(signingOut)
+                        if canSignInAgain {
+                            // signing in again in the folder this setup made replaces its sign-in; no sign-out first
+                            Button("sign in to another account") { askAddress() }
+                                .buttonStyle(.plain).font(.system(size: 11)).foregroundStyle(.secondary).underline()
                         }
                     }
                 } else {
@@ -1036,17 +1086,6 @@ struct NewAccountView: View {
     }
 
     private var runLines: [String] { runGroups.map { "\($0.title): " + $0.items.joined(separator: ", ") } }
-
-    /// Signs out the folder's login so the sign-in can be done again (only a folder this setup created).
-    private func signOut() {
-        guard let claude = model.claudePath, draft.createdConfigDir != nil else { return }
-        signingOut = true
-        let dir = draft.configDir
-        DispatchQueue.global(qos: .userInitiated).async {
-            ClaudeCLI.logout(claude, configDir: dir)
-            DispatchQueue.main.async { signingOut = false; model.tick += 1 }
-        }
-    }
 
     static func ago(_ d: Date) -> String {
         let s = Date().timeIntervalSince(d)
