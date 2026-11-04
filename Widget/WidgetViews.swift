@@ -541,7 +541,9 @@ struct WidgetContent: View {
 
     /// A row per profile: its name, then 5-hour and week (and Fable in the large size) in the chosen design.
     private var rows: some View {
-        let list = Array((size == .small ? sorted : profiles).prefix(size == .large ? 8 : size == .medium ? 4 : 3))
+        // the small size picks the three with the least room; every size lists them in the profiles' order
+        let few = Set(sorted.prefix(3).map(\.id))
+        let list = size == .small ? profiles.filter { few.contains($0.id) } : Array(profiles.prefix(size == .large ? 8 : 4))
         let fable = size == .large && list.contains { $0.fable != nil }
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(list.enumerated()), id: \.element.id) { i, p in
