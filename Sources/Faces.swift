@@ -582,11 +582,14 @@ struct MenuWell: View {
     let text: String
     var mono = false
     var tint: Color? = nil          // the value's own colour (the Login pop-up: green signed in, red another account)
+    var icon: String? = nil         // a status sign after the value, inside the well (a warning, a clock)
     @Environment(\.face) private var face
     var body: some View {
         HStack(spacing: 7) {
             Text(text).font(mono ? .system(size: 11.5, design: .monospaced) : .system(size: 12)).lineLimit(1)
+                .truncationMode(.middle)
                 .foregroundStyle(tint ?? Color.hex(0xececee))
+            if let icon { Image(systemName: icon).font(.system(size: 10)).foregroundStyle(tint ?? Color.hex(0xececee)) }
             Image(systemName: "chevron.up.chevron.down").font(.system(size: 7.5, weight: .semibold)).opacity(0.8)
         }
         .foregroundStyle(Color.hex(0xececee))
@@ -600,6 +603,11 @@ struct MenuWell: View {
 extension View {
     /// A Menu drawn with a MenuWell (or another custom) label.
     func faceMenu() -> some View { menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize() }
+
+    /// A face menu whose value may get shorter (with "…") when its column is narrow, instead of pushing the card wider.
+    func faceMenuShrinking() -> some View {
+        menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
+    }
 
     /// A module: the raised plate of a card.
     func module(padding: CGFloat = 14) -> some View { modifier(ModuleBackground(pad: padding)) }

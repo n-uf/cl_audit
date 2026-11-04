@@ -50,14 +50,16 @@ the notes before updating.
   folder (`claude auth login`), the agent sees its `.claude.json` change within half a minute and reads the new
   sign-in then: the old account's numbers go, and there's no red "Wrong account" waiting for Refresh now. One Keychain read, as
   at the start; the limit alerts start over for the new account, so the switch itself sends no "is back".
-- **Changing a profile's account.** Profile ▸ Claude Code ▸ **Login** is now a pop-up: this profile's account, the
-  accounts in unused Claude Code folders, other profiles' (dimmed) and **Sign in to another account…**, which opens
-  Claude Code's own sign-in in Terminal with the address filled in and links the profile to the new account by
-  itself once it's done; name, look, Dock icon, Claude window and settings stay. Signed in elsewhere, a **Wrong
-  account** row offers **Use this account**, and the profile shows no numbers until you choose (they'd be the other
-  account's). Refused, naming the profile, when another profile has that account. A **Claude window** row says when
-  the window is on another account (the usual Claude app is checked too). After linking: when, what it was, what
-  stays with the old account, and **Add as a profile…** for it.
+- **Changing a profile's account.** Profile ▸ Claude Code ▸ **Login** is now one row with a pop-up, in line with
+  Folder: the account Claude Code there is signed in to (ticked), Use this account when it isn't the profile's,
+  the accounts in unused Claude Code folders, other profiles' (dimmed), **Sign in to another account…** and **Renew
+  sign-in by itself** (it was a row of its own). Sign in to another account… turns the row into the address and
+  **Sign in** in place, opens Claude Code's own sign-in in Terminal with the address filled in, and links the
+  profile to the new account by itself once it's done; name, look, Dock icon, Claude window and settings stay.
+  Signed in elsewhere, **Use this account** shows under the pop-up, and the profile shows no numbers until you
+  choose (they'd be the other account's). Refused, naming the profile, when another profile has that account. A
+  **Claude window** row says when the window is on another account (the usual Claude app is checked too). After
+  linking: when, what it was, what stays with the old account, and **Add as a profile…** for it.
 - **Claude's own plan name.** The plan badge, the panels and the menus show the plan as Claude names it ("Ultra"),
   read from the profile's `.claude.json` with the account it already reads; an Ultra account's sign-in says "max".
   Without that name, the sign-in's as before (Max, Pro, Team).

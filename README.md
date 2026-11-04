@@ -244,23 +244,27 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   "Stopped · in the Dock", "Reading usage · every N min" (no Dock icon), "Missing · reinstall", or the agent's
   state in the dashboard's words ("Starting the agent…", "Not updating · agent won't start"); while a change goes
   through it says "Saving…", then "Saved" and what changed.
-- **Claude Code:** the Claude Code folder (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder) and the sign-in
-  found there; **Renew sign-in** (opt-in). Folders other profiles use are marked and can't be picked. The
-  Claude window follows from the folder (see Profile above); it isn't a setting. **Login** is a pop-up like the
-  Folder one: this profile's account (✓, with its plan), the accounts signed in in Claude Code folders no profile
-  uses (picking one only fills in the sign-in below; no sign-in is ever copied between folders), other profiles'
-  accounts, dimmed, and **Sign in to another account…**. That adds a **New account** row: the address and **Sign
-  in**, which opens Claude Code's own sign-in in Terminal with the address filled in (the profile stays on its
-  account until it's done; Esc cancels). While it waits, Login says "signing in as …" with **Cancel**; as soon as
-  the folder's `.claude.json` names the new account, cl_audit links the profile to it by itself, keeping its name,
-  look, Dock icon, Claude window and settings. Signed in to another account outside cl_audit (Terminal), a **Wrong
-  account** row offers **Use this account** (the same link) and **Log in…** (back to the old one), and the profile
-  shows no numbers until you choose, since they would be the other account's. If another profile has that
-  account, an **Account taken** row names it, with **Open** it and **Log in…**: one profile per account. A
+- **Claude Code:** the Claude Code folder (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder) and its sign-in, in two
+  rows. Folders other profiles use are marked and can't be picked. The Claude window follows from the folder (see
+  Profile above); it isn't a setting. **Login** is one row for everything about the sign-in: a pop-up in line with
+  the Folder one, showing the account Claude Code in the folder is signed in to (green; red with a warning sign
+  inside when it isn't the profile's account; a clock when the sign-in ran out; a long address gets shorter rather
+  than widening the card). Its menu ticks that account, then lists, when it isn't the profile's, **Use this account
+  for …** and the profile's own account to log back in to; the accounts signed in in Claude Code folders no profile
+  uses (picking one only fills in the address; no sign-in is ever copied between folders); other profiles'
+  accounts, dimmed; **Sign in to another account…**; and **Renew sign-in by itself** (opt-in, see the (i)).
+  **Sign in to another account…** turns Login's value into the address and **Sign in**, in place (Esc or **Cancel**
+  puts the pop-up back): Claude Code's own sign-in opens in Terminal with the address filled in, and the profile
+  stays on its account until it's done. While it waits, Login says "signing in…" with **Cancel**; as soon as the
+  folder's `.claude.json` names the new account, cl_audit links the profile to it by itself, keeping its name,
+  look, Dock icon, Claude window and settings. Signed in to another account outside cl_audit (Terminal), **Use this
+  account** shows under the pop-up (the same link), and the profile shows no numbers until you choose, since they
+  would be the other account's. If another profile has that account, the line under Login names it, with
+  **Open** it instead: one profile per account. Anything else needing a word gets one grey line under the row. A
   **Claude window** row says when the profile's window is signed in to another account than its Claude Code (only
   the account id is known, from the window's `config.json`; the usual Claude app is checked too). For a week after
-  linking, a line under Login says when, which account it was and what stays with it, with **Add as a profile…**
-  while no profile has the old account. See [Moving a profile to another account](#moving-a-profile-to-another-account).
+  linking, the line under Login says when, which account it was and what stays with it, with **Add as a
+  profile…** while no profile has the old account. See [Moving a profile to another account](#moving-a-profile-to-another-account).
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
   ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"). **Notify when back** (on by default) sends one
@@ -404,7 +408,7 @@ numbers on the old account.
    Terminal: `env -u CLAUDE_CONFIG_DIR claude auth login --claudeai --email <new>` for `~/.claude`,
    `CLAUDE_CONFIG_DIR=<folder> claude auth login --claudeai --email <new>` for a profile's own folder.
 6. **Signed in from Terminal:** the agent notices within half a minute; the profile then shows no numbers until you
-   press **Use this account** (Claude Code card, Wrong account row), which links it.
+   press **Use this account** (Claude Code card, under Login, or in the Login pop-up), which links it.
 
 Staying with the old account: a CI token from `claude setup-token` (make a new one), claude.ai connectors and MCP
 servers, cloud sessions and environments, synced plugins, and the plan and billing. To keep watching the old
