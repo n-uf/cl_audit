@@ -249,7 +249,7 @@ enum ClaudeCLI {
         lines.append("echo \(q("Signing in to Claude Code for \(tilde(account.configDir))…"))")
         var cmd = "\(q(claude)) auth login --claudeai"
         if let email { cmd += " --email \(q(email))" }
-        lines += [cmd, "echo", "echo 'Done. The usage icon picks up the new login on its next refresh (or right-click ▸ Refresh now).'"]
+        lines += [cmd, "echo", "echo 'Done. cl_audit picks up the new sign-in by itself within half a minute.'"]
         let file = loginScript(account.configDir)
         do {
             try (lines.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
