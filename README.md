@@ -249,9 +249,8 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   Profile above); it isn't a setting. **Login** is one row for everything about the sign-in: a pop-up in line with
   the Folder one, showing the account Claude Code in the folder is signed in to (green; red with a warning sign
   inside when it isn't the profile's account; a clock when the sign-in ran out; a long address gets shorter rather
-  than widening the card). Its menu ticks that account, then lists, when it isn't the profile's, **Use this account
-  for …** and the profile's own account to log back in to; the accounts signed in in Claude Code folders no profile
-  uses (picking one only fills in the address; no sign-in is ever copied between folders); other profiles'
+  than widening the card). Its menu lists accounts: it ticks that one, then, when it isn't the profile's, the
+  profile's own account to log back in to; the accounts signed in in Claude Code folders no profile uses (picking one only fills in the address; no sign-in is ever copied between folders); other profiles'
   accounts, dimmed; **Sign in to another account…**; and **Renew sign-in by itself** (opt-in, see the (i)).
   **Sign in to another account…** turns Login's value into the address and **Sign in**, in place (Esc or **Cancel**
   puts the pop-up back): Claude Code's own sign-in opens in Terminal with the address filled in, and the profile
@@ -408,7 +407,7 @@ numbers on the old account.
    Terminal: `env -u CLAUDE_CONFIG_DIR claude auth login --claudeai --email <new>` for `~/.claude`,
    `CLAUDE_CONFIG_DIR=<folder> claude auth login --claudeai --email <new>` for a profile's own folder.
 6. **Signed in from Terminal:** the agent notices within half a minute; the profile then shows no numbers until you
-   press **Use this account** (Claude Code card, under Login, or in the Login pop-up), which links it.
+   press **Use this account** (Claude Code card, under Login), which links it.
 
 Staying with the old account: a CI token from `claude setup-token` (make a new one), claude.ai connectors and MCP
 servers, cloud sessions and environments, synced plugins, and the plan and billing. To keep watching the old

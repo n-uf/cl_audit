@@ -51,8 +51,8 @@ the notes before updating.
   sign-in then: the old account's numbers go, and there's no red "Wrong account" waiting for Refresh now. One Keychain read, as
   at the start; the limit alerts start over for the new account, so the switch itself sends no "is back".
 - **Changing a profile's account.** Profile ▸ Claude Code ▸ **Login** is now one row with a pop-up, in line with
-  Folder: the account Claude Code there is signed in to (ticked), Use this account when it isn't the profile's,
-  the accounts in unused Claude Code folders, other profiles' (dimmed), **Sign in to another account…** and **Renew
+  Folder: the account Claude Code there is signed in to (ticked), the profile's own account to log back in to when
+  that isn't it, the accounts in unused Claude Code folders, other profiles' (dimmed), **Sign in to another account…** and **Renew
   sign-in by itself** (it was a row of its own). Sign in to another account… turns the row into the address and
   **Sign in** in place, opens Claude Code's own sign-in in Terminal with the address filled in, and links the
   profile to the new account by itself once it's done; name, look, Dock icon, Claude window and settings stay.

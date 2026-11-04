@@ -1185,9 +1185,10 @@ struct AccountSettings: View {
     }
 
     /// What the Login pop-up lists, telling the same story as its label (the account Claude Code in this folder is
-    /// signed in to, ticked): when that isn't the profile's account, Use this account and Log in as the profile's one
-    /// come next; then the accounts in Claude Code folders no profile uses (picking one fills in the address), other
-    /// profiles' accounts dimmed, Sign in to another account… and Renew sign-in.
+    /// signed in to, ticked): when that isn't the profile's account, the profile's own one to log back in to comes
+    /// next; then the accounts in Claude Code folders no profile uses (picking one fills in the address), other
+    /// profiles' accounts dimmed, Sign in to another account… and Renew sign-in. Accounts only: linking to the one
+    /// signed in here is the Use this account key under the pop-up, not a menu line as well.
     var loginItems: [LoginItem] {
         let name = entry.name.isEmpty ? "this profile" : entry.name
         let move = seatMove
@@ -1202,12 +1203,8 @@ struct AccountSettings: View {
         if let here {
             items.append(LoginItem(id: "here", title: line(here, [plan, move == nil ? "this profile" : "signed in here"]), checked: true))
         }
-        if let move {
-            if let owner = move.owner {
-                items.append(LoginItem(id: "use", title: "Use this account for \(name)   “\(owner.name)” has it", enabled: false))
-            } else {
-                items.append(LoginItem(id: "use", title: "Use this account for \(name)") { model.relink(entry.id) })
-            }
+        if move != nil {
+            // accounts only: linking to the one signed in here is the Use this account key under the pop-up
             if let linked {
                 items.append(LoginItem(id: "back", title: line(linked, ["\(name)'s account", "log in…"]), enabled: canSignIn) {
                     if let claude = model.claudePath { ClaudeCLI.openLogin(claude, account: Account(entry), email: linked) }
