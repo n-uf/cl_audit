@@ -1,5 +1,6 @@
 import AppKit
 import UserNotifications
+import WidgetKit
 
 // Command-line modes, used by build.sh and for checking icon styles:
 //   --sync                       install/update one icon app per account in accounts.json, then exit
@@ -25,6 +26,10 @@ if args.count >= 2, args[1] == "--sync" {
     let log = Installer.sync(list)
     print(log.isEmpty ? "icons are up to date" : log.joined(separator: "\n"))
     print(Agent.ensureRunning())
+    // macOS redraws placed widgets only when their app asks (or on its own schedule, which can take hours): after an
+    // update the widgets get the new widget program's drawing now
+    WidgetCenter.shared.reloadAllTimelines()
+    print("widgets: asked macOS to redraw them")
     exit(0)
 }
 
