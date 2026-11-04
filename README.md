@@ -262,8 +262,10 @@ over the page, so nothing moves, and closes after 6 s or with ×.
   **Open** it instead: one profile per account. Anything else needing a word gets one grey line under the row. A
   **Claude window** row says when the profile's window is signed in to another account than its Claude Code (only
   the account id is known, from the window's `config.json`; the usual Claude app is checked too). For a week after
-  linking, the line under Login says when, which account it was and what stays with it, with **Add as a
-  profile…** while no profile has the old account. See [Moving a profile to another account](#moving-a-profile-to-another-account).
+  linking, the line under Login says when, which account it was and what stays with it, and that **New profile**
+  gives the old account a profile again. See [Moving a profile to another account](#moving-a-profile-to-another-account).
+  As on every card, the pop-ups and fields fill the value column, so their right edges line up; the address row is
+  one line like Folder (Sign in and Cancel at its end; Cancel is a × in a narrow window).
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
   ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"). **Notify when back** (on by default) sends one

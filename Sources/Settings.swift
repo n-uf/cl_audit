@@ -781,6 +781,38 @@ struct SRow<Control: View>: View {
     }
 }
 
+/// Signing in to another account, in one line like the Folder row: the address in a well as wide as the value column,
+/// then Sign in and Cancel at the row's end, the same height as a pop-up and its key. In a narrow column Cancel is a
+/// small × instead of wrapping. Return signs in, Esc cancels.
+struct AddressRow: View {
+    @Binding var email: String
+    let canSignIn: Bool
+    let signIn: () -> Void
+    let cancel: () -> Void
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            line(wide: true)
+            line(wide: false)
+        }
+    }
+
+    private func line(wide: Bool) -> some View {
+        HStack(spacing: 6) {
+            WellField(placeholder: "name@example.com", text: $email, onSubmit: signIn, onCancel: cancel)
+                .frame(minWidth: wide ? 120 : 44)
+            Button("Sign in", action: signIn)
+                .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(!canSignIn).fixedSize()
+            if wide {
+                Button("Cancel", action: cancel).buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+            } else {
+                Button(action: cancel) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+                    .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().help("Cancel")
+            }
+        }
+    }
+}
+
 /// A small text field for settings rows (name, icon label), on an engraved line. Without `commit` every keystroke
 /// goes straight to `text`. With it, the edit is kept here until Return or leaving the field, then handed to
 /// `commit`, which saves it or returns why it can't; Esc puts the old text back. While an edit isn't saved the line
@@ -789,7 +821,7 @@ struct SRow<Control: View>: View {
 struct SField: View {
     let placeholder: String
     @Binding var text: String
-    var width: CGFloat = 180
+    var width: CGFloat? = 180           // nil: as wide as the value column, so its right edge lines up with the pop-ups
     var mono = false
     var transform: (String) -> String = { $0 }
     var commit: ((String) -> String?)? = nil
@@ -824,6 +856,7 @@ struct SField: View {
                     .offset(y: 2)
                 }
                 .frame(width: width)
+                .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
                 .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }   // the label stays level with the text
             if let problem {
                 Text(problem).font(.system(size: 10.5)).foregroundStyle(face.danger).fixedSize().padding(.top, 2)
@@ -980,11 +1013,11 @@ struct AccountSettings: View {
     var accountCard: some View {
         SCard(title: "Profile") {
             SRow(label: "Name", info: "What cl_audit calls this profile; its Dock icon app is “cl_audit \(entry.name.isEmpty ? "…" : entry.name)”. Saved when you press Return or click elsewhere (Esc puts it back); saving restarts that Dock icon.", first: true) {
-                SField(placeholder: "name", text: $entry.name, width: 170,
+                SField(placeholder: "name", text: $entry.name, width: nil,
                        commit: { v in save("Dock icon renamed") { $0.name = v } }, cancel: { model.unsaved = nil })
             }
             SRow(label: "Icon label", info: "Up to 6 letters printed on this profile's Dock icon, like MAIN or WORK, so you can tell the icons apart. Saved when you press Return or click elsewhere (Esc puts it back).") {
-                SField(placeholder: "LABEL", text: $entry.label, width: 80, mono: true,
+                SField(placeholder: "LABEL", text: $entry.label, width: nil, mono: true,
                        transform: { String($0.uppercased().filter { !$0.isWhitespace }.prefix(6)) },
                        commit: { v in save("icon label changed") { $0.label = v } }, cancel: { model.unsaved = nil })
             }
@@ -1031,10 +1064,11 @@ struct AccountSettings: View {
                         }
                         Divider()
                         Button("Choose another folder…") { useFolder(pickFolder()) }
-                    } label: { MenuWell(text: entry.configDir.isEmpty ? "Choose…" : entry.configDir, mono: true) }
-                    .faceMenu()
+                    } label: { MenuWell(text: entry.configDir.isEmpty ? "Choose…" : entry.configDir, mono: true, fill: true) }
+                    .faceMenuFill()
                     Button { useFolder(pickFolder()) } label: { Image(systemName: "folder").font(.system(size: 10.5)) }
                         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Choose another folder…")
+                        .fixedSize()                                  // the key stays at the row's end
                 }
             }
             loginRows
@@ -1057,9 +1091,6 @@ struct AccountSettings: View {
             guard let was = s.was, let at = s.linkedAt, Date().timeIntervalSince(at) < 7 * 86400 else { return nil }
             return (was, at)
         }
-        let wasFree = linkedLately.map { l in
-            !model.accounts.contains { $0.id != entry.id && ($0.seat?.email ?? Account.expectedEmail(configDir: $0.configDir))?.lowercased() == l.was.lowercased() }
-        } ?? false
         SRow(label: "Login", info: loginInfo) {
             VStack(alignment: .leading, spacing: 7) {
                 if let mine, mine.started != nil {
@@ -1069,19 +1100,17 @@ struct AccountSettings: View {
                             LED(color: FaceTheme.ledAmber, lit: Int(ctx.date.timeIntervalSinceReferenceDate * 2) % 2 == 0)
                         }
                         Text("signing in…").font(.system(size: 12)).foregroundStyle(face.caution).lineLimit(1)
-                        Button("Cancel") { model.cancelSwitch() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                        Spacer(minLength: 6)
+                        Button("Cancel") { model.cancelSwitch() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                     }
                     .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
                 } else if mine != nil {
-                    SField(placeholder: "name@example.com",
-                           text: Binding(get: { model.accountSwitch?.email ?? "" },
-                                         set: { model.accountSwitch?.email = $0; switchProblem = nil }),
-                           width: 168, cancel: { model.cancelSwitch(); switchProblem = nil })
-                    FlowLayout(spacing: 6) {
-                        Button("Sign in") { switchProblem = model.beginSwitch() }
-                            .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(model.claudePath == nil)
-                        Button("Cancel") { model.cancelSwitch(); switchProblem = nil }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
-                    }
+                    AddressRow(email: Binding(get: { model.accountSwitch?.email ?? "" },
+                                              set: { model.accountSwitch?.email = $0; switchProblem = nil }),
+                               canSignIn: model.claudePath != nil,
+                               signIn: { switchProblem = model.beginSwitch() },
+                               cancel: { model.cancelSwitch(); switchProblem = nil })
+                        .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
                 } else {
                     loginPopup(move)
                     if let move {
@@ -1093,9 +1122,6 @@ struct AccountSettings: View {
                         }
                     } else if mismatch || status?.state == "noLogin" || status?.state == "expired" {
                         logInKey(email: expected)
-                    } else if wasFree {
-                        Button("Add as a profile…") { model.startNew() }      // the old account: the line under it names it
-                            .buttonStyle(PillButtonStyle(tint: nil, compact: true))
                     }
                 }
             }
@@ -1103,7 +1129,7 @@ struct AccountSettings: View {
         if let mine, mine.started != nil {
             rowLine("Finish signing in as \(Privacy.masked(mine.email)) in the browser. If it shows another claude.ai account, switch it there first.")
         } else if mine != nil {
-            rowLine(switchProblem ?? "Opens Claude Code's own sign-in in Terminal with this address filled in. \(name) stays on \(old) until it's done. Esc cancels.",
+            rowLine(switchProblem ?? "Signs in through Claude Code in Terminal; \(name) stays on \(old) until then.",
                     color: switchProblem == nil ? nil : face.danger)
         } else if let move, let owner = move.owner {
             rowLine("\(Privacy.masked(move.to.email ?? "That account")) is the account of “\(owner.name)”. One profile per account: log in with another one (in the pop-up), or use \(owner.name).")
@@ -1157,20 +1183,31 @@ struct AccountSettings: View {
             .padding(.bottom, 2)
     }
 
-    /// "Linked today 14:32 · was …. Stays with …: …, and the window's earlier Code sessions (how-to)."
+    /// "Linked today 14:32 · was …. Stays with …: …, and the window's earlier Code sessions (how-to). To watch … again,
+    /// give it a profile with New profile."
     func linkedWords(was: String, at: Date) -> AttributedString {
         let w = Privacy.masked(was)
         var a = AttributedString("Linked \(Self.when(at)) · was \(w). Stays with \(w): a CI token from claude setup-token, connectors, cloud sessions, and the window's earlier Code sessions (")
-        var link = AttributedString("how-to")
-        link.link = URL(string: "https://github.com/n-uf/cl_audit#moving-a-profile-to-another-account")
-        a += link + AttributedString(").")
+        var howTo = AttributedString("how-to")
+        howTo.link = URL(string: "https://github.com/n-uf/cl_audit#moving-a-profile-to-another-account")
+        var newProfile = AttributedString("New profile")
+        newProfile.link = URL(string: Self.newProfileLink)
+        a += howTo + AttributedString("). To watch \(w) again, give it a profile with ") + newProfile + AttributedString(".")
         return a
     }
+
+    /// The "New profile" link in a grey line: opens the New profile page.
+    static let newProfileLink = "cl-audit-settings://new-profile"
 
     func rowLine(_ s: AttributedString) -> some View {
         Text(s).font(.system(size: 10.5)).foregroundStyle(face.muted)
             .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 2)
+            .environment(\.openURL, OpenURLAction { url in
+                guard url.absoluteString == Self.newProfileLink else { return .systemAction }
+                model.startNew()
+                return .handled
+            })
     }
 
     /// One line of the Login pop-up.
@@ -1262,9 +1299,9 @@ struct AccountSettings: View {
                 }
             }
         } label: {
-            MenuWell(text: shown, tint: tint, icon: icon).settingsEmail(shown.contains("@"))
+            MenuWell(text: shown, tint: tint, icon: icon, fill: true).settingsEmail(shown.contains("@"))
         }
-        .faceMenuShrinking()
+        .faceMenuFill()
         .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }     // "Login" lines up with the pop-up, not the keys
     }
 
@@ -1312,8 +1349,8 @@ struct AccountSettings: View {
                 Menu {
                     Picker("", selection: $entry.clickAction) { ForEach(ClickAction.allCases) { Text($0.shortTitle).tag($0) } }
                         .pickerStyle(.inline).labelsHidden()
-                } label: { MenuWell(text: entry.clickAction.shortTitle) }
-                .faceMenu()
+                } label: { MenuWell(text: entry.clickAction.shortTitle, fill: true) }
+                .faceMenuFill()
             }
             if entry.clickAction == .peekThenOpen {
                 SRow(label: "Usage shows for", info: "How long the usage panel stays up after a click before the Claude window opens.") {
@@ -1385,8 +1422,8 @@ struct AccountSettings: View {
                 Menu {
                     Picker("", selection: $entry.pollMinutes) { ForEach([2, 5, 10, 15], id: \.self) { Text("\($0) min").tag($0) } }
                         .pickerStyle(.inline).labelsHidden()
-                } label: { MenuWell(text: "\(entry.pollMinutes) min") }
-                .faceMenu()
+                } label: { MenuWell(text: "\(entry.pollMinutes) min", fill: true) }
+                .faceMenuFill()
             }
             SRow(label: "Notify at", info: "A Mac notification when this profile's 5-hour, weekly or Fable limit reaches this level, when one is full (with when it's back), and when the profile starts spending usage credits or runs out of them. Off: no notifications.") {
                 HStack(spacing: 8) {

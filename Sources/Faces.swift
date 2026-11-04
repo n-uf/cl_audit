@@ -583,15 +583,18 @@ struct MenuWell: View {
     var mono = false
     var tint: Color? = nil          // the value's own colour (the Login pop-up: green signed in, red another account)
     var icon: String? = nil         // a status sign after the value, inside the well (a warning, a clock)
+    var fill = false                // as wide as it's given (a settings row's value column), arrows at the right end
     @Environment(\.face) private var face
     var body: some View {
         HStack(spacing: 7) {
             Text(text).font(mono ? .system(size: 11.5, design: .monospaced) : .system(size: 12)).lineLimit(1)
                 .truncationMode(.middle)
                 .foregroundStyle(tint ?? Color.hex(0xececee))
+            if fill { Spacer(minLength: 0) }
             if let icon { Image(systemName: icon).font(.system(size: 10)).foregroundStyle(tint ?? Color.hex(0xececee)) }
             Image(systemName: "chevron.up.chevron.down").font(.system(size: 7.5, weight: .semibold)).opacity(0.8)
         }
+        .frame(maxWidth: fill ? .infinity : nil, alignment: .leading)
         .foregroundStyle(Color.hex(0xececee))
         .padding(.leading, 9).padding(.trailing, 8)
         .frame(height: 22)
@@ -609,6 +612,39 @@ extension View {
         menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
     }
 
+    /// A face menu as wide as a settings row's value column (its MenuWell drawn with `fill`), so the right edges of
+    /// the pop-ups and fields on a card line up.
+    func faceMenuFill() -> some View {
+        menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden)
+            .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// A text field drawn as a well, like the pop-ups: the address when signing in to another account. As wide as it's
+/// given; Return submits, Esc cancels.
+struct WellField: View {
+    let placeholder: String
+    @Binding var text: String
+    var onSubmit: () -> Void = {}
+    var onCancel: () -> Void = {}
+    @FocusState private var focused: Bool
+    @Environment(\.face) private var face
+
+    var body: some View {
+        TextField("", text: $text, prompt: Text(placeholder).foregroundColor(Color.white.opacity(0.32)))
+            .textFieldStyle(.plain).font(.system(size: 12)).foregroundStyle(Color.hex(0xececee))
+            .environment(\.colorScheme, .dark)             // the well is dark on every face: a light caret
+            .focused($focused)
+            .onSubmit(onSubmit)
+            .onExitCommand(perform: onCancel)
+            .padding(.horizontal, 9).frame(height: 22)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(WellShape(well: Well(stops: Well.flat(face.menuFill), inner: .black(0.75), lip: face.light ? .white(0.6) : .white(0.05)), radius: 4))
+            .onAppear { focused = true }
+    }
+}
+
+extension View {
     /// A module: the raised plate of a card.
     func module(padding: CGFloat = 14) -> some View { modifier(ModuleBackground(pad: padding)) }
 

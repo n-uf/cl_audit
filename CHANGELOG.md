@@ -26,7 +26,8 @@ the notes before updating.
   bars, bars + number, ring, ring + number, number, two numbers); colours in levels, **System** (drawn the way
   macOS draws its own icons), **Accent** (your Mac's accent colour) or the profile's; its label; the countdown or
   just red when a limit is full. The preview draws it the way your menu bar is now. ⌘-drag to arrange them.
-- **Settings, grouped by subject.** Each column has its subject printed at the top. General: cl_audit (Usage in
+- **Settings, grouped by subject.** Each column has its subject printed at the top. Pop-ups and text fields fill
+  their row (Name, Icon label, Folder, Login, Click, Refresh every), so their right edges line up. General: cl_audit (Usage in
   the background, Privacy, About), How usage looks (Face, Dashboard cards, Widget), the Dock (App icon, Dock). A
   profile: Who it is (Profile, Claude Code, Alerts), Its Dock icon (Dock icon, Claude window, Icon) and Its menu bar
   icon (Menu bar). "Opening and closing" and "Dock icon clicks" became one **Dock icon** card and a **Claude
@@ -59,7 +60,7 @@ the notes before updating.
   Signed in elsewhere, **Use this account** shows under the pop-up, and the profile shows no numbers until you
   choose (they'd be the other account's). Refused, naming the profile, when another profile has that account. A
   **Claude window** row says when the window is on another account (the usual Claude app is checked too). After
-  linking: when, what it was, what stays with the old account, and **Add as a profile…** for it.
+  linking: when, what it was, what stays with the old account, and New profile to give it a profile again.
 - **Claude's own plan name.** The plan badge, the panels and the menus show the plan as Claude names it ("Ultra"),
   read from the profile's `.claude.json` with the account it already reads; an Ultra account's sign-in says "max".
   Without that name, the sign-in's as before (Max, Pro, Team).
