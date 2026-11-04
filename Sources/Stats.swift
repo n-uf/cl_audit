@@ -73,32 +73,40 @@ enum StatsScanner {
             let end = data[start...].firstIndex(of: 0x0A) ?? data.endIndex
             let line = data[start..<end]
             start = end == data.endIndex ? end : data.index(after: end)
-            guard line.range(of: assistantTag) != nil,
-                  let j = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
-                  j["type"] as? String == "assistant",
-                  let msg = j["message"] as? [String: Any],
-                  let usage = msg["usage"] as? [String: Any],
-                  let ts = j["timestamp"] as? String, let date = iso.date(from: ts) else { continue }
-            let model = msg["model"] as? String ?? ""
-            if model.hasPrefix("<") { continue }                       // synthetic entries
-            let id = (msg["id"] as? String) ?? (j["requestId"] as? String) ?? (j["uuid"] as? String) ?? ts
-            if !seen.insert(id).inserted { continue }
-            func n(_ k: String) -> Int { (usage[k] as? NSNumber)?.intValue ?? 0 }
-            // cache writes: the 5-minute and 1-hour ones apart when the line has them, else all as 5-minute
-            let writes = n("cache_creation_input_tokens"), split = usage["cache_creation"] as? [String: Any]
-            func w(_ k: String) -> Int { (split?[k] as? NSNumber)?.intValue ?? 0 }
-            let w1h = split == nil ? 0 : w("ephemeral_1h_input_tokens")
-            let w5m = split == nil ? writes : w("ephemeral_5m_input_tokens")
-            out.append(Reply(account: account, date: date, model: modelName(model),
-                             project: projectName(j["cwd"] as? String),
-                             surface: surfaceName(j["entrypoint"] as? String),
-                             tokens: n("input_tokens") + writes + n("output_tokens"),
-                             modelID: model, input: n("input_tokens"), output: n("output_tokens"),
-                             cacheWrite5m: w5m, cacheWrite1h: w1h, cacheRead: n("cache_read_input_tokens"),
-                             fast: (usage["speed"] as? String) == "fast",
-                             usOnly: (usage["inference_geo"] as? String) == "us"))
+            // JSONSerialization autoreleases what it reads (the whole line, message text included), and the background
+            // queue this runs on keeps those until its work is over: without a pool per line a scan held every line it
+            // had read, and cl_audit grew by hundreds of MB.
+            if let r = autoreleasepool(invoking: { reply(line, account: account, seen: &seen) }) { out.append(r) }
         }
         return out
+    }
+
+    /// The reply one line records, or nil (not an assistant reply, synthetic, or a part of a response already seen).
+    private static func reply(_ line: Data, account: String, seen: inout Set<String>) -> Reply? {
+        guard line.range(of: assistantTag) != nil,
+              let j = try? JSONSerialization.jsonObject(with: line) as? [String: Any],
+              j["type"] as? String == "assistant",
+              let msg = j["message"] as? [String: Any],
+              let usage = msg["usage"] as? [String: Any],
+              let ts = j["timestamp"] as? String, let date = iso.date(from: ts) else { return nil }
+        let model = msg["model"] as? String ?? ""
+        if model.hasPrefix("<") { return nil }                         // synthetic entries
+        let id = (msg["id"] as? String) ?? (j["requestId"] as? String) ?? (j["uuid"] as? String) ?? ts
+        if !seen.insert(id).inserted { return nil }
+        func n(_ k: String) -> Int { (usage[k] as? NSNumber)?.intValue ?? 0 }
+        // cache writes: the 5-minute and 1-hour ones apart when the line has them, else all as 5-minute
+        let writes = n("cache_creation_input_tokens"), split = usage["cache_creation"] as? [String: Any]
+        func w(_ k: String) -> Int { (split?[k] as? NSNumber)?.intValue ?? 0 }
+        let w1h = split == nil ? 0 : w("ephemeral_1h_input_tokens")
+        let w5m = split == nil ? writes : w("ephemeral_5m_input_tokens")
+        return Reply(account: account, date: date, model: modelName(model),
+                     project: projectName(j["cwd"] as? String),
+                     surface: surfaceName(j["entrypoint"] as? String),
+                     tokens: n("input_tokens") + writes + n("output_tokens"),
+                     modelID: model, input: n("input_tokens"), output: n("output_tokens"),
+                     cacheWrite5m: w5m, cacheWrite1h: w1h, cacheRead: n("cache_read_input_tokens"),
+                     fast: (usage["speed"] as? String) == "fast",
+                     usOnly: (usage["inference_geo"] as? String) == "us")
     }
 
     /// "claude-opus-5-5" → "Opus 5.5".
