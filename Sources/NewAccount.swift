@@ -591,6 +591,11 @@ struct NewAccountView: View {
             if waiting {
                 return ("Finish signing in as \(Privacy.masked(draft.email)) in the browser. If it shows another claude.ai account, switch it there first.", nil)
             }
+            // a free account picked: say what Connect does before it's done (its sign-in is already there)
+            if draft.source == .existing, !draft.started, let dir = draft.existingDir,
+               signedIn == nil || FolderRules.seatOwner(Account.signedInSeat(configDir: dir), among: model.accounts) == nil {
+                return ("Connects \(dir) as it is: its sign-in, settings and history stay.", nil)
+            }
             if let email = signedIn {
                 if let owner = FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) {
                     return ("\(Privacy.masked(email)) is the account of “\(owner.name)”. One profile per account: Sign in to another account… in the pop-up.", face.danger)
@@ -720,7 +725,7 @@ struct NewAccountView: View {
                     sub("Waiting for \(Privacy.masked(draft.email.isEmpty ? "the sign-in" : draft.email)) in the browser")
                 } else if let email = signedIn {
                     if let o = owner {
-                        Text("\(Privacy.masked(email)) is “\(o.name)”'s account: one profile per account")
+                        Text("\(Privacy.masked(email)) is the account of “\(o.name)”: one profile per account")
                             .font(.system(size: 11.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
                         if canSignInAgain {
                             // signing in again in the folder this setup made replaces its sign-in; no sign-out first
@@ -738,10 +743,10 @@ struct NewAccountView: View {
             if !draft.claudeWindow {
                 part(.todo, current: false, title: "b · Claude window", droppedOut: true) { sub("Only when the profile has a Claude window") }
             } else if needsDesktop {
-                let state: StepState = signedIn == nil ? .todo : desktopDone ? .done : desktop == .different ? .warn : current == 4 ? .now : .todo
+                let state: StepState = signedIn == nil || owner != nil || waiting ? .todo : desktopDone ? .done : desktop == .different ? .warn : current == 4 ? .now : .todo
                 part(state, current: current == 4, title: draft.window == .standard ? "b · Claude window (the usual Claude app)" : "b · Claude window") {
                     // one status line: its own sign-in, checked against Claude Code's by account id
-                    if signedIn == nil {
+                    if signedIn == nil || owner != nil || waiting {
                         sub("After Claude Code")
                     } else {
                         switch desktop {
@@ -1003,7 +1008,9 @@ struct NewAccountView: View {
                         if let c = model.claudePath { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: draft.email.isEmpty ? nil : draft.email) }
                     }
                         .buttonStyle(.pill(tint, compact: true)).disabled(model.claudePath == nil)
-                } else if draft.claudeWindow {
+                } else if draft.claudeWindow, !waiting,
+                          FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) == nil {
+                    // the window waits until Claude Code is on an account no other profile has
                     Button(windowOpen ? "Show Claude window" : "Open Claude window") { Launcher.openClaude(Account(draft.entry)) }
                         .buttonStyle(.pill(tint, compact: true))
                 }
