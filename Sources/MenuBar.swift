@@ -427,9 +427,18 @@ struct MenuBarCard: View {
     }
 
     /// A piece of menu bar with the icon on it.
-    private func bar(_ img: NSImage, dark: Bool) -> some View {
-        Image(nsImage: img).fixedSize()
-            .padding(.horizontal, 7).frame(height: 22)
+    /// shrink: the preview strip, five side by side, may scale the icon down (never up) to fit its column; with a label
+    /// or a countdown they're wider than a column's fifth.
+    private func bar(_ img: NSImage, dark: Bool, shrink: Bool = false) -> some View {
+        Group {
+            if shrink {
+                Image(nsImage: img).resizable().aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: img.size.width, maxHeight: img.size.height)
+            } else {
+                Image(nsImage: img).fixedSize()
+            }
+        }
+            .padding(.horizontal, shrink ? 4 : 7).frame(maxWidth: shrink ? .infinity : nil).frame(height: 22)
             .background(RoundedRectangle(cornerRadius: 5).fill(dark ? Color(white: 0.13) : Color(white: 0.93)))
             .overlay(RoundedRectangle(cornerRadius: 5).strokeBorder(dark ? Color.white.opacity(0.09) : Color.black.opacity(0.12)))
     }
@@ -524,9 +533,9 @@ struct MenuBarCard: View {
                 ForEach(Self.lane.indices, id: \.self) { i in
                     let s = Self.lane[i]
                     VStack(spacing: 3) {
-                        bar(glyph(look, s.five, s.week, full: s.full, dark: dark), dark: dark)
-                        bar(glyph(look, s.five, s.week, full: s.full, dark: !dark), dark: !dark).opacity(0.85)
-                        Text(s.title).font(.system(size: 9.5)).foregroundStyle(face.muted).lineLimit(1).fixedSize()
+                        bar(glyph(look, s.five, s.week, full: s.full, dark: dark), dark: dark, shrink: true)
+                        bar(glyph(look, s.five, s.week, full: s.full, dark: !dark), dark: !dark, shrink: true).opacity(0.85)
+                        Text(s.title).font(.system(size: 9.5)).foregroundStyle(face.muted).lineLimit(1).minimumScaleFactor(0.7)
                     }
                     .frame(maxWidth: .infinity)
                 }
