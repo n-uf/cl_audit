@@ -249,9 +249,12 @@ final class RunsMonitor: ObservableObject {
 
     func stop() { timer?.invalidate(); timer = nil }
 
+    /// Offscreen renders: what counts as running, instead of this Mac's real Claude processes.
+    static var preview: [ClaudeRun]? = nil
+
     func refresh() {
         DispatchQueue.global(qos: .utility).async {
-            let r = ClaudeRuns.scan()
+            let r = Self.preview ?? ClaudeRuns.scan()
             DispatchQueue.main.async {
                 if r != self.runs { self.runs = r }
                 self.checked = true

@@ -61,6 +61,13 @@ the notes before updating.
   choose (they'd be the other account's). Refused, naming the profile, when another profile has that account. A
   **Claude window** row says when the window is on another account (the usual Claude app is checked too). After
   linking: when, what it was, what stays with the old account, and New profile to give it a profile again.
+- **New profile starts with the account.** Its Claude Code card leads with an **Account** pop-up, like Settings ▸
+  Login: accounts signed in in unused Claude Code folders (picking one connects its folder), other profiles'
+  dimmed, and **Sign in to another account…**, which makes a new folder and opens Claude Code's sign-in with the
+  address filled in. The result is checked by account and organisation ids (the browser decides the account);
+  signed in to another address than the one typed, it says so. The folder is its own row, following the
+  account and showing who is signed in in each. The Claude window step checks the usual Claude app too, and says
+  its Code sidebar starts empty.
 - **Claude's own plan name.** The plan badge, the panels and the menus show the plan as Claude names it ("Ultra"),
   read from the profile's `.claude.json` with the account it already reads; an Ultra account's sign-in says "max".
   Without that name, the sign-in's as before (Max, Pro, Team).

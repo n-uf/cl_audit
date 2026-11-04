@@ -2,7 +2,9 @@
 // that already exists (the default ~/.claude too); a folder and a desktop window can belong to only one
 // account, which the Checks card verifies live. A banner lists every desktop app window and its Code tab sessions
 // open: the steps that write folders wait until it's quit (Claude Code in Terminal doesn't matter).
-// Steps: quit the desktop app → create or connect the folder → sign in (Claude Code, then the desktop app) → add the Dock icon.
+// The Claude Code card leads with the account: one signed in in a folder no profile uses (connecting that folder), or
+// "Sign in to another account…" with the address filled in, in a new folder. Folders stay where they are.
+// Steps: quit the desktop app → create or connect the folder → sign in (Claude Code, then the Claude window) → add the Dock icon.
 
 import AppKit
 import SwiftUI
@@ -34,6 +36,11 @@ struct NewAccountDraft: Equatable {
     var continueAnyway = false          // set up while Claude is still running
     var usageInDock = true              // off: no Dock icon, usage read in the background ("Start reading usage")
     var claudeWindow = true             // off: no Claude window, so no Claude app sign-in step
+    /// "Sign in to another account…": the address Claude Code's sign-in is filled in with (only filled in: the
+    /// browser's claude.ai account decides), the address row open, and when Sign in was pressed.
+    var email = ""
+    var asking = false
+    var signInAsked: Date?
     /// What this setup did; Cancel undoes exactly this (an existing folder is never deleted or signed out).
     var createdConfigDir: String?
     var createdDataDir: String?
@@ -155,10 +162,13 @@ enum NewAccountSetup {
             }
         }
 
-        // the sign-in: one profile per Claude account seat
+        // the sign-in: one profile per Claude account seat (account and organisation ids, from the folder's
+        // .claude.json); the address typed only filled in the sign-in, so another one is said, not refused
         if let email = signedInEmail(d) {
             if let owner = FolderRules.seatOwner(Account.signedInSeat(configDir: d.configDir), among: accounts) {
                 out.append(.init(section: .signIn, state: .bad, text: "Signed in as \(Privacy.masked(email)), the Claude account of “\(owner.name)”: one profile per account"))
+            } else if !d.email.isEmpty, d.email.lowercased() != email.lowercased() {
+                out.append(.init(section: .signIn, state: .warn, text: "Signed in as \(Privacy.masked(email)), not \(Privacy.masked(d.email)): the browser's claude.ai account decided"))
             } else {
                 out.append(.init(section: .signIn, state: .ok, text: "Signed in as \(Privacy.masked(email))"))
             }
@@ -217,9 +227,9 @@ enum NewAccountSetup {
     enum DesktopSignIn { case notChecked, notSignedIn, same, different, unknown }
 
     /// Reads the window's config.json only for whether a login is stored and which account it last used
-    /// (an account id); nothing from it is kept or shown. The usual Claude app isn't checked.
+    /// (an account id, not the organisation); nothing from it is kept or shown. The usual Claude app is checked too.
     static func desktopSignIn(_ d: NewAccountDraft) -> DesktopSignIn {
-        guard d.window == .separate, foldersReady(d) else { return .notChecked }
+        guard d.claudeWindow, foldersReady(d) else { return .notChecked }
         let file = (expand(d.dataDir) as NSString).appendingPathComponent("config.json")
         guard let data = FileManager.default.contents(atPath: file),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -271,8 +281,8 @@ struct NewAccountView: View {
     @State private var confirmQuit = false
     @State private var signingOut = false
     @State private var customFolders: [String] = []
-    @State private var showHidden = false
     @State private var checking = false
+    @State private var addressProblem: String?      // why Sign in (the address route) can't go yet
     @Environment(\.face) private var face
 
     private enum Width { case wide, medium, narrow }
@@ -310,7 +320,8 @@ struct NewAccountView: View {
     /// "Quit the desktop app" is a step only for a profile with a Claude window (see NewAccountSetup.checks).
     private var quitStep: Bool { draft.claudeWindow }
     private var desktop: NewAccountSetup.DesktopSignIn { NewAccountSetup.desktopSignIn(draft) }
-    private var needsDesktop: Bool { draft.window == .separate && draft.claudeWindow }
+    /// The Claude window's own sign-in is a step whenever the profile has one (its own window or the usual Claude app).
+    private var needsDesktop: Bool { draft.claudeWindow }
     private var desktopDone: Bool { !needsDesktop || desktop == .same || desktop == .unknown }
     private var folders: Bool { NewAccountSetup.foldersReady(draft) && NewAccountSetup.linksReady(draft) }
     private var signedIn: String? { checks(.folder).contains { $0.blocks } ? nil : NewAccountSetup.signedInEmail(draft) }
@@ -374,7 +385,7 @@ struct NewAccountView: View {
         SCard(title: "Profile") {
           // No row labels: a name field and colour swatches say what they are.
            VStack(alignment: .leading, spacing: 10) {
-                SField(placeholder: "Name, e.g. personal", text: $draft.name, width: 260)
+                SField(placeholder: "Name, e.g. personal", text: $draft.name, width: nil)
                     .disabled(draft.started)
                 FlowLayout(spacing: 6) {
                     ForEach(TileColor.accents, id: \.self) { c in
@@ -394,35 +405,211 @@ struct NewAccountView: View {
         }
     }
 
+    /// Claude Code: the account first, in a pop-up like Settings ▸ Login, then the folder that comes with it. A folder
+    /// holds one sign-in, so an account is always picked with its folder: an account signed in in a folder no profile
+    /// uses connects that folder as it is; "Sign in to another account…" signs in, with the address filled in, in a
+    /// new folder (~/.claude-<id>). Folders are used where they are: Claude Code names a folder's Keychain sign-in
+    /// after its path, so moving one would lose it.
     private func folderCard(labelWidth: CGFloat, stacked: Bool) -> some View {
-        SCard(title: "Claude Code folder") {
-            // Its sign-in, settings and history live here; one account per folder. The chosen option opens its details.
-            let options: [(FolderSource, String, String)] = [
-                (.new, "New folder", draft.name.isEmpty ? "Starts fresh" : "Starts fresh in \(draft.newConfigDir)"),
-                (.existing, "Existing folder", "Keeps its sign-in, settings and history")]
-            VStack(spacing: 1) {
-                ForEach(options, id: \.0) { o in
-                    VStack(spacing: 0) {
-                        listRow(selected: draft.source == o.0, disabled: draft.started) {
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(o.1).font(.system(size: 12.5, weight: draft.source == o.0 ? .medium : .regular))
-                                Text(o.2).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
-                            }
-                        } action: { draft.source = o.0 }
-                        if draft.source == o.0 {
-                            Group { if o.0 == .new { shareChoice } else { existingChoice } }
-                                .padding(.leading, 32).padding(.trailing, 10).padding(.top, 2).padding(.bottom, 10)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(Color.primary.opacity(0.1))
-                        }
-                    }
-                }
+        SCard(title: "Claude Code") {
+            SRow(label: "Account", info: "The claude.ai account this profile is for. Accounts signed in in Claude Code folders on this Mac that no profile uses come with their folder; other profiles' are dimmed (one profile per account). Sign in to another account… opens Claude Code's own sign-in in Terminal with the address filled in; the browser's claude.ai account decides which account it is, checked afterwards by its account and organisation ids.", first: true, stacked: stacked) {
+                accountValue
             }
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .faceWindow(radius: 6)
-            .padding(.top, 2)
+            accountLine
+            SRow(label: "Folder", info: "The Claude Code folder for this profile: its sign-in, settings and history live there. It follows the account; picking one by hand shows who is signed in there. New folder: ~/.claude-<name>, with the items below linked from another folder.", stacked: stacked) {
+                folderPopup
+            }
+            if draft.source == .new {
+                shareChoice.padding(.top, 2).padding(.bottom, 6).frame(maxWidth: .infinity, alignment: .leading)
+            }
             statusLines(checks(.folder).filter { $0.state == .bad || $0.state == .warn }, indent: 0).padding(.top, 4)
         }
+    }
+
+    /// The account the folder is signed in to, or the one about to be: the label of the Account pop-up.
+    private var accountShown: (text: String, tint: Color?, icon: String?) {
+        let red = Color(nsColor: Painter.red), green = Color(nsColor: Painter.green)
+        if let email = signedIn {
+            if FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) != nil {
+                return (email, red, "exclamationmark.triangle.fill")
+            }
+            if !draft.email.isEmpty, draft.email.lowercased() != email.lowercased() { return (email, FaceTheme.ledAmber, "exclamationmark.triangle.fill") }
+            return (email, green, nil)
+        }
+        if draft.source == .existing, let dir = draft.existingDir {
+            if case .claudeCode(let e?) = FolderKind.of(dir) { return (e, nil, nil) }
+            return ("not signed in yet", nil, nil)
+        }
+        if !draft.email.isEmpty { return (draft.email, nil, nil) }
+        return ("Choose an account", nil, nil)
+    }
+
+    /// Accounts signed in in Claude Code folders on this Mac that no profile uses, with their folder.
+    private var freeAccounts: [(email: String, path: String)] {
+        Detect.configFolders().compactMap { c in
+            guard let e = c.detail, FolderRules.configOwner(c.path, among: model.accounts) == nil else { return nil }
+            return (e, c.path)
+        }
+    }
+
+    /// The Account menu's free accounts: "address   in folder", and whether it's the one picked.
+    private var freeAccountLines: [(title: String, path: String, picked: Bool)] {
+        freeAccounts.map { a in
+            let picked = draft.source == .existing && (draft.existingDir.map { FolderKey.canonical($0) == FolderKey.canonical(a.path) } ?? false)
+            return (Privacy.masked(a.email) + "   in " + a.path, a.path, picked)
+        }
+    }
+
+    /// The Account menu's other profiles' accounts, dimmed: "address   Plan · Name's".
+    private var otherAccountLines: [String] {
+        var out: [String] = []
+        for o in model.accounts {
+            guard let e = o.seat?.email ?? Account.expectedEmail(configDir: o.configDir) else { continue }
+            var detail: [String] = []
+            if let plan = Store.status(o.id)?.plan { detail.append(Account.planWords(plan)) }
+            detail.append(o.name + "'s")
+            out.append(Privacy.masked(e) + "   " + detail.joined(separator: " · "))
+        }
+        return out
+    }
+
+    private func pickFreeAccount(_ path: String) {
+        draft.source = .existing; draft.existingDir = path; draft.email = ""; draft.asking = false
+    }
+
+    @ViewBuilder private var accountValue: some View {
+        if draft.asking {
+            AddressRow(email: $draft.email, canSignIn: model.claudePath != nil,
+                       signIn: startAddressSignIn, cancel: { draft.asking = false; addressProblem = nil })
+                .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+        } else if draft.signInAsked != nil, signedIn == nil {
+            HStack(spacing: 8) {
+                TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
+                    LED(color: FaceTheme.ledAmber, lit: Int(ctx.date.timeIntervalSinceReferenceDate * 2) % 2 == 0)
+                }
+                Text("signing in…").font(.system(size: 12)).foregroundStyle(face.caution).lineLimit(1)
+                Spacer(minLength: 6)
+                Button("Cancel") { draft.signInAsked = nil }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+            }
+            .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+        } else {
+            let shown = accountShown
+            let free = freeAccountLines
+            let others = otherAccountLines
+            Menu {
+                ForEach(free, id: \.path) { a in
+                    if a.picked {
+                        Toggle(a.title, isOn: .constant(true))
+                    } else {
+                        Button(a.title) { pickFreeAccount(a.path) }
+                    }
+                }
+                ForEach(others, id: \.self) { line in Button(line) {}.disabled(true) }
+                Divider()
+                Button("Sign in to another account…") {
+                    draft.source = .new; draft.existingDir = nil; draft.asking = true; addressProblem = nil
+                }
+                .disabled(model.claudePath == nil)
+            } label: {
+                MenuWell(text: shown.text, tint: shown.tint, icon: shown.icon, fill: true).settingsEmail(shown.text.contains("@"))
+            }
+            .faceMenuFill()
+            .disabled(draft.started)
+            .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+        }
+    }
+
+    /// One grey line under Account: what the choice does, or what's happening.
+    @ViewBuilder private var accountLine: some View {
+        let text: (String, Color?)? = {
+            if draft.asking {
+                return (addressProblem ?? "Signs in through Claude Code in Terminal, in a new folder. The browser's claude.ai account decides: switch it there first if it shows another one.",
+                        addressProblem == nil ? nil : face.danger)
+            }
+            if draft.signInAsked != nil, signedIn == nil {
+                return ("Finish signing in as \(Privacy.masked(draft.email)) in the browser. If it shows another claude.ai account, switch it there first.", nil)
+            }
+            if let email = signedIn {
+                if let owner = FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) {
+                    return ("\(Privacy.masked(email)) is the account of “\(owner.name)”. One profile per account: sign in with another one.", face.danger)
+                }
+                if !draft.email.isEmpty, draft.email.lowercased() != email.lowercased() {
+                    return ("Signed in as \(Privacy.masked(email)), not \(Privacy.masked(draft.email)): the browser's claude.ai account decided. Keep it, or use another account and switch the browser first.", face.caution)
+                }
+                return nil
+            }
+            if draft.source == .existing, let dir = draft.existingDir { return ("Connects \(dir) as it is: its sign-in, settings and history stay.", nil) }
+            if freeAccounts.isEmpty { return ("No free Claude Code folder is signed in on this Mac: Sign in to another account… in the pop-up.", nil) }
+            return nil
+        }()
+        if let text {
+            Text(text.0).font(.system(size: 10.5)).foregroundStyle(text.1 ?? face.muted)
+                .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading).padding(.bottom, 2)
+        }
+    }
+
+    /// The Folder pop-up: a new folder, or one on this Mac with who is signed in there (other profiles' dimmed).
+    private var folderPopup: some View {
+        Menu {
+            if draft.source == .new {
+                Toggle("New folder   \(draft.newConfigDir)", isOn: .constant(true))
+            } else {
+                Button("New folder   \(draft.newConfigDir)") { draft.source = .new; draft.existingDir = nil }
+            }
+            ForEach(folderChoices, id: \.self) { p in
+                if let owner = FolderRules.configOwner(p, among: model.accounts) {
+                    Button("\(p)   \(owner.name)'s") {}.disabled(true)
+                } else if isSelected(p) {
+                    Toggle("\(p)   \(folderWho(p))", isOn: .constant(true))
+                } else {
+                    Button("\(p)   \(folderWho(p))") { draft.source = .existing; draft.existingDir = p; draft.email = ""; draft.asking = false }
+                        .disabled(!canTake(p))
+                }
+            }
+            Divider()
+            Button("Choose another folder…") {
+                if let p = pickFolder() {
+                    if !folderChoices.contains(where: { FolderKey.canonical($0) == FolderKey.canonical(p) }) { customFolders.append(p) }
+                    draft.source = .existing; draft.email = ""; draft.asking = false
+                    draft.existingDir = folderChoices.first { FolderKey.canonical($0) == FolderKey.canonical(p) } ?? p
+                }
+            }
+        } label: {
+            MenuWell(text: draft.source == .new ? "New folder \(draft.newConfigDir)" : draft.existingDir ?? "Choose…", mono: true, fill: true)
+        }
+        .faceMenuFill()
+        .disabled(draft.started)
+    }
+
+    /// Who is signed in in a folder, for the Folder pop-up.
+    private func folderWho(_ p: String) -> String {
+        switch FolderKind.of(p) {
+        case .claudeCode(let e): return e.map { Privacy.masked($0) } ?? "not signed in"
+        case .empty: return "empty"
+        case .missing: return "doesn't exist"
+        case .other: return "not a Claude Code folder"
+        }
+    }
+
+    /// Sign in (the address route): the new folder is made if it isn't yet, then Terminal runs Claude Code's sign-in
+    /// for it with the address filled in. The result is checked afterwards, by account and organisation ids.
+    private func startAddressSignIn() {
+        let e = draft.email.trimmingCharacters(in: .whitespaces)
+        guard e.contains("@"), !e.hasPrefix("@"), !e.hasSuffix("@") else { addressProblem = "Type the account's email address."; return }
+        if let owner = model.accounts.first(where: { ($0.seat?.email ?? Account.expectedEmail(configDir: $0.configDir))?.lowercased() == e.lowercased() }) {
+            addressProblem = "That's the account of “\(owner.name)”. One profile per account."; return
+        }
+        draft.email = e; draft.source = .new; draft.existingDir = nil
+        guard !draft.name.trimmingCharacters(in: .whitespaces).isEmpty else { addressProblem = "Name the profile first."; return }
+        if !NewAccountSetup.foldersReady(draft) {
+            if running { addressProblem = "Quit the desktop app first (step 1)."; return }
+            if blocked { addressProblem = "Fix the red lines first."; return }
+            do { try NewAccountSetup.createOrConnect(&draft) } catch { addressProblem = error.localizedDescription; return }
+        }
+        guard let claude = model.claudePath, ClaudeCLI.openLogin(claude, account: Account(draft.entry), email: e) else {
+            addressProblem = "Terminal didn't open."; return
+        }
+        draft.asking = false; draft.signInAsked = Date(); addressProblem = nil; model.tick += 1
     }
 
     /// Under “New folder”: what to link from the main folder.
@@ -459,63 +646,6 @@ struct NewAccountView: View {
         }
     }
 
-    /// Under “Existing folder”: the folders this account can take.
-    @ViewBuilder private var existingChoice: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Only folders this account can take are offered; the rest are named underneath with the reason.
-            let offered = folderChoices.filter { canTake($0) || isSelected($0) }
-            VStack(spacing: 1) {
-                ForEach(offered, id: \.self) { path in folderRow(path) }
-                if offered.isEmpty {
-                    Text("No free Claude Code folder on this Mac")
-                        .font(.system(size: 11.5)).foregroundStyle(.secondary)
-                        .padding(.horizontal, 10).padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
-                        .background(Color.primary.opacity(0.03))
-                }
-                listRow(selected: false, disabled: draft.started) {
-                    Text("Choose another folder…").font(.system(size: 12))
-                } action: {
-                    if let p = pickFolder() {
-                        if !folderChoices.contains(where: { FolderKey.canonical($0) == FolderKey.canonical(p) }) { customFolders.append(p) }
-                        draft.existingDir = folderChoices.first { FolderKey.canonical($0) == FolderKey.canonical(p) } ?? p
-                    }
-                }
-            }
-            .background(Color.black.opacity(0.18))
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-            .faceWindow(radius: 6)
-            // Folders that can't be taken: one line, opening a compact list (stays short with many accounts).
-            let hidden: [(path: String, why: String)] = folderChoices.compactMap { p in
-                if let o = FolderRules.configOwner(p, among: model.accounts) { return (p, o.name) }
-                return canTake(p) ? nil : (p, "not a Claude Code folder")
-            }
-            if !hidden.isEmpty {
-                Button { withAnimation(.easeOut(duration: 0.15)) { showHidden.toggle() } } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: "chevron.right").font(.system(size: 8.5, weight: .bold))
-                            .rotationEffect(.degrees(showHidden ? 90 : 0))
-                        Text("\(hidden.count) folder\(hidden.count == 1 ? "" : "s") " + (hidden.allSatisfy { $0.why != "not a Claude Code folder" }
-                             ? "already used by other profiles" : "not offered"))
-                    }
-                    .font(.system(size: 11)).foregroundStyle(.secondary).contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .padding(.top, 7)
-                if showHidden {
-                    VStack(alignment: .leading, spacing: 3) {
-                        ForEach(hidden, id: \.path) { h in
-                            HStack(spacing: 8) {
-                                Text(h.path).font(.system(size: 11, design: .monospaced)).lineLimit(1).truncationMode(.middle)
-                                Spacer(minLength: 6)
-                                Text(h.why).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
-                            }
-                        }
-                    }
-                    .padding(.leading, 14).padding(.top, 4)
-                }
-            }
-        }
-    }
 
     /// Medium and narrow layouts show the sign-in as a card (wide shows it in step 3).
     private var signInCard: some View {
@@ -539,16 +669,16 @@ struct NewAccountView: View {
                         }
                     }
                 } else {
-                    sub("Terminal opens; approve in the browser")
+                    sub(draft.email.isEmpty ? "Terminal opens; approve in the browser"
+                        : "Terminal opens with \(Privacy.masked(draft.email)) filled in; approve in the browser, switching its claude.ai account there first if it shows another one")
                 }
             }
             if !draft.claudeWindow {
-                part(.todo, current: false, title: "b · Desktop app", droppedOut: true) { sub("Only when the profile has a Claude window") }
-            } else if draft.window == .standard {
-                part(.todo, current: false, title: "b · Desktop app") { sub("Uses the usual Claude app and its sign-in") }
+                part(.todo, current: false, title: "b · Claude window", droppedOut: true) { sub("Only when the profile has a Claude window") }
             } else if needsDesktop {
                 let state: StepState = signedIn == nil ? .todo : desktopDone ? .done : desktop == .different ? .warn : current == 4 ? .now : .todo
-                part(state, current: current == 4, title: "b · Desktop app") {
+                part(state, current: current == 4, title: "b · Claude window") {
+                    if draft.window == .standard { sub("The usual Claude app") }
                     if signedIn == nil {
                         sub("After Claude Code")
                     } else {
@@ -561,17 +691,31 @@ struct NewAccountView: View {
                                 .fixedSize(horizontal: false, vertical: true)
                             sub("In that window: Settings ▸ Log out, then sign in as \(Privacy.masked(signedIn ?? ""))")
                         default:
-                            sub("Sign in to its own Claude window as \(Privacy.masked(signedIn ?? ""))")
+                            sub("Sign in to \(draft.window == .standard ? "it" : "its own Claude window") as \(Privacy.masked(signedIn ?? "")) (a reminder: the window has its own sign-in)")
                             if windowOpen {
                                 HStack(spacing: 5) { ProgressView().controlSize(.mini); sub("waiting for the sign-in") }
                             }
                         }
                     }
+                    // Code session records stay in the data folder they were made in
+                    Text(sidebarWords).font(.system(size: 10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .padding(.top, 2)
                 }
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 6))
         .faceWindow(radius: 6)
+    }
+
+    /// "Its Code sidebar starts empty: …" with the how-to link (the one used after linking a profile to another account).
+    private var sidebarWords: AttributedString {
+        var a = AttributedString(draft.window == .standard
+            ? "Its Code sidebar shows this account's Code sessions only; earlier ones stay with the account they were made under ("
+            : "Its Code sidebar starts empty: Code sessions stay in the window they were made in (")
+        var link = AttributedString("how-to")
+        link.link = URL(string: "https://github.com/n-uf/cl_audit#moving-a-profile-to-another-account")
+        a += link + AttributedString(").")
+        return a
     }
 
     private func sub(_ s: String) -> some View {
@@ -624,7 +768,7 @@ struct NewAccountView: View {
                         : (signedIn.flatMap { _ in FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) } != nil || (needsDesktop && signedIn != nil && desktop == .different)) ? .warn
                         : current == 3 || current == 4 ? .now : .done,
                     title: "Sign in",
-                    detail: folders ? nil : needsDesktop ? "Claude Code, then the desktop app" : "Claude Code") {
+                    detail: folders ? nil : needsDesktop ? "Claude Code, then the Claude window" : "Claude Code") {
                 if folders { signInParts.padding(.top, 3) }
             }
             stepRow(4 + n, state: current == 5 ? .now : .todo, title: finishStep,
@@ -709,7 +853,7 @@ struct NewAccountView: View {
         let items: [(String, Bool, Int)] = (quitStep ? [("Quit desktop app", ready || (monitor.checked && appRuns.isEmpty), 1)] : [])
                                             + [(draft.source == .new ? "Create folder" : "Connect folder", folders, 2),
                                             ("Claude Code", signedIn != nil, 3)]
-            + (needsDesktop ? [("Desktop app", signedIn != nil && desktopDone, 4)] : []) + [(draft.usageInDock ? "Dock icon" : "Read usage", false, 5)]
+            + (needsDesktop ? [("Claude window", signedIn != nil && desktopDone, 4)] : []) + [(draft.usageInDock ? "Dock icon" : "Read usage", false, 5)]
         return HStack(spacing: 6) {
             ForEach(items.indices, id: \.self) { i in
                 let it = items[i], now = it.2 == current, bad = it.2 == 1 && running
@@ -794,7 +938,9 @@ struct NewAccountView: View {
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(blocked || model.discarding)
                     .help("Sign-in can be finished later from Settings")
                 if signedIn == nil {
-                    Button("Sign in to Claude Code…") { if let c = model.claudePath { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: nil) } }
+                    Button("Sign in to Claude Code…") {
+                        if let c = model.claudePath { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: draft.email.isEmpty ? nil : draft.email) }
+                    }
                         .buttonStyle(.pill(tint, compact: true)).disabled(model.claudePath == nil)
                 } else if draft.claudeWindow {
                     Button(windowOpen ? "Show Claude window" : "Open Claude window") { Launcher.openClaude(Account(draft.entry)) }
@@ -812,7 +958,7 @@ struct NewAccountView: View {
         case 1: return monitor.checked ? "Next: quit the desktop app" : "Checking the desktop app…"
         case 2: return draft.name.isEmpty ? "Next: name the profile" : draft.source == .existing && draft.existingDir == nil ? "Next: pick a folder" : blocked ? "Fix the red lines to go on" : draft.source == .new ? "Next: create the folder and links" : "Next: connect the folder"
         case 3: return "Next: sign in to Claude Code"
-        case 4: return desktop == .different ? "Its Claude window uses another account" : "Next: sign in to the desktop app"
+        case 4: return desktop == .different ? "Its Claude window uses another account" : "Next: sign in to the Claude window"
         default: return draft.usageInDock ? "Next: add the Dock icon" : "Next: start reading usage"
         }
     }
@@ -839,44 +985,6 @@ struct NewAccountView: View {
 
     private func isSelected(_ path: String) -> Bool {
         draft.existingDir.map { FolderKey.canonical($0) == FolderKey.canonical(path) } ?? false
-    }
-
-    private func folderRow(_ path: String) -> some View {
-        let owner = FolderRules.configOwner(path, among: model.accounts)
-        let kind = FolderKind.of(path)
-        var detail: String
-        switch kind {
-        case .claudeCode(let email): detail = email.map { Privacy.masked($0) } ?? "not signed in"
-        case .empty: detail = "empty"
-        case .missing: detail = "doesn't exist"
-        case .other: detail = "not a Claude Code folder"
-        }
-        if FolderKey.canonical(path) == FolderKey.canonical("~/.claude") { detail = "default · " + detail }
-        if let used = FolderKind.lastUsed(path) { detail += " · " + Self.ago(used) }
-        let selected = isSelected(path)
-        return listRow(selected: selected, disabled: owner != nil || draft.started) {
-            HStack(spacing: 6) {
-                Text(path).font(.system(size: 11.5, design: .monospaced)).lineLimit(1).layoutPriority(1)
-                Text("· " + detail).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.tail)
-                Spacer(minLength: 0)
-            }
-        } action: { draft.existingDir = path }
-    }
-
-    private func listRow<C: View>(selected: Bool, disabled: Bool, @ViewBuilder content: () -> C, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 9) {
-                LEDRadio(on: selected)
-                content()
-            }
-            .padding(.horizontal, 10).padding(.vertical, 6)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.primary.opacity(selected ? 0.1 : 0.03))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .opacity(disabled && !selected ? 0.5 : 1)
     }
 
     private func statusLines(_ list: [SetupCheck], indent: CGFloat) -> some View {

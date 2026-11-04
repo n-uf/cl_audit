@@ -354,10 +354,21 @@ under cl_audit; one column keeps the same order, top to bottom. Every row is one
 folder, a summary with the live icon and numbered steps); narrower, one column with the next step pinned
 at the bottom.
 
-- **Where it lives:** a *new* Claude Code folder (`~/.claude-<name>`, optionally sharing instructions,
-  agents, skills, commands or memory from another Claude Code folder), or an *existing* one, including
-  `~/.claude` or one you pick in Finder. Folders are compared after resolving `~`, links and letter case;
-  a folder inside or around another profile's folder counts as the same.
+- **Account first:** the Claude Code card's **Account** pop-up, like Settings ▸ Login, lists the accounts signed
+  in in Claude Code folders on this Mac that no profile uses, each with its folder (picking one connects that
+  folder as it is: its sign-in, settings and history stay), other profiles' accounts dimmed, and **Sign in to
+  another account…**. That opens the one-line address row: **Sign in** makes a new folder, `~/.claude-<name>`,
+  and Terminal runs `claude auth login --claudeai --email <address>` for it. The address is only filled in:
+  the browser's claude.ai account decides which account it is (switch it there first if it shows another
+  one), and cl_audit checks the result by the folder's account and organisation ids. A folder holds one
+  sign-in, so an account always comes with its folder. An account with no folder on this Mac (one whose folder
+  was signed in to another account) comes back only this way.
+- **Folder:** its own row, following the account: a *new* folder (`~/.claude-<name>`, optionally sharing
+  instructions, agents, skills, commands or memory from another Claude Code folder), or an *existing* one,
+  including `~/.claude` or one you pick in Finder; each shows who is signed in there. Folders are used where
+  they are: Claude Code names a folder's Keychain sign-in after its path, so moving or renaming one loses it.
+  Folders are compared after resolving `~`, links and letter case; a folder inside or around another profile's
+  folder counts as the same.
 - **Usage in the Dock** and **Claude window**, the same two keys as in profile settings. Which Claude window
   isn't asked: `~/.claude` gets the usual Claude app, any other folder its own Claude window. With Claude
   window off, the Claude app sign-in step drops out; with Usage in the Dock off, the last step is **Start
@@ -366,10 +377,13 @@ at the bottom.
   it writes its sign-in and settings. The page lists its windows, checking every 2 s, with Quit and Check
   again. Without a Claude window this step isn't there: the only new folder is the Claude Code folder, which
   the Claude app never writes. Claude Code in Terminal doesn't get in the way.
-- **Sign in, in two parts:** Claude Code (Terminal runs `claude auth login` for the folder), then, with a
-  separate window, that window, signed in to the same claude.ai account (checked by account id; no email
-  or token is read). "Finish now" leaves sign-in for later. An account another profile already has is
-  refused: one profile per account.
+- **Sign in, in two parts:** a profile is a pair, the Claude Code folder and the Claude window's data folder,
+  each signed in on its own. Claude Code first (Terminal runs `claude auth login` for the folder, with the
+  address filled in when you typed one), then the Claude window, its own or the usual Claude app, signed in to
+  the same claude.ai account (checked by the account id it saved; no email or token is read; the address is
+  shown as a reminder only). Its Code sidebar starts empty: Code sessions stay in the data folder they were made
+  in. "Finish now" leaves sign-in for later. An account another profile already has is refused: one profile
+  per account.
 - New profiles start with an existing profile's click and panel settings. **Cancel** undoes only what
   the page created: an existing folder is never deleted or signed out.
 
