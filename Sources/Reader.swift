@@ -140,6 +140,14 @@ final class UsageReader {
 
     // MARK: another account signed in
 
+    /// The folder is signed in to another account than the one the profile is linked to: its numbers would be that
+    /// account's shown as this profile's, so they're held back (and no alerts go out) until the profile is linked to
+    /// it ("Use this account") or signed back in.
+    private var onOtherAccount: Bool {
+        guard let linked = entry.seat, let seen = signIn.seen else { return false }
+        return !seen.same(linked)
+    }
+
     /// Whether Claude Code was signed in to another account in this folder since the last look.
     private func signInChanged() -> Bool {
         let dir = account.configDir
@@ -284,9 +292,11 @@ final class UsageReader {
         // the status line file has no credits: keep the last ones Anthropic gave
         u.credits = Credits.carry(u.credits, from: before, now: now) ?? (u.source == "Anthropic" ? nil : before)
         usage = u; state = .ok; backoff = 0
-        noteBack(u)
-        checkThresholds(u)
-        noteCredits(u, before: before, now: now)
+        if !onOtherAccount {                     // another account's numbers: no alerts about them
+            noteBack(u)
+            checkThresholds(u)
+            noteCredits(u, before: before, now: now)
+        }
         scheduleResetRead()
     }
 
@@ -531,13 +541,19 @@ final class UsageReader {
     /// Writes status/<id>.json when what this reader sees changed (the write posts the "changed" notice).
     func save() {
         guard !stopped else { return }
-        let status = IconStatus(loginEmail: loginEmail, expectedEmail: expectedEmail, state: "\(state)",
+        var status = IconStatus(loginEmail: loginEmail, expectedEmail: expectedEmail, state: "\(state)",
                                 fiveHour: usage?.fiveHour, weekly: usage?.weekly, updatedAt: usage?.fetchedAt,
                                 renewNote: renewNote, fiveHourResets: usage?.fiveHourResets,
                                 weeklyResets: usage?.weeklyResets, plan: planName ?? plan,
                                 source: usage?.source, problem: state.menuText, renewing: renewing,
                                 scoped: usage.map { $0.scoped.isEmpty ? nil : $0.scoped } ?? nil, credits: usage?.credits,
                                 noFiveHour: usage?.noFiveHour == true ? true : nil)
+        if onOtherAccount {
+            // another account's numbers aren't shown as this profile's: none until it's linked or signed back in
+            status.fiveHour = nil; status.weekly = nil; status.fiveHourResets = nil; status.weeklyResets = nil
+            status.scoped = nil; status.credits = nil; status.noFiveHour = nil
+            status.state = "otherAccount"; status.problem = "Signed in to another account: choose in its settings"
+        }
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970; enc.outputFormatting = [.sortedKeys]
         if let data = try? enc.encode(status), data != lastStatus { lastStatus = Store.writeStatus(id, status) }
     }

@@ -183,6 +183,7 @@ struct AccountRow: Identifiable {
 
     var subtitle: String {
         if mismatch { return "login is a different account" }
+        if status?.state == "otherAccount" { return "signed in to another account" }
         if status?.state == "expired" { return "login expired" }
         if status?.state == "noLogin" { return "no Claude Code login" }
         return status?.loginEmail ?? status?.expectedEmail ?? entry.configDir
