@@ -175,7 +175,7 @@ struct AccountRow: Identifiable {
     var limits: [Limit] {
         [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: fiveHour, resets: status?.fiveHourResets, window: 5 * 3600),
          Limit(id: "wk", title: "Week", name: "Week", p: weekly, resets: status?.weeklyResets, window: 7 * 86400)]
-            + (status?.scoped ?? []).map(\.limit)
+            + (entry.showFable ? status?.scoped ?? [] : []).map(\.limit)
     }
 
     var subtitle: String {

@@ -355,7 +355,7 @@ struct MenuBarRow: View {
         let u = profile.usage
         return [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: u?.fiveHour, resets: u?.fiveHourResets, window: 5 * 3600),
                 Limit(id: "wk", title: "Week", name: "Week", p: u?.weekly, resets: u?.weeklyResets, window: 7 * 86400)]
-            + (u?.scoped ?? []).map(\.limit)
+            + (profile.entry.showFable ? u?.scoped ?? [] : []).map(\.limit)
     }
 
     var body: some View {

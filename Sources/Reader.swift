@@ -281,7 +281,7 @@ final class UsageReader {
         // a model's own weekly limit (Fable) alerts like the two: at the level, and when full with when it's back
         let all = [("5h", "5-hour limit", "5-hour limit", u.fiveHour, u.fiveHourResets),
                    ("wk", "Weekly limit", "weekly limit", u.weekly, u.weeklyResets)]
-            + u.scoped.map { ($0.key, "\($0.name) weekly limit", "\($0.name) weekly limit", $0.percent, $0.resets) }
+            + (entry.showFable ? u.scoped : []).map { ($0.key, "\($0.name) weekly limit", "\($0.name) weekly limit", $0.percent, $0.resets) }
         for (key, title, fullName, p, resets) in all {
             guard let p else { continue }
             let full = AtLimit.isFull(p)
@@ -347,7 +347,7 @@ final class UsageReader {
         }
         // a model's own limit (Fable) has its own "back": "Claude Main: Fable is back", unless one of the two still holds
         // the profile back (its reset brings the profile's own "back")
-        for s in u.scoped {
+        for s in entry.showFable ? u.scoped : [] {
             let k = "full\(s.key).\(id)"
             if AtLimit.isFull(s.percent) {
                 let v = s.resets.map { String(Int($0.timeIntervalSince1970.rounded())) } ?? "?"

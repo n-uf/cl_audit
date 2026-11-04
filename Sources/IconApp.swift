@@ -291,7 +291,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             design: entry.panelDesign,
             accent: entry.accentNSColor,
             refreshing: refreshing,
-            scoped: usage?.scoped ?? [], credits: usage?.credits)
+            scoped: entry.showFable ? usage?.scoped ?? [] : [], credits: usage?.credits)
         return info
     }
 
@@ -407,7 +407,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         line("5-hour limit", usage?.fiveHour, usage?.fiveHourResets)
         line("Weekly limit", usage?.weekly, usage?.weeklyResets)
-        for s in usage?.scoped ?? [] {
+        for s in entry.showFable ? usage?.scoped ?? [] : [] {
             if AtLimit.isFull(s.percent), let r = s.resets {
                 m.addItem(info("\(s.name) weekly limit: full · \(TimeWords.back(r))"))
             } else {
