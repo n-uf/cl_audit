@@ -946,7 +946,7 @@ struct AccountSettings: View {
             SRow(label: "Colour", info: "This profile's colour inside cl_audit: the dot by its name on the dashboard and in the launcher, its Show key, its share of the history charts and the dot on its usage panel. The Dock icon's own colour is under Icon.") {
                 SwatchRow(colors: TileColor.accents, selected: entry.accentColor) { if let c = $0 { entry.accent = c } }
             }
-            SRow(label: "Fable's limit", info: "Fable's own weekly limit (Max, Ultra and Team plans): shown on this profile's dashboard card, usage panels, Dock and menu bar menus and the widget, with its alerts. Off: left out everywhere; it still counts in Anthropic's limits.") {
+            SRow(label: "Fable's limit", info: "Fable's own weekly limit (Max and Ultra plans, premium Team and Enterprise seats): shown on this profile's dashboard card, usage panels, Dock and menu bar menus and the widget, with its alerts. Off: left out everywhere; it still counts in Anthropic's limits.") {
                 HStack(spacing: 8) {
                     Toggle("", isOn: $entry.showFable).smallSwitch()
                     Text("shown and alerted").font(.system(size: 11.5)).foregroundStyle(face.muted).lineLimit(1)

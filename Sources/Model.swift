@@ -108,7 +108,7 @@ struct Usage {
     var weeklyResets: Date?
     var fetchedAt: Date
     var source: String
-    var scoped: [ScopedLimit] = []       // weekly limits of one model (Fable on Max, Ultra and Team), beside the two
+    var scoped: [ScopedLimit] = []       // weekly limits of one model (Fable on Max, Ultra, premium seats), beside the two
     var credits: Credits? = nil          // usage credits (Credits.swift)
 }
 

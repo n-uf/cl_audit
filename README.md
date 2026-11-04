@@ -159,8 +159,9 @@ once when the look changes.
 
 ### Fable's weekly limit and usage credits
 
-Max, Ultra and Team plans also have a **weekly limit of Fable's own**: Fable may use up to a share of the week (half,
-today). When Anthropic's reply has it, the cards, the panels and the Dock icon's menu show a third row, "Fable"
+Max and Ultra plans and premium Team and Enterprise seats also have a **weekly limit of Fable's own**: Fable may use
+up to a share of the week (half, today). Pro and standard seats pay for Fable with usage credits instead, so they
+have no such row. When Anthropic's reply has it, the cards, the panels and the Dock icon's menu show a third row, "Fable"
 ("Fable · week" in the large panel). Full, the row turns red and says when it's back ("full · back Thu 09:00"); it
 doesn't take the full-limit box or the countdown face, because the profile can still work with the other models. The
 Dock icon keeps its two bars.
