@@ -92,6 +92,10 @@ the notes before updating.
   Dock and menu bar menus, the menu bar icon and the widget show the week alone instead of an empty 5-hour row.
 - README: **Moving a profile to another account**, step by step: both sign-ins (Claude Code's is the one the usage
   comes from), linking, and, for the usual Claude app only, moving its Code sessions with claude-transplant.
+- **cl_audit no longer grows to gigabytes of memory.** Reading the usage history kept every line it had read from
+  Claude Code's session files until the read was over, and on a busy Mac the dashboard started a new read every
+  minute beside the ones still running: cl_audit reached 1.7 GB in half an hour. Each line is now let go as soon as
+  it's read, and one read runs at a time. The history, totals and CSV are the same.
 
 ## 26.10.11 — 2026-10-27
 
