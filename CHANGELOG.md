@@ -38,6 +38,9 @@ the notes before updating.
   widget as the preview: limits as Glow, Rings, Numbers, Segments or Pace (rows too); the System look or cl_audit's
   Std, Black and Silver faces. It fits itself to the size and the number of profiles, centred, with reset times and
   the next resets where there's room. It reads only what cl_audit saves.
+- Widget, large size: one profile's limits are bigger and fill the height; three and four profiles are drawn a size
+  larger, with the next resets below when they fit, so the blocks no longer sit apart with empty space between them.
+  In rows, "100%" stays on one line.
 - **Export the usage history as CSV.** The CSV key next to the period saves one row per day, profile and model
   (optionally per project, by folder name), with replies and each kind of token.
 - **Cost estimate at API list prices** in the usage history's totals ("≈ $123 at list prices") and in the CSV:

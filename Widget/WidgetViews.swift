@@ -163,6 +163,7 @@ struct WScale {
     let name, label, pct, bar, ring, number: CGFloat
     static let small = WScale(name: 12.5, label: 10.5, pct: 12.5, bar: 6, ring: 46, number: 24)
     static let medium = WScale(name: 13.5, label: 11.5, pct: 14, bar: 7, ring: 48, number: 26)
+    static let largeOne = WScale(name: 16, label: 13, pct: 20, bar: 10, ring: 80, number: 46)    // one profile
     static let large = WScale(name: 14.5, label: 11.5, pct: 14, bar: 7, ring: 54, number: 30)
     static let largeFour = WScale(name: 12.5, label: 10.5, pct: 12.5, bar: 6, ring: 36, number: 21)   // three or four profiles
 }
@@ -368,9 +369,10 @@ struct WMini: View {
             }
         case .numbers:
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(name).font(.system(size: 10)).foregroundStyle(theme.muted)
+                Text(name).font(.system(size: 10)).foregroundStyle(theme.muted).lineLimit(1)
                 Text(WKit.pct(p)).font(.system(size: 15, weight: .heavy, design: .rounded)).monospacedDigit()
                     .foregroundStyle(WKit.level(p) ?? theme.muted)
+                    .lineLimit(1).minimumScaleFactor(0.7)           // "100%" in a narrow column stays on one line
             }
         default:
             VStack(alignment: .leading, spacing: 3) {
@@ -395,8 +397,14 @@ struct WidgetContent: View {
     let size: WidgetSize
     var now = Date()
 
+    /// A size picked by the large layout (it tries the bigger ones first); nil: the size's own.
+    var forcedScale: WScale? = nil
+
     private var theme: WTheme { WTheme.of(look.plate) }
-    private var scale: WScale { size == .small ? .small : size == .medium ? .medium : profiles.count > 2 ? .largeFour : .large }
+    private var scale: WScale {
+        forcedScale ?? (size == .small ? .small : size == .medium ? .medium : profiles.count > 2 ? .largeFour : .large)
+    }
+    private func scaled(_ s: WScale) -> WidgetContent { var c = self; c.forcedScale = s; return c }
     private var sorted: [WidgetProfile] { profiles.sorted { $0.room(now: now) > $1.room(now: now) } }
 
     var body: some View {
@@ -461,22 +469,71 @@ struct WidgetContent: View {
         }
     }
 
-    /// One or two profiles: every limit large with when it resets, then the next resets. Three or four: a block each,
-    /// limits side by side. The room left is shared out between the parts.
-    private var large: some View {
-        let few = profiles.count <= 2
+    /// One profile: its limits big, spread over the height, each with when it resets. Two: every limit with when it
+    /// resets, then the next resets. Three or four: a block each, limits side by side, then the next resets when
+    /// there's room. The biggest arrangement that fits is used, and the room left is shared out evenly between the
+    /// parts, so no part of the widget stays empty.
+    @ViewBuilder private var large: some View {
+        switch profiles.count {
+        case 1:
+            // the height decides: the widths follow the widget (segment bars ask for more than they need)
+            ViewThatFits(in: .vertical) {
+                scaled(.largeOne).blocks(resets: true, footer: false)
+                scaled(.large).blocks(resets: true, footer: false)
+            }
+        case 2:
+            ViewThatFits(in: .vertical) {
+                scaled(.large).blocks(resets: true, footer: true)
+                scaled(.large).blocks(resets: true, footer: false)
+                scaled(.largeFour).blocks(resets: false, footer: false)
+            }
+        default:
+            ViewThatFits(in: .vertical) {
+                scaled(.large).blocks(resets: false, footer: true)
+                scaled(.large).blocks(resets: false, footer: false)
+                scaled(.largeFour).blocks(resets: false, footer: true)
+                scaled(.largeFour).blocks(resets: false, footer: false)
+            }
+        }
+    }
+
+    /// The large size's parts in one size: a block per profile, then (footer) the next resets, with the room left
+    /// shared out between them. One profile's limits are spread out over its block.
+    private func blocks(resets: Bool, footer: Bool) -> some View {
+        let one = profiles.count == 1
+        let across = profiles.count > 2 || look.design.round
         return VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(profiles.enumerated()), id: \.element.id) { i, p in
-                if i > 0 { Spacer(minLength: few ? 8 : 4); divider; Spacer(minLength: few ? 8 : 4) }
-                VStack(alignment: .leading, spacing: few ? 10 : 6) {
+                if i > 0 { Spacer(minLength: 6); divider; Spacer(minLength: 6) }
+                VStack(alignment: .leading, spacing: one ? 0 : 8) {
                     head(p, meta: p.planWords)
-                    limits(p, fable: true, resets: few, across: !few || look.design.round)
+                    if one {
+                        spread(p, resets: resets, across: across)
+                    } else {
+                        limits(p, fable: true, resets: resets, across: across)
+                    }
                 }
             }
-            if few {
-                Spacer(minLength: 8); divider; Spacer(minLength: 8)
+            if footer {
+                Spacer(minLength: 6); divider; Spacer(minLength: 6)
                 nextResets
             }
+        }
+    }
+
+    /// One profile's limits filling the height: bars one under the other with the room between them, rings and
+    /// numbers side by side in the middle.
+    @ViewBuilder private func spread(_ p: WidgetProfile, resets: Bool, across: Bool) -> some View {
+        let f = WLimit(design: look.design, name: "Fable", p: p.fable, scale: scale, theme: theme)
+        if across {
+            Spacer(minLength: 8)
+            limits(p, fable: true, resets: resets, across: true)
+            Spacer(minLength: 8)
+        } else {
+            if !p.noFive { Spacer(minLength: 10); limit(p, five: true, resets: resets) }
+            Spacer(minLength: 10); limit(p, five: false, resets: resets)
+            if p.fable != nil { Spacer(minLength: 10); f }
+            Spacer(minLength: 4)
         }
     }
 

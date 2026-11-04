@@ -147,8 +147,10 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
 cl_audit has a macOS widget (macOS 14 and later), **Claude usage**: every profile's 5-hour and weekly limits, and
 when a full one is back ("back at 15:28"). Add it from the widget gallery (click the date in the menu bar, then Edit
 Widgets) to the desktop or Notification Center, in three sizes. It fits itself to the size and the number of
-profiles: one or two get large limits with when they reset (the large size adds the next three resets below), up to
-four get a block each in the large size, more get a row each; it is always centred, with no empty space left over.
+profiles: one or two get large limits with when they reset, up to four get a block each in the large size, more get
+a row each. In the large size one profile's limits are drawn bigger and spread over the whole height; two to four
+get the next three resets below whenever they fit, and the biggest arrangement that fits is used, with the room
+left shared out evenly, so no part stays empty.
 Fable's limit shows for the profiles whose settings show it (Profile ▸ Fable's limit). Its look is in Settings ▸
 General ▸ **Widget**, built like the Dashboard cards card, with the real widget as the preview:
 
