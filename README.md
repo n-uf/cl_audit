@@ -364,6 +364,37 @@ folder out (its Keychain login goes) and deletes that folder and its Claude wind
 inside are removed, never what they point to. The default `~/.claude`, the standard window and a folder
 another profile shares items from are never deleted, and Claude must be closed first.
 
+### Moving a profile to another account
+
+For example to a new plan, whose weekly limit starts at zero. A profile keeps everything (name, look, Dock icon,
+Claude window, settings); only its sign-ins and its link change. Two sign-ins move, Claude Code's and the Claude
+window's, and **Claude Code's is the one cl_audit reads the usage from**: signing in only the Claude app leaves the
+numbers on the old account.
+
+1. **Back up**, if the window's Code sessions should come along (step 3): `~/.claude` and
+   `~/Library/Application Support/Claude` (without its caches).
+2. **Quit every Claude window**: the usual Claude app and every profile's own.
+3. **Code sessions (optional, the profile using `~/.claude` only).** The Claude app lists only the signed-in
+   account's Code sessions, so the earlier ones stay with the old account. The community tool
+   [claude-transplant](https://github.com/vitaliyhayda/claude-transplant) (unofficial, MIT, needs Node 22) can move
+   them for the usual Claude app; its paths are fixed to that app's folders, so other profiles' windows can't
+   carry theirs this way. Run `npx claude-transplant --dry-run` first, then `npx claude-transplant`, pick the old
+   account as From and the new one as To, and run the approval command it prints: it quits and reopens Claude,
+   moves the session records and keeps the originals for `npx claude-transplant undo`. Leave `--cloud` off (it
+   reads the Claude app's cookie key from the Keychain and goes to claude.ai). With other Claude windows open it
+   can quit the wrong one, hence step 2.
+4. **Sign the Claude window in** to the new account, in its own sign-in window.
+5. **Sign Claude Code in** to the new account, for the profile's folder:
+   `env -u CLAUDE_CONFIG_DIR claude auth login --claudeai --email <new>` for `~/.claude`, or
+   `CLAUDE_CONFIG_DIR=<folder> claude auth login --claudeai --email <new>` for a profile's own folder. cl_audit's
+   agent notices within half a minute and reads the new sign-in.
+6. **Link the profile:** Settings ▸ the profile ▸ Claude Code ▸ **Use this account**. Refused if another profile
+   already has that account. Until then the profile shows the new account's numbers under its old link.
+
+Staying with the old account: a CI token from `claude setup-token` (make a new one), claude.ai connectors and MCP
+servers, cloud sessions and environments, synced plugins, and the plan and billing. To keep watching the old
+account's limits, add it as a profile of its own (**New profile**).
+
 ### Uninstalling
 
 **Uninstall cl_audit…** (Settings ▸ General, or the cl_audit menu) always removes every Dock icon app and its pin

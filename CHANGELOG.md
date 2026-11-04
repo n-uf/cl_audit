@@ -51,6 +51,8 @@ the notes before updating.
   profile is linked to the new account and keeps its name, look, Dock icon, Claude window and settings. Refused,
   in red with the profile's name, when another profile already has that account; **Sign back in…** opens Claude
   Code's sign-in for the old one.
+- README: **Moving a profile to another account**, step by step: both sign-ins (Claude Code's is the one the usage
+  comes from), linking, and, for the usual Claude app only, moving its Code sessions with claude-transplant.
 
 ## 26.10.11 — 2026-10-27
 
