@@ -53,8 +53,9 @@ enum Launcher {
         dataDirKey(of: app.processIdentifier) == dataDirKey(of: account)
     }
 
-    /// Brings the account's Claude window to the front, or starts it.
-    static func openClaude(_ account: Account) {
+    /// Brings the account's Claude window to the front, or starts it. activate: false starts it behind the window in
+    /// front (the agent reopening windows after a Claude update).
+    static func openClaude(_ account: Account, activate: Bool = true) {
         guard account.hasWindow else { return }        // a profile without a Claude window never opens one
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: claudeBundleID)
         if let app = running.first(where: { isWindow(of: account, $0) }) {
@@ -69,6 +70,7 @@ enum Launcher {
         }
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: claudeBundleID) else { return }
         let cfg = NSWorkspace.OpenConfiguration()
+        cfg.activates = activate
         cfg.createsNewApplicationInstance = !running.isEmpty || account.claudeUserDataDir != nil
         if let dir = account.claudeUserDataDir { cfg.arguments = ["--user-data-dir=\(dir)"] }
         if !account.isDefaultDir {

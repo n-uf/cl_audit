@@ -391,6 +391,12 @@ One program in three roles: **cl_audit** (the window: dashboard, settings, launc
   to the agent: macOS knows an ad hoc signed program it may start by its exact fingerprint, and the
   launcher's never changes, so an update needs no new approval and shows no new notice. cl_audit restarts the
   agent after an update.
+- **After a Claude update:** Claude updates itself quietly: each window quits by itself once idle (its log says
+  "[stealth-update] Triggering stealth update"), the install waits for all of them, and then Claude reopens only its
+  standard window. The agent notices which profile windows quit that way (within five minutes after the log line)
+  and, as soon as Claude's installed version changes, opens them again in the background, with one alert ("Claude
+  updated to 1.2.0 · Reopened Work's window"). A window you closed yourself, or opened again first, is left alone;
+  so is a profile without its Claude window switch. Claude Code tasks that the quit stopped aren't restarted.
 - **Numbers:** the agent asks Anthropic's usage endpoint for every profile on its own interval (and backs
   off when Anthropic is busy), with the profile's Claude Code login (see
   [Security](#security-how-cl_audit-handles-the-claude-login)). The login is kept in memory and read again

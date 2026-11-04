@@ -8,6 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
+- **Profile windows come back after a Claude update.** Claude's quiet updates quit every window and reopen only the
+  standard one. The cl_audit agent now reopens the profile windows the update closed (not ones you closed), in the
+  background, as soon as the new version is installed, and says so in one alert.
 - **Fable's weekly limit.** Max, Ultra and Team plans have a weekly limit of Fable's own; cl_audit now reads it from
   Anthropic's reply and shows it as a third row on the cards, the panels and the Dock menu. Full, the row turns red
   with when it's back, and it alerts like the other two ("Fable weekly limit full · Back Thu 09:00", "Fable is

@@ -194,6 +194,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     private var cleanupWork: DispatchWorkItem?
     private var cleanupTimer: Timer?
     private var menuBar: MenuBarItems?                  // the profiles' menu bar icons (MenuBar.swift)
+    private lazy var claudeUpdates = ClaudeUpdateWatch(defaults: defaults)   // reopens windows an update closed
     private var observers: [NSObjectProtocol] = []
     private var askedForAlerts = false
     private let myStamp = Installer.buildStamp(Bundle.main.bundleURL)
@@ -302,6 +303,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             Uninstall.offerTrashCleanup(defaults: defaults, where: p.components(separatedBy: "/Contents/").first ?? p)
         }
         for id in order { readers[id]?.tick() }
+        claudeUpdates.tick(order.compactMap { readers[$0]?.entry })
         rules?.tick()
         menuBar?.update()
         beat()
