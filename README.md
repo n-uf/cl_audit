@@ -203,10 +203,11 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   address, as with every alert), with **Switch back** and **Stay**; it follows the profile's Notify when back. The
   card gets a row, "ultra-1 is back: its week starts again", with **Stay** and **Switch back to ultra-1…**, and the
   Dock icon's and menu bar icon's menus list **Switch back to ultra-1…** first. The agent watches it from the
-  account's last numbers: fresh ones that aren't full any more, or a full limit whose reset time has passed (also
-  for an account whose sign-in isn't kept in a folder of its own, whose numbers nothing reads after a switch). Stay
-  takes the offer away until it comes back again; it goes by itself when the account fills up again or is switched
-  to. **Switch back** opens the Switch page ("Switch Claude Main back to ultra-1"), the same switch the other way:
+  account's last numbers: with a folder of its own, numbers read after the reset, current and not full (a reset
+  that comes late waits for that read); without one, whose numbers nothing reads after a switch, once the reset
+  time it last saw has passed. Missing numbers never count as "not full". Stay takes the offer away until it comes
+  back again (if Stay starts cl_audit, it shows nothing and quits again); it goes by itself when the account fills
+  up again or is switched to. **Switch back** opens the Switch page ("Switch Claude Main back to ultra-1"), the same switch the other way:
   every session in the window's sidebar goes back, those started on ultra-2 too, and the sidebar step puts them in
   their groups again (ultra-1's groups are still there, by their ids).
 
@@ -347,6 +348,16 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   renews by itself (the box says so), unlike the account in use's opt-in **Renew sign-in by itself**, and only while
   that folder is signed in to the account cl_audit linked: one signed in to another account, or not linked yet, is
   neither read nor renewed.
+  - **Every account keeps a folder of its own.** With more than one account, the account in use gets one too
+    (**Sign in…** in its box: "Keep its limits showing after a switch: sign it in once to a folder of its own"; one
+    confirmation in the browser). Once that folder is signed in to it, the profile's numbers come from there, renewed
+    by itself, instead of from the working folder, which still signs in again at each switch. So both accounts' limits
+    stay live whichever is in use; nothing moves between Keychain items, it's one more sign-in, once per account. The
+    box then says "Its limits come from a sign-in kept for it, renewed by itself." Log in… and the Dock icon's log-in
+    sign in the folder the numbers come from.
+  - Before a switch leaves an account without a folder of its own, the Switch page asks first: "Keep ultra-1's limits
+    showing after the switch" with **Sign in ultra-1…** or **Skip**. Skipped, that account's limits show as last read
+    on standby, and the page says when its week started again ("cl_audit hasn't read it since").
   - The **account in use**'s address is a pop-up: it ticks the account Claude Code in the folder is signed in to
     (green; red with a warning sign inside when it isn't the profile's account; a clock when the sign-in ran out; a
     long address is cut at its end), then, when it isn't the profile's, the profile's own account to log back in

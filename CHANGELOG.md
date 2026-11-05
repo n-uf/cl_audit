@@ -41,6 +41,9 @@ the notes before updating.
   account is back · Its week starts again") offers **Switch back** or **Stay**, and the dashboard card and the Dock
   and menu bar menus offer **Switch back to …** until then. Switching back is the same switch the other way; the
   sessions started on the second account go back too.
+- **Every account's limits stay live.** The account in use signs in once to a folder of its own too (Settings ▸
+  Accounts, or the Switch page's "Keep ultra-1's limits showing after the switch" before it leaves that account, with
+  Skip), and its numbers come from there, so after a switch both accounts' limits keep showing.
 
 ## 26.11.0 — 2026-11-05
 
