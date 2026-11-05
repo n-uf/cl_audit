@@ -26,8 +26,8 @@ the notes before updating.
   bars, bars + number, ring, ring + number, number, two numbers); colours in levels, **System** (drawn the way
   macOS draws its own icons), **Accent** (your Mac's accent colour) or the profile's; its label; the countdown or
   just red when a limit is full. The preview draws it the way your menu bar is now. ⌘-drag to arrange them.
-- **Drag profiles into your order.** In Settings, drag a profile's tile left or right along the top; it's saved when
-  you let go. The dashboard, the launcher (⌘1, ⌘2…), the menu bar icons, the widget, the usage history and its CSV,
+- **Drag profiles into your order.** In Settings, drag a profile's tile left or right along the top, or drag its card
+  on the dashboard; it's saved when you let go. The dashboard, the launcher (⌘1, ⌘2…), the menu bar icons, the widget, the usage history and its CSV,
   and cl_audit's Dock menu follow it. The Dock icons stay where you put them in the Dock.
 - **Settings, grouped by subject.** General: cl_audit (Usage in the background, Privacy, About), How usage looks
   (Face, Dashboard cards, Widget), the Dock (App icon, Dock), each column with its subject printed at the top.

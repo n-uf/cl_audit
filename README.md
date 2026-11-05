@@ -105,7 +105,8 @@ Opening **cl_audit** shows a card per profile: its icon, its plan, both limits a
 the Dock · no window". The plan is Claude's own name for it, as Claude Code recorded it in the profile's
 `.claude.json` ("Ultra"; the sign-in itself says "max" for an Ultra account), else the sign-in's. A plan without a
 5-hour limit (Ultra) shows the week alone: no empty 5-hour row on the cards, panels, menus, the menu bar icon and
-the widget (the Dock icon still shows "5h –").
+the widget (the Dock icon still shows "5h –"). Drag a card (not by one of its keys) to put the profiles in another
+order, the same order as Settings' tile bar (see Settings ▸ Profile order); the display says "Saved · order".
 
 The top strip is the profile keys, one display and the refresh key. The display shows one thing at a time, most
 important first: "Not updating · agent won't start · numbers 7 min old" (red; a click opens Settings ▸ General with
@@ -224,8 +225,8 @@ icons follow at once; a profile's name or icon label is saved when you press Ret
 because that renames its Dock icon app; the top strip says when it's done. **Show emails** (General settings) off leaves email addresses out of the launcher, dashboard,
 panels and Dock menus, and blurs them in Settings (hover one to see it), for screen sharing.
 
-**Profile order:** drag a profile's tile left or right along the top (General stays first, ＋ last); the others move
-aside and a lit socket shows where it lands. It's saved when you let go ("Saved · order"); VoiceOver has Move left and
+**Profile order:** drag a profile's tile left or right along the top (General stays first, ＋ last), or its card on
+the dashboard (by the card itself, not one of its keys); the others move aside and a lit socket shows where it lands. It's saved when you let go ("Saved · order"); VoiceOver has Move left and
 Move right. The dashboard's cards and profile keys, the launcher and its ⌘1, ⌘2…, the menu bar icons, the widget,
 the usage history (bars, legend, CSV) and cl_audit's Dock menu all follow it. The menu bar icons line up in the new
 order (⌘-drag still moves them after, until the next new order). The Dock icons stay where you put them: move them in
