@@ -1103,10 +1103,18 @@ struct AccountSettings: View {
     }
 
     // Claude Code and window
+    /// Claude Code, like New profile's card: Account first (the account Claude Code in the folder is signed in to, and
+    /// everything about it), then the Folder it lives in, then what that folder shares from another one. Rows stack
+    /// (label above, the control the card's full width) when the card is narrow, so accounts and paths show whole.
     var codeCard: some View {
+        InSettingsColumn { columnWidth in codeCard(stacked: columnWidth < SRow<EmptyView>.stackBelow) }
+    }
+
+    private func codeCard(stacked: Bool) -> some View {
         SCard(title: "Claude Code",
-              info: "The Claude Code folder this profile uses and its sign-in. Its Claude window comes with it: the usual Claude app for the profile using ~/.claude, its own Claude window (own sign-in, chats and settings) for any other.") {
-            SRow(label: "Folder", info: "The Claude Code folder for this profile, like ~/.claude: its sign-in, settings and history live there. One profile per folder.", first: true) {
+              info: "The claude.ai account this profile uses and the Claude Code folder it lives in. Its Claude window comes with it: the usual Claude app for the profile using ~/.claude, its own Claude window (own sign-in, chats and settings) for any other.") {
+            accountRows(stacked: stacked)
+            SRow(label: "Folder", info: "The Claude Code folder for this profile, like ~/.claude: its sign-in, settings and history live there. One profile per folder; folders are used where they are (Claude Code names a folder's Keychain sign-in after its path).", stacked: stacked) {
                 // the folder key beside the pop-up while the whole path fits; in a narrow column the pop-up alone (its
                 // menu has "Choose another folder…" too)
                 ViewThatFits(in: .horizontal) {
@@ -1119,36 +1127,71 @@ struct AccountSettings: View {
                     folderMenu
                 }
             }
-            loginRows
+            shareRows(stacked: stacked)
         }
     }
 
-    /// The Folder pop-up: the folders found, each marked when another profile uses it, then "Choose another folder…".
+    /// The Folder pop-up, worded like New profile's: each folder with who is signed in there, the one in use ticked,
+    /// other profiles' dimmed with their name, then "Choose another folder…".
     private var folderMenu: some View {
         Menu {
             ForEach(model.choices(model.configFolders, current: entry.configDir), id: \.path) { c in
-                let owner = FolderRules.configOwner(c.path, among: model.accounts, except: entry.id)
-                Button {
-                    entry.configDir = c.path
-                } label: {
-                    Text(c.title + (owner.map { "  —  used by \($0.name)" } ?? FolderKey.canonical(c.path) == FolderKey.canonical(entry.configDir) ? "  ✓" : ""))
+                if let owner = FolderRules.configOwner(c.path, among: model.accounts, except: entry.id) {
+                    Button("\(c.path)   \(owner.name)'s") {}.disabled(true)
+                } else if FolderKey.canonical(c.path) == FolderKey.canonical(entry.configDir) {
+                    Toggle("\(c.path)   \(NewAccountSetup.folderWho(c.path))", isOn: .constant(true))   // the menu's own tick
+                } else {
+                    Button("\(c.path)   \(NewAccountSetup.folderWho(c.path))") { useFolder(c.path) }
                 }
-                .disabled(owner != nil)
             }
             Divider()
             Button("Choose another folder…") { useFolder(pickFolder()) }
         } label: { MenuWell(text: entry.configDir.isEmpty ? "Choose…" : entry.configDir, mono: true, fill: true) }
         .faceMenuFill()
+        .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+    }
+
+    /// Share from and Shared, as New profile shows them for a new folder, here read from the folder as it is: which
+    /// items are links into another Claude Code folder. Only for a folder that shares from another (not ~/.claude, the
+    /// usual source). Read only in this release: cl_audit can't tell its own links from ones made by hand, and it
+    /// never deletes or moves anything in a Claude Code folder, so the line under them says how to change them.
+    @ViewBuilder func shareRows(stacked: Bool) -> some View {
+        let items = NewAccountSetup.sharedItems(in: entry.configDir)
+        let linked = items.compactMap { i -> (SharedItem, String)? in
+            if case .linked(let from) = i.state { return (i.item, from) }
+            return nil
+        }
+        let sources = Array(Set(linked.map(\.1))).sorted()
+        if !Account(entry).isDefaultDir {
+            SRow(label: "Share from", info: "The Claude Code folder this profile's folder links some items from (instructions, agents, skills, commands, memory & history), so edits there show up here too. Sign-in, plugins and usage stay separate.", stacked: stacked) {
+                Text(sources.isEmpty ? "nothing: every item is its own" : sources.joined(separator: ", "))
+                    .font(sources.isEmpty ? .system(size: 12) : .system(size: 11.5, design: .monospaced))
+                    .foregroundStyle(sources.isEmpty ? face.muted : face.soft)
+                    .lineLimit(1).truncationMode(.tail)
+                    .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+            }
+            if !linked.isEmpty {
+                SRow(label: "Shared", info: "The items that are links into the folder above; the rest are this folder's own. cl_audit makes these links when it creates a folder (New profile) and doesn't change them afterwards.", stacked: stacked) {
+                    Text(linked.map(\.0.title).joined(separator: ", "))
+                        .font(.system(size: 12)).foregroundStyle(face.soft)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+                }
+            }
+            if !sources.isEmpty {
+                rowLine("To change them, add or remove the links in \(entry.configDir) in Finder.")
+            }
+        }
     }
 
     /// The folder is signed in to another account than the one the profile is linked to (or nil).
     var seatMove: FolderRules.SeatMove? { _ = model.tick; return FolderRules.seatMove(entry, among: model.accounts) }
 
-    /// Login: one row for everything about this folder's sign-in. Its value is the pop-up, drawn like the Folder one
-    /// (and in line with it); only when something needs a choice, the keys for it sit under the pop-up in the same row
-    /// (wrapping in a narrow column), with one grey line under the row. "Sign in to another account…" turns the value
-    /// into the address field and Sign in, in place; Esc or Cancel puts the pop-up back. Renew sign-in is a pop-up item.
-    @ViewBuilder var loginRows: some View {
+    /// Account: one row for everything about this folder's sign-in, first in the card (as on New profile). Its value is
+    /// the pop-up, drawn like the Folder one; only when something needs a choice, the keys for it sit under the pop-up
+    /// in the same row (wrapping in a narrow column), with one grey line under the row. "Sign in to another account…"
+    /// turns the value into the address row, in place; Esc or Cancel puts the pop-up back. Renew sign-in is a pop-up item.
+    @ViewBuilder func accountRows(stacked: Bool) -> some View {
         let name = entry.name.isEmpty ? "This profile" : entry.name
         let old = Privacy.masked(entry.seat?.email ?? expected ?? "its account")
         let mine = model.accountSwitch?.id == entry.id ? model.accountSwitch : nil
@@ -1157,7 +1200,7 @@ struct AccountSettings: View {
             guard let was = s.was, let at = s.linkedAt, Date().timeIntervalSince(at) < 7 * 86400 else { return nil }
             return (was, at)
         }
-        SRow(label: "Login", info: loginInfo) {
+        SRow(label: "Account", info: loginInfo, first: true, stacked: stacked) {
             VStack(alignment: .leading, spacing: 7) {
                 if let mine, mine.started != nil {
                     // waiting for the sign-in started here: cl_audit links the profile by itself once it's done
@@ -1192,32 +1235,33 @@ struct AccountSettings: View {
                 }
             }
         }
+        // one grey line, worded like New profile's and short enough for one line in a 460 pt column
         if let mine, mine.started != nil {
-            rowLine("Finish signing in as \(Privacy.masked(mine.email)) in the browser. If it shows another claude.ai account, switch it there first.")
+            rowLine("Finish in the browser as \(Privacy.masked(mine.email)); switch its claude.ai account first if needed.")
         } else if mine != nil {
-            rowLine(switchProblem ?? "Signs in through Claude Code in Terminal; \(name) stays on \(old) until then.",
+            rowLine(switchProblem ?? "Claude Code signs in through Terminal; \(name) stays on \(old) until then.",
                     color: switchProblem == nil ? nil : face.danger)
         } else if let move, let owner = move.owner {
-            rowLine("\(Privacy.masked(move.to.email ?? "That account")) is the account of “\(owner.name)”. One profile per account: log in with another one (in the pop-up), or use \(owner.name).")
+            rowLine("\(Privacy.masked(move.to.email ?? "That account")) is the account of “\(owner.name)”. One profile per account.", color: face.danger)
         } else if let move {
-            rowLine("Signed in here as \(Privacy.masked(move.to.email ?? "another account")), but \(name) is linked to \(old). Use this account links \(name) to it and keeps its name, look and Dock place; to go back, log in as \(old) from the pop-up. Numbers are hidden until you choose.")
+            rowLine("Signed in as \(Privacy.masked(move.to.email ?? "another account")); \(name) is linked to \(old). Numbers wait until you choose.")
         } else if mismatch {
-            rowLine("The sign-in in the Keychain is another account than this folder's .claude.json names.")
+            rowLine("The Keychain's sign-in is another account than the folder's .claude.json names.")
         } else if status?.state == "expired" {
-            rowLine("The sign-in has run out. Use Claude Code once, log in again, or turn on Renew sign-in in the pop-up.")
+            rowLine("The sign-in ran out: use Claude Code, log in again, or turn on Renew sign-in.")
         } else if status?.state == "noLogin" {
             rowLine("No Claude Code sign-in in this folder yet.")
         } else if let l = linkedLately {
             rowLine(linkedWords(was: l.was, at: l.at))
         }
         if mine == nil, windowElsewhere {
-            SRow(label: "Claude window") {
+            SRow(label: "Claude window", stacked: stacked) {
                 HStack(spacing: 7) {
                     LED(color: FaceTheme.ledAmber)
                     Text("another account").font(.system(size: 12)).foregroundStyle(face.caution)
                 }
             }
-            rowLine("The window is signed in to another claude.ai account. Numbers are still \(name)'s: they come from Claude Code. To move \(name) over, use Sign in to another account… in the Login pop-up.")
+            rowLine("Numbers are still \(name)'s (from Claude Code); to move it, Sign in to another account… above.")
         }
     }
 
@@ -1276,7 +1320,7 @@ struct AccountSettings: View {
             })
     }
 
-    /// One line of the Login pop-up.
+    /// One line of the Account pop-up.
     struct LoginItem: Identifiable {
         enum Kind { case item, divider, toggle(Bool) }
         var id: String
@@ -1287,7 +1331,7 @@ struct AccountSettings: View {
         var action: () -> Void = {}
     }
 
-    /// What the Login pop-up lists, telling the same story as its label (the account Claude Code in this folder is
+    /// What the Account pop-up lists, telling the same story as its label (the account Claude Code in this folder is
     /// signed in to, ticked): when that isn't the profile's account, the profile's own one to log back in to comes
     /// next; then the accounts in Claude Code folders no profile uses (picking one fills in the address), other
     /// profiles' accounts dimmed, Sign in to another account… and Renew sign-in. Accounts only: linking to the one
@@ -1337,7 +1381,7 @@ struct AccountSettings: View {
         return items
     }
 
-    /// The Login pop-up, in line with the Folder one: the account Claude Code in this folder is signed in to, green;
+    /// The Account pop-up, in line with the Folder one: the account Claude Code in this folder is signed in to, green;
     /// red with a warning sign inside when it isn't the profile's account (or isn't the Keychain's), a clock when the
     /// sign-in ran out. A long address gets shorter ("…") rather than widening the card.
     func loginPopup(_ move: FolderRules.SeatMove?) -> some View {
@@ -1368,7 +1412,7 @@ struct AccountSettings: View {
             MenuWell(text: shown, tint: tint, icon: icon, fill: true).settingsEmail(shown.contains("@"))
         }
         .faceMenuFill()
-        .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }     // "Login" lines up with the pop-up, not the keys
+        .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }     // "Account" lines up with the pop-up, not the keys
     }
 
     /// "today 14:32", "Mon 14:32".
