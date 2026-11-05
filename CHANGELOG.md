@@ -8,7 +8,14 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **A profile can have more than one account.** Settings ▸ a profile ▸ Claude Code ▸ **Accounts** lists them, one
+  box each with every limit its plan has as bars: the one in use (**IN USE**) and the others (**STANDBY**), whose
+  limits come from a sign-in kept for each in a small Claude Code folder of its own and renewed by itself. **Add
+  account** finds the accounts on this Mac (signed in in free Claude Code folders, or used by the profile's Claude
+  window, with their addresses) and adds one with a click; **Sign in to another account…** makes a folder for a new
+  one and opens Claude Code's own sign-in in Terminal. An account belongs to one profile; New profile still starts
+  with one. **Sessions follow** (on) says the Claude window's sessions and sidebar go with the account when the
+  profile switches. Profiles saved before have their one account, in use; nothing changes for them.
 
 ## 26.11.0 — 2026-11-05
 

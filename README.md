@@ -263,33 +263,52 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   "Stopped · in the Dock", "Reading usage · every N min" (no Dock icon), "Missing · reinstall", or the agent's
   state in the dashboard's words ("Starting the agent…", "Not updating · agent won't start"); while a change goes
   through it says "Saving…", then "Saved" and what changed.
-- **Claude Code:** laid out like New profile's card: **Account** first, then **Folder** (`~/.claude` or a
-  `CLAUDE_CONFIG_DIR` folder), then, for any folder but `~/.claude`, **Share from** and **Shared** (what the folder
-  links to from another one: instructions, agents, skills, commands, memory and history). Shared is read-only here:
-  cl_audit never moves or deletes real files, so a grey line says to change the links in the folder in Finder. The
-  card's labels sit above their values (it stacks in any column under 480 pt, which in Settings is every column),
-  so accounts and paths get the card's full width. Folders other profiles use are marked and can't be picked. The
-  Claude window follows from the folder (see Profile above); it isn't a setting. **Account** is one row for
-  everything about the sign-in: a pop-up showing the account Claude Code in the folder is signed in to (green; red
-  with a warning sign inside when it isn't the profile's account; a clock when the sign-in ran out; a long address
-  is cut at its end rather than widening the card). Its menu lists accounts: it ticks that one, then, when it isn't the profile's, the
-  profile's own account to log back in to; the accounts signed in in Claude Code folders no profile uses (picking one only fills in the address; no sign-in is ever copied between folders); other profiles'
-  accounts, dimmed; **Sign in to another account…**; and **Renew sign-in by itself** (opt-in, see the (i)).
-  **Sign in to another account…** turns Account's value into the address and **Sign in**, in place (Esc or **Cancel**
-  puts the pop-up back): Claude Code's own sign-in opens in Terminal with the address filled in, and the profile
-  stays on its account until it's done. While it waits, Account says "signing in…" with **Cancel**; as soon as the
-  folder's `.claude.json` names the new account, cl_audit links the profile to it by itself, keeping its name,
-  look, Dock icon, Claude window and settings. Signed in to another account outside cl_audit (Terminal), **Use this
-  account** shows under the pop-up (the same link), and the profile shows no numbers until you choose, since they
-  would be the other account's. If another profile has that account, the line under Account names it, with
-  **Open** it instead: one profile per account. Anything else needing a word gets one grey line under the row. A
-  **Claude window** row says when the profile's window is signed in to another account than its Claude Code (only
-  the account id is known, from the window's `config.json`; the usual Claude app is checked too). For a week after
-  linking, the line under Account says when, which account it was and what stays with it, and that **New profile**
-  gives the old account a profile again. See [Moving a profile to another account](#moving-a-profile-to-another-account).
-  As on every card, the pop-ups and fields fill their width, so their right edges line up; the address row is one
-  line with Sign in and Cancel at its end (Cancel is a × when narrower), or, narrower still, the address on its own
-  line with Sign in and × under it.
+- **Claude Code:** laid out like New profile's card: **Accounts** first, then **Sessions follow**, **Folder**
+  (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder), then, for any folder but `~/.claude`, **Share from** and
+  **Shared** (what the folder links to from another one: instructions, agents, skills, commands, memory and
+  history). Shared is read-only here: cl_audit never moves or deletes real files, so a grey line says to change the
+  links in the folder in Finder. The card's labels sit above their values (it stacks in any column under 480 pt,
+  which in Settings is every column), so accounts and paths get the card's full width. Folders other profiles use
+  (their own or one keeping a standby sign-in) are marked and can't be picked. The Claude window follows from the
+  folder (see Profile above); it isn't a setting.
+
+  **Accounts** lists the profile's claude.ai accounts, one box each. A profile works on one at a time, marked
+  **IN USE**: the one Claude Code in its folder is signed in to. The others are **STANDBY**. Each box shows the
+  address, the plan and organisation ("Ultra · Personal"), and every limit its plan has as bars, drawn like the
+  dashboard's (Ultra: week and Fable; Max: 5-hour, week and Fable; Pro: 5-hour and week; usage credits while it
+  spends them). A standby account's limits come from a sign-in kept for it in a small Claude Code folder of its own
+  (say `~/.claude-ultra-2`), read and renewed like the profile's own, so you can see which account has room.
+  - The **account in use**'s address is a pop-up: it ticks the account Claude Code in the folder is signed in to
+    (green; red with a warning sign inside when it isn't the profile's account; a clock when the sign-in ran out; a
+    long address is cut at its end), then, when it isn't the profile's, the profile's own account to log back in
+    to, and **Renew sign-in by itself** (opt-in, see the (i)). Signed in to another account outside cl_audit
+    (Terminal), **Use this account** shows in the box, and the profile shows no numbers until you choose, since
+    they would be the other account's. If another profile has that account, the line under Accounts names it,
+    with **Open** it instead: one profile per account. Anything else needing a word gets one grey line. A
+    **Claude window** row says when the profile's window is signed in to another account than its Claude Code
+    (only the account id is known, from the window's `config.json`; the usual Claude app is checked too). For a
+    week after linking, the line under Accounts says when, which account it was and what stays with it, and that
+    **New profile** gives the old account a profile again. See
+    [Moving a profile to another account](#moving-a-profile-to-another-account).
+  - A **standby** account's address is a pop-up with **Sign in…** (again) and **Remove from <profile>**, which
+    takes it off the profile and leaves its folder and the sign-in in it as they are. Without a sign-in kept, its
+    box says "Limits unknown: no sign-in kept for it" with **Sign in…**, which makes its folder and opens Claude
+    Code's own sign-in in Terminal with the address filled in; once done, its limits show and its sign-in renews by
+    itself. A folder signed in to the wrong account, or to another profile's, says so in the box.
+  - **Add account** lists what it finds on this Mac, each added with one click: accounts signed in in Claude Code
+    folders no profile uses ("signed in · ~/.claude-u2": their limits show at once) and the accounts this profile's
+    Claude window has used, with their addresses from Claude Code's records ("needs sign-in · used in this window
+    in August"); other profiles' accounts are dimmed with their name. Old or team accounts the window once used are
+    only listed, never added by themselves. **Sign in to another account…** turns the key into the address and
+    **Sign in**: cl_audit makes a folder for it and opens Claude Code's own sign-in there in Terminal; the profile
+    keeps working on its account meanwhile. An account belongs to one profile; no sign-in is ever copied between
+    folders. New profile still starts with one account.
+
+  **Sessions follow** (on by default): when the profile switches to another of its accounts, its Claude window's
+  sessions go with it: the sessions, the sidebar's sections and groups, pins and scheduled tasks. Off: each account
+  keeps its own. As on every card, the pop-ups and fields fill their width, so their right edges line up; the
+  address row is one line with Sign in and Cancel at its end (Cancel is a × when narrower), or, narrower still, the
+  address on its own line with Sign in and × under it.
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
   ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"). **Notify when back** (on by default) sends one
@@ -395,7 +414,7 @@ under cl_audit; one column keeps the same order, top to bottom. Every row is one
 folder, a summary with the live icon and numbered steps); narrower, one column with the next step pinned
 at the bottom.
 
-- **Account first:** the Claude Code card's **Account** pop-up, like a profile's Settings ▸ Claude Code ▸ Account, lists the accounts signed
+- **Account first:** the Claude Code card's **Account** pop-up, like a profile's Claude Code ▸ Accounts ▸ Add account, lists the accounts signed
   in in Claude Code folders on this Mac that no profile uses, each with its folder (picking one connects that
   folder as it is: its sign-in, settings and history stay), other profiles' accounts dimmed, and **Sign in to
   another account…**. That opens the one-line address row: **Sign in** makes a new folder, `~/.claude-<name>`,
@@ -458,17 +477,18 @@ numbers on the old account.
    reads the Claude app's cookie key from the Keychain and goes to claude.ai). With other Claude windows open it
    can quit the wrong one, hence step 2.
 4. **Sign the Claude window in** to the new account, in its own sign-in window.
-5. **Sign Claude Code in** to the new account, for the profile's folder: Settings ▸ the profile ▸ Claude Code ▸
-   Account ▸ **Sign in to another account…**, type the address, **Sign in**, and finish in the browser. cl_audit
-   links the profile to it by itself once it's done (refused if another profile already has that account). Or in
-   Terminal: `env -u CLAUDE_CONFIG_DIR claude auth login --claudeai --email <new>` for `~/.claude`,
-   `CLAUDE_CONFIG_DIR=<folder> claude auth login --claudeai --email <new>` for a profile's own folder.
-6. **Signed in from Terminal:** the agent notices within half a minute; the profile then shows no numbers until you
-   press **Use this account** (Claude Code card, under Account), which links it.
+5. **Sign Claude Code in** to the new account, for the profile's folder, in Terminal:
+   `env -u CLAUDE_CONFIG_DIR claude auth login --claudeai --email <new>` for `~/.claude`,
+   `CLAUDE_CONFIG_DIR=<folder> claude auth login --claudeai --email <new>` for a profile's own folder, and finish in
+   the browser.
+6. **Link it:** the agent notices within half a minute; the profile then shows no numbers until you press **Use
+   this account** (Claude Code card, in the account in use's box), which links it (refused if another profile
+   already has that account).
 
 Staying with the old account: a CI token from `claude setup-token` (make a new one), claude.ai connectors and MCP
 servers, cloud sessions and environments, synced plugins, and the plan and billing. To keep watching the old
-account's limits, add it as a profile of its own (**New profile**).
+account's limits, add it to the profile as a standby account (Claude Code ▸ Accounts ▸ **Add account**), or give it
+a profile of its own (**New profile**).
 
 ### Uninstalling
 
