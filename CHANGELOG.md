@@ -37,6 +37,10 @@ the notes before updating.
   sessions back in their groups and pins with the app's own sidebar tools: press Return in it. It archives itself
   when done, and running it again changes nothing. The link goes to that window's own process, so it never opens in
   another Claude window (macOS asks once to let cl_audit control Claude).
+- **The other account is back.** When a standby account's full limit resets, one alert ("Claude Main: the other
+  account is back · Its week starts again") offers **Switch back** or **Stay**, and the dashboard card and the Dock
+  and menu bar menus offer **Switch back to …** until then. Switching back is the same switch the other way; the
+  sessions started on the second account go back too.
 
 ## 26.11.0 — 2026-11-05
 

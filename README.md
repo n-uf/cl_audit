@@ -198,6 +198,17 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   their order: no address, title or transcript. Run again, it changes nothing; in a window that doesn't have those
   sessions, it changes nothing either. Groups none of the moved sessions sat in aren't made. The way back is the same
   switch the other way.
+- **The other account is back.** When a standby account's full limit resets (ultra-1's week, after the profile
+  switched to ultra-2), one alert says so: "Claude Main: the other account is back · Its week starts again" (no
+  address, as with every alert), with **Switch back** and **Stay**; it follows the profile's Notify when back. The
+  card gets a row, "ultra-1 is back: its week starts again", with **Stay** and **Switch back to ultra-1…**, and the
+  Dock icon's and menu bar icon's menus list **Switch back to ultra-1…** first. The agent watches it from the
+  account's last numbers: fresh ones that aren't full any more, or a full limit whose reset time has passed (also
+  for an account whose sign-in isn't kept in a folder of its own, whose numbers nothing reads after a switch). Stay
+  takes the offer away until it comes back again; it goes by itself when the account fills up again or is switched
+  to. **Switch back** opens the Switch page ("Switch Claude Main back to ultra-1"), the same switch the other way:
+  every session in the window's sidebar goes back, those started on ultra-2 too, and the sidebar step puts them in
+  their groups again (ultra-1's groups are still there, by their ids).
 
 ### Widget
 
