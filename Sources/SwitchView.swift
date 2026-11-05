@@ -334,6 +334,9 @@ struct SwitchPage: View {
         case .failed(let why): return why
         case .cancelled: return "Cancelled: the sessions are back with \(from)."
         case .done: return runner.note ?? "Done: \(name) works on \(to)."
+        // still pending, however long it waits: the window stays closed until it's signed in or cancelled
+        case .codeSignIn: return [runner.note, "The switch is waiting for this sign-in; \(name)'s window stays closed until it's done or cancelled."]
+            .compactMap { $0 }.joined(separator: " ")
         default: return runner.note
         }
     }

@@ -107,7 +107,7 @@ final class SwitchRunner: ObservableObject {
                 switch result {
                 case .success(let r):
                     self.receipt = r
-                    if !r.problems.isEmpty { self.note = "Left where they were: " + r.problems.joined(separator: "; ") }
+                    if !r.problems.isEmpty { self.note = r.problems.joined(separator: " ") }   // each one a sentence
                     self.signInCode()
                 case .failure(let err):
                     // stopped half way: its receipt, for Undo (the window stays closed until then); nothing moved: free
@@ -194,18 +194,27 @@ final class SwitchRunner: ObservableObject {
                 .allSatisfy { $0.isTerminated || $0.processIdentifier == pid }
             DispatchQueue.global(qos: .userInitiated).async {
                 let outcome = WindowLink.send(url, to: pid)
-                DispatchQueue.main.async { [weak self] in self?.linkSent(outcome, url: url, alone: alone, name: e.name) }
+                DispatchQueue.main.async { [weak self] in self?.linkSent(outcome, url: url, alone: alone, pid: pid, name: e.name) }
             }
             return true
         }
     }
 
-    private func linkSent(_ outcome: WindowLink.Outcome, url: URL, alone: Bool, name: String) {
+    private func linkSent(_ outcome: WindowLink.Outcome, url: URL, alone: Bool, pid: pid_t, name: String) {
+        // still the profile's window, still the only Claude window: then `open` can only reach it
+        let stillAlone: Bool = {
+            guard alone, let e = entry, Self.windowApps(e).contains(where: { $0.processIdentifier == pid }) else { return false }
+            return NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
+                .allSatisfy { $0.isTerminated || $0.processIdentifier == pid }
+        }()
         switch outcome {
         case .sent:
             break
-        case .notAllowed where alone, .failed where alone:
+        case .notAllowed where stillAlone:
             NSWorkspace.shared.open(url)                  // the only Claude window: the link can't reach another
+        case _ where entry.map({ Self.windowApps($0).contains { $0.processIdentifier == pid } }) != true:
+            sidebarOpened = false                         // never `open` then: it could start another account's window
+            note = "\(name)'s window quit before the link reached it. Open the window, then Open the session."
         case .notAllowed:
             sidebarOpened = false
             note = "cl_audit may not send the link to \(name)'s window, and other Claude windows are open, so nothing opened. Allow cl_audit to control Claude (System Settings ▸ Privacy & Security ▸ Automation), or quit the other Claude windows, then Open the session."
