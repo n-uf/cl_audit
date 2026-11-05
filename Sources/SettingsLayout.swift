@@ -175,16 +175,25 @@ struct SSwitch: View {
     @Binding var isOn: Bool
     let on: String
     let off: String
+    /// Shorter "on" words for a narrow column (340 pt), used only when the full ones don't fit.
+    var onShort: String? = nil
     @Environment(\.face) private var face
     @Environment(\.isEnabled) private var enabled
 
     var body: some View {
         HStack(spacing: 8) {
             Toggle("", isOn: $isOn).toggleStyle(LEDSwitchStyle()).labelsHidden()
-            Text(isOn ? on : off).font(.system(size: 11.5)).foregroundStyle(face.muted).lineLimit(1)
-                .opacity(enabled ? 1 : 0.6)
+            if isOn, let onShort {
+                ViewThatFits(in: .horizontal) { words(on).fixedSize(); words(onShort) }
+            } else {
+                words(isOn ? on : off)
+            }
         }
         .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+    }
+
+    private func words(_ s: String) -> some View {
+        Text(s).font(.system(size: 11.5)).foregroundStyle(face.muted).lineLimit(1).opacity(enabled ? 1 : 0.6)
     }
 }
 

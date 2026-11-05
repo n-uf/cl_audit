@@ -1047,28 +1047,38 @@ struct AccountSettings: View {
         SCard(title: "Claude Code",
               info: "The Claude Code folder this profile uses and its sign-in. Its Claude window comes with it: the usual Claude app for the profile using ~/.claude, its own Claude window (own sign-in, chats and settings) for any other.") {
             SRow(label: "Folder", info: "The Claude Code folder for this profile, like ~/.claude: its sign-in, settings and history live there. One profile per folder.", first: true) {
-                HStack(spacing: 6) {
-                    Menu {
-                        ForEach(model.choices(model.configFolders, current: entry.configDir), id: \.path) { c in
-                            let owner = FolderRules.configOwner(c.path, among: model.accounts, except: entry.id)
-                            Button {
-                                entry.configDir = c.path
-                            } label: {
-                                Text(c.title + (owner.map { "  —  used by \($0.name)" } ?? FolderKey.canonical(c.path) == FolderKey.canonical(entry.configDir) ? "  ✓" : ""))
-                            }
-                            .disabled(owner != nil)
-                        }
-                        Divider()
-                        Button("Choose another folder…") { useFolder(pickFolder()) }
-                    } label: { MenuWell(text: entry.configDir.isEmpty ? "Choose…" : entry.configDir, mono: true, fill: true) }
-                    .faceMenuFill()
-                    Button { useFolder(pickFolder()) } label: { Image(systemName: "folder").font(.system(size: 10.5)) }
-                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Choose another folder…")
-                        .fixedSize()                                  // the key stays at the row's end
+                // the folder key beside the pop-up while the whole path fits; in a narrow column the pop-up alone (its
+                // menu has "Choose another folder…" too)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 6) {
+                        folderMenu
+                        Button { useFolder(pickFolder()) } label: { Image(systemName: "folder").font(.system(size: 10.5)) }
+                            .buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Choose another folder…")
+                            .fixedSize()                              // the key stays at the row's end
+                    }
+                    folderMenu
                 }
             }
             loginRows
         }
+    }
+
+    /// The Folder pop-up: the folders found, each marked when another profile uses it, then "Choose another folder…".
+    private var folderMenu: some View {
+        Menu {
+            ForEach(model.choices(model.configFolders, current: entry.configDir), id: \.path) { c in
+                let owner = FolderRules.configOwner(c.path, among: model.accounts, except: entry.id)
+                Button {
+                    entry.configDir = c.path
+                } label: {
+                    Text(c.title + (owner.map { "  —  used by \($0.name)" } ?? FolderKey.canonical(c.path) == FolderKey.canonical(entry.configDir) ? "  ✓" : ""))
+                }
+                .disabled(owner != nil)
+            }
+            Divider()
+            Button("Choose another folder…") { useFolder(pickFolder()) }
+        } label: { MenuWell(text: entry.configDir.isEmpty ? "Choose…" : entry.configDir, mono: true, fill: true) }
+        .faceMenuFill()
     }
 
     /// The folder is signed in to another account than the one the profile is linked to (or nil).
@@ -1349,7 +1359,7 @@ struct AccountSettings: View {
                     SwatchRow(colors: TileColor.allCases, selected: entry.frame, none: true) { entry.frame = $0 }
                 }
                 SRow(label: "Claude open dot", info: "An orange dot at the Dock icon's top-left corner while this profile's Claude window is open.") {
-                    SSwitch(isOn: $entry.windowDot, on: "while its window is open", off: "none")
+                    SSwitch(isOn: $entry.windowDot, on: "while its window is open", off: "none", onShort: "window open")
                 }
                 PreviewStrip(caption: "not running, then as the limit fills up", items: dockPreview)
             }
@@ -1446,12 +1456,14 @@ struct AccountSettings: View {
         return SCard(title: "Claude window", info: "\(name)'s Claude window: its own (own sign-in, chats and settings), or the usual Claude app for ~/.claude. Whether it goes with the Dock icon and what may open it; the cl_audit agent does this, whether or not cl_audit is open.") {
             SRow(label: "Claude window", info: "On: a Claude window signed in to \(name)'s account; open it from the dashboard, the Dock icon or the menu bar icon. Off: none, and nothing opens one; its folder and sign-in are kept, so turning it back on needs no new sign-in.", first: true) {
                 SSwitch(isOn: Binding(get: { entry.claudeWindow }, set: { model.setClaudeWindow(entry.id, $0) }),
-                        on: entry.desktop == .standard ? "the usual Claude app" : "its own window", off: "none")
+                        on: entry.desktop == .standard ? "the usual Claude app" : "its own window", off: "none",
+                        onShort: entry.desktop == .standard ? "the usual app" : nil)
                     .disabled(model.dockRestarting != nil)
             }
             if entry.claudeWindow {
                 SRow(label: "With Dock icon", info: "On: quitting \(name)'s Dock icon quits its window too (Claude can ask about unsent work first; the Dock icon's menu then has “Quit and keep Claude window”), and, with Opens from ▸ Dock click too, starting the Dock icon (a click on its Dock tile, or its switch on the dashboard) opens the window. Not at login.") {
-                    SSwitch(isOn: $entry.windowFollowsDock, on: entry.opensFromDock ? "opens and quits with it" : "quits with it", off: "on its own")
+                    SSwitch(isOn: $entry.windowFollowsDock, on: entry.opensFromDock ? "opens and quits with it" : "quits with it", off: "on its own",
+                            onShort: entry.opensFromDock ? "follows it" : nil)
                         .disabled(entry.iconHidden)
                 }
                 if entry.iconHidden { SRowLine(text: "No Dock icon to go with: Usage in the Dock is off.") }
