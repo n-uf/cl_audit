@@ -140,7 +140,9 @@ struct SwitchPage: View {
     private var name: String { entry.name.isEmpty ? "this profile" : entry.name }
     /// The account it switches from (once switched, the one the receipt names).
     private var from: String {
-        AccountNames.short(runner.receipt?.from.email ?? entry.seat?.email ?? Account.expectedEmail(configDir: entry.configDir) ?? "its account")
+        // the receipt names accounts by id only: once switched, the account it came from is the one on standby
+        let was = runner.receipt.flatMap { r in r.from.same(entry.seat) ? nil : entry.standby.first { r.from.same($0.seat) }?.email }
+        return AccountNames.short(was ?? entry.seat?.email ?? Account.expectedEmail(configDir: entry.configDir) ?? "its account")
     }
     private var to: String { AccountNames.short(standby.email) }
 
@@ -180,7 +182,7 @@ struct SwitchPage: View {
         // once switched, the account it came from is the one standing by
         let switched = entry.seat.map { $0.same(standby.seat) } ?? false
         let cameFrom = runner.receipt?.from
-        let other: StandbyAccount? = switched ? entry.standby.first(where: { s in cameFrom.map { s.seat?.same($0) ?? false } ?? false }) : standby
+        let other: StandbyAccount? = switched ? entry.standby.first(where: { s in cameFrom?.same(s.seat) ?? false }) : standby
         let otherStatus = other.flatMap { Store.status(for: entry, standby: $0) }
         return SCard(title: "Accounts", info: "The account \(name) works on now, and the one it would switch to, with their limits as cl_audit last read them.") {
             VStack(alignment: .leading, spacing: 8) {
