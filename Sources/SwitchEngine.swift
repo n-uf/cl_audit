@@ -163,16 +163,20 @@ enum SwitchEngine {
     }
 
     private static func moveAll(_ p: SwitchPlan, _ r: inout SwitchReceipt, dir: URL, windowClosed: () -> Bool) throws {
-        guard p.sessionsFollow, !p.move.isEmpty else { return }
-        // their groups and pins, from the window's mirror (the window is closed, so it's current), before anything moves
-        r.sidebar = p.sidebar()
-        try save(r)
-        try FileManager.default.createDirectory(atPath: p.targetDir, withIntermediateDirectories: true)
+        guard p.sessionsFollow else { return }
+        let hasTasks = !tasks(in: p.sourceDir).isEmpty
+        if !p.move.isEmpty || hasTasks { try FileManager.default.createDirectory(atPath: p.targetDir, withIntermediateDirectories: true) }
+        if !p.move.isEmpty {
+            // their groups and pins, from the window's mirror (the window is closed, so it's current), before anything moves
+            r.sidebar = p.sidebar()
+            try save(r)
+        }
         for name in p.move {
             guard windowClosed() else { throw SwitchError.windowOpen }
             do { try moveEntry(name, p, parked: dir.appendingPathComponent("parked"), &r) }
-            catch { r.problems.append("\(name): \(error)"); try save(r) }
+            catch { r.problems.append("\(name) didn't move: \(error)."); try save(r) }
         }
+        // the scheduled tasks, also when there's no session to move
         guard windowClosed() else { throw SwitchError.windowOpen }
         if !tasks(in: p.sourceDir).isEmpty { try moveTasks(p, backups: dir, &r) }
         let placed = r.steps.filter { $0.kind == .entry && $0.done }.map(\.path)
@@ -220,6 +224,8 @@ enum SwitchEngine {
         } catch {
             if (try? Data(contentsOf: URL(fileURLWithPath: dst))).map(sha) == sha(data), (try? fm.removeItem(atPath: dst)) != nil {
                 r.steps.remove(at: i)                          // the copy taken away: as if never placed
+            } else if fm.fileExists(atPath: dst) && fm.fileExists(atPath: src) {
+                r.problems.append("\(name) is in both accounts: its copy couldn't be taken away. Undo takes it away.")
             }
             try save(r)
             throw error
@@ -314,7 +320,11 @@ enum SwitchEngine {
         r.steps.append(SwitchReceipt.Step(kind: .pointer, path: transcript, sha: sha(bytes), parked: nil, original: nil,
                                           offset: size, bytes: bytes.base64EncodedString(), dev: UInt64(st.st_dev), ino: UInt64(st.st_ino)))
         let i = r.steps.count - 1
-        try? save(r)
+        do { try save(r) } catch {                             // not written down: not written
+            r.steps.remove(at: i)
+            r.problems.append("Session \(cli): its Remote Control pointer is left as it is (the receipt couldn't be saved).")
+            return
+        }
         let n = bytes.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
         var after = stat()
         guard n == bytes.count else {
@@ -328,24 +338,49 @@ enum SwitchEngine {
     }
 
     /// Why a transcript may be being written, or nil: changed in the last 10 seconds, open in a process, or a Claude Code
-    /// process runs that session.
+    /// process runs that session. A check that can't finish counts as busy.
+    ///
+    /// pgrep sees a Claude Code process only when the session id is on its command line (`--resume <id>`,
+    /// `--session-id <id>`); one resumed from its own picker, or with `--continue`, isn't seen. The transcript's age and
+    /// its open files are checked for those, and the line is one O_APPEND write either way.
     static func busy(_ transcript: String, cli: String, now: Date = Date()) -> String? {
         if let m = (try? FileManager.default.attributesOfItem(atPath: transcript))?[.modificationDate] as? Date,
            now.timeIntervalSince(m) < 10 { return "its transcript changed seconds ago" }
-        if run("/usr/sbin/lsof", ["-t", "--", transcript]) { return "its transcript is open in another program" }
-        if run("/usr/bin/pgrep", ["-f", "--", cli]) { return "Claude Code runs it" }
+        // lsof -S 2: its own time limit for kernel calls (-b isn't used: it can't then find a file named by path)
+        switch probe("/usr/sbin/lsof", ["-S", "2", "-t", "--", transcript]) {
+        case .found: return "its transcript is open in another program"
+        case .unknown: return "it couldn't be checked whether its transcript is open"
+        case .none: break
+        }
+        switch probe("/usr/bin/pgrep", ["-f", "--", cli]) {
+        case .found: return "Claude Code runs it"
+        case .unknown: return "it couldn't be checked whether Claude Code runs it"
+        case .none: break
+        }
         return nil
     }
 
-    /// Whether a command finds something (exit 0).
-    private static func run(_ tool: String, _ args: [String]) -> Bool {
+    enum Probe { case found, none, unknown }
+
+    /// Whether a command finds something (exit 0), within `limit` seconds: past it, only that command (cl_audit's own
+    /// child) is stopped, and the answer is unknown.
+    static func probe(_ tool: String, _ args: [String], limit: TimeInterval = 5) -> Probe {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: tool)
         p.arguments = args
         p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return false }
-        p.waitUntilExit()
-        return p.terminationStatus == 0
+        guard (try? p.run()) != nil else { return .unknown }
+        let deadline = Date().addingTimeInterval(limit)
+        while p.isRunning && Date() < deadline { usleep(50_000) }
+        if p.isRunning {
+            p.terminate()
+            let grace = Date().addingTimeInterval(1)
+            while p.isRunning && Date() < grace { usleep(50_000) }
+            if p.isRunning { kill(p.processIdentifier, SIGKILL) }
+            p.waitUntilExit()
+            return .unknown
+        }
+        return p.terminationStatus == 0 ? .found : .none
     }
 
     private static func endsWithNewline(_ path: String, size: UInt64) -> Bool {
@@ -500,7 +535,7 @@ enum SwitchEngine {
 
     struct Lock {
         let fd: Int32
-        let transplant: Int32                // claude-transplant's lock, held too (-1: it has none)
+        let transplant: Int32                // claude-transplant's lock, held too
         /// A file lock holds against other processes only; this holds within cl_audit.
         private static let inProcess = NSLock()
         private static var held = false
@@ -515,21 +550,23 @@ enum SwitchEngine {
             let fd = open(root.appendingPathComponent(".lock").path, O_CREAT | O_RDWR, 0o600)
             guard fd >= 0 else { throw SwitchError.busy("Couldn't take the switch lock.") }
             guard lockf(fd, F_TLOCK, 0) == 0 else { close(fd); throw SwitchError.busy("Another switch is under way.") }
-            var t: Int32 = -1
-            let ct = expand("~/Library/Application Support/claude-transplant/lock")
-            if FileManager.default.fileExists(atPath: ct) {
-                t = open(ct, O_RDONLY | O_NOFOLLOW)
-                if t >= 0, flock(t, LOCK_EX | LOCK_NB) != 0 {
-                    close(t); lockf(fd, F_ULOCK, 0); close(fd)
-                    throw SwitchError.busy("claude-transplant is moving sessions; wait for it to finish.")
-                }
+            // claude-transplant 4.2.1 runs `/usr/bin/lockf -k -s -w -t 0 <its folder>/lock …` (a flock; -k keeps the file
+            // between runs), or perl's flock on the same file, and makes the folder and the file when they're missing. cl_audit
+            // makes them too, so a claude-transplant that starts mid-switch finds the lock held, even on its first run.
+            let ctDir = expand("~/Library/Application Support/claude-transplant")
+            try? FileManager.default.createDirectory(atPath: ctDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+            let t = open((ctDir as NSString).appendingPathComponent("lock"), O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
+            guard t >= 0 else { lockf(fd, F_ULOCK, 0); close(fd); throw SwitchError.busy("Couldn't check claude-transplant's lock.") }
+            guard flock(t, LOCK_EX | LOCK_NB) == 0 else {
+                close(t); lockf(fd, F_ULOCK, 0); close(fd)
+                throw SwitchError.busy("claude-transplant is moving sessions; wait for it to finish.")
             }
             held = true
             return Lock(fd: fd, transplant: t)
         }
 
         func release() {
-            if transplant >= 0 { flock(transplant, LOCK_UN); close(transplant) }
+            flock(transplant, LOCK_UN); close(transplant)
             lockf(fd, F_ULOCK, 0); close(fd)
             Self.inProcess.lock(); Self.held = false; Self.inProcess.unlock()
         }
