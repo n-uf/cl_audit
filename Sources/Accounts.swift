@@ -23,6 +23,12 @@ struct StandbyAccount: Codable, Equatable, Hashable, Identifiable {
     static func newID() -> String { String(UUID().uuidString.lowercased().filter(\.isHexDigit).prefix(8)) }
 }
 
+/// One element of a list read on its own: nil when it can't be read, so the rest of the list still is.
+struct Lossy<T: Decodable>: Decodable {
+    let value: T?
+    init(from decoder: Decoder) throws { value = try? T(from: decoder) }
+}
+
 extension AccountEntry {
     /// The saved status of one of its standby accounts.
     static func standbyStatusID(_ profile: String, _ standby: String) -> String { "\(profile)~\(standby)" }

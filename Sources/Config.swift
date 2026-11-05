@@ -143,7 +143,13 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         showFable = try c.decodeIfPresent(Bool.self, forKey: .showFable) ?? true
         menuBar = try c.decodeIfPresent(Bool.self, forKey: .menuBar) ?? false
         menuBarLook = (try? c.decodeIfPresent(MenuBarLook.self, forKey: .menuBarLook)) ?? MenuBarLook()
-        standby = (try? c.decodeIfPresent([StandbyAccount].self, forKey: .standby)) ?? []
+        // one by one: an entry that can't be read is left out (and logged), the others stay
+        let raw = (try? c.decodeIfPresent([Lossy<StandbyAccount>].self, forKey: .standby)) ?? []
+        standby = raw.compactMap(\.value)
+        if raw.count != standby.count {
+            let profile = id, dropped = raw.count - standby.count
+            agentLog.error("profile \(profile, privacy: .public): \(dropped) standby account(s) couldn't be read and were left out")
+        }
         sessionsFollow = try c.decodeIfPresent(Bool.self, forKey: .sessionsFollow) ?? true
         if let action = try c.decodeIfPresent(ClickAction.self, forKey: .clickAction) {
             clickAction = action
