@@ -155,6 +155,32 @@ enum NewAccountSetup {
         return d.seatAtAsk.map { s.same($0) } ?? false
     }
 
+    /// Who is signed in in a folder, for the Folder pop-ups (New profile and Settings ▸ a profile ▸ Claude Code).
+    static func folderWho(_ p: String) -> String {
+        switch FolderKind.of(p) {
+        case .claudeCode(let e): return e.map { Privacy.masked($0) } ?? "not signed in"
+        case .empty: return "empty"
+        case .missing: return "doesn't exist"
+        case .other: return "not a Claude Code folder"
+        }
+    }
+
+    /// What a Claude Code folder has of the items New profile can link: linked from another folder (which one), its own,
+    /// or not there. Read only: it looks at the links and changes nothing.
+    enum SharedState: Equatable { case linked(from: String), own, missing }
+
+    static func sharedItems(in configDir: String) -> [(item: SharedItem, state: SharedState)] {
+        let dir = expand(configDir), fm = FileManager.default
+        return SharedItem.allCases.map { item in
+            let p = (dir as NSString).appendingPathComponent(item.rawValue)
+            if let dest = try? fm.destinationOfSymbolicLink(atPath: p) {
+                let target = dest.hasPrefix("/") ? dest : ((dir as NSString).appendingPathComponent(dest) as NSString).standardizingPath
+                return (item, .linked(from: tilde((target as NSString).deletingLastPathComponent)))
+            }
+            return (item, fm.fileExists(atPath: p) ? .own : .missing)
+        }
+    }
+
     /// Everything the Checks card shows, in order. Any `.bad` line blocks Create/Connect and Finish.
     static func checks(_ d: NewAccountDraft, accounts: [AccountEntry], runs: [ClaudeRun], checked: Bool) -> [SetupCheck] {
         var out: [SetupCheck] = []
@@ -628,10 +654,10 @@ struct NewAccountView: View {
                 if let dir = NewAccountSetup.freeFolder(for: draft.email, among: model.accounts), !draft.started {
                     return ("\(Privacy.masked(draft.email)) is signed in in \(dir) already: pick it in the pop-up to use that folder as it is.", nil)
                 }
-                return ("Signs in through Claude Code in Terminal, in \(draft.started ? draft.configDir : "a new folder"). The browser's claude.ai account decides: switch it there first if it shows another one.", nil)
+                return ("Claude Code signs in through Terminal; the browser's claude.ai account decides.", nil)
             }
             if waiting {
-                return ("Finish signing in as \(Privacy.masked(draft.email)) in the browser. If it shows another claude.ai account, switch it there first.", nil)
+                return ("Finish in the browser as \(Privacy.masked(draft.email)); switch its claude.ai account first if needed.", nil)
             }
             // a free account picked: say what Connect does before it's done (its sign-in is already there)
             if draft.source == .existing, !draft.started, let dir = draft.existingDir,
@@ -648,7 +674,7 @@ struct NewAccountView: View {
                 return nil
             }
             if draft.source == .existing, let dir = draft.existingDir { return ("Connects \(dir) as it is: its sign-in, settings and history stay.", nil) }
-            if freeAccounts.isEmpty { return ("No free Claude Code folder is signed in on this Mac: Sign in to another account… in the pop-up.", nil) }
+            if freeAccounts.isEmpty { return ("No free folder here is signed in: Sign in to another account… in the pop-up.", nil) }
             return nil
         }()
         if let text { SRowLine(text: text.0, color: text.1) }
@@ -688,14 +714,7 @@ struct NewAccountView: View {
     }
 
     /// Who is signed in in a folder, for the Folder pop-up.
-    private func folderWho(_ p: String) -> String {
-        switch FolderKind.of(p) {
-        case .claudeCode(let e): return e.map { Privacy.masked($0) } ?? "not signed in"
-        case .empty: return "empty"
-        case .missing: return "doesn't exist"
-        case .other: return "not a Claude Code folder"
-        }
-    }
+    private func folderWho(_ p: String) -> String { NewAccountSetup.folderWho(p) }
 
     /// Sign in (the address route): the new folder is made if it isn't yet, then Terminal runs Claude Code's sign-in
     /// for it with the address filled in. The result is checked afterwards, by account and organisation ids.
