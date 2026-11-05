@@ -11,7 +11,8 @@ import WidgetKit
 //   --agent-status | --agent-register | --agent-unregister   the cl_audit agent's background item, for checking
 //   --forget-login-item          (in a Dock icon copy) remove the login item older versions registered for it
 //   --cleanup [--dry-run]        the agent's clean-up now (or only list what it would remove)
-//   --post-alert ID TITLE [BODY [THREAD]]   (run by the agent) one alert from cl_audit, if alerts are allowed
+//   --post-alert ID TITLE [BODY [THREAD [SWITCH_KEY BUTTON]]]   (run by the agent) one alert from cl_audit, if alerts
+//                                are allowed; with a switch key, a "Switch to …" button that opens the Switch page
 //   --uninstall [--yes] [--delete-folders=ID,ID]   list what Uninstall removes, or (--yes) do it
 
 let args = CommandLine.arguments
@@ -101,12 +102,16 @@ if args.count >= 4, args[1] == "--post-alert" {
     let center = UNUserNotificationCenter.current()
     let done = DispatchSemaphore(value: 0)
     var code: Int32 = 1
+    // ... [SWITCH_KEY BUTTON]: a "Switch to …" button (and Later), answered by cl_audit's window (SwitchView.swift)
+    let switchKey = args.count > 7 && !args[6].isEmpty ? args[6] : nil
+    let category = switchKey.map { SwitchAlert.register(key: $0, button: args[7], center: center) }
     center.getNotificationSettings { s in
         guard s.authorizationStatus == .authorized || s.authorizationStatus == .provisional else { code = 2; done.signal(); return }
         let c = UNMutableNotificationContent()
         c.title = args[3]
         if args.count > 4, !args[4].isEmpty { c.body = args[4] }
         if args.count > 5 { c.threadIdentifier = args[5] }
+        if let switchKey, let category { c.categoryIdentifier = category; c.userInfo = [SwitchAlert.keyField: switchKey] }
         c.sound = .default
         center.add(UNNotificationRequest(identifier: args[2], content: c, trigger: nil)) { err in code = err == nil ? 0 : 1; done.signal() }
     }

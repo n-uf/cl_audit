@@ -241,12 +241,15 @@ struct CardLimits: View {
     let design: PanelDesign
     var large = false
     var credits: Credits? = nil
+    /// While a limit is full: another of the profile's accounts with room (Switch.swift), under the box.
+    var offer: CardOffer? = nil
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 15)) { ctx in
             VStack(alignment: .leading, spacing: large ? 10 : 8) {
                 if let full = AtLimit.blocker(limits, now: ctx.date) {
                     FullLimitsView(limits: limits, design: design, full: full, now: ctx.date)
+                    if let offer { CardOfferRow(offer: offer) }
                 } else {
                     LimitsView(limits: limits, design: design, large: large)
                 }

@@ -360,6 +360,16 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         if p.entry.claudeWindow { add("Open Claude window", #selector(openClaude(_:))) }
         add("Refresh now", #selector(refreshNow(_:)))
         if p.expired { add("Renew login now (uses a little usage)", #selector(renewLogin(_:))) }
+        // the profile's other accounts (Accounts.swift): each opens cl_audit's Switch page
+        let offers = p.entry.switchOffers()
+        if !offers.isEmpty {
+            menu.addItem(.separator())
+            for o in offers {
+                let i = NSMenuItem(title: "Switch to \(o.short)…", action: #selector(switchAccount(_:)), keyEquivalent: "")
+                i.target = self; i.representedObject = o.key
+                menu.addItem(i)
+            }
+        }
         menu.addItem(.separator())
         add("Dashboard", #selector(dashboard(_:)))
         add("Profile settings…", #selector(settings(_:)))
@@ -375,6 +385,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
     @objc private func refreshNow(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { refresh(id) } }
     @objc private func renewLogin(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { renew(id) } }
     @objc private func dashboard(_ sender: NSMenuItem) { Installer.openDashboard() }
+    @objc private func switchAccount(_ sender: NSMenuItem) { if let k = sender.representedObject as? String { Installer.openSwitch(k) } }
     @objc private func settings(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { Installer.openSettings(account: id) } }
     /// Its switch off, as in the profile's settings (saved to the profiles file; the agent then removes the icon).
     @objc private func hide(_ sender: NSMenuItem) {

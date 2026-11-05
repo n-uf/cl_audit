@@ -195,7 +195,24 @@ final class SettingsModel: ObservableObject {
 
     /// A selection that still points at something: an account, the Dashboard tile, or a new account being set up.
     func isValid(_ id: String?) -> Bool {
-        id == Self.dashboardID || (id == Self.newID && draft != nil) || accounts.contains { $0.id == id }
+        id == Self.dashboardID || (id == Self.newID && draft != nil) || (id == Self.switchID && switchTarget != nil)
+            || accounts.contains { $0.id == id }
+    }
+
+    /// The Switch page (Switch.swift): which profile and which of its standby accounts ("<profile>~<id>").
+    @Published var switching: String?
+    static let switchID = "__switch__"
+
+    /// The profile and standby account the Switch page is about, while both still exist.
+    var switchTarget: (entry: AccountEntry, standby: StandbyAccount)? {
+        guard let k = switching, let p = SwitchOffer.parse(k), let e = accounts.first(where: { $0.id == p.profile }),
+              let s = e.standby.first(where: { $0.id == p.standby }) else { return nil }
+        return (e, s)
+    }
+
+    func showSwitch(_ key: String) {
+        switching = key
+        selection = switchTarget == nil ? Self.dashboardID : Self.switchID
     }
 
     /// Settings opened from inside the app: the Dashboard tile, unless a new account is being set up.
@@ -526,6 +543,9 @@ struct SettingsPage: View {
                 let w = geo.size.width - 32
                 if model.selection == SettingsModel.dashboardID {
                     DashboardSettings(width: w).padding(.horizontal, 16).padding(.vertical, 14)
+                } else if model.selection == SettingsModel.switchID, let t = model.switchTarget {
+                    SwitchPage(entry: t.entry, standby: t.standby, model: model, width: w)
+                        .padding(.horizontal, 16).padding(.vertical, 14)
                 } else if let id = model.selection, let entry = model.binding(id) {
                     // one identity per profile: switching tabs starts with fresh view state (a half-typed name, the
                     // Dock restart pulse, an open (i)), so nothing from one profile shows up, or is saved, on another
@@ -602,6 +622,7 @@ struct SettingsStatus: View {
             else if let done = model.savedNote { DisplayWindow(text: "Saved", dim: "· \(done)", tone: .ok, height: h, width: w) }
             else if model.unsaved != nil || model.problem != nil { DisplayWindow(text: "Not saved", dim: "· see below", tone: .warn, height: h, width: w) }
             else if model.selection == SettingsModel.newID { DisplayWindow(text: "New profile", dim: "· not added yet", height: h, width: w) }
+            else if model.selection == SettingsModel.switchID { DisplayWindow(text: "Switch", dim: "· nothing changes yet", height: h, width: w) }
             else if let id = model.selection, let e = model.accounts.first(where: { $0.id == id }) { profileState(e, w: w, h: h) }
             else { DisplayWindow(text: "Saved", dim: "· as you change", height: h, width: w) }
         }

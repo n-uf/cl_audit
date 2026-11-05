@@ -345,6 +345,7 @@ struct LauncherActions {
     var quitUsage: (AccountRow) -> Void = { _ in }
     var profileSettings: (AccountRow) -> Void = { _ in }
     var moveProfile: ([String]) -> Void = { _ in }         // a card dropped: the profiles in this order (saved)
+    var switchAccount: (String) -> Void = { _ in }         // the Switch page for "<profile>~<standby account>" (Switch.swift)
 }
 
 /// Starts the cl_audit agent from the cl_audit window: when the window opens, and whenever the agent's mark has been
@@ -936,7 +937,15 @@ struct AccountCard: View {
             ProfileControls(row: row, actions: actions)
             // one style for every card on the dashboard (Settings ▸ General); each profile's panel design is for its panels
             // while a limit is full: the limits on the left and one box with when it's back (AtLimit.swift)
-            CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits)
+            // a full limit and another of the profile's accounts with room: "Switch to ultra-2…" under the box
+            CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits,
+                       offer: row.entry.bestOffer().map { CardOffer($0, open: actions.switchAccount) })
+            // its standby accounts' limits, small (Accounts.swift)
+            ForEach(row.entry.switchOffers(), id: \.key) { o in
+                if let e = row.entry.readerEntry(for: o.standby), o.status?.weekly != nil || o.status?.fiveHour != nil {
+                    StandbyLimits(email: o.standby.email, limits: AccountRow(entry: e, status: o.status).limits, design: prefs.cardStyle)
+                }
+            }
           }
             Spacer(minLength: 12)         // cards in a row share one height; the buttons stay at the bottom
             HStack(spacing: 7) {
@@ -1072,7 +1081,8 @@ final class ManagerUI {
         profileSettings: { [weak self] r in self?.showMain(page: .settings, account: r.id) },
         moveProfile: { [weak self] ids in                       // the tile bar's own save; not saved: the cards go back
             if self?.settings.setOrder(ids) == false { withAnimation { self?.model.reload() } }
-        })
+        },
+        switchAccount: { [weak self] key in self?.showSwitch(key) })
 
     var paletteShown: Bool { palette?.isVisible == true }
     var dashboardShown: Bool { mainWindow?.isVisible == true && mainWindow?.isMiniaturized == false }
@@ -1210,6 +1220,14 @@ final class ManagerUI {
         NSApp.activate(ignoringOtherApps: true)
         w.makeKeyAndOrderFront(nil)
         model.reload()
+    }
+
+    /// The Switch page (Switch.swift) for "<profile>~<standby account>", in Settings.
+    func showSwitch(_ key: String) {
+        let profile = SwitchOffer.parse(key)?.profile
+        showMain(page: .settings, account: profile)
+        settings.reloadIfClean()
+        settings.showSwitch(key)
     }
 
     func showMain(page: MainPage = .dashboard, account: String? = nil) {

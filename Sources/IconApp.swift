@@ -108,6 +108,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                                 name: Installer.openSettingsNote, object: nil)
             DistributedNotificationCenter.default().addObserver(self, selector: #selector(showMainScreen),
                                                                 name: Installer.openDashboardNote, object: nil)
+            DistributedNotificationCenter.default().addObserver(self, selector: #selector(showSwitchPage(_:)),
+                                                                name: Installer.openSwitchNote, object: nil)
             // A profile's style, colour or frame changed (here or in its Dock icon's menu): redraw its icon file, now
             // for a stopped Dock icon app, when it quits for a running one.
             DistributedNotificationCenter.default().addObserver(forName: Store.changed, object: nil, queue: .main) { _ in
@@ -138,7 +140,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                     }
                 }
             }
-            if CommandLine.arguments.contains("--settings") {
+            launched = true
+            if let key = CommandLine.arguments.first(where: { $0.hasPrefix("--switch=") }).map({ String($0.dropFirst("--switch=".count)) }) {
+                manager.showSwitch(key)                    // from a menu's or an alert's "Switch to …" while cl_audit was closed
+            } else if let key = pendingSwitch {
+                pendingSwitch = nil; manager.showSwitch(key)
+            } else if CommandLine.arguments.contains("--settings") {
                 let account = CommandLine.arguments.first { $0.hasPrefix("--account=") }.map { String($0.dropFirst("--account=".count)) }
                 manager.showMain(page: .settings, account: account)
             } else { manager.showMain() }
@@ -215,6 +222,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         manager.showMain(page: .settings, account: (note as? Notification)?.object as? String)
     }
     @objc func showMainScreen() { manager.showMain() }
+    /// A Dock icon's or the menu bar icon's "Switch to …" (object: "<profile>~<standby account>").
+    @objc func showSwitchPage(_ note: Notification) {
+        guard let key = note.object as? String else { return }
+        manager.closePalette()
+        manager.showSwitch(key)
+    }
+
+    /// An alert's Switch button that started cl_audit: shown once the window is up.
+    var pendingSwitch: String?
+    var launched = false
+
+    func applicationWillFinishLaunching(_ note: Notification) {
+        // alerts' buttons ("Switch to ultra-2") come to cl_audit's own window; set before launching ends, so a button
+        // that started cl_audit still arrives
+        if isSettingsApp { UNUserNotificationCenter.current().delegate = self }
+    }
     /// Settings ▸ General with the Uninstall sheet.
     @objc func showUninstall() {
         manager.showMain(page: .settings)
@@ -459,6 +482,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         add("Refresh now", #selector(refreshNow))
         if expired { add(renewing ? "Renewing login…" : "Renew login now (uses a little usage)", #selector(renewLogin), enabled: !renewing) }
+        // the profile's other accounts (Accounts.swift): each opens cl_audit's Switch page
+        let offers = entry.switchOffers()
+        if !offers.isEmpty {
+            m.addItem(.separator())
+            for o in offers {
+                let i = NSMenuItem(title: "Switch to \(o.short)…", action: #selector(switchAccount(_:)), keyEquivalent: "")
+                i.target = self; i.representedObject = o.key
+                if let used = o.used { i.toolTip = "\(o.short): \(Int(used.rounded()))% used" }
+                m.addItem(i)
+            }
+        }
         m.addItem(.separator())
         add("Dashboard", #selector(showDashboard))
         add("Profile settings…", #selector(showSettings))
@@ -483,6 +517,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                                      deliverImmediately: true)
     }
     @objc func showSettings() { Installer.openSettings(account: accountID) }
+    @objc func switchAccount(_ sender: NSMenuItem) { if let k = sender.representedObject as? String { Installer.openSwitch(k) } }
     @objc func showDashboard() { details.close(); Installer.openDashboard() }
     @objc func logIn() {
         guard let claude = ClaudeCLI.find() else { NSSound.beep(); return }

@@ -749,6 +749,26 @@ enum Installer {
         }
     }
 
+    /// Asks cl_audit to show the Switch page (Switch.swift) for "<profile>~<standby account>".
+    static let openSwitchNote = Notification.Name("local.usage-n-uf.open-switch")
+
+    /// Open cl_audit on the Switch page for `key` ("<profile>~<standby account>"): from a Dock icon's menu, the menu
+    /// bar icon's, or the alert's Switch button.
+    static func openSwitch(_ key: String) {
+        if #available(macOS 14, *) { NSApp.yieldActivation(toApplicationWithBundleIdentifier: managerID) }
+        if !NSRunningApplication.runningApplications(withBundleIdentifier: managerID).isEmpty {
+            DistributedNotificationCenter.default().postNotificationName(openSwitchNote, object: key, userInfo: nil,
+                                                                         deliverImmediately: true)
+            NSWorkspace.shared.runningApplications.first { $0.bundleIdentifier == managerID }?.activate(options: [])
+        } else if let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: managerID) {
+            let cfg = NSWorkspace.OpenConfiguration()
+            cfg.arguments = ["--switch=\(key)"]
+            NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, _ in }
+        } else {
+            NSSound.beep()
+        }
+    }
+
     /// Runs a tool and waits for it; with `timeout`, stops it after that many seconds (and returns -1).
     @discardableResult
     static func run(_ tool: String, _ args: [String], timeout: TimeInterval? = nil) -> Int32 {

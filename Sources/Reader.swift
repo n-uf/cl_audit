@@ -362,9 +362,13 @@ final class UsageReader {
             guard !alerting.contains(k) else { continue }
             alerting.insert(k)
             let c = UNMutableNotificationContent()
+            // the 5-hour or weekly limit full holds the profile back: another of its accounts with room is offered,
+            // with a Switch button (Switch.swift); Fable's own limit doesn't hold it back
+            let offer = full && (key == "5h" || key == "wk") ? entry.bestOffer() : nil
             if full {
                 c.title = "Claude \(account.name): \(fullName) full"
-                c.body = resets.map { "Back \(Self.backWords($0)), in \(TimeWords.countdown($0))" } ?? "Reset time unknown"
+                let back = resets.map { "Back \(Self.backWords($0)), in \(TimeWords.countdown($0))" } ?? "Reset time unknown"
+                c.body = SwitchWords.alertLine(offer).map { "\(back). \($0)" } ?? back
             } else {
                 c.title = "Claude \(account.name): \(title) at \(Int(p.rounded()))%"
                 if let resets { c.body = "Resets \(Self.when(resets))" }
@@ -374,7 +378,7 @@ final class UsageReader {
             // sent by cl_audit's own program, so the alert comes from cl_audit in /Applications (the app System
             // Settings ▸ Notifications lists), not from this helper inside it
             DispatchQueue.global(qos: .utility).async {
-                let code = Self.post(id: "\(me).\(kind)\(key).\(mark)", title: c.title, body: c.body, thread: me)
+                let code = Self.post(id: "\(me).\(kind)\(key).\(mark)", title: c.title, body: c.body, thread: me, offer: offer)
                 DispatchQueue.main.async { [weak self] in
                     self?.alerting.remove(k)
                     if code == 0, self?.stopped != true { d.set(mark, forKey: k); if full { d.set(mark, forKey: levelKey) } }
@@ -482,13 +486,14 @@ final class UsageReader {
     /// Tests only: takes the alerts instead of macOS (id, title, body, thread).
     static var testPoster: ((String, String, String, String) -> Int32)?
 
-    /// Hands one alert to cl_audit's own program (UsageDock --post-alert). 0 sent, 2 not allowed, else failed.
-    static func post(id: String, title: String, body: String, thread: String) -> Int32 {
+    /// Hands one alert to cl_audit's own program (UsageDock --post-alert). 0 sent, 2 not allowed, else failed. With a
+    /// switch offer, the alert has its "Switch to …" button.
+    static func post(id: String, title: String, body: String, thread: String, offer: SwitchOffer? = nil) -> Int32 {
         if let t = testPoster { return t(id, title, body, thread) }
         guard let app = LegacyCleanup.agentParentApp() else { return 1 }
         let p = Process()
         p.executableURL = app.appendingPathComponent("Contents/MacOS/UsageDock")
-        p.arguments = ["--post-alert", id, title, body, thread]
+        p.arguments = ["--post-alert", id, title, body, thread] + (offer.map { [$0.key, SwitchWords.button($0)] } ?? [])
         p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
         guard (try? p.run()) != nil else { return 1 }
         let deadline = Date().addingTimeInterval(20)
