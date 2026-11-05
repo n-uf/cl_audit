@@ -159,6 +159,7 @@ struct SwitchPage: View {
 
     /// The window's sidebar for the account in use, counted off the main thread (the entries can be large).
     private func count() async {
+        counts = nil                                      // another profile's counts never show meanwhile
         let e = entry
         let dir = e.desktop == .standard ? FolderKey.standardDataDir : (Account(e).claudeUserDataDir ?? "")
         let account = FolderRules.windowAccount(e) ?? e.seat?.account ?? ""
@@ -173,7 +174,7 @@ struct SwitchPage: View {
         let target = Store.status(AccountEntry.standbyStatusID(entry.id, standby.id))
         // "Ultra · Personal", as in Settings ▸ Accounts
         func detail(_ st: IconStatus?, _ dir: String?) -> String {
-            let f = dir.flatMap { AccountFacts.of(configDir: $0) }
+            let f = dir.flatMap { FolderFactsCache.facts($0) }
             return [st?.plan.map(Account.planWords) ?? f?.plan, f?.org].compactMap { $0 }.joined(separator: " · ")
         }
         return SCard(title: "Accounts", info: "The account \(name) works on now, and the one it would switch to, with their limits as cl_audit last read them.") {

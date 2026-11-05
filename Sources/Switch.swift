@@ -100,7 +100,8 @@ struct SidebarCounts: Equatable {
         // the organisation the sidebar was set up for, else the one with the most sessions
         let orgs = ((try? fm.contentsOfDirectory(atPath: root)) ?? []).filter(AccountDiscovery.isUUID)
         let scoped = orgs.first { prefs.scopes.contains("\(account)/\($0)") }
-        let org = scoped ?? orgs.max { entries(root, $0).count < entries(root, $1).count }
+        let sizes = Dictionary(uniqueKeysWithValues: orgs.map { ($0, entries(root, $0).count) })     // each folder listed once
+        let org = scoped ?? orgs.max { sizes[$0, default: 0] < sizes[$1, default: 0] }
         guard let org else { return nil }
         var c = SidebarCounts()
         let odir = (root as NSString).appendingPathComponent(org)

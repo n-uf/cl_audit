@@ -938,10 +938,12 @@ struct AccountCard: View {
             // one style for every card on the dashboard (Settings ▸ General); each profile's panel design is for its panels
             // while a limit is full: the limits on the left and one box with when it's back (AtLimit.swift)
             // a full limit and another of the profile's accounts with room: "Switch to ultra-2…" under the box
+            // (its standby accounts read once per drawing: the best one with room is the first of them)
+            let offers = row.entry.switchOffers()
             CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits,
-                       offer: row.entry.bestOffer().map { CardOffer($0, open: actions.switchAccount) })
+                       offer: offers.first(where: \.room).map { CardOffer($0, open: actions.switchAccount) })
             // its standby accounts' limits, small (Accounts.swift)
-            ForEach(row.entry.switchOffers(), id: \.key) { o in
+            ForEach(offers, id: \.key) { o in
                 if let e = row.entry.readerEntry(for: o.standby), o.status?.weekly != nil || o.status?.fiveHour != nil {
                     StandbyLimits(email: o.standby.email, limits: AccountRow(entry: e, status: o.status).limits, design: prefs.cardStyle)
                 }
