@@ -240,7 +240,8 @@ struct WBar: View {
     var body: some View {
         switch design {
         case .segments:
-            let on = Int(((p ?? 0) / 100 * 12).rounded())
+            let v = p ?? 0
+            let on = v > 0 ? max(1, Int((v / 100 * 12).rounded())) : 0      // above 0 lights at least one
             HStack(spacing: 2) {
                 ForEach(0..<12, id: \.self) { i in
                     RoundedRectangle(cornerRadius: 1.5)

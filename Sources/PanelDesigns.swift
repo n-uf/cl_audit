@@ -194,7 +194,9 @@ struct SegmentBar: View {
     @Environment(\.face) private var face
 
     var body: some View {
-        let lit = Int(((p ?? 0) / 100 * Double(count)).rounded())
+        // the nearest number of segments, but anything above 0 lights the first one (3 % never reads as nothing)
+        let v = p ?? 0
+        let lit = v > 0 ? max(1, Int((v / 100 * Double(count)).rounded())) : 0
         HStack(spacing: 3) {
             ForEach(0..<count, id: \.self) { i in
                 let zone = Double(i + 1) / Double(count) * 100

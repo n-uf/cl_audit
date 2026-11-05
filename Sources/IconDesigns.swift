@@ -36,7 +36,8 @@ extension Painter {
             text(tag, sans(9.5, .bold), faint, x: 7, baseline: top + 12)
             text(num(p), sans(17, .heavy), .white, x: 58, baseline: top + 13.5, align: .right)
             let count = 8, gap: CGFloat = 1.5, w: CGFloat = (50 - gap * CGFloat(count - 1)) / CGFloat(count)
-            let lit = Int(((p ?? 0) / 100 * Double(count)).rounded())
+            let v = p ?? 0
+            let lit = v > 0 ? max(1, Int((v / 100 * Double(count)).rounded())) : 0      // above 0 lights at least one
             for i in 0..<count {
                 let r = NSRect(x: 7 + CGFloat(i) * (w + gap), y: top + 16.5, width: w, height: 5)
                 let seg = NSBezierPath(roundedRect: r, xRadius: 1.3, yRadius: 1.3)

@@ -8,6 +8,8 @@ the notes before updating.
 
 ## Unreleased
 
+- **A little use shows on segment meters.** Segments (the cards, panels, widget and the Dock icon's Segmented style)
+  light the nearest number, but anything above 0 % lights the first one: 3 % no longer looks like nothing.
 - **A profile can have more than one account.** Settings ▸ a profile ▸ Claude Code ▸ **Accounts** lists them, one
   box each with every limit its plan has as bars: the one in use (**IN USE**) and the others (**STANDBY**), whose
   limits come from a sign-in kept for each in a small Claude Code folder of its own and renewed by itself. **Add
