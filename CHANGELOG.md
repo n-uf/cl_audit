@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.0 — 2026-11-05
+
 - **Profile windows come back after a Claude update.** Claude's quiet updates quit every window and reopen only the
   standard one. The cl_audit agent now reopens the profile windows the update closed (not ones you closed), in the
   background, as soon as the new version is installed, and says so in one alert.
