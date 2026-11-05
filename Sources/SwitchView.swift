@@ -239,15 +239,30 @@ struct SwitchPage: View {
         }
     }
 
-    /// Which step is under way (1 to 4), or 5 when all are done; 0 before starting.
+    /// Which step is under way (1 to 5), or 6 when all are done; 0 before starting.
     private var at: Int {
         switch runner.phase {
         case .ready, .failed, .cancelled: return 0
         case .closing: return 1
         case .moving: return 2
         case .codeSignIn, .windowSignIn: return 3
-        case .done: return 5
+        case .sidebar: return 5
+        case .done: return arranges && runner.sidebarPlan != nil && !runner.sidebarOpened ? 5 : 6   // the sidebar still to do
         }
+    }
+
+    /// The sidebar step: there with Sessions follow on and a Claude window to arrange.
+    private var arranges: Bool { entry.sessionsFollow && entry.claudeWindow }
+
+    private var sidebarWords: String {
+        let ask = "Press Return in the session that opens, so the sidebar is arranged as before."
+        guard runner.receipt != nil else { return ask }                  // nothing moved yet
+        guard let p = runner.sidebarPlan else { return "Nothing to arrange: none of the moved sessions sat in a group or was pinned." }
+        func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
+        var what: [String] = []
+        if p.filed > 0 { what.append("\(n(p.filed, "session goes", "sessions go")) back in \(n(p.groups.count, "group", "groups"))") }
+        if !p.pinned.isEmpty { what.append("\(n(p.pinned.count, "session is", "sessions are")) pinned again") }
+        return "\(ask) \(what.joined(separator: "; ")). It may ask before each move, and archives itself when done."
     }
 
     private var stepsCard: some View {
@@ -258,13 +273,14 @@ struct SwitchPage: View {
             VStack(alignment: .leading, spacing: 0) {
                 step(1, "\(w) closes", "Only that window, for about half a minute; your other Claude windows stay open.")
                 step(2, "The sessions move to \(to)", entry.sessionsFollow
-                     ? "Same ids; nothing is copied. The sidebar's groups and pins are kept by claude.ai for each account."
+                     ? "Same ids; nothing is copied. Their groups and pins are noted for step 5."
                      : "Skipped: Sessions follow is off.")
                 step(3, code ? "Claude Code signs in as \(to)" : win ? "The window signs in as \(to)" : "Claude Code and the window sign in as \(to)",
                      code ? "Finish in the browser as \(Privacy.masked(standby.email)); Terminal shows Claude Code's sign-in."
                      : win ? "In the window: log out, then sign in as \(Privacy.masked(standby.email))."
                      : "Claude Code in Terminal and the browser, then the window's own sign-in.")
                 step(4, "\(name) works on \(to)", "Its numbers then are \(to)'s; \(from) waits on standby.")
+                if arranges { step(5, "The sidebar, as before", sidebarWords) }
             }
             keys.padding(.top, 8)
             if let line = statusLine { SRowLine(text: line, color: isFailed ? face.danger : nil) }
@@ -284,7 +300,8 @@ struct SwitchPage: View {
             guard entry.sessionsFollow, case .some(.some(let c)) = counts else { return "" }
             return " Its \(c.sessions + c.archived) sessions and \(c.tasks) scheduled tasks move to \(to), with a receipt to undo it."
         }()
-        return "\(entry.desktop == .standard ? "The usual Claude app" : "\(name)'s Claude window") closes.\(moved) Then Claude Code signs in as \(to) in Terminal and the browser, and the window opens for its own sign-in."
+        let sidebar = arranges ? " Once it's on \(to), a session opens there to arrange the sidebar: press Return in it." : ""
+        return "\(entry.desktop == .standard ? "The usual Claude app" : "\(name)'s Claude window") closes.\(moved) Then Claude Code signs in as \(to) in Terminal and the browser, and the window opens for its own sign-in.\(sidebar)"
     }
 
     private var statusLine: String? {
@@ -316,7 +333,15 @@ struct SwitchPage: View {
                 Spacer(minLength: 6)
                 Button("Show window") { Launcher.openClaude(Account(entry)) }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
                 Button("Done") { runner.finish() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            case .sidebar:
+                Button("Open it again") { runner.arrangeSidebar() }.buttonStyle(.plain).foregroundStyle(face.muted)
+                    .disabled(!runner.sidebarOpened)
+                Spacer(minLength: 6)
+                Button("Done") { runner.finish() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
             case .done:
+                if arranges, runner.sidebarPlan != nil, !runner.sidebarOpened {
+                    Button("Arrange the sidebar…") { runner.arrangeSidebar() }.buttonStyle(.plain).foregroundStyle(face.muted)
+                }
                 Spacer(minLength: 6)
                 Button("Back to \(name)") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
             }

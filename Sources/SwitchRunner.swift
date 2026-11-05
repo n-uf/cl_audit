@@ -6,9 +6,11 @@
 //      and Cancel puts the sessions back (Undo from the receipt)
 //   4. once the folder names that account, the profile works on it; the old account joins standby
 //   5. the window opens again; its own sign-out and sign-in to that account finish the switch
+//   6. on that account, a new Code session in the window arranges the sidebar as before (SwitchSidebar.swift): the
+//      operator presses Return in it
 //
 // After step 4 the way back is a switch the other way. The sidebar's groups, order and pins are synced per account
-// by claude.ai and aren't moved here.
+// by claude.ai, so cl_audit doesn't write them: the window's own sidebar tools do, in step 6.
 
 import AppKit
 
@@ -19,6 +21,7 @@ final class SwitchRunner: ObservableObject {
         case moving
         case codeSignIn                 // Terminal shows Claude Code's sign-in; waiting for the folder to name the account
         case windowSignIn               // switched; the window waits for its own sign-in to that account
+        case sidebar                    // the window is on it; a session there arranges the sidebar (one Return)
         case done
         case cancelled                  // the sessions went back (Undo)
         case failed(String)
@@ -29,6 +32,7 @@ final class SwitchRunner: ObservableObject {
     @Published private(set) var phase: Phase = .ready
     @Published private(set) var receipt: SwitchReceipt?
     @Published private(set) var note: String?            // a word under the steps (signed in as another account, …)
+    @Published private(set) var sidebarOpened = false     // the session that arranges the sidebar was opened
     private weak var model: SettingsModel?
     private var timer: Timer?
     private var started = Date()
@@ -129,9 +133,33 @@ final class SwitchRunner: ObservableObject {
         let to = e.seat?.account
         tick(every: 2) { [weak self] in
             guard let self, let e = self.entry else { return true }
-            if !e.claudeWindow || FolderRules.windowAccount(e) == to { self.phase = .done; return true }
-            return false
+            guard !e.claudeWindow || FolderRules.windowAccount(e) == to else { return false }
+            if e.claudeWindow, self.sidebarPlan != nil {
+                self.phase = .sidebar
+                // a moment for the window to settle on the account before the link reaches it
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                    if self?.phase == .sidebar, self?.sidebarOpened == false { self?.arrangeSidebar() }
+                }
+            } else {
+                self.phase = .done
+            }
+            return true
         }
+    }
+
+    // MARK: the sidebar
+
+    /// The moved sessions' groups and pins to put back, or nil when there's nothing to arrange.
+    var sidebarPlan: SidebarPlan? { receipt?.sidebar.flatMap { $0.isEmpty ? nil : $0 } }
+
+    /// Opens a new Code session in the profile's window with the sidebar plan: the operator presses Return there. The
+    /// window comes to the front first, so the link reaches it.
+    func arrangeSidebar() {
+        guard let plan = sidebarPlan, let e = entry,
+              let url = plan.link(folder: FileManager.default.homeDirectoryForCurrentUser.path) else { return }
+        Launcher.openClaude(Account(e))
+        sidebarOpened = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { NSWorkspace.shared.open(url) }
     }
 
     /// Cancel before Claude Code signed in: the sessions go back (the window is still closed then); nothing else changed.
@@ -153,7 +181,9 @@ final class SwitchRunner: ObservableObject {
     func finish() { timer?.invalidate(); phase = .done }
 
     /// Renders only: the page as it looks at a step.
-    func preview(_ p: Phase, receipt r: SwitchReceipt? = nil, note n: String? = nil) { phase = p; receipt = r; note = n }
+    func preview(_ p: Phase, receipt r: SwitchReceipt? = nil, note n: String? = nil, sidebarOpened o: Bool = false) {
+        phase = p; receipt = r; note = n; sidebarOpened = o
+    }
 
     private func tick(every s: TimeInterval, _ step: @escaping () -> Bool) {
         timer?.invalidate()

@@ -10,7 +10,8 @@
 // - a session whose transcript points at the old account's Remote Control copy gets Claude Code's own empty pointer line;
 // - a receipt, saved after every step, says exactly what was done, so Undo puts it back (only what is unchanged since).
 //
-// The sidebar's groups, order and pins are synced to claude.ai per account, so they're not written here.
+// The sidebar's groups, order and pins are synced to claude.ai per account, so they're not written here: the receipt
+// notes them (SwitchSidebar.swift), and the window on the new account rebuilds them with its own sidebar tools.
 
 import Foundation
 
@@ -45,6 +46,8 @@ struct SwitchReceipt: Codable, Equatable {
     var undone: Date?
     var steps: [Step] = []
     var problems: [String] = []
+    /// The moved sessions' groups and pins on the old account, noted before the move (SwitchSidebar.swift).
+    var sidebar: SidebarPlan?
 
     struct Step: Codable, Equatable {
         enum Kind: String, Codable { case entry, tasks, pointer }
@@ -114,6 +117,9 @@ enum SwitchEngine {
                                                 attributes: [.posixPermissions: 0o700])
         try save(r)
         if p.sessionsFollow && !p.move.isEmpty {
+            // their groups and pins, from the window's mirror (the window is closed, so it's current), before anything moves
+            r.sidebar = p.sidebar()
+            try save(r)
             try FileManager.default.createDirectory(atPath: p.targetDir, withIntermediateDirectories: true)
             for name in p.move {
                 guard windowClosed() else { r.problems.append("The window opened during the switch; stopped."); try save(r); throw SwitchError.windowOpen }
