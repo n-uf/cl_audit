@@ -84,7 +84,8 @@ the notes before updating.
   address filled in. The result is checked by account and organisation ids (the browser decides the account);
   signed in to another address than the one typed, it says so. The folder is its own row, following the
   account and showing who is signed in in each. The Claude window step checks the usual Claude app too, and says
-  its Code sidebar starts empty.
+  its Code sidebar starts empty. The page is laid out like a profile's settings (one card per part, its switch
+  first), its columns reflow to two and one in a narrower window, and it can sign in again with another address.
 - **Claude's own plan name.** The plan badge, the panels and the menus show the plan as Claude names it ("Ultra"),
   read from the profile's `.claude.json` with the account it already reads; an Ultra account's sign-in says "max".
   Without that name, the sign-in's as before (Max, Pro, Team).
