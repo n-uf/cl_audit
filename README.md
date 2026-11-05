@@ -119,9 +119,9 @@ works: it refreshes, starts the agent first, or (paused) starts it now.
 - **Claude window:** open or quit the profile's Claude window.
 - **Dock icon:** start or quit only the profile's Dock icon app; its usage keeps being read. Pins are never
   touched, so the Dock doesn't restart. A missing app shows **Reinstall**.
-- A flipped switch stays where you put it, with a spinner, until the change is done. Quitting a window
-  that Claude asks about (for example unsent work) shows "Claude is asking" with **Show**; a window that
-  doesn't open within 30 s offers **Retry**.
+- A flipped switch stays where you put it, its lamp pulsing (green turning on, red turning off), until the change
+  is done. Quitting a window that Claude asks about (for example unsent work) shows "Claude is asking" with
+  **Show**; a window that doesn't open within 30 s offers **Retry**.
 - What the agent does by those settings shows on the switches: "quits in 8 s", "starting…", "opening…",
   or "starts with its window" for a Dock icon that runs with its window.
 - Under the limits: **Sign in…** when needed, otherwise **Open/Show window** (with a Claude window), then

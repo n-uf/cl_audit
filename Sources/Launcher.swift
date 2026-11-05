@@ -133,7 +133,7 @@ struct AccountRow: Identifiable {
     let status: IconStatus?
     var activity = Launcher.Activity()
     var usageIcon: UsageIconState = .inDock
-    /// A change cl_audit started and is still waiting for (the switch shows it at once, with a spinner).
+    /// A change cl_audit started and is still waiting for (the switch shows it at once, its lamp pulsing).
     var busy: CardChange?
     /// The window opening or quitting because its Dock icon started or quit (the agent, Opening and closing).
     var windowFollowing: CardChange?
@@ -1372,8 +1372,7 @@ struct ProfileControls: View {
     }
 }
 
-/// A small switch already pointing where it is going, its knob a spinner, while cl_audit waits for the change.
-/// It takes no clicks.
+/// The switch while cl_audit waits for a change it started; it takes no clicks.
 /// Drawn as the switch key already where it goes, its LED pulsing like every switch's while it changes: green turning
 /// on, red turning off, until the agent reports it done (`on` is where it's going).
 struct BusySwitch: View {
