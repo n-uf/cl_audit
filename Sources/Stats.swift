@@ -36,10 +36,21 @@ enum StatsScanner {
     }
     private struct Cached { let mtime: Date; let size: Int; let progress: Progress }
     private static var cache: [String: Cached] = [:]
+    private static var epoch = 0                // forget() bumps it: a scan under way then keeps nothing
     private static let lock = NSLock()
 
-    /// All replies of the given accounts since `since`. Call off the main thread.
+    /// Settings ▸ General ▸ Privacy ▸ Usage history (DashboardPrefs.history). Off: no session file is opened.
+    static var enabled: Bool { UserDefaults.standard.object(forKey: DashboardPrefs.historyKey) as? Bool ?? true }
+
+    /// Usage history turned off: everything read so far goes.
+    static func forget() {
+        lock.lock(); cache = [:]; epoch += 1; lock.unlock()
+    }
+
+    /// All replies of the given accounts since `since` (none while Usage history is off). Call off the main thread.
     static func replies(for entries: [AccountEntry], since: Date) -> [Reply] {
+        guard enabled else { return [] }
+        lock.lock(); let started = epoch; lock.unlock()
         var out: [Reply] = []
         let fm = FileManager.default
         for e in entries {
@@ -52,13 +63,14 @@ enum StatsScanner {
                           let mtime = v.contentModificationDate, mtime >= since else { continue }
                     let size = v.fileSize ?? 0
                     let key = e.id + "|" + f.path
-                    lock.lock(); let hit = cache[key]; lock.unlock()
+                    lock.lock(); let hit = cache[key], stop = epoch != started; lock.unlock()
+                    if stop { return [] }                                    // turned off meanwhile
                     let p: Progress
                     if let hit, hit.mtime == mtime, hit.size == size {
                         p = hit.progress
                     } else {
                         p = read((try? Data(contentsOf: f, options: .alwaysMapped)) ?? Data(), account: e.id, after: hit?.progress)
-                        lock.lock(); cache[key] = Cached(mtime: mtime, size: size, progress: p); lock.unlock()
+                        lock.lock(); if epoch == started { cache[key] = Cached(mtime: mtime, size: size, progress: p) }; lock.unlock()
                     }
                     out.append(contentsOf: p.replies.lazy.filter { $0.date >= since })
                     out.append(contentsOf: p.tail.lazy.filter { $0.date >= since })
@@ -224,6 +236,7 @@ final class StatsModel: ObservableObject {
 
     func reload() {
         generation += 1
+        guard StatsScanner.enabled else { again = false; clear(); return }   // Usage history off: nothing read or shown
         loading = true
         if scanning { again = true; return }
         scanning = true
@@ -256,6 +269,12 @@ final class StatsModel: ObservableObject {
                 self.loaded = true
             }
         }
+    }
+
+    private func clear() {
+        loading = false; loaded = false
+        bars = []; heat = []; heatDays = []; breakdown = Breakdown()
+        totalTokens = 0; totalReplies = 0; totalCost = 0; unpriced = 0
     }
 
     private func shares(_ dict: [String: (Int, String)], top: Int, palette: [Color]?) -> [ShareRow] {
@@ -321,6 +340,7 @@ final class WeekSummary: ObservableObject {
 
     /// `wait` computes on the spot (for rendering to an image).
     func reload(hidden: Set<String>, wait: Bool = false) {
+        guard StatsScanner.enabled else { generation += 1; result = Result(); loaded = false; return }   // Usage history off
         let entries = Store.load().filter { !hidden.contains($0.id) }
         if wait { result = Self.compute(entries); loaded = true; return }
         generation += 1
@@ -381,19 +401,22 @@ struct WeekSpark: View {
     }
 }
 
-/// The launcher's way to the dashboard: this week's tokens and a summary line; click or ⌘D opens it.
+/// The launcher's way to the dashboard: this week's tokens and a summary line; click or ⌘D opens it. With Usage
+/// history off, just the way there: no week, "Limits".
 struct DashboardCard: View {
     @ObservedObject var week: WeekSummary
     let open: () -> Void
+    @ObservedObject private var prefs = DashboardPrefs.shared
     @State private var hover = false
 
     var body: some View {
         Button(action: open) {
             HStack(spacing: 12) {
-                WeekSpark(result: week.result)
+                if prefs.history { WeekSpark(result: week.result) }
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Dashboard").font(.system(size: 13, weight: .semibold))
-                    Text(week.loaded
+                    Text(!prefs.history ? "Limits"
+                         : week.loaded
                          ? "\(week.result.replies) replies · \(StatsFormat.tokens(week.result.tokens)) tokens · last 7 days"
                          : "Usage history and limits")
                         .font(.caption2).foregroundStyle(.secondary).lineLimit(1)

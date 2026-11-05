@@ -5,6 +5,7 @@
 // Both read the status the icon apps save, so they need no login of their own.
 
 import AppKit
+import Combine
 import SwiftUI
 
 // MARK: - Opening Claude for an account
@@ -799,6 +800,7 @@ struct MainScreenView: View {
     @ObservedObject var model: LauncherModel
     var stats: StatsModel? = nil
     let actions: LauncherActions
+    @ObservedObject private var prefs = DashboardPrefs.shared      // Usage history off: no history section
     @Environment(\.face) private var face
 
     var body: some View {
@@ -816,7 +818,7 @@ struct MainScreenView: View {
                 }
                 if !model.rows.isEmpty && model.shownRows.isEmpty {
                     Text("No profile selected: pick one or more above.").foregroundStyle(face.muted)
-                } else if let stats { StatsSection(stats: stats).padding(.top, 6) }
+                } else if let stats, prefs.history { StatsSection(stats: stats).padding(.top, 6) }
             }
             .padding(16)
     }
@@ -1045,13 +1047,14 @@ final class ManagerUI {
     var paletteShown: Bool { palette?.isVisible == true }
     var dashboardShown: Bool { mainWindow?.isVisible == true && mainWindow?.isMiniaturized == false }
     /// The dashboard's usage history can be seen: the window on the Dashboard, not minimised or hidden behind other
-    /// windows or on another Space. Only then is it read again every minute.
+    /// windows or on another Space, and Usage history on. Only then is it read again every minute.
     private var historyShown: Bool {
         guard let w = mainWindow, w.isVisible, !w.isMiniaturized, w.occlusionState.contains(.visible) else { return false }
-        return nav.page == .dashboard
+        return nav.page == .dashboard && DashboardPrefs.shared.history
     }
     private var othersObserver: NSObjectProtocol?
     private var appObservers: [NSObjectProtocol] = []
+    private var historyWatch: AnyCancellable?
 
     init() {
         // An account icon opening its panel closes the palette (and the palette closes theirs).
@@ -1080,6 +1083,14 @@ final class ManagerUI {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { self.model.reload() }
             })
         }
+        // Usage history switched (Settings ▸ General ▸ Privacy): off, what the history and the launcher's week showed
+        // goes; on, it's read once, then only what was added
+        historyWatch = DashboardPrefs.shared.$history.dropFirst().removeDuplicates().receive(on: DispatchQueue.main)
+            .sink { [weak self] on in
+                guard let self else { return }
+                self.stats.reload()
+                if !on { self.week.reload(hidden: self.model.hidden) }
+            }
     }
 
     /// Click on cl_audit's own Dock icon. With its window open (or in the Dock, minimised): a click while it's

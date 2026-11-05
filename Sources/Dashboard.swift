@@ -14,6 +14,12 @@ final class DashboardPrefs: ObservableObject {
     @Published var showHeatmap: Bool { didSet { d.set(showHeatmap, forKey: "dashboardShowHeatmap") } }
     @Published var showTokens: Bool { didSet { d.set(showTokens, forKey: "dashboardShowTokens") } }
     @Published var showShares: Bool { didSet { d.set(showShares, forKey: "dashboardShowShares") } }
+    /// Settings ▸ General ▸ Privacy ▸ Usage history: whether cl_audit reads Claude Code's session files at all (on by
+    /// default). Off, what was read is let go (StatsScanner.forget).
+    @Published var history: Bool {
+        didSet { d.set(history, forKey: Self.historyKey); if !history { StatsScanner.forget() } }
+    }
+    static let historyKey = "usageHistory"
 
     private init() {
         cardStyle = PanelDesign(rawValue: d.string(forKey: "dashboardCardStyle") ?? "") ?? .segments
@@ -21,6 +27,7 @@ final class DashboardPrefs: ObservableObject {
         showHeatmap = d.object(forKey: "dashboardShowHeatmap") as? Bool ?? true
         showTokens = d.object(forKey: "dashboardShowTokens") as? Bool ?? true
         showShares = d.object(forKey: "dashboardShowShares") as? Bool ?? true
+        history = d.object(forKey: Self.historyKey) as? Bool ?? true
     }
 }
 
@@ -146,11 +153,14 @@ struct DashboardSettings: View {
         }
     }
 
-    // Show emails: for screen sharing and screenshots
+    // Privacy: what cl_audit shows (Show emails, for screen sharing and screenshots) and what it reads (Usage history)
     var emailsCard: some View {
-        SCard(title: "Privacy") {
+        SCard(title: "Privacy", info: "What cl_audit shows and what it reads on this Mac.") {
             SRow(label: "Show emails", info: "Off: email addresses are left out of the dashboard, the launcher, the usage panels and the Dock icon menus, and blurred in Settings (hover one to see it). For screen sharing and screenshots.", first: true) {
                 Toggle("", isOn: Binding(get: { privacy.show }, set: { privacy.set(show: $0) })).smallSwitch()
+            }
+            SRow(label: "Usage history", info: "The dashboard's history (when you use Claude, tokens per day, where they go), the cost estimate, the CSV export and the launcher's 7-day row. Read from the session files Claude Code keeps on this Mac: only the time, model, token counts, project folder and surface of each reply, never the messages. Off: no session file is read, and those are hidden. The limits come from Anthropic either way.") {
+                SSwitch(isOn: $prefs.history, on: "from this Mac's session files", off: "off")
             }
         }
     }
