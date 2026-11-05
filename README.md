@@ -67,7 +67,8 @@ that tool.
 It keeps only the short-lived access token, in memory, and discards the rest (including the long-lived
 renewal token). It never writes, renews, copies or logs your login. On your Mac only, it also reads the
 account email in Claude Code's settings file (`.claude.json`) and, for the usage history, Claude Code's
-session logs (only time, model, token counts, project folder and surface of each reply).
+session logs (only time, model, token counts, project folder and surface of each reply). Settings ▸ General ▸
+Privacy ▸ **Usage history** turns that off.
 
 **Where it goes: only to Anthropic.** cl_audit uses the token for two requests to Anthropic's own server:
 `api.anthropic.com/api/oauth/usage` (your 5-hour and weekly figures) and `api.anthropic.com/api/oauth/profile`
@@ -181,7 +182,10 @@ Claude, tokens per day per profile, and where they go (by project, model and sur
 the **Show** chips next to it filter the charts and are kept between launches. Usage from claude.ai
 chats, other computers or cloud sessions isn't there. The **CSV** key saves the period as a CSV file: one row per
 day, profile and model (optionally split by project, by folder name only), with the replies and each kind of token
-(input, output, 5-minute and 1-hour cache writes, cache reads) and the cost estimate.
+(input, output, 5-minute and 1-hour cache writes, cache reads) and the cost estimate. cl_audit reads a session file
+only from where it stopped last time, and only while the dashboard is showing. **Settings ▸ General ▸ Privacy ▸
+Usage history** turns it off: then no session file is read, and the dashboard shows the limits only (the history,
+the cost estimate, the CSV key and the launcher's 7-day row are hidden).
 
 The totals next to the title include a **cost estimate at Anthropic's API list prices** ("≈ $123 at list prices"):
 what the same tokens would cost on the API, per model, with 5-minute and 1-hour cache writes and cache reads priced
@@ -357,7 +361,8 @@ under cl_audit; one column keeps the same order, top to bottom. Every row is one
 - **About:** the version and build, a link to what's new, when the agent last cleaned up ("Nothing to clean up ·
   11:38", "Cleaned up 2 leftovers · Thu 09:00"; the (i) lists what went) and **Uninstall cl_audit…** (see
   [Uninstalling](#uninstalling)).
-- **Privacy:** Show emails (see above).
+- **Privacy:** Show emails (see above), and **Usage history** ("from this Mac's session files", or off: no session
+  file is read and the dashboard shows the limits only).
 - **Face:** the look of the cl_audit window, as on the home site: **Std** (a dark brushed panel, the
   default), **Black** (black anodised) or **Silver** (light brushed silver; the window takes the Mac's light
   appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.

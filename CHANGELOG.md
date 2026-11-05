@@ -95,7 +95,11 @@ the notes before updating.
 - **cl_audit no longer grows to gigabytes of memory.** Reading the usage history kept every line it had read from
   Claude Code's session files until the read was over, and on a busy Mac the dashboard started a new read every
   minute beside the ones still running: cl_audit reached 1.7 GB in half an hour. Each line is now let go as soon as
-  it's read, and one read runs at a time. The history, totals and CSV are the same.
+  it's read, one read runs at a time, a session file is read only from where the last look stopped, and only while
+  the dashboard's history can be seen. The history, totals and CSV are the same.
+- **Usage history can be turned off** (Settings ▸ General ▸ Privacy ▸ Usage history, on by default). Off, cl_audit
+  opens none of Claude Code's session files: the dashboard shows the limits only (no history charts, cost estimate or
+  CSV) and the launcher's Dashboard row says "Limits". The limits come from Anthropic either way.
 
 ## 26.10.11 — 2026-10-27
 
