@@ -247,6 +247,19 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
     }
 
     private var items: [String: NSStatusItem] = [:]      // by profile id
+    /// The profiles whose icon is up, for the agent's mark (In the menu bar's switch waits until it's there or gone).
+    var shown: [String] { items.keys.sorted() }
+
+    /// In the menu bar switched: done once the agent's mark shows the icon up (on) or gone (off). An agent from before
+    /// the mark had this has nothing to wait for. Not done in 20 s: failed, with why.
+    static func progress(_ id: String, _ on: Bool, since: Date) -> SwitchProgress {
+        let mark = Agent.readMark()
+        if let up = mark?.menuBar, up.contains(id) == on { return .done }
+        if let mark, mark.menuBar == nil, Agent.isAlive(mark) { return .done }
+        guard Date().timeIntervalSince(since) > 20 else { return .working }
+        if case .stopped = Agent.health(mark) { return .failed("The agent isn't running") }
+        return .failed(on ? "Not in the menu bar after 20 s" : "Still in the menu bar after 20 s")
+    }
     private var accessory = false
     private let profiles: () -> [Profile]
     private let refresh: (String) -> Void
@@ -480,7 +493,8 @@ struct MenuBarCard: View {
         let _ = accentTick
         SCard(title: "Menu bar", info: "An icon for this profile in the menu bar, like its Dock icon: drawn by the cl_audit agent, so it works with or without the Dock icon. Its menu has the limits, Open Claude window, Refresh now and Profile settings. ⌘-drag it to move it; macOS remembers where.") {
             SRow(label: "In the menu bar", info: "On: an icon for this profile in the menu bar. Off: none; the usage is read either way.", first: true) {
-                SSwitch(isOn: $entry.menuBar, on: "shows the usage", off: "no icon")
+                SSwitch(isOn: $entry.menuBar, on: "shows the usage", off: "no icon",
+                        progress: { on, since in MenuBarItems.progress(entry.id, on, since: since) })
             }
             if entry.menuBar {
                 SRow(label: "Style", info: "How the icon draws the usage: two bars (the 5-hour limit over the week), a ring (the week outside, the 5-hour limit inside), with or without the fuller limit as a number, or just numbers.", stacked: true) {

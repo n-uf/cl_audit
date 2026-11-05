@@ -28,6 +28,7 @@ struct AgentMark: Codable, Equatable {
     var pausedUntil: Date? = nil      // it crashed several times in a row and waits before reading again
     var actions: [String: AgentAction]? = nil   // what it's doing for a profile now (Opening and closing)
     var stamp: String? = nil          // its program's fingerprint (an update with the same build number differs here)
+    var menuBar: [String]? = nil      // the profiles whose menu bar icon is up (In the menu bar's switch waits for it)
 }
 
 enum Agent {
@@ -332,7 +333,8 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
                                   pollRange: polls.isEmpty ? nil : [polls.min()!, polls.max()!],
                                   pausedUntil: pausedUntil,
                                   actions: rules?.actions,
-                                  stamp: myStamp))
+                                  stamp: myStamp,
+                                  menuBar: menuBar?.shown))
     }
 
     // MARK: crashing again and again
