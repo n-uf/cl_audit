@@ -25,7 +25,16 @@ struct Reply {
 }
 
 enum StatsScanner {
-    private struct Cached { let mtime: Date; let size: Int; let replies: [Reply] }
+    /// What a session file has given so far. Claude Code only appends to these files, so the next look reads on from
+    /// `offset` (the end of the last whole line) with the response ids seen up to there. The last line, while it's still
+    /// being written (no line break yet), is read again each time and kept apart (`tail`) until it's whole.
+    struct Progress {
+        var offset = 0
+        var replies: [Reply] = []
+        var seen = Set<String>()
+        var tail: [Reply] = []
+    }
+    private struct Cached { let mtime: Date; let size: Int; let progress: Progress }
     private static var cache: [String: Cached] = [:]
     private static let lock = NSLock()
 
@@ -44,14 +53,15 @@ enum StatsScanner {
                     let size = v.fileSize ?? 0
                     let key = e.id + "|" + f.path
                     lock.lock(); let hit = cache[key]; lock.unlock()
-                    let replies: [Reply]
+                    let p: Progress
                     if let hit, hit.mtime == mtime, hit.size == size {
-                        replies = hit.replies
+                        p = hit.progress
                     } else {
-                        replies = parse(f, account: e.id)
-                        lock.lock(); cache[key] = Cached(mtime: mtime, size: size, replies: replies); lock.unlock()
+                        p = read((try? Data(contentsOf: f, options: .alwaysMapped)) ?? Data(), account: e.id, after: hit?.progress)
+                        lock.lock(); cache[key] = Cached(mtime: mtime, size: size, progress: p); lock.unlock()
                     }
-                    out.append(contentsOf: replies.lazy.filter { $0.date >= since })
+                    out.append(contentsOf: p.replies.lazy.filter { $0.date >= since })
+                    out.append(contentsOf: p.tail.lazy.filter { $0.date >= since })
                 }
             }
         }
@@ -63,22 +73,30 @@ enum StatsScanner {
     }()
     private static let assistantTag = Data(#""type":"assistant""#.utf8)
 
-    /// One reply per API response: a response split over several entries shares message.id and usage.
-    static func parse(_ url: URL, account: String) -> [Reply] {
-        guard let data = try? Data(contentsOf: url, options: .alwaysMapped) else { return [] }
-        var seen = Set<String>()
-        var out: [Reply] = []
-        var start = data.startIndex
-        while start < data.endIndex {
-            let end = data[start...].firstIndex(of: 0x0A) ?? data.endIndex
+    /// A session file's contents read on from where `before` stopped, or from the start when there's nothing before or
+    /// `data` isn't the file read then (shorter, or no line break where its last whole line ended). One reply per API
+    /// response: a response split over several entries shares message.id and usage.
+    static func read(_ data: Data, account: String, after before: Progress?) -> Progress {
+        var p = Progress()
+        if let b = before, b.offset > 0, b.offset <= data.count, data[data.startIndex + b.offset - 1] == 0x0A {
+            p = b
+            p.tail = []
+        }
+        var start = data.startIndex + p.offset
+        while let end = data[start...].firstIndex(of: 0x0A) {
             let line = data[start..<end]
-            start = end == data.endIndex ? end : data.index(after: end)
+            start = data.index(after: end)
             // JSONSerialization autoreleases what it reads (the whole line, message text included), and the background
             // queue this runs on keeps those until its work is over: without a pool per line a scan held every line it
             // had read, and cl_audit grew by hundreds of MB.
-            if let r = autoreleasepool(invoking: { reply(line, account: account, seen: &seen) }) { out.append(r) }
+            if let r = autoreleasepool(invoking: { reply(line, account: account, seen: &p.seen) }) { p.replies.append(r) }
         }
-        return out
+        p.offset = start - data.startIndex
+        if start < data.endIndex {                                           // the last line, not whole yet
+            var seen = p.seen
+            if let r = autoreleasepool(invoking: { reply(data[start...], account: account, seen: &seen) }) { p.tail = [r] }
+        }
+        return p
     }
 
     /// The reply one line records, or nil (not an assistant reply, synthetic, or a part of a response already seen).
