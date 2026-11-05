@@ -922,7 +922,7 @@ struct NewAccountView: View {
     /// matters in one grey line, then the keys. No box: the step's red mark already says it.
     private var openApps: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(runGroups.flatMap(\.items).joined(separator: " · "))
+            Text("Open: " + runGroups.flatMap(\.items).joined(separator: ", "))
                 .font(.system(size: 11.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
                 .help(runLines.joined(separator: "\n"))
             SRowLine(text: "While open it writes its sign-in and settings, which could overwrite the new folder; it can stay open once the folder exists.")
