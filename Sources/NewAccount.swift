@@ -973,41 +973,58 @@ struct NewAccountView: View {
     }
 
     /// Cancel on the left, the one next action on the right ("Finish now" stays next to it once the folder exists).
+    /// When that doesn't fit one line (the steps panel in a narrow column), the buttons go on a line of their own
+    /// below, still on the right, so no word is ever broken.
     private func actionBar(hint: Bool) -> some View {
-        HStack(spacing: 8) {
-            Button(model.discarding ? "Cancelling…" : "Cancel") { confirmCancel = true }
-                .buttonStyle(.plain).foregroundStyle(.secondary).disabled(model.discarding)
-            Spacer(minLength: 6)
-            if let e = error { Text(e).font(.caption).foregroundStyle(.red).lineLimit(2) }
-            else if hint { Text(nextHint).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1) }
-            if !NewAccountSetup.foldersReady(draft) {
-                Button(createTitle) {
-                    do { try NewAccountSetup.createOrConnect(&draft); error = nil; model.tick += 1 }
-                    catch { self.error = error.localizedDescription }
-                }
-                .buttonStyle(.primaryKey(compact: true)).disabled(blocked || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
-            } else if current == 5 {
-                Button(draft.usageInDock ? "Finish" : "Start reading usage") { model.finishNew() }.buttonStyle(.primaryKey(compact: true)).disabled(blocked || model.discarding)
-            } else {
-                Button(desktop == .different ? "Finish anyway" : "Finish now") { model.finishNew() }
-                    .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(blocked || model.discarding)
-                    .help("Sign-in can be finished later from Settings")
-                if signedIn == nil {
-                    Button("Sign in to Claude Code…") {
-                        if let c = model.claudePath { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: draft.email.isEmpty ? nil : draft.email) }
-                    }
-                        .buttonStyle(.pill(tint, compact: true)).disabled(model.claudePath == nil)
-                } else if draft.claudeWindow, !waiting,
-                          FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) == nil {
-                    // the window waits until Claude Code is on an account no other profile has
-                    Button(windowOpen ? "Show Claude window" : "Open Claude window") { Launcher.openClaude(Account(draft.entry)) }
-                        .buttonStyle(.pill(tint, compact: true))
-                }
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { cancelButton; Spacer(minLength: 6); actionNote(hint: hint); actionButtons }
+            VStack(alignment: .trailing, spacing: 8) {
+                HStack(spacing: 8) { cancelButton; Spacer(minLength: 6); actionNote(hint: hint) }
+                HStack(spacing: 8) { actionButtons }
             }
         }
         .padding(.horizontal, hint ? 16 : 0).padding(.vertical, hint ? 10 : 0)
         .background(hint ? Color.black(face.light ? 0.03 : 0.12) : Color.clear)
         .overlay(alignment: .top) { if hint { EngravedRule() } }
+    }
+
+    private var cancelButton: some View {
+        Button(model.discarding ? "Cancelling…" : "Cancel") { confirmCancel = true }
+            .buttonStyle(.plain).foregroundStyle(.secondary).disabled(model.discarding).fixedSize()
+    }
+
+    /// The error, else (in the window-wide bar) what comes next.
+    @ViewBuilder private func actionNote(hint: Bool) -> some View {
+        if let e = error { Text(e).font(.caption).foregroundStyle(.red).lineLimit(2) }
+        else if hint { Text(nextHint).font(.system(size: 11.5)).foregroundStyle(.secondary).lineLimit(1) }
+    }
+
+    /// The one next action ("Finish now" stays next to it once the folder exists).
+    @ViewBuilder private var actionButtons: some View {
+        if !NewAccountSetup.foldersReady(draft) {
+            Button(createTitle) {
+                do { try NewAccountSetup.createOrConnect(&draft); error = nil; model.tick += 1 }
+                catch { self.error = error.localizedDescription }
+            }
+            .buttonStyle(.primaryKey(compact: true)).disabled(blocked || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
+        } else if current == 5 {
+            Button(draft.usageInDock ? "Finish" : "Start reading usage") { model.finishNew() }.buttonStyle(.primaryKey(compact: true)).disabled(blocked || model.discarding)
+        } else {
+            Button(desktop == .different ? "Finish anyway" : "Finish now") { model.finishNew() }
+                .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(blocked || model.discarding)
+                .help("Sign-in can be finished later from Settings")
+            if signedIn == nil {
+                Button("Sign in to Claude Code…") {
+                    if let c = model.claudePath { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: draft.email.isEmpty ? nil : draft.email) }
+                }
+                    .buttonStyle(.pill(tint, compact: true)).disabled(model.claudePath == nil)
+            } else if draft.claudeWindow, !waiting,
+                      FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) == nil {
+                // the window waits until Claude Code is on an account no other profile has
+                Button(windowOpen ? "Show Claude window" : "Open Claude window") { Launcher.openClaude(Account(draft.entry)) }
+                    .buttonStyle(.pill(tint, compact: true))
+            }
+        }
     }
 
     private var nextHint: String {
