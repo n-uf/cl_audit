@@ -158,13 +158,22 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   account's, small ("Standby · ultra-2@…").
 - **Switching.** **Close and switch to ultra-2** (after a yes) does it in order, each step checked before the next:
   1. Only that profile's Claude window closes, gracefully (it may ask about work under way; nothing is forced, and
-     if it doesn't close, nothing moves).
+     if it doesn't close, nothing moves). From here until the profile is switched or the switch is undone, nothing
+     opens that window again (its Dock icon, the menu bar, cl_audit's rules and reopening after a Claude update all
+     wait), and a second switch of it is refused.
   2. With Sessions follow on, its Code sessions and scheduled tasks move to ultra-2 the way
-     [claude-transplant](https://github.com/vitaliyhayda/claude-transplant) moves them: same ids, each entry copied
-     unchanged but for the old account's error keys and Remote Control ids, through a write that can't overwrite,
-     checked, and only then the original parked in cl_audit's folder (`switches/<id>/`), never deleted; both task
-     files backed up; one switch at a time, and none while claude-transplant holds its lock. Sessions the other
-     account already has, or deleted, stay where they are. A receipt keeps every step.
+     [claude-transplant](https://github.com/vitaliyhayda/claude-transplant) moves them: same ids, each entry kept byte
+     for byte or re-encoded without the old account's error keys and Remote Control ids, through a write that can't
+     overwrite, checked, and only then the original parked in cl_audit's folder (`switches/<id>/`), never deleted.
+     Both task files are backed up; the old account's is emptied first, then ultra-2's gets them, so a task never
+     runs in both. One switch at a time, and none while claude-transplant runs (its own lock is held meanwhile).
+     Sessions the other account already has, or deleted, stay where they are. A receipt (accounts by id, never by
+     address) says what each step will do before it does it, so Undo puts back whatever got done, also after a stop
+     or a crash: the Switch page shows a switch that stopped half way with **Undo**, and a new switch waits for it.
+     A session whose Claude Code transcript still points at the old account's Remote Control copy gets Claude Code's
+     own empty pointer line, in one append, and only when nothing is writing that transcript (changed in the last
+     seconds, open in a program, or Claude Code running that session: left as it is); Undo takes the line off again
+     if it's still the transcript's last bytes.
   3. Claude Code's own sign-in opens in Terminal for the profile's folder, with ultra-2's address filled in: finish
      in the browser. Until then **Cancel switch** puts the sessions back from the receipt. cl_audit never copies
      or moves a stored sign-in.
@@ -175,7 +184,11 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   5. The window opens again; log out there and sign in as ultra-2. Once it's on ultra-2, a new Code session opens
      in it, named "cl_audit · arrange sidebar", with a prompt filled in: press Return, and it puts the moved
      sessions back in their groups (made by the same name where ultra-2 has none) and pins them again, with the
-     app's own sidebar tools, then archives itself. It may ask before each move.
+     app's own sidebar tools, then archives itself. When the window would ask before moving sessions (its
+     permission mode there isn't auto), the step says so: allow them. cl_audit sends the link to that window's own
+     process, not through `open`, so it never lands in another Claude window; the first time, macOS asks to let
+     cl_audit control Claude. Without that leave, it opens the link the usual way only when no other Claude window
+     runs, and otherwise says what to do.
   The sidebar's groups, order and pins are kept by claude.ai for each account (synced per organisation), so
   cl_audit doesn't write them: before the move it notes, from the window's own copy, which group each moved session
   sat in, in what order, and which were pinned (in the receipt). The prompt holds only session ids, group names and

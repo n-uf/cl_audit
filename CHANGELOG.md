@@ -28,13 +28,15 @@ the notes before updating.
 - **Switching to another account.** The Switch page's **Close and switch** closes only that profile's Claude
   window, moves its Code sessions and scheduled tasks to the other account the way claude-transplant does (same
   ids, writes that never overwrite, originals parked in cl_audit's folder, a receipt; Cancel puts them back until
-  Claude Code has signed in), opens Claude Code's sign-in with the address filled in, then makes that account the
+  Claude Code has signed in; a switch that stopped half way, even after a crash, shows on the Switch page with
+  Undo), opens Claude Code's sign-in with the address filled in, then makes that account the
   one in use (the old one joins standby) and reopens the window for its own sign-in. No sign-in is ever copied.
   Each account keeps its own numbers through the switch; numbers read for one account never show under another's
   name, anywhere (Dock icon, card, menus, Settings).
   Once the window is on the new account, a session opens there ("cl_audit · arrange sidebar") that puts the moved
   sessions back in their groups and pins with the app's own sidebar tools: press Return in it. It archives itself
-  when done, and running it again changes nothing.
+  when done, and running it again changes nothing. The link goes to that window's own process, so it never opens in
+  another Claude window (macOS asks once to let cl_audit control Claude).
 
 ## 26.11.0 — 2026-11-05
 
