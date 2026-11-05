@@ -203,15 +203,31 @@ final class SettingsModel: ObservableObject {
     @Published var switching: String?
     static let switchID = "__switch__"
 
-    /// The profile and standby account the Switch page is about, while both still exist.
+    /// The profile and standby account the Switch page is about. Once a switch it runs has linked the profile to that
+    /// account (it's no longer on standby), the page keeps showing it from the copy taken when it opened.
     var switchTarget: (entry: AccountEntry, standby: StandbyAccount)? {
-        guard let k = switching, let p = SwitchOffer.parse(k), let e = accounts.first(where: { $0.id == p.profile }),
-              let s = e.standby.first(where: { $0.id == p.standby }) else { return nil }
-        return (e, s)
+        guard let k = switching, let p = SwitchOffer.parse(k), let e = accounts.first(where: { $0.id == p.profile }) else { return nil }
+        if let s = e.standby.first(where: { $0.id == p.standby }) { return (e, s) }
+        if let snap = switchSnapshot, snap.id == p.standby, runners[k] != nil { return (e, snap) }
+        return nil
+    }
+    private(set) var switchSnapshot: StandbyAccount?
+    /// The switches started from the page, by "<profile>~<standby account>" (SwitchRunner.swift).
+    private var runners: [String: SwitchRunner] = [:]
+
+    func runner(_ e: AccountEntry, _ s: StandbyAccount) -> SwitchRunner {
+        let k = AccountEntry.standbyStatusID(e.id, s.id)
+        if let r = runners[k] { return r }
+        let r = SwitchRunner(profile: e.id, standby: s.id, model: self)
+        runners[k] = r
+        return r
     }
 
     func showSwitch(_ key: String) {
         switching = key
+        if let p = SwitchOffer.parse(key), let s = accounts.first(where: { $0.id == p.profile })?.standby.first(where: { $0.id == p.standby }) {
+            switchSnapshot = s
+        }
         selection = switchTarget == nil ? Self.dashboardID : Self.switchID
     }
 
@@ -544,7 +560,7 @@ struct SettingsPage: View {
                 if model.selection == SettingsModel.dashboardID {
                     DashboardSettings(width: w).padding(.horizontal, 16).padding(.vertical, 14)
                 } else if model.selection == SettingsModel.switchID, let t = model.switchTarget {
-                    SwitchPage(entry: t.entry, standby: t.standby, model: model, width: w)
+                    SwitchPage(entry: t.entry, standby: t.standby, model: model, runner: model.runner(t.entry, t.standby), width: w)
                         .padding(.horizontal, 16).padding(.vertical, 14)
                 } else if let id = model.selection, let entry = model.binding(id) {
                     // one identity per profile: switching tabs starts with fresh view state (a half-typed name, the

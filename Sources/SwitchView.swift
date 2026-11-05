@@ -131,12 +131,17 @@ struct SwitchPage: View {
     let entry: AccountEntry
     let standby: StandbyAccount
     @ObservedObject var model: SettingsModel
+    @ObservedObject var runner: SwitchRunner
     var width: CGFloat = 980
     @State private var counts: SidebarCounts??          // nil: still counting; .some(nil): the window has nothing
+    @State private var confirm = false
     @Environment(\.face) private var face
 
     private var name: String { entry.name.isEmpty ? "this profile" : entry.name }
-    private var from: String { AccountNames.short(entry.seat?.email ?? Account.expectedEmail(configDir: entry.configDir) ?? "its account") }
+    /// The account it switches from (once switched, the one the receipt names).
+    private var from: String {
+        AccountNames.short(runner.receipt?.from.email ?? entry.seat?.email ?? Account.expectedEmail(configDir: entry.configDir) ?? "its account")
+    }
     private var to: String { AccountNames.short(standby.email) }
 
     var body: some View {
@@ -172,16 +177,23 @@ struct SwitchPage: View {
             let f = dir.flatMap { FolderFactsCache.facts($0) }
             return [st?.plan.map(Account.planWords) ?? f?.plan, f?.org].compactMap { $0 }.joined(separator: " · ")
         }
+        // once switched, the account it came from is the one standing by
+        let switched = entry.seat.map { $0.same(standby.seat) } ?? false
+        let cameFrom = runner.receipt?.from
+        let other: StandbyAccount? = switched ? entry.standby.first(where: { s in cameFrom.map { s.seat?.same($0) ?? false } ?? false }) : standby
+        let otherStatus = other.flatMap { Store.status(AccountEntry.standbyStatusID(entry.id, $0.id)) }
         return SCard(title: "Accounts", info: "The account \(name) works on now, and the one it would switch to, with their limits as cl_audit last read them.") {
             VStack(alignment: .leading, spacing: 8) {
                 AccountBox(lamp: FaceTheme.ledOn, badge: "In use", badgeTone: .ok, detail: detail(now, entry.configDir)) {
                     Text(Privacy.masked(entry.seat?.email ?? "its account")).font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
                 } content: { limits(now, entry) }
-                AccountBox(lamp: nil, badge: "Switch to", detail: detail(target, standby.configDir)) {
-                    Text(Privacy.masked(standby.email)).font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
-                } content: { limits(target, entry.readerEntry(for: standby) ?? entry) }
+                if let other {
+                    AccountBox(lamp: nil, badge: switched ? "Standby" : "Switch to", detail: detail(switched ? otherStatus : target, other.configDir)) {
+                        Text(Privacy.masked(other.email)).font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
+                    } content: { limits(switched ? otherStatus : target, entry.readerEntry(for: other) ?? entry) }
+                }
             }
             .padding(.vertical, 6)
         }
@@ -227,22 +239,87 @@ struct SwitchPage: View {
         }
     }
 
+    /// Which step is under way (1 to 4), or 5 when all are done; 0 before starting.
+    private var at: Int {
+        switch runner.phase {
+        case .ready, .failed, .cancelled: return 0
+        case .closing: return 1
+        case .moving: return 2
+        case .codeSignIn, .windowSignIn: return 3
+        case .done: return 5
+        }
+    }
+
     private var stepsCard: some View {
         let window = entry.desktop == .standard ? "the usual Claude app" : "\(name)'s Claude window"
-        return SCard(title: "Steps", info: "What switching does, in order. Each step is checked before the next, and a receipt makes it undoable.") {
+        let w = window.prefix(1).uppercased() + window.dropFirst()
+        let code = runner.phase == .codeSignIn, win = runner.phase == .windowSignIn
+        return SCard(title: "Steps", info: "What switching does, in order. Each step is checked before the next. A receipt in cl_audit's folder keeps what moved: until Claude Code has signed in, Cancel puts it back; after that the way back is a switch the other way.") {
             VStack(alignment: .leading, spacing: 0) {
-                step(1, "\(window.prefix(1).uppercased() + window.dropFirst()) closes", "Only that window, for about half a minute; your other Claude windows stay open.")
-                step(2, "The sessions and the sidebar move to \(to)", entry.sessionsFollow ? "Same ids; nothing is copied. A receipt makes it undoable." : "Skipped: Sessions follow is off.")
-                step(3, "Claude Code and the window sign in as \(to)", "One click in the browser.")
-                step(4, "The window opens again on \(to)", "\(name)'s numbers then are \(to)'s.")
+                step(1, "\(w) closes", "Only that window, for about half a minute; your other Claude windows stay open.")
+                step(2, "The sessions move to \(to)", entry.sessionsFollow
+                     ? "Same ids; nothing is copied. The sidebar's groups and pins are kept by claude.ai for each account."
+                     : "Skipped: Sessions follow is off.")
+                step(3, code ? "Claude Code signs in as \(to)" : win ? "The window signs in as \(to)" : "Claude Code and the window sign in as \(to)",
+                     code ? "Finish in the browser as \(Privacy.masked(standby.email)); Terminal shows Claude Code's sign-in."
+                     : win ? "In the window: log out, then sign in as \(Privacy.masked(standby.email))."
+                     : "Claude Code in Terminal and the browser, then the window's own sign-in.")
+                step(4, "\(name) works on \(to)", "Its numbers then are \(to)'s; \(from) waits on standby.")
             }
-            HStack(spacing: 10) {
-                Button("Cancel") { model.selection = entry.id }.buttonStyle(.plain).foregroundStyle(face.muted)
+            keys.padding(.top, 8)
+            if let line = statusLine { SRowLine(text: line, color: isFailed ? face.danger : nil) }
+        }
+        .alert("Switch Claude \(name) to \(to)?", isPresented: $confirm) {
+            Button("Close and switch") { runner.start() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(confirmWords)
+        }
+    }
+
+    private var isFailed: Bool { if case .failed = runner.phase { return true }; return false }
+
+    private var confirmWords: String {
+        let moved: String = {
+            guard entry.sessionsFollow, case .some(.some(let c)) = counts else { return "" }
+            return " Its \(c.sessions + c.archived) sessions and \(c.tasks) scheduled tasks move to \(to), with a receipt to undo it."
+        }()
+        return "\(entry.desktop == .standard ? "The usual Claude app" : "\(name)'s Claude window") closes.\(moved) Then Claude Code signs in as \(to) in Terminal and the browser, and the window opens for its own sign-in."
+    }
+
+    private var statusLine: String? {
+        switch runner.phase {
+        case .failed(let why): return why
+        case .cancelled: return "Cancelled: the sessions are back with \(from)."
+        case .done: return runner.note ?? "Done: \(name) works on \(to)."
+        default: return runner.note
+        }
+    }
+
+    @ViewBuilder private var keys: some View {
+        HStack(spacing: 10) {
+            switch runner.phase {
+            case .ready, .failed, .cancelled:
+                Button("Back") { model.selection = entry.id }.buttonStyle(.plain).foregroundStyle(face.muted)
                 Spacer(minLength: 6)
-                Button("Switch to \(to)") {}.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(true)
+                Button(isFailed ? "Try again" : "Close and switch to \(to)") { confirm = true }
+                    .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+                    .disabled(runner.phase == .cancelled || (!entry.sessionsFollow ? false : counts == nil))
+            case .closing, .moving:
+                Spacer(minLength: 6)
+                Text(runner.phase == .closing ? "closing the window…" : "moving…").font(.system(size: 12)).foregroundStyle(face.caution)
+            case .codeSignIn:
+                Button("Cancel switch") { runner.cancel() }.buttonStyle(.plain).foregroundStyle(face.muted)
+                Spacer(minLength: 6)
+                Button("Sign in again…") { runner.signInCode() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+            case .windowSignIn:
+                Spacer(minLength: 6)
+                Button("Show window") { Launcher.openClaude(Account(entry)) }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                Button("Done") { runner.finish() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            case .done:
+                Spacer(minLength: 6)
+                Button("Back to \(name)") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
             }
-            .padding(.top, 8)
-            SRowLine(text: "The switch itself comes in the next cl_audit build: nothing changes from this page yet.")
         }
     }
 
@@ -252,9 +329,14 @@ struct SwitchPage: View {
     }
 
     private func step(_ n: Int, _ title: String, _ detail: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Text("\(n)").font(.system(size: 11, weight: .semibold)).foregroundStyle(face.muted)
-                .frame(width: 22, height: 22).overlay(Circle().stroke(face.muted.opacity(0.6), lineWidth: 1.2))
+        let done = at > n, now = at == n
+        return HStack(alignment: .top, spacing: 10) {
+            ZStack {
+                Circle().stroke(now ? FaceTheme.ledOn : face.muted.opacity(0.6), lineWidth: 1.2)
+                if done { Circle().fill(FaceTheme.ledOn); Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundStyle(.black.opacity(0.75)) }
+                else { Text("\(n)").font(.system(size: 11, weight: .semibold)).foregroundStyle(now ? FaceTheme.ledOn : face.muted) }
+            }
+            .frame(width: 22, height: 22)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(face.text)
                 Text(detail).font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
