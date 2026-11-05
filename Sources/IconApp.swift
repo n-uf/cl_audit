@@ -101,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.regular)
         if isSettingsApp {
+            SwitchMarker.sweep()                           // a switch left marked by a cl_audit that's gone keeps no window closed
             NSWindow.allowsAutomaticWindowTabbing = false   // Settings and Dashboard are separate windows
             AppIconPrefs.shared.apply()                    // the chosen app icon (Settings ▸ General ▸ App icon)
             MainMenu.install()

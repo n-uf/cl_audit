@@ -539,39 +539,62 @@ enum SwitchEngine {
 /// A switch under way for one Claude window (by its data folder): from closing it until the profile is linked, the
 /// switch is undone, or it stops with nothing moved. Meanwhile no window opener starts that window (Launcher.openClaude:
 /// the Dock icon, the menu bar, the agent's rules and reopening after a Claude update), and a second switch of it is
-/// refused. It holds only while the cl_audit that wrote it runs.
+/// refused. It holds only while the cl_audit that wrote it runs: the same process id, still running cl_audit's program
+/// (a crashed cl_audit whose id another program got holds nothing). Stale marks go at cl_audit's start and on reading.
 enum SwitchMarker {
-    struct Mark: Codable, Equatable { var pid: Int32; var profile: String; var standby: String; var started: Date }
+    struct Mark: Codable, Equatable { var pid: Int32; var exe: String; var profile: String; var standby: String; var started: Date }
 
     static func url(_ window: String) -> URL { SwitchEngine.root.appendingPathComponent("active-\(Account.sha8(window)).json") }
 
-    /// The mark on a window, if the cl_audit that wrote it still runs (and not from more than a day ago).
-    static func current(_ window: String) -> Mark? {
+    /// The program a running process was started from, or nil when it isn't running.
+    static func executable(of pid: pid_t) -> String? {
+        var buf = [CChar](repeating: 0, count: 4096)
+        return proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 ? String(cString: buf) : nil
+    }
+
+    private static func read(_ file: URL) -> Mark? {
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-        guard let d = try? Data(contentsOf: url(window)), let m = try? dec.decode(Mark.self, from: d) else { return nil }
-        let alive = kill(m.pid, 0) == 0 || errno == EPERM
-        return alive && Date().timeIntervalSince(m.started) < 86400 ? m : nil
+        return (try? Data(contentsOf: file)).flatMap { try? dec.decode(Mark.self, from: $0) }
+    }
+
+    /// Whether the cl_audit that wrote a mark still runs.
+    static func live(_ m: Mark) -> Bool { executable(of: m.pid) == m.exe }
+
+    /// The mark on a window, if the cl_audit that wrote it still runs; a stale one is taken away.
+    static func current(_ window: String) -> Mark? {
+        guard FileManager.default.fileExists(atPath: url(window).path) else { return nil }
+        guard let m = read(url(window)), live(m) else { try? FileManager.default.removeItem(at: url(window)); return nil }
+        return m
+    }
+
+    /// Takes away every mark whose cl_audit is gone (at cl_audit's start).
+    static func sweep() {
+        let files = (try? FileManager.default.contentsOfDirectory(at: SwitchEngine.root, includingPropertiesForKeys: nil)) ?? []
+        for f in files where f.lastPathComponent.hasPrefix("active-") && f.pathExtension == "json" {
+            if read(f).map(live) != true { try? FileManager.default.removeItem(at: f) }
+        }
     }
 
     /// Marks the window for this switch; false when another switch of it (another profile or account, or another
     /// cl_audit) holds it.
     static func claim(_ window: String, profile: String, standby: String) -> Bool {
         if let m = current(window), m.pid != getpid() || m.profile != profile || m.standby != standby { return false }
+        guard let exe = executable(of: getpid()) else { return false }
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
         try? FileManager.default.createDirectory(at: SwitchEngine.root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        guard let d = try? enc.encode(Mark(pid: getpid(), profile: profile, standby: standby, started: Date())) else { return false }
+        guard let d = try? enc.encode(Mark(pid: getpid(), exe: exe, profile: profile, standby: standby, started: Date())) else { return false }
         return (try? d.write(to: url(window), options: .atomic)) != nil
     }
 
     /// Takes this cl_audit's mark off the window.
     static func release(_ window: String) {
-        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-        if let d = try? Data(contentsOf: url(window)), let m = try? dec.decode(Mark.self, from: d), m.pid != getpid() { return }
+        if let m = read(url(window)), m.pid != getpid(), live(m) { return }
         try? FileManager.default.removeItem(at: url(window))
     }
 
-    /// Whether a switch keeps this account's window closed now.
-    static func blocks(_ account: Account) -> Bool { current(Launcher.dataDirKey(of: account)) != nil }
+    /// The switch that keeps this account's window closed now, if any.
+    static func blocking(_ account: Account) -> Mark? { current(Launcher.dataDirKey(of: account)) }
+    static func blocks(_ account: Account) -> Bool { blocking(account) != nil }
 }
 
 extension FolderRules {

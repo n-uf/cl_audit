@@ -58,7 +58,11 @@ enum Launcher {
     /// front (the agent reopening windows after a Claude update).
     static func openClaude(_ account: Account, activate: Bool = true) {
         guard account.hasWindow else { return }        // a profile without a Claude window never opens one
-        guard !SwitchMarker.blocks(account) else { return }   // a switch is moving its sessions: it stays closed meanwhile
+        // a switch is moving its sessions: the window stays closed meanwhile; asked for by a click, cl_audit shows that switch
+        if let m = SwitchMarker.blocking(account) {
+            if activate { Installer.openSwitch(AccountEntry.standbyStatusID(m.profile, m.standby)) }
+            return
+        }
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: claudeBundleID)
         if let app = running.first(where: { isWindow(of: account, $0) }) {
             app.unhide()
