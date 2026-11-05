@@ -30,9 +30,11 @@ extension AccountEntry {
 
     /// The entry the agent reads a standby account's limits with: this profile with that account's folder and seat, and
     /// nothing a profile does besides reading: no alerts, Dock icon, menu bar icon or window. Its sign-in is renewed by
-    /// itself (Add account keeps it). nil while no sign-in is kept for it.
+    /// itself (Add account keeps it), only while its folder is signed in to that account (the reader holds back numbers
+    /// and renewals for any other). nil while no sign-in is kept for it, or while its seat isn't linked yet (a folder
+    /// signed in to an account it can't be, the profile's own or another profile's, is never read).
     func readerEntry(for s: StandbyAccount) -> AccountEntry? {
-        guard let dir = s.configDir, !dir.isEmpty else { return nil }
+        guard let dir = s.configDir, !dir.isEmpty, s.seat != nil else { return nil }
         var r = self
         r.id = Self.standbyStatusID(id, s.id)
         r.configDir = dir

@@ -304,8 +304,14 @@ final class UsageReader {
 
     private var renewKey: String { "lastRenewAttempt.\(id)" }
 
+    /// An automatic renewal may run: Renew sign-in on (always, for a standby account), none under way, and the folder
+    /// signed in to the account the profile linked; one signed in to another account waits for a choice.
+    static func mayRenewByItself(autoRenew: Bool, renewing: Bool, onOtherAccount: Bool) -> Bool {
+        autoRenew && !renewing && !onOtherAccount
+    }
+
     private func maybeRenew() {
-        guard entry.autoRenew, !renewing else { return }
+        guard Self.mayRenewByItself(autoRenew: entry.autoRenew, renewing: renewing, onOtherAccount: onOtherAccount) else { return }
         if let last = defaults.object(forKey: renewKey) as? Date, Date().timeIntervalSince(last) < Self.renewSpacing { return }
         renewLogin()
     }
