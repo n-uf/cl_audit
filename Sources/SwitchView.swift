@@ -75,18 +75,13 @@ struct CardOfferRow: View {
     let offer: CardOffer
     @Environment(\.face) private var face
 
+    // the key alone: the account's own limits are just below, in its Standby block
     var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) {
-                Text(offer.text).font(.system(size: 12)).foregroundStyle(face.soft).lineLimit(1)
-                Spacer(minLength: 6)
-                key
-            }
-            VStack(alignment: .leading, spacing: 6) {
-                Text(offer.text).font(.system(size: 12)).foregroundStyle(face.soft).lineLimit(1)
-                key
-            }
+        HStack(spacing: 8) {
+            Spacer(minLength: 0)
+            key
         }
+        .help(offer.text)
     }
 
     private var key: some View {
@@ -192,10 +187,11 @@ struct SwitchPage: View {
         }
     }
 
+    /// Both accounts with the same bars (no at-limit box here, so a full account and one with room read alike).
     @ViewBuilder private func limits(_ st: IconStatus?, _ e: AccountEntry) -> some View {
         let row = AccountRow(entry: e, status: st)
         if row.limits.contains(where: { $0.p != nil }) {
-            CardLimits(limits: row.limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits)
+            CardLimits(limits: row.limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits, fullBox: false)
         } else {
             Text("No numbers yet.").font(.system(size: 11.5)).foregroundStyle(face.muted)
         }

@@ -243,11 +243,13 @@ struct CardLimits: View {
     var credits: Credits? = nil
     /// While a limit is full: another of the profile's accounts with room (Switch.swift), under the box.
     var offer: CardOffer? = nil
+    /// Off: the usual bars even while a limit is full (the Switch page, which shows two accounts side by side).
+    var fullBox = true
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 15)) { ctx in
             VStack(alignment: .leading, spacing: large ? 10 : 8) {
-                if let full = AtLimit.blocker(limits, now: ctx.date) {
+                if fullBox, let full = AtLimit.blocker(limits, now: ctx.date) {
                     FullLimitsView(limits: limits, design: design, full: full, now: ctx.date)
                     if let offer { CardOfferRow(offer: offer) }
                 } else {
