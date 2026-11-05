@@ -354,7 +354,7 @@ struct NewAccountView: View {
     /// on its own line, the control the card's full width under it), so addresses and paths show whole.
     struct Columns: Equatable { let count: Int; let widths: [CGFloat] }
     static let column: CGFloat = 340
-    static let rowsFit: CGFloat = 480          // Claude Code's rows side by side from here: an address, a path, a key row
+    static let rowsFit = SRow<EmptyView>.stackBelow   // Claude Code's rows side by side from here (Settings uses it too)
     static let smallRowsFit: CGFloat = 330     // the small cards' rows (a name, swatches, a switch) fit down to here
     static let pad: CGFloat = 16, gap: CGFloat = 12
 

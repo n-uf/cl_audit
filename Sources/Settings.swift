@@ -797,6 +797,9 @@ struct SRow<Control: View>: View {
     @Environment(\.face) private var face
 
     static var labelWidth: CGFloat { 146 }      // the longest label with its (i): "Usage in the Dock"
+    /// A card with long values (accounts, paths, the address row) narrower than this stacks its rows, so they show
+    /// whole: New profile's Claude Code card and Settings ▸ a profile ▸ Claude Code (one rule for both).
+    static var stackBelow: CGFloat { 480 }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -821,6 +824,14 @@ struct SRow<Control: View>: View {
             if let info { InfoDot(text: info, picture: picture) }
         }
     }
+}
+
+/// Hands its content the width of the settings column it's in (SettingsColumns sets it), read where the card is drawn:
+/// a card built by a page above the columns can't read the column's environment itself.
+struct InSettingsColumn<Content: View>: View {
+    @Environment(\.settingsColumnWidth) private var width
+    @ViewBuilder let content: (CGFloat) -> Content
+    var body: some View { content(width) }
 }
 
 /// Signing in to another account, in one line like the Folder row: the address in a well as wide as the value column,

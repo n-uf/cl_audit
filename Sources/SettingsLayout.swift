@@ -45,9 +45,19 @@ struct SettingsColumns: View {
                 }
                 .frame(width: w)
                 .fixedSize(horizontal: false, vertical: true)    // each card keeps its own height
+                .environment(\.settingsColumnWidth, w)           // cards with long values stack below SRow.stackBelow
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+}
+
+/// The width of the settings column a card is in (SettingsColumns sets it; outside one it's unlimited).
+private struct SettingsColumnWidthKey: EnvironmentKey { static let defaultValue: CGFloat = .infinity }
+extension EnvironmentValues {
+    var settingsColumnWidth: CGFloat {
+        get { self[SettingsColumnWidthKey.self] }
+        set { self[SettingsColumnWidthKey.self] = newValue }
     }
 }
 
