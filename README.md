@@ -160,7 +160,8 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   1. Only that profile's Claude window closes, gracefully (it may ask about work under way; nothing is forced, and
      if it doesn't close, nothing moves). From here until the profile is switched or the switch is undone, nothing
      opens that window again (its Dock icon, the menu bar, cl_audit's rules and reopening after a Claude update all
-     wait), and a second switch of it is refused.
+     wait; a click shows the switch instead), and a second switch of it is refused. This holds only while that
+     cl_audit runs.
   2. With Sessions follow on, its Code sessions and scheduled tasks move to ultra-2 the way
      [claude-transplant](https://github.com/vitaliyhayda/claude-transplant) moves them: same ids, each entry kept byte
      for byte or re-encoded without the old account's error keys and Remote Control ids, through a write that can't
@@ -172,8 +173,10 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
      or a crash: the Switch page shows a switch that stopped half way with **Undo**, and a new switch waits for it.
      A session whose Claude Code transcript still points at the old account's Remote Control copy gets Claude Code's
      own empty pointer line, in one append, and only when nothing is writing that transcript (changed in the last
-     seconds, open in a program, or Claude Code running that session: left as it is); Undo takes the line off again
-     if it's still the transcript's last bytes.
+     seconds, open in a program, or Claude Code running that session: left as it is; a Claude Code session is seen
+     by its id on the command line, `--resume <id>` or `--session-id <id>`, not one resumed from its own picker,
+     which the first two checks cover); Undo takes the line off again if it's still the transcript's last bytes.
+     claude-transplant's lock file is made if it isn't there yet, so a first claude-transplant run waits too.
   3. Claude Code's own sign-in opens in Terminal for the profile's folder, with ultra-2's address filled in: finish
      in the browser. Until then **Cancel switch** puts the sessions back from the receipt. cl_audit never copies
      or moves a stored sign-in.
