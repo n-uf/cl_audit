@@ -93,24 +93,31 @@ extension StatsModel {
     }
 }
 
-/// The agent's menu bar icons: macOS remembers where each was ⌘-dragged (by its autosave name) and puts it back
-/// there, whatever the profiles' order. After a new order those places are forgotten, so the icons line up in it;
-/// ⌘-drag still moves them afterwards, until the next new order.
+/// The agent's menu bar icons. macOS places an icon by its autosave name: it puts it back where it was (⌘-dragged
+/// or not), whatever order the icons are created in. On macOS 26 and later the system's MenuBarAgent keeps that
+/// itself, out of the app's reach (nothing in its defaults; seen on 27.2); earlier versions kept it in the app's
+/// defaults. So after a new order the icons are put up again under new names, which carry the order (they also sort in
+/// it) and which macOS has no place for: they line up in the new order, and ⌘-drag still moves them until the next
+/// new order. Until the first new order the names stay "cl_audit <id>", so icons already placed keep their places.
 enum MenuBarOrder {
     private static let key = "menuBarProfileOrder"
+    private static let roundKey = "menuBarProfileOrderRound"
 
-    /// Whether the profiles are in a new order since the icons were last put up; remembers this order either way.
-    /// The first time (no order kept yet) is not a new one: icons already placed keep their places.
+    /// Whether the profiles are in a new order since the icons were last put up; remembers this order either way, and
+    /// counts a new one (the names' round). The first time (no order kept yet) is not a new one.
     static func reordered(_ ids: [String], defaults: UserDefaults = .standard) -> Bool {
         let before = defaults.stringArray(forKey: key)
         if before != ids { defaults.set(ids, forKey: key) }
-        guard let before else { return false }
-        return ProfileOrder.reordered(from: before, to: ids)
+        guard let before, ProfileOrder.reordered(from: before, to: ids) else { return false }
+        defaults.set(defaults.integer(forKey: roundKey) + 1, forKey: roundKey)
+        return true
     }
 
-    /// Forgets where macOS put these profiles' icons (call once the icons are removed: macOS may save it on removal).
-    static func forgetPlaces(_ ids: [String], defaults: UserDefaults = .standard) {
-        for id in ids { defaults.removeObject(forKey: "NSStatusItem Preferred Position cl_audit \(id)") }
+    /// The icon's autosave name: "cl_audit <id>" until the first new order, then "cl_audit <round>.<place> <id>"
+    /// (place: the profile's index in the order, two digits).
+    static func autosaveName(_ id: String, place: Int, defaults: UserDefaults = .standard) -> String {
+        let round = defaults.integer(forKey: roundKey)
+        return round == 0 ? "cl_audit \(id)" : "cl_audit \(round).\(String(format: "%02d", place)) \(id)"
     }
 }
 

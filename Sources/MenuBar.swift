@@ -261,17 +261,13 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
     /// Adds, removes and redraws the icons as the profiles say (the agent calls this every 30 s and after a change).
     func update(now: Date = Date()) {
         let all = profiles()
-        // the profiles in a new order (cl_audit's tile bar): the icons come down, and on the next turn (once macOS has
-        // noted where they were) go up again in that order, their ⌘-dragged places forgotten (ProfileOrder.swift)
+        // the profiles in a new order (cl_audit's tile bar): the icons come down and go up again below under new
+        // names, which macOS has no place for, so they line up in the new order (ProfileOrder.swift)
         if MenuBarOrder.reordered(all.map(\.entry.id)) {
             items.values.forEach { NSStatusBar.system.removeStatusItem($0) }
             items = [:]
-            DispatchQueue.main.async { [weak self] in
-                MenuBarOrder.forgetPlaces(all.map(\.entry.id))
-                self?.update()
-            }
-            return
         }
+        let place = ProfileOrder.ranks(all.map(\.entry.id))
         let list = all.filter { $0.entry.menuBar }
         let ids = Set(list.map(\.entry.id))
         for (id, it) in items where !ids.contains(id) {
@@ -286,7 +282,8 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         // a new icon goes left of the ones already there: added from the last profile, they read in profile order
         for p in list.reversed() where items[p.entry.id] == nil {
             let it = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-            it.autosaveName = "cl_audit \(p.entry.id)"          // where the user ⌘-dragged it
+            // where the user ⌘-dragged it is kept by this name (until the next new order)
+            it.autosaveName = MenuBarOrder.autosaveName(p.entry.id, place: place[p.entry.id] ?? 0)
             let menu = NSMenu(title: p.entry.id)
             menu.delegate = self
             menu.autoenablesItems = false
