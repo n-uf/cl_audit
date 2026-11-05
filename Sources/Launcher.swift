@@ -863,7 +863,15 @@ struct CardGrid: Layout {
         let cards = cards(subviews)
         let width = usable(proposal.width, count: cards.count)
         let g = grid(cards, width: width)
-        return CGSize(width: width, height: g.heights.reduce(0, +) + CGFloat(max(0, g.heights.count - 1)) * spacing)
+        var height = g.heights.reduce(0, +) + CGFloat(max(0, g.heights.count - 1)) * spacing
+        if dragged != nil {     // the rows around where a dragged card lands can stand taller: room for them
+            let heights = cards.map { $0.sizeThatFits(ProposedViewSize(width: g.colWidth, height: nil)).height }
+            let plan = ProfileDragPlan(count: cards.count, dragged: dragged, offset: offset,
+                                       arrange: Self.arrange(heights, cols: g.cols, colWidth: g.colWidth, spacing: spacing,
+                                                             in: CGRect(x: 0, y: 0, width: width, height: height)))
+            height = max(height, (plan.frames + [plan.socket ?? .zero]).map(\.maxY).max() ?? 0)
+        }
+        return CGSize(width: width, height: height)
     }
 
     /// The cards in `order`, row by row: a column's width each, every card in a row the row's tallest height.
@@ -1062,7 +1070,9 @@ final class ManagerUI {
             Installer.running(r.entry).forEach { $0.terminate() }
         },
         profileSettings: { [weak self] r in self?.showMain(page: .settings, account: r.id) },
-        moveProfile: { [weak self] ids in self?.settings.setOrder(ids) })      // the tile bar's own save
+        moveProfile: { [weak self] ids in                       // the tile bar's own save; not saved: the cards go back
+            if self?.settings.setOrder(ids) == false { withAnimation { self?.model.reload() } }
+        })
 
     var paletteShown: Bool { palette?.isVisible == true }
     var dashboardShown: Bool { mainWindow?.isVisible == true && mainWindow?.isMiniaturized == false }

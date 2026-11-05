@@ -25,7 +25,8 @@ enum ProfileOrder {
     /// the others, hidden ones included, keep their places.
     static func moving(_ id: String, to index: Int, among shown: [String], in all: [String]) -> [String] {
         let now = moving(id, to: index, in: shown)
-        guard let k = now.firstIndex(of: id) else { return all }
+        // put back where it was: no new order (a hidden profile before it mustn't make one)
+        guard now != shown, let k = now.firstIndex(of: id) else { return all }
         var out = all.filter { $0 != id }
         if k + 1 < now.count, let j = out.firstIndex(of: now[k + 1]) { out.insert(id, at: j) }
         else if k > 0, let j = out.firstIndex(of: now[k - 1]) { out.insert(id, at: j + 1) }
@@ -66,19 +67,21 @@ extension SettingsModel {
     }
 
     /// The one save behind every move (the tile bar's, the dashboard's cards'): the profiles in the order of `wanted`
-    /// (any it doesn't name after them, as they are).
-    func setOrder(_ wanted: [String]) {
+    /// (any it doesn't name after them, as they are). False when that order isn't what's saved now.
+    @discardableResult
+    func setOrder(_ wanted: [String]) -> Bool {
         let before = accounts.map(\.id)
         let ids = ProfileOrder.apply(wanted, to: accounts).map(\.id)
-        guard ids != before else { return }
+        guard ids != before else { return true }
         // nothing saved yet (the first setup, before Apply): the order goes with the rest when Apply saves
-        guard !saved.isEmpty else { accounts = ProfileOrder.apply(ids, to: accounts); return }
+        guard !saved.isEmpty else { accounts = ProfileOrder.apply(ids, to: accounts); return false }
         do { try Store.edit { ProfileOrder.apply(ids, to: $0) } }
-        catch { message = "Couldn't save: \(error.localizedDescription)"; return }
+        catch { message = "Couldn't save: \(error.localizedDescription)"; return false }
         takeInOutsideChanges()                       // the file as saved, with any change made here kept on top
         accounts = ProfileOrder.apply(ids, to: accounts)
         showSaved("order")
         WidgetCenter.shared.reloadAllTimelines()     // placed widgets redraw now, not at their next look in 5 min
+        return true
     }
 
     /// One place left or right (VoiceOver's Move left / Move right).
@@ -177,28 +180,37 @@ enum ProfileDragGesture {
 
 extension View {
     /// One profile's part in a drag: lifted (a touch bigger, with a shadow, over the others) and glued to the pointer
-    /// while it's the one in hand, the drag gesture, and VoiceOver's Move left / Move right.
-    /// `overOwnClicks`: the drag goes before the view's own click (a tile); otherwise the view's keys go first, so a
-    /// drag never starts from one (a card's Show window, Terminal…).
+    /// while it's the one in hand, and the drag gesture. `overOwnClicks`: the drag goes before the view's own click
+    /// (a tile); otherwise the view's keys go first, so a drag never starts from one (a card's Show window, Terminal…).
+    /// `step`: VoiceOver's Move left / Move right, for a view that is one element (a tile; a card's keys are each
+    /// their own, and would all get them).
     func profileDragItem<G: Gesture>(lifted: Bool, live: Bool, scale: CGFloat, shadow: CGFloat, gesture: G,
-                                     overOwnClicks: Bool, step: @escaping (Int) -> Void) -> some View {
+                                     overOwnClicks: Bool, step: ((Int) -> Void)? = nil) -> some View {
         self
             .scaleEffect(lifted ? scale : 1)
             .shadow(color: .black.opacity(lifted ? 0.5 : 0), radius: lifted ? shadow : 0, y: lifted ? shadow * 0.7 : 0)
             .contentShape(Rectangle())
             .zIndex(lifted ? 1 : 0)
             .transaction { t in if lifted && live { t.animation = nil } }
-            .modifier(ProfileDragAttach(gesture: gesture, first: overOwnClicks))
-            .accessibilityHint("Drag to change the order")
-            .accessibilityAction(named: "Move left") { withAnimation(.easeOut(duration: 0.18)) { step(-1) } }
-            .accessibilityAction(named: "Move right") { withAnimation(.easeOut(duration: 0.18)) { step(1) } }
+            .modifier(ProfileDragAttach(gesture: gesture, first: overOwnClicks, step: step))
     }
 }
 
 private struct ProfileDragAttach<G: Gesture>: ViewModifier {
     let gesture: G
     let first: Bool
+    let step: ((Int) -> Void)?
     @ViewBuilder func body(content: Content) -> some View {
+        if let step {
+            attached(content)
+                .accessibilityHint("Drag to change the order")
+                .accessibilityAction(named: "Move left") { withAnimation(.easeOut(duration: 0.18)) { step(-1) } }
+                .accessibilityAction(named: "Move right") { withAnimation(.easeOut(duration: 0.18)) { step(1) } }
+        } else {
+            attached(content)
+        }
+    }
+    @ViewBuilder private func attached(_ content: Content) -> some View {
         if first { content.highPriorityGesture(gesture) } else { content.gesture(gesture) }
     }
 }
@@ -268,9 +280,7 @@ struct ProfileCards: View {
                     .profileDragItem(lifted: d?.id == row.id, live: drag != nil, scale: 1.015, shadow: 9,
                                      gesture: ProfileDragGesture.make(row.id, state: $drag, enabled: rows.count > 1,
                                                                       landing: landing) { id, to in move(id, to: to, shown: shown) },
-                                     overOwnClicks: false) { step in
-                        if let i = shown.firstIndex(of: row.id), shown.indices.contains(i + step) { move(row.id, to: i + step, shown: shown) }
-                    }
+                                     overOwnClicks: false)
             }
         }
         .animation(.easeOut(duration: 0.16), value: d)
@@ -383,6 +393,6 @@ struct ProfileDragPlan {
 /// The tile bar's ⓘ: what the order does, and what it leaves alone.
 struct ProfileOrderInfo: View {
     var body: some View {
-        InfoDot(text: "Drag a profile left or right to change the order (or its card on the dashboard: the same order). The dashboard, the launcher (⌘1, ⌘2…), the menu bar icons, the widget, the usage history and the Dock menu follow it. It's saved when you let go.\nThe menu bar icons line up in the new order; ⌘-drag still moves them after.\nThe Dock icons stay where they are: the Dock is macOS's, so move them there. (With General ▸ Dock ▸ Keep in order on, cl_audit puts them in this order the next time it arranges the Dock: Arrange Dock, or adding, renaming or removing a profile.)")
+        InfoDot(text: "Drag a profile's tile left or right to change the order. On the dashboard, drag a profile's card: it's the same order. The dashboard, the launcher (⌘1, ⌘2…), the menu bar icons, the widget, the usage history and the Dock menu follow it. It's saved when you let go.\nThe menu bar icons line up in the new order; ⌘-drag still moves them after.\nThe Dock icons stay where they are: the Dock is macOS's, so move them there. (With General ▸ Dock ▸ Keep in order on, cl_audit puts them in this order the next time it arranges the Dock: Arrange Dock, or adding, renaming or removing a profile.)")
     }
 }

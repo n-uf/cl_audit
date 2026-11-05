@@ -106,7 +106,7 @@ the Dock · no window". The plan is Claude's own name for it, as Claude Code rec
 `.claude.json` ("Ultra"; the sign-in itself says "max" for an Ultra account), else the sign-in's. A plan without a
 5-hour limit (Ultra) shows the week alone: no empty 5-hour row on the cards, panels, menus, the menu bar icon and
 the widget (the Dock icon still shows "5h –"). Drag a card (not by one of its keys) to put the profiles in another
-order, the same order as Settings' tile bar (see Settings ▸ Profile order); the display says "Saved · order".
+order, the same order as Settings' tile bar (see Profile order under Settings); the display says "Saved · order".
 
 The top strip is the profile keys, one display and the refresh key. The display shows one thing at a time, most
 important first: "Not updating · agent won't start · numbers 7 min old" (red; a click opens Settings ▸ General with
