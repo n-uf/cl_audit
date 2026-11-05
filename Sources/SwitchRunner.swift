@@ -44,6 +44,9 @@ final class SwitchRunner: ObservableObject {
     var key: String { AccountEntry.standbyStatusID(profile, standby) }
     private var entry: AccountEntry? { model?.accounts.first { $0.id == profile } }
     private var target: StandbyAccount? { entry?.standby.first { $0.id == standby } }
+    /// The profile's window, by its data folder (it doesn't change in a switch): what SwitchMarker marks.
+    private var window: String? { entry.map { Launcher.dataDirKey(of: Account($0)) } }
+    private func releaseWindow() { if let w = window { SwitchMarker.release(w) } }
 
     // MARK: the window
 
@@ -58,11 +61,19 @@ final class SwitchRunner: ObservableObject {
     // MARK: going
 
     func start() {
-        guard phase == .ready || isFailed, let e = entry, let s = target else { return }
+        guard phase == .ready || isFailed, let e = entry, let s = target, let w = window else { return }
         note = nil
+        // a switch that stopped half way is put back first: never a second move on top of it
+        guard SwitchEngine.unfinished(profile: profile).isEmpty else {
+            phase = .failed("An earlier switch of \(e.name) didn't finish: Undo it first."); return
+        }
         switch SwitchEngine.plan(e, standby: s) {
         case .failure(let why): phase = .failed(why.description); return
         case .success: break
+        }
+        // the window stays closed from here until the profile is linked or the switch is undone; one switch at a time
+        guard SwitchMarker.claim(w, profile: profile, standby: standby) else {
+            phase = .failed("Another switch of this Claude window is under way."); return
         }
         let apps = Self.windowApps(e)
         if apps.isEmpty { move() ; return }
@@ -73,6 +84,7 @@ final class SwitchRunner: ObservableObject {
             guard let self, let e = self.entry else { return true }
             if Self.windowClosed(e) { self.move(); return true }
             if Date().timeIntervalSince(self.started) > 45 {
+                self.releaseWindow()
                 self.phase = .failed("The window didn't close; it may be asking about work under way. Answer it, then try again. Nothing moved.")
                 return true
             }
@@ -84,7 +96,8 @@ final class SwitchRunner: ObservableObject {
 
     private func move() {
         guard let e = entry, let s = target, case .success(let plan) = SwitchEngine.plan(e, standby: s) else {
-            phase = .failed("The switch couldn't be planned again."); return
+            releaseWindow()
+            phase = .failed("The switch couldn't be planned again. Nothing moved."); return
         }
         phase = .moving
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -97,6 +110,9 @@ final class SwitchRunner: ObservableObject {
                     if !r.problems.isEmpty { self.note = "Left where they were: " + r.problems.joined(separator: "; ") }
                     self.signInCode()
                 case .failure(let err):
+                    // stopped half way: its receipt, for Undo (the window stays closed until then); nothing moved: free
+                    self.receipt = SwitchEngine.unfinished(profile: self.profile).first
+                    if self.receipt == nil { self.releaseWindow() }
                     self.phase = .failed("\(err)")
                 }
             }
@@ -128,6 +144,9 @@ final class SwitchRunner: ObservableObject {
         m.accounts = out
         // each account keeps its own numbers: never the old account's under the new one's name
         if let after = out.first(where: { $0.id == profile }) { FolderRules.moveNumbers(before, after) }
+        // linked: the way back is a switch now, and the window may open again
+        if let id = receipt?.id { SwitchEngine.markLinked(id); receipt = SwitchEngine.load(id) ?? receipt }
+        releaseWindow()
         note = nil
         phase = .windowSignIn
         guard let e = entry else { return }
@@ -199,20 +218,30 @@ final class SwitchRunner: ObservableObject {
     /// Cancel before Claude Code signed in: the sessions go back (the window is still closed then); nothing else changed.
     func cancel() {
         timer?.invalidate()
-        guard let r = receipt, phase == .codeSignIn || isFailed else { phase = .ready; return }
+        guard let r = receipt, r.linked == nil, phase == .codeSignIn || isFailed else { releaseWindow(); phase = .ready; return }
+        undoUnfinished(r.id)
+    }
+
+    /// Undo of a switch that stopped half way or was cancelled (this one, or an earlier one the page found unfinished):
+    /// what it moved goes back, then the window may open again.
+    func undoUnfinished(_ id: String) {
+        timer?.invalidate()
         guard let e = entry else { return }
+        guard Self.windowClosed(e) else { note = "Quit \(e.name)'s Claude window first, then Undo."; return }
         do {
-            try SwitchEngine.undo(r.id, windowClosed: { Self.windowClosed(e) })
-            receipt = SwitchEngine.load(r.id)
+            let r = try SwitchEngine.undo(id, windowClosed: { Self.windowClosed(e) })
+            if receipt == nil || receipt?.id == id { receipt = r }
+            releaseWindow()
+            note = nil
             phase = .cancelled
             if e.claudeWindow { Launcher.openClaude(Account(e)) }
         } catch {
-            phase = .failed("Undo didn't finish: \(error). The receipt is in cl_audit's folder (switches/\(r.id)).")
+            phase = .failed("Undo didn't finish: \(error). The receipt is in cl_audit's folder (switches/\(id)).")
         }
     }
 
     /// The window signed in later, or not at all: the switch itself is done.
-    func finish() { timer?.invalidate(); phase = .done }
+    func finish() { timer?.invalidate(); releaseWindow(); phase = .done }
 
     /// Renders only: the page as it looks at a step.
     func preview(_ p: Phase, receipt r: SwitchReceipt? = nil, note n: String? = nil, sidebarOpened o: Bool = false) {

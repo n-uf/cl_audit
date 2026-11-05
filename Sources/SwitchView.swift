@@ -323,6 +323,13 @@ struct SwitchPage: View {
     }
 
     private var statusLine: String? {
+        if let p = pending {
+            let when = p.started.formatted(date: .abbreviated, time: .shortened)
+            var lead = ""
+            if case .failed(let why) = runner.phase, !why.hasPrefix("An earlier switch") { lead = why + " " }
+            if let n = runner.note { lead += n + " " }
+            return lead + "A switch on \(when) stopped half way: \(p.moved) \(p.moved == 1 ? "session" : "sessions") moved, \(name) not switched. Undo puts them back."
+        }
         switch runner.phase {
         case .failed(let why): return why
         case .cancelled: return "Cancelled: the sessions are back with \(from)."
@@ -337,9 +344,17 @@ struct SwitchPage: View {
             case .ready, .failed, .cancelled:
                 Button("Back") { model.selection = entry.id }.buttonStyle(.plain).foregroundStyle(face.muted)
                 Spacer(minLength: 6)
-                Button(isFailed ? "Try again" : "Close and switch to \(to)") { confirm = true }
+                if let p = pending {
+                    Button("Undo") {
+                        runner.undoUnfinished(p.id)
+                        unfinished = SwitchEngine.unfinished(profile: entry.id)
+                    }
                     .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
-                    .disabled(runner.phase == .cancelled || (!entry.sessionsFollow ? false : counts == nil))
+                } else {
+                    Button(isFailed ? "Try again" : "Close and switch to \(to)") { confirm = true }
+                        .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+                        .disabled(runner.phase == .cancelled || (!entry.sessionsFollow ? false : counts == nil))
+                }
             case .closing, .moving:
                 Spacer(minLength: 6)
                 Text(runner.phase == .closing ? "closing the window…" : "moving…").font(.system(size: 12)).foregroundStyle(face.caution)
