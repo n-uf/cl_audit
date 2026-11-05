@@ -100,6 +100,34 @@ struct CardOfferRow: View {
     }
 }
 
+/// A standby account that is back, on its profile's dashboard card (SwitchBack.swift): "ultra-1 is back: its week
+/// starts again", Stay, and Switch back to ultra-1….
+struct BackOfferRow: View {
+    let offer: BackOffer
+    let open: (String) -> Void
+    @Environment(\.face) private var face
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 8) { words; Spacer(minLength: 6); stay; key }
+            VStack(alignment: .leading, spacing: 6) {
+                words
+                HStack(spacing: 8) { Spacer(minLength: 0); stay; key }
+            }
+        }
+    }
+
+    private var words: some View {
+        Text(offer.words).font(.system(size: 12)).foregroundStyle(face.soft).lineLimit(1)
+    }
+    private var stay: some View {
+        Button("Stay") { BackWatch.dismiss(offer.key) }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize()
+    }
+    private var key: some View {
+        Button(offer.title) { open(offer.key) }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+    }
+}
+
 /// A standby account's limits on its profile's dashboard card, small: "Standby · ultra-1@example.com", then a row
 /// per limit (name, bar, percentage, "in 3 days" or, full, when it's back).
 struct StandbyLimits: View {

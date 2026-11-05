@@ -945,14 +945,17 @@ struct AccountCard: View {
             // a full limit and another of the profile's accounts with room: "Switch to ultra-2…" under the box
             // (its standby accounts read once per drawing: the best one with room is the first of them)
             let offers = row.entry.switchOffers()
+            // a standby account that is back has its own row with Switch back (SwitchBack.swift), not a second offer
+            let backs = row.entry.backOffers()
             CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits,
-                       offer: offers.first(where: \.room).map { CardOffer($0, open: actions.switchAccount) })
+                       offer: offers.first(where: { o in o.room && !backs.contains { $0.key == o.key } }).map { CardOffer($0, open: actions.switchAccount) })
             // its standby accounts' limits, small (Accounts.swift)
             ForEach(offers, id: \.key) { o in
                 if let e = row.entry.readerEntry(for: o.standby), o.status?.weekly != nil || o.status?.fiveHour != nil {
                     StandbyLimits(email: o.standby.email, limits: AccountRow(entry: e, status: o.status).limits, design: prefs.cardStyle)
                 }
             }
+            ForEach(backs) { b in BackOfferRow(offer: b, open: actions.switchAccount) }
           }
             Spacer(minLength: 12)         // cards in a row share one height; the buttons stay at the bottom
             HStack(spacing: 7) {

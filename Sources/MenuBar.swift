@@ -360,10 +360,17 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         if p.entry.claudeWindow { add("Open Claude window", #selector(openClaude(_:))) }
         add("Refresh now", #selector(refreshNow(_:)))
         if p.expired { add("Renew login now (uses a little usage)", #selector(renewLogin(_:))) }
-        // the profile's other accounts (Accounts.swift): each opens cl_audit's Switch page
-        let offers = p.entry.switchOffers()
-        if !offers.isEmpty {
+        // the profile's other accounts (Accounts.swift): each opens cl_audit's Switch page; one that is back first, as
+        // Switch back to … (SwitchBack.swift)
+        let backs = p.entry.backOffers()
+        let offers = p.entry.switchOffers().filter { o in !backs.contains { $0.key == o.key } }
+        if !offers.isEmpty || !backs.isEmpty {
             menu.addItem(.separator())
+            for b in backs {
+                let i = NSMenuItem(title: b.title, action: #selector(switchAccount(_:)), keyEquivalent: "")
+                i.target = self; i.representedObject = b.key; i.toolTip = b.words
+                menu.addItem(i)
+            }
             for o in offers {
                 let i = NSMenuItem(title: "Switch to \(o.short)…", action: #selector(switchAccount(_:)), keyEquivalent: "")
                 i.target = self; i.representedObject = o.key
