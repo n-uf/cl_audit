@@ -34,6 +34,9 @@ the notes before updating.
   "Opening and closing" and "Dock icon clicks" became one **Dock icon** card and a **Claude window** card;
   "Updates and alerts" is **Alerts**; "Emails" is **Privacy**. Pop-ups and text fields fill their row, so their
   right edges line up.
+- **The agent has its own name.** It shows as **cl_audit Agent** in Activity Monitor, so it isn't mistaken for the
+  cl_audit window. macOS restarts it if it's force-quit; to stop it, turn cl_audit off in System Settings ▸ General ▸
+  Login Items & Extensions (Settings ▸ General ▸ Usage in the background ⓘ says so too).
 - **A profile's settings in one pattern.** Each part is one card with its switch first: the **Dock icon** (when it
   runs, a click, the usage panel and the icon's look, which was a card of its own, with a preview strip), the
   **Claude window** (its switch, With Dock icon, Opens from) and the **Menu bar** (style and colours as tiles,

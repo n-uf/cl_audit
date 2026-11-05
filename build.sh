@@ -61,8 +61,8 @@ cat > "$helper/Contents/Info.plist" <<PLIST
 <plist version="1.0">
 <dict>
   <key>CFBundleIdentifier</key><string>local.usage-n-uf-agent</string>
-  <key>CFBundleName</key><string>$name</string>
-  <key>CFBundleDisplayName</key><string>$name</string>
+  <key>CFBundleName</key><string>$name Agent</string>
+  <key>CFBundleDisplayName</key><string>$name Agent</string>
   <key>CFBundleExecutable</key><string>UsageDock</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>

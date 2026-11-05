@@ -350,7 +350,9 @@ under cl_audit; one column keeps the same order, top to bottom. Every row is one
   "Not reading · stopped 12 min ago"), then whether **Alerts** reach you (Allowed, or "Not allowed" with **Allow…**,
   which opens System Settings ▸ Notifications ▸ cl_audit), **Last read**, and only while reading has stopped
   **Start reading**, with a note under the rows (cl_audit also retries by itself every minute) and the reason it
-  won't start. The dashboard's red display opens this card.
+  won't start. The dashboard's red display opens this card. The agent shows as **cl_audit Agent** in Activity
+  Monitor; macOS restarts it if it's force-quit. To stop it, turn cl_audit off in System Settings ▸ General ▸ Login
+  Items & Extensions.
 - **About:** the version and build, a link to what's new, when the agent last cleaned up ("Nothing to clean up ·
   11:38", "Cleaned up 2 leftovers · Thu 09:00"; the (i) lists what went) and **Uninstall cl_audit…** (see
   [Uninstalling](#uninstalling)).
