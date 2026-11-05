@@ -77,6 +77,7 @@ enum UsageExport {
         DispatchQueue.global(qos: .userInitiated).async {
             let text = csv(StatsScanner.replies(for: entries, since: range.since), names: names, order: entries.map(\.id),
                            byProject: byProject)
+            guard StatsScanner.enabled else { return }          // Usage history turned off meanwhile: no empty file
             do { try text.write(to: url, atomically: true, encoding: .utf8) }
             catch { DispatchQueue.main.async { NSAlert(error: error).runModal() } }
         }

@@ -39,6 +39,8 @@ enum StatsScanner {
     private static var cache: [String: Cached] = [:]
     private static var epoch = 0                // forget() bumps it: a scan under way then keeps nothing
     private static let lock = NSLock()
+    /// One scan at a time (the dashboard, the launcher's week, the CSV): the next one finds what the last one read.
+    private static let scanLock = NSLock()
 
     /// Settings ▸ General ▸ Privacy ▸ Usage history (DashboardPrefs.history). Off: no session file is opened.
     static var enabled: Bool { UserDefaults.standard.object(forKey: DashboardPrefs.historyKey) as? Bool ?? true }
@@ -50,8 +52,9 @@ enum StatsScanner {
 
     /// All replies of the given accounts since `since` (none while Usage history is off). Call off the main thread.
     static func replies(for entries: [AccountEntry], since: Date) -> [Reply] {
+        scanLock.lock(); defer { scanLock.unlock() }
+        lock.lock(); let started = epoch; lock.unlock()        // before `enabled`: turned off after this, it stops below
         guard enabled else { return [] }
-        lock.lock(); let started = epoch; lock.unlock()
         var out: [Reply] = []
         let fm = FileManager.default
         for e in entries {
