@@ -90,13 +90,16 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     /// signed in to; these wait. Older files have none: the profile's one account is the one in use.
     var standby: [StandbyAccount] = []
     var sessionsFollow: Bool = true           // switching accounts takes the Claude window's sessions along
+    /// The folder that keeps the account in use's own sign-in for when it's on standby again (it came from standby
+    /// with one), so after a switch its limits still show. nil: none (Sign in… on its box makes one).
+    var keptFolder: String? = nil
 
     init(id: String, name: String, label: String, configDir: String) {
         self.id = id; self.name = name; self.label = label; self.configDir = configDir
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, notifyBack, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, opensFromDock, seat, claudeWindow, showFable, menuBar, menuBarLook, standby, sessionsFollow
+        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, notifyBack, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, opensFromDock, seat, claudeWindow, showFable, menuBar, menuBarLook, standby, sessionsFollow, keptFolder
     }
     private enum LegacyKeys: String, CodingKey { case clickShowsDetails, openAtLogin, lifecycle }
 
@@ -151,6 +154,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
             agentLog.error("profile \(profile, privacy: .public): \(dropped) standby account(s) couldn't be read and were left out")
         }
         sessionsFollow = try c.decodeIfPresent(Bool.self, forKey: .sessionsFollow) ?? true
+        keptFolder = try c.decodeIfPresent(String.self, forKey: .keptFolder)
         if let action = try c.decodeIfPresent(ClickAction.self, forKey: .clickAction) {
             clickAction = action
         } else if let old = try legacy.decodeIfPresent(Bool.self, forKey: .clickShowsDetails) {
