@@ -48,6 +48,25 @@ extension AccountEntry {
         r.notify = false; r.notifyBack = false; r.autoRenew = true
         r.iconHidden = true; r.claudeWindow = false; r.menuBar = false
         r.standby = []
+        r.keptFolder = nil                    // the profile's own account's folder: never this one's
+        return r
+    }
+
+    /// The Claude Code folder the profile's numbers are read from: the account in use's own folder (keptFolder: signed in
+    /// once, renewed by itself), once it's signed in to that account, so its limits stay live whatever the working folder
+    /// is signed in to (a switch signs that one in again each time); else the working folder.
+    var readingFolder: String {
+        guard let k = keptFolder, !k.isEmpty, let s = seat, s.same(Account.signedInSeat(configDir: k)) else { return configDir }
+        return k
+    }
+
+    /// The account in use has a folder of its own, signed in to it.
+    var readsOwnFolder: Bool { readingFolder != configDir }
+
+    /// The profile as its reader sees it: the same, reading from `readingFolder`.
+    func readingEntry() -> AccountEntry {
+        var r = self
+        r.configDir = readingFolder
         return r
     }
 

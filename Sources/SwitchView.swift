@@ -370,6 +370,7 @@ struct SwitchPage: View {
         let w = window.prefix(1).uppercased() + window.dropFirst()
         let code = runner.phase == .codeSignIn, win = runner.phase == .windowSignIn
         return SCard(title: "Steps", info: "What switching does, in order. Each step is checked before the next. A receipt in cl_audit's folder keeps what moved: until Claude Code has signed in, Cancel puts it back; after that the way back is a switch the other way.") {
+            if keepsOwnFolderFirst { ownFolderStep.padding(.bottom, 6) }
             VStack(alignment: .leading, spacing: 0) {
                 step(1, "\(w) closes", "Only that window, for about half a minute; your other Claude windows stay open.")
                 step(2, "The sessions move to \(to)", entry.sessionsFollow
@@ -394,6 +395,30 @@ struct SwitchPage: View {
     }
 
     private var isFailed: Bool { if case .failed = runner.phase { return true }; return false }
+
+    /// Before Close and switch: the account it leaves has no folder of its own yet, and it wasn't skipped.
+    private var keepsOwnFolderFirst: Bool {
+        runner.phase == .ready && runner.ownFolder != .skipped && entry.seat != nil && !SwitchRunner.hasOwnFolder(entry)
+    }
+
+    /// "Keep ultra-1's limits showing after the switch": Sign in ultra-1… or Skip.
+    private var ownFolderStep: some View {
+        let signing = runner.ownFolder == .signing
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Keep \(from)'s limits showing after the switch").font(.system(size: 13, weight: .semibold)).foregroundStyle(face.text)
+            Text(signing ? "Finish the sign-in in the browser as \(Privacy.masked(entry.seat?.email ?? from)); Terminal shows Claude Code's sign-in."
+                         : "Sign it in once to a folder of its own (one confirmation in the browser). Without it, \(from)'s limits show as last read until \(name) switches back.")
+                .font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Spacer(minLength: 0)
+                Button("Skip") { runner.skipOwnFolder() }.buttonStyle(.plain).foregroundStyle(face.muted)
+                Button(signing ? "Sign in again…" : "Sign in \(from)…") { runner.keepOwnFolder() }
+                    .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(model.claudePath == nil)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(face.text.opacity(0.05)))
+    }
 
     private var confirmWords: String {
         let moved: String = {
@@ -438,7 +463,7 @@ struct SwitchPage: View {
                 } else {
                     Button(isFailed ? "Try again" : "Close and switch \(goesBack ? "back to" : "to") \(to)") { confirm = true }
                         .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
-                        .disabled(runner.phase == .cancelled || (!entry.sessionsFollow ? false : counts == nil))
+                        .disabled(runner.phase == .cancelled || keepsOwnFolderFirst || (!entry.sessionsFollow ? false : counts == nil))
                 }
             case .closing, .moving:
                 Spacer(minLength: 6)

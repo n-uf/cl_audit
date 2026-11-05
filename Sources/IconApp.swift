@@ -549,7 +549,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showDashboard() { details.close(); Installer.openDashboard() }
     @objc func logIn() {
         guard let claude = ClaudeCLI.find() else { NSSound.beep(); return }
-        ClaudeCLI.openLogin(claude, account: account, email: expectedEmail)
+        // the folder the numbers are read from: the account's own once it has one
+        let reading = Account(entry.readingEntry())
+        ClaudeCLI.openLogin(claude, account: reading, email: reading.expectedEmail() ?? expectedEmail)
     }
 }
 

@@ -1343,7 +1343,51 @@ struct AccountSettings: View {
             } else if mismatch || status?.state == "noLogin" || status?.state == "expired" {
                 logInKey(email: expected)
             }
+            if !entry.standby.isEmpty { ownFolderLine }
         }
+    }
+
+    /// With more than one account, the one in use has a folder of its own too, signed in once, so its limits keep
+    /// showing after a switch (the working folder signs in again each time): said, or offered.
+    @ViewBuilder var ownFolderLine: some View {
+        let kept = entry.keptFolder.flatMap { $0.isEmpty ? nil : $0 }
+        let ready = kept.flatMap { FolderFactsCache.facts($0) }.map { $0.seat.same(entry.seat) } ?? false
+        if ready {
+            Text("Its limits come from a sign-in kept for it, renewed by itself.")
+                .font(.system(size: 10.5)).foregroundStyle(face.muted).lineLimit(1).minimumScaleFactor(0.9)
+        } else {
+            let why = kept == nil ? "Keep its limits showing after a switch: sign it in once to a folder of its own."
+                                  : "Waiting for the sign-in in its own folder: finish it in the browser, or sign in again."
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) {
+                    Text(why).font(.system(size: 11.5)).foregroundStyle(face.caution).lineLimit(1)
+                    Spacer(minLength: 6)
+                    ownFolderKey
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(why).font(.system(size: 11.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
+                    ownFolderKey
+                }
+            }
+        }
+    }
+
+    private var ownFolderKey: some View {
+        Button("Sign in…") { signInOwnFolder() }
+            .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(model.claudePath == nil)
+    }
+
+    /// The account in use, signed in once to a folder of its own (made now if it has none): Claude Code's sign-in there
+    /// in Terminal, with its address filled in. Its numbers come from there once that's done (Reader.swift).
+    func signInOwnFolder() {
+        guard let claude = model.claudePath, let email = entry.seat?.email ?? expected else { return }
+        var dir = entry.keptFolder ?? ""
+        if dir.isEmpty {
+            guard let made = StandbyFolder.make(for: email) else { model.message = "Couldn't make a folder for its sign-in"; return }
+            dir = made
+            entry.keptFolder = made
+        }
+        ClaudeCLI.openLogin(claude, account: Account(AccountEntry(id: entry.id, name: entry.name, label: entry.label, configDir: dir)), email: email)
     }
 
     /// A standby account: its address (a pop-up with Sign in… and Remove), its plan, STANDBY, and its limits from the
@@ -1516,10 +1560,11 @@ struct AccountSettings: View {
     /// The profile's Claude window is signed in to another claude.ai account (only its id is known, never its address).
     var windowElsewhere: Bool { _ = model.tick; return FolderRules.windowOnAnotherAccount(entry) }
 
-    /// "Log in…": Claude Code's own sign-in for this folder in Terminal, with the address filled in.
+    /// "Log in…": Claude Code's own sign-in in Terminal, with the address filled in, for the folder the numbers are read
+    /// from (the account's own once it has one).
     func logInKey(email: String?) -> some View {
         Button("Log in…") {
-            if let claude = model.claudePath { ClaudeCLI.openLogin(claude, account: Account(entry), email: email) }
+            if let claude = model.claudePath { ClaudeCLI.openLogin(claude, account: Account(entry.readingEntry()), email: email) }
         }
         .buttonStyle(.pill(.red, compact: true)).disabled(model.claudePath == nil)
     }

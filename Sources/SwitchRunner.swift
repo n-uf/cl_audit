@@ -33,6 +33,10 @@ final class SwitchRunner: ObservableObject {
     @Published private(set) var receipt: SwitchReceipt?
     @Published private(set) var note: String?            // a word under the steps (signed in as another account, …)
     @Published private(set) var sidebarOpened = false     // the session that arranges the sidebar was opened
+    /// Before the switch: the account it leaves signed in once to a folder of its own (so its limits keep showing), or
+    /// skipped.
+    @Published private(set) var ownFolder: OwnFolder = .idle
+    enum OwnFolder { case idle, signing, skipped }
     private weak var model: SettingsModel?
     private var timer: Timer?
     private var started = Date()
@@ -57,6 +61,40 @@ final class SwitchRunner: ObservableObject {
     }
 
     static func windowClosed(_ e: AccountEntry) -> Bool { windowApps(e).isEmpty }
+
+    // MARK: before going: the account it leaves keeps its limits showing
+
+    /// The account in use has a folder of its own, signed in to it (its numbers come from there; Accounts.swift).
+    static func hasOwnFolder(_ e: AccountEntry) -> Bool {
+        guard let k = e.keptFolder, !k.isEmpty else { return false }
+        return FolderFactsCache.facts(k).map { $0.seat.same(e.seat) } ?? false
+    }
+
+    /// Sign the account in use in once to a folder of its own (made now if it has none), in Terminal with its address
+    /// filled in; done when that folder names it.
+    func keepOwnFolder() {
+        guard let m = model, let i = m.accounts.firstIndex(where: { $0.id == profile }), let email = m.accounts[i].seat?.email else { return }
+        guard let claude = m.claudePath else { note = "Claude Code wasn't found on this Mac."; return }
+        var dir = m.accounts[i].keptFolder ?? ""
+        if dir.isEmpty {
+            guard let made = StandbyFolder.make(for: email) else { note = "Couldn't make a folder for its sign-in in your home folder."; return }
+            dir = made
+            m.accounts[i].keptFolder = made
+        }
+        let e = m.accounts[i]
+        ClaudeCLI.openLogin(claude, account: Account(AccountEntry(id: e.id, name: e.name, label: e.label, configDir: dir)), email: email)
+        note = nil
+        ownFolder = .signing
+        started = Date()
+        tick(every: 2) { [weak self] in
+            guard let self, self.phase == .ready, let e = self.entry else { return true }
+            if Self.hasOwnFolder(e) { self.ownFolder = .idle; return true }      // the cache follows .claude.json's date
+            return Date().timeIntervalSince(self.started) > 15 * 60          // given up on after a while; the key stays
+        }
+    }
+
+    /// Switch without it: the account it leaves shows its limits as last read ("hasn't been read since").
+    func skipOwnFolder() { timer?.invalidate(); ownFolder = .skipped }
 
     // MARK: going
 

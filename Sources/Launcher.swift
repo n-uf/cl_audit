@@ -1054,7 +1054,8 @@ final class ManagerUI {
         terminal: { [weak self] r in self?.closePalette(); Launcher.openTerminal(r.account) },
         logIn: { [weak self] r in
             self?.closePalette()
-            if let claude = ClaudeCLI.find() { ClaudeCLI.openLogin(claude, account: r.account, email: r.status?.expectedEmail) }
+            // the folder the numbers are read from: the account's own once it has one
+            if let claude = ClaudeCLI.find() { ClaudeCLI.openLogin(claude, account: Account(r.entry.readingEntry()), email: r.status?.expectedEmail) }
         },
         mainScreen: { [weak self] in self?.closePalette(); self?.showMain() },
         settings: { [weak self] in self?.showMain(page: .settings) },

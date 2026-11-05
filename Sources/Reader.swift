@@ -54,7 +54,7 @@ final class UsageReader {
     /// `startIn`: seconds until the first fetch, so profiles don't all ask at once.
     init(_ e: AccountEntry, defaults: UserDefaults, startIn: TimeInterval = 0) {
         entry = e
-        account = Account(e)
+        account = Account(e.readingEntry())       // the account's own folder once it has one (Accounts.swift)
         self.defaults = defaults
         nextFetch = Date().addingTimeInterval(startIn)
         // carry on from what was saved last (the numbers don't blank while the agent restarts), if read for its account
@@ -74,16 +74,33 @@ final class UsageReader {
     /// The profile's settings changed: a new folder or interval reads again at once.
     func update(_ e: AccountEntry) {
         guard e != entry, !stopped else { return }
-        let refetch = e.configDir != entry.configDir || e.pollMinutes != entry.pollMinutes
+        let refetch = e.configDir != entry.configDir || e.keptFolder != entry.keptFolder || e.pollMinutes != entry.pollMinutes
         entry = e
-        account = Account(e)
+        account = Account(e.readingEntry())
         if refetch {
-            loginEmail = nil; profileFor = nil; nextFetch = .distantPast; cachedLogin = nil
-            signIn = SignInWatch(); _ = signInChanged()     // another folder: its own sign-in, no change
+            readAnotherFolder()
             tick()
         }
-        if entry.autoRenew && state == .expired { maybeRenew() }
+        if renewsByItself && state == .expired { maybeRenew() }
         save()
+    }
+
+    /// Its own folder (always renewed, as a standby account's) or the profile's choice (Renew sign-in).
+    private var renewsByItself: Bool { entry.autoRenew || entry.readsOwnFolder }
+
+    /// Another folder to read: its own sign-in, no change of account.
+    private func readAnotherFolder() {
+        loginEmail = nil; profileFor = nil; nextFetch = .distantPast; cachedLogin = nil
+        signIn = SignInWatch(); _ = signInChanged()
+    }
+
+    /// The account's own folder got signed in (or stopped being): read from there from now on.
+    private func followReadingFolder() {
+        let want = Account(entry.readingEntry())
+        guard want.configDir != account.configDir else { return }
+        agentLog.log("reader \(self.id, privacy: .public): reading from \(want.configDir == Account(self.entry).configDir ? "the working folder" : "the account's own folder", privacy: .public)")
+        account = want
+        readAnotherFolder()
     }
 
     /// The profile was removed: a read or renewal still under way saves nothing.
@@ -93,6 +110,7 @@ final class UsageReader {
     /// reset has passed is read again at once (then at most once a minute until Anthropic's numbers move on).
     func tick() {
         guard !stopped else { return }
+        if entry.keptFolder != nil { followReadingFolder() }
         if signInChanged() { startOver() }
         if var local = UsageParser.fromStatusLine(account), local.fetchedAt > (usage?.fetchedAt ?? .distantPast),
            local.fetchedAt > (signInChangedAt ?? .distantPast) {
@@ -311,7 +329,7 @@ final class UsageReader {
     }
 
     private func maybeRenew() {
-        guard Self.mayRenewByItself(autoRenew: entry.autoRenew, renewing: renewing, onOtherAccount: onOtherAccount) else { return }
+        guard Self.mayRenewByItself(autoRenew: renewsByItself, renewing: renewing, onOtherAccount: onOtherAccount) else { return }
         if let last = defaults.object(forKey: renewKey) as? Date, Date().timeIntervalSince(last) < Self.renewSpacing { return }
         renewLogin()
     }

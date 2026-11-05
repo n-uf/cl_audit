@@ -34,6 +34,8 @@ enum FolderRules {
         guard !path.isEmpty else { return nil }
         return accounts.first { $0.id != id && !$0.configDir.isEmpty && FolderKey.overlaps($0.configDir, path) }
             ?? accounts.first { a in a.id != id && a.standby.contains { s in s.configDir.map { !$0.isEmpty && FolderKey.overlaps($0, path) } ?? false } }
+            // the folder kept for the account in use (its own sign-in) is the profile's too
+            ?? accounts.first { a in a.id != id && (a.keptFolder.map { !$0.isEmpty && FolderKey.overlaps($0, path) } ?? false) }
     }
 
     /// The desktop window an account opens, as one key: the standard window or its own window's folder.
