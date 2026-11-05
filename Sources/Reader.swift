@@ -494,13 +494,14 @@ final class UsageReader {
     static var testPoster: ((String, String, String, String) -> Int32)?
 
     /// Hands one alert to cl_audit's own program (UsageDock --post-alert). 0 sent, 2 not allowed, else failed. With a
-    /// switch offer, the alert has its "Switch to …" button.
-    static func post(id: String, title: String, body: String, thread: String, offer: SwitchOffer? = nil) -> Int32 {
+    /// switch offer, the alert has its Switch accounts button; with a standby account that is back (`backKey`), Switch
+    /// back and Stay.
+    static func post(id: String, title: String, body: String, thread: String, offer: SwitchOffer? = nil, backKey: String? = nil) -> Int32 {
         if let t = testPoster { return t(id, title, body, thread) }
         guard let app = LegacyCleanup.agentParentApp() else { return 1 }
         let p = Process()
         p.executableURL = app.appendingPathComponent("Contents/MacOS/UsageDock")
-        p.arguments = ["--post-alert", id, title, body, thread] + (offer.map { [$0.key] } ?? [])
+        p.arguments = ["--post-alert", id, title, body, thread] + (offer.map { [$0.key] } ?? backKey.map { [$0, SwitchAlert.backKind] } ?? [])
         p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
         guard (try? p.run()) != nil else { return 1 }
         let deadline = Date().addingTimeInterval(20)

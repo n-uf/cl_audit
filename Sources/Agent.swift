@@ -332,6 +332,17 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         }
         for id in order { readers[id]?.tick() }
         for id in standbyReaders.keys.sorted() { standbyReaders[id]?.tick() }
+        // a standby account whose full limit reset: "the other account is back", with Switch back (SwitchBack.swift)
+        BackWatch.check(order.compactMap { readers[$0]?.entry }, defaults: defaults) { e, s, b in
+            guard e.notifyBack else { return }
+            let (title, body) = BackWatch.words(e, b)
+            let key = AccountEntry.standbyStatusID(e.id, s.id)
+            let id = "\(e.id).sbback.\(s.id).\(Int(b.at.timeIntervalSince1970))"
+            DispatchQueue.global(qos: .utility).async {
+                let code = UsageReader.post(id: id, title: title, body: body, thread: e.id, backKey: key)
+                agentLog.log("\(e.id, privacy: .public): standby account back, alert \(code == 0 ? "sent" : "not sent (\(code))", privacy: .public)")
+            }
+        }
         claudeUpdates.tick(order.compactMap { readers[$0]?.entry })
         rules?.tick()
         menuBar?.update()

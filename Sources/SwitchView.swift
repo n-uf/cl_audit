@@ -12,8 +12,10 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
                                 withCompletionHandler done: @escaping () -> Void) {
         defer { done() }
-        guard response.actionIdentifier == SwitchAlert.action,
-              let key = response.notification.request.content.userInfo[SwitchAlert.keyField] as? String else { return }
+        guard let key = response.notification.request.content.userInfo[SwitchAlert.keyField] as? String else { return }
+        // Stay on "the other account is back": the offer goes from the card and the menus
+        if response.actionIdentifier == SwitchAlert.stay { BackWatch.dismiss(key); return }
+        guard response.actionIdentifier == SwitchAlert.action else { return }
         DispatchQueue.main.async {
             if self.launched { self.manager.closePalette(); self.manager.showSwitch(key) } else { self.pendingSwitch = key }
         }
@@ -30,15 +32,19 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 /// rides along in the alert's userInfo.
 enum SwitchAlert {
     static let category = "switch"
+    static let backCategory = "switchBack"              // "the other account is back": Switch back, Stay
+    static let backKind = "back"                        // --post-alert's last word for it
     static let action = "switch"
     static let later = "later"
+    static let stay = "stay"
     static let keyField = "switch"
 
-    /// Registers the alert's one category (Switch accounts, Later), kept with any others but the per-account ones older
-    /// builds made ("switch.<key>"), and waits until macOS has it (up to 2 s): setting categories doesn't say when it's
-    /// done, and an alert added before would show without its buttons. The target rides in each alert's userInfo.
+    /// Registers the alerts' two categories (Switch accounts and Later; Switch back and Stay), kept with any others but
+    /// the per-account ones older builds made ("switch.<key>"), and waits until macOS has the one asked for (up to 2 s):
+    /// setting categories doesn't say when it's done, and an alert added before would show without its buttons. The
+    /// target rides in each alert's userInfo.
     @discardableResult
-    static func register(center: UNUserNotificationCenter = .current()) -> String {
+    static func register(center: UNUserNotificationCenter = .current(), back: Bool = false) -> String {
         func current() -> Set<UNNotificationCategory> {
             var got: Set<UNNotificationCategory> = []
             let done = DispatchSemaphore(value: 0)
@@ -46,15 +52,20 @@ enum SwitchAlert {
             _ = done.wait(timeout: .now() + 2)
             return got
         }
-        var set = current().filter { !$0.identifier.hasPrefix("switch.") && $0.identifier != category }
+        var set = current().filter { !$0.identifier.hasPrefix("switch.") && $0.identifier != category && $0.identifier != backCategory }
         set.insert(UNNotificationCategory(identifier: category,
                                           actions: [UNNotificationAction(identifier: action, title: SwitchWords.button, options: [.foreground]),
                                                     UNNotificationAction(identifier: later, title: "Later", options: [])],
                                           intentIdentifiers: [], options: []))
+        set.insert(UNNotificationCategory(identifier: backCategory,
+                                          actions: [UNNotificationAction(identifier: action, title: "Switch back", options: [.foreground]),
+                                                    UNNotificationAction(identifier: stay, title: "Stay", options: [])],
+                                          intentIdentifiers: [], options: []))
         center.setNotificationCategories(set)
+        let wanted = back ? backCategory : category
         let deadline = Date().addingTimeInterval(2)
-        while Date() < deadline, !current().contains(where: { $0.identifier == category }) { usleep(100_000) }
-        return category
+        while Date() < deadline, !current().contains(where: { $0.identifier == wanted }) { usleep(100_000) }
+        return wanted
     }
 }
 
