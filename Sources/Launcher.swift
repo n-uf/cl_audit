@@ -1052,6 +1052,11 @@ final class ManagerUI {
         guard let w = mainWindow, w.isVisible, !w.isMiniaturized, w.occlusionState.contains(.visible) else { return false }
         return nav.page == .dashboard && DashboardPrefs.shared.history
     }
+    /// The history read again when it can be seen and was last asked for over a minute ago: every minute while it's
+    /// in sight, and as soon as it's back in sight.
+    private func historyIfStale() {
+        if historyShown, Date().timeIntervalSince(stats.asked) >= 60 { stats.reload() }
+    }
     private var othersObserver: NSObjectProtocol?
     private var appObservers: [NSObjectProtocol] = []
     private var historyWatch: AnyCancellable?
@@ -1088,8 +1093,8 @@ final class ManagerUI {
         historyWatch = DashboardPrefs.shared.$history.dropFirst().removeDuplicates().receive(on: DispatchQueue.main)
             .sink { [weak self] on in
                 guard let self else { return }
-                self.stats.reload()
-                if !on { self.week.reload(hidden: self.model.hidden) }
+                if !on { self.stats.reload(); self.week.reload(hidden: self.model.hidden) }
+                else if self.historyShown { self.stats.reload() }     // else when the Dashboard or the launcher shows
             }
     }
 
@@ -1203,6 +1208,12 @@ final class ManagerUI {
             if !w.setFrameUsingName("ClaudeUsageMain") { w.center() }
             mainWindow = w
             FacePrefs.shared.window = w                  // Silver: the light appearance; the others dark
+            // back in sight (from behind other windows, the Dock or another Space): the history, if over a minute old
+            for name in [NSWindow.didChangeOcclusionStateNotification, NSWindow.didDeminiaturizeNotification] {
+                appObservers.append(NotificationCenter.default.addObserver(forName: name, object: w, queue: .main) { [weak self] _ in
+                    self?.historyIfStale()
+                })
+            }
         }
         if page == .dashboard { stats.reload() }          // Settings has no history; going to the Dashboard reads it
         NSApp.activate(ignoringOtherApps: true)
@@ -1212,7 +1223,7 @@ final class ManagerUI {
                 guard let self, self.mainWindow?.isVisible == true || self.paletteShown else { return }
                 self.model.reload()
                 self.ticks += 1
-                if self.ticks % 6 == 0, self.historyShown { self.stats.reload() }   // every minute, while it can be seen
+                self.historyIfStale()                                  // every minute, while it can be seen
             }
         }
     }

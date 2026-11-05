@@ -235,6 +235,8 @@ final class StatsModel: ObservableObject {
     /// longer than the dashboard's one-minute refresh, and scans started side by side each read the same files again.
     private var scanning = false
     private var again = false
+    /// When the history was last asked for (the window reads it again after a minute while it can be seen).
+    private(set) var asked = Date.distantPast
 
     func color(_ account: String) -> Color {
         guard let e = accounts.first(where: { $0.id == account }) else { return .gray }
@@ -244,6 +246,7 @@ final class StatsModel: ObservableObject {
     func reload() {
         generation += 1
         guard StatsScanner.enabled else { again = false; clear(); return }   // Usage history off: nothing read or shown
+        asked = Date()
         loading = true
         if scanning { again = true; return }
         scanning = true
