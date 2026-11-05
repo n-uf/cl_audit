@@ -165,13 +165,18 @@ struct SwitchPage: View {
     private var accountsCard: some View {
         let now = Store.status(entry.id)
         let target = Store.status(AccountEntry.standbyStatusID(entry.id, standby.id))
+        // "Ultra · Personal", as in Settings ▸ Accounts
+        func detail(_ st: IconStatus?, _ dir: String?) -> String {
+            let f = dir.flatMap { AccountFacts.of(configDir: $0) }
+            return [st?.plan.map(Account.planWords) ?? f?.plan, f?.org].compactMap { $0 }.joined(separator: " · ")
+        }
         return SCard(title: "Accounts", info: "The account \(name) works on now, and the one it would switch to, with their limits as cl_audit last read them.") {
             VStack(alignment: .leading, spacing: 8) {
-                AccountBox(lamp: FaceTheme.ledOn, badge: "In use", badgeTone: .ok, detail: now?.plan.map(Account.planWords)) {
+                AccountBox(lamp: FaceTheme.ledOn, badge: "In use", badgeTone: .ok, detail: detail(now, entry.configDir)) {
                     Text(Privacy.masked(entry.seat?.email ?? "its account")).font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
                 } content: { limits(now, entry) }
-                AccountBox(lamp: nil, badge: "Switch to", detail: target?.plan.map(Account.planWords)) {
+                AccountBox(lamp: nil, badge: "Switch to", detail: detail(target, standby.configDir)) {
                     Text(Privacy.masked(standby.email)).font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
                 } content: { limits(target, entry.readerEntry(for: standby) ?? entry) }
