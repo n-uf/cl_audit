@@ -465,10 +465,15 @@ struct DockCard: View {
             // card's full width
             SRow(label: "Keep in order", first: true) {
                 HStack(spacing: 8) {
-                    Toggle("", isOn: Binding(get: { prefs.manage }, set: { on in
+                    // on: pulses until the Dock really matches (the tidy restarts it); off changes nothing in the Dock
+                    SSwitch(isOn: Binding(get: { prefs.manage }, set: { on in
                         prefs.manage = on
                         if on { DockManager.tidy(accounts: accounts); refreshSoon() }
-                    })).smallSwitch()
+                    }), on: "on", off: "off", progress: { on, since in
+                        guard on else { return .done }
+                        if DockManager.status(accounts: Store.load(), prefs: DockPrefs.shared).tidy { return .done }
+                        return Date().timeIntervalSince(since) < 45 ? .working : .failed("The Dock didn't match in 45 s")
+                    })
                     DisplayWindow(text: "Experimental", tone: .amber, height: 18, size: 9)
                 }
             }

@@ -89,7 +89,7 @@ struct ShowEmailsSwitch: View {
     var body: some View {
         HStack(spacing: 6) {
             Text("Show emails").font(.system(size: 12)).foregroundStyle(.secondary)
-            Toggle("", isOn: Binding(get: { privacy.show }, set: { privacy.set(show: $0) })).smallSwitch()
+            SSwitch(isOn: Binding(get: { privacy.show }, set: { privacy.set(show: $0) }), on: "", off: "")   // its label is before it
         }
         .help("Off: email addresses are left out of the launcher, dashboard, panels and Dock menus, and blurred here in Settings (hover to see one).")
     }

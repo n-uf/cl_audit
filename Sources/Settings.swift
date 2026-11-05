@@ -1540,13 +1540,11 @@ struct AccountSettings: View {
             }
             SRow(label: "Notify at", info: "A Mac notification when this profile's 5-hour, weekly or Fable limit reaches this level, when one is full (with when it's back), and when the profile starts spending usage credits or runs out of them. Off: no notifications.") {
                 HStack(spacing: 8) {
-                    Toggle("", isOn: $entry.notify).smallSwitch()
+                    SSwitch(isOn: $entry.notify, on: "", off: "off")        // on: the level beside it says the rest
                     if entry.notify {
                         MiniStepper(text: "\(entry.notifyPercent)%",
                                     down: { entry.notifyPercent = max(50, entry.notifyPercent - 5) },
                                     up: { entry.notifyPercent = min(100, entry.notifyPercent + 5) })
-                    } else {
-                        Text("off").font(.system(size: 11.5)).foregroundStyle(face.muted)
                     }
                 }
                 .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
