@@ -243,7 +243,12 @@ over the page, so nothing moves, and closes after 6 s or with ×.
 
 Every card follows one pattern: one title with its (i), then rows, each with its label on the left (with an (i),
 the same width on every card, so the values line up across the page) and its value on the right. On/off is the
-small lamp switch with a few words that follow the state; two or three short choices are segments, longer ones a
+small lamp switch with a few words that follow the state, the same switch everywhere in cl_audit (the dashboard's
+too). A change shows on it while it's under way: the lamp pulses green turning on, red turning off, and the words
+say "turning on…" / "turning off…"; a setting that takes effect at once pulses briefly, one that takes work (Usage
+in the Dock, In the menu bar, Keep in order, the dashboard's Claude window and Dock icon) pulses until the work is
+really done. If it couldn't be done, the lamp blinks red twice, the switch goes back, and a grey line under it says
+why. With Reduce motion the lamp stays lit green or red instead of pulsing. Two or three short choices are segments, longer ones a
 pop-up, pictures tiles under the label; at most one grey line under a row says what the current choice means; a
 card's preview is one strip at its foot (no numbers or not running · plenty left · half used · at limit · full).
 Each part (the Dock icon, the Claude window, the menu bar icon) is one card with its switch first; switched off,

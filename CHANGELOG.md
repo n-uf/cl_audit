@@ -45,6 +45,13 @@ the notes before updating.
   Every row has its label in the same width with an (i), every on/off is the small switch with a few words, and at
   most one grey line under a row says what the current choice means. Small things (icon styles, menu bar styles
   and colours) are tiles; the usage panel keeps keys with one large preview, like General ▸ Card style.
+- **One switch, and it shows a change under way.** Every on/off in cl_audit is the same lamp switch (Show emails,
+  Notify at and Keep in order were plain ones). While a change is under way its lamp pulses, green turning on, red
+  turning off, and its words say "turning on…" / "turning off…"; clicks wait until it's done. Instant settings
+  pulse once, briefly. Usage in the Dock pulses until the Dock really has its icon or hasn't (no longer a fixed 10 s,
+  and the key isn't dimmed meanwhile), In the menu bar until the agent has put the icon up or taken it down, Keep in
+  order until the Dock matches. A change that can't be done blinks red twice and goes back, with one grey line saying
+  why. With Reduce motion the lamp stays lit instead of pulsing.
 - **Opens from** (profile ▸ Claude window): **Dock click too**, as before, or **Only when asked**: a click on the
   Dock icon never opens the Claude window, and neither does starting the Dock icon (a click on its stopped tile
   shows the usage instead); Open window on the dashboard, the Dock and menu bar menus and the details panel still
