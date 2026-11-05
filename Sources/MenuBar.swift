@@ -280,6 +280,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         }
         if !accessory { NSApp.setActivationPolicy(.accessory); accessory = true }   // still no Dock icon
         // a new icon goes left of the ones already there: added from the last profile, they read in profile order
+        let adding = list.contains { items[$0.entry.id] == nil }
         for p in list.reversed() where items[p.entry.id] == nil {
             let it = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
             // where the user ⌘-dragged it is kept by this name (until the next new order)
@@ -291,6 +292,14 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
             items[p.entry.id] = it
         }
         for p in list { draw(p, now: now) }
+        // where macOS put them, once it has (for checking a new order: log show … 'menu bar: left to right')
+        if adding {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [weak self] in
+                guard let self else { return }
+                let shown = self.items.map { ($0.key, $0.value.button?.window?.frame.minX ?? -1) }.sorted { $0.1 < $1.1 }
+                agentLog.log("menu bar: left to right \(shown.map(\.0).joined(separator: ", "), privacy: .public)")
+            }
+        }
     }
 
     static func item(_ p: Profile, now: Date = Date()) -> MenuBarGlyph.Item {
