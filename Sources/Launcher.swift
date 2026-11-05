@@ -1044,6 +1044,12 @@ final class ManagerUI {
 
     var paletteShown: Bool { palette?.isVisible == true }
     var dashboardShown: Bool { mainWindow?.isVisible == true && mainWindow?.isMiniaturized == false }
+    /// The dashboard's usage history can be seen: the window on the Dashboard, not minimised or hidden behind other
+    /// windows or on another Space. Only then is it read again every minute.
+    private var historyShown: Bool {
+        guard let w = mainWindow, w.isVisible, !w.isMiniaturized, w.occlusionState.contains(.visible) else { return false }
+        return nav.page == .dashboard
+    }
     private var othersObserver: NSObjectProtocol?
     private var appObservers: [NSObjectProtocol] = []
 
@@ -1187,7 +1193,7 @@ final class ManagerUI {
             mainWindow = w
             FacePrefs.shared.window = w                  // Silver: the light appearance; the others dark
         }
-        stats.reload()
+        if page == .dashboard { stats.reload() }          // Settings has no history; going to the Dashboard reads it
         NSApp.activate(ignoringOtherApps: true)
         mainWindow?.makeKeyAndOrderFront(nil)
         if timer == nil {
@@ -1195,7 +1201,7 @@ final class ManagerUI {
                 guard let self, self.mainWindow?.isVisible == true || self.paletteShown else { return }
                 self.model.reload()
                 self.ticks += 1
-                if self.ticks % 6 == 0, self.mainWindow?.isVisible == true { self.stats.reload() }   // every minute
+                if self.ticks % 6 == 0, self.historyShown { self.stats.reload() }   // every minute, while it can be seen
             }
         }
     }
