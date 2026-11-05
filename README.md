@@ -143,6 +143,16 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
 - The same box is in the details panel; the launcher shows the countdown; the Dock icon's menu starts with "5-hour
   full · back at 15:28, in 1h 42m"; the Dock icon itself becomes the countdown (the time large, "5H FULL" under
   it, a red frame).
+- **Another account with room.** When the profile has other accounts (Settings ▸ the profile ▸ Claude Code ▸
+  Accounts) and one of them has room, the card says so under the box ("ultra-2: week 8% used") with **Switch to
+  ultra-2…**; the alert adds "ultra-2 has 92% of its week left" with a **Switch to ultra-2** button (and Later);
+  the Dock icon's and the menu bar icon's menus list **Switch to …** for each of its other accounts. All of them
+  open the **Switch page** in cl_audit: the account in use and the one to switch to, with their limits; what stays
+  (name, Dock icon, look; the folder with its projects, settings, MCP and CLAUDE.md; Claude Code's history); what
+  follows with Sessions follow on (the Claude window's sessions in the sidebar, its sections and groups, pins and
+  scheduled tasks, counted from the window's own files); and the steps. For now the page only shows: the switch
+  itself comes in a later build. A short name is the address before the @, its first letter only while emails are
+  hidden. Under the profile's own limits, the card shows each other account's, small ("Standby · ultra-2@…").
 
 ### Widget
 
@@ -210,7 +220,7 @@ cl_audit stays in the Dock as a launcher:
 | Click | The profile's click action; by default its usage for 3 s while its Claude window opens |
 | Double-click or ⌥-click | The details panel: both limits with bars and reset times, the sign-in, Open Claude, Sign in, Refresh, Settings |
 | Press and hold | The details panel next to a short Dock menu (on by default, per profile) |
-| Right-click | The menu: numbers, reset times, the sign-in, and actions (Open or Show Claude window, Quit Claude window, Refresh now, Dashboard, Profile settings…, and Quit and keep Claude window when the window follows the Dock icon) |
+| Right-click | The menu: numbers, reset times, the sign-in, and actions (Open or Show Claude window, Quit Claude window, Refresh now, Switch to … for each of the profile's other accounts, Dashboard, Profile settings…, and Quit and keep Claude window when the window follows the Dock icon) |
 
 A Dock icon draws what the agent saved for its profile, and asks the agent for Refresh now and Renew login.
 
@@ -311,7 +321,9 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   address on its own line with Sign in and × under it.
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
-  ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"). **Notify when back** (on by default) sends one
+  ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"), and, when another of the profile's accounts has
+  room, how much ("ultra-2 has 92% of its week left") with **Switch to ultra-2** and **Later** (see
+  [When a limit is full](#when-a-limit-is-full)). **Notify when back** (on by default) sends one
   more when a full limit resets ("Claude Work is back · The 5-hour limit reset at 15:28"); while the other limit
   is still full, it waits for that one. Fable's weekly limit alerts the same way ("Claude Main: Fable weekly limit
   full · Back Thu 09:00", "Claude Main: Fable is back"). With alerts on, one more when a profile starts spending

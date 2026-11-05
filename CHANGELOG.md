@@ -16,6 +16,13 @@ the notes before updating.
   one and opens Claude Code's own sign-in in Terminal. An account belongs to one profile; New profile still starts
   with one. **Sessions follow** (on) says the Claude window's sessions and sidebar go with the account when the
   profile switches. Profiles saved before have their one account, in use; nothing changes for them.
+- **Another account with room, offered where a limit is full.** A profile's dashboard card shows its other
+  accounts' limits, small, under its own; while a limit is full, the box is followed by "ultra-2: week 8% used"
+  and **Switch to ultra-2…**. The full-limit alert says how much the other account has left and has a **Switch to
+  ultra-2** button; the Dock icon's and menu bar icon's menus have **Switch to …**. They open the new **Switch
+  page**: both accounts' limits, what stays, what follows (the Claude window's sessions, sidebar and scheduled
+  tasks, counted), and the steps. The page only shows for now; the switch itself comes next. While cl_audit is
+  at the front, its alerts now still show as banners.
 
 ## 26.11.0 — 2026-11-05
 
