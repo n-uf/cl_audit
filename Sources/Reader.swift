@@ -491,13 +491,13 @@ final class UsageReader {
     }
 
     /// Tests only: takes the alerts instead of macOS (id, title, body, thread).
-    static var testPoster: ((String, String, String, String) -> Int32)?
+    static var testPoster: ((String, String, String, String, String?) -> Int32)?    // (…, thread, switch or back key)
 
     /// Hands one alert to cl_audit's own program (UsageDock --post-alert). 0 sent, 2 not allowed, else failed. With a
     /// switch offer, the alert has its Switch accounts button; with a standby account that is back (`backKey`), Switch
     /// back and Stay.
     static func post(id: String, title: String, body: String, thread: String, offer: SwitchOffer? = nil, backKey: String? = nil) -> Int32 {
-        if let t = testPoster { return t(id, title, body, thread) }
+        if let t = testPoster { return t(id, title, body, thread, offer?.key ?? backKey) }
         guard let app = LegacyCleanup.agentParentApp() else { return 1 }
         let p = Process()
         p.executableURL = app.appendingPathComponent("Contents/MacOS/UsageDock")

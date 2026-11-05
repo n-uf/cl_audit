@@ -142,6 +142,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             }
             launched = true
+            let plan = LaunchPlan.decide(launchAction: (note.userInfo?[NSApplication.launchUserNotificationUserInfoKey] as? UNNotificationResponse)?.actionIdentifier,
+                                         launchIsDefault: note.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool)
             if let key = CommandLine.arguments.first(where: { $0.hasPrefix("--switch=") }).map({ String($0.dropFirst("--switch=".count)) }) {
                 manager.showSwitch(key)                    // from a menu's or an alert's "Switch to …" while cl_audit was closed
             } else if let key = pendingSwitch {
@@ -149,6 +151,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             } else if CommandLine.arguments.contains("--settings") {
                 let account = CommandLine.arguments.first { $0.hasPrefix("--account=") }.map { String($0.dropFirst("--account=".count)) }
                 manager.showMain(page: .settings, account: account)
+            } else if plan == .quiet {
+                quietLaunch = true; quitIfQuiet()          // an alert's Stay or Later: nothing to show
+            } else if plan == .waitForAlert {
+                // started by an alert: its button may still be on its way (Stay and Later show nothing)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                    guard let self, !self.quietLaunch, !NSApp.windows.contains(where: \.isVisible) else { return }
+                    if let key = self.pendingSwitch { self.pendingSwitch = nil; self.manager.showSwitch(key) } else { self.manager.showMain() }
+                }
             } else { manager.showMain() }
             return
         }
@@ -233,6 +243,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// An alert's Switch button that started cl_audit: shown once the window is up.
     var pendingSwitch: String?
     var launched = false
+    let launchedAt = Date()
+    var quietLaunch = false                       // started only for an alert's Stay or Later (LaunchPlan)
+
+    /// A quiet start: once nothing is on screen, cl_audit quits again.
+    func quitIfQuiet() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard self?.quietLaunch == true, !NSApp.windows.contains(where: \.isVisible) else { return }
+            NSApp.terminate(nil)
+        }
+    }
 
     func applicationWillFinishLaunching(_ note: Notification) {
         // alerts' buttons ("Switch to ultra-2") come to cl_audit's own window; set before launching ends, so a button

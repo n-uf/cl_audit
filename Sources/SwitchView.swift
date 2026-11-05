@@ -13,8 +13,13 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                                 withCompletionHandler done: @escaping () -> Void) {
         defer { done() }
         guard let key = response.notification.request.content.userInfo[SwitchAlert.keyField] as? String else { return }
-        // Stay on "the other account is back": the offer goes from the card and the menus
-        if response.actionIdentifier == SwitchAlert.stay { BackWatch.dismiss(key); return }
+        if SwitchAlert.isQuiet(response.actionIdentifier) {
+            // Stay on "the other account is back": the offer goes from the card and the menus
+            if response.actionIdentifier == SwitchAlert.stay { BackWatch.dismiss(key) }
+            // started just for this button: show nothing, quit
+            DispatchQueue.main.async { if Date().timeIntervalSince(self.launchedAt) < 5 { self.quietLaunch = true; self.quitIfQuiet() } }
+            return
+        }
         guard response.actionIdentifier == SwitchAlert.action else { return }
         DispatchQueue.main.async {
             if self.launched { self.manager.closePalette(); self.manager.showSwitch(key) } else { self.pendingSwitch = key }
@@ -38,6 +43,26 @@ enum SwitchAlert {
     static let later = "later"
     static let stay = "stay"
     static let keyField = "switch"
+
+    /// A button that needs no window: Stay, Later.
+    static func isQuiet(_ action: String?) -> Bool { action == stay || action == later }
+}
+
+/// What the settings app shows when it starts. An alert's Stay or Later can start it in the background (macOS hands
+/// the button to cl_audit): then it does that, shows nothing and quits, instead of opening the Dashboard.
+enum LaunchPlan: Equatable {
+    case quiet              // started only for Stay or Later
+    case waitForAlert       // started by an alert: its button may still be on its way; shown after a moment unless quiet
+    case show
+
+    static func decide(launchAction: String?, launchIsDefault: Bool?) -> LaunchPlan {
+        if SwitchAlert.isQuiet(launchAction) { return .quiet }
+        if launchAction != nil || launchIsDefault == false { return .waitForAlert }
+        return .show
+    }
+}
+
+extension SwitchAlert {
 
     /// Registers the alerts' two categories (Switch accounts and Later; Switch back and Stay), kept with any others but
     /// the per-account ones older builds made ("switch.<key>"), and waits until macOS has the one asked for (up to 2 s):

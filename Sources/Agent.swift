@@ -340,7 +340,12 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             let id = "\(e.id).sbback.\(s.id).\(Int(b.at.timeIntervalSince1970))"
             DispatchQueue.global(qos: .utility).async {
                 let code = UsageReader.post(id: id, title: title, body: body, thread: e.id, backKey: key)
-                agentLog.log("\(e.id, privacy: .public): standby account back, alert \(code == 0 ? "sent" : "not sent (\(code))", privacy: .public)")
+                // tried once, like the profile's own "back" (a late one is no use); the offer stays on the card and menus
+                switch code {
+                case 0: agentLog.log("\(e.id, privacy: .public): standby account back, alert sent")
+                case 2: agentLog.log("\(e.id, privacy: .public): standby account back, alert dropped: notifications for cl_audit aren't allowed")
+                default: agentLog.error("\(e.id, privacy: .public): standby account back, alert not sent (\(code))")
+                }
             }
         }
         claudeUpdates.tick(order.compactMap { readers[$0]?.entry })
