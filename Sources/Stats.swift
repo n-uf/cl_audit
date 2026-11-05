@@ -33,6 +33,7 @@ enum StatsScanner {
         var replies: [Reply] = []
         var seen = Set<String>()
         var tail: [Reply] = []
+        var head = Data()                       // the file's first bytes: different ones mean another file (rewritten)
     }
     private struct Cached { let mtime: Date; let size: Int; let progress: Progress }
     private static var cache: [String: Cached] = [:]
@@ -86,13 +87,16 @@ enum StatsScanner {
     private static let assistantTag = Data(#""type":"assistant""#.utf8)
 
     /// A session file's contents read on from where `before` stopped, or from the start when there's nothing before or
-    /// `data` isn't the file read then (shorter, or no line break where its last whole line ended). One reply per API
-    /// response: a response split over several entries shares message.id and usage.
+    /// `data` isn't the file read then (shorter, other first bytes, or no line break where its last whole line ended).
+    /// One reply per API response: a response split over several entries shares message.id and usage.
     static func read(_ data: Data, account: String, after before: Progress?) -> Progress {
         var p = Progress()
-        if let b = before, b.offset > 0, b.offset <= data.count, data[data.startIndex + b.offset - 1] == 0x0A {
+        if let b = before, b.offset > 0, b.offset <= data.count, data[data.startIndex + b.offset - 1] == 0x0A,
+           data.prefix(b.head.count) == b.head {
             p = b
             p.tail = []
+        } else {
+            p.head = Data([UInt8](data.prefix(64)))        // a copy: a slice would keep the whole mapped file
         }
         var start = data.startIndex + p.offset
         while let end = data[start...].firstIndex(of: 0x0A) {
