@@ -190,6 +190,9 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     var timer: Timer?
     var readers: [String: UsageReader] = [:]
     var order: [String] = []
+    /// One reader per standby account with a kept sign-in (Accounts.swift), by its status id (<profile>~<id>): only
+    /// its limits, for the Accounts list and the dashboard; no alerts, Dock icon or menu bar icon of its own.
+    var standbyReaders: [String: UsageReader] = [:]
     var pausedUntil: Date?
     var rules: AgentRules?
     private var cleanupWork: DispatchWorkItem?
@@ -226,7 +229,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         })
         observers.append(dn.addObserver(forName: Agent.renewNote, object: nil, queue: .main) { [weak self] note in
             guard let id = note.object as? String else { return }
-            self?.readers[id]?.renewLogin()
+            (self?.readers[id] ?? self?.standbyReaders[id])?.renewLogin()
         })
         // each profile's own menu bar icon, as its settings say (MenuBar.swift); the single item older versions had
         // carries over once
@@ -292,10 +295,34 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             }
         }
         order = list.map(\.id)
+        reloadStandby(list, startAfter: fresh)
         askForAlerts(list)
         rules?.update(list)
         menuBar?.update()
         beat()
+    }
+
+    /// The standby accounts' readers: one for each with a kept sign-in; a removed one's reader, saved status and marks go.
+    private func reloadStandby(_ list: [AccountEntry], startAfter fresh: Int) {
+        var wanted: [String: AccountEntry] = [:]
+        for e in list { for s in e.standby { if let r = e.readerEntry(for: s) { wanted[r.id] = r } } }
+        for id in standbyReaders.keys where wanted[id] == nil {
+            standbyReaders[id]?.stop()
+            standbyReaders[id] = nil
+            UsageReader.forget(id, in: defaults)
+            Store.removeStatus(id)
+            agentLog.log("agent: standby \(id, privacy: .public) removed")
+        }
+        var n = fresh
+        for (id, r) in wanted.sorted(by: { $0.key < $1.key }) {
+            if let reader = standbyReaders[id] { reader.update(r) }
+            else {
+                let reader = UsageReader(r, defaults: defaults, startIn: Double(n) * 2)
+                standbyReaders[id] = reader
+                DispatchQueue.main.asyncAfter(deadline: .now() + Double(n) * 2 + 0.1) { [weak reader] in reader?.tick() }
+                n += 1
+            }
+        }
     }
 
     func tick() {
@@ -304,6 +331,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             Uninstall.offerTrashCleanup(defaults: defaults, where: p.components(separatedBy: "/Contents/").first ?? p)
         }
         for id in order { readers[id]?.tick() }
+        for id in standbyReaders.keys.sorted() { standbyReaders[id]?.tick() }
         claudeUpdates.tick(order.compactMap { readers[$0]?.entry })
         rules?.tick()
         menuBar?.update()
@@ -314,7 +342,14 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
 
     /// Refresh now: one profile (object: its id) or all of them.
     func refresh(_ id: String?) {
-        if let id { readers[id]?.refreshNow() } else { order.forEach { readers[$0]?.refreshNow() } }
+        if let id {
+            (readers[id] ?? standbyReaders[id])?.refreshNow()
+            // a profile's Refresh now reads its standby accounts too
+            for (k, r) in standbyReaders where k.hasPrefix(id + "~") { r.refreshNow() }
+        } else {
+            order.forEach { readers[$0]?.refreshNow() }
+            standbyReaders.values.forEach { $0.refreshNow() }
+        }
         beat()
     }
 

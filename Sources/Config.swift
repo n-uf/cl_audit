@@ -86,13 +86,17 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     var showFable: Bool = true                // Fable's own weekly limit shown (and alerted) for this profile
     var menuBar: Bool = false                 // its own icon in the menu bar, drawn by the agent (MenuBar.swift)
     var menuBarLook = MenuBarLook()           // how that icon looks
+    /// The profile's other accounts (Accounts.swift): it works on one at a time, the one `seat` and `configDir` are
+    /// signed in to; these wait. Older files have none: the profile's one account is the one in use.
+    var standby: [StandbyAccount] = []
+    var sessionsFollow: Bool = true           // switching accounts takes the Claude window's sessions along
 
     init(id: String, name: String, label: String, configDir: String) {
         self.id = id; self.name = name; self.label = label; self.configDir = configDir
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, notifyBack, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, opensFromDock, seat, claudeWindow, showFable, menuBar, menuBarLook
+        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, notifyBack, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, opensFromDock, seat, claudeWindow, showFable, menuBar, menuBarLook, standby, sessionsFollow
     }
     private enum LegacyKeys: String, CodingKey { case clickShowsDetails, openAtLogin, lifecycle }
 
@@ -139,6 +143,8 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
         showFable = try c.decodeIfPresent(Bool.self, forKey: .showFable) ?? true
         menuBar = try c.decodeIfPresent(Bool.self, forKey: .menuBar) ?? false
         menuBarLook = (try? c.decodeIfPresent(MenuBarLook.self, forKey: .menuBarLook)) ?? MenuBarLook()
+        standby = (try? c.decodeIfPresent([StandbyAccount].self, forKey: .standby)) ?? []
+        sessionsFollow = try c.decodeIfPresent(Bool.self, forKey: .sessionsFollow) ?? true
         if let action = try c.decodeIfPresent(ClickAction.self, forKey: .clickAction) {
             clickAction = action
         } else if let old = try legacy.decodeIfPresent(Bool.self, forKey: .clickShowsDetails) {

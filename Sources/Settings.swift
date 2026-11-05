@@ -125,7 +125,7 @@ final class SettingsModel: ObservableObject {
     /// seat: see FolderRules.linkSeats). Saved like any other change; only cl_audit does this.
     func linkSeats() {
         guard Self.followsDock, !needsApply, problem == nil else { return }
-        let linked = FolderRules.linkSeats(accounts)
+        let linked = FolderRules.linkStandbySeats(FolderRules.linkSeats(accounts))
         if linked != accounts { accounts = linked }
     }
 

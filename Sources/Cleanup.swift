@@ -75,9 +75,10 @@ enum Cleanup {
             if !dry { AccountRemoval.purgeFiles(id) }
             removed.append("files macOS kept for \(Installer.managerID).\(id)")
         }
-        // 3. saved usage of unknown profiles
+        // 3. saved usage of unknown profiles (a profile's standby accounts' is its own)
+        let statusIDs = ids.union(accounts.flatMap(\.standbyStatusIDs))
         for f in (try? fm.contentsOfDirectory(at: Store.statusFolder, includingPropertiesForKeys: nil)) ?? []
-        where f.pathExtension == "json" && !ids.contains(f.deletingPathExtension().lastPathComponent) {
+        where f.pathExtension == "json" && !statusIDs.contains(f.deletingPathExtension().lastPathComponent) {
             if !dry { try? fm.removeItem(at: f) }
             removed.append("saved usage of \(f.deletingPathExtension().lastPathComponent)")
         }

@@ -28,10 +28,12 @@ enum FolderKey {
 // MARK: - Who uses what
 
 enum FolderRules {
-    /// The other account whose Claude Code folder is this one, contains it or sits inside it.
+    /// The other account whose Claude Code folder is this one, contains it or sits inside it. A folder that keeps one
+    /// of a profile's standby sign-ins (Accounts.swift) is that profile's too.
     static func configOwner(_ path: String, among accounts: [AccountEntry], except id: String? = nil) -> AccountEntry? {
         guard !path.isEmpty else { return nil }
         return accounts.first { $0.id != id && !$0.configDir.isEmpty && FolderKey.overlaps($0.configDir, path) }
+            ?? accounts.first { a in a.id != id && a.standby.contains { s in s.configDir.map { !$0.isEmpty && FolderKey.overlaps($0, path) } ?? false } }
     }
 
     /// The desktop window an account opens, as one key: the standard window or its own window's folder.
@@ -48,11 +50,12 @@ enum FolderRules {
         return accounts.first { $0.id != id && windowKey($0.desktop, $0.desktopDataDir) == key }
     }
 
-    /// The profile (other than `id`) that has this seat: linked to it, or, not linked yet, signed in to it.
+    /// The profile (other than `id`) that has this seat: linked to it, keeping it as a standby account, or, not linked
+    /// yet, signed in to it. An account belongs to one profile.
     static func seatOwner(_ seat: Seat?, among accounts: [AccountEntry], except id: String? = nil,
                           signedIn: (String) -> Seat? = Account.signedInSeat) -> AccountEntry? {
         guard let seat else { return nil }
-        return accounts.first { $0.id != id && seat.same($0.seat) }
+        return accounts.first { $0.id != id && $0.has(seat) }
             ?? accounts.first { $0.id != id && $0.seat == nil && seat.same(signedIn($0.configDir)) }
     }
 
@@ -63,10 +66,29 @@ enum FolderRules {
         var out = accounts
         for i in out.indices where out[i].seat == nil {
             guard var s = signedIn(out[i].configDir) else { continue }
-            if out.indices.contains(where: { $0 != i && s.same(out[$0].seat) }) { continue }
+            if out.indices.contains(where: { $0 != i && out[$0].has(s) }) { continue }
             if out.indices.contains(where: { $0 < i && out[$0].seat == nil && s.same(signedIn(out[$0].configDir)) }) { continue }
             s.linkedAt = now
             out[i].seat = s
+        }
+        return out
+    }
+
+    /// A standby account added by its address ("Sign in to another account…") gets its seat once its folder's sign-in
+    /// names one, unless that account is already the profile's own or another profile's: then it stays without one and
+    /// Accounts says so. One whose seat is known keeps it (a folder signed in to another account later only holds its
+    /// numbers back, as for the account in use).
+    static func linkStandbySeats(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = Account.signedInSeat) -> [AccountEntry] {
+        var out = accounts
+        for i in out.indices {
+            for j in out[i].standby.indices where out[i].standby[j].seat == nil {
+                guard let dir = out[i].standby[j].configDir, var s = signedIn(dir) else { continue }
+                if out[i].has(s) || s.same(signedIn(out[i].configDir)) { continue }
+                if out.indices.contains(where: { $0 != i && out[$0].has(s) }) { continue }
+                s.linkedAt = Date()
+                out[i].standby[j].seat = s
+                if let e = s.email { out[i].standby[j].email = e }
+            }
         }
         return out
     }
@@ -124,8 +146,9 @@ enum FolderRules {
     static func seatTaken(_ e: AccountEntry, among accounts: [AccountEntry],
                           signedIn: (String) -> Seat? = Account.signedInSeat) -> AccountEntry? {
         guard e.seat == nil, let s = signedIn(e.configDir) else { return nil }
-        // the first profile signed in to it gets it: only later ones are the ones left out
-        if let linked = accounts.first(where: { $0.id != e.id && s.same($0.seat) }) { return linked }
+        // the first profile signed in to it gets it: only later ones are the ones left out (a profile keeping it as a
+        // standby account has it too)
+        if let linked = accounts.first(where: { $0.id != e.id && $0.has(s) }) { return linked }
         guard let i = accounts.firstIndex(where: { $0.id == e.id }) else { return nil }
         return accounts[..<i].first { $0.seat == nil && s.same(signedIn($0.configDir)) }
     }
