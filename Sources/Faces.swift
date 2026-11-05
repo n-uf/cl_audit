@@ -584,11 +584,14 @@ struct MenuWell: View {
     var tint: Color? = nil          // the value's own colour (the Login pop-up: green signed in, red another account)
     var icon: String? = nil         // a status sign after the value, inside the well (a warning, a clock)
     var fill = false                // as wide as it's given (a settings row's value column), arrows at the right end
+    /// Where a value too long for its well is cut, as a last resort: at the end, so the start of an account state,
+    /// an address or a path stays readable ("not sig…d in yet" or "~/.cl…-main" from a cut in the middle read badly).
+    var truncation: Text.TruncationMode = .tail
     @Environment(\.face) private var face
     var body: some View {
         HStack(spacing: 7) {
             Text(text).font(mono ? .system(size: 11.5, design: .monospaced) : .system(size: 12)).lineLimit(1)
-                .truncationMode(.middle)
+                .truncationMode(truncation)
                 .foregroundStyle(tint ?? Color.hex(0xececee))
             if fill { Spacer(minLength: 0) }
             if let icon { Image(systemName: icon).font(.system(size: 10)).foregroundStyle(tint ?? Color.hex(0xececee)) }
