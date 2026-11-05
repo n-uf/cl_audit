@@ -66,18 +66,40 @@ struct AddAccountKey: View {
     }
 }
 
-/// What Add account found, kept for half a minute per profile: finding reads a few small files and the window's folder
-/// list, and the card is drawn again every few seconds.
+/// What Add account found, per profile, looked for off the main thread (it reads a few small files and the window's
+/// folder list) and again once a minute; the card, drawn every few seconds, shows the last result. Main thread only.
 enum FoundAccountsCache {
     private static var kept: [String: (at: Date, list: [FoundAccount])] = [:]
+    private static var looking: Set<String> = []
 
-    static func list(for e: AccountEntry, among accounts: [AccountEntry], now: Date = Date()) -> [FoundAccount] {
+    /// The last list for this profile, nil while the first look is under way.
+    static func list(for e: AccountEntry, among accounts: [AccountEntry], now: Date = Date()) -> [FoundAccount]? {
         let key = e.id + "|" + e.standby.map(\.id).joined(separator: ",") + "|" + accounts.map(\.id).joined(separator: ",")
-        if let k = kept[key], now.timeIntervalSince(k.at) < 30 { return k.list }
-        let list = AccountDiscovery.found(for: e, among: accounts)
-        kept[key] = (now, list)
-        return list
+        let k = kept[key]
+        if (k == nil || now.timeIntervalSince(k!.at) >= 60), !looking.contains(key) {
+            looking.insert(key)
+            DispatchQueue.global(qos: .utility).async {
+                let list = AccountDiscovery.found(for: e, among: accounts)
+                DispatchQueue.main.async { kept[key] = (Date(), list); looking.remove(key) }
+            }
+        }
+        return k?.list
     }
 
     static func forget() { kept = [:] }
+}
+
+/// What Claude Code recorded about a folder's account (AccountFacts), read again only when its .claude.json changed:
+/// the account boxes are drawn every few seconds. Main thread only.
+enum FolderFactsCache {
+    private static var kept: [String: (stamp: Date?, facts: AccountFacts?)] = [:]
+
+    static func facts(_ configDir: String) -> AccountFacts? {
+        let path = Account.claudeJSON(configDir: configDir)
+        let stamp = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
+        if let k = kept[path], k.stamp == stamp { return k.facts }
+        let f = AccountFacts.of(claudeJSON: path)
+        kept[path] = (stamp, f)
+        return f
+    }
 }

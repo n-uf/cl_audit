@@ -184,9 +184,10 @@ enum AccountDiscovery {
                 byID[f.id] = old
             } else { byID[f.id] = f; order.append(f.id) }
         }
-        let mine = Set([e.configDir] + e.standby.compactMap(\.configDir)).map(FolderKey.canonical)
+        // the profile's own folders, and any folder inside or around one of them, aren't offered
+        let mine = [e.configDir] + e.standby.compactMap(\.configDir)
         for c in folders {
-            guard let s = signedIn(c.path), s.email != nil, !mine.contains(FolderKey.canonical(c.path)) else { continue }
+            guard let s = signedIn(c.path), s.email != nil, !mine.contains(where: { !$0.isEmpty && FolderKey.overlaps($0, c.path) }) else { continue }
             let f = AccountFacts.of(configDir: c.path)
             // a folder another profile uses: that profile's account (shown dimmed below, by its seat)
             let usedBy = FolderRules.configOwner(c.path, among: accounts, except: e.id)

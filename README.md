@@ -287,7 +287,10 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   address, the plan and organisation ("Ultra · Personal"), and every limit its plan has as bars, drawn like the
   dashboard's (Ultra: week and Fable; Max: 5-hour, week and Fable; Pro: 5-hour and week; usage credits while it
   spends them). A standby account's limits come from a sign-in kept for it in a small Claude Code folder of its own
-  (say `~/.claude-ultra-2`), read and renewed like the profile's own, so you can see which account has room.
+  (say `~/.claude-ultra-2`), read like the profile's own, so you can see which account has room. Its sign-in always
+  renews by itself (the box says so), unlike the account in use's opt-in **Renew sign-in by itself**, and only while
+  that folder is signed in to the account cl_audit linked: one signed in to another account, or not linked yet, is
+  neither read nor renewed.
   - The **account in use**'s address is a pop-up: it ticks the account Claude Code in the folder is signed in to
     (green; red with a warning sign inside when it isn't the profile's account; a clock when the sign-in ran out; a
     long address is cut at its end), then, when it isn't the profile's, the profile's own account to log back in

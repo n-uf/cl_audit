@@ -1297,7 +1297,7 @@ struct AccountSettings: View {
             : move != nil ? (move?.to.email ?? "another account", red, "exclamationmark.triangle.fill")
             : status?.state == "expired" ? (signedIn ?? expected ?? "expired", face.caution, "clock.badge.exclamationmark")
             : (signedIn ?? expected ?? "not signed in yet", nil, nil)
-        let facts = AccountFacts.of(configDir: entry.configDir)
+        let facts = FolderFactsCache.facts(entry.configDir)
         let plan = (status?.plan).map(Account.planWords) ?? facts?.plan
         let ok = move == nil && !mismatch && status?.state != "expired" && status?.state != "noLogin"
         return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: ok ? .ok : .warn,
@@ -1335,10 +1335,10 @@ struct AccountSettings: View {
     func standbyBox(_ s: StandbyAccount) -> some View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
         let st: IconStatus? = { _ = model.tick; return Store.status(AccountEntry.standbyStatusID(entry.id, s.id)) }()
-        let facts = s.configDir.flatMap { AccountFacts.of(configDir: $0) }
+        let facts = s.configDir.flatMap { FolderFactsCache.facts($0) }
         let plan = (st?.plan).map(Account.planWords) ?? facts?.plan
         // its folder signed in, but to an account it can't be (the profile's own, or another profile's)
-        let there = s.seat == nil ? s.configDir.flatMap { Account.signedInSeat(configDir: $0) } : nil
+        let there = s.seat == nil ? facts?.seat : nil
         let thereOwner = there.flatMap { FolderRules.seatOwner($0, among: model.accounts, except: entry.id) }
         let why: String? = {
             if s.configDir == nil { return "Limits unknown: no sign-in kept for it." }
@@ -1372,6 +1372,9 @@ struct AccountSettings: View {
                 }
             } else {
                 limitsOrWhy(st, entry: entry.readerEntry(for: s) ?? entry, none: nil)
+                // unlike the account in use (Renew sign-in, opt-in), a standby account's sign-in is always renewed
+                Text("Its sign-in renews by itself, so its limits stay current.")
+                    .font(.system(size: 10.5)).foregroundStyle(face.muted).lineLimit(1).minimumScaleFactor(0.9)
             }
         }
     }
@@ -1419,8 +1422,9 @@ struct AccountSettings: View {
         let found = FoundAccountsCache.list(for: entry, among: model.accounts)
         return Menu {
             Section("Found on this Mac") {
-                if found.isEmpty { Button("Nothing else found") {}.disabled(true) }
-                ForEach(found) { f in
+                if found == nil { Button("Looking…") {}.disabled(true) }
+                else if found?.isEmpty == true { Button("Nothing else found") {}.disabled(true) }
+                ForEach(found ?? []) { f in
                     Button("\(f.title)   \(f.detail())") { addFound(f) }.disabled(f.owner != nil)
                 }
             }
