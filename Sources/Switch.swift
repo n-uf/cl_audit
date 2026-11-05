@@ -12,13 +12,22 @@ struct SwitchOffer {
     let profile: String
     let standby: StandbyAccount
     let status: IconStatus?
+    /// How old its numbers may be and still count (a few of its profile's read intervals).
+    var maxAge: TimeInterval = 15 * 60
+    var now = Date()
 
     /// "<profile>~<standby>": names the page, the alert's action and the menu items.
     var key: String { AccountEntry.standbyStatusID(profile, standby.id) }
     var short: String { AccountNames.short(standby.email) }
-    /// It has numbers and none of its limits is full.
+    /// Its numbers are current: read without a problem (its sign-in good, the right account), recently.
+    var fresh: Bool {
+        guard let s = status, s.state == "ok", s.problem == nil, let at = s.updatedAt else { return false }
+        return now.timeIntervalSince(at) <= maxAge
+    }
+    /// It has current numbers and none of its limits is full. An account with old numbers (a sign-in that ran out days
+    /// ago, say) is never offered as having room.
     var room: Bool {
-        guard let s = status, s.weekly != nil || s.fiveHour != nil else { return false }
+        guard fresh, let s = status, s.weekly != nil || s.fiveHour != nil else { return false }
         return AtLimit.blocker(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly, weeklyResets: s.weeklyResets) == nil
     }
     /// How much of its week is used (or its 5-hour window's, on a plan without a week shown).
@@ -42,10 +51,12 @@ struct SwitchOffer {
 }
 
 extension AccountEntry {
-    /// Its standby accounts with a kept sign-in, those with room first, the least used first.
-    func switchOffers(status: (String) -> IconStatus? = Store.status) -> [SwitchOffer] {
-        standby.filter { ($0.configDir ?? "").isEmpty == false }
-            .map { SwitchOffer(profile: id, standby: $0, status: status(Self.standbyStatusID(id, $0.id))) }
+    /// Its standby accounts with a kept sign-in, those with room (current numbers, nothing full) first, the least used
+    /// first. Numbers count as current for three of the profile's read intervals, and at least 15 minutes.
+    func switchOffers(status: (String) -> IconStatus? = Store.status, now: Date = Date()) -> [SwitchOffer] {
+        let maxAge = max(15 * 60, 3 * Double(max(pollMinutes, 1)) * 60)
+        return standby.filter { ($0.configDir ?? "").isEmpty == false }
+            .map { SwitchOffer(profile: id, standby: $0, status: status(Self.standbyStatusID(id, $0.id)), maxAge: maxAge, now: now) }
             .enumerated()
             .sorted { a, b in
                 if a.element.room != b.element.room { return a.element.room }
@@ -56,8 +67,8 @@ extension AccountEntry {
     }
 
     /// The one to offer when a limit is full: the standby account with the most room, or nil.
-    func bestOffer(status: (String) -> IconStatus? = Store.status) -> SwitchOffer? {
-        switchOffers(status: status).first { $0.room }
+    func bestOffer(status: (String) -> IconStatus? = Store.status, now: Date = Date()) -> SwitchOffer? {
+        switchOffers(status: status, now: now).first { $0.room }
     }
 }
 
