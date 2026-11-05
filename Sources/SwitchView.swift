@@ -175,6 +175,10 @@ struct SwitchPage: View {
     @State private var counts: SidebarCounts??          // nil: still counting; .some(nil): the window has nothing
     @State private var asks = true                      // the helper session will ask before each move (step 5)
     @State private var unfinished: [SwitchReceipt] = [] // this profile's switches that stopped half way
+    @State private var back: BackWatch.Back?             // the account to switch to is back (SwitchBack.swift)
+
+    /// Back to the account the profile was on before its last switch, until the switch is done.
+    private var goesBack: Bool { entry.isBack(to: standby) && !(entry.seat.map { $0.same(standby.seat) } ?? false) }
     @State private var confirm = false
     @Environment(\.face) private var face
 
@@ -190,7 +194,7 @@ struct SwitchPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Text("Switch Claude \(name) to \(to)").font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
+                Text("Switch Claude \(name) \(goesBack ? "back to" : "to") \(to)").font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
                 DisplayWindow(text: from, dim: "→ \(to)", height: 20, size: 9.5)
                 Spacer(minLength: 0)
             }
@@ -214,8 +218,8 @@ struct SwitchPage: View {
         }.value
         counts = .some(c)
         asks = a
-        let id = e.id
-        unfinished = await Task.detached(priority: .utility) { SwitchEngine.unfinished(profile: id) }.value
+        let id = e.id, key = AccountEntry.standbyStatusID(e.id, standby.id)
+        (unfinished, back) = await Task.detached(priority: .utility) { (SwitchEngine.unfinished(profile: id), BackWatch.load(key)) }.value
     }
 
     /// A switch of this profile that stopped half way (this one, or one from before), with what it moved: Undo first.
@@ -244,7 +248,9 @@ struct SwitchPage: View {
                         .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
                 } content: { limits(now, entry) }
                 if let other {
-                    AccountBox(lamp: nil, badge: switched ? "Standby" : "Switch to", detail: detail(switched ? otherStatus : target, other.configDir)) {
+                    // a standby account that is back says so (SwitchBack.swift)
+                    let backWords = !switched && back != nil ? " · back" : ""
+                    AccountBox(lamp: nil, badge: switched ? "Standby" : "Switch to", detail: detail(switched ? otherStatus : target, other.configDir) + backWords) {
                         Text(Privacy.masked(other.email)).font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
                     } content: { limits(switched ? otherStatus : target, entry.readerEntry(for: other) ?? entry) }
@@ -257,11 +263,23 @@ struct SwitchPage: View {
     /// Both accounts with the same bars (no at-limit box here, so a full account and one with room read alike).
     @ViewBuilder private func limits(_ st: IconStatus?, _ e: AccountEntry) -> some View {
         let row = AccountRow(entry: e, status: st)
-        if row.limits.contains(where: { $0.p != nil }) {
+        if let reset = Self.resetSinceRead(st) {
+            // read while full, and its reset time has passed since: those bars would be old (SwitchBack.swift)
+            Text("Its \(reset.week ? "week" : "5-hour limit") started again at \(TimeWords.when(reset.at)); cl_audit hasn't read it since.")
+                .font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+        } else if row.limits.contains(where: { $0.p != nil }) {
             CardLimits(limits: row.limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits, fullBox: false)
         } else {
             Text("No numbers yet.").font(.system(size: 11.5)).foregroundStyle(face.muted)
         }
+    }
+
+    /// Numbers read while a limit was full whose reset time has passed since (the week, else the 5-hour limit), or nil.
+    static func resetSinceRead(_ st: IconStatus?, now: Date = Date()) -> (week: Bool, at: Date)? {
+        guard let st else { return nil }
+        if AtLimit.isFull(st.weekly), let r = st.weeklyResets, r <= now, (st.updatedAt ?? .distantPast) < r { return (true, r) }
+        if AtLimit.isFull(st.fiveHour), let r = st.fiveHourResets, r <= now, (st.updatedAt ?? .distantPast) < r { return (false, r) }
+        return nil
     }
 
     private var staysCard: some View {
@@ -393,7 +411,7 @@ struct SwitchPage: View {
                     }
                     .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
                 } else {
-                    Button(isFailed ? "Try again" : "Close and switch to \(to)") { confirm = true }
+                    Button(isFailed ? "Try again" : "Close and switch \(goesBack ? "back to" : "to") \(to)") { confirm = true }
                         .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
                         .disabled(runner.phase == .cancelled || (!entry.sessionsFollow ? false : counts == nil))
                 }

@@ -141,11 +141,13 @@ final class SwitchRunner: ObservableObject {
         guard let m = model, let before = entry, let out = FolderRules.completeSwitch(profile, to: standby, in: m.accounts) else {
             phase = .failed("The profile couldn't be linked to the new account."); return
         }
-        m.accounts = out
-        // each account keeps its own numbers: never the old account's under the new one's name
+        // each account keeps its own numbers: never the old account's under the new one's name; moved before the profile
+        // is saved, so the agent's readers for the new arrangement start from them
         if let after = out.first(where: { $0.id == profile }) { FolderRules.moveNumbers(before, after) }
-        // linked: the way back is a switch now, and the window may open again
+        m.accounts = out
+        // linked: the way back is a switch now, and the window may open again; switched back: no "is back" offer left
         if let id = receipt?.id { SwitchEngine.markLinked(id); receipt = SwitchEngine.load(id) ?? receipt }
+        BackWatch.dismiss(key)
         releaseWindow()
         note = nil
         phase = .windowSignIn
