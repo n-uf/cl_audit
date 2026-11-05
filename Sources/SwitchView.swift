@@ -16,7 +16,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         if SwitchAlert.isQuiet(response.actionIdentifier) {
             // Stay on "the other account is back": the offer goes from the card and the menus
             if response.actionIdentifier == SwitchAlert.stay { BackWatch.dismiss(key) }
-            // started just for this button: show nothing, quit
+            // started just for this button: show nothing, quit. (A Stay within 5 s of opening cl_audit yourself quits it
+            // too, but only while none of its windows is on screen yet.)
             DispatchQueue.main.async { if Date().timeIntervalSince(self.launchedAt) < 5 { self.quietLaunch = true; self.quitIfQuiet() } }
             return
         }
