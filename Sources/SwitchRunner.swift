@@ -122,10 +122,12 @@ final class SwitchRunner: ObservableObject {
 
     /// Claude Code is on the new account: the profile works on it now, the old one stands by; the window opens again.
     private func linked() {
-        guard let m = model, let out = FolderRules.completeSwitch(profile, to: standby, in: m.accounts) else {
+        guard let m = model, let before = entry, let out = FolderRules.completeSwitch(profile, to: standby, in: m.accounts) else {
             phase = .failed("The profile couldn't be linked to the new account."); return
         }
         m.accounts = out
+        // each account keeps its own numbers: never the old account's under the new one's name
+        if let after = out.first(where: { $0.id == profile }) { FolderRules.moveNumbers(before, after) }
         note = nil
         phase = .windowSignIn
         guard let e = entry else { return }

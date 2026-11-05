@@ -56,7 +56,9 @@ extension AccountEntry {
     func switchOffers(status: (String) -> IconStatus? = Store.status, now: Date = Date()) -> [SwitchOffer] {
         let maxAge = max(15 * 60, 3 * Double(max(pollMinutes, 1)) * 60)
         return standby.filter { ($0.configDir ?? "").isEmpty == false }
-            .map { SwitchOffer(profile: id, standby: $0, status: status(Self.standbyStatusID(id, $0.id)), maxAge: maxAge, now: now) }
+            // only numbers read for that account (Store.status(for:standby:))
+            .map { SwitchOffer(profile: id, standby: $0, status: status(Self.standbyStatusID(id, $0.id))?.only(for: $0.seat?.email ?? $0.email),
+                               maxAge: maxAge, now: now) }
             .enumerated()
             .sorted { a, b in
                 if a.element.room != b.element.room { return a.element.room }

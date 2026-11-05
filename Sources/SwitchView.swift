@@ -170,8 +170,8 @@ struct SwitchPage: View {
     }
 
     private var accountsCard: some View {
-        let now = Store.status(entry.id)
-        let target = Store.status(AccountEntry.standbyStatusID(entry.id, standby.id))
+        let now = Store.status(for: entry)
+        let target = Store.status(for: entry, standby: standby)
         // "Ultra · Personal", as in Settings ▸ Accounts
         func detail(_ st: IconStatus?, _ dir: String?) -> String {
             let f = dir.flatMap { FolderFactsCache.facts($0) }
@@ -181,7 +181,7 @@ struct SwitchPage: View {
         let switched = entry.seat.map { $0.same(standby.seat) } ?? false
         let cameFrom = runner.receipt?.from
         let other: StandbyAccount? = switched ? entry.standby.first(where: { s in cameFrom.map { s.seat?.same($0) ?? false } ?? false }) : standby
-        let otherStatus = other.flatMap { Store.status(AccountEntry.standbyStatusID(entry.id, $0.id)) }
+        let otherStatus = other.flatMap { Store.status(for: entry, standby: $0) }
         return SCard(title: "Accounts", info: "The account \(name) works on now, and the one it would switch to, with their limits as cl_audit last read them.") {
             VStack(alignment: .leading, spacing: 8) {
                 AccountBox(lamp: FaceTheme.ledOn, badge: "In use", badgeTone: .ok, detail: detail(now, entry.configDir)) {

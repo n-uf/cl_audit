@@ -391,4 +391,23 @@ extension FolderRules {
         out[i].keptFolder = target.configDir
         return out
     }
+
+    /// After a switch, each account's saved numbers go with it: the profile's (read for the account it was on) become
+    /// that account's on standby, and the standby account's become the profile's. The agent's next read replaces them.
+    static func moveNumbers(_ before: AccountEntry, _ after: AccountEntry, folder: URL = Store.statusFolder) {
+        guard let from = before.seat, let to = after.seat,
+              let was = before.standby.first(where: { $0.seat?.same(to) == true }),
+              let now = after.standby.first(where: { $0.seat?.same(from) == true }) else { return }
+        let fm = FileManager.default
+        func url(_ id: String) -> URL { folder.appendingPathComponent("\(id).json") }
+        let profile = url(after.id)
+        let standbyNow = url(AccountEntry.standbyStatusID(after.id, now.id))
+        let standbyWas = url(AccountEntry.standbyStatusID(before.id, was.id))
+        try? fm.removeItem(at: standbyNow)
+        if fm.fileExists(atPath: profile.path) { try? fm.moveItem(at: profile, to: standbyNow) }
+        if fm.fileExists(atPath: standbyWas.path) { try? fm.moveItem(at: standbyWas, to: profile) }
+        for id in [after.id, AccountEntry.standbyStatusID(after.id, now.id)] {
+            DistributedNotificationCenter.default().postNotificationName(Store.statusChanged, object: id, userInfo: nil, deliverImmediately: true)
+        }
+    }
 }

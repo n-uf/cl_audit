@@ -57,8 +57,8 @@ final class UsageReader {
         account = Account(e)
         self.defaults = defaults
         nextFetch = Date().addingTimeInterval(startIn)
-        // carry on from what was saved last (the numbers don't blank while the agent restarts)
-        if let s = Store.status(e.id), let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil {
+        // carry on from what was saved last (the numbers don't blank while the agent restarts), if read for its account
+        if let s = Store.status(e.id)?.only(for: e.seat?.email), let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil {
             usage = Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly,
                           weeklyResets: s.weeklyResets, fetchedAt: at, source: s.source ?? "Anthropic",
                           scoped: s.scoped ?? [], credits: s.credits, noFiveHour: s.noFiveHour ?? false)

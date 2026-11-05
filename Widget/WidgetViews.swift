@@ -58,10 +58,18 @@ enum AgentFiles {
     }
 
     private struct Accounts: Decodable { let accounts: [Entry] }
-    private struct Entry: Decodable { let id: String; let name: String; let accent: String?; let showFable: Bool? }
+    private struct Entry: Decodable { let id: String; let name: String; let accent: String?; let showFable: Bool?; let seat: SeatEmail? }
+    private struct SeatEmail: Decodable { let email: String? }
     private struct Status: Decodable {
         let fiveHour: Double?; let fiveHourResets: Double?; let weekly: Double?; let weeklyResets: Double?
         let updatedAt: Double?; let plan: String?; let scoped: [Scoped]?; let noFiveHour: Bool?
+        let loginEmail: String?; let expectedEmail: String?
+
+        /// Read for this account: numbers read for another (the one a profile was on before a switch) never show.
+        func belongs(to email: String?) -> Bool {
+            guard let want = email?.lowercased(), !want.isEmpty, let got = (loginEmail ?? expectedEmail)?.lowercased(), !got.isEmpty else { return true }
+            return got == want
+        }
     }
     private struct Scoped: Decodable { let name: String; let percent: Double? }
 
@@ -75,7 +83,7 @@ enum AgentFiles {
         let profiles = list.accounts.map { e -> WidgetProfile in
             var p = WidgetProfile(id: e.id, name: e.name, accent: e.accent ?? "orange")
             if let d = try? Data(contentsOf: folder.appendingPathComponent("status/\(e.id).json")),
-               let s = try? dec.decode(Status.self, from: d) {
+               let s = try? dec.decode(Status.self, from: d), s.belongs(to: e.seat?.email) {
                 p.five = s.fiveHour; p.week = s.weekly; p.plan = s.plan
                 p.fiveResets = s.fiveHourResets.map { Date(timeIntervalSince1970: $0) }
                 p.weekResets = s.weeklyResets.map { Date(timeIntervalSince1970: $0) }

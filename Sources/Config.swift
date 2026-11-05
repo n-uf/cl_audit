@@ -239,6 +239,19 @@ struct IconStatus: Codable {
     var scoped: [ScopedLimit]? = nil   // a model's own weekly limit (Fable)
     var credits: Credits? = nil        // usage credits
     var noFiveHour: Bool? = nil        // the plan has no 5-hour limit (Ultra): its 5-hour row is left out
+
+    /// The account these numbers were read for: the sign-in's address, else the one its folder names.
+    var readFor: String? { (loginEmail ?? expectedEmail).map { $0.lowercased() } }
+
+    /// For `email`'s account only. Numbers read for another account (the one a profile was on before a switch, say)
+    /// are dropped, so one account's limits never show under another's name; the state and any problem stay.
+    func only(for email: String?) -> IconStatus {
+        guard let want = email?.lowercased(), !want.isEmpty, let got = readFor, !got.isEmpty, got != want else { return self }
+        var s = self
+        s.fiveHour = nil; s.weekly = nil; s.fiveHourResets = nil; s.weeklyResets = nil
+        s.scoped = nil; s.credits = nil; s.plan = nil; s.updatedAt = nil
+        return s
+    }
 }
 
 // MARK: - Renewing an expired login through Claude Code
@@ -387,6 +400,14 @@ enum Store {
         guard let data = try? Data(contentsOf: statusFolder.appendingPathComponent("\(id).json")) else { return nil }
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .secondsSince1970
         return try? dec.decode(IconStatus.self, from: data)
+    }
+
+    /// A profile's saved numbers, only if they're its account's (IconStatus.only).
+    static func status(for e: AccountEntry) -> IconStatus? { status(e.id)?.only(for: e.seat?.email) }
+
+    /// A standby account's saved numbers, only if they're that account's.
+    static func status(for e: AccountEntry, standby s: StandbyAccount) -> IconStatus? {
+        status(AccountEntry.standbyStatusID(e.id, s.id))?.only(for: s.seat?.email ?? s.email)
     }
 
     static func writeStatus(_ id: String, _ s: IconStatus) -> Data? {

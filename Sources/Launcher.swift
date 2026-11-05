@@ -244,7 +244,7 @@ final class LauncherModel: ObservableObject {
         agent = Agent.readMark()
         let doing = Agent.isAlive(agent) ? agent?.actions ?? [:] : [:]
         rows = entries.map {
-            var r = AccountRow(entry: $0, status: Store.status($0.id), activity: acts[Account($0).configDir] ?? .init(), usageIcon: UsageIconState.of($0))
+            var r = AccountRow(entry: $0, status: Store.status(for: $0), activity: acts[Account($0).configDir] ?? .init(), usageIcon: UsageIconState.of($0))
             settle(&r, now, doing[$0.id])
             return r
         }

@@ -686,7 +686,7 @@ struct AccountTile: View {
     var body: some View {
         TileKey(selected: selected, leading: 5) {
             HStack(spacing: 9) {
-                Image(nsImage: preview(entry, status: Store.status(entry.id), tick: model.tick)).resizable().frame(width: 32, height: 32)
+                Image(nsImage: preview(entry, status: Store.status(for: entry), tick: model.tick)).resizable().frame(width: 32, height: 32)
                 TileText(title: entry.name.isEmpty ? "New profile" : entry.name, sub: entry.usageOnly ? "usage only" : entry.configDir)
             }
         }
@@ -1088,7 +1088,7 @@ struct AccountSettings: View {
     var width: CGFloat = 1280
     @Environment(\.face) private var face
 
-    var status: IconStatus? { _ = model.tick; return Store.status(entry.id) }
+    var status: IconStatus? { _ = model.tick; return Store.status(for: entry) }
     var expected: String? { Account.expectedEmail(configDir: entry.configDir) }
     var mismatch: Bool {
         guard let a = status?.loginEmail, let b = expected else { return false }
@@ -1350,7 +1350,7 @@ struct AccountSettings: View {
     /// sign-in kept for it, or why there are none.
     func standbyBox(_ s: StandbyAccount) -> some View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
-        let st: IconStatus? = { _ = model.tick; return Store.status(AccountEntry.standbyStatusID(entry.id, s.id)) }()
+        let st: IconStatus? = { _ = model.tick; return Store.status(for: entry, standby: s) }()
         let facts = s.configDir.flatMap { FolderFactsCache.facts($0) }
         let plan = (st?.plan).map(Account.planWords) ?? facts?.plan
         // its folder signed in, but to an account it can't be (the profile's own, or another profile's)

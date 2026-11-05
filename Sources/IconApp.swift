@@ -61,7 +61,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func loadStatus() {
-        let fresh = Store.status(entry.id)
+        let fresh = Store.status(for: entry)
         if fresh?.updatedAt != status?.updatedAt, let at = fresh?.updatedAt {
             dockLog.log("\(self.entry.id, privacy: .public): shows the agent's numbers from \(Int(-at.timeIntervalSinceNow)) s ago")
         }
@@ -160,7 +160,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(quietQuitAsked(_:)), name: Installer.quietQuitNote, object: accountID)
         // logging out or shutting down quits every app: not a reason for its window to quit (macOS reopens it)
         ws.addObserver(self, selector: #selector(quietQuitAsked(_:)), name: NSWorkspace.willPowerOffNotification, object: nil)
-        status = Store.status(entry.id)
+        status = Store.status(for: entry)
         tileView = TileView(model: model())
         NSApp.dockTile.contentView = tileView
         NSApp.dockTile.display()
