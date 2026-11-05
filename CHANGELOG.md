@@ -30,7 +30,11 @@ the notes before updating.
   ids, writes that never overwrite, originals parked in cl_audit's folder, a receipt; Cancel puts them back until
   Claude Code has signed in), opens Claude Code's sign-in with the address filled in, then makes that account the
   one in use (the old one joins standby) and reopens the window for its own sign-in. No sign-in is ever copied.
-  The sidebar's groups and pins stay with each account on claude.ai.
+  Each account keeps its own numbers through the switch; numbers read for one account never show under another's
+  name, anywhere (Dock icon, card, menus, Settings).
+  Once the window is on the new account, a session opens there ("cl_audit · arrange sidebar") that puts the moved
+  sessions back in their groups and pins with the app's own sidebar tools: press Return in it. It archives itself
+  when done, and running it again changes nothing.
 
 ## 26.11.0 — 2026-11-05
 

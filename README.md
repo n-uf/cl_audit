@@ -170,9 +170,18 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
      or moves a stored sign-in.
   4. Once the folder is signed in as ultra-2, the profile works on it (name, Dock icon, folder, projects and
      settings stay); the account it was on joins standby, with the folder that kept its own sign-in if it had one.
-  5. The window opens again; log out there and sign in as ultra-2. The page says when it's done.
-  The sidebar's groups, order and pins are kept by claude.ai for each account (synced per organisation), so they
-  aren't written by cl_audit. The way back is the same switch the other way.
+     Each account takes its own last numbers with it, and numbers read for one account never show under another's
+     name (until the next read, an account without its own shows none).
+  5. The window opens again; log out there and sign in as ultra-2. Once it's on ultra-2, a new Code session opens
+     in it, named "cl_audit · arrange sidebar", with a prompt filled in: press Return, and it puts the moved
+     sessions back in their groups (made by the same name where ultra-2 has none) and pins them again, with the
+     app's own sidebar tools, then archives itself. It may ask before each move.
+  The sidebar's groups, order and pins are kept by claude.ai for each account (synced per organisation), so
+  cl_audit doesn't write them: before the move it notes, from the window's own copy, which group each moved session
+  sat in, in what order, and which were pinned (in the receipt). The prompt holds only session ids, group names and
+  their order: no address, title or transcript. Run again, it changes nothing; in a window that doesn't have those
+  sessions, it changes nothing either. Groups none of the moved sessions sat in aren't made. The way back is the same
+  switch the other way.
 
 ### Widget
 
