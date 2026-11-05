@@ -144,9 +144,12 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   full · back at 15:28, in 1h 42m"; the Dock icon itself becomes the countdown (the time large, "5H FULL" under
   it, a red frame).
 - **Another account with room.** When the profile has other accounts (Settings ▸ the profile ▸ Claude Code ▸
-  Accounts) and one of them has room, the card says so under the box ("ultra-2: week 8% used") with **Switch to
-  ultra-2…**; the alert adds "ultra-2 has 92% of its week left" with a **Switch to ultra-2** button (and Later);
-  the Dock icon's and the menu bar icon's menus list **Switch to …** for each of its other accounts. All of them
+  Accounts) and one of them has room, the card has **Switch to ultra-2…** under the box (that account's limits are
+  just below, in its Standby block); the alert adds "The other account has 92% of its week left" with **Switch
+  accounts** (and Later): alerts reach the lock screen, so they never name an account by its address or any part
+  of it. Room means current numbers too: an account whose sign-in ran out, or whose numbers are older than three
+  of the profile's read intervals, isn't offered. The Dock icon's and the menu bar icon's menus list **Switch to
+  …** for each of its other accounts. All of them
   open the **Switch page** in cl_audit: the account in use and the one to switch to, with their limits; what stays
   (name, Dock icon, look; the folder with its projects, settings, MCP and CLAUDE.md; Claude Code's history); what
   follows with Sessions follow on (the Claude window's sessions in the sidebar, its sections and groups, pins and
@@ -325,7 +328,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
   ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"), and, when another of the profile's accounts has
-  room, how much ("ultra-2 has 92% of its week left") with **Switch to ultra-2** and **Later** (see
+  room, how much ("The other account has 92% of its week left") with **Switch accounts** and **Later** (see
   [When a limit is full](#when-a-limit-is-full)). **Notify when back** (on by default) sends one
   more when a full limit resets ("Claude Work is back · The 5-hour limit reset at 15:28"); while the other limit
   is still full, it waits for that one. Fable's weekly limit alerts the same way ("Claude Main: Fable weekly limit
