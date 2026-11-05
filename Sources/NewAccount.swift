@@ -322,15 +322,40 @@ struct NewAccountView: View {
     @State private var addressProblem: String?      // why Sign in (the address route) can't go yet
     @Environment(\.face) private var face
 
-    private enum Width { case wide, medium, narrow }
+    /// The page's columns for a width: three (who it is and its parts · Claude Code · steps), two (every card · steps) or
+    /// one (the cards, then the steps, with the next action pinned at the bottom). A column is never narrower than
+    /// `column`, so nothing runs off the window or gets cut; a card narrower than `rowsFit` stacks its rows (the label
+    /// on its own line, the control the card's full width under it), so addresses and paths show whole.
+    struct Columns: Equatable { let count: Int; let widths: [CGFloat] }
+    static let column: CGFloat = 340
+    static let rowsFit: CGFloat = 480          // Claude Code's rows side by side from here: an address, a path, a key row
+    static let smallRowsFit: CGFloat = 330     // the small cards' rows (a name, swatches, a switch) fit down to here
+    static let pad: CGFloat = 16, gap: CGFloat = 12
+
+    static func columns(for w: CGFloat) -> Columns {
+        let avail = w - 2 * pad
+        if avail - 2 * gap >= 3 * column {
+            let a = avail - 2 * gap
+            let steps = min(400, max(column, a * 0.3))
+            let rest = a - steps
+            let first = max(column, min(380, rest * 0.42))
+            return Columns(count: 3, widths: [first, rest - first, steps])
+        }
+        if avail - gap >= 2 * column {
+            let a = avail - gap
+            let steps = min(400, max(column, a * 0.42))
+            return Columns(count: 2, widths: [a - steps, steps])
+        }
+        return Columns(count: 1, widths: [max(0, min(700, w - 28))])
+    }
 
     var body: some View {
         let _ = model.tick                                // re-check the steps every few seconds
         GeometryReader { geo in
             let w = geo.size.width
-            let width: Width = w >= 1100 ? .wide : w >= 600 ? .medium : .narrow
+            let c = Self.columns(for: w)
             Group {
-                if width == .wide { wide(w) } else { column(narrow: width == .narrow) }
+                if c.count == 3 { three(c, w) } else if c.count == 2 { two(c, w) } else { one(c) }
             }
         }
         .onAppear { monitor.start() }
@@ -379,41 +404,58 @@ struct NewAccountView: View {
 
     // MARK: layouts
 
-    private func wide(_ w: CGFloat) -> some View {
-        let col3: CGFloat = 400, gaps: CGFloat = 12 * 2 + 16 * 2   // 400: room for the two keys in the warning box
-        let rest = max(700, w - col3 - gaps)
-        // The first column never gets narrower than its widest row (the window switch), so its cards line up.
-        let col1 = max(350, rest * 0.42)
-        // the folder card takes what is left, so the steps pane keeps the same gap to the window's edge
-        return ScrollView {
-            HStack(alignment: .top, spacing: 12) {
-                // layout A: who it is and each part in its own card, the part's switch first
-                VStack(spacing: 10) { profileCard(stacked: false); windowCard(stacked: false); dockCard(stacked: false) }
-                    .frame(width: col1)
-                folderCard(stacked: false).frame(minWidth: 0, maxWidth: .infinity)
-                stepsPanel.frame(width: col3)
+    /// Three columns: who it is and each part in its own card (layout A, the part's switch first) · Claude Code · steps.
+    private func three(_ c: Columns, _ w: CGFloat) -> some View {
+        ScrollView {
+            HStack(alignment: .top, spacing: Self.gap) {
+                VStack(spacing: 10) {
+                    profileCard(stacked: c.widths[0] < Self.smallRowsFit)
+                    windowCard(stacked: c.widths[0] < Self.smallRowsFit)
+                    dockCard(stacked: c.widths[0] < Self.smallRowsFit)
+                }
+                .frame(width: c.widths[0])
+                folderCard(stacked: c.widths[1] < Self.rowsFit).frame(width: c.widths[1])
+                stepsPanel(bar: true).frame(width: c.widths[2])
             }
-            .frame(width: max(0, w - 32), alignment: .topLeading)   // never wider than the window
-            .padding(.horizontal, 16).padding(.vertical, 14)
+            .frame(width: max(0, w - 2 * Self.pad), alignment: .topLeading)   // never wider than the window
+            .padding(.horizontal, Self.pad).padding(.vertical, 14)
         }
     }
 
-    private func column(narrow: Bool) -> some View {
-        VStack(spacing: 0) {
+    /// Two columns: every card, Claude Code right after who it is · the steps.
+    private func two(_ c: Columns, _ w: CGFloat) -> some View {
+        ScrollView {
+            HStack(alignment: .top, spacing: Self.gap) {
+                VStack(spacing: 10) {
+                    profileCard(stacked: c.widths[0] < Self.smallRowsFit)
+                    folderCard(stacked: c.widths[0] < Self.rowsFit)
+                    windowCard(stacked: c.widths[0] < Self.smallRowsFit)
+                    dockCard(stacked: c.widths[0] < Self.smallRowsFit)
+                }
+                .frame(width: c.widths[0])
+                stepsPanel(bar: true).frame(width: c.widths[1])
+            }
+            .frame(width: max(0, w - 2 * Self.pad), alignment: .topLeading)
+            .padding(.horizontal, Self.pad).padding(.vertical, 14)
+        }
+    }
+
+    /// One column: the cards, then the steps under them; the next action stays pinned at the bottom.
+    private func one(_ c: Columns) -> some View {
+        let cw = c.widths[0]
+        return VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 10) {
-                    progressStrip(compact: narrow)
-                    profileCard(stacked: narrow)
-                    folderCard(stacked: narrow)
-                    windowCard(stacked: narrow)
-                    dockCard(stacked: narrow)
-                    if folders { signInCard }
+                    profileCard(stacked: cw < Self.smallRowsFit)
+                    folderCard(stacked: cw < Self.rowsFit)
+                    windowCard(stacked: cw < Self.smallRowsFit)
+                    dockCard(stacked: cw < Self.smallRowsFit)
+                    stepsPanel(bar: false)
                 }
                 .frame(maxWidth: 700)
                 .padding(14)
                 .frame(maxWidth: .infinity)
             }
-            if running { warningBar(narrow: narrow) }
             actionBar(hint: true)
         }
     }
@@ -709,12 +751,6 @@ struct NewAccountView: View {
         }
     }
 
-
-    /// Medium and narrow layouts show the sign-in as a card (wide shows it in step 3).
-    private var signInCard: some View {
-        SCard(title: "Sign in") { signInParts }
-    }
-
     /// The two parts of signing in: a · Claude Code (Terminal), b · the desktop app (its own window).
     private var signInParts: some View {
         let owner = signedIn.flatMap { _ in FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) }
@@ -811,9 +847,11 @@ struct NewAccountView: View {
         .background(Color.primary.opacity(current ? 0.08 : 0.03))
     }
 
-    // MARK: steps (wide)
+    // MARK: steps
 
-    private var stepsPanel: some View {
+    /// The steps, in their own panel: beside the cards (three or two columns, with the action bar at its foot) or under
+    /// them (one column, where the action bar is pinned to the window's bottom instead).
+    private func stepsPanel(bar: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
 
             let ready = NewAccountSetup.foldersReady(draft)
@@ -823,7 +861,7 @@ struct NewAccountView: View {
                         title: "Quit the desktop app",
                         detail: ready ? "done · it can stay open now" : !monitor.checked ? "checking…" : appRuns.isEmpty ? "closed" : nil,
                         connector: running) {
-                    if running { warningBox }
+                    if running { openApps }
                 }
             }
             stepRow(2 + n, state: folders ? .done : current == 2 ? .now : running ? .held : .todo,
@@ -841,7 +879,7 @@ struct NewAccountView: View {
                     detail: draft.usageInDock ? "Finish installs “cl_audit \(draft.name.isEmpty ? "…" : draft.name)” and puts it in the Dock"
                                               : "cl_audit reads its usage from now on; nothing is installed and the Dock isn't touched") { EmptyView() }
 
-            actionBar(hint: false).padding(.top, 8)
+            if bar { actionBar(hint: false).padding(.top, 8) }
         }
         .padding(14)
         .background(RaisedShape(finish: face.module, radius: face.moduleRadius))
@@ -880,90 +918,22 @@ struct NewAccountView: View {
         .overlay(alignment: .top) { if n > 1 { Rectangle().fill(Color.primary.opacity(0.06)).frame(height: 1) } }
     }
 
-    /// The "desktop app is open" warning, attached to step 1 (only until the folder exists).
-    private var warningBox: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("While open, the desktop app writes its sign-in and settings, which could overwrite the folder being set up. It can stay open once the folder exists.")
-                .font(.system(size: 11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            VStack(alignment: .leading, spacing: 6) {
-                ForEach(runGroups, id: \.title) { g in
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(g.title).font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 76, alignment: .leading)
-                        VStack(alignment: .leading, spacing: 2) {
-                            ForEach(g.items, id: \.self) { Text($0).font(.system(size: 11.5)).lineLimit(1).truncationMode(.middle) }
-                            if let n = g.note { Text(n).font(.system(size: 10.5)).foregroundStyle(.secondary) }
-                        }
-                    }
-                }
-            }
-            HStack {
-                if appRuns.contains(where: { $0.kind != .terminal }) {
-                    Button("Quit the desktop app") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
-                }
-                Spacer()
-                checkAgain
-            }
-            .padding(.top, 4)
-        }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 10).fill(Color.red.opacity(0.1)))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.red.opacity(0.35)))
-        .padding(.top, 4)
-    }
-
-    // MARK: medium and narrow
-
-    private func progressStrip(compact: Bool) -> some View {
-        let ready = NewAccountSetup.foldersReady(draft)
-        // (name, done, the `current` value it stands for); the desktop app part only with its own window.
-        let items: [(String, Bool, Int)] = (quitStep ? [("Quit desktop app", ready || (monitor.checked && appRuns.isEmpty), 1)] : [])
-                                            + [(draft.source == .new ? "Create folder" : "Connect folder", folders, 2),
-                                            ("Claude Code", signedIn != nil, 3)]
-            + (needsDesktop ? [("Claude window", signedIn != nil && desktopDone, 4)] : []) + [(draft.usageInDock ? "Dock icon" : "Read usage", false, 5)]
-        return HStack(spacing: 6) {
-            ForEach(items.indices, id: \.self) { i in
-                let it = items[i], now = it.2 == current, bad = it.2 == 1 && running
-                HStack(spacing: 4) {
-                    ZStack {
-                        Circle().fill(it.1 ? Color(nsColor: Painter.green) : bad ? Color.red : Color.clear)
-                        Circle().strokeBorder(it.1 || bad ? Color.clear : now ? tint : Color.secondary.opacity(0.6), lineWidth: now ? 2 : 1.2)
-                        Text(it.1 ? "✓" : bad ? "!" : "\(i + 1)").font(.system(size: 9.5, weight: .bold))
-                            .foregroundStyle(it.1 ? Color.black.opacity(0.7) : bad ? .white : now ? .primary : .secondary)
-                    }
-                    .frame(width: 16, height: 16)
-                    if !compact || now { Text(it.0).font(.system(size: 11.5)).foregroundStyle(bad ? Color.red : now ? Color.primary : Color.secondary) }
-                }
-                if i < items.count - 1 { Text("›").foregroundStyle(.tertiary) }
-            }
-        }
-    }
-
-    private func warningBar(narrow: Bool) -> some View {
-        let message = HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Circle().fill(draft.continueAnyway ? Color.orange : Color.red).frame(width: 8, height: 8)
-            (Text(draft.continueAnyway ? "Continuing while the desktop app is open" : "The desktop app is open").bold()
-             + Text(" · " + runSummary + (draft.continueAnyway ? "" : ": \(createTitle) waits until it's quit")).foregroundColor(.secondary))
-                .font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
-        }
-        let buttons = HStack(spacing: 10) {
-            if !draft.continueAnyway {
+    /// The desktop app still open, under step 1 (only until the folder exists): what is open in one red line, why it
+    /// matters in one grey line, then the keys. No box: the step's red mark already says it.
+    private var openApps: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(runGroups.flatMap(\.items).joined(separator: " · "))
+                .font(.system(size: 11.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
+                .help(runLines.joined(separator: "\n"))
+            SRowLine(text: "While open it writes its sign-in and settings, which could overwrite the new folder; it can stay open once the folder exists.")
+            FlowLayout(spacing: 8) {
                 if appRuns.contains(where: { $0.kind != .terminal }) {
                     Button("Quit the desktop app") { confirmQuit = true }.buttonStyle(.pill(.red, compact: true))
                 }
                 checkAgain
             }
         }
-        return Group {
-            if narrow {
-                VStack(alignment: .leading, spacing: 6) { message; buttons.padding(.leading, 16) }.frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                HStack(spacing: 10) { message; Spacer(minLength: 6); buttons }
-            }
-        }
-        .padding(.horizontal, 16).padding(.vertical, 8)
-        .background((draft.continueAnyway ? Color.orange : Color.red).opacity(0.12))
-        .overlay(alignment: .top) { Rectangle().fill((draft.continueAnyway ? Color.orange : Color.red).opacity(0.35)).frame(height: 1) }
-        .help(runLines.joined(separator: "\n"))
+        .padding(.top, 1)
     }
 
     /// Looks again right away (it also looks every 2 s), with a short "checking" state so the click shows.
@@ -1053,12 +1023,6 @@ struct NewAccountView: View {
 
     private func isSelected(_ path: String) -> Bool {
         draft.existingDir.map { FolderKey.canonical($0) == FolderKey.canonical(path) } ?? false
-    }
-
-    private var runSummary: String {
-        let apps = appRuns.filter { $0.kind == .desktop }.count, sessions = appRuns.count - apps
-        return [apps > 0 ? "\(apps) window\(apps == 1 ? "" : "s")" : nil, sessions > 0 ? "\(sessions) Code tab session\(sessions == 1 ? "" : "s")" : nil]
-            .compactMap { $0 }.joined(separator: " · ")
     }
 
     /// What's open, by place: the desktop app's windows and their Code tab sessions.
