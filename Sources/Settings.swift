@@ -376,10 +376,15 @@ final class SettingsModel: ObservableObject {
         }
     }
 
-    /// The profile whose Usage in the Dock was just switched, while the Dock takes its icon in or out (about 10 s):
-    /// the main display says "Restarting the Dock…" and the profile keys wait, so quick flips can't start changes
-    /// that undo each other.
+    /// The profile whose Usage in the Dock was just switched, until the Dock really has its icon in or out: the main
+    /// display says "Restarting the Dock…" and the profile keys wait, so quick flips can't start changes that undo
+    /// each other.
     @Published var dockRestarting: String?
+    /// A Usage in the Dock change that didn't get done: why, for its switch (taken once, by dockProgress).
+    private var dockFailed: [String: String] = [:]
+    private var dockWatch: Timer?
+    /// How long the agent gets to install or remove a Dock icon and restart the Dock (a busy Mac is slow).
+    static let dockLimit: TimeInterval = 90
 
     /// Usage in the Dock: on, a Dock icon in the Dock; off, none. The agent does it (off: it quits, unpins and removes
     /// the Dock icon app, remembering its place; on: it pins it back there and starts it) and reads the usage either
@@ -394,11 +399,46 @@ final class SettingsModel: ObservableObject {
         dockLog.log("\(e.id, privacy: .public): Usage in the Dock \(on ? "on" : "off", privacy: .public)")
         if on && !FileManager.default.fileExists(atPath: Installer.appURL(e).path) { apply() }   // no app yet: install it
         dockRestarting = id
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
-            guard let self, self.dockRestarting == id else { return }
-            self.dockRestarting = nil
-            self.showSaved("Usage in the Dock \(on ? "on" : "off")")
+        dockFailed[id] = nil
+        // done when the Dock really has it (its app there and pinned) or really hasn't (app gone, unpinned, quit);
+        // not done in time: put the setting back, so the agent puts the Dock back as it was
+        let since = Date()
+        dockWatch?.invalidate()
+        dockWatch = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] t in
+            guard let self, self.dockRestarting == id, let e = self.accounts.first(where: { $0.id == id }) else { t.invalidate(); return }
+            if Self.dockSettled(e, on) {
+                t.invalidate()
+                self.dockRestarting = nil
+                self.showSaved("Usage in the Dock \(on ? "on" : "off")")
+            } else if Date().timeIntervalSince(since) > Self.dockLimit {
+                t.invalidate()
+                self.dockRestarting = nil
+                self.dockFailed[id] = Self.dockWhy(on)
+                dockLog.log("\(id, privacy: .public): Usage in the Dock \(on ? "on" : "off", privacy: .public) not done in \(Int(Self.dockLimit), privacy: .public) s, put back")
+                if let i = self.accounts.firstIndex(where: { $0.id == id }) { self.accounts[i].iconHidden = on }
+            }
         }
+    }
+
+    /// Usage in the Dock's change really done: on, its app is there and pinned (the agent starts it too); off, its
+    /// app is gone, unpinned and not running.
+    static func dockSettled(_ e: AccountEntry, _ on: Bool) -> Bool {
+        let app = Installer.appURL(e)
+        let there = FileManager.default.fileExists(atPath: app.path)
+        if on { return there && DockManager.isPinned(app) }
+        return !there && !Installer.isRunning(e) && !DockManager.isPinned(app)
+    }
+
+    /// Why, in words short enough for one line under the switch in a narrow column.
+    static func dockWhy(_ on: Bool) -> String {
+        if case .stopped = Agent.health() { return "The agent isn't running" }
+        return on ? "Not in the Dock after \(Int(dockLimit)) s" : "Still in the Dock after \(Int(dockLimit)) s"
+    }
+
+    /// For Usage in the Dock's switch: how far its change has got.
+    func dockProgress(_ id: String, _ on: Bool) -> SwitchProgress {
+        if let why = dockFailed.removeValue(forKey: id) { return .failed(why) }
+        return dockRestarting == id ? .working : .done
     }
 
     /// Claude window: on, the profile has a Claude window signed in to its account; off, none. Turning it off keeps
@@ -1333,9 +1373,12 @@ struct AccountSettings: View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
         return SCard(title: "Dock icon", info: "Everything about \(name)'s Dock icon: whether it's there, when it runs, what a click on it does, its usage panel and its look. The cl_audit agent starts and quits it, whether or not cl_audit is open; starting or quitting it never stops the usage, which cl_audit reads for every profile, always. Double-click or ⌥-click always opens the large panel.") {
             SRow(label: "Usage in the Dock", info: "On: a Dock icon shows \(name)'s usage; click it for details. Off: no Dock icon: it quits, is unpinned and its app is removed; the usage still shows on the dashboard, in the launcher and in alerts, and turning it back on brings the icon back to its place, with the same look and click settings. Changing it restarts the Dock once.", first: true) {
+                // pulses until the Dock really has the icon or hasn't (dockProgress); another profile's change under
+                // way: clicks wait, but the key isn't dimmed
                 SSwitch(isOn: Binding(get: { !entry.iconHidden }, set: { model.setUsageInDock(entry.id, $0) }),
-                        on: "shows the usage", off: "no Dock icon")
-                    .disabled(model.dockRestarting != nil)
+                        on: "shows the usage", off: "no Dock icon",
+                        progress: { on, _ in model.dockProgress(entry.id, on) })
+                    .allowsHitTesting(model.dockRestarting == nil || model.dockRestarting == entry.id)
             }
             if !entry.iconHidden {
                 SRow(label: "Runs", info: "At login: always there, from when you log in to the Mac. With its window: starts when \(name)'s Claude window opens and quits 10 s after it quits (a Claude update restarts the window). When started: only when you start it (a click on its Dock tile, or its switch on the dashboard).") {
@@ -1459,7 +1502,7 @@ struct AccountSettings: View {
                 SSwitch(isOn: Binding(get: { entry.claudeWindow }, set: { model.setClaudeWindow(entry.id, $0) }),
                         on: entry.desktop == .standard ? "the usual Claude app" : "its own window", off: "none",
                         onShort: entry.desktop == .standard ? "the usual app" : nil)
-                    .disabled(model.dockRestarting != nil)
+                    .allowsHitTesting(model.dockRestarting == nil)      // waits for a Dock change, without dimming
             }
             if entry.claudeWindow {
                 SRow(label: "With Dock icon", info: "On: quitting \(name)'s Dock icon quits its window too (Claude can ask about unsent work first; the Dock icon's menu then has “Quit and keep Claude window”), and, with Opens from ▸ Dock click too, starting the Dock icon (a click on its Dock tile, or its switch on the dashboard) opens the window. Not at login.") {
