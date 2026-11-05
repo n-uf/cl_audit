@@ -249,7 +249,7 @@ final class UsageReader {
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
                     // read for a folder or account it no longer reads: dropped, read again
-                    guard gen == self.generation else { self.inFlight = false; self.nextFetch = .distantPast; return }
+                    guard gen == self.generation else { self.inFlight = false; self.nextFetch = .distantPast; self.tick(); return }
                     self.cachedLogin = login
                     self.lastLoginRead = Date()
                     self.loginRejected = false
@@ -317,7 +317,7 @@ final class UsageReader {
         inFlight = false
         guard !stopped else { return }
         // asked for a folder or account it no longer reads, or with the old account's sign-in: not this account's numbers
-        if gen != generation { nextFetch = .distantPast; return }
+        if gen != generation { nextFetch = .distantPast; tick(); return }           // read again now, for what it reads now
         if let at = signInChangedAt, asked < at { nextFetch = .distantPast; return }
         defer { save() }
         if let error { state = .failed(error.localizedDescription); return }
@@ -381,17 +381,25 @@ final class UsageReader {
     /// Claude Code and running it happen off the main thread.
     func renewLogin() {
         guard !renewing, !stopped else { return }
+        // asked for too (Renew login now in the menus): never in a folder signed in to another account, whose sign-in
+        // would be renewed in this profile's name; that one shows Use this account or log back in instead
+        guard Self.renewsInItsFolder(entry.seat, account.configDir) else {
+            renewNote = "Not renewed: this folder is signed in to another account"
+            save(); return
+        }
         renewing = true
         defaults.set(Date(), forKey: renewKey)
         renewNote = "Renewing the login through Claude Code…"
         save()
-        let acct = account
+        let acct = account, gen = generation
         DispatchQueue.global(qos: .utility).async {
             let claude = ClaudeCLI.find()
             let ok = claude.map { ClaudeCLI.renew($0, account: acct) } ?? false
             DispatchQueue.main.async { [weak self] in
                 guard let self, !self.stopped else { return }
                 self.renewing = false
+                // renewed for a folder or account it no longer reads: its words would be about another sign-in
+                guard gen == self.generation else { return }
                 self.renewNote = claude == nil ? "Couldn't renew: Claude Code isn't installed"
                     : ok ? "Login renewed at \(Self.when(Date()))" : "Couldn't renew the login: run Claude Code for this profile once"
                 self.nextFetch = .distantPast
@@ -442,14 +450,15 @@ final class UsageReader {
                 if let resets { c.body = "Resets \(Self.when(resets))" }
             }
             c.threadIdentifier = id
-            let me = id, d = defaults, kind = full ? "f" : "n"
+            let me = id, d = defaults, kind = full ? "f" : "n", gen = generation
             // sent by cl_audit's own program, so the alert comes from cl_audit in /Applications (the app System
             // Settings ▸ Notifications lists), not from this helper inside it
             DispatchQueue.global(qos: .utility).async {
                 let code = Self.post(id: "\(me).\(kind)\(key).\(mark)", title: c.title, body: c.body, thread: me, offer: offer)
                 DispatchQueue.main.async { [weak self] in
                     self?.alerting.remove(k)
-                    if code == 0, self?.stopped != true { d.set(mark, forKey: k); if full { d.set(mark, forKey: levelKey) } }
+                    // marked only for the account it was about (not one read since a switch, whose marks were cleared)
+                    if code == 0, self?.stopped != true, self?.generation == gen { d.set(mark, forKey: k); if full { d.set(mark, forKey: levelKey) } }
                 }
                 switch code {
                 case 0: agentLog.log("\(me, privacy: .public): alert sent: \(title, privacy: .public) \(full ? "full" : "at \(Int(p.rounded()))%", privacy: .public)")
