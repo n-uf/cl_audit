@@ -70,6 +70,8 @@ enum FolderRules {
             if out.indices.contains(where: { $0 < i && out[$0].seat == nil && s.same(signedIn(out[$0].configDir)) }) { continue }
             s.linkedAt = now
             out[i].seat = s
+            // one of its own standby accounts is now the one in use: it isn't standing by as well
+            out[i].standby.removeAll { s.same($0.seat) }
         }
         return out
     }
