@@ -363,13 +363,41 @@ struct LED: View {
     }
 }
 
-/// An LED that pulses while something is under way (a switch being applied, the numbers being fetched).
+/// An LED that pulses while something is under way (a switch being applied, the numbers being fetched). With
+/// Reduce motion it stays lit instead.
 struct PulsingLED: View {
     let color: Color
+    @Environment(\.accessibilityReduceMotion) private var still
+    /// Offscreen renders only: the pulse at this brightness (0…1) instead of moving.
+    static var frozen: Double? = nil
+
     var body: some View {
-        TimelineView(.animation) { ctx in
-            let phase = (sin(ctx.date.timeIntervalSinceReferenceDate * 2 * .pi / 1.1) + 1) / 2
-            LED(color: color).opacity(0.25 + 0.75 * phase)
+        if still {
+            LED(color: color)
+        } else if let f = Self.frozen {
+            LED(color: color).opacity(0.25 + 0.75 * f)
+        } else {
+            TimelineView(.animation) { ctx in
+                let phase = (sin(ctx.date.timeIntervalSinceReferenceDate * 2 * .pi / 1.1) + 1) / 2
+                LED(color: color).opacity(0.25 + 0.75 * phase)
+            }
+        }
+    }
+}
+
+/// A switch's change that failed: its LED blinks red twice, quickly (lit, with Reduce motion).
+struct FailingLED: View {
+    @State private var start = Date()
+    @Environment(\.accessibilityReduceMotion) private var still
+
+    var body: some View {
+        if still || PulsingLED.frozen != nil {
+            LED(color: FaceTheme.ledRed)
+        } else {
+            TimelineView(.animation) { ctx in
+                let t = ctx.date.timeIntervalSince(start)
+                LED(color: FaceTheme.ledRed, lit: t < 0.68 && Int(t / 0.17) % 2 == 0)
+            }
         }
     }
 }
@@ -534,17 +562,22 @@ struct DisplayGlass: View {
 
 /// The on/off switch: a small key with an LED, latched down with the LED green while on.
 struct LEDSwitchStyle: ToggleStyle {
+    /// A change under way (SSwitch): the LED pulses in this colour, or blinks red when it failed.
+    var pulse: Color? = nil
+    var failing = false
     func makeBody(configuration: Configuration) -> some View {
-        LEDSwitchKey(on: configuration.isOn) { configuration.isOn.toggle() }
+        LEDSwitchKey(on: configuration.isOn, pulse: pulse, failing: failing) { configuration.isOn.toggle() }
     }
 }
 
+/// The one on/off key (SSwitch, the dashboard cards' switches, every Toggle with .smallSwitch()). While a change is
+/// under way it takes no clicks and its LED pulses: green turning on, red turning off. A failed change blinks red
+/// twice. Not faded while busy: it's busy, not unavailable.
 struct LEDSwitchKey: View {
     let on: Bool
-    var blinking = false
-    /// Working on a change: the key takes no clicks and its LED pulses, green while turning on, amber while
-    /// turning off. Not faded: it's busy, not unavailable.
+    /// Working on a change: the colour the LED pulses in (FaceTheme.changing(to:)).
     var pulse: Color? = nil
+    var failing = false
     let action: () -> Void
     @Environment(\.isEnabled) private var enabled
 
@@ -552,12 +585,10 @@ struct LEDSwitchKey: View {
         Button(action: action) {
             KeyLook(pressed: on, height: 22, radius: 4, hPad: 0) {
                 Group {
-                    if let pulse {
+                    if failing {
+                        FailingLED()
+                    } else if let pulse {
                         PulsingLED(color: pulse)
-                    } else if blinking {
-                        TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
-                            LED(color: FaceTheme.ledOn, lit: Int(ctx.date.timeIntervalSinceReferenceDate * 2) % 2 == 0)
-                        }
                     } else {
                         LED(color: FaceTheme.ledOn, lit: on)
                     }
@@ -566,15 +597,19 @@ struct LEDSwitchKey: View {
             }
         }
         .buttonStyle(.plain)
-        .allowsHitTesting(pulse == nil)
-        .opacity(enabled || pulse != nil ? 1 : 0.45)
-        .accessibilityValue(pulse != nil ? "changing" : on ? "on" : "off")
+        .allowsHitTesting(pulse == nil && !failing)
+        .opacity(enabled || pulse != nil || failing ? 1 : 0.45)
+        .accessibilityValue(failing ? "didn't change" : pulse != nil ? "changing" : on ? "on" : "off")
     }
 }
 
 extension FaceTheme {
-    /// The amber of an LED turning something off.
+    /// The amber of an LED waiting on something (a sign-in under way, an expired one).
     static let ledAmber = Color(.sRGB, red: 1, green: 178 / 255, blue: 74 / 255, opacity: 1)
+    /// The red of an LED turning something off, or of a change that failed.
+    static let ledRed = Color(.sRGB, red: 1, green: 86 / 255, blue: 86 / 255, opacity: 1)
+    /// The colour a switch's LED pulses in while it changes: green turning on, red turning off.
+    static func changing(to on: Bool) -> Color { on ? ledOn : ledRed }
 }
 
 /// A menu's button: a dark recess with the value and small arrows; the list that opens is macOS's own.

@@ -169,31 +169,112 @@ struct DotChoice: View {
 // label (MenuWell(fill:) with .faceMenuFill()). Pictures: STiles under the label (SRow(stacked:)). At most one grey line
 // under a row (SRowLine), saying what the current choice means. A card's preview: one PreviewStrip at its foot.
 
-/// On/off in a settings row: the small lamp switch, then a few words that follow the state ("shown and alerted" /
-/// "left out"). Never a switch alone, never two lines beside it.
+/// How far a slow switch's change has got: still under way, really done, or failed (why, in one short sentence).
+enum SwitchProgress: Equatable { case working, done, failed(String) }
+
+/// On/off: the lamp switch (LEDSwitchKey), then a few words that follow the state ("shown and alerted" / "left out");
+/// no words when both are empty (a label already beside it). Every on/off in cl_audit is this switch. A change shows
+/// while it's under way: the LED pulses green turning on, red turning off, and the words say "turning on…" /
+/// "turning off…"; clicks wait until it's done. An instant setting pulses once, briefly, as a confirmation. A slow
+/// one (`progress`: an app installed or removed, an icon the agent puts up) pulses until the work is really done; if
+/// it fails, two red blinks, the switch goes back, and one grey line under it says why.
 struct SSwitch: View {
     @Binding var isOn: Bool
     let on: String
     let off: String
     /// Shorter "on" words for a narrow column (340 pt), used only when the full ones don't fit.
     var onShort: String? = nil
+    /// A slow change: how far the change to this state, started then, has got; asked every half second. A provider
+    /// that undoes a failed change itself leaves the switch nothing to put back. nil: an instant setting.
+    var progress: ((Bool, Date) -> SwitchProgress)? = nil
+    /// Offscreen renders only: a moment of a change to draw.
+    var moment: Moment? = nil
+    enum Moment { case changing(to: Bool), failing, failed(why: String) }
+
+    @State private var target: Bool?            // a change under way, to this state
+    @State private var since = Date()
+    @State private var failing = false          // its two red blinks
+    @State private var why: String?             // the last change failed: why, under the switch
     @Environment(\.face) private var face
     @Environment(\.isEnabled) private var enabled
 
-    var body: some View {
-        HStack(spacing: 8) {
-            Toggle("", isOn: $isOn).toggleStyle(LEDSwitchStyle()).labelsHidden()
-            if isOn, let onShort {
-                ViewThatFits(in: .horizontal) { words(on).fixedSize(); words(onShort) }
-            } else {
-                words(isOn ? on : off)
-            }
-        }
-        .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+    /// How long a change pulses at least: an instant setting's confirmation.
+    static let brief: UInt64 = 600_000_000
+
+    private var changingTo: Bool? {
+        if let moment { if case .changing(let t) = moment { return t }; return nil }
+        return target
+    }
+    private var blinking: Bool {
+        if let moment { if case .failing = moment { return true }; return false }
+        return failing
+    }
+    private var reason: String? {
+        if let moment { if case .failed(let w) = moment { return w }; return nil }
+        return target == nil ? why : nil
     }
 
-    private func words(_ s: String) -> some View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            HStack(spacing: 8) {
+                // a Toggle, so VoiceOver has a switch; its clicks go through flip()
+                Toggle("", isOn: Binding(get: { isOn }, set: { _ in flip() }))
+                    .toggleStyle(LEDSwitchStyle(pulse: changingTo.map(FaceTheme.changing(to:)), failing: blinking))
+                    .labelsHidden()
+                if !(on.isEmpty && off.isEmpty) { words }
+            }
+            if let reason { Text(reason).font(.system(size: 11)).foregroundStyle(face.muted).lineLimit(1).help(reason) }
+        }
+        .alignmentGuide(.rowLine) { _ in 11 }          // the middle of the key, with or without the line under it
+        .task(id: target) { await follow() }
+    }
+
+    @ViewBuilder private var words: some View {
+        if let t = changingTo {
+            word(t ? "turning on…" : "turning off…")
+        } else if isOn, let onShort {
+            ViewThatFits(in: .horizontal) { word(on).fixedSize(); word(onShort) }
+        } else if !(isOn ? on : off).isEmpty {
+            word(isOn ? on : off)
+        }
+    }
+
+    private func word(_ s: String) -> some View {
         Text(s).font(.system(size: 11.5)).foregroundStyle(face.muted).lineLimit(1).opacity(enabled ? 1 : 0.6)
+    }
+
+    private func flip() {
+        guard target == nil, !failing, moment == nil else { return }       // a second click while it changes: ignored
+        let t = !isOn
+        why = nil
+        since = Date()
+        isOn = t
+        target = t
+    }
+
+    /// The change under way, followed to its end.
+    @MainActor private func follow() async {
+        guard let t = target else { return }
+        try? await Task.sleep(nanoseconds: Self.brief)
+        guard let progress else { target = nil; return }
+        while !Task.isCancelled {
+            switch progress(t, since) {
+            case .done:
+                target = nil
+                return
+            case .failed(let w):
+                failing = true
+                try? await Task.sleep(nanoseconds: 700_000_000)
+                why = w
+                let undo = isOn == t                     // the provider may have put it back already
+                target = nil                             // (ends this task once it returns)
+                failing = false
+                if undo { isOn = !t }
+                return
+            case .working:
+                try? await Task.sleep(nanoseconds: 500_000_000)
+            }
+        }
     }
 }
 

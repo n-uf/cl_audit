@@ -1374,11 +1374,12 @@ struct ProfileControls: View {
 
 /// A small switch already pointing where it is going, its knob a spinner, while cl_audit waits for the change.
 /// It takes no clicks.
-/// Drawn as the switch key already where it goes, its LED blinking.
+/// Drawn as the switch key already where it goes, its LED pulsing like every switch's while it changes: green turning
+/// on, red turning off, until the agent reports it done (`on` is where it's going).
 struct BusySwitch: View {
     let on: Bool
     var body: some View {
-        LEDSwitchKey(on: on, blinking: true) {}
+        LEDSwitchKey(on: on, pulse: FaceTheme.changing(to: on)) {}
             .allowsHitTesting(false)
             .help("Working on it…")
         .accessibilityLabel("Working")
