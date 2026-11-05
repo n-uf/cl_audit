@@ -75,8 +75,8 @@ the notes before updating.
   folder (`claude auth login`), the agent sees its `.claude.json` change within half a minute and reads the new
   sign-in then: the old account's numbers go, and there's no red "Wrong account" waiting for Refresh now. One Keychain read, as
   at the start; the limit alerts start over for the new account, so the switch itself sends no "is back".
-- **Changing a profile's account.** Profile ▸ Claude Code ▸ **Login** is now one row with a pop-up, in line with
-  Folder: the account Claude Code there is signed in to (ticked), the profile's own account to log back in to when
+- **Changing a profile's account.** Profile ▸ Claude Code ▸ **Account** (it was Login) is now one row with a
+  pop-up, the card's first: the account Claude Code there is signed in to (ticked), the profile's own account to log back in to when
   that isn't it, the accounts in unused Claude Code folders, other profiles' (dimmed), **Sign in to another account…** and **Renew
   sign-in by itself** (it was a row of its own). Sign in to another account… turns the row into the address and
   **Sign in** in place, opens Claude Code's own sign-in in Terminal with the address filled in, and links the
@@ -85,8 +85,12 @@ the notes before updating.
   choose (they'd be the other account's). Refused, naming the profile, when another profile has that account. A
   **Claude window** row says when the window is on another account (the usual Claude app is checked too). After
   linking: when, what it was, what stays with the old account, and New profile to give it a profile again.
-- **New profile starts with the account.** Its Claude Code card leads with an **Account** pop-up, like Settings ▸
-  Login: accounts signed in in unused Claude Code folders (picking one connects its folder), other profiles'
+- **A profile's Claude Code card, like New profile's.** **Account** first, then **Folder**, then, for any folder
+  but `~/.claude`, **Share from** and **Shared**: what the folder links to from another one, shown as it is today
+  (cl_audit never moves or deletes real files; a grey line says to change the links in Finder). Its labels sit
+  above their values, so accounts and paths get the card's full width.
+- **New profile starts with the account.** Its Claude Code card leads with an **Account** pop-up, like a profile's
+  Claude Code ▸ Account: accounts signed in in unused Claude Code folders (picking one connects its folder), other profiles'
   dimmed, and **Sign in to another account…**, which makes a new folder and opens Claude Code's sign-in with the
   address filled in. The result is checked by account and organisation ids (the browser decides the account);
   signed in to another address than the one typed, it says so. The folder is its own row, following the
