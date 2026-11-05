@@ -56,7 +56,8 @@ extension AccountEntry {
     /// once, renewed by itself), once it's signed in to that account, so its limits stay live whatever the working folder
     /// is signed in to (a switch signs that one in again each time); else the working folder.
     var readingFolder: String {
-        guard let k = keptFolder, !k.isEmpty, let s = seat, s.same(Account.signedInSeat(configDir: k)) else { return configDir }
+        // the folder's .claude.json, read again only when it changes (it can be large; this is asked every beat)
+        guard let k = keptFolder, !k.isEmpty, let s = seat, s.same(FolderFactsCache.facts(k)?.seat) else { return configDir }
         return k
     }
 

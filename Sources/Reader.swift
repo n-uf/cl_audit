@@ -57,50 +57,81 @@ final class UsageReader {
         account = Account(e.readingEntry())       // the account's own folder once it has one (Accounts.swift)
         self.defaults = defaults
         nextFetch = Date().addingTimeInterval(startIn)
-        // carry on from what was saved last (the numbers don't blank while the agent restarts), if read for its account
-        if let s = Store.status(e.id)?.only(for: e.seat?.email), let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil {
-            usage = Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly,
-                          weeklyResets: s.weeklyResets, fetchedAt: at, source: s.source ?? "Anthropic",
-                          scoped: s.scoped ?? [], credits: s.credits, noFiveHour: s.noFiveHour ?? false)
-            loginEmail = s.loginEmail
-            plan = s.plan
-            renewNote = s.renewNote
-        }
+        adoptSaved()                             // the numbers don't blank while the agent restarts
         Self.adoptOldMarks(e.id, into: defaults)
         _ = signInChanged()                      // the first look: what the folder is signed in to now
         scheduleResetRead()
     }
 
-    /// The profile's settings changed: a new folder or interval reads again at once.
+    /// Carry on from what was saved last, if it was read for the profile's account (after a switch: the numbers the
+    /// switch moved here for the new one).
+    private func adoptSaved() {
+        guard let s = Store.status(entry.id)?.only(for: entry.seat?.email), let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil else { return }
+        usage = Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly,
+                      weeklyResets: s.weeklyResets, fetchedAt: at, source: s.source ?? "Anthropic",
+                      scoped: s.scoped ?? [], credits: s.credits, noFiveHour: s.noFiveHour ?? false)
+        loginEmail = s.loginEmail
+        plan = s.plan
+        renewNote = s.renewNote
+    }
+
+    /// The profile's settings changed: another account (a switch), another folder to read, or another interval reads
+    /// again at once.
     func update(_ e: AccountEntry) {
         guard e != entry, !stopped else { return }
-        let refetch = e.configDir != entry.configDir || e.keptFolder != entry.keptFolder || e.pollMinutes != entry.pollMinutes
+        let seatChanged = !(e.seat.map { $0.same(entry.seat) } ?? (entry.seat == nil))
+        let pollChanged = e.pollMinutes != entry.pollMinutes
         entry = e
-        account = Account(e.readingEntry())
-        if refetch {
-            readAnotherFolder()
+        if seatChanged {
+            let want = Account(e.readingEntry())
+            let readsNewAlready = want.configDir == account.configDir && (e.seat.map { $0.same(signIn.seen) } ?? false)
+            account = want
+            if !readsNewAlready {
+                // the profile works on another account, read from another folder (a switch): the old one's numbers,
+                // sign-in and marks go (no "is back" from the switch itself, and its numbers never saved over the ones
+                // the switch moved here); the new one's carry on from those
+                startOver()
+                signIn = SignInWatch(); _ = signInChanged()
+                adoptSaved()
+                agentLog.log("reader \(self.id, privacy: .public): the profile works on another account; reading it")
+            }
+            // else: linked to the account this folder is signed in to (Use this account): its numbers, read since that
+            // sign-in, are this account's and show now
             tick()
+            return
         }
+        if followReadingFolder() || pollChanged { nextFetch = .distantPast; tick(); return }
         if renewsByItself && state == .expired { maybeRenew() }
         save()
     }
 
-    /// Its own folder (always renewed, as a standby account's) or the profile's choice (Renew sign-in).
-    private var renewsByItself: Bool { entry.autoRenew || entry.readsOwnFolder }
+    /// Reading the account's own folder (always renewed, as a standby account's), or the profile's choice (Renew
+    /// sign-in). From the folder read now, not the file: it's what a renewal would run in.
+    private var renewsByItself: Bool { entry.autoRenew || account.configDir != Account(entry).configDir }
 
-    /// Another folder to read: its own sign-in, no change of account.
-    private func readAnotherFolder() {
+    /// Bumped when the folder or the account read changes: a reply asked for before is dropped.
+    private(set) var generation = 0
+
+    /// The Claude Code folder read now (the account's own, or the working folder).
+    var folderRead: String { account.configDir }
+
+    /// Another folder to read, the same account: its own sign-in; replies under way for the old folder are dropped.
+    private func readAnotherFolder(now: Date = Date()) {
         loginEmail = nil; profileFor = nil; nextFetch = .distantPast; cachedLogin = nil
+        generation += 1
+        signInChangedAt = now
         signIn = SignInWatch(); _ = signInChanged()
     }
 
-    /// The account's own folder got signed in (or stopped being): read from there from now on.
-    private func followReadingFolder() {
+    /// The account's own folder got signed in (or stopped being): read from there from now on. True when it moved.
+    @discardableResult
+    private func followReadingFolder() -> Bool {
         let want = Account(entry.readingEntry())
-        guard want.configDir != account.configDir else { return }
+        guard want.configDir != account.configDir else { return false }
         agentLog.log("reader \(self.id, privacy: .public): reading from \(want.configDir == Account(self.entry).configDir ? "the working folder" : "the account's own folder", privacy: .public)")
         account = want
         readAnotherFolder()
+        return true
     }
 
     /// The profile was removed: a read or renewal still under way saves nothing.
@@ -184,6 +215,7 @@ final class UsageReader {
         loginEmail = nil; profileFor = nil; plan = nil; renewNote = nil
         usage = nil; state = .idle; backoff = 0
         signInChangedAt = now; signInRetries = 0
+        generation += 1                           // replies under way are the old account's
         resetRead?.cancel(); resetRead = nil
         Self.forgetLimitMarks(id, in: defaults)   // no "is back" or "full" alert from the switch itself
         nextFetch = .distantPast
@@ -207,6 +239,7 @@ final class UsageReader {
         lastAsked = Date()
         nextFetch = Date().addingTimeInterval(TimeInterval(pollMinutes * 60) + backoff)
         inFlight = true
+        let gen = generation
         // the Keychain is read off the main thread (a locked Keychain can keep /usr/bin/security waiting), so one
         // profile never holds up the others or the agent's rules
         if needsLoginRead() {
@@ -215,19 +248,21 @@ final class UsageReader {
                 let login = Login.read(acct)
                 DispatchQueue.main.async { [weak self] in
                     guard let self else { return }
+                    // read for a folder or account it no longer reads: dropped, read again
+                    guard gen == self.generation else { self.inFlight = false; self.nextFetch = .distantPast; return }
                     self.cachedLogin = login
                     self.lastLoginRead = Date()
                     self.loginRejected = false
                     self.forceLoginRead = false
-                    self.ask(with: login)
+                    self.ask(with: login, gen: gen)
                 }
             }
         } else {
-            ask(with: cachedLogin ?? .notFound)
+            ask(with: cachedLogin ?? .notFound, gen: gen)
         }
     }
 
-    private func ask(with login: Login) {
+    private func ask(with login: Login, gen: Int) {
         guard !stopped else { inFlight = false; return }
         guard case let .token(token, expiresAt, plan) = login else {
             inFlight = false
@@ -236,10 +271,10 @@ final class UsageReader {
         }
         self.plan = plan
         if let expiresAt, expiresAt < Date() { inFlight = false; state = .expired; save(); maybeRenew(); return }
-        if profileFor != Account.sha8(token) { lookUpEmail(token) }
+        if profileFor != Account.sha8(token) { lookUpEmail(token, gen: gen) }
         let asked = Date()
         URLSession.shared.dataTask(with: Self.request("usage", token: token)) { [weak self] data, resp, err in
-            DispatchQueue.main.async { self?.finish(data: data, response: resp as? HTTPURLResponse, error: err, asked: asked) }
+            DispatchQueue.main.async { self?.finish(data: data, response: resp as? HTTPURLResponse, error: err, asked: asked, gen: gen) }
         }.resume()
     }
 
@@ -264,13 +299,13 @@ final class UsageReader {
         return req
     }
 
-    private func lookUpEmail(_ token: String) {
+    private func lookUpEmail(_ token: String, gen: Int) {
         let key = Account.sha8(token), asked = Date()
         URLSession.shared.dataTask(with: Self.request("profile", token: token)) { [weak self] data, resp, _ in
             let ok = (resp as? HTTPURLResponse)?.statusCode == 200
             let email = ok ? data.flatMap(UsageParser.email) : nil
             DispatchQueue.main.async {
-                guard let self else { return }
+                guard let self, gen == self.generation else { return }      // another folder or account since
                 if let at = self.signInChangedAt, asked < at { return }    // the old account's sign-in
                 if let email { self.loginEmail = email; self.profileFor = key; self.checkNewSignIn(email) }
                 self.save()
@@ -278,10 +313,11 @@ final class UsageReader {
         }.resume()
     }
 
-    private func finish(data: Data?, response: HTTPURLResponse?, error: Error?, asked: Date = Date()) {
+    func finish(data: Data?, response: HTTPURLResponse?, error: Error?, asked: Date = Date(), gen: Int) {
         inFlight = false
         guard !stopped else { return }
-        // asked with the old account's sign-in, before another account was signed in: not this account's numbers
+        // asked for a folder or account it no longer reads, or with the old account's sign-in: not this account's numbers
+        if gen != generation { nextFetch = .distantPast; return }
         if let at = signInChangedAt, asked < at { nextFetch = .distantPast; return }
         defer { save() }
         if let error { state = .failed(error.localizedDescription); return }
@@ -328,8 +364,15 @@ final class UsageReader {
         autoRenew && !renewing && !onOtherAccount
     }
 
+    /// The folder a renewal would run in, as it is now (not as the last beat saw it), is signed in to the profile's
+    /// account: never another account's sign-in renewed in its name.
+    static func renewsInItsFolder(_ seat: Seat?, _ dir: String) -> Bool {
+        seat.map { $0.same(Account.signedInSeat(configDir: dir)) } ?? true
+    }
+
     private func maybeRenew() {
         guard Self.mayRenewByItself(autoRenew: renewsByItself, renewing: renewing, onOtherAccount: onOtherAccount) else { return }
+        guard Self.renewsInItsFolder(entry.seat, account.configDir) else { return }
         if let last = defaults.object(forKey: renewKey) as? Date, Date().timeIntervalSince(last) < Self.renewSpacing { return }
         renewLogin()
     }
