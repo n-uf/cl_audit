@@ -24,8 +24,13 @@ the notes before updating.
   left ("The other account has 92% of its week left", never an address) and has a **Switch accounts** button; the
   Dock icon's and menu bar icon's menus have **Switch to …**. They open the new **Switch
   page**: both accounts' limits, what stays, what follows (the Claude window's sessions, sidebar and scheduled
-  tasks, counted), and the steps. The page only shows for now; the switch itself comes next. While cl_audit is
-  at the front, its alerts now still show as banners.
+  tasks, counted), and the steps. While cl_audit is at the front, its alerts now still show as banners.
+- **Switching to another account.** The Switch page's **Close and switch** closes only that profile's Claude
+  window, moves its Code sessions and scheduled tasks to the other account the way claude-transplant does (same
+  ids, writes that never overwrite, originals parked in cl_audit's folder, a receipt; Cancel puts them back until
+  Claude Code has signed in), opens Claude Code's sign-in with the address filled in, then makes that account the
+  one in use (the old one joins standby) and reopens the window for its own sign-in. No sign-in is ever copied.
+  The sidebar's groups and pins stay with each account on claude.ai.
 
 ## 26.11.0 — 2026-11-05
 

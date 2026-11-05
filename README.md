@@ -153,9 +153,26 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   open the **Switch page** in cl_audit: the account in use and the one to switch to, with their limits; what stays
   (name, Dock icon, look; the folder with its projects, settings, MCP and CLAUDE.md; Claude Code's history); what
   follows with Sessions follow on (the Claude window's sessions in the sidebar, its sections and groups, pins and
-  scheduled tasks, counted from the window's own files); and the steps. For now the page only shows: the switch
-  itself comes in a later build. A short name is the address before the @, its first letter only while emails are
-  hidden. Under the profile's own limits, the card shows each other account's, small ("Standby · ultra-2@…").
+  scheduled tasks, counted from the window's own files); and the steps. A short name is the address before the @,
+  its first letter only while emails are hidden. Under the profile's own limits, the card shows each other
+  account's, small ("Standby · ultra-2@…").
+- **Switching.** **Close and switch to ultra-2** (after a yes) does it in order, each step checked before the next:
+  1. Only that profile's Claude window closes, gracefully (it may ask about work under way; nothing is forced, and
+     if it doesn't close, nothing moves).
+  2. With Sessions follow on, its Code sessions and scheduled tasks move to ultra-2 the way
+     [claude-transplant](https://github.com/vitaliyhayda/claude-transplant) moves them: same ids, each entry copied
+     unchanged but for the old account's error keys and Remote Control ids, through a write that can't overwrite,
+     checked, and only then the original parked in cl_audit's folder (`switches/<id>/`), never deleted; both task
+     files backed up; one switch at a time, and none while claude-transplant holds its lock. Sessions the other
+     account already has, or deleted, stay where they are. A receipt keeps every step.
+  3. Claude Code's own sign-in opens in Terminal for the profile's folder, with ultra-2's address filled in: finish
+     in the browser. Until then **Cancel switch** puts the sessions back from the receipt. cl_audit never copies
+     or moves a stored sign-in.
+  4. Once the folder is signed in as ultra-2, the profile works on it (name, Dock icon, folder, projects and
+     settings stay); the account it was on joins standby, with the folder that kept its own sign-in if it had one.
+  5. The window opens again; log out there and sign in as ultra-2. The page says when it's done.
+  The sidebar's groups, order and pins are kept by claude.ai for each account (synced per organisation), so they
+  aren't written by cl_audit. The way back is the same switch the other way.
 
 ### Widget
 
