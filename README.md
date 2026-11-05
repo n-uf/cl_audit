@@ -310,8 +310,9 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     panel), with **Usage shows for** when the usage shows briefly. Without a Claude window, or with Opens from ▸
     Only when asked, the Claude choices are off and a click shows the usage only: the usage panel briefly or the
     details panel (the stored choice comes back with the window).
-  - **Press and hold**, then the **Usage panel** design (Glow, Rings, Numbers, Segments, Pace) and the **Icon**
-    style as tiles: Two numbers, Rings (outer = 5-hour, inner = week), Big number; Twin rings, Segmented, Pace
+  - **Press and hold**, then the **Usage panel** design as keys (Glow, Rings, Numbers, Segments, Pace) with one
+    large preview under them, the panel's limits at this profile's numbers, like General ▸ Card style; then the
+    **Icon** style as tiles: Two numbers, Rings (outer = 5-hour, inner = week), Big number; Twin rings, Segmented, Pace
     bars (a white tick for how much of the window has passed); and, where colours follow the levels, Tile, Gauge,
     Worst, Tile + bar, Bars, Batteries, Gauge + bar. Then the icon's **Colour**, an optional **Frame** and the
     **Claude open dot** ("while its window is open" or "none"), and the preview strip: not running, then as the

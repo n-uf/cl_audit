@@ -43,7 +43,8 @@ the notes before updating.
   label and when full as segments, a preview strip); a part that's off folds its card to the switch row, whose
   words say what's left. The two big keys at the foot of the Profile card are gone, and so are the column titles.
   Every row has its label in the same width with an (i), every on/off is the small switch with a few words, and at
-  most one grey line under a row says what the current choice means.
+  most one grey line under a row says what the current choice means. Small things (icon styles, menu bar styles
+  and colours) are tiles; the usage panel keeps keys with one large preview, like General ▸ Card style.
 - **Opens from** (profile ▸ Claude window): **Dock click too**, as before, or **Only when asked**: a click on the
   Dock icon never opens the Claude window, and neither does starting the Dock icon (a click on its stopped tile
   shows the usage instead); Open window on the dashboard, the Dock and menu bar menus and the details panel still

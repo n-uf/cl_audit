@@ -31,16 +31,13 @@ struct WidgetCard: View {
     var body: some View {
         SCard(title: "Widget", info: "The \"Claude usage\" widget for the desktop or Notification Center: click the date in the menu bar, then Edit Widgets. It comes in three sizes and fits itself to them: one or two profiles get large limits with their reset times (the large size adds the next resets), more profiles a row each. Fable's limit shows for the profiles whose settings say so.") {
             SRow(label: "Limits as", first: true, stacked: true) {
-                // the keys and, under them, the medium widget as it will look, together in one pane
-                VStack(spacing: 7) {
-                    PillPicker(options: WidgetLook.Design.allCases, selection: binding(\.design), compact: true, fill: true) { $0.title }
+                // the keys and, under them, the medium widget as it will look (the look in prefs follows the keys)
+                SLooks(options: WidgetLook.Design.allCases, selection: binding(\.design), title: { $0.title }) { _ in
                     ViewThatFits(in: .horizontal) {
                         preview
                         preview.scaleEffect(0.78).frame(width: 364 * 0.78, height: 170 * 0.78)
                     }
                 }
-                .padding(7)
-                .background(SurfaceShape(surface: face.strip, radius: 7))
             }
             // under its label, like Limits as: four keys don't fit beside a label in a narrow column
             SRow(label: "Look", info: "System: the Mac's own widget background, light or dark, tinted like the other widgets. Std, Black and Silver: cl_audit's faces, as in this window.", stacked: true) {

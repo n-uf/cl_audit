@@ -1342,9 +1342,13 @@ struct AccountSettings: View {
                     SSwitch(isOn: $entry.longPressDetails, on: "details and menu", off: "off")
                 }
                 SRow(label: "Usage panel", info: "How the usage panel looks when you click or press and hold this Dock icon. The dashboard's cards have one style for all profiles, in General.", stacked: true) {
-                    STiles(tiles: PanelDesign.allCases.map { d in
-                        .init(id: d, title: d.shortTitle, picture: AnyView(panelPicture(d)))
-                    }, selected: entry.panelDesign, minWidth: 86, pictureHeight: 44) { entry.panelDesign = $0 }
+                    // a large thing: Card style's control, with the panel's limits as Card style shows them (this
+                    // profile's numbers once read)
+                    SLooks(options: PanelDesign.allCases, selection: $entry.panelDesign, title: { $0.shortTitle }) { d in
+                        CardLimits(limits: sampleInfo.limits, design: d, credits: sampleInfo.credits)
+                            .padding(12)
+                            .faceWindow(radius: 5)
+                    }
                 }
                 SRow(label: "Icon", info: "How \(name)'s Dock icon draws the usage: numbers, rings, the panels' looks, or tiles in the level colours.", stacked: true) {
                     STiles(tiles: IconStyle.allCases.map { st in
@@ -1414,18 +1418,6 @@ struct AccountSettings: View {
                             up: { entry.peekSeconds = PeekDuration.up(entry.peekSeconds) })
             }
         }
-    }
-
-    /// A usage panel design, small: the two limits drawn the way the panel draws them.
-    private func panelPicture(_ d: PanelDesign) -> some View {
-        let limits = [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: 34, resets: nil, window: 5 * 3600),
-                      Limit(id: "wk", title: "Week", name: "Week", p: 61, resets: nil, window: 7 * 86400)]
-        return CardLimits(limits: limits, design: d)
-            .frame(width: 180).fixedSize(horizontal: false, vertical: true)
-            .scaleEffect(0.4, anchor: .center)
-            .frame(width: 76, height: 44)
-            .clipped()
-            .allowsHitTesting(false)
     }
 
     /// The Dock icon in a style, at the profile's numbers (samples when there are none yet).

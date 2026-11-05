@@ -212,8 +212,34 @@ struct SSegments<Value: Hashable>: View {
     }
 }
 
-/// Pictures to pick from, under a row's label, the card's full width: a grid of tiles, each a picture and its name; the
-/// chosen one raised like a key, the others in recessed wells.
+/// The looks of a large thing (a usage panel, a dashboard card, the widget) under a row's label: the choices as
+/// segments and, under them, one large preview of the chosen look, together in one pane. Small things (Dock icon
+/// styles, menu bar styles and colours) are tiles instead (STiles).
+struct SLooks<Value: Hashable, Preview: View>: View {
+    let options: [Value]
+    @Binding var selection: Value
+    let title: (Value) -> String
+    let preview: (Value) -> Preview
+    @Environment(\.face) private var face
+
+    init(options: [Value], selection: Binding<Value>, title: @escaping (Value) -> String,
+         @ViewBuilder preview: @escaping (Value) -> Preview) {
+        self.options = options; self._selection = selection; self.title = title; self.preview = preview
+    }
+
+    var body: some View {
+        VStack(spacing: 7) {
+            PillPicker(options: options, selection: $selection, compact: true, fill: true, title: title)
+            preview(selection)
+        }
+        .padding(7)
+        .background(SurfaceShape(surface: face.strip, radius: 7))
+    }
+}
+
+/// Pictures of small things to pick from (Dock icon styles, menu bar styles and colours), under a row's label, the
+/// card's full width: a grid of tiles, each a picture and its name; the chosen one raised like a key, the others in
+/// recessed wells. A large thing (a usage panel, a card) gets SLooks instead: its picture would be too small here.
 struct STiles<ID: Hashable>: View {
     struct Tile: Identifiable {
         let id: ID

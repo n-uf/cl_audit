@@ -210,15 +210,11 @@ struct DashboardSettings: View {
     var cardsCard: some View {
         SCard(title: "Dashboard cards", info: "How the 5-hour and weekly limits look on every profile's dashboard card. Each profile's own usage panel has its design in that profile's settings.") {
             SRow(label: "Card style", first: true, stacked: true) {
-                // the keys and, under them, their preview, together in one pane
-                VStack(spacing: 7) {
-                    PillPicker(options: PanelDesign.allCases, selection: $prefs.cardStyle, compact: true, fill: true) { Self.short($0) }
-                    LimitsView(limits: Self.sampleLimits, design: prefs.cardStyle, large: false)
+                SLooks(options: PanelDesign.allCases, selection: $prefs.cardStyle, title: Self.short) { d in
+                    LimitsView(limits: Self.sampleLimits, design: d, large: false)
                         .padding(12)
                         .faceWindow(radius: 5)
                 }
-                .padding(7)
-                .background(SurfaceShape(surface: face.strip, radius: 7))
             }
         }
     }
