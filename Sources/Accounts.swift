@@ -187,11 +187,13 @@ enum AccountDiscovery {
         // the profile's own window folder (the usual Claude app's for the standard one); none set yet: no window history
         let windowDir: String? = e.desktop == .standard ? expand(FolderKey.standardDataDir) : Account(e).claudeUserDataDir
         for w in window ?? windowDir.map({ windowSeats(dataDir: $0) }) ?? [] {
-            guard let f = facts[w.seat.account], let email = f.seat.email else { continue }
+            // the address from Claude Code's records, or from a folder signed in to that account just above
+            let f = facts[w.seat.account]
+            guard let email = f?.seat.email ?? byID.values.first(where: { $0.seat.account == w.seat.account })?.seat.email else { continue }
             var seat = w.seat
             seat.email = email
-            add(FoundAccount(seat: seat, plan: f.seat.same(seat) ? f.plan : nil, org: f.seat.same(seat) ? f.org : nil,
-                             folder: nil, usedInWindow: w.used))
+            let same = f.map { $0.seat.same(seat) } ?? false
+            add(FoundAccount(seat: seat, plan: same ? f?.plan : nil, org: same ? f?.org : nil, folder: nil, usedInWindow: w.used))
         }
         var out: [FoundAccount] = []
         for id in order {

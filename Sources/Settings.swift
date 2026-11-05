@@ -1321,7 +1321,7 @@ struct AccountSettings: View {
         let thereOwner = there.flatMap { FolderRules.seatOwner($0, among: model.accounts, except: entry.id) }
         let why: String? = {
             if s.configDir == nil { return "Limits unknown: no sign-in kept for it." }
-            if let thereOwner { return "Its folder is signed in to “\(thereOwner.name)”'s account. One profile per account." }
+            if let thereOwner { return "Its folder is signed in to \(thereOwner.name)'s account. One profile per account." }
             if there != nil { return "Its folder is signed in to \(name)'s own account: sign in there as \(Privacy.masked(s.email))." }
             if st?.state == "otherAccount" { return "Its folder is signed in to another account: sign in again as \(Privacy.masked(s.email))." }
             if s.seat == nil || st?.state == "noLogin" { return "Waiting for the sign-in: finish it in the browser, or sign in again." }
