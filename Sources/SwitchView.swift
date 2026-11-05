@@ -26,29 +26,35 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     }
 }
 
-/// An alert with a Switch button: its category is per target ("switch.<profile>~<account>"), since a button's words
-/// belong to the category; the target rides along in the alert's userInfo.
+/// An alert with a Switch accounts button: one category for every alert (its words name no account), and the target
+/// rides along in the alert's userInfo.
 enum SwitchAlert {
+    static let category = "switch"
     static let action = "switch"
     static let later = "later"
     static let keyField = "switch"
-    static func category(_ key: String) -> String { "switch.\(key)" }
 
-    /// Registers the category for one alert (kept with the ones registered before) and returns it.
-    static func register(key: String, button: String, center: UNUserNotificationCenter = .current()) -> String {
-        let id = category(key)
-        let done = DispatchSemaphore(value: 0)
-        center.getNotificationCategories { have in
-            var set = have.filter { $0.identifier != id }
-            set.insert(UNNotificationCategory(identifier: id,
-                                              actions: [UNNotificationAction(identifier: action, title: button, options: [.foreground]),
-                                                        UNNotificationAction(identifier: later, title: "Later", options: [])],
-                                              intentIdentifiers: [], options: []))
-            center.setNotificationCategories(set)
-            done.signal()
+    /// Registers the alert's one category (Switch accounts, Later), kept with any others but the per-account ones older
+    /// builds made ("switch.<key>"), and waits until macOS has it (up to 2 s): setting categories doesn't say when it's
+    /// done, and an alert added before would show without its buttons. The target rides in each alert's userInfo.
+    @discardableResult
+    static func register(center: UNUserNotificationCenter = .current()) -> String {
+        func current() -> Set<UNNotificationCategory> {
+            var got: Set<UNNotificationCategory> = []
+            let done = DispatchSemaphore(value: 0)
+            center.getNotificationCategories { got = $0; done.signal() }
+            _ = done.wait(timeout: .now() + 2)
+            return got
         }
-        _ = done.wait(timeout: .now() + 5)
-        return id
+        var set = current().filter { !$0.identifier.hasPrefix("switch.") && $0.identifier != category }
+        set.insert(UNNotificationCategory(identifier: category,
+                                          actions: [UNNotificationAction(identifier: action, title: SwitchWords.button, options: [.foreground]),
+                                                    UNNotificationAction(identifier: later, title: "Later", options: [])],
+                                          intentIdentifiers: [], options: []))
+        center.setNotificationCategories(set)
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline, !current().contains(where: { $0.identifier == category }) { usleep(100_000) }
+        return category
     }
 }
 

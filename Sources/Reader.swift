@@ -368,13 +368,14 @@ final class UsageReader {
             guard !alerting.contains(k) else { continue }
             alerting.insert(k)
             let c = UNMutableNotificationContent()
-            // the 5-hour or weekly limit full holds the profile back: another of its accounts with room is offered,
-            // with a Switch button (Switch.swift); Fable's own limit doesn't hold it back
+            // the 5-hour or weekly limit full holds the profile back: another of its accounts with room (and current
+            // numbers) is offered, with a Switch accounts button (Switch.swift), never naming it; Fable's own limit
+            // doesn't hold it back
             let offer = full && (key == "5h" || key == "wk") ? entry.bestOffer() : nil
             if full {
                 c.title = "Claude \(account.name): \(fullName) full"
                 let back = resets.map { "Back \(Self.backWords($0)), in \(TimeWords.countdown($0))" } ?? "Reset time unknown"
-                c.body = SwitchWords.alertLine(offer).map { "\(back). \($0)" } ?? back
+                c.body = SwitchWords.alertLine(offer, accounts: entry.standby.count).map { "\(back). \($0)" } ?? back
             } else {
                 c.title = "Claude \(account.name): \(title) at \(Int(p.rounded()))%"
                 if let resets { c.body = "Resets \(Self.when(resets))" }
@@ -499,7 +500,7 @@ final class UsageReader {
         guard let app = LegacyCleanup.agentParentApp() else { return 1 }
         let p = Process()
         p.executableURL = app.appendingPathComponent("Contents/MacOS/UsageDock")
-        p.arguments = ["--post-alert", id, title, body, thread] + (offer.map { [$0.key, SwitchWords.button($0)] } ?? [])
+        p.arguments = ["--post-alert", id, title, body, thread] + (offer.map { [$0.key] } ?? [])
         p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
         guard (try? p.run()) != nil else { return 1 }
         let deadline = Date().addingTimeInterval(20)

@@ -153,7 +153,13 @@ struct SidebarCounts: Equatable {
 }
 
 /// The full alert's words about another account with room: "ultra-2 has 92% of its week left."
+/// An alert reaches the lock screen and Notification Center, so it never names an account by its address or any part
+/// of it ("ultra-2"): "The other account has 92% of its week left", and the Switch page says which.
 enum SwitchWords {
-    static func alertLine(_ offer: SwitchOffer?) -> String? { offer?.leftWords.map { $0 + "." } }
-    static func button(_ offer: SwitchOffer) -> String { "Switch to \(offer.short)" }
+    static func alertLine(_ offer: SwitchOffer?, accounts: Int) -> String? {
+        guard let o = offer, let p = o.used else { return nil }
+        let which = accounts > 1 ? "Another account" : "The other account"
+        return "\(which) has \(max(0, 100 - Int(p.rounded())))% of its \(o.status?.weekly != nil ? "week" : "5-hour limit") left."
+    }
+    static let button = "Switch accounts"
 }
