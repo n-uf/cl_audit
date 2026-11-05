@@ -91,7 +91,9 @@ enum BackWatch {
                 let back: Bool
                 if !(s.configDir ?? "").isEmpty {
                     let read = st.updatedAt.map { now.timeIntervalSince($0) <= maxAge && $0 >= (m.resets ?? .distantPast) } ?? false
-                    back = hasNumbers && read && st.state == "ok" && st.problem == nil
+                    // the marked limit itself reads not full (Anthropic can still say 100 % with the old reset just after it)
+                    let marked = m.limit == "wk" ? st.weekly : st.fiveHour
+                    back = hasNumbers && read && marked != nil && !AtLimit.isFull(marked) && st.state == "ok" && st.problem == nil
                 } else {
                     back = m.resets.map { now >= $0 } ?? false
                 }
