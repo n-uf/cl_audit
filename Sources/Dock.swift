@@ -461,23 +461,22 @@ struct DockCard: View {
         let now = DockManager.pins()
         let after = DockManager.plan(now, accounts: accounts, prefs: prefs)
         return SCard(title: "Dock") {
-            // a normal row (its switch at the value line, like Show emails), then what it does and the warning at the
-            // card's full width
+            // a normal row (its switch at the value line, like Show emails), then, at the card's full width, the
+            // Experimental display, what it does and the warning (the display beside the switch cut its words in a
+            // narrow column)
             SRow(label: "Keep in order", first: true) {
-                HStack(spacing: 8) {
-                    // on: pulses until the Dock really matches (the tidy restarts it); off changes nothing in the Dock
-                    SSwitch(isOn: Binding(get: { prefs.manage }, set: { on in
-                        prefs.manage = on
-                        if on { DockManager.tidy(accounts: accounts); refreshSoon() }
-                    }), on: "on", off: "off", progress: { on, since in
-                        guard on else { return .done }
-                        if DockManager.status(accounts: Store.load(), prefs: DockPrefs.shared).tidy { return .done }
-                        return Date().timeIntervalSince(since) < 45 ? .working : .failed("The Dock didn't match in 45 s")
-                    })
-                    DisplayWindow(text: "Experimental", tone: .amber, height: 18, size: 9)
-                }
+                // on: pulses until the Dock really matches (the tidy restarts it); off changes nothing in the Dock
+                SSwitch(isOn: Binding(get: { prefs.manage }, set: { on in
+                    prefs.manage = on
+                    if on { DockManager.tidy(accounts: accounts); refreshSoon() }
+                }), on: "on", off: "off", progress: { on, since in
+                    guard on else { return .done }
+                    if DockManager.status(accounts: Store.load(), prefs: DockPrefs.shared).tidy { return .done }
+                    return Date().timeIntervalSince(since) < 45 ? .working : .failed("The Dock didn't match in 45 s")
+                })
             }
             VStack(alignment: .leading, spacing: 5) {
+                DisplayWindow(text: "Experimental", tone: .amber, height: 18, size: 9)
                 Text("Pins the profile icons side by side, in profile order, with at most one Claude pin before them. Redone when you add or remove a profile.")
                     .font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                 HStack(alignment: .firstTextBaseline, spacing: 5) {

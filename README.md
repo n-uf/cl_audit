@@ -367,8 +367,9 @@ under cl_audit; one column keeps the same order, top to bottom. Every row is one
 - **About:** the version and build, a link to what's new, when the agent last cleaned up ("Nothing to clean up ·
   11:38", "Cleaned up 2 leftovers · Thu 09:00"; the (i) lists what went) and **Uninstall cl_audit…** (see
   [Uninstalling](#uninstalling)).
-- **Privacy:** Show emails (see above), and **Usage history** ("from this Mac's session files", or off: no session
-  file is read and the dashboard shows the limits only).
+- **Privacy:** **Show emails** ("shown" / "hidden", see above), and **Usage history** ("tokens, cost, CSV", read from
+  this Mac's Claude Code session files; or "limits only": no session file is read and the dashboard shows the
+  limits only).
 - **Face:** the look of the cl_audit window, as on the home site: **Std** (a dark brushed panel, the
   default), **Black** (black anodised) or **Silver** (light brushed silver; the window takes the Mac's light
   appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.

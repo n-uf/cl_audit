@@ -157,10 +157,10 @@ struct DashboardSettings: View {
     var emailsCard: some View {
         SCard(title: "Privacy", info: "What cl_audit shows and what it reads on this Mac.") {
             SRow(label: "Show emails", info: "Off: email addresses are left out of the dashboard, the launcher, the usage panels and the Dock icon menus, and blurred in Settings (hover one to see it). For screen sharing and screenshots.", first: true) {
-                SSwitch(isOn: Binding(get: { privacy.show }, set: { privacy.set(show: $0) }), on: "shown", off: "left out")
+                SSwitch(isOn: Binding(get: { privacy.show }, set: { privacy.set(show: $0) }), on: "shown", off: "hidden")
             }
             SRow(label: "Usage history", info: "The dashboard's history (when you use Claude, tokens per day, where they go), the cost estimate, the CSV export and the launcher's 7-day row. Read from the session files Claude Code keeps on this Mac: only the time, model, token counts, project folder and surface of each reply, never the messages. Off: no session file is read, and those are hidden. The limits come from Anthropic either way.") {
-                SSwitch(isOn: $prefs.history, on: "from this Mac's session files", off: "off")
+                SSwitch(isOn: $prefs.history, on: "tokens, cost, CSV", off: "limits only")
             }
         }
     }
