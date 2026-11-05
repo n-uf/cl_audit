@@ -796,10 +796,11 @@ struct AddressRow: View {
     static let fieldMin: CGFloat = 160
 
     var body: some View {
-        // one line with Cancel, one line with ×, or (narrow) the field on its own line with the keys under it
+        // one line with Cancel, one line with ×, or (narrow) the field on its own line with the keys under it. The
+        // field's ideal width is fixed, so the column decides the form, not the address typed (no jump mid-typing).
         ViewThatFits(in: .horizontal) {
-            HStack(spacing: 6) { field.frame(minWidth: Self.fieldMin); signInKey; cancelKey }
-            HStack(spacing: 6) { field.frame(minWidth: Self.fieldMin); signInKey; closeKey }
+            HStack(spacing: 6) { field.frame(minWidth: Self.fieldMin, idealWidth: Self.fieldMin, maxWidth: .infinity); signInKey; cancelKey }
+            HStack(spacing: 6) { field.frame(minWidth: Self.fieldMin, idealWidth: Self.fieldMin, maxWidth: .infinity); signInKey; closeKey }
             VStack(alignment: .leading, spacing: 6) {
                 field
                 HStack(spacing: 6) { signInKey; closeKey }
