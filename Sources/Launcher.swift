@@ -344,6 +344,7 @@ struct LauncherActions {
     var startUsage: (AccountRow) -> Void = { _ in }       // start, or reinstall when the app is missing
     var quitUsage: (AccountRow) -> Void = { _ in }
     var profileSettings: (AccountRow) -> Void = { _ in }
+    var moveProfile: ([String]) -> Void = { _ in }         // a card dropped: the profiles in this order (saved)
 }
 
 /// Starts the cl_audit agent from the cl_audit window: when the window opens, and whenever the agent's mark has been
@@ -593,7 +594,7 @@ struct TopStrip: View {
             if dashboard {
                 // profile keys | one display | the refresh key
                 let st = StripState.of(model, starter)
-                StripDisplay(state: st, open: openGeneral)
+                SavedOrderDisplay(settings: settings) { StripDisplay(state: st, open: openGeneral) }   // a card dropped
                 RefreshKey(model: model, starter: starter, state: st, refresh: refresh)
             } else if let settings {
                 if fill { Spacer(minLength: 6) }
@@ -810,9 +811,7 @@ struct MainScreenView: View {
 
     var content: some View {
             VStack(alignment: .leading, spacing: 14) {
-                CardGrid(minWidth: 352, spacing: 12) {
-                    ForEach(model.shownRows) { AccountCard(row: $0, actions: actions) }
-                }
+                ProfileCards(model: model, actions: actions)      // drag a card to change the order (ProfileOrder.swift)
                 if model.rows.isEmpty {
                     Text("No profiles yet. Open Settings to add one.").foregroundStyle(face.muted)
                 }
@@ -829,6 +828,10 @@ struct MainScreenView: View {
 struct CardGrid: Layout {
     var minWidth: CGFloat = 270
     var spacing: CGFloat = 12
+    /// While a card is dragged (ProfileCards, ProfileOrder.swift): which one, how far, and where it lands.
+    var dragged: Int? = nil
+    var offset: CGSize = .zero
+    var landing: ProfileDragLanding? = nil
 
     /// A usable width: SwiftUI also asks with no width or an infinite one (e.g. inside a scroll view while it
     /// measures), which can't be turned into a number of columns; then it's the width of up to three cards.
@@ -840,7 +843,7 @@ struct CardGrid: Layout {
         return width
     }
 
-    private func grid(_ subviews: Subviews, width rawWidth: CGFloat) -> (cols: Int, colWidth: CGFloat, heights: [CGFloat]) {
+    private func grid(_ subviews: [LayoutSubview], width rawWidth: CGFloat) -> (cols: Int, colWidth: CGFloat, heights: [CGFloat]) {
         let width = usable(rawWidth, count: subviews.count)
         let fit = ((width + spacing) / (minWidth + spacing)).rounded(.down)
         // empty columns stay empty, so a single card keeps a column's width instead of filling the window
@@ -853,24 +856,40 @@ struct CardGrid: Layout {
         return (cols, colWidth, heights)
     }
 
+    /// The cards, not the drop socket shown while one is dragged.
+    private func cards(_ subviews: Subviews) -> [LayoutSubview] { subviews.filter { !$0[ProfileDragSocket.self] } }
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = usable(proposal.width, count: subviews.count)
-        let g = grid(subviews, width: width)
+        let cards = cards(subviews)
+        let width = usable(proposal.width, count: cards.count)
+        let g = grid(cards, width: width)
         return CGSize(width: width, height: g.heights.reduce(0, +) + CGFloat(max(0, g.heights.count - 1)) * spacing)
     }
 
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let g = grid(subviews, width: bounds.width)
-        var y = bounds.minY
-        for (r, h) in g.heights.enumerated() {
-            for c in 0..<g.cols {
-                let i = r * g.cols + c
-                guard i < subviews.count else { break }
-                subviews[i].place(at: CGPoint(x: bounds.minX + CGFloat(c) * (g.colWidth + spacing), y: y),
-                                  proposal: ProposedViewSize(width: g.colWidth, height: h))
+    /// The cards in `order`, row by row: a column's width each, every card in a row the row's tallest height.
+    static func arrange(_ heights: [CGFloat], cols: Int, colWidth: CGFloat, spacing: CGFloat, in bounds: CGRect) -> ([Int]) -> [CGRect] {
+        { order in
+            var out: [CGRect] = [], y = bounds.minY
+            for start in stride(from: 0, to: order.count, by: cols) {
+                let row = order[start..<min(start + cols, order.count)]
+                let h = row.map { heights[$0] }.max() ?? 0
+                for (c, _) in row.enumerated() {
+                    out.append(CGRect(x: bounds.minX + CGFloat(c) * (colWidth + spacing), y: y, width: colWidth, height: h))
+                }
+                y += h + spacing
             }
-            y += h + spacing
+            return out
         }
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let cards = cards(subviews)
+        let g = grid(cards, width: bounds.width)
+        let heights = cards.map { $0.sizeThatFits(ProposedViewSize(width: g.colWidth, height: nil)).height }
+        // without a drag, the cards in their order; while one is dragged, the others around where it lands
+        let plan = ProfileDragPlan(count: cards.count, dragged: dragged, offset: offset,
+                                   arrange: Self.arrange(heights, cols: g.cols, colWidth: g.colWidth, spacing: spacing, in: bounds))
+        plan.place(cards, socket: subviews.first { $0[ProfileDragSocket.self] }, landing: landing)
     }
 }
 
@@ -1042,7 +1061,8 @@ final class ManagerUI {
             // it; pins and the Dock are not touched
             Installer.running(r.entry).forEach { $0.terminate() }
         },
-        profileSettings: { [weak self] r in self?.showMain(page: .settings, account: r.id) })
+        profileSettings: { [weak self] r in self?.showMain(page: .settings, account: r.id) },
+        moveProfile: { [weak self] ids in self?.settings.setOrder(ids) })      // the tile bar's own save
 
     var paletteShown: Bool { palette?.isVisible == true }
     var dashboardShown: Bool { mainWindow?.isVisible == true && mainWindow?.isMiniaturized == false }
