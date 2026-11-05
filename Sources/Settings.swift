@@ -792,26 +792,34 @@ struct AddressRow: View {
     let signIn: () -> Void
     let cancel: () -> Void
 
+    /// The field never gets narrower than this beside its keys: an address has to stay readable while it's typed.
+    static let fieldMin: CGFloat = 160
+
     var body: some View {
+        // one line with Cancel, one line with ×, or (narrow) the field on its own line with the keys under it
         ViewThatFits(in: .horizontal) {
-            line(wide: true)
-            line(wide: false)
+            HStack(spacing: 6) { field.frame(minWidth: Self.fieldMin); signInKey; cancelKey }
+            HStack(spacing: 6) { field.frame(minWidth: Self.fieldMin); signInKey; closeKey }
+            VStack(alignment: .leading, spacing: 6) {
+                field
+                HStack(spacing: 6) { signInKey; closeKey }
+            }
         }
     }
 
-    private func line(wide: Bool) -> some View {
-        HStack(spacing: 6) {
-            WellField(placeholder: "name@example.com", text: $email, onSubmit: signIn, onCancel: cancel)
-                .frame(minWidth: wide ? 120 : 44)
-            Button("Sign in", action: signIn)
-                .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(!canSignIn).fixedSize()
-            if wide {
-                Button("Cancel", action: cancel).buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-            } else {
-                Button(action: cancel) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
-                    .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().help("Cancel")
-            }
-        }
+    private var field: some View {
+        WellField(placeholder: "name@example.com", text: $email, onSubmit: signIn, onCancel: cancel)
+    }
+    private var signInKey: some View {
+        Button("Sign in", action: signIn)
+            .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(!canSignIn).fixedSize()
+    }
+    private var cancelKey: some View {
+        Button("Cancel", action: cancel).buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+    }
+    private var closeKey: some View {
+        Button(action: cancel) { Image(systemName: "xmark").font(.system(size: 9, weight: .bold)) }
+            .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().help("Cancel")
     }
 }
 
