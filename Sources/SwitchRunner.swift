@@ -155,13 +155,45 @@ final class SwitchRunner: ObservableObject {
     var sidebarPlan: SidebarPlan? { receipt?.sidebar.flatMap { $0.isEmpty ? nil : $0 } }
 
     /// Opens a new Code session in the profile's window with the sidebar plan: the operator presses Return there. The
-    /// window comes to the front first, so the link reaches it.
+    /// link goes to that window's own process (WindowLink). Without leave to send it there, it's opened the usual way
+    /// only when no other Claude window runs; otherwise nothing opens and the page says what to do.
     func arrangeSidebar() {
-        guard let plan = sidebarPlan, let e = entry,
-              let url = plan.link(folder: FileManager.default.homeDirectoryForCurrentUser.path) else { return }
-        Launcher.openClaude(Account(e))
+        guard let plan = sidebarPlan, let e = entry, let url = plan.link(folder: SidebarPlan.helperFolder) else { return }
         sidebarOpened = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { NSWorkspace.shared.open(url) }
+        note = nil
+        Launcher.openClaude(Account(e))
+        let started = Date()
+        tick(every: 1) { [weak self] in
+            guard let self, let e = self.entry else { return true }
+            guard let pid = Self.windowApps(e).first?.processIdentifier else {
+                if Date().timeIntervalSince(started) < 20 { return false }
+                self.sidebarOpened = false
+                self.note = "The window didn't open. Open it, then Open the session."
+                return true
+            }
+            let alone = NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
+                .allSatisfy { $0.isTerminated || $0.processIdentifier == pid }
+            DispatchQueue.global(qos: .userInitiated).async {
+                let outcome = WindowLink.send(url, to: pid)
+                DispatchQueue.main.async { [weak self] in self?.linkSent(outcome, url: url, alone: alone, name: e.name) }
+            }
+            return true
+        }
+    }
+
+    private func linkSent(_ outcome: WindowLink.Outcome, url: URL, alone: Bool, name: String) {
+        switch outcome {
+        case .sent:
+            break
+        case .notAllowed where alone, .failed where alone:
+            NSWorkspace.shared.open(url)                  // the only Claude window: the link can't reach another
+        case .notAllowed:
+            sidebarOpened = false
+            note = "cl_audit may not send the link to \(name)'s window, and other Claude windows are open, so nothing opened. Allow cl_audit to control Claude (System Settings ▸ Privacy & Security ▸ Automation), or quit the other Claude windows, then Open the session."
+        case .failed(let code):
+            sidebarOpened = false
+            note = "The link didn't reach \(name)'s window (\(code)). Open the session to try again."
+        }
     }
 
     /// Cancel before Claude Code signed in: the sessions go back (the window is still closed then); nothing else changed.

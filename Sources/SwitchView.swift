@@ -134,6 +134,8 @@ struct SwitchPage: View {
     @ObservedObject var runner: SwitchRunner
     var width: CGFloat = 980
     @State private var counts: SidebarCounts??          // nil: still counting; .some(nil): the window has nothing
+    @State private var asks = true                      // the helper session will ask before each move (step 5)
+    @State private var unfinished: [SwitchReceipt] = [] // this profile's switches that stopped half way
     @State private var confirm = false
     @Environment(\.face) private var face
 
@@ -165,10 +167,22 @@ struct SwitchPage: View {
         let e = entry
         let dir = e.desktop == .standard ? FolderKey.standardDataDir : (Account(e).claudeUserDataDir ?? "")
         let account = FolderRules.windowAccount(e) ?? e.seat?.account ?? ""
-        let c: SidebarCounts? = await Task.detached(priority: .utility) {
-            dir.isEmpty || account.isEmpty ? nil : SidebarCounts.read(dataDir: dir, account: account)
+        // the account the helper session runs on: the one switched to
+        let target = runner.receipt?.to.account ?? standby.seat?.account
+        let (c, a): (SidebarCounts?, Bool) = await Task.detached(priority: .utility) {
+            (dir.isEmpty || account.isEmpty ? nil : SidebarCounts.read(dataDir: dir, account: account),
+             dir.isEmpty || SidebarPlan.asksBeforeMoves(dataDir: dir, account: target))
         }.value
         counts = .some(c)
+        asks = a
+        let id = e.id
+        unfinished = await Task.detached(priority: .utility) { SwitchEngine.unfinished(profile: id) }.value
+    }
+
+    /// A switch of this profile that stopped half way (this one, or one from before), with what it moved: Undo first.
+    private var pending: SwitchReceipt? {
+        if let r = runner.receipt, r.unfinished, runner.phase != .codeSignIn { return r }
+        return runner.phase == .ready || isFailed ? unfinished.first : nil
     }
 
     private var accountsCard: some View {
@@ -258,13 +272,15 @@ struct SwitchPage: View {
 
     private var sidebarWords: String {
         let ask = "Press Return in the session that opens, so the sidebar is arranged as before."
+            + (asks ? " It may ask to move each session; allow them." : "")
         guard runner.receipt != nil else { return ask }                  // nothing moved yet
         guard let p = runner.sidebarPlan else { return "Nothing to arrange: none of the moved sessions sat in a group or was pinned." }
         func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
         var what: [String] = []
         if p.filed > 0 { what.append("\(n(p.filed, "session goes", "sessions go")) back in \(n(p.groups.count, "group", "groups"))") }
         if !p.pinned.isEmpty { what.append("\(n(p.pinned.count, "session is", "sessions are")) pinned again") }
-        return "\(ask) \(what.joined(separator: "; ")). It may ask before each move, and archives itself when done."
+        let more = p.left.map { " \($0) more stay ungrouped (one session arranges at most \(SidebarPlan.maxSessions))." } ?? ""
+        return "\(ask) \(what.joined(separator: "; ")).\(more) It archives itself when done."
     }
 
     private var stepsCard: some View {
@@ -336,8 +352,8 @@ struct SwitchPage: View {
                 Button("Show window") { Launcher.openClaude(Account(entry)) }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
                 Button("Done") { runner.finish() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
             case .sidebar:
-                Button("Open it again") { runner.arrangeSidebar() }.buttonStyle(.plain).foregroundStyle(face.muted)
-                    .disabled(!runner.sidebarOpened)
+                Button(runner.sidebarOpened ? "Open it again" : "Open the session") { runner.arrangeSidebar() }
+                    .buttonStyle(.plain).foregroundStyle(face.muted)
                 Spacer(minLength: 6)
                 Button("Done") { runner.finish() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
             case .done:

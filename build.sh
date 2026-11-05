@@ -45,6 +45,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
   <key>CFBundleVersion</key><string>$build</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>NSHighResolutionCapable</key><true/>
+  <key>NSAppleEventsUsageDescription</key><string>After a switch, cl_audit sends the profile's own Claude window one link: a new session there that arranges its sidebar as before.</string>
 </dict>
 </plist>
 PLIST
