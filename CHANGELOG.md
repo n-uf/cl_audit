@@ -63,9 +63,11 @@ the notes before updating.
   account"). Found accounts show no usage; one click adds one. **Sign in to another account…** names the folder it will
   use under the address field. A new account is a **standby box from the start**: **Signing in** (mint, with **Cancel**
   and **Show Terminal**), **Wrong account** (amber, with **Cancel** and **Sign in again…**: it says which account the
-  sign-in came back as), **Not finished** (amber: 15 minutes with no sign-in in the folder) and, once added,
-  **Standby** with "No numbers yet…" until its limits show. A found account that needed a sign-in goes through the
-  same states once you sign it in. How a sign-in works is unchanged.
+  sign-in came back as), **Not finished** (amber: 15 minutes under way with nothing new in the folder) and, once
+  added, **Standby** with "No numbers yet…" until its limits show. A found account that needed a sign-in goes through
+  the same states once you sign it in, without **Cancel** (only an account with no seat yet has it). A new sign-in
+  isn't mistaken for the wrong account while Claude Code is still writing the folder. How a sign-in works is
+  unchanged.
 - **Another account with room, offered where a limit is full.** A profile's dashboard card shows its other
   accounts' limits, small, under its own. The full-limit alert says how much the other account has
   left ("The other account has 92% of its week left", never an address) and has a **Switch account…** button; the

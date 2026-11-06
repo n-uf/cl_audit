@@ -445,12 +445,15 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     folder is the profile's own account or another profile's: "The browser signed in as ultra-1, not ultra-4. Switch
     the browser's account, then sign in again." with **Cancel** and **Sign in again…**; cl_audit sees only what Claude
     Code recorded in the folder, not the browser, so it names the account the sign-in came back as. A sign-in to any
-    other account is simply the account it names, linked within seconds. A sign-in 15 minutes old with nothing in
-    the folder turns amber, **Not finished**: "The sign-in didn't finish. Sign in again, or cancel." with **Cancel** and
-    **Sign in again…** (the start is the date of the Terminal script each sign-in writes, else when the account was
-    added; nothing new is saved). **Standby**: "No numbers yet: cl_audit reads
-    them within a few minutes, from the sign-in kept in its folder, and keeps that sign-in renewed." until its limits
-    show.
+    other account is simply the account it names, linked within seconds. A sign-in under way for 15 minutes with
+    nothing new in the folder turns amber, **Not finished**: "The sign-in didn't finish. Sign in again, or cancel."
+    with **Cancel** and **Sign in again…**. cl_audit remembers (in memory only, nothing is saved) which account the
+    folder was signed in to when you clicked Sign in…, and the sign-in is under way until that changes; after a restart
+    of cl_audit it goes by the dates of the Terminal script each sign-in writes and of the folder's record. An account
+    already linked (found as needing a sign-in, or signed in to another account since) shows the same states without
+    **Cancel**: only an account with no seat yet can be taken off with it; Remove from the address menu does it for
+    any. **Standby**: "No numbers yet: cl_audit reads them within a few minutes, from the sign-in kept in its folder,
+    and keeps that sign-in renewed." until its limits show.
 
   Whether the Claude window's sessions go with the account (the sessions, the sidebar's sections and groups, pins
   and scheduled tasks) isn't a setting: the Switch page asks every time, with nothing chosen. As on every card, the
