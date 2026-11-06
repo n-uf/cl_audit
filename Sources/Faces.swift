@@ -140,6 +140,8 @@ struct FaceTheme {
 
     static let led = Color(.sRGB, red: 1, green: 122 / 255, blue: 61 / 255, opacity: 1)          // the orange LED / strip
     static let ledOn = Color(.sRGB, red: 74 / 255, green: 222 / 255, blue: 128 / 255, opacity: 1) // a switch that is on
+    /// The display's own print, lit full: switching, and the account switched to.
+    static let mint = Color(.sRGB, red: 127 / 255, green: 249 / 255, blue: 234 / 255, opacity: 1)
     static let glow = Color(.sRGB, red: 127 / 255, green: 249 / 255, blue: 234 / 255, opacity: 1)
 
     static let std = FaceTheme.of(.std)
@@ -498,7 +500,9 @@ struct DisplayWindow: View {
     var black = false               // black glass with light printing on every face (the history totals)
     @Environment(\.face) private var outer
 
-    enum Tone { case normal, amber, ok, warn }
+    /// One meaning each: ok (green) = in use; mint = switching, and the account switched to; amber = waiting or a
+    /// warning; warn (red) = something failed.
+    enum Tone { case normal, amber, ok, warn, mint }
 
     private func toneColor(_ t: Tone) -> Color {
         switch t {
@@ -506,6 +510,7 @@ struct DisplayWindow: View {
         case .amber: return face.light ? .hex(0xa85f00) : .hex(0xffb24a)
         case .ok: return face.light ? .hex(0x11743a) : FaceTheme.ledOn
         case .warn: return face.light ? .hex(0xb42318) : .hex(0xff8a7a)
+        case .mint: return face.light ? .hex(0x0b6b60) : .hex(0xa6fff3)
         }
     }
 
@@ -541,6 +546,80 @@ struct DisplayWindow: View {
         .background(DisplayGlass(radius: 4).environment(\.face, face))
         .clipped()
     }
+}
+
+/// A display window switched on: its glass lit solid in the display's mint (127 249 234), dark teal print, the first
+/// word a step lighter, a faint glow. As a key ("Switch account", the site's Login badge) or as a readout ("Switching
+/// to"). The one colour for switching and the account switched to.
+struct LitDisplay: View {
+    let text: String
+    var height: CGFloat = 18
+    var size: CGFloat = 9.5
+    var action: (() -> Void)? = nil
+    @State private var hover = false
+
+    var body: some View {
+        let words = text.split(separator: " ", maxSplits: 1).map(String.init)
+        let face = HStack(spacing: size * 0.5) {
+            Text(words.first ?? "").foregroundStyle(Color(.sRGB, red: 4 / 255, green: 48 / 255, blue: 43 / 255, opacity: 0.55))
+            if words.count > 1 { Text(words[1]).foregroundStyle(Color.hex(0x04302b)) }
+        }
+        .font(.system(size: size, weight: .bold, design: .monospaced))
+        .tracking(size * 0.12)
+        .textCase(.uppercase)
+        .lineLimit(1).fixedSize()
+        .padding(.horizontal, 8)
+        .frame(height: height)
+        .background(
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(LinearGradient(colors: [.hex(0x8ffbee), .hex(0x6ef0df)], startPoint: .top, endPoint: .bottom))
+                .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(LinearGradient(colors: [.white.opacity(0.22), .clear], startPoint: .top, endPoint: .center)))
+                .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).strokeBorder(Color.black.opacity(0.55), lineWidth: 1))
+                .shadow(color: FaceTheme.mint.opacity(0.35), radius: 5)
+        )
+        .brightness(hover && action != nil ? 0.04 : 0)
+        if let action {
+            Button(action: action) { face }.buttonStyle(.plain).onHover { hover = $0 }.fixedSize()
+        } else {
+            face
+        }
+    }
+}
+
+/// The 3 pt lit bar beside a selected account's box, and the faint mint band its row lights across the panel.
+struct MintRow: ViewModifier {
+    var on: Bool
+    var reach: CGFloat = 12                 // how far the band reaches past the box on each side (inside a card's 14 pt)
+    var barOffset: CGFloat = 6              // the bar's distance left of the box
+
+    func body(content: Content) -> some View {
+        content
+            .background(alignment: .leading) {
+                if on {
+                    LinearGradient(colors: [FaceTheme.mint.opacity(0.13), FaceTheme.mint.opacity(0.06)], startPoint: .top, endPoint: .bottom)
+                        .overlay(alignment: .top) { FaceTheme.mint.opacity(0.32).frame(height: 1) }
+                        .overlay(alignment: .bottom) { FaceTheme.mint.opacity(0.20).frame(height: 1) }
+                        .padding(.horizontal, -reach).padding(.vertical, -6)
+                        .allowsHitTesting(false)
+                }
+            }
+            .overlay(alignment: .leading) {
+                if on {
+                    Capsule().fill(LinearGradient(colors: [.hex(0xe2fffa), .hex(0x7ff3e2)], startPoint: .leading, endPoint: .trailing))
+                        .frame(width: 3)
+                        .padding(.vertical, 8)
+                        .shadow(color: FaceTheme.mint.opacity(0.8), radius: 2)
+                        .shadow(color: FaceTheme.mint.opacity(0.35), radius: 5)
+                        .offset(x: -(barOffset + 3))
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+}
+
+extension View {
+    func mintRow(_ on: Bool, reach: CGFloat = 12, barOffset: CGFloat = 6) -> some View { modifier(MintRow(on: on, reach: reach, barOffset: barOffset)) }
 }
 
 /// The glass of a display window, for other content too.
