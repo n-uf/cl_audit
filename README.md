@@ -150,19 +150,22 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   of it. Room means current numbers too: an account whose sign-in ran out, or whose numbers are older than three
   of the profile's read intervals, isn't offered. The Dock icon's and the menu bar icon's menus list **Switch to
   …** for each of its other accounts. All of them
-  open the **Switch page** in cl_audit: the account in use and the one to switch to, with their limits; what stays
-  (name, Dock icon, look; the folder with its projects, settings, MCP and CLAUDE.md; Claude Code's history); what
-  follows with Sessions follow on (the Claude window's sessions in the sidebar, its sections and groups, pins and
-  scheduled tasks, counted from the window's own files); and the steps. A short name is the address before the @,
+  open the **Switch page** in cl_audit: the account in use (NOW) and, under TO, every other account with their
+  limits, most room first, the one it was opened for picked in mint (click another to switch to it instead; the
+  answers given so far go with it); what stays (name, Dock icon, look; the folder with its projects, settings, MCP
+  and CLAUDE.md; Claude Code's history); the sessions (the Claude window's sessions in the sidebar, its sections and
+  groups, pins and scheduled tasks, counted from the window's own files) with **Move them?**: **Move to ultra-2** or
+  **Leave with ultra-1**, asked every time with nothing chosen; and the steps. A short name is the address before the @,
   its first letter only while emails are hidden. Under the profile's own limits, the card shows each other
   account's, small ("Standby · ultra-2@…").
-- **Switching.** **Close and switch to ultra-2** (after a yes) does it in order, each step checked before the next:
+- **Switching.** **Close and switch to ultra-2** (once the sessions question is answered) does it in order, each
+  step checked before the next:
   1. Only that profile's Claude window closes, gracefully (it may ask about work under way; nothing is forced, and
      if it doesn't close, nothing moves). From here until the profile is switched or the switch is undone, nothing
      opens that window again (its Dock icon, the menu bar, cl_audit's rules and reopening after a Claude update all
      wait; a click shows the switch instead), and a second switch of it is refused. This holds only while that
      cl_audit runs.
-  2. With Sessions follow on, its Code sessions and scheduled tasks move to ultra-2 the way
+  2. With **Move to ultra-2**, its Code sessions and scheduled tasks move to ultra-2 the way
      [claude-transplant](https://github.com/vitaliyhayda/claude-transplant) moves them: same ids, each entry kept byte
      for byte or re-encoded without the old account's error keys and Remote Control ids, through a write that can't
      overwrite, checked, and only then the original parked in cl_audit's folder (`switches/<id>/`), never deleted.
@@ -198,6 +201,22 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   their order: no address, title or transcript. Run again, it changes nothing; in a window that doesn't have those
   sessions, it changes nothing either. Groups none of the moved sessions sat in aren't made. The way back is the same
   switch the other way.
+- **While it runs.** The page keeps every block; only the steps move on. Display colours mean one thing each: green
+  is the account in use, mint is switching and the account switched to, amber is waiting for you or a warning, red
+  is a failure; only the account in use is lit. A step under way is mint, one waiting for you amber, a done one a
+  green tick, a failed one red. Each sign-in shows what its check saw ("Claude Code · ultra-2 ✓", "Window · ultra-1 ·
+  not ultra-2"), compared by account, never by name. The line at the top says how far it got ("Switching · step 3
+  of 5 · Claude Code") and holds the keys that lead out: **Cancel switch** (a red lamp, always in sight: while the
+  window closes, and until Claude Code has signed in, when it puts everything back), then **Undo this switch…** (the
+  switch the other way) once the profile is on ultra-2, and at Done "Main works on ultra-2 · ultra-1 on standby"
+  with **Back to Main's settings**. Cancelled while the window was asked to quit, the window opens again if it
+  closes anyway. When something fails, that step turns red and the line says where it stopped: the window didn't
+  close (nothing moved), stopped half way (**Undo**), signed in as another account, the sidebar session didn't
+  open, cancelled (**Close and switch** starts it again), or Undo itself stopped (**Try Undo again**; the receipt
+  keeps the rest). Beside the profile's tile in Settings a display says the same in two lines: "Switch from ·
+  ultra-1" while the page is open, "Switching ● · to ultra-2" in mint while it runs, "Switched to · ultra-2" at
+  Done, and "Stopped half way · Undo it" in amber, with the page closed too, until it's undone. One switch of a
+  profile runs at a time: while one does, every way to the Switch page leads to it.
 - **The other account is back.** When a standby account's full limit resets (ultra-1's week, after the profile
   switched to ultra-2), one alert says so: "Claude Main: the other account is back · Its week starts again" (no
   address, as with every alert), with **Switch back** and **Stay**; it follows the profile's Notify when back. The
@@ -330,7 +349,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   "Stopped · in the Dock", "Reading usage · every N min" (no Dock icon), "Missing · reinstall", or the agent's
   state in the dashboard's words ("Starting the agent…", "Not updating · agent won't start"); while a change goes
   through it says "Saving…", then "Saved" and what changed.
-- **Claude Code:** laid out like New profile's card: **Accounts** first, then **Sessions follow**, **Folder**
+- **Claude Code:** laid out like New profile's card: **Accounts** first, then **Folder**
   (`~/.claude` or a `CLAUDE_CONFIG_DIR` folder), then, for any folder but `~/.claude`, **Share from** and
   **Shared** (what the folder links to from another one: instructions, agents, skills, commands, memory and
   history). Shared is read-only here: cl_audit never moves or deletes real files, so a grey line says to change the
@@ -347,7 +366,10 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   (say `~/.claude-ultra-2`), read like the profile's own, so you can see which account has room. Its sign-in always
   renews by itself (the box says so), unlike the account in use's opt-in **Renew sign-in by itself**, and only while
   that folder is signed in to the account cl_audit linked: one signed in to another account, or not linked yet, is
-  neither read nor renewed.
+  neither read nor renewed. Only the account in use is lit ("Main works on it"); the standby accounts are unlit,
+  most room first. Click one below its address to select it: its row lights in mint, and a **Switch account** key
+  takes the place of STANDBY and opens the Switch page (click again to deselect). The order holds still while one is
+  selected.
   - **Every account keeps a folder of its own.** With more than one account, the account in use gets one too
     (**Sign in…** in its box: "Keep its limits showing after a switch: sign it in once to a folder of its own"; one
     confirmation in the browser). Once that folder is signed in to it, the profile's numbers come from there, renewed
@@ -384,9 +406,9 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     keeps working on its account meanwhile. An account belongs to one profile; no sign-in is ever copied between
     folders. New profile still starts with one account.
 
-  **Sessions follow** (on by default): when the profile switches to another of its accounts, its Claude window's
-  sessions go with it: the sessions, the sidebar's sections and groups, pins and scheduled tasks. Off: each account
-  keeps its own. As on every card, the pop-ups and fields fill their width, so their right edges line up; the
+  Whether the Claude window's sessions go with the account (the sessions, the sidebar's sections and groups, pins
+  and scheduled tasks) isn't a setting: the Switch page asks every time, with nothing chosen. As on every card, the
+  pop-ups and fields fill their width, so their right edges line up; the
   address row is one line with Sign in and Cancel at its end (Cancel is a × when narrower), or, narrower still, the
   address on its own line with Sign in and × under it.
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit

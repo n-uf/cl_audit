@@ -16,8 +16,16 @@ the notes before updating.
   account** finds the accounts on this Mac (signed in in free Claude Code folders, or used by the profile's Claude
   window, with their addresses) and adds one with a click; **Sign in to another account…** makes a folder for a new
   one and opens Claude Code's own sign-in in Terminal. An account belongs to one profile; New profile still starts
-  with one. **Sessions follow** (on) says the Claude window's sessions and sidebar go with the account when the
-  profile switches. Profiles saved before have their one account, in use; nothing changes for them.
+  with one. Profiles saved before have their one account, in use; nothing changes for them.
+- **Switching, clearer.** Display colours mean one thing each: green the account in use, mint switching and the
+  account switched to, amber waiting or a warning, red a failure; only the account in use is lit. In Settings ▸
+  Accounts the standby accounts are unlit, most room first; a click selects one (a mint row, a lit bar) and its
+  **Switch account** key opens the Switch page. The Switch page lists every standby account under TO, most room
+  first, and asks **Move them?** about the sessions every time, with nothing chosen (Sessions follow is gone). While
+  it runs every block stays: each step shows its state, each sign-in what its check saw, and the line at the top how
+  far it got, with **Cancel switch** always in sight and **Undo this switch…** once the profile is on the new
+  account. A failure marks its step red and says where it stopped. A display beside the profile's tile reads
+  "Switching ● to ultra-2", "Switched to ultra-2" or "Stopped half way · Undo it".
 - **Another account with room, offered where a limit is full.** A profile's dashboard card shows its other
   accounts' limits, small, under its own; while a limit is full, the box is followed by **Switch to ultra-2…** (only
   an account with current numbers and room is offered). The full-limit alert says how much the other account has
