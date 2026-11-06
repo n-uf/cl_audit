@@ -1296,7 +1296,12 @@ struct AccountSettings: View {
                     inUseBox(move)
                         .alignmentGuide(.rowLine) { d in d[VerticalAlignment.top] }
                 }
-                ForEach(entry.standby) { s in standbyBox(s) }
+                // the others, most room first (held still while one is selected); click one to select it, again to deselect
+                ForEach(standbyOrder) { s in standbyBox(s) }
+                if entry.standby.contains(where: Self.canSwitch), picked == nil {
+                    Text("Click a standby account to select it: its Switch account key opens the Switch page.")
+                        .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                }
                 addAccountRow
             }
         }
@@ -1328,10 +1333,7 @@ struct AccountSettings: View {
             }
             rowLine("Numbers are still \(name)'s (from Claude Code), not the window's account.")
         }
-        SRow(label: "Sessions follow", info: "When \(name) switches to another of its accounts, its Claude window's Code sessions go with it: the sessions, the sidebar's sections and groups, pins and scheduled tasks, so the window opens the same on the other account. Off: each account keeps its own. Chats and Projects on claude.ai belong to each account and never move.", stacked: stacked) {
-            SSwitch(isOn: $entry.sessionsFollow, on: "to the account you switch to", off: "stay with each account")
-        }
-        SRowLine(text: "Sessions, sections, groups, pins and scheduled tasks.")
+        // "Sessions follow" went: the Switch page asks every time, with no answer chosen
     }
 
     // MARK: Accounts (Accounts.swift): the one in use, the standby ones, Add account
@@ -1351,7 +1353,8 @@ struct AccountSettings: View {
         let plan = (status?.plan).map(Account.planWords) ?? facts?.plan
         let ok = move == nil && !mismatch && status?.state != "expired" && status?.state != "noLogin"
         return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: ok ? .ok : .warn,
-                          detail: [plan, facts?.org].compactMap { $0 }.joined(separator: " · ")) {
+                          detail: ([plan, facts?.org] + [entry.standby.isEmpty ? nil : "\(entry.name.isEmpty ? "the profile" : entry.name) works on it"])
+                            .compactMap { $0 }.joined(separator: " · ")) {
             Menu {
                 ForEach(loginItems) { it in
                     switch it.kind {
@@ -1443,7 +1446,14 @@ struct AccountSettings: View {
             return nil
         }()
         let needsKey = s.configDir == nil || there != nil || st?.state == "otherAccount" || st?.state == "noLogin" || s.seat == nil
-        return AccountBox(lamp: nil, badge: "Standby", detail: [plan, facts?.org].compactMap { $0 }.joined(separator: " · ")) {
+        // unlit; clicked, its row lights and the Switch account key takes the place of "Standby" (an account not linked
+        // yet can't be switched to: no key)
+        let canSwitch = Self.canSwitch(s)
+        let selected = picked == s.id && canSwitch
+        // a warning and its Sign in… key keep full strength; only the limits dim
+        return AccountBox(lamp: nil, badge: "Standby", detail: [plan, facts?.org].compactMap { $0 }.joined(separator: " · "),
+                          unlit: !selected, dimsContent: why == nil, selected: selected, litBadge: "Switch account",
+                          litAction: { model.showSwitch(AccountEntry.standbyStatusID(entry.id, s.id)) }) {
             Menu {
                 Button(s.configDir == nil ? "Sign in…" : "Sign in again…") { signInStandby(s) }.disabled(model.claudePath == nil)
                 Divider()
@@ -1451,26 +1461,58 @@ struct AccountSettings: View {
             } label: { AccountBoxTitle(text: Privacy.masked(s.email)) }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
         } content: {
+            // a click below the address selects the account (again: deselects); the address menu, the lit key and a
+            // Sign in… key stay outside the click area, so they never select or deselect
             if let why {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) {
-                        Text(why).font(.system(size: 11.5)).foregroundStyle(thereOwner != nil ? face.danger : face.caution).lineLimit(1)
-                        Spacer(minLength: 6)
+                        selectArea(s, canSwitch, selected) {
+                            Text(why).font(.system(size: 11.5)).foregroundStyle(thereOwner != nil ? face.danger : face.caution).lineLimit(1)
+                        }
                         if needsKey { standbySignInKey(s) }
                     }
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(why).font(.system(size: 11.5)).foregroundStyle(thereOwner != nil ? face.danger : face.caution)
-                            .fixedSize(horizontal: false, vertical: true)
+                        selectArea(s, canSwitch, selected) {
+                            Text(why).font(.system(size: 11.5)).foregroundStyle(thereOwner != nil ? face.danger : face.caution)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                         if needsKey { standbySignInKey(s) }
                     }
                 }
             } else {
-                limitsOrWhy(st, entry: entry.readerEntry(for: s) ?? entry, none: nil)
-                // unlike the account in use (Renew sign-in, opt-in), a standby account's sign-in is always renewed
-                Text("Its sign-in renews by itself, so its limits stay current.")
-                    .font(.system(size: 10.5)).foregroundStyle(face.muted).lineLimit(1).minimumScaleFactor(0.9)
+                selectArea(s, canSwitch, selected) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        limitsOrWhy(st, entry: entry.readerEntry(for: s) ?? entry, none: nil)
+                        // unlike the account in use (Renew sign-in, opt-in), a standby account's sign-in is always renewed
+                        Text("Its sign-in renews by itself, so its limits stay current.")
+                            .font(.system(size: 10.5)).foregroundStyle(face.muted).lineLimit(1).minimumScaleFactor(0.9)
+                    }
+                }
             }
         }
+    }
+
+    /// The part of a standby box a click selects (again: deselects).
+    private func selectArea<V: View>(_ s: StandbyAccount, _ canSwitch: Bool, _ selected: Bool, @ViewBuilder _ v: () -> V) -> some View {
+        v().frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard canSwitch else { return }
+                if picked == s.id { picked = nil; heldOrder = [] }
+                else { if picked == nil { heldOrder = SwitchOffer.byRoom(entry).map(\.id) }; picked = s.id }
+            }
+            .help(canSwitch ? (selected ? "Click to deselect" : "Click to select, then Switch account") : "")
+    }
+
+    /// A standby account the profile can switch to: linked to its account and organization (what a switch plans with).
+    static func canSwitch(_ s: StandbyAccount) -> Bool { s.seat?.organization != nil }
+
+    /// Most room first; while one is selected, the order it had then, so the boxes don't move under the pointer.
+    private var standbyOrder: [StandbyAccount] {
+        let now = SwitchOffer.byRoom(entry)
+        guard picked != nil, !heldOrder.isEmpty else { return now }
+        let at = Dictionary(heldOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
+        return now.enumerated().sorted { (at[$0.element.id] ?? Int.max, $0.offset) < (at[$1.element.id] ?? Int.max, $1.offset) }.map(\.element)
     }
 
     func standbySignInKey(_ s: StandbyAccount) -> some View {
@@ -1590,6 +1632,9 @@ struct AccountSettings: View {
     /// Add account ▸ Sign in to another account…: the address being typed (nil: the key shows), and why it can't start.
     @State var adding: String?
     @State var addProblem: String?
+    /// The standby account clicked in Accounts: its row lights and its Switch account key opens the Switch page.
+    @State var picked: String?
+    @State private var heldOrder: [String] = []
 
     /// The profile's Claude window is signed in to another claude.ai account (only its id is known, never its address).
     var windowElsewhere: Bool { _ = model.tick; return FolderRules.windowOnAnotherAccount(entry) }
