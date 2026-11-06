@@ -42,11 +42,11 @@ struct DashboardSettings: View {
     /// settings). In two columns the Dock goes under cl_audit; one column keeps the three-column order, top to bottom.
     var body: some View {
         SettingsColumns(width: width,
-                        groups: [[AnyView(ColumnHead(text: "cl_audit")), AnyView(usageCard), AnyView(emailsCard), AnyView(aboutCard)],
+                        groups: [[AnyView(ColumnHead(text: "cl_audit")), AnyView(usageCard), AnyView(emailsCard), AnyView(backupsCard), AnyView(aboutCard)],
                                  [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard), AnyView(WidgetCard())],
                                  [AnyView(ColumnHead(text: "The Dock")), AnyView(appIconCard), AnyView(DockCard())]],
                         two: [[AnyView(ColumnHead(text: "cl_audit · the Dock")), AnyView(usageCard), AnyView(emailsCard),
-                               AnyView(aboutCard), AnyView(appIconCard), AnyView(DockCard())],
+                               AnyView(backupsCard), AnyView(aboutCard), AnyView(appIconCard), AnyView(DockCard())],
                               [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard),
                                AnyView(WidgetCard())]])
     }
@@ -163,6 +163,64 @@ struct DashboardSettings: View {
                 SSwitch(isOn: $prefs.history, on: "tokens, cost, CSV", off: "limits only")
             }
         }
+    }
+
+    // Backups: where the backups of a profile's sessions go and how many are kept (SessionsBackup.swift); each profile's
+    // Sessions card lists its own
+    @ObservedObject private var backups = BackupPrefs.shared
+    @State private var placeProblem: String?          // why the folder just picked can't be used
+    private static let dayChoices = [0, 7, 14, 30, 60, 90, 180, 365]
+
+    var backupsCard: some View {
+        let place = BackupPrefs.placeURL
+        let custom = !backups.place.isEmpty
+        return SCard(title: "Backups", info: "A backup is a quick copy of a profile's sessions on this Mac, made by every switch that moves them and by Back up now in the profile's Sessions card. It never holds a sign-in. Here: the folder they go to, and how many are kept. Backups already made stay where they were if you change the folder.") {
+            SRow(label: "Where", info: "The folder backups are made in: one folder per profile, one per backup. Clones need the same volume as the Claude window's data; another volume gets full copies, which take longer and more room.", first: true, stacked: true) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(backups.placeWords).font(.system(size: custom ? 11.5 : 12, design: custom ? .monospaced : .default)).foregroundStyle(face.soft)
+                        .lineLimit(2).truncationMode(.middle).fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 8) {
+                        Button("Change…") {
+                            guard let p = pickFolder() else { return }
+                            // never a folder that is, or holds, what is copied from (the same rule a backup applies)
+                            let sources = Store.load().map { SessionsBackup.Source($0) }
+                                + [SessionsBackup.Source(profile: "usual", dataDir: FolderKey.standardDataDir, codeDir: "~/.claude")]
+                            if let why = SessionsBackup.placeProblem(URL(fileURLWithPath: expand(p)), for: sources) { placeProblem = why.prefix(1).uppercased() + why.dropFirst() + "."; return }
+                            placeProblem = nil
+                            backups.place = FolderKey.canonical(p) == FolderKey.canonical(tilde(BackupPrefs.defaultPlace.path)) ? "" : p
+                        }
+                        Button("Show in Finder") { Self.reveal(place) }
+                        if custom { Button("Use default") { backups.place = ""; placeProblem = nil } }
+                    }
+                    .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    if let placeProblem {
+                        Text(placeProblem).font(.system(size: 10.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+            SRow(label: "Keep the last", info: "The newest backups of each profile that are always kept, however old.") {
+                MiniStepper(text: "\(backups.last)", down: { backups.last = max(1, backups.last - 1) }, up: { backups.last = min(50, backups.last + 1) })
+                    .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+            }
+            SRow(label: "And any under", info: "Backups made within this many days are kept too. After a switch's backup is made (and after Back up now), the ones past both are deleted; one an unfinished switch names is never deleted. 0 keeps only the last few.") {
+                MiniStepper(text: "\(backups.days) days", down: { step(-1) }, up: { step(1) })
+                    .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
+            }
+            SRowLine(text: "The last \(backups.last) of each profile, and any under \(backups.days) days.")
+        }
+    }
+
+    private func step(_ by: Int) {
+        let c = Self.dayChoices
+        backups.days = by > 0 ? (c.first { $0 > backups.days } ?? c.last!) : (c.last { $0 < backups.days } ?? c.first!)
+    }
+
+    /// Shows the folder in Finder, or the nearest folder above it that exists (it is made by the first backup).
+    private static func reveal(_ url: URL) {
+        var u = url
+        while !FileManager.default.fileExists(atPath: u.path), u.path != "/" { u = u.deletingLastPathComponent() }
+        NSWorkspace.shared.open(u)
     }
 
     // Face: the look of this window (Faces.swift)
