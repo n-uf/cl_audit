@@ -139,12 +139,18 @@ enum FoundAccountsCache {
 enum FolderFactsCache {
     private static var kept: [String: (stamp: Date?, facts: AccountFacts?)] = [:]
 
-    static func facts(_ configDir: String) -> AccountFacts? {
+    static func facts(_ configDir: String) -> AccountFacts? { read(configDir).facts }
+
+    /// When the folder's .claude.json last changed (nil: there is none).
+    static func stamp(_ configDir: String) -> Date? { read(configDir).stamp }
+
+    /// Both, from one look at the file's date.
+    static func read(_ configDir: String) -> (stamp: Date?, facts: AccountFacts?) {
         let path = Account.claudeJSON(configDir: configDir)
         let stamp = (try? FileManager.default.attributesOfItem(atPath: path))?[.modificationDate] as? Date
-        if let k = kept[path], k.stamp == stamp { return k.facts }
+        if let k = kept[path], k.stamp == stamp { return (k.stamp, k.facts) }
         let f = AccountFacts.of(claudeJSON: path)
         kept[path] = (stamp, f)
-        return f
+        return (stamp, f)
     }
 }

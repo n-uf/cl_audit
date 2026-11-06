@@ -1453,7 +1453,8 @@ struct AccountSettings: View {
     func standbyBox(_ s: StandbyAccount) -> some View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
         let st: IconStatus? = { _ = model.tick; return Store.status(for: entry, standby: s) }()
-        let facts = s.configDir.flatMap { FolderFactsCache.facts($0) }
+        let read = s.configDir.map { FolderFactsCache.read($0) }
+        let facts = read?.facts
         // its plan and organisation once its folder is signed in to it: never those of another account's sign-in
         let mine = s.seat.map { m in facts?.seat.same(m) ?? false } ?? false
         let plan = (st?.plan).map(Account.planWords) ?? (mine ? facts?.plan : nil)
@@ -1469,7 +1470,7 @@ struct AccountSettings: View {
         let started = s.configDir.flatMap { StandbyLook.signInStarted(configDir: $0, addedAt: s.seat == nil ? s.addedAt : nil) }
         let look = StandbyLook.of(email: s.email, hasFolder: s.configDir != nil, linked: s.seat != nil, folderSeat: facts?.seat,
                                   clash: clash, state: st?.state, hasNumbers: hasNumbers, problem: st?.problem,
-                                  startedAt: started, signedInAt: s.configDir.flatMap { StandbyLook.signedInAt(configDir: $0) })
+                                  attempt: SignInAttempts.attempt(s.id), startedAt: started, signedInAt: read?.stamp)
         let why = look.line
         // unlit; clicked, its row lights and the Switch account key takes the place of "Standby" (an account not linked
         // yet can't be switched to: no key)
@@ -1601,6 +1602,7 @@ struct AccountSettings: View {
     /// Sign in to another account…. Found accounts show no usage: limits are read only for a profile's own accounts.
     private var addAccountMenu: some View {
         AddAccountKey(pressed: addOpen)
+            .accessibilityHidden(true)                  // the layer over it is the control: VoiceOver reads it once
             .overlay {
                 MenuTrigger(label: "Add account", opened: { addOpen = $0 }) {
                     let found = FoundAccountsCache.list(for: entry, among: model.accounts)
@@ -1636,6 +1638,7 @@ struct AccountSettings: View {
         guard ClaudeCLI.openLogin(claude, account: Account(AccountEntry(id: s.id, name: entry.name, label: entry.label, configDir: dir)), email: email) else {
             return "Terminal didn't open: use Sign in… on the account."
         }
+        SignInAttempts.began(s.id, folderSeat: nil)             // a folder made just now: nothing in it yet
         adding = nil
         FoundAccountsCache.forget()
         return nil
@@ -1651,13 +1654,18 @@ struct AccountSettings: View {
             entry.standby[i].configDir = made
         }
         guard let dir else { return }
-        ClaudeCLI.openLogin(claude, account: Account(AccountEntry(id: s.id, name: entry.name, label: entry.label, configDir: dir)), email: s.email)
+        // what the folder is signed in to now, kept in memory: the sign-in is under way until that changes (AddAccount.swift)
+        let was = FolderFactsCache.facts(dir)?.seat
+        if ClaudeCLI.openLogin(claude, account: Account(AccountEntry(id: s.id, name: entry.name, label: entry.label, configDir: dir)), email: s.email) {
+            SignInAttempts.began(s.id, folderSeat: was)
+        }
     }
 
     /// Takes the account off this profile. Its folder and the sign-in in it stay where they are (cl_audit never deletes
     /// a Claude Code folder); Add account finds it again.
     func removeStandby(_ s: StandbyAccount) {
         entry.standby.removeAll { $0.id == s.id }
+        SignInAttempts.forget(s.id)
         FoundAccountsCache.forget()
     }
 

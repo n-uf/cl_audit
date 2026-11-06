@@ -102,6 +102,7 @@ struct MenuTrigger: NSViewRepresentable {
 
     func makeNSView(context: Context) -> TriggerView {
         let v = TriggerView()
+        v.focusRingType = .exterior
         v.setAccessibilityRole(.popUpButton)
         return v
     }
@@ -118,6 +119,11 @@ struct MenuTrigger: NSViewRepresentable {
         override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
         // reachable by keyboard (Tab, then Space or Return) and by VoiceOver (press)
         override var acceptsFirstResponder: Bool { true }
+        // a visible focus ring round the key while it has the keyboard
+        override var focusRingMaskBounds: NSRect { bounds }
+        override func drawFocusRingMask() { NSBezierPath(roundedRect: bounds, xRadius: 4, yRadius: 4).fill() }
+        override func becomeFirstResponder() -> Bool { noteFocusRingMaskChanged(); return super.becomeFirstResponder() }
+        override func resignFirstResponder() -> Bool { noteFocusRingMaskChanged(); return super.resignFirstResponder() }
         override func isAccessibilityElement() -> Bool { true }
         override func accessibilityPerformPress() -> Bool { pop(); return true }
         override func mouseDown(with event: NSEvent) { pop() }
@@ -205,45 +211,60 @@ struct StandbyLook: Equatable {
     static let staleAfter: TimeInterval = 15 * 60
 
     /// When the sign-in in this folder was last started, from what is already recorded (nothing new is saved): the
-    /// Terminal script `openLogin` writes each time it starts one (its date), else when the account was added.
-    static func signInStarted(configDir: String, addedAt: Date?) -> Date? {
+    /// Terminal script `openLogin` writes each time it starts one (its date), else `fallback` (when the account was
+    /// added, for an account with no seat yet).
+    static func signInStarted(configDir: String, addedAt fallback: Date?) -> Date? {
         let script = ClaudeCLI.loginScript(expand(configDir)).path
         let made = (try? FileManager.default.attributesOfItem(atPath: script))?[.modificationDate] as? Date
-        return made ?? addedAt
+        return made ?? fallback
     }
 
-    /// When the folder's own record of its sign-in (.claude.json) last changed.
-    static func signedInAt(configDir: String) -> Date? {
-        (try? FileManager.default.attributesOfItem(atPath: Account.claudeJSON(configDir: configDir)))?[.modificationDate] as? Date
-    }
+    private static func sameSeat(_ a: Seat?, _ b: Seat?) -> Bool { a == nil && b == nil || (a?.same(b) ?? false) }
 
     /// - linked: the account has its seat (the account and organisation a sign-in named)
     /// - folderSeat: the account its folder is signed in to now (Claude Code's own record; the browser isn't visible
     ///   to cl_audit, so "the browser signed in as" is what that sign-in says)
     /// - clash: set when folderSeat is the profile's own account or another profile's (the sign-in is refused)
     /// - state: its saved status ("ok", "noLogin", "otherAccount", "expired"…)
-    /// - startedAt: when a sign-in was last started in its folder (`signInStarted`); signedInAt: when the folder's
-    ///   sign-in record last changed. A sign-in started after the record changed is under way again (Sign in again…).
+    /// - attempt: the Sign in… clicked in this run of cl_audit (SignInAttempts): the folder's seat then and when. While
+    ///   the folder's seat is still that one, the sign-in is under way, whatever Claude Code writes to the folder's
+    ///   record meanwhile; a different seat ends it (the real result: linked, or the wrong account).
+    /// - startedAt, signedInAt: with no attempt remembered (cl_audit restarted meanwhile), the dates: when a sign-in was
+    ///   last started in the folder (`signInStarted`) and when the folder's record last changed; one started after the
+    ///   record changed is under way.
+    /// Only a sign-in that was started shows "Signing in" or "Not finished"; Cancel (take the account off the profile)
+    /// is only for an account with no seat yet, never a linked one.
     static func of(email: String, hasFolder: Bool, linked: Bool, folderSeat: Seat?, clash: Clash?,
                    state: String?, hasNumbers: Bool, problem: String?,
-                   startedAt: Date? = nil, signedInAt: Date? = nil, now: Date = Date()) -> StandbyLook {
+                   attempt: SignInAttempt? = nil, startedAt: Date? = nil, signedInAt: Date? = nil,
+                   now: Date = Date()) -> StandbyLook {
         let me = Privacy.masked(email)
         if !hasFolder {
             return StandbyLook(line: "Limits unknown: no sign-in kept for it.", keys: [.signIn])
         }
-        let restarted = startedAt != nil && signedInAt != nil && startedAt! > signedInAt!
-        // a sign-in under way: mint; a quarter of an hour on, still nothing in the folder: not finished
-        var underWay: StandbyLook {
-            if let startedAt, now.timeIntervalSince(startedAt) >= Self.staleAfter {
-                return StandbyLook(badge: "Not finished", tone: .amber, line: "The sign-in didn't finish. Sign in again, or cancel.",
-                                   lineTone: .caution, keys: [.cancel, .signInAgain])
+        // a sign-in under way: mint; a quarter of an hour on, still nothing new in the folder: not finished
+        func underWay(since: Date?) -> StandbyLook {
+            if let since, now.timeIntervalSince(since) >= Self.staleAfter {
+                return StandbyLook(badge: "Not finished", tone: .amber,
+                                   line: linked ? "The sign-in didn't finish. Sign in again." : "The sign-in didn't finish. Sign in again, or cancel.",
+                                   lineTone: .caution, keys: linked ? [.signInAgain] : [.cancel, .signInAgain])
             }
             return StandbyLook(badge: "Signing in", tone: .mint, line: "Finish the sign-in in the browser, as \(me).",
-                               lineTone: .muted, keys: [.cancel, .showTerminal])
+                               lineTone: .muted, keys: linked ? [.showTerminal] : [.cancel, .showTerminal])
+        }
+        // started after the folder's record last changed (the dates, when nothing is remembered)
+        let datesStarted: Date? = startedAt.flatMap { st in signedInAt.map { st > $0 } ?? false ? st : nil }
+        // started after, or no record at all
+        let datesStartedLenient: Date? = startedAt.flatMap { st in signedInAt.map { st > $0 } ?? true ? st : nil }
+        /// The sign-in under way, and since when: the attempt while the folder's seat is still what it was, else the dates.
+        func under(_ dates: Date?) -> Date? {
+            if let attempt { return Self.sameSeat(folderSeat, attempt.seat) ? attempt.at : nil }
+            return dates
         }
         if !linked {
             // not linked yet: the folder has no sign-in (under way), or one the profile can't have (the wrong account)
-            if let clash, !restarted {
+            if clash != nil {
+                if let began = under(datesStarted) { return underWay(since: began) }
                 let got = folderSeat?.email.map { AccountNames.short($0) } ?? "another account"
                 let not = AccountNames.short(email)
                 var line = "The browser signed in as \(got), not \(not). Switch the browser's account, then sign in again."
@@ -252,21 +273,21 @@ struct StandbyLook: Equatable {
                 }
                 return StandbyLook(badge: "Wrong account", tone: .amber, line: line, lineTone: .caution, keys: [.cancel, .signInAgain])
             }
-            // nothing in the folder yet (or the wrong account's, signed in again since): under way. A folder signed in to
-            // a free account links by itself within seconds, whatever the start's age: never "not finished"
-            if folderSeat == nil || clash != nil { return underWay }
-            return StandbyLook(badge: "Signing in", tone: .mint, line: "Finish the sign-in in the browser, as \(me).",
-                               lineTone: .muted, keys: [.cancel, .showTerminal])
+            // nothing in the folder yet: under way (since the click, else the script, else when it was added)
+            if folderSeat == nil { return underWay(since: attempt?.at ?? startedAt) }
+            // a free account's sign-in links by itself within seconds, whatever the start's age: never "not finished"
+            return underWay(since: nil)
         }
         if state == "otherAccount" {
-            if restarted { return underWay }
+            if let began = under(datesStarted) { return underWay(since: began) }
             return StandbyLook(badge: "Wrong account", tone: .amber,
                                line: "Its folder is signed in to another account: sign in again as \(me).", keys: [.signInAgain])
         }
-        // linked, but its folder holds no sign-in (an account added as needing one, signed in from its box): under way
-        // when a sign-in was started there, else the plain reminder; never "No numbers yet… from the sign-in kept"
+        // linked, but its folder holds no sign-in (an account found as needing one, signed in from its box): under way only
+        // when a sign-in was started there since the folder's record changed; else the plain reminder. Never "No numbers
+        // yet… from the sign-in kept in its folder" for a folder with none.
         if folderSeat == nil, state == "noLogin" || !hasNumbers {
-            if startedAt != nil { return underWay }
+            if let began = attempt?.at ?? datesStartedLenient { return underWay(since: began) }
             return StandbyLook(line: "Waiting for the sign-in: finish it in the browser, or sign in again.", keys: [.signInAgain])
         }
         if state == "noLogin" {
@@ -288,4 +309,19 @@ struct StandbyLook: Equatable {
         if entry.has(folderSeat) || folderSeat.same(inUse) { return .own }
         return nil
     }
+}
+
+/// A sign-in started from a standby account's box in this run of cl_audit: the account its folder was signed in to when
+/// the key was clicked (nil: none) and when. Kept in memory only; nothing is saved.
+struct SignInAttempt: Equatable {
+    var seat: Seat?
+    var at: Date
+}
+
+/// The sign-ins started in this run of cl_audit, by standby account id. Main thread only.
+enum SignInAttempts {
+    private static var kept: [String: SignInAttempt] = [:]
+    static func began(_ id: String, folderSeat: Seat?, now: Date = Date()) { kept[id] = SignInAttempt(seat: folderSeat, at: now) }
+    static func attempt(_ id: String) -> SignInAttempt? { kept[id] }
+    static func forget(_ id: String) { kept[id] = nil }
 }
