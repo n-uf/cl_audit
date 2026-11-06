@@ -173,5 +173,9 @@ enum SwitchWords {
         let which = accounts > 1 ? "Another account" : "The other account"
         return "\(which) has \(max(0, 100 - Int(p.rounded())))% of its \(o.status?.weekly != nil ? "week" : "5-hour limit") left."
     }
-    static let button = "Switch accounts"
+    /// The full-limit alert's button, worded like the card's and the menus' (it opens the Switch page, which asks about the
+    /// sessions)
+    static let button = "Switch account…"
+    /// The "the other account is back" alert's button.
+    static let backButton = "Switch back…"
 }

@@ -441,7 +441,7 @@ final class UsageReader {
             alerting.insert(k)
             let c = UNMutableNotificationContent()
             // the 5-hour or weekly limit full holds the profile back: another of its accounts with room (and current
-            // numbers) is offered, with a Switch accounts button (Switch.swift), never naming it; Fable's own limit
+            // numbers) is offered, with a Switch account… button (Switch.swift), never naming it; Fable's own limit
             // doesn't hold it back
             let offer = full && (key == "5h" || key == "wk") ? entry.bestOffer() : nil
             if full {
@@ -567,7 +567,7 @@ final class UsageReader {
     static var testPoster: ((String, String, String, String, String?) -> Int32)?    // (…, thread, switch or back key)
 
     /// Hands one alert to cl_audit's own program (UsageDock --post-alert). 0 sent, 2 not allowed, else failed. With a
-    /// switch offer, the alert has its Switch accounts button; with a standby account that is back (`backKey`), Switch
+    /// switch offer, the alert has its Switch account… button; with a standby account that is back (`backKey`), Switch
     /// back and Stay.
     static func post(id: String, title: String, body: String, thread: String, offer: SwitchOffer? = nil, backKey: String? = nil) -> Int32 {
         if let t = testPoster { return t(id, title, body, thread, offer?.key ?? backKey) }

@@ -34,7 +34,7 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
     }
 }
 
-/// An alert with a Switch accounts button: one category for every alert (its words name no account), and the target
+/// An alert with a Switch account… button: one category for every alert (its words name no account), and the target
 /// rides along in the alert's userInfo.
 enum SwitchAlert {
     static let category = "switch"
