@@ -5,6 +5,9 @@
 //   entry and before the tasks and pointer steps; while a switch is under way no window opener starts it (SwitchMarker);
 // - one switch at a time (cl_audit's lock), and none while claude-transplant runs: its own lock (a flock) is held for the
 //   whole run;
+// - before anything moves, under the same lock, a backup of the window's Code-tab list, its sidebar records and
+//   cl_audit's records (and, if asked, Claude Code's transcripts) is made (SessionsBackup.swift); if it can't be, nothing
+//   moves. The receipt names the backup, and the backup names the receipt;
 // - every entry keeps its id: kept byte for byte, or re-encoded without the old account's error keys and Remote Control
 //   ids when it has them, through a write that can't overwrite (a private temp file, then a hard link), checked, and
 //   only then is the original parked in cl_audit's own folder: nothing is deleted;
@@ -36,6 +39,8 @@ struct SwitchPlan: Equatable {
     var deleted: [String] = []          // the target deleted a session with that id: left where they are
     var tasks = 0                       // scheduled tasks to move
     var sessionsFollow = true
+    var backupTranscripts = true        // the backup (SessionsBackup.swift) takes Claude Code's transcripts too
+    var entry: AccountEntry? = nil      // cl_audit's record of the profile, for the backup
 
     var sourceDir: String { SwitchEngine.scopeDir(dataDir, SeatID(from)) }
     var targetDir: String { SwitchEngine.scopeDir(dataDir, SeatID(to)) }
@@ -68,6 +73,11 @@ struct SwitchReceipt: Codable, Equatable {
     var problems: [String] = []
     /// The moved sessions' groups and pins on the old account, noted before the move (SwitchSidebar.swift).
     var sidebar: SidebarPlan?
+    /// The backup made right before anything moved (SessionsBackup.swift), by its id; the backup names this switch too.
+    /// nil: none (the sessions weren't moved, or the receipt is from before backups).
+    var backup: String?
+    /// The folder that backup is in (General ▸ Backups at the time): a later change of that folder doesn't lose it.
+    var backupPlace: String?
 
     /// Something was moved, and the switch was neither linked nor undone: Undo still applies.
     var unfinished: Bool { undone == nil && linked == nil && !steps.isEmpty }
@@ -91,9 +101,11 @@ struct SwitchReceipt: Codable, Equatable {
 
 enum SwitchError: Error, Equatable, CustomStringConvertible {
     case notReady(String), busy(String), windowOpen, failed(String)
+    /// The backup before the move couldn't be made (or the window opened while it was): step 1 of the switch.
+    case backup(String)
     var description: String {
         switch self {
-        case .notReady(let s), .busy(let s), .failed(let s): return s
+        case .notReady(let s), .busy(let s), .failed(let s), .backup(let s): return s
         case .windowOpen: return "The profile's Claude window opened during the switch; stopped. Undo puts back what moved."
         }
     }
@@ -124,7 +136,7 @@ enum SwitchEngine {
         let dir = dataDir ?? (e.desktop == .standard ? expand(FolderKey.standardDataDir) : Account(e).claudeUserDataDir ?? "")
         guard !dir.isEmpty else { return .failure(.notReady("The profile's Claude window has no folder.")) }
         var p = SwitchPlan(profile: e.id, standby: s.id, dataDir: expand(dir), codeDir: Account(e).configDir, from: from, to: to,
-                           sessionsFollow: follow)
+                           sessionsFollow: follow, entry: e)
         guard follow else { return .success(p) }
         let fm = FileManager.default
         let names = ((try? fm.contentsOfDirectory(atPath: p.sourceDir)) ?? []).filter { $0.hasPrefix("local_") && $0.hasSuffix(".json") }.sorted()
@@ -142,17 +154,49 @@ enum SwitchEngine {
 
     /// Moves what the plan says. `windowClosed` is asked first and before every step: the window must stay closed. If
     /// it stops (the window opened, a write failed), the receipt stays as it is, unfinished, for Undo.
+    ///
+    /// When the sessions move, a backup of them is made first, right here under the lock: the window is known closed and
+    /// nothing has moved. The receipt names it (saved before the first move) and it names the receipt. If it can't be
+    /// made, the switch stops with nothing moved. `backups`: where it goes (General ▸ Backups unless given).
     @discardableResult
-    static func run(_ p: SwitchPlan, windowClosed: () -> Bool, now: Date = Date()) throws -> SwitchReceipt {
+    static func run(_ p: SwitchPlan, windowClosed: () -> Bool, now: Date = Date(), backups: URL? = nil,
+                    backupMade: ((_ id: String, _ place: String) -> Void)? = nil) throws -> SwitchReceipt {
         let lock = try Lock.take()
         defer { lock.release() }
         guard windowClosed() else { throw SwitchError.notReady("The profile's Claude window is open; nothing moved.") }
         var r = SwitchReceipt(id: receiptID(now, p.profile), profile: p.profile, standby: p.standby, dataDir: p.dataDir,
                               from: SeatID(p.from), to: SeatID(p.to), started: now)
+        let place = backups ?? BackupPrefs.placeURL
+        if p.sessionsFollow {
+            let id = SessionsBackup.newID(now)
+            r.backup = id; r.backupPlace = place.path
+            do {
+                try SessionsBackup.make(SessionsBackup.Source(profile: p.profile, dataDir: p.dataDir, codeDir: p.codeDir, entry: p.entry),
+                                        id: id, kind: .beforeSwitch(r.id), window: true, transcripts: p.backupTranscripts,
+                                        receipt: r, place: place, now: now)
+            } catch {
+                throw SwitchError.backup("The backup of the sessions couldn't be made (\(error)). Nothing moved. Backups go to \(tilde(place.path)); General ▸ Backups changes that.")
+            }
+            // still closed? a window that opened meanwhile may have changed what was copied: the backup is taken away
+            guard windowClosed() else {
+                SessionsBackup.discard(profile: p.profile, id: id, place: place)
+                throw SwitchError.backup("The Claude window opened during the backup; nothing moved. Close it and try again.")
+            }
+        }
+        // old backups age out once this one is made, also when the switch stops
+        defer { if p.sessionsFollow { SessionsBackup.prune(profile: p.profile, place: place) } }
         let dir = root.appendingPathComponent(r.id)
-        try FileManager.default.createDirectory(at: dir.appendingPathComponent("parked"), withIntermediateDirectories: true,
-                                                attributes: [.posixPermissions: 0o700])
-        try save(r)
+        do {
+            try FileManager.default.createDirectory(at: dir.appendingPathComponent("parked"), withIntermediateDirectories: true,
+                                                    attributes: [.posixPermissions: 0o700])
+            try save(r)
+        } catch {
+            // no receipt: nothing names the backup, and nothing moved
+            if let id = r.backup { SessionsBackup.discard(profile: p.profile, id: id, place: place) }
+            try? FileManager.default.removeItem(at: dir)
+            throw error
+        }
+        if let id = r.backup { backupMade?(id, place.path) }           // known to the page before the first move
         do {
             try moveAll(p, &r, dir: dir, windowClosed: windowClosed)
         } catch {
@@ -504,11 +548,16 @@ enum SwitchEngine {
         return "\(f.string(from: d))-\(UUID().uuidString.prefix(4).lowercased())-\(profile)"
     }
 
-    static func save(_ r: SwitchReceipt) throws {
+    /// A receipt as it is saved (receipt.json).
+    static func encoded(_ r: SwitchReceipt) throws -> Data {
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try enc.encode(r)
+    }
+
+    static func save(_ r: SwitchReceipt) throws {
         let dir = root.appendingPathComponent(r.id)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try enc.encode(r).write(to: dir.appendingPathComponent("receipt.json"), options: .atomic)
+        try encoded(r).write(to: dir.appendingPathComponent("receipt.json"), options: .atomic)
     }
 
     static func load(_ id: String) -> SwitchReceipt? {

@@ -1,7 +1,8 @@
 // SwitchRunner: one switch, step by step, for the Switch page (SwitchView.swift), with SwitchEngine doing the moving.
 //
 //   1. the profile's Claude window closes (gracefully; only that window, by its data folder; never force-quit)
-//   2. its sessions and scheduled tasks move to the other account (Sessions follow on), with a receipt
+//   2. a backup of its sessions is made (SessionsBackup.swift), then they and its scheduled tasks move to the other
+//      account (the answer to "Move them?"), with a receipt that names the backup
 //   3. Claude Code signs in as that account, in Terminal with the address filled in; the window stays closed meanwhile,
 //      and Cancel puts the sessions back (Undo from the receipt)
 //   4. once the folder names that account, the profile works on it; the old account joins standby
@@ -45,6 +46,19 @@ final class SwitchRunner: ObservableObject {
     /// The sessions question, asked every time with no answer chosen: move them to the account switched to (with a
     /// backup), or leave them with each account. Fixed once the switch starts.
     @Published var moveSessions: Bool?
+    /// Whether the backup made before the sessions move takes Claude Code's transcripts too (on by default). The page
+    /// toggles it before the switch starts; fixed once it has.
+    @Published var backupTranscripts = true
+    /// The backup made before the sessions move, as soon as it exists (the engine reports it before the first move):
+    /// the page shows it, also when the switch stops after.
+    struct BackupRef: Equatable { var id: String; var place: String }
+    @Published private(set) var backupMade: BackupRef?
+    /// The backup couldn't be made (or the window opened while it was): step 1 failed, nothing moved.
+    @Published private(set) var backupFailed = false
+    /// The backup this switch made: reported by the engine, else named by the receipt.
+    var backupRef: BackupRef? {
+        backupMade ?? receipt.flatMap { r in r.backup.map { BackupRef(id: $0, place: r.backupPlace ?? BackupPrefs.placeURL.path) } }
+    }
     /// The step that failed (1–5), shown red on the page; nil while nothing failed.
     @Published private(set) var failedStep: Int?
     /// What each sign-in check saw: Claude Code's folder and the window, as short names for the page (nil until seen),
@@ -140,6 +154,7 @@ final class SwitchRunner: ObservableObject {
     func carry(from other: SwitchRunner) {
         guard phase == .ready, receipt == nil else { return }
         moveSessions = other.moveSessions
+        backupTranscripts = other.backupTranscripts
         if other.ownFolder == .skipped { ownFolder = .skipped }
     }
 
@@ -151,6 +166,7 @@ final class SwitchRunner: ObservableObject {
         guard let follow = moveSessions else { note = "Choose first: move the sessions, or leave them."; return }
         note = nil; failedStep = nil; codeSeen = nil; windowSeen = nil; codeOnTarget = nil; windowOnTarget = nil
         sidebarOpened = false; sidebarMissed = false; sidebarLinkSent = false; undoStopped = false
+        backupMade = nil; backupFailed = false
         reopenTimer?.invalidate(); reopenTimer = nil
         targetSnapshot = s
         // a switch that stopped half way is put back first: never a second move on top of it
@@ -187,13 +203,18 @@ final class SwitchRunner: ObservableObject {
 
     /// `follow`: the sessions answer start() checked, never read again here.
     private func move(follow: Bool) {
-        guard let e = entry, let s = target, case .success(let plan) = SwitchEngine.plan(e, standby: s, follow: follow) else {
+        guard let e = entry, let s = target, case .success(var plan) = SwitchEngine.plan(e, standby: s, follow: follow) else {
             releaseWindow()
             fail("The switch couldn't be planned again. Nothing moved.", step: 2); return
         }
+        plan.backupTranscripts = backupTranscripts      // as it was when the switch started
         phase = .moving
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Result { try SwitchEngine.run(plan, windowClosed: { Self.windowClosed(e) }) }
+            let result = Result {
+                try SwitchEngine.run(plan, windowClosed: { Self.windowClosed(e) }, backupMade: { id, place in
+                    DispatchQueue.main.async { [weak self] in self?.backupMade = BackupRef(id: id, place: place) }
+                })
+            }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 switch result {
@@ -205,7 +226,9 @@ final class SwitchRunner: ObservableObject {
                     // stopped half way: its receipt, for Undo (the window stays closed until then); nothing moved: free
                     self.receipt = SwitchEngine.unfinished(profile: self.profile).first
                     if self.receipt == nil { self.releaseWindow() }
-                    self.fail("\(err)", step: 2)
+                    var step = 2
+                    if case SwitchError.backup = err { self.backupFailed = true; step = 1 }
+                    self.fail("\(err)", step: step)
                 }
             }
         }
@@ -389,8 +412,8 @@ final class SwitchRunner: ObservableObject {
     func preview(_ p: Phase, receipt r: SwitchReceipt? = nil, note n: String? = nil, sidebarOpened o: Bool = false,
                  moves: Bool? = nil, failedStep f: Int? = nil, codeSeen c: String? = nil, windowSeen w: String? = nil,
                  sidebarMissed m: Bool = false, undoStopped u: Bool = false, codeOn: Bool? = nil, windowOn: Bool? = nil,
-                 linkSent: Bool = false) {
-        phase = p; receipt = r; note = n; sidebarOpened = o; sidebarLinkSent = linkSent
+                 linkSent: Bool = false, backup b: BackupRef? = nil, backupFailed bf: Bool = false) {
+        phase = p; receipt = r; note = n; sidebarOpened = o; sidebarLinkSent = linkSent; backupMade = b; backupFailed = bf
         moveSessions = moves; failedStep = f; codeSeen = c; windowSeen = w; sidebarMissed = m; undoStopped = u
         codeOnTarget = codeOn; windowOnTarget = windowOn
     }
