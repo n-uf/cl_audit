@@ -82,13 +82,15 @@ enum FolderRules {
     /// names one, unless that account is already the profile's own or another profile's: then it stays without one and
     /// Accounts says so. One whose seat is known keeps it (a folder signed in to another account later only holds its
     /// numbers back, as for the account in use).
-    static func linkStandbySeats(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = Account.signedInSeat) -> [AccountEntry] {
+    static func linkStandbySeats(_ accounts: [AccountEntry],
+                                 signedIn: (String) -> Seat? = { FolderFactsCache.facts($0)?.seat }) -> [AccountEntry] {
         var out = accounts
         for i in out.indices {
             for j in out[i].standby.indices where out[i].standby[j].seat == nil {
                 guard let dir = out[i].standby[j].configDir, var s = signedIn(dir) else { continue }
                 if out[i].has(s) || s.same(signedIn(out[i].configDir)) { continue }
-                if out.indices.contains(where: { $0 != i && out[$0].has(s) }) { continue }
+                // another profile's: linked to it, keeping it, or (not linked yet) its folder signed in to it
+                if seatOwner(s, among: out, except: out[i].id, signedIn: signedIn) != nil { continue }
                 s.linkedAt = Date()
                 out[i].standby[j].seat = s
                 if let e = s.email { out[i].standby[j].email = e }
