@@ -428,14 +428,29 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     box says "Limits unknown: no sign-in kept for it" with **Sign in…**, which makes its folder and opens Claude
     Code's own sign-in in Terminal with the address filled in; once done, its limits show and its sign-in renews by
     itself. A folder signed in to the wrong account, or to another profile's, says so in the box.
-  - **Add account** lists what it finds on this Mac, each added with one click: accounts signed in in Claude Code
-    folders no profile uses ("signed in · ~/.claude-u2": their limits show at once) and the accounts this profile's
-    Claude window has used, with their addresses from Claude Code's records ("needs sign-in · used in this window
-    in August"); other profiles' accounts are dimmed with their name. Old or team accounts the window once used are
-    only listed, never added by themselves. **Sign in to another account…** turns the key into the address and
-    **Sign in**: cl_audit makes a folder for it and opens Claude Code's own sign-in there in Terminal; the profile
-    keeps working on its account meanwhile. An account belongs to one profile; no sign-in is ever copied between
-    folders. New profile still starts with one account.
+  - **Add account** opens a pop-up (macOS's own menu) of what it finds on this Mac, two lines a row: the address,
+    then in grey what is known about it. One click adds it. Accounts signed in in Claude Code folders no profile uses
+    ("Ultra · Personal · signed in, ~/.claude-ultra-3 · limits once added") and the accounts this profile's Claude
+    window has used, with their addresses from Claude Code's records ("Pro · Personal · needs a sign-in · used in
+    Main's window in August"); other profiles' accounts are greyed and can't be added ("Work's · one profile per
+    account"). Found accounts show no usage: cl_audit reads limits only for a profile's own accounts. Old or team
+    accounts the window once used are only listed, never added by themselves. **Sign in to another account…** (last in
+    the pop-up) turns the key into the address and **Sign in**: cl_audit makes a folder for it, named under the field
+    ("in a folder of its own (~/.claude-ultra-4); Main keeps working meanwhile"), and opens Claude Code's own sign-in
+    there in Terminal. An account belongs to one profile; no sign-in is ever copied between folders. New profile still
+    starts with one account.
+  - **A new account is a standby box from the start**, its display and one line saying what's left. **Signing in**
+    (mint): "Finish the sign-in in the browser, as ultra-4@example.com." with **Cancel** (takes it off the profile
+    again; its folder stays) and **Show Terminal**. **Wrong account** (amber), when Claude Code's sign-in in its
+    folder is the profile's own account or another profile's: "The browser signed in as ultra-1, not ultra-4. Switch
+    the browser's account, then sign in again." with **Cancel** and **Sign in again…**; cl_audit sees only what Claude
+    Code recorded in the folder, not the browser, so it names the account the sign-in came back as. A sign-in to any
+    other account is simply the account it names, linked within seconds. A sign-in 15 minutes old with nothing in
+    the folder turns amber, **Not finished**: "The sign-in didn't finish. Sign in again, or cancel." with **Cancel** and
+    **Sign in again…** (the start is the date of the Terminal script each sign-in writes, else when the account was
+    added; nothing new is saved). **Standby**: "No numbers yet: cl_audit reads
+    them within a few minutes, from the sign-in kept in its folder, and keeps that sign-in renewed." until its limits
+    show.
 
   Whether the Claude window's sessions go with the account (the sessions, the sidebar's sections and groups, pins
   and scheduled tasks) isn't a setting: the Switch page asks every time, with nothing chosen. As on every card, the

@@ -57,6 +57,15 @@ the notes before updating.
   browser…"), says so once per step when a switch waits for your sign-in or your Return and its Switch page isn't in
   front, with **Show switch** and (at Claude Code's sign-in) **Cancel switch**; each switch waiting has its own, a
   step that ends in a moment never alerts, and none outlives cl_audit. No alert names an account.
+- **Add account, redone.** **Add account** opens macOS's own menu with two lines a row: the address, then in grey
+  what is known ("Ultra · Personal · signed in, ~/.claude-ultra-3 · limits once added", "Pro · Personal · needs a
+  sign-in · used in Main's window in August"); another profile's account is greyed ("Work's · one profile per
+  account"). Found accounts show no usage; one click adds one. **Sign in to another account…** names the folder it will
+  use under the address field. A new account is a **standby box from the start**: **Signing in** (mint, with **Cancel**
+  and **Show Terminal**), **Wrong account** (amber, with **Cancel** and **Sign in again…**: it says which account the
+  sign-in came back as), **Not finished** (amber: 15 minutes with no sign-in in the folder) and, once added,
+  **Standby** with "No numbers yet…" until its limits show. A found account that needed a sign-in goes through the
+  same states once you sign it in. How a sign-in works is unchanged.
 - **Another account with room, offered where a limit is full.** A profile's dashboard card shows its other
   accounts' limits, small, under its own. The full-limit alert says how much the other account has
   left ("The other account has 92% of its week left", never an address) and has a **Switch account…** button; the
