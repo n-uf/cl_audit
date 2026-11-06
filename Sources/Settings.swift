@@ -240,6 +240,25 @@ final class SettingsModel: ObservableObject {
     private var unfinishedLook: (at: Date, byProfile: [String: SwitchReceipt]) = (.distantPast, [:])
     func forgetUnfinished() { unfinishedLook.at = .distantPast }
 
+    /// Every running switch that waits for the operator and is worth an alert (SwitchWaiting.swift), in key order: where it
+    /// waits, its profile's name, how many steps it has, and whether the profile's alerts are on. The window's sign-in of a
+    /// profile without a Claude window, and the Return step before the session is open or after its link missed, are left out.
+    var waitingSwitches: [SwitchWaiting.Waiting] {
+        runners.values.compactMap { r -> SwitchWaiting.Waiting? in
+            guard SwitchWaiting.waits(r.phase) else { return nil }
+            let e = accounts.first { $0.id == r.profile }
+            guard SwitchWaiting.alertable(phase: r.phase, hasWindow: e?.claudeWindow ?? false,
+                                          linkSent: r.sidebarLinkSent, missed: r.sidebarMissed) else { return nil }
+            return SwitchWaiting.Waiting(step: SwitchWaiting.Step(key: r.key, phase: r.phase), name: e?.name ?? "",
+                                         steps: r.stepCount, notify: e?.notify ?? false)
+        }.sorted { $0.step.key < $1.step.key }
+    }
+
+    /// The alert's Cancel switch: the runner's cancel, only while Claude Code's sign-in waits (nothing to cancel after).
+    func cancelWaitingSwitch(_ key: String) {
+        if let r = runners[key], SwitchWaiting.canCancel(r.phase) { r.cancel() }
+    }
+
     func showSwitch(_ key: String) {
         var key = key
         if let p = SwitchOffer.parse(key) {

@@ -102,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         if isSettingsApp {
             SwitchMarker.sweep()                           // a switch left marked by a cl_audit that's gone keeps no window closed
+            SwitchWaiting.clearAll(wait: false)            // so does a "switch is waiting for you" alert a cl_audit that's gone left
             NSWindow.allowsAutomaticWindowTabbing = false   // Settings and Dashboard are separate windows
             AppIconPrefs.shared.apply()                    // the chosen app icon (Settings ▸ General ▸ App icon)
             MainMenu.install()
@@ -211,6 +212,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// about unsent work). Not when cl_audit or the agent asked for it (a reinstall, Usage in the Dock off, its window
     /// quit) or with "Quit and keep Claude window".
     func applicationWillTerminate(_ note: Notification) {
+        // the switches live in memory: a "switch is waiting for you" alert doesn't outlive cl_audit (SwitchWaiting.swift)
+        if isSettingsApp { SwitchWaiting.clearAll(wait: true) }
         guard !isSettingsApp, let id = accountID else { return }
         guard Store.load().contains(where: { $0.id == id }) else { Self.forgetLoginItem(); return }
         if !quietQuit {

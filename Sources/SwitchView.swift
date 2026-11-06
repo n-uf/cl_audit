@@ -16,12 +16,17 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         if SwitchAlert.isQuiet(response.actionIdentifier) {
             // Stay on "the other account is back": the offer goes from the card and the menus
             if response.actionIdentifier == SwitchAlert.stay { BackWatch.dismiss(key) }
+            // Cancel switch on "the switch is waiting for you": the runner's own cancel, only while Claude Code's sign-in waits
+            // (a cl_audit started just for this button has no switch to cancel and quits again below)
+            if response.actionIdentifier == SwitchAlert.cancelSwitch {
+                DispatchQueue.main.async { if self.launched { self.manager.cancelWaitingSwitch(key) } }
+            }
             // started just for this button: show nothing, quit. (A Stay within 5 s of opening cl_audit yourself quits it
             // too, but only while none of its windows is on screen yet.)
             DispatchQueue.main.async { if Date().timeIntervalSince(self.launchedAt) < 5 { self.quietLaunch = true; self.quitIfQuiet() } }
             return
         }
-        guard response.actionIdentifier == SwitchAlert.action else { return }
+        guard SwitchAlert.opensPage(action: response.actionIdentifier, category: response.notification.request.content.categoryIdentifier) else { return }
         DispatchQueue.main.async {
             if self.launched { self.manager.closePalette(); self.manager.showSwitch(key) } else { self.pendingSwitch = key }
         }
@@ -44,9 +49,21 @@ enum SwitchAlert {
     static let later = "later"
     static let stay = "stay"
     static let keyField = "switch"
+    /// "the switch is waiting for you" (SwitchWaiting.swift): Show switch (the `action` above) and Cancel switch, or, once the
+    /// profile is linked and there is nothing to cancel, Show switch alone.
+    static let waitingCategory = "switchWaiting"
+    static let waitingLinkedCategory = "switchWaitingLinked"
+    static let cancelSwitch = "cancelSwitch"
 
-    /// A button that needs no window: Stay, Later.
-    static func isQuiet(_ action: String?) -> Bool { action == stay || action == later }
+    /// A response that opens the Switch page: the Show/Switch button of any alert, or a plain click on "the switch is waiting
+    /// for you" (the other alerts' plain click only brings cl_audit forward, as before).
+    static func opensPage(action: String, category: String) -> Bool {
+        action == self.action
+            || (action == UNNotificationDefaultActionIdentifier && (category == waitingCategory || category == waitingLinkedCategory))
+    }
+
+    /// A button that needs no window: Stay, Later, Cancel switch.
+    static func isQuiet(_ action: String?) -> Bool { action == stay || action == later || action == cancelSwitch }
 }
 
 /// What the settings app shows when it starts. An alert's Stay or Later can start it in the background (macOS hands
@@ -65,12 +82,31 @@ enum LaunchPlan: Equatable {
 
 extension SwitchAlert {
 
-    /// Registers the alerts' two categories (Switch accounts and Later; Switch back and Stay), kept with any others but
-    /// the per-account ones older builds made ("switch.<key>"), and waits until macOS has the one asked for (up to 2 s):
-    /// setting categories doesn't say when it's done, and an alert added before would show without its buttons. The
-    /// target rides in each alert's userInfo.
+    /// The alerts' categories: Switch account… and Later; Switch back… and Stay; Show switch and Cancel switch; Show switch.
+    static func categories() -> [UNNotificationCategory] {
+        [UNNotificationCategory(identifier: category,
+                                actions: [UNNotificationAction(identifier: action, title: SwitchWords.button, options: [.foreground]),
+                                          UNNotificationAction(identifier: later, title: "Later", options: [])],
+                                intentIdentifiers: [], options: []),
+         UNNotificationCategory(identifier: backCategory,
+                                actions: [UNNotificationAction(identifier: action, title: SwitchWords.backButton, options: [.foreground]),
+                                          UNNotificationAction(identifier: stay, title: "Stay", options: [])],
+                                intentIdentifiers: [], options: []),
+         UNNotificationCategory(identifier: waitingCategory,
+                                actions: [UNNotificationAction(identifier: action, title: SwitchWaiting.showButton, options: [.foreground]),
+                                          UNNotificationAction(identifier: cancelSwitch, title: SwitchWaiting.cancelButton, options: [])],
+                                intentIdentifiers: [], options: []),
+         UNNotificationCategory(identifier: waitingLinkedCategory,
+                                actions: [UNNotificationAction(identifier: action, title: SwitchWaiting.showButton, options: [.foreground])],
+                                intentIdentifiers: [], options: [])]
+    }
+
+    /// Registers the alerts' categories (`categories()`), kept with any others but the per-account ones older builds made
+    /// ("switch.<key>"), and waits until macOS has the one asked for (up to 2 s): setting categories doesn't say when it's
+    /// done, and an alert added before would show without its buttons. The target rides in each alert's userInfo. Never on
+    /// the main thread.
     @discardableResult
-    static func register(center: UNUserNotificationCenter = .current(), back: Bool = false) -> String {
+    static func register(center: UNUserNotificationCenter = .current(), back: Bool = false, wanting: String? = nil) -> String {
         func current() -> Set<UNNotificationCategory> {
             var got: Set<UNNotificationCategory> = []
             let done = DispatchSemaphore(value: 0)
@@ -78,17 +114,11 @@ extension SwitchAlert {
             _ = done.wait(timeout: .now() + 2)
             return got
         }
-        var set = current().filter { !$0.identifier.hasPrefix("switch.") && $0.identifier != category && $0.identifier != backCategory }
-        set.insert(UNNotificationCategory(identifier: category,
-                                          actions: [UNNotificationAction(identifier: action, title: SwitchWords.button, options: [.foreground]),
-                                                    UNNotificationAction(identifier: later, title: "Later", options: [])],
-                                          intentIdentifiers: [], options: []))
-        set.insert(UNNotificationCategory(identifier: backCategory,
-                                          actions: [UNNotificationAction(identifier: action, title: "Switch back", options: [.foreground]),
-                                                    UNNotificationAction(identifier: stay, title: "Stay", options: [])],
-                                          intentIdentifiers: [], options: []))
+        let ours = Set(categories().map(\.identifier))
+        var set = current().filter { !$0.identifier.hasPrefix("switch.") && !ours.contains($0.identifier) }
+        categories().forEach { set.insert($0) }
         center.setNotificationCategories(set)
-        let wanted = back ? backCategory : category
+        let wanted = wanting ?? (back ? backCategory : category)
         let deadline = Date().addingTimeInterval(2)
         while Date() < deadline, !current().contains(where: { $0.identifier == wanted }) { usleep(100_000) }
         return wanted

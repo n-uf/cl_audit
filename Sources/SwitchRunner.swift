@@ -35,6 +35,9 @@ final class SwitchRunner: ObservableObject {
     @Published private(set) var note: String?            // a word under the steps (signed in as another account, …)
     @Published private(set) var sidebarOpened = false     // the session that arranges the sidebar was opened
     @Published private(set) var sidebarMissed = false     // the link didn't reach the window (the page marks step 5)
+    /// The link reached the window (or was opened as the only Claude window): the session is there, waiting for Return.
+    /// Only then does the waiting alert (SwitchWaiting.swift) ask for it.
+    @Published private(set) var sidebarLinkSent = false
     /// Before the switch: the account it leaves signed in once to a folder of its own (so its limits keep showing), or
     /// skipped.
     @Published private(set) var ownFolder: OwnFolder = .idle
@@ -74,6 +77,9 @@ final class SwitchRunner: ObservableObject {
         default: return false
         }
     }
+
+    /// How many steps this switch has: the sidebar's is the fifth (the sessions move and there's a Claude window to arrange).
+    var stepCount: Int { moveSessions == true && entry?.claudeWindow == true ? 5 : 4 }
 
     private func fail(_ why: String, step: Int?) { failedStep = step; undoStopped = false; phase = .failed(why) }
     /// Undo itself stopped part way (the receipt keeps the rest for another try).
@@ -144,7 +150,7 @@ final class SwitchRunner: ObservableObject {
         // the sessions question has no default: the page's key waits for an answer
         guard let follow = moveSessions else { note = "Choose first: move the sessions, or leave them."; return }
         note = nil; failedStep = nil; codeSeen = nil; windowSeen = nil; codeOnTarget = nil; windowOnTarget = nil
-        sidebarOpened = false; sidebarMissed = false; undoStopped = false
+        sidebarOpened = false; sidebarMissed = false; sidebarLinkSent = false; undoStopped = false
         reopenTimer?.invalidate(); reopenTimer = nil
         targetSnapshot = s
         // a switch that stopped half way is put back first: never a second move on top of it
@@ -277,7 +283,7 @@ final class SwitchRunner: ObservableObject {
     /// only when no other Claude window runs; otherwise nothing opens and the page says what to do.
     func arrangeSidebar() {
         guard let plan = sidebarPlan, let e = entry, let url = plan.link(folder: SidebarPlan.helperFolder) else { return }
-        sidebarOpened = true; sidebarMissed = false
+        sidebarOpened = true; sidebarMissed = false; sidebarLinkSent = false
         note = nil
         Launcher.openClaude(Account(e))
         let started = Date()
@@ -309,9 +315,10 @@ final class SwitchRunner: ObservableObject {
         }()
         switch outcome {
         case .sent:
-            break
+            sidebarLinkSent = true
         case .notAllowed where stillAlone:
             NSWorkspace.shared.open(url)                  // the only Claude window: the link can't reach another
+            sidebarLinkSent = true
         case _ where entry.map({ Self.windowApps($0).contains { $0.processIdentifier == pid } }) != true:
             sidebarOpened = false; sidebarMissed = true   // never `open` then: it could start another account's window
             note = "\(name)'s window quit before the link reached it. Open the window, then Open the session."
@@ -381,8 +388,9 @@ final class SwitchRunner: ObservableObject {
     /// Renders only: the page as it looks at a step.
     func preview(_ p: Phase, receipt r: SwitchReceipt? = nil, note n: String? = nil, sidebarOpened o: Bool = false,
                  moves: Bool? = nil, failedStep f: Int? = nil, codeSeen c: String? = nil, windowSeen w: String? = nil,
-                 sidebarMissed m: Bool = false, undoStopped u: Bool = false, codeOn: Bool? = nil, windowOn: Bool? = nil) {
-        phase = p; receipt = r; note = n; sidebarOpened = o
+                 sidebarMissed m: Bool = false, undoStopped u: Bool = false, codeOn: Bool? = nil, windowOn: Bool? = nil,
+                 linkSent: Bool = false) {
+        phase = p; receipt = r; note = n; sidebarOpened = o; sidebarLinkSent = linkSent
         moveSessions = moves; failedStep = f; codeSeen = c; windowSeen = w; sidebarMissed = m; undoStopped = u
         codeOnTarget = codeOn; windowOnTarget = windowOn
     }

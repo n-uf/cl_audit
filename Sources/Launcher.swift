@@ -1233,6 +1233,33 @@ final class ManagerUI {
         model.reload()
     }
 
+    // MARK: "the switch is waiting for you" (SwitchWaiting.swift)
+
+    private let switchWatch = SwitchWaitWatch()
+    private var switchWatchTimer: Timer?
+
+    /// Looks at the running switch every second or two, for as long as cl_audit runs.
+    func watchSwitch() {
+        guard switchWatchTimer == nil else { return }
+        // in the common modes, so it keeps looking while a menu is open
+        let t = Timer(timeInterval: 1.5, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.switchWatch.tick(running: self.settings.waitingSwitches, front: { self.switchPageInFront($0) })
+        }
+        RunLoop.main.add(t, forMode: .common)
+        switchWatchTimer = t
+    }
+
+    /// The Switch page of this switch is what the operator is looking at: cl_audit's window is the key window, on Settings,
+    /// with that switch's page selected.
+    func switchPageInFront(_ key: String) -> Bool {
+        guard let w = mainWindow, w.isKeyWindow, w.isVisible, !w.isMiniaturized else { return false }
+        return nav.page == .settings && settings.selection == SettingsModel.switchID && settings.switching == key
+    }
+
+    /// The alert's Cancel switch.
+    func cancelWaitingSwitch(_ key: String) { settings.cancelWaitingSwitch(key) }
+
     /// The Switch page (Switch.swift) for "<profile>~<standby account>", in Settings.
     func showSwitch(_ key: String) {
         let profile = SwitchOffer.parse(key)?.profile
@@ -1243,6 +1270,7 @@ final class ManagerUI {
 
     func showMain(page: MainPage = .dashboard, account: String? = nil) {
         closePalette()
+        watchSwitch()           // a switch is only ever started from the window: from now on its alert is watched
         model.reload()
         wireFilter()
         // The switch's own handler would pick the Dashboard tile; skip it once (only an open window runs it).
