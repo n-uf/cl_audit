@@ -213,18 +213,32 @@ struct SwitchPage: View {
         } content: { limits(st, e) }
     }
 
+    /// Text in an account box, coloured by the face the box sets for its content (a selected box is dark glass on every
+    /// face): read here from the environment, never taken from the page's own.
+    private struct BoxText: View {
+        enum Role { case title, softTitle, note }
+        let text: String
+        let role: Role
+        @Environment(\.face) private var face
+        var body: some View {
+            switch role {
+            case .title: Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
+            case .softTitle: Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(face.soft).lineLimit(1).truncationMode(.tail).settingsEmail()
+            case .note: Text(text).font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
     private func standbyBox(_ s: StandbyAccount, selected: Bool) -> some View {
         let st = Store.status(for: entry, standby: s)
         let pickable = runner.phase == .ready && runner.receipt == nil && !selected && AccountSettings.canSwitch(s)
         let backWords = selected && back != nil && !switched ? " · back" : ""
         return AccountBox(lamp: nil, badge: "Standby", detail: detail(st, s.configDir) + backWords,
                           unlit: !selected, selected: selected, litBadge: switched ? nil : "Switching to") {
-            Text(Privacy.masked(s.email)).font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(selected ? face.text : face.soft).lineLimit(1).truncationMode(.tail).settingsEmail()
+            BoxText(text: Privacy.masked(s.email), role: selected ? .title : .softTitle)
         } content: {
             if s.configDir == nil {
-                Text("Limits unknown: no sign-in kept for it. You sign in during the switch anyway.")
-                    .font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                BoxText(text: "Limits unknown: no sign-in kept for it. You sign in during the switch anyway.", role: .note)
             } else {
                 limits(st, entry.readerEntry(for: s) ?? entry)
             }
@@ -256,12 +270,11 @@ struct SwitchPage: View {
         let row = AccountRow(entry: e, status: st)
         if let reset = Self.resetSinceRead(st) {
             // read while full, and its reset time has passed since: those bars would be old (SwitchBack.swift)
-            Text("Its \(reset.week ? "week" : "5-hour limit") started again at \(TimeWords.when(reset.at)); cl_audit hasn't read it since.")
-                .font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+            BoxText(text: "Its \(reset.week ? "week" : "5-hour limit") started again at \(TimeWords.when(reset.at)); cl_audit hasn't read it since.", role: .note)
         } else if row.limits.contains(where: { $0.p != nil }) {
             CardLimits(limits: row.limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits, fullBox: false)
         } else {
-            Text("No numbers yet.").font(.system(size: 11.5)).foregroundStyle(face.muted)
+            BoxText(text: "No numbers yet.", role: .note)
         }
     }
 

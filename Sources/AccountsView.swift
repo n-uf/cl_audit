@@ -23,9 +23,12 @@ struct AccountBox<Header: View, Content: View>: View {
     var compact = false
     @ViewBuilder var header: () -> Header
     @ViewBuilder var content: () -> Content
-    @Environment(\.face) private var face
+    @Environment(\.face) private var outer
+    @Environment(\.colorScheme) private var scheme
 
     var body: some View {
+        // a picked box is dark glass on every face: what it holds is printed with the dark face, as on Std
+        let face = selected && outer.light ? Face.std.theme : outer
         VStack(alignment: .leading, spacing: compact ? 6 : 8) {
             HStack(alignment: compact ? .center : .top, spacing: 8) {
                 LED(color: selected ? FaceTheme.mint : (lamp ?? .clear), lit: selected || lamp != nil).padding(.top, compact ? 0 : 5)
@@ -44,8 +47,8 @@ struct AccountBox<Header: View, Content: View>: View {
             }
             content().opacity(unlit && dimsContent ? 0.6 : 1)
         }
-        // a selected row is always dark glass (below): on the light face its print is the dark faces' too
-        .environment(\.face, selected && face.light ? Face.std.theme : face)
+        .environment(\.face, face)
+        .environment(\.colorScheme, selected && outer.light ? .dark : scheme)    // the bars' own labels follow it
         .padding(.horizontal, compact ? 10 : 11).padding(.top, compact ? 7 : 9).padding(.bottom, compact ? 8 : 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
