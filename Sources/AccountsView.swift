@@ -9,6 +9,16 @@ struct AccountBox<Header: View, Content: View>: View {
     var badge: String
     var badgeTone: DisplayWindow.Tone = .normal
     var detail: String?                 // "Ultra · Personal"
+    /// Only the account in use is lit: every other one is unlit (recessed, lamp off, its levels in their own colours
+    /// but dimmed).
+    var unlit = false
+    /// Unlit, its levels dim; off for a box whose content is a warning or a key, which keep full strength.
+    var dimsContent = true
+    /// Picked (to switch to): its row lights in mint across the panel, with a lit bar, a mint lamp and a lit display
+    /// in the badge's place (`litBadge`: "Switch account" as a key, or "Switching to").
+    var selected = false
+    var litBadge: String? = nil
+    var litAction: (() -> Void)? = nil
     @ViewBuilder var header: () -> Header
     @ViewBuilder var content: () -> Content
     @Environment(\.face) private var face
@@ -16,7 +26,7 @@ struct AccountBox<Header: View, Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top, spacing: 8) {
-                LED(color: lamp ?? .clear, lit: lamp != nil).padding(.top, 5)
+                LED(color: selected ? FaceTheme.mint : (lamp ?? .clear), lit: selected || lamp != nil).padding(.top, 5)
                 VStack(alignment: .leading, spacing: 2) {
                     header()
                     if let detail, !detail.isEmpty {
@@ -24,13 +34,26 @@ struct AccountBox<Header: View, Content: View>: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                DisplayWindow(text: badge, tone: badgeTone, height: 18, size: 9).padding(.top, 1)
+                if selected, let litBadge {
+                    LitDisplay(text: litBadge, action: litAction).padding(.top, 1)
+                } else {
+                    DisplayWindow(text: badge, tone: badgeTone, height: 18, size: 9).padding(.top, 1)
+                }
             }
-            content()
+            content().opacity(unlit && dimsContent ? 0.6 : 1)
         }
         .padding(.horizontal, 11).padding(.top, 9).padding(.bottom, 10)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(WellShape(well: face.win, radius: 8))
+        .background {
+            if selected {
+                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.hex(0x141518))
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(FaceTheme.mint.opacity(0.22), lineWidth: 1))
+            } else {
+                WellShape(well: face.win, radius: 8)
+                    .overlay { if unlit { RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(face.light ? 0.06 : 0.24)) } }
+            }
+        }
+        .mintRow(selected)
     }
 }
 
