@@ -452,8 +452,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return short
         }
         let m = NSMenu(); m.autoenablesItems = false
-        m.addItem(info("Claude \(account.name)" + (plan.map { " · \(Account.planWords($0))" } ?? "")))
+        // the account in use, with a lit lamp: "Claude Main · ultra-1 in use" (SwitchMenu.swift)
+        let top = info(SwitchMenu.dockTitle(name: account.name, entry, plan: plan.map(Account.planWords)))
+        if SwitchMenu.inUseShort(entry) != nil { top.image = SwitchMenu.lamp() }
+        m.addItem(top)
         m.addItem(.separator())
+        // the profile's other accounts (Accounts.swift): Switch account › with every standby account and its week; while a
+        // limit is full, the best one with room also right under the full line; one that is back has its own Switch back
+        // to … (SwitchBack.swift). Each opens cl_audit's Switch page with that account picked
+        let backs = entry.backOffers()
+        let lines = SwitchMenu.lines(entry)
         // while a limit is full, both times first: "5-hour full · back at 15:28, in 1h 42m"
         if let full = AtLimit.blocker(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
                                       weekly: usage?.weekly, weeklyResets: usage?.weeklyResets) {
@@ -461,6 +469,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             i.attributedTitle = NSAttributedString(string: i.title, attributes: [
                 .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: NSColor.systemRed])
             m.addItem(i)
+            if let best = SwitchMenu.best(lines, backs: backs) {
+                m.addItem(SwitchMenu.bestItem(best, target: self, action: #selector(switchAccount(_:))))
+            }
         }
         func line(_ title: String, _ p: Double?, _ r: Date?) {
             m.addItem(info("\(title): \(Painter.pct(p))" + (r.map { " · resets \(Self.when($0))" } ?? "")))
@@ -497,30 +508,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         func add(_ title: String, _ action: Selector, enabled: Bool = true) {
             let i = NSMenuItem(title: title, action: action, keyEquivalent: ""); i.target = self; i.isEnabled = enabled; m.addItem(i)
         }
+        let switches = SwitchMenu.group(entry, backs: backs, lines: lines, inUseUsed: usage?.weekly ?? usage?.fiveHour,
+                                        inUseWeek: usage?.weekly != nil, target: self, action: #selector(switchAccount(_:)))
+        if !switches.isEmpty {
+            switches.forEach(m.addItem)
+            m.addItem(.separator())
+        }
         if entry.claudeWindow {
             add(claudeOpen ? "Show Claude window" : "Open Claude window", #selector(openClaude))
             if claudeOpen { add("Quit Claude window", #selector(quitClaudeWindow)) }
         }
         add("Refresh now", #selector(refreshNow))
         if expired { add(renewing ? "Renewing login…" : "Renew login now (uses a little usage)", #selector(renewLogin), enabled: !renewing) }
-        // the profile's other accounts (Accounts.swift): each opens cl_audit's Switch page; one that is back first, as
-        // Switch back to … (SwitchBack.swift)
-        let backs = entry.backOffers()
-        let offers = entry.switchOffers().filter { o in !backs.contains { $0.key == o.key } }
-        if !offers.isEmpty || !backs.isEmpty {
-            m.addItem(.separator())
-            for b in backs {
-                let i = NSMenuItem(title: b.title, action: #selector(switchAccount(_:)), keyEquivalent: "")
-                i.target = self; i.representedObject = b.key; i.toolTip = b.words
-                m.addItem(i)
-            }
-            for o in offers {
-                let i = NSMenuItem(title: "Switch to \(o.short)…", action: #selector(switchAccount(_:)), keyEquivalent: "")
-                i.target = self; i.representedObject = o.key
-                if let used = o.used { i.toolTip = "\(o.short): \(Int(used.rounded()))% used" }
-                m.addItem(i)
-            }
-        }
         m.addItem(.separator())
         add("Dashboard", #selector(showDashboard))
         add("Profile settings…", #selector(showSettings))
