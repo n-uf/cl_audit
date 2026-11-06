@@ -1467,13 +1467,13 @@ struct AccountSettings: View {
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) {
                         selectArea(s, canSwitch, selected) {
-                            Text(why).font(.system(size: 11.5)).foregroundStyle(thereOwner != nil ? face.danger : face.caution).lineLimit(1)
+                            BoxNote(text: why, tone: thereOwner != nil ? .danger : .caution).lineLimit(1)
                         }
                         if needsKey { standbySignInKey(s) }
                     }
                     VStack(alignment: .leading, spacing: 6) {
                         selectArea(s, canSwitch, selected) {
-                            Text(why).font(.system(size: 11.5)).foregroundStyle(thereOwner != nil ? face.danger : face.caution)
+                            BoxNote(text: why, tone: thereOwner != nil ? .danger : .caution)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                         if needsKey { standbySignInKey(s) }
@@ -1484,8 +1484,8 @@ struct AccountSettings: View {
                     VStack(alignment: .leading, spacing: 8) {
                         limitsOrWhy(st, entry: entry.readerEntry(for: s) ?? entry, none: nil)
                         // unlike the account in use (Renew sign-in, opt-in), a standby account's sign-in is always renewed
-                        Text("Its sign-in renews by itself, so its limits stay current.")
-                            .font(.system(size: 10.5)).foregroundStyle(face.muted).lineLimit(1).minimumScaleFactor(0.9)
+                        BoxNote(text: "Its sign-in renews by itself, so its limits stay current.", size: 10.5)
+                            .lineLimit(1).minimumScaleFactor(0.9)
                     }
                 }
             }
@@ -1526,8 +1526,8 @@ struct AccountSettings: View {
         if row.limits.contains(where: { $0.p != nil }) {
             CardLimits(limits: row.limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits)
         } else {
-            Text(none ?? st?.problem ?? "No numbers yet: the agent reads them within a few minutes.")
-                .font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+            BoxNote(text: none ?? st?.problem ?? "No numbers yet: the agent reads them within a few minutes.")
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 

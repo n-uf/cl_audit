@@ -19,14 +19,16 @@ struct AccountBox<Header: View, Content: View>: View {
     var selected = false
     var litBadge: String? = nil
     var litAction: (() -> Void)? = nil
+    /// A tray on the dashboard card: tighter, its head on one line (lamp, address, display) centred.
+    var compact = false
     @ViewBuilder var header: () -> Header
     @ViewBuilder var content: () -> Content
     @Environment(\.face) private var face
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 8) {
-                LED(color: selected ? FaceTheme.mint : (lamp ?? .clear), lit: selected || lamp != nil).padding(.top, 5)
+        VStack(alignment: .leading, spacing: compact ? 6 : 8) {
+            HStack(alignment: compact ? .center : .top, spacing: 8) {
+                LED(color: selected ? FaceTheme.mint : (lamp ?? .clear), lit: selected || lamp != nil).padding(.top, compact ? 0 : 5)
                 VStack(alignment: .leading, spacing: 2) {
                     header()
                     if let detail, !detail.isEmpty {
@@ -35,14 +37,16 @@ struct AccountBox<Header: View, Content: View>: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if selected, let litBadge {
-                    LitDisplay(text: litBadge, action: litAction).padding(.top, 1)
+                    LitDisplay(text: litBadge, action: litAction).padding(.top, compact ? 0 : 1)
                 } else {
-                    DisplayWindow(text: badge, tone: badgeTone, height: 18, size: 9).padding(.top, 1)
+                    DisplayWindow(text: badge, tone: badgeTone, height: 18, size: 9).padding(.top, compact ? 0 : 1)
                 }
             }
             content().opacity(unlit && dimsContent ? 0.6 : 1)
         }
-        .padding(.horizontal, 11).padding(.top, 9).padding(.bottom, 10)
+        // a selected row is always dark glass (below): on the light face its print is the dark faces' too
+        .environment(\.face, selected && face.light ? Face.std.theme : face)
+        .padding(.horizontal, compact ? 10 : 11).padding(.top, compact ? 7 : 9).padding(.bottom, compact ? 8 : 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             if selected {
@@ -54,6 +58,20 @@ struct AccountBox<Header: View, Content: View>: View {
             }
         }
         .mintRow(selected)
+    }
+}
+
+/// A line of text inside an account box. It reads the face from the environment inside the box, not from the caller: a
+/// selected row is dark glass whatever the face, and AccountBox gives what is inside it the dark faces' print then.
+struct BoxNote: View {
+    enum Tone { case muted, caution, danger }
+    let text: String
+    var size: CGFloat = 11.5
+    var tone: Tone = .muted
+    @Environment(\.face) private var face
+
+    var body: some View {
+        Text(text).font(.system(size: size)).foregroundStyle(tone == .danger ? face.danger : tone == .caution ? face.caution : face.muted)
     }
 }
 
