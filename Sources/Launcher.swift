@@ -910,6 +910,8 @@ struct CardGrid: Layout {
 struct AccountCard: View {
     let row: AccountRow
     let actions: LauncherActions
+    /// Renders only: the standby tray clicked at the start.
+    var pickedForRender: String? = nil
     @ObservedObject private var prefs = DashboardPrefs.shared
     @Environment(\.face) private var face
 
@@ -942,18 +944,16 @@ struct AccountCard: View {
             ProfileControls(row: row, actions: actions)
             // one style for every card on the dashboard (Settings ▸ General); each profile's panel design is for its panels
             // while a limit is full: the limits on the left and one box with when it's back (AtLimit.swift)
-            // a full limit and another of the profile's accounts with room: "Switch to ultra-2…" under the box
-            // (its standby accounts read once per drawing: the best one with room is the first of them)
-            let offers = row.entry.switchOffers()
+            // only the account in use is lit; the profile's standby accounts sit in unlit trays under its limits, most
+            // room first (read once per drawing). While a limit is full the one with the most room is selected already,
+            // and its Switch account key opens the Switch page (SwitchView.swift)
+            let trays = row.entry.cardTrays()
             // a standby account that is back has its own row with Switch back (SwitchBack.swift), not a second offer
             let backs = row.entry.backOffers()
-            CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits,
-                       offer: offers.first(where: { o in o.room && !backs.contains { $0.key == o.key } }).map { CardOffer($0, open: actions.switchAccount) })
-            // its standby accounts' limits, small (Accounts.swift)
-            ForEach(offers, id: \.key) { o in
-                if let e = row.entry.readerEntry(for: o.standby), o.status?.weekly != nil || o.status?.fiveHour != nil {
-                    StandbyLimits(email: o.standby.email, limits: AccountRow(entry: e, status: o.status).limits, design: prefs.cardStyle)
-                }
+            CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits)
+            if !trays.isEmpty {
+                StandbyTrays(limits: row.limits, trays: trays, best: row.entry.cardBest(trays, backs: backs),
+                             design: prefs.cardStyle, open: actions.switchAccount, picked: pickedForRender)
             }
             ForEach(backs) { b in BackOfferRow(offer: b, open: actions.switchAccount) }
           }

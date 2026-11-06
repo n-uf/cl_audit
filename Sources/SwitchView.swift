@@ -95,37 +95,6 @@ extension SwitchAlert {
     }
 }
 
-/// What a dashboard card offers while a limit is full: "ultra-2: week 8% used" and "Switch to ultra-2…".
-struct CardOffer {
-    let text: String
-    let key: String
-    let action: () -> Void
-
-    init(_ o: SwitchOffer, open: @escaping (String) -> Void) {
-        text = o.usedWords; key = "Switch to \(o.short)…"
-        let k = o.key
-        action = { open(k) }
-    }
-}
-
-struct CardOfferRow: View {
-    let offer: CardOffer
-    @Environment(\.face) private var face
-
-    // the key alone: the account's own limits are just below, in its Standby block
-    var body: some View {
-        HStack(spacing: 8) {
-            Spacer(minLength: 0)
-            key
-        }
-        .help(offer.text)
-    }
-
-    private var key: some View {
-        Button(offer.key, action: offer.action).buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
-    }
-}
-
 /// A standby account that is back, on its profile's dashboard card (SwitchBack.swift): "ultra-1 is back: its week
 /// starts again", Stay, and Switch back to ultra-1….
 struct BackOfferRow: View {
@@ -242,24 +211,115 @@ struct TileDisplayGlass: View {
     }
 }
 
-/// A standby account's limits on its profile's dashboard card, small: "Standby · ultra-1@example.com", then a row
-/// per limit (name, bar, percentage, "in 3 days" or, full, when it's back).
-struct StandbyLimits: View {
-    let email: String
+/// One standby account on the dashboard card: its offer (Switch.swift) and its limits as the card draws them.
+struct CardTray: Identifiable {
+    let offer: SwitchOffer
     let limits: [Limit]
+    var id: String { offer.key }
+}
+
+extension AccountEntry {
+    /// The standby accounts the card shows, as trays, most room first (SwitchOffer order): those with a kept sign-in and
+    /// numbers. One with no numbers stays off the card. A tray shows the 5-hour and weekly rows (a plan without a 5-hour
+    /// limit, just the week); a model's own limit is on the Switch page and in Settings.
+    func cardTrays(status: (String) -> IconStatus? = Store.status, now: Date = Date()) -> [CardTray] {
+        switchOffers(status: status, now: now).compactMap { o in
+            guard o.status?.weekly != nil || o.status?.fiveHour != nil, let e = readerEntry(for: o.standby) else { return nil }
+            let all = AccountRow(entry: e, status: o.status).limits
+            let main = all.filter { $0.id == "5h" || $0.id == "wk" }
+            return CardTray(offer: o, limits: main.isEmpty ? all : main)
+        }
+    }
+
+    /// The one preselected while a limit is full: the tray with the most room that can be switched to, unless it is back and
+    /// has its own row with Switch back (SwitchBack.swift).
+    func cardBest(_ trays: [CardTray], backs: [BackOffer]) -> String? {
+        trays.first { t in t.offer.room && AccountSettings.canSwitch(t.offer.standby) && !backs.contains { $0.key == t.offer.key } }?.id
+    }
+}
+
+/// Which tray on the card is selected. While a limit is full the one with the most room is selected already, and a click
+/// picks another instead (never deselects). With room left nothing is selected: a click selects, a second click on the
+/// same tray deselects, as in Settings.
+enum TrayPick {
+    static func selected(picked: String?, full: Bool, best: String?, keys: [String]) -> String? {
+        if let p = picked, keys.contains(p) { return p }
+        return full ? best.flatMap { keys.contains($0) ? $0 : nil } : nil
+    }
+
+    /// The pick after a click on `key`, given what is selected now.
+    static func tapped(_ key: String, selected: String?, full: Bool) -> String? {
+        full ? key : (selected == key ? nil : key)
+    }
+}
+
+/// A profile's standby accounts on its dashboard card: unlit trays under the limits, their levels dimmed. Only the account
+/// in use is lit. The selected tray lights mint across the card (the lit bar), and its Standby display becomes the lit
+/// Switch account key, which opens the Switch page with that account picked.
+struct StandbyTrays: View {
+    let limits: [Limit]                 // the account in use's: whether one is full
+    let trays: [CardTray]
+    let best: String?                   // preselected while a limit is full
     let design: PanelDesign
+    let open: (String) -> Void
+    @State private var picked: String?
     @Environment(\.face) private var face
+
+    /// `picked`: the tray clicked at the start (renders only).
+    init(limits: [Limit], trays: [CardTray], best: String?, design: PanelDesign, open: @escaping (String) -> Void, picked: String? = nil) {
+        self.limits = limits; self.trays = trays; self.best = best; self.design = design; self.open = open
+        _picked = State(initialValue: picked)
+    }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 15)) { ctx in
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(spacing: 4) {
-                    Text("Standby ·").foregroundStyle(face.muted)
-                    Text(Privacy.masked(email)).foregroundStyle(face.soft).lineLimit(1).truncationMode(.tail).hidesEmail()
-                }
-                .font(.system(size: 11.5))
-                ForEach(limits) { l in row(l, now: ctx.date) }
+            let full = AtLimit.blocker(limits, now: ctx.date) != nil
+            let sel = TrayPick.selected(picked: picked, full: full, best: best, keys: trays.filter { AccountSettings.canSwitch($0.offer.standby) }.map(\.id))
+            VStack(spacing: 9) {
+                ForEach(trays) { t in tray(t, selected: sel == t.id, full: full, selection: sel, now: ctx.date) }
             }
+            // a pick belongs to the state it was made in: a full limit that resets starts over
+            .onChange(of: full) { _ in picked = nil }
+        }
+    }
+
+    private func tray(_ t: CardTray, selected: Bool, full: Bool, selection: String?, now: Date) -> some View {
+        let key = t.offer.key
+        let can = AccountSettings.canSwitch(t.offer.standby)       // an account not linked yet can't be selected
+        let help = !can ? "" : selected ? (full ? "Click another account to pick it instead" : "Click to deselect")
+                                        : "Click to select, then Switch account"
+        // a click on the address or the limits selects; the lit key (and the Standby display) stay outside the click area, so
+        // the key never selects or deselects, as in Settings
+        return AccountBox(lamp: nil, badge: "Standby", detail: nil, unlit: !selected, dimsContent: true,
+                          selected: selected, litBadge: "Switch account", litAction: { open(key) }, compact: true) {
+            Text(Privacy.masked(t.offer.standby.email)).font(.system(size: 12.5, weight: .semibold))
+                .foregroundStyle(selected ? (face.light ? Face.std.theme.text : face.text) : face.soft)
+                .lineLimit(1).truncationMode(.tail).hidesEmail()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { if can { picked = TrayPick.tapped(key, selected: selection, full: full) } }
+                .help(help)
+        } content: {
+            TrayRows(limits: t.limits, design: design, now: now)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .onTapGesture { if can { picked = TrayPick.tapped(key, selected: selection, full: full) } }
+                .help(help)
+        }
+    }
+}
+
+/// A standby account's limits in its tray, small: a row per limit (name, bar, percentage, "in 3 days" or, full, when it's
+/// back).
+struct TrayRows: View {
+    let limits: [Limit]
+    let design: PanelDesign
+    var now: Date
+    @Environment(\.face) private var face
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            ForEach(limits) { l in row(l, now: now) }
         }
     }
 
