@@ -18,6 +18,9 @@ struct SwitchPage: View {
     @State private var asks = true                      // the helper session will ask before each move (step 5)
     @State private var unfinished: [SwitchReceipt] = [] // this profile's switches that stopped half way
     @State private var back: BackWatch.Back?             // the account to switch to is back (SwitchBack.swift)
+    @State private var kept: SessionsBackup.Kept?        // what a backup would take (nil: still counting)
+    @State private var made: SessionsBackup.Manifest?    // the backup this switch's receipt names
+    @ObservedObject private var backups = BackupPrefs.shared
     @Environment(\.face) private var face
 
     private var name: String { entry.name.isEmpty ? "this profile" : entry.name }
@@ -43,10 +46,12 @@ struct SwitchPage: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
             if let t = topLine { topBar(t) }
+            // the Backup card shows when "Move to …" is the answer: the sessions are backed up first
             SettingsColumns(width: width, groups: [[AnyView(accountsCard), AnyView(staysCard)],
-                                                  [AnyView(sessionsCard), AnyView(stepsCard)]])
+                                                  [AnyView(sessionsCard)] + (moves ? [AnyView(backupCard)] : []) + [AnyView(stepsCard)]])
         }
         .task(id: entry.id + standby.id) { await count() }
+        .task(id: (runner.backupRef.map { $0.id + $0.place } ?? "")) { await loadMade() }
     }
 
     private var title: String {
@@ -71,6 +76,21 @@ struct SwitchPage: View {
         asks = a
         let id = e.id, key = AccountEntry.standbyStatusID(e.id, standby.id)
         (unfinished, back) = await Task.detached(priority: .utility) { (SwitchEngine.unfinished(profile: id), BackWatch.load(key)) }.value
+        // what the backup would take (shown at once from the last count, counted again meanwhile)
+        let source = SessionsBackup.Source(e)
+        kept = SessionsBackup.KeptCache.get(id)
+        let k = await Task.detached(priority: .utility) { SessionsBackup.kept(source) }.value
+        SessionsBackup.KeptCache.set(id, k)
+        kept = k
+    }
+
+    /// The backup the receipt names, read from the backups folder.
+    private func loadMade() async {
+        guard let ref = runner.backupRef else { made = nil; return }
+        let profile = entry.id
+        made = await Task.detached(priority: .utility) {
+            SessionsBackup.load(profile: profile, id: ref.id, place: URL(fileURLWithPath: ref.place))
+        }.value
     }
 
     /// A switch of this profile that stopped half way (this one, or one from before), with what it moved: Undo first.
@@ -342,7 +362,56 @@ struct SwitchPage: View {
     }
 
     private func choice(_ title: String, picked: Bool, _ action: @escaping () -> Void) -> some View {
-        Button(title, action: action).buttonStyle(PillButtonStyle(tint: picked ? FaceTheme.mint : nil, compact: true))
+        Button(title, action: action).buttonStyle(PillButtonStyle(tint: picked ? FaceTheme.mint : nil, compact: true)).fixedSize()
+    }
+
+    // MARK: the backup: made right after the window closes, before anything moves
+
+    private var backupCard: some View {
+        let placeWords = backups.placeWords
+        return SCard(title: "Backup", info: "A copy of what the switch is about to move, made on this Mac right after the window closes and before anything moves: the window's Code-tab list for both accounts with its scheduled tasks, its sidebar records and cl_audit's own, and, if you leave it on, Claude Code's transcripts. Clones: seconds, and they share space with the originals. If it can't be made, nothing moves. It's listed under \(name)'s Sessions in its settings.") {
+            if let ref = runner.backupRef {
+                SRow(label: "Made", first: true, stacked: true) { value(madeWords(ref)) }
+                SRowLine(text: "The switch's receipt names it, so Undo and the backup point at each other.")
+            } else if runner.phase == .moving {
+                SRow(label: "Making it", first: true, stacked: true) { value("Right now, before anything moves…") }
+            } else {
+                let editable = runner.phase == .ready || runner.phase == .cancelled
+                // stacked rows: the label above, the words the card's full width, at any column width
+                SRow(label: "When", first: true, stacked: true) { value("Every time the sessions move, as claude\u{2011}transplant keeps what it moves: right after the window closes, before anything moves") }
+                SRow(label: "What", stacked: true) { value("The window's Code-tab list for both accounts, scheduled tasks, its sidebar records; cl_audit's records") }
+                SRow(label: "Transcripts", stacked: true) {
+                    HStack(alignment: .top, spacing: 8) {
+                        Toggle("", isOn: $runner.backupTranscripts).smallSwitch().disabled(!editable)
+                        Text(transcriptWords).font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                SRow(label: "Takes", stacked: true) { value(takesWords) }
+                SRowLine(text: "Never in a backup: sign-ins, and the sidebar kept on claude.ai (the switch's own record puts that back). Kept in \(placeWords), listed under \(name)'s Sessions, until you delete it or it ages out.")
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    /// "Claude Code's too: 37 transcripts"
+    private var transcriptWords: String {
+        guard runner.backupTranscripts else { return "Not taken: they stay in Claude Code's folder" }
+        guard let n = kept?.transcripts else { return "Claude Code's too: counting…" }
+        return "Claude Code's too: \(n) \(n == 1 ? "transcript" : "transcripts")"
+    }
+
+    /// "Before switch to ultra-2 · 5 Nov 18:40 · 3 s"
+    private func madeWords(_ ref: SwitchRunner.BackupRef) -> String {
+        guard let m = made, m.id == ref.id else { return "it isn't in \(tilde(ref.place)) any more" }
+        return "\(SessionsBackup.title(m, target: to)) · \(SessionsBackup.secondsWords(m.seconds))"
+    }
+
+    private var takesWords: String {
+        let place = BackupPrefs.placeURL
+        let dir = entry.desktop == .standard ? expand(FolderKey.standardDataDir) : (Account(entry).claudeUserDataDir ?? expand("~"))
+        if SessionsBackup.sameVolume(place, as: dir) { return "A few seconds, as clones: they share space with the originals" }
+        let size = kept.map { SessionsBackup.sizeWords($0.bytes - (runner.backupTranscripts ? 0 : $0.transcriptBytes)) }
+        return "Longer: \(tilde(place.path)) is on another volume, so it's a full copy" + (size.map { " (\($0))" } ?? "")
     }
 
     // MARK: the steps: each one's state, each sign-in checked
@@ -386,9 +455,13 @@ struct SwitchPage: View {
         return SCard(title: "Steps", info: "What switching does, in order. Each step is checked before the next. A receipt in cl_audit's folder keeps what moved: until Claude Code has signed in, Cancel puts it back; after that the way back is a switch the other way.") {
             if keepsOwnFolderFirst { ownFolderStep.padding(.bottom, 6) }
             VStack(alignment: .leading, spacing: 0) {
-                step(1, state(1) == .done ? "\(w) closed" : "\(w) closes",
-                     runner.failedStep == 1 ? "It didn't close: it may be asking about work under way. Answer it, then try again. Nothing moved."
-                     : "Only that window, for about half a minute; your other Claude windows stay open.")
+                // the backup is made right after the window closes: step 1 says so once the receipt names it
+                step(1, runner.backupFailed ? "\(w) closed, backup not made"
+                        : state(1) == .done ? "\(w) closed\(moves && runner.backupRef != nil ? ", backup made" : "")" : "\(w) closes",
+                     runner.backupFailed ? "The backup couldn't be made, so nothing moved. Try again, or change where backups go in General ▸ Backups."
+                     : runner.failedStep == 1 ? "It didn't close: it may be asking about work under way. Answer it, then try again. Nothing moved."
+                     : "Only that window, for about half a minute; your other Claude windows stay open.",
+                     check: backupCheck)
                 step(2, sessionsTitle(movedCount), sessionsDetail)
                 step(3, "Claude Code signs in as \(to)", "Terminal and the browser; cl_audit checks it's \(to) before going on.",
                      check: codeCheck)
@@ -417,7 +490,7 @@ struct SwitchPage: View {
         case true?:
             if runner.failedStep == 2 { return "Stopped part way: what moved is set aside, not deleted. Undo puts it back." }
             if state(2) == .done { return "Set aside, not deleted: Cancel puts them back. Their groups and pins are noted for step 5." }
-            return "Same ids; nothing is copied. Their groups and pins are noted for step 5."
+            return "Same ids; nothing is deleted. Their groups and pins are noted for step 5."
         }
     }
 
@@ -426,6 +499,12 @@ struct SwitchPage: View {
             return "The window asked you to sign in again. Sign out there, then sign in as \(Privacy.masked(standby.email)); if the browser offers another account, switch it in the browser first. cl_audit waits here until the window is on \(to)."
         }
         return "The window asks you to sign in again; cl_audit checks it's \(to) before going on."
+    }
+
+    /// "Backup · 3 s ✓" once the receipt names a backup that is there.
+    private var backupCheck: (String, DisplayWindow.Tone)? {
+        guard moves, let ref = runner.backupRef, let m = made, m.id == ref.id else { return nil }
+        return ("Backup · \(SessionsBackup.secondsWords(m.seconds)) ✓", .ok)
     }
 
     /// What the Claude Code check saw: ✓ on the account switched to, amber on another (by account id, not the name).
