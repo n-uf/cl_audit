@@ -110,7 +110,10 @@ enum SwitchEngine {
 
     // MARK: the plan (read-only)
 
-    static func plan(_ e: AccountEntry, standby s: StandbyAccount, dataDir: String? = nil) -> Result<SwitchPlan, SwitchError> {
+    /// `follow`: the Switch page's answer to "Move them?" (asked every time); nil only for older callers (the profile's
+    /// old Sessions follow setting).
+    static func plan(_ e: AccountEntry, standby s: StandbyAccount, dataDir: String? = nil, follow: Bool? = nil) -> Result<SwitchPlan, SwitchError> {
+        let follow = follow ?? e.sessionsFollow
         guard let from = e.seat, from.organization != nil else { return .failure(.notReady("The account in use isn't linked yet.")) }
         guard let to = s.seat, to.organization != nil else { return .failure(.notReady("\(s.email) isn't linked yet: sign in to it first.")) }
         // the ids name folders: only real ids (never a path)
@@ -121,8 +124,8 @@ enum SwitchEngine {
         let dir = dataDir ?? (e.desktop == .standard ? expand(FolderKey.standardDataDir) : Account(e).claudeUserDataDir ?? "")
         guard !dir.isEmpty else { return .failure(.notReady("The profile's Claude window has no folder.")) }
         var p = SwitchPlan(profile: e.id, standby: s.id, dataDir: expand(dir), codeDir: Account(e).configDir, from: from, to: to,
-                           sessionsFollow: e.sessionsFollow)
-        guard e.sessionsFollow else { return .success(p) }
+                           sessionsFollow: follow)
+        guard follow else { return .success(p) }
         let fm = FileManager.default
         let names = ((try? fm.contentsOfDirectory(atPath: p.sourceDir)) ?? []).filter { $0.hasPrefix("local_") && $0.hasSuffix(".json") }.sorted()
         for n in names {
@@ -517,6 +520,12 @@ enum SwitchEngine {
     static func receipts(profile: String) -> [SwitchReceipt] {
         ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter { $0.hasSuffix("-\(profile)") }
             .compactMap(load).filter { $0.profile == profile }.sorted { $0.started > $1.started }
+    }
+
+    /// Every profile's switches, newest first.
+    static func receipts() -> [SwitchReceipt] {
+        ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter { !$0.hasPrefix(".") && !$0.hasSuffix(".json") }
+            .compactMap(load).sorted { $0.started > $1.started }
     }
 
     /// A profile's switches that moved something and were neither linked nor undone, newest first.

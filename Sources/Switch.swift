@@ -74,6 +74,15 @@ extension AccountEntry {
     }
 }
 
+extension SwitchOffer {
+    /// Every standby account of a profile, most room first (as switchOffers orders those with a kept sign-in), then
+    /// those whose limits are unknown (no sign-in kept for them), in the profile's order.
+    static func byRoom(_ e: AccountEntry, status: (String) -> IconStatus? = Store.status, now: Date = Date()) -> [StandbyAccount] {
+        let known = e.switchOffers(status: status, now: now).map(\.standby)
+        return known + e.standby.filter { s in !known.contains { $0.id == s.id } }
+    }
+}
+
 enum AccountNames {
     /// An account's short name: its address before the @ ("ultra-2"), the first letter only while addresses are hidden.
     static func short(_ email: String) -> String {
