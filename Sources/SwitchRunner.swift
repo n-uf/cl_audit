@@ -29,21 +29,55 @@ final class SwitchRunner: ObservableObject {
 
     let profile: String
     let standby: String
-    @Published private(set) var phase: Phase = .ready
+    /// Each change may end or start a switch that stopped half way: the tile beside the profile looks again at once.
+    @Published private(set) var phase: Phase = .ready { didSet { model?.forgetUnfinished() } }
     @Published private(set) var receipt: SwitchReceipt?
     @Published private(set) var note: String?            // a word under the steps (signed in as another account, …)
     @Published private(set) var sidebarOpened = false     // the session that arranges the sidebar was opened
+    @Published private(set) var sidebarMissed = false     // the link didn't reach the window (the page marks step 5)
     /// Before the switch: the account it leaves signed in once to a folder of its own (so its limits keep showing), or
     /// skipped.
     @Published private(set) var ownFolder: OwnFolder = .idle
     enum OwnFolder { case idle, signing, skipped }
+    /// The sessions question, asked every time with no answer chosen: move them to the account switched to (with a
+    /// backup), or leave them with each account. Fixed once the switch starts.
+    @Published var moveSessions: Bool?
+    /// The step that failed (1–5), shown red on the page; nil while nothing failed.
+    @Published private(set) var failedStep: Int?
+    /// What each sign-in check saw: Claude Code's folder and the window, as short names for the page (nil until seen),
+    /// and whether it's the account switched to (compared by account id: short names can be alike).
+    @Published private(set) var codeSeen: String?
+    @Published private(set) var windowSeen: String?
+    @Published private(set) var codeOnTarget: Bool?
+    @Published private(set) var windowOnTarget: Bool?
     private weak var model: SettingsModel?
     private var timer: Timer?
     private var started = Date()
+    /// The account switched to, as it was on standby: once linked it's no longer there, and its page keeps showing it
+    /// from this copy (each runner its own, so several profiles' pages never mix them up).
+    private(set) var targetSnapshot: StandbyAccount?
+    /// Watches the window after a Cancel while it was asked to quit (its own timer: the steps' timer is another's).
+    private var reopenTimer: Timer?
 
     init(profile: String, standby: String, model: SettingsModel) {
         self.profile = profile; self.standby = standby; self.model = model
+        targetSnapshot = model.accounts.first { $0.id == profile }?.standby.first { $0.id == standby }
     }
+
+    /// The account switched to, short ("ultra-2").
+    var targetShort: String? { (target?.email ?? targetSnapshot?.email).map(AccountNames.short) }
+
+    /// Between Close and switch and Done: the window is closed or waiting for a sign-in.
+    var isRunning: Bool {
+        switch phase {
+        case .closing, .moving, .codeSignIn, .windowSignIn, .sidebar: return true
+        default: return false
+        }
+    }
+
+    private func fail(_ why: String, step: Int?) { failedStep = step; undoStopped = false; phase = .failed(why) }
+    /// Undo itself stopped part way (the receipt keeps the rest for another try).
+    @Published private(set) var undoStopped = false
 
     var key: String { AccountEntry.standbyStatusID(profile, standby) }
     private var entry: AccountEntry? { model?.accounts.first { $0.id == profile } }
@@ -96,34 +130,47 @@ final class SwitchRunner: ObservableObject {
     /// Switch without it: the account it leaves shows its limits as last read ("hasn't been read since").
     func skipOwnFolder() { timer?.invalidate(); ownFolder = .skipped }
 
+    /// Another account picked on the page before it starts: the answers given so far go with it.
+    func carry(from other: SwitchRunner) {
+        guard phase == .ready, receipt == nil else { return }
+        moveSessions = other.moveSessions
+        if other.ownFolder == .skipped { ownFolder = .skipped }
+    }
+
     // MARK: going
 
     func start() {
-        guard phase == .ready || isFailed, let e = entry, let s = target, let w = window else { return }
-        note = nil
+        guard phase == .ready || isFailed || phase == .cancelled, let e = entry, let s = target, let w = window else { return }
+        // the sessions question has no default: the page's key waits for an answer
+        guard let follow = moveSessions else { note = "Choose first: move the sessions, or leave them."; return }
+        note = nil; failedStep = nil; codeSeen = nil; windowSeen = nil; codeOnTarget = nil; windowOnTarget = nil
+        sidebarOpened = false; sidebarMissed = false; undoStopped = false
+        reopenTimer?.invalidate(); reopenTimer = nil
+        targetSnapshot = s
         // a switch that stopped half way is put back first: never a second move on top of it
         guard SwitchEngine.unfinished(profile: profile).isEmpty else {
-            phase = .failed("An earlier switch of \(e.name) didn't finish: Undo it first."); return
+            fail("An earlier switch of \(e.name) didn't finish: Undo it first.", step: nil); return
         }
-        switch SwitchEngine.plan(e, standby: s) {
-        case .failure(let why): phase = .failed(why.description); return
+        switch SwitchEngine.plan(e, standby: s, follow: follow) {
+        case .failure(let why): fail(why.description, step: nil); return
         case .success: break
         }
         // the window stays closed from here until the profile is linked or the switch is undone; one switch at a time
         guard SwitchMarker.claim(w, profile: profile, standby: standby) else {
-            phase = .failed("Another switch of this Claude window is under way."); return
+            fail("Another switch of this Claude window is under way.", step: nil); return
         }
+        receipt = nil                                 // a cancelled run's receipt: this run writes its own
         let apps = Self.windowApps(e)
-        if apps.isEmpty { move() ; return }
+        if apps.isEmpty { move(follow: follow) ; return }
         phase = .closing
         apps.forEach { $0.terminate() }               // the window's own quit: it may ask about work under way
         started = Date()
         tick(every: 0.5) { [weak self] in
             guard let self, let e = self.entry else { return true }
-            if Self.windowClosed(e) { self.move(); return true }
+            if Self.windowClosed(e) { self.move(follow: follow); return true }
             if Date().timeIntervalSince(self.started) > 45 {
                 self.releaseWindow()
-                self.phase = .failed("The window didn't close; it may be asking about work under way. Answer it, then try again. Nothing moved.")
+                self.fail("The window didn't close; it may be asking about work under way. Answer it, then try again. Nothing moved.", step: 1)
                 return true
             }
             return false
@@ -132,10 +179,11 @@ final class SwitchRunner: ObservableObject {
 
     private var isFailed: Bool { if case .failed = phase { return true }; return false }
 
-    private func move() {
-        guard let e = entry, let s = target, case .success(let plan) = SwitchEngine.plan(e, standby: s) else {
+    /// `follow`: the sessions answer start() checked, never read again here.
+    private func move(follow: Bool) {
+        guard let e = entry, let s = target, case .success(let plan) = SwitchEngine.plan(e, standby: s, follow: follow) else {
             releaseWindow()
-            phase = .failed("The switch couldn't be planned again. Nothing moved."); return
+            fail("The switch couldn't be planned again. Nothing moved.", step: 2); return
         }
         phase = .moving
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -151,7 +199,7 @@ final class SwitchRunner: ObservableObject {
                     // stopped half way: its receipt, for Undo (the window stays closed until then); nothing moved: free
                     self.receipt = SwitchEngine.unfinished(profile: self.profile).first
                     if self.receipt == nil { self.releaseWindow() }
-                    self.phase = .failed("\(err)")
+                    self.fail("\(err)", step: 2)
                 }
             }
         }
@@ -167,7 +215,11 @@ final class SwitchRunner: ObservableObject {
         tick(every: 2) { [weak self] in
             guard let self, let e = self.entry, let s = self.target, let to = s.seat else { return true }
             guard let now = Account.signedInSeat(configDir: e.configDir) else { return false }
-            if now.same(to) { self.linked(); return true }
+            // checked against the account switched to before going on (set only when it changes: each change redraws)
+            let seen = now.email.map(AccountNames.short) ?? "another account", on = now.same(to)
+            if self.codeSeen != seen { self.codeSeen = seen }
+            if self.codeOnTarget != on { self.codeOnTarget = on }
+            if on { self.linked(); return true }
             if let from = e.seat, now.same(from) { return false }        // not yet
             self.note = "Claude Code signed in as \(Privacy.masked(now.email ?? "another account")), not \(Privacy.masked(s.email)): sign in again."
             return false
@@ -177,7 +229,7 @@ final class SwitchRunner: ObservableObject {
     /// Claude Code is on the new account: the profile works on it now, the old one stands by; the window opens again.
     private func linked() {
         guard let m = model, let before = entry, let out = FolderRules.completeSwitch(profile, to: standby, in: m.accounts) else {
-            phase = .failed("The profile couldn't be linked to the new account."); return
+            fail("The profile couldn't be linked to the new account.", step: 4); return
         }
         // each account keeps its own numbers: never the old account's under the new one's name; moved before the profile
         // is saved, so the agent's readers for the new arrangement start from them
@@ -194,6 +246,13 @@ final class SwitchRunner: ObservableObject {
         let to = e.seat?.account
         tick(every: 2) { [weak self] in
             guard let self, let e = self.entry else { return true }
+            // checked against the account switched to: the page waits until the window reports it
+            if e.claudeWindow, let seen = FolderRules.windowAccount(e) {
+                let known = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { $0.account == seen }
+                let name = known?.email.map(AccountNames.short) ?? "another account", on = seen == to
+                if self.windowSeen != name { self.windowSeen = name }
+                if self.windowOnTarget != on { self.windowOnTarget = on }
+            }
             guard !e.claudeWindow || FolderRules.windowAccount(e) == to else { return false }
             if e.claudeWindow, self.sidebarPlan != nil {
                 self.phase = .sidebar
@@ -218,7 +277,7 @@ final class SwitchRunner: ObservableObject {
     /// only when no other Claude window runs; otherwise nothing opens and the page says what to do.
     func arrangeSidebar() {
         guard let plan = sidebarPlan, let e = entry, let url = plan.link(folder: SidebarPlan.helperFolder) else { return }
-        sidebarOpened = true
+        sidebarOpened = true; sidebarMissed = false
         note = nil
         Launcher.openClaude(Account(e))
         let started = Date()
@@ -228,6 +287,7 @@ final class SwitchRunner: ObservableObject {
                 if Date().timeIntervalSince(started) < 20 { return false }
                 self.sidebarOpened = false
                 self.note = "The window didn't open. Open it, then Open the session."
+                self.sidebarMissed = true
                 return true
             }
             let alone = NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
@@ -253,13 +313,13 @@ final class SwitchRunner: ObservableObject {
         case .notAllowed where stillAlone:
             NSWorkspace.shared.open(url)                  // the only Claude window: the link can't reach another
         case _ where entry.map({ Self.windowApps($0).contains { $0.processIdentifier == pid } }) != true:
-            sidebarOpened = false                         // never `open` then: it could start another account's window
+            sidebarOpened = false; sidebarMissed = true   // never `open` then: it could start another account's window
             note = "\(name)'s window quit before the link reached it. Open the window, then Open the session."
         case .notAllowed:
-            sidebarOpened = false
+            sidebarOpened = false; sidebarMissed = true
             note = "cl_audit may not send the link to \(name)'s window, and other Claude windows are open, so nothing opened. Allow cl_audit to control Claude (System Settings ▸ Privacy & Security ▸ Automation), or quit the other Claude windows, then Open the session."
         case .failed(let code):
-            sidebarOpened = false
+            sidebarOpened = false; sidebarMissed = true
             note = "The link didn't reach \(name)'s window (\(code)). Open the session to try again."
         }
     }
@@ -267,8 +327,33 @@ final class SwitchRunner: ObservableObject {
     /// Cancel before Claude Code signed in: the sessions go back (the window is still closed then); nothing else changed.
     func cancel() {
         timer?.invalidate()
-        guard let r = receipt, r.linked == nil, phase == .codeSignIn || isFailed else { releaseWindow(); phase = .ready; return }
+        guard let r = receipt, r.linked == nil, phase == .codeSignIn || isFailed else {
+            let wasClosing = phase == .closing
+            releaseWindow(); phase = .ready
+            if wasClosing { reopenIfItCloses() }
+            return
+        }
         undoUnfinished(r.id)
+    }
+
+    /// Cancelled while the window was asked to quit: it may still close (its own question answered later). Then it
+    /// opens again, as it was before the switch; watched for a minute, or until another start.
+    private func reopenIfItCloses() {
+        guard let e = entry, e.claudeWindow else { return }
+        note = "Cancelled. The window was already asked to quit: if it closes, cl_audit opens it again."
+        let since = Date()
+        reopenTimer?.invalidate()
+        reopenTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] t in
+            let over: Bool = {
+                guard let self, self.phase == .ready, let e = self.entry else { return true }
+                if Self.windowClosed(e) { Launcher.openClaude(Account(e)); return true }
+                return Date().timeIntervalSince(since) > 60
+            }()
+            guard over else { return }
+            t.invalidate()
+            if self?.reopenTimer === t { self?.reopenTimer = nil }
+            if self?.note?.hasPrefix("Cancelled. The window was already asked") == true { self?.note = nil }
+        }
     }
 
     /// Undo of a switch that stopped half way or was cancelled (this one, or an earlier one the page found unfinished):
@@ -285,7 +370,8 @@ final class SwitchRunner: ObservableObject {
             phase = .cancelled
             if e.claudeWindow { Launcher.openClaude(Account(e)) }
         } catch {
-            phase = .failed("Undo didn't finish: \(error). The receipt is in cl_audit's folder (switches/\(id)).")
+            fail("Undo didn't finish: \(error). The receipt is in cl_audit's folder (switches/\(id)).", step: 2)
+            undoStopped = true
         }
     }
 
@@ -293,8 +379,12 @@ final class SwitchRunner: ObservableObject {
     func finish() { timer?.invalidate(); releaseWindow(); phase = .done }
 
     /// Renders only: the page as it looks at a step.
-    func preview(_ p: Phase, receipt r: SwitchReceipt? = nil, note n: String? = nil, sidebarOpened o: Bool = false) {
+    func preview(_ p: Phase, receipt r: SwitchReceipt? = nil, note n: String? = nil, sidebarOpened o: Bool = false,
+                 moves: Bool? = nil, failedStep f: Int? = nil, codeSeen c: String? = nil, windowSeen w: String? = nil,
+                 sidebarMissed m: Bool = false, undoStopped u: Bool = false, codeOn: Bool? = nil, windowOn: Bool? = nil) {
         phase = p; receipt = r; note = n; sidebarOpened = o
+        moveSessions = moves; failedStep = f; codeSeen = c; windowSeen = w; sidebarMissed = m; undoStopped = u
+        codeOnTarget = codeOn; windowOnTarget = windowOn
     }
 
     private func tick(every s: TimeInterval, _ step: @escaping () -> Bool) {
