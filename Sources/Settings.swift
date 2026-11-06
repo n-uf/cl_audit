@@ -1454,26 +1454,31 @@ struct AccountSettings: View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
         let st: IconStatus? = { _ = model.tick; return Store.status(for: entry, standby: s) }()
         let facts = s.configDir.flatMap { FolderFactsCache.facts($0) }
-        let plan = (st?.plan).map(Account.planWords) ?? facts?.plan
-        // its folder signed in, but to an account it can't be (the profile's own, or another profile's)
-        let there = s.seat == nil ? facts?.seat : nil
-        let thereOwner = there.flatMap { FolderRules.seatOwner($0, among: model.accounts, except: entry.id) }
-        let why: String? = {
-            if s.configDir == nil { return "Limits unknown: no sign-in kept for it." }
-            if let thereOwner { return "Its folder is signed in to \(thereOwner.name)'s account. One profile per account." }
-            if there != nil { return "Its folder is signed in to \(name)'s own account: sign in there as \(Privacy.masked(s.email))." }
-            if st?.state == "otherAccount" { return "Its folder is signed in to another account: sign in again as \(Privacy.masked(s.email))." }
-            if s.seat == nil || st?.state == "noLogin" { return "Waiting for the sign-in: finish it in the browser, or sign in again." }
-            return nil
-        }()
-        let needsKey = s.configDir == nil || there != nil || st?.state == "otherAccount" || st?.state == "noLogin" || s.seat == nil
+        // its plan and organisation once its folder is signed in to it: never those of another account's sign-in
+        let mine = s.seat.map { m in facts?.seat.same(m) ?? false } ?? false
+        let plan = (st?.plan).map(Account.planWords) ?? (mine ? facts?.plan : nil)
+        let hasNumbers = AccountRow(entry: entry.readerEntry(for: s) ?? entry, status: st).limits.contains { $0.p != nil }
+        // not linked yet and its folder signed in to an account it can't have (the profile's own, or another profile's):
+        // the wrong account. A sign-in that names a free account links by itself within seconds (Folders.swift).
+        // (the folders' records come through FolderFactsCache: this is drawn every few seconds)
+        let clash = s.seat == nil ? StandbyLook.clash(of: facts?.seat, for: entry, among: model.accounts,
+                                                       inUse: FolderFactsCache.facts(entry.configDir)?.seat,
+                                                       signedIn: { FolderFactsCache.facts($0)?.seat }) : nil
+        // when a sign-in was started in its folder: the script each one writes; for an account not linked yet, else when
+        // it was added (nothing new is saved)
+        let started = s.configDir.flatMap { StandbyLook.signInStarted(configDir: $0, addedAt: s.seat == nil ? s.addedAt : nil) }
+        let look = StandbyLook.of(email: s.email, hasFolder: s.configDir != nil, linked: s.seat != nil, folderSeat: facts?.seat,
+                                  clash: clash, state: st?.state, hasNumbers: hasNumbers, problem: st?.problem,
+                                  startedAt: started, signedInAt: s.configDir.flatMap { StandbyLook.signedInAt(configDir: $0) })
+        let why = look.line
         // unlit; clicked, its row lights and the Switch account key takes the place of "Standby" (an account not linked
         // yet can't be switched to: no key)
         let canSwitch = Self.canSwitch(s)
         let selected = picked == s.id && canSwitch
-        // a warning and its Sign in… key keep full strength; only the limits dim
-        return AccountBox(lamp: nil, badge: "Standby", detail: [plan, facts?.org].compactMap { $0 }.joined(separator: " · "),
-                          unlit: !selected, dimsContent: why == nil, selected: selected, litBadge: "Switch account",
+        // a warning and its keys keep full strength; only the limits (and "no numbers yet") dim
+        return AccountBox(lamp: nil, badge: look.badge, badgeTone: look.tone,
+                          detail: [plan, mine ? facts?.org : nil].compactMap { $0 }.joined(separator: " · "),
+                          unlit: !selected, dimsContent: look.dims, selected: selected, litBadge: "Switch account",
                           litAction: { model.showSwitch(AccountEntry.standbyStatusID(entry.id, s.id)) }) {
             Menu {
                 Button(s.configDir == nil ? "Sign in…" : "Sign in again…") { signInStandby(s) }.disabled(model.claudePath == nil)
@@ -1485,19 +1490,18 @@ struct AccountSettings: View {
             // a click below the address selects the account (again: deselects); the address menu, the lit key and a
             // Sign in… key stay outside the click area, so they never select or deselect
             if let why {
+                // the line of what's left (signing in, the wrong account, no numbers yet) and its keys: on one row while
+                // they fit, else the keys under it
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) {
-                        selectArea(s, canSwitch, selected) {
-                            BoxNote(text: why, tone: thereOwner != nil ? .danger : .caution).lineLimit(1)
-                        }
-                        if needsKey { standbySignInKey(s) }
+                        selectArea(s, canSwitch, selected) { BoxNote(text: why, tone: look.lineTone).lineLimit(1) }
+                        standbyKeys(look.keys, s)
                     }
                     VStack(alignment: .leading, spacing: 6) {
                         selectArea(s, canSwitch, selected) {
-                            BoxNote(text: why, tone: thereOwner != nil ? .danger : .caution)
-                                .fixedSize(horizontal: false, vertical: true)
+                            BoxNote(text: why, tone: look.lineTone).fixedSize(horizontal: false, vertical: true)
                         }
-                        if needsKey { standbySignInKey(s) }
+                        standbyKeys(look.keys, s)
                     }
                 }
             } else {
@@ -1536,9 +1540,28 @@ struct AccountSettings: View {
         return now.enumerated().sorted { (at[$0.element.id] ?? Int.max, $0.offset) < (at[$1.element.id] ?? Int.max, $1.offset) }.map(\.element)
     }
 
-    func standbySignInKey(_ s: StandbyAccount) -> some View {
-        Button("Sign in…") { signInStandby(s) }
-            .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(model.claudePath == nil)
+    /// The keys a standby account's line needs (StandbyLook): Cancel takes a new account off the profile again (as Remove
+    /// does: its folder and anything signed in there stay), Show Terminal brings Terminal forward (where Claude Code's
+    /// sign-in waits), Sign in… / Sign in again… start the sign-in in its folder.
+    func standbyKeys(_ keys: [StandbyLook.Key], _ s: StandbyAccount) -> some View {
+        HStack(spacing: 6) {
+            ForEach(keys, id: \.self) { k in
+                switch k {
+                case .cancel:
+                    Button("Cancel") { removeStandby(s) }
+                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                case .showTerminal:
+                    Button("Show Terminal") { _ = Installer.run("/usr/bin/open", ["-a", "Terminal"]) }
+                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                case .signIn:
+                    Button("Sign in…") { signInStandby(s) }
+                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(model.claudePath == nil)
+                case .signInAgain:
+                    Button("Sign in again…") { signInStandby(s) }
+                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(model.claudePath == nil)
+                }
+            }
+        }
     }
 
     /// The limits as the dashboard draws them, or one line why there are none yet.
