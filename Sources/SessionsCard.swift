@@ -196,11 +196,17 @@ struct SessionsCard: View {
     }
 
     private func backUpNow() {
-        let src = source, open = windowOpen
+        let src = source, open = windowOpen, e = entry
         working = true; problem = nil
         Task {
-            let result = await Task.detached(priority: .utility) { Result { try SessionsBackup.manual(src, window: !open) } }.value
-            if case .failure(let err) = result { problem = "The backup couldn't be made: \(err)." }
+            let result = await Task.detached(priority: .utility) {
+                Result { try SessionsBackup.manual(src, window: !open, windowClosed: { SwitchRunner.windowClosed(e) }) }
+            }.value
+            if case .failure(let err) = result {
+                var why = "\(err)"
+                while why.hasSuffix(".") { why.removeLast() }
+                problem = why.hasPrefix("The ") ? why : "The backup couldn't be made: " + why.prefix(1).lowercased() + why.dropFirst() + "."
+            }
             working = false
             await load()
         }

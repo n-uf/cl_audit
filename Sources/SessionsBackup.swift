@@ -11,7 +11,7 @@
 //   transcripts/<project>/…      Claude Code's transcripts (<Claude Code folder>/projects), optional
 //
 // Never in a backup: a sign-in. No .claude.json, nothing named like credentials, no Keychain access at all, and nothing
-// outside those paths. Files are copied as APFS clones (copyfile with COPYFILE_CLONE_FORCE), which share space with the
+// outside those paths. Files are copied as APFS clones (fclonefileat, with fcopyfile as the fallback), which share space with the
 // originals and take seconds; on another volume that can't be, so the file is copied for real, and the size words say so.
 // A source file is never changed, and a backup is a new folder: it is built under a hidden name and renamed into place
 // only when whole, never over an existing one.
@@ -200,7 +200,7 @@ enum SessionsBackup {
                     for name in names(odir) {
                         let path = (odir as NSString).appendingPathComponent(name)
                         guard let m = mode(path), m.kind == S_IFREG else { continue }
-                        if skipped(name) { g.leftOut += 1; continue }
+                        if skipped(name) || m.links > 1 { g.leftOut += 1; continue }       // (a hard link: never taken, nor counted)
                         g.files.append(Planned(role: .window, src: path, rel: "window/\(account)/\(org)/\(name)", original: path, bytes: m.size))
                         g.bytes += m.size
                         if name.hasPrefix("local_") && name.hasSuffix(".json") {
@@ -301,23 +301,25 @@ enum SessionsBackup {
             return (partial.path as NSString).appendingPathComponent(rel)
         }
 
-        // the files, as clones (or real copies on another volume, once there's room for them)
+        // the files, as clones (or real copies on another volume: the room for them is checked first)
         var roomChecked = false
+        func needRoom() throws {
+            roomChecked = true
+            var fs = statfs()
+            let free = statfs(place.path, &fs) == 0 ? Int64(fs.f_bavail) * Int64(fs.f_bsize) : Int64.max
+            guard free > g.bytes + g.bytes / 10 else {
+                throw BackupError("the backups folder is on another volume and doesn't have room for a full copy (\(sizeWords(g.bytes)) needed)")
+            }
+        }
+        if let first = g.files.first, !sameVolume(place, as: first.src) { try needRoom() }
         for f in g.files {
             let dst = try dirFor(f.rel)
             var shared = true                                         // cloned (else copied for real)
-            switch copyOne(f.src, dst, single: f.role == .transcript) {
+            switch copyOne(f.src, dst, single: true) {
             case .cloned: break
             case .copied:
                 shared = false
-                if !roomChecked {
-                    roomChecked = true
-                    var fs = statfs()
-                    let free = statfs(place.path, &fs) == 0 ? Int64(fs.f_bavail) * Int64(fs.f_bsize) : Int64.max
-                    guard free > g.bytes + g.bytes / 10 else {
-                        throw BackupError("the backups folder is on another volume and doesn't have room for a full copy (\(sizeWords(g.bytes)) needed)")
-                    }
-                }
+                if !roomChecked { try needRoom() }                        // a volume without clones, on the same device
             case .gone: leftOut += 1; continue                        // deleted meanwhile (Claude Code ages its own out)
             case .failed(let why): throw BackupError("couldn't copy \((f.src as NSString).lastPathComponent) (\(why))")
             }
@@ -360,12 +362,19 @@ enum SessionsBackup {
     }
 
     /// Back up now: under the switch lock (no switch and no claude-transplant run moves sessions meanwhile), then pruned.
+    /// `window` true (the window was closed when it started): `windowClosed` is asked again once the backup is made, and
+    /// if the window opened meanwhile the backup is taken away.
     static func manual(_ s: Source, window: Bool, transcripts: Bool = true, place: URL = BackupPrefs.placeURL,
-                       keepLast: Int = BackupPrefs.keepLast, keepDays: Int = BackupPrefs.keepDays) throws -> Manifest {
+                       keepLast: Int = BackupPrefs.keepLast, keepDays: Int = BackupPrefs.keepDays,
+                       windowClosed: () -> Bool = { true }) throws -> Manifest {
         let lock: SwitchEngine.Lock
         do { lock = try SwitchEngine.Lock.take() } catch { throw BackupError("\(error)") }
         defer { lock.release() }
         let m = try make(s, kind: .manual, window: window, transcripts: transcripts, place: place)
+        if window, !windowClosed() {
+            discard(profile: s.profile, id: m.id, place: place)
+            throw BackupError("The Claude window opened during the backup; try again.")
+        }
         prune(profile: s.profile, place: place, keepLast: keepLast, keepDays: keepDays)
         return m
     }
