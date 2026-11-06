@@ -154,6 +154,94 @@ struct BackOfferRow: View {
     }
 }
 
+/// Flush on the right of a profile's tile, only while its Switch page is open, and while a switch of it is unfinished
+/// even with the page closed: "Switch from / ultra-1" (unlit), mint "Switching ● / to ultra-2" while it runs,
+/// "Switched to / ultra-2" at Done; amber "Stopped half way / Undo it" for one that stopped; red "Stopped / step 3".
+/// Otherwise the tile stands alone. A click opens the Switch page.
+struct SwitchTileDisplay: View {
+    let entry: AccountEntry
+    @ObservedObject var model: SettingsModel
+
+    var body: some View {
+        let _ = model.tick
+        if let r = model.switchRunner(of: entry.id) {
+            RunnerTileDisplay(entry: entry, model: model, runner: r)
+        } else if let u = model.unfinishedSwitch(of: entry.id) {
+            TileDisplayGlass(l1: "Stopped half way", l2: "Undo it", tone: .amber) {
+                model.showSwitch(AccountEntry.standbyStatusID(u.profile, u.standby))
+            }
+        }
+    }
+}
+
+private struct RunnerTileDisplay: View {
+    let entry: AccountEntry
+    @ObservedObject var model: SettingsModel
+    @ObservedObject var runner: SwitchRunner
+
+    var body: some View {
+        let open = model.selection == SettingsModel.switchID && model.switching == runner.key
+        let to = runner.targetShort ?? "the other account"
+        let failed: Bool = { if case .failed = runner.phase { return true }; return false }()
+        switch runner.phase {
+        case .closing, .moving, .codeSignIn, .windowSignIn, .sidebar:
+            TileDisplayGlass(l1: "Switching ●", l2: "to \(to)", tone: .mint, l1Lit: true) { model.showSwitch(runner.key) }
+        case .done where open:
+            TileDisplayGlass(l1: "Switched to", l2: to, tone: .mint) { }
+        case .failed where runner.receipt?.unfinished == true:
+            TileDisplayGlass(l1: "Stopped half way", l2: "Undo it", tone: .amber) { model.showSwitch(runner.key) }
+        default:
+            // a switch that stopped half way (an earlier one too) shows before anything else, as on the page
+            if let u = model.unfinishedSwitch(of: entry.id) {
+                TileDisplayGlass(l1: "Stopped half way", l2: "Undo it", tone: .amber) { model.showSwitch(AccountEntry.standbyStatusID(u.profile, u.standby)) }
+            } else if open, failed {
+                TileDisplayGlass(l1: "Stopped", l2: runner.failedStep.map { "at step \($0)" } ?? "nothing moved", tone: .warn) { }
+            } else if open, runner.phase == .ready || runner.phase == .cancelled {
+                TileDisplayGlass(l1: "Switch from", l2: AccountNames.short(entry.seat?.email ?? "its account"), tone: .normal, unlit: true) { }
+            }
+        }
+    }
+}
+
+/// The display itself: recessed glass flush beside the tile, two lines (what it's about, small and dim; the account).
+struct TileDisplayGlass: View {
+    let l1: String
+    let l2: String
+    var tone: DisplayWindow.Tone = .normal
+    var unlit = false
+    var l1Lit = false
+    let action: () -> Void
+    @Environment(\.face) private var face
+
+    var body: some View {
+        let lit: Color = {
+            switch tone {
+            case .mint: return face.light ? .hex(0x0b6b60) : .hex(0xa6fff3)
+            case .amber: return face.light ? .hex(0xa85f00) : .hex(0xffb24a)
+            case .warn: return face.light ? .hex(0xb42318) : .hex(0xff8a7a)
+            case .ok: return face.light ? .hex(0x11743a) : FaceTheme.ledOn
+            case .normal: return face.displayText
+            }
+        }()
+        let c = unlit ? face.displayText.opacity(0.30) : lit
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(l1).font(.system(size: 8, weight: .semibold, design: .monospaced)).tracking(1.4).textCase(.uppercase)
+                    .foregroundStyle(l1Lit && !unlit ? c : c.opacity(unlit ? 1 : 0.45))
+                Text(l2).font(.system(size: 11.5, weight: .semibold, design: .monospaced)).tracking(1.2).textCase(.uppercase)
+                    .foregroundStyle(c)
+                    .shadow(color: unlit || !face.displayGlow ? .clear : c.opacity(0.7), radius: 1.5)
+            }
+            .lineLimit(1).fixedSize()
+            .padding(.horizontal, 14)
+            .frame(minWidth: 128, minHeight: 42, alignment: .leading)
+            .background(DisplayGlass(radius: 5))
+            .offset(y: 1)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 /// A standby account's limits on its profile's dashboard card, small: "Standby · ultra-1@example.com", then a row
 /// per limit (name, bar, percentage, "in 3 days" or, full, when it's back).
 struct StandbyLimits: View {

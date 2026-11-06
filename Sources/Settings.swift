@@ -204,14 +204,13 @@ final class SettingsModel: ObservableObject {
     static let switchID = "__switch__"
 
     /// The profile and standby account the Switch page is about. Once a switch it runs has linked the profile to that
-    /// account (it's no longer on standby), the page keeps showing it from the copy taken when it opened.
+    /// account (it's no longer on standby), the page keeps showing it from the copy its runner took.
     var switchTarget: (entry: AccountEntry, standby: StandbyAccount)? {
         guard let k = switching, let p = SwitchOffer.parse(k), let e = accounts.first(where: { $0.id == p.profile }) else { return nil }
         if let s = e.standby.first(where: { $0.id == p.standby }) { return (e, s) }
-        if let snap = switchSnapshot, snap.id == p.standby, runners[k] != nil { return (e, snap) }
+        if let snap = runners[k]?.targetSnapshot, snap.id == p.standby { return (e, snap) }
         return nil
     }
-    private(set) var switchSnapshot: StandbyAccount?
     /// The switches started from the page, by "<profile>~<standby account>" (SwitchRunner.swift).
     private var runners: [String: SwitchRunner] = [:]
 
@@ -223,11 +222,35 @@ final class SettingsModel: ObservableObject {
         return r
     }
 
-    func showSwitch(_ key: String) {
-        switching = key
-        if let p = SwitchOffer.parse(key), let s = accounts.first(where: { $0.id == p.profile })?.standby.first(where: { $0.id == p.standby }) {
-            switchSnapshot = s
+    /// The switch of this profile to show beside its tile: one that's running, else the one on the Switch page.
+    func switchRunner(of profile: String) -> SwitchRunner? {
+        if let r = runners.values.first(where: { $0.profile == profile && $0.isRunning }) { return r }
+        if let k = switching, SwitchOffer.parse(k)?.profile == profile, let r = runners[k] { return r }
+        return nil
+    }
+
+    /// A switch of this profile that stopped half way (from its receipts; looked at again at most every 10 s, and at
+    /// once after a switch moves on).
+    func unfinishedSwitch(of profile: String, now: Date = Date()) -> SwitchReceipt? {
+        if now.timeIntervalSince(unfinishedLook.at) > 10 {
+            unfinishedLook = (now, Dictionary(SwitchEngine.receipts().filter(\.unfinished).map { ($0.profile, $0) }, uniquingKeysWith: { a, _ in a }))
         }
+        return unfinishedLook.byProfile[profile]
+    }
+    private var unfinishedLook: (at: Date, byProfile: [String: SwitchReceipt]) = (.distantPast, [:])
+    func forgetUnfinished() { unfinishedLook.at = .distantPast }
+
+    func showSwitch(_ key: String) {
+        var key = key
+        if let p = SwitchOffer.parse(key) {
+            // one switch of a profile at a time: while one runs, its page is the one shown
+            if let r = runners.values.first(where: { $0.profile == p.profile && $0.isRunning }) { key = r.key }
+            // a switch that ended (done, or cancelled and put back) starts over when asked for again, unless it's in front
+            else if let r = runners[key], r.phase == .done || r.phase == .cancelled, !(selection == Self.switchID && switching == key) {
+                runners[key] = nil
+            }
+        }
+        switching = key
         selection = switchTarget == nil ? Self.dashboardID : Self.switchID
     }
 
@@ -684,14 +707,25 @@ struct AccountTile: View {
     @ObservedObject var model: SettingsModel
 
     var body: some View {
-        TileKey(selected: selected, leading: 5) {
-            HStack(spacing: 9) {
-                Image(nsImage: preview(entry, status: Store.status(for: entry), tick: model.tick)).resizable().frame(width: 32, height: 32)
-                TileText(title: entry.name.isEmpty ? "New profile" : entry.name, sub: entry.usageOnly ? "usage only" : entry.configDir)
+        HStack(spacing: 0) {
+            TileKey(selected: selected, leading: 5) {
+                HStack(spacing: 9) {
+                    Image(nsImage: preview(entry, status: Store.status(for: entry), tick: model.tick)).resizable().frame(width: 32, height: 32)
+                    TileText(title: entry.name.isEmpty ? "New profile" : entry.name, sub: sub)
+                }
             }
+            .onTapGesture { model.selection = entry.id }
+            .contextMenu { Button("Remove \(entry.name)…", role: .destructive) { model.askRemove(entry.id) } }
+            // flush on its right while its Switch page is open, or a switch of it is unfinished (SwitchView.swift)
+            SwitchTileDisplay(entry: entry, model: model)
         }
-        .onTapGesture { model.selection = entry.id }
-        .contextMenu { Button("Remove \(entry.name)…", role: .destructive) { model.askRemove(entry.id) } }
+    }
+
+    /// "~/.claude", and with more than one account, the one in use: "~/.claude · ultra-1".
+    private var sub: String {
+        if entry.usageOnly { return "usage only" }
+        guard !entry.standby.isEmpty, let email = entry.seat?.email else { return entry.configDir }
+        return "\(entry.configDir) · \(AccountNames.short(email))"
     }
 }
 
