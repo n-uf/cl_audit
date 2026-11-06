@@ -238,7 +238,9 @@ final class SettingsModel: ObservableObject {
         return unfinishedLook.byProfile[profile]
     }
     private var unfinishedLook: (at: Date, byProfile: [String: SwitchReceipt]) = (.distantPast, [:])
-    func forgetUnfinished() { unfinishedLook.at = .distantPast }
+    /// Bumped each time a switch changes phase: what shows a profile's backups looks again (a finished switch has made one).
+    @Published private(set) var switchChanges = 0
+    func forgetUnfinished() { unfinishedLook.at = .distantPast; switchChanges += 1 }
 
     /// Every running switch that waits for the operator and is worth an alert (SwitchWaiting.swift), in key order: where it
     /// waits, its profile's name, how many steps it has, and whether the profile's alerts are on. The window's sign-in of a
@@ -1148,17 +1150,17 @@ struct AccountSettings: View {
         return a.lowercased() != b.lowercased()
     }
 
-    /// Layout A: each part is one card, its switch first, one title per card. Left: Profile, Claude Code, Claude window,
-    /// Alerts; middle: the Dock icon (when it runs, a click, the usage panel, its look, a preview); right: the menu bar
+    /// Layout A: each part is one card, its switch first, one title per card. Left: Profile, Claude Code, Sessions (its
+    /// backups, SessionsCard.swift), Claude window, Alerts; middle: the Dock icon (when it runs, a click, the usage panel, its look, a preview); right: the menu bar
     /// icon. A part that's off folds its card to the switch row. Two columns: the left cards with the menu bar under
     /// them, the Dock icon beside; one column: everything in that order. What the profile is doing now is in the main
     /// display at the top.
     var body: some View {
         SettingsColumns(width: width, groups: [
-            [AnyView(accountCard), AnyView(codeCard), AnyView(windowCard), AnyView(updatesCard)],
+            [AnyView(accountCard), AnyView(codeCard), AnyView(SessionsCard(entry: entry, model: model)), AnyView(windowCard), AnyView(updatesCard)],
             [AnyView(dockIconCard)],
             [AnyView(MenuBarCard(entry: $entry))]],
-            two: [[AnyView(accountCard), AnyView(codeCard), AnyView(windowCard), AnyView(updatesCard), AnyView(MenuBarCard(entry: $entry))],
+            two: [[AnyView(accountCard), AnyView(codeCard), AnyView(SessionsCard(entry: entry, model: model)), AnyView(windowCard), AnyView(updatesCard), AnyView(MenuBarCard(entry: $entry))],
                   [AnyView(dockIconCard)]])
     }
 
