@@ -456,7 +456,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   - **Backups:** one row each, "Before switch to ultra-2 · 5 Nov 18:40" over "84 sessions · 12 tasks · sidebar ·
     transcripts · 5.5 GB, sharing space with the originals" (on another volume: "a full copy"). **Restore…** is
     there and off ("Restore comes in the next build"). The **⋯** menu has **Show in Finder** and **Delete…**, which
-    asks first. **Back up now** makes one: with the profile's window open it says "close it first, or the Code-tab
+    asks first and refuses a backup that a half-done switch names, or whose switch's receipt can't be read. **Back up now** makes one: with the profile's window open it says "close it first, or the Code-tab
     list and sidebar records are left out" and backs up only what is safe, Claude Code's transcripts and cl_audit's
     records. A line under the list says how many are kept (General ▸ Backups).
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
@@ -620,7 +620,7 @@ another profile shares items from are never deleted, and Claude must be closed f
 A backup is a quick copy of a profile's sessions on this Mac, in `<backups folder>/<profile id>/<backup id>/` with a
 `backup.json` that says what is in it. One is made by every switch that moves the sessions (right after the window is
 known closed, before anything moves, under the switch's lock) and by **Back up now** in Settings ▸ the profile ▸
-Sessions. Restore comes in a later build; the manifest already names every item's original path.
+Sessions. Restore comes in the next build; the manifest already names every item's original path.
 
 - **In it:** the window's Code-tab list (every `claude-code-sessions/<account>/<org>` folder, scheduled tasks
   included, for both accounts and any other found there), its sidebar records (only the `epitaxyPrefs` part of
