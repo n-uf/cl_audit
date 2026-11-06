@@ -104,12 +104,16 @@ struct SwitchPage: View {
         }
     }
 
+    /// The display and the keys on one line; when they don't fit the page, the keys go under the display (one under the
+    /// other if they still don't fit).
     private func topBar(_ t: Top) -> some View {
-        HStack(spacing: 10) {
-            DisplayWindow(text: t.text, dim: t.dim, tone: t.tone, height: 24, size: 10)
-            Spacer(minLength: 6)
-            topKeys
+        let display = DisplayWindow(text: t.text, dim: t.dim, tone: t.tone, height: 24, size: 10)
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) { display; Spacer(minLength: 6); topKeys }
+            VStack(alignment: .leading, spacing: 8) { display; HStack(spacing: 10) { topKeys } }
+            VStack(alignment: .leading, spacing: 8) { display; VStack(alignment: .leading, spacing: 8) { topKeys } }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     /// Cancel stays in sight while a switch runs; at Done and after a stop, the keys lead out.
@@ -281,11 +285,15 @@ struct SwitchPage: View {
 
     private var sessionsCard: some View {
         SCard(title: "Sessions", info: "The Claude window's Code sessions, its sidebar (sections, groups, pins) and its scheduled tasks. Moved, they go with \(name) to \(to), the way claude-transplant moves them, and come back when it switches back. Left, each account keeps its own. Chats and Projects on claude.ai belong to each account and never move.") {
-            SRow(label: "Move them?", first: true) {
-                HStack(spacing: 8) {
-                    choice("Move to \(to)", picked: runner.moveSessions == true) { runner.moveSessions = true }
-                    choice("Leave with \(from)", picked: runner.moveSessions == false) { runner.moveSessions = false }
+            // the label above, the keys side by side when they fit the card, else one under the other: never wider than the card
+            SRow(label: "Move them?", first: true, stacked: true) {
+                let moveKey = choice("Move to \(to)", picked: runner.moveSessions == true) { runner.moveSessions = true }
+                let leaveKey = choice("Leave with \(from)", picked: runner.moveSessions == false) { runner.moveSessions = false }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { moveKey; leaveKey }
+                    VStack(alignment: .leading, spacing: 8) { moveKey; leaveKey }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .disabled(runner.phase != .ready && runner.phase != .cancelled && !(isFailed && runner.receipt == nil))
             }
             SRowLine(text: runner.moveSessions == nil ? "Choose one to go on: nothing is chosen for you."
