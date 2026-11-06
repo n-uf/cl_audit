@@ -20,6 +20,7 @@ struct SwitchPage: View {
     @State private var back: BackWatch.Back?             // the account to switch to is back (SwitchBack.swift)
     @State private var kept: SessionsBackup.Kept?        // what a backup would take (nil: still counting)
     @State private var made: SessionsBackup.Manifest?    // the backup this switch's receipt names
+    @State private var madeLoaded: String?               // the ref (id + place) loadMade() has finished for
     @ObservedObject private var backups = BackupPrefs.shared
     @Environment(\.face) private var face
 
@@ -37,6 +38,9 @@ struct SwitchPage: View {
     private var goesBack: Bool { entry.isBack(to: standby) && !switched }
     private var isFailed: Bool { if case .failed = runner.phase { return true }; return false }
     private var moves: Bool { runner.moveSessions == true }
+    /// The answers (Move them?, the backup's transcripts) can still change: before it starts, after a cancel, and after a
+    /// stop with nothing moved.
+    private var canChoose: Bool { runner.phase == .ready || runner.phase == .cancelled || (isFailed && runner.receipt == nil) }
     /// The sidebar step: the sessions move and there's a Claude window to arrange.
     private var arranges: Bool { moves && entry.claudeWindow }
     /// How many steps this switch has: the sidebar's is the fifth.
@@ -86,11 +90,12 @@ struct SwitchPage: View {
 
     /// The backup the receipt names, read from the backups folder.
     private func loadMade() async {
-        guard let ref = runner.backupRef else { made = nil; return }
+        guard let ref = runner.backupRef else { made = nil; madeLoaded = nil; return }
         let profile = entry.id
         made = await Task.detached(priority: .utility) {
             SessionsBackup.load(profile: profile, id: ref.id, place: URL(fileURLWithPath: ref.place))
         }.value
+        madeLoaded = ref.id + ref.place
     }
 
     /// A switch of this profile that stopped half way (this one, or one from before), with what it moved: Undo first.
@@ -327,7 +332,7 @@ struct SwitchPage: View {
                     VStack(alignment: .leading, spacing: 8) { moveKey; leaveKey }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .disabled(runner.phase != .ready && runner.phase != .cancelled && !(isFailed && runner.receipt == nil))
+                .disabled(!canChoose)
             }
             SRowLine(text: runner.moveSessions == nil ? "Choose one to go on: nothing is chosen for you."
                      : runner.phase == .ready ? (moves ? "They move to \(to); \(from) keeps none. Cancel puts them back." : "Each account keeps its own; the window opens with \(to)'s.")
@@ -376,7 +381,7 @@ struct SwitchPage: View {
             } else if runner.phase == .moving {
                 SRow(label: "Making it", first: true, stacked: true) { value("Right now, before anything moves…") }
             } else {
-                let editable = runner.phase == .ready || runner.phase == .cancelled
+                let editable = canChoose
                 // stacked rows: the label above, the words the card's full width, at any column width
                 SRow(label: "When", first: true, stacked: true) { value("Every time the sessions move, as claude\u{2011}transplant keeps what it moves: right after the window closes, before anything moves") }
                 SRow(label: "What", stacked: true) { value("The window's Code-tab list for both accounts, scheduled tasks, its sidebar records; cl_audit's records") }
@@ -402,6 +407,7 @@ struct SwitchPage: View {
 
     /// "Before switch to ultra-2 · 5 Nov 18:40 · 3 s"
     private func madeWords(_ ref: SwitchRunner.BackupRef) -> String {
+        guard madeLoaded == ref.id + ref.place else { return "…" }                  // still being read
         guard let m = made, m.id == ref.id else { return "it isn't in \(tilde(ref.place)) any more" }
         return "\(SessionsBackup.title(m, target: to)) · \(SessionsBackup.secondsWords(m.seconds))"
     }
