@@ -26,11 +26,25 @@ the notes before updating.
   far it got, with **Cancel switch** always in sight and **Undo this switch…** once the profile is on the new
   account. A failure marks its step red and says where it stopped. A display beside the profile's tile reads
   "Switching ● to ultra-2", "Switched to ultra-2" or "Stopped half way · Undo it".
+- **The card, the menus and the alerts follow the same pattern.** On a profile's dashboard card only the account in
+  use is lit; the other accounts sit in **unlit trays** under its limits, most room first, their levels dimmed (an
+  account with no numbers stays off the card). **While a limit is full, the tray with the most room is selected
+  already**: its row lights mint across the card and its STANDBY display becomes the lit **Switch account** key,
+  which opens the Switch page with it picked; click another tray to pick that one instead. With room left nothing is
+  selected: a click selects a tray, a second click deselects it. The separate green "Switch to …" key under the
+  full-limit box is gone. The **menu bar icon's and the Dock icon's menus** show the account in use with a lit green
+  lamp ("ultra-1 · in use"; the Dock menu's first line is "Claude Main · ultra-1 in use") and have **Switch
+  account ›**: the account in use ticked, then every other account, most room first, each with its week ("week
+  12%", or "no numbers"); while a limit is full the best one also sits on the top level ("Switch to ultra-3…  week
+  12%"). The old per-account "Switch to …" items are gone. The alerts' keys are **Switch account…** and **Switch
+  back…**, and a new alert, **"Claude Main: the switch is waiting for you"** ("Step 3 of 5: finish the sign-in in the
+  browser…"), says so once per step when a switch waits for your sign-in or your Return and its Switch page isn't in
+  front, with **Show switch** and (at Claude Code's sign-in) **Cancel switch**; each switch waiting has its own, a
+  step that ends in a moment never alerts, and none outlives cl_audit. No alert names an account.
 - **Another account with room, offered where a limit is full.** A profile's dashboard card shows its other
-  accounts' limits, small, under its own; while a limit is full, the box is followed by **Switch to ultra-2…** (only
-  an account with current numbers and room is offered). The full-limit alert says how much the other account has
-  left ("The other account has 92% of its week left", never an address) and has a **Switch accounts** button; the
-  Dock icon's and menu bar icon's menus have **Switch to …**. They open the new **Switch
+  accounts' limits, small, under its own. The full-limit alert says how much the other account has
+  left ("The other account has 92% of its week left", never an address) and has a **Switch account…** button; the
+  Dock icon's and menu bar icon's menus have **Switch account ›**. They open the new **Switch
   page**: both accounts' limits, what stays, what follows (the Claude window's sessions, sidebar and scheduled
   tasks, counted), and the steps. While cl_audit is at the front, its alerts now still show as banners.
 - **Switching to another account.** The Switch page's **Close and switch** closes only that profile's Claude
@@ -46,7 +60,7 @@ the notes before updating.
   when done, and running it again changes nothing. The link goes to that window's own process, so it never opens in
   another Claude window (macOS asks once to let cl_audit control Claude).
 - **The other account is back.** When a standby account's full limit resets, one alert ("Claude Main: the other
-  account is back · Its week starts again") offers **Switch back** or **Stay**, and the dashboard card and the Dock
+  account is back · Its week starts again") offers **Switch back…** or **Stay**, and the dashboard card and the Dock
   and menu bar menus offer **Switch back to …** until then. Switching back is the same switch the other way; the
   sessions started on the second account go back too.
 - **Every account's limits stay live.** The account in use signs in once to a folder of its own too (Settings ▸

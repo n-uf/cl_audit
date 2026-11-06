@@ -144,20 +144,39 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   full · back at 15:28, in 1h 42m"; the Dock icon itself becomes the countdown (the time large, "5H FULL" under
   it, a red frame).
 - **Another account with room.** When the profile has other accounts (Settings ▸ the profile ▸ Claude Code ▸
-  Accounts) and one of them has room, the card has **Switch to ultra-2…** under the box (that account's limits are
-  just below, in its Standby block); the alert adds "The other account has 92% of its week left" with **Switch
-  accounts** (and Later): alerts reach the lock screen, so they never name an account by its address or any part
-  of it. Room means current numbers too: an account whose sign-in ran out, or whose numbers are older than three
-  of the profile's read intervals, isn't offered. The Dock icon's and the menu bar icon's menus list **Switch to
-  …** for each of its other accounts. All of them
+  Accounts), only the one in use is lit. The card shows the others as **unlit trays** under its limits, most room
+  first, their levels dimmed, each on a compact line (the address, STANDBY, then its 5-hour and week rows). An
+  account with no numbers (no sign-in kept for it) stays off the card. **While a limit is full, the tray with the
+  most room is selected already**: its row lights mint across the card with the lit bar, and its STANDBY display
+  becomes the lit **Switch account** key, which opens the Switch page with that account picked; a click on another
+  tray picks it instead. **With room left nothing is selected**: a click selects a tray, a second click deselects it
+  (as in Settings). The alert adds "The other account has 92% of its week left" with **Switch account…** (and
+  Later): alerts reach the lock screen, so they never name an account by its address or any part of it. Room means
+  current numbers too: an account whose sign-in ran out, or whose numbers are older than three of the profile's read
+  intervals, isn't preselected. **The menus** (the menu bar icon's and the Dock icon's, with the same items) show the
+  account in use under the profile's name with a lit green lamp ("ultra-1 · in use"; the Dock menu's first line reads
+  "Claude Main · ultra-1 in use") and have **Switch account ›**, a submenu with the account in use ticked ("in use ·
+  week 94%") and every other account, most room first, each with its week ("week 12%", or "no numbers"; one not linked to its account yet is greyed, "· sign in first"). While a limit
+  is full, the best one also sits on the top level, "Switch to ultra-3…  week 12%": right under the full line in the
+  Dock menu, first in the menu bar menu's actions. All of them
   open the **Switch page** in cl_audit: the account in use (NOW) and, under TO, every other account with their
   limits, most room first, the one it was opened for picked in mint (click another to switch to it instead; the
   answers given so far go with it); what stays (name, Dock icon, look; the folder with its projects, settings, MCP
   and CLAUDE.md; Claude Code's history); the sessions (the Claude window's sessions in the sidebar, its sections and
   groups, pins and scheduled tasks, counted from the window's own files) with **Move them?**: **Move to ultra-2** or
   **Leave with ultra-1**, asked every time with nothing chosen; and the steps. A short name is the address before the @,
-  its first letter only while emails are hidden. Under the profile's own limits, the card shows each other
-  account's, small ("Standby · ultra-2@…").
+  its first letter only while emails are hidden (and in the menus).
+- **A switch waiting for you.** At the steps only you can do (Claude Code's sign-in in the browser, the Claude
+  window's own sign-in, the Return in the sidebar session), the Switch page waits out of sight when the browser or
+  the Claude window is in front. Then, once per step and only while the page isn't in front (cl_audit's window isn't
+  the key window, or another page is selected), one alert says which: "Claude Main: the switch is waiting for you ·
+  Step 3 of 5: finish the sign-in in the browser. cl_audit checks the account before it goes on." Its keys are
+  **Show switch** (opens that switch's page) and **Cancel switch** (Claude Code's sign-in only: the sessions go back;
+  after linking there is nothing to cancel, so **Show switch** alone); a plain click on it is Show switch too. It
+  goes when the step moves on, the switch ends or the page comes to the front, never outlives cl_audit, and follows
+  the profile's alerts. Several switches (one per profile) each have their own alert. A step that is over in a moment
+  never alerts (it must be seen twice in a row), nor does the window's sign-in of a profile without a Claude window,
+  nor the Return step before its session is open or after its link missed. Like every alert it names no account.
 - **Switching.** **Close and switch to ultra-2** (once the sessions question is answered) does it in order, each
   step checked before the next:
   1. Only that profile's Claude window closes, gracefully (it may ask about work under way; nothing is forced, and
@@ -219,9 +238,9 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   profile runs at a time: while one does, every way to the Switch page leads to it.
 - **The other account is back.** When a standby account's full limit resets (ultra-1's week, after the profile
   switched to ultra-2), one alert says so: "Claude Main: the other account is back · Its week starts again" (no
-  address, as with every alert), with **Switch back** and **Stay**; it follows the profile's Notify when back. The
+  address, as with every alert), with **Switch back…** and **Stay**; it follows the profile's Notify when back. The
   card gets a row, "ultra-1 is back: its week starts again", with **Stay** and **Switch back to ultra-1…**, and the
-  Dock icon's and menu bar icon's menus list **Switch back to ultra-1…** first. The agent watches it from the
+  Dock icon's and menu bar icon's menus list **Switch back to ultra-1…** above Switch account ›. The agent watches it from the
   account's last numbers: with a folder of its own, numbers read after the reset, current and not full (a reset
   that comes late waits for that read); without one, whose numbers nothing reads after a switch, once the reset
   time it last saw has passed. Missing numbers never count as "not full". Stay takes the offer away until it comes
@@ -296,7 +315,7 @@ cl_audit stays in the Dock as a launcher:
 | Click | The profile's click action; by default its usage for 3 s while its Claude window opens |
 | Double-click or ⌥-click | The details panel: both limits with bars and reset times, the sign-in, Open Claude, Sign in, Refresh, Settings |
 | Press and hold | The details panel next to a short Dock menu (on by default, per profile) |
-| Right-click | The menu: numbers, reset times, the sign-in, and actions (Open or Show Claude window, Quit Claude window, Refresh now, Switch to … for each of the profile's other accounts, Dashboard, Profile settings…, and Quit and keep Claude window when the window follows the Dock icon) |
+| Right-click | The menu: numbers, reset times, the sign-in, and actions (Open or Show Claude window, Quit Claude window, Refresh now, Switch account › with each of the profile's other accounts and their weeks (and, while a limit is full, Switch to … for the best one), Dashboard, Profile settings…, and Quit and keep Claude window when the window follows the Dock icon) |
 
 A Dock icon draws what the agent saved for its profile, and asks the agent for Refresh now and Renew login.
 
@@ -414,7 +433,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
   ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"), and, when another of the profile's accounts has
-  room, how much ("The other account has 92% of its week left") with **Switch accounts** and **Later** (see
+  room, how much ("The other account has 92% of its week left") with **Switch account…** and **Later** (see
   [When a limit is full](#when-a-limit-is-full)). **Notify when back** (on by default) sends one
   more when a full limit resets ("Claude Work is back · The 5-hour limit reset at 15:28"); while the other limit
   is still full, it waits for that one. Fable's weekly limit alerts the same way ("Claude Main: Fable weekly limit
