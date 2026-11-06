@@ -8,6 +8,22 @@ the notes before updating.
 
 ## Unreleased
 
+- **Backups of a profile's sessions.** Every switch that moves the sessions now makes a backup first, right after
+  the window is known closed and before anything moves: the window's Code-tab list for both accounts with its
+  scheduled tasks, its sidebar records (only the `epitaxyPrefs` part of its config, never the MCP settings), cl_audit's
+  own records (ids only, never an address) and, on by default, Claude Code's transcripts. APFS clones, so it takes seconds and shares space with the
+  originals (on another volume it is a full copy, and says so). Never a sign-in. The switch's receipt names the
+  backup and the backup names the receipt; if it can't be made, nothing moves. The Switch page has a **Backup** card
+  (before: when, what, a Transcripts switch, how long; after: "Made · Before switch to ultra-2 · 5 Nov 18:40 · 3 s")
+  and step 1 reads "closed, backup made". Settings ▸ a profile has a **Sessions** card after Claude Code: what is
+  kept here, **Keep for** (30 days, 90 days or a year: Claude Code's `cleanupPeriodDays`, other keys kept), the
+  backups with Show in Finder and Delete… (Restore… is there and off until the next build) and **Back up now**
+  (with the window open it leaves out the Code-tab list and sidebar records). **General ▸ Backups** sets where they
+  go and how many are kept (the last 3 and any under 30 days). The receipt records where the backup is; the
+  window is checked closed again after the backup, and a switch whose backup can't be made stops at step 1.
+- **Switch page fits its columns.** The Move to / Leave with keys sit side by side when they fit and one under the
+  other when they don't, instead of overhanging the card; the keys in the top bar wrap under the status display when
+  the page is narrow; the account being switched to is printed in light text on its dark glass on the Silver face too.
 - **A little use shows on segment meters.** Segments (the cards, panels, widget and the Dock icon's Segmented style)
   light the nearest number, but anything above 0 % lights the first one: 3 % no longer looks like nothing.
 - **A profile can have more than one account.** Settings ▸ a profile ▸ Claude Code ▸ **Accounts** lists them, one

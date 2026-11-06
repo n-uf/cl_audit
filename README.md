@@ -164,8 +164,9 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   answers given so far go with it); what stays (name, Dock icon, look; the folder with its projects, settings, MCP
   and CLAUDE.md; Claude Code's history); the sessions (the Claude window's sessions in the sidebar, its sections and
   groups, pins and scheduled tasks, counted from the window's own files) with **Move them?**: **Move to ultra-2** or
-  **Leave with ultra-1**, asked every time with nothing chosen; and the steps. A short name is the address before the @,
-  its first letter only while emails are hidden (and in the menus).
+  **Leave with ultra-1**, asked every time with nothing chosen; with **Move to ultra-2**, a **Backup** card (below);
+  and the steps. A short name is the address before the @, its first letter only while emails are hidden (and in the
+  menus).
 - **A switch waiting for you.** At the steps only you can do (Claude Code's sign-in in the browser, the Claude
   window's own sign-in, the Return in the sidebar session), the Switch page waits out of sight when the browser or
   the Claude window is in front. Then, once per step and only while the page isn't in front (cl_audit's window isn't
@@ -184,7 +185,9 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
      opens that window again (its Dock icon, the menu bar, cl_audit's rules and reopening after a Claude update all
      wait; a click shows the switch instead), and a second switch of it is refused. This holds only while that
      cl_audit runs.
-  2. With **Move to ultra-2**, its Code sessions and scheduled tasks move to ultra-2 the way
+  2. With **Move to ultra-2**, a **backup** of the sessions is made first, right after the window is known closed
+     and before anything moves (see [Backups](#backups-of-a-profiles-sessions)); if it can't be made, the switch
+     stops with nothing moved. Then its Code sessions and scheduled tasks move to ultra-2 the way
      [claude-transplant](https://github.com/vitaliyhayda/claude-transplant) moves them: same ids, each entry kept byte
      for byte or re-encoded without the old account's error keys and Remote Control ids, through a write that can't
      overwrite, checked, and only then the original parked in cl_audit's folder (`switches/<id>/`), never deleted.
@@ -220,6 +223,15 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   their order: no address, title or transcript. Run again, it changes nothing; in a window that doesn't have those
   sessions, it changes nothing either. Groups none of the moved sessions sat in aren't made. The way back is the same
   switch the other way.
+- **The Backup card.** Shown while the answer is **Move to ultra-2**. Before the switch: **When** (every time the
+  sessions move, right after the window closes and before anything moves), **What** (the window's Code-tab list for
+  both accounts with its scheduled tasks, its sidebar records, cl_audit's records), **Transcripts** (a switch:
+  "Claude Code's too, 310", on by default; fixed once the switch starts) and **Takes** ("a few seconds, as clones";
+  on another volume it says it's a full copy and how big), then what's never in a backup. During and after: "Made ·
+  Before switch to ultra-2 · 5 Nov 18:40 · 3 s", and step 1 reads "Main's Claude window closed, backup made" with a
+  check "Backup · 3 s ✓". The switch's receipt names the backup and the backup names the receipt, so Undo and the
+  backup point at each other; Undo leaves the backup where it is. After a switch's backup is made, the backups past
+  the number kept (General ▸ Backups) are deleted, never one a half-done switch names.
 - **While it runs.** The page keeps every block; only the steps move on. Display colours mean one thing each: green
   is the account in use, mint is switching and the account switched to, amber is waiting for you or a warning, red
   is a failure; only the account in use is lit. A step under way is mint, one waiting for you amber, a done one a
@@ -430,6 +442,23 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   pop-ups and fields fill their width, so their right edges line up; the
   address row is one line with Sign in and Cancel at its end (Cancel is a × when narrower), or, narrower still, the
   address on its own line with Sign in and × under it.
+- **Sessions** (after Claude Code): what the profile keeps and the backups of it.
+  - **Kept here:** "310 in Claude Code · 84 in the Claude window (24 in the sidebar) · 5.6 GB · since 6 Oct. Claude
+    Code deletes its own after 30 days." Counted in the background and remembered, so it shows at once.
+  - **Keep for:** how long Claude Code keeps its own transcripts: 30 days (its default), 90 days or a year. It writes
+    `cleanupPeriodDays` in the Claude Code folder's `settings.json`, changing only that number in the file's own
+    text (or adding the key after the opening brace of an ordinary object); everything else stays byte for byte. A
+    `settings.json` that is a link is written where it points, replaced atomically, with its permissions; if it
+    changed meanwhile nothing is written. It is made if the folder is there and there is none (or it is empty), and
+    a folder that isn't there is never made. Anything else is refused and left as it was, with the reason in the row: a
+    file that can't be read, isn't a JSON object, is a link to nowhere, has the key twice or deeper too, or whose
+    value isn't a plain whole number ("set cleanupPeriodDays there by hand"). Then the row says "unknown".
+  - **Backups:** one row each, "Before switch to ultra-2 · 5 Nov 18:40" over "84 sessions · 12 tasks · sidebar ·
+    transcripts · 5.5 GB, sharing space with the originals" (on another volume: "a full copy"). **Restore…** is
+    there and off ("Restore comes in the next build"). The **⋯** menu has **Show in Finder** and **Delete…**, which
+    asks first. **Back up now** makes one: with the profile's window open it says "close it first, or the Code-tab
+    list and sidebar records are left out" and backs up only what is safe, Claude Code's transcripts and cl_audit's
+    records. A line under the list says how many are kept (General ▸ Backups).
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
   ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"), and, when another of the profile's accounts has
@@ -494,13 +523,13 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   while they're spent), when they were read, then **Open Claude window**, **Refresh now**, **Dashboard**,
   **Profile settings…** and **Hide from the menu bar**.
 
-The cards sit in three columns: Profile, Claude Code, Claude window and Alerts on the left, the Dock icon in the
+The cards sit in three columns: Profile, Claude Code, Sessions, Claude window and Alerts on the left, the Dock icon in the
 middle, the menu bar on the right. In two columns the menu bar goes under the left cards and the Dock icon stays
 beside them; in one column everything follows in that order.
 
 ### General settings
 
-Three columns, each with its subject printed at the top: **cl_audit** (Usage in the background, Privacy, About),
+Three columns, each with its subject printed at the top: **cl_audit** (Usage in the background, Privacy, Backups, About),
 **How usage looks** (Face, Dashboard cards, Widget) and **The Dock** (App icon, Dock). In two columns the Dock goes
 under cl_audit; one column keeps the same order, top to bottom. Every row is one line.
 
@@ -517,6 +546,12 @@ under cl_audit; one column keeps the same order, top to bottom. Every row is one
 - **Privacy:** **Show emails** ("shown" / "hidden", see above), and **Usage history** ("tokens, cost, CSV", read from
   this Mac's Claude Code session files; or "limits only": no session file is read and the dashboard shows the
   limits only).
+- **Backups:** where the profiles' session backups go and how many are kept. **Where** is "cl_audit's folder ▸
+  backups" (`~/Library/Application Support/usage-n-uf/backups`) or a folder you pick with **Change…** (a Finder
+  panel; **Use default** goes back), with **Show in Finder**. **Keep the last** (3) and **And any under** (30 days)
+  say what stays: the last N of each profile plus any made under D days ago. Stored with cl_audit's other
+  preferences. Backups already made stay where they were if the folder changes. See
+  [Backups of a profile's sessions](#backups-of-a-profiles-sessions).
 - **Face:** the look of the cl_audit window, as on the home site: **Std** (a dark brushed panel, the
   default), **Black** (black anodised) or **Silver** (light brushed silver; the window takes the Mac's light
   appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.
@@ -579,6 +614,40 @@ marks for it, Terminal scripts and place on the dashboard. **Delete its folders 
 folder out (its Keychain login goes) and deletes that folder and its Claude window's data folder; links
 inside are removed, never what they point to. The default `~/.claude`, the standard window and a folder
 another profile shares items from are never deleted, and Claude must be closed first.
+
+### Backups of a profile's sessions
+
+A backup is a quick copy of a profile's sessions on this Mac, in `<backups folder>/<profile id>/<backup id>/` with a
+`backup.json` that says what is in it. One is made by every switch that moves the sessions (right after the window is
+known closed, before anything moves, under the switch's lock) and by **Back up now** in Settings ▸ the profile ▸
+Sessions. Restore comes in a later build; the manifest already names every item's original path.
+
+- **In it:** the window's Code-tab list (every `claude-code-sessions/<account>/<org>` folder, scheduled tasks
+  included, for both accounts and any other found there), its sidebar records (only the `epitaxyPrefs` part of
+  `claude_desktop_config.json`, as its own file: the rest of that file holds MCP settings, which can carry keys),
+  cl_audit's records (the profile's name and its account and standby ids, never an address, and the receipt of the
+  switch it was made for) and, on by default, Claude
+  Code's transcripts (`<Claude Code folder>/projects`). The manifest has the backup's id, profile, kind (before a
+  switch, naming the receipt, or manual), when, how many seconds it took, the accounts by id only (never an
+  address), counts (sessions, sidebar ones, tasks, transcripts), the size and, per item, its original absolute path
+  and its path inside the backup.
+- **Never in it:** a sign-in. No `.claude.json`, nothing named like credentials, nothing from the Keychain (cl_audit
+  doesn't touch it for this), and nothing outside those paths. Each file is opened without following links and
+  copied from that open file, so a link swapped in meanwhile is left out; under `projects/` a file with another hard
+  link is left out too. The backups folder can't be, or hold, what is copied from (the Claude Code `projects`
+  folder, the Claude window's data).
+- **How it is copied:** as APFS clones, file by file, so it takes seconds and shares space with the originals; the
+  list says "sharing space with the originals". On another volume a clone can't be made, so the file is copied for
+  real (first checking there is room), and the list says "a full copy". A source file is never changed, and a backup
+  is built under a hidden name and renamed into place whole, never over another.
+- **If it can't be made,** a switch stops with nothing moved and says why (step 1 on the Switch page). The window is
+  checked closed again when the backup is done; if it opened meanwhile, the backup is taken away and nothing moves.
+  The receipt records the backup's id and folder, so changing the folder later doesn't lose it. **Back up now** with the window open
+  leaves out the Code-tab list and sidebar records (the window rewrites its entries from memory); a switch always
+  has the window closed.
+- **How many are kept:** General ▸ Backups sets the last N (3) and any under D days (30). After a switch's backup
+  (and after Back up now) the rest are deleted, never one named by a switch that stopped half way (its Undo and the
+  backup point at each other); **Delete…** in the list asks first and refuses that one too.
 
 ### Moving a profile to another account
 
