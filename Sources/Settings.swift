@@ -1559,7 +1559,7 @@ struct AccountSettings: View {
                        canSignIn: model.claudePath != nil,
                        signIn: { addProblem = addByAddress() },
                        cancel: { adding = nil; addProblem = nil })
-            rowLine(addProblem ?? "Claude Code signs in through Terminal, in a folder of its own; \(entry.name.isEmpty ? "the profile" : entry.name) keeps working meanwhile.",
+            rowLine(addProblem ?? AddAccountWords.signInLine(profile: entry.name, typed: typed),
                     color: addProblem == nil ? nil : face.danger)
         } else {
             ViewThatFits(in: .horizontal) {
@@ -1573,29 +1573,26 @@ struct AccountSettings: View {
         Text("The profile works on one at a time.").font(.system(size: 11)).foregroundStyle(face.muted).lineLimit(1)
     }
 
-    /// The accounts found on this Mac (Accounts.swift), each added with one click; other profiles' dimmed; then Sign in to
-    /// another account….
+    /// The accounts found on this Mac (Accounts.swift), in macOS's own menu with two lines a row (AddAccount.swift): the
+    /// address, then in grey what is known of it. One click adds it; other profiles' are greyed and can't be added; then
+    /// Sign in to another account…. Found accounts show no usage: limits are read only for a profile's own accounts.
     private var addAccountMenu: some View {
-        let found = FoundAccountsCache.list(for: entry, among: model.accounts)
-        return Menu {
-            Section("Found on this Mac") {
-                if found == nil { Button("Looking…") {}.disabled(true) }
-                else if found?.isEmpty == true { Button("Nothing else found") {}.disabled(true) }
-                ForEach(found ?? []) { f in
-                    Button("\(f.title)   \(f.detail())") { addFound(f) }.disabled(f.owner != nil)
+        AddAccountKey(pressed: addOpen)
+            .overlay {
+                MenuTrigger(label: "Add account", opened: { addOpen = $0 }) {
+                    let found = FoundAccountsCache.list(for: entry, among: model.accounts)
+                    let rows = AddAccountPopup.rows(found: found, profile: entry.name, canSignIn: model.claudePath != nil)
+                    return AddAccountPopup.menu(rows,
+                        onAdd: { id in if let f = found?.first(where: { $0.id == id }) { addFound(f) } },
+                        onOther: { adding = ""; addProblem = nil })
                 }
             }
-            Divider()
-            Button("Sign in to another account…") { adding = ""; addProblem = nil }.disabled(model.claudePath == nil)
-        } label: { AddAccountKey() }
-        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            .fixedSize()
     }
 
     func addFound(_ f: FoundAccount) {
-        guard !entry.has(f.seat), FolderRules.seatOwner(f.seat, among: model.accounts, except: entry.id) == nil else { return }
-        var seat = f.seat
-        seat.linkedAt = Date()
-        entry.standby.append(StandbyAccount(email: f.email, seat: seat, configDir: f.folder))
+        guard let added = entry.adding(f, among: model.accounts) else { return }
+        entry = added
         FoundAccountsCache.forget()
     }
 
@@ -1653,6 +1650,8 @@ struct AccountSettings: View {
     /// Add account ▸ Sign in to another account…: the address being typed (nil: the key shows), and why it can't start.
     @State var adding: String?
     @State var addProblem: String?
+    /// Add account's pop-up is open: its key shows pressed.
+    @State private var addOpen = false
     /// The standby account clicked in Accounts: its row lights and its Switch account key opens the Switch page.
     @State var picked: String?
     @State private var heldOrder: [String] = []

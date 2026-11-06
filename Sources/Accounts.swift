@@ -121,17 +121,7 @@ struct FoundAccount: Identifiable, Equatable {
     var email: String { seat.email ?? "" }
     var signedIn: Bool { folder != nil }
 
-    /// "ultra-2@example.com · Personal"
-    var title: String { [Privacy.masked(email), org].compactMap { $0 }.joined(separator: " · ") }
-
-    /// "signed in · ~/.claude-u2", "needs sign-in · used in this window in August", "Work's".
-    func detail(now: Date = Date()) -> String {
-        if let owner { return "\(owner)'s" }
-        var parts = [signedIn ? "signed in" : "needs sign-in"]
-        if let folder { parts.append(tilde(expand(folder))) }
-        if let used = usedInWindow { parts.append("used in this window \(Self.whenUsed(used, now: now))") }
-        return parts.joined(separator: " · ")
-    }
+    // The pop-up's two lines are AddAccount.swift's (`second(profile:)`).
 
     /// "today", "this week", "in October", "in August 2025".
     static func whenUsed(_ d: Date, now: Date = Date()) -> String {

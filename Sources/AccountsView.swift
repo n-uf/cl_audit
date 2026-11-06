@@ -100,8 +100,9 @@ struct AccountBoxTitle: View {
 
 /// Add account's key: "ADD ACCOUNT ▾", a menu.
 struct AddAccountKey: View {
+    var pressed = false             // while its pop-up is open
     var body: some View {
-        KeyLook(height: 26, radius: 4, hPad: 11) {
+        KeyLook(pressed: pressed, height: 26, radius: 4, hPad: 11) {
             HStack(spacing: 5) {
                 Text("Add account")
                 Image(systemName: "chevron.down").font(.system(size: 7.5, weight: .bold))
