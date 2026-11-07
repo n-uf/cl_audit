@@ -306,7 +306,7 @@ struct ZipIndex {
     /// one through descriptors opened O_NOFOLLOW|O_DIRECTORY (never a path walk through something that could be a link), the
     /// modification time set from the entry. A running total of bytes written is checked against `cap` before every write, and
     /// the volume's free space against `floor` (a second guard). Returns the total written. Throws `Stop`.
-    func extract(archive path: String, into dest: URL, cap: Int64, floor: Int64, cancel: () -> Bool) throws -> Int64 {
+    func extract(archive path: String, into dest: URL, cap: Int64, floor: Int64, cancel: () -> Bool, inChunk: Int = 1 << 16, outChunk: Int = 1 << 18) throws -> Int64 {
         let afd = Darwin.open(path, O_RDONLY | O_NOFOLLOW)
         guard afd >= 0 else { throw Stop.refused("The file can't be opened.") }
         defer { close(afd) }
@@ -326,7 +326,7 @@ struct ZipIndex {
             }
             return cur
         }
-        let inCap = 1 << 16, outCap = 1 << 18
+        let inCap = max(1, inChunk), outCap = max(1, outChunk)         // (64 KB in, 256 KB out; a check passes small ones to meet every edge)
         let inBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: inCap), outBuf = UnsafeMutablePointer<UInt8>.allocate(capacity: outCap)
         defer { inBuf.deallocate(); outBuf.deallocate() }
         var total: Int64 = 0, sinceRoom: Int64 = 0
@@ -401,13 +401,17 @@ struct ZipIndex {
                 var ended = false, outputPending = false
                 while !ended {
                     try alive()
-                    if zp.pointee.avail_in == 0, !outputPending {
-                        // more input is needed: the entry's next 64 KB; none left means the stream was cut short
-                        guard remaining > 0 else { throw Stop.refused("A deflate stream ends after its entry's bytes do (it is cut short); refused.") }
-                        let n = Int(min(UInt64(inCap), remaining))
-                        guard pread(afd, inBuf, n, off_t(pos)) == n else { throw Stop.refused("The zip is damaged.") }
-                        zp.pointee.next_in = inBuf; zp.pointee.avail_in = uInt(n)
-                        pos += UInt64(n); remaining -= UInt64(n)
+                    if zp.pointee.avail_in == 0 {
+                        // the next chunk is read whenever the last one is used up and the entry has more, whether or not output is pending
+                        // (a chunk can end on the very call that fills the output buffer; zlib still needs the next one to go on)
+                        if remaining > 0 {
+                            let n = Int(min(UInt64(inCap), remaining))
+                            guard pread(afd, inBuf, n, off_t(pos)) == n else { throw Stop.refused("The zip is damaged.") }
+                            zp.pointee.next_in = inBuf; zp.pointee.avail_in = uInt(n)
+                            pos += UInt64(n); remaining -= UInt64(n)
+                        } else if !outputPending {
+                            throw Stop.refused("A deflate stream ends after its entry's bytes do (it is cut short); refused.")      // nothing more to give it, nothing more to take out
+                        }
                     }
                     let inBefore = zp.pointee.avail_in
                     zp.pointee.next_out = outBuf; zp.pointee.avail_out = uInt(outCap)
@@ -418,8 +422,11 @@ struct ZipIndex {
                     switch r {
                     case Z_STREAM_END: ended = true
                     case Z_OK, Z_BUF_ERROR:
-                        // nothing taken and nothing made: no progress; it would turn forever
-                        if produced == 0, zp.pointee.avail_in == inBefore { throw Stop.refused("A deflate stream is damaged; refused.") }
+                        // nothing taken and nothing made: no progress; it would turn forever. With no input to give it, the stream was cut
+                        // short; with input available, it is damaged.
+                        if produced == 0, zp.pointee.avail_in == inBefore {
+                            throw Stop.refused(inBefore == 0 ? "A deflate stream ends after its entry's bytes do (it is cut short); refused." : "A deflate stream is damaged; refused.")
+                        }
                     default: throw Stop.refused("A deflate stream is damaged; refused.")      // Z_DATA_ERROR, Z_NEED_DICT, Z_MEM_ERROR ...
                     }
                 }
