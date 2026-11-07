@@ -437,6 +437,23 @@ enum SessionsBackup {
             .sorted { $0.created != $1.created ? $0.created > $1.created : $0.id > $1.id }
     }
 
+    /// Backups that a switch's or a restore's receipt names in another place than `place` (General ▸ Backups was changed
+    /// since, or the switch was made with another): listed with their place, so Restore reaches them. Newest first.
+    static func elsewhere(profile: String, place: URL = BackupPrefs.placeURL) -> [(manifest: Manifest, place: String)] {
+        guard validProfile(profile) else { return [] }
+        let here = FolderKey.canonical(place.path)
+        var refs: [(id: String, place: String)] = []
+        for r in SwitchEngine.receipts(profile: profile) { if let b = r.backup, let p = r.backupPlace { refs.append((b, p)) } }
+        for r in SessionsRestore.headers() where r.profile == profile { refs.append((r.backup, r.backupPlace)) }
+        var seen = Set<String>(), out: [(manifest: Manifest, place: String)] = []
+        for ref in refs where FolderKey.canonical(ref.place) != here {
+            guard seen.insert(FolderKey.canonical(ref.place) + "/" + ref.id).inserted,
+                  let m = load(profile: profile, id: ref.id, place: URL(fileURLWithPath: ref.place)) else { continue }
+            out.append((m, ref.place))
+        }
+        return out.sorted { $0.manifest.created > $1.manifest.created }
+    }
+
     static func load(profile: String, id: String, place: URL = BackupPrefs.placeURL) -> Manifest? {
         guard validProfile(profile), validID(id) else { return nil }
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
@@ -457,11 +474,15 @@ enum SessionsBackup {
             guard let r = SwitchEngine.load(n) else { unreadable.insert(n); continue }
             if r.profile == profile, r.unfinished, let b = r.backup, r.backupPlace.map({ FolderKey.canonical($0) == here }) ?? true { ids.insert(b) }
         }
+        // a restore that stopped half way finishes from its backup
+        for r in SessionsRestore.unfinished(profile: profile) where FolderKey.canonical(r.backupPlace) == here { ids.insert(r.backup) }
+        // and the backup an Undo this switch is about to restore from (until that restore has run)
+        for u in SessionsRestore.pendingUndoBackups(profile: profile) where FolderKey.canonical(u.place) == here { ids.insert(u.id) }
         return (ids, unreadable)
     }
 
     private static func isKept(_ m: Manifest, _ k: (ids: Set<String>, receipts: Set<String>)) -> String? {
-        if k.ids.contains(m.id) { return "A switch that stopped half way names this backup: Undo that switch first." }
+        if k.ids.contains(m.id) { return "A switch or a restore that stopped half way names this backup: Undo it or finish it first." }
         if case .beforeSwitch(let rid) = m.kind, k.receipts.contains(rid) {
             return "The receipt of the switch this backup was made for can't be read, so the backup stays."
         }
@@ -474,6 +495,7 @@ enum SessionsBackup {
         if let why = isKept(m, keeps(profile: profile, place: place)) { throw BackupError(why) }
         do { try FileManager.default.removeItem(at: folder(profile: profile, place: place).appendingPathComponent(id)) }
         catch { throw BackupError("The backup couldn't be deleted (\(error.localizedDescription)).") }
+        SessionsRestore.prune(profile: profile)             // the receipts of restores from it go too
     }
 
     /// Takes away a backup this run just made and no receipt names yet (the switch stopped before anything moved).
@@ -504,6 +526,7 @@ enum SessionsBackup {
                 try? FileManager.default.removeItem(at: dir.appendingPathComponent(n))
             }
         }
+        SessionsRestore.prune(profile: profile, now: now)   // and the receipts of finished restores whose backup is gone, or 30 days old
         return gone
     }
 

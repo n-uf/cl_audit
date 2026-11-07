@@ -40,6 +40,7 @@ struct SwitchPlan: Equatable {
     var tasks = 0                       // scheduled tasks to move
     var sessionsFollow = true
     var backupTranscripts = true        // the backup (SessionsBackup.swift) takes Claude Code's transcripts too
+    var undoes: String? = nil           // Undo this switch: the receipt of the switch this one switches back
     var entry: AccountEntry? = nil      // cl_audit's record of the profile, for the backup
 
     var sourceDir: String { SwitchEngine.scopeDir(dataDir, SeatID(from)) }
@@ -78,6 +79,9 @@ struct SwitchReceipt: Codable, Equatable {
     var backup: String?
     /// The folder that backup is in (General ▸ Backups at the time): a later change of that folder doesn't lose it.
     var backupPlace: String?
+    /// Undo this switch: the receipt of the switch this one switches back. That switch's backup is what the restore after
+    /// it reads, so it is kept from pruning until that restore has run (SessionsRestore.pendingUndoBackups).
+    var undoes: String?
 
     /// Something was moved, and the switch was neither linked nor undone: Undo still applies.
     var unfinished: Bool { undone == nil && linked == nil && !steps.isEmpty }
@@ -166,6 +170,7 @@ enum SwitchEngine {
         guard windowClosed() else { throw SwitchError.notReady("The profile's Claude window is open; nothing moved.") }
         var r = SwitchReceipt(id: receiptID(now, p.profile), profile: p.profile, standby: p.standby, dataDir: p.dataDir,
                               from: SeatID(p.from), to: SeatID(p.to), started: now)
+        r.undoes = p.undoes
         let place = backups ?? BackupPrefs.placeURL
         if p.sessionsFollow {
             let id = SessionsBackup.newID(now)
