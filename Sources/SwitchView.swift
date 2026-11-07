@@ -169,6 +169,11 @@ struct SwitchTileDisplay: View {
             TileDisplayGlass(l1: "Stopped half way", l2: "Undo it", tone: .amber) {
                 model.showSwitch(AccountEntry.standbyStatusID(u.profile, u.standby))
             }
+        } else if let rr = model.restoreRunner(of: entry.id) {
+            RestoreTileDisplay(entry: entry, model: model, runner: rr)
+        } else if let u = model.unfinishedRestore(of: entry.id) {
+            // a restore that stopped half way (also one cl_audit stopped in): its page finishes it or undoes it
+            TileDisplayGlass(l1: "Restore stopped", l2: "Finish or undo", tone: .amber) { model.showRestore(finishing: u) }
         }
     }
 }

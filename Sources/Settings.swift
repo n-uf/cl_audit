@@ -196,6 +196,7 @@ final class SettingsModel: ObservableObject {
     /// A selection that still points at something: an account, the Dashboard tile, or a new account being set up.
     func isValid(_ id: String?) -> Bool {
         id == Self.dashboardID || (id == Self.newID && draft != nil) || (id == Self.switchID && switchTarget != nil)
+            || (id == Self.restoreID && restoreTarget != nil)
             || accounts.contains { $0.id == id }
     }
 
@@ -242,6 +243,57 @@ final class SettingsModel: ObservableObject {
     @Published private(set) var switchChanges = 0
     func forgetUnfinished() { unfinishedLook.at = .distantPast; switchChanges += 1 }
 
+    // MARK: the Restore page (SessionsRestore.swift, RestoreRunner.swift, RestorePage.swift)
+
+    /// Which backup the Restore page is about.
+    @Published var restoring: RestoreKey?
+    static let restoreID = "__restore__"
+
+    var restoreTarget: (entry: AccountEntry, key: RestoreKey)? {
+        guard let k = restoring, let e = accounts.first(where: { $0.id == k.profile }) else { return nil }
+        return (e, k)
+    }
+    private var restoreRunners: [String: RestoreRunner] = [:]
+
+    func restoreRunner(_ k: RestoreKey) -> RestoreRunner {
+        if let r = restoreRunners[k.id] { return r }
+        let r = RestoreRunner(key: k, model: self)
+        restoreRunners[k.id] = r
+        return r
+    }
+
+    /// The restore of this profile to show beside its tile: one that's running, else the one on the Restore page.
+    func restoreRunner(of profile: String) -> RestoreRunner? {
+        if let r = restoreRunners.values.first(where: { $0.key.profile == profile && $0.isRunning }) { return r }
+        if let k = restoring, k.profile == profile, let r = restoreRunners[k.id] { return r }
+        return nil
+    }
+
+    /// A restore of this profile that stopped half way (from its receipts, looked at again at most every 10 s).
+    func unfinishedRestore(of profile: String, now: Date = Date()) -> SessionsRestore.Receipt? {
+        if now.timeIntervalSince(restoreLook.at) > 10 {
+            restoreLook = (now, Dictionary(SessionsRestore.unfinished().map { ($0.profile, $0) }, uniquingKeysWith: { a, _ in a }))
+        }
+        return restoreLook.byProfile[profile]
+    }
+    private var restoreLook: (at: Date, byProfile: [String: SessionsRestore.Receipt]) = (.distantPast, [:])
+    func forgetRestore() { restoreLook.at = .distantPast; switchChanges += 1 }
+
+    /// Opens the Restore page for a backup. One that ended (restored, undone) starts over when asked for again, unless
+    /// it is in front.
+    func showRestore(_ k: RestoreKey) {
+        if let r = restoreRunners[k.id], r.phase == .done || r.phase == .undone, !(selection == Self.restoreID && restoring == k) {
+            restoreRunners[k.id] = nil
+        }
+        restoring = k
+        selection = restoreTarget == nil ? Self.dashboardID : Self.restoreID
+    }
+
+    /// The page for a restore that stopped half way: to finish it or undo it.
+    func showRestore(finishing r: SessionsRestore.Receipt) {
+        showRestore(RestoreKey(profile: r.profile, backup: r.backup, place: r.backupPlace, resume: r.id))
+    }
+
     /// Every running switch that waits for the operator and is worth an alert (SwitchWaiting.swift), in key order: where it
     /// waits, its profile's name, how many steps it has, and whether the profile's alerts are on. The window's sign-in of a
     /// profile without a Claude window, and the Return step before the session is open or after its link missed, are left out.
@@ -263,6 +315,13 @@ final class SettingsModel: ObservableObject {
 
     func showSwitch(_ key: String) {
         var key = key
+        // a click on the Dock icon (or the menu bar) while a restore holds the window closed (SwitchMarker "restore"): its page
+        if let p = SwitchOffer.parse(key), p.standby == "restore" {
+            if let r = restoreRunners.values.first(where: { $0.key.profile == p.profile && $0.isRunning }) { showRestore(r.key) }
+            else if let u = unfinishedRestore(of: p.profile) { showRestore(finishing: u) }
+            else { selection = Self.dashboardID }
+            return
+        }
         if let p = SwitchOffer.parse(key) {
             // one switch of a profile at a time: while one runs, its page is the one shown
             if let r = runners.values.first(where: { $0.profile == p.profile && $0.isRunning }) { key = r.key }
@@ -272,7 +331,21 @@ final class SettingsModel: ObservableObject {
             }
         }
         switching = key
+        // a ready runner handed out here is an ordinary switch: an Undo this switch… that was abandoned leaves none of its
+        // banner, sixth step or preselected answer behind (showUndoSwitch sets them again after this)
+        if let r = runners[key], r.phase == .ready, r.receipt == nil, r.undoes != nil { r.undoes = nil; r.moveSessions = nil }
         selection = switchTarget == nil ? Self.dashboardID : Self.switchID
+    }
+
+    /// "Undo this switch…": the Switch page the other way, which says it also puts back from the backup the switch made
+    /// (when it made one and moved the sessions), preselecting that the sessions follow.
+    func showUndoSwitch(_ done: SwitchReceipt, key: String) {
+        showSwitch(key)
+        guard let t = switchTarget else { return }
+        let r = runner(t.entry, t.standby)
+        guard r.phase == .ready, r.receipt == nil, let b = done.backup else { return }
+        r.undoes = SwitchRunner.SwitchUndo(receipt: done.id, backup: b, place: done.backupPlace ?? BackupPrefs.placeURL.path)
+        r.moveSessions = true
     }
 
     /// Settings opened from inside the app: the Dashboard tile, unless a new account is being set up.
@@ -606,6 +679,9 @@ struct SettingsPage: View {
                 } else if model.selection == SettingsModel.switchID, let t = model.switchTarget {
                     SwitchPage(entry: t.entry, standby: t.standby, model: model, runner: model.runner(t.entry, t.standby), width: w)
                         .padding(.horizontal, 16).padding(.vertical, 14)
+                } else if model.selection == SettingsModel.restoreID, let t = model.restoreTarget {
+                    RestorePage(entry: t.entry, key: t.key, model: model, runner: model.restoreRunner(t.key), width: w)
+                        .padding(.horizontal, 16).padding(.vertical, 14)
                 } else if let id = model.selection, let entry = model.binding(id) {
                     // one identity per profile: switching tabs starts with fresh view state (a half-typed name, the
                     // Dock restart pulse, an open (i)), so nothing from one profile shows up, or is saved, on another
@@ -683,6 +759,7 @@ struct SettingsStatus: View {
             else if model.unsaved != nil || model.problem != nil { DisplayWindow(text: "Not saved", dim: "· see below", tone: .warn, height: h, width: w) }
             else if model.selection == SettingsModel.newID { DisplayWindow(text: "New profile", dim: "· not added yet", height: h, width: w) }
             else if model.selection == SettingsModel.switchID { DisplayWindow(text: "Switch", dim: "· nothing changes yet", height: h, width: w) }
+            else if model.selection == SettingsModel.restoreID { DisplayWindow(text: "Restore", dim: "· nothing is overwritten", height: h, width: w) }
             else if let id = model.selection, let e = model.accounts.first(where: { $0.id == id }) { profileState(e, w: w, h: h) }
             else { DisplayWindow(text: "Saved", dim: "· as you change", height: h, width: w) }
         }

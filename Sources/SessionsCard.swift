@@ -1,7 +1,8 @@
 // SessionsCard: Settings ▸ a profile ▸ Sessions (after the Claude Code card). What is kept here (Claude Code's
 // transcripts, the Claude window's entries), how long Claude Code keeps its own, and the backups of the profile's
 // sessions (SessionsBackup.swift): made by every switch that moves them and by Back up now, listed here, deleted here.
-// Restore comes in a later build: its key is in place and off. Where backups go and how many are kept: General.
+// Restore… opens the Restore page (RestorePage.swift): a preview first, nothing written until the key is pressed. Where
+// backups go and how many are kept: General.
 
 import AppKit
 import SwiftUI
@@ -14,6 +15,7 @@ struct SessionsCard: View {
 
     @State private var kept: SessionsBackup.Kept?                  // nil: still counting
     @State private var backups: [SessionsBackup.Manifest] = []
+    @State private var places: [String: String] = [:]              // backup id → its folder, for those a receipt names in another place
     @State private var targets: [String: String] = [:]             // backup id → the account its switch went to, short
     @State private var days: Int? = CodeCleanup.standard           // nil: settings.json doesn't say (or can't be read)
     @State private var keepProblem: String?
@@ -28,7 +30,7 @@ struct SessionsCard: View {
     private var switching: Bool { _ = model.tick; return SwitchMarker.blocks(Account(entry)) }
 
     var body: some View {
-        SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. Backups are quick copies on this Mac, made by every switch that moves the sessions and by Back up now; Restore comes in a later build. Chats and Projects on claude.ai belong to each account and aren't here.") {
+        SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. Backups are quick copies on this Mac, made by every switch that moves the sessions and by Back up now; Restore… puts back what is missing, merged, and never overwrites anything. Chats and Projects on claude.ai belong to each account and aren't here.") {
             SRow(label: "Kept here", info: "What \(name) has on this Mac now: Claude Code's session transcripts, the entries of the Claude window's Code tab (for every account it has used), and how much room they take.", first: true, stacked: true) {
                 text(keptWords)
             }
@@ -105,7 +107,7 @@ struct SessionsCard: View {
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(working || switching)
             }
             if switching {
-                note("A switch of \(entry.name) is under way: it makes its own backup first.")
+                note("A switch or a restore of \(entry.name) is under way: a switch makes its own backup first.")
             } else if windowOpen {
                 note("\(entry.name)'s window is open: close it first, or the Code-tab list and sidebar records are left out.")
             }
@@ -119,12 +121,12 @@ struct SessionsCard: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(SessionsBackup.title(m, target: targets[m.id])).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(face.text)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(SessionsBackup.summary(m)).font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                Text(SessionsBackup.summary(m) + (places[m.id].map { " · in \(tilde($0))" } ?? "")).font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Restore…") {}
-                .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(true)
-                .help("Restore comes in the next build")
+            Button("Restore…") { model.showRestore(RestoreKey(profile: entry.id, backup: m.id, place: placeOf(m).path)) }
+                .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                .help("Preview what a restore would do. Nothing is written until you press Close and restore, and nothing is ever overwritten")
             Menu {
                 Button("Show in Finder") { reveal(m) }
                 Divider()
@@ -171,11 +173,15 @@ struct SessionsCard: View {
         let e = entry, place = BackupPrefs.placeURL
         let src = SessionsBackup.Source(e)
         kept = SessionsBackup.KeptCache.get(e.id)
-        let (list, tg, d) = await Task.detached(priority: .utility) { () -> ([SessionsBackup.Manifest], [String: String], (days: Int?, problem: String?)) in
-            let list = SessionsBackup.list(profile: e.id, place: place)
-            return (list, Self.targets(list, for: e), CodeCleanup.read(codeDir: e.configDir))
+        let (list, tg, d, other) = await Task.detached(priority: .utility) { () -> ([SessionsBackup.Manifest], [String: String], (days: Int?, problem: String?), [String: String]) in
+            SessionsRestore.prune(profile: e.id)               // old receipts of finished restores
+            let here = SessionsBackup.list(profile: e.id, place: place)
+            // backups a receipt names in another place (General ▸ Backups was changed since): listed too, with their place
+            let more = SessionsBackup.elsewhere(profile: e.id, place: place)
+            let list = (here + more.map(\.manifest)).sorted { $0.created != $1.created ? $0.created > $1.created : $0.id > $1.id }
+            return (list, Self.targets(list, for: e), CodeCleanup.read(codeDir: e.configDir), Dictionary(more.map { ($0.manifest.id, $0.place) }, uniquingKeysWith: { a, _ in a }))
         }.value
-        backups = list; targets = tg; days = d.days; keepProblem = d.problem
+        backups = list; places = other; targets = tg; days = d.days; keepProblem = d.problem
         let k = await Task.detached(priority: .utility) { SessionsBackup.kept(src) }.value
         SessionsBackup.KeptCache.set(e.id, k)
         kept = k
@@ -213,7 +219,7 @@ struct SessionsCard: View {
     }
 
     private func delete(_ m: SessionsBackup.Manifest) {
-        let id = m.id, profile = entry.id, place = BackupPrefs.placeURL
+        let id = m.id, profile = entry.id, place = placeOf(m)
         deleting = nil; problem = nil
         Task {
             let result = await Task.detached(priority: .utility) { Result { try SessionsBackup.delete(profile: profile, id: id, place: place) } }.value
@@ -223,6 +229,9 @@ struct SessionsCard: View {
     }
 
     private func reveal(_ m: SessionsBackup.Manifest) {
-        NSWorkspace.shared.activateFileViewerSelecting([SessionsBackup.folder(profile: m.profile, place: BackupPrefs.placeURL).appendingPathComponent(m.id)])
+        NSWorkspace.shared.activateFileViewerSelecting([SessionsBackup.folder(profile: m.profile, place: placeOf(m)).appendingPathComponent(m.id)])
     }
+
+    /// Where a listed backup is: General ▸ Backups' folder, or the place a receipt named it in.
+    private func placeOf(_ m: SessionsBackup.Manifest) -> URL { places[m.id].map { URL(fileURLWithPath: $0) } ?? BackupPrefs.placeURL }
 }
