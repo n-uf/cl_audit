@@ -180,11 +180,16 @@ enum WKit {
     static let green = Color(red: 0.13, green: 0.77, blue: 0.37)
     static let amber = Color(red: 0.96, green: 0.62, blue: 0.04)
     static let red = Color(red: 0.94, green: 0.27, blue: 0.27)
+    /// 95 % and up (Painter.crimson in the app, which the widget extension doesn't compile): Display P3, so it shows as #eb445b.
+    static let crimson = Color(.displayP3, red: 0xeb / 255, green: 0x44 / 255, blue: 0x5b / 255)
 
     static func level(_ p: Double?) -> Color? {
         guard let p else { return nil }
-        return p >= 80 ? red : p >= 50 ? amber : green
+        return p.rounded() >= 95 ? crimson : p >= 80 ? red : p >= 50 ? amber : green
     }
+
+    /// One of the twelve segments of a segments bar (0 = first): the last is crimson, as it only lights from 95.8 %.
+    static func segment(_ i: Int) -> Color { i < 6 ? green : i < 9 ? amber : i < 11 ? red : crimson }
 
     static func accent(_ name: String) -> Color {
         switch name {
@@ -253,7 +258,7 @@ struct WBar: View {
             HStack(spacing: 2) {
                 ForEach(0..<12, id: \.self) { i in
                     RoundedRectangle(cornerRadius: 1.5)
-                        .fill(i < on ? (i < 6 ? WKit.green : i < 9 ? WKit.amber : WKit.red) : theme.track)
+                        .fill(i < on ? WKit.segment(i) : theme.track)
                 }
             }
             .frame(height: height)
@@ -563,7 +568,7 @@ struct WidgetContent: View {
                         Text(p.name).font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.ink).lineLimit(1)
                         Spacer(minLength: 2)
                         if let f = p.full(now: now) {
-                            Text(WKit.back(f.resets, now: now)).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(WKit.red).lineLimit(1)
+                            Text(WKit.back(f.resets, now: now)).font(.system(size: 9.5, weight: .semibold)).foregroundStyle(WKit.crimson).lineLimit(1)
                         } else {
                             WMini(design: look.design == .numbers || look.design == .rings ? look.design : .glow,
                                   name: p.fullerIsFive ? "5h" : "wk", p: p.fullerIsFive ? p.five : p.week, theme: theme)
@@ -604,7 +609,7 @@ struct WidgetContent: View {
             if compact {
                 EmptyView()
             } else if let f = p.full(now: now) {
-                Text(WKit.back(f.resets, now: now)).font(.system(size: scale.label - 1, weight: .semibold)).foregroundStyle(WKit.red).lineLimit(1)
+                Text(WKit.back(f.resets, now: now)).font(.system(size: scale.label - 1, weight: .semibold)).foregroundStyle(WKit.crimson).lineLimit(1)
             } else if let meta {
                 Text(meta).font(.system(size: scale.label - 1)).foregroundStyle(theme.muted).lineLimit(1)
             }
