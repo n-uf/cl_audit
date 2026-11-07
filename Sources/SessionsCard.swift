@@ -59,6 +59,8 @@ struct SessionsCard: View {
                 "\(SessionsBackup.title(l.m, target: targets[l.m.id])): \(SessionsBackup.summary(l.m)). The sessions it was made from are not touched."
                     + (SessionsRestore.finishedRestores(of: l.m.id, profile: entry.id, place: placeOf(l).path) > 0
                        ? " A restore from it is finished: its receipt, which Undo this restore needs, goes with the backup, so that restore can't be undone afterwards." : "")
+                    + (SessionsRestore.halfUndoneRestores(of: l.m.id, profile: entry.id, place: placeOf(l).path) > 0
+                       ? " A restore from it is only partly undone (a running session held some of its transcripts): its receipt stays, and Undo can be tried again; it doesn't need the backup." : "")
             } ?? "")
         }
     }

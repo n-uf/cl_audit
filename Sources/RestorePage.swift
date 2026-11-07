@@ -72,6 +72,8 @@ struct RestorePage: View {
             if runner.sidebarMissed { return Top(text: "Restored", dim: "· step 3 of 3 · the sidebar session didn't open", tone: .warn) }
             return Top(text: "Restoring ●", dim: "· step 3 of 3 · the sidebar", tone: .mint)
         case .done:
+            // an Undo that left restored transcripts a session holds: said from the receipt, so it survives a relaunch
+            if let r, r.undone == nil, r.undoLeft > 0 { return Top(text: "Partly undone", dim: "· \(r.undoLeft) left · Undo again once the session has ended", tone: .amber) }
             let listed = (r?.changedCount ?? 0) + (r?.inUseCount ?? 0)
             return Top(text: "Restored", dim: "· \(r?.back ?? 0) back · nothing overwritten" + (listed > 0 ? " · \(listed) listed" : "")
                        + ((r?.unchecked ?? 0) > 0 ? " · \(r?.unchecked ?? 0) not checked" : ""), tone: (r?.unchecked ?? 0) > 0 ? .amber : .ok)

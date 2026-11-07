@@ -568,6 +568,9 @@ enum SessionsRestore {
             var sha: String?
             var bytes: Int64
             var done = false
+            /// An Undo has dealt with it for good: taken back, already gone, or left because it changed since. Only a
+            /// restored transcript a running session held stays unsettled, for the next Undo.
+            var settled = false
         }
         var id: String
         var profile: String
@@ -604,7 +607,9 @@ enum SessionsRestore {
         /// Written down but not marked done and not checked (a window file while the window was open): probably there, and
         /// Undo takes it back if it is exactly what the step says; not counted in `back`.
         var unchecked: Int { steps.filter { !$0.done && $0.kind != .dir }.count }
-        var windowTouched: Bool { steps.contains { $0.kind == .entry || $0.kind == .tasks } }
+        /// Window files this receipt still has to answer for: entry and task steps an Undo hasn't settled yet. A second Undo
+        /// with only transcripts left never needs the window.
+        var windowTouched: Bool { steps.contains { ($0.kind == .entry || $0.kind == .tasks) && !$0.settled } }
     }
 
     private struct Event: Codable {
@@ -653,6 +658,7 @@ enum SessionsRestore {
             case "intent": out.append(Receipt.Step(kind: e.kind ?? .file, path: e.path, sha: e.sha, bytes: e.bytes ?? 0))
             case "done": if let i = out.lastIndex(where: { $0.path == e.path }) { out[i].done = true; if let h = e.sha { out[i].sha = h } }
             case "gone": out.removeAll { $0.path == e.path && !$0.done }
+            case "settled": if let i = out.lastIndex(where: { $0.path == e.path }) { out[i].settled = true }
             default: break
             }
         }
@@ -1002,17 +1008,28 @@ enum SessionsRestore {
         }
         // which Claude Code sessions run: one `ps`, only when transcripts are among what is taken back. If it can't be read,
         // nothing is taken back (a failed look must not turn the undo into a no-op recorded as done).
+        // (only for a transcript step that isn't settled and whose file is still there: a fully taken-back restore needs no look)
         var running = Set<String>()
-        if r.steps.contains(where: { ($0.kind == .transcript || $0.kind == .file) }) {
+        let needsLook = r.steps.contains { s in
+            guard (s.kind == .transcript || s.kind == .file), !s.settled else { return false }
+            var st = stat()
+            return lstat(s.path, &st) == 0
+        }
+        if needsLook {
             guard let live = runningSessions() else {
                 throw RestoreError("It couldn't be checked which Claude Code sessions run; nothing was taken back. Try again.")
             }
             running = live
         }
         var left = 0                                   // restored transcripts left in place because a session holds them
+        let journal = Journal(id: r.id)                // each step an Undo is done with is written down, so a second Undo skips it
         for step in r.steps.reversed() {
+            if step.settled { continue }
             let name = (step.path as NSString).lastPathComponent
+            var leaveOpen = false                      // a restored transcript a session holds, or a stop: not settled
+            defer { if !leaveOpen { journal?.add(Event(op: "settled", kind: nil, path: step.path, sha: nil, bytes: nil), sync: false) } }
             if step.kind == .entry || step.kind == .tasks, !windowClosed() {
+                leaveOpen = true
                 r.problems.append("The Claude window opened during the undo; stopped. What is taken back stays so: Undo again once it is closed.")
                 try? save(r)
                 throw RestoreError("The profile's Claude window opened during the undo; stopped. Undo again once it is closed.")
@@ -1047,7 +1064,7 @@ enum SessionsRestore {
                     let session = top ? String(leaf.dropLast(".jsonl".count)).lowercased() : rel.count >= 4 ? rel[2].lowercased() : ""
                     let age = now.timeIntervalSince(Date(timeIntervalSince1970: TimeInterval(st.st_mtimespec.tv_sec)))
                     if running.contains(session) || (top && age < recent) {
-                        left += 1
+                        left += 1; leaveOpen = true
                         r.problems.append("\(name): a running Claude Code session holds it (or it was written to a moment ago); left in place.")
                         continue
                     }
@@ -1056,7 +1073,7 @@ enum SessionsRestore {
                 guard fstatat(pfd, leaf, &again, AT_SYMLINK_NOFOLLOW) == 0, again.st_ino == st.st_ino, again.st_dev == st.st_dev else {
                     r.problems.append("\(name) changed while it was being taken away; left as it is."); continue
                 }
-                if unlinkat(pfd, leaf, 0) != 0 { r.problems.append("\(name) couldn't be taken away.") }
+                if unlinkat(pfd, leaf, 0) != 0 { leaveOpen = true; r.problems.append("\(name) couldn't be taken away.") }
             }
         }
         // the same line from an earlier try is said once
@@ -1082,7 +1099,15 @@ enum SessionsRestore {
     /// How many finished restores of a profile read from this backup and weren't undone: their receipts go with the backup.
     static func finishedRestores(of backup: String, profile: String, place: String) -> Int {
         let here = FolderKey.canonical(place)
-        return headers().filter { $0.backup == backup && $0.profile == profile && $0.finished != nil && $0.undone == nil
+        return headers().filter { $0.backup == backup && $0.profile == profile && $0.finished != nil && $0.undone == nil && $0.undoLeft == 0
+            && FolderKey.canonical($0.backupPlace) == here }.count
+    }
+
+    /// How many restores from this backup an Undo only half did (a session held some of its transcripts): they keep their
+    /// receipts, and Undo again can finish them; they don't need the backup.
+    static func halfUndoneRestores(of backup: String, profile: String, place: String) -> Int {
+        let here = FolderKey.canonical(place)
+        return headers().filter { $0.backup == backup && $0.profile == profile && $0.undone == nil && $0.undoLeft > 0
             && FolderKey.canonical($0.backupPlace) == here }.count
     }
 
@@ -1098,6 +1123,7 @@ enum SessionsRestore {
             if h.finished == nil && h.undone == nil {
                 if !(load(n)?.steps.isEmpty ?? true) || now.timeIntervalSince(h.started) < 3600 { continue }
             }
+            if h.undone == nil, h.undoLeft > 0 { continue }          // half undone: Undo again still has files to take back (it needs no backup)
             let end = h.finished ?? h.undone ?? h.started
             // gone only when the place can be looked at (its folder for this profile is there) and the backup's own isn't: a
             // place on a disk that isn't plugged in says nothing
@@ -1121,5 +1147,31 @@ enum SessionsRestore {
             out.append((b, first.backupPlace ?? BackupPrefs.placeURL.path))
         }
         return out
+    }
+}
+
+/// A receipt written by an earlier build has fewer keys: every one that has a default is read if present, else defaulted
+/// (the synthesized decoding would fail on the first missing one, and an unreadable header drops the receipt).
+extension SessionsRestore.Receipt {
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(id: try c.decode(String.self, forKey: .id), profile: try c.decode(String.self, forKey: .profile),
+                  dataDir: try c.decode(String.self, forKey: .dataDir), codeDir: try c.decode(String.self, forKey: .codeDir),
+                  backup: try c.decode(String.self, forKey: .backup), backupPlace: try c.decode(String.self, forKey: .backupPlace),
+                  target: try c.decodeIfPresent(SeatID.self, forKey: .target), started: try c.decode(Date.self, forKey: .started))
+        planned = try c.decodeIfPresent(Int.self, forKey: .planned) ?? 0
+        finished = try c.decodeIfPresent(Date.self, forKey: .finished)
+        undone = try c.decodeIfPresent(Date.self, forKey: .undone)
+        stopped = try c.decodeIfPresent(String.self, forKey: .stopped)
+        problems = try c.decodeIfPresent([String].self, forKey: .problems) ?? []
+        sidebar = try c.decodeIfPresent(SidebarPlan.self, forKey: .sidebar)
+        changed = try c.decodeIfPresent([String].self, forKey: .changed) ?? []
+        changedCount = try c.decodeIfPresent(Int.self, forKey: .changedCount) ?? 0
+        inUse = try c.decodeIfPresent([String].self, forKey: .inUse) ?? []
+        inUseCount = try c.decodeIfPresent(Int.self, forKey: .inUseCount) ?? 0
+        deletedCount = try c.decodeIfPresent(Int.self, forKey: .deletedCount) ?? 0
+        afterSwitch = try c.decodeIfPresent(String.self, forKey: .afterSwitch)
+        partialCount = try c.decodeIfPresent(Int.self, forKey: .partialCount) ?? 0
+        undoLeft = try c.decodeIfPresent(Int.self, forKey: .undoLeft) ?? 0
     }
 }
