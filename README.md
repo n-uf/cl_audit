@@ -239,7 +239,8 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   not ultra-2"), compared by account, never by name. The line at the top says how far it got ("Switching · step 3
   of 5 · Claude Code") and holds the keys that lead out: **Cancel switch** (a red lamp, always in sight: while the
   window closes, and until Claude Code has signed in, when it puts everything back), then **Undo this switch…** (the
-  switch the other way) once the profile is on ultra-2, and at Done "Main works on ultra-2 · ultra-1 on standby"
+  switch the other way, then what the switch changed comes back from its backup: see
+  [Restoring a backup](#restoring-a-backup)) once the profile is on ultra-2, and at Done "Main works on ultra-2 · ultra-1 on standby"
   with **Back to Main's settings**. Cancelled while the window was asked to quit, the window opens again if it
   closes anyway. When something fails, that step turns red and the line says where it stopped: the window didn't
   close (nothing moved), stopped half way (**Undo**), signed in as another account, the sidebar session didn't
@@ -638,7 +639,8 @@ another profile shares items from are never deleted, and Claude must be closed f
 A backup is a quick copy of a profile's sessions on this Mac, in `<backups folder>/<profile id>/<backup id>/` with a
 `backup.json` that says what is in it. One is made by every switch that moves the sessions (right after the window is
 known closed, before anything moves, under the switch's lock) and by **Back up now** in Settings ▸ the profile ▸
-Sessions. Restore comes in the next build; the manifest already names every item's original path.
+Sessions. **Restore…** on a backup puts back what is missing, merged, and never overwrites anything (see
+[Restoring a backup](#restoring-a-backup)).
 
 - **In it:** the window's Code-tab list (every `claude-code-sessions/<account>/<org>` folder, scheduled tasks
   included, for both accounts and any other found there), its sidebar records (only the `epitaxyPrefs` part of
@@ -665,7 +667,88 @@ Sessions. Restore comes in the next build; the manifest already names every item
   has the window closed.
 - **How many are kept:** General ▸ Backups sets the last N (3) and any under D days (30). After a switch's backup
   (and after Back up now) the rest are deleted, never one named by a switch that stopped half way (its Undo and the
-  backup point at each other); **Delete…** in the list asks first and refuses that one too.
+  backup point at each other, nor one a restore that stopped half way needs); **Delete…** in the list asks first
+  and refuses those too.
+
+### Restoring a backup
+
+**Restore…** on a backup in Settings ▸ the profile ▸ Sessions opens the **Restore page**, a sibling of the Switch page
+with the same keys and the same line at the top. It starts as a **preview** ("Preview · nothing written yet ·
+nothing is ever overwritten"); nothing is written until **Close and restore N** is pressed. The backup can be any in
+General ▸ Backups, or one a switch's or restore's receipt names in a folder General ▸ Backups no longer points at: the
+Sessions list shows those too, with where they are ("in ~/Old/backups"), and Restore, Show in Finder and Delete… use
+that place.
+
+**What happens** is counted from the backup against what is there now, by session id across every account folder of
+the window's Code-tab list, and transcripts by their path under the Claude Code folder's `projects`:
+
+- **Back where it was:** entries (and transcripts) that are there, unchanged since: nothing to do. An entry a switch
+  re-encoded when it moved it (the old account's error keys and Remote Control ids off) counts as unchanged. A
+  transcript that has grown since (the backup is its first part) counts here too.
+- **Missing, restored:** written back. Entries go into the folder of the account the profile works on now (where a
+  switch would have moved them), never into the folder of an account it no longer uses; an entry that was on another
+  account in the backup is written as a switch would place it. A task file comes back only when the account in use's
+  own is missing; one that is there is never replaced, even when it is empty. A transcript comes back as a clone of the
+  backup's file (a real copy from another volume), with the backup's modification time.
+- **Made after it:** sessions made later stay. **Deleted since:** an entry the window deleted since (its own
+  `deleted_` marker) stays deleted.
+- **Changed since:** there, and different: what is there stays, and the copy in the backup is only listed
+  (**Show the list**: sessions by a short id, never a title, transcripts by path). Never overwritten.
+- **In use:** transcripts of a Claude Code session that runs: left alone and listed. A session is seen only by its id on
+  a process's command line (`--resume <id>`, `--session-id <id>`: one `ps`). A session resumed from its own picker, or
+  with `--continue`, is not named there, so **a missing transcript of such a session is not seen as held** and is
+  written back (the write only ever creates a file that isn't there; if the session writes the same name first, the
+  restore leaves it as it is). A transcript that is already there is never written to either way; one changed in the
+  last two minutes is only listed as in use. If `ps` can't be read, no missing transcript is written and the page says so.
+- **Older than 30 days** (Claude Code's `cleanupPeriodDays`): restored transcripts older than that would be deleted
+  again by Claude Code's own clean-up; **Keep for 90 days** sets that one number in `settings.json`, the one key
+  cl_audit ever writes there.
+
+**Stays as it is:** the account (Main stays on the account it works on; Switch back changes that), sign-ins (never in a
+backup, never written), the window's MCP settings and `settings.json` other than Keep for, and claude.ai (Chats and
+Projects). **Sidebar:** the groups and pins of the restored sessions are taken from the backup's own sidebar records
+and arranged by one Return in a helper session, as after a switch; the window's cache is off, so claude.ai's copy wins
+at sign-in.
+
+**Steps:** 1 the profile's Claude window closes (only that window, about half a minute; skipped when nothing in the
+window comes back); 2 what is listed comes back, merged by the rules above; 3 the window opens, and the sidebar is
+arranged. The page then reads **Restored · 86 back · nothing overwritten · 3 listed** with **Undo this restore** and
+**Back to Main's settings**.
+
+- **Nothing is overwritten, ever.** Files are made with an exclusive create (a clone that fails when the name is taken,
+  or a temp file linked into place), never over a name that exists, never through a link. The backup is read through
+  directory descriptors without following a link; **a backup holding anything that isn't a plain file with one link
+  refuses the whole restore** (as does a file named like a sign-in, a path that isn't a plain relative one, a file its
+  `backup.json` names that is missing, a newer manifest, or another profile's backup). A project folder (or `projects`
+  itself) that is a link is not written through: its transcripts are left out and the page says so.
+- **The window stays closed** while its files are written, asked again before every one; if it opens, the run stops
+  with what is back kept and the receipt says so. **One switch, restore or import at a time** (the switch lock, and
+  claude-transplant's lock too), and none while a switch of the profile stopped half way: the page says **Not yet ·
+  one thing first**, names it and offers **Open the switch** (Undo puts back exactly what it moved; then restore if
+  anything is still missing).
+- **A receipt** in cl_audit's folder (`restores/<id>/receipt.json`, with `journal.jsonl` beside it: one line before a
+  file is written and flushed to disk, one after) says what was put back. The line before holds the hash the file must
+  have (an entry's own bytes as written; a transcript's from the backup's file, read before the clone is made), so a
+  crash between the write and its second line is still known: Undo takes such a file back if it is exactly that, and
+  finishing the restore counts it as back. **Stop, keep what's back** stops after the file being written. A restore that
+  stopped (Stop, the window opened, the Mac stopped) shows on the profile's tile as "Restore stopped · Finish or
+  undo" and opens on a page with **Finish restoring** (continues the same receipt; also when nothing is left to write,
+  when it is only marked finished) and **Undo this restore**, which takes back exactly what it put back and only files
+  unchanged since (a restored transcript Claude Code has written to since stays, and it says so), and the folders it
+  made, if empty. Undo closes the profile's window itself when window files are among them (the click is the
+  consent; the same Cancel while it closes, the same rules as a restore), and stops, keeping what it took back, if the
+  window opens meanwhile. A file that has landed is never deleted by name afterwards, except by Undo's check: if what
+  is there isn't the backup's file (a running session may have appended to it), the restore leaves it and says so.
+  Temp files of a restore (`.restore-<id>-….tmp`, in the window's folder) are swept at the end, at Undo and when
+  finishing, and a crash's second hard link goes with them. cl_audit offers to finish after a stop rather than
+  finishing by itself: it would have to close the window unasked. Receipts of finished or undone restores go when their
+  backup is gone or after 30 days; one that wrote something and didn't finish never does. A backup an Undo this switch
+  is about to restore from is kept from pruning until that restore has run (30 days at most).
+- **Undo this switch…** on the Switch page is the switch the other way and then a restore from the backup the
+  switch made: the page says so before it starts ("Switches back to ultra-1, then puts back anything the switch
+  changed from its backup: nothing is overwritten"), the sessions follow, and its last step (and a key at Done) opens
+  the Restore page on that backup, counted fresh after the switch back. It stays two pages because the restore needs the
+  window closed again and its counts only mean something after the sessions have moved back.
 
 ### Moving a profile to another account
 

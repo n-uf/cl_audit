@@ -17,10 +17,31 @@ the notes before updating.
   (before: when, what, a Transcripts switch, how long; after: "Made · Before switch to ultra-2 · 5 Nov 18:40 · 3 s")
   and step 1 reads "closed, backup made". Settings ▸ a profile has a **Sessions** card after Claude Code: what is
   kept here, **Keep for** (30 days, 90 days or a year: Claude Code's `cleanupPeriodDays`, other keys kept), the
-  backups with Show in Finder and Delete… (Restore… is there and off until the next build) and **Back up now**
+  backups with Restore…, Show in Finder and Delete… and **Back up now**
   (with the window open it leaves out the Code-tab list and sidebar records). **General ▸ Backups** sets where they
   go and how many are kept (the last 3 and any under 30 days). The receipt records where the backup is; the
   window is checked closed again after the backup, and a switch whose backup can't be made stops at step 1.
+- **Restore a backup, and Undo this switch puts back from it.** **Restore…** on a backup opens a Restore page: a
+  preview first (nothing written, nothing ever overwritten) that counts, by session id across every account folder of
+  the window's Code-tab list and by path for transcripts, what is back where it was, what is missing and would be
+  restored, what was made after the backup, what changed since (the copy in the backup is only listed), what a running
+  Claude Code session holds (left alone, listed), what the window deleted since (stays deleted) and which restored
+  transcripts Claude Code's own clean-up would delete again (**Keep for 90 days**). Missing entries go into the folder
+  of the account the profile works on now, never one it no longer uses; files are only ever created, never over a name
+  that exists and never through a link, and a backup holding anything that isn't a plain file with one link, or
+  anything named like a sign-in, refuses the whole restore. **Close and restore N** closes only that profile's window,
+  writes with a receipt kept as it goes (**Stop, keep what's back**; a restore that stopped shows on the profile's tile
+  and is finished from the same receipt), then arranges the sidebar with one Return as after a switch. **Undo this
+  restore** takes back exactly what it put back (it closes the profile's window itself, on that click, and stops
+  keeping what it took back if the window opens). A crash between a file and its line in the receipt is still known:
+  each line before a write carries the hash the file must have, so Undo and finishing treat such a file as the
+  restore's, and a restore stopped after its last file can still be finished. Backups a receipt names in another
+  place are listed in the Sessions card too ("in ~/Old/backups"); receipts of finished restores go with their backup
+  or after 30 days; the backup an Undo this switch is about to restore from isn't pruned before that. One switch,
+  restore or import at a time, none while a switch of the
+  profile stopped half way ("Not yet · one thing first", with **Open the switch**) or while claude-transplant moves
+  sessions. **Undo this switch…** is now the switch back plus a restore from the backup the switch made: the Switch
+  page says so before it starts, and its last step opens the Restore page on that backup.
 - **Switch page fits its columns.** The Move to / Leave with keys sit side by side when they fit and one under the
   other when they don't, instead of overhanging the card; the keys in the top bar wrap under the status display when
   the page is narrow; the account being switched to is printed in light text on its dark glass on the Silver face too.
