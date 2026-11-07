@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+- **A fourth usage level: crimson from 95 %.** Green under 50 %, amber 50–79 %, red 80–94 %, and now a vivid crimson
+  (#eb445b) from 95 % up, a full limit included, wherever a usage level shows: the menu bar icon and its menu, the
+  dashboard cards and trays, the Switch page, the Dock icon's bars, rings and segments, and the widget. The level
+  follows the number shown (94.5 reads 95, so it is crimson).
 - **Backups of a profile's sessions.** Every switch that moves the sessions now makes a backup first, right after
   the window is known closed and before anything moves: the window's Code-tab list for both accounts with its
   scheduled tasks, its sidebar records (only the `epitaxyPrefs` part of its config, never the MCP settings), cl_audit's

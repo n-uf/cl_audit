@@ -142,7 +142,7 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   nothing full, the card is as always: no box.
 - The same box is in the details panel; the launcher shows the countdown; the Dock icon's menu starts with "5-hour
   full · back at 15:28, in 1h 42m"; the Dock icon itself becomes the countdown (the time large, "5H FULL" under
-  it, a red frame).
+  it, a crimson frame).
 - **Another account with room.** When the profile has other accounts (Settings ▸ the profile ▸ Claude Code ▸
   Accounts), only the one in use is lit. The card shows the others as **unlit trays** under its limits, most room
   first, their levels dimmed, each on a compact line (the address, STANDBY, then its 5-hour and week rows). An
@@ -287,7 +287,7 @@ once when the look changes.
 Max and Ultra plans and premium Team and Enterprise seats also have a **weekly limit of Fable's own**: Fable may use
 up to a share of the week (half, today). Pro and standard seats pay for Fable with usage credits instead, so they
 have no such row. When Anthropic's reply has it, the cards, the panels and the Dock icon's menu show a third row, "Fable"
-("Fable · week" in the large panel). Full, the row turns red and says when it's back ("full · back Thu 09:00"); it
+("Fable · week" in the large panel). Full, the row turns crimson and says when it's back ("full · back Thu 09:00"); it
 doesn't take the full-limit box or the countdown face, because the profile can still work with the other models. The
 Dock icon keeps its two bars.
 
@@ -539,9 +539,9 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     Number (the fuller limit), Two numbers.
   - **Colours:** the level colours; **System**, the menu bar's own colour, drawn the way macOS draws its icons
     (white or black, dimmed on an inactive screen); **Accent**, your Mac's accent colour, following it when it
-    changes; or the profile's colour. A full limit is red, except in System, where its countdown shows it.
+    changes; or the profile's colour. A full limit is crimson, except in System, where its countdown shows it.
   - **Label:** none, or the profile's label before its icon ("MAIN").
-  - **When full:** the countdown beside the icon ("1h 42m"), or red only.
+  - **When full:** the countdown beside the icon ("1h 42m"), or crimson only.
 
   A click opens the profile's menu: its limits (Fable's when the plan has one, when each resets, usage credits
   while they're spent), when they were read, then **Open Claude window**, **Refresh now**, **Dashboard**,
