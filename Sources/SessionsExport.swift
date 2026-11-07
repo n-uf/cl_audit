@@ -622,7 +622,11 @@ enum SessionsExport {
         let work = job.place.appendingPathComponent(".export-\(tag)")
         do { try fm.createDirectory(at: work, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]) }
         catch { throw ArchiveError("The backups folder \(tilde(job.place.path)) can't be written.") }
-        SessionsImport.claim(work)                         // who it belongs to: a later launch sweeps it if this process is gone
+        // who it belongs to: a later launch sweeps it if this process is gone. A folder that can't be claimed isn't used.
+        guard SessionsImport.claim(work) else {
+            SessionsImport.discard(work)
+            throw ArchiveError("cl_audit couldn't mark its work folder in \(tilde(job.place.path)) (the disk may be full or can't be written), so nothing was exported.")
+        }
         SessionsImport.register(work)
         defer { SessionsImport.discard(work) }
         let fp = Fingerprint()                             // this export's own random key: nothing else can reproduce its fingerprints

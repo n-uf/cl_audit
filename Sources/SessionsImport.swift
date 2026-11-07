@@ -523,6 +523,16 @@ enum SessionsImport {
     }
     static func register(_ work: URL) { activeLock.lock(); active.insert(work); activeLock.unlock() }
     static func unregister(_ work: URL) { activeLock.lock(); active.remove(work); activeLock.unlock() }
+    /// Whether the folder with this stat is one of this process's work folders in use (by device and inode, so a different spelling of the
+    /// same path can't hide it).
+    static func inUse(_ st: stat) -> Bool {
+        activeLock.lock(); let all = active; activeLock.unlock()
+        for w in all {
+            var s = stat()
+            if lstat(w.path, &s) == 0, s.st_dev == st.st_dev, s.st_ino == st.st_ino { return true }
+        }
+        return false
+    }
 
     /// cl_audit is quitting: the tools it runs are stopped, then every work folder it has goes (an attached image detached).
     static func shutDown() {
@@ -609,7 +619,11 @@ enum SessionsImport {
         let work = place.appendingPathComponent(".import-\(tag)")
         do { try fm.createDirectory(at: work, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]) }
         catch { throw ArchiveError("The backups folder \(tilde(place.path)) can't be written.") }
-        claim(work)                                       // who it belongs to: a later launch sweeps it if this process is gone
+        // who it belongs to: a later launch sweeps it if this process is gone. A folder that can't be claimed isn't used.
+        guard claim(work) else {
+            discard(work)
+            throw ArchiveError("cl_audit couldn't mark its work folder in \(tilde(place.path)) (the disk may be full or can't be written), so nothing was unpacked.")
+        }
         register(work)
         var kept = false
         defer { if !kept { discard(work); unregister(work) } }
@@ -1092,14 +1106,23 @@ enum SessionsImport {
         return Int(info.kp_proc.p_un.__p_starttime.tv_sec)
     }
 
-    /// Writes "<pid> <start>" in a work folder: a later launch knows whether its owner still runs.
-    static func claim(_ work: URL) {
+    /// A check's seam: makes every claim fail, as a full or unwritable disk would.
+    nonisolated(unsafe) static var claimFails = false
+
+    /// Writes "<pid> <start>" in a work folder: a later launch knows whether its owner still runs. True only when the whole line
+    /// was written and synced; a folder that couldn't be claimed isn't used (the caller removes it and stops).
+    static func claim(_ work: URL) -> Bool {
+        if claimFails { return false }
         let me = getpid()
         let text = "\(me) \(startTime(of: me) ?? 0)\n"
         let fd = Darwin.open(work.appendingPathComponent(ownerFile).path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-        guard fd >= 0 else { return }
-        _ = text.withCString { Darwin.write(fd, $0, strlen($0)) }
-        close(fd)
+        guard fd >= 0 else { return false }
+        let n = strlen(text)
+        let w = text.withCString { Darwin.write(fd, $0, n) }
+        let synced = w == n && fsync(fd) == 0
+        let closed = close(fd) == 0
+        if !(synced && closed) { unlink(work.appendingPathComponent(ownerFile).path); return false }
+        return true
     }
 
     /// Whether the process that made this work folder still runs: nil when it has no owner file (the 1-day rule then).
@@ -1214,6 +1237,8 @@ enum SessionsImport {
             let url = place.appendingPathComponent(n)
             var st = stat()
             guard lstat(url.path, &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR else { continue }
+            // a folder this process is using is never taken, whatever its `.owner` says (or lacks): the card's load sweeps in the same process
+            if inUse(st) { continue }
             if let runs = ownerRuns(url) { if !runs { discard(url) }; continue }
             // No owner file. A running cl_audit's work folder always has its `.owner` (made the moment the folder is), so a folder
             // that holds anything but a lone `.owner` and has none is what a quit or a crash half removed (readdir can unlink the
