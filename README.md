@@ -749,8 +749,11 @@ arranged. The page then reads **Restored · 86 back · nothing overwritten · 3 
   place on a disk that isn't plugged in says nothing) or after 30 days; one that wrote something and didn't finish never
   does. Deleting a backup says when it ends Undo for a finished restore from it. A backup an Undo this switch is about
   to restore from is kept from pruning until that restore has run (30 days at most). A file in a project folder that is
-  the first part of a backup file (a copy from another volume cut short by a crash) is shown as "Partial copy" and left as
-  it is.
+  shorter than the backup's file and that the backup's file begins with (what a crash during a copy from another
+  volume leaves, among other things) is shown as "Shorter copy" and left as it is; the receipt remembers how many, so the
+  Restored page says so too. An Undo that leaves a restored transcript a running session holds does not close the
+  receipt: it says how many it left and why, and Undo again once the session has ended takes the rest. If which
+  sessions run can't be read, an Undo that has transcripts to take back takes nothing back and says so.
 - **Undo this switch…** on the Switch page is the switch the other way and then a restore from the backup the
   switch made: the page says so before it starts ("Switches back to ultra-1, then puts back anything the switch
   changed from its backup: nothing is overwritten"), the sessions follow, and its last step (and a key at Done) opens

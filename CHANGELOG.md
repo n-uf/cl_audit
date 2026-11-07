@@ -41,7 +41,7 @@ the notes before updating.
   switch is about to restore from isn't pruned before that. Undo leaves a restored transcript a running session holds,
   and lists it; finishing a stopped restore sweeps its temp files also while the window is open and keeps a window
   file it can't check safely as "not done", so Undo still takes it back; each restore page has its own mark on the
-  window, and a switch finishing never takes a restore's. A copy a crash cut short is shown as "Partial copy". One switch,
+  window, and a switch finishing never takes a restore's. A shorter copy of a backup file is shown as "Shorter copy", also on the Restored page. An Undo that leaves a transcript a running session holds stays open ("Undo again once it has ended"); one that can't tell which sessions run takes nothing back. One switch,
   restore or import at a time, none while a switch of the
   profile stopped half way ("Not yet · one thing first", with **Open the switch**) or while claude-transplant moves
   sessions. **Undo this switch…** is now the switch back plus a restore from the backup the switch made: the Switch
