@@ -148,8 +148,12 @@ final class RestoreRunner: ObservableObject {
                 not = NotYet(title: why.switchKey != nil ? "A switch of \(e.name) is unfinished" : "A restore of \(e.name) is unfinished",
                              words: why.words, switchKey: why.switchKey)
             } else if p.windowNeeded, let m = w.flatMap({ SwitchMarker.current($0) }) {       // only a restore that writes in the window waits for it
-                not = NotYet(title: "A switch of \(e.name) is under way", words: "Its window stays closed until the switch is linked or undone. Wait for it, or open it.",
-                             switchKey: AccountEntry.standbyStatusID(m.profile, m.standby))
+                if m.standby.hasPrefix("restore-") {
+                    not = NotYet(title: "A restore of \(e.name) is under way", words: "Its window stays closed until that restore ends (or its Undo does). Wait for it, or open it.", switchKey: nil)
+                } else {
+                    not = NotYet(title: "A switch of \(e.name) is under way", words: "Its window stays closed until the switch is linked or undone. Wait for it, or open it.",
+                                 switchKey: AccountEntry.standbyStatusID(m.profile, m.standby))
+                }
             } else if let why = SessionsRestore.busy() {
                 not = NotYet(title: why.contains("claude-transplant") ? "claude-transplant is moving sessions" : "Another switch, restore or import is under way",
                              words: why, switchKey: nil)
@@ -321,8 +325,14 @@ final class RestoreRunner: ObservableObject {
                 switch result {
                 case .success(let u):
                     self.receipt = u
-                    self.note = u.problems.isEmpty ? nil : u.problems.suffix(3).joined(separator: " ")
-                    self.phase = .undone
+                    if u.undone == nil {
+                        // some restored transcripts are held by a running session: left in place, the receipt stays open
+                        self.note = "\(u.undoLeft) restored \(u.undoLeft == 1 ? "transcript is" : "transcripts are") held by a running Claude Code session, so \(u.undoLeft == 1 ? "it was" : "they were") left in place and this restore stays open. Undo again once the session has ended takes the rest."
+                        self.phase = self.priorPhase
+                    } else {
+                        self.note = u.problems.isEmpty ? nil : u.problems.suffix(3).joined(separator: " ")
+                        self.phase = .undone
+                    }
                 case .failure(let err):
                     self.phase = self.priorPhase
                     self.note = "Undo didn't finish: \(err). The receipt is in cl_audit's folder (restores/\(id)); Undo again to take back the rest."

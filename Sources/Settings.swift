@@ -340,7 +340,7 @@ final class SettingsModel: ObservableObject {
         // a ready runner handed out here is an ordinary switch: an Undo this switch… that was abandoned leaves none of its
         // banner, sixth step or preselected answer behind (showUndoSwitch sets them again after this)
         // (a runner that failed or was cancelled forgets it too, or a later ordinary switch would show it and record it)
-        if let r = runners[key], !r.isRunning, r.undoes != nil {
+        if let r = runners[key], !r.isRunning, r.phase != .done, r.undoes != nil {      // a done one on its page in front keeps its keys
             r.undoes = nil
             if r.phase == .ready, r.receipt == nil { r.moveSessions = nil }
         }

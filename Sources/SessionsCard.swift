@@ -57,7 +57,7 @@ struct SessionsCard: View {
         } message: {
             Text(deleting.map { l in
                 "\(SessionsBackup.title(l.m, target: targets[l.m.id])): \(SessionsBackup.summary(l.m)). The sessions it was made from are not touched."
-                    + (SessionsRestore.finishedRestores(of: l.m.id, profile: entry.id) > 0
+                    + (SessionsRestore.finishedRestores(of: l.m.id, profile: entry.id, place: placeOf(l).path) > 0
                        ? " A restore from it is finished: its receipt, which Undo this restore needs, goes with the backup, so that restore can't be undone afterwards." : "")
             } ?? "")
         }

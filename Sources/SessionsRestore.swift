@@ -103,7 +103,7 @@ enum SessionsRestore {
         var madeAfter = 0                   // entries now that the backup doesn't have
         var madeAfterHere = 0               // of them, in the folder of the account in use
         var changed: [String] = []          // there and different: what is there stays (names for the list)
-        var partial: [String] = []          // there, and the first part of the backup's file: a copy a crash cut short, left as it is
+        var partial: [String] = []          // there, shorter, and the backup's file begins with it: a shorter copy of it, left as it is
         var inUse: [String] = []            // a running Claude Code session holds them: left alone
         var deletedSince: [String] = []     // the window deleted them since: they stay deleted
         var old = 0                         // transcripts to write that Claude Code's own clean-up would delete again
@@ -328,8 +328,8 @@ enum SessionsRestore {
                 case .same: if top { p.backTranscripts += 1 }
                 case .grown: if top { p.grownTranscripts += 1; p.backTranscripts += 1 }
                 case .different:
-                    // the backup's file begins with it: a copy a crash cut short (a copy from another volume isn't made whole in
-                    // one step), not something that changed. Left as it is, and said so.
+                    // the backup's file begins with it: a shorter copy of it (what a crash during a copy from another volume
+                    // leaves, among other things; it can't be told which), not something that changed. Left as it is, and said so.
                     if cst.st_size < src.st.st_size, compare(backup: fd, off_t(cst.st_size), current: src.fd, off_t(src.st.st_size)) == .grown {
                         p.partial.append(name)
                     } else { p.changed.append(name) }
@@ -441,7 +441,11 @@ enum SessionsRestore {
                     let abs = (path as NSString).appendingPathComponent(comps[0...i].joined(separator: "/"))
                     willMake?(abs)
                     if mkdirat(cur, c, 0o700) == 0 { made.append(abs) }
-                    else { madeFailed?(abs); if errno != EEXIST { close(cur); return .blocked } }       // made meanwhile by someone else: not ours
+                    else {
+                        let e = errno                                                                   // before the callback can change it
+                        madeFailed?(abs)
+                        if e != EEXIST { close(cur); return .blocked }                                  // made meanwhile by someone else: not ours
+                    }
                     f = openat(cur, c, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
                     guard f >= 0 else { close(cur); return .blocked }
                 }
@@ -585,16 +589,21 @@ enum SessionsRestore {
         var inUseCount = 0
         var deletedCount = 0
         var afterSwitch: String?            // Undo this switch: the receipt of the switch that was switched back
+        var partialCount = 0                // shorter copies of a backup file that were there: left as they were
+        var undoLeft = 0                    // an Undo left this many restored transcripts in place (a session holds them): it is still open
         var steps: [Step] = []              // from the journal
 
         private enum CodingKeys: String, CodingKey {
             case id, profile, dataDir, codeDir, backup, backupPlace, target, started, planned, finished, undone, stopped, problems,
-                 sidebar, changed, changedCount, inUse, inUseCount, deletedCount, afterSwitch
+                 sidebar, changed, changedCount, inUse, inUseCount, deletedCount, afterSwitch, partialCount, undoLeft
         }
 
         /// Wrote something and neither finished nor was undone: Undo applies, and so does finishing it.
         var unfinished: Bool { undone == nil && finished == nil && !steps.isEmpty }
         var back: Int { steps.filter { $0.done && $0.kind != .dir }.count }
+        /// Written down but not marked done and not checked (a window file while the window was open): probably there, and
+        /// Undo takes it back if it is exactly what the step says; not counted in `back`.
+        var unchecked: Int { steps.filter { !$0.done && $0.kind != .dir }.count }
         var windowTouched: Bool { steps.contains { $0.kind == .entry || $0.kind == .tasks } }
     }
 
@@ -696,7 +705,7 @@ enum SessionsRestore {
     }
 
     /// A switch (or another restore) that holds this Claude window closed right now (SwitchMarker), or nil. The restore
-    /// that asks is not one: its own mark is "restore" by this process for this profile.
+    /// that asks is not one: its own mark is `restore-<id>` (its runner's name, passed as `own`) by this process for this profile.
     static func markerBlocker(profile: String, dataDir: String, own: String? = nil) -> String? {
         guard !dataDir.isEmpty, let m = SwitchMarker.current(FolderKey.canonical(dataDir)) else { return nil }
         // exempt: only the mark of the caller itself (each restore runner has its own name, "restore-<id>")
@@ -803,6 +812,11 @@ enum SessionsRestore {
             // a restore stopped after its last write but before it was marked finished: only closed now
             guard var o = old else { throw RestoreError("Nothing to restore: everything in the backup is here already.") }
             o.finished = now; o.stopped = nil; o.planned = o.back
+            o.partialCount = p.partial.count
+            if o.unchecked > 0 {
+                let words = "\(o.unchecked) window \(o.unchecked == 1 ? "file" : "files") couldn't be checked while the window was open: still in the receipt as not done (probably back); Undo takes each back if it is exactly what was written."
+                if !o.problems.contains(words) { o.problems.append(words) }
+            }
             try save(o)
             return load(o.id) ?? o
         }
@@ -824,7 +838,7 @@ enum SessionsRestore {
             r.afterSwitch = afterSwitch
             r.problems += p.notes
         }
-        r.changedCount = p.changed.count; r.changed = Array(p.changed.prefix(200))
+        r.changedCount = p.changed.count; r.changed = Array(p.changed.prefix(200)); r.partialCount = p.partial.count
         r.inUseCount = p.inUse.count; r.inUse = Array(p.inUse.prefix(200)); r.deletedCount = p.deletedSince.count
         do { try save(r) } catch { throw RestoreError("The restore's receipt couldn't be saved; nothing written.") }
         guard let journal = Journal(id: r.id), let reader = Reader(path: b.dir.path) else {
@@ -986,12 +1000,16 @@ enum SessionsRestore {
             guard windowClosed() else { throw RestoreError("Quit the profile's Claude window first, then Undo.") }
             sweepTemps(r)
         }
-        var checkedRunning = false
-        var runningNow: Set<String>?
-        func heldSessions() -> Set<String>? {
-            if !checkedRunning { runningNow = runningSessions(); checkedRunning = true }       // one `ps`, only if a transcript needs it
-            return runningNow
+        // which Claude Code sessions run: one `ps`, only when transcripts are among what is taken back. If it can't be read,
+        // nothing is taken back (a failed look must not turn the undo into a no-op recorded as done).
+        var running = Set<String>()
+        if r.steps.contains(where: { ($0.kind == .transcript || $0.kind == .file) }) {
+            guard let live = runningSessions() else {
+                throw RestoreError("It couldn't be checked which Claude Code sessions run; nothing was taken back. Try again.")
+            }
+            running = live
         }
+        var left = 0                                   // restored transcripts left in place because a session holds them
         for step in r.steps.reversed() {
             let name = (step.path as NSString).lastPathComponent
             if step.kind == .entry || step.kind == .tasks, !windowClosed() {
@@ -1028,9 +1046,9 @@ enum SessionsRestore {
                     let top = rel.count == 3 && leaf.hasSuffix(".jsonl")
                     let session = top ? String(leaf.dropLast(".jsonl".count)).lowercased() : rel.count >= 4 ? rel[2].lowercased() : ""
                     let age = now.timeIntervalSince(Date(timeIntervalSince1970: TimeInterval(st.st_mtimespec.tv_sec)))
-                    let running = heldSessions()
-                    if running == nil || running!.contains(session) || (top && age < recent) {
-                        r.problems.append("\(name): a running Claude Code session holds it (or it couldn't be checked which run); left in place.")
+                    if running.contains(session) || (top && age < recent) {
+                        left += 1
+                        r.problems.append("\(name): a running Claude Code session holds it (or it was written to a moment ago); left in place.")
                         continue
                     }
                 }
@@ -1041,7 +1059,15 @@ enum SessionsRestore {
                 if unlinkat(pfd, leaf, 0) != 0 { r.problems.append("\(name) couldn't be taken away.") }
             }
         }
-        r.undone = now
+        // the same line from an earlier try is said once
+        var seen = Set<String>()
+        r.problems = r.problems.filter { seen.insert($0).inserted }
+        r.undoLeft = left
+        if left == 0 { r.undone = now }                // otherwise it stays open: Undo again, once the session has ended, takes the rest
+        else {
+            let words = "\(left) restored \(left == 1 ? "transcript is" : "transcripts are") held by a running Claude Code session: left in place. The receipt stays open; Undo again once it has ended takes the rest."
+            if !r.problems.contains(words) { r.problems.append(words) }
+        }
         try save(r)
         let out = load(id) ?? r
         sweepTemps(out)
@@ -1054,8 +1080,10 @@ enum SessionsRestore {
     }
 
     /// How many finished restores of a profile read from this backup and weren't undone: their receipts go with the backup.
-    static func finishedRestores(of backup: String, profile: String) -> Int {
-        headers().filter { $0.backup == backup && $0.profile == profile && $0.finished != nil && $0.undone == nil }.count
+    static func finishedRestores(of backup: String, profile: String, place: String) -> Int {
+        let here = FolderKey.canonical(place)
+        return headers().filter { $0.backup == backup && $0.profile == profile && $0.finished != nil && $0.undone == nil
+            && FolderKey.canonical($0.backupPlace) == here }.count
     }
 
     // MARK: old receipts

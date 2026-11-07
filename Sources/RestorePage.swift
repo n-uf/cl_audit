@@ -73,7 +73,8 @@ struct RestorePage: View {
             return Top(text: "Restoring ●", dim: "· step 3 of 3 · the sidebar", tone: .mint)
         case .done:
             let listed = (r?.changedCount ?? 0) + (r?.inUseCount ?? 0)
-            return Top(text: "Restored", dim: "· \(r?.back ?? 0) back · nothing overwritten" + (listed > 0 ? " · \(listed) listed" : ""), tone: .ok)
+            return Top(text: "Restored", dim: "· \(r?.back ?? 0) back · nothing overwritten" + (listed > 0 ? " · \(listed) listed" : "")
+                       + ((r?.unchecked ?? 0) > 0 ? " · \(r?.unchecked ?? 0) not checked" : ""), tone: (r?.unchecked ?? 0) > 0 ? .amber : .ok)
         case .stopped:
             let t = r?.planned ?? runner.progress.total
             return Top(text: "Stopped", dim: "· \(r?.back ?? 0) of \(t) back · kept", tone: .amber)
@@ -180,9 +181,9 @@ struct RestorePage: View {
                         if !held.isEmpty { listKey("Show the list", "Hide the list", $showHeld); if showHeld { names(held) } }
                     }
                 }
-                if !p.partial.isEmpty {
-                    SRow(label: "Partial copy", info: "The file there is the first part of the backup's file: a copy a crash cut short (a copy from another volume isn't made whole in one step). It is left as it is, never completed or replaced; delete it and restore again to bring the whole file back.", stacked: true) {
-                        value("\(n(p.partial.count, "file", "files")): the first part of the backup's file, left as it is")
+                if !p.partial.isEmpty || (r?.partialCount ?? 0) > 0 {
+                    SRow(label: "Shorter copy", info: "The file there is a shorter copy of the backup's file: the backup's file begins with it. A crash during a copy from another volume leaves that, but it can't be told what cut it short. It is left as it is, never completed or replaced; delete it and restore again to bring the whole file back.", stacked: true) {
+                        value("\(n(max(p.partial.count, r?.partialCount ?? 0), "file", "files")): a shorter copy of the backup's file, left as it is")
                     }
                 }
                 if p.deletedSince.count > 0 || (r?.deletedCount ?? 0) > 0 {
