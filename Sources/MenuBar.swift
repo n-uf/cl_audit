@@ -49,7 +49,7 @@ enum MenuBarColours: String, CaseIterable, Identifiable, Codable {
     }
     var blurb: String {
         switch self {
-        case .levels: return "green, amber, red as the limits fill up"
+        case .levels: return "green, amber, red, crimson as the limits fill up"
         case .system: return "the menu bar's own colour, like Apple's icons: white or black, dimmed on an inactive screen. A full limit shows by its countdown, as macOS doesn't colour these icons"
         case .accent: return "your Mac's accent colour (System Settings ▸ Appearance), following it when it changes"
         case .profile: return "this profile's colour"
@@ -60,7 +60,7 @@ enum MenuBarColours: String, CaseIterable, Identifiable, Codable {
 enum MenuBarWhenFull: String, CaseIterable, Identifiable, Codable {
     case countdown, red
     var id: String { rawValue }
-    var title: String { self == .countdown ? "Countdown" : "Red only" }
+    var title: String { self == .countdown ? "Countdown" : "Crimson only" }
 }
 
 /// How a profile's menu bar icon looks; kept in the profile.
@@ -151,11 +151,11 @@ struct MenuBarGlyph {
     }
     private func track(_ dark: Bool?) -> NSColor { ink(dark).withAlphaComponent(template ? 0.3 : 0.25) }
 
-    /// A limit's colour: a full one is red (except in the system's colours, which macOS draws in one colour).
+    /// A limit's colour: a full one is crimson (except in the system's colours, which macOS draws in one colour).
     private func colour(_ p: Double?, _ dark: Bool?) -> NSColor {
         guard p != nil else { return track(dark) }
         if template { return ink(dark) }
-        if AtLimit.isFull(p) { return Painter.red }
+        if AtLimit.isFull(p) { return Painter.crimson }
         switch look.colours {
         case .levels: return Painter.color(p, stale: false)
         case .accent: return .controlAccentColor
@@ -180,7 +180,7 @@ struct MenuBarGlyph {
         }
         if look.label && !item.label.isEmpty { put(text(item.label, size: 9, weight: .bold, colour: ink(dark), tracking: 0.6), gapAfter: 4) }
 
-        // the system's colours can't turn red, so a full limit always shows its countdown there
+        // the system's colours can't turn crimson, so a full limit always shows its countdown there
         let showCount = item.countdown != nil && (look.whenFull == .countdown || template)
         let fuller: Double? = [item.noFive ? nil : item.five, item.week].compactMap { $0 }.max()
         func number() { put(text(fuller.map { "\(Int($0.rounded()))%" } ?? "–", size: 12, weight: .semibold, colour: colour(fuller, dark))) }
@@ -231,7 +231,7 @@ struct MenuBarGlyph {
         }
         if showCount, let cd = item.countdown {
             if look.style != .number && look.style != .twoNumbers { x += 4 }
-            put(text(cd, size: 11.5, weight: .semibold, colour: template ? ink(dark) : Painter.red))
+            put(text(cd, size: 11.5, weight: .semibold, colour: template ? ink(dark) : Painter.crimson))
         }
         return x - x0
     }
@@ -424,7 +424,7 @@ struct MenuBarRow: View {
                 Spacer(minLength: 8)
                 if let full {
                     Text(full.resets.map { "\(full.title) · in \(TimeWords.countdown($0, now: now))" } ?? full.title)
-                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(nsColor: .systemRed)).lineLimit(1)
+                        .font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(nsColor: Painter.crimson)).lineLimit(1)
                 }
             }
             // the account in use, with a lit lamp (SwitchMenu.swift)
@@ -527,7 +527,7 @@ struct MenuBarCard: View {
                         .init(id: st, title: st.title, help: "\(st.title): \(st.blurb)", picture: tilePicture { $0.style = st })
                     }, selected: look.style, minWidth: 96, pictureHeight: 24) { st in set { $0.style = st } }
                 }
-                SRow(label: "Colours", info: "Levels: green, amber, red as the limits fill up. System: the menu bar's own colour, like Apple's icons (a full limit shows by its countdown, as macOS doesn't colour these icons). Accent: your Mac's accent colour, following it when it changes. Profile colour: this profile's colour.", stacked: true) {
+                SRow(label: "Colours", info: "Levels: green, amber, red, then crimson from 95 % as the limits fill up. System: the menu bar's own colour, like Apple's icons (a full limit shows by its countdown, as macOS doesn't colour these icons). Accent: your Mac's accent colour, following it when it changes. Profile colour: this profile's colour.", stacked: true) {
                     STiles(tiles: MenuBarColours.allCases.map { c in
                         .init(id: c, title: c.title, help: "\(c.title): \(c.blurb)", picture: tilePicture { $0.colours = c })
                     }, selected: look.colours, minWidth: 96, pictureHeight: 24) { c in set { $0.colours = c } }
@@ -537,12 +537,12 @@ struct MenuBarCard: View {
                               selection: Binding(get: { look.label ? .label : .none }, set: { v in set { $0.label = v == .label } }),
                               title: { $0 == .label ? "Profile label" : "None" })
                 }
-                SRow(label: "When full", info: "While a full limit holds the profile back: its countdown beside the icon (\"1h 42m\"), or the icon in red only. With the System colours it's always the countdown.") {
+                SRow(label: "When full", info: "While a full limit holds the profile back: its countdown beside the icon (\"1h 42m\"), or the icon in crimson only. With the System colours it's always the countdown.") {
                     SSegments(options: MenuBarWhenFull.allCases,
                               selection: Binding(get: { look.colours == .system ? .countdown : look.whenFull }, set: { v in set { $0.whenFull = v } }),
                               enabled: { $0 == .countdown || look.colours != .system }, title: { $0.title })
                 }
-                if look.colours == .system { SRowLine(text: "System colours can't turn red: a full limit shows its countdown.") }
+                if look.colours == .system { SRowLine(text: "System colours can't turn crimson: a full limit shows its countdown.") }
                 PreviewStrip(caption: "your menu bar (\(dark ? "dark" : "light")), then as the limit fills up",
                              items: Self.lane.map { s in
                                  .init(title: s.title, picture: AnyView(bar(glyph(look, s.five, s.week, full: s.full, dark: dark), dark: dark, shrink: true)))

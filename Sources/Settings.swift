@@ -2012,7 +2012,7 @@ struct AccountSettings: View {
                               picture: AnyView(Image(nsImage: Painter.image(iconModel(st), pixels: 96)).resizable().frame(width: 34, height: 34)))
                     }, selected: entry.style, minWidth: 70) { entry.style = $0 }
                 }
-                SRow(label: "Colour", info: "The colour of this profile's Dock icon: its label and tiles. By usage (the last swatch): it follows the 5-hour level, green to red. The profile's colour inside cl_audit is under Profile.") {
+                SRow(label: "Colour", info: "The colour of this profile's Dock icon: its label and tiles. By usage (the last swatch): it follows the 5-hour level, green to crimson. The profile's colour inside cl_audit is under Profile.") {
                     SwatchRow(colors: TileColor.allCases, selected: entry.color) { if let c = $0 { entry.color = c } }
                 }
                 SRow(label: "Frame", info: "A thin ring in this colour round the Dock icon, to spot it quickly among the others. The crossed circle: no ring.") {
@@ -2297,7 +2297,7 @@ struct IconGallery: View {
 
     /// The five live tiles under the level bar.
     var fillingUp: some View {
-        let segments = [Painter.green, Painter.green, Painter.amber, Painter.red, Painter.red]
+        let segments = [Painter.green, Painter.green, Painter.amber, Painter.red, Painter.crimson]
         return VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 3) {
                 ForEach(0..<segments.count, id: \.self) { i in
@@ -2379,7 +2379,7 @@ struct Swatch: View {
         ZStack {
             if color == .usage {
                 Circle().fill(AngularGradient(colors: [Color(nsColor: Painter.green), Color(nsColor: Painter.amber),
-                                                       Color(nsColor: Painter.red), Color(nsColor: Painter.green)],
+                                                       Color(nsColor: Painter.red), Color(nsColor: Painter.crimson), Color(nsColor: Painter.green)],
                                               center: .center))
             } else {
                 Circle().fill(Color(nsColor: color.color(fiveHour: nil, stale: false)))

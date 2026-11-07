@@ -475,7 +475,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                       weekly: usage?.weekly, weeklyResets: usage?.weeklyResets) {
             let i = info("\(full.title) · \(full.both())")
             i.attributedTitle = NSAttributedString(string: i.title, attributes: [
-                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: NSColor.systemRed])
+                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: Painter.crimson])
             m.addItem(i)
             if let best = SwitchMenu.best(lines, backs: backs) {
                 m.addItem(SwitchMenu.bestItem(best, target: self, action: #selector(switchAccount(_:))))
