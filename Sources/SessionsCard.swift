@@ -14,14 +14,20 @@ struct SessionsCard: View {
     @Environment(\.face) private var face
 
     @State private var kept: SessionsBackup.Kept?                  // nil: still counting
-    @State private var backups: [SessionsBackup.Manifest] = []
-    @State private var places: [String: String] = [:]              // backup id → its folder, for those a receipt names in another place
+    /// One row: a backup, and where it is when a receipt names it in another place than General ▸ Backups' (nil: there). A
+    /// backup id can be in both places, so the row's identity is both.
+    struct Listed: Identifiable, Equatable {
+        var m: SessionsBackup.Manifest
+        var place: String?
+        var id: String { m.id + "@" + (place ?? "") }
+    }
+    @State private var backups: [Listed] = []
     @State private var targets: [String: String] = [:]             // backup id → the account its switch went to, short
     @State private var days: Int? = CodeCleanup.standard           // nil: settings.json doesn't say (or can't be read)
     @State private var keepProblem: String?
     @State private var working = false
     @State private var problem: String?
-    @State private var deleting: SessionsBackup.Manifest?          // Delete… asks first
+    @State private var deleting: Listed?                           // Delete… asks first
 
     private var name: String { entry.name.isEmpty ? "This profile" : entry.name }
     private var source: SessionsBackup.Source { SessionsBackup.Source(entry) }
@@ -46,10 +52,14 @@ struct SessionsCard: View {
         }
         .task(id: entry.id + prefs.place + "\(model.switchChanges)") { await load() }
         .alert("Delete this backup?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
-            Button("Delete", role: .destructive) { if let m = deleting { delete(m) } }
+            Button("Delete", role: .destructive) { if let l = deleting { delete(l) } }
             Button("Keep it", role: .cancel) {}
         } message: {
-            Text(deleting.map { "\(SessionsBackup.title($0, target: targets[$0.id])): \(SessionsBackup.summary($0)). The sessions it was made from are not touched." } ?? "")
+            Text(deleting.map { l in
+                "\(SessionsBackup.title(l.m, target: targets[l.m.id])): \(SessionsBackup.summary(l.m)). The sessions it was made from are not touched."
+                    + (SessionsRestore.finishedRestores(of: l.m.id, profile: entry.id) > 0
+                       ? " A restore from it is finished: its receipt, which Undo this restore needs, goes with the backup, so that restore can't be undone afterwards." : "")
+            } ?? "")
         }
     }
 
@@ -101,7 +111,7 @@ struct SessionsCard: View {
             if backups.isEmpty {
                 text("None yet. One is made each time a switch moves \(name)'s sessions, and by Back up now.")
             }
-            ForEach(backups) { m in row(m) }
+            ForEach(backups) { l in row(l) }
             HStack(spacing: 8) {
                 Button(working ? "Backing up…" : "Back up now") { backUpNow() }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(working || switching)
@@ -116,21 +126,22 @@ struct SessionsCard: View {
         }
     }
 
-    private func row(_ m: SessionsBackup.Manifest) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+    private func row(_ l: Listed) -> some View {
+        let m = l.m
+        return HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(SessionsBackup.title(m, target: targets[m.id])).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(face.text)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(SessionsBackup.summary(m) + (places[m.id].map { " · in \(tilde($0))" } ?? "")).font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                Text(SessionsBackup.summary(m) + (l.place.map { " · in \(tilde($0))" } ?? "")).font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button("Restore…") { model.showRestore(RestoreKey(profile: entry.id, backup: m.id, place: placeOf(m).path)) }
+            Button("Restore…") { model.showRestore(RestoreKey(profile: entry.id, backup: m.id, place: placeOf(l).path)) }
                 .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 .help("Preview what a restore would do. Nothing is written until you press Close and restore, and nothing is ever overwritten")
             Menu {
-                Button("Show in Finder") { reveal(m) }
+                Button("Show in Finder") { reveal(l) }
                 Divider()
-                Button("Delete…") { deleting = m }
+                Button("Delete…") { deleting = l }
             } label: {
                 KeyLook(height: 22, radius: 3, hPad: 0) { Image(systemName: "ellipsis").font(.system(size: 10, weight: .semibold)).frame(width: 24) }
             }
@@ -173,15 +184,15 @@ struct SessionsCard: View {
         let e = entry, place = BackupPrefs.placeURL
         let src = SessionsBackup.Source(e)
         kept = SessionsBackup.KeptCache.get(e.id)
-        let (list, tg, d, other) = await Task.detached(priority: .utility) { () -> ([SessionsBackup.Manifest], [String: String], (days: Int?, problem: String?), [String: String]) in
+        let (list, tg, d) = await Task.detached(priority: .utility) { () -> ([Listed], [String: String], (days: Int?, problem: String?)) in
             SessionsRestore.prune(profile: e.id)               // old receipts of finished restores
-            let here = SessionsBackup.list(profile: e.id, place: place)
+            let here = SessionsBackup.list(profile: e.id, place: place).map { Listed(m: $0, place: nil) }
             // backups a receipt names in another place (General ▸ Backups was changed since): listed too, with their place
-            let more = SessionsBackup.elsewhere(profile: e.id, place: place)
-            let list = (here + more.map(\.manifest)).sorted { $0.created != $1.created ? $0.created > $1.created : $0.id > $1.id }
-            return (list, Self.targets(list, for: e), CodeCleanup.read(codeDir: e.configDir), Dictionary(more.map { ($0.manifest.id, $0.place) }, uniquingKeysWith: { a, _ in a }))
+            let more = SessionsBackup.elsewhere(profile: e.id, place: place).map { Listed(m: $0.manifest, place: $0.place) }
+            let list = (here + more).sorted { $0.m.created != $1.m.created ? $0.m.created > $1.m.created : $0.id > $1.id }
+            return (list, Self.targets(list.map(\.m), for: e), CodeCleanup.read(codeDir: e.configDir))
         }.value
-        backups = list; places = other; targets = tg; days = d.days; keepProblem = d.problem
+        backups = list; targets = tg; days = d.days; keepProblem = d.problem
         let k = await Task.detached(priority: .utility) { SessionsBackup.kept(src) }.value
         SessionsBackup.KeptCache.set(e.id, k)
         kept = k
@@ -218,8 +229,8 @@ struct SessionsCard: View {
         }
     }
 
-    private func delete(_ m: SessionsBackup.Manifest) {
-        let id = m.id, profile = entry.id, place = placeOf(m)
+    private func delete(_ l: Listed) {
+        let id = l.m.id, profile = entry.id, place = placeOf(l)
         deleting = nil; problem = nil
         Task {
             let result = await Task.detached(priority: .utility) { Result { try SessionsBackup.delete(profile: profile, id: id, place: place) } }.value
@@ -228,10 +239,10 @@ struct SessionsCard: View {
         }
     }
 
-    private func reveal(_ m: SessionsBackup.Manifest) {
-        NSWorkspace.shared.activateFileViewerSelecting([SessionsBackup.folder(profile: m.profile, place: placeOf(m)).appendingPathComponent(m.id)])
+    private func reveal(_ l: Listed) {
+        NSWorkspace.shared.activateFileViewerSelecting([SessionsBackup.folder(profile: l.m.profile, place: placeOf(l)).appendingPathComponent(l.m.id)])
     }
 
     /// Where a listed backup is: General ▸ Backups' folder, or the place a receipt named it in.
-    private func placeOf(_ m: SessionsBackup.Manifest) -> URL { places[m.id].map { URL(fileURLWithPath: $0) } ?? BackupPrefs.placeURL }
+    private func placeOf(_ l: Listed) -> URL { l.place.map { URL(fileURLWithPath: $0) } ?? BackupPrefs.placeURL }
 }

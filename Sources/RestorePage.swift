@@ -148,7 +148,6 @@ struct RestorePage: View {
     }
 
     private var happensCard: some View {
-        let m = runner.manifest
         // while running or done, the lists are the receipt's (what was found when the run started)
         let r = runner.receipt
         let changed = r?.changed ?? plan?.changed ?? []
@@ -179,6 +178,11 @@ struct RestorePage: View {
                     VStack(alignment: .leading, spacing: 6) {
                         value(held.isEmpty ? "none" : "\(n(held.count, "transcript", "transcripts")) a running Claude Code session holds: left alone, listed")
                         if !held.isEmpty { listKey("Show the list", "Hide the list", $showHeld); if showHeld { names(held) } }
+                    }
+                }
+                if !p.partial.isEmpty {
+                    SRow(label: "Partial copy", info: "The file there is the first part of the backup's file: a copy a crash cut short (a copy from another volume isn't made whole in one step). It is left as it is, never completed or replaced; delete it and restore again to bring the whole file back.", stacked: true) {
+                        value("\(n(p.partial.count, "file", "files")): the first part of the backup's file, left as it is")
                     }
                 }
                 if p.deletedSince.count > 0 || (r?.deletedCount ?? 0) > 0 {
