@@ -21,6 +21,7 @@ struct RestoreKey: Equatable {
     var place: String
     var resume: String? = nil               // a stopped restore's receipt
     var afterSwitch: String? = nil          // Undo this switch: the receipt of the switch that was switched back
+    var addMemory = false                   // an import: add the memory files of a file from another Mac or profile (left out otherwise)
     var id: String { "\(profile)/\(backup)/\(resume ?? "")" }
 }
 
@@ -61,6 +62,10 @@ final class RestoreRunner: ObservableObject {
     @Published private(set) var sidebarMissed = false
     @Published private(set) var sidebarLinkSent = false
     @Published private(set) var keepFailed: String?
+    /// An import: how many of the transcripts to add belong to a folder that isn't on this Mac.
+    @Published private(set) var foldersMissing = 0
+    /// Close and import: the preview is counted again (the backup was just moved into place) and the restore starts at once.
+    private var autoStart = false
     private var timer: Timer?
     private var reopenTimer: Timer?
     private let stopLock = NSLock()
@@ -139,10 +144,10 @@ final class RestoreRunner: ObservableObject {
         default: return
         }
         guard let e = entry else { return }
-        let target = SessionsRestore.Target(e), b = backup, resume = resumeID, profile = key.profile
+        let target = SessionsRestore.Target(e), b = backup, resume = resumeID, profile = key.profile, memory = key.addMemory
         let w = window
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let p = SessionsRestore.plan(target, b)
+            let p = SessionsRestore.plan(target, b, addMemory: memory)
             var not: NotYet?
             if let why = SessionsRestore.blocker(profile: profile, except: resume) {
                 not = NotYet(title: why.switchKey != nil ? "A switch of \(e.name) is unfinished" : "A restore of \(e.name) is unfinished",
@@ -158,12 +163,31 @@ final class RestoreRunner: ObservableObject {
                 not = NotYet(title: why.contains("claude-transplant") ? "claude-transplant is moving sessions" : "Another switch, restore or import is under way",
                              words: why, switchKey: nil)
             }
+            let folders = p.isImport && p.refusal == nil ? SessionsImport.foldersMissing(p, backup: b) : 0
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.plan = p; self.notYet = not
+                self.plan = p; self.notYet = not; self.foldersMissing = folders
                 if self.manifest == nil { self.manifest = p.manifest }
+                if self.autoStart {
+                    self.autoStart = false
+                    if p.refusal == nil, not == nil, p.count > 0 { self.start() }
+                    else if self.phase == .ready {
+                        self.note = p.refusal ?? not?.words ?? "Nothing to import: everything in the file is here already."
+                    }
+                }
             }
         }
+    }
+
+    /// Close and import: counts once more against what is there now, then starts (the page shows why when it can't).
+    func importNow() { autoStart = true; refresh() }
+
+    /// The backup is an export's, unpacked (SessionsImport.swift): the page and the words say import.
+    var isImport: Bool { manifest?.kind.isImport ?? receipt?.importedFrom != nil }
+    /// "cl_audit Work 2026-10-30.zip"
+    var importFile: String? {
+        if case .imported(let f)? = manifest?.kind { return f }
+        return receipt?.importedFrom
     }
 
     // MARK: going
@@ -212,11 +236,11 @@ final class RestoreRunner: ObservableObject {
 
     private func write() {
         guard let e = entry else { return }
-        let target = SessionsRestore.Target(e), b = backup, resume = resumeID, afterSwitch = key.afterSwitch, mark = markName
+        let target = SessionsRestore.Target(e), b = backup, resume = resumeID, afterSwitch = key.afterSwitch, mark = markName, memory = key.addMemory
         phase = .writing
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result {
-                try SessionsRestore.run(target, b, continuing: resume, afterSwitch: afterSwitch, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) },
+                try SessionsRestore.run(target, b, continuing: resume, addMemory: memory, afterSwitch: afterSwitch, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) },
                                         stop: { self?.stopRequested ?? true },
                                         progress: { d, t in DispatchQueue.main.async { self?.progress = (d, t) } })
             }

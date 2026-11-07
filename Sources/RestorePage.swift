@@ -45,7 +45,18 @@ struct RestorePage: View {
         .task(id: key.id) { runner.refresh() }
     }
 
+    /// The backup is an export's, unpacked: this is an import (the same page and steps, other words).
+    private var imp: Bool { runner.isImport }
+    private var fileWords: String { runner.importFile ?? "a file" }
+
     private var title: String {
+        if imp {
+            switch runner.phase {
+            case .done, .sidebar: return "Imported into \(name) from \(fileWords)"
+            case .undone: return "Undid the import into \(name)"
+            default: return "Import into \(name) from \(fileWords)"
+            }
+        }
         switch runner.phase {
         case .done, .sidebar: return "Restored Claude \(name) from \(backupWords)"
         case .undone: return "Undid the restore of Claude \(name)"
@@ -65,25 +76,27 @@ struct RestorePage: View {
             if runner.notYet != nil { return Top(text: "Not yet", dim: "· one thing first · nothing written", tone: .amber) }
             return Top(text: "Preview", dim: "· nothing written yet · nothing is ever overwritten", tone: .normal)
         case .closing:
-            return runner.undoing ? Top(text: "Undoing ●", dim: "· the window closes", tone: .mint) : Top(text: "Restoring ●", dim: "· step 1 of 3 · the window closes", tone: .mint)
+            return runner.undoing ? Top(text: "Undoing ●", dim: "· the window closes", tone: .mint) : Top(text: imp ? "Importing ●" : "Restoring ●", dim: "· step 1 of 3 · the window closes", tone: .mint)
         case .undoing: return Top(text: "Undoing ●", dim: "· taking back what it put back", tone: .mint)
-        case .writing: return Top(text: "Restoring ●", dim: "· step 2 of 3 · \(runner.progress.done) of \(runner.progress.total) back", tone: .mint)
+        case .writing: return Top(text: imp ? "Importing ●" : "Restoring ●", dim: "· step 2 of 3 · \(runner.progress.done) of \(runner.progress.total) \(imp ? "files added" : "back")", tone: .mint)
         case .sidebar:
-            if runner.sidebarMissed { return Top(text: "Restored", dim: "· step 3 of 3 · the sidebar session didn't open", tone: .warn) }
-            return Top(text: "Restoring ●", dim: "· step 3 of 3 · the sidebar", tone: .mint)
+            if runner.sidebarMissed { return Top(text: imp ? "Imported" : "Restored", dim: "· step 3 of 3 · the sidebar session didn't open", tone: .warn) }
+            return Top(text: imp ? "Importing ●" : "Restoring ●", dim: "· step 3 of 3 · the sidebar", tone: .mint)
         case .done:
             // an Undo that left restored transcripts a session holds: said from the receipt, so it survives a relaunch
             if let r, r.undone == nil, r.undoLeft > 0 { return Top(text: "Partly undone", dim: "· \(r.undoLeft) left · Undo again once the session has ended", tone: .amber) }
             let listed = (r?.changedCount ?? 0) + (r?.inUseCount ?? 0)
-            return Top(text: "Restored", dim: "· \(r?.back ?? 0) back · nothing overwritten" + (listed > 0 ? " · \(listed) listed" : "")
+            let added = ImportWords.counts(sessions: r?.sessionsAdded ?? 0, entries: r?.entriesAdded ?? 0) ?? "\(r?.back ?? 0) files"
+            return Top(text: imp ? "Imported" : "Restored", dim: "· " + (imp ? "\(added) added" : "\(r?.back ?? 0) back") + " · nothing overwritten" + (listed > 0 ? " · \(listed) listed" : "")
                        + ((r?.unchecked ?? 0) > 0 ? " · \(r?.unchecked ?? 0) not checked" : ""), tone: (r?.unchecked ?? 0) > 0 ? .amber : .ok)
         case .stopped:
             let t = r?.planned ?? runner.progress.total
-            return Top(text: "Stopped", dim: "· \(r?.back ?? 0) of \(t) back · kept", tone: .amber)
+            return Top(text: "Stopped", dim: "· \(r?.back ?? 0) of \(t) \(imp ? "files added" : "back") · kept", tone: .amber)
         case .failed: return Top(text: "Stopped", dim: "· nothing written", tone: .warn)
         case .undone:
             let taken = r.map { r in r.steps.filter { $0.done && $0.kind != .dir }.count } ?? 0
-            return Top(text: "Undone", dim: "· \(taken) taken away", tone: .normal)
+            let what = imp ? ImportWords.counts(sessions: r?.sessionsAdded ?? 0, entries: r?.entriesAdded ?? 0).map { " (\($0))" } ?? "" : ""
+            return Top(text: "Undone", dim: "· \(taken)\(imp ? (taken == 1 ? " file" : " files") : "") taken away\(what)", tone: .normal)
         }
     }
 
@@ -106,14 +119,14 @@ struct RestorePage: View {
         case .undoing:
             EmptyView()
         case .sidebar:
-            Button("Undo this restore") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+            Button(imp ? "Undo this import" : "Undo this restore") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
         case .done:
-            Button("Undo this restore") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+            Button(imp ? "Undo this import" : "Undo this restore") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
             Button("Back to \(name)'s settings") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
         case .stopped:
-            Button("Undo this restore") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+            Button(imp ? "Undo this import" : "Undo this restore") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
             // also with nothing left to write: a restore stopped after its last file is only marked finished
-            Button("Finish restoring\(count > 0 ? " \(count)" : "")") { runner.start() }
+            Button("Finish \(imp ? "importing" : "restoring")\(count > 0 ? " \(count)" : "")") { runner.start() }
                 .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(plan == nil || runner.notYet != nil)
         case .undone:
             Button("Back to \(name)'s settings") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
@@ -150,7 +163,11 @@ struct RestorePage: View {
         return s
     }
 
-    private var happensCard: some View {
+    @ViewBuilder private var happensCard: some View {
+        if imp { ImportHappens(entry: entry, runner: runner, addMemory: key.addMemory) } else { restoreHappensCard }
+    }
+
+    private var restoreHappensCard: some View {
         // while running or done, the lists are the receipt's (what was found when the run started)
         let r = runner.receipt
         let changed = r?.changed ?? plan?.changed ?? []
@@ -239,9 +256,9 @@ struct RestorePage: View {
     private var staysCard: some View {
         SCard(title: "Stays as it is", info: "Restore only adds what is missing. The account, the sign-ins, MCP settings and claude.ai are not part of it.") {
             SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
-            SRow(label: "Sign-ins") { rowValue("Never in a backup, never written") }
+            SRow(label: "Sign-ins") { rowValue(imp ? "Never in an export, never written" : "Never in a backup, never written") }
             SRow(label: "MCP") { rowValue("The window's MCP settings, and settings.json other than Keep for: never touched") }
-            SRow(label: "Scheduled tasks") { rowValue("A task file that is there stays as it is; only a missing one comes back") }
+            SRow(label: "Scheduled tasks") { rowValue(imp ? "Not imported: the tasks belong to the account that had them" : "A task file that is there stays as it is; only a missing one comes back") }
             SRow(label: "claude.ai") { rowValue("Chats and Projects") }
         }
     }
@@ -262,6 +279,7 @@ struct RestorePage: View {
 
     private var arrangementWords: String {
         guard plan != nil else { return "counting…" }
+        if imp { return ImportWords.arrangement(sidebarPlanNow, hasEntries: plan?.entries.isEmpty == false) }
         guard let p = sidebarPlanNow, !p.isEmpty else {
             return plan?.entries.isEmpty == false ? "Nothing to arrange: none of the restored sessions sat in a group or was pinned" : "Nothing to arrange: no session comes back"
         }
@@ -277,7 +295,8 @@ struct RestorePage: View {
 
     private func state(_ i: Int) -> StepState {
         switch runner.phase {
-        case .ready, .undone: return .pending
+        case .ready: return .pending
+        case .undone: return .done                                   // what the Undo did, as done steps
         case .closing: return i == 1 ? .now : .pending
         case .writing, .undoing: return i == 1 ? .done : i == 2 ? .now : .pending
         case .sidebar: return i < 3 ? .done : runner.sidebarMissed ? .failed : .waiting
@@ -290,21 +309,29 @@ struct RestorePage: View {
     private var stepsCard: some View {
         let w = entry.desktop == .standard ? "The usual Claude app" : "\(name)'s Claude window"
         let back = runner.receipt?.back ?? 0
-        let needsWindow = plan?.windowNeeded ?? true
-        return SCard(title: "Steps", info: "What restoring does, in order. A receipt in cl_audit's folder keeps what was put back as it goes: if the Mac stops, cl_audit offers to finish it, and Undo this restore takes back exactly that.") {
+        let undoneNow = runner.phase == .undone
+        // after an Undo the plan is the old one (or none): the receipt says whether window files were among what it took away
+        let needsWindow = undoneNow ? (runner.receipt?.steps.contains { $0.kind == .entry || $0.kind == .tasks } ?? true) : (plan?.windowNeeded ?? true)
+        let verb = imp ? "added" : "put back"
+        let grown = runner.receipt?.changedCount ?? 0
+        return SCard(title: "Steps", info: "What \(imp ? "importing" : "restoring") does, in order. A receipt in cl_audit's folder keeps what was \(verb) as it goes: if the Mac stops, cl_audit offers to finish it, and Undo this \(imp ? "import" : "restore") takes back exactly that.") {
             VStack(alignment: .leading, spacing: 0) {
                 step(1, needsWindow ? (state(1) == .done ? "\(w) closed" : "\(w) closes") : "The window stays as it is",
                      needsWindow ? "Only that window, for about half a minute; your other Claude windows stay open."
-                                 : "Nothing in the window comes back, so it needn't close.")
-                step(2, undoMode ? "What it put back is taken away" : state(2) == .done ? "What's listed came back" : "What's listed comes back",
+                                 : "Nothing in the window \(imp ? "comes in" : "comes back"), so it needn't close.")
+                step(2, undoMode ? "What it \(verb) is taken away" : undoneNow ? "What it \(verb) was taken away"
+                        : state(2) == .done ? (imp ? "What's listed was added" : "What's listed came back") : (imp ? "What's listed is added" : "What's listed comes back"),
                      undoMode ? "Each file is checked against its receipt line first; one that changed since stays."
-                     : state(2) == .done && (runner.receipt?.changedCount ?? 0) > 0
-                        ? "\(runner.receipt?.changedCount ?? 0) changed since stayed as they were."
+                     : undoneNow ? (imp ? (ImportWords.counts(sessions: runner.receipt?.sessionsAdded ?? 0, entries: runner.receipt?.entriesAdded ?? 0).map { "\($0) taken away. " } ?? "") : "")
+                                    + "Each file was checked against its receipt line first; one that changed since stayed."
+                     : state(2) == .done && grown > 0
+                        ? (imp ? "\(grown) grown on both sides: \(name)'s copy stayed as it was." : "\(grown) changed since stayed as they were.")
                         : "Merged by the rules on the left; nothing overwritten.",
                      check: stepTwoCheck(back))
-                step(3, undoMode ? "The window opens again" : state(3) == .done ? "The window is open; the sidebar, as before" : "The window opens; the sidebar, as before",
-                     undoMode ? "Only what the receipt names was taken back; anything changed since stays." :
-                     sidebarPlanNow?.isEmpty == false ? "Press Return in the session that opens, so the sidebar is arranged as before." : "Nothing to arrange.")
+                step(3, undoMode ? "The window opens again" : undoneNow ? (needsWindow ? "The window is open again" : "The window stayed as it was") : state(3) == .done ? "The window is open; the sidebar, as before" : "The window opens; the sidebar, as before",
+                     undoMode ? "Only what the receipt names was taken back; anything changed since stays."
+                     : undoneNow ? ""            // (step 2 has said what was taken away: nothing is repeated here)
+                     : sidebarPlanNow?.isEmpty == false ? "Press Return in the session that opens, so the sidebar is arranged as before." : "Nothing to arrange.")
             }
             keys.padding(.top, 8)
             if let line = statusLine { SRowLine(text: line, color: { if case .failed = runner.phase { return face.danger }; return nil }()) }
@@ -315,16 +342,24 @@ struct RestorePage: View {
     private var footnote: String {
         switch runner.phase {
         case .ready: return "It keeps a receipt as it goes, like a switch: if the Mac stops, the next start of cl_audit offers to finish it first."
-        case .done, .sidebar: return "Undo this restore takes back exactly what it put back, as Undo does for a switch."
+        case .done, .sidebar: return imp ? "Undo this import takes back exactly what it added; Undo last import, under \(name)'s Sessions, does the same later."
+                                          : "Undo this restore takes back exactly what it put back, as Undo does for a switch."
         default: return ""
         }
     }
 
     private func stepTwoCheck(_ back: Int) -> (String, DisplayWindow.Tone)? {
+        // an import's sessions and entries are named each, never both called "sessions"; files are files
+        let r = runner.receipt
+        let added = imp ? (ImportWords.counts(sessions: r?.sessionsAdded ?? 0, entries: r?.entriesAdded ?? 0) ?? "\(back) \(back == 1 ? "file" : "files")") : "\(back)"
         switch runner.phase {
-        case .writing: return ("\(runner.progress.done) of \(runner.progress.total) · nothing overwritten", .mint)
-        case .done, .sidebar: return ("\(back) back · 0 overwritten ✓", .ok)
-        case .stopped: return ("\(back) back · kept", .amber)
+        case .writing: return ("\(runner.progress.done) of \(runner.progress.total)\(imp ? " files" : "") · nothing overwritten", .mint)
+        // (short: a display never wraps, and one wider than the column pushes its card out of it; "nothing overwritten" is said above)
+        case .done, .sidebar: return (imp ? "\(added) added ✓" : "\(back) back · 0 overwritten ✓", .ok)
+        case .stopped: return (imp ? "\(back) \(back == 1 ? "file" : "files") added · kept" : "\(back) back · kept", .amber)
+        case .undone:
+            let taken = r.map { r in r.steps.filter { $0.done && $0.kind != .dir }.count } ?? 0
+            return (imp ? "\(taken) \(taken == 1 ? "file" : "files") taken away ✓" : "\(taken) taken away ✓", .ok)
         default: return nil
         }
     }
@@ -347,7 +382,7 @@ struct RestorePage: View {
             case .closing, .writing, .undoing:
                 Button("Cancel") { runner.cancel() }.buttonStyle(.pill(FaceTheme.ledRed, compact: true)).disabled(runner.phase != .closing)
                 Spacer(minLength: 6)
-                Text(runner.phase == .closing ? "closing the window…" : runner.phase == .undoing ? "taking back…" : "restoring…").font(.system(size: 12)).foregroundStyle(face.caution)
+                Text(runner.phase == .closing ? "closing the window…" : runner.phase == .undoing ? "taking back…" : imp ? "importing…" : "restoring…").font(.system(size: 12)).foregroundStyle(face.caution)
             case .sidebar:
                 Spacer(minLength: 6)
                 Button(runner.sidebarOpened ? "Open it again" : "Open the session") { runner.arrangeSidebar() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
@@ -366,7 +401,8 @@ struct RestorePage: View {
     private var restoreKey: some View {
         let ok = plan != nil && plan?.refusal == nil && count > 0 && runner.notYet == nil
         let needsWindow = plan?.windowNeeded ?? true
-        return Button(plan == nil ? "Counting…" : count == 0 && plan?.refusal == nil ? "Nothing to restore" : needsWindow ? "Close and restore \(count)" : "Restore \(count)") { runner.start() }
+        let verb = imp ? "import" : "restore"
+        return Button(plan == nil ? "Counting…" : count == 0 && plan?.refusal == nil ? "Nothing to \(verb)" : needsWindow ? "Close and \(verb) \(count)" : "\(verb.capitalized) \(count)") { runner.start() }
             .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(!ok)
     }
 
@@ -431,7 +467,7 @@ struct RestorePage: View {
             .frame(width: 22, height: 22)
             VStack(alignment: .leading, spacing: 4) {
                 Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(s == .failed ? face.danger : face.text)
-                Text(detail).font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                if !detail.isEmpty { Text(detail).font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true) }
                 if let check { DisplayWindow(text: check.0, tone: check.1, height: 18, size: 9) }
             }
         }
@@ -448,21 +484,22 @@ struct RestoreTileDisplay: View {
     @ObservedObject var runner: RestoreRunner
 
     var body: some View {
-        let open = model.selection == SettingsModel.restoreID && model.restoring == runner.key
+        let open = (model.selection == SettingsModel.restoreID && model.restoring == runner.key) || (model.selection == SettingsModel.importID && model.restoring == runner.key)
+        let imp = runner.isImport
         switch runner.phase {
         case .closing, .writing, .undoing, .sidebar:
-            TileDisplayGlass(l1: runner.undoing || runner.phase == .undoing ? "Undoing ●" : "Restoring ●", l2: runner.phase == .writing ? "\(runner.progress.done) of \(runner.progress.total)" : "the window", tone: .mint, l1Lit: true) { model.showRestore(runner.key) }
+            TileDisplayGlass(l1: runner.undoing || runner.phase == .undoing ? "Undoing ●" : imp ? "Importing ●" : "Restoring ●", l2: runner.phase == .writing ? "\(runner.progress.done) of \(runner.progress.total)" : "the window", tone: .mint, l1Lit: true) { model.showRestore(runner.key) }
         case .done where open:
-            TileDisplayGlass(l1: "Restored", l2: "\(runner.receipt?.back ?? 0) back", tone: .ok) { }
+            TileDisplayGlass(l1: imp ? "Imported" : "Restored", l2: imp ? "\(runner.receipt?.back ?? 0) files" : "\(runner.receipt?.back ?? 0) back", tone: .ok) { }
         case .stopped:
-            TileDisplayGlass(l1: "Restore stopped", l2: "Finish or undo", tone: .amber) { model.showRestore(runner.key) }
+            TileDisplayGlass(l1: imp ? "Import stopped" : "Restore stopped", l2: "Finish or undo", tone: .amber) { model.showRestore(runner.key) }
         case .failed where open:
-            TileDisplayGlass(l1: "Restore stopped", l2: "nothing written", tone: .warn) { }
+            TileDisplayGlass(l1: imp ? "Import stopped" : "Restore stopped", l2: "nothing written", tone: .warn) { }
         case .ready where open:
-            TileDisplayGlass(l1: "Restore from", l2: "a backup", tone: .normal, unlit: true) { }
+            TileDisplayGlass(l1: imp ? "Import from" : "Restore from", l2: imp ? "a file" : "a backup", tone: .normal, unlit: true) { }
         default:
             if let u = model.unfinishedRestore(of: entry.id) {
-                TileDisplayGlass(l1: "Restore stopped", l2: "Finish or undo", tone: .amber) { model.showRestore(finishing: u) }
+                TileDisplayGlass(l1: u.importedFrom != nil ? "Import stopped" : "Restore stopped", l2: "Finish or undo", tone: .amber) { model.showRestore(finishing: u) }
             }
         }
     }
