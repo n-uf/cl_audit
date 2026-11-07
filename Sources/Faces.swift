@@ -105,6 +105,7 @@ struct FaceTheme {
     var levelGreen: Color
     var levelAmber: Color
     var levelRed: Color
+    var levelCrimson: Color
 
     // surfaces
     var chassis: Finish
@@ -173,6 +174,7 @@ struct FaceTheme {
             print: .white(0.5), rule: .black(0.45), ruleHi: .white(0.035),
             link: .hex(0xe8a07f), caution: .hex(0xf59e0b), danger: .hex(0xf87171), ok: .hex(0x22c55e),
             levelGreen: Color(nsColor: Painter.green), levelAmber: Color(nsColor: Painter.amber), levelRed: Color(nsColor: Painter.red),
+            levelCrimson: Color(nsColor: Painter.crimson),
             chassis: Finish(stops: Finish.stops((0x232325, 0), (0x1b1b1d, 0.3), (0x19191b, 1)), grain: GrainSpec(vertical: true, hi: 0.028, lo: 0.035)),
             module: Finish(stops: Finish.stops((0x29292b, 0), (0x222224, 1)), grain: GrainSpec(vertical: true, hi: 0.028, lo: 0.035),
                            hi: .white(0.07), lo: .black(0.35), ring: .hex(0x0c0c0d), shadow: .black(0.25), shadowRadius: 6, shadowY: 4),
@@ -207,6 +209,7 @@ struct FaceTheme {
             t.print = .hex(0x141414, 0.62); t.rule = .black(0.22); t.ruleHi = .white(0.45)
             t.link = .hex(0xa8461a); t.caution = .hex(0x8a4f00); t.danger = .hex(0xb42318); t.ok = .hex(0x11743a)
             t.levelGreen = .hex(0x13803a); t.levelAmber = .hex(0xb25f00); t.levelRed = .hex(0xc0271b)
+            t.levelCrimson = .hex(0xa8133e)   // bluish beside levelRed, 6.9:1 on #f6f7f8, 6.4:1 on #eceef0
             t.chassis = Finish(stops: Finish.stops((0xd0d2d3, 0), (0xc2c4c5, 0.45), (0xb9bbbc, 1)), grain: GrainSpec(vertical: false, hi: 0.2, lo: 0.025))
             t.module = Finish(stops: Finish.stops((0xe0e2e3, 0), (0xd0d2d3, 0.55), (0xc6c8c9, 1)), grain: GrainSpec(vertical: false, hi: 0.24, lo: 0.025),
                               hi: .white(0.95), lo: .black(0.18), ring: .black(0.32), shadow: .black(0.16), shadowRadius: 5, shadowY: 3)
@@ -886,6 +889,7 @@ extension FaceTheme {
     func levelColor(_ p: Double?) -> Color {
         let ns = Painter.color(p, stale: false)
         guard active && light else { return Color(nsColor: ns) }
+        if ns == Painter.crimson { return levelCrimson }
         if ns == Painter.red { return levelRed }
         if ns == Painter.amber { return levelAmber }
         if ns == Painter.green { return levelGreen }

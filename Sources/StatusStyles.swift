@@ -1,5 +1,5 @@
 // Status styles: tile, gauge and bar colours follow the usage levels (green under 50%, amber 50–79%,
-// red from 80%, grey when the numbers are old). The big number is the 5-hour session; the week always
+// red 80–94%, crimson from 95%, grey when the numbers are old). The big number is the 5-hour session; the week always
 // gets its own colour from its own level. Same 64×64, y-down space as the other styles.
 
 import AppKit
@@ -9,11 +9,13 @@ extension Painter {
     static let deepGreen = TileColor.hex(0x16a34a)
     static let deepAmber = TileColor.hex(0xd97706)
     static let deepRed = TileColor.hex(0xdc2626)
+    /// Crimson with white text on it: a little deeper than `crimson` (white on #eb445b is 3.8:1), still bluish beside deepRed.
+    static let deepCrimson = NSColor(displayP3Red: 0xd6/255, green: 0x30/255, blue: 0x4f/255, alpha: 1)
     static let deepGrey = TileColor.hex(0x52525b)
 
     static func level(_ p: Double?, stale: Bool) -> NSColor {
         guard let p, !stale else { return deepGrey }
-        return p >= 80 ? deepRed : p >= 50 ? deepAmber : deepGreen
+        return p.rounded() >= 95 ? deepCrimson : p >= 80 ? deepRed : p >= 50 ? deepAmber : deepGreen
     }
 
     static var tileRect: NSRect { NSRect(x: 2, y: 2, width: 60, height: 60) }

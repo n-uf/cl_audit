@@ -1,5 +1,5 @@
 // Icon styles that match the panel designs: Twin rings, Segmented and Pace bars.
-// Same 64×64, y-down space as the other styles; colours follow the levels (green, amber, red).
+// Same 64×64, y-down space as the other styles; colours follow the levels (green, amber, red, crimson).
 
 import AppKit
 
@@ -28,7 +28,7 @@ extension Painter {
         }
     }
 
-    /// Segmented: per limit a large number and eight segments that light up green → amber → red.
+    /// Segmented: per limit a large number and eight segments that light up green → amber → red → crimson.
     static func segmented(_ m: TileModel) {
         tile(tileBg, stroke: nil)
         darkLabel(m)
@@ -43,7 +43,8 @@ extension Painter {
                 let seg = NSBezierPath(roundedRect: r, xRadius: 1.3, yRadius: 1.3)
                 if i < lit && !m.stale {
                     let zone = Double(i + 1) / Double(count) * 100
-                    let c = zone > 80 ? red : zone > 50 ? amber : green
+                    // the last segment is the crimson one, once the number reads 95 or more
+                    let c = zone > 95 && v.rounded() >= 95 ? crimson : zone > 80 ? red : zone > 50 ? amber : green
                     glow(c, radius: 1.8) { c.setFill(); seg.fill() }
                 } else {
                     (i < lit ? grey : track).setFill(); seg.fill()

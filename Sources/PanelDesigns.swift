@@ -200,7 +200,7 @@ struct SegmentBar: View {
         HStack(spacing: 3) {
             ForEach(0..<count, id: \.self) { i in
                 let zone = Double(i + 1) / Double(count) * 100
-                let c = Color(nsColor: zone > 80 ? Painter.red : zone > 50 ? Painter.amber : Painter.green)
+                let c = Color(nsColor: zone > 95 ? Painter.crimson : zone > 80 ? Painter.red : zone > 50 ? Painter.amber : Painter.green)
                 // inside the window an unlit segment is sunk into the plate
                 RoundedRectangle(cornerRadius: face.active ? 1.5 : 2)
                     .fill(i < lit ? AnyShapeStyle(c) : face.meterOff)

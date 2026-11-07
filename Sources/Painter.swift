@@ -77,7 +77,7 @@ extension IconStyle {
         case .rings: return "Outer ring 5-hour, inner ring week, 5-hour number inside."
         case .number: return "The 5-hour % large on the profile colour, the week below."
         case .twinRings: return "A ring per limit side by side, its number inside."
-        case .segmented: return "Large numbers with eight segments that light up green → amber → red."
+        case .segmented: return "Large numbers with eight segments that light up green → amber → red → crimson."
         case .pace: return "Large numbers with bars and a white tick for the time already passed."
         case .statusTile: return "The tile follows the 5-hour level; the week pill has its own colour."
         case .gauge: return "The tile fills up from the bottom with the 5-hour usage."
@@ -91,7 +91,7 @@ extension IconStyle {
 }
 
 /// The account's colour: the Big number tile, the label in Two numbers, the border in Rings.
-/// `usage` colours by the 5-hour level instead (green, amber, red).
+/// `usage` colours by the 5-hour level instead (green, amber, red, crimson).
 enum TileColor: String, CaseIterable, Codable, Identifiable {
     case orange, yellow, lime, teal, cyan, blue, indigo, purple, fuchsia, pink, graphite, usage
     var id: String { rawValue }
@@ -144,6 +144,9 @@ enum Painter {
     static let green = NSColor(srgbRed: 0x22/255, green: 0xc5/255, blue: 0x5e/255, alpha: 1)
     static let amber = NSColor(srgbRed: 0xf5/255, green: 0x9e/255, blue: 0x0b/255, alpha: 1)
     static let red = NSColor(srgbRed: 0xef/255, green: 0x44/255, blue: 0x44/255, alpha: 1)
+    /// The fourth level, 95 % and up (a full limit included). Display P3, not sRGB: the operator's reference (#eb445b) was
+    /// sampled from a screenshot, which holds the display's own values, so this colour *shows* as #eb445b there.
+    static let crimson = NSColor(displayP3Red: 0xeb/255, green: 0x44/255, blue: 0x5b/255, alpha: 1)
     static let grey = NSColor(srgbRed: 0x6b/255, green: 0x72/255, blue: 0x80/255, alpha: 1)
     static let tileBg = NSColor(srgbRed: 0x1c/255, green: 0x1c/255, blue: 0x1f/255, alpha: 1)
     static let track = NSColor(srgbRed: 0x3f/255, green: 0x3f/255, blue: 0x46/255, alpha: 1)
@@ -152,7 +155,8 @@ enum Painter {
 
     static func color(_ p: Double?, stale: Bool) -> NSColor {
         guard let p, !stale else { return grey }
-        return p >= 80 ? red : p >= 50 ? amber : green
+        // crimson from the number the person reads (94.5 shows as 95, like AtLimit.isFull's 100); the others as before
+        return p.rounded() >= 95 ? crimson : p >= 80 ? red : p >= 50 ? amber : green
     }
 
     static func pct(_ p: Double?) -> String { p.map { "\(Int($0.rounded()))%" } ?? "–" }
@@ -306,12 +310,12 @@ enum Painter {
         text("wk \(pct(m.weekly))", sans(11, .bold), .white, x: 32, baseline: 56, align: .center, fit: 42)
     }
 
-    /// A limit is full (D1): the label, how long until it's back large ("1" + "h42"), which limit under it, a red frame.
+    /// A limit is full (D1): the label, how long until it's back large ("1" + "h42"), which limit under it, a crimson frame.
     static func countdownFace(_ m: TileModel, _ c: TileCountdown) {
         tile(tileBg, stroke: nil)
         let ring = NSBezierPath(roundedRect: NSRect(x: 3.75, y: 3.75, width: 56.5, height: 56.5), xRadius: 12.5, yRadius: 12.5)
         ring.lineWidth = 3.5
-        glow(red, radius: 2) { red.setStroke(); ring.stroke() }
+        glow(crimson, radius: 2) { crimson.setStroke(); ring.stroke() }
         text(m.label, mono(10), NSColor.white.withAlphaComponent(0.72), x: 32, baseline: 15, align: .center, kern: 0.5)
         // the time: the first part large, the second smaller, centred together and shrunk to fit
         let bigFont = sans(24, .heavy), smallFont = sans(13.5, .bold)

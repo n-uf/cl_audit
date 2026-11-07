@@ -688,7 +688,7 @@ struct PaletteView: View {
                             // while a limit is full, one value: how long until it's back
                             if let full = row.full {
                                 Text(full.countdown() ?? "full").font(.system(size: 12, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(Color(nsColor: Painter.red)).lineLimit(1).fixedSize()
+                                    .foregroundStyle(Color(nsColor: Painter.crimson)).lineLimit(1).fixedSize()
                                     .help("\(full.title) · \(full.both())")
                             }
                         }

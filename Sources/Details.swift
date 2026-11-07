@@ -191,14 +191,17 @@ struct LevelBar: View {
     @Environment(\.face) private var face
 
     var body: some View {
-        let c = Color(nsColor: Painter.color(p, stale: false))
+        let level = Painter.color(p, stale: false)
+        let c = Color(nsColor: level)
+        // the fill fades in from 70 % at its left end; crimson (95 and up) is drawn whole, so it shows as its own colour
+        let fadeIn = level == Painter.crimson ? 1.0 : 0.7
         let frac = CGFloat(min(max(p ?? 0, 0), 100)) / 100
         GeometryReader { g in
             ZStack(alignment: .leading) {
                 Capsule().fill(face.active ? face.meterOff : AnyShapeStyle(Color.primary.opacity(0.12)))
                 if frac > 0 {
                     Capsule()
-                        .fill(LinearGradient(colors: [c.opacity(0.7), c], startPoint: .leading, endPoint: .trailing))
+                        .fill(LinearGradient(colors: [c.opacity(fadeIn), c], startPoint: .leading, endPoint: .trailing))
                         .frame(width: max(height, g.size.width * frac))
                         .shadow(color: glow ? c.opacity(0.5) : .clear, radius: 4)
                 }
