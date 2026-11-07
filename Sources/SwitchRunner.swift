@@ -49,6 +49,10 @@ final class SwitchRunner: ObservableObject {
     /// Whether the backup made before the sessions move takes Claude Code's transcripts too (on by default). The page
     /// toggles it before the switch starts; fixed once it has.
     @Published var backupTranscripts = true
+    /// "Undo this switch…": this switch goes back the other way, and then anything the switch it undoes changed is put back
+    /// from that switch's backup (the Restore page, opened with that backup; SessionsRestore.swift). nil: an ordinary switch.
+    @Published var undoes: SwitchUndo?
+    struct SwitchUndo: Equatable { var receipt: String; var backup: String; var place: String }
     /// The backup made before the sessions move, as soon as it exists (the engine reports it before the first move):
     /// the page shows it, also when the switch stops after.
     struct BackupRef: Equatable { var id: String; var place: String }
@@ -208,6 +212,7 @@ final class SwitchRunner: ObservableObject {
             fail("The switch couldn't be planned again. Nothing moved.", step: 2); return
         }
         plan.backupTranscripts = backupTranscripts      // as it was when the switch started
+        plan.undoes = undoes?.receipt                   // Undo this switch: the receipt names the switch it undoes
         phase = .moving
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result {

@@ -21,6 +21,7 @@ struct SwitchPage: View {
     @State private var kept: SessionsBackup.Kept?        // what a backup would take (nil: still counting)
     @State private var made: SessionsBackup.Manifest?    // the backup this switch's receipt names
     @State private var madeLoaded: String?               // the ref (id + place) loadMade() has finished for
+    @State private var undone: SessionsBackup.Manifest?  // Undo this switch: the backup of the switch being undone
     @ObservedObject private var backups = BackupPrefs.shared
     @Environment(\.face) private var face
 
@@ -50,12 +51,14 @@ struct SwitchPage: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
             if let t = topLine { topBar(t) }
+            undoBanner
             // the Backup card shows when "Move to …" is the answer: the sessions are backed up first
             SettingsColumns(width: width, groups: [[AnyView(accountsCard), AnyView(staysCard)],
                                                   [AnyView(sessionsCard)] + (moves ? [AnyView(backupCard)] : []) + [AnyView(stepsCard)]])
         }
         .task(id: entry.id + standby.id) { await count() }
         .task(id: (runner.backupRef.map { $0.id + $0.place } ?? "")) { await loadMade() }
+        .task(id: (runner.undoes.map { $0.backup + $0.place } ?? "")) { await loadUndone() }
     }
 
     private var title: String {
@@ -155,8 +158,14 @@ struct SwitchPage: View {
             // linked: the way back is a switch the other way
             Button("Undo this switch…") { switchBack() }.buttonStyle(.pill(FaceTheme.ledRed, compact: true))
         case .done:
-            Button("Undo this switch…") { switchBack() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
-            Button("Back to \(name)'s settings") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            if runner.undoes != nil {
+                // the second half of Undo this switch: the Restore page, on the backup the undone switch made
+                Button("Put back from the backup…") { openRestore() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+                Button("Back to \(name)'s settings") { model.selection = entry.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+            } else {
+                Button("Undo this switch…") { switchBack() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                Button("Back to \(name)'s settings") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            }
         case .cancelled:
             Button("Back to \(name)'s settings") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
         case .ready, .failed:
@@ -171,7 +180,43 @@ struct SwitchPage: View {
         guard let r = runner.receipt, let s = entry.standby.first(where: { r.from.same($0.seat) }) else {
             model.selection = entry.id; return
         }
-        model.showSwitch(AccountEntry.standbyStatusID(entry.id, s.id))
+        // the switch the other way, then what this switch changed comes back from its backup (the Restore page)
+        model.showUndoSwitch(r, key: AccountEntry.standbyStatusID(entry.id, s.id))
+    }
+
+    // MARK: Undo this switch: switch back, then put back from the backup
+
+    /// The backup the switch being undone made, read for its title.
+    private func loadUndone() async {
+        guard let u = runner.undoes else { undone = nil; return }
+        let profile = entry.id
+        undone = await Task.detached(priority: .utility) {
+            SessionsBackup.load(profile: profile, id: u.backup, place: URL(fileURLWithPath: u.place))
+        }.value
+    }
+
+    private var undoneTitle: String { undone.map { SessionsBackup.title($0, target: RestoreRunner.targetWord($0, for: entry)) } ?? "the switch's backup" }
+
+    /// Said before it starts and kept in sight: this is two things in one flow, and the second writes only what is missing.
+    @ViewBuilder private var undoBanner: some View {
+        if runner.undoes != nil {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Undo this switch").font(.system(size: 12.5, weight: .semibold)).foregroundStyle(face.text)
+                Text(runner.phase == .done
+                     ? "Switched back. Last: anything the switch changed comes back from \(undoneTitle). The Restore page counts first and writes nothing until you press its key; nothing is overwritten."
+                     : "Switches back to \(to), then puts back anything the switch changed from its backup (\(undoneTitle)): nothing is overwritten. The sessions move back with it.")
+                    .font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 8).fill(face.text.opacity(0.05)))
+        }
+    }
+
+    /// The last step of an Undo this switch, after the switch back: the Restore page, opened on that backup.
+    private func openRestore() {
+        guard let u = runner.undoes else { return }
+        model.showRestore(RestoreKey(profile: entry.id, backup: u.backup, place: u.place, afterSwitch: u.receipt))
     }
 
     // MARK: accounts: NOW lit, TO most room first (the picked one in mint)
@@ -429,6 +474,7 @@ struct SwitchPage: View {
             guard let f = runner.failedStep else { return .pending }
             return n < f ? .done : n == f ? .failed : .pending
         }
+        if n > steps { return runner.phase == .done ? .waiting : .pending }        // Undo this switch: the Restore page comes last
         switch runner.phase {
         case .ready, .cancelled: return n == 2 && runner.moveSessions == nil && runner.phase == .ready ? .waiting : .pending
         case .closing: return n == 1 ? .now : .pending
@@ -473,6 +519,10 @@ struct SwitchPage: View {
                      check: codeCheck)
                 step(4, "The Claude window signs in as \(to)", windowDetail, check: windowCheck)
                 if arranges { step(5, "The sidebar, as before", sidebarWords) }
+                if runner.undoes != nil {
+                    step(steps + 1, "Then: what the switch changed comes back",
+                         "From \(undoneTitle), on the Restore page: it counts what is missing, changed or in use first, and writes only what is missing. Nothing is overwritten. \(runner.phase == .done ? "The key at the top opens it." : "The key at the top opens it once this switch is done.")")
+                }
             }
             keys.padding(.top, 8)
             if let line = statusLine { SRowLine(text: line, color: isFailed ? face.danger : nil) }
