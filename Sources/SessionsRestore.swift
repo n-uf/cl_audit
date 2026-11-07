@@ -1,7 +1,9 @@
 // SessionsRestore: putting a backup of a profile's sessions (SessionsBackup.swift) back. Input is a backup folder and the
 // profile it goes to; output is a plan (what would happen, counted from the backup against what is there now, nothing
-// written) and a run with its own receipt. It knows nothing of switches, so an unpacked export (a later stage) restores
-// by the same rules.
+// written) and a run with its own receipt. It knows nothing of switches, so an unpacked export (SessionsImport.swift: a
+// backup of the target profile, kind "imported", its accounts as fingerprints) restores by the same rules: an import's
+// entries are all "another account's" (written as a switch would place them), the sessions a scheduled task ran are left
+// out with the task's name, and the receipt names the file (Undo last import is Undo this restore on it).
 //
 // Restore merges and never overwrites:
 //
@@ -111,6 +113,10 @@ enum SessionsRestore {
         var otherAccount = 0                // entries to write that were on another account in the backup
         var sidebar: SidebarPlan?
         var checkedRunning = true           // false: whether sessions run couldn't be checked, so none is written
+        var isImport = false                // the backup was unpacked from an export (SessionsImport.swift)
+        var taskSessions: [String] = []     // an import leaves out the sessions scheduled tasks ran, with the task's name
+        var memoryFiles: [String] = []      // <project>/memory/… files in the backup (Claude Code loads them into every session)
+        var memoryLeftOut = false           // an import from another Mac or profile leaves them out unless asked ("Add them")
 
         var count: Int { entries.count + tasks.count + transcripts.count + files.count }
         var windowNeeded: Bool { !entries.isEmpty || !tasks.isEmpty }
@@ -132,7 +138,7 @@ enum SessionsRestore {
         return !c.isEmpty && c.allSatisfy(plainName) ? c : nil
     }
 
-    static func plan(_ t: Target, _ b: Backup, foreign: Bool = false, now: Date = Date()) -> Plan {
+    static func plan(_ t: Target, _ b: Backup, foreign: Bool = false, addMemory: Bool = false, now: Date = Date()) -> Plan {
         var p = Plan()
         func refuse(_ why: String) -> Plan { p.refusal = why; p.entries = []; p.tasks = []; p.transcripts = []; p.files = []; return p }
         guard SessionsBackup.validProfile(b.profile), SessionsBackup.validID(b.id), SessionsBackup.validProfile(t.profile) else {
@@ -145,6 +151,12 @@ enum SessionsRestore {
         guard foreign || m.profile == t.profile else { return refuse("That backup is another profile's.") }
         guard m.version == 1 else { return refuse("That backup is from a newer cl_audit; nothing is restored from it.") }
         guard let reader = Reader(path: b.dir.path) else { return refuse("The backup's folder isn't a plain folder (a link, or gone).") }
+        let imported = m.kind.isImport
+        p.isImport = imported
+        // memory files tell every session what to do: from ANY import file they stay out unless the operator adds them. (Whether
+        // a file "came from this Mac and this profile" is only what the file says, and a forged file says it too: no trust.)
+        let skipMemory = imported && !addMemory
+        p.memoryLeftOut = skipMemory
 
         // 1. the backup's own claims: every path plain, no sign-in, every file a plain file with one link
         var seen = Set<String>()
@@ -157,7 +169,9 @@ enum SessionsRestore {
             }
             switch it.role {
             case .window:
-                guard c.count == 4, c[0] == "window", AccountDiscovery.isUUID(c[1]), AccountDiscovery.isUUID(c[2]) else {
+                // (an export keeps its accounts as fingerprints, never their ids)
+                guard c.count == 4, c[0] == "window", AccountDiscovery.isUUID(c[1]) || (imported && Fingerprint.isValid(c[1])),
+                      AccountDiscovery.isUUID(c[2]) || (imported && Fingerprint.isValid(c[2])) else {
                     return refuse("backup.json names a window file in a place it doesn't keep them (\(it.path.prefix(80))).")
                 }
                 windowItems.append((it, c))
@@ -214,6 +228,25 @@ enum SessionsRestore {
             if ax != ay { return ax }
             return (a.1[1], a.1[2]) < (b.1[1], b.1[2])
         }
+        // an import leaves out the sessions that scheduled tasks ran: the task belongs to its account and isn't imported
+        var taskNames: [String: String] = [:]
+        if imported {
+            for (_, c) in windowItems where c[3] == "scheduled-tasks.json" {
+                guard let d = windowData[c.joined(separator: "/")], let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
+                for t in (j["scheduledTasks"] as? [[String: Any]]) ?? [] {
+                    if let id = t["id"] as? String { taskNames[id] = (t["name"] as? String) ?? (t["title"] as? String) ?? id }
+                }
+            }
+        }
+        // the Claude Code sessions those entries belong to (their transcript and its folder are left out with them)
+        var taskCLI = Set<String>()
+        if imported {
+            for (_, c) in windowItems where c[3].hasPrefix("local_") {
+                guard let d = windowData[c.joined(separator: "/")], taskOrigin(d, names: taskNames) != nil,
+                      let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], let cli = j["cliSessionId"] as? String, !cli.isEmpty else { continue }
+                taskCLI.insert(cli.lowercased())
+            }
+        }
         var handled = Set<String>()
         for (it, c) in ordered {
             let name = c[3], from = SeatID(account: c[1], organization: c[2])
@@ -232,6 +265,10 @@ enum SessionsRestore {
                 } else if nowWindow.deleted.contains(sid.lowercased()) {
                     p.deletedSince.append(name)
                 } else if let scope = scopeID, win != nil {
+                    if imported, let task = taskOrigin(bdata, names: taskNames) {
+                        p.taskSessions.append("\(task) · session \(sid.prefix(8))")
+                        continue
+                    }
                     let rewrite = from != scope
                     p.entries.append(Piece(kind: .entry, rel: c, base: .window,
                                            dirs: ["claude-code-sessions", scope.account, scope.organization], leaf: name,
@@ -262,20 +299,36 @@ enum SessionsRestore {
         // 3. Claude Code's transcripts now
         p.days = CodeCleanup.days(codeDir: t.codeDir)
         if !codeItems.isEmpty {
-            planTranscripts(&p, t, codeItems.map { $0.1 }, reader: reader, now: now)
+            planTranscripts(&p, t, codeItems.map { $0.1 }, reader: reader, now: now, skipSessions: taskCLI, skipMemory: skipMemory)
         }
 
         // 4. the sidebar: where the restored entries sat, from the backup's own records
         if !restoredIDs.isEmpty, sidebarItem != nil, let f = reader.file(["sidebar", "epitaxyPrefs.json"]) {
             defer { close(f.fd) }
             if let prefs = (try? JSONSerialization.jsonObject(with: read(f.fd, size: f.st.st_size) ?? Data())) as? [String: Any] {
-                p.sidebar = sidebarPlan(prefs: prefs, restored: restoredIDs)
+                p.sidebar = sidebarPlan(prefs: prefs, restored: restoredIDs, imported: imported)
             }
         }
         return p
     }
 
-    private static func planTranscripts(_ p: inout Plan, _ t: Target, _ items: [[String]], reader: Reader, now: Date) {
+    /// The name of the scheduled task that ran this session's entry, when the entry says so: a key naming a scheduled task
+    /// (its name, else its id looked up in the task files). nil: an ordinary session.
+    /// (UNVERIFIED against a real entry: no code of cl_audit knows which key marks a scheduled task's session, and the
+    /// operator's real data was not read to find out. Any top-level key with "scheduledtask" in its name is taken to.)
+    static func taskOrigin(_ entry: Data, names: [String: String]) -> String? {
+        guard let j = (try? JSONSerialization.jsonObject(with: entry)) as? [String: Any] else { return nil }
+        let keys = j.keys.filter { $0.lowercased().contains("scheduledtask") }.sorted()
+        for k in keys where k.lowercased().contains("name") { if let s = j[k] as? String, !s.isEmpty { return s } }
+        for k in keys { if let s = j[k] as? String, !s.isEmpty { return names[s] ?? s } }
+        return nil
+    }
+
+    private static func isMemory(_ rel: [String]) -> Bool { rel.count >= 3 && rel[1] == "memory" }
+
+    private static func planTranscripts(_ p: inout Plan, _ t: Target, _ items: [[String]], reader: Reader, now: Date,
+                                        skipSessions: Set<String> = [], skipMemory: Bool = false) {
+        p.memoryFiles = items.map { Array($0.dropFirst()) }.filter(isMemory).map { $0.joined(separator: "/") }.sorted()
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: t.codeDir, isDirectory: &isDir), isDir.boolValue, let code = Tree(path: t.codeDir) else {
             p.notes.append("The Claude Code folder isn't there, so the transcripts aren't restored.")
@@ -296,6 +349,8 @@ enum SessionsRestore {
             let top = rel.count == 2 && leaf.hasSuffix(".jsonl")
             let session = top ? String(leaf.dropLast(".jsonl".count)).lowercased() : rel.count >= 3 ? rel[1].lowercased() : ""
             let name = rel.joined(separator: "/")
+            if skipMemory, isMemory(rel) { continue }                       // left out: listed (memoryFiles), never written
+            if !skipSessions.isEmpty, skipSessions.contains(session) { continue }     // a scheduled task's session: transcript and folder stay out
             guard let src = reader.file(c) else { continue }
             defer { close(src.fd) }
             let piece = Piece(kind: top ? .transcript : .file, rel: c, base: .code, dirs: ["projects"] + rel.dropLast(), leaf: leaf, bytes: Int64(src.st.st_size))
@@ -356,7 +411,16 @@ enum SessionsRestore {
 
     /// The sidebar arrangement of the entries that come back, from the backup's records, scope by scope (an entry keeps
     /// the groups it had on the account it was on).
-    static func sidebarPlan(prefs: [String: Any], restored: [(id: String, data: Data, from: SeatID)]) -> SidebarPlan? {
+    /// A group name from an export as the helper session's prompt may carry it: letters, digits, spaces and - _ . , ( ) & ' only,
+    /// at most 40 characters; the rest is taken out. "": the group is dropped (its sessions stay ungrouped).
+    static func importGroupName(_ s: String) -> String {
+        let extra: Set<Character> = ["-", "_", ".", ",", "(", ")", "&", "'"]
+        let kept = String(s.filter { $0.isLetter || $0.isNumber || $0 == " " || extra.contains($0) })
+        let words = kept.split(separator: " ", omittingEmptySubsequences: true).joined(separator: " ")
+        return String(words.prefix(40)).trimmingCharacters(in: .whitespaces)
+    }
+
+    static func sidebarPlan(prefs: [String: Any], restored: [(id: String, data: Data, from: SeatID)], imported: Bool = false) -> SidebarPlan? {
         var merged = SidebarPlan()
         var bySource: [SeatID: [(id: String, data: Data)]] = [:]
         for r in restored { bySource[r.from, default: []].append((r.id, r.data)) }
@@ -372,6 +436,15 @@ enum SessionsRestore {
             }
             merged.pinned += one.pinned.filter { !merged.pinned.contains($0) }
             if let l = one.left { merged.left = (merged.left ?? 0) + l }
+        }
+        if imported {
+            // names from a file that came from elsewhere reach the helper session's prompt: only plain ones do
+            merged.groups = merged.groups.compactMap { g in
+                var g = g
+                g.name = importGroupName(g.name)
+                if g.sort != nil, g.sort != "alpha", g.sort != "created" { g.sort = nil }
+                return g.name.isEmpty ? nil : g
+            }
         }
         merged.restored = true
         return merged.isEmpty ? nil : merged
@@ -594,11 +667,14 @@ enum SessionsRestore {
         var afterSwitch: String?            // Undo this switch: the receipt of the switch that was switched back
         var partialCount = 0                // shorter copies of a backup file that were there: left as they were
         var undoLeft = 0                    // an Undo left this many restored transcripts in place (a session holds them): it is still open
+        var importedFrom: String?           // an import: the export file's name (the receipt is then "Undo last import")
+        var sessionsAdded = 0               // an import: the sessions (transcripts) it added, for the Sessions card
+        var entriesAdded = 0                // an import: the Code-tab entries it added (never counted as sessions)
         var steps: [Step] = []              // from the journal
 
         private enum CodingKeys: String, CodingKey {
             case id, profile, dataDir, codeDir, backup, backupPlace, target, started, planned, finished, undone, stopped, problems,
-                 sidebar, changed, changedCount, inUse, inUseCount, deletedCount, afterSwitch, partialCount, undoLeft
+                 sidebar, changed, changedCount, inUse, inUseCount, deletedCount, afterSwitch, partialCount, undoLeft, importedFrom, sessionsAdded, entriesAdded
         }
 
         /// Wrote something and neither finished nor was undone: Undo applies, and so does finishing it.
@@ -793,7 +869,7 @@ enum SessionsRestore {
     /// write failed) keeps what is back; its receipt is unfinished until it is finished or undone. `continuing` finishes
     /// an earlier run of the same backup under its receipt (also when nothing is left to write: it is then only closed).
     @discardableResult
-    static func run(_ t: Target, _ b: Backup, continuing: String? = nil, foreign: Bool = false, afterSwitch: String? = nil,
+    static func run(_ t: Target, _ b: Backup, continuing: String? = nil, foreign: Bool = false, addMemory: Bool = false, afterSwitch: String? = nil,
                     mark: String? = nil, windowClosed: () -> Bool, stop: () -> Bool = { false },
                     progress: ((_ done: Int, _ total: Int) -> Void)? = nil, now: Date = Date()) throws -> Receipt {
         let lock: SwitchEngine.Lock
@@ -811,7 +887,7 @@ enum SessionsRestore {
             if let j = Journal(id: cid) { reconcile(o, journal: j, windowOK: !o.windowTouched || windowClosed()) }
             old = load(cid)
         }
-        let p = plan(t, b, foreign: foreign, now: now)
+        let p = plan(t, b, foreign: foreign, addMemory: addMemory, now: now)
         if let why = p.refusal { throw RestoreError(why) }
         guard p.manifest != nil else { throw RestoreError("That backup isn't there any more.") }
         if p.count == 0 {
@@ -843,6 +919,7 @@ enum SessionsRestore {
             r.sidebar = p.sidebar
             r.afterSwitch = afterSwitch
             r.problems += p.notes
+            if case .imported(let file)? = p.manifest?.kind { r.importedFrom = file; r.sessionsAdded = p.transcripts.count; r.entriesAdded = p.entries.count }
         }
         r.changedCount = p.changed.count; r.changed = Array(p.changed.prefix(200)); r.partialCount = p.partial.count
         r.inUseCount = p.inUse.count; r.inUse = Array(p.inUse.prefix(200)); r.deletedCount = p.deletedSince.count
@@ -1096,6 +1173,12 @@ enum SessionsRestore {
         ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter(validReceiptID).compactMap(header).sorted { $0.started > $1.started }
     }
 
+    /// The last import of this profile that is finished and not undone (Undo last import, in Settings ▸ the profile ▸
+    /// Sessions, opens its page): newest first. One an Undo only half did (a session held some transcripts) still counts.
+    static func lastImport(of profile: String) -> Receipt? {
+        headers().first { $0.profile == profile && $0.importedFrom != nil && $0.finished != nil && $0.undone == nil }
+    }
+
     /// How many finished restores of a profile read from this backup and weren't undone: their receipts go with the backup.
     static func finishedRestores(of backup: String, profile: String, place: String) -> Int {
         let here = FolderKey.canonical(place)
@@ -1173,5 +1256,8 @@ extension SessionsRestore.Receipt {
         afterSwitch = try c.decodeIfPresent(String.self, forKey: .afterSwitch)
         partialCount = try c.decodeIfPresent(Int.self, forKey: .partialCount) ?? 0
         undoLeft = try c.decodeIfPresent(Int.self, forKey: .undoLeft) ?? 0
+        importedFrom = try c.decodeIfPresent(String.self, forKey: .importedFrom)
+        sessionsAdded = try c.decodeIfPresent(Int.self, forKey: .sessionsAdded) ?? 0
+        entriesAdded = try c.decodeIfPresent(Int.self, forKey: .entriesAdded) ?? 0
     }
 }
