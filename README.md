@@ -739,11 +739,18 @@ arranged. The page then reads **Restored · 86 back · nothing overwritten · 3 
   consent; the same Cancel while it closes, the same rules as a restore), and stops, keeping what it took back, if the
   window opens meanwhile. A file that has landed is never deleted by name afterwards, except by Undo's check: if what
   is there isn't the backup's file (a running session may have appended to it), the restore leaves it and says so.
-  Temp files of a restore (`.restore-<id>-….tmp`, in the window's folder) are swept at the end, at Undo and when
-  finishing, and a crash's second hard link goes with them. cl_audit offers to finish after a stop rather than
-  finishing by itself: it would have to close the window unasked. Receipts of finished or undone restores go when their
-  backup is gone or after 30 days; one that wrote something and didn't finish never does. A backup an Undo this switch
-  is about to restore from is kept from pruning until that restore has run (30 days at most).
+  Temp files of a restore (`.restore-<the first 20 characters of the receipt id>-….tmp`, in the window's folder) are swept
+  at the end, at Undo and whenever finishing starts (also with the window open: only those names are touched), and a
+  crash's second hard link goes with them. A step the finish can't check safely (a window file while the window is
+  open) stays "not done" in the receipt, not dropped, and Undo takes it back if the file is exactly what the step says.
+  An Undo leaves a restored transcript a running Claude Code session holds, and lists it, like a restore does. cl_audit
+  offers to finish after a stop rather than finishing by itself: it would have to close the window unasked. Receipts of
+  finished or undone restores go when their backup is gone (its place can be looked at, and the backup isn't in it; a
+  place on a disk that isn't plugged in says nothing) or after 30 days; one that wrote something and didn't finish never
+  does. Deleting a backup says when it ends Undo for a finished restore from it. A backup an Undo this switch is about
+  to restore from is kept from pruning until that restore has run (30 days at most). A file in a project folder that is
+  the first part of a backup file (a copy from another volume cut short by a crash) is shown as "Partial copy" and left as
+  it is.
 - **Undo this switch…** on the Switch page is the switch the other way and then a restore from the backup the
   switch made: the page says so before it starts ("Switches back to ultra-1, then puts back anything the switch
   changed from its backup: nothing is overwritten"), the sessions follow, and its last step (and a key at Done) opens

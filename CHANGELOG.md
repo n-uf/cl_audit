@@ -37,7 +37,11 @@ the notes before updating.
   each line before a write carries the hash the file must have, so Undo and finishing treat such a file as the
   restore's, and a restore stopped after its last file can still be finished. Backups a receipt names in another
   place are listed in the Sessions card too ("in ~/Old/backups"); receipts of finished restores go with their backup
-  or after 30 days; the backup an Undo this switch is about to restore from isn't pruned before that. One switch,
+  or after 30 days (a place on a disk that isn't plugged in says nothing about its backups); the backup an Undo this
+  switch is about to restore from isn't pruned before that. Undo leaves a restored transcript a running session holds,
+  and lists it; finishing a stopped restore sweeps its temp files also while the window is open and keeps a window
+  file it can't check safely as "not done", so Undo still takes it back; each restore page has its own mark on the
+  window, and a switch finishing never takes a restore's. A copy a crash cut short is shown as "Partial copy". One switch,
   restore or import at a time, none while a switch of the
   profile stopped half way ("Not yet · one thing first", with **Open the switch**) or while claude-transplant moves
   sessions. **Undo this switch…** is now the switch back plus a restore from the backup the switch made: the Switch
