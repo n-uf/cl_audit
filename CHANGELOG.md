@@ -46,6 +46,39 @@ the notes before updating.
   profile stopped half way ("Not yet · one thing first", with **Open the switch**) or while claude-transplant moves
   sessions. **Undo this switch…** is now the switch back plus a restore from the backup the switch made: the Switch
   page says so before it starts, and its last step opens the Restore page on that backup.
+- **Export and Import of a profile's sessions.** Settings ▸ a profile ▸ Sessions has **Export…** and **Import…**. Export
+  makes one file for another Mac or for keeping, in the backup format: a zip made with macOS's own `ditto`, or an
+  AES-256 encrypted disk image (`hdiutil`, the password typed into a secure field, handed over on stdin, never stored or
+  logged). It is made from the profile as it is now, one of its backups or all profiles, with accounts as a fingerprint of
+  their id (`fp-` and 8 hex characters of the SHA-256) and never an address, an account id, a sign-in, an MCP setting,
+  `settings.json` or a path of this Mac. The transcripts are searched for keys (GitHub tokens, AWS access keys, private
+  keys, Anthropic, OpenAI, Slack, Google, Stripe and npm keys; counted by kind, never shown): a session that holds one is left
+  out, or kept in an encrypted image if you say so. A transcript a running session holds is copied up to its last full
+  line. The page previews per project folder and asks where in the Save panel. **Import** unpacks a file as a backup of the
+  chosen profile (marked imported) and restores from it by exactly the rules of Restore: create-only, the window closed while
+  entries are written, a receipt as it goes, **Undo last import** (under Sessions) takes back exactly what it added. Entries
+  go into the folder of the account the profile works on now; sessions that scheduled tasks ran are left out, with the task's
+  name; transcripts of a folder that isn't on this Mac are added and show once it is. The file is treated as hostile and the
+  whole import is refused, with nothing written, on a link or device in it, a path outside its folder, an absolute or `..`
+  name, two names that are one on this Mac, a sign-in name, a file its manifests don't name or a size that differs, a newer
+  format, an unencrypted image, a wrong password, or more data than it declared (checked before and while unpacking). A zip
+  must be exactly its central directory (the tool that unpacks it goes by the local headers, so each must agree and the records
+  must tile the file), numbers no file can have are refused instead of trapped on, files with flags (immutable), ACLs, extended
+  attributes or setuid bits are refused and what comes off an image is copied as data only, a zip bomb is stopped within a
+  fifth of a second of writing by watching the volume's free space, and work folders are taken away when cl_audit quits and
+  by a later launch if it was killed. Fingerprints are keyed by a random per-export key (a guessed address can't be checked
+  against them), "this Mac" is a random install id, any address or unexplained id in a made export stops it, group names from a
+  file are cleaned before they reach the sidebar helper's prompt, memory files from another Mac or profile are left out unless
+  added, scheduled tasks' sessions are left out with their transcripts, and sessions and entries are counted apart ("25
+  sessions · 12 entries"), never together as sessions. The key scan also finds a key right after an escaped newline in a
+  transcript, and Supabase, GitLab, Hugging Face, Slack refresh and JWT tokens. Import unpacks a zip with cl_audit's own
+  checked reader, not ditto (which writes a record hidden after a deflate stream's end): only the entries the directory
+  names, each inflated to exactly its stated size, ending exactly at its last byte, with a matching CRC-32, written data-only;
+  the bomb guard is exact. Memory files from any import file are left out unless you add them, and where a file says it came
+  from earns no trust (and "Add them" doesn't carry over to the next file you choose). A file's time is read from the
+  Unix extra that Finder's zips carry (UTC), so it is right in any time zone, and held to 1980 ... now; a name over 512
+  bytes is refused, so an unpacked folder can always be taken away (by descriptors, whatever its depth); a 2,000-session
+  file unpacks in under a second.
 - **Switch page fits its columns.** The Move to / Leave with keys sit side by side when they fit and one under the
   other when they don't, instead of overhanging the card; the keys in the top bar wrap under the status display when
   the page is narrow; the account being switched to is printed in light text on its dark glass on the Silver face too.

@@ -478,6 +478,11 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     asks first and refuses a backup that a half-done switch names, or whose switch's receipt can't be read. **Back up now** makes one: with the profile's window open it says "close it first, or the Code-tab
     list and sidebar records are left out" and backs up only what is safe, Claude Code's transcripts and cl_audit's
     records. A line under the list says how many are kept (General ▸ Backups).
+  - **Export:** **Export…** opens the Export page (see [Exporting a profile's sessions](#exporting-a-profiles-sessions)); the
+    row says "Never exported. A file for another Mac or for keeping." and, after one, "Last exported 5 Nov · 5.5 GB".
+  - **Import:** **Import…** opens the Import page ([Importing an export](#importing-an-export)): "From an export of this profile,
+    another profile or another Mac." After an import, **Undo last import** is there too ("Last import 5 Nov 18:40: 210 sessions
+    added from cl_audit Work 2026-10-30") until it is undone.
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
   ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"), and, when another of the profile's accounts has
@@ -759,6 +764,136 @@ arranged. The page then reads **Restored · 86 back · nothing overwritten · 3 
   changed from its backup: nothing is overwritten"), the sessions follow, and its last step (and a key at Done) opens
   the Restore page on that backup, counted fresh after the switch back. It stays two pages because the restore needs the
   window closed again and its counts only mean something after the sessions have moved back.
+
+### Exporting a profile's sessions
+
+**Export…** (Settings ▸ the profile ▸ Sessions) makes the profile's sessions one file, for another Mac or for keeping. It
+is a backup in a file: the same format, so Import restores it by the same rules. The **Export page** is a sibling of the
+Restore page and starts as a preview ("Preview · nothing written yet"):
+
+- **What:** **From** is the profile as it is now (a fresh copy is made under the switch lock, in a hidden folder of the
+  backups place, and taken away again), one of its backups, or all profiles. Claude Code: "310 sessions, with their
+  sub-agent files" (the transcripts and what sits beside them in their folders); Claude window: the Code-tab entries and
+  scheduled tasks, and the sidebar records (with the window open they are left out, as for Back up now); Cowork: left out.
+- **Keys found:** every transcript and the window's files are searched, in chunks that overlap so nothing is missed at a
+  boundary, for **GitHub tokens** (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` and `github_pat_`), **AWS access keys**
+  (`AKIA`/`ASIA` and 16 more), **private keys** (a `-----BEGIN … PRIVATE KEY-----` header, PGP too), **Anthropic API
+  keys** (`sk-ant-`), **OpenAI-style keys** (`sk-` with 40 more characters, one a digit), **Slack tokens** (`xoxb-` and the
+  other `xox` kinds), **Google API keys** (`AIza`), **Stripe live keys** (`sk_live_`, `rk_live_`) and **npm tokens**
+  (`npm_`), **Supabase** (`sbp_`), **GitLab** (`glpat-`), **Hugging Face** (`hf_`), Slack's refresh tokens (`xoxe-`,
+  `xoxe.xoxp-`) and **JWT tokens** (`eyJ…​.eyJ…​.` and a signature; counted as their own kind). A shape counts only at the start
+  of a word ("task-fix-the-login-page" is not a key); in a transcript a newline is the two characters `\n`, and a key right
+  after `\n`, `\t` or `\r` starts a word (a key after an escaped newline is found, also at a chunk boundary). The page counts the sessions
+  that hold each kind ("5 sessions hold keys: 2 GitHub tokens, 3 private keys") and never shows or writes a key. A session is
+  its transcript and the files in its folder, so one key anywhere in it holds the whole session. **Leave them out** (the
+  default) or **Keep them: needs a password**, which forces an encrypted disk image.
+- **Password:** **None: a zip** (made with macOS's own `ditto`, so Finder opens it) or **An encrypted disk image** (AES-256, made
+  with `hdiutil`, read-only compressed). The password is typed twice into secure fields (at least 8 characters), handed to
+  `hdiutil` on its standard input, never as an argument, and emptied from the page the moment the export starts; it is never
+  stored, shown again or logged, and lost means the image can't be opened.
+- **Preview:** per project folder (the folder the transcripts ran in, read from the transcripts), "210 · 3.9 GB · 2 in use,
+  copied up to their last full line", "5 with keys: left out". A transcript a running Claude Code session holds, or changed
+  in the last two minutes, or that doesn't end on a full line, is copied up to its last complete line. The file's name is
+  "cl_audit Main 2026-11-05.zip"; the Save panel asks where (the folder you used last, else Downloads). Keys: **Cancel** and
+  **Export 305 sessions · ≈ 5.5 GB**; **Stop** while it runs; **Show in Finder** when done. The row in Sessions then reads
+  "Last exported 5 Nov · 5.5 GB".
+- **What is never in it:** a sign-in (nothing a backup excludes: `.claude.json*`, anything named like credentials, Keychain,
+  OAuth or `auth.json`), the window's MCP settings, `settings.json`, a switch's receipt, `deleted_` markers, an address or a raw
+  account id. Accounts appear as a **fingerprint**: `fp-` and 8 hex characters of an HMAC-SHA256 of the id under a key made
+  at random for each export and never written anywhere, so a guessed address or id can't be confirmed by hashing it, and the
+  same account is the same fingerprint everywhere in one file only (folder names, the manifests, the sidebar records' scope
+  keys, and any account id or address of the profile inside the window's entries and task file). "Made on this Mac" is a
+  random install id kept in cl_audit's preferences, not made from the Mac's name. Before packing, every file but the
+  transcripts is searched: for the raw ids and addresses the export was made from, for **any** address-shaped text (an entry
+  can hold another account's), and for any id nothing explains (the ones named by `local_<id>` entries and transcripts, the
+  exact keys `sessionId`, `cliSessionId`, `bridgeSessionId` and `bridgeSessionIds` as direct keys of an entry (not one that
+  merely contains "session", not one a level down or inside an array of objects), and, in the sidebar records only, the
+  `cg-<id>` group ids and `local_<id>` keys); a file of 64 MB or more can't be checked and is refused. A hit stops the export with a message
+  naming the file; nothing is stripped silently. Transcripts are your own words and are copied as they are.
+- **The file:** `<name>/export.json` (format `cl_audit-export`, version 1, when, cl_audit's version, a fingerprint of this Mac's
+  name, zip or image, what was done with keys, the profiles and their sizes) and `<name>/profiles/p1/` (a backup's layout:
+  `backup.json`, `window/<fp>/<fp>/…`, `sidebar/`, `records/`, `transcripts/…`), one `pN` per profile for "All profiles". The
+  manifests carry no absolute path of this Mac.
+
+### Importing an export
+
+**Import…** (Settings ▸ the profile ▸ Sessions) opens the **Import page**: **Choose…** (an Open panel for a `.zip` or
+`.dmg`; an image asks for its password), then **Into** (the profile; a file of several profiles also asks which one). It
+reads the file, and shows a preview ("Preview · nothing written yet · nothing is ever overwritten") that says how it was made
+("made on another Mac"). **The file is unpacked as a backup of the target first, then restored from: the same rules as Restore**
+(kind "Imported from cl_audit Work 2026-10-30", listed with the other backups, Restore… on it works).
+
+- **What happens:** **New** (transcripts, their other files and Code-tab entries that aren't here: added), **Already here** (the
+  same content, or longer here: skipped), **Grown on both sides** (there and different, or the file's is longer: the target's
+  copy stays, listed), **Code-tab entries** (the window closes and opens again), **Scheduled tasks' sessions** (sessions a
+  scheduled task ran are left out, with the task's name; the tasks themselves aren't imported), **Folder not here** (added, shown
+  once that folder exists), **Older than 30 days** (**Keep for 90 days**). Entries go into the folder of the account the target
+  works on now, never a fingerprint's, written as a switch would place them (the old account's error keys and Remote Control
+  ids off), and the sidebar's groups and pins follow them through the fingerprint (one Return in a helper session). **Close and
+  import 210 sessions** then runs the Restore page's steps (window closes, files added with a receipt kept as it goes, window
+  opens), with the page reading "Importing ●" and "Imported · 210 added · nothing overwritten".
+- **Undo last import,** under the profile's Sessions, opens that import's page, where **Undo this import** takes back exactly what
+  it added (B2's Undo this restore on the import's receipt: only files unchanged since, only folders it made, if empty).
+- **The file is hostile input.** The whole import is refused, with nothing written into any profile and nothing left unpacked, on:
+  a file that is not a zip or an encrypted `.dmg`; **a zip** whose central directory is damaged, in several parts, with an
+  encrypted entry, a compression an export doesn't use, a name that is absolute, has `..`, a backslash, a NUL or an empty part, more
+  than one top-level folder, two names that are one on this Mac's disks (case, Unicode form), a link, a device or any entry
+  that is neither a file nor a folder, or that declares more data than twice what its `export.json` states (plus 64 MB) or
+  more than 128 GB (a size, offset or count no file can have, such as zip64's 2^64 - 1, is refused, never added up); **a zip
+  that is not exactly its central directory**: each local header must carry the directory entry's name, method, flags and
+  sizes (a data descriptor's width is decided by the local header's zip64 extra, and its local sizes must be 0 or the
+  directory's), and the local records must tile the file from its first byte to the directory (a hidden local-only entry, a
+  gap, bytes before the first record, a lying local size: refused), only the zip64 end record its locator points at may sit
+  between the directory and the end record; an `export.json` (read out of the zip itself before anything is unpacked) that isn't format
+  `cl_audit-export`, is a **newer version**, or whose sizes don't add up; **an image** that isn't encrypted (cl_audit makes no
+  other), with a wrong password, or whose top isn't exactly one folder.
+  **Import does not unpack with ditto** (Export still makes its zip with `ditto -c -k`, so Finder opens it). ditto goes by the
+  local headers and by where a deflate stream ends, and it writes a record hidden after that end, whatever the directory
+  says. cl_audit unpacks with its own reader into a fresh 0700 folder under the backups place: for each entry the directory
+  names, in order, stored or deflate only (anything else, such as bzip2 or lzma, is refused); the data read from the checked
+  place and inflated with zlib's raw inflate in 64 KB steps, which must end exactly at the entry's last byte with no input
+  left over (zlib says how many input bytes are left after the stream's end, so slack is seen however well the data
+  compresses; Apple's Compression doesn't say, and swallowed up to a chunk of it, so it isn't used); the
+  output exactly the size the directory says, stopped the moment it would pass it; the CRC-32 the directory's; a folder entry
+  holding data is refused. Names are at most 512 bytes in all, 255 a part, 16 parts, and two names that a case-insensitive APFS
+  holds as one (case folded after NFC: "σ" and "ς") are refused as a duplicate.
+  Files are made `O_CREAT|O_EXCL|O_NOFOLLOW` at 0600 with no attribute, flag or mode of the archive, every folder above one
+  made step by step through descriptors opened `O_NOFOLLOW|O_DIRECTORY`, the entry's own modification time set (the UTC time
+  of the Info-ZIP Unix extra 0x5855 that ditto writes, or of the extended timestamp 0x5455, else the DOS time, which is local
+  time; held to 1 Jan 1980 ... now, so a hostile 2106 can't make every file look recent). The zip64 end record, when there
+  is one, must have its signature and say what the 32-bit end record says. Any failure
+  refuses the whole import and removes the folder. The bomb guard is exact: a running total of bytes written is checked
+  against the cap (twice what `export.json` states plus 64 MB and 8 KB an entry) before every write, and the volume's free
+  space against a floor (2 GB or 1% of the disk, whichever is more, never more than a quarter of it: from the disk's size,
+  not from what is free) at every step; the room check before unpacking is "free > declared + floor", a disk that fills has
+  its own message ("the disk is nearly full"), and a volume that can't be looked at stops the unpacking, never runs it
+  unguarded. An image is attached read-only, not browsable, in a private mount point after checking macOS really mounted it
+  read-only, nosuid and nodev, walked, copied out file by file **as data only** and detached. After unpacking,
+  **anything that isn't a folder or a plain file with
+  one hard link**, **a file or folder with a file flag (uchg and the like would land immutable, and neither Undo nor the sweep
+  could remove it), an ACL, an extended attribute (but the ones macOS puts on a new file itself) or a setuid, setgid or sticky
+  bit**, a name that isn't plain or is named like a sign-in, a file its manifests don't name, a file they name that is
+  missing, a size that differs from the manifest's, a manifest from a newer cl_audit, a path in it outside the places a backup
+  keeps things, or anything written outside the unpacking folder. Modes are set to 0700/0600 on what is unpacked (a mode that
+  can't be set refuses the import). It is then made a backup file by file through the backup's own copy rules (a clone or a
+  copy from an open file, plain single-link files only, never over a file), each file looked at again after it landed (no
+  flag, ACL, attribute or mode but 0600), and the backup.json's accounts, counts and parts are rebuilt from what was checked
+  (not believed). The restore clones from that backup, so what it clones is data only: a clone carries the source's flags, ACL
+  and attributes, and the backup's files have none. It is restored create-only, as a restore.
+- **Memory files** (`<project>/memory/…`, which Claude Code loads into every session of that project) from **any** import
+  file are **left out by default**: whenever the file holds any, the preview has a row "Memory files N: left out" (or "N:
+  added" once you pick **Add them**) with **Leave them out / Add them** and the list. Where a file says it came from (this
+  Mac's install id, this profile's id) is only what it says, and a forged file says the same, so it earns no trust; "made on
+  this Mac / another Mac" is information on the File row only. A file already there is never replaced either way.
+- **Scheduled tasks' sessions** are left out whole: the entry, its transcript and the files in its folder, none counted as added.
+  (Which key of an entry marks one is not verified against a real entry: any top-level key with "scheduledtask" in its name.)
+- **Group names** from the file reach the sidebar helper session's prompt, so for an import they are cut to letters, digits,
+  spaces and `- _ . , ( ) & '`, at most 40 characters (a name with nothing left is dropped); the preview's Sidebar card lists
+  the groups it will create.
+- **Work folders** (`.import-…`, `.export-…`) are hidden in the backups place, each with a file naming the process that made
+  it (its pid and start time). They are taken away when the page is left, the action ends or cl_audit quits (the tools it runs
+  are stopped, an attached image detached); a later launch removes at once one whose process is gone, and one with no such
+  file only after a day. A folder that still holds a mount is never removed or entered.
 
 ### Moving a profile to another account
 
