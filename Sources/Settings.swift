@@ -197,6 +197,8 @@ final class SettingsModel: ObservableObject {
     func isValid(_ id: String?) -> Bool {
         id == Self.dashboardID || (id == Self.newID && draft != nil) || (id == Self.switchID && switchTarget != nil)
             || (id == Self.restoreID && restoreTarget != nil)
+            || (id == Self.exportID && accounts.contains { $0.id == exportingProfile })
+            || (id == Self.importID && accounts.contains { $0.id == importingProfile })
             || accounts.contains { $0.id == id }
     }
 
@@ -298,6 +300,61 @@ final class SettingsModel: ObservableObject {
     /// The page for a restore that stopped half way: to finish it or undo it.
     func showRestore(finishing r: SessionsRestore.Receipt) {
         showRestore(RestoreKey(profile: r.profile, backup: r.backup, place: r.backupPlace, resume: r.id))
+    }
+
+    // MARK: the Export and Import pages (ExportPage.swift, ImportPage.swift)
+
+    /// The profile whose Export page, or Import page, is open.
+    @Published var exportingProfile: String?
+    @Published var importingProfile: String?
+    static let exportID = "__export__", importID = "__import__"
+    private var exportRunners: [String: ExportRunner] = [:]
+    private var importRunners: [String: ImportRunner] = [:]
+
+    /// The model the Export and Import pages belong to, for cl_audit quitting (applicationWillTerminate).
+    nonisolated(unsafe) static weak var current: SettingsModel?
+
+    /// cl_audit is quitting: every page lets go of its password and is told to stop; nothing is removed here. What was unpacked goes
+    /// in SessionsImport.shutDown (off the main thread, two seconds at most; the next launch's sweep takes the rest), which also
+    /// stops the tools and detaches an attached image. The quit hook calls this, then that.
+    func leaveArchiveWork() {
+        for r in exportRunners.values { r.leave() }
+        for r in importRunners.values { r.quit() }
+    }
+
+    func exportRunner(for profile: String) -> ExportRunner {
+        Self.current = self
+        if let r = exportRunners[profile] { return r }
+        let r = ExportRunner(profile: profile, model: self)
+        exportRunners[profile] = r
+        return r
+    }
+
+    func importRunner(for profile: String) -> ImportRunner {
+        Self.current = self
+        if let r = importRunners[profile] { return r }
+        let r = ImportRunner(profile: profile, model: self)
+        importRunners[profile] = r
+        return r
+    }
+
+    /// Export… : a fresh page, unless an export of the profile is under way (then that one).
+    func showExport(_ profile: String) {
+        if let r = exportRunners[profile], !r.isWorking { r.leave(); exportRunners[profile] = nil }
+        exportingProfile = profile
+        selection = Self.exportID
+    }
+
+    /// Import… : a fresh page, unless an import of the profile is under way (then the Restore page's steps).
+    func showImport(_ profile: String) {
+        if let r = importRunners[profile] {
+            // one that was committed is its restore's page: it stays while that restore runs, else it starts over
+            var busy = false
+            if case .running(let k) = r.phase { busy = restoreRunners[k.id]?.isRunning ?? false }
+            if !busy { r.leave(); importRunners[profile] = nil }
+        }
+        importingProfile = profile
+        selection = Self.importID
     }
 
     /// Every running switch that waits for the operator and is worth an alert (SwitchWaiting.swift), in key order: where it
@@ -692,6 +749,12 @@ struct SettingsPage: View {
                 } else if model.selection == SettingsModel.restoreID, let t = model.restoreTarget {
                     RestorePage(entry: t.entry, key: t.key, model: model, runner: model.restoreRunner(t.key), width: w)
                         .padding(.horizontal, 16).padding(.vertical, 14)
+                } else if model.selection == SettingsModel.exportID, let p = model.exportingProfile, let e = model.accounts.first(where: { $0.id == p }) {
+                    ExportPage(entry: e, model: model, runner: model.exportRunner(for: p), width: w)
+                        .padding(.horizontal, 16).padding(.vertical, 14)
+                } else if model.selection == SettingsModel.importID, let p = model.importingProfile, let e = model.accounts.first(where: { $0.id == p }) {
+                    ImportPage(entry: e, model: model, runner: model.importRunner(for: p), width: w)
+                        .padding(.horizontal, 16).padding(.vertical, 14)
                 } else if let id = model.selection, let entry = model.binding(id) {
                     // one identity per profile: switching tabs starts with fresh view state (a half-typed name, the
                     // Dock restart pulse, an open (i)), so nothing from one profile shows up, or is saved, on another
@@ -770,6 +833,8 @@ struct SettingsStatus: View {
             else if model.selection == SettingsModel.newID { DisplayWindow(text: "New profile", dim: "· not added yet", height: h, width: w) }
             else if model.selection == SettingsModel.switchID { DisplayWindow(text: "Switch", dim: "· nothing changes yet", height: h, width: w) }
             else if model.selection == SettingsModel.restoreID { DisplayWindow(text: "Restore", dim: "· nothing is overwritten", height: h, width: w) }
+            else if model.selection == SettingsModel.exportID { DisplayWindow(text: "Export", dim: "· nothing is changed", height: h, width: w) }
+            else if model.selection == SettingsModel.importID { DisplayWindow(text: "Import", dim: "· nothing is overwritten", height: h, width: w) }
             else if let id = model.selection, let e = model.accounts.first(where: { $0.id == id }) { profileState(e, w: w, h: h) }
             else { DisplayWindow(text: "Saved", dim: "· as you change", height: h, width: w) }
         }

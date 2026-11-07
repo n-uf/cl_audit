@@ -213,7 +213,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// quit) or with "Quit and keep Claude window".
     func applicationWillTerminate(_ note: Notification) {
         // the switches live in memory: a "switch is waiting for you" alert doesn't outlive cl_audit (SwitchWaiting.swift)
-        if isSettingsApp { SwitchWaiting.clearAll(wait: true) }
+        if isSettingsApp {
+            SwitchWaiting.clearAll(wait: true)
+            // an export or an import under way: its tools stop, its unpacked files and attached image go, no password stays
+            MainActor.assumeIsolated { SettingsModel.current?.leaveArchiveWork() }
+            SessionsImport.shutDown()
+        }
         guard !isSettingsApp, let id = accountID else { return }
         guard Store.load().contains(where: { $0.id == id }) else { Self.forgetLoginItem(); return }
         if !quietQuit {

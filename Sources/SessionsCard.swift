@@ -2,7 +2,8 @@
 // transcripts, the Claude window's entries), how long Claude Code keeps its own, and the backups of the profile's
 // sessions (SessionsBackup.swift): made by every switch that moves them and by Back up now, listed here, deleted here.
 // Restore… opens the Restore page (RestorePage.swift): a preview first, nothing written until the key is pressed. Where
-// backups go and how many are kept: General.
+// backups go and how many are kept: General. Export… (ExportPage.swift) makes the sessions one file for another Mac or for
+// keeping; Import… (ImportPage.swift) restores such a file, and Undo last import takes back what the last one added.
 
 import AppKit
 import SwiftUI
@@ -28,6 +29,8 @@ struct SessionsCard: View {
     @State private var working = false
     @State private var problem: String?
     @State private var deleting: Listed?                           // Delete… asks first
+    @State private var lastImport: SessionsRestore.Receipt?        // the last import that wasn't undone: Undo last import
+    @State private var exportWords = "Never exported. A file for another Mac or for keeping."
 
     private var name: String { entry.name.isEmpty ? "This profile" : entry.name }
     private var source: SessionsBackup.Source { SessionsBackup.Source(entry) }
@@ -48,6 +51,12 @@ struct SessionsCard: View {
             }
             SRow(label: "Backups", info: "Quick copies of \(name)'s sessions: the window's Code-tab list with its scheduled tasks and sidebar records, cl_audit's records and, usually, Claude Code's transcripts. Clones, so they take seconds and share space with the originals. Never a sign-in. Kept in \(prefs.placeWords).", stacked: true) {
                 backupsList
+            }
+            SRow(label: "Export", info: "\(name)'s sessions as one file, for another Mac or for keeping: a zip (Finder opens it), or an encrypted disk image when it keeps transcripts that hold keys. Made from a fresh copy or from a backup, with accounts as fingerprints only (never an address, an id or a sign-in). The same format as a backup, so Import restores it by the same rules.", stacked: true) {
+                exportRow
+            }
+            SRow(label: "Import", info: "Puts an export's sessions into \(name): the file is checked and unpacked as a backup first, then restored from: the same rules as Restore. It only adds what is missing and never overwrites anything. An export of \(name), of another profile or of another Mac. Undo last import takes back exactly what it added.", stacked: true) {
+                importRow
             }
         }
         .task(id: entry.id + prefs.place + "\(model.switchChanges)") { await load() }
@@ -103,6 +112,35 @@ struct SessionsCard: View {
                 try await Task.detached(priority: .utility) { try CodeCleanup.set(d, codeDir: dir) }.value
                 days = d
             } catch { keepProblem = "\(error)" }               // the file was left as it was: the menu keeps what it showed
+        }
+    }
+
+    // MARK: Export, Import
+
+    private var exportRow: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Button("Export…") { model.showExport(entry.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                .help("Preview what an export would hold. Nothing is written until you press Export and the Save panel says where")
+            Text(exportWords).font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private var importRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Button("Import…") { model.showImport(entry.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    .help("Choose an export (a .zip or .dmg) and preview what it would add. Nothing is written until you press Close and import, and nothing is ever overwritten")
+                text("From an export of this profile, another profile or another Mac.")
+            }
+            if let l = lastImport {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Button("Undo last import") { model.showRestore(RestoreKey(profile: entry.id, backup: l.backup, place: l.backupPlace, resume: l.id)) }
+                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                        .help("Opens the import's page, where Undo this import takes back exactly what it added")
+                    text(SessionsBackup.tight("Last import \(SessionsBackup.dateWords(l.started)): ") + ((ImportWords.counts(sessions: l.sessionsAdded, entries: l.entriesAdded) ?? "nothing") + " added") + (l.importedFrom.map { " from \(($0 as NSString).deletingPathExtension)" } ?? ""))
+                }
+            }
         }
     }
 
@@ -186,7 +224,10 @@ struct SessionsCard: View {
         let e = entry, place = BackupPrefs.placeURL
         let src = SessionsBackup.Source(e)
         kept = SessionsBackup.KeptCache.get(e.id)
+        lastImport = await Task.detached(priority: .utility) { SessionsRestore.lastImport(of: e.id) }.value
+        exportWords = ExportPrefs.words(profile: e.id)
         let (list, tg, d) = await Task.detached(priority: .utility) { () -> ([Listed], [String: String], (days: Int?, problem: String?)) in
+            SessionsImport.sweep(place: place)                 // unpacking and export folders a stopped run left (a day old)
             SessionsRestore.prune(profile: e.id)               // old receipts of finished restores
             let here = SessionsBackup.list(profile: e.id, place: place).map { Listed(m: $0, place: nil) }
             // backups a receipt names in another place (General ▸ Backups was changed since): listed too, with their place
