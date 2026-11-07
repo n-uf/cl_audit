@@ -28,6 +28,8 @@ struct SidebarPlan: Codable, Equatable {
     var pinned: [String] = []
     /// Sessions past the plan's cap, left ungrouped (nil: none).
     var left: Int? = nil
+    /// Set when the sessions came back from a backup (SessionsRestore.swift), not through a switch: the prompt says so.
+    var restored: Bool? = nil
 
     /// At most this many sessions filed and pinned per plan, and group names this long (one prompt, one Return).
     static let maxSessions = 200
@@ -46,12 +48,19 @@ struct SidebarPlan: Codable, Equatable {
     /// those of them pinned), for the account and organisation `scope` ("<account>/<organisation>") in the window whose
     /// data folder is `dataDir`. Groups that would hold none of them are left out.
     static func read(dataDir: String, scope: String, moving: [String], pinned: [String]) -> SidebarPlan {
-        let moving = moving.filter(isSessionID), pinned = pinned.filter(isSessionID)
-        var plan = SidebarPlan(pinned: Array(pinned.prefix(maxPinned)))
         let path = (expand(dataDir) as NSString).appendingPathComponent("claude_desktop_config.json")
         guard let data = FileManager.default.contents(atPath: path),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let prefs = (j["preferences"] as? [String: Any])?["epitaxyPrefs"] as? [String: Any] else { return plan }
+              let prefs = (j["preferences"] as? [String: Any])?["epitaxyPrefs"] as? [String: Any] else {
+            return SidebarPlan(pinned: Array(pinned.filter(isSessionID).prefix(maxPinned)))
+        }
+        return read(prefs: prefs, scope: scope, moving: moving, pinned: pinned)
+    }
+
+    /// The same, from the epitaxyPrefs records themselves (a backup keeps exactly that part: sidebar/epitaxyPrefs.json).
+    static func read(prefs: [String: Any], scope: String, moving: [String], pinned: [String]) -> SidebarPlan {
+        let moving = moving.filter(isSessionID), pinned = pinned.filter(isSessionID)
+        var plan = SidebarPlan(pinned: Array(pinned.prefix(maxPinned)))
         let scoped = (prefs["dframe-group-scopes"] as? [String: Any])?[scope] as? [String: Any] ?? [:]
         let sections = (((prefs["dframe-code-sections"] as? [String: Any])?[scope] as? [String: Any])?["sections"] as? [[String: Any]]) ?? []
         let groups = ((scoped["groups"] as? [[String: Any]]) ?? []).filter { ($0["mode"] as? String ?? "code") == "code" }
@@ -117,7 +126,7 @@ struct SidebarPlan: Codable, Equatable {
         return """
         \(Self.title)
 
-        cl_audit just moved this window's Code sessions to the account it's on now. Put them back in their sidebar groups and pins, \
+        \(restored == true ? "cl_audit just restored some of this window's Code sessions from a backup." : "cl_audit just moved this window's Code sessions to the account it's on now.") Put them back in their sidebar groups and pins, \
         with the app's own sidebar tools only (list_sessions, list_groups, list_sections, create_section, move_sessions, set_view, \
         set_pinned, set_session_title, archive_session).
 
