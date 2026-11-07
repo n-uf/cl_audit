@@ -103,6 +103,7 @@ enum SessionsRestore {
         var madeAfter = 0                   // entries now that the backup doesn't have
         var madeAfterHere = 0               // of them, in the folder of the account in use
         var changed: [String] = []          // there and different: what is there stays (names for the list)
+        var partial: [String] = []          // there, and the first part of the backup's file: a copy a crash cut short, left as it is
         var inUse: [String] = []            // a running Claude Code session holds them: left alone
         var deletedSince: [String] = []     // the window deleted them since: they stay deleted
         var old = 0                         // transcripts to write that Claude Code's own clean-up would delete again
@@ -326,10 +327,16 @@ enum SessionsRestore {
                 switch sameStamp ? .same : compare(backup: src.fd, off_t(src.st.st_size), current: fd, off_t(cst.st_size)) {
                 case .same: if top { p.backTranscripts += 1 }
                 case .grown: if top { p.grownTranscripts += 1; p.backTranscripts += 1 }
-                case .different: p.changed.append(name)
+                case .different:
+                    // the backup's file begins with it: a copy a crash cut short (a copy from another volume isn't made whole in
+                    // one step), not something that changed. Left as it is, and said so.
+                    if cst.st_size < src.st.st_size, compare(backup: fd, off_t(cst.st_size), current: src.fd, off_t(src.st.st_size)) == .grown {
+                        p.partial.append(name)
+                    } else { p.changed.append(name) }
                 }
             }
         }
+        p.partial.sort()
         if blocked > 0 {
             p.notes.append("\(blocked) transcript\(blocked == 1 ? "" : "s") would go through a link in a project's folder, so they aren't written back.")
         }
@@ -409,6 +416,9 @@ enum SessionsRestore {
         let path: String
         private let base: Int32
         private(set) var made: [String] = []        // folders this run made, absolute, in order
+        /// Told the folder's path just before it is made (so a crash leaves it written down) and again if it then wasn't.
+        var willMake: ((String) -> Void)?
+        var madeFailed: ((String) -> Void)?
 
         /// The top folder itself is opened as given (it is where the user keeps it); nothing below it may be a link.
         init?(path: String) {
@@ -428,8 +438,10 @@ enum SessionsRestore {
                     let why = errno
                     guard why == ENOENT else { close(cur); return .blocked }              // a link, a file, or no access
                     guard create else { close(cur); return .absent }
-                    guard mkdirat(cur, c, 0o700) == 0 else { close(cur); return .blocked }
-                    made.append((path as NSString).appendingPathComponent(comps[0...i].joined(separator: "/")))
+                    let abs = (path as NSString).appendingPathComponent(comps[0...i].joined(separator: "/"))
+                    willMake?(abs)
+                    if mkdirat(cur, c, 0o700) == 0 { made.append(abs) }
+                    else { madeFailed?(abs); if errno != EEXIST { close(cur); return .blocked } }       // made meanwhile by someone else: not ours
                     f = openat(cur, c, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
                     guard f >= 0 else { close(cur); return .blocked }
                 }
@@ -685,9 +697,10 @@ enum SessionsRestore {
 
     /// A switch (or another restore) that holds this Claude window closed right now (SwitchMarker), or nil. The restore
     /// that asks is not one: its own mark is "restore" by this process for this profile.
-    static func markerBlocker(profile: String, dataDir: String) -> String? {
+    static func markerBlocker(profile: String, dataDir: String, own: String? = nil) -> String? {
         guard !dataDir.isEmpty, let m = SwitchMarker.current(FolderKey.canonical(dataDir)) else { return nil }
-        if m.pid == getpid(), m.profile == profile, m.standby == "restore" { return nil }
+        // exempt: only the mark of the caller itself (each restore runner has its own name, "restore-<id>")
+        if let own, m.pid == getpid(), m.profile == profile, m.standby == own { return nil }
         return "A switch or a restore of this Claude window is under way (since \(SessionsBackup.dateWords(m.started))). Wait for it, or undo it."
     }
 
@@ -736,9 +749,12 @@ enum SessionsRestore {
     }
 
     /// A stopped run's steps that were written down but not marked done (a crash between the write and its line): done if
-    /// the file there is exactly what the step says (its hash), otherwise not ours, so dropped.
-    private static func reconcile(_ r: Receipt, journal: Journal) {
+    /// the file there is exactly what the step says (its hash), otherwise not ours, so dropped. What can't be checked
+    /// safely stays as it is, not done (Undo takes a not-done step back if the file matches it): a window file while the
+    /// window is open (`windowOK` false), and a file with a second link (a temp name that wasn't swept).
+    private static func reconcile(_ r: Receipt, journal: Journal, windowOK: Bool) {
         for s in r.steps where !s.done && s.kind != .dir {
+            if !windowOK, s.kind == .entry || s.kind == .tasks { continue }
             func drop() { journal.add(Event(op: "gone", kind: nil, path: s.path, sha: nil, bytes: nil), sync: false) }
             guard let b = base(of: s.path, r), let rel = relative(s.path, under: b), let tree = Tree(path: b),
                   case .dir(let pfd) = tree.dir(Array(rel.dropLast()), create: false) else { drop(); continue }
@@ -747,7 +763,9 @@ enum SessionsRestore {
             guard fd >= 0 else { drop(); continue }
             defer { close(fd) }
             var st = stat()
-            if fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_nlink == 1, let want = s.sha, sha(fd: fd) == want {
+            guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { drop(); continue }
+            if st.st_nlink != 1 { continue }                                    // a second link: can't be told safely, stays not done
+            if let want = s.sha, sha(fd: fd) == want {
                 journal.add(Event(op: "done", kind: nil, path: s.path, sha: want, bytes: nil), sync: true)
             } else { drop() }
         }
@@ -761,7 +779,7 @@ enum SessionsRestore {
     /// an earlier run of the same backup under its receipt (also when nothing is left to write: it is then only closed).
     @discardableResult
     static func run(_ t: Target, _ b: Backup, continuing: String? = nil, foreign: Bool = false, afterSwitch: String? = nil,
-                    windowClosed: () -> Bool, stop: () -> Bool = { false },
+                    mark: String? = nil, windowClosed: () -> Bool, stop: () -> Bool = { false },
                     progress: ((_ done: Int, _ total: Int) -> Void)? = nil, now: Date = Date()) throws -> Receipt {
         let lock: SwitchEngine.Lock
         do { lock = try SwitchEngine.Lock.take() } catch { throw RestoreError("\(error)") }
@@ -772,9 +790,10 @@ enum SessionsRestore {
             guard let o = load(cid), o.profile == t.profile, o.backup == b.id, o.undone == nil else {
                 throw RestoreError("The stopped restore's receipt isn't there, or isn't for this backup.")
             }
-            // what the stop left: temp files of ours (the window must be closed to touch its folder), steps without their line
-            if !o.windowTouched || windowClosed() { sweepTemps(o) }
-            if let j = Journal(id: cid) { reconcile(o, journal: j) }
+            // what the stop left: temp files of ours (only names with this receipt's prefix: always safe to take away, also
+            // while the window is open), then the steps without their line (window files only while the window is closed)
+            sweepTemps(o)
+            if let j = Journal(id: cid) { reconcile(o, journal: j, windowOK: !o.windowTouched || windowClosed()) }
             old = load(cid)
         }
         let p = plan(t, b, foreign: foreign, now: now)
@@ -788,7 +807,7 @@ enum SessionsRestore {
             return load(o.id) ?? o
         }
         if p.windowNeeded {
-            if let why = markerBlocker(profile: t.profile, dataDir: t.dataDir) { throw RestoreError(why) }
+            if let why = markerBlocker(profile: t.profile, dataDir: t.dataDir, own: mark) { throw RestoreError(why) }
             guard windowClosed() else { throw RestoreError("The profile's Claude window is open; nothing written.") }
         }
 
@@ -818,18 +837,20 @@ enum SessionsRestore {
             return RestoreError(why)
         }
         func gone(_ path: String) { journal.add(Event(op: "gone", kind: nil, path: path, sha: nil, bytes: nil), sync: false) }
-        /// Folders the tree made, written down whether or not the walk then went on.
+        /// Folders the tree made are marked done; each was written down (intent) just before it was made, so a crash between
+        /// the two leaves a folder the receipt knows, never an unjournalled one.
         func madeDirs(_ tree: Tree, since n: Int) {
-            for d in tree.made[n...] {
-                journal.add(Event(op: "intent", kind: .dir, path: d, sha: nil, bytes: 0), sync: false)
-                journal.add(Event(op: "done", kind: nil, path: d, sha: nil, bytes: nil), sync: false)
-            }
+            for d in tree.made[n...] { journal.add(Event(op: "done", kind: nil, path: d, sha: nil, bytes: nil), sync: false) }
+        }
+        func wire(_ tree: Tree) {
+            tree.willMake = { d in journal.add(Event(op: "intent", kind: .dir, path: d, sha: nil, bytes: 0), sync: true) }
+            tree.madeFailed = { d in gone(d) }
         }
         let tmpTag = tag(r.id)
 
         var win: Tree?, code: Tree?
-        if p.windowNeeded { win = Tree(path: t.dataDir); if win == nil { throw stopped("The window's data folder isn't there; nothing written.") } }
-        if !p.transcripts.isEmpty || !p.files.isEmpty { code = Tree(path: t.codeDir); if code == nil { throw stopped("The Claude Code folder isn't there; nothing written.") } }
+        if p.windowNeeded { win = Tree(path: t.dataDir); if win == nil { throw stopped("The window's data folder isn't there; nothing written.") }; wire(win!) }
+        if !p.transcripts.isEmpty || !p.files.isEmpty { code = Tree(path: t.codeDir); if code == nil { throw stopped("The Claude Code folder isn't there; nothing written.") }; wire(code!) }
         var done = r.back
         let total = r.planned
         progress?(done, total)
@@ -953,7 +974,7 @@ enum SessionsRestore {
     /// through its folder's descriptor after its inode was checked again. The window must be closed when window files are
     /// among them, and is asked before each: if it opens, the undo stops with what is taken back kept (Undo again).
     @discardableResult
-    static func undo(_ id: String, windowClosed: () -> Bool, now: Date = Date()) throws -> Receipt {
+    static func undo(_ id: String, mark: String? = nil, windowClosed: () -> Bool, now: Date = Date()) throws -> Receipt {
         let lock: SwitchEngine.Lock
         do { lock = try SwitchEngine.Lock.take() } catch { throw RestoreError("\(error)") }
         defer { lock.release() }
@@ -961,9 +982,15 @@ enum SessionsRestore {
         guard r.undone == nil else { return r }
         if let why = blocker(profile: r.profile, except: r.id) { throw RestoreError(why.words) }
         if r.windowTouched {
-            if let why = markerBlocker(profile: r.profile, dataDir: r.dataDir) { throw RestoreError(why) }
+            if let why = markerBlocker(profile: r.profile, dataDir: r.dataDir, own: mark) { throw RestoreError(why) }
             guard windowClosed() else { throw RestoreError("Quit the profile's Claude window first, then Undo.") }
             sweepTemps(r)
+        }
+        var checkedRunning = false
+        var runningNow: Set<String>?
+        func heldSessions() -> Set<String>? {
+            if !checkedRunning { runningNow = runningSessions(); checkedRunning = true }       // one `ps`, only if a transcript needs it
+            return runningNow
         }
         for step in r.steps.reversed() {
             let name = (step.path as NSString).lastPathComponent
@@ -995,6 +1022,18 @@ enum SessionsRestore {
                 let sameFile = fstat(fd, &opened) == 0 && opened.st_ino == st.st_ino && opened.st_dev == st.st_dev
                 close(fd)
                 guard let expected = step.sha, have == expected, sameFile else { r.problems.append("\(name) changed since; left as it is."); continue }
+                // the restore's own in-use rule: a restored transcript a running Claude Code session holds but hasn't written to
+                // yet still matches its hash; taking it away would pull the file from under that session. Left, and listed.
+                if step.kind == .transcript || step.kind == .file {
+                    let top = rel.count == 3 && leaf.hasSuffix(".jsonl")
+                    let session = top ? String(leaf.dropLast(".jsonl".count)).lowercased() : rel.count >= 4 ? rel[2].lowercased() : ""
+                    let age = now.timeIntervalSince(Date(timeIntervalSince1970: TimeInterval(st.st_mtimespec.tv_sec)))
+                    let running = heldSessions()
+                    if running == nil || running!.contains(session) || (top && age < recent) {
+                        r.problems.append("\(name): a running Claude Code session holds it (or it couldn't be checked which run); left in place.")
+                        continue
+                    }
+                }
                 var again = stat()
                 guard fstatat(pfd, leaf, &again, AT_SYMLINK_NOFOLLOW) == 0, again.st_ino == st.st_ino, again.st_dev == st.st_dev else {
                     r.problems.append("\(name) changed while it was being taken away; left as it is."); continue
@@ -1014,6 +1053,11 @@ enum SessionsRestore {
         ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter(validReceiptID).compactMap(header).sorted { $0.started > $1.started }
     }
 
+    /// How many finished restores of a profile read from this backup and weren't undone: their receipts go with the backup.
+    static func finishedRestores(of backup: String, profile: String) -> Int {
+        headers().filter { $0.backup == backup && $0.profile == profile && $0.finished != nil && $0.undone == nil }.count
+    }
+
     // MARK: old receipts
 
     /// Finished and undone restores' receipts go when their backup is gone or after 30 days, whichever first. One that
@@ -1027,7 +1071,12 @@ enum SessionsRestore {
                 if !(load(n)?.steps.isEmpty ?? true) || now.timeIntervalSince(h.started) < 3600 { continue }
             }
             let end = h.finished ?? h.undone ?? h.started
-            let backupGone = SessionsBackup.load(profile: h.profile, id: h.backup, place: URL(fileURLWithPath: h.backupPlace)) == nil
+            // gone only when the place can be looked at (its folder for this profile is there) and the backup's own isn't: a
+            // place on a disk that isn't plugged in says nothing
+            let profileDir = SessionsBackup.folder(profile: h.profile, place: URL(fileURLWithPath: h.backupPlace)).path
+            var isDir: ObjCBool = false
+            let reachable = fm.fileExists(atPath: profileDir, isDirectory: &isDir) && isDir.boolValue
+            let backupGone = reachable && !fm.fileExists(atPath: (profileDir as NSString).appendingPathComponent(h.backup))
             if backupGone || now.timeIntervalSince(end) > 30 * 86400 { try? fm.removeItem(at: dir(n)) }
         }
     }
