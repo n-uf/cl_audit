@@ -27,12 +27,14 @@ enum SessionsBackup {
     enum Kind: Codable, Equatable {
         case beforeSwitch(String)           // the switch's receipt id
         case manual
+        case imported(String)               // unpacked from an export (SessionsImport.swift): the file's name
 
-        private enum Keys: String, CodingKey { case type, receipt }
+        private enum Keys: String, CodingKey { case type, receipt, file }
         init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: Keys.self)
             switch try c.decode(String.self, forKey: .type) {
             case "beforeSwitch": self = .beforeSwitch(try c.decode(String.self, forKey: .receipt))
+            case "imported": self = .imported((try? c.decode(String.self, forKey: .file)) ?? "an export")
             default: self = .manual
             }
         }
@@ -41,8 +43,10 @@ enum SessionsBackup {
             switch self {
             case .beforeSwitch(let r): try c.encode("beforeSwitch", forKey: .type); try c.encode(r, forKey: .receipt)
             case .manual: try c.encode("manual", forKey: .type)
+            case .imported(let f): try c.encode("imported", forKey: .type); try c.encode(f, forKey: .file)
             }
         }
+        var isImport: Bool { if case .imported = self { return true }; return false }
     }
 
     /// One thing in a backup: where it was (absolute) and where it is (relative to the backup's folder).
@@ -239,6 +243,14 @@ enum SessionsBackup {
             }
         }
         return g
+    }
+
+    /// What a backup of this source would take, read and counted without taking anything (Export's preview). `src` is where
+    /// each file is now.
+    static func inventory(_ s: Source, window: Bool, transcripts: Bool)
+        -> (files: [(role: Item.Role, rel: String, src: String, bytes: Int64)], counts: Counts, bytes: Int64, leftOut: Int) {
+        let g = gather(s, window: window, transcripts: transcripts)
+        return (g.files.map { ($0.role, $0.rel, $0.src, $0.bytes) }, g.counts, g.bytes, g.leftOut)
     }
 
     /// What Settings ▸ a profile ▸ Sessions says is kept here: Claude Code's transcripts and the window's entries.
@@ -558,6 +570,7 @@ enum SessionsBackup {
         switch m.kind {
         case .beforeSwitch: what = target.map { "Before switch to \($0)" } ?? "Before a switch"
         case .manual: what = "Manual"
+        case .imported(let file): what = "Imported from \((file as NSString).deletingPathExtension)"
         }
         return "\(what) · \(dateWords(m.created, now: now))"
     }
