@@ -282,6 +282,12 @@ final class SettingsModel: ObservableObject {
     /// Opens the Restore page for a backup. One that ended (restored, undone) starts over when asked for again, unless
     /// it is in front.
     func showRestore(_ k: RestoreKey) {
+        // one restore of a profile runs at a time: while one does, every way to the Restore page leads to it
+        if let r = restoreRunners.values.first(where: { $0.key.profile == k.profile && $0.isRunning && $0.key != k }) {
+            restoring = r.key
+            selection = restoreTarget == nil ? Self.dashboardID : Self.restoreID
+            return
+        }
         if let r = restoreRunners[k.id], r.phase == .done || r.phase == .undone, !(selection == Self.restoreID && restoring == k) {
             restoreRunners[k.id] = nil
         }
@@ -316,7 +322,7 @@ final class SettingsModel: ObservableObject {
     func showSwitch(_ key: String) {
         var key = key
         // a click on the Dock icon (or the menu bar) while a restore holds the window closed (SwitchMarker "restore"): its page
-        if let p = SwitchOffer.parse(key), p.standby == "restore" {
+        if let p = SwitchOffer.parse(key), p.standby.hasPrefix("restore-") {
             if let r = restoreRunners.values.first(where: { $0.key.profile == p.profile && $0.isRunning }) { showRestore(r.key) }
             else if let u = unfinishedRestore(of: p.profile) { showRestore(finishing: u) }
             else { selection = Self.dashboardID }
@@ -333,7 +339,11 @@ final class SettingsModel: ObservableObject {
         switching = key
         // a ready runner handed out here is an ordinary switch: an Undo this switch… that was abandoned leaves none of its
         // banner, sixth step or preselected answer behind (showUndoSwitch sets them again after this)
-        if let r = runners[key], r.phase == .ready, r.receipt == nil, r.undoes != nil { r.undoes = nil; r.moveSessions = nil }
+        // (a runner that failed or was cancelled forgets it too, or a later ordinary switch would show it and record it)
+        if let r = runners[key], !r.isRunning, r.undoes != nil {
+            r.undoes = nil
+            if r.phase == .ready, r.receipt == nil { r.moveSessions = nil }
+        }
         selection = switchTarget == nil ? Self.dashboardID : Self.switchID
     }
 
@@ -343,7 +353,7 @@ final class SettingsModel: ObservableObject {
         showSwitch(key)
         guard let t = switchTarget else { return }
         let r = runner(t.entry, t.standby)
-        guard r.phase == .ready, r.receipt == nil, let b = done.backup else { return }
+        guard !r.isRunning, r.receipt == nil, let b = done.backup else { return }
         r.undoes = SwitchRunner.SwitchUndo(receipt: done.id, backup: b, place: done.backupPlace ?? BackupPrefs.placeURL.path)
         r.moveSessions = true
     }

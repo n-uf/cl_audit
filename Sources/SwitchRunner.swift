@@ -108,7 +108,7 @@ final class SwitchRunner: ObservableObject {
     private var target: StandbyAccount? { entry?.standby.first { $0.id == standby } }
     /// The profile's window, by its data folder (it doesn't change in a switch): what SwitchMarker marks.
     private var window: String? { entry.map { Launcher.dataDirKey(of: Account($0)) } }
-    private func releaseWindow() { if let w = window { SwitchMarker.release(w) } }
+    private func releaseWindow() { if let w = window { SwitchMarker.release(w, profile: profile, standby: standby) } }
 
     // MARK: the window
 

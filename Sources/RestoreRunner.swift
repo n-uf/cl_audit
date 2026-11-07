@@ -88,11 +88,17 @@ final class RestoreRunner: ObservableObject {
     var entry: AccountEntry? { model?.accounts.first { $0.id == key.profile } }
     var backup: SessionsRestore.Backup { SessionsRestore.Backup(profile: key.profile, id: key.backup, place: URL(fileURLWithPath: key.place)) }
     private var window: String? { entry.map { Launcher.dataDirKey(of: Account($0)) } }
-    private func releaseWindow() { if claimedByUs, let w = window { SwitchMarker.release(w) }; claimedByUs = false }
+    /// This runner's own name on the window's mark ("restore-<8 characters>"): two restore pages of one profile never share
+    /// a mark, and the engine lets through only the mark of the runner that asks.
+    let markName = "restore-" + UUID().uuidString.prefix(8).lowercased()
+    private func releaseWindow() {
+        if claimedByUs, let w = window { SwitchMarker.release(w, profile: key.profile, standby: markName) }
+        claimedByUs = false
+    }
 
     /// The mark on the window for this runner; false when another switch or restore holds it.
     private func claimWindow(_ w: String) -> Bool {
-        guard SwitchMarker.claim(w, profile: key.profile, standby: "restore") else { return false }
+        guard SwitchMarker.claim(w, profile: key.profile, standby: markName) else { return false }
         claimedByUs = true
         return true
     }
@@ -104,6 +110,17 @@ final class RestoreRunner: ObservableObject {
         default: return false
         }
     }
+
+    /// The window is being closed or files are being written or taken back: not the sidebar step, which waits for the operator.
+    var isBusy: Bool {
+        switch phase {
+        case .closing, .writing, .undoing: return true
+        default: return false
+        }
+    }
+
+    /// Where Cancel (or a failed Undo) goes back to: the sidebar step is over by then, so it is Restored.
+    private func returnPhase(_ p: Phase) -> Phase { p == .sidebar ? .done : p }
 
     /// The restore is the one this page is about and it can still be started: preview, nothing under way.
     var isReady: Bool { phase == .ready }
@@ -191,11 +208,11 @@ final class RestoreRunner: ObservableObject {
 
     private func write() {
         guard let e = entry else { return }
-        let target = SessionsRestore.Target(e), b = backup, resume = resumeID, afterSwitch = key.afterSwitch
+        let target = SessionsRestore.Target(e), b = backup, resume = resumeID, afterSwitch = key.afterSwitch, mark = markName
         phase = .writing
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result {
-                try SessionsRestore.run(target, b, continuing: resume, afterSwitch: afterSwitch, windowClosed: { SwitchRunner.windowClosed(e) },
+                try SessionsRestore.run(target, b, continuing: resume, afterSwitch: afterSwitch, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) },
                                         stop: { self?.stopRequested ?? true },
                                         progress: { d, t in DispatchQueue.main.async { self?.progress = (d, t) } })
             }
@@ -255,7 +272,7 @@ final class RestoreRunner: ObservableObject {
         reopenTimer?.invalidate()
         reopenTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] t in
             let over: Bool = {
-                guard let self, let e = self.entry, !self.isRunning else { return true }
+                guard let self, let e = self.entry, !self.isBusy else { return true }       // a new run (or undo) under way ends the watch
                 if SwitchRunner.windowClosed(e) { Launcher.openClaude(Account(e)); return true }
                 return Date().timeIntervalSince(since) > 60
             }()
@@ -276,11 +293,11 @@ final class RestoreRunner: ObservableObject {
         note = nil
         if let why = SessionsRestore.blocker(profile: key.profile, except: r.id) { note = why.words; return }
         guard r.windowTouched else { runUndo(r.id); return }
-        if let why = SessionsRestore.markerBlocker(profile: key.profile, dataDir: SessionsRestore.Target(e).dataDir) { note = why; return }
+        if let why = SessionsRestore.markerBlocker(profile: key.profile, dataDir: SessionsRestore.Target(e).dataDir, own: markName) { note = why; return }
         guard claimWindow(w) else { note = "Another switch or restore of this Claude window is under way."; return }
         let apps = SwitchRunner.windowApps(e)
         if apps.isEmpty { runUndo(r.id); return }
-        priorPhase = phase; undoing = true
+        priorPhase = returnPhase(phase); undoing = true
         closeWindow(apps, then: { [weak self] in self?.runUndo(r.id) }, giveUp: { [weak self] in
             guard let self else { return }
             self.undoing = false; self.phase = self.priorPhase
@@ -290,11 +307,12 @@ final class RestoreRunner: ObservableObject {
 
     private func runUndo(_ id: String) {
         guard let e = entry else { return }
-        if !undoing { priorPhase = phase }
+        if !undoing { priorPhase = returnPhase(phase) }
         undoing = false
         phase = .undoing
+        let mark = markName
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Result { try SessionsRestore.undo(id, windowClosed: { SwitchRunner.windowClosed(e) }) }
+            let result = Result { try SessionsRestore.undo(id, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) }) }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.releaseWindow()

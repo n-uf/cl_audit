@@ -687,8 +687,13 @@ enum SwitchMarker {
     }
 
     /// Takes this cl_audit's mark off the window.
-    static func release(_ window: String) {
-        if let m = read(url(window)), m.pid != getpid(), live(m) { return }
+    /// With `profile` and `standby`, only a mark that is exactly that one: a switch finishing never takes away a restore's
+    /// mark (nor the other way round), though both are this process's.
+    static func release(_ window: String, profile: String? = nil, standby: String? = nil) {
+        if let m = read(url(window)) {
+            if m.pid != getpid(), live(m) { return }
+            if let profile, let standby, m.profile != profile || m.standby != standby { return }
+        }
         try? FileManager.default.removeItem(at: url(window))
     }
 
