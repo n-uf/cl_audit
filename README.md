@@ -536,8 +536,8 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     file that can't be read, isn't a JSON object, is a link to nowhere, has the key twice or deeper too, or whose
     value isn't a plain whole number ("set cleanupPeriodDays there by hand"). Then the row says "unknown".
   - **Backups:** one row each, "Before switch to ultra-2 · 5 Nov 18:40" over "84 sessions · 12 tasks · sidebar ·
-    transcripts · 5.5 GB, sharing space with the originals" (on another volume: "a full copy"). **Restore…** is
-    there and off ("Restore comes in the next build"). The **⋯** menu has **Show in Finder** and **Delete…**, which
+    transcripts · 5.5 GB, sharing space with the originals" (on another volume: "a full copy"). **Restore…** opens
+    the Restore page on that backup (see [Restoring a backup](#restoring-a-backup)). The **⋯** menu has **Show in Finder** and **Delete…**, which
     asks first and refuses a backup that a half-done switch names, or whose switch's receipt can't be read. **Back up now** makes one: with the profile's window open it says "close it first, or the Code-tab
     list and sidebar records are left out" and backs up only what is safe, Claude Code's transcripts and cl_audit's
     records. A line under the list says how many are kept (General ▸ Backups).
