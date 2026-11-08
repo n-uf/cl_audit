@@ -1106,8 +1106,13 @@ enum SessionsImport {
         return Int(info.kp_proc.p_un.__p_starttime.tv_sec)
     }
 
-    /// A check's seam: makes every claim fail, as a full or unwritable disk would.
+    /// A check's seam: makes every claim fail, as a full or unwritable disk would. Only a test build (compiled with
+    /// -D CL_AUDIT_TESTING) has it as a variable; in the shipped app it is the constant false.
+    #if CL_AUDIT_TESTING
     nonisolated(unsafe) static var claimFails = false
+    #else
+    static let claimFails = false
+    #endif
 
     /// Writes "<pid> <start>" in a work folder: a later launch knows whether its owner still runs. True only when the whole line
     /// was written and synced; a folder that couldn't be claimed isn't used (the caller removes it and stops).

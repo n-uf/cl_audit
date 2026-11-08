@@ -913,7 +913,8 @@ enum SessionsExport {
             throw ArchiveError("cl_audit couldn't mark its work folder in \(tilde(job.place.path)) (the disk may be full or can't be written), so nothing was exported.")
         }
         SessionsImport.register(work)
-        defer { SessionsImport.discard(work) }
+        // (a work folder that couldn't be removed is no longer this run's either: unregistered, so a later launch's sweep takes it)
+        defer { SessionsImport.discard(work); SessionsImport.unregister(work) }
         let fp = Fingerprint()                             // this export's own random key: nothing else can reproduce its fingerprints
         // every identity there is to know, from the start: a part's entries may name another profile's account
         var known = job.known
