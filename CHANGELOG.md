@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.1 — 2026-11-07
+
 - **A fourth usage level: crimson from 95 %.** Green under 50 %, amber 50–79 %, red 80–94 %, and now a vivid crimson
   (#eb445b) from 95 % up, a full limit included, wherever a usage level shows: the menu bar icon and its menu, the
   dashboard cards and trays, the Switch page, the Dock icon's bars, rings and segments, and the widget. The level
