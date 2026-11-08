@@ -291,10 +291,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             add("Settings…", #selector(showSettingsWindow))
             return m
         }
-        for e in Store.load() {
+        let list = Store.load()
+        for e in list {
             let i = NSMenuItem(title: "Open Claude \(e.name)", action: #selector(openAccountFromMenu(_:)), keyEquivalent: "")
             i.target = self; i.representedObject = e.id; m.addItem(i)
         }
+        // no profile yet (or only the "main" an older version made by itself): the way in is the first-run page
+        if FirstRun.needed(list) { add("Set up cl_audit…", #selector(showSettingsWindow)) }
         m.addItem(.separator())
         add("Dashboard", #selector(showMainScreen))
         add("Launcher", #selector(showLauncher))
@@ -302,7 +305,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return m
     }
 
-    func applicationDidBecomeActive(_ note: Notification) { activatedAt = Date() }
+    func applicationDidBecomeActive(_ note: Notification) {
+        activatedAt = Date()
+        // back in front: Claude Code may have been installed meanwhile (throttled, off the main thread)
+        if isSettingsApp { manager.settings.detectClaude() }
+    }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if isSettingsApp {

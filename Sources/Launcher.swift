@@ -670,8 +670,11 @@ struct PaletteView: View {
             .background(Color.primary.opacity(0.07), in: RoundedRectangle(cornerRadius: 10))
 
             if model.filtered.isEmpty {
-                Text(model.rows.isEmpty ? "No accounts yet: add them in Settings." : "No account matches.")
-                    .font(.callout).foregroundStyle(.secondary).padding(.vertical, 14)
+                if model.rows.isEmpty {
+                    Button("Set up cl_audit…", action: actions.settings).padding(.vertical, 14)
+                } else {
+                    Text("No account matches.").font(.callout).foregroundStyle(.secondary).padding(.vertical, 14)
+                }
             }
             ForEach(Array(model.filtered.enumerated()), id: \.element.id) { i, row in
                 HStack(spacing: 10) {
@@ -819,7 +822,10 @@ struct MainScreenView: View {
             VStack(alignment: .leading, spacing: 14) {
                 ProfileCards(model: model, actions: actions)      // drag a card to change the order (ProfileOrder.swift)
                 if model.rows.isEmpty {
-                    Text("No profiles yet. Open Settings to add one.").foregroundStyle(face.muted)
+                    HStack(spacing: 10) {
+                        Text("No profiles yet.").foregroundStyle(face.muted)
+                        Button("Set up cl_audit…", action: actions.settings).buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                    }
                 }
                 if !model.rows.isEmpty && model.shownRows.isEmpty {
                     Text("No profile selected: pick one or more above.").foregroundStyle(face.muted)
@@ -1162,6 +1168,7 @@ final class ManagerUI {
             return
         }
         if Date().timeIntervalSince(closedAt) < 0.4 { return }   // the click that just closed it
+        if settings.isFirstRun { showMain(page: .settings); return }   // no profile to list: the first-run page instead
         model.reload()
         model.query = ""
         model.selectMostRoom()
@@ -1270,6 +1277,8 @@ final class ManagerUI {
     }
 
     func showMain(page: MainPage = .dashboard, account: String? = nil) {
+        var page = page
+        if page == .dashboard && settings.isFirstRun { page = .settings }       // nothing to show yet: "Set up cl_audit" first
         closePalette()
         watchSwitch()           // a switch is only ever started from the window: from now on its alert is watched
         model.reload()
