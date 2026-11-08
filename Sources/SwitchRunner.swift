@@ -132,7 +132,7 @@ final class SwitchRunner: ObservableObject {
     /// filled in; done when that folder names it.
     func keepOwnFolder() {
         guard let m = model, let i = m.accounts.firstIndex(where: { $0.id == profile }), let email = m.accounts[i].seat?.email else { return }
-        guard let claude = m.claudePath else { note = "Claude Code wasn't found on this Mac."; return }
+        guard let claude = m.requireClaude() else { note = ClaudeInstall.missingInstall; return }
         var dir = m.accounts[i].keptFolder ?? ""
         if dir.isEmpty {
             guard let made = StandbyFolder.make(for: email) else { note = "Couldn't make a folder for its sign-in in your home folder."; return }
@@ -243,8 +243,8 @@ final class SwitchRunner: ObservableObject {
     func signInCode() {
         guard let e = entry, let s = target else { return }
         phase = .codeSignIn
-        if let claude = model?.claudePath { ClaudeCLI.openLogin(claude, account: Account(e), email: s.email) }
-        else { note = "Claude Code wasn't found on this Mac: sign in from Terminal, then come back." }
+        if let claude = model?.claudeNow() { ClaudeCLI.openLogin(claude, account: Account(e), email: s.email) }
+        else { note = ClaudeInstall.missing + ". Install it (\(ClaudeInstall.command)), then sign in again." }
         started = Date()
         tick(every: 2) { [weak self] in
             guard let self, let e = self.entry, let s = self.target, let to = s.seat else { return true }

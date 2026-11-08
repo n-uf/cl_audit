@@ -102,7 +102,7 @@ enum Launcher {
 
     /// Opens Terminal running Claude Code with the account's settings folder.
     static func openTerminal(_ account: Account) {
-        guard let claude = ClaudeCLI.find() else { NSSound.beep(); return }
+        guard let claude = ClaudeCLI.find() else { ClaudeInstall.showAlert(); return }
         func q(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
         let lines = ["#!/bin/zsh -l", "cd ~",
                      account.isDefaultDir ? "unset CLAUDE_CONFIG_DIR" : "export CLAUDE_CONFIG_DIR=\(q(account.configDir))",
@@ -1056,6 +1056,7 @@ final class ManagerUI {
             self?.closePalette()
             // the folder the numbers are read from: the account's own once it has one
             if let claude = ClaudeCLI.find() { ClaudeCLI.openLogin(claude, account: Account(r.entry.readingEntry()), email: r.status?.expectedEmail) }
+            else { ClaudeInstall.showAlert() }
         },
         mainScreen: { [weak self] in self?.closePalette(); self?.showMain() },
         settings: { [weak self] in self?.showMain(page: .settings) },

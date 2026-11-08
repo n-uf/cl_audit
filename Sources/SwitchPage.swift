@@ -589,11 +589,12 @@ struct SwitchPage: View {
             Text(signing ? "Finish the sign-in in the browser as \(Privacy.masked(entry.seat?.email ?? from)); Terminal shows Claude Code's sign-in."
                          : "Sign it in once to a folder of its own (one confirmation in the browser). Without it, \(from)'s limits show as last read until \(name) switches back.")
                 .font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+            ClaudeMissingLine(model: model)
             HStack(spacing: 10) {
                 Spacer(minLength: 0)
                 Button("Skip") { runner.skipOwnFolder() }.buttonStyle(.plain).foregroundStyle(face.muted)
                 Button(signing ? "Sign in again…" : "Sign in \(from)…") { runner.keepOwnFolder() }
-                    .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(model.claudePath == nil)
+                    .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
             }
         }
         .padding(10)

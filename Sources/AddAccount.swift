@@ -13,7 +13,7 @@ import SwiftUI
 
 /// One line of Add account's pop-up.
 struct AddAccountRow: Equatable, Identifiable {
-    enum Kind: Equatable { case caption, note, account, divider, signInOther }
+    enum Kind: Equatable { case caption, note, account, divider, signInOther, installClaude }
     var id: String
     var kind: Kind
     var title = ""
@@ -33,6 +33,8 @@ enum AddAccountPopup {
                                      detail: f.second(profile: profile, now: now), enabled: f.owner == nil))
         }
         out.append(AddAccountRow(id: "div", kind: .divider))
+        // without Claude Code the sign-in is greyed and a row right above says why (a click opens the install help)
+        if !canSignIn { out.append(AddAccountRow(id: "install", kind: .installClaude, title: ClaudeInstall.missingInstall)) }
         out.append(AddAccountRow(id: "other", kind: .signInOther, title: "Sign in to another account…", enabled: canSignIn))
         return out
     }
@@ -53,7 +55,8 @@ enum AddAccountPopup {
     }
 
     /// The menu. An item calls `onAdd` with the found account's id, or `onOther`; nothing else happens in it.
-    static func menu(_ rows: [AddAccountRow], onAdd: @escaping (String) -> Void, onOther: @escaping () -> Void) -> NSMenu {
+    static func menu(_ rows: [AddAccountRow], onAdd: @escaping (String) -> Void, onOther: @escaping () -> Void,
+                     onInstall: @escaping () -> Void = {}) -> NSMenu {
         let m = NSMenu(title: "Add account"); m.autoenablesItems = false
         for r in rows {
             switch r.kind {
@@ -68,8 +71,8 @@ enum AddAccountPopup {
             case .note:
                 let i = NSMenuItem(title: r.title, action: nil, keyEquivalent: ""); i.isEnabled = false
                 m.addItem(i)
-            case .account, .signInOther:
-                let run = r.kind == .account ? { onAdd(r.id) } : { onOther() }
+            case .account, .signInOther, .installClaude:
+                let run = r.kind == .account ? { onAdd(r.id) } : r.kind == .installClaude ? { onInstall() } : { onOther() }
                 let i = NSMenuItem(title: r.title, action: r.enabled ? #selector(MenuAction.fire) : nil, keyEquivalent: "")
                 i.attributedTitle = title(r)
                 i.isEnabled = r.enabled

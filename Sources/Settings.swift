@@ -209,7 +209,7 @@ final class SettingsModel: ObservableObject {
         if let owner = accounts.first(where: { $0.id != e.id && ($0.seat?.email ?? Account.expectedEmail(configDir: $0.configDir))?.lowercased() == email.lowercased() }) {
             return "That's the account of “\(owner.name)”. One profile per account."
         }
-        guard let claude = claudePath else { return "Claude Code wasn't found on this Mac." }
+        guard let claude = requireClaude() else { return ClaudeInstall.missingInstall }
         guard ClaudeCLI.openLogin(claude, account: Account(e), email: email) else { return "Terminal didn't open." }
         s.email = email; s.started = Date()
         accountSwitch = s
@@ -1532,6 +1532,7 @@ struct AccountSettings: View {
         // Accounts: the boxes need the card's width, so the row is always stacked (label above)
         SRow(label: "Accounts", info: loginInfo, first: true, stacked: true) {
             VStack(alignment: .leading, spacing: 8) {
+                ClaudeMissingLine(model: model)          // every sign-in key below needs Claude Code: say so when it isn't there
                 if let mine, mine.started != nil {
                     // waiting for the sign-in started here: cl_audit links the profile by itself once it's done
                     HStack(spacing: 8) {
@@ -1546,7 +1547,7 @@ struct AccountSettings: View {
                 } else if mine != nil {
                     AddressRow(email: Binding(get: { model.accountSwitch?.email ?? "" },
                                               set: { model.accountSwitch?.email = $0; switchProblem = nil }),
-                               canSignIn: model.claudePath != nil,
+                               canSignIn: true,            // never greyed: without Claude Code it says why (beginSwitch)
                                signIn: { switchProblem = model.beginSwitch() },
                                cancel: { model.cancelSwitch(); switchProblem = nil })
                         .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
@@ -1669,13 +1670,13 @@ struct AccountSettings: View {
 
     private var ownFolderKey: some View {
         Button("Sign in…") { signInOwnFolder() }
-            .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(model.claudePath == nil)
+            .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
     }
 
     /// The account in use, signed in once to a folder of its own (made now if it has none): Claude Code's sign-in there
     /// in Terminal, with its address filled in. Its numbers come from there once that's done (Reader.swift).
     func signInOwnFolder() {
-        guard let claude = model.claudePath, let email = entry.seat?.email ?? expected else { return }
+        guard let email = entry.seat?.email ?? expected, let claude = model.requireClaude() else { return }
         var dir = entry.keptFolder ?? ""
         if dir.isEmpty {
             guard let made = StandbyFolder.make(for: email) else { model.message = "Couldn't make a folder for its sign-in"; return }
@@ -1719,7 +1720,11 @@ struct AccountSettings: View {
                           unlit: !selected, dimsContent: look.dims, selected: selected, litBadge: "Switch account",
                           litAction: { model.showSwitch(AccountEntry.standbyStatusID(entry.id, s.id)) }) {
             Menu {
-                Button(s.configDir == nil ? "Sign in…" : "Sign in again…") { signInStandby(s) }.disabled(model.claudePath == nil)
+                if model.claudePath == nil {
+                    Button(ClaudeInstall.missingInstall) { model.showInstallHelp() }
+                    Divider()
+                }
+                Button(s.configDir == nil ? "Sign in…" : "Sign in again…") { signInStandby(s) }
                 Divider()
                 Button("Remove from \(name)") { removeStandby(s) }
             } label: { AccountBoxTitle(text: Privacy.masked(s.email)) }
@@ -1793,10 +1798,10 @@ struct AccountSettings: View {
                         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 case .signIn:
                     Button("Sign in…") { signInStandby(s) }
-                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(model.claudePath == nil)
+                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 case .signInAgain:
                     Button("Sign in again…") { signInStandby(s) }
-                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(model.claudePath == nil)
+                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 }
             }
         }
@@ -1817,7 +1822,7 @@ struct AccountSettings: View {
     @ViewBuilder var addAccountRow: some View {
         if let typed = adding {
             AddressRow(email: Binding(get: { typed }, set: { adding = $0; addProblem = nil }),
-                       canSignIn: model.claudePath != nil,
+                       canSignIn: true,            // never greyed: without Claude Code it says why (addByAddress)
                        signIn: { addProblem = addByAddress() },
                        cancel: { adding = nil; addProblem = nil })
             rowLine(addProblem ?? AddAccountWords.signInLine(profile: entry.name, typed: typed),
@@ -1843,10 +1848,11 @@ struct AccountSettings: View {
             .overlay {
                 MenuTrigger(label: "Add account", opened: { addOpen = $0 }) {
                     let found = FoundAccountsCache.list(for: entry, among: model.accounts)
-                    let rows = AddAccountPopup.rows(found: found, profile: entry.name, canSignIn: model.claudePath != nil)
+                    let rows = AddAccountPopup.rows(found: found, profile: entry.name, canSignIn: model.claudeNow() != nil)
                     return AddAccountPopup.menu(rows,
                         onAdd: { id in if let f = found?.first(where: { $0.id == id }) { addFound(f) } },
-                        onOther: { adding = ""; addProblem = nil })
+                        onOther: { adding = ""; addProblem = nil },
+                        onInstall: { model.showInstallHelp() })
                 }
             }
             .fixedSize()
@@ -1868,7 +1874,7 @@ struct AccountSettings: View {
         if let owner = model.accounts.first(where: { o in o.id != entry.id && ([o.seat?.email, Account.expectedEmail(configDir: o.configDir)] + o.standby.map(\.email)).contains { $0?.lowercased() == email.lowercased() } }) {
             return "That's the account of “\(owner.name)”. One profile per account."
         }
-        guard let claude = model.claudePath else { return "Claude Code wasn't found on this Mac." }
+        guard let claude = model.requireClaude() else { return ClaudeInstall.missingInstall }
         guard let dir = StandbyFolder.make(for: email) else { return "Couldn't make a folder for its sign-in in your home folder." }
         let s = StandbyAccount(email: email, configDir: dir)
         entry.standby.append(s)
@@ -1883,7 +1889,7 @@ struct AccountSettings: View {
 
     /// Sign in… on a standby account: its folder (made now if it has none) and Claude Code's sign-in there in Terminal.
     func signInStandby(_ s: StandbyAccount) {
-        guard let claude = model.claudePath, let i = entry.standby.firstIndex(where: { $0.id == s.id }) else { return }
+        guard let i = entry.standby.firstIndex(where: { $0.id == s.id }), let claude = model.requireClaude() else { return }
         var dir = s.configDir
         if dir == nil {
             guard let made = StandbyFolder.make(for: s.email) else { model.message = "Couldn't make a folder for its sign-in"; return }
@@ -1931,9 +1937,9 @@ struct AccountSettings: View {
     /// from (the account's own once it has one).
     func logInKey(email: String?) -> some View {
         Button("Log in…") {
-            if let claude = model.claudePath { ClaudeCLI.openLogin(claude, account: Account(entry.readingEntry()), email: email) }
+            if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry.readingEntry()), email: email) }
         }
-        .buttonStyle(.pill(.red, compact: true)).disabled(model.claudePath == nil)
+        .buttonStyle(.pill(.red, compact: true))
     }
 
     /// One grey line under a row, the card's width.
@@ -2003,12 +2009,14 @@ struct AccountSettings: View {
             // accounts only: linking to the one signed in here is the Use this account key under the pop-up
             if let linked {
                 items.append(LoginItem(id: "back", title: line(linked, ["\(name)'s account", "log in…"]), enabled: canSignIn) {
-                    if let claude = model.claudePath { ClaudeCLI.openLogin(claude, account: Account(entry), email: linked) }
+                    if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: linked) }
                 })
             }
         }
         // other accounts are Add account's (below the boxes): this pop-up is about the account in use
         items.append(LoginItem(id: "d2", kind: .divider))
+        // without Claude Code the items that need it are greyed; this one, right above them, says why
+        if !canSignIn { items.append(LoginItem(id: "install", title: ClaudeInstall.missingInstall) { model.showInstallHelp() }) }
         items.append(LoginItem(id: "renew", title: "Renew sign-in by itself", enabled: canSignIn, kind: .toggle(entry.autoRenew)) {
             entry.autoRenew.toggle()
         })

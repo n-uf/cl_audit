@@ -541,6 +541,7 @@ struct NewAccountView: View {
                 accountValue
             }
             accountLine
+            ClaudeMissingLine(model: model)           // Sign in needs Claude Code: say so when it isn't there
             SRow(label: "Folder", info: "The Claude Code folder for this profile: its sign-in, settings and history live there. It follows the account; picking one by hand shows who is signed in there. New folder: ~/.claude-<name>, with the items below linked from another folder.", stacked: stacked) {
                 folderPopup
             }
@@ -606,7 +607,7 @@ struct NewAccountView: View {
 
     @ViewBuilder private var accountValue: some View {
         if draft.asking {
-            AddressRow(email: $draft.email, canSignIn: model.claudePath != nil,
+            AddressRow(email: $draft.email, canSignIn: true,        // never greyed: without Claude Code the click says why
                        signIn: startAddressSignIn, cancel: { draft.asking = false; addressProblem = nil })
                 .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
         } else if waiting {
@@ -635,8 +636,9 @@ struct NewAccountView: View {
                 }
                 ForEach(others, id: \.self) { line in Button(line) {}.disabled(true) }
                 Divider()
+                if model.claudePath == nil { Button(ClaudeInstall.missingInstall) { model.showInstallHelp() } }
                 Button("Sign in to another account…") { askAddress() }
-                    .disabled(model.claudePath == nil)
+                    .disabled(model.claudePath == nil)      // greyed, with the line above saying why
             } label: {
                 MenuWell(text: shown.text, tint: shown.tint, icon: shown.icon, fill: true).settingsEmail(shown.text.contains("@"))
             }
@@ -730,7 +732,8 @@ struct NewAccountView: View {
             if blocked { addressProblem = "Fix the red lines first."; return }
             do { try NewAccountSetup.createOrConnect(&draft) } catch { addressProblem = error.localizedDescription; return }
         }
-        guard let claude = model.claudePath, ClaudeCLI.openLogin(claude, account: Account(draft.entry), email: e) else {
+        guard let claude = model.requireClaude() else { addressProblem = ClaudeInstall.missingInstall; return }
+        guard ClaudeCLI.openLogin(claude, account: Account(draft.entry), email: e) else {
             addressProblem = "Terminal didn't open."; return
         }
         draft.seatAtAsk = Account.signedInSeat(configDir: draft.configDir)     // signing in again waits for another account
@@ -1015,9 +1018,9 @@ struct NewAccountView: View {
                 .help("Sign-in can be finished later from Settings")
             if signedIn == nil {
                 Button("Sign in to Claude Code…") {
-                    if let c = model.claudePath { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: draft.email.isEmpty ? nil : draft.email) }
+                    if let c = model.requireClaude() { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: draft.email.isEmpty ? nil : draft.email) }
                 }
-                    .buttonStyle(.pill(tint, compact: true)).disabled(model.claudePath == nil)
+                    .buttonStyle(.pill(tint, compact: true))
             } else if draft.claudeWindow, !waiting,
                       FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) == nil {
                 // the window waits until Claude Code is on an account no other profile has
