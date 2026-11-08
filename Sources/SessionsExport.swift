@@ -328,7 +328,7 @@ struct ExportManifest: Codable, Equatable {
         var bytes: Int64
     }
     var format: String = ExportManifest.format
-    var version = 1
+    var version = SessionsBackup.formatVersion          // 2: setup items (Claude Code's CLAUDE.md, skills …); version 1 files have none
     var created: Date
     var app: String                         // cl_audit's version
     var machine: String                     // InstallID: a random id of this cl_audit install (another Mac or this one, nothing else)
@@ -687,11 +687,74 @@ enum SessionsExport {
         var keyKinds: [Secret: Int] = [:]   // sessions that hold each kind
         var inUse = 0
         var projects: [Project] = []
+        var setup = SetupPreview()
 
-        var keyed: Int { keyedSessions + keyedFiles }
+        /// With keys: sessions, lone files, and setup units (a skill, an agent, CLAUDE.md …).
+        var keyed: Int { keyedSessions + keyedFiles + setup.keyedUnits.count }
         /// The sessions an export of these would hold.
         func sessionsIn(_ keys: Keys) -> Int { keys == .leaveOut ? sessions - keyedSessions : sessions }
         func bytesIn(_ keys: Keys) -> Int64 { transcriptBytes + windowBytes - (keys == .leaveOut ? keyedBytes : 0) }
+    }
+
+    /// Claude Code's setup as an export would hold it (SessionsSetup.swift): counted, key-scanned (not the sensitive part: that is
+    /// protected by the encrypted image alone), with what is left out and why. Links and the paths they point to are shown on this
+    /// Mac's page only.
+    struct SetupPreview: Equatable {
+        var units: [Setup.Unit] = []
+        var files = 0
+        var bytes: Int64 = 0
+        var keyedUnits: [Setup.Unit] = []
+        var keyKinds: [Secret: Int] = [:]               // units that hold each kind
+        var extra = Setup.Extra()
+        var linked: [Setup.Linked] = []
+        var outside: [String] = []
+        var leftOutBuild = 0
+        var leftOutNames: [String] = []
+        var counts: Setup.Counts { Setup.Counts(units) }
+        var sensitive: Setup.Counts { Setup.Counts(units.filter(\.sensitive)) }
+        /// What a zip carries: everything but the sensitive part.
+        var plain: Setup.Counts { Setup.Counts(units.filter { !$0.sensitive }) }
+        var isEmpty: Bool { units.isEmpty }
+        mutating func add(_ o: SetupPreview) {
+            units += o.units; files += o.files; bytes += o.bytes; keyedUnits += o.keyedUnits
+            for (k, v) in o.keyKinds { keyKinds[k, default: 0] += v }
+            extra.hooks += o.extra.hooks; extra.plugins += o.extra.plugins; extra.statusLine = extra.statusLine || o.extra.statusLine
+            linked += o.linked; outside += o.outside; leftOutBuild += o.leftOutBuild; leftOutNames += o.leftOutNames
+        }
+    }
+
+    /// The setup of a part: from the source's Claude Code folder as it is now, or from the chosen backup's `setup` items.
+    static func setupFiles(of part: Part) -> (files: [Setup.FileRec], found: Setup.Found?) {
+        if let s = part.source { let f = Setup.scan(codeDir: s.codeDir); return (f.files, f) }
+        guard let b = part.backup, let m = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) else { return ([], nil) }
+        let list = m.items.filter { $0.role == .setup }.compactMap { it -> Setup.FileRec? in
+            guard it.path.hasPrefix("setup/") else { return nil }
+            return Setup.FileRec(rel: String(it.path.dropFirst(6)), src: b.dir.appendingPathComponent(it.path).path, bytes: it.bytes, exec: it.exec ?? false)
+        }
+        return (list, nil)
+    }
+
+    static func setupPreview(_ part: Part, cancel: () -> Bool, progress: ((Int64) -> Void)?) -> SetupPreview? {
+        var sp = SetupPreview()
+        let (files, found) = setupFiles(of: part)
+        var kinds: [Setup.Unit: Set<Secret>] = [:]
+        var seen = Set<Setup.Unit>()
+        for f in files {
+            if cancel() { return nil }
+            let u = f.unit
+            seen.insert(u)
+            sp.files += 1; sp.bytes += f.bytes
+            if u.sensitive { continue }                                   // (carried only in the image: not what the key scan is for)
+            guard let k = SecretScan.scan(path: f.src, cancel: cancel, progress: progress) else { if cancel() { return nil }; continue }
+            kinds[u, default: []].formUnion(k)
+        }
+        sp.units = seen.sorted()
+        for (u, k) in kinds where !k.isEmpty { sp.keyedUnits.append(u); for x in k { sp.keyKinds[x, default: 0] += 1 } }
+        sp.keyedUnits.sort()
+        func data(_ rel: String) -> Data? { files.first { $0.rel == rel }.flatMap { FileManager.default.contents(atPath: $0.src) } }
+        sp.extra = Setup.Extra(settings: data("settings.json"), plugins: data("plugins/installed_plugins.json"))
+        if let f = found { sp.linked = f.linked; sp.outside = f.outside; sp.leftOutBuild = f.leftOutBuild; sp.leftOutNames = f.leftOutNames }
+        return sp
     }
 
     /// A file of the source: where it is in a backup's layout, where it is now, how long.
@@ -788,6 +851,8 @@ enum SessionsExport {
             p.name = projectWords(key, sample: sampleFor[key])
             return p
         }.sorted { $0.sessions != $1.sessions ? $0.sessions > $1.sessions : $0.name < $1.name }
+        guard let sp = setupPreview(part, cancel: cancel, progress: progress) else { return nil }
+        pv.setup = sp
         return pv
     }
 
@@ -829,11 +894,16 @@ enum SessionsExport {
         var connectionsLeftOut = 0          // Code-tab entries whose connection settings a zip leaves out
         var unreadableLeftOut = 0           // Code-tab entries a zip leaves out because it can't tell what they hold
         var markersLeftOut = 0              // retention markers whose transcript isn't in the file (missing, or left out for keys)
+        var setupUnits: [Setup.Unit] = []   // Claude Code's setup that is in the file
+        var setupKeysLeftOut = 0            // setup units left out for the keys in them
+        var setupKeysKept = 0
+        var setupSensitiveLeftOut: [Setup.Unit] = []     // settings.json, its scripts, the marketplaces: a zip doesn't carry them
     }
 
     struct Job {
         var parts: [Part]
         var keys: Keys
+        var setup = true                    // Claude Code's setup goes in (the Export page's "Claude Code setup" row)
         var password: String? = nil         // an encrypted disk image when set, else a zip
         var destination: URL                // the file to make (its extension is already .zip or .dmg)
         var rootName: String                // the folder inside, named for the export
@@ -855,6 +925,10 @@ enum SessionsExport {
         var connectionsLeftOut: Int { parts.reduce(0) { $0 + $1.connectionsLeftOut } }
         var unreadableLeftOut: Int { parts.reduce(0) { $0 + $1.unreadableLeftOut } }
         var markersLeftOut: Int { parts.reduce(0) { $0 + $1.markersLeftOut } }
+        var setupUnits: [Setup.Unit] { parts.flatMap(\.setupUnits) }
+        var setupKeysLeftOut: Int { parts.reduce(0) { $0 + $1.setupKeysLeftOut } }
+        var setupKeysKept: Int { parts.reduce(0) { $0 + $1.setupKeysKept } }
+        var setupSensitiveLeftOut: [Setup.Unit] { parts.flatMap(\.setupSensitiveLeftOut) }
     }
 
     /// "cl_audit Main 2026-11-05"
@@ -943,7 +1017,7 @@ enum SessionsExport {
                 do { lock = try SwitchEngine.Lock.take() } catch { throw ArchiveError("\(error)") }
                 defer { lock.release() }
                 let m: SessionsBackup.Manifest
-                do { m = try SessionsBackup.make(src, kind: .manual, window: !part.windowOpen, transcripts: true, place: work.appendingPathComponent("backups"), now: job.now) }
+                do { m = try SessionsBackup.make(src, kind: .manual, window: !part.windowOpen, transcripts: true, setup: job.setup, place: work.appendingPathComponent("backups"), now: job.now) }
                 catch { throw ArchiveError("\(error)") }
                 if !part.windowOpen, !part.windowClosed() { throw ArchiveError("\(part.name)'s Claude window opened during the export; try again.") }
                 backup = SessionsRestore.Backup(profile: src.profile, id: m.id, place: work.appendingPathComponent("backups"))
@@ -951,7 +1025,7 @@ enum SessionsExport {
             guard let b = backup else { throw ArchiveError("Nothing to export from.") }
             let dir = "p\(i + 1)"
             let out = root.appendingPathComponent("profiles/\(dir)")
-            let (po, ids) = try buildPart(b, part: part, fp: fp, into: out, keys: job.keys, zip: job.password == nil, known: known, held: held, live: part.source != nil, now: job.now, cancel: cancel,
+            let (po, ids) = try buildPart(b, part: part, fp: fp, into: out, keys: job.keys, setup: job.setup, zip: job.password == nil, known: known, held: held, live: part.source != nil, now: job.now, cancel: cancel,
                                           progress: { f in progress?("\(label)writing the files", (Double(i) + f) / Double(job.parts.count)) })
             outcomes.append(po)
             rawIDs.formUnion(ids)
@@ -1022,11 +1096,11 @@ enum SessionsExport {
 
     /// Builds `out` (a backup's layout) from the backup `b`: ids and addresses replaced, keys decided, the in-use cut.
     /// Returns what it holds and the raw ids it replaced.
-    private static func buildPart(_ b: SessionsRestore.Backup, part: Part, fp: Fingerprint, into out: URL, keys: Keys, zip: Bool, known: Identities, held: Set<String>, live: Bool, now: Date,
+    private static func buildPart(_ b: SessionsRestore.Backup, part: Part, fp: Fingerprint, into out: URL, keys: Keys, setup: Bool, zip: Bool, known: Identities, held: Set<String>, live: Bool, now: Date,
                                   cancel: () -> Bool, progress: @escaping (Double) -> Void) throws -> (PartOutcome, Set<String>) {
         let fm = FileManager.default
         guard let m = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) else { throw ArchiveError("The backup isn't there any more.") }
-        guard m.version == 1 else { throw ArchiveError("That backup is from a newer cl_audit.") }
+        guard m.version >= 1, m.version <= SessionsBackup.formatVersion else { throw ArchiveError("That backup is from a newer cl_audit.") }
         try fm.createDirectory(at: out, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         var po = PartOutcome(name: part.name)
 
@@ -1231,6 +1305,53 @@ enum SessionsExport {
             cloned += 1; po.bytes += Int64(data.count)
         }
 
+        // 3b. Claude Code's setup, one unit at a time (a skill is its whole folder; CLAUDE.md, an included file, an agent, a command … each
+        // alone). The key scan decides the plain units; the encrypted image decides the sensitive ones (settings.json, the scripts it
+        // points to, the marketplaces), which a zip never carries. No address check and no fingerprint rewriting: it is the operator's
+        // own words, like a transcript. Each file is recorded with its size, SHA-256 and whether its owner-execute bit was set.
+        var setupNames: [String] = m.setupLeftOut ?? []
+        if setup {
+            var members: [Setup.Unit: [SessionsBackup.Item]] = [:]
+            for it in m.items where it.role == .setup {
+                guard let c = SessionsRestore.components(it.path), c.first == "setup", Setup.pathProblem(Array(c.dropFirst())) == nil else { continue }
+                members[Setup.unit(of: String(it.path.dropFirst(6))), default: []].append(it)
+            }
+            for (u, list) in members.sorted(by: { $0.key < $1.key }) {
+                if cancel() { throw ArchiveError("Stopped.") }
+                if u.sensitive, zip { po.setupSensitiveLeftOut.append(u); setupNames.append("\(u.name): needs the encrypted disk image"); leftOut += list.count; continue }
+                if !u.sensitive {
+                    var kinds = Set<Secret>()
+                    for it in list {
+                        guard let k = SecretScan.scan(path: b.dir.appendingPathComponent(it.path).path, cancel: cancel) else {
+                            if cancel() { throw ArchiveError("Stopped.") }
+                            throw ArchiveError("A setup file couldn't be read to check it for keys (\((it.path as NSString).lastPathComponent)); nothing was made.")
+                        }
+                        kinds.formUnion(k)
+                    }
+                    if !kinds.isEmpty {
+                        if keys == .leaveOut { po.setupKeysLeftOut += 1; setupNames.append("\(u.name): holds a key"); leftOut += list.count; continue }
+                        po.setupKeysKept += 1
+                    }
+                }
+                for it in list {
+                    let src = b.dir.appendingPathComponent(it.path).path
+                    let dst = try create(it.path)
+                    switch SessionsBackup.copyOne(src, dst, single: true) {
+                    case .cloned, .copied: break
+                    case .gone: leftOut += 1; continue
+                    case .failed(let why): throw ArchiveError("couldn't copy \((src as NSString).lastPathComponent) (\(why))")
+                    }
+                    chmod(dst, 0o600)
+                    var st = stat()
+                    guard lstat(dst, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, let h = Setup.sha(path: dst) else { throw ArchiveError("A setup file couldn't be read back (\((it.path as NSString).lastPathComponent)); nothing was made.") }
+                    let rel = String(it.path.dropFirst(6))
+                    items.append(SessionsBackup.Item(role: .setup, original: it.path, path: it.path, bytes: Int64(st.st_size), sha: h, exec: (it.exec ?? false) && Setup.execAllowed(rel)))
+                    cloned += 1; po.bytes += Int64(st.st_size)
+                }
+                po.setupUnits.append(u)
+            }
+        }
+
         // 4. the manifest of this part
         let windowBytes = items.filter { $0.role == .window }.reduce(Int64(0)) { $0 + $1.bytes }
         po.bytes += windowBytes + items.filter { $0.role == .sidebar || $0.role == .record }.reduce(Int64(0)) { $0 + $1.bytes }
@@ -1238,7 +1359,7 @@ enum SessionsExport {
                                          accounts: seatsOut.sorted { ($0.account, $0.organization) < ($1.account, $1.organization) }, counts: counts,
                                          window: !items.filter { $0.role == .window }.isEmpty || hasSidebar, transcripts: m.transcripts,
                                          bytes: items.reduce(0) { $0 + $1.bytes }, cloned: cloned, copied: 0, copiedBytes: 0, leftOut: leftOut,
-                                         dataDir: "", codeDir: "", items: items)
+                                         dataDir: "", codeDir: "", items: items, setupLeftOut: setupNames.isEmpty ? nil : Array(Set(setupNames)).sorted())
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try write(try enc.encode(mm), to: URL(fileURLWithPath: create("backup.json")))
         progress(1)
@@ -1309,7 +1430,14 @@ enum SessionsExport {
         guard let walk = fm.enumerator(atPath: root.path) else { return nil }
         var files: [String] = []
         var inTranscripts: [String] = []                              // their contents are the user's words; their NAMES are looked at
-        for case let rel as String in walk { if rel.contains("transcripts/") { inTranscripts.append(rel) } else { files.append(rel) } }
+        // Claude Code's setup (profiles/pN/setup/…, and only there) is the operator's own words too, copied as they are: no address or id
+        // check on it (nothing else is written under that path: a window or sidebar file there would be looked at like any other)
+        let setupRoot = try! NSRegularExpression(pattern: "^profiles/p[0-9]+/setup/")
+        for case let rel as String in walk {
+            if rel.contains("transcripts/") { inTranscripts.append(rel) }
+            else if setupRoot.firstMatch(in: rel, range: NSRange(rel.startIndex..., in: rel)) != nil { continue }
+            else { files.append(rel) }
+        }
         let wantedIDs = ids.map { $0.lowercased() }.filter { !$0.isEmpty }
         let wantedMails = emails.map { $0.lowercased() }.filter { !$0.isEmpty }
         func joined(_ s: String) -> String { String(String.UnicodeScalarView(s.unicodeScalars.filter { !$0.properties.isWhitespace })) }

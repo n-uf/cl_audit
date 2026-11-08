@@ -33,6 +33,8 @@ final class ExportRunner: ObservableObject {
     private weak var model: SettingsModel?
     @Published var source: Source = .now { didSet { if source != oldValue { refresh() } } }
     @Published var keys: SessionsExport.Keys = .leaveOut
+    /// Claude Code's setup (CLAUDE.md, skills, agents, commands …) goes in: on by default.
+    @Published var setup = true
     @Published var container: Container = .zip
     @Published var password = ""
     @Published var again = ""
@@ -131,11 +133,12 @@ final class ExportRunner: ObservableObject {
             t.keyedSessions += x.keyedSessions; t.keyedBytes += x.keyedBytes; t.keyedFiles += x.keyedFiles; t.inUse += x.inUse; t.connections += x.connections; t.unreadable += x.unreadable; t.markersOrphan += x.markersOrphan; t.markersKeyed += x.markersKeyed
             t.windowLeftOut = t.windowLeftOut || x.windowLeftOut
             for (k, v) in x.keyKinds { t.keyKinds[k, default: 0] += v }
+            t.setup.add(x.setup)
         }
         return t
     }
 
-    /// Keeping keys needs the encrypted image.
+    /// Keeping keys needs the encrypted image. (Setup's sensitive part, settings.json and its scripts, doesn't force it: a zip leaves it out.)
     var imageNeeded: Bool { keys == .keep && (total?.keyed ?? 0) > 0 }
     var usesImage: Bool { container == .image || imageNeeded }
     var passwordProblem: String? {
@@ -144,7 +147,7 @@ final class ExportRunner: ObservableObject {
         if password != again { return "The two don't match." }
         return nil
     }
-    var canExport: Bool { phase == .preview && previews != nil && passwordProblem == nil && (total?.sessionsIn(keys) ?? 0) + (total?.entries ?? 0) > 0 }
+    var canExport: Bool { phase == .preview && previews != nil && passwordProblem == nil && (total?.sessionsIn(keys) ?? 0) + (total?.entries ?? 0) + (setup ? (total?.setup.units.count ?? 0) : 0) > 0 }
 
     /// "cl_audit Main 2026-11-05"
     func rootName(now: Date = Date()) -> String {
@@ -181,7 +184,8 @@ final class ExportRunner: ObservableObject {
         guard !list.isEmpty else { return }
         let image = usesImage
         let pw = image ? password : nil
-        let plan = SessionsExport.Job(parts: list, keys: keys, password: pw, destination: url, rootName: rootName())
+        var plan = SessionsExport.Job(parts: list, keys: keys, password: pw, destination: url, rootName: rootName())
+        plan.setup = setup
         let everyProfile = model?.accounts ?? []
         password = ""; again = ""                     // the secure fields are emptied the moment it starts; the job holds it until hdiutil has it
         lock.lock(); stopFlag = false; lock.unlock()
@@ -232,6 +236,56 @@ struct WellSecure: View {
             .padding(.horizontal, 9).frame(height: 22)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(WellShape(well: Well(stops: Well.flat(face.menuFill), inner: .black(0.75), lip: face.light ? .white(0.6) : .white(0.05)), radius: 4))
+    }
+}
+
+/// The words of the Export page that come from the numbers (so a check can read them): the setup row, what is left out of it, the Found line.
+enum ExportWords {
+    private static func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
+
+    /// "CLAUDE.md, 23 skills, 4 agents, 6 commands" (what goes in: a zip leaves out settings.json, its scripts and the marketplaces).
+    static func setupWords(_ pv: SessionsExport.Preview?, setup: Bool, image: Bool) -> String {
+        guard let p = pv else { return "counting…" }
+        let sp = p.setup
+        if sp.units.isEmpty { return sp.linked.isEmpty ? "none" : "none carried (see below)" }
+        if !setup { return "left out" }
+        return image ? Setup.words(sp.counts, extra: sp.extra)
+            : (sp.plain.total == 0 ? "none: only settings.json and the like, which need the encrypted disk image" : Setup.words(sp.plain, extra: Setup.Extra(settings: nil, plugins: nil)))
+    }
+
+    /// What is left out and why: sensitive setup in a zip, links (and where they point: on this page only), what points outside the folder.
+    static func setupNotes(_ pv: SessionsExport.Preview?, setup: Bool, image: Bool) -> [String] {
+        guard let p = pv else { return [] }
+        let sp = p.setup
+        var out: [String] = []
+        if setup, !image, let w = Setup.sensitiveWords(sp.sensitive) { out.append("\(w) need the encrypted disk image: left out of a zip") }
+        if !sp.linked.isEmpty {
+            let shown = sp.linked.prefix(3).map { "\($0.label) points to \(tilde($0.target))" }.joined(separator: ", ")
+            out.append("\(n(sp.linked.count, "link", "links")) left out, never followed: \(shown)" + (sp.linked.count > 3 ? ", …" : ""))
+        }
+        out += sp.outside.prefix(3).map { $0 }
+        if sp.outside.count > 3 { out.append("…and \(sp.outside.count - 3) more outside the folder, not carried") }
+        if sp.leftOutBuild > 0 { out.append("\(sp.leftOutBuild) version-history and build leftovers (.git, node_modules, .DS_Store …) left out") }
+        if !sp.leftOutNames.isEmpty { out.append("\(n(sp.leftOutNames.count, "file", "files")) with a sign-in name left out: \(sp.leftOutNames.prefix(2).joined(separator: ", "))") }
+        return out
+    }
+
+    /// "5 sessions and 1 skill hold keys: 3 GitHub tokens, 1 private key": the sessions and the setup units (a skill, CLAUDE.md …) together.
+    static func foundWords(_ pv: SessionsExport.Preview?) -> String {
+        guard let p = pv else { return "scanning the transcripts…" }
+        if p.keyed == 0 { return "None found in the transcripts" + (p.setup.isEmpty ? "" : " or the setup") }
+        var merged = p.keyKinds
+        for (k, v) in p.setup.keyKinds { merged[k, default: 0] += v }
+        let kinds = merged.sorted { $0.value != $1.value ? $0.value > $1.value : $0.key.rawValue < $1.key.rawValue }.map { "\($0.value) \($0.key.words)" }.joined(separator: ", ")
+        var things: [String] = []
+        if p.keyedSessions > 0 { things.append(n(p.keyedSessions, "session", "sessions")) }
+        if !p.setup.keyedUnits.isEmpty { things.append(Setup.words(Setup.Counts(p.setup.keyedUnits))) }
+        let total = p.keyedSessions + p.setup.keyedUnits.count
+        if things.isEmpty { return "\(n(p.keyedFiles, "other file holds", "other files hold")) keys" + (kinds.isEmpty ? "" : ": " + kinds) }
+        var s = things.joined(separator: " and ") + (total == 1 ? " holds" : " hold") + " keys"
+        if !kinds.isEmpty { s += ": " + kinds }
+        if p.keyedFiles > 0 { s += " · \(n(p.keyedFiles, "other file", "other files")) too" }
+        return s
     }
 }
 
@@ -320,7 +374,7 @@ struct ExportPage: View {
     }
 
     private var whatCard: some View {
-        SCard(title: "What", info: "An export holds the same things as a backup (the Claude window's Code-tab entries and scheduled tasks, its sidebar records, Claude Code's transcripts), from a copy made now or from a backup you choose. Never a sign-in, an MCP setting, settings.json, a switch's receipt, an address or an account id: accounts appear only as a fingerprint of their id.") {
+        SCard(title: "What", info: "An export holds the same things as a backup (the Claude window's Code-tab entries and scheduled tasks, its sidebar records, Claude Code's transcripts and its setup: CLAUDE.md, skills, agents …), from a copy made now or from a backup you choose. Never a sign-in, a window MCP setting, settings.local.json, a switch's receipt, an address or an account id: accounts appear only as a fingerprint of their id.") {
             SRow(label: "From", first: true) {
                 Menu {
                     Button("\(name) as it is now") { runner.source = .now }
@@ -359,23 +413,35 @@ struct ExportPage: View {
                 let unread = p.unreadable > 0 ? "\(n(p.unreadable, "Code-tab file", "Code-tab files")) it can't read \(p.unreadable == 1 ? "is" : "are") left out of a zip too." : ""
                 SRowLine(text: [settings, unread].filter { !$0.isEmpty }.joined(separator: " "), color: face.caution)
             }
+            SRow(label: "Claude Code setup", info: "Claude Code's own setup, from \(tilde(entry.configDir)): CLAUDE.md and the .md files it pulls in with @path, skills, agents, commands, output styles, keybindings, settings.json (with the scripts its hooks and status line point to) and the plugin list, so a move to another Mac brings them. Never the plugins themselves, settings.local.json or a sign-in. A link is never followed: a skill that is one, or holds one, is left out and listed. settings.json, its scripts and the plugin marketplaces can hold tokens no scan recognises, so only the encrypted disk image carries them; a zip leaves them out. Importing leaves them out unless you add them.", stacked: true) {
+                VStack(alignment: .leading, spacing: 6) {
+                    value(setupWords)
+                    if let sp = pv?.setup, !sp.isEmpty || !sp.linked.isEmpty {
+                        Menu {
+                            Button("Include them") { runner.setup = true }
+                            Button("Leave them out") { runner.setup = false }
+                        } label: { MenuWell(text: runner.setup ? "Include them" : "Leave them out", fill: true) }
+                        .faceMenuFill().disabled(runner.phase != .preview)
+                    }
+                    ForEach(Array(setupNotes.enumerated()), id: \.offset) { _, s in
+                        Text(s).font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
             SRow(label: "Cowork", stacked: true) { value("left out") }
         }
     }
 
+    // MARK: Claude Code setup
+
+    /// "CLAUDE.md, 23 skills, 4 agents, 6 commands" (what goes in: a zip leaves out settings.json, its scripts and the marketplaces).
+    private var setupWords: String { ExportWords.setupWords(pv, setup: runner.setup, image: runner.usesImage) }
+    private var setupNotes: [String] { ExportWords.setupNotes(pv, setup: runner.setup, image: runner.usesImage) }
+
     // MARK: Keys found
 
-    private var keysFound: [(Secret, Int)] { (pv?.keyKinds ?? [:]).sorted { $0.value != $1.value ? $0.value > $1.value : $0.key.rawValue < $1.key.rawValue }.map { ($0.key, $0.value) } }
-
-    private var foundWords: String {
-        guard let p = pv else { return "scanning the transcripts…" }
-        if p.keyed == 0 { return "None found in the transcripts" }
-        let kinds = keysFound.map { "\($0.1) \($0.0.words)" }.joined(separator: ", ")
-        var s = "\(n(p.keyedSessions, "session holds", "sessions hold")) keys"
-        if !kinds.isEmpty { s += ": " + kinds }
-        if p.keyedFiles > 0 { s += " · \(n(p.keyedFiles, "other file", "other files")) too" }
-        return s
-    }
+    private var foundWords: String { ExportWords.foundWords(pv) }
 
     private var keysCard: some View {
         let found = pv?.keyed ?? 0
