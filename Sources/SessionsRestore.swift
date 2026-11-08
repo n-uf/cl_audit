@@ -75,7 +75,7 @@ enum SessionsRestore {
 
     /// One file to write: where it is in the backup, where it goes.
     struct Piece: Equatable {
-        enum Kind: String, Codable { case entry, tasks, transcript, file }
+        enum Kind: String, Codable { case entry, tasks, transcript, file, setup }
         enum Base { case window, code }
         var kind: Kind
         var rel: [String]                   // the file's path inside the backup
@@ -85,6 +85,7 @@ enum SessionsRestore {
         var bytes: Int64
         var from: SeatID? = nil             // entry, tasks: the account folder it was in
         var rewrite = false                 // entry: written as a switch would (another account's)
+        var exec = false                    // setup: written 0700 (owner-execute) instead of 0600
 
         var dest: String { dirs.isEmpty ? leaf : dirs.joined(separator: "/") + "/" + leaf }
     }
@@ -120,8 +121,10 @@ enum SessionsRestore {
         var taskSessions: [String] = []     // an import leaves out the sessions scheduled tasks ran, with the task's name
         var memoryFiles: [String] = []      // <project>/memory/… files in the backup (Claude Code loads them into every session)
         var memoryLeftOut = false           // an import from another Mac or profile leaves them out unless asked ("Add them")
+        var setup = SetupPlan()             // Claude Code's setup in the backup (SessionsRestoreSetup.swift): left out unless asked
+        var setupPieces: [Piece] = []       // what "Add them" writes: the files of the units that are new here
 
-        var count: Int { entries.count + tasks.count + transcripts.count + files.count }
+        var count: Int { entries.count + tasks.count + transcripts.count + files.count + setupPieces.count }
         var windowNeeded: Bool { !entries.isEmpty || !tasks.isEmpty }
         var written: Int { count }
     }
@@ -141,9 +144,9 @@ enum SessionsRestore {
         return !c.isEmpty && c.allSatisfy(plainName) ? c : nil
     }
 
-    static func plan(_ t: Target, _ b: Backup, foreign: Bool = false, addMemory: Bool = false, now: Date = Date()) -> Plan {
+    static func plan(_ t: Target, _ b: Backup, foreign: Bool = false, addMemory: Bool = false, addSetup: Bool = false, now: Date = Date()) -> Plan {
         var p = Plan()
-        func refuse(_ why: String) -> Plan { p.refusal = why; p.entries = []; p.tasks = []; p.transcripts = []; p.files = []; return p }
+        func refuse(_ why: String) -> Plan { p.refusal = why; p.entries = []; p.tasks = []; p.transcripts = []; p.files = []; p.setupPieces = []; return p }
         guard SessionsBackup.validProfile(b.profile), SessionsBackup.validID(b.id), SessionsBackup.validProfile(t.profile) else {
             return refuse("The profile or backup name isn't a plain one.")
         }
@@ -152,7 +155,7 @@ enum SessionsRestore {
         }
         p.manifest = m
         guard foreign || m.profile == t.profile else { return refuse("That backup is another profile's.") }
-        guard m.version == 1 else { return refuse("That backup is from a newer cl_audit; nothing is restored from it.") }
+        guard m.version >= 1, m.version <= SessionsBackup.formatVersion else { return refuse("That backup is from a newer cl_audit; nothing is restored from it.") }
         guard let reader = Reader(path: b.dir.path) else { return refuse("The backup's folder isn't a plain folder (a link, or gone).") }
         let imported = m.kind.isImport
         p.isImport = imported
@@ -166,6 +169,7 @@ enum SessionsRestore {
         var windowItems: [(SessionsBackup.Item, [String])] = []
         var codeItems: [(SessionsBackup.Item, [String])] = []
         var sidebarItem: SessionsBackup.Item?
+        var setupItems: [SessionsBackup.Item] = []
         for it in m.items {
             guard let c = components(it.path), seen.insert(it.path).inserted else {
                 return refuse("backup.json names a path that isn't a plain one (\(it.path.prefix(80))); nothing is restored from it.")
@@ -188,6 +192,14 @@ enum SessionsRestore {
                 sidebarItem = it
             case .record:
                 guard c.first == "records" else { return refuse("backup.json names a record in a place it doesn't keep them.") }
+            case .setup:
+                // (a version 1 backup has none; the names are the ones a backup carries, no more: a name like settings.local.json or a
+                // path under plugins/ is never one of them)
+                guard m.version >= 2, c.count >= 2, c[0] == "setup", Setup.pathProblem(Array(c.dropFirst())) == nil, it.sha != nil else {
+                    return refuse("backup.json names a setup file in a place, or with a name, a backup doesn't keep them (\(it.path.prefix(80))); nothing is restored from it.")
+                }
+                if it.exec == true, !Setup.execAllowed(c.dropFirst().joined(separator: "/")) { return refuse("backup.json marks a file executable that can't be one; nothing is restored from it.") }
+                setupItems.append(it)
             }
             if it.role == .window || it.role == .transcript, c.dropFirst().contains(where: SessionsBackup.isSignIn) {
                 return refuse("The backup holds something named like a sign-in (\((c.last ?? "").prefix(40))). A backup never holds one, so nothing is restored from it.")
@@ -304,6 +316,11 @@ enum SessionsRestore {
         p.retention = Retention.read(codeDir: t.codeDir)
         if !codeItems.isEmpty {
             planTranscripts(&p, t, codeItems.map { $0.1 }, reader: reader, now: now, skipSessions: taskCLI, skipMemory: skipMemory)
+        }
+
+        // 3b. Claude Code's setup (CLAUDE.md, skills, agents …): left out unless asked, never over what is here, never through a link
+        if !setupItems.isEmpty || m.setupLeftOut != nil {
+            planSetup(&p, t, items: setupItems, leftOutAtSource: m.setupLeftOut ?? [], reader: reader, add: addSetup)
         }
 
         // 4. the sidebar: where the restored entries sat, from the backup's own records
@@ -681,7 +698,7 @@ enum SessionsRestore {
     /// What a run put back, for Undo and for finishing it. The header is receipt.json; the steps are journal.jsonl.
     struct Receipt: Codable, Equatable {
         struct Step: Equatable {
-            enum Kind: String, Codable { case entry, tasks, transcript, file, dir }
+            enum Kind: String, Codable { case entry, tasks, transcript, file, dir, setup }
             var kind: Kind
             var path: String
             var sha: String?
@@ -716,11 +733,13 @@ enum SessionsRestore {
         var importedFrom: String?           // an import: the export file's name (the receipt is then "Undo last import")
         var sessionsAdded = 0               // an import: the sessions (transcripts) it added, for the Sessions card
         var entriesAdded = 0                // an import: the Code-tab entries it added (never counted as sessions)
+        var setupAdded: [String] = []       // Claude Code's setup it added, by unit ("skill foo", "CLAUDE.md"): what Undo takes back, listed
         var steps: [Step] = []              // from the journal
 
         private enum CodingKeys: String, CodingKey {
             case id, profile, dataDir, codeDir, backup, backupPlace, target, started, planned, finished, undone, stopped, problems,
-                 sidebar, changed, changedCount, inUse, inUseCount, deletedCount, afterSwitch, partialCount, undoLeft, importedFrom, sessionsAdded, entriesAdded
+                 sidebar, changed, changedCount, inUse, inUseCount, deletedCount, afterSwitch, partialCount, undoLeft, importedFrom, sessionsAdded, entriesAdded,
+                 setupAdded
         }
 
         /// Wrote something and neither finished nor was undone: Undo applies, and so does finishing it.
@@ -915,7 +934,7 @@ enum SessionsRestore {
     /// write failed) keeps what is back; its receipt is unfinished until it is finished or undone. `continuing` finishes
     /// an earlier run of the same backup under its receipt (also when nothing is left to write: it is then only closed).
     @discardableResult
-    static func run(_ t: Target, _ b: Backup, continuing: String? = nil, foreign: Bool = false, addMemory: Bool = false, afterSwitch: String? = nil,
+    static func run(_ t: Target, _ b: Backup, continuing: String? = nil, foreign: Bool = false, addMemory: Bool = false, addSetup: Bool = false, afterSwitch: String? = nil,
                     mark: String? = nil, windowClosed: () -> Bool, stop: () -> Bool = { false },
                     progress: ((_ done: Int, _ total: Int) -> Void)? = nil,
                     receiptWritten: ((_ id: String) -> Void)? = nil, now: Date = Date()) throws -> Receipt {
@@ -934,7 +953,7 @@ enum SessionsRestore {
             if let j = Journal(id: cid) { reconcile(o, journal: j, windowOK: !o.windowTouched || windowClosed()) }
             old = load(cid)
         }
-        let p = plan(t, b, foreign: foreign, addMemory: addMemory, now: now)
+        let p = plan(t, b, foreign: foreign, addMemory: addMemory, addSetup: addSetup, now: now)
         if let why = p.refusal { throw RestoreError(why) }
         guard p.manifest != nil else { throw RestoreError("That backup isn't there any more.") }
         if p.count == 0 {
@@ -967,6 +986,7 @@ enum SessionsRestore {
             r.afterSwitch = afterSwitch
             r.problems += p.notes
             if case .imported(let file)? = p.manifest?.kind { r.importedFrom = file; r.sessionsAdded = p.transcripts.count; r.entriesAdded = p.entries.count }
+            r.setupAdded = p.setup.addedNames
         }
         r.changedCount = p.changed.count; r.changed = Array(p.changed.prefix(200)); r.partialCount = p.partial.count
         r.inUseCount = p.inUse.count; r.inUse = Array(p.inUse.prefix(200)); r.deletedCount = p.deletedSince.count
@@ -995,7 +1015,7 @@ enum SessionsRestore {
 
         var win: Tree?, code: Tree?
         if p.windowNeeded { win = Tree(path: t.dataDir); if win == nil { throw stopped("The window's data folder isn't there; nothing written.") }; wire(win!) }
-        if !p.transcripts.isEmpty || !p.files.isEmpty { code = Tree(path: t.codeDir); if code == nil { throw stopped("The Claude Code folder isn't there; nothing written.") }; wire(code!) }
+        if !p.transcripts.isEmpty || !p.files.isEmpty || !p.setupPieces.isEmpty { code = Tree(path: t.codeDir); if code == nil { throw stopped("The Claude Code folder isn't there; nothing written.") }; wire(code!) }
         var done = r.back
         let total = r.planned
         progress?(done, total)
@@ -1024,7 +1044,7 @@ enum SessionsRestore {
             done += 1; progress?(done, total)
         }
         var written = Set<String>()                                 // the transcripts this run made (a marker needs its own among them)
-        for piece in p.transcripts + p.files {
+        for piece in p.transcripts + p.files + p.setupPieces {
             if stop() { throw stopped("Stopped by you. What is back is kept.") }
             // a retention marker only with its transcript made by this run (the plan saw it planned; it may have appeared since)
             if piece.kind == .file, let id = SessionsExport.markerID(piece.leaf), !written.contains((piece.dirs + [id + ".jsonl"]).joined(separator: "/")) {
@@ -1038,11 +1058,12 @@ enum SessionsRestore {
             let before = tree.made.count
             let opened = tree.dir(piece.dirs, create: true)
             madeDirs(tree, since: before)
-            guard case .dir(let dfd) = opened else { throw stopped("A folder under projects is a link or can't be made; stopped. What is back is kept.") }
+            guard case .dir(let dfd) = opened else { throw stopped(piece.kind == .setup ? "A folder for Claude Code's setup is a link or can't be made; stopped. What is back is kept." : "A folder under projects is a link or can't be made; stopped. What is back is kept.") }
             defer { close(dfd) }
             let path = (t.codeDir as NSString).appendingPathComponent(piece.dest)
-            journal.add(Event(op: "intent", kind: piece.kind == .transcript ? .transcript : .file, path: path, sha: want, bytes: Int64(f.st.st_size)), sync: true)
-            switch cloneNew(from: f.fd, st: f.st, expected: want, dfd, piece.leaf) {
+            journal.add(Event(op: "intent", kind: piece.kind == .transcript ? .transcript : piece.kind == .setup ? .setup : .file, path: path, sha: want, bytes: Int64(f.st.st_size)), sync: true)
+            // setup is written 0600, or 0700 for a file the manifest marks executable (the descriptor of the clone this run made, nothing else)
+            switch cloneNew(from: f.fd, st: f.st, expected: want, dfd, piece.leaf, mode: piece.kind == .setup ? (piece.exec ? 0o700 : 0o600) : nil) {
             case .created(let hash):
                 journal.add(Event(op: "done", kind: nil, path: path, sha: hash, bytes: nil), sync: false)
                 if piece.kind == .transcript { written.insert((piece.dirs + [piece.leaf.lowercased()]).joined(separator: "/")) }
@@ -1053,6 +1074,10 @@ enum SessionsRestore {
             case .failed(let why): gone(path); throw stopped("\(piece.leaf) couldn't be written (\(why)); stopped. What is back is kept.")
             }
             done += 1; progress?(done, total)
+        }
+        if p.setupPieces.contains(where: { $0.rel == ["setup", "settings.json"] }) {
+            // a hook or status line that points at something that isn't on this Mac (after what this run added): said, not guessed at
+            for w in setupMissingPaths(t) where !r.problems.contains(w) { r.problems.append(w) }
         }
         r.finished = Date()
         try save(r)
@@ -1087,7 +1112,7 @@ enum SessionsRestore {
     /// file, one link, the backup's size, the hash the caller expects); only then does it get the backup's modification
     /// time, through that descriptor. If it isn't what it should be, it is NEVER deleted by name: a running Claude Code
     /// session may have appended to it since the clone was made. `.differs` says so.
-    static func cloneNew(from src: Int32, st: stat, expected: String?, _ dir: Int32, _ name: String) -> Cloned {
+    static func cloneNew(from src: Int32, st: stat, expected: String?, _ dir: Int32, _ name: String, mode: mode_t? = nil) -> Cloned {
         var landed: Int32
         // CLONE_NOFOLLOW matters: without it a link standing at the name (even one to nowhere) is followed and the clone is
         // made where it points (found by a check with a dangling link); with it the name counts as taken (EEXIST)
@@ -1109,6 +1134,9 @@ enum SessionsRestore {
             }
         }
         defer { close(landed) }
+        // an explicit mode (setup: 0600 or 0700, never setuid/setgid/sticky, nothing for group or other) set on the descriptor of what
+        // this call just made, never by name
+        if let mode, mode == 0o600 || mode == 0o700, fchmod(landed, mode) != 0 { return .differs }
         var now = stat()
         guard fstat(landed, &now) == 0, (now.st_mode & S_IFMT) == S_IFREG, now.st_nlink == 1, now.st_size == st.st_size,
               let hash = sha(fd: landed), expected == nil || hash == expected else { return .differs }
@@ -1339,5 +1367,6 @@ extension SessionsRestore.Receipt {
         importedFrom = try c.decodeIfPresent(String.self, forKey: .importedFrom)
         sessionsAdded = try c.decodeIfPresent(Int.self, forKey: .sessionsAdded) ?? 0
         entriesAdded = try c.decodeIfPresent(Int.self, forKey: .entriesAdded) ?? 0
+        setupAdded = try c.decodeIfPresent([String].self, forKey: .setupAdded) ?? []
     }
 }
