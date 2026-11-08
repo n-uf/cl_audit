@@ -45,12 +45,41 @@ git checkout v26.10.1     # optional: exactly a released version (see CHANGELOG.
 ./build.sh --no-install   # build into ./build only
 ```
 
-Then open **cl_audit**, go to Settings and add a profile (**New profile**). With **Usage in the Dock** on,
+Then open **cl_audit**. On a Mac with no profile yet it opens **Set up cl_audit** (see [First run](#first-run)):
+Claude Code, then the account, then a name. After that, **New profile** in Settings adds more. With **Usage in the Dock** on,
 cl_audit installs "cl_audit &lt;profile&gt;" in `/Applications` and puts it in the Dock. The first time,
 macOS says cl_audit added an item that can run in the background (its agent, see [How it works](#how-it-works)),
 and asks once to allow notifications for cl_audit (System Settings ▸ Notifications ▸ cl_audit, if you
 missed it). To update, download the new zip (or pull and run `./build.sh` again); profiles and settings are
 kept, and the agent restarts with the new version on its own.
+
+## First run
+
+With no profile yet (a fresh install, or every profile removed) cl_audit opens **Set up cl_audit** instead of making a
+profile by itself. Three steps; each says what it needs:
+
+1. **Claude Code.** Found: "✓ Claude Code 2.1.x · ~/.local/bin/claude". Not found: "Claude Code isn't on this Mac", the
+   official install command (`curl -fsSL https://claude.ai/install.sh | bash`, from code.claude.com/docs/en/setup) with a
+   **Copy** key, a link to the install page and **Check again**. It looks again by itself every few seconds, and
+   whenever cl_audit comes to the front, so installing it needs no restart.
+2. **Account.** The Claude Code folders on this Mac that are signed in (`~/.claude`, `~/.claude-*`) are listed with
+   their address (never a sign-in): one click takes it. Or **Sign in…**: Claude Code's own browser sign-in opens in
+   Terminal (in `~/.claude` when nothing is signed in there, else a new `~/.claude-<name>` folder), the address is
+   optional, and the page goes on by itself when the account shows up.
+3. **Name and colour.** Prefilled from the account (a team's name, else the address's name part). **Done** adds the
+   profile and opens its Settings.
+
+Where `claude` is looked for, in this order: `~/.local/bin` (the native installer), `~/.claude/local`, Homebrew
+(`/opt/homebrew/bin`), `/usr/local/bin`, `~/.npm-global/bin`, `~/.bun/bin`, `~/.volta/bin`, nvm's node versions (newest
+first), npm's own prefix (`npm config get prefix`), the login shell (`zsh -lc 'command -v claude'`, stopped after 5 s),
+and last the Claude app's own copy (`~/Library/Application Support/Claude*/claude-code/<version>/…/claude.app`, "from the
+Claude app"). A real install always wins over the app's copy. Anywhere a sign-in needs Claude Code and it isn't there,
+cl_audit says "Claude Code isn't installed on this Mac · Install…" beside the key (and in the Add account and Account
+pop-ups) instead of greying it silently; Install… opens the same install help.
+
+Who sees it: a Mac with no profile, or whose only profile is the "main" that cl_audit 26.11.1 made by itself on
+`~/.claude` (exactly as made, never signed in, no setting changed). Done replaces that "main". A profile you have named,
+restyled, signed in or set anything on is never replaced, and anyone who has used profiles never sees the page.
 
 ## Security: how cl_audit handles the Claude login
 

@@ -8,7 +8,25 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+This is 26.11.2.
+
+- **A first-run page, instead of an automatic "main".** On a Mac with no profile, cl_audit no longer makes a profile
+  called "main" on `~/.claude` by itself (the one with "not signed in yet" and every sign-in greyed). It opens
+  **Set up cl_audit**: 1 Claude Code (found, with its version and place, or the install command with Copy and Check
+  again), 2 the account (a signed-in Claude Code folder on this Mac, one click, or Sign in… through Claude Code's browser
+  sign-in), 3 a name and colour prefilled from the account. The Dock menu and the empty dashboard and launcher offer
+  "Set up cl_audit…". A Mac where 26.11.1 already made that "main" and it was never signed in gets the page too, and
+  Done replaces it; a profile you have changed in any way, or signed in, is never touched.
+- **Claude Code is found in more places, and looked for again.** Besides the usual folders and the login shell,
+  cl_audit now checks `~/.local/bin` (the native installer) first, `~/.volta/bin`, nvm's node versions, npm's own
+  prefix and, as a last resort, the copy the Claude app keeps for itself (shown as "from the Claude app"; a real
+  install is preferred). It looks again when cl_audit comes to the front, on Check again, every few seconds while it is
+  missing and before any sign-in, so installing Claude Code afterwards is noticed without a restart. Before, it
+  looked once at launch.
+- **A greyed sign-in now says why.** Wherever a sign-in needs Claude Code and it isn't installed, the key stays and a
+  line beside it reads "Claude Code isn't installed on this Mac · Install…" (also in Add account and the Account
+  pop-up); Install… opens the install help. The Dock menu's and the launcher's Log in and Terminal keys say it in a
+  dialog instead of beeping.
 
 ## 26.11.1 — 2026-11-07
 
