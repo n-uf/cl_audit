@@ -63,6 +63,7 @@ final class ImportRunner: ObservableObject {
     @Published private(set) var counting: RestoreRunner?
     @Published private(set) var note: String?
     @Published private(set) var addMemory = false
+    @Published private(set) var addSetup = false
     private var frozen = false
     private let lock = NSLock()
     private var cancelFlag = false
@@ -163,7 +164,7 @@ final class ImportRunner: ObservableObject {
 
     private func recount() {
         guard let s = staged, let model else { return }
-        let key = RestoreKey(profile: s.target, backup: s.id, place: s.stage.path, addMemory: addMemory)
+        let key = RestoreKey(profile: s.target, backup: s.id, place: s.stage.path, addMemory: addMemory, addSetup: addSetup)
         let r = RestoreRunner(key: key, model: model)
         counting = r
         phase = .ready
@@ -174,6 +175,13 @@ final class ImportRunner: ObservableObject {
     func setMemory(_ on: Bool) {
         guard on != addMemory else { return }
         addMemory = on
+        recount()
+    }
+
+    /// Claude Code's setup in the file (CLAUDE.md, skills …): left out, or the missing ones added (the preview is counted again).
+    func setSetup(_ on: Bool) {
+        guard on != addSetup else { return }
+        addSetup = on
         recount()
     }
 
@@ -224,7 +232,7 @@ final class ImportRunner: ObservableObject {
         guard canImport, let s = staged, let model else { return }
         do {
             let b = try SessionsImport.commit(s)
-            let key = RestoreKey(profile: b.profile, backup: b.id, place: b.place.path, addMemory: addMemory)
+            let key = RestoreKey(profile: b.profile, backup: b.id, place: b.place.path, addMemory: addMemory, addSetup: addSetup)
             if let o = opened { SessionsImport.discard(o.work) }
             opened = nil; staged = nil; counting = nil
             phase = .running(key)
@@ -241,6 +249,7 @@ final class ImportRunner: ObservableObject {
         if let o = opened { SessionsImport.discard(o.work) }
         opened = nil; staged = nil; counting = nil
         addMemory = false                               // "Add them" was a choice about that file; the next one starts with them left out
+        addSetup = false
     }
 
     /// cl_audit is quitting: the password goes and what is being opened is told to stop. Nothing is removed here (a big tree on the
@@ -278,6 +287,8 @@ struct ImportHappens: View {
     /// Memory files of a file from elsewhere: nil on a page that only shows (the choice is made in the preview).
     var memory: ((Bool) -> Void)? = nil
     var addMemory = false
+    /// Claude Code's setup in the file: the choice (nil on a page that only shows it).
+    var setup: ((Bool) -> Void)? = nil
     @State private var showDiffer = false
     @State private var showTasks = false
     @State private var showMemory = false
@@ -366,6 +377,7 @@ struct ImportHappens: View {
                         }
                     }
                 }
+                SetupRow(entry: entry, runner: runner, imported: true, choose: setup)
                 SRow(label: "Folder not here", info: "Claude Code lists a session only where the folder it ran in exists. These are added anyway and show up once that folder is on this Mac.", stacked: true) {
                     value(runner.foldersMissing == 0 ? "none" : undone ? "\(runner.foldersMissing): were added, and taken away again" : "\(runner.foldersMissing): added, shown once that folder exists")
                 }
@@ -499,7 +511,7 @@ struct ImportPage: View {
     private var happensCard: some View {
         Group {
             if let c = runner.counting, runner.phase == .ready {
-                ImportHappens(entry: target, runner: c, memory: { runner.setMemory($0) }, addMemory: runner.addMemory)
+                ImportHappens(entry: target, runner: c, memory: { runner.setMemory($0) }, addMemory: runner.addMemory, setup: { runner.setSetup($0) })
             } else {
                 SCard(title: "What happens", info: "Counted from the file against what is there now, once the file is read.") {
                     SRow(label: "Nothing yet", first: true, stacked: true) {
@@ -523,7 +535,7 @@ struct ImportPage: View {
         return SCard(title: "Stays as it is", info: "Import only adds what is missing. The account, the sign-ins, MCP settings and claude.ai are not part of it.") {
             SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
             SRow(label: "Sign-ins") { rowValue("Never in an export, never written") }
-            SRow(label: "MCP") { rowValue("The window's MCP settings, and settings.json other than Keep for: never touched") }
+            SRow(label: "MCP") { rowValue("The window's MCP settings: never touched. settings.json: only added when missing, and only if you add the setup") }
             SRow(label: "Scheduled tasks") { rowValue("Not imported: the tasks belong to the account that had them") }
             SRow(label: "claude.ai") { rowValue("Chats and Projects") }
         }

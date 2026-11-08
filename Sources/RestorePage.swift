@@ -194,6 +194,7 @@ struct RestorePage: View {
                         if !changed.isEmpty { listKey("Show the list", "Hide the list", $showChanged); if showChanged { names(changed) } }
                     }
                 }
+                SetupRow(entry: entry, runner: runner, imported: false, choose: { runner.setSetup($0) })
                 SRow(label: "In use", info: "A Claude Code session is seen by its id on a process's command line (--resume <id>, --session-id <id>). A session resumed from its own picker or with --continue isn't named there, so a missing transcript of such a session is not seen as held and is written back. A transcript that is already there is never written to either way; one changed in the last two minutes is only listed here.", stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {
                         value(held.isEmpty ? "none" : "\(n(held.count, "transcript", "transcripts")) a running Claude Code session holds: left alone, listed")
@@ -253,7 +254,7 @@ struct RestorePage: View {
         SCard(title: "Stays as it is", info: "Restore only adds what is missing. The account, the sign-ins, MCP settings and claude.ai are not part of it.") {
             SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
             SRow(label: "Sign-ins") { rowValue(imp ? "Never in an export, never written" : "Never in a backup, never written") }
-            SRow(label: "MCP") { rowValue("The window's MCP settings, and settings.json other than Keep for: never touched") }
+            SRow(label: "MCP") { rowValue("The window's MCP settings: never touched. settings.json: only added when missing, and only if you add the setup") }
             SRow(label: "Scheduled tasks") { rowValue(imp ? "Not imported: the tasks belong to the account that had them" : "A task file that is there stays as it is; only a missing one comes back") }
             SRow(label: "claude.ai") { rowValue("Chats and Projects") }
         }
