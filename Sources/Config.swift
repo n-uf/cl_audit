@@ -259,22 +259,9 @@ struct IconStatus: Codable {
 /// The icon never refreshes a login itself. When asked to, it runs Claude Code once with a one-line
 /// prompt; Claude Code renews its own login as part of that call and stores it as usual.
 enum ClaudeCLI {
-    static func find() -> String? {
-        let fm = FileManager.default
-        let candidates = ["/opt/homebrew/bin/claude", "/usr/local/bin/claude", "~/.local/bin/claude",
-                          "~/.claude/local/claude", "~/.npm-global/bin/claude", "~/.bun/bin/claude"].map(expand)
-        if let p = candidates.first(where: fm.isExecutableFile(atPath:)) { return p }
-        // Fall back to the login shell's PATH.
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
-        p.arguments = ["-lc", "command -v claude"]
-        let out = Pipe(); p.standardOutput = out; p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }
-        p.waitQuietly()
-        let path = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return fm.isExecutableFile(atPath: path) ? path : nil
-    }
+    /// Where `claude` is: the usual install places, the login shell, then the Claude app's own copy (ClaudeLocator).
+    /// Blocks while the shell answers (at most a few seconds): the window asks through SettingsModel instead.
+    static func find() -> String? { ClaudeLocator.find()?.path }
 
     /// Opens Terminal on `claude auth login` for the account's settings folder, with the e-mail the folder
     /// is set up for filled in. The person signs in in the browser; nothing here sees the password.
