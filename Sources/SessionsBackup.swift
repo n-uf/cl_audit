@@ -51,13 +51,19 @@ enum SessionsBackup {
 
     /// One thing in a backup: where it was (absolute) and where it is (relative to the backup's folder).
     struct Item: Codable, Equatable {
-        enum Role: String, Codable { case window, sidebar, record, transcript }
+        enum Role: String, Codable { case window, sidebar, record, transcript, setup }
         var role: Role
         var original: String
         var path: String
         var bytes: Int64
         var part: String? = nil             // sidebar: the part of the original that was taken
+        var sha: String? = nil              // setup: the file's SHA-256 (hex)
+        var exec: Bool? = nil               // setup: the owner-execute bit it had
     }
+
+    /// The format of backup.json (and of an export's export.json). 2 added `setup` items (Claude Code's CLAUDE.md, skills, agents …);
+    /// a file of version 1 is read as before (it has none), a newer one is refused.
+    static let formatVersion = 2
 
     struct Counts: Codable, Equatable {
         var sessions = 0                    // entries in the window's Code-tab list
@@ -67,7 +73,7 @@ enum SessionsBackup {
     }
 
     struct Manifest: Codable, Equatable, Identifiable {
-        var version = 1
+        var version = SessionsBackup.formatVersion
         var id: String
         var profile: String
         var kind: Kind
@@ -85,6 +91,8 @@ enum SessionsBackup {
         var dataDir: String                 // where the window's data was, and the Claude Code folder
         var codeDir: String
         var items: [Item]
+        /// Setup (CLAUDE.md, skills …) left out because it is a link: names only, never where it pointed.
+        var setupLeftOut: [String]? = nil
     }
 
     /// What a backup is made from.
@@ -168,10 +176,12 @@ enum SessionsBackup {
         var rel: String
         var original: String
         var bytes: Int64
+        var exec = false                    // setup: the owner-execute bit
     }
 
     private struct Gathered {
         var files: [Planned] = []
+        var setupLeftOut: [String] = []
         var counts = Counts()
         var accounts: [SeatID] = []
         var bytes: Int64 = 0
@@ -191,8 +201,17 @@ enum SessionsBackup {
 
     /// The window's folders and Claude Code's transcripts as they are now. Symbolic links inside are never followed; the
     /// transcripts folder itself may be one (a folder that shares its history from another).
-    private static func gather(_ s: Source, window: Bool, transcripts: Bool) -> Gathered {
+    private static func gather(_ s: Source, window: Bool, transcripts: Bool, setup: Bool = false) -> Gathered {
         var g = Gathered()
+        if setup {
+            // Claude Code's setup (CLAUDE.md, skills, agents, commands …): links never followed, left out by name
+            let f = Setup.scan(codeDir: s.codeDir)
+            for r in f.files {
+                g.files.append(Planned(role: .setup, src: r.src, rel: "setup/" + r.rel, original: r.src, bytes: r.bytes, exec: r.exec))
+                g.bytes += r.bytes
+            }
+            g.setupLeftOut = f.linked.map(\.label).sorted()
+        }
         if window, !s.dataDir.isEmpty {
             let root = (s.dataDir as NSString).appendingPathComponent("claude-code-sessions")
             var seen = Set<SeatID>()
@@ -289,7 +308,7 @@ enum SessionsBackup {
     /// records out (the window is open: it rewrites its entries from memory). Throws, with nothing left behind, when it
     /// can't be made whole. Takes no lock: the switch holds one (SwitchEngine.run), Back up now takes it (`manual`).
     @discardableResult
-    static func make(_ s: Source, id: String = newID(), kind: Kind, window: Bool = true, transcripts: Bool = true,
+    static func make(_ s: Source, id: String = newID(), kind: Kind, window: Bool = true, transcripts: Bool = true, setup: Bool = true,
                      receipt: SwitchReceipt? = nil, place: URL, now: Date = Date()) throws -> Manifest {
         guard validProfile(s.profile), validID(id) else { throw BackupError("the profile or backup name isn't a plain one") }
         if let why = placeProblem(place, for: [s]) { throw BackupError(why) }
@@ -306,7 +325,7 @@ enum SessionsBackup {
         var done = false
         defer { if !done { try? fm.removeItem(at: partial) } }
 
-        let g = gather(s, window: window, transcripts: transcripts)
+        let g = gather(s, window: window, transcripts: transcripts, setup: setup)
         var items: [Item] = []
         var cloned = 0, copied = 0, copiedBytes: Int64 = 0, leftOut = g.leftOut
         var made = Set<String>()
@@ -344,7 +363,13 @@ enum SessionsBackup {
             // what landed must be a plain file: a link swapped in after it was looked at is not kept
             guard mode(dst)?.kind == S_IFREG else { unlink(dst); leftOut += 1; continue }
             if shared { cloned += 1 } else { copied += 1; copiedBytes += f.bytes }
-            items.append(Item(role: f.role, original: f.original, path: f.rel, bytes: f.bytes))
+            if f.role == .setup {
+                // the hash of what landed (what a restore checks it against), and the execute bit the original had
+                guard let h = Setup.sha(path: dst) else { unlink(dst); leftOut += 1; continue }
+                items.append(Item(role: .setup, original: f.original, path: f.rel, bytes: f.bytes, sha: h, exec: f.exec))
+            } else {
+                items.append(Item(role: f.role, original: f.original, path: f.rel, bytes: f.bytes))
+            }
         }
 
         // the window's sidebar records: only epitaxyPrefs
@@ -370,7 +395,8 @@ enum SessionsBackup {
         let m = Manifest(id: id, profile: s.profile, kind: kind, created: now, seconds: 0, accounts: g.accounts, counts: g.counts,
                          window: window, transcripts: transcripts,
                          bytes: items.reduce(0) { $0 + $1.bytes }, cloned: cloned, copied: copied, copiedBytes: copiedBytes,
-                         leftOut: leftOut, dataDir: s.dataDir, codeDir: s.codeDir, items: items)
+                         leftOut: leftOut, dataDir: s.dataDir, codeDir: s.codeDir, items: items,
+                         setupLeftOut: g.setupLeftOut.isEmpty ? nil : g.setupLeftOut)
         var out = m
         out.seconds = (Date().timeIntervalSince(started) * 10).rounded() / 10
         try put(try encode(out), "backup.json", in: partial, dirFor)
