@@ -25,7 +25,70 @@ final class SettingsModel: ObservableObject {
     private(set) var saved: [AccountEntry]
     var configFolders: [FolderChoice] { Detect.configFolders() }
     var dataFolders: [FolderChoice] { Detect.desktopDataFolders() }
-    let claudePath = ClaudeCLI.find()
+    // MARK: Claude Code on this Mac (ClaudeLocator.swift)
+
+    /// The `claude` found (nil: none), looked for again whenever the window comes to the front, on "Check again", every
+    /// few seconds while it's missing, and before a sign-in. Never looked for on the main thread beyond file lookups.
+    @Published private(set) var claude: ClaudeFound? = ClaudeLocator.find(quick: true)
+    /// Its version, once `claude --version` has answered.
+    @Published private(set) var claudeVersion: String?
+    /// A full look (shell and npm too) has finished at least once since the window opened.
+    @Published private(set) var claudeLooked = false
+    /// The install help (a sheet, or the first-run page's step 1) is asked for.
+    @Published var installHelp = false
+    var claudePath: String? { claude?.path }
+    private var claudeBusy = false
+    private var claudeAt = Date.distantPast
+    /// Looks again at most this often unless asked to.
+    static let claudeEvery: TimeInterval = 3
+
+    /// Looks for `claude` off the main thread (throttled unless `force`) and publishes what it finds. The version comes
+    /// with it, from `claude --version`, when the program is new.
+    func detectClaude(force: Bool = false, then done: (() -> Void)? = nil) {
+        guard !claudeBusy, force || Date().timeIntervalSince(claudeAt) >= Self.claudeEvery else { return }
+        claudeBusy = true; claudeAt = Date()
+        let had = (claude, claudeVersion)
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let found = ClaudeLocator.find()
+            let version: String? = found.flatMap { f in f == had.0 && had.1 != nil ? had.1 : ClaudeLocator.version(of: f.path) }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.claudeBusy = false
+                if self.claude != found { self.claude = found }
+                if self.claudeVersion != version { self.claudeVersion = version }
+                if !self.claudeLooked { self.claudeLooked = true }
+                done?()
+            }
+        }
+    }
+
+    /// Right before a sign-in: the `claude` to use, looked for again at once (file lookups only), or nil.
+    func claudeNow() -> String? {
+        if let c = claude, ClaudeLocator.isExecutable(c.path) { return c.path }
+        let f = ClaudeLocator.find(quick: true)
+        if claude != f { claude = f }
+        detectClaude(force: true)             // the full look follows (shell, npm), for the next time
+        return f?.path
+    }
+
+    /// A sign-in action's `claude`: nil says why, with the install help (the sheet; on the first-run page its step 1).
+    func requireClaude() -> String? {
+        if let p = claudeNow() { return p }
+        message = ClaudeInstall.missing
+        showInstallHelp()
+        return nil
+    }
+
+    func showInstallHelp() { if selection != Self.firstRunID { installHelp = true } }
+
+    /// Every few seconds (the timer): a `claude` that went away is dropped; one that is missing, or only the Claude app's
+    /// copy while the first-run page is up, is looked for again (throttled, off the main thread).
+    func watchClaude() {
+        if let c = claude, !ClaudeLocator.isExecutable(c.path) {
+            claude = ClaudeLocator.find(quick: true); claudeVersion = nil
+        }
+        if claude == nil || (claude?.fromApp == true && isFirstRun) { detectClaude() }
+    }
     private var timer: Timer?
     private var saveWork: DispatchWorkItem?
 
@@ -43,7 +106,7 @@ final class SettingsModel: ObservableObject {
         let merged = Self.merge(base: saved, local: accounts, remote: fresh)
         saved = fresh
         if merged != accounts { accounts = merged }
-        if !isValid(selection) { selection = Self.dashboardID }
+        if !isValid(selection) { selection = homeSelection }
     }
 
     /// Three-way merge by profile id: the file now (`remote`) plus what changed here (`local`) since the last load
@@ -96,16 +159,19 @@ final class SettingsModel: ObservableObject {
 
     init() {
         saved = Store.load()
-        accounts = saved.isEmpty
-            ? [AccountEntry(id: "main", name: "main", label: "MAIN", configDir: "~/.claude")]
-            : saved
-        selection = Self.dashboardID
+        // No profiles is no profile: a fresh install gets the first-run page (FirstRun.swift), not an automatic "main"
+        accounts = saved
+        selection = FirstRun.needed(saved) ? Self.firstRunID : Self.dashboardID
+        firstRun.color = TileColor.accents.first ?? .purple
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.tick += 1
             self.linkSeats()
             self.followSwitch()
+            self.followFirstRun()
+            self.watchClaude()
         }
+        if Self.followsDock { detectClaude(force: true) }
         // after the change, not inside it: an animated note started while the window is redrawing for the
         // change itself left the Emails key and the cards showing the old state
         // saved elsewhere (the agent recording a Dock icon dragged out by hand): take it in at once, so this copy never
@@ -190,12 +256,16 @@ final class SettingsModel: ObservableObject {
         guard !needsApply else { return }
         let fresh = Store.load()
         if !fresh.isEmpty, fresh != accounts { saved = fresh; accounts = fresh }
-        if !isValid(selection) { selection = Self.dashboardID }
+        if !isValid(selection) { selection = homeSelection }
     }
+
+    /// The page a window opens on: the first-run page while there is no profile yet, else the Dashboard tile.
+    var homeSelection: String { isFirstRun ? Self.firstRunID : Self.dashboardID }
 
     /// A selection that still points at something: an account, the Dashboard tile, or a new account being set up.
     func isValid(_ id: String?) -> Bool {
-        id == Self.dashboardID || (id == Self.newID && draft != nil) || (id == Self.switchID && switchTarget != nil)
+        (id == Self.firstRunID && isFirstRun) || (id == Self.dashboardID && !isFirstRun)
+            || (id == Self.newID && draft != nil) || (id == Self.switchID && switchTarget != nil)
             || (id == Self.restoreID && restoreTarget != nil)
             || (id == Self.exportID && accounts.contains { $0.id == exportingProfile })
             || (id == Self.importID && accounts.contains { $0.id == importingProfile })
@@ -418,7 +488,7 @@ final class SettingsModel: ObservableObject {
     /// Settings opened from inside the app: the Dashboard tile, unless a new account is being set up.
     func openDefault() {
         reloadIfClean()
-        if !(selection == Self.newID && draft != nil) { selection = Self.dashboardID }
+        if !(selection == Self.newID && draft != nil) { selection = homeSelection }
     }
 
     /// What an icon app is made of (which apps exist, their names and labels). Changing it needs Apply.
@@ -479,6 +549,12 @@ final class SettingsModel: ObservableObject {
     /// A new account being set up from scratch (the "New profile" tile), not yet in `accounts`.
     @Published var draft: NewAccountDraft?
     static let newID = "__new__"
+
+    /// The first-run page (FirstRun.swift): shown while no profile exists (or only the "main" an older version made by
+    /// itself, never signed in); what has been picked there so far.
+    static let firstRunID = "__firstrun__"
+    @Published var firstRun = FirstRunDraft()
+    var isFirstRun: Bool { FirstRun.needed(accounts) }
 
     func startNew() {
         if draft == nil {
@@ -554,7 +630,7 @@ final class SettingsModel: ObservableObject {
     func remove(_ id: String) {
         guard let i = accounts.firstIndex(where: { $0.id == id }) else { return }
         accounts.remove(at: i)
-        if selection == id { selection = accounts.isEmpty ? nil : accounts[max(0, i - 1)].id }
+        if selection == id { selection = accounts.isEmpty ? Self.firstRunID : accounts[max(0, i - 1)].id }
     }
 
     func revert() {
@@ -706,8 +782,17 @@ struct SettingsPage: View {
     @ObservedObject private var uninstall = UninstallUI.shared
 
     var body: some View {
-        page.sheet(item: $model.pendingRemoval) { e in RemoveAccountSheet(entry: e, model: model) }
-            .sheet(isPresented: $uninstall.show) { UninstallSheet(model: model) }
+        Group {
+            if model.isFirstRun {
+                // no profile yet: only the first-run page, no tiles to pick from
+                GeometryReader { geo in
+                    ScrollView { FirstRunPage(model: model, width: geo.size.width).padding(.horizontal, 16).padding(.vertical, 14) }
+                }
+            } else { page }
+        }
+        .sheet(item: $model.pendingRemoval) { e in RemoveAccountSheet(entry: e, model: model) }
+        .sheet(isPresented: $uninstall.show) { UninstallSheet(model: model) }
+        .sheet(isPresented: $model.installHelp) { ClaudeInstallSheet(model: model) }
     }
 
     var page: some View {
