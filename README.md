@@ -808,7 +808,11 @@ Sessions. **Restore…** on a backup puts back what is missing, merged, and neve
   `claude_desktop_config.json`, as its own file: the rest of that file holds MCP settings, which can carry keys),
   cl_audit's records (the profile's name and its account and standby ids, never an address, and the receipt of the
   switch it was made for) and, on by default, Claude
-  Code's transcripts (`<Claude Code folder>/projects`). The manifest has the backup's id, profile, kind (before a
+  Code's transcripts (`<Claude Code folder>/projects`) and Claude Code's **setup** (`setup/…`: CLAUDE.md and what it includes,
+  skills, agents, commands, output styles, keybindings, settings.json with its scripts and the plugin list, by the rules
+  of [Exporting](#exporting-a-profiles-sessions): links left out and named in the manifest only, never where they point;
+  each file with its SHA-256 and execute bit; format version 2, a version-1 backup is read as before and has no setup).
+  The manifest has the backup's id, profile, kind (before a
   switch, naming the receipt, or manual), when, how many seconds it took, the accounts by id only (never an
   address), counts (sessions, sidebar ones, tasks, transcripts), the size and, per item, its original absolute path
   and its path inside the backup.
@@ -976,6 +980,43 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   backups place, and taken away again), one of its backups, or all profiles. Claude Code: "310 sessions, with their
   sub-agent files" (the transcripts and what sits beside them in their folders); Claude window: the Code-tab entries and
   scheduled tasks, and the sidebar records (with the window open they are left out, as for Back up now); Cowork: left out.
+- **Claude Code setup** (on by default; the menu says **Include them** or **Leave them out**): "CLAUDE.md with 2 included files,
+  23 skills, 4 agents, 6 commands, 1 output style, keybindings, settings.json with 4 hooks and a status line, 3 scripts, 2
+  plugins to reinstall". It is the part of the profile's Claude Code folder that is configuration, not history:
+  `CLAUDE.md` and every `.md` file it pulls in with `@path` (recursively, 5 deep; an `@` in a code span or fenced block is
+  not an import; a path is taken relative to the importing file, or `~/…`, and must be a plain file inside the folder),
+  `skills/` (a skill is its whole folder, scripts and references included), `agents/`, `commands/`, `output-styles/`,
+  `keybindings.json`, `settings.json` and every file inside the folder that a command in it points to (a hook or the status
+  line: paths that start with `~/`, `$HOME/`, `${HOME}/` or `/` are looked at, a relative one isn't guessed), and the plugin
+  list (`plugins/installed_plugins.json`, assumed to be a JSON object of plugin entries, with or without a `plugins` key:
+  only the count is read). Never: a sign-in (`.claude.json*`, `.credentials*`), `settings.local.json` (machine-local by Claude
+  Code's own definition), plugin caches and repos (everything else under `plugins/`), `projects/`, `todos/`, `statsig/`,
+  `shell-snapshots/`, `ide/`, a dot-file, version history and build leftovers (`.git`, `.hg`, `.svn`, `node_modules`, `.venv`,
+  `venv`, `__pycache__`, `.DS_Store`, `*.pyc`: counted, not an error). **A link is never followed**: a skill that is one, or
+  holds one anywhere (left out whole), a link in place of `CLAUDE.md`, an agent, a command, an included file, or `skills/`
+  itself, is left out and listed with where it points ("3 links left out, never followed: skill foo points to
+  ~/projects/x/skills/foo"): on this Mac's page only; the file and the manifest name them and never say where they point.
+  What an `@` include or a hook script points to outside the folder is listed too ("hook script outside ~/.claude:
+  ~/bin/foo.sh, not carried"). The setup's files go through the key scan like transcripts: the unit is `CLAUDE.md` alone,
+  each included file alone, a skill's whole folder, an agent or a command or a style its file; **the Found line counts
+  them with the sessions** ("5 sessions and 1 skill hold keys: 3 GitHub tokens"), and **Leave them out** leaves the unit out
+  (listed) while **Keep them** keeps it and forces the encrypted image. There is **no address check and no rewriting** in
+  setup files: they are your own words, like a transcript. **Sensitive setup** (`settings.json`, the scripts it points to
+  and `plugins/known_marketplaces.json`, which can hold addresses with credentials) can hold tokens no scan recognises, so
+  **only the encrypted disk image carries it**: a zip leaves it out and the page says so ("settings.json, 3 hook scripts and
+  the plugin marketplaces need the encrypted disk image: left out of a zip"; the Password row's choice decides, no extra menu).
+  Each file is recorded in the manifest with its size, its SHA-256 and whether its owner-execute bit was set.
+
+**Can I move everything to another Mac?** Most of it, yes. What moves: the transcripts (sessions), the Code-tab list, the
+sidebar arrangement, and now Claude Code's setup: `CLAUDE.md` (and the files it includes), skills, agents, commands, output
+styles, keybindings, `settings.json` with its hooks and the scripts they run, and the plugin list so Claude Code can reinstall
+the plugins. What doesn't: sign-ins (log in again on the new Mac), `settings.local.json`, the window's MCP settings, the
+scheduled tasks themselves (their sessions are left out on import), claude.ai chats and Projects (they follow the account), and
+cl_audit's own profiles and settings. Put the project folders at the same paths on the new Mac first, or the sessions are added
+but wait ("Folder not here") until the folder exists. On the new Mac, **Import…** leaves the setup out until you pick **Add them**
+(hooks run commands on their own, and nothing in a file can prove it was made for a move on your Mac); one click adds all
+that is missing, and Undo last import takes it back. Use the encrypted disk image if `settings.json` and its scripts should come
+along.
 - **Keys found:** every transcript and the window's files are searched, in chunks that overlap so nothing is missed at a
   boundary, for **GitHub tokens** (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` and `github_pat_`), **AWS access keys**
   (`AKIA`/`ASIA` and 16 more), **private keys** (a `-----BEGIN … PRIVATE KEY-----` header, PGP too), **Anthropic API
@@ -999,8 +1040,9 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   **Export 305 sessions · ≈ 5.5 GB**; **Stop** while it runs; **Show in Finder** when done. The row in Sessions then reads
   "Last exported 5 Nov · 5.5 GB".
 - **What is never in it:** a sign-in (nothing a backup excludes: `.claude.json*`, anything named like credentials, Keychain,
-  OAuth or `auth.json`), the window's MCP settings, `settings.json`, a switch's receipt, `deleted_` markers, an address or a raw
-  account id. Accounts appear as a **fingerprint**: `fp-` and 8 hex characters of an HMAC-SHA256 of the id under a key made
+  OAuth or `auth.json`; in the setup only the exact names `.claude.json*` and `.credentials*` are refused, so a skill's `auth.py`,
+  `token-counter.md` or `credentials-guide.md` travel), the window's MCP settings, `settings.local.json`, a switch's receipt,
+  `deleted_` markers, an address or a raw account id (outside the setup and the transcripts). Accounts appear as a **fingerprint**: `fp-` and 8 hex characters of an HMAC-SHA256 of the id under a key made
   at random for each export and never written anywhere, so a guessed address or id can't be confirmed by hashing it, and the
   same account is the same fingerprint everywhere in one file only (folder names, the manifests, the sidebar records' scope
   keys, and any account id or address of the profile inside the window's entries and task file). "Made on this Mac" is a
@@ -1011,7 +1053,8 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   file, the sidebar records) it is done on the decoded strings and field names, so an address written `@` is found too;
   every other byte is left as it was. Before packing, every file but the transcripts is searched for those same identities
   (as written, written with the line breaks and spaces taken out, and decoded) and for a private key; a hit, or a file of 64 MB
-  or more that can't be checked, stops the export with a message naming the file; nothing is stripped silently. Any other id
+  or more that can't be checked, stops the export with a message naming the file; nothing is stripped silently. (The setup
+  files, under `profiles/pN/setup/` and nowhere else, are your own words too and are copied as they are.) Any other id
   and any other address (a stranger's in a title) is content, as it is in a transcript: your own words, copied as they are. So
   an export of a backup knows only the identities cl_audit knows **today**: an address of an account that is no longer known
   anywhere on this Mac passes like a stranger's. The profiles' names, and the folder the archive is made in, are scrubbed too
@@ -1024,10 +1067,13 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   transcript: one whose transcript isn't in the file (it is gone, or left out for keys) is left out too and counted on the
   page ("5 leftover markers left out"), never a reason to stop. **Restore** and **Import** write a marker only together with
   its transcript in the same run, never over a marker that is there; Undo takes both back.
-- **The file:** `<name>/export.json` (format `cl_audit-export`, version 1, when, cl_audit's version, a fingerprint of this Mac's
+- **The file:** `<name>/export.json` (format `cl_audit-export`, version 2, when, cl_audit's version, a fingerprint of this Mac's
   name, zip or image, what was done with keys, the profiles and their sizes) and `<name>/profiles/p1/` (a backup's layout:
-  `backup.json`, `window/<fp>/<fp>/…`, `sidebar/`, `records/`, `transcripts/…`), one `pN` per profile for "All profiles". The
-  manifests carry no absolute path of this Mac.
+  `backup.json`, `window/<fp>/<fp>/…`, `sidebar/`, `records/`, `transcripts/…`, `setup/…`), one `pN` per profile for "All
+  profiles". The manifests carry no absolute path of this Mac. **Version 2** added the `setup/` part (each item with its `sha`
+  and `exec`); a version-1 file (no setup) still imports, and an older cl_audit refuses a version-2 file with its "newer
+  cl_audit" message. The format keeps room for later parts (`window` settings and `app` settings of cl_audit itself) beside
+  `setup/`.
 
 ### Importing an export
 
@@ -1099,8 +1145,31 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
   added" once you pick **Add them**) with **Leave them out / Add them** and the list. Where a file says it came from (this
   Mac's install id, this profile's id) is only what it says, and a forged file says the same, so it earns no trust; "made on
   this Mac / another Mac" is information on the File row only. A file already there is never replaced either way.
+- **Claude Code setup** (CLAUDE.md, skills, agents, commands, output styles, keybindings, settings.json, the scripts it points to
+  and the plugin list) in a file is **left out by default**, like memory files, and so it is on **Restore** from a backup (a skill
+  that is missing now was most likely deleted on purpose; putting it back unasked would surprise). The row lists each unit as
+  **New** (missing here), **Already here** (same content) or **Different here** (it stays as it is; for settings.json the
+  names that differ, such as `hooks.PreToolUse` or `env.FOO`, never values), with **Leave them out / Add them** and the list;
+  for settings.json it can show the command of each hook and the status line, so you see what will run. **Add them** adds only
+  New units: nothing is replaced, nothing is written into a skill folder that exists, `CLAUDE.md`, settings.json,
+  keybindings.json and the plugin files that are here stay as they are, an included file comes only when it is missing and
+  with a `CLAUDE.md` that comes too, and nothing is written through a link (if `skills/`, `agents/`, `commands/` or any folder on
+  the way is a link here, nothing is added there and the preview says where it points). Files are made new (cloned from the
+  backup, exclusive, no overwrite), **0600** and folders **0700**. **Executable scripts:** a file the manifest marks executable
+  gets **0700** (owner only; never setuid, setgid, sticky, group or other) when it is inside a skill that this run adds, and a
+  script settings.json points to gets it only when that settings.json is added by the same run (else it stays 0600 and the row
+  lists it "to make executable yourself"); the preview says "3 scripts made executable". It is judged safe because the import is
+  opt-in, the files are created by this run, the bit is set on the descriptor of the file this run just made (never by name,
+  never on an existing file), and a skill's script runs only when Claude or you start it. Agents, commands, `CLAUDE.md` and
+  included files are never made executable. A hook or status-line path in an added settings.json that isn't on this Mac is
+  listed after the import ("hook points to /opt/tools/x.sh: not here"). A **Hostile file** that marks a file outside a skill
+  executable, names a path outside the allowed places or `settings.local.json`/`settings.json` under another name, or carries
+  settings.json, its scripts or the marketplaces in a zip, is refused whole, as is a script no hook in the file's settings.json
+  points to and a file whose SHA-256 isn't the manifest's. **Undo last import** takes the setup back like everything else
+  (only files still exactly what was written). A backup made before this version says "not in this backup".
 - **Scheduled tasks' sessions** are left out whole: the entry, its transcript and the files in its folder, none counted as added.
-  (Which key of an entry marks one is not verified against a real entry: any top-level key with "scheduledtask" in its name.)
+  (An entry marks one with its `scheduledTaskId`, the key real Code-tab entries carry, taken exactly; the name shown is the
+  `displayName` of the task in scheduled-tasks.json with that `id`, else the id.)
 - **Group names** from the file reach the sidebar helper session's prompt, so for an import they are cut to letters, digits,
   spaces and `- _ . , ( ) & '`, at most 40 characters (a name with nothing left is dropped); the preview's Sidebar card lists
   the groups it will create.
