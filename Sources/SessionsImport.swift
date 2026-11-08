@@ -642,7 +642,7 @@ enum SessionsImport {
     static func checkExport(_ data: Data) throws -> (ExportManifest, Int64) {
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
         guard let em = try? dec.decode(ExportManifest.self, from: data), em.format == ExportManifest.format else { throw ArchiveError("That isn't a cl_audit export (export.json can't be read).") }
-        guard em.version == 1 else { throw ArchiveError("That export is from a newer cl_audit; nothing is imported from it.") }
+        guard em.version >= 1, em.version <= SessionsBackup.formatVersion else { throw ArchiveError("That export is from a newer cl_audit; nothing is imported from it.") }
         guard !em.parts.isEmpty, em.parts.count <= 64, em.bytes >= 0, em.bytes <= ceiling else { throw ArchiveError("export.json states sizes or profiles that can't be right.") }
         var seen = Set<String>(), sum: Int64 = 0
         for p in em.parts {
@@ -713,7 +713,7 @@ enum SessionsImport {
         catch ZipIndex.Stop.stopped { throw ArchiveError("Stopped.") }
         // nothing may have landed beside the folder made for it
         guard ((try? FileManager.default.contentsOfDirectory(atPath: work.path)) ?? []).filter({ $0 != ownerFile }).sorted() == ["x"] else { throw ArchiveError("The unpacking wrote outside its folder; refused.") }
-        let parts = try validate(tree: tree, export: export, limit: cap)
+        let parts = try validate(tree: tree, export: export, limit: cap, container: "zip")
         return Opened(file: file, fileName: file.lastPathComponent, container: "zip", export: export, work: work, tree: tree, parts: parts,
                       sameMac: export.machine == InstallID.current)
     }
@@ -757,11 +757,11 @@ enum SessionsImport {
             throw ArchiveError("The disk is nearly full: copying \(SessionsBackup.sizeWords(export.bytes)) out would leave less than \(SessionsBackup.sizeWords(unpackFloor(volumeBytes: vol.total))) free. Nothing was copied.")
         }
         // checked where it is, then copied out file by file (plain files with one link only)
-        _ = try validate(tree: mounted, export: export, limit: cap, normalize: false)
+        _ = try validate(tree: mounted, export: export, limit: cap, container: "image", normalize: false)
         progress?("Copying the files out of the image")
         let tree = x.appendingPathComponent(rootName)
         try copyTree(from: mounted, to: tree, cancel: cancel)
-        let parts = try validate(tree: tree, export: export, limit: cap)
+        let parts = try validate(tree: tree, export: export, limit: cap, container: "image")
         return Opened(file: file, fileName: file.lastPathComponent, container: "image", export: export, work: work, tree: tree, parts: parts,
                       sameMac: export.machine == InstallID.current)
     }
@@ -831,7 +831,13 @@ enum SessionsImport {
             do { names = try FileManager.default.contentsOfDirectory(atPath: path) } catch { throw ArchiveError("A folder in the export can't be read; refused.") }
             for n in names.sorted() {
                 guard SessionsRestore.plainName(n), n.utf8.count <= 255 else { throw ArchiveError("The export holds a name that isn't a plain one; refused.") }
-                if SessionsBackup.isSignIn(n) { throw ArchiveError("The export holds something named like a sign-in (\(n.prefix(40))). An export never holds one; refused.") }
+                // Claude Code's setup (profiles/pN/setup/…) is the operator's own files: `auth.py`, `token-counter.md` and
+                // `credentials-guide.md` are legitimate there, so only the exact excluded names are refused (.claude.json*, .credentials*,
+                // settings.local.json, a settings.json that isn't the top one); everywhere else the sign-in-like rule stands
+                let parent = rel.split(separator: "/")
+                if parent.count >= 3, parent[0] == "profiles", parent[2] == "setup" {
+                    if Setup.excludedName(n, top: parent.count == 3) { throw ArchiveError("The export holds a file with a sign-in name in its setup (\(n.prefix(40))). An export never does; refused.") }
+                } else if SessionsBackup.isSignIn(n) { throw ArchiveError("The export holds something named like a sign-in (\(n.prefix(40))). An export never holds one; refused.") }
                 let child = (path as NSString).appendingPathComponent(n)
                 let r = rel.isEmpty ? n : rel + "/" + n
                 var st = stat()
@@ -860,7 +866,7 @@ enum SessionsImport {
     }
 
     /// The tree must be exactly an export: export.json and profiles/pN/ with each backup.json and the files it names.
-    private static func validate(tree: URL, export: ExportManifest, limit: Int64, normalize: Bool = true) throws -> [PartInfo] {
+    private static func validate(tree: URL, export: ExportManifest, limit: Int64, container: String, normalize: Bool = true) throws -> [PartInfo] {
         var rootStat = stat()
         guard lstat(tree.path, &rootStat) == 0, (rootStat.st_mode & S_IFMT) == S_IFDIR else { throw ArchiveError("The export's folder isn't a plain folder; refused.") }
         let found = try walk(tree, limit: limit, normalize: normalize)
@@ -879,10 +885,11 @@ enum SessionsImport {
             guard let size = found.files["\(base)/backup.json"], size <= 64 << 20,
                   let bj = try? readSmall(tree.appendingPathComponent("\(base)/backup.json").path, limit: 64 << 20),
                   let m = try? dec.decode(SessionsBackup.Manifest.self, from: bj) else { throw ArchiveError("A profile's backup.json is missing or can't be read; refused.") }
-            guard m.version == 1 else { throw ArchiveError("That export holds a backup from a newer cl_audit; nothing is imported from it.") }
+            guard m.version >= 1, m.version <= SessionsBackup.formatVersion else { throw ArchiveError("That export holds a backup from a newer cl_audit; nothing is imported from it.") }
             guard SessionsBackup.validID(m.id), SessionsBackup.validProfile(m.profile), m.items.count <= maxFiles else { throw ArchiveError("A profile's backup.json names things that aren't plain ones; refused.") }
             expectedFiles["\(base)/backup.json"] = size
             var seen = Set<String>(), sum: Int64 = 0
+            var setupRels: [String] = []
             for it in m.items {
                 guard let c = SessionsRestore.components(it.path), seen.insert(it.path).inserted else { throw ArchiveError("A backup.json names a path that isn't a plain one (\(it.path.prefix(60))); refused.") }
                 switch it.role {
@@ -890,9 +897,23 @@ enum SessionsImport {
                 case .transcript: guard c.count >= 3, c[0] == "transcripts" else { throw ArchiveError("A backup.json names a transcript in a place an export doesn't keep them; refused.") }
                 case .sidebar: guard c == ["sidebar", "epitaxyPrefs.json"] else { throw ArchiveError("A backup.json names a sidebar file in a place an export doesn't keep it; refused.") }
                 case .record: guard c.count == 2, c[0] == "records" else { throw ArchiveError("A backup.json names a record in a place an export doesn't keep them; refused.") }
+                case .setup:
+                    // Claude Code's setup: only the places and names an export carries (SessionsSetup.swift), a SHA-256 for every file,
+                    // the execute flag only on a skill's own files and on scripts, and the sensitive part only from an encrypted image
+                    guard m.version >= 2, c.count >= 2, c[0] == "setup", Setup.pathProblem(Array(c.dropFirst())) == nil else {
+                        throw ArchiveError("A backup.json names a setup file in a place, or with a name, an export doesn't carry (\(it.path.prefix(60))); refused.")
+                    }
+                    let rel = c.dropFirst().joined(separator: "/")
+                    guard let h = it.sha, h.count == 64, h.allSatisfy({ "0123456789abcdef".contains($0) }) else { throw ArchiveError("A setup file has no valid hash in backup.json (\((c.last ?? "").prefix(40))); refused.") }
+                    if it.exec == true, !Setup.execAllowed(rel) { throw ArchiveError("backup.json marks a file executable that is neither a skill's own file nor a script settings.json points to (\((c.last ?? "").prefix(40))); refused.") }
+                    if Setup.sensitive(rel), container != "image" { throw ArchiveError("A zip carries no settings.json, hook scripts or plugin marketplaces (only the encrypted disk image does); refused.") }
+                    setupRels.append(rel)
                 }
                 guard let real = found.files["\(base)/\(it.path)"] else { throw ArchiveError("A file backup.json names is missing (\((c.last ?? "").prefix(40))); refused.") }
                 guard real == it.bytes, it.bytes >= 0 else { throw ArchiveError("A file's size isn't the size backup.json states (\((c.last ?? "").prefix(40))); refused.") }
+                if it.role == .setup, Setup.sha(path: tree.appendingPathComponent("\(base)/\(it.path)").path) != it.sha {
+                    throw ArchiveError("A setup file isn't what backup.json says it is (\((c.last ?? "").prefix(40))); refused.")
+                }
                 expectedFiles["\(base)/\(it.path)"] = real
                 for k in 1..<c.count { expectedDirs.insert(base + "/" + c[0..<k].joined(separator: "/")) }
                 let (s, over) = sum.addingReportingOverflow(it.bytes)
@@ -900,6 +921,16 @@ enum SessionsImport {
                 sum = s
             }
             guard sum == p.bytes, sum == m.bytes else { throw ArchiveError("A profile's sizes don't add up; refused.") }
+            // a script comes only with the settings.json that points to it (a path no hook names is not a script of the setup)
+            let scripts = setupRels.filter { Setup.unit(of: $0).kind == .script }
+            if !scripts.isEmpty {
+                guard setupRels.contains("settings.json"), let sd = try? readSmall(tree.appendingPathComponent("\(base)/setup/settings.json").path, limit: 8 << 20) else {
+                    throw ArchiveError("A script is in the export without the settings.json that points to it; refused.")
+                }
+                let text = String(decoding: sd, as: UTF8.self)
+                if let bad = scripts.first(where: { !text.contains($0) }) { throw ArchiveError("A script no hook in settings.json points to (\(bad.prefix(50))); refused.") }
+            }
+            if m.setupLeftOut.map({ $0.count > 500 }) == true { throw ArchiveError("A profile's backup.json lists too many left-out setup names; refused.") }
             parts.append(PartInfo(dir: p.dir, name: p.name, profile: p.profile, manifest: m))
         }
         // nothing else: not a file, not a folder
@@ -1026,6 +1057,7 @@ enum SessionsImport {
             var n = it
             n.original = it.path                                       // no path of the other Mac
             if n.role != .sidebar { n.part = nil } else if n.part != "preferences.epitaxyPrefs" { n.part = "preferences.epitaxyPrefs" }
+            if n.role != .setup { n.sha = nil; n.exec = nil }          // (a hash and an execute flag mean something for setup only)
             items.append(n)
             // the counts are made from what was verified, not read from the file's own claim
             let c = it.path.split(separator: "/").map(String.init)
@@ -1051,6 +1083,9 @@ enum SessionsImport {
         m.window = items.contains { $0.role == .window || $0.role == .sidebar }
         m.transcripts = items.contains { $0.role == .transcript }
         m.leftOut = min(max(0, m.leftOut), maxFiles)
+        m.version = SessionsBackup.formatVersion
+        // (names of setup left out at the source: shown as text only, so cut to plain short ones)
+        m.setupLeftOut = m.setupLeftOut.map { Array($0.prefix(200).map { String($0.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 }.prefix(100).map(Character.init)) }) }
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let manifestPath = (partial.path as NSString).appendingPathComponent("backup.json")
         do { try enc.encode(m).write(to: URL(fileURLWithPath: manifestPath), options: .withoutOverwriting) }
