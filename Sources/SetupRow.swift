@@ -94,6 +94,7 @@ struct SetupRow: View {
         switch settingsStatus(sp) {
         case .new?: return ("What its hooks and status line run", "Hide what they run")
         case .same?: return ("What its hooks run (the same settings.json is already here)", "Hide what they run")
+        case .blocked?: return ("What the \(imported ? "file" : "backup")'s hooks would run (not added: settings.json can't be added here)", "Hide (not added: settings.json can't be added here)")
         default: return ("What the \(imported ? "file" : "backup")'s hooks would run (not added: settings.json here stays)", "Hide (not added: settings.json here stays)")
         }
     }

@@ -641,7 +641,7 @@ enum Setup {
         var p: [String] = []
         if c.settings > 0 { p.append("settings.json") }
         if c.scripts > 0 { p.append(c.scripts == 1 ? "the script it runs" : "the \(c.scripts) scripts it runs") }
-        if held.total > 0, unknown { p.append("\(words(held)) with an executable file (settings.json couldn't be read, so which files its hooks run isn't known)") }
+        if held.total > 0, unknown { p.append("\(words(held)) with an executable file (which files its hooks run isn't known)") }
         else if held.total > 0 { p.append("\(words(held)) with a script its hooks run") }
         if c.marketplaces > 0 { p.append("the plugin marketplaces") }
         guard !p.isEmpty else { return nil }
