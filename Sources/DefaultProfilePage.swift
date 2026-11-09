@@ -184,7 +184,7 @@ struct DefaultProfilePage: View {
                     value("\(n(p.entries, "entry", "entries")) in \(name)'s window\(p.tasks > 0 ? " · \(n(p.tasks, "scheduled task", "scheduled tasks"))" : "")\(p.groups > 0 ? " · \(n(p.groups, "sidebar group", "sidebar groups"))" : "")")
                 }
                 SRow(label: "Already in the usual app", stacked: true) {
-                    value(p.inUsual == 0 ? "none" : "\(p.inUsual): \(p.same) the same as \(name)'s (nothing to do)\(p.clash > 0 ? " · \(p.clash) different: what is there stays, listed" : "")")
+                    value(p.inUsual == 0 ? "none" : "\(n(p.inUsual, "entry", "entries")) there now, \(p.same) of them \(name)'s, unchanged (nothing to do)\(p.clash > 0 ? " · \(p.clash) of \(name)'s differ from what is there: what is there stays, listed" : "")")
                 }
                 if kind == .otherFolder {
                     SRow(label: "Transcripts", stacked: true) { value("\(n(p.transcripts, "transcript", "transcripts")) go into ~/.claude/projects (never over one that is there)") }

@@ -2009,7 +2009,7 @@ struct AccountSettings: View {
     /// The account in use is also the one the usual Claude app is signed in to (~/.claude holds it), but this profile opens its
     /// own window: said once on the Accounts card, with the way to the default-profile offer. Gone once the offer is dismissed.
     @ViewBuilder var usualAppNote: some View {
-        let usual = Account.signedInSeat(configDir: "~/.claude")
+        let usual = DefaultProfile.cachedSeat("~/.claude")        // drawn every few seconds: the record is read when it changed
         if entry.desktop == .separate, entry.claudeWindow, !DefaultProfile.dismissed, let mine = entry.seat, mine.same(usual) {
             VStack(alignment: .leading, spacing: 5) {
                 Text("This account is also what the usual Claude app and `claude` in Terminal use (~/.claude), but \(entry.name.isEmpty ? "this profile" : entry.name) opens its own window, so Claude opened from the Dock shows other sessions.")
