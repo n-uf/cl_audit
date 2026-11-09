@@ -203,7 +203,8 @@ final class ImportRunner: ObservableObject {
     }
 
     private func recount() {
-        guard let s = staged, let model else { return }
+        // (only for the profile Into shows: while a retarget to another one runs, its own recount comes when it lands)
+        guard let s = staged, s.target == into, let model else { return }
         let key = RestoreKey(profile: s.target, backup: s.id, place: s.stage.path, addMemory: addMemory, addSetup: addSetup, addConfig: addConfig, addTasks: addTasks)
         let r = RestoreRunner(key: key, model: model)
         counting = r
@@ -361,7 +362,9 @@ final class ImportRunner: ObservableObject {
     /// "25 sessions · 12 entries" (the noun that is not zero): sessions and entries are never counted together as "sessions".
     var countWords: String? { ImportWords.counts(sessions: sessionCount, entries: entryCount) }
     var canImport: Bool {
-        guard phase == .ready, let p = counting?.plan, p.refusal == nil, counting?.notYet == nil, !waitsForProfiles else { return false }
+        // (the staged backup, and the plan counted from it, must be for the profile Into shows: never the one before a retarget)
+        guard phase == .ready, let s = staged, s.target == into, counting?.key.profile == into, let p = counting?.plan, p.refusal == nil, counting?.notYet == nil,
+              !waitsForProfiles else { return false }
         return p.count > 0
     }
 
