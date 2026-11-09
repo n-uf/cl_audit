@@ -88,9 +88,10 @@ struct QCWindow: View {
         VStack(spacing: 0) {
             QCHeader(model: model)
             if rendering {
-                VStack(alignment: .leading, spacing: 0) { turns }
-                    .padding(.horizontal, 20)
-                    .frame(maxHeight: .infinity, alignment: .top)
+                // a picture can't draw a scroll view: the chat's end, clipped to the window, as if scrolled down
+                Color.clear
+                    .overlay(VStack(alignment: .leading, spacing: 0) { turns }.padding(.horizontal, 20).padding(.bottom, 12),
+                             alignment: .bottom)
                     .clipped()
             } else {
                 ScrollViewReader { proxy in
