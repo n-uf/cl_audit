@@ -111,7 +111,10 @@ extension SessionsRestore {
         }
         cp.status = .new
         if add {
-            p.configPieces = [Piece(kind: .config, rel: c, base: .window, dirs: [], leaf: "claude_desktop_config.json", bytes: Int64(d.count))]
+            // written without its sidebar part, whatever the file holds: the sidebar (and the folder permission modes it keeps) is
+            // arranged only by the sidebar step, never brought in by a file's "Add them"
+            guard let stripped = try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { cp.unreadable = true; return }
+            p.configPieces = [Piece(kind: .config, rel: c, base: .window, dirs: [], leaf: "claude_desktop_config.json", bytes: Int64(stripped.count), data: stripped)]
         }
     }
 

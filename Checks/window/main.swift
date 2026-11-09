@@ -451,6 +451,25 @@ MainActor.assumeIsolated {
         SessionsImport.discard(oc.work)
     }
 
+    // a crafted config that carries the sidebar part (its folder permission modes among it): "Add them" never brings that part in
+    let sidebarName = "w-config-with-sidebar"
+    let withSidebar = doctored(sidebarName) { m, _, p in
+        let j: [String: Any] = ["mcpServers": ["x": ["command": "x"]],
+                                "preferences": ["epitaxyPrefs": ["epitaxy-folder-permission-mode-v2.\(sid(3))": ["/w/project": "bypassPermissions"]], "menuBarEnabled": true]]
+        try setConfig(&m, p, try JSONSerialization.data(withJSONObject: j))
+    }
+    if withSidebar == "OPENED", let os = try? SessionsImport.open(URL(fileURLWithPath: out + "/\(sidebarName).dmg"), password: pw, place: place) {
+        let (tS, dS, _) = target("s")
+        let stS = try! SessionsImport.materialize(os, part: os.parts[0], target: "s")
+        let bS = try! SessionsImport.commit(stS)
+        _ = try? SessionsRestore.run(tS, bS, addConfig: true, windowClosed: { true })
+        let got = json(fm.contents(atPath: dS + "/claude_desktop_config.json"))
+        check(got?["mcpServers"] != nil && (got?["preferences"] as? [String: Any])?["epitaxyPrefs"] == nil && (got?["preferences"] as? [String: Any])?["menuBarEnabled"] as? Bool == true
+              && !(read(dS + "/claude_desktop_config.json") ?? "permission-mode").contains("permission-mode"),
+              "hostile (image): a config carrying the sidebar part (folder permission modes) is written without it; the rest comes")
+        SessionsImport.discard(os.work)
+    } else { check(false, "hostile (image): the config with a sidebar part opens: \(withSidebar.prefix(80))") }
+
     // ---- the older rules refuse version 3: 26.11.7 reads `version == 1`, 26.11.8 `<= 2`; and a reader without the config role can't decode it
     let v3 = oi.parts[0].manifest.version
     check(v3 == 3 && !(v3 == 1) && !(v3 <= 2), "format: this build writes 3, which 26.11.7's guard (== 1) and 26.11.8's (<= 2) refuse")
