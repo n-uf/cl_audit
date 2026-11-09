@@ -8,17 +8,15 @@ the notes before updating.
 
 ## Unreleased
 
-- **Sessions from the Claude window are kept at any age, and cl_audit says so.** Since Claude Code 2.1.248 its
-  clean-up keeps the transcript of a session started or last continued in the Claude window or Cowork (unless
-  `desktopSessionCleanupPeriodDays` gives those an age limit, the window released the session, or the organisation's
-  managed settings, HIPAA, zero data retention or a settings error make `cleanupPeriodDays` apply to everything). The
-  Sessions card said everything is deleted after `cleanupPeriodDays`: **Kept here** now reads "Claude Code deletes
-  terminal sessions after 30 days; ones from the Claude window it keeps" and **Keep for** says which sessions the
-  number is for. Restore, Import and the default-profile move list **Would be deleted** (instead of "Older than 30
-  days") with only the transcripts Claude Code would really delete, decided per transcript the way Claude Code decides
-  (the transcript's own `entrypoint` at its first and last lines, release markers, the organisation's managed
-  settings from every source in Claude Code's order); the row is gone when there are none, and **Keep for 90 days**
-  shows only when 90 days would keep some of them. Managed settings are read, never written.
+- **Sessions from the Claude window are kept at any age, and cl_audit now says so.** Since Claude Code 2.1.248 its
+  clean-up keeps sessions started or last continued in the Claude window or Cowork, unless
+  `desktopSessionCleanupPeriodDays` gives them a limit, you deleted or archived them in the window, or your
+  organisation's managed settings (or an error in them), HIPAA or zero data retention make `cleanupPeriodDays` apply to
+  everything. **Kept here** and **Keep for** say which sessions the number is for, and that Claude Code doesn't clean up
+  while `cleanupPeriodDays` or `desktopSessionCleanupPeriodDays` in `settings.json` isn't a valid number. Restore,
+  Import and the default-profile move show **Would be deleted** (instead of "Older than 30 days") with only the sessions
+  Claude Code would really delete, and **Keep for 90 days** only when it would save some. Your organisation's settings
+  are read, never changed.
 
 ## 26.11.5 — 2026-11-08
 
