@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.7 — 2026-11-09
+
 - A settings file that names `cleanupPeriodDays` or `desktopSessionCleanupPeriodDays` twice is read the way Claude Code
   reads it: the last one counts.
 
