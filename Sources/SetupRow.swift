@@ -68,6 +68,36 @@ struct SetupRow: View {
         }
     }
 
+    private static func settingsStatus(_ sp: SessionsRestore.SetupPlan) -> SessionsRestore.SetupPlan.Status? {
+        sp.entries.first { $0.unit == Setup.Unit(kind: .settings, name: "settings.json") }?.status
+    }
+
+    /// The line for scripts added without the execute bit (their settings.json isn't added by this run), true to why: the same
+    /// settings.json is already here (it does call them), a different one stays, or there is none to add.
+    static func execManualWords(_ sp: SessionsRestore.SetupPlan, imported: Bool) -> String {
+        let k = sp.execManual.count, it = k == 1 ? "it" : "them", scripts = "\(k) \(k == 1 ? "script" : "scripts")"
+        switch settingsStatus(sp) {
+        case .same?:
+            return "\(scripts) added, not executable: your settings.json already calls \(it). Make \(it) executable yourself (Terminal: chmod u+x) or \(k == 1 ? "its hook fails" : "their hooks fail")."
+        case nil:
+            return "\(scripts) added but not runnable: the \(imported ? "file" : "backup") has no settings.json, so nothing calls \(it). Make \(it) executable yourself only if you add hooks for \(it) to your settings.json."
+        case .blocked?:
+            return "\(scripts) added but not runnable: settings.json can't be added here, so nothing calls \(it). Make \(it) executable yourself only if you add the hooks to your settings.json."
+        default:
+            return "\(scripts) added but not runnable: your settings.json here stays, so nothing calls \(it). Make \(it) executable yourself only if you add the hooks to it."
+        }
+    }
+
+    /// The key that shows what the hooks run: the hide key keeps the caveat when settings.json isn't added, so the commands never
+    /// show without the line saying they won't run.
+    static func hooksKey(_ sp: SessionsRestore.SetupPlan, imported: Bool) -> (show: String, hide: String) {
+        switch settingsStatus(sp) {
+        case .new?: return ("What its hooks and status line run", "Hide what they run")
+        case .same?: return ("What its hooks run (the same settings.json is already here)", "Hide what they run")
+        default: return ("What the \(imported ? "file" : "backup")'s hooks would run (not added: settings.json here stays)", "Hide (not added: settings.json here stays)")
+        }
+    }
+
     /// One header per status, one unit a line under it: "New:", "  skill foo", "Already here:", "  agent x", "Different here (stays as it is):" …
     private func listLines(_ sp: SessionsRestore.SetupPlan) -> [String] {
         var out: [String] = []
@@ -117,15 +147,15 @@ struct SetupRow: View {
                     }
                     // (what a plan holds before the choice is what adding would do: said as such while they are left out)
                     if !undone, !sp.execNames.isEmpty { small((sp.leftOut ? "If added: " : "") + "\(n(sp.execNames.count, "script", "scripts")) made executable (owner only), only inside what this adds") }
-                    if !undone, !sp.leftOut, !sp.execManual.isEmpty { small("\(n(sp.execManual.count, "script", "scripts")) added but not runnable: your settings.json here stays, so nothing calls \(sp.execManual.count == 1 ? "it" : "them"). Make \(sp.execManual.count == 1 ? "it" : "them") executable yourself only if you add the hooks to it.", color: face.caution) }
+                    if !undone, !sp.leftOut, !sp.execManual.isEmpty { small(Self.execManualWords(sp, imported: imported), color: face.caution) }
                     if !undone, !sp.settingsDiffer.isEmpty { small("settings.json here stays as it is; the one in the \(imported ? "file" : "backup") differs in \(sp.settingsDiffer.prefix(6).joined(separator: ", "))", color: face.caution) }
                     ForEach(Array(sp.notes.enumerated()), id: \.offset) { _, s in small(s, color: face.caution) }
                     ForEach(Array(sp.missingPaths.prefix(5).enumerated()), id: \.offset) { _, s in small(s, color: face.caution) }
                     if !sp.leftOutAtSource.isEmpty { small("Not in the \(imported ? "file" : "backup"): \(sp.leftOutAtSource.prefix(4).joined(separator: ", "))" + (sp.leftOutAtSource.count > 4 ? ", …" : "")) }
                     if !sp.isEmpty { listKey("Show the list", "Hide the list", $showList); if showList { lines(listLines(sp)) } }
                     if !sp.hooks.isEmpty {
-                        let added = sp.entries.first { $0.unit == Setup.Unit(kind: .settings, name: "settings.json") }?.status == .new
-                        listKey(added ? "What its hooks and status line run" : "What the \(imported ? "file" : "backup")'s hooks would run (not added: settings.json here stays)", "Hide what they run", $showHooks)
+                        let key = Self.hooksKey(sp, imported: imported)
+                        listKey(key.show, key.hide, $showHooks)
                         if showHooks { lines(sp.hooks.map(home), wrap: true) }
                     }
                 }

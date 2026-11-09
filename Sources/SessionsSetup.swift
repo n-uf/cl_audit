@@ -70,6 +70,10 @@ enum Setup {
     static let neverFolders: Set<String> = ["projects", "todos", "plugins", "statsig", "shell-snapshots", "ide"]
     static let buildDirs: Set<String> = [".git", ".hg", ".svn", "node_modules", ".venv", "venv", "__pycache__"]
     static let maxFiles = 20_000
+    /// Why a skill (or a folder of agents, commands, output styles) is left out whole: the walk had to stop in it.
+    static let cutWords = "too many files, or folders nested too deep: left out whole"
+    /// What a hard-linked file is listed with: never carried (it is another file's content too).
+    static let hardLinkWords = " (a hard link)"
 
     static func buildLeftover(_ name: String, isDir: Bool) -> Bool {
         isDir ? buildDirs.contains(name) : (name == ".DS_Store" || name.hasSuffix(".pyc"))
@@ -267,7 +271,7 @@ enum Setup {
             } else if kind == S_IFREG {
                 if buildLeftover(n, isDir: false) { found.leftOutBuild += 1; continue }
                 if excludedName(n, top: false) { found.leftOutNames.append(r); continue }
-                if st.st_nlink > 1 { found.leftOutNames.append(r + " (a hard link)"); continue }
+                if st.st_nlink > 1 { found.leftOutNames.append(r + hardLinkWords); continue }
                 count += 1
                 files.append(FileRec(rel: r, src: path, bytes: Int64(st.st_size), exec: st.st_mode & 0o100 != 0))
             }
@@ -395,7 +399,7 @@ enum Setup {
                     walk(path, "skills/" + n, depth: 0, into: &sub, files: &files, link: &link, count: &count)
                     if let t = link { found.linked.append(Linked(label: "skill \(n) (it holds a link)", kind: .skill, target: t)); continue }
                     // a skill the walk had to stop in is left out whole and listed: never carried in part, never as a whole "New" one
-                    if !sub.cut.isEmpty { found.leftOutNames.append("skills/\(n) (too deep or too many files: left out whole)"); continue }
+                    if !sub.cut.isEmpty { found.leftOutNames.append("skills/\(n) (\(cutWords))"); continue }
                     found.leftOutBuild += sub.leftOutBuild; found.leftOutNames += sub.leftOutNames
                     for f in files { add(f) }
                 } else {
@@ -408,7 +412,7 @@ enum Setup {
                         walk(path, folder + "/" + n, depth: 0, into: &sub, files: &files, link: &link, count: &count)
                         found.leftOutBuild += sub.leftOutBuild; found.leftOutNames += sub.leftOutNames
                         if let t = link { found.linked.append(Linked(label: "\(folder) folder \(n) (it holds a link)", kind: kind, target: t)); continue }
-                        if !sub.cut.isEmpty { found.leftOutNames.append("\(folder)/\(n) (too deep or too many files: left out whole)"); continue }
+                        if !sub.cut.isEmpty { found.leftOutNames.append("\(folder)/\(n) (\(cutWords))"); continue }
                         for f in files { add(f) }
                     } else if k == S_IFREG {
                         if n.hasPrefix(".") || buildLeftover(n, isDir: false) { if buildLeftover(n, isDir: false) { found.leftOutBuild += 1 }; continue }
@@ -620,14 +624,14 @@ enum Setup {
     }
 
     /// "settings.json, the 3 scripts it runs and the plugin marketplaces" (what only the encrypted image carries); `held`: units that
-    /// hold a script it runs ("1 skill that holds a script it runs").
+    /// hold a script its hooks run ("1 skill with a script its hooks run").
     /// `unknown`: settings.json couldn't tell which files its hooks run, so `held` is every unit with an executable file.
     static func sensitiveWords(_ c: Counts, held: Counts = Counts([]), unknown: Bool = false) -> String? {
         var p: [String] = []
         if c.settings > 0 { p.append("settings.json") }
         if c.scripts > 0 { p.append(c.scripts == 1 ? "the script it runs" : "the \(c.scripts) scripts it runs") }
         if held.total > 0, unknown { p.append("\(words(held)) with an executable file (settings.json couldn't be read, so which files its hooks run isn't known)") }
-        else if held.total > 0 { p.append("\(words(held)) that \(held.total == 1 ? "holds" : "hold") a script it runs") }
+        else if held.total > 0 { p.append("\(words(held)) with a script its hooks run") }
         if c.marketplaces > 0 { p.append("the plugin marketplaces") }
         guard !p.isEmpty else { return nil }
         return p.count == 1 ? p[0] : p.dropLast().joined(separator: ", ") + " and " + p.last!

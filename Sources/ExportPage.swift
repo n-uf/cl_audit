@@ -259,7 +259,9 @@ enum ExportWords {
         guard let p = pv else { return [] }
         let sp = p.setup
         var out: [String] = []
-        if setup, !image, let w = Setup.sensitiveWords(sp.sensitive, held: sp.held, unknown: sp.hooksUnknown) { out.append("\(w) need the encrypted disk image: left out of a zip") }
+        if setup, !image, let w = Setup.sensitiveWords(sp.sensitive, held: sp.held, unknown: sp.hooksUnknown) {
+            out.append("\(w) \(sp.sensitive.total + sp.held.total == 1 ? "needs" : "need") the encrypted disk image: left out of a zip")
+        }
         if !sp.linked.isEmpty {
             let shown = sp.linked.prefix(3).map { "\($0.label) points to \(tilde($0.target))" }.joined(separator: ", ")
             out.append("\(n(sp.linked.count, "link", "links")) left out, never followed: \(shown)" + (sp.linked.count > 3 ? ", …" : ""))
@@ -267,7 +269,17 @@ enum ExportWords {
         out += sp.outside.prefix(3).map { $0 }
         if sp.outside.count > 3 { out.append("…and \(sp.outside.count - 3) more outside the folder, not carried") }
         if sp.leftOutBuild > 0 { out.append("\(sp.leftOutBuild) version-history and build leftovers (.git, node_modules, .DS_Store …) left out") }
-        if !sp.leftOutNames.isEmpty { out.append("\(n(sp.leftOutNames.count, "file", "files")) with a sign-in name left out: \(sp.leftOutNames.prefix(2).joined(separator: ", "))") }
+        // the walk's cut units, hard links and sign-in names: each said for what it is
+        let cutSuffix = " (\(Setup.cutWords))"
+        let whole = sp.leftOutNames.filter { $0.hasSuffix(cutSuffix) }.map { String($0.dropLast(cutSuffix.count)) }
+        let hard = sp.leftOutNames.filter { $0.hasSuffix(Setup.hardLinkWords) }.map { String($0.dropLast(Setup.hardLinkWords.count)) }
+        let signIn = sp.leftOutNames.filter { !$0.hasSuffix(cutSuffix) && !$0.hasSuffix(Setup.hardLinkWords) }
+        if !signIn.isEmpty { out.append("\(n(signIn.count, "file", "files")) with a sign-in name left out: \(signIn.prefix(2).joined(separator: ", "))") }
+        if !whole.isEmpty {
+            let what = whole.allSatisfy { $0.hasPrefix("skills/") } ? n(whole.count, "skill", "skills") : n(whole.count, "skill or folder", "skills or folders")
+            out.append("\(what) left out whole: too many files or folders nested too deep (\(whole.prefix(2).joined(separator: ", "))\(whole.count > 2 ? ", …" : ""))")
+        }
+        if !hard.isEmpty { out.append("\(n(hard.count, "file", "files")) left out: \(hard.count == 1 ? "a hard link" : "hard links") (\(hard.prefix(2).joined(separator: ", "))\(hard.count > 2 ? ", …" : ""))") }
         return out
     }
 

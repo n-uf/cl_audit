@@ -199,8 +199,8 @@ MainActor.assumeIsolated {
         let ppv = SessionsExport.preview(ppart)!
         check(ppv.setup.hookUnits == [Setup.Unit(kind: .skill, name: "guard")] && ppv.setup.keyedUnits.isEmpty, "preview: the skill is marked as holding a hook's script, and is not key-scanned (the image's job)")
         check(ExportWords.setupWords(ppv, setup: true, image: false) == "1 skill, 1 agent" && ExportWords.setupWords(ppv, setup: true, image: true) == "settings.json with 2 hooks, 2 skills, 1 agent"
-              && ExportWords.setupNotes(ppv, setup: true, image: false).first == "settings.json and 1 skill that holds a script it runs need the encrypted disk image: left out of a zip",
-              "export row: a zip carries 1 skill and 1 agent; the skill that holds a script it runs needs the image: \(ExportWords.setupWords(ppv, setup: true, image: false)) / \(ExportWords.setupNotes(ppv, setup: true, image: false).first ?? "")")
+              && ExportWords.setupNotes(ppv, setup: true, image: false).first == "settings.json and 1 skill with a script its hooks run need the encrypted disk image: left out of a zip",
+              "export row: a zip carries 1 skill and 1 agent; the skill with a script its hooks run needs the image: \(ExportWords.setupWords(ppv, setup: true, image: false)) / \(ExportWords.setupNotes(ppv, setup: true, image: false).first ?? "")")
         let hz = URL(fileURLWithPath: out + "/E2h.zip")
         let hzo = try? SessionsExport.run(SessionsExport.Job(parts: [ppart], keys: .leaveOut, destination: hz, rootName: "e2h-export", place: eplace))
         if let hzo, let hop = try? SessionsImport.open(hz, password: nil, place: eplace) {
@@ -599,6 +599,47 @@ MainActor.assumeIsolated {
         let up: [String: String] = ["CLAUDE.md": " @../.claude/rules/up.md\n @docs/a.md\n", "rules/up.md": "u", "docs/a.md": " @../../.claude/docs/b.md\n", "docs/b.md": "b", "rules/other.md": "o"]
         let ups = Setup.includeClosure(carried: Set(up.keys)) { up[$0].map { Data($0.utf8) } }
         check(ups == ["rules/up.md", "docs/a.md", "docs/b.md"], "includes: a relative @../ that leaves the folder and comes back in is matched by its tail, like ~/: \(ups.sorted())")
+    }
+
+    // ---- the Export page says what each left-out file is: a sign-in name, a skill cut whole, a hard link
+    do {
+        let c8 = e2 + "/.claude-e2n"
+        try? fm.removeItem(atPath: c8)
+        w(c8, "skills/s/SKILL.md", "s"); w(c8, "skills/s/.credentials.json", "{}")
+        w(c8, "skills/deep/SKILL.md", "deep"); w(c8, "skills/deep/a/b/c/d/e/f/g/h/x.md", "too deep")
+        w(c8, "skills/hl/SKILL.md", "hl"); w(c8, "skills/hl/data.txt", "shared"); link(c8 + "/skills/hl/data.txt", e2 + "/hl-other.txt")
+        let npv = SessionsExport.preview(SessionsExport.Part(profile: "e2n", name: "E2n", source: SessionsBackup.Source(profile: "e2n", dataDir: "", codeDir: c8), emails: []))!
+        let notes = ExportWords.setupNotes(npv, setup: true, image: false)
+        check(notes.contains("1 file with a sign-in name left out: skills/s/.credentials.json") && notes.contains("1 skill left out whole: too many files or folders nested too deep (skills/deep)")
+              && notes.contains("1 file left out: a hard link (skills/hl/data.txt)") && !notes.contains { $0.contains("sign-in name") && ($0.contains("deep") || $0.contains("hl/")) },
+              "export row: a sign-in name, a skill cut whole and a hard link each said for what it is: \(notes)")
+        try? fm.removeItem(atPath: c8); unlink(e2 + "/hl-other.txt")
+    }
+
+    // ---- the setup row's words for scripts added without the execute bit, and the hooks key, true to settings.json's status here
+    do {
+        let settingsU = Setup.Unit(kind: .settings, name: "settings.json")
+        func plan(_ s: SessionsRestore.SetupPlan.Status?, scripts: Int = 4) -> SessionsRestore.SetupPlan {
+            var sp = SessionsRestore.SetupPlan()
+            sp.execManual = (1...scripts).map { "bin/s\($0).sh" }
+            if let s { sp.entries = [SessionsRestore.SetupPlan.Entry(unit: settingsU, status: s, files: 1, bytes: 10)] }
+            return sp
+        }
+        check(SetupRow.execManualWords(plan(.same), imported: true) == "4 scripts added, not executable: your settings.json already calls them. Make them executable yourself (Terminal: chmod u+x) or their hooks fail."
+              && SetupRow.execManualWords(plan(.same, scripts: 1), imported: true) == "1 script added, not executable: your settings.json already calls it. Make it executable yourself (Terminal: chmod u+x) or its hook fails.",
+              "setup row: the same settings.json here already calls the scripts: said so, and how to make them executable: \(SetupRow.execManualWords(plan(.same), imported: true))")
+        check(SetupRow.execManualWords(plan(.different), imported: true).hasPrefix("4 scripts added but not runnable: your settings.json here stays, so nothing calls them.")
+              && SetupRow.execManualWords(plan(nil), imported: true).hasPrefix("4 scripts added but not runnable: the file has no settings.json, so nothing calls them.")
+              && SetupRow.execManualWords(plan(nil), imported: false).contains("the backup has no settings.json"),
+              "setup row: a different settings.json here stays; none in the file says that, not that one here stays: \(SetupRow.execManualWords(plan(nil), imported: true))")
+        check(SetupRow.hooksKey(plan(.same), imported: true) == ("What its hooks run (the same settings.json is already here)", "Hide what they run")
+              && SetupRow.hooksKey(plan(.different), imported: true) == ("What the file's hooks would run (not added: settings.json here stays)", "Hide (not added: settings.json here stays)")
+              && SetupRow.hooksKey(plan(.new), imported: false) == ("What its hooks and status line run", "Hide what they run"),
+              "setup row: the hooks key for the same settings.json here, a different one (the caveat stays while they show), and a new one")
+    }
+
+    // ---- the paths a command names, and the names refused under another case, directly
+    do {
         let s = Data(#"{"note":"bin/run","hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash $HOME/.claude/bin/x.sh --flag"}]}]},"statusLine":{"type":"command","command":"~/.claude/bin/line.sh"}}"#.utf8)
         check(Setup.namedPaths(in: s, among: ["bin/run", "bin/x.sh", "bin/line.sh", "bin/other.sh"]) == ["bin/x.sh", "bin/line.sh"], "scripts: only a path a hook or status-line command names")
         // a `command` under another key (an MCP server's) is no hook's: not carried, not accepted, not shown as what the hooks run

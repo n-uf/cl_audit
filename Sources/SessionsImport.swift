@@ -936,7 +936,7 @@ enum SessionsImport {
             if !includes.isEmpty {
                 let carried = Set(setupRels)
                 let allowed = Setup.includeClosure(carried: carried) { rel in try? readSmall(tree.appendingPathComponent("\(base)/setup/\(rel)").path, limit: 4 << 20) }
-                if let bad = includes.first(where: { !allowed.contains($0) }) { throw ArchiveError("A file CLAUDE.md in the export doesn't include (\(bad.prefix(50))); refused.") }
+                if let bad = includes.first(where: { !allowed.contains($0) }) { throw ArchiveError("The export holds a file its CLAUDE.md doesn't include (\(bad.prefix(50))); refused.") }
             }
             if m.setupLeftOut.map({ $0.count > 500 }) == true { throw ArchiveError("A profile's backup.json lists too many left-out setup names; refused.") }
             parts.append(PartInfo(dir: p.dir, name: p.name, profile: p.profile, manifest: m))
