@@ -1,11 +1,15 @@
 #!/bin/bash
 # A stand-in for `claude` in print mode with stream-json in and out, for Checks/quick-chat. No account, no network.
-#   QC_STUB=ok (default)  each message gets "Answer N", streamed, then a result
-#   QC_STUB=auth          "Not logged in", as Claude Code says it with no sign-in
-#   QC_STUB=crash         half an answer, a line on stderr, then exit 3
-#   QC_STUB=slow          half an answer, then it waits (for Stop)
-#   QC_STUB_ARGS=FILE     writes its arguments, a few environment values, its folder and its pid there
-mode="${QC_STUB:-ok}"
+# The quick chat passes `claude` only an allowlisted environment, so the stand-in reads its settings from stub.conf in
+# the folder above the one it runs in (the work folder):
+#   mode=ok (default)  each message gets "Answer N", streamed, then a result
+#   mode=auth          "Not logged in", as Claude Code says it with no sign-in
+#   mode=crash         half an answer, a line on stderr, then exit 3
+#   mode=slow          half an answer, then it waits (for Stop)
+#   args=FILE          writes its arguments, a few environment values, its folder and its pid there
+conf="$(cd "$PWD/.." && pwd)/stub.conf"
+mode="$(sed -n 's/^mode=//p' "$conf" 2>/dev/null)"; mode="${mode:-ok}"
+QC_STUB_ARGS="$(sed -n 's/^args=//p' "$conf" 2>/dev/null)"
 if [ -n "${QC_STUB_ARGS:-}" ]; then
   {
     for a in "$@"; do printf 'ARG [%s]\n' "$a"; done

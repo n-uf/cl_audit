@@ -129,14 +129,19 @@ struct QuickChatCommand: Equatable {
         return a
     }
 
-    /// The environment `claude` gets: the Mac's, without any API key or token (so it uses the folder's sign-in), with
-    /// the profile's folder, `claude`'s own folder first on the PATH (an npm install needs its `node`), and Claude
-    /// Code's non-essential traffic (telemetry, error reports, update checks) off.
+    /// What `claude` takes from the Mac's environment: who and where the user is, the language, and the network's
+    /// proxies and certificates. Nothing else: no key or token, no other provider (Bedrock, Vertex, Foundry and their
+    /// credentials), no model override, no custom headers and no telemetry export, so it answers on the folder's own
+    /// sign-in and sends nothing but the chat.
+    static let passed: Set<String> = ["HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "LANG", "TERM", "__CF_USER_TEXT_ENCODING",
+                                      "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "NO_PROXY", "no_proxy",
+                                      "ALL_PROXY", "all_proxy", "SSL_CERT_FILE", "SSL_CERT_DIR", "NODE_EXTRA_CA_CERTS"]
+
+    /// The environment `claude` gets: the allowed part of the Mac's (`passed`), the profile's folder, `claude`'s own
+    /// folder first on the PATH (an npm install needs its `node`), and Claude Code's non-essential traffic (telemetry,
+    /// error reports, update checks) off.
     func environment(_ base: [String: String]) -> [String: String] {
-        var env = base
-        for k in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR", "ANTHROPIC_BASE_URL"] {
-            env[k] = nil
-        }
+        var env = base.filter { Self.passed.contains($0.key) || $0.key.hasPrefix("LC_") }
         if !isDefaultDir { env["CLAUDE_CONFIG_DIR"] = configDir }
         let own = (claude as NSString).deletingLastPathComponent
         env["PATH"] = [own, "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin", "/bin", base["PATH"] ?? ""]

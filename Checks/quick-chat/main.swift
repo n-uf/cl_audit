@@ -72,11 +72,25 @@ check("the profile's own model", !a2.contains("--model"))
 check("thinking high", after("--effort", a2) == "high" && after("--settings", a2) == #"{"alwaysThinkingEnabled":true}"#, a2)
 check("resume", after("--resume", a2) == "s-1")
 
-let base = ["PATH": "/usr/bin:/bin", "HOME": "/Users/sample", "ANTHROPIC_API_KEY": "sk-sample", "CLAUDE_CODE_OAUTH_TOKEN": "sample",
-            "ANTHROPIC_AUTH_TOKEN": "sample", "CLAUDE_CONFIG_DIR": "/Users/sample/.claude-other", "ANTHROPIC_BASE_URL": "https://example.com"]
+let base = ["PATH": "/usr/bin:/bin", "HOME": "/Users/sample", "LANG": "en_GB.UTF-8", "LC_CTYPE": "UTF-8", "HTTPS_PROXY": "http://proxy.example:8080",
+            "ANTHROPIC_API_KEY": "sk-sample", "CLAUDE_CODE_OAUTH_TOKEN": "sample", "CLAUDE_CODE_OAUTH_REFRESH_TOKEN": "sample",
+            "ANTHROPIC_AUTH_TOKEN": "sample", "CLAUDE_CONFIG_DIR": "/Users/sample/.claude-other", "ANTHROPIC_BASE_URL": "https://example.com",
+            "CLAUDE_CODE_USE_BEDROCK": "1", "AWS_BEARER_TOKEN_BEDROCK": "sample", "CLAUDE_CODE_USE_VERTEX": "1", "ANTHROPIC_VERTEX_PROJECT_ID": "sample",
+            "CLAUDE_CODE_ENABLE_TELEMETRY": "1", "OTEL_EXPORTER_OTLP_ENDPOINT": "https://collector.example", "ANTHROPIC_CUSTOM_HEADERS": "X: y",
+            "ANTHROPIC_MODEL": "opus", "NODE_OPTIONS": "--require /tmp/x.js"]
 let env = cmd.environment(base)
-check("no API key", env["ANTHROPIC_API_KEY"] == nil && env["ANTHROPIC_AUTH_TOKEN"] == nil && env["CLAUDE_CODE_OAUTH_TOKEN"] == nil)
+check("no API key", env["ANTHROPIC_API_KEY"] == nil && env["ANTHROPIC_AUTH_TOKEN"] == nil && env["CLAUDE_CODE_OAUTH_TOKEN"] == nil
+      && env["CLAUDE_CODE_OAUTH_REFRESH_TOKEN"] == nil)
 check("no other endpoint", env["ANTHROPIC_BASE_URL"] == nil)
+check("no other provider", env["CLAUDE_CODE_USE_BEDROCK"] == nil && env["AWS_BEARER_TOKEN_BEDROCK"] == nil && env["CLAUDE_CODE_USE_VERTEX"] == nil
+      && env["ANTHROPIC_VERTEX_PROJECT_ID"] == nil)
+check("no telemetry export", env["CLAUDE_CODE_ENABLE_TELEMETRY"] == nil && env["OTEL_EXPORTER_OTLP_ENDPOINT"] == nil)
+check("no headers, model or node options from outside", env["ANTHROPIC_CUSTOM_HEADERS"] == nil && env["ANTHROPIC_MODEL"] == nil && env["NODE_OPTIONS"] == nil)
+check("language and proxy kept", env["LANG"] == "en_GB.UTF-8" && env["LC_CTYPE"] == "UTF-8" && env["HTTPS_PROXY"] == "http://proxy.example:8080")
+check("nothing but the allowed, the folder, the PATH and the off switches",
+      Set(env.keys).subtracting(QuickChatCommand.passed).subtracting(["CLAUDE_CONFIG_DIR", "PATH", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC",
+                                                                      "DISABLE_TELEMETRY", "DISABLE_ERROR_REPORTING"]).allSatisfy { $0.hasPrefix("LC_") },
+      env.keys.sorted())
 check("the profile's folder", env["CLAUDE_CONFIG_DIR"] == "/Users/sample/.claude-work")
 check("claude's folder first on the PATH", env["PATH"]?.hasPrefix("/opt/sample/bin:") == true, env["PATH"] ?? "")
 check("non-essential traffic off", env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] == "1" && env["DISABLE_TELEMETRY"] == "1")
@@ -117,8 +131,9 @@ let argsFile = work + "-args.txt"
 check("the stand-in is there", FileManager.default.isExecutableFile(atPath: stub), stub)
 
 func run(_ mode: String, _ body: (QuickChatProcess, () -> [QuickChatEvent], () -> (Int32, String)?) -> Void) {
-    setenv("QC_STUB", mode, 1)
-    setenv("QC_STUB_ARGS", argsFile, 1)
+    // the stand-in's settings: beside the work folder, since `claude` gets only an allowlisted environment
+    try? FileManager.default.createDirectory(atPath: work, withIntermediateDirectories: true)
+    try? "mode=\(mode)\nargs=\(argsFile)\n".write(toFile: (work as NSString).deletingLastPathComponent + "/stub.conf", atomically: true, encoding: .utf8)
     try? FileManager.default.removeItem(atPath: argsFile)
     let p = QuickChatProcess(QuickChatCommand(claude: stub, configDir: "/Users/sample/.claude-work", isDefaultDir: false,
                                               workFolder: work, model: "haiku"))
@@ -158,15 +173,17 @@ run("ok") { p, events, exit in
 }
 
 setenv("ANTHROPIC_API_KEY", "sk-sample-should-not-pass", 1)
+setenv("CLAUDE_CODE_OAUTH_TOKEN", "sample-should-not-pass", 1)
 run("auth") { p, events, exit in
     p.send("hi")
     wait(5) { done(events()) == 1 }
     check("auth: the error", events().contains(.message(text: "Not logged in · Please run /login", model: "<synthetic>", error: "authentication_failed")), events())
     check("auth: an error result", events().contains { if case .done(true, _, _, _) = $0 { return true }; return false })
     let recorded = (try? String(contentsOfFile: argsFile, encoding: .utf8)) ?? ""
-    check("auth: the Mac's API key not passed on", recorded.contains("ENV KEY=<unset>"), recorded)
+    check("auth: the Mac's API key and token not passed on", recorded.contains("ENV KEY=<unset>") && recorded.contains("ENV TOKEN=<unset>"), recorded)
 }
 unsetenv("ANTHROPIC_API_KEY")
+unsetenv("CLAUDE_CODE_OAUTH_TOKEN")
 
 run("crash") { p, events, exit in
     p.send("hi")
