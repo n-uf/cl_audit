@@ -739,6 +739,9 @@ enum SessionsExport {
                     if !SecretScan.scan(w.data).isEmpty { pv.keyedFiles += 1; pv.keyedBytes += f.bytes }
                     continue
                 }
+                if leaf == "scheduled-tasks.json", f.bytes < 64 << 20, let d = FileManager.default.contents(atPath: f.src), EntryConnections.top([UInt8](d)) == nil {
+                    pv.unreadable += 1; continue                            // a task file a zip can't read is left out too
+                }
                 if leaf.hasPrefix("local_") || leaf == "scheduled-tasks.json" {
                     guard let kinds = SecretScan.scan(path: f.src, cancel: cancel, progress: progress) else { if cancel() { return nil }; continue }
                     if !kinds.isEmpty { pv.keyedFiles += 1; pv.keyedBytes += f.bytes }
@@ -1107,6 +1110,8 @@ enum SessionsExport {
                 } else {
                     po.unreadableLeftOut += 1; leftOut += 1; continue       // an entry this can't read (UTF-16, a byte-order mark, not an object): it can't be vouched for
                 }
+            } else if zip, name == "scheduled-tasks.json", EntryConnections.top([UInt8](raw)) == nil {
+                po.unreadableLeftOut += 1; leftOut += 1; continue           // the same for a task file it can't read
             }
             if !SecretScan.scan(body).isEmpty {
                 if keys == .leaveOut { po.keysLeftOut += 1; continue }

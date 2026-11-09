@@ -894,7 +894,7 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   (a profile named for its address shows its fingerprint).
   A **zip** also leaves out each Code-tab entry's `remoteMcpServersConfig` and `sessionSettings` (connection settings and
   environment values the key scan can't recognise); the page says so ("Connection settings in 12 Code-tab entries need the
-  encrypted disk image: left out of a zip"), and an entry it can't read as UTF-8 JSON (UTF-16, say) is left out of a zip too,
+  encrypted disk image: left out of a zip"), and an entry or task file it can't read as UTF-8 JSON (UTF-16, say) is left out of a zip too,
   said on the same line. The encrypted disk image keeps them, and the keys looked for are searched in them.
   Claude Code's **retention markers** (`<session>.desktop-released.json` in a project's folder) travel with their
   transcript: one whose transcript isn't in the file (it is gone, or left out for keys) is left out too and counted on the

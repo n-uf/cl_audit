@@ -356,7 +356,7 @@ struct ExportPage: View {
             }
             if !runner.usesImage, let p = pv, p.connections > 0 || p.unreadable > 0 {
                 let settings = p.connections > 0 ? "Connection settings in \(n(p.connections, "Code-tab entry", "Code-tab entries")) need the encrypted disk image: left out of a zip." : ""
-                let unread = p.unreadable > 0 ? "\(n(p.unreadable, "Code-tab entry", "Code-tab entries")) it can't read \(p.unreadable == 1 ? "is" : "are") left out of a zip too." : ""
+                let unread = p.unreadable > 0 ? "\(n(p.unreadable, "Code-tab file", "Code-tab files")) it can't read \(p.unreadable == 1 ? "is" : "are") left out of a zip too." : ""
                 SRowLine(text: [settings, unread].filter { !$0.isEmpty }.joined(separator: " "), color: face.caution)
             }
             SRow(label: "Cowork", stacked: true) { value("left out") }
