@@ -234,7 +234,7 @@ enum SessionsRestore {
             for (_, c) in windowItems where c[3] == "scheduled-tasks.json" {
                 guard let d = windowData[c.joined(separator: "/")], let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
                 for t in (j["scheduledTasks"] as? [[String: Any]]) ?? [] {
-                    if let id = t["id"] as? String { taskNames[id] = (t["name"] as? String) ?? (t["title"] as? String) ?? id }
+                    if let id = t["id"] as? String { taskNames[id] = (t["displayName"] as? String) ?? (t["name"] as? String) ?? (t["title"] as? String) ?? id }
                 }
             }
         }
