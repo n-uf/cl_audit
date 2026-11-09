@@ -115,7 +115,7 @@ MainActor.assumeIsolated {
     check(found.linked.map(\.label).sorted() == ["agent linked.md", "skill haslink (it holds a link)", "skill linkedskill"] && found.linked.allSatisfy { $0.target.hasPrefix(elsewhere) },
           "scan: a linked skill, a skill that holds a link anywhere (left out whole) and a linked agent are left out and listed with where they point: \(found.linked.map(\.label))")
     check(!rels.contains { $0.hasPrefix("skills/haslink") || $0.hasPrefix("skills/linkedskill") } && !rels.contains("agents/linked.md"), "scan: nothing of them is carried, nothing was followed")
-    check(found.outside.contains { $0.contains("@~/e2/out-of-folder/outside.md") && $0.contains("lives outside") } && found.outside.contains { $0.contains("@../escape.md") } && found.outside.contains { $0.contains("hook script outside") && $0.contains("outside.sh") }
+    check(found.outside.contains { $0.hasPrefix("CLAUDE.md includes ~/e2/out-of-folder/outside.md: outside ") } && found.outside.contains { $0.contains("includes ../escape.md") } && found.outside.contains { $0.contains("hook script outside") && $0.contains("outside.sh") }
           && !found.outside.contains { $0.contains("gone.sh") }, "scan: an include and a hook script outside the folder are listed, not carried (a path that isn't there isn't listed): \(found.outside)")
     check(found.files.first { $0.rel == "skills/alpha/run.sh" }?.exec == true && found.files.first { $0.rel == "agents/helper.md" }?.exec == false && found.files.first { $0.rel == "bin/guard.sh" }?.exec == true, "scan: the owner-execute bit is read")
     // links in other places: CLAUDE.md, skills/, an included file
@@ -141,9 +141,9 @@ MainActor.assumeIsolated {
     check(pv.setup.units.count == 15 && pv.setup.keyedUnits == [Setup.Unit(kind: .skill, name: "keyed")] && pv.keyed == 3 && pv.keyedSessions == 2 && pv.setup.extra.hooks == 3 && pv.setup.extra.statusLine && pv.setup.extra.plugins == 2,
           "preview: \(pv.setup.units.count) units, 1 skill with a key, 2 sessions with keys (3 in all), 3 hooks, a status line, 2 plugins")
     let zipWords = ExportWords.setupWords(pv, setup: true, image: false), imgWords = ExportWords.setupWords(pv, setup: true, image: true)
-    check(zipWords == "CLAUDE.md with 2 included files, 2 skills, 2 agents, 1 command, 1 output style, keybindings, the plugin list", "export row for a zip: \(zipWords)")
+    check(zipWords == "CLAUDE.md with 2 included files, 2 skills, 2 agents, 1 command, 1 output style, keybindings, 2 plugins to reinstall", "export row for a zip: \(zipWords)")
     check(imgWords == "CLAUDE.md with 2 included files, settings.json with 3 hooks and a status line, 2 scripts, 2 skills, 2 agents, 1 command, 1 output style, keybindings, 2 plugins to reinstall, the plugin marketplaces", "export row for an image: \(imgWords)")
-    check(ExportWords.setupWords(pv, setup: false, image: true) == "left out" && ExportWords.setupNotes(pv, setup: true, image: false).first == "settings.json, 2 hook scripts and the plugin marketplaces need the encrypted disk image: left out of a zip"
+    check(ExportWords.setupWords(pv, setup: false, image: true) == "left out" && ExportWords.setupNotes(pv, setup: true, image: false).first == "settings.json, the 2 scripts it runs and the plugin marketplaces need the encrypted disk image: left out of a zip"
           && ExportWords.setupNotes(pv, setup: true, image: true).allSatisfy { !$0.contains("need the encrypted") }, "export row: the menu's left out, and a zip says what only the image carries")
     check(ExportWords.foundWords(pv).hasPrefix("2 sessions and 1 skill hold keys: 3 GitHub tokens"), "Found line counts the skill with the sessions: \(ExportWords.foundWords(pv))")
     check(ExportWords.setupNotes(pv, setup: true, image: true).contains { $0.contains("3 links left out, never followed") && $0.contains("linkedskill points to") }, "export row: the linked skills are listed with where they point (this page only)")
@@ -166,7 +166,7 @@ MainActor.assumeIsolated {
     check(read(op.tree.path + "/profiles/p1/setup/CLAUDE.md")?.contains("me@example.com") == true && read(op.tree.path + "/profiles/p1/setup/skills/alpha/auth.py") == "print('auth helper')\n", "export: setup is carried as it is: the address in CLAUDE.md stays, no rewriting")
     check(!files(op.tree.path).contains { $0.contains(".git/") || $0.contains("__pycache__") || $0.contains(".DS_Store") || $0.contains(".credentials") }, "export: .git, __pycache__, .DS_Store and a sign-in name are not in the file")
     check(zo.sessions == 0 && zo.keysLeftOut == 2, "export: the 2 sessions with keys are left out as before")
-    check(m1.setupLeftOut?.contains("skill linkedskill") == true && !(m1.setupLeftOut ?? []).contains { $0.contains(elsewhere) }, "export: the links are named in the manifest, not where they point")
+    check(m1.setupLeftOut?.contains("skill linkedskill (a link)") == true && m1.setupLeftOut?.contains("skill keyed (held a key)") == true && m1.setupLeftOut?.contains("settings.json (needs the encrypted disk image)") == true && !(m1.setupLeftOut ?? []).contains { $0.contains(elsewhere) }, "export: the links are named in the manifest, not where they point")
 
     // ---- Export: an encrypted image with keys kept
     let dmgURL = URL(fileURLWithPath: out + "/E2.dmg"), pw = "e2-test-password-not-secret"
@@ -178,6 +178,48 @@ MainActor.assumeIsolated {
     check(mi.filter { $0.exec == true }.map(\.path).sorted() == ["setup/bin/guard.sh", "setup/bin/status.sh", "setup/skills/alpha/run.sh"], "export (image): the execute flag of the scripts settings.json points to is carried")
     // (the leak check for everything that is not setup still runs: only profiles/pN/setup/ is exempt)
     check(read(oi.tree.path + "/export.json")?.contains("me@example.com") == false, "export: the structure files hold no address")
+
+    // ---- a hook script inside a skill: the skill is as sensitive as the script (a zip leaves it out, the image carries it as the skill)
+    do {
+        let c4 = e2 + "/.claude-e2h"
+        w(c4, "skills/guard/SKILL.md", "guard skill"); w(c4, "skills/guard/run.sh", "#!/bin/sh\nexport DEPLOY_TOKEN=a-value-no-key-scan-knows\n", exec: true)
+        w(c4, "skills/plain/SKILL.md", "plain skill"); w(c4, "agents/helper.md", "helper agent")
+        try? fm.createDirectory(atPath: elsewhere + "/skills/linkedg", withIntermediateDirectories: true); write(elsewhere + "/skills/linkedg/run.sh", "#!/bin/sh\n")
+        symlink(elsewhere + "/skills/linkedg", c4 + "/skills/linkedg")
+        w(c4, "settings.json", "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\(c4)/skills/guard/run.sh\"},{\"type\":\"command\",\"command\":\"\(c4)/skills/linkedg/run.sh\"}]}]}}")
+        // a skill with a file nested deeper than the walk goes is left out whole, not carried in part
+        w(c4, "skills/deep/SKILL.md", "deep skill"); w(c4, "skills/deep/a/b/c/d/e/f/g/h/x.md", "too deep")
+        let fh = Setup.scan(codeDir: c4, home: home)
+        let hrels = Set(fh.files.map(\.rel))
+        check(hrels == ["skills/guard/SKILL.md", "skills/guard/run.sh", "skills/plain/SKILL.md", "agents/helper.md", "settings.json"],
+              "scan: a skill that is a link adds nothing, not even the one script a hook names inside it; a skill the walk can't finish is left out whole: \(hrels.sorted())")
+        check(fh.linked.map(\.label) == ["skill linkedg"] && fh.leftOutNames.contains { $0.hasPrefix("skills/deep") && $0.contains("left out whole") }, "scan: the linked skill and the cut one are listed: \(fh.linked.map(\.label)) \(fh.leftOutNames)")
+        check(Setup.hookUnits(rels: Array(hrels), settings: fm.contents(atPath: c4 + "/settings.json")) == [Setup.Unit(kind: .skill, name: "guard")], "scan: the skill that holds a file a hook runs is found")
+        let ppart = SessionsExport.Part(profile: "e2h", name: "E2h", source: SessionsBackup.Source(profile: "e2h", dataDir: "", codeDir: c4), emails: [])
+        let ppv = SessionsExport.preview(ppart)!
+        check(ppv.setup.hookUnits == [Setup.Unit(kind: .skill, name: "guard")] && ppv.setup.keyedUnits.isEmpty, "preview: the skill is marked as holding a hook's script, and is not key-scanned (the image's job)")
+        check(ExportWords.setupWords(ppv, setup: true, image: false) == "1 skill, 1 agent" && ExportWords.setupWords(ppv, setup: true, image: true) == "settings.json with 2 hooks, 2 skills, 1 agent"
+              && ExportWords.setupNotes(ppv, setup: true, image: false).first == "settings.json and 1 skill that holds a script it runs need the encrypted disk image: left out of a zip",
+              "export row: a zip carries 1 skill and 1 agent; the skill that holds a script it runs needs the image: \(ExportWords.setupWords(ppv, setup: true, image: false)) / \(ExportWords.setupNotes(ppv, setup: true, image: false).first ?? "")")
+        let hz = URL(fileURLWithPath: out + "/E2h.zip")
+        let hzo = try? SessionsExport.run(SessionsExport.Job(parts: [ppart], keys: .leaveOut, destination: hz, rootName: "e2h-export", place: eplace))
+        if let hzo, let hop = try? SessionsImport.open(hz, password: nil, place: eplace) {
+            let got = Set(hop.parts[0].manifest.items.filter { $0.role == .setup }.map { String($0.path.dropFirst(6)) })
+            check(got == ["skills/plain/SKILL.md", "agents/helper.md"] && hzo.setupSensitiveLeftOut.contains(Setup.Unit(kind: .skill, name: "guard")), "export (zip): the skill that holds a hook's script is left out with settings.json, nothing of it is in the file: \(got.sorted())")
+            check(hop.parts[0].manifest.setupLeftOut?.contains("skill guard (needs the encrypted disk image)") == true, "export (zip): and it is named in the file as left out for the image: \(hop.parts[0].manifest.setupLeftOut ?? [])")
+            check(!files(hop.tree.path).contains { $0.contains("guard") } && !(files(hop.tree.path).contains { (read(hop.tree.path + "/" + $0) ?? "").contains("a-value-no-key-scan-knows") }), "export (zip): the script's token is nowhere in the zip")
+            SessionsImport.discard(hop.work)
+        } else { check(false, "export (zip): the skill-with-a-hook-script export is made and opens") }
+        let hi = URL(fileURLWithPath: out + "/E2h.dmg")
+        let hio = try? SessionsExport.run(SessionsExport.Job(parts: [ppart], keys: .leaveOut, password: pw, destination: hi, rootName: "e2h-image", place: eplace))
+        if hio != nil, let hop = try? SessionsImport.open(hi, password: pw, place: eplace) {
+            let items = hop.parts[0].manifest.items.filter { $0.role == .setup }
+            check(Set(items.map { String($0.path.dropFirst(6)) }) == ["skills/guard/SKILL.md", "skills/guard/run.sh", "skills/plain/SKILL.md", "agents/helper.md", "settings.json"] && items.first { $0.path == "setup/skills/guard/run.sh" }?.exec == true,
+                  "export (image): the skill comes whole, as the skill, its script executable per the record")
+            SessionsImport.discard(hop.work)
+        } else { check(false, "export (image): the skill-with-a-hook-script image is made and opens") }
+        try? fm.removeItem(atPath: c4)
+    }
 
     // ---- the leak check exempts the setup's own folder and nothing else
     do {
@@ -323,7 +365,10 @@ MainActor.assumeIsolated {
         ("e2-traversal", "isn't a plain one"), ("e2-traversal-deep", "isn't a plain one"), ("e2-empty-component", "isn't a plain one"), ("e2-absolute", "isn't a plain one"), ("e2-setup-dup-item", "isn't a plain one"),
         ("e2-backslash", ""), ("e2-dup-case", ""), ("e2-file-and-folder", ""),
         // another case of a place that is never carried, a "script" named like settings.json
-        ("e2-case-skills", "doesn't carry"), ("e2-case-plugins", "doesn't carry"), ("e2-case-projects", "doesn't carry"), ("e2-case-settings", "A zip carries no")]
+        ("e2-case-skills", "doesn't carry"), ("e2-case-plugins", "doesn't carry"), ("e2-case-projects", "doesn't carry"), ("e2-case-settings", "doesn't carry"),
+        ("e2-case-claude", ""), ("e2-case-keybindings", ""),
+        // an include is only what the file's own CLAUDE.md names
+        ("e2-include-leftover", "doesn't include"), ("e2-include-top-leftover", "doesn't include")]
     for (name, words) in bad {
         let before = names(eplace.path).filter { $0.hasPrefix(".import-") }
         let got = refusal(name)
@@ -394,6 +439,51 @@ MainActor.assumeIsolated {
     check(unnamed.contains("no hook in settings.json points to"), "hostile (image): a script no hook names is refused whole: \(unnamed.prefix(90))")
     let okImage = doctored("e2-okimage") { _, _ in }
     check(okImage == "OPENED", "(the doctoring itself changes nothing that matters: an untouched copy still opens: \(okImage.prefix(80)))")
+    // settings.json replaced and every script of the image dropped, then one file added as a script: what a hostile image could do
+    func rewriteSettings(_ m: inout SessionsBackup.Manifest, _ p: URL, settings: String, script: (rel: String, exec: Bool)) throws {
+        for it in m.items where it.role == .setup && Setup.unit(of: String(it.path.dropFirst(6))).kind == .script { try fm.removeItem(at: p.appendingPathComponent(it.path)) }
+        m.items.removeAll { $0.role == .setup && Setup.unit(of: String($0.path.dropFirst(6))).kind == .script }
+        let sdata = Data(settings.utf8)
+        try sdata.write(to: p.appendingPathComponent("setup/settings.json"))
+        if let i = m.items.firstIndex(where: { $0.path == "setup/settings.json" }) { m.items[i].bytes = Int64(sdata.count); m.items[i].sha = SwitchEngine.sha(sdata) }
+        let data = Data("#!/bin/sh\n".utf8)
+        let path = "setup/" + script.rel
+        try fm.createDirectory(at: p.appendingPathComponent((path as NSString).deletingLastPathComponent), withIntermediateDirectories: true)
+        try data.write(to: p.appendingPathComponent(path))
+        m.items.append(SessionsBackup.Item(role: .setup, original: path, path: path, bytes: Int64(data.count), sha: SwitchEngine.sha(data), exec: script.exec))
+    }
+    // two units of one skill under different case in one image: on this disk they are one folder, the manifest's two paths can't both be there
+    let twoCase = doctored("e2-two-case-skills") { m, p in
+        let data = Data("second\n".utf8)
+        try fm.createDirectory(at: p.appendingPathComponent("setup/skills/ALPHA"), withIntermediateDirectories: true)
+        try data.write(to: p.appendingPathComponent("setup/skills/ALPHA/extra.md"))
+        m.items.append(SessionsBackup.Item(role: .setup, original: "setup/skills/ALPHA/extra.md", path: "setup/skills/ALPHA/extra.md", bytes: Int64(data.count), sha: SwitchEngine.sha(data)))
+    }
+    check(twoCase != "OPENED", "hostile (image): a skill named twice under different case in one image is refused, never merged into one: \(twoCase.prefix(90))")
+    let notACommand = doctored("e2-note-only") { m, p in try rewriteSettings(&m, p, settings: #"{"model":"x","note":"bin/run"}"#, script: ("bin/run", true)) }
+    check(notACommand.contains("no hook in settings.json points to"), "hostile (image): a path that settings.json only mentions in a value that is no command is not a script: refused whole, nothing made executable: \(notACommand.prefix(90))")
+    let keyScript = doctored("e2-keybindings-script") { m, p in
+        // (the image's own keybindings.json goes first, so the other name doesn't collide with it: the place rule is what refuses it)
+        m.items.removeAll { $0.path == "setup/keybindings.json" }; try fm.removeItem(at: p.appendingPathComponent("setup/keybindings.json"))
+        try rewriteSettings(&m, p, settings: #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"~/.claude/Keybindings.json"}]}]}}"#, script: ("Keybindings.json", true)) }
+    check(keyScript.contains("doesn't carry"), "hostile (image): Keybindings.json as a script (the keybindings file under another case) is refused whole: \(keyScript.prefix(90))")
+    let namedScript = doctored("e2-named-script") { m, p in try rewriteSettings(&m, p, settings: #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash ~/.claude/bin/run --now"}]}]}}"#, script: ("bin/run", true)) }
+    check(namedScript == "OPENED", "(the same doctoring with a hook that does run bin/run opens: \(namedScript.prefix(80)))")
+    // the closure of includes and the paths a command names, directly
+    do {
+        let docs: [String: String] = ["CLAUDE.md": "# r\n @docs/a.md and @~/.claude-x/rules/x.md\n", "docs/a.md": " @b.md\n", "docs/b.md": "b", "rules/x.md": "x", "rules/y.md": "y", "z.md": "z"]
+        let got = Setup.includeClosure(carried: Set(docs.keys)) { docs[$0].map { Data($0.utf8) } }
+        check(got == ["docs/a.md", "docs/b.md", "rules/x.md"], "includes: the @ closure of CLAUDE.md (relative to the file that names it, a ~/ path by its tail); rules/y.md and z.md are not named: \(got.sorted())")
+        var chain: [String: String] = ["CLAUDE.md": " @c1.md\n"]
+        for k in 1...7 { chain["c\(k).md"] = k < 7 ? " @c\(k + 1).md\n" : "end" }
+        let deep = Setup.includeClosure(carried: Set(chain.keys)) { chain[$0].map { Data($0.utf8) } }
+        check(deep == ["c1.md", "c2.md", "c3.md", "c4.md", "c5.md"], "includes: followed as deep as the export follows them (5 files), no further: \(deep.sorted())")
+        check(Setup.includeClosure(carried: ["docs/a.md"]) { _ in Data(" @docs/a.md".utf8) }.isEmpty, "includes: without a CLAUDE.md there are none")
+        let s = Data(#"{"note":"bin/run","hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash $HOME/.claude/bin/x.sh --flag"}]}]},"statusLine":{"type":"command","command":"~/.claude/bin/line.sh"}}"#.utf8)
+        check(Setup.namedPaths(in: s, among: ["bin/run", "bin/x.sh", "bin/line.sh", "bin/other.sh"]) == ["bin/x.sh", "bin/line.sh"], "scripts: only a path a hook or status-line command names")
+        check(Setup.pathProblem(["claude.md"]) != nil && Setup.pathProblem(["Settings.json"]) != nil && Setup.pathProblem(["KEYBINDINGS.JSON"]) != nil && Setup.pathProblem(["CLAUDE.md"]) == nil && Setup.pathProblem(["keybindings.json"]) == nil && Setup.pathProblem(["notes.md"]) == nil,
+              "names: claude.md, Settings.json and KEYBINDINGS.JSON are those files under another case, refused; the exact names are fine")
+    }
 
     // ---- Backups carry setup (same rules), Restore leaves it out by default and puts back only what is missing
     let bm = try! SessionsBackup.make(SessionsBackup.Source(profile: "e2", dataDir: "", codeDir: ecode), kind: .manual, window: false, place: eplace)
@@ -401,7 +491,7 @@ MainActor.assumeIsolated {
     check(bm.version == 2 && Set(bset.map { String($0.path.dropFirst(6)) }) == allRels && bset.allSatisfy { $0.sha?.count == 64 && $0.original.hasPrefix(ecode) },
           "backup: the same setup parts (links left out), each with its hash; a backup keeps where each file was: \(Set(bset.map { String($0.path.dropFirst(6)) }).symmetricDifference(allRels).sorted())")
     let bjson = read(SessionsBackup.folder(profile: "e2", place: eplace).appendingPathComponent("\(bm.id)/backup.json").path) ?? ""
-    check(bm.setupLeftOut == ["agent linked.md", "skill haslink (it holds a link)", "skill linkedskill"] && !bjson.contains(elsewhere), "backup: links are named in the manifest, never where they point")
+    check(bm.setupLeftOut == ["agent linked.md (a link)", "skill haslink (it holds a link)", "skill linkedskill (a link)"] && !bjson.contains(elsewhere), "backup: links are named in the manifest, never where they point")
     let old = try! SessionsBackup.make(SessionsBackup.Source(profile: "e2", dataDir: "", codeDir: ecode), kind: .manual, window: false, setup: false, place: eplace)
     let pOld = SessionsRestore.plan(SessionsRestore.Target(profile: "e2", dataDir: "", codeDir: ecode, inUse: nil), SessionsRestore.Backup(profile: "e2", id: old.id, place: eplace))
     check(pOld.refusal == nil && !pOld.setup.present, "backup: one made without setup (an older backup) has none: its Restore row says it isn't in the backup")
@@ -472,7 +562,7 @@ MainActor.assumeIsolated {
     let pv = xr.total
     check(pv?.setup.units.count == 9 && pv?.setup.keyedUnits.map(\.name) == ["keyed"] && pv?.keyed == 2 && xr.setup, "pages: 9 setup units, 1 skill holds a key (2 things with keys with the session); the setup is included by default")
     check(ExportWords.setupWords(pv, setup: xr.setup, image: xr.usesImage) == "CLAUDE.md with 1 included file, 2 skills, 1 agent, 1 command", "pages: the row reads \"CLAUDE.md with 1 included file, 2 skills, 1 agent, 1 command\" for a zip: \(ExportWords.setupWords(pv, setup: xr.setup, image: xr.usesImage))")
-    check(ExportWords.setupNotes(pv, setup: true, image: false) == ["settings.json and 2 hook scripts need the encrypted disk image: left out of a zip"], "pages: a zip says what only the image carries: \(ExportWords.setupNotes(pv, setup: true, image: false))")
+    check(ExportWords.setupNotes(pv, setup: true, image: false) == ["settings.json and the 2 scripts it runs need the encrypted disk image: left out of a zip"], "pages: a zip says what only the image carries: \(ExportWords.setupNotes(pv, setup: true, image: false))")
     check(ExportWords.foundWords(pv).hasPrefix("1 session and 1 skill hold keys: 2 GitHub tokens"), "pages: the Found line counts the skill with the session: \(ExportWords.foundWords(pv))")
     xr.container = .image
     check(ExportWords.setupWords(pv, setup: true, image: xr.usesImage) == "CLAUDE.md with 1 included file, settings.json with 1 hook and a status line, 2 scripts, 2 skills, 1 agent, 1 command" && ExportWords.setupNotes(pv, setup: true, image: true).isEmpty,

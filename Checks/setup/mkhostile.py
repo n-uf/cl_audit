@@ -214,6 +214,12 @@ make('e2-case-projects', case_projects)
 def case_settings(z):                                               # a "script" named like settings.json, with no settings.json
     z.add_setup('Settings.json', b'{}', exec_=True)
 make('e2-case-settings', case_settings)
+make('e2-case-claude', lambda z: z.add_setup('claude.md', b'a second CLAUDE.md under another case'))
+make('e2-case-keybindings', lambda z: z.add_setup('KEYBINDINGS.JSON', b'{}'))
+
+# ---- an "include" is only what the file's own CLAUDE.md names (an .md left over in a folder of its own is not one)
+make('e2-include-leftover', lambda z: z.add_setup('rules/evil.md', b'loaded into every session by a recent Claude Code'))
+make('e2-include-top-leftover', lambda z: z.add_setup('evil.md', b'not named by CLAUDE.md'))
 
 def unicode_skill(z):                                               # é as one character: the target holds it as e + a mark
     z.add_setup('skills/café/SKILL.md', b'cafe skill')
