@@ -805,7 +805,9 @@ Sessions. **Restore…** on a backup puts back what is missing, merged, and neve
 
 - **In it:** the window's Code-tab list (every `claude-code-sessions/<account>/<org>` folder, scheduled tasks
   included, for both accounts and any other found there), its sidebar records (only the `epitaxyPrefs` part of
-  `claude_desktop_config.json`, as its own file: the rest of that file holds MCP settings, which can carry keys),
+  `claude_desktop_config.json`, as its own file), the rest of `claude_desktop_config.json` (`config/…`: the window's **MCP
+  settings** and its other settings, without the sidebar part; one that is a link, over 8 MB or not a JSON object is left out
+  and the reason recorded), each scheduled task's prompt (`setup/scheduled-tasks/<id>/SKILL.md`, which the window runs),
   cl_audit's records (the profile's name and its account and standby ids, never an address, and the receipt of the
   switch it was made for) and, on by default, Claude
   Code's transcripts (`<Claude Code folder>/projects`) and Claude Code's **setup** (`setup/…`: CLAUDE.md and what it includes,
@@ -874,9 +876,16 @@ the window's Code-tab list, and transcripts by their path under the Claude Code 
   there, and is shown only when 90 days would keep some of them ("Keep for 90 days would save 1"): never for one 90 days
   still deletes.
 
+**MCP settings** and **Scheduled tasks** rows: the window's `claude_desktop_config.json` (its MCP servers, listed by name with
+the command each runs, never an env value, a header or an argument) is left out unless you pick **Add them**, and then written
+whole only where the profile has none: one that is here stays byte for byte, and the row lists the backup's servers it lacks
+(nothing is merged). The account in use's task file comes back as it was (this Mac's own tasks, not paused) only when none is
+here, with the tasks' prompts that are missing (`<Claude Code folder>/scheduled-tasks/<id>/SKILL.md`); a prompt that is here
+stays.
+
 **Stays as it is:** the account (Main stays on the account it works on; Switch back changes that), sign-ins (never in a
-backup, never written), the window's MCP settings and `settings.json` other than Keep for, and claude.ai (Chats and
-Projects). **Sidebar:** the groups and pins of the restored sessions are taken from the backup's own sidebar records
+backup, never written), a `claude_desktop_config.json` that is here and `settings.json` other than Keep for, and claude.ai
+(Chats and Projects). **Sidebar:** the groups and pins of the restored sessions are taken from the backup's own sidebar records
 and arranged by one Return in a helper session, as after a switch; the window's cache is off, so claude.ai's copy wins
 at sign-in.
 
@@ -980,6 +989,14 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   backups place, and taken away again), one of its backups, or all profiles. Claude Code: "310 sessions, with their
   sub-agent files" (the transcripts and what sits beside them in their folders); Claude window: the Code-tab entries and
   scheduled tasks, and the sidebar records (with the window open they are left out, as for Back up now); Cowork: left out.
+  A scheduled task travels with its prompt (`scheduled-tasks/<id>/SKILL.md` in the Claude Code folder, key-scanned like a
+  skill; a prompt no task names stays out), also when the setup row says Leave them out: "4 scheduled tasks with their
+  prompts: an import adds them only if you pick Add them, and paused".
+- **MCP settings:** the window's `claude_desktop_config.json` without its sidebar part: "2 MCP servers (github, remote) and the
+  window's other settings". Its env values, headers and arguments can hold tokens no scan recognises, so **only the encrypted
+  disk image carries it**; a zip leaves it out and says so. In the image it is scrubbed like the window's other files (a known
+  address or account id becomes its fingerprint) and the leak check reads it. One that is a link, over 8 MB (an import refuses
+  one that big) or not a JSON object is left out at the source, and the row says why.
 - **Claude Code setup** (on by default; the menu says **Include them** or **Leave them out**): "CLAUDE.md with 2 included files,
   23 skills, 4 agents, 6 commands, 1 output style, keybindings, settings.json with 4 hooks and a status line, 3 scripts, 2
   plugins to reinstall". It is the part of the profile's Claude Code folder that is configuration, not history:
@@ -1037,7 +1054,7 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   "Last exported 5 Nov · 5.5 GB".
 - **What is never in it:** a sign-in (nothing a backup excludes: `.claude.json*`, anything named like credentials, Keychain,
   OAuth or `auth.json`; in the setup only the exact names `.claude.json*` and `.credentials*` are refused, so a skill's `auth.py`,
-  `token-counter.md` or `credentials-guide.md` travel), the window's MCP settings, `settings.local.json`, a switch's receipt,
+  `token-counter.md` or `credentials-guide.md` travel), the window's MCP settings in a zip, `settings.local.json`, a switch's receipt,
   `deleted_` markers, an address or a raw account id (outside the setup and the transcripts). Accounts appear as a **fingerprint**: `fp-` and 8 hex characters of an HMAC-SHA256 of the id under a key made
   at random for each export and never written anywhere, so a guessed address or id can't be confirmed by hashing it, and the
   same account is the same fingerprint everywhere in one file only (folder names, the manifests, the sidebar records' scope
@@ -1063,26 +1080,30 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   transcript: one whose transcript isn't in the file (it is gone, or left out for keys) is left out too and counted on the
   page ("5 leftover markers left out"), never a reason to stop. **Restore** and **Import** write a marker only together with
   its transcript in the same run, never over a marker that is there; Undo takes both back.
-- **The file:** `<name>/export.json` (format `cl_audit-export`, version 2, when, cl_audit's version, a fingerprint of this Mac's
+- **The file:** `<name>/export.json` (format `cl_audit-export`, version 3, when, cl_audit's version, a fingerprint of this Mac's
   name, zip or image, what was done with keys, the profiles and their sizes) and `<name>/profiles/p1/` (a backup's layout:
-  `backup.json`, `window/<fp>/<fp>/…`, `sidebar/`, `records/`, `transcripts/…`, `setup/…`), one `pN` per profile for "All
-  profiles". The manifests carry no absolute path of this Mac. **Version 2** added the `setup/` part (each item with its `sha`
-  and `exec`); a version-1 file (no setup) still imports, and an older cl_audit refuses a version-2 file with its "newer
-  cl_audit" message. The format keeps room for later parts (`window` settings and `app` settings of cl_audit itself) beside
-  `setup/`.
+  `backup.json`, `window/<fp>/<fp>/…`, `sidebar/`, `config/` (image only), `records/`, `transcripts/…`, `setup/…`), one `pN`
+  per profile for "All profiles". The manifests carry no absolute path of this Mac. **Version 2** added the `setup/` part (each
+  item with its `sha` and `exec`); **version 3** added `config/claude_desktop_config.json` and the scheduled tasks' prompts
+  (`setup/scheduled-tasks/<id>/SKILL.md`). Version-1 and version-2 files still import; 26.11.7 (which reads version 1 only)
+  and 26.11.8 (up to 2) refuse a version-3 file with their "newer cl_audit" message. The format keeps room for a later `app`
+  part (cl_audit's own profiles and settings).
 
 ### Moving to another Mac
 
 **Can I move everything to another Mac?** Most of it, yes. What moves: the transcripts (sessions), the Code-tab list, the
 sidebar arrangement, and Claude Code's setup: `CLAUDE.md` (and the files it includes), skills, agents, commands, output
 styles, keybindings, `settings.json` with its hooks and the scripts they run, and the plugin list so Claude Code can reinstall
-the plugins. What doesn't move yet: sign-ins (log in again on the new Mac), `settings.local.json`, the window's MCP settings,
-the scheduled tasks themselves (their sessions are left out on import), claude.ai chats and Projects (they follow the account),
-and cl_audit's own profiles and settings. Put the project folders at the same paths on the new Mac first, or the sessions are
-added but wait ("Folder not here") until the folder exists. On the new Mac, **Import…** leaves the setup out until you pick
-**Add them** (hooks run commands on their own, and nothing in a file can prove it was made for a move on your Mac); one click
-adds all that is missing, and Undo last import takes it back. Use the encrypted disk image if `settings.json`, its scripts and
-the plugin marketplaces should come along: a zip leaves them out, and any skill, agent or command that holds a script a hook runs.
+the plugins; and the Claude window's own: its **MCP settings** (`claude_desktop_config.json`, encrypted image only) and its
+**scheduled tasks** with their prompts and the sessions they ran, which come back **paused** so nothing runs twice (turn each on
+with its own switch in the window's scheduled tasks). What doesn't move yet: sign-ins (log in again on the new Mac),
+`settings.local.json`, claude.ai chats and Projects (they follow the account), and cl_audit's own profiles and settings (a
+later step). Put the project folders at the same paths on the new Mac first, or the sessions are added but wait ("Folder not
+here") until the folder exists. On the new Mac, **Import…** leaves the setup, the MCP settings and the scheduled tasks out
+until you pick **Add them** for each (hooks and MCP servers run commands on their own, tasks run on a schedule, and nothing in
+a file can prove it was made for a move on your Mac); each adds only what is missing, never into a file that is there, and
+Undo last import takes it back. Use the encrypted disk image if `settings.json`, its scripts, the plugin marketplaces and the
+MCP settings should come along: a zip leaves them out, and any skill, agent or command that holds a script a hook runs.
 
 ### Importing an export
 
@@ -1094,8 +1115,18 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
 
 - **What happens:** **New** (transcripts, their other files and Code-tab entries that aren't here: added), **Already here** (the
   same content, or longer here: skipped), **Grown on both sides** (there and different, or the file's is longer: the target's
-  copy stays, listed), **Code-tab entries** (the window closes and opens again), **Scheduled tasks' sessions** (sessions a
-  scheduled task ran are left out, with the task's name; the tasks themselves aren't imported), **Folder not here** (added, shown
+  copy stays, listed), **Code-tab entries** (the window closes and opens again), **Scheduled tasks** (left out unless you pick
+  **Add them, paused**: then the file's tasks go into the task file of the account the target works on, only when that
+  account has none (one that is here stays, and the row lists the tasks it lacks), every task written with `enabled: false` and
+  nothing else changed, each with its prompt where the window looks for it (`<Claude Code folder>/scheduled-tasks/<id>/SKILL.md`;
+  the window works that path out from the task's id, whatever `filePath` the task records). A task is written only with its
+  prompt: one whose prompt isn't in the file, whose id the window wouldn't keep, whose `filePath` points anywhere but its own
+  prompt, or whose prompt here is a different one, is listed and not written. The done page says which came paused and where to
+  turn them on; cl_audit never changes a task after that), **Scheduled tasks' sessions** (a session a task ran, by the entry's
+  `scheduledTaskId`, comes in with its task; when the task isn't added it is left out with its transcript, with the task's
+  name), **MCP settings** (left out unless you pick **Add them**, which lists each server's name and the command it runs, never
+  an env value, a header or an argument; the whole `claude_desktop_config.json` is written only where the profile has none: one
+  that is here stays byte for byte and the row lists the servers it lacks; a zip has none and the row says so), **Folder not here** (added, shown
   once that folder exists), **Would be deleted** (only the sessions Claude Code would delete again, as on the Restore page; **Keep for 90 days** when it would keep some). Entries go into the folder of the account the target
   works on now, never a fingerprint's, written as a switch would place them (the old account's error keys and Remote Control
   ids off), and the sidebar's groups and pins follow them through the fingerprint (one Return in a helper session). **Close and
@@ -1180,8 +1211,12 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
   keybindings.json, `skills/`, `plugins/` or `projects/` under another case, and a file whose SHA-256 isn't the manifest's.
   A script is made executable only when this run created the settings.json that names it; settings.json is written first. **Undo last import** takes the setup back like everything else
   (only files still exactly what was written). A backup made before this version says "not in this backup".
-- **Scheduled tasks' sessions** are left out whole: the entry, its transcript and the files in its folder, none counted as added.
-  (An entry marks one with its `scheduledTaskId`, the key real Code-tab entries carry, taken exactly; the name shown is the
+  The window's parts are refused whole the same way: a `claude_desktop_config.json` in a zip, under another name or place, over
+  8 MB (never read into memory), not a JSON object, a link or a folder; a task's prompt whose task isn't in the file, any other
+  file of a task's folder, or a prompt marked executable. A crafted task inside the task file (an id that climbs out of its
+  folder, a `filePath` outside, something that isn't a task) is only data: it is listed and never written.
+- **Scheduled tasks' sessions** come in with their task when it is added; otherwise they are left out whole: the entry, its
+  transcript and the files in its folder, none counted as added. (An entry marks one with its `scheduledTaskId`, the key real Code-tab entries carry, taken exactly; the name shown is the
   `displayName` of the task in scheduled-tasks.json with that `id`, else the id.)
 - **Group names** from the file reach the sidebar helper session's prompt, so for an import they are cut to letters, digits,
   spaces and `- _ . , ( ) & '`, at most 40 characters (a name with nothing left is dropped); the preview's Sidebar card lists
