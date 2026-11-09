@@ -301,6 +301,8 @@ final class UsageReader {
 
     /// While a profile waits for a sign-in to show up, it looks again this often.
     static let signInRetry: TimeInterval = 60
+    /// The sign-in watch reads the Keychain no more often than this per profile.
+    nonisolated(unsafe) static var watchFloor: TimeInterval = 30
 
     /// The last read found no item, or an item in a form cl_audit doesn't know: a sign-in may be on its way.
     static func waitsForSignIn(_ l: Login?) -> Bool {
@@ -318,7 +320,12 @@ final class UsageReader {
     /// goes within seconds of Claude Code finishing the login instead of on the read schedule.
     func watchSignIn() {
         guard !stopped, !inFlight, Self.waitsForSignIn(cachedLogin), state == .noLogin || state == .unreadable else { return }
-        guard SignInWatch.stamp(configDir: account.configDir) != loginStamp else { return }
+        let stamp = SignInWatch.stamp(configDir: account.configDir)
+        guard stamp != loginStamp else { return }
+        // Claude Code rewrites ~/.claude.json often (settings, projects): only a record that names an account is a sign-in...
+        guard Account.signedInSeat(configDir: account.configDir) != nil else { loginStamp = stamp; return }
+        // ...and the Keychain is read at most every 30 seconds, whatever the record does
+        guard Date().timeIntervalSince(lastLoginRead) >= Self.watchFloor else { return }
         agentLog.log("reader \(self.id, privacy: .public): the folder's sign-in record changed; reading the sign-in now")
         forceLoginRead = true; nextFetch = .distantPast
         tick()
