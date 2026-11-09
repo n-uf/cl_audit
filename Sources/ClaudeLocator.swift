@@ -18,7 +18,8 @@ struct ClaudeFound: Equatable {
 enum ClaudeLocator {
     /// Each way of looking, so the checks can replace them.
     struct Lookup {
-        /// Files to try in order (the usual install places, nvm's newest first). Only looked at, never run.
+        /// 26.11.1's own places, in its order (`realCandidates`). Only looked at, never run. Whatever 26.11.1 found, this
+        /// finds too: these come first, then the login shell, and only then the new places below.
         var candidates: () -> [String]
         /// The prefix `npm` installs globally to (runs `npm config get prefix`; nil: no npm).
         var npmPrefix: () -> String?
@@ -26,27 +27,32 @@ enum ClaudeLocator {
         var shell: () -> String?
         /// The Claude app's own copy.
         var appCopy: () -> String?
+        /// New places, tried after the login shell: Volta, then nvm's node versions, newest first (`moreCandidates`).
+        var more: () -> [String] = { [] }
 
         static let real = Lookup(candidates: { ClaudeLocator.realCandidates(home: NSHomeDirectory()) },
                                  npmPrefix: { ClaudeLocator.npmPrefix(home: NSHomeDirectory()) },
                                  shell: { ClaudeLocator.shellLookup() },
-                                 appCopy: { ClaudeLocator.appCopy(support: expand("~/Library/Application Support")) })
+                                 appCopy: { ClaudeLocator.appCopy(support: expand("~/Library/Application Support")) },
+                                 more: { ClaudeLocator.moreCandidates(home: NSHomeDirectory()) })
     }
 
     /// Replaced by the checks; the app always uses `.real`.
     static var current = Lookup.real
 
-    /// The first `claude` found, or nil. `quick`: only the file lookups (no process is run), for the first paint and for
-    /// "before a sign-in"; a full look is done off the main thread.
+    /// The first `claude` found, or nil, in this order: 26.11.1's places, the login shell, Volta, nvm, npm's prefix, and
+    /// last the Claude app's own copy. `quick`: only 26.11.1's places (file lookups, no process run): what it returns
+    /// is always what the full look would return too, and it never returns the app's copy, so a `claude` that only the
+    /// login shell finds is never replaced by another one meanwhile. The full look runs off the main thread.
     static func find(quick: Bool = false, lookup: Lookup? = nil) -> ClaudeFound? {
         let l = lookup ?? current
         if let p = l.candidates().first(where: isExecutable) { return ClaudeFound(path: p) }
-        if !quick {
-            if let prefix = l.npmPrefix() {
-                let p = (prefix as NSString).appendingPathComponent("bin/claude")
-                if isExecutable(p) { return ClaudeFound(path: p) }
-            }
-            if let p = l.shell(), isExecutable(p) { return ClaudeFound(path: p) }
+        if quick { return nil }
+        if let p = l.shell(), isExecutable(p) { return ClaudeFound(path: p) }
+        if let p = l.more().first(where: isExecutable) { return ClaudeFound(path: p) }
+        if let prefix = l.npmPrefix() {
+            let p = (prefix as NSString).appendingPathComponent("bin/claude")
+            if isExecutable(p) { return ClaudeFound(path: p) }
         }
         if let p = l.appCopy(), isExecutable(p) { return ClaudeFound(path: p, fromApp: true) }
         return nil
@@ -60,12 +66,17 @@ enum ClaudeLocator {
 
     // MARK: the usual places
 
-    /// ~/.local/bin (the native installer), ~/.claude/local, Homebrew, /usr/local, npm's ~/.npm-global, bun, Volta, then
-    /// nvm's node versions, newest first.
+    /// 26.11.1's places in 26.11.1's order: Homebrew, /usr/local, ~/.local/bin (the native installer), ~/.claude/local,
+    /// ~/.npm-global, ~/.bun. Never reordered: a Mac where 26.11.1 found a `claude` gets the same one.
     static func realCandidates(home: String) -> [String] {
         func at(_ rel: String) -> String { (home as NSString).appendingPathComponent(rel) }
-        var out = [at(".local/bin/claude"), at(".claude/local/claude"), "/opt/homebrew/bin/claude", "/usr/local/bin/claude",
-                   at(".npm-global/bin/claude"), at(".bun/bin/claude"), at(".volta/bin/claude")]
+        return ["/opt/homebrew/bin/claude", "/usr/local/bin/claude", at(".local/bin/claude"), at(".claude/local/claude"),
+                at(".npm-global/bin/claude"), at(".bun/bin/claude")]
+    }
+
+    /// The places added in 26.11.2, tried only after the login shell: Volta, then nvm's node versions, newest first.
+    static func moreCandidates(home: String) -> [String] {
+        var out = [(home as NSString).appendingPathComponent(".volta/bin/claude")]
         out += nvmNodeBins(home: home).map { ($0 as NSString).appendingPathComponent("claude") }
         return out
     }

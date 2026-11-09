@@ -69,11 +69,12 @@ profile by itself. Three steps; each says what it needs:
 3. **Name and colour.** Prefilled from the account (a team's name, else the address's name part). **Done** adds the
    profile and opens its Settings.
 
-Where `claude` is looked for, in this order: `~/.local/bin` (the native installer), `~/.claude/local`, Homebrew
-(`/opt/homebrew/bin`), `/usr/local/bin`, `~/.npm-global/bin`, `~/.bun/bin`, `~/.volta/bin`, nvm's node versions (newest
-first), npm's own prefix (`npm config get prefix`), the login shell (`zsh -lc 'command -v claude'`, stopped after 5 s),
-and last the Claude app's own copy (`~/Library/Application Support/Claude*/claude-code/<version>/…/claude.app`, "from the
-Claude app"). A real install always wins over the app's copy. Anywhere a sign-in needs Claude Code and it isn't there,
+Where `claude` is looked for, in this order: first exactly where 26.11.1 looked (Homebrew `/opt/homebrew/bin`,
+`/usr/local/bin`, `~/.local/bin` (the native installer), `~/.claude/local`, `~/.npm-global/bin`, `~/.bun/bin`), then
+the login shell (`zsh -lc 'command -v claude'`, stopped after 5 s), and only then the newer places: `~/.volta/bin`,
+nvm's node versions (newest first), npm's own prefix (`npm config get prefix`) and, last, the Claude app's own copy
+(`~/Library/Application Support/Claude*/claude-code/<version>/…/claude.app`, "from the Claude app"). A Mac where an
+earlier version found `claude` gets the same one; a real install always wins over the app's copy. Anywhere a sign-in needs Claude Code and it isn't there,
 cl_audit says "Claude Code isn't installed on this Mac · Install…" beside the key (and in the Add account and Account
 pop-ups) instead of greying it silently; Install… opens the same install help.
 
