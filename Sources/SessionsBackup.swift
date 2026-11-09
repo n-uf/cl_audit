@@ -700,10 +700,12 @@ enum CodeCleanup {
 
     /// A JSON value that is a whole number of days, 1 or more (not true, not a string, not a fraction: 30 and 30.0 are the
     /// same to Claude Code, whose zod `int()` takes both); with `zero`, 0 too (desktopSessionCleanupPeriodDays: 0 is no cap).
+    /// Any size up to 2^53−1 (zod's safe integers): a huge number is valid to Claude Code, so it must be here too.
+    static let maxWhole = 9_007_199_254_740_991.0
     static func whole(_ v: Any?, zero: Bool = false) -> Int? {
         guard let n = v as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() else { return nil }
         let d = n.doubleValue
-        guard d.isFinite, d == d.rounded(), d >= (zero ? 0 : 1), d < 1e9 else { return nil }
+        guard d.isFinite, d == d.rounded(), d >= (zero ? 0 : 1), d <= maxWhole else { return nil }
         return Int(d)
     }
 
