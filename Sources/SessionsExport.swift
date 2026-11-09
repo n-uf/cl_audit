@@ -21,6 +21,12 @@
 // out each Code-tab entry's remoteMcpServersConfig and sessionSettings (connection settings and environment values the key
 // scan can't recognise); the encrypted disk image keeps them.
 //
+// A move to another Mac (Job.move, format 4) is the one exception: it keeps the real account and organisation ids and the addresses
+// (window/<account>/<organisation>/…, the records, cl_audit.json with the profiles), because the Claude window keys its Code-tab list
+// and scheduled tasks by account folder, and the new Mac must put them back where the window looks after the sign-in. That is safe
+// only in the encrypted disk image, so a move is refused as a zip here in the engine, and its leak check looks only for private keys.
+// cl_audit.json (cl_audit's own profiles and settings, SessionsMove.swift) is carried only in an encrypted image as well.
+//
 // Transcripts are scanned for keys (GitHub tokens, AWS access keys, private keys, Anthropic and OpenAI API keys, Slack,
 // Google, Stripe and npm tokens): a session whose files hold one is left out, or, if the user says so, kept in an
 // encrypted disk image. A transcript a running Claude Code session holds, or that doesn't end on a full line, is copied
@@ -340,6 +346,17 @@ struct ExportManifest: Codable, Equatable {
     var keysKept: Int
     var parts: [Part]
     var bytes: Int64
+    /// A move to another Mac (format 4): the parts keep the real account and organisation ids and the addresses, never fingerprints, so
+    /// an import puts each entry and task back in its own account's folder. Only ever an encrypted disk image. nil: not a move.
+    var move: Bool? = nil
+    /// cl_audit's own profiles and settings (SessionsMove.swift, format 4): one file beside export.json, in an encrypted image only.
+    var profiles: AppFile? = nil
+
+    struct AppFile: Codable, Equatable {
+        var path: String                    // "cl_audit.json"
+        var bytes: Int64
+        var sha: String                     // SHA-256, hex
+    }
 }
 
 // MARK: - preferences (the last export, the last folder)
@@ -1006,6 +1023,13 @@ enum SessionsExport {
         /// Every identity cl_audit knows (all profiles', not only the ones exported): scrubbed wherever it is found, and the
         /// only things the leak check refuses. What the parts themselves name (their addresses, backups, window folders) is added.
         var known = Identities()
+        /// A move to another Mac: the real account and organisation ids and the addresses stay (no fingerprints, no address check), because
+        /// the Claude window keys its Code-tab list and scheduled tasks by account folder. Safe only in the encrypted image: a move is
+        /// refused as a zip, here in the engine.
+        var move = false
+        /// cl_audit's own profiles and settings (SessionsMove.make): carried in an encrypted image only (a zip leaves them out and says
+        /// so). Outside a move their ids and addresses become fingerprints like everything else.
+        var profiles: Data? = nil
     }
 
     struct Outcome: Equatable {
@@ -1026,6 +1050,9 @@ enum SessionsExport {
         var configCarried: Bool { parts.contains(where: \.configCarried) }
         var configLeftOut: Bool { parts.contains(where: \.configLeftOut) }
         var taskPrompts: Int { parts.reduce(0) { $0 + $1.taskPrompts } }
+        var move = false                    // a move: the real ids (an encrypted image)
+        var profilesCarried = false         // cl_audit.json is in it
+        var profilesLeftOut = false         // …left out because the file is a zip
     }
 
     /// "cl_audit Main 2026-11-05"
@@ -1048,6 +1075,8 @@ enum SessionsExport {
     static func run(_ job: Job, cancel: @escaping () -> Bool = { false }, progress: ((String, Double) -> Void)? = nil) throws -> Outcome {
         let fm = FileManager.default
         guard !job.parts.isEmpty else { throw ArchiveError("Nothing to export.") }
+        // a move keeps the real account ids and addresses: only ever in the encrypted image, whatever the page asked for
+        if job.move, job.password == nil { throw ArchiveError("A move to another Mac keeps the real account ids, so it is always an encrypted disk image, never a zip.") }
         let ext = job.password == nil ? "zip" : "dmg"
         guard job.destination.pathExtension.lowercased() == ext else { throw ArchiveError("The file should be named .\(ext).") }
         if let pw = job.password, pw.count < 8 { throw ArchiveError("The password needs at least 8 characters.") }
@@ -1091,7 +1120,8 @@ enum SessionsExport {
         var known = job.known
         for p in job.parts { for e in p.emails { known.add(email: e) }; if let s = p.source { known.add(source: s) } }
         // the names that go in the file (the folder inside, the profiles' names) are scrubbed too: a profile can be named for its address
-        let names = Scrubber(known, fp: fp)
+        // (a move scrubs nothing: its ids and addresses are the real ones, in the encrypted image)
+        let names = Scrubber(job.move ? Identities() : known, fp: fp)
         let rootName = names.name(job.rootName)
         let root = work.appendingPathComponent("out").appendingPathComponent(rootName)
         guard (try? fm.createDirectory(at: root.appendingPathComponent("profiles"), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])) != nil else {
@@ -1122,7 +1152,7 @@ enum SessionsExport {
             guard let b = backup else { throw ArchiveError("Nothing to export from.") }
             let dir = "p\(i + 1)"
             let out = root.appendingPathComponent("profiles/\(dir)")
-            let (po, ids) = try buildPart(b, part: part, fp: fp, into: out, keys: job.keys, setup: job.setup, zip: job.password == nil, known: known, held: held, live: part.source != nil, now: job.now, cancel: cancel,
+            let (po, ids) = try buildPart(b, part: part, fp: fp, into: out, keys: job.keys, setup: job.setup, zip: job.password == nil, move: job.move, known: known, held: held, live: part.source != nil, now: job.now, cancel: cancel,
                                           progress: { f in progress?("\(label)writing the files", (Double(i) + f) / Double(job.parts.count)) })
             outcomes.append(po)
             rawIDs.formUnion(ids)
@@ -1136,11 +1166,30 @@ enum SessionsExport {
                                 keysLeftOut: outcomes.reduce(0) { $0 + $1.keysLeftOut }, keysKept: outcomes.reduce(0) { $0 + $1.keysKept },
                                 parts: manifestParts, bytes: total)
         em.version = outcomes.map(\.version).max() ?? 2                 // the highest of its parts', no higher
+        // cl_audit's own profiles and settings (format 4): beside export.json, in an encrypted image only; outside a move, their ids and
+        // addresses become fingerprints like everything else, and the leak check reads the file like any other
+        var profilesCarried = false, profilesLeftOut = false
+        if let data = job.profiles {
+            if job.password == nil {
+                profilesLeftOut = true
+            } else {
+                let body = job.move ? data : names.data(data)
+                guard body.count <= SessionsMove.maxBytes else { throw ArchiveError("cl_audit's profiles and settings came to more than 1 MB; nothing was made.") }
+                try write(body, to: root.appendingPathComponent(SessionsMove.fileName))
+                em.profiles = ExportManifest.AppFile(path: SessionsMove.fileName, bytes: Int64(body.count), sha: SwitchEngine.sha(body))
+                profilesCarried = true
+            }
+        }
+        if job.move { em.move = true }
+        if job.move || profilesCarried { em.version = max(em.version, 4) }
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try write(try enc.encode(em), to: root.appendingPathComponent("export.json"))
 
-        // the structure carries no known id and no known address: checked on what is about to be packed
-        if let leak = leak(in: root, ids: rawIDs.union(known.ids), emails: emails + Array(known.emails)) { throw ArchiveError("The export would have held \(leak); nothing was made.") }
+        // the structure carries no known id and no known address: checked on what is about to be packed. A move keeps them on purpose
+        // (in the encrypted image only): its check still refuses a private key
+        if let leak = job.move ? leak(in: root, ids: [], emails: []) : leak(in: root, ids: rawIDs.union(known.ids), emails: emails + Array(known.emails)) {
+            throw ArchiveError("The export would have held \(leak); nothing was made.")
+        }
 
         // free room for the file: about the size of what is in it
         var fs = statfs()
@@ -1182,7 +1231,7 @@ enum SessionsExport {
         // the Save panel has asked about a file that is there: it is replaced, in one step
         guard rename(tmp.path, job.destination.path) == 0 else { throw ArchiveError("The file couldn't be put at \(tilde(job.destination.path)).") }
         progress?("done", 1)
-        return Outcome(file: job.destination, bytes: Int64(made.st_size), parts: outcomes)
+        return Outcome(file: job.destination, bytes: Int64(made.st_size), parts: outcomes, move: job.move, profilesCarried: profilesCarried, profilesLeftOut: profilesLeftOut)
     }
 
     private static func write(_ data: Data, to url: URL) throws {
@@ -1194,7 +1243,7 @@ enum SessionsExport {
 
     /// Builds `out` (a backup's layout) from the backup `b`: ids and addresses replaced, keys decided, the in-use cut.
     /// Returns what it holds and the raw ids it replaced.
-    private static func buildPart(_ b: SessionsRestore.Backup, part: Part, fp: Fingerprint, into out: URL, keys: Keys, setup: Bool, zip: Bool, known: Identities, held: Set<String>, live: Bool, now: Date,
+    private static func buildPart(_ b: SessionsRestore.Backup, part: Part, fp: Fingerprint, into out: URL, keys: Keys, setup: Bool, zip: Bool, move: Bool = false, known: Identities, held: Set<String>, live: Bool, now: Date,
                                   cancel: () -> Bool, progress: @escaping (Double) -> Void) throws -> (PartOutcome, Set<String>) {
         let fm = FileManager.default
         guard let m = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) else { throw ArchiveError("The backup isn't there any more.") }
@@ -1228,10 +1277,13 @@ enum SessionsExport {
                 }
             }
         }
-        // what is replaced: this part's own ids and addresses, and every other identity cl_audit knows
-        var ident = known
-        for id in ids where !id.isEmpty { ident.ids.insert(id) }
-        for e in part.emails where !e.isEmpty { ident.emails.insert(e.lowercased()) }
+        // what is replaced: this part's own ids and addresses, and every other identity cl_audit knows (in a move: nothing, the real ids
+        // and addresses stay, in the encrypted image)
+        var ident = move ? Identities() : known
+        if !move {
+            for id in ids where !id.isEmpty { ident.ids.insert(id) }
+            for e in part.emails where !e.isEmpty { ident.emails.insert(e.lowercased()) }
+        }
         let ids2 = ident.ids
         let scrubber = Scrubber(ident, fp: fp)
         func map(_ s: String) -> String { ids2.contains(s.lowercased()) ? fp.of(s.lowercased()) : s }
@@ -1292,7 +1344,8 @@ enum SessionsExport {
                 po.keysKept += 1
             }
             let data = scrubber.data(body)
-            let fa = fp.of(c[1].lowercased()), fo = fp.of(c[2].lowercased())
+            // (a move: the account's own folder names, its real ids, so the window finds the entries again after the sign-in)
+            let fa = move ? c[1].lowercased() : fp.of(c[1].lowercased()), fo = move ? c[2].lowercased() : fp.of(c[2].lowercased())
             let rel = "window/\(fa)/\(fo)/\(name)"
             try write(data, to: URL(fileURLWithPath: create(rel)))
             items.append(SessionsBackup.Item(role: .window, original: rel, path: rel, bytes: Int64(data.count)))
@@ -1510,7 +1563,8 @@ enum SessionsExport {
                                          bytes: items.reduce(0) { $0 + $1.bytes }, cloned: cloned, copied: 0, copiedBytes: 0, leftOut: leftOut,
                                          dataDir: "", codeDir: "", items: items, setupLeftOut: setupNames.isEmpty ? nil : Array(Set(setupNames)).sorted(),
                                          configLeftOut: configLeftOut, envBlanked: items.contains { $0.path == "setup/settings.json" } ? m.envBlanked : nil)
-        mm.version = SessionsBackup.neededVersion(items)            // the lowest that holds it: 26.11.8 imports a file without format-3 parts
+        mm.version = SessionsBackup.neededVersion(items, move: move)    // the lowest that holds it: 26.11.8 imports a file without format-3 parts
+        if move { mm.move = true }
         po.version = mm.version
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try write(try enc.encode(mm), to: URL(fileURLWithPath: create("backup.json")))
