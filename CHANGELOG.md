@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.2 — 2026-11-08
+
 This is 26.11.2.
 
 - **A first-run page, instead of an automatic "main".** On a Mac with no profile, cl_audit no longer makes a profile
