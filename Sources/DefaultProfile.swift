@@ -145,7 +145,8 @@ enum DefaultProfile {
         try? fm.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let d = try? enc.encode(r) { try? d.write(to: folder.appendingPathComponent("\(r.id).json"), options: .atomic) }
-        cache = nil
+        // under the lock: save() also runs on the restore's thread (attachReceipt) while the cards read all() on the main one
+        forgetCache()
     }
 
     /// The records, kept until the folder changes: the cards that ask are drawn every few seconds.
