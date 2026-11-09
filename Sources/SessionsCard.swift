@@ -42,7 +42,7 @@ struct SessionsCard: View {
 
     var body: some View {
         SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. Backups are quick copies on this Mac, made by every switch that moves the sessions and by Back up now; Restore… puts back what is missing, merged, and never overwrites anything. Chats and Projects on claude.ai belong to each account and aren't here.") {
-            SRow(label: "Kept here", info: "What \(name) has on this Mac now: Claude Code's session transcripts, the entries of the Claude window's Code tab (for every account it has used), and how much room they take.", first: true, stacked: true) {
+            SRow(label: "Kept here", info: "What \(name) has on this Mac now: " + Retention.keptHereInfo, first: true, stacked: true) {
                 text(keptWords)
             }
             SRow(label: "Keep for", info: Retention.keepForInfo(file: tilde(CodeCleanup.file(entry.configDir))), stacked: true) {
