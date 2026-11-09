@@ -224,8 +224,14 @@ enum SessionsBackup {
         if transcripts {
             let projects = (s.codeDir as NSString).appendingPathComponent("projects")
             let real = URL(fileURLWithPath: projects).resolvingSymlinksInPath().path       // the folder itself may be a link
+            let counted = QuickChatSettings.load().counted
             if mode(real)?.kind == S_IFDIR, let walk = FileManager.default.enumerator(atPath: real) {
                 for case let rel as String in walk {
+                    // the quick chat's sessions are left out of the counts and backups unless Counting says otherwise
+                    if QuickChatData.leftOut(rel, counted: counted) {
+                        if !rel.contains("/") { walk.skipDescendants() }
+                        continue
+                    }
                     let path = (real as NSString).appendingPathComponent(rel)
                     guard let m = mode(path) else { continue }
                     guard m.kind == S_IFREG else { continue }                 // a link inside is never followed (nor does the walk)

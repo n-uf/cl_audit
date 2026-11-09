@@ -29,6 +29,7 @@ struct AgentMark: Codable, Equatable {
     var actions: [String: AgentAction]? = nil   // what it's doing for a profile now (Opening and closing)
     var stamp: String? = nil          // its program's fingerprint (an update with the same build number differs here)
     var menuBar: [String]? = nil      // the profiles whose menu bar icon is up (In the menu bar's switch waits for it)
+    var quickChat: String? = nil      // the quick chat's shortcut: "on", or why it isn't (nil: turned off)
 }
 
 enum Agent {
@@ -391,7 +392,8 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
                                   pausedUntil: pausedUntil,
                                   actions: rules?.actions,
                                   stamp: myStamp,
-                                  menuBar: menuBar?.shown))
+                                  menuBar: menuBar?.shown,
+                                  quickChat: QuickChat.shared.shortcutState))
     }
 
     // MARK: crashing again and again

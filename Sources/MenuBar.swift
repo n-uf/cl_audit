@@ -288,8 +288,9 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
             items[id] = nil
         }
         guard !list.isEmpty else {
-            // no icon left: no windows either, unless the quick chat's panel is up (it set the accessory role itself)
-            if accessory, !QuickChat.shared.isOpen { NSApp.setActivationPolicy(.prohibited) }
+            // no icon left: no windows either, unless the quick chat holds the accessory role (its panel is up, or its
+            // shortcut is registered)
+            if accessory, !QuickChat.shared.holdsAccessory { NSApp.setActivationPolicy(.prohibited) }
             accessory = false
             return
         }

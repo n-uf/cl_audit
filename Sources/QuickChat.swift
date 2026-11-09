@@ -65,17 +65,25 @@ enum QuickChatThinking: String, CaseIterable, Codable, Identifiable {
 }
 
 struct QuickChatSettings: Codable, Equatable {
+    /// The shortcut opens the chat from anywhere: off until turned on.
+    var shortcutOn = false
+    var shortcut: QuickChatShortcut = .optionSpace
     /// The profile the shortcut chats on; nil: the first profile.
     var profile: String? = nil
     var model: QuickChatModelChoice = .haiku
     var thinking: QuickChatThinking = .off
+    /// Quick chats counted in the profile's Sessions card and taken into its backups (off: left out).
+    var counted = false
 
     init() {}
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        profile = try c.decodeIfPresent(String.self, forKey: .profile)
+        shortcutOn = (try? c.decodeIfPresent(Bool.self, forKey: .shortcutOn)) ?? false
+        shortcut = (try? c.decodeIfPresent(QuickChatShortcut.self, forKey: .shortcut)) ?? .optionSpace
+        profile = try? c.decodeIfPresent(String.self, forKey: .profile)
         model = (try? c.decodeIfPresent(QuickChatModelChoice.self, forKey: .model)) ?? .haiku
         thinking = (try? c.decodeIfPresent(QuickChatThinking.self, forKey: .thinking)) ?? .off
+        counted = (try? c.decodeIfPresent(Bool.self, forKey: .counted)) ?? false
     }
 
     static var folder: URL { Store.folder.appendingPathComponent("quick-chat") }
@@ -471,6 +479,11 @@ final class QuickChat {
 
     /// Open: the panel is up, so the agent may keep windows (MenuBarItems leaves its activation policy alone).
     var isOpen: Bool { panel?.isVisible == true }
+    private let hotKey = QuickChatHotKey()
+    /// The shortcut: "on", or why it isn't registered; nil while it's turned off. In the agent's mark, for Settings.
+    private(set) var shortcutState: String?
+    /// The panel is up or the shortcut is registered: the agent keeps the accessory role (still no Dock icon).
+    var holdsAccessory: Bool { isOpen || hotKey.isRegistered }
 
     func start(entries: @escaping () -> [AccountEntry], usage: @escaping (String) -> Usage?) {
         self.entries = entries
@@ -489,7 +502,15 @@ final class QuickChat {
         })
         observers.append(dn.addObserver(forName: QuickChatSettings.changed, object: nil, queue: .main) { [weak self] _ in
             self?.settings = QuickChatSettings.load()
+            self?.applyShortcut()
         })
+        observers.append(dn.addObserver(forName: QuickChatData.removing, object: nil, queue: .main) { [weak self] _ in
+            // its data is about to go: the chat closes and its claude with it
+            self?.hide()
+            self?.model.newChat()
+        })
+        hotKey.onPress = { [weak self] in self?.toggle() }
+        applyShortcut()
         // a switch, a new reading: the account line follows (after the agent has read the change itself)
         for name in [Store.changed, Store.statusChanged] {
             observers.append(dn.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
@@ -505,6 +526,19 @@ final class QuickChat {
     }
 
     func toggle() { isOpen ? hide() : open() }
+
+    /// The shortcut as the settings say: registered (the agent then keeps the accessory role, which global shortcuts
+    /// need), or not. Its state goes into the agent's mark at once, for Settings.
+    private func applyShortcut() {
+        hotKey.unregister()
+        if settings.shortcutOn {
+            if NSApp.activationPolicy() != .accessory { NSApp.setActivationPolicy(.accessory) }
+            shortcutState = hotKey.register(settings.shortcut) ?? "on"
+        } else {
+            shortcutState = nil
+        }
+        (NSApp.delegate as? AgentDelegate)?.beat()
+    }
 
     /// Opens the bar (or the chat as it was) over whatever is in front. `profile`: chat on that one (its menu's item).
     func open(profile: String? = nil) {
@@ -531,7 +565,7 @@ final class QuickChat {
         panel?.orderOut(nil)
     }
 
-    func shutdown() { model.shutdown() }
+    func shutdown() { hotKey.unregister(); model.shutdown() }
 
     private func makePanel() -> QuickChatPanel {
         let p = QuickChatPanel()
