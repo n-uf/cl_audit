@@ -1003,20 +1003,12 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   (listed) while **Keep them** keeps it and forces the encrypted image. There is **no address check and no rewriting** in
   setup files: they are your own words, like a transcript. **Sensitive setup** (`settings.json`, the scripts it points to
   and `plugins/known_marketplaces.json`, which can hold addresses with credentials) can hold tokens no scan recognises, so
-  **only the encrypted disk image carries it**: a zip leaves it out and the page says so ("settings.json, 3 hook scripts and
-  the plugin marketplaces need the encrypted disk image: left out of a zip"; the Password row's choice decides, no extra menu).
+  **only the encrypted disk image carries it**: a zip leaves it out and the page says so ("settings.json, the 3 scripts it runs
+  and the plugin marketplaces need the encrypted disk image: left out of a zip"; the Password row's choice decides, no extra menu).
+  A skill, agent, command or output style that holds a script a hook runs is sensitive too: left out of a zip with the same note,
+  carried whole, as itself, in an image.
   Each file is recorded in the manifest with its size, its SHA-256 and whether its owner-execute bit was set.
 
-**Can I move everything to another Mac?** Most of it, yes. What moves: the transcripts (sessions), the Code-tab list, the
-sidebar arrangement, and now Claude Code's setup: `CLAUDE.md` (and the files it includes), skills, agents, commands, output
-styles, keybindings, `settings.json` with its hooks and the scripts they run, and the plugin list so Claude Code can reinstall
-the plugins. What doesn't: sign-ins (log in again on the new Mac), `settings.local.json`, the window's MCP settings, the
-scheduled tasks themselves (their sessions are left out on import), claude.ai chats and Projects (they follow the account), and
-cl_audit's own profiles and settings. Put the project folders at the same paths on the new Mac first, or the sessions are added
-but wait ("Folder not here") until the folder exists. On the new Mac, **Import…** leaves the setup out until you pick **Add them**
-(hooks run commands on their own, and nothing in a file can prove it was made for a move on your Mac); one click adds all
-that is missing, and Undo last import takes it back. Use the encrypted disk image if `settings.json` and its scripts should come
-along.
 - **Keys found:** every transcript and the window's files are searched, in chunks that overlap so nothing is missed at a
   boundary, for **GitHub tokens** (`ghp_`, `gho_`, `ghu_`, `ghs_`, `ghr_` and `github_pat_`), **AWS access keys**
   (`AKIA`/`ASIA` and 16 more), **private keys** (a `-----BEGIN … PRIVATE KEY-----` header, PGP too), **Anthropic API
@@ -1074,6 +1066,19 @@ along.
   and `exec`); a version-1 file (no setup) still imports, and an older cl_audit refuses a version-2 file with its "newer
   cl_audit" message. The format keeps room for later parts (`window` settings and `app` settings of cl_audit itself) beside
   `setup/`.
+
+### Moving to another Mac
+
+**Can I move everything to another Mac?** Most of it, yes. What moves: the transcripts (sessions), the Code-tab list, the
+sidebar arrangement, and Claude Code's setup: `CLAUDE.md` (and the files it includes), skills, agents, commands, output
+styles, keybindings, `settings.json` with its hooks and the scripts they run, and the plugin list so Claude Code can reinstall
+the plugins. What doesn't move yet: sign-ins (log in again on the new Mac), `settings.local.json`, the window's MCP settings,
+the scheduled tasks themselves (their sessions are left out on import), claude.ai chats and Projects (they follow the account),
+and cl_audit's own profiles and settings. Put the project folders at the same paths on the new Mac first, or the sessions are
+added but wait ("Folder not here") until the folder exists. On the new Mac, **Import…** leaves the setup out until you pick
+**Add them** (hooks run commands on their own, and nothing in a file can prove it was made for a move on your Mac); one click
+adds all that is missing, and Undo last import takes it back. Use the encrypted disk image if `settings.json`, its scripts and
+the plugin marketplaces should come along: a zip leaves them out (and a skill, agent or command that holds a script a hook runs).
 
 ### Importing an export
 
@@ -1164,8 +1169,11 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
   included files are never made executable. A hook or status-line path in an added settings.json that isn't on this Mac is
   listed after the import ("hook points to /opt/tools/x.sh: not here"). A **Hostile file** that marks a file outside a skill
   executable, names a path outside the allowed places or `settings.local.json`/`settings.json` under another name, or carries
-  settings.json, its scripts or the marketplaces in a zip, is refused whole, as is a script no hook in the file's settings.json
-  points to and a file whose SHA-256 isn't the manifest's. **Undo last import** takes the setup back like everything else
+  settings.json, its scripts or the marketplaces in a zip, is refused whole, as is a script that no hook or status-line command in
+  the file's own settings.json names (a path mentioned in a value that isn't a command doesn't count), an `.md` that the file's
+  own CLAUDE.md doesn't include (its `@` lines, followed as the export followed them), a name that is CLAUDE.md, settings.json,
+  keybindings.json, `skills/`, `plugins/` or `projects/` under another case, and a file whose SHA-256 isn't the manifest's.
+  A script is made executable only when this run created the settings.json that names it; settings.json is written first. **Undo last import** takes the setup back like everything else
   (only files still exactly what was written). A backup made before this version says "not in this backup".
 - **Scheduled tasks' sessions** are left out whole: the entry, its transcript and the files in its folder, none counted as added.
   (An entry marks one with its `scheduledTaskId`, the key real Code-tab entries carry, taken exactly; the name shown is the
