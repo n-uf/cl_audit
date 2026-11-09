@@ -1098,15 +1098,16 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   26.11.8 (up to 2) and 26.11.9 (up to 3) refuse a newer file with their "newer cl_audit" message.
 - **cl_audit's profiles** (a row of its own, **left out** unless you include it; on in the Move preset): `cl_audit.json` holds each
   exported profile's record (name, label and look, how it behaves, its place in the order, whether it had a Dock icon, its
-  Claude Code and window folders as `~` paths, its accounts and which one is in use) and cl_audit's General and backup
+  accounts and which one is in use; never its folders) and cl_audit's General and backup
   settings (Face, Emails, Usage history, the dashboard's cards and charts, the app icon, where backups go and how many are
   kept; the Dock's own settings stay with each Mac; none of them holds a secret). It names your accounts and their
   addresses, so only the **encrypted disk image** carries it; a zip leaves it out and says so. Outside a move its ids and
   addresses are fingerprints like everywhere else in the file.
 - **Move to another Mac** (a key at the top of the page, and the **Move** row): one click sets everything a new Mac needs:
   All profiles, the encrypted disk image (a password), Claude Code's setup, the window's MCP settings and scheduled tasks,
-  cl_audit's profiles and settings, and transcripts with keys kept (the image protects them). You can still change any row;
-  only the zip is off while it is a move. A move **keeps the real account and organisation ids and the addresses** (no
+  and cl_audit's profiles and settings. Keys found stays as you chose it, and the page says which rows the preset changed from
+  your choice. You can still change any row; only the zip is off while it is a move. Sign-ins don't travel: on the new Mac
+  you sign in again to each account (Add account). A move **keeps the real account and organisation ids and the addresses** (no
   fingerprints), because the Claude window files its Code-tab list and scheduled tasks by account folder: the new Mac puts
   them back where the window looks once you sign in. That is safe only in the encrypted image, so cl_audit refuses a move as
   a zip in the export itself, not only on the page, and an import refuses a zip that claims to be one. Every other export
@@ -1121,7 +1122,9 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
    profiles, the encrypted disk image, Claude Code's setup, the window's MCP settings and scheduled tasks, and cl_audit's own
    profiles and settings.
 2. Type a password twice (not stored anywhere: lose it and the file can't be opened), then **Export** and choose where.
-   Close the profiles' Claude windows first, or their Code-tab lists are left out.
+   Close the profiles' Claude windows first, or their Code-tab lists are left out (the page tells you per profile). Your
+   Keys found choice stays as you set it. Sign-ins don't travel. On the new Mac you sign in again to each account (Add
+   account).
 3. Copy the `.dmg` to the new Mac (a disk, AirDrop, a shared folder).
 
 **On the new Mac**
@@ -1129,18 +1132,23 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
 2. Put your project folders at the same paths as on the old Mac, or those sessions are added but wait ("Folder not here")
    until the folder exists.
 3. Settings ▸ that profile ▸ Sessions ▸ **Import…**, choose the file, type its password. The page says it is a move. Its
-   **cl_audit's profiles** card lists the profiles it makes (those not on this Mac yet), the ones already here (a profile with
-   one of the same accounts, or, for a file that names none, the same name) and the settings that differ, with both values.
-   **Make 2 profiles** makes them; your settings stay unless you pick **Take the file's** (a backups folder that isn't on this
-   Mac is never taken). Nothing that is here changes.
-4. **Close and import** puts that profile's sessions in. Each Code-tab entry and scheduled task goes back into the folder of the
-   account it was on, so the window shows it once that account is signed in. Then the same for each other profile:
-   Settings ▸ that profile ▸ Sessions ▸ Import…, the same file (its own part is picked for it).
-5. **Sign in to each account** of each made profile: Settings ▸ the profile ▸ Claude Code ▸ Accounts, Add account. The done
-   page lists which. Nothing is signed in by an import: sign-ins never travel, and cl_audit never reads the Keychain.
-6. **Put the profiles in the Dock**: the done page's key, or Settings ▸ the profile ▸ Usage in the Dock. A made profile has
-   no Dock icon until you do (the import never builds its app or touches the Dock).
-7. **Turn on the scheduled tasks** you want, in each Claude window's Scheduled tasks, once it is signed in: they come paused,
+   **cl_audit's profiles** card lists the profiles it makes (those not on this Mac yet), the ones already here (a profile counts
+   as already here when it has one of the file's accounts, or, for a file with no accounts, the same name) and the settings that
+   differ, with both values. **Make 2 profiles** makes them, each in folders of its own (`~/.claude-<name>` and its own
+   window), whatever the file says, after the profiles that are here; your settings stay unless you pick **Take the file's** (a
+   backups folder that isn't on this Mac is never taken, and keeping fewer backups than here is said). Nothing that is here
+   changes. Do this before Close and import: until the profiles exist, a profile's sessions have nowhere of their own to go,
+   and the key waits.
+4. After that, pick **Into**: the page offers the part's own profile ("Into Studio"); it never picks it for you. **Close and
+   import** puts that profile's sessions in. Each Code-tab entry and scheduled task goes back into the folder of the account it
+   was on, so the window shows it once that account is signed in. Then the same for each other profile: Settings ▸ that
+   profile ▸ Sessions ▸ Import…, the same file (its own part is picked for it).
+5. **Sign in to each account** of each made profile: Settings ▸ the profile ▸ Claude Code ▸ Accounts ▸ Add account. The page
+   lists which as soon as the profiles are made. Nothing is signed in by an import: sign-ins never travel, and cl_audit never
+   reads the Keychain.
+6. **Put the profiles in the Dock**: the page's key, or Settings ▸ the profile ▸ Dock icon ▸ Usage in the Dock. A made profile
+   has no Dock icon until you do (the import never builds its app or touches the Dock).
+7. **Turn on the scheduled tasks** you want, in each profile's Claude window (open it from its Dock icon), under Scheduled tasks, once it is signed in: they come paused,
    so nothing runs twice. Setup and the MCP settings come only if you pick **Add them** on the import page (hooks and MCP
    servers run commands on their own, and nothing in a file can prove it was made for a move on your Mac).
 
@@ -1151,8 +1159,8 @@ with their prompts and the sessions they ran; and cl_audit's own profiles (names
 is in use) and General and backup settings. **What never moves:** sign-ins (Claude Code's and the window's), the Keychain,
 `settings.local.json`, and claude.ai chats and Projects, which already follow the account.
 
-Undo: **Undo this import** on the done page (or Undo last import under the profile's Sessions) takes back the sessions, then
-**Take back the profiles it made** removes the made profiles (those unchanged since), their empty folders and the settings it
+Undo is two steps: **Undo this import** on the done page (or Undo last import under the profile's Sessions) takes back the
+sessions, then **Take back the profiles it made** removes the made profiles (those unchanged since), their empty folders and the settings it
 took. Export the profiles as they are now, not from a backup: backups keep neither the MCP settings nor settings.json's env
 values (backups made by 26.11.8 still hold them).
 
@@ -1170,16 +1178,22 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
   file"), **Keep this Mac's** by default, or **Take the file's**. A profile is **here already** when one of its accounts (the
   account and organisation ids) is a profile's here, in use or standing by; for a file that names no account (not a move),
   when a profile here has its name. One whose name a profile here has, with other accounts, isn't made; nothing that is here is
-  ever changed. **Make 2 profiles** (a step of its own, before the sessions) writes them into cl_audit's profiles file at their
-  place in the order, with their accounts and the one in use, Usage in the Dock off, and makes their two folders, empty, where
-  they aren't there. Nothing is signed in, the Dock isn't touched and no app is built, opened or quit. Then **Into** is the
-  part's own profile. A move's entries and task files go into their own account's folder (an entry from an account the
-  target doesn't have goes into the one it works on, as for any import). The done page lists, per made profile, the accounts to
-  sign in to, its Dock step and its paused tasks, and **Take back the profiles it made** (after Undo this import).
+  ever changed. **Make 2 profiles** (a step of its own, before the sessions; Close and import waits for it, or for Leave them
+  out, and says why) writes them into cl_audit's profiles file after the profiles that are here, with their accounts and the
+  one in use, Usage in the Dock off, and their own folders: always `~/.claude-<id>` and its own window
+  (`Claude-<id>`), never `~/.claude`, the usual Claude app or a folder the file names. A folder of that name already on this Mac
+  is used only when no profile has it, it isn't a link and it holds no sign-in (else the next name), and the page says so; the
+  rest are made empty. Nothing is signed in, the Dock isn't touched and no app is built, opened or quit. **Into** stays as you
+  chose it: the page offers the part's own profile ("Into Studio"). For a file that isn't a move (its accounts are only
+  fingerprints) the profiles start as Leave them out. A move's entries and task files go into their own account's folder (an entry from an account the
+  target doesn't have goes into the one it works on, as for any import). As soon as the profiles are made, the page lists, per
+  made profile, the accounts to sign in to, its Dock step, its paused tasks and where its sessions come from; **Take back the
+  profiles it made** undoes them (after Undo this import, once its sessions are in).
   `cl_audit.json` is read through a 1 MB cap, 16 levels deep at most, field by field: a name with control or direction
-  characters becomes one plain line, an account id that isn't one is dropped, a folder that isn't a profile's usual one is
-  replaced by the usual one, a place out of range is clamped, a backups folder in a system folder (or missing here) is never
-  taken; a file that can't be read at all is refused whole.
+  characters becomes one plain line, an account id that isn't one is dropped, a place out of range is clamped, any folder it
+  names is ignored, a backups folder is judged where it really is (links resolved): one in a system folder, on this Mac's own
+  disk outside the home folder, in ~/Library, ~/Public or a hidden folder, or missing here is never taken; a file that can't be
+  read at all is refused whole.
 
 - **What happens:** **New** (transcripts, their other files and Code-tab entries that aren't here: added), **Already here** (the
   same content, or longer here: skipped), **Grown on both sides** (there and different, or the file's is longer: the target's
