@@ -139,7 +139,7 @@ struct Retention: Equatable {
     var skipNote: String? {
         switch skipped {
         case .key(let k)?:
-            let counts = k == CodeCleanup.key ? "cl_audit counts with its default, 30 days." : "cl_audit counts as if it weren't set."
+            let counts = k == CodeCleanup.key ? "cl_audit counts with Claude Code's default, 30 days." : "cl_audit counts as if it weren't set."
             return "Until \(k) in settings.json is a valid number, Claude Code (2.1.318) skips its clean-up; \(counts)"
         case .unreadable?: return "Until settings.json can be read, Claude Code (2.1.318) skips its clean-up; cl_audit counts with Claude Code's defaults."
         case nil: return nil
