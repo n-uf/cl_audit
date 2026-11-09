@@ -535,13 +535,21 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   - **Kept here:** "310 in Claude Code · 84 in the Claude window (24 in the sidebar) · 5.6 GB · since 6 Oct. Claude
     Code deletes terminal sessions after 30 days; ones from the Claude window it keeps." Counted in the background and
     remembered, so it shows at once. (Claude Code 2.1.248 and later keep the transcript of a session started or last
-    continued in the Claude window at any age. cl_audit tells those by the Code tab: an entry whose `cliSessionId` is
-    the transcript's session id; an id only in `priorCliSessionIds` was continued elsewhere since and counts as a
-    terminal session. With `desktopSessionCleanupPeriodDays` in `settings.json` the line says the Claude window's
-    sessions go after the longer of that and `cleanupPeriodDays`; with `cleanupPeriodDays` in the organisation's managed
-    settings, `/Library/Application Support/ClaudeCode/managed-settings.json` and `managed-settings.d/*.json`, it says
-    the organisation's number applies to every session. An MDM profile, server-managed settings and the HIPAA
-    configuration can't be read from here; the info text names them.)
+    continued in the Claude window or Cowork at any age. cl_audit follows Claude Code's own rule and tells those by the
+    transcript itself, never by the Code tab: the `entrypoint` of its first line that has one (within the first 64 KB)
+    or of its last (within the last 64 KB) is `claude-desktop`, `claude-desktop-3p` or `local-agent`. A session that
+    began in the terminal, was continued in the window and then in the terminal again is a terminal session: only
+    the two ends count. A release marker next to the transcript, `<session>.desktop-released.json` (an object with a
+    `reason`, at most 4096 bytes), ends the exemption: `delete` at once, `archive` after a grace period (once the
+    marker is older than `cleanupPeriodDays`). With `desktopSessionCleanupPeriodDays` above 0 the line says the
+    window's sessions go after the longer of that and `cleanupPeriodDays` (0 is no limit). The organisation's managed
+    settings are read in Claude Code's order, and the first source that holds any setting supplies them all: the
+    server-managed cache `remote-settings.json` in the Claude Code folder, then the MDM managed preferences
+    (`/Library/Managed Preferences/…/com.anthropic.claudecode.plist`), then
+    `/Library/Application Support/ClaudeCode/managed-settings.json` and `managed-settings.d/*.json` (alphabetical, a later
+    value replacing an earlier one); plain files only, at most 2 MiB (8 MiB for the cache), read and never written.
+    With `cleanupPeriodDays` set there, or a settings error about one of the two keys, the window's sessions go after
+    that number like every other. HIPAA and zero data retention can't be seen from here; the info text names them.)
   - **Keep for:** how long Claude Code keeps the transcripts of sessions you ran in the terminal: 30 days (its default), 90 days or a year. It writes
     `cleanupPeriodDays` in the Claude Code folder's `settings.json`, changing only that number in the file's own
     text (or adding the key after the opening brace of an ordinary object); everything else stays byte for byte. A
@@ -753,7 +761,10 @@ the menu bar icon open the usual app; Opens from, With Dock icon and Sessions fo
 - **A profile on another folder** (`~/.claude-account` with its own window): step one signs Claude Code into
   `~/.claude` (its own login, in Terminal, with the old profile's address filled in; cl_audit never moves or copies a
   sign-in). The `~/.claude` profile is the one already in the list, or is made then. Then the same moves, plus the old
-  profile's transcripts into `~/.claude/projects` (never over one that is there). Last, the old profile can stay as a
+  profile's transcripts into `~/.claude/projects` (never over one that is there). The What moves card says, as the
+  Restore page does, how many of those transcripts Claude Code's clean-up would delete again where they land (**Would
+  be deleted**, by the Sessions card's rule and `~/.claude`'s settings; the row isn't there when none would be), and the
+  restore's own page says the same with its **Keep for 90 days** key. Last, the old profile can stay as a
   standby account of the default profile (its folder and sign-in untouched; only when it is another Claude account),
   or be removed with the usual remove flow (which signs its folder out of Claude Code).
 - **Nothing is deleted** from the old window's folder: it stays as the backup's source and for Undo.
@@ -859,11 +870,14 @@ the window's Code-tab list, and transcripts by their path under the Claude Code 
   written back (the write only ever creates a file that isn't there; if the session writes the same name first, the
   restore leaves it as it is). A transcript that is already there is never written to either way; one changed in the
   last two minutes is only listed as in use. If `ps` can't be read, no missing transcript is written and the page says so.
-- **Would be deleted:** only the restored transcripts Claude Code's own clean-up would delete again: terminal sessions
-  older than `cleanupPeriodDays`; sessions of the Claude window (the Code tab's entries after the restore name them)
+- **Would be deleted:** only the restored transcripts Claude Code's own clean-up would delete again (the rule is the
+  Sessions card's, decided per transcript from the backup's own bytes and its release marker; a marker already in the
+  folder stays as it is and decides): terminal sessions older than `cleanupPeriodDays`; sessions of the Claude window
   only when `desktopSessionCleanupPeriodDays` or the organisation's managed settings give them a limit and they are past
-  it. The row isn't there when none would be; **Keep for 90 days** (not when the organisation sets the number) sets
-  `cleanupPeriodDays` in `settings.json`, the one key cl_audit ever writes there.
+  it, or the window released them. The row isn't there when none would be. **Keep for 90 days** (not when the
+  organisation sets the number) sets `cleanupPeriodDays` in `settings.json`, the one key cl_audit ever writes there, and
+  is shown only when 90 days would keep some of them ("Keep for 90 days would keep 1 of them"): never for a session the
+  window released or one 90 days still deletes.
 
 **Stays as it is:** the account (Main stays on the account it works on; Switch back changes that), sign-ins (never in a
 backup, never written), the window's MCP settings and `settings.json` other than Keep for, and claude.ai (Chats and
@@ -996,7 +1010,7 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
   same content, or longer here: skipped), **Grown on both sides** (there and different, or the file's is longer: the target's
   copy stays, listed), **Code-tab entries** (the window closes and opens again), **Scheduled tasks' sessions** (sessions a
   scheduled task ran are left out, with the task's name; the tasks themselves aren't imported), **Folder not here** (added, shown
-  once that folder exists), **Would be deleted** (only the sessions Claude Code would delete again, as on the Restore page; **Keep for 90 days**). Entries go into the folder of the account the target
+  once that folder exists), **Would be deleted** (only the sessions Claude Code would delete again, as on the Restore page; **Keep for 90 days** when it would keep some). Entries go into the folder of the account the target
   works on now, never a fingerprint's, written as a switch would place them (the old account's error keys and Remote Control
   ids off), and the sidebar's groups and pins follow them through the fingerprint (one Return in a helper session). **Close and
   import 210 sessions** then runs the Restore page's steps (window closes, files added with a receipt kept as it goes, window
