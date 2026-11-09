@@ -54,9 +54,10 @@ enum Setup {
     struct Found {
         var files: [FileRec] = []
         var linked: [Linked] = []
-        var outside: [String] = []          // "@~/x/y.md in CLAUDE.md: lives outside", "hook script outside ~/.claude: ~/bin/foo.sh"
+        var outside: [String] = []          // "CLAUDE.md includes ~/x/y.md: outside ~/.claude, not carried", "hook script outside ~/.claude: ~/bin/foo.sh"
         var leftOutBuild = 0                // .git, node_modules, .DS_Store, *.pyc …
         var leftOutNames: [String] = []     // files with a sign-in name, left out one by one
+        var cut: [String] = []              // folders a walk stopped in (too deep, too many files): their unit is left out whole
     }
 
     // MARK: what is where
@@ -215,7 +216,7 @@ enum Setup {
 
     /// The files of a skill folder (or any folder): every plain file, a link anywhere says so. `links` gets where the first one points.
     private static func walk(_ dir: String, _ rel: String, depth: Int, into found: inout Found, files: inout [FileRec], link: inout String?, count: inout Int) {
-        guard depth <= 6, count < maxFiles else { found.leftOutNames.append(rel + " (too deep or too many files)"); return }
+        guard depth <= 6, count < maxFiles else { found.cut.append(rel); return }
         let names = ((try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? []).sorted()
         for n in names {
             let path = (dir as NSString).appendingPathComponent(n), r = rel + "/" + n
@@ -346,6 +347,8 @@ enum Setup {
                     var sub = Found()
                     walk(path, "skills/" + n, depth: 0, into: &sub, files: &files, link: &link, count: &count)
                     if let t = link { found.linked.append(Linked(label: "skill \(n) (it holds a link)", kind: .skill, target: t)); continue }
+                    // a skill the walk had to stop in is left out whole and listed: never carried in part, never as a whole "New" one
+                    if !sub.cut.isEmpty { found.leftOutNames.append("skills/\(n) (too deep or too many files: left out whole)"); continue }
                     found.leftOutBuild += sub.leftOutBuild; found.leftOutNames += sub.leftOutNames
                     for f in files { add(f) }
                 } else {
@@ -357,7 +360,8 @@ enum Setup {
                         var sub = Found()
                         walk(path, folder + "/" + n, depth: 0, into: &sub, files: &files, link: &link, count: &count)
                         found.leftOutBuild += sub.leftOutBuild; found.leftOutNames += sub.leftOutNames
-                        if let t = link { found.linked.append(Linked(label: "\(folder) folder \(n) (it holds a link)", kind: kind, target: t)) }
+                        if let t = link { found.linked.append(Linked(label: "\(folder) folder \(n) (it holds a link)", kind: kind, target: t)); continue }
+                        if !sub.cut.isEmpty { found.leftOutNames.append("\(folder)/\(n) (too deep or too many files: left out whole)"); continue }
                         for f in files { add(f) }
                     } else if k == S_IFREG {
                         if n.hasPrefix(".") || buildLeftover(n, isDir: false) { if buildLeftover(n, isDir: false) { found.leftOutBuild += 1 }; continue }
