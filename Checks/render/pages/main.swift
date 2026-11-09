@@ -676,8 +676,11 @@ MainActor.assumeIsolated {
         importPageM("mb-import-move-profiles")
         irM.takeSettings = false
         irM.applyMove()
-        settleE("the move's profiles made") { irM.moved != nil && irM.into == "mvstudio" && irM.counting?.plan != nil && irM.phase == .ready }
+        settleE("the move's profiles made") { irM.moved != nil && !irM.moveBusy && irM.counting?.plan != nil && irM.phase == .ready && irM.suggestedInto != nil }
         importPageM("mc-import-move-made")
+        // Into stays the person's: the page offers Studio, and the person picks it
+        irM.setInto("mvstudio")
+        settleE("into Studio, counted") { irM.staged?.target == "mvstudio" && irM.counting?.plan != nil && irM.phase == .ready }
         irM.setTasks(true)
         settleE("the move import, tasks added") { irM.plan?.taskPlan.leftOut == false }
         irM.commit()
