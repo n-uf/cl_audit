@@ -523,7 +523,8 @@ MainActor.assumeIsolated {
         try! JSONSerialization.data(withJSONObject: mcp, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: d9 + "/claude_desktop_config.json"))
         let tasks9: [[String: Any]] = [
             ["id": "nightly-digest", "displayName": "Nightly digest", "cronExpression": "0 3 * * *", "enabled": true, "filePath": c9 + "/scheduled-tasks/nightly-digest/SKILL.md", "cwd": appCwd, "createdAt": 1],
-            ["id": "weekly-report", "displayName": "Weekly report", "cronExpression": "0 9 * * 1", "enabled": true, "filePath": c9 + "/scheduled-tasks/weekly-report/SKILL.md", "cwd": appCwd, "createdAt": 1],
+            ["id": "weekly-report", "displayName": "Weekly report", "cronExpression": "0 9 * * 1", "enabled": true, "filePath": c9 + "/scheduled-tasks/weekly-report/SKILL.md", "cwd": appCwd, "createdAt": 1,
+             "permissionMode": "bypassPermissions", "approvedPermissions": ["Bash(git push:*)"]],
             ["id": "dependency-check", "displayName": "Dependency check", "cronExpression": "0 8 * * *", "enabled": true, "filePath": c9 + "/scheduled-tasks/dependency-check/SKILL.md", "cwd": appCwd, "createdAt": 1]]
         try! JSONSerialization.data(withJSONObject: ["scheduledTasks": tasks9], options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: s9 + "/scheduled-tasks.json"))
         for t in ["nightly-digest", "weekly-report"] { w2(c9, "scheduled-tasks/\(t)/SKILL.md", "---\nname: \(t)\n---\nThe \(t) prompt.\n") }
@@ -571,12 +572,21 @@ MainActor.assumeIsolated {
         let ir9 = openImport("e2bdst")
         @MainActor func importPage9(_ name: String, _ e: AccountEntry, _ ir: ImportRunner) { e2Shots(name, { ImportPage(entry: e, model: model, runner: ir, width: $0) }, height: 4400) }
         importPage9("9c-import-window-left-out", e2bdst, ir9)
-        ir9.setConfig(true)
-        settleE("the window import, config added") { ir9.plan?.config.leftOut == false }
+        // 9i the tasks added (the config still left out), a task flagged for bypassed and approved permissions
         ir9.setTasks(true)
         settleE("the window import, tasks added") { ir9.plan?.taskPlan.leftOut == false }
         SetupRow.renderOpen = true
+        importPage9("9i-import-task-flagged", e2bdst, ir9)
+        ir9.setConfig(true)
+        settleE("the window import, config added") { ir9.plan?.config.leftOut == false }
         importPage9("9d-import-window-added-open", e2bdst, ir9)
+        // 9h the import run: the done page (tasks added paused, the config added, with its Undo line)
+        ir9.commit()
+        if case .running(let key9) = ir9.phase {
+            let run9 = model.restoreRunner(key9)
+            settleE("the window import ran") { run9.phase == .done }
+            importPage9("9h-import-window-done", e2bdst, ir9)
+        } else { print("the window import didn't start") }
         // 9e into a profile that has its own config and task file: both stay, what they lack is listed
         let ih9 = openImport("e2bhas")
         ih9.setConfig(true)
