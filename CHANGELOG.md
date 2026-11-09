@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.3 — 2026-11-08
+
 - **Quick chat** (issue #11): a floating chat over any app, like ChatGPT's classic one in Claude's colours. A bar
   first; the first message opens it into a chat window that stays floating on every Space until Esc hides it. Claude
   Code answers it on the account a profile has in use, so it needs no API key and follows a switch. Answers stream as
