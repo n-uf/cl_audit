@@ -996,8 +996,13 @@ enum SessionsRestore {
             }
             done += 1; progress?(done, total)
         }
+        var written = Set<String>()                                 // the transcripts this run made (a marker needs its own among them)
         for piece in p.transcripts + p.files {
             if stop() { throw stopped("Stopped by you. What is back is kept.") }
+            // a retention marker only with its transcript made by this run (the plan saw it planned; it may have appeared since)
+            if piece.kind == .file, let id = SessionsExport.markerID(piece.leaf), !written.contains((piece.dirs + [id + ".jsonl"]).joined(separator: "/")) {
+                done += 1; progress?(done, total); continue
+            }
             guard let tree = code, let f = reader.file(piece.rel) else { throw stopped("A file in the backup changed while restoring; stopped. What is back is kept.") }
             defer { close(f.fd) }
             // the backup file's hash is known before anything is made: the step says what the file must be, so a crash
@@ -1013,6 +1018,7 @@ enum SessionsRestore {
             switch cloneNew(from: f.fd, st: f.st, expected: want, dfd, piece.leaf) {
             case .created(let hash):
                 journal.add(Event(op: "done", kind: nil, path: path, sha: hash, bytes: nil), sync: false)
+                if piece.kind == .transcript { written.insert((piece.dirs + [piece.leaf.lowercased()]).joined(separator: "/")) }
             case .exists: gone(path); r.problems.append("\(piece.leaf) appeared meanwhile; left as it is."); continue
             case .differs:
                 // never taken away by name: a running session may have written to it since it was made
