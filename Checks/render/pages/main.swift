@@ -587,18 +587,21 @@ MainActor.assumeIsolated {
         SetupRow.renderOpen = false
 
         // 9f/9g the Restore page: a backup of Work from before its config, task file and a prompt went: left out, then added
+        // (a plain backup keeps no MCP settings, and settings.json with its env values blank: the setup row says so)
+        w2(c9, "settings.json", "{\"env\":{\"DEPLOY_TOKEN\":\"sample-value\",\"REGION\":\"eu-west-1\"},\"model\":\"opus\"}")
         let bk9 = try! SessionsBackup.make(SessionsBackup.Source(e2bsrc), kind: .manual, place: BackupPrefs.placeURL, now: Date().addingTimeInterval(-1800))
         try? fm.removeItem(atPath: d9 + "/claude_desktop_config.json"); try? fm.removeItem(atPath: s9 + "/scheduled-tasks.json"); try? fm.removeItem(atPath: c9 + "/scheduled-tasks/weekly-report")
+        try? fm.removeItem(atPath: c9 + "/settings.json")
         let rk9 = RestoreKey(profile: "e2bsrc", backup: bk9.id, place: BackupPrefs.placeURL.path)
         let rr9 = model.restoreRunner(rk9)
         rr9.refresh()
         settleE("the window restore preview") { rr9.plan != nil }
         @MainActor func restorePage9(_ name: String) { e2Shots(name, { RestorePage(entry: e2bsrc, key: rk9, model: model, runner: rr9, width: $0) }, height: 4000) }
         restorePage9("9f-restore-window-left-out")
-        rr9.setConfig(true)
-        settleE("the window restore, config added") { rr9.plan?.config.leftOut == false }
+        rr9.setSetup(true)
+        settleE("the window restore, setup added") { rr9.plan?.setup.leftOut == false }
         SetupRow.renderOpen = true
-        restorePage9("9g-restore-window-added")
+        restorePage9("9g-restore-window-setup-added")
         SetupRow.renderOpen = false
     }
 }
