@@ -48,21 +48,26 @@ enum QuickChatShortcut: String, CaseIterable, Codable, Identifiable {
     /// Who else uses it on this Mac, in words, or nil when nothing known does. macOS's own come from its settings
     /// (com.apple.symbolichotkeys; one never changed there is on, with its usual keys).
     func clash(symbolic: [String: Any]? = UserDefaults(suiteName: "com.apple.symbolichotkeys")?.dictionary(forKey: "AppleSymbolicHotKeys")) -> String? {
-        // macOS's shortcuts that use Space: id, what it does, and its usual modifiers
-        let system: [(id: String, does: String, usual: Int)] = [
-            ("64", "opens Spotlight", 1 << 20), ("65", "opens a Finder search", 1 << 20 | 1 << 19),
-            ("60", "switches to the previous input source", 1 << 18), ("61", "switches to the next input source", 1 << 18 | 1 << 19)]
+        // macOS's shortcuts that use Space: id, what it does, its usual modifiers, and whether it's on before anyone
+        // changes it (Spotlight and the previous input source are; Finder's search and the next input source aren't)
+        let system: [(id: String, does: String, usual: Int, onByDefault: Bool)] = [
+            ("64", "opens Spotlight", 1 << 20, true), ("65", "opens a Finder search", 1 << 20 | 1 << 19, false),
+            ("60", "switches to the previous input source", 1 << 18, true),
+            ("61", "switches to the next input source", 1 << 18 | 1 << 19, false)]
         for s in system {
             if let entry = symbolic?[s.id] as? [String: Any] {
                 guard (entry["enabled"] as? NSNumber)?.boolValue ?? false,
                       let params = (entry["value"] as? [String: Any])?["parameters"] as? [NSNumber], params.count >= 3,
                       params[1].intValue == Int(kVK_Space), params[2].intValue == cocoaModifiers else { continue }
                 return "\(title) \(s.does) in macOS."
-            } else if s.usual == cocoaModifiers {
+            } else if s.onByDefault, s.usual == cocoaModifiers {
                 return "\(title) \(s.does) in macOS."
             }
         }
-        if self == .optionSpace { return "\(title) also opens the Claude app's Quick Entry when that's turned on." }
+        // the Claude app's Quick Entry is ⌥Space unless changed there; only worth saying where the app is
+        if self == .optionSpace, NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.anthropic.claudefordesktop") != nil {
+            return "\(title) also opens the Claude app's Quick Entry when that's turned on."
+        }
         return nil
     }
 }
