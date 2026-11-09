@@ -307,6 +307,35 @@ MainActor.assumeIsolated {
         try? fm.removeItem(atPath: c6); try? fm.removeItem(atPath: dots)
     }
 
+    // ---- an included file goes only with what includes it: a default zip (keys left out) of a CLAUDE.md with a key leaves its include
+    // out too, and so does one reached only through a skill left out for its key; the file imports, never refused whole. An @../ back
+    // into the folder (by its own name) is carried and accepted.
+    do {
+        let c7 = e2 + "/.claude-e2i"
+        try? fm.removeItem(atPath: c7)
+        w(c7, "CLAUDE.md", "# rules\nTOKEN \(ghKey)\n@rules/one.md\n"); w(c7, "rules/one.md", "one\n")
+        let ipart = SessionsExport.Part(profile: "e2i", name: "E2i", source: SessionsBackup.Source(profile: "e2i", dataDir: "", codeDir: c7), emails: [])
+        func zipped(_ name: String) -> (rels: Set<String>, leftOut: [String], refusal: String?) {
+            let url = URL(fileURLWithPath: out + "/\(name).zip")
+            try? fm.removeItem(at: url)
+            do { _ = try SessionsExport.run(SessionsExport.Job(parts: [ipart], keys: .leaveOut, destination: url, rootName: name, place: eplace)) } catch { return ([], [], "export: \(error)") }
+            do {
+                let o = try SessionsImport.open(url, password: nil, place: eplace)
+                defer { SessionsImport.discard(o.work) }
+                return (Set(o.parts[0].manifest.items.filter { $0.role == .setup }.map { String($0.path.dropFirst(6)) }), o.parts[0].manifest.setupLeftOut ?? [], nil)
+            } catch { return ([], [], "\(error)") }
+        }
+        let k1 = zipped("e2i-claude-key")
+        check(k1.refusal == nil && k1.rels.isEmpty && k1.leftOut.contains("CLAUDE.md (held a key)") && k1.leftOut.contains("included file rules/one.md (left out with what includes it)"),
+              "export (zip, keys left out): CLAUDE.md with a key and its include both stay out; the file imports: \(k1.refusal ?? "opened") \(k1.rels.sorted()) \(k1.leftOut)")
+        w(c7, "CLAUDE.md", "# rules\n@skills/k/SKILL.md\n@../.claude-e2i/rules/up.md\n"); try? fm.removeItem(atPath: c7 + "/rules/one.md")
+        w(c7, "skills/k/SKILL.md", "key \(ghKey)\n@../../docs/x.md\n"); w(c7, "docs/x.md", "x\n"); w(c7, "rules/up.md", "up\n")
+        let k2 = zipped("e2i-skill-key")
+        check(k2.refusal == nil && k2.rels == ["CLAUDE.md", "rules/up.md"] && k2.leftOut.contains("skill k (held a key)") && k2.leftOut.contains("included file docs/x.md (left out with what includes it)"),
+              "export (zip): an include reached only through a skill left out for its key stays out; an @../ back into the folder by its name is carried and imports: \(k2.refusal ?? "opened") \(k2.rels.sorted()) \(k2.leftOut)")
+        try? fm.removeItem(atPath: c7)
+    }
+
     // ---- the leak check exempts the setup's own folder and nothing else
     do {
         let lroot = URL(fileURLWithPath: e2 + "/leakroot")

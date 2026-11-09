@@ -1350,6 +1350,7 @@ enum SessionsExport {
             // the backup recorded them from the live settings.json (a linked one too, which is never carried), else every unit with an
             // executable file
             let holders = hookHeld(m, dir: b.dir)
+            var carry: [(Setup.Unit, [SessionsBackup.Item])] = []
             for (u, list) in members.sorted(by: { $0.key < $1.key }) {
                 if cancel() { throw ArchiveError("Stopped.") }
                 let sensitive = u.sensitive || holders.contains(u)
@@ -1368,6 +1369,13 @@ enum SessionsExport {
                         po.setupKeysKept += 1
                     }
                 }
+                carry.append((u, list))
+            }
+            // an included file goes only with the chain that includes it (CLAUDE.md, or an include or a skill's file that goes too): one
+            // whose CLAUDE.md, include or skill was left out (a key, the image) would be an include nothing names, which an import
+            // refuses, the whole file with it. The import's own closure decides, over what really landed.
+            var landed = Set<String>()
+            func copyUnit(_ u: Setup.Unit, _ list: [SessionsBackup.Item]) throws {
                 for it in list {
                     let src = b.dir.appendingPathComponent(it.path).path
                     let dst = try create(it.path)
@@ -1382,8 +1390,23 @@ enum SessionsExport {
                     let rel = String(it.path.dropFirst(6))
                     items.append(SessionsBackup.Item(role: .setup, original: it.path, path: it.path, bytes: Int64(st.st_size), sha: h, exec: (it.exec ?? false) && Setup.execAllowed(rel)))
                     cloned += 1; po.bytes += Int64(st.st_size)
+                    landed.insert(rel)
                 }
                 po.setupUnits.append(u)
+            }
+            for (u, list) in carry where u.kind != .include { if cancel() { throw ArchiveError("Stopped.") }; try copyUnit(u, list) }
+            let includes = carry.filter { $0.0.kind == .include }
+            if !includes.isEmpty {
+                let candidates = landed.union(includes.flatMap { $0.1.map { String($0.path.dropFirst(6)) } })
+                let reached = Setup.includeClosure(carried: candidates) { rel in
+                    guard let d = FileManager.default.contents(atPath: b.dir.appendingPathComponent("setup/" + rel).path), d.count <= 4 << 20 else { return nil }
+                    return d
+                }
+                for (u, list) in includes {
+                    if cancel() { throw ArchiveError("Stopped.") }
+                    guard reached.contains(u.name) else { setupNames.append("\(SetupRow.title(u)) (left out with what includes it)"); leftOut += list.count; continue }
+                    try copyUnit(u, list)
+                }
             }
         }
 
