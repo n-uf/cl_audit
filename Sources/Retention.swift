@@ -7,7 +7,9 @@
 //     but can't be used (can't be read, not a plain file, too big, not a JSON object, a bad value), or HIPAA or zero data
 //     retention applies: then there is no exemption at all and every candidate is deleted. (HIPAA and zero data retention
 //     can't be seen from here; the info texts say so.) Errors in the user's OWN settings.json do not end the exemption;
-//     they make Claude Code skip its clean-up altogether, see below.
+//     they make Claude Code skip its clean-up altogether, see below. A managed source that names a policy helper
+//     (`policyHelper` / `policyHelpers`, a program that computes managed settings at start) may set `cleanupPeriodDays`
+//     unseen: counted as if it did (no exemption, the period settings.json gives), and never as a skipped clean-up.
 //   - `desktopSessionCleanupPeriodDays` (managed settings first, else the user's settings.json; project and local settings
 //     are ignored) is more than 0 and the transcript is older than it: a hard cap, so the window's sessions are deleted
 //     once older than BOTH numbers (the larger). 0, the default, is no cap. Managed sources: the smallest cap any holds.
@@ -42,6 +44,9 @@ struct Retention: Equatable {
     /// An organisation's managed document is present but can't be used (or holds a bad value for one of the two keys):
     /// Claude Code then reports a managed settings error, which ends the window exemption.
     var managedError = false
+    /// The organisation's managed settings name a policy helper, which may set `cleanupPeriodDays` unseen: counted as if it
+    /// did (no exemption, `days` as settings.json says), never as a skipped clean-up.
+    var helper = false
     /// Claude Code skips its clean-up (deletes nothing), and why.
     var skipped: Skip?
     /// Where the managed values came from, when there are any.
@@ -56,8 +61,8 @@ struct Retention: Equatable {
         case unreadable                     // the user's settings.json can't be read or isn't a JSON object
     }
 
-    /// The window exemption is on (nothing managed, no managed error).
-    var exempts: Bool { !managed && !managedError }
+    /// The window exemption is on (nothing managed, no managed error, no policy helper).
+    var exempts: Bool { !managed && !managedError && !helper }
 
     /// Whether Claude Code deletes a transcript, now.
     func verdict(_ t: Transcript, now: Date = Date()) -> Verdict {
@@ -92,12 +97,14 @@ struct Retention: Equatable {
             if let d = a.days { r.days = d; r.managed = true; r.problem = nil }
             if a.capSet { cap = a.cap }                                               // a managed 0 wins over the user's number
             r.managedError = a.error
+            r.helper = a.helper
         }
         r.desktopDays = (cap ?? 0) > 0 ? cap : nil
         // Claude Code runs its clean-up whenever managed settings set cleanupPeriodDays; otherwise it skips it when its
         // settings have an error and one of the two keys is set (or can't be told). Only the user's own settings.json is
-        // modelled: a managed error is said as "deleted, no exemption" (the safe side; see the comment at the top).
-        if !r.managed {
+        // modelled: a managed error is said as "deleted, no exemption" (the safe side; see the comment at the top). A policy
+        // helper may set cleanupPeriodDays, so it is never said as skipped.
+        if !r.managed && !r.helper {
             if u.unreadable { r.skipped = .unreadable }
             else if u.daysInvalid { r.skipped = .key(CodeCleanup.key) }
             else if u.desktopInvalid { r.skipped = .key(CodeCleanup.desktopKey) }
@@ -135,6 +142,7 @@ struct Retention: Equatable {
         if managed, let days { return "Your organisation's managed settings make Claude Code delete sessions \(days) days after their last use." }
         guard let days else { return "How long Claude Code keeps sessions isn't known: cleanupPeriodDays in settings.json can't be read." }
         if managedError { return "Claude Code deletes sessions \(days) days after their last use, the Claude window's too: there is an error in your organisation's managed settings." }
+        if helper { return "Your organisation's managed settings may set how long Claude Code keeps sessions (a policy helper computes them), so cl_audit counts every session, the Claude window's too, as deleted \(days) days after its last use." }
         if let desktopDays { return "Claude Code deletes terminal sessions \(days) days after their last use and ones from the Claude window \(max(desktopDays, days)) days after." }
         return "Claude Code deletes terminal sessions \(days) days after their last use; ones from the Claude window it keeps (Claude Code 2.1.248 and later)."
     }
@@ -147,6 +155,9 @@ struct Retention: Equatable {
         }
         if managedError, let days {
             return "An error in your organisation's managed settings makes Claude Code delete the Claude window's sessions after \(days) days too, like the others."
+        }
+        if helper, let days {
+            return "Your organisation's managed settings may set this for every session, the Claude window's too (a policy helper computes them); cl_audit counts with \(days) days for all of them."
         }
         if let desktopDays, let days {
             return "Sessions from the Claude window are deleted after \(max(desktopDays, days)) days, the longer of this and desktopSessionCleanupPeriodDays (\(desktopDays))."
@@ -163,6 +174,9 @@ struct Retention: Equatable {
         }
         if managedError, let days {
             return "There is an error in your organisation's managed settings, so Claude Code deletes every session after cleanupPeriodDays (\(days) days here), the Claude window's too. \(again)"
+        }
+        if helper, let days {
+            return "Your organisation's managed settings may set cleanupPeriodDays (a policy helper computes them), so every session older than \(days) days is counted, the Claude window's too. \(again)"
         }
         var s = "Claude Code deletes the transcript of a session once it is older than cleanupPeriodDays (\(file), 30 by default). \(again) "
         s += "Sessions started or last continued in the Claude window aren't counted: Claude Code keeps them at any age (2.1.248 and later)"
@@ -206,7 +220,8 @@ struct Retention: Equatable {
             if old > 0 {
                 var s = moving ? "\(old == 1 ? "1 of them Claude Code would" : "\(old) of them Claude Code would") delete once they are in ~/.claude" : "\(old): Claude Code would delete them again"
                 if oldWindow > 0, !r.managed {
-                    let why = r.exempts ? "deleted or archived there, or past its limit" : "an error in your organisation's managed settings"
+                    let why = r.exempts ? "deleted or archived there, or past its limit"
+                        : r.managedError ? "an error in your organisation's managed settings" : "your organisation's managed settings may set their period"
                     s += ", \(oldWindow) of them from the Claude window (\(why))"
                 }
                 if keepHint, oldSaved == old { s += ". Keep for 90 days would save \(old == 1 ? "it" : "all of them")" }
@@ -365,7 +380,9 @@ extension Retention {
 /// The cap `desktopSessionCleanupPeriodDays` is likewise taken from every source: the smallest positive one, a 0 (no cap)
 /// only when no source caps. A document that is there but can't be used (not readable, not a plain file, too big, not an
 /// object, a drop-in folder that can't be listed, a bad value for one of the two keys) is a managed settings ERROR, which
-/// ends the exemption too; only a missing file (ENOENT) is "not there".
+/// ends the exemption too; only a missing file (ENOENT) is "not there". A source that names a policy helper
+/// (`policyHelper` / `policyHelpers`, a program that computes managed settings at start) may set `cleanupPeriodDays`
+/// unseen: then the exemption is taken as off (the safe side) and the clean-up as running.
 enum ManagedSettings {
     enum Source: String, Equatable { case server, mdm, file }
 
@@ -375,7 +392,12 @@ enum ManagedSettings {
         var cap: Int?                       // desktopSessionCleanupPeriodDays as above (0: no cap)
         var capSet = false                  // some source holds a valid cap (a 0 is one too)
         var error = false                   // a managed document can't be used, or holds a bad value for one of the two keys
+        /// Some source names a policy helper (`policyHelper` / `policyHelpers`): a program that computes managed settings
+        /// when Claude Code starts. What it sets can't be seen, so it may set cleanupPeriodDays.
+        var helper = false
     }
+
+    static let helperKeys = ["policyHelper", "policyHelpers"]
 
     /// One document: missing, there but unusable, or its content (an empty object holds no setting).
     enum Doc { case absent, bad, content([String: Any]) }
@@ -477,6 +499,7 @@ enum ManagedSettings {
         var v = Values(source: docs.first?.0)
         var all: [Int] = [], caps: [Int] = [], winner: Int?
         for (src, d) in docs {
+            if helperKeys.contains(where: { d[$0] != nil }) { v.helper = true }
             if let x = d[CodeCleanup.key] {
                 if let n = CodeCleanup.whole(x) { all.append(n); if src == v.source { winner = n } } else { error = true }
             }
