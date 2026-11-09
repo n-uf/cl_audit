@@ -365,8 +365,9 @@ enum SessionsBackup {
             if shared { cloned += 1 } else { copied += 1; copiedBytes += f.bytes }
             if f.role == .setup {
                 // the hash of what landed (what a restore checks it against), and the execute bit the original had
-                guard let h = Setup.sha(path: dst) else { unlink(dst); leftOut += 1; continue }
-                items.append(Item(role: .setup, original: f.original, path: f.rel, bytes: f.bytes, sha: h, exec: f.exec))
+                var landedStat = stat()
+                guard let h = Setup.sha(path: dst), lstat(dst, &landedStat) == 0 else { unlink(dst); leftOut += 1; continue }
+                items.append(Item(role: .setup, original: f.original, path: f.rel, bytes: Int64(landedStat.st_size), sha: h, exec: f.exec))
             } else {
                 items.append(Item(role: f.role, original: f.original, path: f.rel, bytes: f.bytes))
             }
