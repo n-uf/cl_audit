@@ -8,6 +8,14 @@ the notes before updating.
 
 ## Unreleased
 
+- **Export works on real data again.** It stopped on any id or address it couldn't explain ("an id nothing explains"),
+  which Code-tab entries and Claude Code's leftover retention markers are full of. It now refuses only the accounts and
+  addresses cl_audit knows (every profile's, replaced by a fingerprint wherever they appear, also in profile names); other
+  ids and addresses are content, as in a transcript.
+  - A zip leaves out each Code-tab entry's connection settings (the encrypted disk image keeps them), and says how many.
+  - A retention marker travels with its transcript; one without it is left out and counted. Restore and Import write one
+    only with its transcript.
+  - Scheduled tasks are named by their display name when an import leaves their sessions out.
 - Correction to 26.11.3's notes: besides your messages, quick chat sends a short system prompt of cl_audit's own
   (answer briefly, no tools); nothing else of yours is sent. The README's Dock icon menu lists Quick chat, in the menu's
   real order.

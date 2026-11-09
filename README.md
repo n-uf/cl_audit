@@ -896,6 +896,10 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   environment values the key scan can't recognise); the page says so ("Connection settings in 12 Code-tab entries need the
   encrypted disk image: left out of a zip"), and an entry it can't read as UTF-8 JSON (UTF-16, say) is left out of a zip too,
   said on the same line. The encrypted disk image keeps them, and the keys looked for are searched in them.
+  Claude Code's **retention markers** (`<session>.desktop-released.json` in a project's folder) travel with their
+  transcript: one whose transcript isn't in the file (it is gone, or left out for keys) is left out too and counted on the
+  page ("5 leftover markers left out"), never a reason to stop. **Restore** and **Import** write a marker only together with
+  its transcript in the same run, never over a marker that is there; Undo takes both back.
 - **The file:** `<name>/export.json` (format `cl_audit-export`, version 1, when, cl_audit's version, a fingerprint of this Mac's
   name, zip or image, what was done with keys, the profiles and their sizes) and `<name>/profiles/p1/` (a backup's layout:
   `backup.json`, `window/<fp>/<fp>/…`, `sidebar/`, `records/`, `transcripts/…`), one `pN` per profile for "All profiles". The
