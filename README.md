@@ -533,8 +533,16 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   address on its own line with Sign in and × under it.
 - **Sessions** (after Claude Code): what the profile keeps and the backups of it.
   - **Kept here:** "310 in Claude Code · 84 in the Claude window (24 in the sidebar) · 5.6 GB · since 6 Oct. Claude
-    Code deletes its own after 30 days." Counted in the background and remembered, so it shows at once.
-  - **Keep for:** how long Claude Code keeps its own transcripts: 30 days (its default), 90 days or a year. It writes
+    Code deletes terminal sessions after 30 days; ones from the Claude window it keeps." Counted in the background and
+    remembered, so it shows at once. (Claude Code 2.1.248 and later keep the transcript of a session started or last
+    continued in the Claude window at any age. cl_audit tells those by the Code tab: an entry whose `cliSessionId` is
+    the transcript's session id; an id only in `priorCliSessionIds` was continued elsewhere since and counts as a
+    terminal session. With `desktopSessionCleanupPeriodDays` in `settings.json` the line says the Claude window's
+    sessions go after the longer of that and `cleanupPeriodDays`; with `cleanupPeriodDays` in the organisation's managed
+    settings, `/Library/Application Support/ClaudeCode/managed-settings.json` and `managed-settings.d/*.json`, it says
+    the organisation's number applies to every session. An MDM profile, server-managed settings and the HIPAA
+    configuration can't be read from here; the info text names them.)
+  - **Keep for:** how long Claude Code keeps the transcripts of sessions you ran in the terminal: 30 days (its default), 90 days or a year. It writes
     `cleanupPeriodDays` in the Claude Code folder's `settings.json`, changing only that number in the file's own
     text (or adding the key after the opening brace of an ordinary object); everything else stays byte for byte. A
     `settings.json` that is a link is written where it points, replaced atomically, with its permissions; if it
@@ -851,9 +859,11 @@ the window's Code-tab list, and transcripts by their path under the Claude Code 
   written back (the write only ever creates a file that isn't there; if the session writes the same name first, the
   restore leaves it as it is). A transcript that is already there is never written to either way; one changed in the
   last two minutes is only listed as in use. If `ps` can't be read, no missing transcript is written and the page says so.
-- **Older than 30 days** (Claude Code's `cleanupPeriodDays`): restored transcripts older than that would be deleted
-  again by Claude Code's own clean-up; **Keep for 90 days** sets that one number in `settings.json`, the one key
-  cl_audit ever writes there.
+- **Would be deleted:** only the restored transcripts Claude Code's own clean-up would delete again: terminal sessions
+  older than `cleanupPeriodDays`; sessions of the Claude window (the Code tab's entries after the restore name them)
+  only when `desktopSessionCleanupPeriodDays` or the organisation's managed settings give them a limit and they are past
+  it. The row isn't there when none would be; **Keep for 90 days** (not when the organisation sets the number) sets
+  `cleanupPeriodDays` in `settings.json`, the one key cl_audit ever writes there.
 
 **Stays as it is:** the account (Main stays on the account it works on; Switch back changes that), sign-ins (never in a
 backup, never written), the window's MCP settings and `settings.json` other than Keep for, and claude.ai (Chats and
@@ -986,7 +996,7 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
   same content, or longer here: skipped), **Grown on both sides** (there and different, or the file's is longer: the target's
   copy stays, listed), **Code-tab entries** (the window closes and opens again), **Scheduled tasks' sessions** (sessions a
   scheduled task ran are left out, with the task's name; the tasks themselves aren't imported), **Folder not here** (added, shown
-  once that folder exists), **Older than 30 days** (**Keep for 90 days**). Entries go into the folder of the account the target
+  once that folder exists), **Would be deleted** (only the sessions Claude Code would delete again, as on the Restore page; **Keep for 90 days**). Entries go into the folder of the account the target
   works on now, never a fingerprint's, written as a switch would place them (the old account's error keys and Remote Control
   ids off), and the sidebar's groups and pins follow them through the fingerprint (one Return in a helper session). **Close and
   import 210 sessions** then runs the Restore page's steps (window closes, files added with a receipt kept as it goes, window

@@ -8,7 +8,16 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Sessions from the Claude window are kept at any age, and cl_audit says so.** Since Claude Code 2.1.248 its
+  clean-up keeps the transcript of a session started or last continued in the Claude window (unless
+  `desktopSessionCleanupPeriodDays` gives those an age limit, or the organisation's managed settings or HIPAA set
+  `cleanupPeriodDays`). The Sessions card said everything is deleted after `cleanupPeriodDays`: **Kept here** now reads
+  "Claude Code deletes terminal sessions after 30 days; ones from the Claude window it keeps" and **Keep for** says
+  which sessions the number is for. Restore and Import list **Would be deleted** (instead of "Older than 30 days") with
+  only the transcripts Claude Code would really delete, decided per transcript (the Code tab's entries name the
+  Claude window's sessions); the row, and its Keep for 90 days key, are gone when there are none. Managed settings
+  (`/Library/Application Support/ClaudeCode/managed-settings.json` and `managed-settings.d/*.json`) are read, never
+  written.
 
 ## 26.11.5 — 2026-11-08
 
