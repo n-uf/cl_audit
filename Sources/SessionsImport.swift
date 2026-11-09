@@ -595,6 +595,10 @@ enum SessionsImport {
         var tree: URL                       // the unpacked, checked tree: work/x/<folder>
         var parts: [PartInfo]
         var sameMac: Bool
+        /// A move from another Mac (format 4, an encrypted image): its parts keep the real account ids.
+        var move = false
+        /// cl_audit's own profiles and settings in it, read and checked (SessionsMove.read); nil: none in the file.
+        var app: SessionsMove.File? = nil
     }
 
     /// An unpacked part made a backup of the target, waiting in `work/stage` (not in the backups place yet).
@@ -644,6 +648,15 @@ enum SessionsImport {
         guard let em = try? dec.decode(ExportManifest.self, from: data), em.format == ExportManifest.format else { throw ArchiveError("That isn't a cl_audit export (export.json can't be read).") }
         guard em.version >= 1, em.version <= SessionsBackup.formatVersion else { throw ArchiveError("That export is from a newer cl_audit; nothing is imported from it.") }
         guard !em.parts.isEmpty, em.parts.count <= 64, em.bytes >= 0, em.bytes <= ceiling else { throw ArchiveError("export.json states sizes or profiles that can't be right.") }
+        // a move and cl_audit's own profiles came with format 4; the profiles file is one known name, small, with its hash
+        if em.move == true || em.profiles != nil {
+            guard em.version >= 4 else { throw ArchiveError("export.json claims a move or cl_audit's profiles in a format older than the one they came with; refused.") }
+        }
+        if let a = em.profiles {
+            guard a.path == SessionsMove.fileName, a.bytes >= 0, a.bytes <= SessionsMove.maxBytes, a.sha.count == 64, a.sha.allSatisfy({ "0123456789abcdef".contains($0) }) else {
+                throw ArchiveError("export.json names cl_audit's profiles in a way an export doesn't; refused.")
+            }
+        }
         var seen = Set<String>(), sum: Int64 = 0
         for p in em.parts {
             guard p.dir.range(of: #"^p[0-9]{1,3}$"#, options: .regularExpression) != nil, seen.insert(p.dir).inserted, p.bytes >= 0, p.bytes <= ceiling,
@@ -691,6 +704,11 @@ enum SessionsImport {
         guard let em = index.entries.first(where: { $0.name == "\(root)/export.json" }) else { throw ArchiveError("The zip has no export.json; that isn't an export.") }
         // 2. export.json, read out of the zip itself, before anything else
         let (export, stated) = try checkExport(try index.read(em, path: file.path, limit: 4 << 20))
+        // a move (the real account ids) and cl_audit's profiles (addresses, ids) are only ever in an encrypted image: a zip that claims
+        // either is refused before anything is unpacked
+        if export.move == true || export.profiles != nil {
+            throw ArchiveError("This zip claims to be a move or to hold cl_audit's profiles. Those are only ever in an encrypted disk image, never a zip; refused.")
+        }
         let cap = unpackCap(stated: stated, entries: index.entries.count)
         guard declared <= UInt64(cap) else {
             throw ArchiveError("The zip declares \(SessionsBackup.sizeWords(Int64(declared))) of data, more than twice the \(SessionsBackup.sizeWords(export.bytes)) its export.json states; refused.")
@@ -762,8 +780,19 @@ enum SessionsImport {
         let tree = x.appendingPathComponent(rootName)
         try copyTree(from: mounted, to: tree, cancel: cancel)
         let parts = try validate(tree: tree, export: export, limit: cap, container: "image")
-        return Opened(file: file, fileName: file.lastPathComponent, container: "image", export: export, work: work, tree: tree, parts: parts,
-                      sameMac: export.machine == InstallID.current)
+        var o = Opened(file: file, fileName: file.lastPathComponent, container: "image", export: export, work: work, tree: tree, parts: parts,
+                       sameMac: export.machine == InstallID.current)
+        o.move = export.move == true
+        // cl_audit's profiles and settings: read under their 1 MB cap and checked field by field; one that can't be read at all refuses
+        // the whole file (never half of it)
+        if let a = export.profiles {
+            guard let d = try? readSmall(tree.appendingPathComponent(a.path).path, limit: SessionsMove.maxBytes), let f = SessionsMove.read(d) else {
+                throw ArchiveError("The file's cl_audit.json (cl_audit's profiles and settings) can't be read: it isn't one, it is nested too deep or it is over 1 MB. Refused.")
+            }
+            guard f.move == o.move else { throw ArchiveError("cl_audit.json and export.json don't agree on whether this is a move; refused.") }
+            o.app = f
+        }
+        return o
     }
 
     private static func readSmall(_ path: String, limit: Int) throws -> Data {
@@ -876,6 +905,14 @@ enum SessionsImport {
         var expectedFiles: [String: Int64] = [:]
         var expectedDirs: Set<String> = ["profiles"]
         expectedFiles["export.json"] = Int64(ej.count)
+        // cl_audit's own profiles and settings (format 4): one file beside export.json, from an image only, its size and hash as stated
+        if let a = export.profiles {
+            guard container == "image" else { throw ArchiveError("A zip carries no cl_audit profiles (only the encrypted disk image does); refused.") }
+            guard let real = found.files[a.path], real == a.bytes, Setup.sha(path: tree.appendingPathComponent(a.path).path) == a.sha else {
+                throw ArchiveError("cl_audit.json is missing or isn't what export.json says it is; refused.")
+            }
+            expectedFiles[a.path] = real
+        }
         var parts: [PartInfo] = []
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
         for p in export.parts {
@@ -887,13 +924,21 @@ enum SessionsImport {
                   let m = try? dec.decode(SessionsBackup.Manifest.self, from: bj) else { throw ArchiveError("A profile's backup.json is missing or can't be read; refused.") }
             guard m.version >= 1, m.version <= SessionsBackup.formatVersion else { throw ArchiveError("That export holds a backup from a newer cl_audit; nothing is imported from it.") }
             guard SessionsBackup.validID(m.id), SessionsBackup.validProfile(m.profile), m.items.count <= maxFiles else { throw ArchiveError("A profile's backup.json names things that aren't plain ones; refused.") }
+            // a move's part (format 4) names its window folders by the real ids: only in a move, only from an image; every other part
+            // has fingerprints there. The two never mix in one file.
+            let movePart = m.move == true
+            guard movePart == (export.move == true) else { throw ArchiveError("A profile's backup.json and export.json don't agree on whether this is a move; refused.") }
+            if movePart, container != "image" || m.version < 4 { throw ArchiveError("A move is only ever an encrypted disk image of format 4; refused.") }
             expectedFiles["\(base)/backup.json"] = size
             var seen = Set<String>(), sum: Int64 = 0
             var setupRels: [String] = []
             for it in m.items {
                 guard let c = SessionsRestore.components(it.path), seen.insert(it.path).inserted else { throw ArchiveError("A backup.json names a path that isn't a plain one (\(it.path.prefix(60))); refused.") }
                 switch it.role {
-                case .window: guard c.count == 4, c[0] == "window", Fingerprint.isValid(c[1]), Fingerprint.isValid(c[2]) else { throw ArchiveError("A backup.json names a window file in a place an export doesn't keep them; refused.") }
+                case .window:
+                    let named = movePart ? AccountDiscovery.isUUID(c.count == 4 ? c[1] : "") && AccountDiscovery.isUUID(c.count == 4 ? c[2] : "")
+                                         : c.count == 4 && Fingerprint.isValid(c[1]) && Fingerprint.isValid(c[2])
+                    guard c.count == 4, c[0] == "window", named else { throw ArchiveError("A backup.json names a window file in a place an export doesn't keep them; refused.") }
                 case .transcript: guard c.count >= 3, c[0] == "transcripts" else { throw ArchiveError("A backup.json names a transcript in a place an export doesn't keep them; refused.") }
                 case .sidebar: guard c == ["sidebar", "epitaxyPrefs.json"] else { throw ArchiveError("A backup.json names a sidebar file in a place an export doesn't keep it; refused.") }
                 case .record: guard c.count == 2, c[0] == "records" else { throw ArchiveError("A backup.json names a record in a place an export doesn't keep them; refused.") }
@@ -1122,7 +1167,9 @@ enum SessionsImport {
         m.window = items.contains { $0.role == .window || $0.role == .sidebar }
         m.transcripts = items.contains { $0.role == .transcript }
         m.leftOut = min(max(0, m.leftOut), maxFiles)
-        m.version = SessionsBackup.neededVersion(items)
+        // (a move's part stays one: its window folders are the real ids, which the restore puts back into their own account's folder)
+        m.move = part.manifest.move == true && o.move ? true : nil
+        m.version = SessionsBackup.neededVersion(items, move: m.move == true)
         // (names of setup left out at the source: shown as text only, so cut to plain short ones)
         m.setupLeftOut = m.setupLeftOut.map { Array($0.prefix(200).map { String($0.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 }.prefix(100).map(Character.init)) }) }
         m.configLeftOut = m.configLeftOut.map { String($0.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 }.prefix(100).map(Character.init)) }
