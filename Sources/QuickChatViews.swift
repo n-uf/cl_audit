@@ -314,6 +314,7 @@ struct QCAnswer: View, Equatable {
 struct QCCodeBlock: View {
     let language: String
     let code: String
+    @Environment(\.qcRendering) private var rendering
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -324,17 +325,23 @@ struct QCCodeBlock: View {
             }
             .padding(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 4))
             Rectangle().fill(QCColor.line).frame(height: 1)
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(code)
-                    .font(.system(size: 12.5, design: .monospaced))
-                    .foregroundColor(QCColor.codeText)
-                    .textSelection(.enabled)
-                    .fixedSize()
-                    .padding(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
+            if rendering {        // a picture can't draw a scroll view
+                codeText.frame(maxWidth: .infinity, alignment: .leading).clipped()
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) { codeText }
             }
         }
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(QCColor.code))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(QCColor.line))
+    }
+
+    private var codeText: some View {
+        Text(code)
+            .font(.system(size: 12.5, design: .monospaced))
+            .foregroundColor(QCColor.codeText)
+            .textSelection(.enabled)
+            .fixedSize()
+            .padding(EdgeInsets(top: 10, leading: 12, bottom: 10, trailing: 12))
     }
 }
 
