@@ -182,7 +182,7 @@ extension SessionsRestore {
 
     /// Plans the task file (and its prompts); returns the ids of the tasks an import adds (their sessions then come in too).
     static func planTasks(_ p: inout Plan, _ t: Target, windowItems: [[String]], windowData: [String: Data], setupItems: [SessionsBackup.Item], reader: Reader,
-                          imported: Bool, add: Bool, now nowWindow: WindowNow, scope: SeatID?, windowThere: Bool) -> Set<String> {
+                          imported: Bool, add: Bool, now nowWindow: WindowNow, scope: SeatID?, windowThere: Bool, move: Bool = false) -> Set<String> {
         var tp = TaskPlan()
         tp.imported = imported
         tp.leftOut = imported && !add
@@ -201,11 +201,13 @@ extension SessionsRestore {
 
         // what is there to take: every task of the file(s), once each
         var seen = Set<String>(), list: [(task: [String: Any], id: String)] = []
+        var sourceOf: [String: [String]] = [:]                  // each task's file (a move puts each file back in its own account's folder)
         for c in source {
             for task in taskList(windowData[c.joined(separator: "/")] ?? Data()) {
                 let id = task["id"] as? String ?? ""
                 guard !id.isEmpty, seen.insert(id).inserted else { continue }
                 list.append((task, id))
+                sourceOf[id] = c
             }
         }
         let code: Tree? = {
@@ -275,6 +277,9 @@ extension SessionsRestore {
         if t.dataDir.isEmpty { tp.status = .blocked("the profile has no Claude window folder"); return [] }
         guard let scope else { tp.status = .blocked("the profile isn't linked to an account yet"); return [] }
         guard windowThere else { tp.status = .blocked("the window's data folder isn't there"); return [] }
+        if move, imported {
+            return planMoveTasks(&p, &tp, t, keep: keep, all: all, sourceOf: sourceOf, prompts: promptPieces, windowData: windowData, now: nowWindow, scope: scope)
+        }
         if nowWindow.hasTasks.contains(where: { $0.account.lowercased() == scope.account.lowercased() && $0.organization.lowercased() == scope.organization.lowercased() }) {
             tp.status = .here
             let path = (SwitchEngine.scopeDir(t.dataDir, scope) as NSString).appendingPathComponent("scheduled-tasks.json")
@@ -303,5 +308,59 @@ extension SessionsRestore {
         tp.writes = true
         tp.prompts = promptPieces.count
         return imported ? Set(keep.compactMap { $0["id"] as? String }) : []
+    }
+
+    /// A task that is worth a look before it is turned on: permission checks off, permissions approved on the other Mac, a browser
+    /// that skips its checks, or a mode carried over (the same rule as the plan's list).
+    static func risky(_ task: [String: Any]) -> Bool {
+        (task["permissionMode"] as? String) == "bypassPermissions" || !((task["approvedPermissions"] as? [Any]) ?? []).isEmpty
+            || (task["chromePermissionMode"] as? String) == "skip_all_permission_checks" || (task["permissionModeCarried"] as? Bool) == true
+    }
+
+    /// A move's task files: each goes back into its own account's folder (when that account is the profile's; else the account in use's,
+    /// as any import), only where that folder has no task file yet (one that is here stays, and what it lacks is listed), with the tasks
+    /// paused, and only those that come. Returns the ids of the tasks it adds (their prompts and sessions come with them).
+    private static func planMoveTasks(_ p: inout Plan, _ tp: inout TaskPlan, _ t: Target, keep: [[String: Any]], all: [(id: String, name: String)],
+                                      sourceOf: [String: [String]], prompts: [Piece], windowData: [String: Data], now nowWindow: WindowNow,
+                                      scope: SeatID) -> Set<String> {
+        var groups: [SeatID: (first: [String], tasks: [[String: Any]])] = [:]
+        var order: [SeatID] = []
+        for task in keep {
+            guard let id = task["id"] as? String, let c = sourceOf[id], c.count == 4 else { continue }
+            let dest = t.folder(for: SeatID(account: c[1], organization: c[2]), move: true) ?? scope
+            if groups[dest] == nil { groups[dest] = (c, []); order.append(dest) }
+            groups[dest]?.tasks.append(task)
+        }
+        var added = Set<String>(), lacking: [String] = [], here = 0
+        var coming: [[String: Any]] = []                        // the tasks that come (or would, if added): those whose folder has no file
+        let names = Dictionary(all.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
+        for dest in order {
+            guard let g = groups[dest] else { continue }
+            if nowWindow.hasTasks.contains(where: { $0.account.lowercased() == dest.account.lowercased() && $0.organization.lowercased() == dest.organization.lowercased() }) {
+                here += 1
+                let path = (SwitchEngine.scopeDir(t.dataDir, dest) as NSString).appendingPathComponent("scheduled-tasks.json")
+                let mine = Set(Setup.readCapped(path, limit: 64 << 20).map { taskList($0).compactMap { $0["id"] as? String } } ?? [])
+                for task in g.tasks {
+                    guard let id = task["id"] as? String else { continue }
+                    if !mine.contains(id) { lacking.append(names[id] ?? id) }
+                    if let k = tp.tasks.firstIndex(where: { $0.id == SessionsBackup.oneLine(id, max: 200) }) { tp.tasks[k].why = "a task file is here in its account's folder" }
+                }
+                continue
+            }
+            coming += g.tasks
+            guard !tp.leftOut, let d = pausedTasks(base: windowData[g.first.joined(separator: "/")] ?? Data(), tasks: g.tasks) else { continue }
+            p.tasks.append(Piece(kind: .tasks, rel: g.first, base: .window, dirs: ["claude-code-sessions", dest.account, dest.organization], leaf: "scheduled-tasks.json",
+                                 bytes: Int64(d.count), from: SeatID(account: g.first[1], organization: g.first[2]), data: d))
+            for task in g.tasks { if let id = task["id"] as? String { added.insert(id) } }
+        }
+        tp.comingCount = coming.count
+        tp.riskyCount = coming.filter(risky).count
+        tp.lacking = Array(lacking.prefix(listCap)); tp.moreLacking = max(0, lacking.count - listCap)
+        tp.status = !order.isEmpty && here == order.count ? .here : .new
+        guard !added.isEmpty else { return [] }
+        p.taskPrompts = prompts.filter { $0.dirs.count == 2 && added.contains($0.dirs[1]) }
+        tp.writes = true
+        tp.prompts = p.taskPrompts.count
+        return added
     }
 }

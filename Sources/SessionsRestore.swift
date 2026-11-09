@@ -49,17 +49,29 @@ enum SessionsRestore {
         var dataDir: String                 // expanded; "" when the profile has no window of its own
         var codeDir: String                 // expanded
         var inUse: SeatID?                  // the account whose folder missing entries go to; nil: none known
+        /// Every account of the profile (in use and standing by): a move's entries and task files go back into their own account's
+        /// folder when it is one of these (SessionsMove.swift).
+        var seats: [SeatID] = []
 
-        init(profile: String, dataDir: String, codeDir: String, inUse: SeatID?) {
+        init(profile: String, dataDir: String, codeDir: String, inUse: SeatID?, seats: [SeatID] = []) {
             self.profile = profile
             self.dataDir = dataDir.isEmpty ? "" : expand(dataDir)
             self.codeDir = expand(codeDir)
-            self.inUse = inUse.flatMap { AccountDiscovery.isUUID($0.account) && AccountDiscovery.isUUID($0.organization) ? $0 : nil }
+            func valid(_ s: SeatID) -> Bool { AccountDiscovery.isUUID(s.account) && AccountDiscovery.isUUID(s.organization) }
+            self.inUse = inUse.flatMap { valid($0) ? $0 : nil }
+            self.seats = seats.filter(valid)
         }
 
         init(_ e: AccountEntry) {
             let s = SessionsBackup.Source(e)
-            self.init(profile: e.id, dataDir: s.dataDir, codeDir: s.codeDir, inUse: e.seat.map(SeatID.init))
+            self.init(profile: e.id, dataDir: s.dataDir, codeDir: s.codeDir, inUse: e.seat.map(SeatID.init), seats: e.seats.map(SeatID.init))
+        }
+
+        /// The folder a move's entry (or task file) from account folder `from` goes to: its own, when that account is the profile's;
+        /// else the account in use's, as for any import.
+        func folder(for from: SeatID, move: Bool) -> SeatID? {
+            if move, seats.contains(where: { $0.account.lowercased() == from.account.lowercased() && $0.organization.lowercased() == from.organization.lowercased() }) { return from }
+            return inUse
         }
     }
 
@@ -119,6 +131,8 @@ enum SessionsRestore {
         var sidebar: SidebarPlan?
         var checkedRunning = true           // false: whether sessions run couldn't be checked, so none is written
         var isImport = false                // the backup was unpacked from an export (SessionsImport.swift)
+        var isMove = false                  // …from a move's file: its entries and task files go back into their own account's folder
+        var ownFolders = 0                  // a move: the entries that go into their own account's folder (not the account in use's)
         var taskSessions: [String] = []     // an import leaves out the sessions scheduled tasks ran, with the task's name
         var memoryFiles: [String] = []      // <project>/memory/… files in the backup (Claude Code loads them into every session)
         var memoryLeftOut = false           // an import from another Mac or profile leaves them out unless asked ("Add them")
@@ -167,6 +181,10 @@ enum SessionsRestore {
         guard let reader = Reader(path: b.dir.path) else { return refuse("The backup's folder isn't a plain folder (a link, or gone).") }
         let imported = m.kind.isImport
         p.isImport = imported
+        // a move's part (format 4): its window folders are the real account ids, and each entry and task file goes back into its own
+        // account's folder when that account is the profile's (a move's import makes the profile with its accounts)
+        let move = imported && m.move == true && m.version >= 4
+        p.isMove = move
         // memory files tell every session what to do: from ANY import file they stay out unless the operator adds them. (Whether
         // a file "came from this Mac and this profile" is only what the file says, and a forged file says it too: no trust.)
         let skipMemory = imported && !addMemory
@@ -186,8 +204,8 @@ enum SessionsRestore {
             switch it.role {
             case .window:
                 // (an export keeps its accounts as fingerprints, never their ids)
-                guard c.count == 4, c[0] == "window", AccountDiscovery.isUUID(c[1]) || (imported && Fingerprint.isValid(c[1])),
-                      AccountDiscovery.isUUID(c[2]) || (imported && Fingerprint.isValid(c[2])) else {
+                guard c.count == 4, c[0] == "window", AccountDiscovery.isUUID(c[1]) || (imported && !move && Fingerprint.isValid(c[1])),
+                      AccountDiscovery.isUUID(c[2]) || (imported && !move && Fingerprint.isValid(c[2])) else {
                     return refuse("backup.json names a window file in a place it doesn't keep them (\(it.path.prefix(80))).")
                 }
                 windowItems.append((it, c))
@@ -266,7 +284,7 @@ enum SessionsRestore {
         // the scheduled tasks themselves (SessionsRestoreWindow.swift): a restore puts the account in use's task file back when none is
         // here, as it was; an import adds the file's tasks, paused, only when asked and only where the account in use has no task file
         let addedTasks = planTasks(&p, t, windowItems: windowItems.map { $0.1 }, windowData: windowData, setupItems: setupItems, reader: reader,
-                                   imported: imported, add: addTasks, now: nowWindow, scope: scopeID, windowThere: win != nil)
+                                   imported: imported, add: addTasks, now: nowWindow, scope: scopeID, windowThere: win != nil, move: move)
         // an import leaves out the sessions that scheduled tasks ran, unless their task comes too: a task belongs to its account
         var taskNames: [String: String] = [:]
         if imported {
@@ -314,10 +332,13 @@ enum SessionsRestore {
                         p.taskSessions.append("\(task) · session \(sid.prefix(8))")
                         continue
                     }
-                    let rewrite = from != scope
+                    // (a move: into its own account's folder when that account is the profile's; anything else: the account in use's)
+                    let dest = t.folder(for: from, move: move) ?? scope
+                    let rewrite = from != dest
                     p.entries.append(Piece(kind: .entry, rel: c, base: .window,
-                                           dirs: ["claude-code-sessions", scope.account, scope.organization], leaf: name,
+                                           dirs: ["claude-code-sessions", dest.account, dest.organization], leaf: name,
                                            bytes: Int64(it.bytes), from: from, rewrite: rewrite))
+                    if move, !rewrite { p.ownFolders += 1 }
                     if rewrite { p.otherAccount += 1 } else { p.ownScope = true }
                     restoredIDs.append((id: "local_" + sid, data: bdata, from: from))
                 }
