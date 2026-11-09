@@ -313,10 +313,14 @@ enum ClaudeCLI {
     /// The check's seam: opens a login script in Terminal (a check records the script and never opens one).
     nonisolated(unsafe) static var openTerminal: (URL) -> Bool = { Installer.run("/usr/bin/open", ["-a", "Terminal", $0.path]) == 0 }
 
+    /// The check's seam: replaces running `claude auth logout` (a check records the call and signs nothing out).
+    nonisolated(unsafe) static var logoutSeam: ((_ claude: String, _ configDir: String) -> Bool)?
+
     /// Signs out the Claude Code login of a settings folder (`claude auth logout`), which also removes its
     /// Keychain item. Blocks; call off the main thread.
     @discardableResult
     static func logout(_ claude: String, configDir: String) -> Bool {
+        if let seam = logoutSeam { return seam(claude, configDir) }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: claude)
         p.arguments = ["auth", "logout"]

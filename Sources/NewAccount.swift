@@ -276,7 +276,9 @@ enum NewAccountSetup {
     /// Folders that existed before are left alone. Blocks for the sign-out; call off the main thread.
     static func discard(_ d: NewAccountDraft, claude: String?) {
         let fm = FileManager.default
-        if let dir = d.createdConfigDir {
+        // Never the default folder: ~/.claude's sign-in (Claude Code's own "Claude Code-credentials", which the usual Claude
+        // app and `claude` in Terminal use) and its folder are never this draft's to sign out or delete, whatever it recorded.
+        if let dir = d.createdConfigDir, !Account.isDefault(configDir: dir) {
             if let claude, signedInEmail(d) != nil { ClaudeCLI.logout(claude, configDir: dir) }
             let account = Account(d.entry)
             let apps = NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
