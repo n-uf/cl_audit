@@ -199,7 +199,7 @@ do {
     let win = line("claude-desktop")
     func with(_ json: String) -> Retention { settings(c, json); return Retention.read(codeDir: p(c)) }
     var r = with("{}")
-    check(r.days == 30 && r.desktopDays == nil && !r.managed && !r.settingsError, "nothing set: 30 days, no cap")
+    check(r.days == 30 && r.desktopDays == nil && !r.managed && !r.managedError && r.skipped == nil, "nothing set: 30 days, no cap")
     r = with("{\"desktopSessionCleanupPeriodDays\":90}")
     check(r.desktopDays == 90, "the user's desktopSessionCleanupPeriodDays is read")
     check(fate(transcript(c, 1, win, age: 60), r) == .keep && fate(transcript(c, 2, win, age: 100), r) == .delete,
@@ -216,22 +216,38 @@ do {
     r = with("{\"cleanupPeriodDays\":30,\"desktopSessionCleanupPeriodDays\":60}")
     transcript(c, 8, win, age: 100); marker(c, 8, "{\"reason\":\"archive\"}", age: 5)
     check(fate(p("\(c)/projects/-sample/\(uuid(8)).jsonl"), r) == .delete, "the cap is a hard cap: an archive grace doesn't keep a transcript past it")
-    // wrong kinds of value: Claude Code reports a settings error and the exemption ends
+    // wrong kinds of value in the user's OWN settings.json: not an exemption-ending error but a skipped clean-up (Claude Code
+    // 2.1.318 doesn't clean up while a settings error and an explicitly set key meet): nothing is deleted, and the card says so
     for bad in ["\"90\"", "-1", "1.5", "true", "null"] {
         r = with("{\"desktopSessionCleanupPeriodDays\":\(bad)}")
-        check(r.settingsError && r.desktopDays == nil, "desktopSessionCleanupPeriodDays \(bad): a settings error")
-        check(fate(transcript(c, 9, win, age: 400), r) == .delete, "…so a window session is deleted by cleanupPeriodDays like the others (\(bad))")
+        check(r.skipped == .key("desktopSessionCleanupPeriodDays") && r.desktopDays == nil && !r.managedError && r.exempts, "desktopSessionCleanupPeriodDays \(bad): Claude Code skips its clean-up")
+        check(fate(transcript(c, 9, win, age: 400), r) == .keep && fate(transcript(c, 8, line("cli"), age: 400), r) == .keep, "…so nothing is deleted, a terminal session of 400 days included (\(bad))")
     }
+    check(r.keptHereWords == "Claude Code doesn't delete any session while desktopSessionCleanupPeriodDays in settings.json isn't a valid number.", "Kept here says so plainly: \(r.keptHereWords)")
+    check(r.keepForNote == nil, "no second line under Keep for")
+    // 30.0 is a whole number to Claude Code (JSON.parse gives 30)
+    r = with("{\"cleanupPeriodDays\":30.0,\"desktopSessionCleanupPeriodDays\":60.0}")
+    check(r.days == 30 && r.desktopDays == 60 && r.skipped == nil, "30.0 and 60.0 are whole numbers: days 30, cap 60")
+    r = with("{\"cleanupPeriodDays\":1e1}")
+    check(r.days == 10 && r.skipped == nil, "1e1 is 10")
     // the days themselves
     r = with("{\"cleanupPeriodDays\":7}")
     check(r.days == 7 && fate(transcript(c, 10, line("cli"), age: 8), r) == .delete && fate(transcript(c, 11, line("cli"), age: 6), r) == .keep, "cleanupPeriodDays 7")
     for bad in ["0", "\"x\"", "2.5", "true"] {
         r = with("{\"cleanupPeriodDays\":\(bad)}")
-        check(r.days == nil && r.problem != nil && fate(transcript(c, 12, line("cli"), age: 400), r) == .unknown, "cleanupPeriodDays \(bad): not known, nothing is called deleted")
+        check(r.days == nil && r.problem != nil && r.skipped == .key("cleanupPeriodDays") && fate(transcript(c, 12, line("cli"), age: 400), r) == .keep,
+              "cleanupPeriodDays \(bad): the same, Claude Code skips its clean-up (the card's Keep for shows unknown)")
     }
     settings(c, "{ not json")
     r = Retention.read(codeDir: p(c))
-    check(r.days == nil && fate(transcript(c, 13, line("cli"), age: 400), r) == .unknown, "a settings.json that isn't JSON: unknown")
+    check(r.days == nil && r.skipped == .unreadable && fate(transcript(c, 13, line("cli"), age: 400), r) == .keep, "a settings.json that isn't JSON: skipped too")
+    check(r.keptHereWords == "Claude Code doesn't delete any session while settings.json can't be read.", "…worded: \(r.keptHereWords)")
+    // a user's settings error with managed cleanupPeriodDays: Claude Code always runs it
+    put("managed/ClaudeCode/managed-settings.json", "{\"cleanupPeriodDays\":20}")
+    settings(c, "{\"desktopSessionCleanupPeriodDays\":\"x\"}")
+    r = Retention.read(codeDir: p(c))
+    check(r.skipped == nil && r.managed && fate(transcript(c, 14, win, age: 400), r) == .delete, "with managed cleanupPeriodDays the clean-up runs whatever settings.json holds")
+    try? fm.removeItem(atPath: p("managed"))
     // a link to settings.json is followed (it is the user's own file)
     put("real-settings.json", "{\"desktopSessionCleanupPeriodDays\":45}")
     try? fm.removeItem(atPath: p("\(c)/settings.json"))
@@ -284,35 +300,105 @@ do {
     try? fm.removeItem(atPath: p(sCache))
     check(r().days == 11 && r().source == .mdm, "without the server's: MDM's wins over the files")
     put(sCache, "{\"model\":\"sample-model\"}")
-    check(r().days == 30 && !r().managed && r().source == .server, "the server source holds other settings, not this one: it still wins, so cleanupPeriodDays isn't managed (30)")
+    check(r().managed && r().days == 11 && r().source == .server, "the server source holds other settings only and wins them; cleanupPeriodDays from MDM (11) and the file (13) still counts: managed, the smallest, 11")
     try? fm.removeItem(atPath: p(sCache))
     plist("sample", ["somethingElse": "x"])
-    check(r().days == 30 && !r().managed, "MDM holds other keys only: it wins over the file (nothing managed for cleanup)")
+    check(r().managed && r().days == 13 && r().source == .mdm, "MDM holds other keys only and wins them; the file's cleanupPeriodDays (13) still counts")
     try? fm.removeItem(atPath: p("managed/Managed Preferences"))
     check(r().days == 13, "…and with it gone the file's value applies")
-    // files that are not plain, or too big, or not objects, are ignored
+    // MUST 1: cleanupPeriodDays in ANY managed source ends the exemption, whichever source wins
     clean(); settings(c, "{}")
-    try? fm.createDirectory(atPath: p(fileA), withIntermediateDirectories: true)
-    check(!r().managed, "managed-settings.json that is a folder: ignored")
-    try? fm.removeItem(atPath: p(fileA))
+    put(sCache, "{\"permissions\":{\"allow\":[]}}"); put(fileA, "{\"cleanupPeriodDays\":30}")
+    check(r().managed && r().days == 30 && r().source == .server && !r().exempts, "server {other key} + file {cleanupPeriodDays 30}: managed, 30 days, no exemption")
+    check(fate(transcript(c, 40, win, age: 100), r()) == .delete, "…so an old window transcript is deleted")
+    check(r().keptHereWords == "Your organisation's managed settings make Claude Code delete sessions 30 days after their last use.", "…and the card says so: \(r().keptHereWords)")
+    // the smallest value any source holds, when the winner has none
+    clean(); settings(c, "{}")
+    plist("sample", ["somethingElse": "x"]); put(fileA, "{\"cleanupPeriodDays\":30}"); put("managed/ClaudeCode/managed-settings.d/10-a.json", "{\"cleanupPeriodDays\":15}")
+    check(r().days == 15, "the file source's own composition (the drop-in replaces): 15")
+    put(sCache, "{\"cleanupPeriodDays\":20}")
+    check(r().days == 20 && r().source == .server, "the winner's own value is used when it has one (20, not the smaller 15)")
+    // the cap from any source: the smallest positive, a 0 only when none caps
+    clean(); settings(c, "{}")
+    put(sCache, "{\"desktopSessionCleanupPeriodDays\":0}"); put(fileA, "{\"desktopSessionCleanupPeriodDays\":90}")
+    check(r().desktopDays == 90, "managed caps 0 (server) and 90 (file): the cap 90 applies, a 0 only when no source caps")
+    plist("sample", ["desktopSessionCleanupPeriodDays": 60])
+    check(r().desktopDays == 60, "caps 0, 60 (MDM) and 90: the smallest, 60")
+    put(sCache, "{\"desktopSessionCleanupPeriodDays\":0}"); try? fm.removeItem(atPath: p("managed/Managed Preferences")); try? fm.removeItem(atPath: p(fileA))
+    check(r().desktopDays == nil && r().managed == false, "only a managed 0: no cap")
+    // MUST 2: a managed document that is there but can't be used is a managed settings ERROR (the exemption ends); only a
+    // missing file is "not there". The other sources are still read.
+    clean(); settings(c, "{}")
+    check(!r().managedError && r().exempts, "nothing managed, nothing wrong: the exemption is on")
+    clean(); settings(c, "{}"); try? fm.createDirectory(atPath: p("managed/ClaudeCode"), withIntermediateDirectories: true)
+    check(!r().managedError, "a managed folder with no files in it: not there, no error")
+    // a bad managed-settings.json (the user's settings.json holds neither key: Claude Code runs its clean-up, without the exemption)
+    func badFile(_ what: String, _ make: () -> Void, at: Int = #line) {
+        clean(); settings(c, "{}"); make()
+        let rr = r()
+        check(rr.managedError && !rr.exempts && rr.skipped == nil, "managed-settings.json \(what): a managed error, no exemption, the clean-up still runs", line: at)
+        check(fate(transcript(c, 50, win, age: 400), rr) == .delete, "…so a window transcript of 400 days is deleted (\(what))", line: at)
+        check(rr.keptHereWords == "Claude Code deletes sessions 30 days after their last use, the Claude window's too: there is an error in your organisation's managed settings.", "…and the card says so (\(what)): \(rr.keptHereWords)", line: at)
+        // …also when the user's own settings.json sets a clean-up period (said as deleted: the safe side)
+        settings(c, "{\"cleanupPeriodDays\":30}")
+        let r2 = r()
+        check(r2.managedError && r2.skipped == nil && fate(transcript(c, 51, win, age: 400), r2) == .delete,
+              "…with cleanupPeriodDays in settings.json too (\(what))", line: at)
+    }
+    badFile("that is a folder") { try? fm.createDirectory(atPath: p(fileA), withIntermediateDirectories: true) }
+    // a link to nowhere is a missing file to Claude Code (it only logs it): not an error
+    clean(); settings(c, "{}")
+    try? fm.createDirectory(atPath: p("managed/ClaudeCode"), withIntermediateDirectories: true)
+    try? fm.createSymbolicLink(atPath: p(fileA), withDestinationPath: p("no-such-file.json"))
+    check(!r().managedError && r().exempts, "managed-settings.json that is a link to nowhere: not there, no error")
+    badFile("over 2 MB") { put(fileA, "{\"cleanupPeriodDays\":4,\"pad\":\"\(String(repeating: "x", count: 3 * 1024 * 1024))\"}") }
+    badFile("that is an array") { put(fileA, "[1,2,3]") }
+    badFile("that isn't JSON") { put(fileA, "{ nope") }
+    badFile("that the suite can't open (mode 000)") {
+        put(fileA, "{\"cleanupPeriodDays\":4}")
+        try? fm.setAttributes([.posixPermissions: 0], ofItemAtPath: p(fileA))
+    }
+    try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: p(fileA))
+    // a managed-settings.json that is a link to a good file IS followed (Claude Code follows it too)
+    clean(); settings(c, "{}")
     put("elsewhere.json", "{\"cleanupPeriodDays\":4}")
     try? fm.createDirectory(atPath: p("managed/ClaudeCode"), withIntermediateDirectories: true)
     try? fm.createSymbolicLink(atPath: p(fileA), withDestinationPath: p("elsewhere.json"))
-    check(!r().managed, "managed-settings.json that is a link: not followed")
-    try? fm.removeItem(atPath: p(fileA))
-    put(fileA, "{\"cleanupPeriodDays\":4,\"pad\":\"\(String(repeating: "x", count: 2 * 1024 * 1024))\"}")
-    check(!r().managed, "managed-settings.json over 2 MB: ignored")
-    put(fileA, "[1,2,3]")
-    check(!r().managed, "managed-settings.json that is an array: ignored")
-    put(fileA, "{ nope")
-    check(!r().managed, "managed-settings.json that isn't JSON: ignored")
+    check(r().managed && r().days == 4 && !r().managedError, "managed-settings.json that is a link to a good file: read where it points")
+    // the other sources, bad: an error too, and the sources that are fine are still read
+    clean(); settings(c, "{}")
+    put(sCache, "{ nope")
+    check(r().managedError && !r().managed && r().skipped == nil && fate(transcript(c, 53, win, age: 400), r()) == .delete, "a server cache that isn't JSON: a managed error, no exemption")
     put(fileA, "{\"cleanupPeriodDays\":4}")
-    put("managed/ClaudeCode/managed-settings.d/10-big.json", "{\"cleanupPeriodDays\":8,\"pad\":\"\(String(repeating: "x", count: 2 * 1024 * 1024))\"}")
-    check(r().days == 4, "an oversized drop-in is skipped, the others still apply")
-    try? fm.removeItem(atPath: p(sCache))
+    check(r().managedError && r().managed && r().days == 4, "…and the file's own cleanupPeriodDays is still read (4)")
+    clean(); settings(c, "{}")
     put(sCache, "{\"cleanupPeriodDays\":6,\"pad\":\"\(String(repeating: "x", count: 8 * 1024 * 1024))\"}")
-    check(r().days == 4 && r().source == .file, "a server cache over 8 MiB: ignored, the file source applies")
-    try? fm.removeItem(atPath: p(sCache))
+    check(r().managedError && !r().managed, "a server cache over 8 MiB: a managed error")
+    clean(); settings(c, "{}")
+    put(sCache, "[]")
+    check(r().managedError, "a server cache that is an array: a managed error")
+    clean(); settings(c, "{}")
+    try? fm.createDirectory(atPath: p("managed/Managed Preferences/sample/com.anthropic.claudecode.plist"), withIntermediateDirectories: true)
+    check(r().managedError, "an MDM plist that is a folder: a managed error")
+    clean(); settings(c, "{}")
+    put("managed/Managed Preferences/com.anthropic.claudecode.plist", "this is not a property list")
+    check(r().managedError, "an MDM plist that can't be read as a property list: a managed error")
+    clean(); settings(c, "{}")
+    put("managed/ClaudeCode/managed-settings.d/10-bad.json", "{ nope"); put("managed/ClaudeCode/managed-settings.d/20-good.json", "{\"cleanupPeriodDays\":9}")
+    check(r().managedError && r().managed && r().days == 9 && !r().exempts, "a drop-in that isn't JSON: an error, and the good drop-in is still read")
+    clean(); settings(c, "{}")
+    put("managed/ClaudeCode/managed-settings.d/10-big.json", "{\"cleanupPeriodDays\":8,\"pad\":\"\(String(repeating: "x", count: 3 * 1024 * 1024))\"}")
+    check(r().managedError && !r().managed, "an oversized drop-in: an error, its value isn't taken")
+    clean(); settings(c, "{}")
+    try? fm.createDirectory(atPath: p("managed/ClaudeCode/managed-settings.d"), withIntermediateDirectories: true)
+    try? fm.setAttributes([.posixPermissions: 0], ofItemAtPath: p("managed/ClaudeCode/managed-settings.d"))
+    check(r().managedError && r().skipped == nil, "a drop-in folder that can't be listed (mode 000): an error")
+    try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: p("managed/ClaudeCode/managed-settings.d"))
+    // a managed error with a settings.json that sets the cap, not the days: still skipped; with managed days: runs
+    clean(); settings(c, "{\"desktopSessionCleanupPeriodDays\":90}"); put(sCache, "{ nope")
+    check(r().skipped == nil && r().managedError && fate(transcript(c, 54, win, age: 400), r()) == .delete, "a managed error and desktopSessionCleanupPeriodDays in settings.json: said as deleted, no exemption (the safe side)")
+    put(fileA, "{\"cleanupPeriodDays\":10}")
+    check(r().skipped == nil && r().managed && fate(transcript(c, 55, win, age: 400), r()) == .delete, "…but with managed cleanupPeriodDays Claude Code always runs it")
     // values
     clean(); settings(c, "{\"desktopSessionCleanupPeriodDays\":120}")
     put(fileA, "{\"desktopSessionCleanupPeriodDays\":0}")
@@ -325,11 +411,14 @@ do {
     put(fileA, "{\"cleanupPeriodDays\":20,\"desktopSessionCleanupPeriodDays\":0}")
     check(r().managed && fate(transcript(c, 3, win, age: 25), r()) == .delete && fate(transcript(c, 4, win, age: 15), r()) == .keep,
           "managed cleanupPeriodDays 20: a window session is deleted after 20 days too")
+    settings(c, "{}")
     put(fileA, "{\"cleanupPeriodDays\":\"seven\"}")
-    check(!r().managed && r().settingsError && r().days == 30 && fate(transcript(c, 5, win, age: 400), r()) == .delete,
-          "a managed cleanupPeriodDays that isn't a number: a settings error, no exemption (the user's own days stay: 30)")
+    check(!r().managed && r().managedError && r().days == 30 && fate(transcript(c, 5, win, age: 400), r()) == .delete,
+          "a managed cleanupPeriodDays that isn't a number: a managed error, no exemption (the user's own days stay: 30)")
     put(fileA, "{\"desktopSessionCleanupPeriodDays\":\"x\"}")
-    check(r().settingsError && fate(transcript(c, 6, win, age: 400), r()) == .delete, "a managed cap that isn't a number: a settings error, no exemption")
+    check(r().managedError && fate(transcript(c, 6, win, age: 400), r()) == .delete, "a managed cap that isn't a number: a managed error, no exemption")
+    settings(c, "{\"desktopSessionCleanupPeriodDays\":120}")
+    check(r().skipped == nil && r().managedError && fate(transcript(c, 8, win, age: 400), r()) == .delete, "…also with the key in settings.json (the safe side)")
     // a window session in a throwaway folder with nothing managed at all is kept again
     clean(); settings(c, "{}")
     check(fate(transcript(c, 7, win, age: 400), r()) == .keep, "back to no managed source: kept")
@@ -348,7 +437,7 @@ do {
     }
     check(t.old == 2 && t.oldWindow == 0 && t.oldSaved == 1 && t.unsure == 0, "terminal 40d and 100d are deleted; 90 days would save only the 40d one: \(t)")
     check(t.shows && t.canKeepLonger, "the row is there, and Keep for 90 days can help")
-    check(t.words(r) == "2: Claude Code would delete them again. Keep for 90 days would keep 1 of them", "words: \(t.words(r))")
+    check(t.words(r) == "2: Claude Code would delete them again. Keep for 90 days would save 1", "words: \(t.words(r))")
     // only ones 90 days can't save: no Keep for 90 days
     var t2 = Retention.Tally()
     t2.add(read(transcript(c, 5, term, age: 200)), r, now: now)
@@ -358,12 +447,17 @@ do {
     var t3 = Retention.Tally()
     t3.add(read(p("\(c)/projects/-sample/\(uuid(6)).jsonl")), r, now: now)
     check(t3.old == 1 && t3.oldWindow == 1 && t3.oldSaved == 0 && !t3.canKeepLonger, "a window session released with delete: deleted, of the Claude window, 90 days can't save it")
-    check(t3.words(r) == "1: Claude Code would delete them again (1 of the Claude window, released by it or past the limit set for those)", "words: \(t3.words(r))")
+    check(t3.words(r) == "1: Claude Code would delete them again, 1 of them from the Claude window (deleted or archived there, or past its limit)", "words: \(t3.words(r))")
+    // an error in the managed settings ends the exemption: the window's sessions are deleted for that reason
+    var t3e = Retention.Tally()
+    let rErr = Retention(days: 30, managedError: true)
+    t3e.add(read(transcript(c, 11, win, age: 60)), rErr, now: now)
+    check(t3e.old == 1 && t3e.oldWindow == 1 && t3e.words(rErr) == "1: Claude Code would delete them again, 1 of them from the Claude window (an error in your organisation's managed settings). Keep for 90 days would save it", "managed error words: \(t3e.words(rErr))")
     // a window session past the cap: 90 days would save it only when the cap is below 90
     r = Retention(days: 30, desktopDays: 45)
     var t4 = Retention.Tally()
     t4.add(read(transcript(c, 7, win, age: 60)), r, now: now)
-    check(t4.old == 1 && t4.oldWindow == 1 && t4.oldSaved == 1 && t4.words(r).hasSuffix("Keep for 90 days first"), "a window session of 60 days past a cap of 45: deleted; 90 days would keep it")
+    check(t4.old == 1 && t4.oldWindow == 1 && t4.oldSaved == 1 && t4.words(r).hasSuffix("Keep for 90 days would save it"), "a window session of 60 days past a cap of 45: deleted; 90 days would keep it")
     // already 90 days or more: never offered
     r = Retention(days: 90)
     var t5 = Retention.Tally()
@@ -374,11 +468,16 @@ do {
     var t6 = Retention.Tally()
     t6.add(read(transcript(c, 9, win, age: 40)), r, now: now)
     check(t6.old == 1 && !t6.canKeepLonger && t6.words(r) == "1: Claude Code would delete them again. Your organisation's managed settings set that time", "managed: \(t6.words(r))")
+    // a skipped clean-up deletes nothing, so nothing is counted
+    var t6s = Retention.Tally()
+    var rSkip = Retention(days: 30); rSkip.skipped = .key("desktopSessionCleanupPeriodDays")
+    t6s.add(read(transcript(c, 12, term, age: 400)), rSkip, now: now)
+    check(!t6s.shows && t6s.old == 0 && t6s.unsure == 0, "a skipped clean-up: nothing would be deleted, no Would be deleted row")
     // unknown days
     r = Retention(days: nil)
     var t7 = Retention.Tally()
     t7.add(read(transcript(c, 10, term, age: 400)), r, now: now)
-    check(t7.old == 0 && t7.unsure == 1 && t7.shows && t7.words(r) == "1: not known, settings.json doesn't say how long Claude Code keeps them", "unknown: \(t7.words(r))")
+    check(t7.old == 0 && t7.unsure == 1 && t7.shows && t7.words(r) == "1: can't tell, cleanupPeriodDays in settings.json can't be read", "unknown: \(t7.words(r))")
     // nothing to say: the row is not there
     let t8 = Retention.Tally()
     check(!t8.shows && t8.words(base) == "", "no transcript deleted, none unknown: no Would be deleted row")
@@ -387,26 +486,26 @@ do {
 // ============ 8. the words (the site's Settings page copies the Keep for info) ============
 do {
     let file = "~/.claude/settings.json"
-    check(Retention.keepForInfo(file: file) == "How long Claude Code keeps the sessions you ran in the terminal: cleanupPeriodDays in ~/.claude/settings.json (default 30), kept with every other setting in that file. Sessions started or last continued in the Claude window are kept at any age (Claude Code 2.1.248 and later), unless desktopSessionCleanupPeriodDays gives them a limit or the window released the session. Your organisation's managed settings, HIPAA, zero data retention or an error in a settings file make the period apply to them too. A longer time keeps the terminal sessions available to claude --resume and for backups; it can't bring back what is already deleted.",
+    check(Retention.keepForInfo(file: file) == "How long Claude Code keeps the sessions you ran in the terminal: cleanupPeriodDays in ~/.claude/settings.json (default 30), kept with every other setting in that file. Sessions started or last continued in the Claude window are kept at any age (Claude Code 2.1.248 and later), unless desktopSessionCleanupPeriodDays gives them a limit or you deleted or archived the session in the Claude window. Your organisation's managed settings (or an error in them), HIPAA and zero data retention make the period apply to them too; cl_audit can't tell whether HIPAA or zero data retention applies to your account. A longer time keeps the terminal sessions available to claude --resume and for backups; it can't bring back what is already deleted.",
           "the Keep for info")
-    check(Retention(days: 30).keptHereWords == "Claude Code deletes terminal sessions after 30 days; ones from the Claude window it keeps (Claude Code 2.1.248 and later).", "Kept here, plain: \(Retention(days: 30).keptHereWords)")
-    check(Retention(days: 30, desktopDays: 90).keptHereWords == "Claude Code deletes terminal sessions after 30 days and ones from the Claude window after 90.", "Kept here with a cap")
-    check(Retention(days: 30, desktopDays: 10).keptHereWords == "Claude Code deletes terminal sessions after 30 days and ones from the Claude window after 30.", "Kept here with a cap under the days: the longer")
-    check(Retention(days: 20, managed: true).keptHereWords == "Your organisation's managed settings make Claude Code delete sessions after 20 days.", "Kept here, managed")
-    check(Retention(days: 30, settingsError: true).keptHereWords == "Claude Code deletes sessions after 30 days, the Claude window's too, while a settings file has an error.", "Kept here, settings error")
-    check(Retention(days: nil).keptHereWords == "How long Claude Code keeps sessions from the terminal isn't known (settings.json).", "Kept here, unknown")
+    check(Retention(days: 30).keptHereWords == "Claude Code deletes terminal sessions 30 days after their last use; ones from the Claude window it keeps (Claude Code 2.1.248 and later).", "Kept here, plain: \(Retention(days: 30).keptHereWords)")
+    check(Retention(days: 30, desktopDays: 90).keptHereWords == "Claude Code deletes terminal sessions 30 days after their last use and ones from the Claude window 90 days after.", "Kept here with a cap")
+    check(Retention(days: 30, desktopDays: 10).keptHereWords == "Claude Code deletes terminal sessions 30 days after their last use and ones from the Claude window 30 days after.", "Kept here with a cap under the days: the longer")
+    check(Retention(days: 20, managed: true).keptHereWords == "Your organisation's managed settings make Claude Code delete sessions 20 days after their last use.", "Kept here, managed")
+    check(Retention(days: 30, managedError: true).keptHereWords == "Claude Code deletes sessions 30 days after their last use, the Claude window's too: there is an error in your organisation's managed settings.", "Kept here, managed error")
+    check(Retention(days: nil).keptHereWords == "How long Claude Code keeps sessions isn't known: cleanupPeriodDays in settings.json can't be read.", "Kept here, unknown")
+    check(Retention(days: 30, skipped: .key("cleanupPeriodDays")).keptHereWords == "Claude Code doesn't delete any session while cleanupPeriodDays in settings.json isn't a valid number.", "Kept here, skipped (days key)")
     check(Retention(days: 30).keepForNote == nil, "no note under Keep for when the window's sessions simply stay")
-    check(Retention(days: 30, desktopDays: 90).keepForNote == "Sessions from the Claude window are deleted after 90 days (desktopSessionCleanupPeriodDays is 90; the longer of it and this applies).", "the cap's note")
+    check(Retention(days: 30, desktopDays: 90).keepForNote == "Sessions from the Claude window are deleted after 90 days, the longer of this and desktopSessionCleanupPeriodDays (90).", "the cap's note")
     check(Retention(days: 20, managed: true).keepForNote == "Your organisation's managed settings set 20 days for every session, the Claude window's too. Changing it here wouldn't change that.", "the managed note")
-    check(Retention(days: 30, settingsError: true).keepForNote == "A settings file has an error, so Claude Code deletes the Claude window's sessions after 30 days too, like the others.", "the settings-error note")
+    check(Retention(days: 30, managedError: true).keepForNote == "An error in your organisation's managed settings makes Claude Code delete the Claude window's sessions after 30 days too, like the others.", "the managed-error note")
     let plain = Retention(days: 30).wouldDeleteInfo(file: file, comes: "comes back")
-    check(plain.contains("Claude Code deletes the transcript of a session once it is older than cleanupPeriodDays (~/.claude/settings.json, 30 by default)")
-          && plain.contains("A transcript comes back with its real age") && plain.contains("2.1.248 and later")
-          && plain.contains("or the window released the session") && plain.contains("zero data retention or a settings error"), "Would be deleted info (plain): \(plain)")
+    check(plain == "Claude Code deletes the transcript of a session once it is older than cleanupPeriodDays (~/.claude/settings.json, 30 by default). A transcript comes back with its real age, so one older than that would be deleted again. Sessions started or last continued in the Claude window aren't counted: Claude Code keeps them at any age (2.1.248 and later), unless you deleted or archived the session in the Claude window (an archived one goes after a grace period). Your organisation's managed settings (or an error in them), HIPAA and zero data retention make the period apply to all of them; cl_audit can't see HIPAA or zero data retention. A project's own .claude/settings.json can also set a shorter period, which cl_audit can't see.", "Would be deleted info (plain): \(plain)")
     check(Retention(days: 30, desktopDays: 90).wouldDeleteInfo(file: file, comes: "comes in").contains("they count once they are older than 90 days"), "…with a cap")
     check(Retention(days: 20, managed: true).wouldDeleteInfo(file: file, comes: "comes in") == "Your organisation's managed settings set cleanupPeriodDays to 20 days for every session, the Claude window's too. A transcript comes in with its real age, so one older than that would be deleted again.", "…managed")
-    check(Retention(days: 30, settingsError: true).wouldDeleteInfo(file: file, comes: "comes back").hasPrefix("A settings file has an error, so Claude Code deletes every session after cleanupPeriodDays (30 days here)"), "…settings error")
-    check(Retention.keptHereInfo.hasSuffix("sessions from the Claude window are kept at any age since Claude Code 2.1.248."), "the Kept here info names the version")
+    check(Retention(days: 30, managedError: true).wouldDeleteInfo(file: file, comes: "comes back").hasPrefix("There is an error in your organisation's managed settings, so Claude Code deletes every session after cleanupPeriodDays (30 days here)"), "…managed error")
+    check(Retention(days: 30).wouldDeleteInfo(file: file, comes: "moves", moving: true).contains("A transcript moves with its real age, so one older than that would be deleted once it is moved."), "…the move: no doubled phrase, no 'again'")
+    check(Retention.keptHereInfo.hasSuffix("since Claude Code 2.1.248 that depends on where the session ran (see Keep for)."), "the Kept here info doesn't promise the window's sessions are kept")
 }
 
 // ============ 9. a restore plan, end to end (the backup's own transcripts and markers) ============
@@ -422,25 +521,36 @@ MainActor.assumeIsolated {
     transcript(".claude-rt", 4, win, age: 400); marker(".claude-rt", 4, "{\"reason\":\"delete\"}", age: 1)
     transcript(".claude-rt", 5, win, age: 400); marker(".claude-rt", 5, "{\"reason\":\"archive\"}", age: 2)
     transcript(".claude-rt", 6, term, age: 5)
+    // Cowork: 7 local-agent 400d (kept), 8 local_agent 400d with a delete marker (deleted), 9 claude-desktop-3p 400d (kept)
+    transcript(".claude-rt", 7, line("local-agent"), age: 400)
+    transcript(".claude-rt", 8, line("local_agent"), age: 400); marker(".claude-rt", 8, "{\"reason\":\"delete\"}", age: 1)
+    transcript(".claude-rt", 9, line("claude-desktop-3p"), age: 400)
     let src = SessionsBackup.Source(profile: "rt", dataDir: "", codeDir: code)
     let m = try! SessionsBackup.make(src, kind: .manual, window: false, transcripts: true, place: place, now: now)
     try? fm.removeItem(atPath: code + "/projects")
     let tgt = SessionsRestore.Target(profile: "rt", dataDir: "", codeDir: code, inUse: nil)
     let backup = SessionsRestore.Backup(profile: "rt", id: m.id, place: place)
     let plan = SessionsRestore.plan(tgt, backup, now: now)
-    check(plan.refusal == nil && plan.transcripts.count == 6, "plan: the six missing transcripts are to be written (\(plan.transcripts.count), \(plan.refusal ?? "no refusal"))")
-    check(plan.old == 3 && plan.tally.oldWindow == 1 && plan.tally.oldSaved == 1, "plan: Claude Code would delete 3 (terminal 40d and 100d, the released window one); 90 days would save 1: \(plan.tally)")
+    check(plan.refusal == nil && plan.transcripts.count == 9, "plan: the nine missing transcripts are to be written (\(plan.transcripts.count), \(plan.refusal ?? "no refusal"))")
+    check(plan.old == 4 && plan.tally.oldWindow == 2 && plan.tally.oldSaved == 1,
+          "plan: Claude Code would delete 4 (terminal 40d and 100d, the two released window ones, one of them Cowork's); 90 days would save 1: \(plan.tally)")
     check(plan.days == 30 && plan.showsWouldDelete && plan.canKeepLonger, "plan: 30 days, the row shows, Keep for 90 days helps")
-    check(plan.wouldDeleteWords == "3: Claude Code would delete them again (1 of the Claude window, released by it or past the limit set for those). Keep for 90 days would keep 1 of them", "plan words: \(plan.wouldDeleteWords)")
+    check(plan.wouldDeleteWords == "4: Claude Code would delete them again, 2 of them from the Claude window (deleted or archived there, or past its limit). Keep for 90 days would save 1", "plan words: \(plan.wouldDeleteWords)")
     // with Keep for 90 days (settings.json) the 40-day one is no longer counted
     try? CodeCleanup.set(90, codeDir: code)
     let plan90 = SessionsRestore.plan(tgt, backup, now: now)
-    check(plan90.old == 2 && !plan90.canKeepLonger, "plan after Keep for 90 days: 2 (the 100-day one and the released window one), no more offer: \(plan90.tally)")
+    check(plan90.old == 3 && !plan90.canKeepLonger, "plan after Keep for 90 days: 3 (the 100-day one and the two released window ones), no more offer: \(plan90.tally)")
     // a managed organisation number applies to every one of them
     try? fm.createDirectory(atPath: p("managed/ClaudeCode"), withIntermediateDirectories: true)
     try? "{\"cleanupPeriodDays\":60}".write(toFile: p("managed/ClaudeCode/managed-settings.json"), atomically: true, encoding: .utf8)
     let planM = SessionsRestore.plan(tgt, backup, now: now)
-    check(planM.retention.managed && planM.old == 4 && !planM.canKeepLonger, "plan, managed 60 days: terminal 100d and the three window sessions of 400 days are older than 60 days, no exemption: \(planM.tally)")
+    check(planM.retention.managed && planM.old == 7 && !planM.canKeepLonger, "plan, managed 60 days: terminal 100d and the six window and Cowork sessions of 400 days are older than 60 days, no exemption: \(planM.tally)")
+    // managed settings holding only other keys, and cleanupPeriodDays in another source: still managed (MUST 1), through the plan
+    try? fm.createDirectory(atPath: code, withIntermediateDirectories: true)
+    try? "{\"permissions\":{\"allow\":[]}}".write(toFile: code + "/remote-settings.json", atomically: true, encoding: .utf8)
+    let planS = SessionsRestore.plan(tgt, backup, now: now)
+    check(planS.retention.managed && planS.retention.days == 60 && planS.old == 7, "plan: a server cache with other keys + the file's cleanupPeriodDays: managed, 60 days: \(planS.tally)")
+    try? fm.removeItem(atPath: code + "/remote-settings.json")
     try? fm.removeItem(atPath: p("managed"))
     // nothing was written by planning
     check(!fm.fileExists(atPath: code + "/projects"), "plan: wrote nothing")
@@ -448,7 +558,7 @@ MainActor.assumeIsolated {
     try? fm.createDirectory(atPath: code + "/projects/-sample", withIntermediateDirectories: true)
     put(".claude-rt/projects/-sample/\(uuid(5)).desktop-released.json", "{\"reason\":\"delete\"}", age: 1)
     let planD = SessionsRestore.plan(tgt, backup, now: now)
-    check(planD.old == plan90.old + 1, "plan: a delete marker already there for session 5 decides over the backup's archive one: \(planD.tally)")
+    check(planD.old == plan90.old + 1 && plan90.old == 3, "plan: a delete marker already there for session 5 decides over the backup's archive one: \(planD.tally)")
 }
 
 // ============ 10. the default-profile move says the same ============
@@ -461,7 +571,11 @@ do {
     transcript(".claude", 4, term, age: 2)                  // the usual app's folder has this one already
     let pv = DefaultProfile.preview(oldDataDir: p("no-window"), usualDataDir: p("no-usual"), oldCodeDir: p(".claude-old"), codeDir: p(".claude"))
     check(pv.transcripts == 3 && pv.tally.old == 2 && pv.tally.oldWindow == 1, "move: 3 transcripts go (the 4th is there already); Claude Code would delete 2 again: \(pv.tally)")
-    check(pv.tally.words(pv.retention, keepHint: false) == "2: Claude Code would delete them again (1 of the Claude window, released by it or past the limit set for those)", "move words: \(pv.tally.words(pv.retention, keepHint: false))")
+    check(pv.tally.words(pv.retention, keepHint: false, moving: true) == "2 of them Claude Code would delete once they are in ~/.claude, 1 of them from the Claude window (deleted or archived there, or past its limit)", "move words: \(pv.tally.words(pv.retention, keepHint: false, moving: true))")
+    // a marker already in the usual app's folder wins over the one beside the old transcript (NIT)
+    put(".claude/projects/-sample/\(uuid(3)).desktop-released.json", "{\"reason\":\"archive\"}", age: 1)
+    let pv2 = DefaultProfile.preview(oldDataDir: p("no-window"), usualDataDir: p("no-usual"), oldCodeDir: p(".claude-old"), codeDir: p(".claude"))
+    check(pv2.tally.old == 1, "move: an archive marker (in its grace) already in ~/.claude/projects wins over the old folder's delete marker: \(pv2.tally)")
 }
 
 print("checks: \(passed) passed, \(failed) failed")
