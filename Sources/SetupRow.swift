@@ -33,7 +33,9 @@ struct SetupRow: View {
     }
 
     private func listKey(_ show: String, _ hide: String, _ on: Binding<Bool>) -> some View {
-        Button(on.wrappedValue ? hide : show) { on.wrappedValue.toggle() }.buttonStyle(.plain).font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize()
+        Button { on.wrappedValue.toggle() } label: {
+            Text(on.wrappedValue ? hide : show).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+        }.buttonStyle(.plain).font(.system(size: 11.5)).foregroundStyle(face.muted)
     }
 
     /// `wrap`: a line that is too long goes on over more lines (a command the person must read whole before adding it), else it is cut in the middle.
