@@ -466,16 +466,20 @@ struct Scrubber {
         var t = text(s)
         for e in emails {
             let plain = SessionsExport.plainFileName(e)
-            if t.range(of: plain, options: .caseInsensitive) != nil { t = t.replacingOccurrences(of: plain, with: fp.of(e), options: .caseInsensitive) }
+            if t.range(of: plain, options: Self.how) != nil { t = t.replacingOccurrences(of: plain, with: fp.of(e), options: Self.how) }
         }
         return t
     }
 
+    /// Case-insensitive and LITERAL: compared by scalars, so a name followed by a combining mark or a joiner (bob@x.com + U+0301)
+    /// is still found (a whole-character comparison would take the mark as part of the last character and miss it).
+    static let how: String.CompareOptions = [.caseInsensitive, .literal]
+
     func text(_ s: String) -> String {
         guard s.utf8.count >= shortest else { return s }
         var t = s
-        for id in ids where t.range(of: id, options: .caseInsensitive) != nil { t = t.replacingOccurrences(of: id, with: fp.of(id), options: .caseInsensitive) }
-        for e in emails where t.range(of: e, options: .caseInsensitive) != nil { t = t.replacingOccurrences(of: e, with: fp.of(e), options: .caseInsensitive) }
+        for id in ids where t.range(of: id, options: Self.how) != nil { t = t.replacingOccurrences(of: id, with: fp.of(id), options: Self.how) }
+        for e in emails where t.range(of: e, options: Self.how) != nil { t = t.replacingOccurrences(of: e, with: fp.of(e), options: Self.how) }
         return t
     }
 
@@ -1301,20 +1305,22 @@ enum SessionsExport {
         let wantedIDs = ids.map { $0.lowercased() }.filter { !$0.isEmpty }
         let wantedMails = emails.map { $0.lowercased() }.filter { !$0.isEmpty }
         func joined(_ s: String) -> String { String(String.UnicodeScalarView(s.unicodeScalars.filter { !$0.properties.isWhitespace })) }
+        /// by scalars (literal), not by characters: a combining mark or joiner right after a name doesn't hide it
+        func has(_ t: String, _ n: String) -> Bool { (t as NSString).range(of: n, options: .literal).location != NSNotFound }
         /// "an account id" / "an address" when the text holds one of the known, else nil
         func held(_ s: String) -> String? {
             let low = s.lowercased()
             for pass in 0..<2 {
                 let t = pass == 0 ? low : joined(low)
-                if wantedIDs.contains(where: { t.contains($0) }) { return "an account id" }
-                if wantedMails.contains(where: { t.contains($0) }) { return "an address" }
+                if wantedIDs.contains(where: { has(t, $0) }) { return "an account id" }
+                if wantedMails.contains(where: { has(t, $0) }) { return "an address" }
             }
             return nil
         }
         // the folder the archive holds everything in: its name can carry an address as a file name writes it ("bob-example.com")
         let topLow = root.lastPathComponent.lowercased()
-        if wantedIDs.contains(where: { topLow.contains($0) }) { return "an account id in the name of the export's folder" }
-        if wantedMails.contains(where: { topLow.contains($0) || topLow.contains(plainFileName($0).lowercased()) }) { return "an address in the name of the export's folder" }
+        if wantedIDs.contains(where: { has(topLow, $0) }) { return "an account id in the name of the export's folder" }
+        if wantedMails.contains(where: { has(topLow, $0) || has(topLow, plainFileName($0).lowercased()) }) { return "an address in the name of the export's folder" }
         for rel in files {
             let path = (root.path as NSString).appendingPathComponent(rel)
             let name = (rel as NSString).lastPathComponent
