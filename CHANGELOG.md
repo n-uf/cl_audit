@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.4 — 2026-11-08
+
 - **Export works on real data again.** It stopped on any id or address it couldn't explain ("an id nothing explains"),
   which Code-tab entries and Claude Code's leftover retention markers are full of. It now refuses only the accounts and
   addresses cl_audit knows (every profile's, replaced by a fingerprint wherever they appear, also in profile names); other
