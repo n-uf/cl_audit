@@ -117,7 +117,7 @@ final class DefaultProfileRunner: ObservableObject {
     }
 
     /// Step 1 done (or not needed): the ~/.claude profile is there, linked to the account ~/.claude is signed in to.
-    private func prepareTarget() {
+    func prepareTarget() {
         guard let m = model, let seat = DefaultProfile.cachedSeat("~/.claude") else { return }
         if let t = target {
             if t.seat == nil, let i = m.accounts.firstIndex(where: { $0.id == t.id }) {
@@ -174,8 +174,11 @@ final class DefaultProfileRunner: ObservableObject {
         return out
     }
 
+    /// Checks only: false leaves every Claude window alone (a check on a Mac that has Claude open must never quit it).
+    nonisolated(unsafe) static var closesWindows = true
+
     private func closeWindows() {
-        guard let id = targetID else { return }
+        guard Self.closesWindows, let id = targetID else { return }
         let windows = windowKeys()
         // one at a time: a switch, restore or import of either window under way holds it
         for w in windows {
@@ -340,7 +343,7 @@ final class DefaultProfileRunner: ObservableObject {
     }
 
     /// The old profile has been dealt with (kept as a standby account, or removed): the page's last step is done.
-    var oldDone: Bool { oldHandled || oldRemoved }
+    var oldDone: Bool { oldHandled || record?.oldHandled != nil || oldRemoved }
 
     // MARK: what the old profile becomes (otherFolder)
 

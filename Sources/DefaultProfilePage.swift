@@ -26,7 +26,7 @@ struct DefaultProfileCard: View {
     }
 
     private func offer(_ s: DefaultProfile.Situation) -> some View {
-        SCard(title: DefaultProfile.title, info: "One time, and never automatic. It moves \(s.old.name)'s sessions to the usual Claude app, with a backup first and nothing overwritten, and has an Undo. \"Not now\" folds this card to one line; the button also stays on the profile's Claude window card.") {
+        SCard(title: "Make the default profile", info: "One time, and never automatic. \(DefaultProfile.title). It moves \(s.old.name)'s sessions to the usual Claude app, with a backup first and nothing overwritten, and has an Undo. \"Not now\" folds this card to one line; the button also stays on the profile's Claude window card.") {
             VStack(alignment: .leading, spacing: 8) {
                 Text(DefaultProfile.why(s)).font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
@@ -286,7 +286,7 @@ struct DefaultProfilePage: View {
                 VStack(alignment: .leading, spacing: 8) {
                     // by the receipt: what the restore wrote, not what the preview counted
                     if let r = runner.inner?.receipt {
-                        value("\(r.back) files added · \(r.changedCount) already in the usual app and different: left as they are, listed on the restore's page · \(r.inUseCount) held by a running session: left alone")
+                        value(Self.resultWords(r))
                     } else if runner.phase == .moving {
                         value("working…")
                     } else if runner.nothingToMove {
@@ -300,6 +300,14 @@ struct DefaultProfilePage: View {
                 .padding(.vertical, 4)
             }
         }
+    }
+
+    /// What the restore wrote, by its receipt; a part that is zero says nothing.
+    static func resultWords(_ r: SessionsRestore.Receipt) -> String {
+        var parts = ["\(r.back) \(r.back == 1 ? "file" : "files") added"]
+        if r.changedCount > 0 { parts.append("\(r.changedCount) already in the usual app and different: left as \(r.changedCount == 1 ? "it is" : "they are"), listed on the restore's page") }
+        if r.inUseCount > 0 { parts.append("\(r.inUseCount) held by a running session: left alone") }
+        return parts.joined(separator: " · ")
     }
 
     @ViewBuilder private var oldProfile: some View {
@@ -338,10 +346,12 @@ struct OwnWindowMark: View {
 }
 
 extension DisplayWindow {
-    /// The display never wraps, so on a narrow page its second half keeps only the first two parts ("· nothing written yet ·
+    /// The display never wraps, so on a narrow page its second half keeps only its first part ("· nothing written yet ·
     /// nothing is ever overwritten" becomes "· nothing written yet"), which always fits a 340 pt column.
     static func narrowed(_ dim: String?, width: CGFloat) -> String? {
         guard width < 460, let dim else { return dim }
-        return dim.components(separatedBy: " · ").prefix(2).joined(separator: " · ")
+        let bare = dim.hasPrefix("· ") ? String(dim.dropFirst(2)) : dim
+        guard let first = bare.components(separatedBy: " · ").first else { return dim }
+        return "· " + first
     }
 }
