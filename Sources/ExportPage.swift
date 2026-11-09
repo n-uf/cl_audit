@@ -297,9 +297,12 @@ enum ExportWords {
         if !c.present { return (c.leftOut.map { "claude_desktop_config.json left out (\($0))" } ?? "none", nil) }
         let servers = c.servers.isEmpty ? "no MCP servers" : n(c.servers.count, "MCP server", "MCP servers") + " (" + c.servers.prefix(4).joined(separator: ", ") + (c.servers.count > 4 ? ", …" : "") + ")"
         let what = "\(servers) and the window's other settings"
-        if image { return ("\(what): in the encrypted disk image", nil) }
+        if image { return ("\(what): in the encrypted disk image", fingerprintNote) }
         return ("left out of a zip", "\(what) can hold tokens no scan recognises (env values, headers): they need the encrypted disk image, so a zip leaves them out")
     }
+
+    /// The image's MCP settings are scrubbed like the window's other files.
+    static let fingerprintNote = "Addresses and account ids cl_audit knows are replaced by fingerprints in them, as everywhere in an export: a server that uses one needs it put back by hand after the import."
 
     /// The Claude window row's line about the scheduled tasks: they travel with their prompts and come back paused.
     static func tasksNote(_ pv: SessionsExport.Preview?) -> String? {

@@ -146,7 +146,7 @@ MainActor.assumeIsolated {
     check(pv.config.present && pv.config.servers == ["github", "remote"] && pv.tasks == 4 && pv.setup.taskPrompts == 4 && !pv.setup.units.contains { $0.kind == .task },
           "preview: the config with 2 MCP servers; 4 tasks with 4 prompts, which aren't in the setup row's units")
     let zw = ExportWords.mcpWords(pv, image: false), iw = ExportWords.mcpWords(pv, image: true)
-    check(zw.value == "left out of a zip" && zw.note?.hasPrefix("2 MCP servers (github, remote) and the window's other settings can hold tokens") == true && iw.value == "2 MCP servers (github, remote) and the window's other settings: in the encrypted disk image" && iw.note == nil,
+    check(zw.value == "left out of a zip" && zw.note?.hasPrefix("2 MCP servers (github, remote) and the window's other settings can hold tokens") == true && iw.value == "2 MCP servers (github, remote) and the window's other settings: in the encrypted disk image" && iw.note == ExportWords.fingerprintNote,
           "export page: a zip says the MCP settings need the image; the image carries them: \(zw.value) / \(iw.value)")
     check(ExportWords.tasksNote(pv) == "4 scheduled tasks with their prompts: an import adds them only if you pick Add them, and paused", "export page: the tasks travel with their prompts and come back paused: \(ExportWords.tasksNote(pv) ?? "none")")
 
@@ -475,8 +475,17 @@ MainActor.assumeIsolated {
         let (tS, dS, _) = target("s")
         let stS = try! SessionsImport.materialize(os, part: os.parts[0], target: "s")
         let bS = try! SessionsImport.commit(stS)
-        _ = try? SessionsRestore.run(tS, bS, addConfig: true, windowClosed: { true })
+        let rS = try? SessionsRestore.run(tS, bS, addConfig: true, windowClosed: { true })
         let got = json(fm.contents(atPath: dS + "/claude_desktop_config.json"))
+        defer {
+            // the window rewrites the file when it opens (its sidebar step): Undo then leaves it, and says so in the words the row reads
+            write(dS + "/claude_desktop_config.json", #"{"mcpServers":{"x":{"command":"x"}},"preferences":{"epitaxyPrefs":{}}}"#)
+            if let id = rS?.id, let u = try? SessionsRestore.undo(id, windowClosed: { true }) {
+                check(u.problems.contains(WindowWords.configChangedProblem) && fm.fileExists(atPath: dS + "/claude_desktop_config.json")
+                      && WindowWords.configDone(SessionsRestore.ConfigPlan(), added: true, undone: true, name: "S", imported: true, leftByUndo: true).contains("Undo left the file as it is"),
+                      "undo: a config the window changed since is left, and the row says so: \(u.problems)")
+            } else { check(false, "undo: the import with a config can be undone") }
+        }
         check(got?["mcpServers"] != nil && (got?["preferences"] as? [String: Any])?["epitaxyPrefs"] == nil && (got?["preferences"] as? [String: Any])?["menuBarEnabled"] as? Bool == true
               && !(read(dS + "/claude_desktop_config.json") ?? "permission-mode").contains("permission-mode"),
               "hostile (image): a config carrying the sidebar part (folder permission modes) is written without it; the rest comes")

@@ -52,11 +52,17 @@ enum WindowWords {
     }
 
     /// The MCP row's value once the run is done (or undone).
-    static func configDone(_ cp: SessionsRestore.ConfigPlan, added: Bool, undone: Bool, name: String, imported: Bool) -> String {
+    static func configDone(_ cp: SessionsRestore.ConfigPlan, added: Bool, undone: Bool, name: String, imported: Bool, leftByUndo: Bool = false) -> String {
+        if undone, added, leftByUndo { return "\(config(cp)): was added; Undo left the file as it is, because the window has changed it since" }
         if undone { return added ? "\(config(cp)): was added, and taken away again" : "none was added" }
         if added { return "added: \(config(cp))" }
         return cp.leftOut || cp.status == .new ? "none added (left out)" : configValue(cp, name: name, imported: imported)
     }
+
+    /// What Undo says (SessionsRestore.undo) about a config the window changed since it was added.
+    static let configChangedProblem = "claude_desktop_config.json changed since; left as it is."
+    /// The done line's note: the window rewrites this file when it opens, so Undo may find it changed.
+    static let configUndoNote = "The Claude window may rewrite claude_desktop_config.json when it opens. If it has, Undo leaves the file as it is, with these servers in it: remove them in the window yourself."
 
     /// The servers a file that is here lacks (nothing is merged into it).
     static func lacking(_ cp: SessionsRestore.ConfigPlan) -> String? {
@@ -148,7 +154,9 @@ struct McpRow: View {
                 VStack(alignment: .leading, spacing: 6) {
                     let undone = runner.phase == .undone
                     if let r = runner.receipt, undone || runner.phase == .done || runner.phase == .sidebar {
-                        t.value(WindowWords.configDone(cp, added: r.configAdded, undone: undone, name: name, imported: imported))
+                        t.value(WindowWords.configDone(cp, added: r.configAdded, undone: undone, name: name, imported: imported,
+                                                       leftByUndo: r.problems.contains(WindowWords.configChangedProblem)))
+                        if !undone, r.configAdded { t.small(WindowWords.configUndoNote) }
                     } else {
                         t.value(WindowWords.configValue(cp, name: name, imported: imported), color: cp.unreadable ? face.caution : nil)
                     }
