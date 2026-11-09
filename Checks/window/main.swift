@@ -110,6 +110,9 @@ MainActor.assumeIsolated {
     let inline = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": ["gh\u{200B}\u{E0041}x": ["command": "npx -y pkg --token=tok-w0", "args": ["--more"]]]]))
     check(inline.count == 1 && inline[0].name == "ghx" && inline[0].runs == "npx (4 arguments not shown)" && !inline[0].runs.contains("tok-w0"),
           "config: a command that holds its arguments shows only the program and counts the rest; zero-width and tag characters are dropped: \(inline)")
+    let envFirst = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": ["x": ["command": "API_KEY=tok-w1 DEBUG=1 npx -y pkg"]]]))
+    check(envFirst.count == 1 && envFirst[0].runs == "npx (4 arguments not shown)" && !envFirst[0].runs.contains("tok-w1"),
+          "config: NAME=value words before the program are skipped and counted, never shown: \(envFirst)")
     check(SessionsBackup.mcpServers(fm.contents(atPath: dataA + "/claude_desktop_config.json")!).map { "\($0.name)=\($0.runs)" } == ["github=npx (2 arguments not shown)", "remote=a remote server (its address isn't shown)"],
           "config: each MCP server by name and what it runs: its command, or a remote server (never an argument, env value, header or URL)")
     let found = Setup.scan(codeDir: codeA, home: home)

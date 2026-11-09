@@ -585,8 +585,13 @@ enum SessionsBackup {
             let o = s[name] as? [String: Any]
             // the program, and how many arguments it is given (never the arguments: a package or script name sits beside tokens there)
             // (a command string that holds its own arguments, "npx -y pkg --token=…", shows only its first word: the rest count as arguments)
-            let words = ((o?["command"] as? String) ?? "").split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\n" })
-            let args = ((o?["args"] as? [Any])?.count ?? 0) + max(0, words.count - 1)
+            // (leading NAME=value words set the environment, "API_KEY=… npx …": skipped and counted with what isn't shown)
+            let all = ((o?["command"] as? String) ?? "").split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\n" })
+            let words = all.drop(while: { w in
+                guard let eq = w.firstIndex(of: "="), eq != w.startIndex else { return false }
+                return w[..<eq].allSatisfy { $0 == "_" || ($0.isASCII && ($0.isLetter || $0.isNumber)) }
+            })
+            let args = ((o?["args"] as? [Any])?.count ?? 0) + max(0, all.count - 1)
             let hidden = args == 0 ? "" : " (\(args) \(args == 1 ? "argument" : "arguments") not shown)"
             let runs = words.first.map { oneLine(String($0), max: 200) + hidden } ?? (o?["url"] != nil ? "a remote server (its address isn't shown)" : "nothing it names")
             return (oneLine(name, max: 100), runs)
