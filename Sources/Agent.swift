@@ -198,6 +198,8 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     var rules: AgentRules?
     private var cleanupWork: DispatchWorkItem?
     private var cleanupTimer: Timer?
+    /// Every few seconds: a profile waiting for a sign-in looks at its folder's record (Reader.watchSignIn).
+    private var signInTimer: Timer?
     private var menuBar: MenuBarItems?                  // the profiles' menu bar icons (MenuBar.swift)
     /// Some profile has its icon in the menu bar (the quick chat leaves the accessory role alone then).
     var hasMenuBarIcons: Bool { !(menuBar?.shown.isEmpty ?? true) }
@@ -263,6 +265,12 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         rules = r
         timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: Agent.beatSeconds, repeats: true) { [weak self] _ in self?.tick() }
+        signInTimer?.invalidate()
+        signInTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
+            guard let self else { return }
+            self.readers.values.forEach { $0.watchSignIn() }
+            self.standbyReaders.values.forEach { $0.watchSignIn() }
+        }
         // once the readers run: what older versions left behind (per-profile login items), then the clean-up
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             guard let self else { return }

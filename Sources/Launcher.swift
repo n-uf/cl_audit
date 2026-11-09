@@ -199,6 +199,8 @@ struct AccountRow: Identifiable {
         if status?.state == "otherAccount" { return "signed in to another account" }
         if status?.state == "expired" { return "login expired" }
         if status?.state == "noLogin" { return "no Claude Code login" }
+        if status?.state == "denied" { return "signed in, can't read it yet" }
+        if status?.state == "unreadable" { return "signed in, form not known" }
         return status?.loginEmail ?? status?.expectedEmail ?? entry.configDir
     }
 }

@@ -46,9 +46,16 @@ struct Account {
         label = e.label.isEmpty ? String(e.name.uppercased().prefix(6)) : e.label
         name = e.name
         configDir = expand(e.configDir.isEmpty ? "~/.claude" : e.configDir)
-        isDefaultDir = configDir == expand("~/.claude")
+        isDefaultDir = Self.isDefault(configDir: configDir)
         claudeUserDataDir = e.desktop == .separate && !e.desktopDataDir.isEmpty ? expand(e.desktopDataDir) : nil
         hasWindow = e.claudeWindow
+    }
+
+    /// The folder is Claude Code's default one (~/.claude, however it is spelled: a trailing slash, a link): used with
+    /// CLAUDE_CONFIG_DIR unset. Claude Code takes the variable's being set at all for a custom folder, even when it
+    /// names ~/.claude: its record then moves into the folder and its Keychain item gets a hash suffix.
+    static func isDefault(configDir: String) -> Bool {
+        FolderKey.canonical(configDir) == FolderKey.canonical("~/.claude")
     }
 
     /// Claude Code names the Keychain item after the config folder: the plain name for the
@@ -67,7 +74,7 @@ struct Account {
     /// home folder (~/.claude.json), any other inside the folder.
     static func claudeJSON(configDir: String) -> String {
         let dir = expand(configDir)
-        return dir == expand("~/.claude") ? expand("~/.claude.json") : (dir as NSString).appendingPathComponent(".claude.json")
+        return isDefault(configDir: dir) ? expand("~/.claude.json") : (dir as NSString).appendingPathComponent(".claude.json")
     }
 
     /// The seat Claude Code says the folder is signed in to now (its .claude.json), or nil when it isn't.
@@ -141,14 +148,20 @@ struct ScopedLimit: Codable, Equatable {
 }
 
 enum FetchState: Equatable {
-    case idle, ok, noLogin, expired, denied, rateLimited, failed(String)
+    case idle, ok, noLogin, expired, denied, unreadable, rateLimited, failed(String)
+
+    /// Said when a refused read is the problem (the Settings row, the menus, the saved status).
+    static let deniedWords = "Signed in, but cl_audit can't read this sign-in yet: allow cl_audit Agent when macOS asks (Always Allow), then Refresh now."
+    /// Said when the Keychain item is there but isn't a sign-in in the form cl_audit knows.
+    static let unreadableWords = "Signed in, but the sign-in isn't in a form cl_audit knows: Refresh now, or sign in again from Terminal."
 
     var menuText: String? {
         switch self {
         case .idle, .ok: return nil
         case .noLogin: return "No Claude Code login for this profile"
         case .expired: return "Login expired: use Claude Code once to renew it"
-        case .denied: return "Keychain access was not allowed"
+        case .denied: return Self.deniedWords
+        case .unreadable: return Self.unreadableWords
         case .rateLimited: return "Usage service busy, retrying later"
         case .failed(let why): return "Couldn't update: \(why)"
         }
@@ -157,31 +170,48 @@ enum FetchState: Equatable {
 
 enum Login {
     case token(String, expiresAt: Date?, plan: String?)
-    case notFound, denied
+    /// No Keychain item for the folder (`security` said "not found" for every account name tried).
+    case notFound
+    /// The read was refused or timed out (a locked Keychain, "Don't Allow", a prompt nobody answered).
+    case denied
+    /// An item is there and was read, but its text isn't a sign-in in a form cl_audit knows (not JSON, or JSON without
+    /// claudeAiOauth.accessToken). Nothing of its content is kept or shown: only that it was there.
+    case unreadable
 
     /// Reads the login with Apple's `security` tool, the same way Claude Code reads it. Claude Code
     /// stores the item through that tool, so the item already trusts it: no prompt, and no new
     /// Keychain permission for this app. (Reading it through the Keychain API needs "Always Allow",
     /// which is lost every time Claude Code re-saves a renewed login, so macOS kept asking.)
+    ///
+    /// Four outcomes, each with its own words: a token; no item at all (`.notFound`); an item that was refused or timed
+    /// out (`.denied`); an item whose text isn't the expected shape (`.unreadable`).
     static func read(_ account: Account) -> Login {
         for service in account.keychainServices {
             for user in [NSUserName() as String?, nil] {
                 var args = ["find-generic-password", "-s", service, "-w"]
                 if let user { args += ["-a", user] }
-                let (status, out) = security(args)
+                let (status, out) = runSecurity(args)
                 if status == 44 { continue }              // no such item
                 if status != 0 { return .denied }
-                guard let data = decode(out),
-                      let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-                      let oauth = json["claudeAiOauth"] as? [String: Any],
-                      let token = oauth["accessToken"] as? String, !token.isEmpty
-                else { return .notFound }
-                let expires = (oauth["expiresAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) }
-                return .token(token, expiresAt: expires, plan: oauth["subscriptionType"] as? String)
+                return parse(out)
             }
         }
         return .notFound
     }
+
+    /// What `security -w` printed for an item that was read: the token, or `.unreadable`. Never logs or keeps the text.
+    static func parse(_ out: Data) -> Login {
+        guard let data = decode(out),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let oauth = json["claudeAiOauth"] as? [String: Any],
+              let token = oauth["accessToken"] as? String, !token.isEmpty
+        else { return .unreadable }
+        let expires = (oauth["expiresAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) }
+        return .token(token, expiresAt: expires, plan: oauth["subscriptionType"] as? String)
+    }
+
+    /// The check's seam: what runs `security` (arguments in, exit status and output out).
+    nonisolated(unsafe) static var runSecurity: ([String]) -> (Int32, Data) = { security($0) }
 
     /// Runs /usr/bin/security; the output stays in memory and is never logged.
     private static func security(_ args: [String]) -> (Int32, Data) {

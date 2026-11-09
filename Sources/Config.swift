@@ -290,8 +290,11 @@ enum ClaudeCLI {
         p.executableURL = URL(fileURLWithPath: claude)
         p.arguments = ["auth", "logout"]
         var env = ProcessInfo.processInfo.environment
-        for k in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"] { env[k] = nil }
-        env["CLAUDE_CONFIG_DIR"] = expand(configDir)
+        for k in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR"] { env[k] = nil }
+        // The default folder is used with CLAUDE_CONFIG_DIR unset: set to ~/.claude, Claude Code treats it as a custom
+        // folder (its record in ~/.claude/.claude.json, its Keychain item "Claude Code-credentials-<hash>"), which isn't
+        // the item the default folder's sign-in is in.
+        if !Account.isDefault(configDir: configDir) { env["CLAUDE_CONFIG_DIR"] = expand(configDir) }
         env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
         p.environment = env
         p.currentDirectoryURL = FileManager.default.temporaryDirectory

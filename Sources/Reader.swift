@@ -247,6 +247,8 @@ final class UsageReader {
         // profile never holds up the others or the agent's rules
         if needsLoginRead() {
             let acct = account
+            // the folder's sign-in record as it was before the read: a change after it is read again (watchSignIn)
+            let stamp = SignInWatch.stamp(configDir: acct.configDir)
             DispatchQueue.global(qos: .utility).async {
                 let login = Login.read(acct)
                 DispatchQueue.main.async { [weak self] in
@@ -254,6 +256,7 @@ final class UsageReader {
                     // read for a folder or account it no longer reads: dropped, read again
                     guard gen == self.generation else { self.inFlight = false; self.nextFetch = .distantPast; self.tick(); return }
                     self.cachedLogin = login
+                    self.loginStamp = stamp
                     self.lastLoginRead = Date()
                     self.loginRejected = false
                     self.forceLoginRead = false
@@ -269,7 +272,9 @@ final class UsageReader {
         guard !stopped else { inFlight = false; return }
         guard case let .token(token, expiresAt, plan) = login else {
             inFlight = false
-            state = login.isDenied ? .denied : .noLogin
+            state = login.failure
+            // no sign-in yet (or one it can't read): look again in a minute, not at the next read interval
+            if Self.waitsForSignIn(login) { nextFetch = Date().addingTimeInterval(Self.signInRetry) }
             save(); return
         }
         self.plan = plan
@@ -288,8 +293,35 @@ final class UsageReader {
         if case let .token(_, expiresAt, _)? = cachedLogin {
             usable = !loginRejected && (expiresAt ?? .distantFuture) > Date().addingTimeInterval(60)
         }
-        let wait: TimeInterval = cachedLogin == nil ? 0 : 10 * 60
+        // no sign-in yet, or one that isn't readable: a minute (it may have just been made); a refused or expired one
+        // waits ten (asking again sooner would only repeat a prompt)
+        let wait: TimeInterval = cachedLogin == nil ? 0 : Self.waitsForSignIn(cachedLogin) ? Self.signInRetry : 10 * 60
         return forceLoginRead || (!usable && Date().timeIntervalSince(lastLoginRead) >= wait)
+    }
+
+    /// While a profile waits for a sign-in to show up, it looks again this often.
+    static let signInRetry: TimeInterval = 60
+
+    /// The last read found no item, or an item in a form cl_audit doesn't know: a sign-in may be on its way.
+    static func waitsForSignIn(_ l: Login?) -> Bool {
+        switch l {
+        case .notFound?, .unreadable?: return true
+        default: return false
+        }
+    }
+
+    /// The folder's .claude.json (Claude Code writes it as it signs in) as it was when the Keychain was last read.
+    private var loginStamp: [FileAttributeKey: AnyHashable] = [:]
+
+    /// Every few seconds (the agent's sign-in watch): a profile with no readable sign-in looks at its folder's
+    /// .claude.json, one stat, and when it changed since the last read, reads the Keychain at once, so the "no sign-in"
+    /// goes within seconds of Claude Code finishing the login instead of on the read schedule.
+    func watchSignIn() {
+        guard !stopped, !inFlight, Self.waitsForSignIn(cachedLogin), state == .noLogin || state == .unreadable else { return }
+        guard SignInWatch.stamp(configDir: account.configDir) != loginStamp else { return }
+        agentLog.log("reader \(self.id, privacy: .public): the folder's sign-in record changed; reading the sign-in now")
+        forceLoginRead = true; nextFetch = .distantPast
+        tick()
     }
 
     static func request(_ path: String, token: String) -> URLRequest {

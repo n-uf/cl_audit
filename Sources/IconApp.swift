@@ -581,5 +581,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
 extension Login {
     var isDenied: Bool { if case .denied = self { return true }; return false }
+    /// The state a read that gave no token puts the profile in.
+    var failure: FetchState {
+        switch self {
+        case .denied: return .denied
+        case .unreadable: return .unreadable
+        default: return .noLogin
+        }
+    }
 }
 

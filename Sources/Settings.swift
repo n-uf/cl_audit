@@ -1619,8 +1619,12 @@ struct AccountSettings: View {
             rowLine("The Keychain's sign-in is another account than the folder's .claude.json names.")
         } else if status?.state == "expired" {
             rowLine("The sign-in ran out: use Claude Code, log in again, or turn on Renew sign-in.")
+        } else if status?.state == "denied" {
+            rowLine(FetchState.deniedWords, color: face.caution)
+        } else if status?.state == "unreadable" {
+            rowLine(Self.unreadableWords(version: model.claudeVersion), color: face.caution)
         } else if status?.state == "noLogin" {
-            rowLine("No Claude Code sign-in in this folder yet.")
+            rowLine(noSignInWords)
         } else if let l = linkedLately {
             rowLine(linkedWords(was: l.was, at: l.at))
         }
@@ -1651,7 +1655,7 @@ struct AccountSettings: View {
             : (signedIn ?? expected ?? "not signed in yet", nil, nil)
         let facts = FolderFactsCache.facts(entry.configDir)
         let plan = (status?.plan).map(Account.planWords) ?? facts?.plan
-        let ok = move == nil && !mismatch && status?.state != "expired" && status?.state != "noLogin"
+        let ok = move == nil && !mismatch && !["expired", "noLogin", "denied", "unreadable"].contains(status?.state)
         return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: ok ? .ok : .warn,
                           detail: ([plan, facts?.org] + [entry.standby.isEmpty ? nil : "\(entry.name.isEmpty ? "the profile" : entry.name) works on it"])
                             .compactMap { $0 }.joined(separator: " · ")) {
@@ -1669,7 +1673,7 @@ struct AccountSettings: View {
             } label: { AccountBoxTitle(text: Privacy.masked(shown), tint: tint, icon: icon) }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
         } content: {
-            limitsOrWhy(status, entry: entry, none: status?.state == "noLogin" ? "No Claude Code sign-in in this folder yet." : nil)
+            limitsOrWhy(status, entry: entry, none: status?.state == "noLogin" ? noSignInWords : nil)
             if let move {
                 // one key; logging back in to the profile's own account is in the pop-up, under this account
                 if let owner = move.owner {
@@ -1679,6 +1683,10 @@ struct AccountSettings: View {
                 }
             } else if mismatch || status?.state == "noLogin" || status?.state == "expired" {
                 logInKey(email: expected)
+            } else if status?.state == "denied" || status?.state == "unreadable" {
+                // the sign-in is there: not Log in…, but a fresh read (Refresh now), after allowing cl_audit Agent
+                Button("Refresh now") { DistributedNotificationCenter.default().postNotificationName(Installer.refreshAllNote, object: entry.id, userInfo: nil, deliverImmediately: true) }
+                    .buttonStyle(PillButtonStyle(tint: nil, compact: true))
             }
             if !entry.standby.isEmpty { ownFolderLine }
         }
@@ -1973,6 +1981,21 @@ struct AccountSettings: View {
 
     /// The profile's Claude window is signed in to another claude.ai account (only its id is known, never its address).
     var windowElsewhere: Bool { _ = model.tick; return FolderRules.windowOnAnotherAccount(entry) }
+
+    /// What "no sign-in" says: the folder has none. When numbers show anyway because they are read from the account's
+    /// kept sign-in in another folder, it says which part is missing, so a red "In use" isn't read as "not signed in at all".
+    var noSignInWords: String {
+        let numbers = AccountRow(entry: entry, status: status).limits.contains { $0.p != nil }
+        let kept = !(entry.keptFolder ?? "").isEmpty
+        return numbers && kept ? "This folder has no Claude Code sign-in; the account's numbers come from another sign-in."
+                               : "No Claude Code sign-in in this folder yet."
+    }
+
+    /// The sign-in is there but isn't in a form cl_audit knows: with Claude Code's version when it's known.
+    static func unreadableWords(version: String?) -> String {
+        guard let v = version, !v.isEmpty else { return FetchState.unreadableWords }
+        return "Signed in, but the sign-in isn't in a form cl_audit knows (Claude Code \(v)): Refresh now, or sign in again from Terminal."
+    }
 
     /// "Log in…": Claude Code's own sign-in in Terminal, with the address filled in, for the folder the numbers are read
     /// from (the account's own once it has one).
