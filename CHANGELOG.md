@@ -12,8 +12,9 @@ the notes before updating.
   clean-up keeps sessions started or last continued in the Claude window or Cowork, unless
   `desktopSessionCleanupPeriodDays` gives them a limit, you deleted or archived them in the window, or your
   organisation's managed settings (or an error in them), HIPAA or zero data retention make `cleanupPeriodDays` apply to
-  everything. **Kept here** and **Keep for** say which sessions the number is for, and that Claude Code doesn't clean up
-  while `cleanupPeriodDays` or `desktopSessionCleanupPeriodDays` in `settings.json` isn't a valid number. Restore,
+  everything. **Kept here** and **Keep for** say which sessions the number is for. While `cleanupPeriodDays` or
+  `desktopSessionCleanupPeriodDays` in `settings.json` isn't a valid number, Claude Code doesn't clean up: cl_audit adds a
+  note, and still shows what would be deleted once it's fixed. Restore,
   Import and the default-profile move show **Would be deleted** (instead of "Older than 30 days") with only the sessions
   Claude Code would really delete, and **Keep for 90 days** only when it would save some. Your organisation's settings
   are read, never changed.
