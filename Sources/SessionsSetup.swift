@@ -415,16 +415,12 @@ enum Setup {
 
     // MARK: settings.json
 
-    /// Every `command` string of a settings.json (hooks, statusLine, anything else that names one).
+    /// The commands of a settings.json's hooks and its status line: the only ones Claude Code runs on its own. The one parse behind
+    /// the scripts an export carries, the hook-held units it keeps out of a zip, the scripts an import accepts and makes executable,
+    /// and the preview's "What its hooks run": a `command` under any other key (an MCP server's, say) is none of these.
     static func commands(inSettings data: Data) -> [String] {
-        guard let j = try? JSONSerialization.jsonObject(with: data) else { return [] }
-        var out: [String] = []
-        func visit(_ v: Any) {
-            if let o = v as? [String: Any] { for (k, x) in o.sorted(by: { $0.key < $1.key }) { if k == "command", let s = x as? String { out.append(s) } else { visit(x) } } }
-            else if let a = v as? [Any] { for x in a { visit(x) } }
-        }
-        visit(j)
-        return out
+        guard let s = settingsInfo(data) else { return [] }
+        return s.hookCommands + (s.statusLineCommand.map { [$0] } ?? [])
     }
 
     /// The absolute paths named in the commands of a settings.json: tokens that start with `~/`, `$HOME/`, `${HOME}/` or `/` (a
@@ -449,6 +445,7 @@ enum Setup {
     struct SettingsInfo: Equatable {
         var hookCommands: [String] = []
         var statusLine: String?
+        var statusLineCommand: String?          // the status line's command, when it has one
         var keys: [String: [String]] = [:]      // "hooks" → event names, "permissions" → allow/deny/…, "env" → names: never values
         var other: [String] = []                // the other top-level keys (names only)
     }
@@ -467,7 +464,10 @@ enum Setup {
                 }
             }
         }
-        if let sl = j["statusLine"] as? [String: Any] { s.statusLine = (sl["command"] as? String) ?? (sl["type"] as? String) ?? "set" }
+        if let sl = j["statusLine"] as? [String: Any] {
+            s.statusLineCommand = sl["command"] as? String
+            s.statusLine = s.statusLineCommand ?? (sl["type"] as? String) ?? "set"
+        }
         if let p = j["permissions"] as? [String: Any] { s.keys["permissions"] = p.keys.sorted() }
         if let e = j["env"] as? [String: Any] { s.keys["env"] = e.keys.sorted() }
         s.other = j.keys.filter { !["hooks", "statusLine", "permissions", "env"].contains($0) }.sorted()

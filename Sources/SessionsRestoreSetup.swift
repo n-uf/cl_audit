@@ -158,8 +158,9 @@ extension SessionsRestore {
         let sdata = groups[Setup.Unit(kind: .settings, name: "settings.json")] != nil ? backupData(["settings.json"]) : nil
         let pdata = groups[Setup.Unit(kind: .plugins, name: "plugins/installed_plugins.json")] != nil ? backupData(["plugins", "installed_plugins.json"]) : nil
         sp.extra = Setup.Extra(settings: sdata, plugins: pdata)
-        if let d = sdata, let info = Setup.settingsInfo(d) {
-            sp.hooks = (info.hookCommands + (info.statusLine.map { [$0] } ?? [])).prefix(30).map { String($0.prefix(200)) }
+        if let d = sdata, Setup.settingsInfo(d) != nil {
+            // (the same parse as the scripts the import accepts and makes executable: hooks and the status line's command only)
+            sp.hooks = Setup.commands(inSettings: d).prefix(30).map { String($0.prefix(200)) }
             if status[Setup.Unit(kind: .settings, name: "settings.json")] == .different {
                 let here = FileManager.default.contents(atPath: (t.codeDir as NSString).appendingPathComponent("settings.json"))
                 sp.settingsDiffer = here.map { Setup.settingsDifferences(here: $0, there: d) } ?? []

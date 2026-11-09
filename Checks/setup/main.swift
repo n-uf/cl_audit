@@ -469,6 +469,8 @@ MainActor.assumeIsolated {
     check(keyScript.contains("doesn't carry"), "hostile (image): Keybindings.json as a script (the keybindings file under another case) is refused whole: \(keyScript.prefix(90))")
     let namedScript = doctored("e2-named-script") { m, p in try rewriteSettings(&m, p, settings: #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash ~/.claude/bin/run --now"}]}]}}"#, script: ("bin/run", true)) }
     check(namedScript == "OPENED", "(the same doctoring with a hook that does run bin/run opens: \(namedScript.prefix(80)))")
+    let mcpScript = doctored("e2-mcp-command-script") { m, p in try rewriteSettings(&m, p, settings: #"{"mcpServers":{"x":{"command":"bash ~/.claude/bin/run --now"}}}"#, script: ("bin/run", true)) }
+    check(mcpScript.contains("no hook in settings.json points to"), "hostile (image): a script only an MCP server's command names is no hook script: refused whole, never made executable: \(mcpScript.prefix(90))")
     // the closure of includes and the paths a command names, directly
     do {
         let docs: [String: String] = ["CLAUDE.md": "# r\n @docs/a.md and @~/.claude-x/rules/x.md\n", "docs/a.md": " @b.md\n", "docs/b.md": "b", "rules/x.md": "x", "rules/y.md": "y", "z.md": "z"]
@@ -481,6 +483,15 @@ MainActor.assumeIsolated {
         check(Setup.includeClosure(carried: ["docs/a.md"]) { _ in Data(" @docs/a.md".utf8) }.isEmpty, "includes: without a CLAUDE.md there are none")
         let s = Data(#"{"note":"bin/run","hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash $HOME/.claude/bin/x.sh --flag"}]}]},"statusLine":{"type":"command","command":"~/.claude/bin/line.sh"}}"#.utf8)
         check(Setup.namedPaths(in: s, among: ["bin/run", "bin/x.sh", "bin/line.sh", "bin/other.sh"]) == ["bin/x.sh", "bin/line.sh"], "scripts: only a path a hook or status-line command names")
+        // a `command` under another key (an MCP server's) is no hook's: not carried, not accepted, not shown as what the hooks run
+        let mcp = Data(#"{"mcpServers":{"x":{"command":"~/.claude/bin/mcp.sh"}},"hooks":{"Stop":[{"hooks":[{"type":"command","command":"~/.claude/bin/x.sh"}]}]},"statusLine":{"type":"command"}}"#.utf8)
+        check(Setup.commands(inSettings: mcp) == ["~/.claude/bin/x.sh"] && Setup.namedPaths(in: mcp, among: ["bin/x.sh", "bin/mcp.sh"]) == ["bin/x.sh"],
+              "scripts: hooks and the status line's command only; an MCP server's command and a status line without one are not scripts: \(Setup.commands(inSettings: mcp))")
+        let c5 = e2 + "/.claude-e2m"
+        w(c5, "settings.json", #"{"mcpServers":{"x":{"command":"\#(c5)/bin/mcp.sh"}},"hooks":{"Stop":[{"hooks":[{"type":"command","command":"\#(c5)/bin/x.sh"}]}]}}"#)
+        w(c5, "bin/x.sh", "#!/bin/sh\n", exec: true); w(c5, "bin/mcp.sh", "#!/bin/sh\n", exec: true)
+        check(Set(Setup.scan(codeDir: c5, home: home).files.map(\.rel)) == ["settings.json", "bin/x.sh"], "scan: a script only an MCP server's command names is not carried with settings.json")
+        try? fm.removeItem(atPath: c5)
         check(Setup.pathProblem(["claude.md"]) != nil && Setup.pathProblem(["Settings.json"]) != nil && Setup.pathProblem(["KEYBINDINGS.JSON"]) != nil && Setup.pathProblem(["CLAUDE.md"]) == nil && Setup.pathProblem(["keybindings.json"]) == nil && Setup.pathProblem(["notes.md"]) == nil,
               "names: claude.md, Settings.json and KEYBINDINGS.JSON are those files under another case, refused; the exact names are fine")
     }
