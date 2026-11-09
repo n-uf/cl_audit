@@ -732,7 +732,7 @@ struct NewAccountView: View {
             if blocked { addressProblem = "Fix the red lines first."; return }
             do { try NewAccountSetup.createOrConnect(&draft) } catch { addressProblem = error.localizedDescription; return }
         }
-        guard let claude = model.requireClaude() else { addressProblem = ClaudeInstall.missingInstall; return }
+        guard let claude = model.requireClaude() else { addressProblem = model.noClaudeWhy; return }
         guard ClaudeCLI.openLogin(claude, account: Account(draft.entry), email: e) else {
             addressProblem = "Terminal didn't open."; return
         }

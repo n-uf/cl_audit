@@ -132,7 +132,7 @@ final class SwitchRunner: ObservableObject {
     /// filled in; done when that folder names it.
     func keepOwnFolder() {
         guard let m = model, let i = m.accounts.firstIndex(where: { $0.id == profile }), let email = m.accounts[i].seat?.email else { return }
-        guard let claude = m.requireClaude() else { note = ClaudeInstall.missingInstall; return }
+        guard let claude = m.requireClaude() else { note = m.noClaudeWhy; return }
         var dir = m.accounts[i].keptFolder ?? ""
         if dir.isEmpty {
             guard let made = StandbyFolder.make(for: email) else { note = "Couldn't make a folder for its sign-in in your home folder."; return }

@@ -125,7 +125,7 @@ extension SettingsModel {
     /// Says why when it can't (the install help opens when Claude Code is missing).
     func firstRunSignIn() {
         if let p = FirstRun.addressProblem(firstRun.email) { firstRun.problem = p; return }
-        guard let claude = requireClaude() else { firstRun.problem = ClaudeInstall.missing; return }
+        guard let claude = requireClaude() else { firstRun.problem = claudeLooked ? ClaudeInstall.missing : noClaudeWhy; return }
         let email = firstRun.email.trimmingCharacters(in: .whitespaces)
         let dir = firstRun.signInDir ?? FirstRun.signInFolder(email: email)
         if dir != "~/.claude" {

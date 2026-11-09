@@ -96,11 +96,13 @@ final class SettingsModel: ObservableObject {
     /// is, "isn't installed" with the install help (a sheet; on the first-run page its step 1).
     func requireClaude() -> String? {
         if let p = claudeNow() { return p }
-        if !claudeLooked { message = "Still looking for Claude Code… try again in a moment"; return nil }
-        message = ClaudeInstall.missing
-        showInstallHelp()
+        message = noClaudeWhy
+        if claudeLooked { showInstallHelp() }
         return nil
     }
+
+    /// Why there is no `claude` to sign in with, in a line: still looking, or not installed (with its Install…).
+    var noClaudeWhy: String { claudeLooked ? ClaudeInstall.missingInstall : "Still looking for Claude Code… try again in a moment" }
 
     func showInstallHelp() { if selection != Self.firstRunID { installHelp = true } }
 
@@ -237,7 +239,7 @@ final class SettingsModel: ObservableObject {
         if let owner = accounts.first(where: { $0.id != e.id && ($0.seat?.email ?? Account.expectedEmail(configDir: $0.configDir))?.lowercased() == email.lowercased() }) {
             return "That's the account of “\(owner.name)”. One profile per account."
         }
-        guard let claude = requireClaude() else { return ClaudeInstall.missingInstall }
+        guard let claude = requireClaude() else { return noClaudeWhy }
         guard ClaudeCLI.openLogin(claude, account: Account(e), email: email) else { return "Terminal didn't open." }
         s.email = email; s.started = Date()
         accountSwitch = s
@@ -1912,7 +1914,7 @@ struct AccountSettings: View {
         if let owner = model.accounts.first(where: { o in o.id != entry.id && ([o.seat?.email, Account.expectedEmail(configDir: o.configDir)] + o.standby.map(\.email)).contains { $0?.lowercased() == email.lowercased() } }) {
             return "That's the account of “\(owner.name)”. One profile per account."
         }
-        guard let claude = model.requireClaude() else { return ClaudeInstall.missingInstall }
+        guard let claude = model.requireClaude() else { return model.noClaudeWhy }
         guard let dir = StandbyFolder.make(for: email) else { return "Couldn't make a folder for its sign-in in your home folder." }
         let s = StandbyAccount(email: email, configDir: dir)
         entry.standby.append(s)
