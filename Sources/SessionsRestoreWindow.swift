@@ -105,6 +105,30 @@ extension SessionsRestore {
         return clean.isEmpty ? SessionsBackup.oneLine(id, max: 100) : clean
     }
 
+    /// A cron expression in plain words for the usual shapes ("every day at 3:00", "Mondays at 9:00", "weekdays at 8:30", "every hour at
+    /// :15", "every 10 minutes", "on day 1 of each month at 6:00"), else as written.
+    static func cronWords(_ c: String) -> String {
+        let f = c.split(separator: " ", omittingEmptySubsequences: true).map(String.init)
+        guard f.count == 5 else { return c }
+        func num(_ s: String, _ r: ClosedRange<Int>) -> Int? { Int(s).flatMap { r.contains($0) ? $0 : nil } }
+        let (mi, h, dom, mon, dow) = (f[0], f[1], f[2], f[3], f[4])
+        guard mon == "*" else { return c }
+        if let m = num(mi, 0...59), let hh = num(h, 0...23) {
+            let at = "at \(hh):" + String(format: "%02d", m)
+            if dom == "*", dow == "*" { return "every day \(at)" }
+            if dom == "*", dow == "1-5" { return "weekdays \(at)" }
+            let days = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"]
+            if dom == "*", let d = num(dow, 0...7) { return "\(days[d]) \(at)" }
+            if dow == "*", let d = num(dom, 1...31) { return "on day \(d) of each month \(at)" }
+            return c
+        }
+        if dom == "*", dow == "*", h == "*" {
+            if let m = num(mi, 0...59) { return "every hour at :" + String(format: "%02d", m) }
+            if mi.hasPrefix("*/"), let k = num(String(mi.dropFirst(2)), 1...59) { return k == 1 ? "every minute" : "every \(k) minutes" }
+        }
+        return c
+    }
+
     /// The task file an import writes: the first file's object with its `scheduledTasks` replaced by `tasks`, each with `enabled: false`
     /// and nothing else changed. nil: it can't be made.
     static func pausedTasks(base: Data, tasks: [[String: Any]]) -> Data? {
@@ -211,7 +235,7 @@ extension SessionsRestore {
         for (task, id) in list {
             var entry = TaskPlan.Task(id: SessionsBackup.oneLine(id, max: 200), name: taskName(task, id: id), why: nil)
             // what the person turns on when they flip its switch: its schedule, its folder, its permission mode and approvals
-            entry.schedule = (task["cronExpression"] as? String).map { SessionsBackup.oneLine($0, max: 60) } ?? (task["fireAt"] != nil ? "once" : nil)
+            entry.schedule = (task["cronExpression"] as? String).map { cronWords(SessionsBackup.oneLine($0, max: 60)) } ?? (task["fireAt"] != nil ? "once" : nil)
             entry.folder = (task["cwd"] as? String).map { SessionsBackup.oneLine(tilde($0), max: 120) }
             if let m = task["permissionMode"] as? String, m != "default" { entry.mode = SessionsBackup.oneLine(m, max: 40) }
             // (the window's own schema: chromePermissionMode is ask, skip_all_permission_checks or follow_a_plan; permissionModeCarried, true

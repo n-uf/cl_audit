@@ -228,8 +228,12 @@ MainActor.assumeIsolated {
     check(p0.taskPlan.tasks.first { $0.id == "elsewhere-task" }?.why == "it names a prompt file somewhere else" && p0.taskPlan.tasks.first { $0.id == "Bad Id" }?.why == "its id isn't one the Claude window keeps",
           "import: a task whose filePath points elsewhere, and one with an id the window drops, are listed, never written")
     let lines0 = p0.taskPlan.coming.map(\.line)
-    check(lines0 == ["Nightly digest · 0 3 * * * · in /w/project · browser: no permission checks · permission mode carried over",
-                     "Weekly report · 0 9 * * 1 · in /w/project · permissions: bypassPermissions · approved permissions"]
+    check(["0 3 * * *", "0 9 * * 1", "30 8 * * 1-5", "15 * * * *", "*/10 * * * *", "0 6 1 * *", "0 9 * * 7", "0 0 1 1 *", "5 4 * * 1,3", "nonsense"].map(SessionsRestore.cronWords)
+          == ["every day at 3:00", "Mondays at 9:00", "weekdays at 8:30", "every hour at :15", "every 10 minutes", "on day 1 of each month at 6:00", "Sundays at 9:00",
+              "0 0 1 1 *", "5 4 * * 1,3", "nonsense"],
+          "tasks: a schedule in plain words for the usual shapes, as written otherwise")
+    check(lines0 == ["Nightly digest · every day at 3:00 · in /w/project · browser: no permission checks · permission mode carried over",
+                     "Weekly report · Mondays at 9:00 · in /w/project · permissions: bypassPermissions · approved permissions"]
           && p0.taskPlan.risky == 2 && WindowWords.riskyWords(p0.taskPlan)?.hasPrefix("2 tasks run with permission checks off or with permissions approved on the other Mac") == true,
           "import: each task shows its schedule, its folder and a permission mode that isn't the default; bypassPermissions, approved permissions, a browser mode that skips checks and a carried mode are flagged: \(lines0)")
     check(p0.taskSessions.count == 1 && p0.taskSessions[0].hasPrefix("Nightly digest") && !p0.entries.contains { $0.leaf == "local_\(sid(11)).json" } && !p0.transcripts.contains { $0.leaf == "\(sid(111)).jsonl" }
