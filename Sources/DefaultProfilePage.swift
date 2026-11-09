@@ -215,8 +215,8 @@ struct DefaultProfilePage: View {
                 if kind == .otherFolder {
                     SRow(label: "Transcripts", stacked: true) { value("\(n(p.transcripts, "transcript", "transcripts")) go into ~/.claude/projects (never over one that is there)") }
                     if p.tally.shows {
-                        SRow(label: "Would be deleted", info: p.retention.wouldDeleteInfo(file: tilde(CodeCleanup.file("~/.claude")), comes: "moves with its real age"), stacked: true) {
-                            value(p.tally.words(p.retention, keepHint: false))
+                        SRow(label: "Would be deleted", info: p.retention.wouldDeleteInfo(file: tilde(CodeCleanup.file("~/.claude")), comes: "moves", moving: true), stacked: true) {
+                            value(p.tally.words(p.retention, keepHint: false, moving: true))
                         }
                     }
                 }

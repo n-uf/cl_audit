@@ -286,7 +286,9 @@ enum DefaultProfile {
                     if !fm.fileExists(atPath: ((have as NSString).appendingPathComponent(proj) as NSString).appendingPathComponent(f)) {
                         p.transcripts += 1
                         // the same rule as the Restore page's Would be deleted: the transcript's own entrypoint, its marker, its age
-                        if let t = Retention.Transcript.read(path: (pdir as NSString).appendingPathComponent(f)) { p.tally.add(t, p.retention, now: now) }
+                        if let t = Retention.Transcript.read(path: (pdir as NSString).appendingPathComponent(f), destination: (have as NSString).appendingPathComponent(proj)) {
+                            p.tally.add(t, p.retention, now: now)
+                        }
                     }
                 }
             }
