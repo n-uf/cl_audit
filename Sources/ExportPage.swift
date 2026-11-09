@@ -134,6 +134,7 @@ final class ExportRunner: ObservableObject {
             t.windowLeftOut = t.windowLeftOut || x.windowLeftOut
             for (k, v) in x.keyKinds { t.keyKinds[k, default: 0] += v }
             t.setup.add(x.setup)
+            t.config.add(x.config)
         }
         return t
     }
@@ -284,6 +285,26 @@ enum ExportWords {
         return out
     }
 
+    /// The MCP settings row: the window's claude_desktop_config.json (without its sidebar part) and, for a zip, the line that says it
+    /// needs the encrypted disk image.
+    static func mcpWords(_ pv: SessionsExport.Preview?, image: Bool) -> (value: String, note: String?) {
+        guard let p = pv else { return ("counting…", nil) }
+        if p.windowLeftOut { return ("left out: the window is open", nil) }
+        let c = p.config
+        if !c.present { return (c.leftOut.map { "claude_desktop_config.json left out (\($0))" } ?? "none", nil) }
+        let servers = c.servers.isEmpty ? "no MCP servers" : n(c.servers.count, "MCP server", "MCP servers") + " (" + c.servers.prefix(4).joined(separator: ", ") + (c.servers.count > 4 ? ", …" : "") + ")"
+        let what = "\(servers) and the window's other settings"
+        if image { return ("\(what): in the encrypted disk image", nil) }
+        return ("left out of a zip", "\(what) can hold tokens no scan recognises (env values, headers): they need the encrypted disk image, so a zip leaves them out")
+    }
+
+    /// The Claude window row's line about the scheduled tasks: they travel with their prompts and come back paused.
+    static func tasksNote(_ pv: SessionsExport.Preview?) -> String? {
+        guard let p = pv, !p.windowLeftOut, p.tasks > 0 else { return nil }
+        let prompts = p.setup.taskPrompts
+        return "\(n(p.tasks, "scheduled task", "scheduled tasks")) with \(prompts == p.tasks ? (p.tasks == 1 ? "its prompt" : "their prompts") : n(prompts, "prompt", "prompts")): an import adds them only if you pick Add them, and paused"
+    }
+
     /// "5 sessions and 1 skill hold keys: 3 GitHub tokens, 1 private key": the sessions and the setup units (a skill, CLAUDE.md …) together.
     static func foundWords(_ pv: SessionsExport.Preview?) -> String {
         guard let p = pv else { return "scanning the transcripts…" }
@@ -388,7 +409,7 @@ struct ExportPage: View {
     }
 
     private var whatCard: some View {
-        SCard(title: "What", info: "An export holds the same things as a backup (the Claude window's Code-tab entries and scheduled tasks, its sidebar records, Claude Code's transcripts and its setup: CLAUDE.md, skills, agents …), from a copy made now or from a backup you choose. Never a sign-in, a window MCP setting, settings.local.json, a switch's receipt, an address or an account id: accounts appear only as a fingerprint of their id.") {
+        SCard(title: "What", info: "An export holds the same things as a backup (the Claude window's Code-tab entries and scheduled tasks, its sidebar records, Claude Code's transcripts and its setup: CLAUDE.md, skills, agents …, and, in an encrypted disk image, the window's MCP settings), from a copy made now or from a backup you choose. Never a sign-in, settings.local.json, a switch's receipt, an address or an account id: accounts appear only as a fingerprint of their id.") {
             SRow(label: "From", first: true) {
                 Menu {
                     Button("\(name) as it is now") { runner.source = .now }
@@ -419,6 +440,18 @@ struct ExportPage: View {
                     if pv?.windowLeftOut == true, runner.source == .now {
                         Text("\(name)'s window is open: close it first, or the Code-tab list and sidebar records are left out.").font(.system(size: 10.5)).foregroundStyle(face.caution)
                             .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if let t = ExportWords.tasksNote(pv) {
+                        Text(t).font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            SRow(label: "MCP settings", info: "The Claude window's claude_desktop_config.json without its sidebar part: its MCP servers (what each runs, with their env values, headers and arguments) and the window's other settings. Those can hold tokens no scan recognises, so only the encrypted disk image carries them; a zip leaves them out. Importing leaves them out unless you add them, and adds them only where the profile has no claude_desktop_config.json yet.", stacked: true) {
+                let w = ExportWords.mcpWords(pv, image: runner.usesImage)
+                VStack(alignment: .leading, spacing: 4) {
+                    value(w.value)
+                    if let note = w.note {
+                        Text(note).font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }

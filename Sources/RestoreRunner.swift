@@ -23,6 +23,8 @@ struct RestoreKey: Equatable {
     var afterSwitch: String? = nil          // Undo this switch: the receipt of the switch that was switched back
     var addMemory = false                   // an import: add the memory files of a file from another Mac or profile (left out otherwise)
     var addSetup = false                    // add Claude Code's setup (CLAUDE.md, skills, agents …) that is missing here (left out otherwise)
+    var addConfig = false                   // add the window's MCP settings (claude_desktop_config.json) where there is none (left out otherwise)
+    var addTasks = false                    // an import: add the file's scheduled tasks, paused (left out otherwise)
     var id: String { "\(profile)/\(backup)/\(resume ?? "")" }
 }
 
@@ -89,11 +91,25 @@ final class RestoreRunner: ObservableObject {
         addSetup = on
         refresh()
     }
+    /// The window's MCP settings, and (an import) its scheduled tasks: added or left out (left out unless asked).
+    @Published private(set) var addConfig = false
+    @Published private(set) var addTasks = false
+    func setConfig(_ on: Bool) {
+        guard on != addConfig, phase == .ready else { return }
+        addConfig = on
+        refresh()
+    }
+    func setTasks(_ on: Bool) {
+        guard on != addTasks, phase == .ready else { return }
+        addTasks = on
+        refresh()
+    }
     private var priorPhase: Phase = .ready
 
     init(key: RestoreKey, model: SettingsModel) {
         self.key = key; self.model = model
         addSetup = key.addSetup
+        addConfig = key.addConfig; addTasks = key.addTasks
         manifest = SessionsBackup.load(profile: key.profile, id: key.backup, place: URL(fileURLWithPath: key.place))
         if let id = key.resume, let r = SessionsRestore.load(id) {
             receipt = r
@@ -159,9 +175,10 @@ final class RestoreRunner: ObservableObject {
         }
         guard let e = entry else { return }
         let target = SessionsRestore.Target(e), b = backup, resume = resumeID, profile = key.profile, memory = key.addMemory, setup = addSetup
+        let config = addConfig, tasks = addTasks
         let w = window
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let p = SessionsRestore.plan(target, b, addMemory: memory, addSetup: setup)
+            let p = SessionsRestore.plan(target, b, addMemory: memory, addSetup: setup, addConfig: config, addTasks: tasks)
             var not: NotYet?
             if let why = SessionsRestore.blocker(profile: profile, except: resume) {
                 not = NotYet(title: why.switchKey != nil ? "A switch of \(e.name) is unfinished" : "A restore of \(e.name) is unfinished",
@@ -250,11 +267,11 @@ final class RestoreRunner: ObservableObject {
 
     private func write() {
         guard let e = entry else { return }
-        let target = SessionsRestore.Target(e), b = backup, resume = resumeID, afterSwitch = key.afterSwitch, mark = markName, memory = key.addMemory, setup = addSetup
+        let target = SessionsRestore.Target(e), b = backup, resume = resumeID, afterSwitch = key.afterSwitch, mark = markName, memory = key.addMemory, setup = addSetup, config = addConfig, tasks = addTasks
         phase = .writing
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result {
-                try SessionsRestore.run(target, b, continuing: resume, addMemory: memory, addSetup: setup, afterSwitch: afterSwitch, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) },
+                try SessionsRestore.run(target, b, continuing: resume, addMemory: memory, addSetup: setup, addConfig: config, addTasks: tasks, afterSwitch: afterSwitch, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) },
                                         stop: { self?.stopRequested ?? true },
                                         progress: { d, t in DispatchQueue.main.async { self?.progress = (d, t) } },
                                         receiptWritten: { id in self?.onReceipt?(id) })

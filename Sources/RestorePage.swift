@@ -195,6 +195,8 @@ struct RestorePage: View {
                     }
                 }
                 SetupRow(entry: entry, runner: runner, imported: false, choose: { runner.setSetup($0) })
+                McpRow(entry: entry, runner: runner, imported: false, choose: { runner.setConfig($0) })
+                TasksRow(entry: entry, runner: runner, choose: nil)
                 SRow(label: "In use", info: "A Claude Code session is seen by its id on a process's command line (--resume <id>, --session-id <id>). A session resumed from its own picker or with --continue isn't named there, so a missing transcript of such a session is not seen as held and is written back. A transcript that is already there is never written to either way; one changed in the last two minutes is only listed here.", stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {
                         value(held.isEmpty ? "none" : "\(n(held.count, "transcript", "transcripts")) a running Claude Code session holds: left alone, listed")
@@ -237,7 +239,8 @@ struct RestorePage: View {
         var parts: [String] = []
         parts.append(n(p.entries.count, "entry", "entries"))
         parts.append(n(p.transcripts.count, "transcript", "transcripts"))
-        if !p.tasks.isEmpty { parts.append("the scheduled tasks file") }
+        if !p.tasks.isEmpty { parts.append("the scheduled tasks file" + (p.taskPrompts.isEmpty ? "" : " with \(n(p.taskPrompts.count, "prompt", "prompts"))")) }
+        if !p.configPieces.isEmpty { parts.append("the window's MCP settings") }
         if !p.files.isEmpty { parts.append(n(p.files.count, "other file", "other files") + " with the transcripts") }
         return p.count == 0 ? "none: everything in the backup is here" : parts.joined(separator: " · ")
     }
@@ -251,12 +254,12 @@ struct RestorePage: View {
     // MARK: Stays as it is, Sidebar
 
     private var staysCard: some View {
-        SCard(title: "Stays as it is", info: "Restore only adds what is missing. The account, the sign-ins, MCP settings and claude.ai are not part of it.") {
+        SCard(title: "Stays as it is", info: "Restore only adds what is missing. The account, the sign-ins and claude.ai are not part of it; a file that is here (MCP settings, settings.json, a task file) is never replaced or merged into.") {
             SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
             SRow(label: "Sign-ins") { rowValue(imp ? "Never in an export, never written" : "Never in a backup, never written") }
-            SRow(label: "MCP") { rowValue("The window's MCP settings: never touched") }
+            SRow(label: "MCP") { rowValue("Yours stay; the \(imp ? "file" : "backup")'s are added only if \(name) has none and you pick Add them") }
             SRow(label: "settings.json") { rowValue("Yours stays; one is added only if none is here and you pick Add them") }
-            SRow(label: "Scheduled tasks") { rowValue(imp ? "Not imported: the tasks belong to the account that had them" : "A task file that is there stays as it is; only a missing one comes back") }
+            SRow(label: "Scheduled tasks") { rowValue(imp ? "A task file that is here stays; the file's tasks come only if you picked Add them, paused" : "A task file that is there stays as it is; only a missing one comes back") }
             SRow(label: "claude.ai") { rowValue("Chats and Projects") }
         }
     }
@@ -309,7 +312,7 @@ struct RestorePage: View {
         let back = runner.receipt?.back ?? 0
         let undoneNow = runner.phase == .undone
         // after an Undo the plan is the old one (or none): the receipt says whether window files were among what it took away
-        let needsWindow = undoneNow ? (runner.receipt?.steps.contains { $0.kind == .entry || $0.kind == .tasks } ?? true) : (plan?.windowNeeded ?? true)
+        let needsWindow = undoneNow ? (runner.receipt?.steps.contains { $0.inWindow } ?? true) : (plan?.windowNeeded ?? true)
         let verb = imp ? "added" : "put back"
         let grown = runner.receipt?.changedCount ?? 0
         return SCard(title: "Steps", info: "What \(imp ? "importing" : "restoring") does, in order. A receipt in cl_audit's folder keeps what was \(verb) as it goes: if the Mac stops, cl_audit offers to finish it, and Undo this \(imp ? "import" : "restore") takes back exactly that.") {

@@ -64,6 +64,8 @@ final class ImportRunner: ObservableObject {
     @Published private(set) var note: String?
     @Published private(set) var addMemory = false
     @Published private(set) var addSetup = false
+    @Published private(set) var addConfig = false
+    @Published private(set) var addTasks = false
     private var frozen = false
     private let lock = NSLock()
     private var cancelFlag = false
@@ -164,7 +166,7 @@ final class ImportRunner: ObservableObject {
 
     private func recount() {
         guard let s = staged, let model else { return }
-        let key = RestoreKey(profile: s.target, backup: s.id, place: s.stage.path, addMemory: addMemory, addSetup: addSetup)
+        let key = RestoreKey(profile: s.target, backup: s.id, place: s.stage.path, addMemory: addMemory, addSetup: addSetup, addConfig: addConfig, addTasks: addTasks)
         let r = RestoreRunner(key: key, model: model)
         counting = r
         phase = .ready
@@ -182,6 +184,20 @@ final class ImportRunner: ObservableObject {
     func setSetup(_ on: Bool) {
         guard on != addSetup else { return }
         addSetup = on
+        recount()
+    }
+
+    /// The window's MCP settings in the file: left out, or added where the profile has none (the preview is counted again).
+    func setConfig(_ on: Bool) {
+        guard on != addConfig else { return }
+        addConfig = on
+        recount()
+    }
+
+    /// The file's scheduled tasks: left out, or added paused (the preview is counted again).
+    func setTasks(_ on: Bool) {
+        guard on != addTasks else { return }
+        addTasks = on
         recount()
     }
 
@@ -232,7 +248,7 @@ final class ImportRunner: ObservableObject {
         guard canImport, let s = staged, let model else { return }
         do {
             let b = try SessionsImport.commit(s)
-            let key = RestoreKey(profile: b.profile, backup: b.id, place: b.place.path, addMemory: addMemory, addSetup: addSetup)
+            let key = RestoreKey(profile: b.profile, backup: b.id, place: b.place.path, addMemory: addMemory, addSetup: addSetup, addConfig: addConfig, addTasks: addTasks)
             if let o = opened { SessionsImport.discard(o.work) }
             opened = nil; staged = nil; counting = nil
             phase = .running(key)
@@ -250,6 +266,7 @@ final class ImportRunner: ObservableObject {
         opened = nil; staged = nil; counting = nil
         addMemory = false                               // "Add them" was a choice about that file; the next one starts with them left out
         addSetup = false
+        addConfig = false; addTasks = false
     }
 
     /// cl_audit is quitting: the password goes and what is being opened is told to stop. Nothing is removed here (a big tree on the
@@ -289,6 +306,9 @@ struct ImportHappens: View {
     var addMemory = false
     /// Claude Code's setup in the file: the choice (nil on a page that only shows it).
     var setup: ((Bool) -> Void)? = nil
+    /// The window's MCP settings and its scheduled tasks in the file: the choices (nil on a page that only shows them).
+    var config: ((Bool) -> Void)? = nil
+    var tasks: ((Bool) -> Void)? = nil
     @State private var showDiffer = false
     @State private var showTasks = false
     @State private var showMemory = false
@@ -324,7 +344,7 @@ struct ImportHappens: View {
     var body: some View {
         let r = runner.receipt
         let p = runner.plan
-        SCard(title: undone ? "What the import had added" : "What happens", info: "Counted from the file against what is there now, by session id across every account folder of the window's Code-tab list (and transcripts by their path under \(entry.configDir)/projects). Import merges: it only adds what is missing, and nothing that is there is ever overwritten, deleted or moved. Sessions that a scheduled task ran are left out: the task belongs to its account.") {
+        SCard(title: undone ? "What the import had added" : "What happens", info: "Counted from the file against what is there now, by session id across every account folder of the window's Code-tab list (and transcripts by their path under \(entry.configDir)/projects). Import merges: it only adds what is missing, and nothing that is there is ever overwritten, deleted or moved. Sessions that a scheduled task ran come only with their task.") {
             if let why = p?.refusal {
                 SRow(label: "Refused", first: true, stacked: true) { Text(why).font(.system(size: 12.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true) }
             } else if let p {
@@ -356,9 +376,10 @@ struct ImportHappens: View {
                 if !undone, p.entries.isEmpty == false || p.taskSessions.isEmpty == false {
                     SRowLine(text: whereWords(p))
                 }
-                SRow(label: "Scheduled tasks' sessions", info: "A session that a scheduled task ran is left out, with its transcript and the files in its folder, and the task's name is listed: the task belongs to the account that had it, and isn't imported. (Which entries a task ran is read from a key of the entry that is not verified against a real one.)", stacked: true) {
+                TasksRow(entry: entry, runner: runner, choose: tasks)
+                SRow(label: "Scheduled tasks' sessions", info: "A session that a scheduled task ran (the entry's scheduledTaskId) comes in with its task when the task is added. When the task isn't added, the session is left out, with its transcript and the files in its folder, and the task's name is listed.", stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {
-                        value(p.taskSessions.isEmpty ? "none" : "\(p.taskSessions.count): left out with their transcripts, with the task's name")
+                        value(p.taskSessions.isEmpty ? "none left out" : "\(p.taskSessions.count): left out with their transcripts, with the task's name (their task isn't added)")
                         if !p.taskSessions.isEmpty { listKey("Show the list", "Hide the list", $showTasks); if showTasks { names(p.taskSessions) } }
                     }
                 }
@@ -378,6 +399,7 @@ struct ImportHappens: View {
                     }
                 }
                 SetupRow(entry: entry, runner: runner, imported: true, choose: setup)
+                McpRow(entry: entry, runner: runner, imported: true, choose: config)
                 SRow(label: "Folder not here", info: "Claude Code lists a session only where the folder it ran in exists. These are added anyway and show up once that folder is on this Mac.", stacked: true) {
                     value(runner.foldersMissing == 0 ? "none" : undone ? "\(runner.foldersMissing): were added, and taken away again" : "\(runner.foldersMissing): added, shown once that folder exists")
                 }
@@ -511,7 +533,8 @@ struct ImportPage: View {
     private var happensCard: some View {
         Group {
             if let c = runner.counting, runner.phase == .ready {
-                ImportHappens(entry: target, runner: c, memory: { runner.setMemory($0) }, addMemory: runner.addMemory, setup: { runner.setSetup($0) })
+                ImportHappens(entry: target, runner: c, memory: { runner.setMemory($0) }, addMemory: runner.addMemory, setup: { runner.setSetup($0) },
+                              config: { runner.setConfig($0) }, tasks: { runner.setTasks($0) })
             } else {
                 SCard(title: "What happens", info: "Counted from the file against what is there now, once the file is read.") {
                     SRow(label: "Nothing yet", first: true, stacked: true) {
@@ -532,12 +555,12 @@ struct ImportPage: View {
 
     private var staysCard: some View {
         let inUse = AccountNames.short(target.seat?.email ?? "its account")
-        return SCard(title: "Stays as it is", info: "Import only adds what is missing. The account, the sign-ins, MCP settings and claude.ai are not part of it.") {
+        return SCard(title: "Stays as it is", info: "Import only adds what is missing. The account, the sign-ins and claude.ai are not part of it; a file that is here (MCP settings, settings.json, a task file) is never replaced or merged into.") {
             SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
             SRow(label: "Sign-ins") { rowValue("Never in an export, never written") }
-            SRow(label: "MCP") { rowValue("The window's MCP settings: never touched") }
+            SRow(label: "MCP") { rowValue("Yours stay; the file's are added only if \(name) has none and you pick Add them") }
             SRow(label: "settings.json") { rowValue("Yours stays; one is added only if none is here and you pick Add them") }
-            SRow(label: "Scheduled tasks") { rowValue("Not imported: the tasks belong to the account that had them") }
+            SRow(label: "Scheduled tasks") { rowValue("A task file that is here stays; the file's tasks come only if you pick Add them, paused") }
             SRow(label: "claude.ai") { rowValue("Chats and Projects") }
         }
     }
