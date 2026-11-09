@@ -246,7 +246,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         QuickChat.shared.start(entries: { [weak self] in
             guard let self else { return [] }
             return self.order.compactMap { self.readers[$0]?.entry }
-        })
+        }, usage: { [weak self] id in self?.readers[id]?.usage })
         // the Mac's accent colour changed: the icons in Accent are drawn again
         observers.append(NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil,
                                                                 queue: .main) { [weak self] _ in self?.menuBar?.update() })
@@ -337,6 +337,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         }
         for id in order { readers[id]?.tick() }
         for id in standbyReaders.keys.sorted() { standbyReaders[id]?.tick() }
+        if QuickChat.shared.isOpen { QuickChat.shared.refresh() }
         // a standby account whose full limit reset: "the other account is back", with Switch back (SwitchBack.swift)
         BackWatch.check(order.compactMap { readers[$0]?.entry }, defaults: defaults) { e, s, b in
             guard e.notifyBack else { return }

@@ -67,6 +67,7 @@ struct QCBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let p = model.barProblem { QCProblemView(problem: p, model: model, answered: false) }
+            else if model.blocked { QCProblemView(problem: .limitFull, model: model, answered: false) }
             QCField(model: model, placeholder: "Ask anything", size: 17)
                 .padding(.horizontal, 8)
             QCControls(model: model, inBar: true)
@@ -123,6 +124,14 @@ struct QCWindow: View {
         ForEach(Array(model.turns.enumerated()), id: \.element.id) { i, t in
             QCTurnView(turn: t, last: i == model.turns.count - 1, model: model)
         }
+        if let n = model.note {
+            Text(n).font(.system(size: 11.5)).foregroundColor(QCColor.muted)
+                .frame(maxWidth: .infinity).padding(.top, 10)
+        }
+        // a limit filled since the last answer: said once, under the chat, with the switch
+        if model.blocked, model.turns.last?.problem != .limitFull {
+            QCProblemView(problem: .limitFull, model: model, answered: false).padding(.top, 12)
+        }
     }
 }
 
@@ -140,6 +149,7 @@ struct QCHeader: View {
                     Text(Privacy.masked(e)).font(.system(size: 12)).foregroundColor(QCColor.muted).lineLimit(1).truncationMode(.middle)
                 }
             }
+            if let l = model.level, l.week != nil || l.full() != nil { QCLevelView(level: l).padding(.leading, 4) }
             Spacer(minLength: 8)
             QCIconButton(symbol: "square.and.pencil", help: "New chat") { model.newChat() }
             QCIconButton(symbol: "xmark", help: "Hide (Esc)") { model.hide() }
@@ -168,6 +178,7 @@ struct QCTurnView: View {
                     .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(QCColor.bubble))
             }
             .padding(.top, 14)
+            if turn.thinkingTitle != nil { QCThought(turn: turn) }
             if !turn.answer.isEmpty {
                 QCAnswer(text: turn.answer)
             }
@@ -196,6 +207,33 @@ struct QCTurnView: View {
         if let th = turn.thinkingTitle { s += ", thinking \(th.lowercased())" }
         if let sec = turn.seconds { s += " · " + QCFormat.seconds(sec) }
         return s
+    }
+}
+
+/// "Thinking…" while it thinks, then "Thought for 5 s"; a click shows what it thought (as Claude Code reports it).
+struct QCThought: View {
+    let turn: QuickChatTurn
+    @State private var open = false
+
+    var body: some View {
+        let thinking = turn.busy && turn.answer.isEmpty
+        VStack(alignment: .leading, spacing: 6) {
+            Button { open.toggle() } label: {
+                HStack(spacing: 5) {
+                    Text(thinking ? "Thinking…" : turn.thinkingSeconds.map { "Thought for " + QCFormat.seconds($0) } ?? "Thought")
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).rotationEffect(.degrees(open ? 90 : 0))
+                }
+                .font(.system(size: 13)).foregroundColor(QCColor.muted)
+            }
+            .buttonStyle(.plain)
+            .disabled(turn.thinking.isEmpty)
+            if open, !turn.thinking.isEmpty {
+                Text(turn.thinking).font(.system(size: 13)).foregroundColor(QCColor.muted).lineSpacing(2)
+                    .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                    .padding(.leading, 12)
+                    .overlay(Rectangle().fill(QCColor.line).frame(width: 2), alignment: .leading)
+            }
+        }
     }
 }
 
@@ -344,6 +382,9 @@ struct QCProblemView: View {
         case .stopped: return "Claude Code stopped before the answer was done."
         case .refused(let text): return text
         case .noProfile: return "There's no profile to chat on yet."
+        case .limitFull:
+            let f = model.level?.full()
+            return "This account's \(f?.id == "5h" ? "5-hour limit" : "week") is full" + (f?.resets.map { ", " + TimeWords.back($0) } ?? "") + "."
         }
     }
 
@@ -354,6 +395,9 @@ struct QCProblemView: View {
         case .stopped: return answered ? "What arrived is kept above." : ""
         case .refused: return ""
         case .noProfile: return "Set one up in cl_audit."
+        case .limitFull:
+            guard let o = model.offer, let name = model.target?.name else { return "" }
+            return "\(name)'s other account, \(o.short), has room (\(o.words) used)." + (model.field.isEmpty ? "" : " What you typed goes once the switch is done.")
         }
     }
 
@@ -374,6 +418,8 @@ struct QCProblemView: View {
             if last { QCButton(title: "Retry") { retry() } }
         case .noProfile:
             QCButton(title: "Open cl_audit") { Installer.openDashboard() }
+        case .limitFull:
+            if model.offer != nil { QCButton(title: "Switch account…") { model.switchAccount() } }
         }
     }
 
@@ -382,15 +428,24 @@ struct QCProblemView: View {
 
 // MARK: - The keys
 
-/// The row under the field: the model, then the send (or stop) key.
+/// The row under the field: the model and thinking pickers, in the bar the profile's week, then the send (or stop) key.
 struct QCControls: View {
     @ObservedObject var model: QuickChatModel
     var inBar: Bool
 
     var body: some View {
         HStack(spacing: 4) {
-            QCChip(title: model.modelTitle)
+            QCChip(title: model.modelTitle, help: "Model") { pickModel() }
+            QCChip(title: model.thinking == .off ? "Thinking off" : model.thinking.title, symbol: "lightbulb",
+                   lit: model.thinking != .off, help: "Thinking") { pickThinking() }
             Spacer(minLength: 4)
+            if inBar, let t = model.target, let l = model.level, l.week != nil || l.full() != nil {
+                HStack(spacing: 6) {
+                    Text(t.name).font(.system(size: 12)).foregroundColor(QCColor.muted)
+                    QCLevelView(level: l, long: false)
+                }
+                .padding(.horizontal, 6)
+            }
             if model.busy {
                 Button(action: model.stop) {
                     Image(systemName: "stop.fill").font(.system(size: 11, weight: .bold))
@@ -399,7 +454,7 @@ struct QCControls: View {
                 }
                 .buttonStyle(.plain).help("Stop")
             } else {
-                let empty = model.field.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                let empty = model.field.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || model.blocked
                 Button(action: model.send) {
                     Image(systemName: "arrow.up").font(.system(size: 14, weight: .semibold))
                         .frame(width: 34, height: 34)
@@ -410,13 +465,81 @@ struct QCControls: View {
             }
         }
     }
+
+    private func pickModel() {
+        let name = model.target?.name ?? "the profile"
+        QCMenu.pop(header: "Model", items: QuickChatModelChoice.allCases.map { c in
+            QCMenu.Item(title: c == .profile ? c.title : (model.knownModels[c] ?? c.title), detail: c.blurb(profile: name),
+                        on: c == model.choice) { model.choose(c) }
+        }, footer: "For this chat. New chat goes back to the default in Settings.")
+    }
+
+    private func pickThinking() {
+        QCMenu.pop(header: "Thinking", items: QuickChatThinking.allCases.map { t in
+            QCMenu.Item(title: t.title, detail: t.blurb, on: t == model.thinking) { model.choose(t) }
+        }, footer: "For this chat. New chat goes back to the default in Settings.")
+    }
 }
 
+/// A picker's key: its title and a chevron; it opens a menu.
 struct QCChip: View {
     let title: String
+    var symbol: String? = nil
+    var lit = false
+    var help = ""
+    let action: () -> Void
+    @State private var hover = false
+
     var body: some View {
-        Text(title).font(.system(size: 13, weight: .medium)).foregroundColor(QCColor.soft)
+        Button(action: action) {
+            HStack(spacing: 5) {
+                if let symbol { Image(systemName: symbol).font(.system(size: 12, weight: .medium)).foregroundColor(lit ? QCColor.accent : QCColor.soft) }
+                Text(title).font(.system(size: 13, weight: .medium))
+                Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold)).opacity(0.7)
+            }
+            .foregroundColor(hover ? QCColor.text : QCColor.soft)
             .padding(.horizontal, 9).frame(height: 30)
+            .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(hover ? QCColor.hover : .clear))
+        }
+        .buttonStyle(.plain).help(help).onHover { hover = $0 }
+    }
+}
+
+/// The pickers' menus: macOS's own, at the pointer; each item its name and a few words in grey.
+enum QCMenu {
+    struct Item {
+        let title: String
+        let detail: String
+        let on: Bool
+        let action: () -> Void
+    }
+
+    private final class Handler: NSObject {
+        let run: () -> Void
+        init(_ run: @escaping () -> Void) { self.run = run }
+        @objc func fire() { run() }
+    }
+
+    static func pop(header: String, items: [Item], footer: String) {
+        let m = NSMenu(); m.autoenablesItems = false
+        let h = NSMenuItem(title: header, action: nil, keyEquivalent: ""); h.isEnabled = false
+        m.addItem(h)
+        for it in items {
+            let handler = Handler(it.action)
+            let i = NSMenuItem(title: it.title, action: #selector(Handler.fire), keyEquivalent: "")
+            i.target = handler
+            i.representedObject = handler      // the menu item keeps its handler alive
+            i.state = it.on ? .on : .off
+            let s = NSMutableAttributedString(string: it.title, attributes: [.font: NSFont.menuFont(ofSize: 0)])
+            s.append(NSAttributedString(string: "   " + it.detail, attributes: [
+                .font: NSFont.menuFont(ofSize: NSFont.smallSystemFontSize), .foregroundColor: NSColor.secondaryLabelColor]))
+            i.attributedTitle = s
+            m.addItem(i)
+        }
+        m.addItem(.separator())
+        let f = NSMenuItem(title: footer, action: nil, keyEquivalent: ""); f.isEnabled = false
+        m.addItem(f)
+        m.popUp(positioning: nil, at: NSEvent.mouseLocation, in: nil)
     }
 }
 
@@ -625,6 +748,9 @@ enum QuickChatRender {
         e.seat = Seat(account: "sample", email: "ultra-1@example.com")
         m.target = QuickChatTarget(e)
         m.knownModels[.haiku] = "Haiku 5.5"
+        var level = QuickChatLevel(nil)
+        level.week = 62; level.weekResets = Date().addingTimeInterval(3 * 86400)
+        m.level = level
         let q1 = "How do I find which process is using port 3000 on macOS?"
         let a1 = "Use `lsof`:\n```zsh\nlsof -nP -iTCP:3000 -sTCP:LISTEN\n```\nThe **PID** column is the process. Stop it with `kill <PID>`.\n- `-nP` keeps addresses and ports as numbers, which is faster.\n- `-sTCP:LISTEN` shows only the server, not its clients."
         var t1 = QuickChatTurn(question: q1, answer: a1, model: "Haiku 5.5"); t1.phase = .done; t1.seconds = 2.4
@@ -636,6 +762,17 @@ enum QuickChatRender {
         case "failed": var t = t1; t.answer = String(a1.prefix(60)); t.phase = .failed
             t.problem = .stopped(detail: "claude exited with code 1: API Error: Connection error."); m.turns = [t]
         case "notsigned": var t = QuickChatTurn(question: q1); t.phase = .failed; t.problem = .notSignedIn(profile: "Main", id: "main"); m.turns = [t]
+        case "thinking":
+            var t2 = QuickChatTurn(question: "And only the PID, for a script?",
+                                   answer: "Add `-t`, which prints bare PIDs:\n```zsh\nkill $(lsof -t -iTCP:3000 -sTCP:LISTEN)\n```",
+                                   thinking: "They want only the PIDs.", model: "Sonnet 5.5", thinkingTitle: "High")
+            t2.phase = .done; t2.seconds = 7.8; t2.thinkingSeconds = 5
+            m.choice = .sonnet; m.knownModels[.sonnet] = "Sonnet 5.5"; m.thinking = .high; m.turns = [t1, t2]
+        case "full":
+            m.field = q1
+            level.week = 100; level.weekResets = Date().addingTimeInterval(26 * 3600); m.level = level
+            m.offer = QuickChatSwitchOffer(key: "main~u3", short: "ultra-3", words: "week 12%")
+        case "level95": level.week = 96; m.level = level; m.turns = [t1]
         default: break
         }
         let view = QuickChatRoot(model: m).environment(\.qcRendering, true).padding(30).background(Color(white: 0.1))

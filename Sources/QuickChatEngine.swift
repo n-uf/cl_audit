@@ -75,6 +75,15 @@ enum QuickChatParse {
         return d
     }
 
+    /// Claude Code refused because a limit of the account is full: its error says so ("rate_limit"), or its words do
+    /// ("Claude AI usage limit reached|1794776400", "You've hit your limit · resets 5pm", "5-hour limit reached").
+    static func isLimit(error: String?, text: String) -> Bool {
+        if let e = error?.lowercased(), e.contains("rate_limit") || e.contains("usage_limit") { return true }
+        let t = text.lowercased()
+        return t.contains("usage limit reached") || t.contains("hit your limit") || t.contains("limit reached")
+            || t.contains("out of extra usage")
+    }
+
     /// "claude-haiku-5-5" → "Haiku 5.5"; "claude-sonnet-5-5-20261001" → "Sonnet 5.5"; anything else as it is.
     static func modelName(_ id: String) -> String {
         var parts = id.split(separator: "-").map(String.init)

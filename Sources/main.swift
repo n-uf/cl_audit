@@ -100,7 +100,7 @@ if args.count >= 2, args[1] == "--quick-chat" {
 
 if args.count >= 4, args[1] == "--render-quick-chat" {
     // --render-quick-chat OUT.png STATE: the bar or the chat window with sample data (bar, typing, notinstalled,
-    // streaming, answer, failed, notsigned), for checking
+    // streaming, answer, failed, notsigned, thinking, full, level95), for checking
     if #available(macOS 14, *) { MainActor.assumeIsolated { QuickChatRender.write(to: args[2], state: args[3]) } }
     exit(0)
 }
