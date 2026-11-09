@@ -24,8 +24,8 @@ struct SessionsCard: View {
     }
     @State private var backups: [Listed] = []
     @State private var targets: [String: String] = [:]             // backup id → the account its switch went to, short
-    @State private var retention = Retention()                     // what Claude Code's clean-up does (days nil: settings.json doesn't say)
-    private var days: Int? { retention.days }
+    @State private var retention = Retention()                     // what Claude Code's clean-up does
+    private var days: Int? { retention.menuDays }                  // nil: settings.json's own value can't be told (counted as 30)
     @State private var keepProblem: String?
     @State private var working = false
     @State private var problem: String?
@@ -112,8 +112,8 @@ struct SessionsCard: View {
         keepProblem = nil
         Task {
             do {
-                try await Task.detached(priority: .utility) { try CodeCleanup.set(d, codeDir: dir) }.value
-                retention.days = d
+                // read again: the number, and a skip note that the new value may have ended
+                retention = try await Task.detached(priority: .utility) { try CodeCleanup.set(d, codeDir: dir); return Retention.read(codeDir: dir) }.value
             } catch { keepProblem = "\(error)" }               // the file was left as it was: the menu keeps what it showed
         }
     }

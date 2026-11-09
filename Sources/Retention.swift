@@ -26,16 +26,19 @@
 // Claude Code SKIPS its clean-up (deletes nothing) when its settings have a validation error, or a settings file can't be
 // read or parsed, and `cleanupPeriodDays` or `desktopSessionCleanupPeriodDays` is explicitly set (or can't be told) in any
 // settings file (2.1.318 `lQn`: "Skipping cleanup: … Fix settings errors to enable cleanup"), unless managed settings set
-// `cleanupPeriodDays` (then it always runs). Modelled here for the user's own settings.json: an invalid key, or a file that
-// can't be read, deletes nothing (Retention.Skip says which).
+// `cleanupPeriodDays` (then it always runs). Said here, for the user's own settings.json (an invalid key, or a file that
+// can't be read: Retention.Skip says which), as a NOTE only: a skip must never hide a risk, since fixing the file (or an
+// older or newer Claude Code, or a Cowork process reading other settings) makes the clean-up run. So the counts, Would be
+// deleted and Keep for are always as if it ran, with the invalid key taken as not set (30 days; no cap). A link to
+// nowhere and a file that isn't a plain file are no file to Claude Code (ENOENT) or here: no skip.
 // NOT modelled: the same skip when a MANAGED document is bad and a clean-up key is set somewhere (or managed-settings.json
 // itself can't be used): that is said as "an error in the managed settings: deleted, no exemption", which is the safe side.
 
 import Foundation
 
 struct Retention: Equatable {
-    /// `cleanupPeriodDays` as it applies: the managed value, else settings.json's (30 when it says nothing); nil: unknown
-    /// (settings.json can't be read or holds something that isn't a whole number of days).
+    /// `cleanupPeriodDays` as it applies: the managed value, else settings.json's (30 when it says nothing, can't be read or
+    /// holds something that isn't a whole number of days: `problem` then says why). nil: unknown (not from `read`).
     var days: Int? = CodeCleanup.standard
     /// `desktopSessionCleanupPeriodDays` as it applies (managed first, else settings.json's); nil: no cap (not set, or 0).
     var desktopDays: Int?
@@ -47,11 +50,11 @@ struct Retention: Equatable {
     /// The organisation's managed settings name a policy helper, which may set `cleanupPeriodDays` unseen: counted as if it
     /// did (no exemption, `days` as settings.json says), never as a skipped clean-up.
     var helper = false
-    /// Claude Code skips its clean-up (deletes nothing), and why.
+    /// Claude Code 2.1.318 skips its clean-up (deletes nothing), and why: a note only, the counts don't change.
     var skipped: Skip?
     /// Where the managed values came from, when there are any.
     var source: ManagedSettings.Source?
-    /// Why `days` is unknown, when it is.
+    /// Why settings.json's own cleanupPeriodDays can't be told, when it can't (the counts take it as 30).
     var problem: String?
 
     enum Verdict: Equatable { case keep, delete, unknown }
@@ -65,8 +68,8 @@ struct Retention: Equatable {
     var exempts: Bool { !managed && !managedError && !helper }
 
     /// Whether Claude Code deletes a transcript, now.
+    /// A skipped clean-up changes nothing here: it is only a note, so a fix of settings.json can't bring a surprise.
     func verdict(_ t: Transcript, now: Date = Date()) -> Verdict {
-        if skipped != nil { return .keep }
         guard let days else { return .unknown }
         let age = now.timeIntervalSince(t.modified)
         guard age > Double(days) * 86400 else { return .keep }                      // not a candidate yet
@@ -87,11 +90,11 @@ struct Retention: Equatable {
     /// What the profile's Claude Code folder (settings.json) and the managed settings say.
     static func read(codeDir: String) -> Retention {
         let admin = ManagedSettings.read(codeDir: codeDir)
-        let user = CodeCleanup.read(codeDir: codeDir)
         let u = CodeCleanup.userState(codeDir: codeDir)
         var r = Retention()
-        r.days = user.days; r.problem = user.problem
-        var cap = u.desktop
+        // an invalid cleanupPeriodDays, or a settings.json that can't be read, counts as not set (30), as if the clean-up ran
+        r.days = u.days ?? CodeCleanup.standard; r.problem = u.problem
+        var cap = u.desktop                                                         // an invalid cap: none
         if let a = admin {
             r.source = a.source
             if let d = a.days { r.days = d; r.managed = true; r.problem = nil }
@@ -127,18 +130,24 @@ struct Retention: Equatable {
     static let keptHereInfo = "Claude Code's session transcripts, the entries of the Claude window's Code tab (for every account it has used), and how much room they take. "
         + "The last sentence says when Claude Code deletes them; since Claude Code 2.1.248 that depends on where the session ran (see Keep for)."
 
-    /// What the user's own settings.json holds, when Claude Code skips its clean-up because of it.
-    private var skipWords: String? {
+    /// The keep-for value the Keep for menu shows: nil (unknown) when settings.json's cleanupPeriodDays can't be told, though
+    /// the counts take it as 30.
+    var menuDays: Int? { problem == nil ? days : nil }
+
+    /// One sentence after the Kept here line and the Would be deleted info when Claude Code skips its clean-up because of
+    /// the user's own settings.json. Only a note: the counts and Keep for are as if the clean-up ran.
+    var skipNote: String? {
         switch skipped {
-        case .key(let k)?: return "Claude Code doesn't delete any session while \(k) in settings.json isn't a valid number."
-        case .unreadable?: return "Claude Code doesn't delete any session while settings.json can't be read."
+        case .key(let k)?: return "Claude Code 2.1.318 skips its clean-up while \(k) in settings.json isn't a valid number; fix it and these would be deleted."
+        case .unreadable?: return "Claude Code 2.1.318 skips its clean-up while settings.json can't be read; fix it and these would be deleted."
         case nil: return nil
         }
     }
 
     /// The end of the Kept here line.
-    var keptHereWords: String {
-        if let w = skipWords { return w }
+    var keptHereWords: String { [ruleWords, skipNote].compactMap { $0 }.joined(separator: " ") }
+
+    private var ruleWords: String {
         if managed, let days { return "Your organisation's managed settings make Claude Code delete sessions \(days) days after their last use." }
         guard let days else { return "How long Claude Code keeps sessions isn't known: cleanupPeriodDays in settings.json can't be read." }
         if managedError { return "Claude Code deletes sessions \(days) days after their last use, the Claude window's too: there is an error in your organisation's managed settings." }
@@ -149,7 +158,6 @@ struct Retention: Equatable {
 
     /// A line under the Keep for menu when the Claude window's sessions don't simply stay (nil: they do, or nothing to add).
     var keepForNote: String? {
-        if skipped != nil { return nil }                                        // the Kept here line says it
         if managed, let days {
             return "Your organisation's managed settings set \(days) days for every session, the Claude window's too. Changing it here wouldn't change that."
         }
@@ -166,8 +174,13 @@ struct Retention: Equatable {
     }
 
     /// The info text of the Would be deleted row of Restore (`comes` is "comes back") and Import ("comes in"), and of the
-    /// default-profile move (`comes` is "moves", `moving`: the sentence says "once it is moved", not "again").
+    /// default-profile move (`comes` is "moves", `moving`: the sentence says "once it is moved", not "again"). A skipped
+    /// clean-up adds its note at the end.
     func wouldDeleteInfo(file: String, comes: String, moving: Bool = false) -> String {
+        [ruleInfo(file: file, comes: comes, moving: moving), skipNote].compactMap { $0 }.joined(separator: " ")
+    }
+
+    private func ruleInfo(file: String, comes: String, moving: Bool) -> String {
         let again = "A transcript \(comes) with its real age, so one older than that would be deleted " + (moving ? "once it is moved." : "again.")
         if managed, let days {
             return "Your organisation's managed settings set cleanupPeriodDays to \(days) days for every session, the Claude window's too. \(again)"
@@ -499,7 +512,7 @@ enum ManagedSettings {
         var v = Values(source: docs.first?.0)
         var all: [Int] = [], caps: [Int] = [], winner: Int?
         for (src, d) in docs {
-            if helperKeys.contains(where: { d[$0] != nil }) { v.helper = true }
+            if helperKeys.contains(where: { d[$0] != nil && !(d[$0] is NSNull) }) { v.helper = true }    // a null names none
             if let x = d[CodeCleanup.key] {
                 if let n = CodeCleanup.whole(x) { all.append(n); if src == v.source { winner = n } } else { error = true }
             }
