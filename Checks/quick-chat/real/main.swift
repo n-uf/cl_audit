@@ -1,4 +1,5 @@
-// One real question through the quick chat's engine and the installed `claude` (Checks/quick-chat/real.sh).
+// One real question through the quick chat's engine and the installed `claude` (Checks/quick-chat/real.sh). Its own
+// main.swift: top-level code is only allowed there.
 // QC_CLAUDE: the claude to run; QC_CONFIG: the folder (a throwaway one by default: Claude Code then says it isn't
 // signed in, which is what this checks without an account); QC_MODEL, QC_EFFORT; QC_WORK: the work folder.
 

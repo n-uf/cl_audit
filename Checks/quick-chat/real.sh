@@ -14,8 +14,10 @@ work="$out/real-work"
 config="${QC_CONFIG:-$out/throwaway-config}"
 mkdir -p "$config" "$work"
 swiftc -swift-version 5 -target arm64-apple-macos13.0 -o "$out/real" \
-  "$repo/Sources/QuickChatEngine.swift" "$here/real.swift"
-QC_CLAUDE="$claude" QC_CONFIG="$config" QC_WORK="$work" "$out/real"
+  "$repo/Sources/QuickChatEngine.swift" "$here/real/main.swift"
+status=0
+QC_CLAUDE="$claude" QC_CONFIG="$config" QC_WORK="$work" "$out/real" || status=$?
 # what Claude Code kept for this run: in a real folder, its session under projects/; the throwaway folder goes whole
 key="$(printf '%s' "$work" | sed 's/[^A-Za-z0-9]/-/g')"
 if [ -z "${QC_CONFIG:-}" ]; then rm -rf "$config"; elif [ -n "$key" ]; then rm -rf "$config/projects/$key"; fi
+exit "$status"
