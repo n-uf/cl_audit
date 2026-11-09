@@ -143,6 +143,14 @@ enum Setup {
 
     static func sensitive(_ rel: String) -> Bool { unit(of: rel).sensitive }
 
+    /// The units (a skill, an agent, a command, an output style) that hold a file a command of settings.json runs: what such a unit
+    /// holds can carry a token no key scan recognises, the same reason settings.json and its scripts travel only in the image.
+    static func hookUnits(rels: [String], settings: Data?) -> Set<Unit> {
+        guard let s = settings else { return [] }
+        let named = namedPaths(in: s, among: rels)
+        return Set(named.map(unit(of:)).filter { [.skill, .agent, .command, .style, .include].contains($0.kind) })
+    }
+
     // MARK: reading the disk
 
     private static func lst(_ path: String) -> stat? {
@@ -380,6 +388,9 @@ enum Setup {
                     let r = String(abs.dropFirst(b.count + 1)), comps = r.split(separator: "/").map(String.init)
                     if have.contains(r) { continue }
                     if pathProblem(comps) != nil { continue }
+                    // a file inside skills/, agents/, commands/ or output-styles/ comes with its unit or not at all: a unit left out (a
+                    // link, a build leftover, the walk's cap) never leaves one file of it behind as a "unit" of its own
+                    if let top = comps.first, topFolders.contains(top) { continue }
                     var cur = base, linked: String?
                     for c in comps { cur = (cur as NSString).appendingPathComponent(c); if let s = lst(cur), (s.st_mode & S_IFMT) == S_IFLNK { linked = target(cur); break } }
                     if let t = linked { found.linked.append(Linked(label: "script \(r)", kind: .script, target: t)); continue }
@@ -555,11 +566,13 @@ enum Setup {
         return p.joined(separator: ", ")
     }
 
-    /// "settings.json, 3 hook scripts and the plugin marketplaces" (what only the encrypted image carries).
-    static func sensitiveWords(_ c: Counts) -> String? {
+    /// "settings.json, the 3 scripts it runs and the plugin marketplaces" (what only the encrypted image carries); `held`: units that
+    /// hold a script it runs ("1 skill that holds a script it runs").
+    static func sensitiveWords(_ c: Counts, held: Counts = Counts([])) -> String? {
         var p: [String] = []
         if c.settings > 0 { p.append("settings.json") }
-        if c.scripts > 0 { p.append(n(c.scripts, "hook script", "hook scripts")) }
+        if c.scripts > 0 { p.append(c.scripts == 1 ? "the script it runs" : "the \(c.scripts) scripts it runs") }
+        if held.total > 0 { p.append("\(words(held)) that \(held.total == 1 ? "holds" : "hold") a script it runs") }
         if c.marketplaces > 0 { p.append("the plugin marketplaces") }
         guard !p.isEmpty else { return nil }
         return p.count == 1 ? p[0] : p.dropLast().joined(separator: ", ") + " and " + p.last!

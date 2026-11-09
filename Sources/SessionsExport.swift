@@ -710,12 +710,19 @@ enum SessionsExport {
         var outside: [String] = []
         var leftOutBuild = 0
         var leftOutNames: [String] = []
+        /// Units (a skill, an agent …) that hold a file a hook or the status line of settings.json runs: the same as settings.json's
+        /// own scripts, they can hold a token no key scan recognises, so only the encrypted image carries them.
+        var hookUnits: Set<Setup.Unit> = []
         var counts: Setup.Counts { Setup.Counts(units) }
+        func isSensitive(_ u: Setup.Unit) -> Bool { u.sensitive || hookUnits.contains(u) }
         var sensitive: Setup.Counts { Setup.Counts(units.filter(\.sensitive)) }
+        /// Units that are plain by kind but hold a script a hook runs.
+        var held: Setup.Counts { Setup.Counts(units.filter { !$0.sensitive && hookUnits.contains($0) }) }
         /// What a zip carries: everything but the sensitive part.
-        var plain: Setup.Counts { Setup.Counts(units.filter { !$0.sensitive }) }
+        var plain: Setup.Counts { Setup.Counts(units.filter { !isSensitive($0) }) }
         var isEmpty: Bool { units.isEmpty }
         mutating func add(_ o: SetupPreview) {
+            hookUnits.formUnion(o.hookUnits)
             units += o.units; files += o.files; bytes += o.bytes; keyedUnits += o.keyedUnits
             for (k, v) in o.keyKinds { keyKinds[k, default: 0] += v }
             extra.hooks += o.extra.hooks; extra.plugins += o.extra.plugins; extra.statusLine = extra.statusLine || o.extra.statusLine
@@ -739,19 +746,20 @@ enum SessionsExport {
         let (files, found) = setupFiles(of: part)
         var kinds: [Setup.Unit: Set<Secret>] = [:]
         var seen = Set<Setup.Unit>()
+        func data(_ rel: String) -> Data? { files.first { $0.rel == rel }.flatMap { FileManager.default.contents(atPath: $0.src) } }
+        sp.hookUnits = Setup.hookUnits(rels: files.map(\.rel), settings: data("settings.json"))
         for f in files {
             if cancel() { return nil }
             let u = f.unit
             seen.insert(u)
             sp.files += 1; sp.bytes += f.bytes
-            if u.sensitive { continue }                                   // (carried only in the image: not what the key scan is for)
+            if sp.isSensitive(u) { continue }                             // (carried only in the image: not what the key scan is for)
             guard let k = SecretScan.scan(path: f.src, cancel: cancel, progress: progress) else { if cancel() { return nil }; continue }
             kinds[u, default: []].formUnion(k)
         }
         sp.units = seen.sorted()
         for (u, k) in kinds where !k.isEmpty { sp.keyedUnits.append(u); for x in k { sp.keyKinds[x, default: 0] += 1 } }
         sp.keyedUnits.sort()
-        func data(_ rel: String) -> Data? { files.first { $0.rel == rel }.flatMap { FileManager.default.contents(atPath: $0.src) } }
         sp.extra = Setup.Extra(settings: data("settings.json"), plugins: data("plugins/installed_plugins.json"))
         if let f = found { sp.linked = f.linked; sp.outside = f.outside; sp.leftOutBuild = f.leftOutBuild; sp.leftOutNames = f.leftOutNames }
         return sp
@@ -1316,10 +1324,14 @@ enum SessionsExport {
                 guard let c = SessionsRestore.components(it.path), c.first == "setup", Setup.pathProblem(Array(c.dropFirst())) == nil else { continue }
                 members[Setup.unit(of: String(it.path.dropFirst(6))), default: []].append(it)
             }
+            // a skill (an agent, a command …) that holds a file a hook or the status line runs is sensitive like the script itself
+            let allRels = members.values.flatMap { $0.map { String($0.path.dropFirst(6)) } }
+            let hookHeld = Setup.hookUnits(rels: allRels, settings: members.keys.contains(Setup.Unit(kind: .settings, name: "settings.json")) ? FileManager.default.contents(atPath: b.dir.appendingPathComponent("setup/settings.json").path) : nil)
             for (u, list) in members.sorted(by: { $0.key < $1.key }) {
                 if cancel() { throw ArchiveError("Stopped.") }
-                if u.sensitive, zip { po.setupSensitiveLeftOut.append(u); setupNames.append("\(u.name): needs the encrypted disk image"); leftOut += list.count; continue }
-                if !u.sensitive {
+                let sensitive = u.sensitive || hookHeld.contains(u)
+                if sensitive, zip { po.setupSensitiveLeftOut.append(u); setupNames.append("\(SetupRow.title(u)) (needs the encrypted disk image)"); leftOut += list.count; continue }
+                if !sensitive {
                     var kinds = Set<Secret>()
                     for it in list {
                         guard let k = SecretScan.scan(path: b.dir.appendingPathComponent(it.path).path, cancel: cancel) else {

@@ -258,7 +258,7 @@ enum ExportWords {
         guard let p = pv else { return [] }
         let sp = p.setup
         var out: [String] = []
-        if setup, !image, let w = Setup.sensitiveWords(sp.sensitive) { out.append("\(w) need the encrypted disk image: left out of a zip") }
+        if setup, !image, let w = Setup.sensitiveWords(sp.sensitive, held: sp.held) { out.append("\(w) need the encrypted disk image: left out of a zip") }
         if !sp.linked.isEmpty {
             let shown = sp.linked.prefix(3).map { "\($0.label) points to \(tilde($0.target))" }.joined(separator: ", ")
             out.append("\(n(sp.linked.count, "link", "links")) left out, never followed: \(shown)" + (sp.linked.count > 3 ? ", …" : ""))
