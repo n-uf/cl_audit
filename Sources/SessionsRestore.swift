@@ -1044,8 +1044,24 @@ enum SessionsRestore {
             done += 1; progress?(done, total)
         }
         var written = Set<String>()                                 // the transcripts this run made (a marker needs its own among them)
+        var settingsCreated = false                                 // setup: this run made settings.json (written before its scripts)
+        var skillsStarted = Set<String>(), skillsSkipped = Set<String>()
         for piece in p.transcripts + p.files + p.setupPieces {
             if stop() { throw stopped("Stopped by you. What is back is kept.") }
+            // a skill is added whole or not at all: when its first file is about to be written, the folder must still be absent (one that
+            // appeared since the plan is "Different here" now: nothing is merged into it)
+            if piece.kind == .setup, piece.dirs.count >= 2, piece.dirs[0] == "skills" {
+                let skill = piece.dirs[1]
+                if skillsSkipped.contains(skill) { done += 1; progress?(done, total); continue }
+                if !skillsStarted.contains(skill), let tree = code {
+                    var appeared = false
+                    if case .dir(let sfd) = tree.dir(["skills"], create: false) {
+                        var st = stat(); appeared = fstatat(sfd, skill, &st, AT_SYMLINK_NOFOLLOW) == 0; close(sfd)
+                    }
+                    if appeared { skillsSkipped.insert(skill); r.problems.append("skill \(skill) appeared meanwhile; left as it is."); done += 1; progress?(done, total); continue }
+                    skillsStarted.insert(skill)
+                }
+            }
             // a retention marker only with its transcript made by this run (the plan saw it planned; it may have appeared since)
             if piece.kind == .file, let id = SessionsExport.markerID(piece.leaf), !written.contains((piece.dirs + [id + ".jsonl"]).joined(separator: "/")) {
                 done += 1; progress?(done, total); continue
@@ -1062,10 +1078,17 @@ enum SessionsRestore {
             defer { close(dfd) }
             let path = (t.codeDir as NSString).appendingPathComponent(piece.dest)
             journal.add(Event(op: "intent", kind: piece.kind == .transcript ? .transcript : piece.kind == .setup ? .setup : .file, path: path, sha: want, bytes: Int64(f.st.st_size)), sync: true)
-            // setup is written 0600, or 0700 for a file the manifest marks executable (the descriptor of the clone this run made, nothing else)
-            switch cloneNew(from: f.fd, st: f.st, expected: want, dfd, piece.leaf, mode: piece.kind == .setup ? (piece.exec ? 0o700 : 0o600) : nil) {
+            // setup is written 0600, or 0700 for a file the manifest marks executable (the descriptor of the clone this run made, nothing
+            // else); a script only when this run made the settings.json that names it (else it stays 0600 and is said)
+            var exec = piece.exec
+            if exec, piece.kind == .setup, Setup.unit(of: piece.rel.dropFirst().joined(separator: "/")).kind == .script, !settingsCreated {
+                exec = false
+                r.problems.append("\(piece.leaf): not made executable, because settings.json wasn't added by this run: make it executable yourself if a hook should run it.")
+            }
+            switch cloneNew(from: f.fd, st: f.st, expected: want, dfd, piece.leaf, mode: piece.kind == .setup ? (exec ? 0o700 : 0o600) : nil) {
             case .created(let hash):
                 journal.add(Event(op: "done", kind: nil, path: path, sha: hash, bytes: nil), sync: false)
+                if piece.kind == .setup, piece.rel == ["setup", "settings.json"] { settingsCreated = true }
                 if piece.kind == .transcript { written.insert((piece.dirs + [piece.leaf.lowercased()]).joined(separator: "/")) }
             case .exists: gone(path); r.problems.append("\(piece.leaf) appeared meanwhile; left as it is."); continue
             case .differs:

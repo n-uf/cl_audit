@@ -146,7 +146,8 @@ extension SessionsRestore {
         }
         sp.added = add ? added : []
         sp.execNames.sort(); sp.execManual.sort()
-        p.setupPieces = pieces
+        // settings.json is written first: a script is made executable only when the run really created the settings.json that names it
+        p.setupPieces = pieces.filter { $0.rel == ["setup", "settings.json"] } + pieces.filter { $0.rel != ["setup", "settings.json"] }
 
         // what settings.json would make run (the hooks' commands and the status line), and how it differs when one is here
         func backupData(_ rel: [String]) -> Data? {
