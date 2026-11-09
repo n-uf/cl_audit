@@ -361,7 +361,7 @@ final class ImportRunner: ObservableObject {
     /// "25 sessions · 12 entries" (the noun that is not zero): sessions and entries are never counted together as "sessions".
     var countWords: String? { ImportWords.counts(sessions: sessionCount, entries: entryCount) }
     var canImport: Bool {
-        guard phase == .ready, let p = counting?.plan, p.refusal == nil, counting?.notYet == nil else { return false }
+        guard phase == .ready, let p = counting?.plan, p.refusal == nil, counting?.notYet == nil, !waitsForProfiles else { return false }
         return p.count > 0
     }
 
@@ -585,7 +585,9 @@ struct ImportPage: View {
             VStack(alignment: .leading, spacing: 12) {
                 Text(runner.opened?.move == true ? "Move from another Mac" : "Import into \(name)").font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
                 topBar
-                let first: [AnyView] = runner.movePlan != nil || runner.moved != nil ? [AnyView(fromCard), AnyView(moveCard), AnyView(happensCard)] : [AnyView(fromCard), AnyView(happensCard)]
+                // (a move: its card; once its profiles are made, what is left to do for them, at once, not only after the sessions)
+                let steps: [AnyView] = runner.madeProfiles.isEmpty ? [] : [AnyView(MoveSteps(model: model, runner: runner, width: width))]
+                let first: [AnyView] = runner.movePlan != nil || runner.moved != nil ? [AnyView(fromCard), AnyView(moveCard)] + steps + [AnyView(happensCard)] : [AnyView(fromCard), AnyView(happensCard)]
                 SettingsColumns(width: width, groups: [first, [AnyView(staysCard), AnyView(sidebarCard), AnyView(footerCard)]])
             }
             .task(id: entry.id) { runner.refresh() }
@@ -804,11 +806,16 @@ struct ImportPage: View {
                 }
                 .padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                stepRow(1, "\(entry.windowWordsCap) closes", runner.plan?.windowNeeded == false ? "Nothing in the window comes in, so it needn't close." : "Only that window, about half a minute; your other Claude windows stay open.")
+                stepRow(1, "\(target.windowWordsCap) closes", runner.plan?.windowNeeded == false ? "Nothing in the window comes in, so it needn't close." : "Only that window, about half a minute; your other Claude windows stay open.")
                 stepRow(2, "What's listed is added", "Merged by the rules on the left; nothing overwritten.")
                 stepRow(3, "The window opens; the sidebar, as before", "Press Return in the session that opens.")
             }
             if let note = runner.note { SRowLine(text: note, color: face.danger) }
+            // a move whose profiles aren't made yet: the key waits, and says why
+            if runner.waitsForProfiles, let p = runner.movePlan {
+                SRowLine(text: "Make the profiles first: press \(MoveWords.key(p, take: runner.takeSettings, create: true) ?? "Make the profiles") (or pick Leave them out), or these sessions would go into \(name).",
+                         color: face.caution)
+            }
             // Cancel and the key on one line when they fit; else the key above Cancel (neither is ever cut off)
             let cancel = Button("Cancel") { model.selection = entry.id }.buttonStyle(.plain).foregroundStyle(face.muted)
             let key = Button(importLabel) { runner.commit() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(!runner.canImport).fixedSize()
@@ -877,13 +884,15 @@ struct MoveSteps: View {
                     }
                 }
             }
-            SRowLine(text: "The other profiles' sessions: Settings ▸ that profile ▸ Sessions ▸ Import…, the same file.")
-            SRow(label: "Undo", stacked: true) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Undo this import (above) first; then this takes back the profiles it made, their empty folders and the settings it took.")
-                        .font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
-                    Button("Take back the profiles it made") { runner.undoMove() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-                    if let n = runner.moveNote { Text(n).font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true) }
+            // (before the sessions are imported, the profiles card above has the same key)
+            if runner.isRunning {
+                SRow(label: "Undo", stacked: true) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Undo this import (above) first; then this takes back the profiles it made, their empty folders and the settings it took.")
+                            .font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                        Button("Take back the profiles it made") { runner.undoMove() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.moveBusy)
+                        if let n = runner.moveNote { Text(n).font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true) }
+                    }
                 }
             }
         }
