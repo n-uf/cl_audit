@@ -636,9 +636,9 @@ struct NewAccountView: View {
                 }
                 ForEach(others, id: \.self) { line in Button(line) {}.disabled(true) }
                 Divider()
-                if model.claudePath == nil { Button(ClaudeInstall.missingInstall) { model.showInstallHelp() } }
+                if model.claudeKnownMissing { Button(ClaudeInstall.missingInstall) { model.showInstallHelp() } }
                 Button("Sign in to another account…") { askAddress() }
-                    .disabled(model.claudePath == nil)      // greyed, with the line above saying why
+                    .disabled(model.claudeKnownMissing)      // greyed, with the line above saying why
             } label: {
                 MenuWell(text: shown.text, tint: shown.tint, icon: shown.icon, fill: true).settingsEmail(shown.text.contains("@"))
             }

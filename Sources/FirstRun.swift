@@ -193,7 +193,7 @@ struct ClaudeMissingLine: View {
     @Environment(\.face) private var face
 
     var body: some View {
-        if model.claudePath == nil {
+        if model.claudeKnownMissing {
             HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 10)).foregroundStyle(face.caution)
                 Text(ClaudeInstall.missing + " ·").font(.system(size: 11)).foregroundStyle(face.caution).lineLimit(1)
@@ -202,6 +202,9 @@ struct ClaudeMissingLine: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
+            // while this note shows, cl_audit looks again every few seconds (backing off); when it goes, it stops
+            .onAppear { model.claudeNotes += 1 }
+            .onDisappear { model.claudeNotes = max(0, model.claudeNotes - 1) }
         }
     }
 }
@@ -216,8 +219,19 @@ struct ClaudeInstallCard: View {
 
     var body: some View {
         SCard(title: title, info: "cl_audit signs in through Claude Code's own sign-in and reads its usage the way Claude Code does. It looks in the usual places, in the login shell and in the Claude app's own copy, and looks again by itself every few seconds while this is showing.") {
-            if let c = model.claude { found(c) } else { missing }
+            if let c = model.claude { found(c) }
+            else if !model.claudeLooked { looking }
+            else { missing }
         }
+    }
+
+    /// Before the first full look is done nothing is known: never "isn't installed" yet.
+    private var looking: some View {
+        HStack(spacing: 8) {
+            ProgressView().controlSize(.small)
+            Text("Looking for Claude Code…").font(.system(size: 12.5)).foregroundStyle(face.muted)
+        }
+        .padding(.vertical, 4)
     }
 
     private func found(_ c: ClaudeFound) -> some View {

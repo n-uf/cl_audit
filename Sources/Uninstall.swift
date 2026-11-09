@@ -298,11 +298,12 @@ struct UninstallSheet: View {
     }
 
     private func go() {
-        let c = config, w = window, claude = model.claudePath, app = Bundle.main.bundleURL
+        let c = config, w = window, app = Bundle.main.bundleURL
         working = "Uninstalling…"
         AgentStarter.shared.suspended = true          // the agent is meant to stop now
         DispatchQueue.global(qos: .userInitiated).async {
-            let kept = Uninstall.run(deleteConfig: c, deleteWindow: w, trash: app, claude: claude,
+            // a full look, here: the sign-outs must run with the `claude` that is really there, never with nothing
+            let kept = Uninstall.run(deleteConfig: c, deleteWindow: w, trash: app, claude: ClaudeCLI.find(),
                                      log: { line in DispatchQueue.main.async { working = line } })
             DispatchQueue.main.async {
                 let a = NSAlert()

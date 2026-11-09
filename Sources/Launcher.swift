@@ -1279,6 +1279,11 @@ final class ManagerUI {
     func showMain(page: MainPage = .dashboard, account: String? = nil) {
         var page = page
         if page == .dashboard && settings.isFirstRun { page = .settings }       // nothing to show yet: "Set up cl_audit" first
+        // the periodic look for Claude Code runs only while Settings is on screen (SettingsModel.watchClaude)
+        settings.windowShowsSettings = { [weak self] in
+            guard let self, let w = self.mainWindow else { return false }
+            return w.isVisible && !w.isMiniaturized && self.nav.page == .settings
+        }
         closePalette()
         watchSwitch()           // a switch is only ever started from the window: from now on its alert is watched
         model.reload()

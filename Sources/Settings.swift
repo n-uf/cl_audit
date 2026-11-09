@@ -27,26 +27,38 @@ final class SettingsModel: ObservableObject {
     var dataFolders: [FolderChoice] { Detect.desktopDataFolders() }
     // MARK: Claude Code on this Mac (ClaudeLocator.swift)
 
-    /// The `claude` found (nil: none), looked for again whenever the window comes to the front, on "Check again", every
-    /// few seconds while it's missing, and before a sign-in. Never looked for on the main thread beyond file lookups.
+    /// The `claude` found (nil: none yet, see `claudeLooked`). The first value is only 26.11.1's own places (no process
+    /// run, never the Claude app's copy); the full look (login shell, Volta, nvm, npm, the app's copy) follows off the
+    /// main thread and replaces it. Looked for again when the window comes to the front, on "Check again", before a
+    /// sign-in and, only while the first-run page or an "isn't installed" note is on screen, every few seconds (backing
+    /// off to a minute).
     @Published private(set) var claude: ClaudeFound? = ClaudeLocator.find(quick: true)
     /// Its version, once `claude --version` has answered.
     @Published private(set) var claudeVersion: String?
-    /// A full look (shell and npm too) has finished at least once since the window opened.
+    /// A full look (shell and npm too) has finished at least once since the window opened: until then nil only means
+    /// "not known yet", never "not installed".
     @Published private(set) var claudeLooked = false
     /// The install help (a sheet, or the first-run page's step 1) is asked for.
     @Published var installHelp = false
     var claudePath: String? { claude?.path }
+    /// A full look is done and found nothing: the only state in which cl_audit says Claude Code isn't installed.
+    var claudeKnownMissing: Bool { claude == nil && claudeLooked }
     private var claudeBusy = false
     private var claudeAt = Date.distantPast
+    private var claudeMisses = 0
     /// Looks again at most this often unless asked to.
     static let claudeEvery: TimeInterval = 3
+    /// "Isn't installed" notes on screen right now (ClaudeMissingLine counts itself in and out), and whether the window
+    /// shows Settings (set by the window): the periodic look runs only while one of them is up.
+    var claudeNotes = 0
+    var windowShowsSettings: () -> Bool = { true }
 
     /// Looks for `claude` off the main thread (throttled unless `force`) and publishes what it finds. The version comes
     /// with it, from `claude --version`, when the program is new.
     func detectClaude(force: Bool = false, then done: (() -> Void)? = nil) {
         guard !claudeBusy, force || Date().timeIntervalSince(claudeAt) >= Self.claudeEvery else { return }
         claudeBusy = true; claudeAt = Date()
+        if force { claudeMisses = 0 }
         let had = (claude, claudeVersion)
         DispatchQueue.global(qos: .utility).async { [weak self] in
             let found = ClaudeLocator.find()
@@ -57,23 +69,34 @@ final class SettingsModel: ObservableObject {
                 if self.claude != found { self.claude = found }
                 if self.claudeVersion != version { self.claudeVersion = version }
                 if !self.claudeLooked { self.claudeLooked = true }
+                if found == nil || found?.fromApp == true { self.claudeMisses += 1 } else { self.claudeMisses = 0 }
                 done?()
             }
         }
     }
 
-    /// Right before a sign-in: the `claude` to use, looked for again at once (file lookups only), or nil.
+    /// Right before a sign-in: the `claude` already found, if it is still there. Otherwise 26.11.1's own places (file
+    /// lookups only) and a full look off the main thread; never the Claude app's copy from a quick look, and never a
+    /// guess before the full look is done. The app's copy found by a full look yields to a real install as soon as one
+    /// shows in 26.11.1's places.
     func claudeNow() -> String? {
-        if let c = claude, ClaudeLocator.isExecutable(c.path) { return c.path }
+        if let c = claude, ClaudeLocator.isExecutable(c.path) {
+            guard c.fromApp, let real = ClaudeLocator.find(quick: true) else { return c.path }
+            claude = real; claudeVersion = nil
+            detectClaude(force: true)
+            return real.path
+        }
         let f = ClaudeLocator.find(quick: true)
         if claude != f { claude = f }
-        detectClaude(force: true)             // the full look follows (shell, npm), for the next time
+        detectClaude(force: true)             // the full look follows (login shell, Volta, nvm, npm, the app's copy)
         return f?.path
     }
 
-    /// A sign-in action's `claude`: nil says why, with the install help (the sheet; on the first-run page its step 1).
+    /// A sign-in action's `claude`: nil says why. Before the first full look is done it says it is still looking; once it
+    /// is, "isn't installed" with the install help (a sheet; on the first-run page its step 1).
     func requireClaude() -> String? {
         if let p = claudeNow() { return p }
+        if !claudeLooked { message = "Still looking for Claude Code… try again in a moment"; return nil }
         message = ClaudeInstall.missing
         showInstallHelp()
         return nil
@@ -81,13 +104,17 @@ final class SettingsModel: ObservableObject {
 
     func showInstallHelp() { if selection != Self.firstRunID { installHelp = true } }
 
-    /// Every few seconds (the timer): a `claude` that went away is dropped; one that is missing, or only the Claude app's
-    /// copy while the first-run page is up, is looked for again (throttled, off the main thread).
+    /// Every few seconds (the timer): a `claude` that went away is dropped. Looking again, while it is missing (or only
+    /// the Claude app's copy and the first-run page is up), runs only while the first-run page, an "isn't installed" note
+    /// or the install help is on screen in a shown window, and backs off: 3 s, 6, 12, 24, 48, then once a minute.
     func watchClaude() {
-        if let c = claude, !ClaudeLocator.isExecutable(c.path) {
-            claude = ClaudeLocator.find(quick: true); claudeVersion = nil
-        }
-        if claude == nil || (claude?.fromApp == true && isFirstRun) { detectClaude() }
+        if let c = claude, !ClaudeLocator.isExecutable(c.path) { claude = ClaudeLocator.find(quick: true); claudeVersion = nil }
+        let wanted = claude == nil || (claude?.fromApp == true && isFirstRun)
+        let onScreen = (isFirstRun && selection == Self.firstRunID) || claudeNotes > 0 || installHelp
+        guard wanted, onScreen, windowShowsSettings() else { claudeMisses = 0; return }
+        let wait = min(60, Self.claudeEvery * pow(2, Double(claudeMisses)))
+        guard Date().timeIntervalSince(claudeAt) >= wait else { return }
+        detectClaude()
     }
     private var timer: Timer?
     private var saveWork: DispatchWorkItem?
@@ -573,9 +600,10 @@ final class SettingsModel: ObservableObject {
         guard let d = draft else { return }
         guard d.started else { draft = nil; selection = accounts.first?.id; return }
         discarding = true
-        let claude = claudePath
         DispatchQueue.global(qos: .userInitiated).async {
-            NewAccountSetup.discard(d, claude: claude)
+            // a full look, here: the sign-out must run with the `claude` that is really there, never with nothing
+            // (that would delete the folder and orphan its sign-in in the Keychain)
+            NewAccountSetup.discard(d, claude: ClaudeCLI.find())
             DispatchQueue.main.async {
                 self.discarding = false
                 self.draft = nil
@@ -613,11 +641,11 @@ final class SettingsModel: ObservableObject {
         var hidden = UserDefaults.standard.stringArray(forKey: "dashboardHidden") ?? []
         hidden.removeAll { $0 == e.id }
         UserDefaults.standard.set(hidden, forKey: "dashboardHidden")
-        let claude = claudePath
         apply {
             self.message = deleteFolders ? "Removed \(e.name); deleting its folders…" : "Removed \(e.name)"
             DispatchQueue.global(qos: .userInitiated).async {
-                let failed = deleteFolders ? AccountRemoval.deleteFolders(e, claude: claude) : []
+                // a full look, here: the sign-out must run with the `claude` that is really there (see cancelNew)
+                let failed = deleteFolders ? AccountRemoval.deleteFolders(e, claude: ClaudeCLI.find()) : []
                 AccountRemoval.removeScripts(e.configDir)
                 DispatchQueue.main.async {
                     self.message = !failed.isEmpty ? "Removed \(e.name), but couldn't delete " + failed.joined(separator: ", ")
@@ -1720,7 +1748,7 @@ struct AccountSettings: View {
                           unlit: !selected, dimsContent: look.dims, selected: selected, litBadge: "Switch account",
                           litAction: { model.showSwitch(AccountEntry.standbyStatusID(entry.id, s.id)) }) {
             Menu {
-                if model.claudePath == nil {
+                if model.claudeKnownMissing {
                     Button(ClaudeInstall.missingInstall) { model.showInstallHelp() }
                     Divider()
                 }
@@ -1848,7 +1876,7 @@ struct AccountSettings: View {
             .overlay {
                 MenuTrigger(label: "Add account", opened: { addOpen = $0 }) {
                     let found = FoundAccountsCache.list(for: entry, among: model.accounts)
-                    let rows = AddAccountPopup.rows(found: found, profile: entry.name, canSignIn: model.claudeNow() != nil)
+                    let rows = AddAccountPopup.rows(found: found, profile: entry.name, canSignIn: model.claudeNow() != nil || !model.claudeLooked)
                     return AddAccountPopup.menu(rows,
                         onAdd: { id in if let f = found?.first(where: { $0.id == id }) { addFound(f) } },
                         onOther: { adding = ""; addProblem = nil },
@@ -1915,7 +1943,7 @@ struct AccountSettings: View {
     /// Login's (i): what it is, the pop-up, and Renew sign-in (now an item in the pop-up).
     var loginInfo: String {
         "The claude.ai accounts this profile has. It works on one at a time, IN USE: the one Claude Code in its folder is signed in to. The others STANDBY: their limits show too, read from a sign-in kept for each in a small folder of its own, so you can see which has room. Add account lists the accounts found on this Mac (signed in in a Claude Code folder, or used by this profile's Claude window) and Sign in to another account…, which opens Claude Code's own sign-in in Terminal in a new folder. An account belongs to one profile. cl_audit's background agent reads each sign-in from the Keychain, read-only, the same way Claude Code does; no new Keychain permission, and no sign-in is ever copied. Removing a standby account leaves its folder as it is.\n\nRenew sign-in (in the account in use's pop-up): Claude Code's sign-in uses a short-lived access key, which Claude Code swaps for a fresh one whenever it runs. cl_audit only reads that key, so after a while without Claude Code it runs out and the usage stops updating. On: cl_audit then runs Claude Code once in the background (a one-line prompt, \"Reply with OK.\", on Haiku, nothing saved) so it swaps the key; at most every 30 min, using a sliver of this profile's usage. Off: the usage waits until you next use Claude Code. Standby accounts' sign-ins are always renewed this way, so their limits stay current."
-            + (model.claudePath == nil ? " Needs Claude Code installed; it wasn't found." : "")
+            + (model.claudeKnownMissing ? " Needs Claude Code installed; it wasn't found." : "")
             + (status?.renewNote.map { "\nLast: \($0)" } ?? "")
     }
 
@@ -1997,7 +2025,7 @@ struct AccountSettings: View {
         let here = Account.signedInSeat(configDir: entry.configDir)?.email ?? status?.loginEmail ?? expected
         let plan = status?.plan.map(Account.planWords)
         let linked = entry.seat?.email
-        let canSignIn = model.claudePath != nil
+        let canSignIn = !model.claudeKnownMissing
         func line(_ email: String, _ detail: [String?]) -> String {
             ([Privacy.masked(email)] + [detail.compactMap { $0 }.joined(separator: " · ")].filter { !$0.isEmpty }).joined(separator: "   ")
         }
