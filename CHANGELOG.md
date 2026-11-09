@@ -8,7 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- Correction to 26.11.3's notes: besides your messages, quick chat sends a short system prompt of cl_audit's own
+  (answer briefly, no tools); nothing else of yours is sent. The README's Dock icon menu lists Quick chat, in the menu's
+  real order.
 
 ## 26.11.3 — 2026-11-08
 

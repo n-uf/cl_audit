@@ -360,7 +360,7 @@ cl_audit stays in the Dock as a launcher:
 | Click | The profile's click action; by default its usage for 3 s while its Claude window opens |
 | Double-click or ⌥-click | The details panel: both limits with bars and reset times, the sign-in, Open Claude, Sign in, Refresh, Settings |
 | Press and hold | The details panel next to a short Dock menu (on by default, per profile) |
-| Right-click | The menu: numbers, reset times, the sign-in, and actions (Open or Show Claude window, Quit Claude window, Refresh now, Switch account › with each of the profile's other accounts and their weeks (and, while a limit is full, Switch to … for the best one), Dashboard, Profile settings…, and Quit and keep Claude window when the window follows the Dock icon) |
+| Right-click | The menu: numbers, reset times, the sign-in, and actions (Switch account › with each of the profile's other accounts and their weeks (and, while a limit is full, Switch to … for the best one), Quick chat, Open or Show Claude window, Quit Claude window, Refresh now, Dashboard, Profile settings…, and Quit and keep Claude window when the window follows the Dock icon) |
 
 A Dock icon draws what the agent saved for its profile, and asks the agent for Refresh now and Renew login.
 
@@ -395,7 +395,8 @@ idle; the next message goes on with the session), in print mode with stream-json
 folder (`CLAUDE_CONFIG_DIR`) and in quick chat's work folder. It runs with no tools, no MCP servers, no settings files
 and no slash commands, and it gets only an allowlisted part of the Mac's environment (home, user, language, proxies
 and certificates), never a key, a token or another provider's settings, with Claude Code's non-essential traffic
-(telemetry, error reports, update checks) off. Nothing but your messages is sent, and only through Claude Code.
+(telemetry, error reports, update checks) off. Nothing of yours is sent but your messages, and only through Claude
+Code; cl_audit adds a short system prompt of its own (answer briefly, no tools).
 
 ## Settings
 
