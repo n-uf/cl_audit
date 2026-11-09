@@ -379,8 +379,9 @@ Claude Code answers it on the account a profile has in use, so it needs no API k
   each answer are Copy, Ask again and "answered by Haiku 5.5 · 2.4 s". Follow-ups go on in the same Claude Code
   session; the pencil (⌘N) starts a new chat and shrinks the window back to the bar. Stop ends an answer where it is.
 - **Model and thinking:** a picker for each under the field. Haiku with thinking off by default; a pick holds for that
-  chat, and New chat goes back to the defaults in General. With thinking on, "Thought for 5 s" sits above the answer
-  and opens to show it.
+  chat, and New chat goes back to the defaults in General. With thinking on, "Thought for 5 s" sits above the answer;
+  it opens to show the thinking when Claude Code passes it on (for Haiku 5.5 it reports only that it thought).
+  A model may still answer at once when it judges the question needs no thinking.
 - **The account line:** the profile, the address of its account in use (masked unless Privacy shows addresses) and its
   week, in the level colours; the bar shows the profile and the week. When a limit is full, it says so before you
   send and offers **Switch account…** for the standby account with the most room, through the Switch page; what you
