@@ -422,6 +422,7 @@ struct FirstRunPage: View {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(FaceTheme.ledOn).font(.system(size: 14))
             VStack(alignment: .leading, spacing: 1) {
                 Text(Privacy.masked(email)).font(.system(size: 12.5, weight: .medium)).foregroundStyle(face.text).settingsEmail(true)
+                    .lineLimit(1).truncationMode(.middle)
                 Text("in \(folder)").font(.system(size: 10.5)).foregroundStyle(face.muted)
             }
             Spacer(minLength: 6)
