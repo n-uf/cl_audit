@@ -1157,12 +1157,14 @@ enum SessionsRestore {
             }
         }
         defer { close(landed) }
-        // an explicit mode (setup: 0600 or 0700, never setuid/setgid/sticky, nothing for group or other) set on the descriptor of what
-        // this call just made, never by name
-        if let mode, mode == 0o600 || mode == 0o700, fchmod(landed, mode) != 0 { return .differs }
+        if mode != nil, fchmod(landed, 0o600) != 0 { return .differs }       // (setup: nothing for group or other from the first moment; the execute bit only after the look below)
         var now = stat()
         guard fstat(landed, &now) == 0, (now.st_mode & S_IFMT) == S_IFREG, now.st_nlink == 1, now.st_size == st.st_size,
               let hash = sha(fd: landed), expected == nil || hash == expected else { return .differs }
+        // an explicit mode (setup: 0600 or 0700, never setuid/setgid/sticky, nothing for group or other) set on the descriptor of what
+        // this call just made and has now looked at (a plain file, one link, the backup's size and hash), never by name and never
+        // before that look
+        if let mode, mode == 0o600 || mode == 0o700, fchmod(landed, mode) != 0 { return .differs }
         var times = [st.st_atimespec, st.st_mtimespec]
         futimens(landed, &times)
         return .created(hash)
