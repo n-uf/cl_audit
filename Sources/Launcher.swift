@@ -944,6 +944,7 @@ struct AccountCard: View {
                     HStack(spacing: 6) {
                         Circle().fill(row.accent).frame(width: 8, height: 8)
                         Text("Claude \(row.entry.name)").font(.system(size: 14.5, weight: .semibold)).foregroundStyle(face.text)
+                        if row.entry.desktop == .separate, row.entry.claudeWindow { OwnWindowMark() }
                     }
                     Text(row.subtitle).font(.system(size: 12)).lineLimit(1)
                         .foregroundStyle(row.needsLogin ? face.danger : face.muted)

@@ -1044,8 +1044,10 @@ struct AccountTile: View {
     /// "~/.claude", and with more than one account, the one in use: "~/.claude · ultra-1".
     private var sub: String {
         if entry.usageOnly { return "usage only" }
-        guard !entry.standby.isEmpty, let email = entry.seat?.email else { return entry.configDir }
-        return "\(entry.configDir) · \(AccountNames.short(email))"
+        // a profile on its own Claude window says so, so two profiles are told apart at a glance
+        let own = entry.desktop == .separate && entry.claudeWindow ? " · \(DesktopMode.ownMark)" : ""
+        guard !entry.standby.isEmpty, let email = entry.seat?.email else { return entry.configDir + own }
+        return "\(entry.configDir) · \(AccountNames.short(email))" + own
     }
 }
 
@@ -1624,6 +1626,7 @@ struct AccountSettings: View {
                         .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                 }
                 addAccountRow
+                usualAppNote
             }
         }
         // one grey line, worded like New profile's and short enough for one line in a 460 pt column
@@ -2003,6 +2006,20 @@ struct AccountSettings: View {
     /// The profile's Claude window is signed in to another claude.ai account (only its id is known, never its address).
     var windowElsewhere: Bool { _ = model.tick; return FolderRules.windowOnAnotherAccount(entry) }
 
+    /// The account in use is also the one the usual Claude app is signed in to (~/.claude holds it), but this profile opens its
+    /// own window: said once on the Accounts card, with the way to the default-profile offer. Gone once the offer is dismissed.
+    @ViewBuilder var usualAppNote: some View {
+        let usual = Account.signedInSeat(configDir: "~/.claude")
+        if entry.desktop == .separate, entry.claudeWindow, !DefaultProfile.dismissed, let mine = entry.seat, mine.same(usual) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("This account is also what the usual Claude app and `claude` in Terminal use (~/.claude), but \(entry.name.isEmpty ? "this profile" : entry.name) opens its own window, so Claude opened from the Dock shows other sessions.")
+                    .font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
+                Button("Make the default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+            }
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 2)
+        }
+    }
+
     /// What "no sign-in" says: the folder has none. When numbers show anyway because they are read from the account's
     /// kept sign-in in another folder, it says which part is missing, so a red "In use" isn't read as "not signed in at all".
     var noSignInWords: String {
@@ -2280,11 +2297,19 @@ struct AccountSettings: View {
     var windowCard: some View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
         return SCard(title: "Claude window", info: "\(name)'s Claude window: its own (own sign-in, chats and settings), or the usual Claude app for ~/.claude. Whether it goes with the Dock icon and what may open it; the cl_audit agent does this, whether or not cl_audit is open.") {
-            SRow(label: "Claude window", info: "On: a Claude window signed in to \(name)'s account; open it from the dashboard, the Dock icon or the menu bar icon. Off: none, and nothing opens one; its folder and sign-in are kept, so turning it back on needs no new sign-in.", first: true) {
+            SRow(label: "Claude window", info: "On: a Claude window signed in to \(name)'s account; open it from the dashboard, the Dock icon or the menu bar icon. Off: none, and nothing opens one; its folder and sign-in are kept, so turning it back on needs no new sign-in. Its data folder: \(entry.desktop == .standard ? FolderKey.standardDataDir : (entry.desktopDataDir.isEmpty ? "none yet" : entry.desktopDataDir)).", first: true) {
                 SSwitch(isOn: Binding(get: { entry.claudeWindow }, set: { model.setClaudeWindow(entry.id, $0) }),
                         on: entry.desktop == .standard ? "the usual Claude app" : "its own window", off: "none",
                         onShort: entry.desktop == .standard ? "the usual app" : nil)
                     .allowsHitTesting(model.dockRestarting == nil)      // waits for a Dock change, without dimming
+            }
+            if entry.claudeWindow { SRowLine(text: DesktopMode.opensWords(entry.desktop)) }
+            if entry.claudeWindow, entry.desktop == .separate, DefaultProfile.situation(model.accounts)?.old.id == entry.id {
+                HStack(spacing: 8) {
+                    Button("Make the default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    Text("Opens the usual Claude app instead, with these sessions in it.").font(.system(size: 10.5)).foregroundStyle(face.muted).lineLimit(1)
+                }
+                .padding(.vertical, 3)
             }
             if entry.claudeWindow {
                 SRow(label: "With Dock icon", info: "On: quitting \(name)'s Dock icon quits its window too (Claude can ask about unsent work first; the Dock icon's menu then has “Quit and keep Claude window”), and, with Opens from ▸ Dock click too, starting the Dock icon (a click on its Dock tile, or its switch on the dashboard) opens the window. Not at login.") {
