@@ -1126,6 +1126,7 @@ enum SessionsRestore {
             running = live
         }
         var left = 0                                   // restored transcripts left in place because a session holds them
+        var gone: [String: Int] = [:]                  // a folder the receipt wrote into that can't be opened: how many steps it holds
         let journal = Journal(id: r.id)                // each step an Undo is done with is written down, so a second Undo skips it
         for step in r.steps.reversed() {
             if step.settled { continue }
@@ -1138,9 +1139,12 @@ enum SessionsRestore {
                 try? save(r)
                 throw RestoreError("The profile's Claude window opened during the undo; stopped. Undo again once it is closed.")
             }
-            guard let b = base(of: step.path, r), let rel = relative(step.path, under: b), let tree = Tree(path: b) else {
-                r.problems.append("\(name) isn't under the folder it was made in; left as it is."); continue
+            guard let b = base(of: step.path, r), let rel = relative(step.path, under: b) else {
+                r.problems.append("\(name) isn't under the folder this restore wrote into; left as it is."); continue
             }
+            // The folder the receipt wrote into is gone (moved, renamed, unplugged): none of its files can be checked, so each
+            // is left as it is, and that is said once for the folder, not once per file.
+            guard let tree = Tree(path: b) else { gone[b, default: 0] += 1; continue }
             switch tree.dir(Array(rel.dropLast()), create: false) {
             case .absent: continue                                                       // its folder is gone, so it is
             case .blocked: r.problems.append("\(name): a folder above it is a link or can't be opened; left as it is."); continue
@@ -1180,6 +1184,9 @@ enum SessionsRestore {
                 if unlinkat(pfd, leaf, 0) != 0 { leaveOpen = true; r.problems.append("\(name) couldn't be taken away.") }
             }
         }
+        for (folder, n) in gone.sorted(by: { $0.key < $1.key }) {
+            r.problems.append(goneWords(folder, files: n))
+        }
         // the same line from an earlier try is said once
         var seen = Set<String>()
         r.problems = r.problems.filter { seen.insert($0).inserted }
@@ -1193,6 +1200,12 @@ enum SessionsRestore {
         let out = load(id) ?? r
         sweepTemps(out)
         return out
+    }
+
+    /// What Undo says, once per folder, when the folder a restore wrote into isn't there any more: usually the profile's
+    /// Claude Code folder was moved or renamed after the restore (the receipt names the path it had then).
+    static func goneWords(_ folder: String, files n: Int) -> String {
+        "\(tilde(folder)) isn't there any more (moved, renamed or not plugged in), so the \(n) \(n == 1 ? "file" : "files") this restore put in it couldn't be checked and \(n == 1 ? "was" : "were") left as \(n == 1 ? "it is" : "they are"). If the folder was moved, they are in its new place: delete them there by hand, or move the folder back and Undo again."
     }
 
     /// Every restore's header, newest first (no journals read).
