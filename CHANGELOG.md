@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.8 — 2026-11-09
+
 - **Claude Code's setup travels: Export, Import, Backup and Restore carry it.** CLAUDE.md and the files it includes, skills, agents,
   commands, output styles, keybindings, settings.json with the scripts its hooks run, and the list of installed plugins. Export
   includes it by default; settings.json, its scripts and the plugin marketplaces travel only in the encrypted disk image, and so
