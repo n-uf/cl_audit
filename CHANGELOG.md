@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.6 — 2026-11-09
+
 - **Sessions from the Claude window are kept at any age, and cl_audit now says so.** Since Claude Code 2.1.248 its
   clean-up keeps sessions started or last continued in the Claude window or Cowork, unless
   `desktopSessionCleanupPeriodDays` gives them a limit, you deleted or archived them in the window, or your
