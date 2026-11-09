@@ -368,12 +368,12 @@ enum ExportWords {
         if !on { return ("left out", nil) }
         if !image { return ("left out of a zip", "A zip leaves out cl_audit's profiles and settings (names, accounts and their addresses): choose the encrypted disk image to carry them.") }
         let list = names.prefix(4).joined(separator: ", ") + (names.count > 4 ? ", …" : "")
-        return ("\(n(count, "profile", "profiles")) (\(list)) with their accounts, looks and Dock places, and cl_audit's General and backup settings: in the encrypted disk image", nil)
+        return ("\(n(count, "profile", "profiles")) (\(list)): accounts, looks, Dock places, and cl_audit's General and backup settings. Carried in the encrypted disk image only.", nil)
     }
 
     /// The Move row: what a move carries and why only the encrypted image can.
     static func moveWords(_ on: Bool) -> String {
-        on ? "On: the real account ids and addresses stay, so the new Mac puts each Code-tab entry and task back in its account's folder. Only in the encrypted disk image."
+        on ? "On: your accounts keep their real identifiers and email addresses, so the new Mac can put each Code-tab entry and scheduled task back under the right account. That is why a move is always a password-protected disk image, never a plain zip."
            : "Not a move: accounts appear only as fingerprints."
     }
 
@@ -634,7 +634,7 @@ struct ExportPage: View {
                 }
             }
             if runner.imageNeeded { SRowLine(text: "Keeping keys needs the encrypted disk image.") }
-            if runner.move { SRowLine(text: "A move is always the encrypted disk image: it keeps the real account ids.") }
+            if runner.move { SRowLine(text: "A move is always the encrypted disk image, because it holds your accounts' real identifiers and addresses.") }
         }
     }
 
@@ -704,7 +704,7 @@ struct ExportPage: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             SRowLine(text: runner.move
-                     ? "One encrypted disk image (AES-256), made with macOS's own hdiutil; Finder asks for the password. A move keeps the real account ids and addresses inside it; never a token or a sign-in."
+                     ? "One encrypted disk image (AES-256), made with macOS's own hdiutil; Finder asks for the password. Your accounts' real ids and addresses are inside it, the password protects them; no sign-in or token is ever put in."
                      : runner.usesImage
                      ? "One encrypted disk image (AES-256), made with macOS's own hdiutil; Finder asks for the password. Accounts appear only as a fingerprint of their id, never an address or a token."
                      : "One file, made with macOS's own ditto, so Finder opens it. Accounts appear only as a fingerprint of their id, never an address or a token.")
