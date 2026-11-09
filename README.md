@@ -1164,6 +1164,11 @@ sessions, then **Take back the profiles it made** removes the made profiles (tho
 took. Export the profiles as they are now, not from a backup: backups keep neither the MCP settings nor settings.json's env
 values (backups made by 26.11.8 still hold them).
 
+**Check that both Macs match:** `python3 -I -B scripts/mac-compare.py manifest -o mac.json` (standard library only, read-only)
+writes names and counts of one Mac (git repos under `/opt/projects` with HEAD and changes, each Claude Code folder's
+transcripts and setup counts, each Claude window folder's size and Code-tab entries, cl_audit's profiles and accounts as short
+fingerprints, no contents, tokens or addresses); `python3 -I -B scripts/mac-compare.py diff old.json new.json` lists what differs.
+
 ### Importing an export
 
 **Import…** (Settings ▸ the profile ▸ Sessions) opens the **Import page**: **Choose…** (an Open panel for a `.zip` or

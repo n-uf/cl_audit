@@ -8,7 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- `scripts/mac-compare.py`: a read-only, standard-library tool for a move to another Mac. `manifest` writes the names and
+  counts of one Mac (git repos with HEAD and changes, Claude Code folders, Claude window folders' size and Code-tab entries,
+  cl_audit's profiles and accounts as short fingerprints; never contents, tokens or addresses) and `diff` compares two.
 
 ## 26.11.10 — 2026-11-09
 
