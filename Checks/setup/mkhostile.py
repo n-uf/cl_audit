@@ -157,13 +157,18 @@ def wrong_total(z):                                                 # the manife
 make('e2-wrong-total', wrong_total, sizes=False)
 
 # ---- formats
-def v3_export(z):
-    z.export['version'] = 3
-make('e2-v3-export', v3_export)
+def v4_export(z):                                                   # a format newer than this build's (3)
+    z.export['version'] = 4
+make('e2-v4-export', v4_export)
 
-def v3_backup(z):
-    z.manifest['version'] = 3
-make('e2-v3-backup', v3_backup)
+def v4_backup(z):
+    z.manifest['version'] = 4
+make('e2-v4-backup', v4_backup)
+
+def v2(z):                                                          # the format before (setup, no window settings): still read
+    z.export['version'] = 2
+    z.manifest['version'] = 2
+make('e2-v2', v2)
 
 def v1(z):                                                          # an export of the first format: no setup in it
     keep = []

@@ -1,7 +1,7 @@
 // Setup checks for cl_audit: Claude Code's setup (CLAUDE.md and the .md files it includes, skills, agents, commands, output styles,
 // keybindings, settings.json with the scripts its hooks point to, the plugin list) travels with Export, Import, Backup and Restore.
 // Sources/SessionsSetup.swift (what is carried and how it is found), SessionsRestoreSetup.swift (the plan and the rules of an add),
-// the Export, Import and Restore pages' setup rows, and the format version 2 that carries it.
+// the Export, Import and Restore pages' setup rows, and the format (version 2 brought setup; this build writes 3 and reads 1 to 3).
 //
 // Part 1 works on real files: the scan (links, includes, build leftovers, sign-in names), an export to a zip and to an encrypted
 // image, hostile files made from the good zip (mkhostile.py), an import and a restore into folders that already hold some of it,
@@ -157,7 +157,7 @@ MainActor.assumeIsolated {
     let m1 = op.parts[0].manifest
     let setupItems = m1.items.filter { $0.role == .setup }
     check(Set(setupItems.map { String($0.path.dropFirst(6)) }) == zipRels.subtracting(["skills/keyed/SKILL.md", "skills/keyed/run.py"]), "export (zip): the plain setup is in; the skill with a key, settings.json, the scripts and the marketplaces are not: \(Set(setupItems.map { String($0.path.dropFirst(6)) }).symmetricDifference(zipRels).sorted())")
-    check(m1.version == 2 && op.export.version == 2 && setupItems.allSatisfy { $0.sha?.count == 64 && $0.original == $0.path }, "export: manifest version 2, a SHA-256 for every setup file, no absolute path")
+    check(m1.version == 3 && op.export.version == 3 && setupItems.allSatisfy { $0.sha?.count == 64 && $0.original == $0.path }, "export: manifest version 3, a SHA-256 for every setup file, no absolute path")
     check(zo.setupKeysLeftOut == 1 && Set(zo.setupSensitiveLeftOut.map(\.kind)) == [.settings, .script, .marketplaces] && zo.setupSensitiveLeftOut.count == 4, "export (zip): 1 skill left out for its key; settings.json, 2 scripts and the marketplaces left out for the zip: \(zo.setupSensitiveLeftOut.map(\.name))")
     check(setupItems.first { $0.path == "setup/skills/alpha/run.sh" }?.exec == true && setupItems.filter { $0.exec == true }.map(\.path) == ["setup/skills/alpha/run.sh"], "export: the execute flag is recorded for the skill's script, for nothing else")
     var leaked: [String] = []
@@ -475,7 +475,7 @@ MainActor.assumeIsolated {
         ("e2-bad-sha", "isn't what backup.json says"), ("e2-altered", "isn't what backup.json says"), ("e2-no-sha", "no valid hash"), ("e2-short-sha", "no valid hash"), ("e2-upper-sha", "no valid hash"),
         ("e2-wrong-size", "isn't the size"), ("e2-wrong-total", "don't add up"),
         // formats
-        ("e2-v3-export", "newer cl_audit"), ("e2-v3-backup", "newer cl_audit"),
+        ("e2-v4-export", "newer cl_audit"), ("e2-v4-backup", "newer cl_audit"),
         // paths
         ("e2-traversal", "isn't a plain one"), ("e2-traversal-deep", "isn't a plain one"), ("e2-empty-component", "isn't a plain one"), ("e2-absolute", "isn't a plain one"), ("e2-setup-dup-item", "isn't a plain one"),
         ("e2-backslash", ""), ("e2-dup-case", ""), ("e2-file-and-folder", ""),
@@ -490,6 +490,7 @@ MainActor.assumeIsolated {
         check(got != "OPENED" && (words.isEmpty || got.contains(words)) && names(eplace.path).filter { $0.hasPrefix(".import-") } == before, "hostile: \(name).zip is refused whole, nothing left (\(got.prefix(80)))")
     }
     check(refusal("e2-exec-skill-ok") == "OPENED", "hostile: (an execute flag on a skill's own file is allowed: opens)")
+    check(refusal("e2-v2") == "OPENED", "format: an export of version 2 (setup, no window settings) still imports")
     var v1why = ""
     let v1: SessionsImport.Opened? = { do { return try SessionsImport.open(URL(fileURLWithPath: hostile + "/e2-v1.zip"), password: nil, place: eplace) } catch { v1why = "\(error)"; return nil } }()
     check(v1 != nil && v1!.export.version == 1 && v1!.parts[0].manifest.version == 1, "format: an export of version 1 (no setup in it) still imports (\(v1why))")
@@ -497,7 +498,7 @@ MainActor.assumeIsolated {
         let (t6, _) = target("t6")
         let st = try! SessionsImport.materialize(v1, part: v1.parts[0], target: "t6")
         let pv1 = SessionsRestore.plan(t6, st.backup)
-        check(pv1.refusal == nil && !pv1.setup.present && SessionsBackup.load(profile: "t6", id: st.id, place: st.stage)?.version == 2, "format: …its plan says there is no setup in it, and what is staged is a version 2 backup")
+        check(pv1.refusal == nil && !pv1.setup.present && SessionsBackup.load(profile: "t6", id: st.id, place: st.stage)?.version == 3, "format: …its plan says there is no setup in it, and what is staged is a version 3 backup")
         SessionsImport.discard(v1.work)
     }
     // the same name under another Unicode form: the target holds the skill as e + a combining mark, the file as one character
@@ -626,7 +627,6 @@ MainActor.assumeIsolated {
         try? fm.removeItem(atPath: c8); unlink(e2 + "/hl-other.txt")
     }
 
-    // ---- the setup row's words for scripts added without the execute bit, and the hooks key, true to settings.json's status here
     // ---- an export never makes a file its own import refuses: a settings.json over 8 MB (which an import refuses) is left out at the
     // export, with the scripts its hooks run, and the Export page says so; the image made without it opens
     do {
@@ -655,6 +655,7 @@ MainActor.assumeIsolated {
         try? fm.removeItem(atPath: c9)
     }
 
+    // ---- the setup row's words for scripts added without the execute bit, and the hooks key, true to settings.json's status here
     do {
         let settingsU = Setup.Unit(kind: .settings, name: "settings.json")
         func plan(_ s: SessionsRestore.SetupPlan.Status?, scripts: Int = 4) -> SessionsRestore.SetupPlan {
@@ -705,7 +706,7 @@ MainActor.assumeIsolated {
     // ---- Backups carry setup (same rules), Restore leaves it out by default and puts back only what is missing
     let bm = try! SessionsBackup.make(SessionsBackup.Source(profile: "e2", dataDir: "", codeDir: ecode), kind: .manual, window: false, place: eplace)
     let bset = bm.items.filter { $0.role == .setup }
-    check(bm.version == 2 && Set(bset.map { String($0.path.dropFirst(6)) }) == allRels && bset.allSatisfy { $0.sha?.count == 64 && $0.original.hasPrefix(ecode) },
+    check(bm.version == 3 && Set(bset.map { String($0.path.dropFirst(6)) }) == allRels && bset.allSatisfy { $0.sha?.count == 64 && $0.original.hasPrefix(ecode) },
           "backup: the same setup parts (links left out), each with its hash; a backup keeps where each file was: \(Set(bset.map { String($0.path.dropFirst(6)) }).symmetricDifference(allRels).sorted())")
     let bjson = read(SessionsBackup.folder(profile: "e2", place: eplace).appendingPathComponent("\(bm.id)/backup.json").path) ?? ""
     check(bm.setupLeftOut == ["agent linked.md (a link)", "skill haslink (it holds a link)", "skill linkedskill (a link)"] && !bjson.contains(elsewhere), "backup: links are named in the manifest, never where they point")
@@ -839,7 +840,7 @@ MainActor.assumeIsolated {
     let old = try! SessionsBackup.make(SessionsBackup.Source(xa), kind: .manual, window: false, setup: false, place: placeS, now: Date().addingTimeInterval(-60))
     let ro = m.restoreRunner(RestoreKey(profile: "xa", backup: old.id, place: placeS.path))
     ro.refresh()
-    check(settle { ro.plan != nil } && ro.plan?.setup.present == false && ro.manifest?.version == 2, "pages: a backup made without setup: the row says it isn't in this backup")
+    check(settle { ro.plan != nil } && ro.plan?.setup.present == false && ro.manifest?.version == 3, "pages: a backup made without setup: the row says it isn't in this backup")
     check(SetupRow.title(Setup.Unit(kind: .skill, name: "alpha")) == "skill alpha" && SetupRow.title(Setup.Unit(kind: .marketplaces, name: "x")) == "the plugin marketplaces", "pages: the list's unit names")
     resetRestores()
     try? fm.removeItem(atPath: eRoot)
