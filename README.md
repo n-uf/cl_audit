@@ -29,7 +29,7 @@ signed with an Apple Developer ID yet, so the first time macOS says it can't ver
 Settings ▸ Privacy & Security and click **Open Anyway** (once). The Dock icon apps cl_audit makes for your
 profiles are created on your Mac and open without asking.
 
-**Checked with Claude Code 2.1.318 and the Claude app 4.16336.0** (cl_audit 26.11.0). cl_audit relies on how
+**Checked with Claude Code 2.1.318 and the Claude app 4.23118.0** (cl_audit 26.11.5). cl_audit relies on how
 Claude Code saves its login and on Anthropic's usage figures, which aren't public interfaces, so a newer
 Claude version can change them. If something stops working after a Claude update, update cl_audit. Each
 release's notes list the versions it was checked with.
