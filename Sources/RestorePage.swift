@@ -240,7 +240,7 @@ struct RestorePage: View {
     }
 
     private func whereWords(_ p: SessionsRestore.Plan) -> String {
-        var s = "Entries go into \(inUse)'s folder in the window, where \(name) works now; never into the folder of an account it no longer uses."
+        var s = "Entries go into \(entry.windowDataWords), in \(inUse)'s folder, where \(name) works now; never into the folder of an account it no longer uses. Open it from \(entry.desktop == .standard ? "the Dock or Applications" : "\(name)'s Dock icon")."
         if p.otherAccount > 0 { s += " \(n(p.otherAccount, "was", "were")) on another account in the backup: written as a switch would place them." }
         return s
     }
@@ -307,7 +307,7 @@ struct RestorePage: View {
     }
 
     private var stepsCard: some View {
-        let w = entry.desktop == .standard ? "The usual Claude app" : "\(name)'s Claude window"
+        let w = entry.windowWordsCap
         let back = runner.receipt?.back ?? 0
         let undoneNow = runner.phase == .undone
         // after an Undo the plan is the old one (or none): the receipt says whether window files were among what it took away

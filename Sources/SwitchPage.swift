@@ -379,6 +379,7 @@ struct SwitchPage: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .disabled(!canChoose)
             }
+            SRowLine(text: "The sessions are in \(entry.windowDataWords)\(entry.desktop == .standard ? "" : ", opened from its Dock icon").")
             SRowLine(text: runner.moveSessions == nil ? "Choose one to go on: nothing is chosen for you."
                      : runner.phase == .ready ? (moves ? "They move to \(to); \(from) keeps none. Cancel puts them back." : "Each account keeps its own; the window opens with \(to)'s.")
                      : "Your answer. It can't change while the switch runs; Cancel puts everything back.")
@@ -501,8 +502,7 @@ struct SwitchPage: View {
     }
 
     private var stepsCard: some View {
-        let window = entry.desktop == .standard ? "the usual Claude app" : "\(name)'s Claude window"
-        let w = window.prefix(1).uppercased() + window.dropFirst()
+        let w = entry.windowWordsCap
         let movedCount = runner.receipt?.moved ?? 0
         return SCard(title: "Steps", info: "What switching does, in order. Each step is checked before the next. A receipt in cl_audit's folder keeps what moved: until Claude Code has signed in, Cancel puts it back; after that the way back is a switch the other way.") {
             if keepsOwnFolderFirst { ownFolderStep.padding(.bottom, 6) }

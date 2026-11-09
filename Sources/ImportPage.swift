@@ -338,9 +338,9 @@ struct ImportHappens: View {
                 }
                 SRow(label: "Code-tab entries", stacked: true) {
                     value(p.entries.isEmpty ? "none to add: the window stays as it is"
-                          : undone ? "\(p.entries.count): were added while \(name)'s window was closed, and taken away again"
-                          : runner.phase == .done || runner.phase == .sidebar ? "\(p.entries.count): added while \(name)'s window was closed"
-                          : "\(p.entries.count): \(name)'s window closes and opens again")
+                          : undone ? "\(p.entries.count): were added to \(entry.windowDataWords) while it was closed, and taken away again"
+                          : runner.phase == .done || runner.phase == .sidebar ? "\(p.entries.count): added to \(entry.windowDataWords) while it was closed"
+                          : "\(p.entries.count): into \(entry.windowDataWords); \(entry.windowWords) closes and opens again")
                 }
                 if !undone, p.entries.isEmpty == false || p.taskSessions.isEmpty == false {
                     SRowLine(text: whereWords(p))
@@ -395,7 +395,7 @@ struct ImportHappens: View {
 
     private func whereWords(_ p: SessionsRestore.Plan) -> String {
         let inUse = AccountNames.short(entry.seat?.email ?? "its account")
-        return "Entries go into \(inUse)'s folder in the window, where \(name) works now. The file's accounts are only fingerprints, so every entry is written as a switch would place it (the old account's error keys and Remote Control ids off)."
+        return "Entries go into \(entry.windowDataWords), in \(inUse)'s folder, where \(name) works now (open it from \(entry.desktop == .standard ? "the Dock or Applications" : "\(name)'s Dock icon")). The file's accounts are only fingerprints, so every entry is written as a switch would place it (the old account's error keys and Remote Control ids off)."
     }
 }
 
@@ -571,7 +571,7 @@ struct ImportPage: View {
                 }
                 .padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                stepRow(1, "\(name)'s Claude window closes", runner.plan?.windowNeeded == false ? "Nothing in the window comes in, so it needn't close." : "Only that window, about half a minute; your other Claude windows stay open.")
+                stepRow(1, "\(entry.windowWordsCap) closes", runner.plan?.windowNeeded == false ? "Nothing in the window comes in, so it needn't close." : "Only that window, about half a minute; your other Claude windows stay open.")
                 stepRow(2, "What's listed is added", "Merged by the rules on the left; nothing overwritten.")
                 stepRow(3, "The window opens; the sidebar, as before", "Press Return in the session that opens.")
             }
