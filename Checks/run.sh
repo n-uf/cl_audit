@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The one entry point for cl_audit's check suites.
 #
-#   Checks/run.sh [signin|backup|firstrun|retention|setup|window|render|quick-chat|scan|all] [--volume] [--no-build]
+#   Checks/run.sh [signin|backup|firstrun|retention|setup|window|move|render|quick-chat|scan|all] [--volume] [--no-build]
 #
 #   signin    the model, rules and page logic checks (sign-in, switch, backups, export and import, crimson faces ...)
 #   backup    the Sessions backup, restore, export and import checks (hostile zips, an encrypted image, a second volume)
@@ -11,10 +11,12 @@
 #             and Restore: the scan, links, hostile files, never over what is here, Undo, the pages' rows
 #   window    the Claude window's MCP settings (claude_desktop_config.json) and scheduled tasks (paused on import, with their prompts and
 #             sessions) in Export, Import, Backup and Restore; hostile images; format version 3
+#   move      a move to another Mac (format 4): cl_audit's own profiles and settings, the move export (real ids, an encrypted image only),
+#             an import into a second, fresh throwaway home (Checks/.work/move/b/home), Undo; hostile profiles files and images
 #   render   pictures of the pages (switch, backups, restore, export, import, setup row, first run) into Checks/.work/render
 #   quick-chat  the quick chat's own checks (Checks/quick-chat/run.sh, run here under the build lock)
 #   scan      the app's own SecretScan over every file in Checks/ (zero hits expected)
-#   all       signin, backup, firstrun, retention, setup, window, render, quick-chat, scan (the default)
+#   all       signin, backup, firstrun, retention, setup, window, move, render, quick-chat, scan (the default)
 #
 #   --volume    backup: mount a small HFS+ disk image and run the cross-volume checks on it (it is unmounted again)
 #   --no-build  run the binaries built by the last run
@@ -38,15 +40,15 @@ LOCK=/private/tmp/cl_audit-build.lock
 suites=(); volume=0; build=1
 for a in "$@"; do
   case "$a" in
-    signin|backup|firstrun|retention|setup|window|render|quick-chat|scan) suites+=("$a") ;;
-    all) suites+=(signin backup firstrun retention setup window render quick-chat scan) ;;
+    signin|backup|firstrun|retention|setup|window|move|render|quick-chat|scan) suites+=("$a") ;;
+    all) suites+=(signin backup firstrun retention setup window move render quick-chat scan) ;;
     --volume) volume=1 ;;
     --no-build) build=0 ;;
-    -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,31p' "$0"; exit 0 ;;
     *) echo "unknown argument: $a" >&2; exit 64 ;;
   esac
 done
-[[ ${#suites[@]} -gt 0 ]] || suites=(signin backup firstrun retention setup window render quick-chat scan)
+[[ ${#suites[@]} -gt 0 ]] || suites=(signin backup firstrun retention setup window move render quick-chat scan)
 
 # the app's sources without its own main.swift, plus the widget views the app compiles in
 srcs=()
@@ -71,6 +73,8 @@ fresh_home() {
     "$WORK"/*/home|"$WORK"/render/*/home) ;;
     # the second homes the backup suite's child roles run in (it makes them itself; they are emptied here before a run)
     "$WORK"/backup/other/backup-test/home|"$WORK"/backup/other-tz/backup-test/home) ;;
+    # the move suite's second home (the new Mac's stand-in), which its second run works in
+    "$WORK"/move/b/home) ;;
     *) echo "refusing: $1 is not a Checks/.work/<suite>/home" >&2; exit 2 ;;
   esac
   [[ -n "$HOME" && "$1" != "$HOME" ]] || { echo "refusing: home is the real home" >&2; exit 2; }
@@ -80,7 +84,7 @@ fresh_home() {
 # The checks' preference suites land in the real ~/Library/Preferences whatever CFFIXED_USER_HOME says (cfprefsd writes them,
 # sometimes a moment after the run ends). Only these names are ever removed, and only when no run of ours is alive:
 #  - cl-audit-{signin,hide,switch,plan}-test-<pid>.plist, when that pid is dead (the suites' own domains, pid in the name);
-#  - <binary name>.plist for the binaries this script builds (cl_audit-checks-signin, -backup, -firstrun, -retention, -setup, -window, -render-pages,
+#  - <binary name>.plist for the binaries this script builds (cl_audit-checks-signin, -backup, -firstrun, -retention, -setup, -window, -move, -render-pages,
 #    -render-firstrun, -scan): a process's name is its preference domain, and these names belong to no other program;
 #  - cl_audit-backwatch-test.plist and cl_audit-reader-switch-test.plist (named by the suites' own code, no pid), only when
 #    they were not there before this run.
@@ -175,6 +179,16 @@ run_window() {
   local dir="$WORK/window"; mkdir -p "$dir"
   compile "$dir/cl_audit-checks-window" "$HERE/window/main.swift" || return 1
   run_binary "$dir" "$dir/cl_audit-checks-window"
+}
+
+# the move suite: a move to another Mac. It runs itself a second time (MOVE_ROLE=b) in a second fresh home, the new Mac's stand-in;
+# the file goes between them in Checks/.work/move/shared
+run_move() {
+  local dir="$WORK/move"; mkdir -p "$dir"
+  compile "$dir/cl_audit-checks-move" "$HERE/move/main.swift" || return 1
+  fresh_home "$dir/b/home"
+  rm -rf "$dir/shared"
+  run_binary "$dir" "$dir/cl_audit-checks-move"
 }
 
 run_render() {
