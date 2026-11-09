@@ -632,6 +632,21 @@ enum SessionsExport {
         return Unit(project: c[1], id: c[2].lowercased(), isSession: true)
     }
 
+    /// The session id in a retention marker's file name: "<id>.desktop-released.json" (lowercased), else nil.
+    static func markerID(_ leaf: String) -> String? {
+        let suffix = ".desktop-released.json"
+        guard leaf.count > suffix.count, leaf.lowercased().hasSuffix(suffix) else { return nil }
+        let id = String(leaf.dropLast(suffix.count)).lowercased()
+        return id.contains("/") ? nil : id
+    }
+
+    /// A retention marker of Claude Code's directly in a project's folder: "transcripts/<project>/<session>.desktop-released.json".
+    static func marker(of rel: String) -> (project: String, id: String)? {
+        let c = rel.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard c.count == 3, c[0] == "transcripts", let id = markerID(c[2]) else { return nil }
+        return (c[1], id)
+    }
+
     /// A transcript a running Claude Code session holds, or changed in the last two minutes.
     static func inUse(unit u: Unit, held: Set<String>, mtime: Date?, now: Date) -> Bool {
         guard u.isSession else { return false }
@@ -661,6 +676,10 @@ enum SessionsExport {
         var keyedFiles = 0                  // lone files with keys (a window entry, a project's other files)
         var connections = 0                 // entries holding connection settings (a zip leaves them out)
         var unreadable = 0                  // entries a zip leaves out because they aren't UTF-8 JSON objects it can read
+        var markersOrphan = 0               // retention markers with no transcript beside them: left out
+        var markersKeyed = 0                // retention markers of a session that holds keys: left out with it unless keys are kept
+        /// The retention markers an export with this choice leaves out.
+        func markersLeftOut(_ keys: Keys) -> Int { markersOrphan + (keys == .leaveOut ? markersKeyed : 0) }
         var keyKinds: [Secret: Int] = [:]   // sessions that hold each kind
         var inUse = 0
         var projects: [Project] = []
@@ -702,6 +721,7 @@ enum SessionsExport {
         var unitBytes: [Unit: Int64] = [:]
         var unitUse: [Unit: Bool] = [:]
         var unitFiles: [Unit: String] = [:]
+        var markerList: [(project: String, id: String)] = []
         for f in list {
             if cancel() { return nil }
             if f.role == .window {
@@ -721,6 +741,7 @@ enum SessionsExport {
                 }
                 continue
             }
+            if f.role == .transcript, let mk = marker(of: f.rel) { markerList.append(mk); continue }       // counted with its session, below
             guard f.role == .transcript, let u = unit(of: f.rel) else { continue }
             guard let kinds = SecretScan.scan(path: f.src, cancel: cancel, progress: progress) else { if cancel() { return nil }; continue }
             unitKinds[u, default: []].formUnion(kinds)
@@ -732,6 +753,11 @@ enum SessionsExport {
                 if unitFiles[u] == nil { unitFiles[u] = f.src }
             }
             pv.transcriptBytes += f.bytes
+        }
+        for mk in markerList {
+            let u = Unit(project: mk.project, id: mk.id, isSession: true)
+            if unitFiles[u] == nil { pv.markersOrphan += 1 }          // (unitFiles: the sessions that have a transcript of their own)
+            else if !(unitKinds[u] ?? []).isEmpty { pv.markersKeyed += 1 }
         }
         var byProject: [String: Preview.Project] = [:]
         var sampleFor: [String: String] = [:]
@@ -795,6 +821,7 @@ enum SessionsExport {
         var cut = 0                         // transcripts copied up to their last full line
         var connectionsLeftOut = 0          // Code-tab entries whose connection settings a zip leaves out
         var unreadableLeftOut = 0           // Code-tab entries a zip leaves out because it can't tell what they hold
+        var markersLeftOut = 0              // retention markers whose transcript isn't in the file (missing, or left out for keys)
     }
 
     struct Job {
@@ -820,6 +847,7 @@ enum SessionsExport {
         var cut: Int { parts.reduce(0) { $0 + $1.cut } }
         var connectionsLeftOut: Int { parts.reduce(0) { $0 + $1.connectionsLeftOut } }
         var unreadableLeftOut: Int { parts.reduce(0) { $0 + $1.unreadableLeftOut } }
+        var markersLeftOut: Int { parts.reduce(0) { $0 + $1.markersLeftOut } }
     }
 
     /// "cl_audit Main 2026-11-05"
@@ -1125,8 +1153,10 @@ enum SessionsExport {
 
         // 3. the transcripts: keys decided per session, then copied (the in-use cut up to a full line)
         var unitMembers: [Unit: [(SessionsBackup.Item, [String])]] = [:]
+        var markers: [(SessionsBackup.Item, [String])] = []
         for (it, c) in codeFiles {
             if SessionsBackup.isSignIn((c.last ?? "")) { continue }
+            if marker(of: it.path) != nil { markers.append((it, c)); continue }       // decided with its session, below
             if let u = unit(of: it.path) { unitMembers[u, default: []].append((it, c)) }
         }
         var scanned: Int64 = 0
@@ -1170,6 +1200,24 @@ enum SessionsExport {
                 cloned += 1; po.bytes += bytes
                 if u.isSession, !counted, rel.split(separator: "/").count == 3 { po.sessions += 1; counts.transcripts += 1; counted = true }
             }
+        }
+        // 3b. Claude Code's retention markers (<session>.desktop-released.json): each travels with its exported transcript and
+        // is otherwise left out and counted, never refused (a marker can outlive its transcript)
+        var exported = Set<String>()                                  // "<project>/<session>" of every transcript in the file
+        for it in items where it.role == .transcript {
+            let c = it.path.split(separator: "/").map(String.init)
+            if c.count == 3, c[2].hasSuffix(".jsonl") { exported.insert(c[1] + "/" + String(c[2].dropLast(".jsonl".count)).lowercased()) }
+        }
+        for (it, c) in markers {
+            if cancel() { throw ArchiveError("Stopped.") }
+            guard let mk = marker(of: it.path), exported.contains(mk.project + "/" + mk.id) else { po.markersLeftOut += 1; leftOut += 1; continue }
+            guard let f = reader.file(c), f.st.st_size <= 1 << 20, let raw = SessionsRestore.read(f.fd, size: f.st.st_size) else { po.markersLeftOut += 1; leftOut += 1; continue }
+            close(f.fd)
+            if !SecretScan.scan(raw).isEmpty, keys == .leaveOut { po.markersLeftOut += 1; leftOut += 1; continue }
+            let data = scrubber.data(raw)
+            try write(data, to: URL(fileURLWithPath: create(it.path)))
+            items.append(SessionsBackup.Item(role: .transcript, original: it.path, path: it.path, bytes: Int64(data.count)))
+            cloned += 1; po.bytes += Int64(data.count)
         }
 
         // 4. the manifest of this part

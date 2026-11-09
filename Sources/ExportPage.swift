@@ -128,7 +128,7 @@ final class ExportRunner: ObservableObject {
         var t = SessionsExport.Preview(profile: "all", name: "All profiles")
         for x in p {
             t.sessions += x.sessions; t.transcriptBytes += x.transcriptBytes; t.entries += x.entries; t.tasks += x.tasks; t.windowBytes += x.windowBytes
-            t.keyedSessions += x.keyedSessions; t.keyedBytes += x.keyedBytes; t.keyedFiles += x.keyedFiles; t.inUse += x.inUse; t.connections += x.connections; t.unreadable += x.unreadable
+            t.keyedSessions += x.keyedSessions; t.keyedBytes += x.keyedBytes; t.keyedFiles += x.keyedFiles; t.inUse += x.inUse; t.connections += x.connections; t.unreadable += x.unreadable; t.markersOrphan += x.markersOrphan; t.markersKeyed += x.markersKeyed
             t.windowLeftOut = t.windowLeftOut || x.windowLeftOut
             for (k, v) in x.keyKinds { t.keyKinds[k, default: 0] += v }
         }
@@ -336,7 +336,14 @@ struct ExportPage: View {
                 .faceMenuFill().disabled(runner.phase != .preview)
             }
             SRow(label: "Claude Code", stacked: true) {
-                value(pv.map { "\(n($0.sessions, "session", "sessions")), with their sub-agent files · \(SessionsBackup.sizeWords($0.transcriptBytes))" } ?? "counting…")
+                VStack(alignment: .leading, spacing: 4) {
+                    value(pv.map { "\(n($0.sessions, "session", "sessions")), with their sub-agent files · \(SessionsBackup.sizeWords($0.transcriptBytes))" } ?? "counting…")
+                    if let p = pv, p.markersLeftOut(runner.keys) > 0 {
+                        let k = p.markersLeftOut(runner.keys)
+                        Text("\(k) leftover \(k == 1 ? "marker" : "markers") left out (Claude Code's retention markers whose session isn't in the file).").font(.system(size: 10.5)).foregroundStyle(face.muted)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
             }
             SRow(label: "Claude window", stacked: true) {
                 VStack(alignment: .leading, spacing: 4) {
