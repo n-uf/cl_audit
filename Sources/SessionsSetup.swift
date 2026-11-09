@@ -111,6 +111,12 @@ enum Setup {
         }
         let first = c[0]
         if c.count == 1 { return nil }                    // CLAUDE.md, keybindings.json, settings.json, a top-level include or script
+        // `Skills`, `PLUGINS` or `Projects` is the place of that name on this Mac's disks (they ignore case and Unicode forms): a name
+        // that is one of those places only under another case or form is refused, so no manifest gets past the rules made for the
+        // exact name (a plugin cache, a skill folder that exists, a link on the way) by spelling it differently
+        if (topFolders + ["plugins"] + neverFolders.sorted()).contains(where: { first != $0 && first.compare($0, options: [.caseInsensitive]) == .orderedSame }) {
+            return "a place that is never carried, or only under its exact name (\(first.prefix(30)))"
+        }
         if first == "plugins" {
             return c.count == 2 && (c[1] == "installed_plugins.json" || c[1] == "known_marketplaces.json") ? nil : "a plugin file that isn't the list (caches and repos are never carried)"
         }
