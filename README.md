@@ -60,8 +60,9 @@ profile by itself. Three steps; each says what it needs:
 
 1. **Claude Code.** Found: "✓ Claude Code 2.1.x · ~/.local/bin/claude". Not found: "Claude Code isn't on this Mac", the
    official install command (`curl -fsSL https://claude.ai/install.sh | bash`, from code.claude.com/docs/en/setup) with a
-   **Copy** key, a link to the install page and **Check again**. It looks again by itself every few seconds, and
-   whenever cl_audit comes to the front, so installing it needs no restart.
+   **Copy** key, a link to the install page and **Check again**. It looks again by itself every few seconds while
+   this page (or an "isn't installed" note) is on screen, and whenever cl_audit comes to the front, so installing it
+   needs no restart.
 2. **Account.** The Claude Code folders on this Mac that are signed in (`~/.claude`, `~/.claude-*`) are listed with
    their address (never a sign-in): one click takes it. Or **Sign in…**: Claude Code's own browser sign-in opens in
    Terminal (in `~/.claude` when nothing is signed in there, else a new `~/.claude-<name>` folder), the address is

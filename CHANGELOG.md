@@ -18,11 +18,12 @@ This is 26.11.2.
   "Set up cl_audit…". A Mac where 26.11.1 already made that "main" and it was never signed in gets the page too, and
   Done replaces it; a profile you have changed in any way, or signed in, is never touched.
 - **Claude Code is found in more places, and looked for again.** Besides the usual folders and the login shell,
-  cl_audit now checks `~/.local/bin` (the native installer) first, `~/.volta/bin`, nvm's node versions, npm's own
-  prefix and, as a last resort, the copy the Claude app keeps for itself (shown as "from the Claude app"; a real
-  install is preferred). It looks again when cl_audit comes to the front, on Check again, every few seconds while it is
-  missing and before any sign-in, so installing Claude Code afterwards is noticed without a restart. Before, it
-  looked once at launch.
+  cl_audit keeps looking exactly where 26.11.1 did, in the same order (so a Mac where it found `claude` gets the same
+  one), then the login shell, and only after that `~/.volta/bin`, nvm's node versions, npm's own prefix and, as a last
+  resort, the copy the Claude app keeps for itself (shown as "from the Claude app"; a real install is preferred). It
+  looks again when cl_audit comes to the front, on Check again and before any sign-in, and, only while the first-run
+  page or an "isn't installed" note is on screen, every few seconds (backing off to a minute), so installing Claude
+  Code afterwards is noticed without a restart. Before, it looked once at launch.
 - **A greyed sign-in now says why.** Wherever a sign-in needs Claude Code and it isn't installed, the key stays and a
   line beside it reads "Claude Code isn't installed on this Mac · Install…" (also in Add account and the Account
   pop-up); Install… opens the install help. The Dock menu's and the launcher's Log in and Terminal keys say it in a
