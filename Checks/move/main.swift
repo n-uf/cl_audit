@@ -412,7 +412,7 @@ MainActor.assumeIsolated {
         try? fm.createDirectory(atPath: home + "/.hidden-m1", withIntermediateDirectories: true)
         try? fm.createDirectory(atPath: home + "/Library/Backups-m1", withIntermediateDirectories: true)
         try? fm.removeItem(atPath: home + "/link-m1"); symlink("/private/tmp", home + "/link-m1")
-        let disk = "/Volumes/Macintosh HD/Users/Shared"
+        let disk = "/Volumes/Macintosh HD/private/tmp"           // (this Mac's own disk, reached through /Volumes)
         check(SessionsMove.placeProblem("~/.hidden-m1") != nil && SessionsMove.placeProblem("~/Library/Backups-m1") != nil && SessionsMove.placeProblem("~/link-m1") != nil
               && (!fm.fileExists(atPath: disk) || SessionsMove.placeProblem(disk) != nil),
               "S1: a hidden folder, one in ~/Library, a link out of the home and this Mac's own disk under /Volumes are never taken as the backups place")
