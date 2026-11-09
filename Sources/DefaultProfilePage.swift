@@ -54,7 +54,7 @@ struct DefaultProfileCard: View {
     /// or undo them (never "Put it back": the window kind stays with the files).
     private func unfinished(_ r: DefaultProfile.Record) -> some View {
         let rc = DefaultProfile.restoreFor(r).flatMap { $0.undone == nil ? SessionsRestore.load($0.id) : nil }
-        return SCard(title: "The move to the default profile stopped", info: "cl_audit stopped part way through the move. Its restore keeps a receipt of every file it wrote, so it can be finished or undone exactly; the profile's window kind goes back only with an Undo.") {
+        return SCard(title: "The move stopped", info: "The move to the default profile stopped: cl_audit stopped part way through it. Its restore keeps a receipt of every file it wrote, so it can be finished or undone exactly; the profile's window kind goes back only with an Undo.") {
             VStack(alignment: .leading, spacing: 8) {
                 if let rc {
                     Text("\(rc.back) \(rc.back == 1 ? "file is" : "files are") already in the usual app's data. Open the restore to finish the move or undo it.")
