@@ -389,14 +389,19 @@ enum ManagedSettings {
     static let domain = "com.anthropic.claudecode"
     static let maxBytes = 2 * 1024 * 1024, maxServerBytes = 8 * 1024 * 1024
 
-    /// One document. Only a file that isn't there (ENOENT, or a missing parent) and a blank one are `absent`: anything else
-    /// that goes wrong is `bad`.
-    static func load(_ path: String, max: Int = maxBytes, plist: Bool = false) -> Doc {
+    /// A file's bytes: missing (ENOENT, a missing parent, a link to nowhere), not a plain file (a folder, a FIFO, a device:
+    /// never read, so it can't block), bad (can't be opened or read, or larger than `max`), or its data.
+    enum Raw { case absent, irregular, bad, data(Data) }
+
+    /// Reads a file whole, bounded, without blocking: a link is followed, O_NONBLOCK, plain files only, at most `max` bytes.
+    static func raw(_ path: String, max: Int) -> Raw {
         let fd = Darwin.open(path, O_RDONLY | O_NONBLOCK)
         guard fd >= 0 else { return errno == ENOENT || errno == ENOTDIR ? .absent : .bad }
         defer { close(fd) }
         var st = stat()
-        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_size <= Int64(max) else { return .bad }
+        guard fstat(fd, &st) == 0 else { return .bad }
+        guard (st.st_mode & S_IFMT) == S_IFREG else { return .irregular }
+        guard st.st_size <= Int64(max) else { return .bad }
         var data = Data()
         var buf = [UInt8](repeating: 0, count: 65536)
         while true {
@@ -405,6 +410,18 @@ enum ManagedSettings {
             if n == 0 { break }
             data.append(buf, count: n)
             if data.count > max { return .bad }
+        }
+        return .data(data)
+    }
+
+    /// One document. Only a file that isn't there (ENOENT, or a missing parent) and a blank one are `absent`: anything else
+    /// that goes wrong (a folder or a FIFO where the file should be included) is `bad`.
+    static func load(_ path: String, max: Int = maxBytes, plist: Bool = false) -> Doc {
+        let data: Data
+        switch raw(path, max: max) {
+        case .absent: return .absent
+        case .irregular, .bad: return .bad
+        case .data(let d): data = d
         }
         if String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .absent }
         let any: Any? = plist ? (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) : (try? JSONSerialization.jsonObject(with: data))

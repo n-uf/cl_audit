@@ -686,14 +686,8 @@ enum CodeCleanup {
     /// What the file says: the days (30 when there is no file or no key), or why it isn't known (a file that can't be
     /// read or isn't a JSON object, a value that isn't a whole number).
     static func read(codeDir: String) -> (days: Int?, problem: String?) {
-        var st = stat()
-        guard lstat(file(codeDir), &st) == 0 else { return (standard, nil) }
-        guard let d = FileManager.default.contents(atPath: file(codeDir)) else { return (nil, "settings.json can't be read.") }
-        if isBlank(d) { return (standard, nil) }
-        guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return (nil, "settings.json isn't a JSON object.") }
-        guard let v = j[key] else { return (standard, nil) }
-        guard let n = whole(v) else { return (nil, "cleanupPeriodDays in settings.json isn't a whole number of days.") }
-        return (n, nil)
+        let s = userState(codeDir: codeDir)
+        return (s.problem == nil ? (s.days ?? standard) : nil, s.problem)
     }
 
     static func days(codeDir: String) -> Int? { read(codeDir: codeDir).days }
@@ -716,22 +710,37 @@ enum CodeCleanup {
     /// What the user's own settings.json holds about the two keys (Claude Code ignores desktopSessionCleanupPeriodDays in
     /// project and local settings). A key that is there but isn't a whole number is `…Invalid`; a file that can't be read or
     /// isn't a JSON object is `unreadable`. Claude Code skips its clean-up in both cases (Retention.swift).
+    /// The file is read bounded (2 MiB), without blocking, and only when it is a plain file. One that isn't there (a link to
+    /// nowhere included: Claude Code takes ENOENT as no file) and one that isn't a plain file (a folder, a FIFO) say nothing:
+    /// the defaults apply.
     struct UserState: Equatable {
         var days: Int?                      // cleanupPeriodDays; nil: not there, or invalid
         var daysPresent = false, daysInvalid = false
         var desktop: Int?                   // desktopSessionCleanupPeriodDays (0: no cap); nil: not there, or invalid
         var desktopPresent = false, desktopInvalid = false
         var unreadable = false
+        /// Why cleanupPeriodDays can't be told from the file (unreadable, not an object, an invalid value); nil: it can.
+        var problem: String?
     }
+
+    static let maxSettingsBytes = 2 * 1024 * 1024
 
     static func userState(codeDir: String) -> UserState {
         var s = UserState()
-        var st = stat()
-        guard lstat(file(codeDir), &st) == 0 else { return s }
-        guard let d = FileManager.default.contents(atPath: file(codeDir)) else { s.unreadable = true; return s }
+        let d: Data
+        switch ManagedSettings.raw(file(codeDir), max: maxSettingsBytes) {
+        case .absent, .irregular: return s
+        case .bad: s.unreadable = true; s.problem = "settings.json can't be read."; return s
+        case .data(let x): d = x
+        }
         if isBlank(d) { return s }
-        guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { s.unreadable = true; return s }
-        if let v = j[key] { s.daysPresent = true; if let n = whole(v) { s.days = n } else { s.daysInvalid = true } }
+        guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else {
+            s.unreadable = true; s.problem = "settings.json isn't a JSON object."; return s
+        }
+        if let v = j[key] {
+            s.daysPresent = true
+            if let n = whole(v) { s.days = n } else { s.daysInvalid = true; s.problem = "cleanupPeriodDays in settings.json isn't a whole number of days." }
+        }
         if let v = j[desktopKey] { s.desktopPresent = true; if let n = whole(v, zero: true) { s.desktop = n } else { s.desktopInvalid = true } }
         return s
     }
