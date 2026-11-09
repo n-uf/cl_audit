@@ -40,6 +40,28 @@ enum ImportWords {
     }
 }
 
+/// After an import took (or Undo put back) cl_audit's settings: the window's own copies read them again, so the page shows them at once.
+/// Only cl_audit's own preferences (a check keeps its settings in memory, and nothing here runs then).
+enum MoveLive {
+    static func reload() {
+        guard let d = SessionsMove.prefs as? UserDefaults, d === UserDefaults.standard else { return }
+        FacePrefs.shared.face = Face(rawValue: d.string(forKey: "face") ?? "") ?? .std
+        if d.object(forKey: Privacy.key) != nil, d.bool(forKey: Privacy.key) != Privacy.shared.show { Privacy.shared.set(show: d.bool(forKey: Privacy.key)) }
+        let dash = DashboardPrefs.shared
+        dash.cardStyle = PanelDesign(rawValue: d.string(forKey: "dashboardCardStyle") ?? "") ?? .segments
+        dash.range = StatsRange(rawValue: d.string(forKey: "dashboardRange") ?? "") ?? .week
+        dash.showHeatmap = d.object(forKey: "dashboardShowHeatmap") as? Bool ?? true
+        dash.showTokens = d.object(forKey: "dashboardShowTokens") as? Bool ?? true
+        dash.showShares = d.object(forKey: "dashboardShowShares") as? Bool ?? true
+        if dash.history != (d.object(forKey: DashboardPrefs.historyKey) as? Bool ?? true) { dash.history = d.object(forKey: DashboardPrefs.historyKey) as? Bool ?? true }
+        let icon = AppIconPrefs.shared
+        icon.style = AppIconStyle(rawValue: d.string(forKey: "appIconStyle") ?? "") ?? .standard
+        icon.look = PanelLook(plate: PanelPlate(rawValue: d.string(forKey: "appIconPanelPlate") ?? "") ?? .grey, display: PanelDisplay(rawValue: d.string(forKey: "appIconPanelDisplay") ?? "") ?? .cyan,
+                              keys: PanelKeys(rawValue: d.string(forKey: "appIconPanelKeys") ?? "") ?? .classic, slot: PanelSlot(rawValue: d.string(forKey: "appIconPanelSlot") ?? "") ?? .lit)
+        BackupPrefs.shared.reload()
+    }
+}
+
 final class ImportRunner: ObservableObject {
     enum Phase: Equatable {
         case choose
@@ -66,6 +88,15 @@ final class ImportRunner: ObservableObject {
     @Published private(set) var addSetup = false
     @Published private(set) var addConfig = false
     @Published private(set) var addTasks = false
+    /// cl_audit's own profiles and settings in the file (SessionsMove.swift): what making them would do here; nil: none in the file.
+    @Published private(set) var movePlan: SessionsMove.Plan?
+    /// The profiles that aren't here are made (the default: nothing that is here changes, nothing runs, Undo takes them back) …
+    @Published var makeProfiles = true
+    /// … and this Mac's settings stay unless the person takes the file's.
+    @Published var takeSettings = false
+    /// What making them did (its receipt), for the page and the done page's steps.
+    @Published private(set) var moved: SessionsMove.Receipt?
+    @Published private(set) var moveNote: String?
     private var frozen = false
     private let lock = NSLock()
     private var cancelFlag = false
@@ -128,6 +159,13 @@ final class ImportRunner: ObservableObject {
                 DispatchQueue.main.async {
                     guard let self, self.isCurrent(g) else { SessionsImport.discard(o.work); return }
                     self.opened = o; self.partIndex = idx
+                    // cl_audit's own profiles in the file (a move): what an import would make here; the part goes into its own profile when
+                    // that one is here already
+                    if let f = o.app {
+                        let plan = SessionsMove.plan(f, accounts: self.profiles)
+                        self.movePlan = plan
+                        if let here = plan.profile(forPart: o.parts[idx].dir), self.profiles.contains(where: { $0.id == here }) { self.into = here }
+                    }
                     self.stage()
                 }
             }
@@ -224,9 +262,79 @@ final class ImportRunner: ObservableObject {
         guard let o = opened, i != partIndex, i < o.parts.count else { return }
         if let s = staged { try? FileManager.default.removeItem(at: s.stage.appendingPathComponent(s.target)) }
         staged = nil; counting = nil; partIndex = i
+        // a move: into that part's own profile, when it is here
+        if let here = movePlan?.profile(forPart: o.parts[i].dir), profiles.contains(where: { $0.id == here }) { into = here }
         lock.lock(); generation += 1; lock.unlock()           // what the old part's staging was still doing is no longer current
         stage()
     }
+
+    // MARK: cl_audit's own profiles and settings (a move)
+
+    /// Makes the profiles that aren't here (and takes the file's settings, when chosen): a step of its own, before the sessions, so the
+    /// part's own profile is there to count them against. Writes only cl_audit's profiles file, the made profiles' empty folders and the
+    /// settings; never the Dock, never an app, never a sign-in. Its receipt lets Undo take exactly that back.
+    func applyMove() {
+        guard let o = opened, let plan = movePlan, !plan.isEmpty, moved == nil || moved?.undone != nil else { return }
+        let create = makeProfiles, take = takeSettings
+        var p = plan
+        if !create { p.create = [] }
+        guard !p.create.isEmpty || (take && !p.takeable.isEmpty) else { return }
+        moveNote = nil
+        let file = o.fileName
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Result { try SessionsMove.apply(p, takeSettings: take, file: file) }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .failure(let err): self.moveNote = "\(err)"
+                case .success(let r):
+                    self.moved = r
+                    if !r.problems.isEmpty { self.moveNote = r.problems.prefix(3).joined(separator: " ") }
+                    if !r.settings.isEmpty { MoveLive.reload() }
+                    self.followMove()
+                }
+            }
+        }
+    }
+
+    /// Undo for the profiles and settings: the profiles it made (unchanged since, their sessions' import undone first) and their empty
+    /// folders go, the settings it took are put back.
+    func undoMove() {
+        guard let r = moved, r.undone == nil else { return }
+        moveNote = nil
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Result { try SessionsMove.undo(r.id) }
+            DispatchQueue.main.async {
+                guard let self else { return }
+                switch result {
+                case .failure(let err): self.moveNote = "\(err)"
+                case .success(let u):
+                    self.moved = u
+                    if !u.left.isEmpty { self.moveNote = "Left as it is: " + u.left.prefix(3).joined(separator: "; ") + "." }
+                    if !u.settings.isEmpty { MoveLive.reload() }
+                    self.followMove()
+                    // the profile it imported into was one it made, and is gone now: the page starts over
+                    if self.intoEntry == nil { self.phase = .choose; self.into = self.profile; self.file = nil }
+                }
+            }
+        }
+    }
+
+    /// The profiles file changed: the window's list takes it in, the plan is counted again, and the part goes into its own profile.
+    private func followMove() {
+        model?.takeInOutsideChanges()
+        guard let o = opened, let f = o.app else { return }
+        let plan = SessionsMove.plan(f, accounts: profiles)
+        movePlan = plan
+        if partIndex < o.parts.count, let here = plan.profile(forPart: o.parts[partIndex].dir), profiles.contains(where: { $0.id == here }), here != into {
+            setInto(here)
+        } else if !profiles.contains(where: { $0.id == into }) {
+            setInto(profile)                                  // (the profile it went into was taken back)
+        } else { recount() }
+    }
+
+    /// The made profiles (still made), for the done page.
+    var madeProfiles: [SessionsMove.Made] { moved.map { r in r.undone == nil ? r.made.filter(\.written) : [] } ?? [] }
 
     func refresh() { counting?.refresh() }
 
@@ -267,6 +375,7 @@ final class ImportRunner: ObservableObject {
         addMemory = false                               // "Add them" was a choice about that file; the next one starts with them left out
         addSetup = false
         addConfig = false; addTasks = false
+        movePlan = nil; makeProfiles = true; takeSettings = false; moved = nil; moveNote = nil
     }
 
     /// cl_audit is quitting: the password goes and what is being opened is told to stop. Nothing is removed here (a big tree on the
@@ -290,7 +399,9 @@ final class ImportRunner: ObservableObject {
     }
 
     /// Renders only: the page as it looks at a step.
-    func preview(_ p: Phase, file f: URL? = nil, opened o: SessionsImport.Opened? = nil, staged s: SessionsImport.Staged? = nil, counting c: RestoreRunner? = nil) {
+    func preview(_ p: Phase, file f: URL? = nil, opened o: SessionsImport.Opened? = nil, staged s: SessionsImport.Staged? = nil, counting c: RestoreRunner? = nil,
+                 moved m: SessionsMove.Receipt? = nil) {
+        if let m { moved = m }
         frozen = true
         phase = p; file = f ?? file; opened = o ?? opened; staged = s ?? staged; counting = c ?? counting
     }
@@ -429,6 +540,10 @@ struct ImportHappens: View {
 
     private func whereWords(_ p: SessionsRestore.Plan) -> String {
         let inUse = AccountNames.short(entry.seat?.email ?? "its account")
+        if p.isMove {
+            return "A move: each entry goes back into \(entry.windowDataWords), in the folder of the account it was on (the file keeps the real account ids), so the window shows them once that account is signed in there. "
+                + (p.otherAccount > 0 ? "\(p.otherAccount) from an account \(name) doesn't have go into \(inUse)'s folder, written as a switch would place them." : "")
+        }
         return "Entries go into \(entry.windowDataWords), in \(inUse)'s folder, where \(name) works now (open it from \(entry.desktop == .standard ? "the Dock or Applications" : "\(name)'s Dock icon")). The file's accounts are only fingerprints, so every entry is written as a switch would place it (the old account's error keys and Remote Control ids off)."
     }
 }
@@ -447,12 +562,17 @@ struct ImportPage: View {
 
     var body: some View {
         if case .running(let key) = runner.phase, let e = runner.intoEntry {
-            RestorePage(entry: e, key: key, model: model, runner: model.restoreRunner(key), width: width)
+            VStack(alignment: .leading, spacing: 12) {
+                RestorePage(entry: e, key: key, model: model, runner: model.restoreRunner(key), width: width)
+                // a move: what is left to do on this Mac for each profile the import made (sign-ins, the Dock, the tasks)
+                if !runner.madeProfiles.isEmpty { MoveSteps(model: model, runner: runner, width: width) }
+            }
         } else {
             VStack(alignment: .leading, spacing: 12) {
-                Text("Import into \(name)").font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
+                Text(runner.opened?.move == true ? "Move from another Mac" : "Import into \(name)").font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
                 topBar
-                SettingsColumns(width: width, groups: [[AnyView(fromCard), AnyView(happensCard)], [AnyView(staysCard), AnyView(sidebarCard), AnyView(footerCard)]])
+                let first: [AnyView] = runner.movePlan != nil || runner.moved != nil ? [AnyView(fromCard), AnyView(moveCard), AnyView(happensCard)] : [AnyView(fromCard), AnyView(happensCard)]
+                SettingsColumns(width: width, groups: [first, [AnyView(staysCard), AnyView(sidebarCard), AnyView(footerCard)]])
             }
             .task(id: entry.id) { runner.refresh() }
             .onDisappear { runner.leave() }
@@ -527,6 +647,61 @@ struct ImportPage: View {
                 .faceMenuFill().disabled(runner.isOpening)
             }
             SRowLine(text: "The file is unpacked as a backup of \(name) first, then restored from: the same rules as Restore.")
+        }
+    }
+
+    // MARK: cl_audit's profiles and settings (a move)
+
+    private func line(_ s: String, _ color: Color? = nil) -> some View {
+        Text(s).font(.system(size: 10.5)).foregroundStyle(color ?? face.muted).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var moveCard: some View {
+        SCard(title: "cl_audit's profiles", info: "The file holds cl_audit's own record of its profiles (name, look, Dock place, accounts and the one in use) and its General and backup settings. Import makes the profiles that aren't here and never changes one that is: a profile is here when one of its accounts is a profile's here (or, for a file that names no account, its name). A made profile has no sign-in (each account needs one, through Add account) and no Dock icon until you put it in the Dock; nothing runs. Your settings stay unless you take the file's; a backups folder that isn't on this Mac is never taken. Undo takes back exactly what was made.") {
+            if runner.opened?.move == true {
+                SRowLine(text: "A move from another Mac: the file keeps the real account ids, so each profile's entries and tasks go back into its accounts' folders.")
+            }
+            if let r = runner.moved, r.undone == nil {
+                SRow(label: "Done", first: true, stacked: true) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        value(MoveWords.done(r))
+                        line("Each made profile has no sign-in yet and no Dock icon: the steps are listed once its sessions are imported.")
+                        Button("Undo: take them back") { runner.undoMove() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    }
+                }
+            } else if let p = runner.movePlan {
+                SRow(label: "Profiles", first: true, stacked: true) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        value(MoveWords.profiles(p))
+                        if !p.create.isEmpty {
+                            Menu {
+                                Button("Make them") { runner.makeProfiles = true }
+                                Button("Leave them out") { runner.makeProfiles = false }
+                            } label: { MenuWell(text: runner.makeProfiles ? "Make them" : "Leave them out", fill: true) }
+                            .faceMenuFill()
+                        }
+                        ForEach(Array(MoveWords.profileNotes(p).enumerated()), id: \.offset) { _, s in line(s) }
+                    }
+                }
+                SRow(label: "Settings", stacked: true) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        value(MoveWords.settings(p, take: runner.takeSettings))
+                        if !p.takeable.isEmpty {
+                            Menu {
+                                Button("Keep this Mac's") { runner.takeSettings = false }
+                                Button("Take the file's") { runner.takeSettings = true }
+                            } label: { MenuWell(text: runner.takeSettings ? "Take the file's" : "Keep this Mac's", fill: true) }
+                            .faceMenuFill()
+                        }
+                        ForEach(Array(MoveWords.settingLines(p).prefix(20).enumerated()), id: \.offset) { _, s in line(s) }
+                    }
+                }
+                if let key = MoveWords.key(p, take: runner.takeSettings, create: runner.makeProfiles) {
+                    Button(key) { runner.applyMove() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize().padding(.top, 6)
+                    line("First, before the sessions: then each profile's sessions go into its own profile (Profile in it, above).")
+                }
+            }
+            if let n = runner.moveNote { SRowLine(text: n, color: face.caution) }
         }
     }
 
@@ -646,5 +821,49 @@ struct ImportPage: View {
             }
         }
         .padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+// MARK: - a move's done page: what is left to do on this Mac
+
+/// Under the import's own steps, for each profile the import made: the accounts to sign in to (sign-ins never travel), its Dock icon
+/// (a step the person takes: nothing put it in the Dock), and its scheduled tasks, which came paused.
+struct MoveSteps: View {
+    @ObservedObject var model: SettingsModel
+    @ObservedObject var runner: ImportRunner
+    var width: CGFloat = 980
+    @Environment(\.face) private var face
+
+    /// How many tasks this import added to the profile (paused): only the profile it is importing into knows yet.
+    private func tasks(_ id: String) -> Int {
+        guard case .running(let key) = runner.phase, key.profile == id else { return 0 }
+        return model.restoreRunner(key).receipt?.tasksAddedCount ?? 0
+    }
+
+    var body: some View {
+        SCard(title: "On this Mac, next", info: "A profile made by the import has its accounts, look and settings, and nothing signed in: each account needs a sign-in on this Mac (Settings ▸ the profile ▸ Claude Code ▸ Accounts, Add account). It has no Dock icon until you put it in the Dock. Its scheduled tasks came paused: turn each on in the Claude window's Scheduled tasks once it is signed in. The other profiles' sessions: Settings ▸ that profile ▸ Sessions ▸ Import…, the same file.") {
+            ForEach(Array(runner.madeProfiles.enumerated()), id: \.offset) { i, m in
+                SRow(label: m.name, first: i == 0, stacked: true) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(MoveWords.steps(m, tasks: tasks(m.id)).enumerated()), id: \.offset) { _, s in
+                            Text(s).font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        if m.inDock, let e = model.accounts.first(where: { $0.id == m.id }), e.iconHidden {
+                            Button("Put \(m.name) in the Dock") { model.setUsageInDock(m.id, true) }
+                                .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(model.dockRestarting != nil)
+                        }
+                    }
+                }
+            }
+            SRowLine(text: "The other profiles' sessions: Settings ▸ that profile ▸ Sessions ▸ Import…, the same file.")
+            SRow(label: "Undo", stacked: true) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Undo this import (above) first; then this takes back the profiles it made, their empty folders and the settings it took.")
+                        .font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                    Button("Take back the profiles it made") { runner.undoMove() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    if let n = runner.moveNote { Text(n).font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true) }
+                }
+            }
+        }
     }
 }
