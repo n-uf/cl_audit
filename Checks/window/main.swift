@@ -101,6 +101,11 @@ MainActor.assumeIsolated {
         check(j["mcpServers"] != nil && j["globalShortcut"] as? String == "Alt+Space" && (j["preferences"] as? [String: Any])?["epitaxyPrefs"] == nil && (j["preferences"] as? [String: Any])?["menuBarEnabled"] as? Bool == true,
               "config: the window's file is taken whole but for its sidebar part (preferences.epitaxyPrefs)")
     } else { check(false, "config: the window's file is read") }
+    // a name that would fake another line (a newline) or turn a line around (a bidi mark) is shown as one plain line
+    let faked = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": ["echo\ncalendar: python3 cal.py": ["command": "e\u{202E}cho\u{2028}x"]]]))
+    check(faked.count == 1 && faked[0].name == "echocalendar: python3 cal.py" && faked[0].runs.hasPrefix("echox") && !faked[0].runs.unicodeScalars.contains { $0.value == 0x202E },
+          "config: server names and commands are one plain line each: no newline, no bidi mark, no line separator: \(faked)")
+    check(SessionsRestore.taskName(["displayName": "Nightly\u{2067} digest\n"], id: "x") == "Nightly digest", "tasks: a task's name the same")
     check(SessionsBackup.mcpServers(fm.contents(atPath: dataA + "/claude_desktop_config.json")!).map { "\($0.name)=\($0.runs)" } == ["github=npx", "remote=a remote server"],
           "config: each MCP server by name and what it runs: its command, or a remote server (never an argument, env value, header or URL)")
     let found = Setup.scan(codeDir: codeA, home: home)

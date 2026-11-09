@@ -575,9 +575,17 @@ enum SessionsBackup {
         guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], let s = j["mcpServers"] as? [String: Any] else { return [] }
         return s.keys.sorted().map { name in
             let o = s[name] as? [String: Any]
-            let runs = (o?["command"] as? String).map { String($0.prefix(200)) } ?? (o?["url"] != nil ? "a remote server" : "nothing it names")
-            return (String(name.prefix(100)), runs)
+            let runs = (o?["command"] as? String).map { oneLine($0, max: 200) } ?? (o?["url"] != nil ? "a remote server" : "nothing it names")
+            return (oneLine(name, max: 100), runs)
         }
+    }
+
+    /// Text from a file shown on a page as one plain line: no control characters (a newline would fake another line), no bidi or
+    /// direction marks (they would turn a line around), no line or paragraph separators; cut to `max` characters.
+    static func oneLine(_ s: String, max: Int) -> String {
+        let bidi: Set<UInt32> = [0x061C, 0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069, 0x2028, 0x2029, 0xFEFF]
+        let kept = s.unicodeScalars.filter { u in !(u.value < 32 || (0x7F...0x9F).contains(u.value) || bidi.contains(u.value)) }
+        return String(String.UnicodeScalarView(kept.prefix(max)))
     }
 
     // MARK: listing, deleting, pruning

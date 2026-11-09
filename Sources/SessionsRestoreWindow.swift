@@ -68,8 +68,8 @@ extension SessionsRestore {
     /// A task's name as the window shows it (its displayName), cut to plain printable text.
     static func taskName(_ t: [String: Any], id: String) -> String {
         let raw = (t["displayName"] as? String) ?? id
-        let clean = String(raw.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 }.prefix(100).map(Character.init))
-        return clean.isEmpty ? id : clean
+        let clean = SessionsBackup.oneLine(raw, max: 100)
+        return clean.isEmpty ? SessionsBackup.oneLine(id, max: 100) : clean
     }
 
     /// The task file an import writes: the first file's object with its `scheduledTasks` replaced by `tasks`, each with `enabled: false`
@@ -97,7 +97,7 @@ extension SessionsRestore {
         }
         guard let d = data, let j = SessionsBackup.withoutSidebar(d) else { cp.unreadable = true; return }
         cp.servers = SessionsBackup.mcpServers(d).map { ConfigPlan.Server(name: $0.name, runs: $0.runs) }
-        cp.otherKeys = j.keys.filter { $0 != "mcpServers" }.sorted().map { String($0.prefix(60)) }
+        cp.otherKeys = j.keys.filter { $0 != "mcpServers" }.sorted().prefix(200).map { SessionsBackup.oneLine($0, max: 60) }
         // where it would go: the window's data folder, which must be there; a file of that name (or a link, or a folder) means "here"
         if t.dataDir.isEmpty { cp.status = .blocked("the profile has no Claude window folder"); return }
         guard Tree(path: t.dataDir) != nil else { cp.status = .blocked("the window's data folder isn't there"); return }

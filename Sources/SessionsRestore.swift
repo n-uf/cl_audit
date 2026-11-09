@@ -274,7 +274,7 @@ enum SessionsRestore {
                 guard let d = windowData[c.joined(separator: "/")] else { continue }
                 for t in taskList(d) {
                     // (a task's real keys: id, displayName, enabled, cronExpression …: it is shown by its displayName)
-                    if let id = t["id"] as? String { taskNames[id] = (t["displayName"] as? String) ?? (t["name"] as? String) ?? (t["title"] as? String) ?? id }
+                    if let id = t["id"] as? String { taskNames[id] = SessionsBackup.oneLine((t["displayName"] as? String) ?? (t["name"] as? String) ?? (t["title"] as? String) ?? id, max: 100) }
                 }
             }
         }
@@ -370,7 +370,7 @@ enum SessionsRestore {
     static func taskOrigin(_ entry: Data, names: [String: String]) -> String? {
         guard let j = (try? JSONSerialization.jsonObject(with: entry)) as? [String: Any],
               let id = j["scheduledTaskId"] as? String, !id.isEmpty else { return nil }
-        return names[id] ?? id
+        return names[id] ?? SessionsBackup.oneLine(id, max: 100)
     }
 
     private static func isMemory(_ rel: [String]) -> Bool { rel.count >= 3 && rel[1] == "memory" }
