@@ -125,10 +125,13 @@ enum WindowWords {
     }
 
     /// The Scheduled tasks row's value once the import is done (or undone).
-    static func tasksDone(_ added: [String], undone: Bool, leftOut: Bool) -> String {
-        if undone { return added.isEmpty ? "none were added" : "\(n(added.count, "task was", "tasks were")) added, paused, and taken away again" }
-        if added.isEmpty { return "none added" + (leftOut ? " (left out)" : "") }
-        return "added, paused: \(added.prefix(5).joined(separator: ", "))" + (added.count > 5 ? ", …" : "")
+    /// `count` and `risky` are of all the tasks added (`added` names the first of them).
+    static func tasksDone(_ added: [String], count: Int? = nil, risky: Int = 0, undone: Bool, leftOut: Bool) -> String {
+        let k = max(count ?? added.count, added.count)
+        if undone { return k == 0 ? "none were added" : "\(n(k, "task was", "tasks were")) added, paused, and taken away again" }
+        if k == 0 { return "none added" + (leftOut ? " (left out)" : "") }
+        let flagged = risky > 0 ? ", \(risky) with permission checks off or approved permissions" : ""
+        return "\(n(k, "task", "tasks")) added, paused\(flagged): \(added.prefix(5).joined(separator: ", "))" + (k > 5 ? ", …" : "")
     }
 
     /// The tasks that don't come, with why, and (a task file here) the ones it lacks.
@@ -215,7 +218,7 @@ struct TasksRow: View {
                 VStack(alignment: .leading, spacing: 6) {
                     let undone = runner.phase == .undone
                     if imported, let r = runner.receipt, undone || runner.phase == .done || runner.phase == .sidebar {
-                        t.value(WindowWords.tasksDone(r.tasksAdded, undone: undone, leftOut: tp.leftOut))
+                        t.value(WindowWords.tasksDone(r.tasksAdded, count: r.tasksAddedCount, risky: r.tasksRisky, undone: undone, leftOut: tp.leftOut))
                         if !undone, !r.tasksAdded.isEmpty { t.small(WindowWords.turnOn(WindowWords.window(entry)), color: face.caution) }
                     } else {
                         t.value(WindowWords.tasksValue(tp, imported: imported))

@@ -47,13 +47,18 @@ extension SessionsRestore {
             /// It runs with permission checks off (bypassPermissions) or with permissions approved on the other Mac: worth a look
             /// before it is turned on.
             var risky = false
-            /// "Nightly digest · 0 3 * * * · in ~/projects/app · permissions: acceptEdits"
+            var browserSkips = false            // its browser use skips all permission checks
+            var carried = false                 // its permission mode was carried over
+            var approved = false                // it holds permissions approved on the other Mac
+            /// "Nightly digest · every day at 3:00 · in ~/projects/app · permissions: acceptEdits"
             var line: String {
                 var parts = [name]
                 if let s = schedule { parts.append(s) }
                 if let f = folder { parts.append("in " + f) }
                 if let m = mode { parts.append("permissions: " + m) }
-                if risky, mode != "bypassPermissions" { parts.append("approved permissions") }
+                if approved { parts.append("approved permissions") }
+                if browserSkips { parts.append("browser: no permission checks") }
+                if carried { parts.append("permission mode carried over") }
                 return parts.joined(separator: " · ")
             }
         }
@@ -73,7 +78,9 @@ extension SessionsRestore {
         var riskyCount = 0                      // of them, with permission checks off or approved permissions
         var moreLacking = 0                     // tasks the file here lacks past those listed
         var coming: [Task] { tasks.filter { $0.why == nil } }
-        var addedNames: [String] { writes ? coming.map(\.name) : [] }
+        var addedNames: [String] { writes ? coming.map(\.name) : [] }        // (the first of them: the list's)
+        var addedCount: Int { writes ? comingCount : 0 }                       // all of them
+        var addedRisky: Int { writes ? riskyCount : 0 }
     }
 
     /// The most entries a plan keeps for the page (tasks, servers and the names a file here lacks): the rest are counted.
@@ -207,7 +214,13 @@ extension SessionsRestore {
             entry.schedule = (task["cronExpression"] as? String).map { SessionsBackup.oneLine($0, max: 60) } ?? (task["fireAt"] != nil ? "once" : nil)
             entry.folder = (task["cwd"] as? String).map { SessionsBackup.oneLine(tilde($0), max: 120) }
             if let m = task["permissionMode"] as? String, m != "default" { entry.mode = SessionsBackup.oneLine(m, max: 40) }
+            // (the window's own schema: chromePermissionMode is ask, skip_all_permission_checks or follow_a_plan; permissionModeCarried, true
+            // or absent, marks a mode carried over from elsewhere, so it is flagged too)
+            entry.browserSkips = (task["chromePermissionMode"] as? String) == "skip_all_permission_checks"
+            entry.carried = (task["permissionModeCarried"] as? Bool) == true
+            entry.approved = !((task["approvedPermissions"] as? [Any]) ?? []).isEmpty
             entry.risky = (task["permissionMode"] as? String) == "bypassPermissions" || !((task["approvedPermissions"] as? [Any]) ?? []).isEmpty
+                || entry.browserSkips || entry.carried
             let item = prompts[id]
             if !Setup.validTaskID(id) {
                 entry.why = "its id isn't one the Claude window keeps"

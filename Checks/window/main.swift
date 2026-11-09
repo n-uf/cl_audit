@@ -76,7 +76,8 @@ MainActor.assumeIsolated {
         write("\(scopeA)/local_\(sid(11)).json", #"{"sessionId":"local_\#(sid(11))","cliSessionId":"\#(sid(111))","title":"digest run","cwd":"/w/project","scheduledTaskId":"nightly-digest","isArchived":false}"#)
         let tasks: [[String: Any]] = [
             ["id": "nightly-digest", "displayName": "Nightly digest", "cronExpression": "0 3 * * *", "enabled": true, "filePath": codeA + "/scheduled-tasks/nightly-digest/SKILL.md",
-             "cwd": "/w/project", "createdAt": 1_700_000_000_000, "permissionMode": "default", "lastRunAt": 1_700_000_100_000],
+             "cwd": "/w/project", "createdAt": 1_700_000_000_000, "permissionMode": "default", "lastRunAt": 1_700_000_100_000,
+             "chromePermissionMode": "skip_all_permission_checks", "permissionModeCarried": true],
             ["id": "weekly-report", "displayName": "Weekly report", "cronExpression": "0 9 * * 1", "enabled": false, "filePath": codeA + "/scheduled-tasks/weekly-report/SKILL.md",
              "cwd": "/w/project", "createdAt": 1_700_000_000_000, "permissionMode": "bypassPermissions", "approvedPermissions": ["Bash(ls:*)"]],
             ["id": "elsewhere-task", "displayName": "Elsewhere", "cronExpression": "0 1 * * *", "enabled": true, "filePath": w + "/somewhere/prompt.md", "createdAt": 1],
@@ -227,9 +228,10 @@ MainActor.assumeIsolated {
     check(p0.taskPlan.tasks.first { $0.id == "elsewhere-task" }?.why == "it names a prompt file somewhere else" && p0.taskPlan.tasks.first { $0.id == "Bad Id" }?.why == "its id isn't one the Claude window keeps",
           "import: a task whose filePath points elsewhere, and one with an id the window drops, are listed, never written")
     let lines0 = p0.taskPlan.coming.map(\.line)
-    check(lines0 == ["Nightly digest · 0 3 * * * · in /w/project", "Weekly report · 0 9 * * 1 · in /w/project · permissions: bypassPermissions"]
-          && p0.taskPlan.risky == 1 && WindowWords.riskyWords(p0.taskPlan)?.hasPrefix("1 task runs with permission checks off or with permissions approved on the other Mac") == true,
-          "import: each task shows its schedule, its folder and a permission mode that isn't the default; one with bypassPermissions or approved permissions is flagged: \(lines0)")
+    check(lines0 == ["Nightly digest · 0 3 * * * · in /w/project · browser: no permission checks · permission mode carried over",
+                     "Weekly report · 0 9 * * 1 · in /w/project · permissions: bypassPermissions · approved permissions"]
+          && p0.taskPlan.risky == 2 && WindowWords.riskyWords(p0.taskPlan)?.hasPrefix("2 tasks run with permission checks off or with permissions approved on the other Mac") == true,
+          "import: each task shows its schedule, its folder and a permission mode that isn't the default; bypassPermissions, approved permissions, a browser mode that skips checks and a carried mode are flagged: \(lines0)")
     check(p0.taskSessions.count == 1 && p0.taskSessions[0].hasPrefix("Nightly digest") && !p0.entries.contains { $0.leaf == "local_\(sid(11)).json" } && !p0.transcripts.contains { $0.leaf == "\(sid(111)).jsonl" }
           && p0.entries.contains { $0.leaf == "local_\(sid(10)).json" }, "import: with the tasks left out, the session the task ran stays out, with its transcript, as before")
     let p1 = SessionsRestore.plan(tB, stB.backup, addConfig: true, addTasks: true)
@@ -252,7 +254,7 @@ MainActor.assumeIsolated {
     let gotConfig = fm.contents(atPath: dB + "/claude_desktop_config.json")
     check(gotConfig != nil && gotConfig == fm.contents(atPath: bB.dir.appendingPathComponent("config/claude_desktop_config.json").path) && mode(dB + "/claude_desktop_config.json") == 0o600,
           "import: claude_desktop_config.json is written whole, where the profile had none, 0600")
-    check(rB.configAdded && rB.tasksAdded == ["Nightly digest", "Weekly report"] && fm.fileExists(atPath: "\(dB)/claude-code-sessions/\(sid(3))/\(sid(4))/local_\(sid(11)).json"),
+    check(rB.configAdded && rB.tasksAdded == ["Nightly digest", "Weekly report"] && rB.tasksAddedCount == 2 && rB.tasksRisky == 2 && fm.fileExists(atPath: "\(dB)/claude-code-sessions/\(sid(3))/\(sid(4))/local_\(sid(11)).json"),
           "import: the receipt says the MCP settings and the 2 tasks (paused) were added; the task's session came in with it")
     let uB = try! SessionsRestore.undo(rB.id, windowClosed: { true })
     check(uB.undone != nil && tree(dB) + "\n" + tree(cB) == beforeB && !fm.fileExists(atPath: cB + "/scheduled-tasks"), "import: Undo takes back exactly what was added (the config, the task file, the prompts and their folders)")
@@ -583,8 +585,11 @@ MainActor.assumeIsolated {
     check(WindowWords.tasksValue(tp, imported: true) == "1 task: added, paused" && WindowWords.taskLines(tp) == ["Nightly digest", "Bad: not added, its prompt isn't in the file"], "rows: tasks added, paused; the list says which can't come and why")
     check(WindowWords.turnOn("the usual Claude app") == "Paused, so a task doesn't run on both Macs. To use one, turn it on with its own switch in Scheduled tasks in the usual Claude app. cl_audit never changes a task after this.",
           "rows: where to turn them on")
-    check(WindowWords.tasksDone(["Nightly digest"], undone: false, leftOut: false) == "added, paused: Nightly digest" && WindowWords.tasksDone([], undone: false, leftOut: true) == "none added (left out)"
+    check(WindowWords.tasksDone(["Nightly digest"], undone: false, leftOut: false) == "1 task added, paused: Nightly digest" && WindowWords.tasksDone([], undone: false, leftOut: true) == "none added (left out)"
           && WindowWords.tasksDone(["Nightly digest", "Weekly"], undone: true, leftOut: false) == "2 tasks were added, paused, and taken away again", "rows: the done and undone lines")
+    check(WindowWords.tasksDone(Array(repeating: "T", count: 200), count: 300_000, risky: 2, undone: false, leftOut: false).hasPrefix("300000 tasks added, paused, 2 with permission checks off or approved permissions: T, T")
+          && WindowWords.tasksDone(["T"], count: 300_000, undone: true, leftOut: false) == "300000 tasks were added, paused, and taken away again",
+          "rows: the done line counts all the tasks added and flags the risky ones, not only the 200 listed")
     tp.status = .here; tp.lacking = ["Nightly digest"]
     check(WindowWords.tasksValue(tp, imported: true) == "not added: the task file here stays as it is" && WindowWords.taskLines(tp) == ["The task file here stays as it is. It doesn't have: Nightly digest"],
           "rows: a task file here stays; only the tasks it lacks are listed (no per-task reasons, none is added)")

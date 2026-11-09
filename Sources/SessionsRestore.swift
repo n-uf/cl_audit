@@ -768,13 +768,15 @@ enum SessionsRestore {
         var entriesAdded = 0                // an import: the Code-tab entries it added (never counted as sessions)
         var setupAdded: [String] = []       // Claude Code's setup it added, by unit ("skill foo", "CLAUDE.md"): what Undo takes back, listed
         var configAdded = false             // it added the window's claude_desktop_config.json (MCP settings)
-        var tasksAdded: [String] = []       // an import: the scheduled tasks it added, paused, by name (turned on in the window)
+        var tasksAdded: [String] = []       // an import: the scheduled tasks it added, paused, by name (turned on in the window; the first 200)
+        var tasksAddedCount = 0             // …all of them
+        var tasksRisky = 0                  // …of them, with permission checks off, approved permissions or a carried mode
         var steps: [Step] = []              // from the journal
 
         private enum CodingKeys: String, CodingKey {
             case id, profile, dataDir, codeDir, backup, backupPlace, target, started, planned, finished, undone, stopped, problems,
                  sidebar, changed, changedCount, inUse, inUseCount, deletedCount, afterSwitch, partialCount, undoLeft, importedFrom, sessionsAdded, entriesAdded,
-                 setupAdded, configAdded, tasksAdded
+                 setupAdded, configAdded, tasksAdded, tasksAddedCount, tasksRisky
         }
 
         /// Wrote something and neither finished nor was undone: Undo applies, and so does finishing it.
@@ -1025,6 +1027,8 @@ enum SessionsRestore {
             r.setupAdded = p.setup.addedNames
             r.configAdded = !p.configPieces.isEmpty
             r.tasksAdded = p.isImport ? p.taskPlan.addedNames : []
+            r.tasksAddedCount = p.isImport ? p.taskPlan.addedCount : 0
+            r.tasksRisky = p.isImport ? p.taskPlan.addedRisky : 0
         }
         r.changedCount = p.changed.count; r.changed = Array(p.changed.prefix(200)); r.partialCount = p.partial.count
         r.inUseCount = p.inUse.count; r.inUse = Array(p.inUse.prefix(200)); r.deletedCount = p.deletedSince.count
@@ -1435,5 +1439,7 @@ extension SessionsRestore.Receipt {
         setupAdded = try c.decodeIfPresent([String].self, forKey: .setupAdded) ?? []
         configAdded = try c.decodeIfPresent(Bool.self, forKey: .configAdded) ?? false
         tasksAdded = try c.decodeIfPresent([String].self, forKey: .tasksAdded) ?? []
+        tasksAddedCount = try c.decodeIfPresent(Int.self, forKey: .tasksAddedCount) ?? tasksAdded.count
+        tasksRisky = try c.decodeIfPresent(Int.self, forKey: .tasksRisky) ?? 0
     }
 }
