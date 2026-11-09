@@ -63,10 +63,13 @@ profile by itself. Three steps; each says what it needs:
    **Copy** key, a link to the install page and **Check again**. It looks again by itself every few seconds while
    this page (or an "isn't installed" note) is on screen, and whenever cl_audit comes to the front, so installing it
    needs no restart.
-2. **Account.** The Claude Code folders on this Mac that are signed in (`~/.claude`, `~/.claude-*`) are listed with
-   their address (never a sign-in): one click takes it. Or **Sign in…**: Claude Code's own browser sign-in opens in
-   Terminal (in `~/.claude` when nothing is signed in there, else a new `~/.claude-<name>` folder), the address is
-   optional, and the page goes on by itself when the account shows up.
+2. **Account.** The first profile is the [default profile](#the-default-profile): `~/.claude` with the usual Claude
+   app. A signed-in `~/.claude` is offered first, with its address (never a sign-in): one click (**Use**) takes it, as
+   it is, and the step says in one line that other accounts come later (Add account, New profile). Or **Sign in…**
+   when `~/.claude` has no sign-in yet: Claude Code's own browser sign-in opens in Terminal and signs in `~/.claude`
+   (run with `CLAUDE_CONFIG_DIR` unset, which is what makes it the default folder, not a custom one); the address is
+   optional, and the page goes on by itself when the account shows up. A separate folder and its own Claude window
+   come only with profiles added after the first.
 3. **Name and colour.** Prefilled from the account (a team's name, else the address's name part). **Done** adds the
    profile and opens its Settings.
 
@@ -126,8 +129,12 @@ only software you trust. cl_audit's code is open to check: `Login.read` in `Sour
   the alerts and starts and quits Dock icons and Claude windows as each profile's Dock icon and Claude window
   settings say. It has no
   window or Dock icon; macOS starts it at login and again if it crashes.
-- **Claude window:** the profile's running Claude desktop app: the usual Claude app for the profile using
-  `~/.claude`, its own Claude window (own sign-in, chats and settings) for every other profile.
+- **Claude window:** the profile's running Claude desktop app: the usual Claude app (what Claude shows when opened
+  from the Dock or Applications), or the profile's own Claude window (own sign-in, chats and settings, opened from its
+  Dock icon). Which one is profile data, decided once when the profile is made and kept (never worked out from the
+  folder's name later): the first profile gets the usual app, profiles added after it get their own windows.
+- **Default profile:** the profile on `~/.claude` with the usual Claude app: what Claude shows when opened directly, and
+  what `claude` uses in Terminal. See [The default profile](#the-default-profile).
 - **Profile settings** (Settings ▸ a profile) and **General settings** (Settings ▸ General, app-wide).
 
 ## The dashboard
@@ -557,9 +564,13 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   usage credits ("Claude Work is using usage credits · The 5-hour limit is full · $0.40 spent so far") and one when
   they run out.
 - **Claude window** (run by the agent, whether or not cl_audit is open):
-  - **Claude window:** on ("its own window", or "the usual Claude app" for `~/.claude`), a Claude window signed
+  - **Claude window:** on ("its own window", or "the usual Claude app"), a Claude window signed
     in to the profile's account; off ("none"), none, and nothing opens one. Its folder and sign-in are kept, so
-    turning it back on needs no new sign-in.
+    turning it back on needs no new sign-in. One plain line under the switch says which window it is ("Opens as the
+    usual Claude app, the one you get from the Dock or Applications." or "Opens as its own window, from this profile's
+    Dock icon or menu. Opening Claude directly shows a different window, with other sessions."), the (i) names the data
+    folder, and a profile on its own window that the offer below applies to has **Make the default profile…** here.
+    A profile on its own window also has a small "own window" mark on its dashboard card and its tile.
   - **With Dock icon:** the window goes with the Dock icon: quitting the Dock icon quits it too, so Claude can ask
     about unsent work (the Dock icon's menu then has **Quit and keep Claude window**), and, unless Opens from is
     "Only when asked", starting the Dock icon opens it (not at login). Its words: "opens and quits with it", "quits
@@ -689,7 +700,8 @@ at the bottom.
   Folders are compared after resolving `~`, links and letter case; a folder inside or around another profile's
   folder counts as the same.
 - **Usage in the Dock** and **Claude window**, the same two keys as in profile settings. Which Claude window
-  isn't asked: `~/.claude` gets the usual Claude app, any other folder its own Claude window. With Claude
+  isn't asked: a new profile on `~/.claude` gets the usual Claude app while no profile has it, any other new profile
+  its own Claude window; it is saved in the profile and doesn't change with the folder's name. With Claude
   window off, the Claude app sign-in step drops out; with Usage in the Dock off, the last step is **Start
   reading usage**, which installs nothing and leaves the Dock alone: the agent reads its usage from then on.
 - **Quit the Claude app first** (with a Claude window), until the folder is created or connected: while open
@@ -705,6 +717,49 @@ at the bottom.
   per account.
 - New profiles start with an existing profile's click and panel settings. **Cancel** undoes only what
   the page created: an existing folder is never deleted or signed out.
+
+### The default profile
+
+The default profile is the one on `~/.claude` with the usual Claude app: what Claude shows when it is opened from the
+Dock or Applications, and what `claude` uses in Terminal. First run makes it (above). A Mac set up the old way (26.11.4
+and earlier could make the first profile on a new folder such as `~/.claude-account` with its own Claude window, or move
+the folder to `~/.claude` later and keep the window kind) shows other sessions when Claude is opened directly.
+
+For that, cl_audit offers once, in a card, never automatically: **Make the default profile the one Claude opens
+directly** (Settings ▸ General, the first card; **Not now** hides it, and it can still be found in Settings ▸ General
+and on the profile's Claude window card, and as a note on the Accounts card when the account in use is also what the
+usual app uses). It shows for the sole or first profile when that profile has its own window, whatever its folder
+(including `~/.claude`), and for a `~/.claude` profile without a sign-in next to a profile on its own window. It does
+not show when the usual app already belongs to a signed-in profile. The page lists what each step does and what each
+window-dependent setting becomes (Claude window stays as it is, and is now the usual app; Dock icon, Open Claude and
+the menu bar icon open the usual app; Opens from, With Dock icon and Sessions follow stay as set).
+
+- **A profile already on `~/.claude`** (a sign-in exists): window data only. No sign-in step and no transcript move,
+  since it is the same Claude Code folder. Both Claude windows are closed (the usual app's and the profile's own),
+  a backup is made of the profile's window data and of the usual app's own, the profile's `desktop` becomes the usual
+  app (saved), and the profile's whole Code-tab list and sidebar arrangement move from its data folder
+  (`~/Library/Application Support/Claude-<profile>`) into the usual app's (`~/Library/Application Support/Claude`):
+  every entry, not only an import's, by the restore engine, merging and never overwriting. An entry the usual app
+  already has by id stays exactly as it is and is listed; one missing is written into the account folder the profile
+  works on, as a switch would place it. A helper session then arranges the sidebar groups, as after a switch.
+- **A profile on another folder** (`~/.claude-account` with its own window): step one signs Claude Code into
+  `~/.claude` (its own login, in Terminal, with the old profile's address filled in; cl_audit never moves or copies a
+  sign-in). The `~/.claude` profile is the one already in the list, or is made then. Then the same moves, plus the old
+  profile's transcripts into `~/.claude/projects` (never over one that is there). Last, the old profile can stay as a
+  standby account of the default profile (its folder and sign-in untouched; only when it is another Claude account),
+  or be removed with the usual remove flow (which signs its folder out with `claude auth logout`).
+- **Nothing is deleted** from the old window's folder: it stays as the backup's source and for Undo.
+- **Undo this move** (on the page, or **Undo this restore** on the move's restore page) takes back exactly what was
+  added, only files unchanged since, and puts the profile's window kind back (and removes a `~/.claude` profile the
+  move made). Cancel works while waiting for the sign-in and while the windows close; a stopped move keeps what is back
+  (Finish or Undo).
+- **An import made earlier into the old window's data** is carried over with everything else. Its own **Undo last
+  import** is then not offered (it would change only the old folder); **Undo this move** takes the sessions out of the
+  usual app, and the Sessions card says so.
+
+Import, Restore and the Switch page say which window they write into: "the usual Claude app", or "Main's own window,
+opened from its Dock icon" (with the profile's name), and the Import and Restore previews say whose data the entries go
+into and where to open it.
 
 ### Removing a profile
 

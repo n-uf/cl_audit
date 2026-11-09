@@ -8,7 +8,38 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **The first profile is the default profile** (issue #15): `~/.claude` with the usual Claude app, what Claude shows
+  when opened from the Dock or Applications and what `claude` in Terminal uses. First run offers a signed-in `~/.claude`
+  first (**Use**), or **Sign in…** signs Claude Code into `~/.claude` (run with `CLAUDE_CONFIG_DIR` unset: set to
+  `~/.claude` Claude Code would take it for a custom folder with a hashed Keychain item), instead of making
+  `~/.claude-account` with its own window. The step says in one line that other accounts come later. A separate folder
+  and its own window come only with profiles added after the first.
+- **The window kind is profile data**, decided once when the profile is made and never worked out from the folder's name
+  again (`DesktopMode.forNew`). Existing profiles decode and behave exactly as before. Signing out `~/.claude` no longer
+  sets `CLAUDE_CONFIG_DIR` (it must be unset for the default folder).
+- **Make the default profile the one Claude opens directly** (one-time card, never automatic; Settings ▸ General, the
+  profile's Claude window card, an Accounts card note): for a sole or first profile on its own window, including one on
+  `~/.claude`, and for a `~/.claude` profile without a sign-in next to one on its own window. Both Claude windows close,
+  a backup of each window's data is made first, the whole Code-tab list and sidebar of the profile's own window move
+  into the usual app's data (and, for a profile on another folder, its transcripts into `~/.claude/projects` after
+  Claude Code is signed into `~/.claude`), merging and never overwriting, with a receipt, a journal and Undo this move
+  (which also puts the window kind back). The page says what each window-dependent setting becomes. The old profile can
+  stay as a standby account or be removed. Nothing is deleted from the old window's folder. An earlier import into the
+  old window is carried over with the rest; its own Undo isn't offered after (Undo this move is).
+- **Import, Restore and the Switch page name the window they write into:** "the usual Claude app", or "Main's own
+  window, opened from its Dock icon".
+- **The window kind is visible:** a line under the Claude window switch ("Opens as the usual Claude app…" / "Opens as its
+  own window… Opening Claude directly shows a different window, with other sessions."), an "own window" mark on the
+  dashboard card and the profile tile, and an Accounts card note when the account in use is also the usual app's.
+- **"In use" red despite a sign-in:** the agent tells four outcomes apart: a token, no Keychain item ("No Claude Code
+  sign-in in this folder yet", or, when the numbers come from the account's kept sign-in elsewhere, "This folder has no
+  Claude Code sign-in; the account's numbers come from another sign-in."), a refused or timed-out read ("Signed in, but
+  cl_audit can't read this sign-in yet: allow cl_audit Agent when macOS asks (Always Allow), then Refresh now."), and an
+  item in a form it doesn't know (nothing of it is kept or shown). A profile with no sign-in reads again every minute,
+  and as soon as its folder's record changes (right after Log in… finishes: checked every 3 seconds), so a status saved
+  before the sign-in no longer lingers.
+- **Undo says it once** when the folder a restore wrote into is gone (moved or renamed): one line per folder with the
+  count and what to do, instead of "isn't under the folder it was made in" for every file (7,052 on one Mac).
 
 ## 26.11.4 — 2026-11-08
 
