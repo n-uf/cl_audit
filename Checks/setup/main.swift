@@ -538,8 +538,16 @@ MainActor.assumeIsolated {
         } catch { return "doctoring failed: \(error)" }
         let img = URL(fileURLWithPath: out + "/\(name).dmg")
         try? fm.removeItem(at: img)
-        let r = Tool.run("/usr/bin/hdiutil", ["create", "-srcfolder", work, "-volname", "doctored", "-fs", "APFS", "-format", "UDZO", "-encryption", "AES-256", "-stdinpass", "-quiet", img.path], stdin: Data(pw.utf8), secret: pw)
-        guard r?.status == 0 else { return "image not made: \(r?.err ?? "")" }
+        // a volume name per image and per process: two hdiutil creates with one name at once (another suite, another worktree) fail with
+        // status 1 and no message; and one retry on a failure, the half-made image removed first
+        let vol = "doctored-\(name)-\(getpid())"
+        var r: Tool.Output?
+        for _ in 0..<2 {
+            r = Tool.run("/usr/bin/hdiutil", ["create", "-srcfolder", work, "-volname", vol, "-fs", "APFS", "-format", "UDZO", "-encryption", "AES-256", "-stdinpass", "-quiet", img.path], stdin: Data(pw.utf8), secret: pw)
+            if r?.status == 0 { break }
+            try? fm.removeItem(at: img)
+        }
+        guard r?.status == 0 else { return "image not made (status \(r.map { String($0.status) } ?? "none")): \(r?.err ?? "") \(r?.out ?? "")" }
         do { let x = try SessionsImport.open(img, password: pw, place: eplace); SessionsImport.discard(x.work); return "OPENED" } catch { return "\(error)" }
     }
     let noSettings = doctored("e2-noset") { m, p in
@@ -644,7 +652,9 @@ MainActor.assumeIsolated {
         check(notes9.contains("settings.json is over 8 MB: left out, with the scripts its hooks run (an import refuses one that big)") && !notes9.contains { $0.contains("sign-in name") },
               "export row: the page says settings.json is over 8 MB and left out (not as a sign-in name): \(notes9)")
         let big = URL(fileURLWithPath: out + "/E2big.dmg")
-        if (try? SessionsExport.run(SessionsExport.Job(parts: [part9], keys: .leaveOut, password: pw, destination: big, rootName: "e2big-image", place: eplace))) != nil {
+        // (one retry: the app's own hdiutil create can collide with another run's at the same moment)
+        func makeBig() -> Bool { (try? SessionsExport.run(SessionsExport.Job(parts: [part9], keys: .leaveOut, password: pw, destination: big, rootName: "e2big-image", place: eplace))) != nil }
+        if makeBig() || makeBig() {
             do {
                 let o = try SessionsImport.open(big, password: pw, place: eplace)
                 let rels = Set(o.parts[0].manifest.items.filter { $0.role == .setup }.map { String($0.path.dropFirst(6)) })

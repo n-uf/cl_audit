@@ -393,9 +393,17 @@ MainActor.assumeIsolated {
         } catch { return "doctoring failed: \(error)" }
         let file = URL(fileURLWithPath: out + "/\(name).\(zip ? "zip" : "dmg")")
         try? fm.removeItem(at: file)
-        let r = zip ? Tool.run("/usr/bin/ditto", ["-c", "-k", "--norsrc", "--noextattr", "--keepParent", root.path, file.path])
-                    : Tool.run("/usr/bin/hdiutil", ["create", "-srcfolder", work, "-volname", "doctored", "-fs", "APFS", "-format", "UDZO", "-encryption", "AES-256", "-stdinpass", "-quiet", file.path], stdin: Data(pw.utf8), secret: pw)
-        guard r?.status == 0 else { return "file not made: \(r?.err ?? "")" }
+        // a volume name per image and per process: two hdiutil creates with one name at once (another suite, another worktree) fail with
+        // status 1 and no message; and one retry on a failure, the half-made file removed first
+        let vol = "doctored-\(name)-\(getpid())"
+        var r: Tool.Output?
+        for _ in 0..<2 {
+            r = zip ? Tool.run("/usr/bin/ditto", ["-c", "-k", "--norsrc", "--noextattr", "--keepParent", root.path, file.path])
+                    : Tool.run("/usr/bin/hdiutil", ["create", "-srcfolder", work, "-volname", vol, "-fs", "APFS", "-format", "UDZO", "-encryption", "AES-256", "-stdinpass", "-quiet", file.path], stdin: Data(pw.utf8), secret: pw)
+            if r?.status == 0 { break }
+            try? fm.removeItem(at: file)
+        }
+        guard r?.status == 0 else { return "file not made (status \(r.map { String($0.status) } ?? "none")): \(r?.err ?? "") \(r?.out ?? "")" }
         do { let x = try SessionsImport.open(file, password: zip ? nil : pw, place: place); SessionsImport.discard(x.work); return "OPENED" } catch { return "\(error)" }
     }
     func setConfig(_ m: inout SessionsBackup.Manifest, _ p: URL, _ data: Data) throws {
