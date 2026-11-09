@@ -108,8 +108,11 @@ enum SessionsRestore {
         var partial: [String] = []          // there, shorter, and the backup's file begins with it: a shorter copy of it, left as it is
         var inUse: [String] = []            // a running Claude Code session holds them: left alone
         var deletedSince: [String] = []     // the window deleted them since: they stay deleted
-        var old = 0                         // transcripts to write that Claude Code's own clean-up would delete again
-        var days: Int?                      // cleanupPeriodDays (30 when not set); nil: unknown
+        var old = 0                         // transcripts to write that Claude Code's own clean-up would delete again (see Retention.swift)
+        var oldWindow = 0                   // of them, sessions of the Claude window (only when a limit is set for those)
+        var unsure = 0                      // transcripts to write whose keep time can't be told (settings.json doesn't say)
+        var retention = Retention()         // what Claude Code's clean-up does here: cleanupPeriodDays, desktopSessionCleanupPeriodDays, managed
+        var days: Int? { retention.days }   // cleanupPeriodDays as it applies (30 when not set); nil: unknown
         var otherAccount = 0                // entries to write that were on another account in the backup
         var sidebar: SidebarPlan?
         var checkedRunning = true           // false: whether sessions run couldn't be checked, so none is written
@@ -297,9 +300,16 @@ enum SessionsRestore {
         p.entries.sort { $0.leaf < $1.leaf }
 
         // 3. Claude Code's transcripts now
-        p.days = CodeCleanup.days(codeDir: t.codeDir)
+        p.retention = Retention.read(codeDir: t.codeDir)
         if !codeItems.isEmpty {
-            planTranscripts(&p, t, codeItems.map { $0.1 }, reader: reader, now: now, skipSessions: taskCLI, skipMemory: skipMemory)
+            // the sessions the window's Code tab will name afterwards: its entries now, and the ones this restore writes
+            // (managed settings give every transcript one limit: nothing to tell then)
+            var windowCLI = Set<String>()
+            if !p.retention.managed {
+                if !t.dataDir.isEmpty { windowCLI = Retention.windowSessions(dataDir: t.dataDir) }
+                for r in restoredIDs { if let id = Retention.cliSession(r.data) { windowCLI.insert(id) } }
+            }
+            planTranscripts(&p, t, codeItems.map { $0.1 }, reader: reader, now: now, skipSessions: taskCLI, skipMemory: skipMemory, windowSessions: windowCLI)
         }
 
         // 4. the sidebar: where the restored entries sat, from the backup's own records
@@ -327,7 +337,7 @@ enum SessionsRestore {
     private static func isMemory(_ rel: [String]) -> Bool { rel.count >= 3 && rel[1] == "memory" }
 
     private static func planTranscripts(_ p: inout Plan, _ t: Target, _ items: [[String]], reader: Reader, now: Date,
-                                        skipSessions: Set<String> = [], skipMemory: Bool = false) {
+                                        skipSessions: Set<String> = [], skipMemory: Bool = false, windowSessions: Set<String> = []) {
         p.memoryFiles = items.map { Array($0.dropFirst()) }.filter(isMemory).map { $0.joined(separator: "/") }.sorted()
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: t.codeDir, isDirectory: &isDir), isDir.boolValue, let code = Tree(path: t.codeDir) else {
@@ -363,12 +373,12 @@ enum SessionsRestore {
             case .blocked:
                 if top { blocked += 1 }
             case .absent:
-                if holds { leave() } else { add(&p, piece, mtime: src.st.st_mtimespec.tv_sec, now: now) }
+                if holds { leave() } else { add(&p, piece, mtime: src.st.st_mtimespec.tv_sec, now: now, windowSessions: windowSessions) }
             case .dir(let dfd):
                 defer { close(dfd) }
                 var cur = stat()
                 if fstatat(dfd, leaf, &cur, AT_SYMLINK_NOFOLLOW) != 0 {
-                    if holds { leave() } else { add(&p, piece, mtime: src.st.st_mtimespec.tv_sec, now: now) }
+                    if holds { leave() } else { add(&p, piece, mtime: src.st.st_mtimespec.tv_sec, now: now, windowSessions: windowSessions) }
                     continue
                 }
                 guard (cur.st_mode & S_IFMT) == S_IFREG else { p.changed.append(name); continue }      // a link or folder where a file goes
@@ -421,10 +431,16 @@ enum SessionsRestore {
         p.transcripts.sort { $0.leaf < $1.leaf }
     }
 
-    private static func add(_ p: inout Plan, _ piece: Piece, mtime: Int, now: Date) {
+    private static func add(_ p: inout Plan, _ piece: Piece, mtime: Int, now: Date, windowSessions: Set<String> = []) {
         if piece.kind == .transcript {
             p.transcripts.append(piece)
-            if let d = p.days, now.timeIntervalSince(Date(timeIntervalSince1970: TimeInterval(mtime))) > Double(d) * 86400 { p.old += 1 }
+            // Claude Code's clean-up: sessions of the window are kept (unless a limit is set for them), the rest after cleanupPeriodDays
+            let window = windowSessions.contains(String(piece.leaf.dropLast(".jsonl".count)).lowercased())
+            switch p.retention.verdict(window: window, modified: Date(timeIntervalSince1970: TimeInterval(mtime)), now: now) {
+            case .delete: p.old += 1; if window { p.oldWindow += 1 }
+            case .unknown: p.unsure += 1
+            case .keep: break
+            }
         } else {
             p.files.append(piece)
         }
