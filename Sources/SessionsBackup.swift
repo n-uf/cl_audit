@@ -584,9 +584,11 @@ enum SessionsBackup {
         return s.keys.sorted().map { name in
             let o = s[name] as? [String: Any]
             // the program, and how many arguments it is given (never the arguments: a package or script name sits beside tokens there)
-            let args = (o?["args"] as? [Any])?.count ?? 0
+            // (a command string that holds its own arguments, "npx -y pkg --token=…", shows only its first word: the rest count as arguments)
+            let words = ((o?["command"] as? String) ?? "").split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\n" })
+            let args = ((o?["args"] as? [Any])?.count ?? 0) + max(0, words.count - 1)
             let hidden = args == 0 ? "" : " (\(args) \(args == 1 ? "argument" : "arguments") not shown)"
-            let runs = (o?["command"] as? String).map { oneLine($0, max: 200) + hidden } ?? (o?["url"] != nil ? "a remote server (its address isn't shown)" : "nothing it names")
+            let runs = words.first.map { oneLine(String($0), max: 200) + hidden } ?? (o?["url"] != nil ? "a remote server (its address isn't shown)" : "nothing it names")
             return (oneLine(name, max: 100), runs)
         }
     }
@@ -594,8 +596,9 @@ enum SessionsBackup {
     /// Text from a file shown on a page as one plain line: no control characters (a newline would fake another line), no bidi or
     /// direction marks (they would turn a line around), no line or paragraph separators; cut to `max` characters.
     static func oneLine(_ s: String, max: Int) -> String {
-        let bidi: Set<UInt32> = [0x061C, 0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2066, 0x2067, 0x2068, 0x2069, 0x2028, 0x2029, 0xFEFF]
-        let kept = s.unicodeScalars.filter { u in !(u.value < 32 || (0x7F...0x9F).contains(u.value) || bidi.contains(u.value)) }
+        // (also zero-width characters and tag characters: they show nothing and only pad or disguise a name)
+        let bidi: Set<UInt32> = [0x061C, 0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D, 0x202E, 0x2060, 0x2066, 0x2067, 0x2068, 0x2069, 0x2028, 0x2029, 0xFEFF]
+        let kept = s.unicodeScalars.filter { u in !(u.value < 32 || (0x7F...0x9F).contains(u.value) || bidi.contains(u.value) || (0xE0000...0xE007F).contains(u.value)) }
         return String(String.UnicodeScalarView(kept.prefix(max)))
     }
 

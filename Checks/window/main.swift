@@ -106,6 +106,9 @@ MainActor.assumeIsolated {
     check(faked.count == 1 && faked[0].name == "echocalendar: python3 cal.py" && faked[0].runs.hasPrefix("echox") && !faked[0].runs.unicodeScalars.contains { $0.value == 0x202E },
           "config: server names and commands are one plain line each: no newline, no bidi mark, no line separator: \(faked)")
     check(SessionsRestore.taskName(["displayName": "Nightly\u{2067} digest\n"], id: "x") == "Nightly digest", "tasks: a task's name the same")
+    let inline = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": ["gh\u{200B}\u{E0041}x": ["command": "npx -y pkg --token=tok-w0", "args": ["--more"]]]]))
+    check(inline.count == 1 && inline[0].name == "ghx" && inline[0].runs == "npx (4 arguments not shown)" && !inline[0].runs.contains("tok-w0"),
+          "config: a command that holds its arguments shows only the program and counts the rest; zero-width and tag characters are dropped: \(inline)")
     check(SessionsBackup.mcpServers(fm.contents(atPath: dataA + "/claude_desktop_config.json")!).map { "\($0.name)=\($0.runs)" } == ["github=npx (2 arguments not shown)", "remote=a remote server (its address isn't shown)"],
           "config: each MCP server by name and what it runs: its command, or a remote server (never an argument, env value, header or URL)")
     let found = Setup.scan(codeDir: codeA, home: home)
