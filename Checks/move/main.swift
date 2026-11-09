@@ -171,6 +171,34 @@ if role == "b" {
         // (cl_audit's own folder, and the lock it shares with claude-transplant so one move of sessions runs at a time, stay)
         let leftOver = everything(home).filter { !$0.hasPrefix("Library/Application Support/usage-n-uf") && !$0.hasPrefix("Library/Application Support/claude-transplant") && $0 != "Library/Application Support" && $0 != "Library" }
         check(leftOver.isEmpty, "B: nothing outside cl_audit's own folder is left: \(leftOver.prefix(6))")
+
+        // ---- the Import page's runner (round 1): Close and import waits for the profiles; Make runs once however often it is pressed;
+        // Into stays the person's (the part's own profile is only offered); the steps are there as soon as the profiles are made
+        func settle(_ secs: Double = 60, _ done: () -> Bool) { let end = Date().addingTimeInterval(secs); while !done() && Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) } }
+        var laptop = AccountEntry(id: "laptop", name: "Laptop", label: "LAPTOP", configDir: "~/.claude-laptop")
+        laptop.desktop = .separate; laptop.desktopDataDir = "~/Library/Application Support/Claude-laptop"; laptop.seat = Seat(account: sid(50), organization: sid(51), email: "laptop@example.com")
+        try! Store.save([laptop])
+        let model = SettingsModel()
+        let ir = model.importRunner(for: "laptop")
+        ir.setFile(URL(fileURLWithPath: moveFile)); ir.password = pw; ir.open()
+        settle { ir.phase == .ready && ir.movePlan != nil && ir.counting?.plan != nil }
+        check(ir.movePlan?.create.count == 2 && ir.makeProfiles && ir.waitsForProfiles && !ir.canImport && ir.into == "laptop",
+              "page: a move file with profiles to make: Close and import waits; Into stays Laptop")
+        ir.makeProfiles = false
+        check(!ir.waitsForProfiles, "page: …Leave them out lets it go")
+        ir.makeProfiles = true
+        let before = SessionsMove.receipts().count
+        ir.applyMove(); ir.applyMove()
+        check(ir.moveBusy, "page: Make is busy while it runs")
+        settle { ir.moved != nil && !ir.moveBusy && ir.counting?.plan != nil }
+        RunLoop.main.run(until: Date().addingTimeInterval(1))
+        check(SessionsMove.receipts().count == before + 1 && Store.load().count == 3, "page: pressed twice, made once: one receipt (\(SessionsMove.receipts().count - before))")
+        check(!ir.waitsForProfiles && ir.into == "laptop" && ir.suggestedInto?.name == "Work" && ir.madeProfiles.count == 2,
+              "page: after Make, Into is still Laptop, Work is offered, and the steps for both made profiles are there at once")
+        ir.undoMove()
+        settle { ir.moved?.undone != nil }
+        check(Store.load().map(\.id) == ["laptop"], "page: Take back the profiles it made")
+        ir.leave()
     }
     print("checks: \(passed) passed, \(failed) failed")
     exit(failed == 0 ? 0 : 1)
@@ -343,6 +371,59 @@ MainActor.assumeIsolated {
     check(byFolder.create.first { $0.name == "Work" }?.entry.configDir == "~/.claude-work-2",
           "recognise: a folder another profile uses here: the made one gets its own: \(byFolder.create.map(\.entry.configDir))")
 
+    // ---- a made profile never takes a folder from the file (round 1, M1): ~/.claude, the usual Claude app, ~/Documents, / and a linked
+    // folder named by a crafted cl_audit.json all give way to its own folders; a folder of its own name that holds a sign-in or is a
+    // link is skipped; one that is plain and empty is used, and said
+    do {
+        let live = expand("~/.claude"), docs = expand("~/Documents"), away = home + "/away-m1"
+        write(live + "/.claude.json", #"{"oauthAccount":{"accountUuid":"\#(sid(60))"}}"#); write(live + "/projects/-x/keep.jsonl", "{}\n")
+        write(docs + "/mine.txt", "mine\n"); try? fm.createDirectory(atPath: away, withIntermediateDirectories: true)
+        write(expand("~/.claude-signed") + "/.claude.json", #"{"oauthAccount":{"accountUuid":"\#(sid(61))"}}"#)
+        try? fm.removeItem(atPath: expand("~/.claude-linked")); symlink(away, expand("~/.claude-linked"))
+        try? fm.createDirectory(atPath: expand("~/.claude-plain"), withIntermediateDirectories: true)
+        let liveBefore = everything(live), docsBefore = everything(docs)
+        func acct(_ n: Int) -> [[String: Any]] { [["account": sid(n), "organization": sid(n + 1), "email": "h\(n)@example.com", "inUse": true]] }
+        let hostile = readJSON(base.merging(["profiles": [
+            ["id": "evil", "name": "Evil", "configDir": "~/.claude", "window": "standard", "dataDir": "~/Library/Application Support/Claude", "accounts": acct(70)],
+            ["id": "docs", "name": "Docs", "configDir": "~/Documents", "dataDir": "/", "accounts": acct(72)],
+            ["id": "signed", "name": "Signed", "configDir": "~/.claude-signed", "accounts": acct(74)],
+            ["id": "linked", "name": "Linked", "configDir": "~/.claude-linked", "accounts": acct(76)],
+            ["id": "plain", "name": "Plain", "accounts": acct(78)]]], uniquingKeysWith: { $1 }))!
+        let hp = SessionsMove.plan(hostile, accounts: Store.load())
+        let dirs = Dictionary(uniqueKeysWithValues: hp.create.map { ($0.name, ($0.entry.configDir, $0.entry.desktop, $0.entry.desktopDataDir)) })
+        check(dirs["Evil"]?.0 == "~/.claude-evil" && dirs["Evil"]?.1 == .separate && dirs["Evil"]?.2 == "~/Library/Application Support/Claude-evil"
+              && dirs["Docs"]?.0 == "~/.claude-docs" && dirs["Docs"]?.2 == "~/Library/Application Support/Claude-docs",
+              "M1: a file naming ~/.claude, the usual Claude app, ~/Documents or / gets its own folders: \(dirs)")
+        check(dirs["Signed"]?.0 == "~/.claude-signed-2" && dirs["Linked"]?.0 == "~/.claude-linked-2" && dirs["Plain"]?.0 == "~/.claude-plain"
+              && hp.create.first { $0.name == "Plain" }?.notes.contains { $0.contains("already on this Mac") } == true,
+              "M1: a folder of its own name that holds a sign-in or is a link is skipped; a plain one is used and said: \(dirs)")
+        let hr = try! SessionsMove.apply(hp, takeSettings: false, file: "hostile")
+        let after = Store.load()
+        check(Array(after.prefix(2).map(\.name)) == ["Work", "Home"] && after.count == 7 && !after.contains { Account.isDefault(configDir: $0.configDir) || $0.desktop == .standard },
+              "S7: the made profiles come after the ones here, none on ~/.claude or the usual Claude app: \(after.map(\.name))")
+        let newSignIns = everything(home).filter { ($0 as NSString).lastPathComponent == ".claude.json" }
+        check(everything(live) == liveBefore && everything(docs) == docsBefore && everything(away).isEmpty && newSignIns.count == 2 && securityCalls == 0,
+              "M1: nothing written in ~/.claude, ~/Documents or the linked folder's target, no new sign-in anywhere: \(newSignIns)")
+        _ = try! SessionsMove.undo(hr.id)
+        check(Store.load().map(\.name) == ["Work", "Home"] && fm.fileExists(atPath: expand("~/.claude-plain")) && !fm.fileExists(atPath: expand("~/.claude-evil")),
+              "M1: Undo takes back the made ones and their folders; a folder that was there stays")
+        try? fm.removeItem(atPath: expand("~/.claude-linked"))
+        // the backups place, judged where it really is (round 1, S1)
+        try? fm.createDirectory(atPath: home + "/.hidden-m1", withIntermediateDirectories: true)
+        try? fm.createDirectory(atPath: home + "/Library/Backups-m1", withIntermediateDirectories: true)
+        try? fm.removeItem(atPath: home + "/link-m1"); symlink("/private/tmp", home + "/link-m1")
+        let disk = "/Volumes/Macintosh HD/Users/Shared"
+        check(SessionsMove.placeProblem("~/.hidden-m1") != nil && SessionsMove.placeProblem("~/Library/Backups-m1") != nil && SessionsMove.placeProblem("~/link-m1") != nil
+              && (!fm.fileExists(atPath: disk) || SessionsMove.placeProblem(disk) != nil),
+              "S1: a hidden folder, one in ~/Library, a link out of the home and this Mac's own disk under /Volumes are never taken as the backups place")
+        // fewer backups kept than here (round 1, S2)
+        let fewer = readJSON(base.merging(["backups": [BackupPrefs.lastKey: 1, BackupPrefs.daysKey: 0]], uniquingKeysWith: { $1 }))!
+        let fp = SessionsMove.plan(fewer, accounts: Store.load())
+        check(MoveWords.settingLines(fp).contains { $0.hasPrefix("Minimum backups kept: 7 here, 1 in the file") && $0.contains("removes the older ones") }
+              && MoveWords.settingLines(fp).contains { $0.hasPrefix("Days of backups kept") && $0.contains("removes the older ones") },
+              "S2: taking fewer backups than here says what the next backup does: \(MoveWords.settingLines(fp))")
+    }
+
     // ---- doctored images and zips
     guard let base0 = try? SessionsImport.open(URL(fileURLWithPath: moveFile), password: pw, place: bplace) else { check(false, "(the move file opens for doctoring)"); return }
     func doctored(_ name: String, zip: Bool = false, edit: (URL, inout ExportManifest, inout [SessionsBackup.Manifest]) throws -> Void) -> String {
@@ -421,7 +502,8 @@ MainActor.assumeIsolated {
     // ---- the done page's steps and the rows' words
     let made = SessionsMove.Made(id: "work", name: "Work", part: "p1", entry: work, place: 0, signIns: [a1, a2], inDock: true)
     let steps = MoveWords.steps(made, tasks: 2)
-    check(steps.count == 3 && steps[0].contains(a1) && steps[0].contains("Add account") && steps[1].hasPrefix("Put it in the Dock") && steps[2].contains("paused"),
+    check(steps.count == 4 && steps[0].contains(a1) && steps[0].contains("Accounts ▸ Add account") && steps[1].hasPrefix("Put it in the Dock") && steps[1].contains("Dock icon ▸ Usage in the Dock")
+          && steps[2].contains("paused") && steps[3].contains("Sessions ▸ Import…"),
           "words: the done page lists each account to sign in, the Dock step and the paused tasks: \(steps)")
     check(dockCalls == 0 && securityCalls == 0, "A: the Dock was never written, the Keychain never asked")
     try? fm.removeItem(atPath: out)
