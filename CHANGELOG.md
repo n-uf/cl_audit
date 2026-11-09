@@ -10,7 +10,8 @@ the notes before updating.
 
 - **Claude Code's setup travels: Export, Import, Backup and Restore carry it.** CLAUDE.md and the files it includes, skills, agents,
   commands, output styles, keybindings, settings.json with the scripts its hooks run, and the list of installed plugins. Export
-  includes it by default; settings.json, its scripts and the plugin marketplaces travel only in the encrypted disk image. Import
+  includes it by default; settings.json, its scripts and the plugin marketplaces travel only in the encrypted disk image, and so
+  does a skill that holds a script a hook runs. Import
   and Restore leave it out until you pick Add them, and add only what is missing: nothing here is replaced. Links are never
   followed. Undo takes it back.
 - An older cl_audit can't open an export made by this one, and a backup made by this one isn't listed by an older one.

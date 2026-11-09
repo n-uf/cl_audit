@@ -1006,7 +1006,11 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   **only the encrypted disk image carries it**: a zip leaves it out and the page says so ("settings.json, the 3 scripts it runs
   and the plugin marketplaces need the encrypted disk image: left out of a zip"; the Password row's choice decides, no extra menu).
   A skill, agent, command or output style that holds a script a hook runs is sensitive too: left out of a zip with the same note,
-  carried whole, as itself, in an image.
+  carried whole, as itself, in an image. This holds when `settings.json` is a link too (it is then read only to learn what its
+  hooks and status line run, never carried, and where it points is never written); a backup records those units by name for
+  a later export. When `settings.json` can't be read, a zip leaves out every skill, agent, command or output style that holds an
+  executable file. An included file goes only with what includes it: when `CLAUDE.md` (or the skill that includes it) is left
+  out for a key, the file it includes is left out too.
   Each file is recorded in the manifest with its size, its SHA-256 and whether its owner-execute bit was set.
 
 - **Keys found:** every transcript and the window's files are searched, in chunks that overlap so nothing is missed at a
@@ -1078,7 +1082,7 @@ and cl_audit's own profiles and settings. Put the project folders at the same pa
 added but wait ("Folder not here") until the folder exists. On the new Mac, **Import…** leaves the setup out until you pick
 **Add them** (hooks run commands on their own, and nothing in a file can prove it was made for a move on your Mac); one click
 adds all that is missing, and Undo last import takes it back. Use the encrypted disk image if `settings.json`, its scripts and
-the plugin marketplaces should come along: a zip leaves them out (and a skill, agent or command that holds a script a hook runs).
+the plugin marketplaces should come along: a zip leaves them out, and any skill, agent or command that holds a script a hook runs.
 
 ### Importing an export
 
@@ -1170,7 +1174,8 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
   listed after the import ("hook points to /opt/tools/x.sh: not here"). A **Hostile file** that marks a file outside a skill
   executable, names a path outside the allowed places or `settings.local.json`/`settings.json` under another name, or carries
   settings.json, its scripts or the marketplaces in a zip, is refused whole, as is a script that no hook or status-line command in
-  the file's own settings.json names (a path mentioned in a value that isn't a command doesn't count), an `.md` that the file's
+  the file's own settings.json names (a path mentioned in a value that isn't a command doesn't count, nor a command under another
+  key, such as an MCP server's), an `.md` that the file's
   own CLAUDE.md doesn't include (its `@` lines, followed as the export followed them), a name that is CLAUDE.md, settings.json,
   keybindings.json, `skills/`, `plugins/` or `projects/` under another case, and a file whose SHA-256 isn't the manifest's.
   A script is made executable only when this run created the settings.json that names it; settings.json is written first. **Undo last import** takes the setup back like everything else
