@@ -46,6 +46,9 @@ func same(_ a: [String: Any], _ b: [String: Any]) -> Bool { (a as NSDictionary).
 // the made-up values a zip must never hold (no key shape: only "the image carries it" protects them)
 let envValue = "env-value-not-a-real-secret-w0"
 let headerValue = "header-value-not-a-real-secret-w0"
+let settingsEnvValue = "settings-env-not-a-real-secret-w0"
+/// Whether any file under a folder holds these bytes.
+func holds(_ dir: String, _ s: String) -> [String] { files(dir).filter { (fm.contents(atPath: dir + "/" + $0) ?? Data()).range(of: Data(s.utf8)) != nil } }
 
 MainActor.assumeIsolated {
     resetRestores(); SessionsRestore.runningSessions = { [] }
@@ -85,6 +88,7 @@ MainActor.assumeIsolated {
         write("\(codeA)/scheduled-tasks/orphan-prompt/SKILL.md", "a prompt no task names\n")
         write("\(codeA)/scheduled-tasks/nightly-digest/notes.txt", "not the prompt: never carried\n")
         write("\(codeA)/CLAUDE.md", "# rules\n")
+        write("\(codeA)/settings.json", #"{"env":{"DEPLOY_TOKEN":"\#(settingsEnvValue)","REGION":"eu-west-1"},"model":"opus","permissions":{"allow":["Bash(ls:*)"]}}"#)
         write("\(codeA)/projects/-w-project/\(sid(110)).jsonl", #"{"type":"user","cwd":"/w/project","text":"hello"}"# + "\n")
         write("\(codeA)/projects/-w-project/\(sid(111)).jsonl", #"{"type":"user","cwd":"/w/project","text":"digest"}"# + "\n")
         for f in files("\(codeA)/projects") { try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3 * 86400)], ofItemAtPath: "\(codeA)/projects/\(f)") }
@@ -107,9 +111,29 @@ MainActor.assumeIsolated {
           && Setup.pathProblem(["scheduled-tasks", "..", "SKILL.md"]) != nil && Setup.pathProblem(["Scheduled-Tasks", "x", "SKILL.md"]) != nil && Setup.pathProblem(["scheduled-tasks", "x.md"]) != nil,
           "names: only scheduled-tasks/<id>/SKILL.md, the id as the window keeps one; another file, another case or a bad id is refused")
     let bA = try! SessionsBackup.make(srcA, kind: .manual, place: place)
-    check(bA.version == 3 && bA.items.contains { $0.role == .config && $0.path == "config/claude_desktop_config.json" } && bA.items.filter { $0.role == .setup && $0.path.hasPrefix("setup/scheduled-tasks/") }.count == 4,
-          "backup: format 3, the config item and the 4 prompts")
-    check(SessionsBackup.summary(bA).contains("MCP settings"), "backup: its line in the list says MCP settings: \(SessionsBackup.summary(bA))")
+    let bAdir = SessionsBackup.folder(profile: "a", place: place).appendingPathComponent(bA.id).path
+    check(bA.version == 3 && !bA.items.contains { $0.role == .config } && bA.configLeftOut == nil && !fm.fileExists(atPath: bAdir + "/config")
+          && bA.items.filter { $0.role == .setup && $0.path.hasPrefix("setup/scheduled-tasks/") }.count == 4,
+          "backup (plain): format 3, the 4 prompts, and no claude_desktop_config.json (only the encrypted export carries it)")
+    check(holds(bAdir, envValue).isEmpty && holds(bAdir, headerValue).isEmpty && holds(bAdir, "mcpServers").isEmpty && !SessionsBackup.summary(bA).contains("MCP"),
+          "backup (plain): no MCP env value, header or server list in any of its files: \(holds(bAdir, envValue))")
+    let bAsettings = json(fm.contents(atPath: bAdir + "/setup/settings.json"))
+    let bAitem = bA.items.first { $0.path == "setup/settings.json" }
+    check(bA.envBlanked == true && (bAsettings?["env"] as? [String: String]) == ["DEPLOY_TOKEN": "", "REGION": ""] && bAsettings?["model"] as? String == "opus"
+          && holds(bAdir, settingsEnvValue).isEmpty && bAitem?.sha == SwitchEngine.sha(fm.contents(atPath: bAdir + "/setup/settings.json") ?? Data())
+          && bAitem?.bytes == Int64(fm.contents(atPath: bAdir + "/setup/settings.json")?.count ?? -1),
+          "backup (plain): settings.json keeps its env names with blank values, the rest as parsed; the value's bytes are nowhere in it; the item's hash and size are the blanked file's")
+    // a settings.json that isn't a JSON object is never copied raw: left out of the backup (with the scripts its hooks would run), and listed
+    do {
+        let cU = w + "/.claude-u"
+        try? fm.removeItem(atPath: cU)
+        write(cU + "/settings.json", #"{"env":{"X":"\#(settingsEnvValue)"},, not json"#); write(cU + "/CLAUDE.md", "rules\n")
+        let bU = try! SessionsBackup.make(SessionsBackup.Source(profile: "u", dataDir: "", codeDir: cU), kind: .manual, window: false, place: place)
+        let dirU = SessionsBackup.folder(profile: "u", place: place).appendingPathComponent(bU.id).path
+        check(!bU.items.contains { $0.path == "setup/settings.json" } && bU.setupLeftOut?.contains(Setup.settingsUnreadable) == true && bU.items.contains { $0.path == "setup/CLAUDE.md" }
+              && holds(dirU, settingsEnvValue).isEmpty, "backup (plain): a settings.json that isn't a JSON object is left out and listed, never copied raw: \(bU.setupLeftOut ?? [])")
+        try? fm.removeItem(atPath: cU)
+    }
 
     // ---- Export: the preview and the page's words
     let part = SessionsExport.Part(profile: "a", name: "A", source: srcA, emails: ["ultra-1@example.com"])
@@ -133,7 +157,8 @@ MainActor.assumeIsolated {
           && mz.setupLeftOut?.contains("scheduled task orphan-prompt's prompt (left out with its task)") == true, "export (zip): the tasks' prompts are in; a prompt no task names is left out and said")
     var zipHits: [String] = []
     for f in files(oz.tree.path) where (read(oz.tree.path + "/" + f) ?? "").contains(envValue) || (read(oz.tree.path + "/" + f) ?? "").contains(headerValue) || (read(oz.tree.path + "/" + f) ?? "").contains("mcpServers") { zipHits.append(f) }
-    check(zipHits.isEmpty && fm.contents(atPath: zipURL.path)!.range(of: Data(envValue.utf8)) == nil, "export (zip): no MCP env value, header or server list anywhere in it: \(zipHits)")
+    check(zipHits.isEmpty && fm.contents(atPath: zipURL.path)!.range(of: Data(envValue.utf8)) == nil && holds(oz.tree.path, settingsEnvValue).isEmpty,
+          "export (zip): no MCP env value, header or server list anywhere in it, and no settings.json env value: \(zipHits)")
     // an export without the setup row still carries the prompts with their tasks
     let nz = URL(fileURLWithPath: out + "/A-nosetup.zip")
     if (try? SessionsExport.run(SessionsExport.Job(parts: [part], keys: .leaveOut, setup: false, destination: nz, rootName: "a-nosetup", place: place))) != nil, let o = try? SessionsImport.open(nz, password: nil, place: place) {
@@ -168,6 +193,9 @@ MainActor.assumeIsolated {
     let (tB, dB, cB) = target("b")
     let beforeB = tree(dB) + "\n" + tree(cB)
     let stB = try! SessionsImport.materialize(oi, part: oi.parts[0], target: "b")
+    check(!holds(stB.backup.dir.path + "/setup", settingsEnvValue).isEmpty && !holds(stB.backup.dir.path + "/config", envValue).isEmpty
+          && SessionsBackup.load(profile: "b", id: stB.id, place: stB.stage)?.envBlanked == nil,
+          "import (image): the staged backup keeps the image's settings.json env values and its MCP settings as they came (the only way to restore an image)")
     let p0 = SessionsRestore.plan(tB, stB.backup)
     check(p0.refusal == nil && p0.config.present && p0.config.leftOut && p0.config.status == .new && p0.configPieces.isEmpty && p0.config.servers.map(\.name) == ["github", "remote"],
           "import: the MCP settings are listed (2 servers) and left out by default: \(p0.refusal ?? "ok")")
@@ -255,18 +283,41 @@ MainActor.assumeIsolated {
     let bkA = SessionsRestore.Backup(profile: "a", id: bA.id, place: place)
     let origTasks = fm.contents(atPath: scopeA + "/scheduled-tasks.json")
     try? fm.removeItem(atPath: scopeA + "/scheduled-tasks.json"); try? fm.removeItem(atPath: codeA + "/scheduled-tasks/weekly-report"); try? fm.removeItem(atPath: dataA + "/claude_desktop_config.json")
-    let pr = SessionsRestore.plan(tA, bkA)
-    check(pr.tasks.count == 1 && pr.tasks[0].data == nil && pr.taskPrompts.map(\.dirs) == [["scheduled-tasks", "weekly-report"]] && pr.config.leftOut && pr.config.status == .new && pr.configPieces.isEmpty && !pr.taskPlan.imported,
-          "restore: the missing task file comes back as it was, with the missing prompt; the MCP settings are left out unless asked")
-    let pr2 = SessionsRestore.plan(tA, bkA, addConfig: true)
-    check(pr2.configPieces.count == 1, "restore: Add them puts the missing claude_desktop_config.json back")
-    let rrA = try! SessionsRestore.run(tA, bkA, addConfig: true, windowClosed: { true })
+    try? fm.removeItem(atPath: codeA + "/settings.json")
+    let pr = SessionsRestore.plan(tA, bkA, addConfig: true)
+    check(pr.tasks.count == 1 && pr.tasks[0].data == nil && pr.taskPrompts.map(\.dirs) == [["scheduled-tasks", "weekly-report"]] && !pr.config.present && pr.config.leftOutAtSource == nil
+          && pr.configPieces.isEmpty && !pr.taskPlan.imported,
+          "restore: the missing task file comes back as it was, with the missing prompt; this Mac's own backup has no MCP settings, so no MCP row and nothing to add")
+    let pr2 = SessionsRestore.plan(tA, bkA, addSetup: true)
+    check(pr2.setup.envBlanked && pr2.setupPieces.contains { $0.rel == ["setup", "settings.json"] } && SetupRow.envBlankedWords.hasPrefix("Env values aren't kept in backups"),
+          "restore: a settings.json that is missing comes back (Add them), and the row says its env values aren't kept in backups")
+    let rrA = try! SessionsRestore.run(tA, bkA, addSetup: true, windowClosed: { true })
     check(fm.contents(atPath: scopeA + "/scheduled-tasks.json") == origTasks && SessionsRestore.taskList(origTasks!).first?["enabled"] as? Bool == true && fm.fileExists(atPath: codeA + "/scheduled-tasks/weekly-report/SKILL.md")
-          && json(fm.contents(atPath: dataA + "/claude_desktop_config.json"))?["mcpServers"] != nil && rrA.tasksAdded.isEmpty,
-          "restore: the task file is back byte for byte (not paused: this Mac's own tasks), the prompt and the config too")
+          && !fm.fileExists(atPath: dataA + "/claude_desktop_config.json") && rrA.tasksAdded.isEmpty && !rrA.configAdded,
+          "restore: the task file is back byte for byte (not paused: this Mac's own tasks), the prompt too; no MCP settings")
+    check((json(fm.contents(atPath: codeA + "/settings.json"))?["env"] as? [String: String]) == ["DEPLOY_TOKEN": "", "REGION": ""], "restore: settings.json comes back with its env names, blank")
     _ = try! SessionsRestore.undo(rrA.id, windowClosed: { true })
-    check(!fm.fileExists(atPath: scopeA + "/scheduled-tasks.json") && !fm.fileExists(atPath: dataA + "/claude_desktop_config.json") && !fm.fileExists(atPath: codeA + "/scheduled-tasks/weekly-report"), "restore: Undo takes them back")
+    check(!fm.fileExists(atPath: scopeA + "/scheduled-tasks.json") && !fm.fileExists(atPath: codeA + "/settings.json") && !fm.fileExists(atPath: codeA + "/scheduled-tasks/weekly-report"), "restore: Undo takes them back")
     plantA()
+    // a settings.json that is here stays, also when the backup's is the blanked one
+    let pr3 = SessionsRestore.plan(tA, bkA, addSetup: true)
+    check(pr3.setup.entries.first { $0.unit.kind == .settings }?.status == .different && !pr3.setupPieces.contains { $0.rel == ["setup", "settings.json"] } && pr3.setup.settingsDiffer.contains("env.DEPLOY_TOKEN"),
+          "restore: the settings.json here (with its values) stays; the backup's blank names show as a difference, never written over it")
+
+    // ---- an export from a plain backup: the image carries the blank settings.json, the page says so; no MCP settings in it
+    let bpart0 = SessionsExport.Part(profile: "a", name: "A", backup: bkA)
+    let bpv0 = SessionsExport.preview(bpart0)!
+    check(bpv0.setup.envBlanked && ExportWords.setupNotes(bpv0, setup: true, image: true).contains { $0.hasPrefix("settings.json comes with its env values blank") }
+          && !ExportWords.setupNotes(bpv0, setup: true, image: false).contains { $0.contains("env values blank") } && !bpv0.config.present,
+          "export (from a plain backup): the page says settings.json comes with blank env values (image); no MCP settings to carry")
+    let fromBk = URL(fileURLWithPath: out + "/A-from-backup.dmg")
+    if (try? SessionsExport.run(SessionsExport.Job(parts: [bpart0], keys: .leaveOut, password: pw, destination: fromBk, rootName: "a-from-backup", place: place))) != nil,
+       let ob = try? SessionsImport.open(fromBk, password: pw, place: place) {
+        check((json(fm.contents(atPath: ob.tree.path + "/profiles/p1/setup/settings.json"))?["env"] as? [String: String]) == ["DEPLOY_TOKEN": "", "REGION": ""]
+              && holds(ob.tree.path, settingsEnvValue).isEmpty && !files(ob.tree.path).contains { $0.contains("config/") } && ob.parts[0].manifest.envBlanked == true,
+              "export (image from a plain backup): the blank settings.json, no env value and no MCP settings in it")
+        SessionsImport.discard(ob.work)
+    } else { check(false, "export (image from a plain backup): made and opens") }
 
     // ---- an export never makes a file its own import refuses: a config over 8 MB (or a link, or not JSON) is left out at the source
     let big: [String: Any] = ["mcpServers": ["x": ["command": "x"]], "pad": String(repeating: "a", count: (8 << 20) + 16)]
@@ -426,6 +477,14 @@ MainActor.assumeIsolated {
           && WindowWords.configDone(cp, added: false, undone: false, name: "Work", imported: true) == "not added: Work's claude_desktop_config.json stays as it is",
           "rows: a file here stays; the done line says why it wasn't added: \(WindowWords.configDone(cp, added: false, undone: false, name: "Work", imported: true))")
     check(WindowWords.configDone(cp, added: true, undone: true, name: "Work", imported: true) == "claude_desktop_config.json with 2 MCP servers: was added, and taken away again", "rows: after Undo")
+    check(WindowWords.serversKey(cp, imported: true) == ("What the file's servers would run (not added: your claude_desktop_config.json stays)", "Hide (not added: your claude_desktop_config.json stays)"),
+          "rows: with a file here, both keys of the servers' list keep the not-added caveat")
+    cp.status = .blocked("the profile has no Claude window folder")
+    check(WindowWords.serversKey(cp, imported: true).hide == "Hide (not added: it can't be added here)", "rows: …and when it can't be added")
+    cp.status = .new
+    check(WindowWords.serversKey(cp, imported: true) == ("What each server runs", "Hide what they run"), "rows: a file that is added: plain keys")
+    check(WindowWords.tasksKey(1, imported: true) == "Show the tasks (1 can't come)" && WindowWords.tasksKey(1, imported: false) == "Show the tasks (1 without the backup's prompt)" && WindowWords.tasksKey(0, imported: false) == "Show the tasks",
+          "rows: the tasks' key: an import's can't come; a restore's all come back, some without the backup's prompt")
     var tp = SessionsRestore.TaskPlan()
     tp.present = true; tp.imported = true
     tp.tasks = [.init(id: "a", name: "Nightly digest", why: nil), .init(id: "b", name: "Bad", why: "its prompt isn't in the file")]

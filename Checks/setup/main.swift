@@ -718,8 +718,10 @@ MainActor.assumeIsolated {
     let bk = SessionsRestore.Backup(profile: "e2", id: bm.id, place: eplace)
     try? fm.removeItem(atPath: ecode + "/skills/alpha"); try? fm.removeItem(atPath: ecode + "/agents/helper.md")
     let pr0 = SessionsRestore.plan(te, bk), pr1 = SessionsRestore.plan(te, bk, addSetup: true)
-    check(pr0.setup.leftOut && pr0.setupPieces.isEmpty && pr0.setup.newEntries.map(\.unit.name).sorted() == ["alpha", "helper.md"] && pr1.setupPieces.count == 7 && pr1.setup.entries(.same).count == pr1.setup.entries.count - 2,
-          "restore: setup is left out by default; with 'Add them' only the 2 missing units come back (7 files); the rest is Already here: \(pr1.setupPieces.count)")
+    // (settings.json here keeps its env value; the backup's has it blank, so it is Different here and stays)
+    check(pr0.setup.leftOut && pr0.setupPieces.isEmpty && pr0.setup.newEntries.map(\.unit.name).sorted() == ["alpha", "helper.md"] && pr1.setupPieces.count == 7
+          && pr1.setup.entries(.same).count == pr1.setup.entries.count - 3 && pr1.setup.entries(.different).map(\.unit.name) == ["settings.json"] && pr1.setup.envBlanked,
+          "restore: setup is left out by default; with 'Add them' only the 2 missing units come back (7 files); settings.json here differs from the backup's blanked one and stays; the rest is Already here: \(pr1.setupPieces.count)")
     let rr = try! SessionsRestore.run(te, bk, addSetup: true, windowClosed: { true })
     check(rr.finished != nil && read(ecode + "/agents/helper.md") == "helper agent" && mode(ecode + "/skills/alpha/run.sh") == 0o700 && read(ecode + "/skills/alpha/SKILL.md")?.hasPrefix("---") == true, "restore: the deleted skill and agent are back, the script executable as before")
     _ = try! SessionsRestore.undo(rr.id, windowClosed: { true })
