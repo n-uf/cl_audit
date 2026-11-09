@@ -13,7 +13,7 @@ machine has one.
 
 | Suite | What it covers | Checks |
 |---|---|---|
-| `firstrun` | the first-run page, the Claude lookup (the order of places, the shell, the app's copy), the sign-in step | 170 |
+| `firstrun` | the first-run page, the Claude lookup (the order of places, the shell, the app's copy), the sign-in step (always in ~/.claude) | 172 |
 | `render` | pictures of the pages (Sessions card, General › Backups, the Switch page, Restore, Export, Import, first run), Std and Silver, into `Checks/.work/render/` | – |
 | `quick-chat` | the quick chat's engine and Markdown (its own `quick-chat/run.sh`, run here under the build lock) | 95 |
 | `scan` | the app's own `SecretScan` over every file in `Checks/` (no secret-shaped string is committed), then `tools/leakscan.py`: no real address, id, personal path, and none of the words in your local `Checks/.work/leakwords` (one per line, never committed; without it that check is skipped and says so) | 0 hits |

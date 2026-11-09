@@ -229,7 +229,7 @@ do {
     check(m.requireClaude() == p(".local/bin/claude") && m.message.isEmpty, "requireClaude gives the path, says nothing")
     check(!AddAccountPopup.rows(found: [], profile: "x", canSignIn: m.claudeNow() != nil).contains { $0.kind == .installClaude }, "no reason row once found")
     check(FirstRun.foundFolders().isEmpty, "no signed-in folder yet")
-    check(FirstRun.signInFolder(email: "") == "~/.claude", "Sign in… uses ~/.claude while nothing is signed in there")
+    check(FirstRun.signInFolder == "~/.claude" && !FirstRun.defaultSignedIn(), "Sign in… uses ~/.claude, nothing signed in there yet")
 
     // it goes away, and comes back: noticed by the timer's watch and by detectClaude
     try? fm.removeItem(atPath: p(".local/bin/claude"))
@@ -276,8 +276,18 @@ do {
                 orgType: "team", orgName: "Acme Test", plan: "Max")
     write(".claude-empty/settings.json", "{}")                          // a folder that isn't signed in: not offered
     let found = FirstRun.foundFolders()
-    check(found.count == 1 && found[0].path == "~/.claude-work" && found[0].email == "fake.person@example.invalid", "step 2 offers the signed-in folder only: \(found)")
-    check(found.first?.detail.contains("Max") == true && found.first?.detail.contains("Acme Test") == true, "…with its plan and organisation: \(found.first?.detail ?? "")")
+    check(found.isEmpty, "a signed-in folder other than ~/.claude is not offered (the first profile is the default one): \(found)")
+    // a signed-in ~/.claude is: the first profile uses it as it is
+    fakeAccount(dir: "~/.claude", uuid: "00000000-0000-4000-8000-000000000009", email: "fake.main@example.invalid",
+                orgType: "team", orgName: "Acme Test", plan: "Max")
+    let foundMain = FirstRun.foundFolders()
+    check(foundMain.count == 1 && foundMain[0].path == "~/.claude" && foundMain[0].email == "fake.main@example.invalid", "step 2 offers the signed-in ~/.claude only: \(foundMain)")
+    check(foundMain.first?.detail.contains("Max") == true && foundMain.first?.detail.contains("Acme Test") == true, "…with its plan and organisation: \(foundMain.first?.detail ?? "")")
+    // nothing from the account but an address and ids was read: the fixture has no token to find
+    check(!foundMain.isEmpty && !"\(foundMain)".contains("token"), "no token anywhere in what's shown")
+    check(FirstRun.foundFolders(among: [entry("home", "Home")]).isEmpty, "…not offered when a profile already uses ~/.claude")
+    try? fm.removeItem(atPath: p(".claude.json"))
+    check(FirstRun.foundFolders().isEmpty, "~/.claude without a sign-in: not offered")
     let m = SettingsModel()
     check(m.isFirstRun && m.accounts.isEmpty, "fresh")
     m.firstRunPick("~/.claude-work")
@@ -294,8 +304,6 @@ do {
         check(m.selection == "work" && !m.isFirstRun, "normal Settings for that profile")
     }
     check(m.firstRun == FirstRunDraft(color: .lime), "the page's choices are reset")
-    // nothing from the account but an address and ids was read: the fixture has no token to find
-    check(!(FirstRun.foundFolders().first.map { "\($0)" } ?? "").contains("token"), "no token anywhere in what's shown")
 
     // the address's name part when it's a personal account
     resetHome()
@@ -345,10 +353,8 @@ do {
     fakeAccount(dir: "~/.claude", uuid: "00000000-0000-4000-8000-000000000005", email: "other.person@example.invalid")
     m.followFirstRun()
     check(m.firstRun.folder == "~/.claude", "another account: taken")
-    // the folder Sign in… uses now that ~/.claude has an account
-    check(FirstRun.signInFolder(email: "other.person@example.invalid") == "~/.claude-other-person", "next sign-in goes to a new folder: \(FirstRun.signInFolder(email: "other.person@example.invalid"))")
-    write(".claude-other-person/settings.json", "{}")
-    check(FirstRun.signInFolder(email: "other.person@example.invalid") == "~/.claude-other-person-2", "…never an existing one")
+    // the first profile is the default one: ~/.claude now has an account and is used as it is, never a new folder
+    check(FirstRun.defaultSignedIn() && FirstRun.signInFolder == "~/.claude", "~/.claude signed in: the first profile uses it, Sign in… still names ~/.claude")
     // an hour without the sign-in landing: gives up
     m.firstRunChangeAccount()
     m.firstRun.signInDir = "~/.claude-zz"; m.firstRun.signInAsked = Date().addingTimeInterval(-3700)
