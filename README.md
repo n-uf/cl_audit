@@ -752,7 +752,11 @@ the menu bar icon open the usual app; Opens from, With Dock icon and Sessions fo
 - **Undo this move** (on the page, or **Undo this restore** on the move's restore page) takes back exactly what was
   added, only files unchanged since, and puts the profile's window kind back (and removes a `~/.claude` profile the
   move made). Cancel works while waiting for the sign-in and while the windows close; a stopped move keeps what is back
-  (Finish or Undo).
+  (Finish or Undo). If cl_audit quits while the files are being written, the card on Settings ▸ General sends you to
+  that restore's page (Finish or Undo); **Put it back** is offered only when no file was written.
+- **Once the old profile was kept as a standby account or removed,** the move can't be undone any more (Undo would take
+  away a profile or folder that now holds the only copy of something), and the page says so; its backup is still listed
+  under Sessions in the default profile's settings.
 - **An import made earlier into the old window's data** is carried over with everything else. Its own **Undo last
   import** is then not offered (it would change only the old folder); **Undo this move** takes the sessions out of the
   usual app, and the Sessions card says so.

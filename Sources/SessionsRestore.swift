@@ -892,7 +892,8 @@ enum SessionsRestore {
     @discardableResult
     static func run(_ t: Target, _ b: Backup, continuing: String? = nil, foreign: Bool = false, addMemory: Bool = false, afterSwitch: String? = nil,
                     mark: String? = nil, windowClosed: () -> Bool, stop: () -> Bool = { false },
-                    progress: ((_ done: Int, _ total: Int) -> Void)? = nil, now: Date = Date()) throws -> Receipt {
+                    progress: ((_ done: Int, _ total: Int) -> Void)? = nil,
+                    receiptWritten: ((_ id: String) -> Void)? = nil, now: Date = Date()) throws -> Receipt {
         let lock: SwitchEngine.Lock
         do { lock = try SwitchEngine.Lock.take() } catch { throw RestoreError("\(error)") }
         defer { lock.release() }
@@ -945,6 +946,7 @@ enum SessionsRestore {
         r.changedCount = p.changed.count; r.changed = Array(p.changed.prefix(200)); r.partialCount = p.partial.count
         r.inUseCount = p.inUse.count; r.inUse = Array(p.inUse.prefix(200)); r.deletedCount = p.deletedSince.count
         do { try save(r) } catch { throw RestoreError("The restore's receipt couldn't be saved; nothing written.") }
+        receiptWritten?(r.id)               // the caller learns the receipt before the first file is written
         guard let journal = Journal(id: r.id), let reader = Reader(path: b.dir.path) else {
             if fresh { try? FileManager.default.removeItem(at: dir(r.id)) }
             throw RestoreError("The restore's receipt couldn't be written; nothing written.")

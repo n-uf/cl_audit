@@ -275,6 +275,8 @@ final class DefaultProfileRunner: ObservableObject {
         case .done, .sidebar:
             if phase == .moving, runner.receipt != nil {
                 r.finished = Date(); record = r; DefaultProfile.save(r)
+        // the receipt's id goes into the record the moment the engine writes it: a quit part way still finds the restore
+        runner.onReceipt = { [rid = r.id] receipt in DefaultProfile.attachReceipt(record: rid, receipt: receipt) }
                 phase = .done
                 model?.forgetRestore()
             }
@@ -296,7 +298,7 @@ final class DefaultProfileRunner: ObservableObject {
 
     /// The restore refused or couldn't start before writing anything: the window kind goes back, as it was.
     private func fail(_ why: String) {
-        if let m = model, let r = record, r.receipt == nil { m.defaultMoveUndone(r.id, quiet: true) }
+        if let m = model, let r = record, DefaultProfile.restoreFor(r) == nil { m.defaultMoveUndone(r.id, quiet: true) }
         phase = .failed(why)
     }
 
@@ -364,3 +366,6 @@ extension SettingsModel {
         if !quiet { message = "Undid the move to the default profile" }
     }
 }
+        if DefaultProfile.undoRefusal(r) != nil { return }
+        // files were written and the restore wasn't undone: the window kind stays with them (Finish or Undo on the restore's page)
+        if let rc = DefaultProfile.restoreFor(r), rc.undone == nil { return }

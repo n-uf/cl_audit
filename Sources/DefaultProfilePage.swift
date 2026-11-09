@@ -17,9 +17,8 @@ struct DefaultProfileCard: View {
     @Environment(\.face) private var face
 
     var body: some View {
-        if let s = DefaultProfile.situation(model.accounts) {
-            if DefaultProfile.dismissed { quiet(s) } else { offer(s) }
-        } else if let r = DefaultProfile.unfinished() {
+        // a move that stopped part way comes first: its files are written, and only its restore can finish or undo them
+        if let r = DefaultProfile.unfinished() {
             unfinished(r)
         }
     }
@@ -50,10 +49,20 @@ struct DefaultProfileCard: View {
     }
 
     private func unfinished(_ r: DefaultProfile.Record) -> some View {
-        SCard(title: "The default-profile move didn't finish", info: "cl_audit stopped between making the backup and starting the move. The profile's window kind was already changed. Undo puts it back as it was; nothing was written to the usual app's data.") {
+        let rc = DefaultProfile.restoreFor(r).flatMap { $0.undone == nil ? SessionsRestore.load($0.id) : nil }
+        return SCard(title: "The move to the default profile stopped", info: "cl_audit stopped part way through the move. Its restore keeps a receipt of every file it wrote, so it can be finished or undone exactly; the profile's window kind goes back only with an Undo.") {
+    /// A move that changed the profile and wasn't finished or undone. With files written, only that restore's page can finish
+    /// or undo them (never "Put it back": the window kind stays with the files).
             VStack(alignment: .leading, spacing: 8) {
-                Text("Nothing was moved. Put the profile back as it was, then start again if you like.").font(.system(size: 12)).foregroundStyle(face.soft)
-                Button("Put it back") { model.defaultMoveUndone(r.id) }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+                if let rc {
+                    Text("\(rc.back) \(rc.back == 1 ? "file is" : "files are") already in the usual app's data. Open the restore to finish the move or undo it.")
+                        .font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+                    Button("Open the restore") { model.showRestore(finishing: rc) }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+                } else {
+                    Text("Nothing was moved. Put the profile back as it was, then start again if you like.")
+                        .font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+                    Button("Put it back") { model.defaultMoveUndone(r.id) }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+                }
             }
             .padding(.vertical, 4)
         }

@@ -46,6 +46,9 @@ final class RestoreRunner: ObservableObject {
     }
 
     let key: RestoreKey
+    /// Told (from the restore's thread) the receipt's id as soon as the engine has written it: the default-profile move keeps
+    /// it in its record, so a quit part way still finds this restore to Finish or Undo.
+    var onReceipt: ((String) -> Void)?
     private weak var model: SettingsModel?
     /// Each change may end or start a restore that stopped half way: the tile beside the profile looks again at once (not
     /// while the runner is made, which happens while a page is being drawn).
@@ -242,7 +245,8 @@ final class RestoreRunner: ObservableObject {
             let result = Result {
                 try SessionsRestore.run(target, b, continuing: resume, addMemory: memory, afterSwitch: afterSwitch, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) },
                                         stop: { self?.stopRequested ?? true },
-                                        progress: { d, t in DispatchQueue.main.async { self?.progress = (d, t) } })
+                                        progress: { d, t in DispatchQueue.main.async { self?.progress = (d, t) } },
+                                        receiptWritten: { id in self?.onReceipt?(id) })
             }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }

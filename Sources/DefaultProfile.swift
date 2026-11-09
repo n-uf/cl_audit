@@ -124,7 +124,9 @@ enum DefaultProfile {
         var finished: Date?
         var undone: Date?
 
-        var pending: Bool { receipt == nil && undone == nil && finished == nil }
+        /// The move changed something (the window kind, a link, a new profile) or wrote a receipt, and is neither finished
+        /// nor undone: the card must say so.
+        var open: Bool { undone == nil && finished == nil && (flipped || linkedSeat || created || receipt != nil) }
     }
 
     static var folder: URL { Store.folder.appendingPathComponent("default-moves") }
@@ -144,8 +146,53 @@ enum DefaultProfile {
 
     static func record(forReceipt id: String) -> Record? { all().first { $0.receipt == id } }
 
-    /// A move that changed the profile but whose restore never started (cl_audit quit between): Continue or Undo.
-    static func unfinished() -> Record? { all().last { $0.pending && $0.flipped } }
+    /// Writes the restore's receipt id into the move's record, the moment the engine first writes the receipt (a crash or
+    /// quit after that still finds the restore, to Finish or Undo). Called from the restore's thread: disk only.
+    static func attachReceipt(record id: String, receipt: String) {
+        forgetCache()
+        guard var r = all().first(where: { $0.id == id }), r.receipt != receipt else { return }
+        r.receipt = receipt
+        save(r)
+    }
+
+    /// The restore that belongs to a move: the one its record names, else, for a crash between the engine's first write and
+    /// the record's, the restore of this profile that read the move's backup.
+    static func restoreFor(_ r: Record) -> SessionsRestore.Receipt? {
+        if let id = r.receipt, let h = SessionsRestore.header(id) { return h }
+        return SessionsRestore.headers().first { $0.profile == r.profile && $0.backup == r.backup }
+    }
+
+    /// A move that is open: it changed the profile (or wrote files) and wasn't finished or undone, e.g. cl_audit quit part
+    /// way. The card sends the user to that restore's Finish or Undo when files were written, and offers "Put it back" only
+    /// when none were.
+    static func unfinished() -> Record? {
+        for var r in all().reversed() where r.open {
+            // its restore was finished from the Restore page (after a restart, say): the move is done, the record catches up
+            if let rc = restoreFor(r), rc.finished != nil, rc.undone == nil {
+                r.receipt = rc.id; r.finished = rc.finished; save(r)
+                continue
+            }
+            return r
+        }
+        return nil
+    }
+
+    /// Why this move can't be undone any more, or nil: its old profile was kept as a standby account or removed.
+    static func undoRefusal(_ r: Record) -> String? {
+        r.oldHandled.map { undoRefusalWords(removed: $0 == "removed") }
+    }
+
+    static func undoRefusalWords(removed: Bool) -> String {
+        "The old profile was \(removed ? "removed" : "kept as a standby account"), so this move can't be undone from here. Its backup is listed under Sessions in the default profile's settings."
+    }
+
+    /// The same, for a restore receipt (the engine's refusal of Undo).
+    static func undoRefusal(receipt id: String) -> String? { record(forReceipt: id).flatMap(undoRefusal) }
+
+    /// The old profile was removed (the remove flow): a standing move that carried it over can't be undone any more.
+    static func noteOldRemoved(profile id: String) {
+        for var r in all() where r.oldProfile == id && r.undone == nil && r.oldHandled == nil { r.oldHandled = "removed"; save(r) }
+    }
 
     /// The move this profile's window data came with, still standing (not undone): the import made into the old window
     /// before it has been carried over; its own Undo would only change the old window's folder.
