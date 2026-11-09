@@ -35,9 +35,9 @@ private struct RowText {
 enum WindowWords {
     private static func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
 
-    /// "claude_desktop_config.json with 3 MCP servers", "claude_desktop_config.json (no MCP servers)"
+    /// "3 MCP servers and the window's other settings", "the window's settings (no MCP servers)" (the file's name is in the row's info)
     static func config(_ cp: SessionsRestore.ConfigPlan) -> String {
-        "claude_desktop_config.json " + (cp.servers.isEmpty ? "(no MCP servers)" : "with " + n(cp.servers.count + cp.moreServers, "MCP server", "MCP servers"))
+        cp.servers.isEmpty ? "the window's settings (no MCP servers)" : n(cp.servers.count + cp.moreServers, "MCP server", "MCP servers") + " and the window's other settings"
     }
 
     /// The MCP row's value before the run.
@@ -59,15 +59,22 @@ enum WindowWords {
         return cp.leftOut || cp.status == .new ? "none added (left out)" : configValue(cp, name: name, imported: imported)
     }
 
+    /// The rest of the file, which adding writes too.
+    static func otherKeys(_ cp: SessionsRestore.ConfigPlan) -> String? {
+        guard !cp.otherKeys.isEmpty else { return nil }
+        return "Also added with it, whole: the window's other settings (\(cp.otherKeys.prefix(6).joined(separator: ", "))\(cp.otherKeys.count > 6 ? ", …" : ""); values not shown)"
+    }
+
     /// What Undo says (SessionsRestore.undo) about a config the window changed since it was added.
     static let configChangedProblem = "claude_desktop_config.json changed since; left as it is."
     /// The done line's note: the window rewrites this file when it opens, so Undo may find it changed.
     static let configUndoNote = "The Claude window may rewrite claude_desktop_config.json when it opens. If it has, Undo leaves the file as it is, with these servers in it: remove them in the window yourself."
 
     /// The servers a file that is here lacks (nothing is merged into it).
-    static func lacking(_ cp: SessionsRestore.ConfigPlan) -> String? {
+    static func lacking(_ cp: SessionsRestore.ConfigPlan, name: String, imported: Bool) -> String? {
         guard cp.status == .here, !cp.lacking.isEmpty else { return nil }
-        return "\(n(cp.lacking.count, "server", "servers")) of the file that \(cp.lacking.count == 1 ? "isn't" : "aren't") here: \(cp.lacking.prefix(5).joined(separator: ", "))\(cp.lacking.count > 5 ? ", …" : ""). Nothing is merged into your file: add \(cp.lacking.count == 1 ? "it" : "them") yourself if you want \(cp.lacking.count == 1 ? "it" : "them")."
+        let k = cp.lacking.count + cp.moreLacking, it = k == 1 ? "it" : "them"
+        return "\(n(k, "server", "servers")) in the \(imported ? "file" : "backup") \(k == 1 ? "isn't" : "aren't") in \(name)'s settings: \(cp.lacking.prefix(5).joined(separator: ", "))\(k > 5 ? ", …" : ""). Nothing is merged into \(name)'s settings: add \(it) in the Claude window yourself if you want \(it)."
     }
 
     /// The key that shows what the servers run: while the file can't be added, both keys keep the caveat, so the commands never show
@@ -95,7 +102,7 @@ enum WindowWords {
             switch tp.status {
             case .blocked(let why): return "can't come back: \(why)"
             case .here: return "a task file is here: it stays as it is"
-            case .new: return tp.writes ? "the task file comes back as it was" + (tp.prompts > 0 ? ", with \(n(tp.prompts, "prompt", "prompts"))" : "") : "none"
+            case .new: return tp.writes ? "the task file comes back as it was, not paused (they are this Mac's own tasks)" + (tp.prompts > 0 ? ", with \(n(tp.prompts, "prompt", "prompts"))" : "") : "none"
             }
         }
         switch tp.status {
@@ -109,7 +116,12 @@ enum WindowWords {
 
     /// Where the person turns the tasks on (cl_audit never does).
     static func turnOn(_ window: String) -> String {
-        "Paused, so nothing runs twice: turn each on with its own switch in the scheduled tasks of \(window). cl_audit never changes a task after this."
+        "Paused, so a task doesn't run on both Macs. To use one, turn it on with its own switch in Scheduled tasks in \(window). cl_audit never changes a task after this."
+    }
+
+    /// The window the tasks are turned on in: "the usual Claude app", "Main's own window (open it from its Dock icon)".
+    static func window(_ e: AccountEntry) -> String {
+        e.desktop == .standard ? "the usual Claude app" : "\(e.name.isEmpty ? "this profile" : e.name)'s own window (open it from its Dock icon)"
     }
 
     /// The Scheduled tasks row's value once the import is done (or undone).
@@ -130,9 +142,13 @@ enum WindowWords {
     static func taskLines(_ tp: SessionsRestore.TaskPlan) -> [String] {
         // (a task file that is here, or none can be written: no task is listed as if it came)
         // each with its schedule, folder and permission mode: what turning it on would run
-        var out = tp.tasks.compactMap { $0.why == nil ? (tp.status == .new ? $0.line : nil) : tp.imported ? "\($0.name): not added, \($0.why!)" : "\($0.line): \($0.why!)" }
-        if tp.status == .new, tp.moreTasks > 0 { out.append("…and \(tp.moreTasks) more") }
-        if tp.status == .here, !tp.lacking.isEmpty { out.append("Not in the task file here (it stays): " + tp.lacking.prefix(10).joined(separator: ", ") + (tp.lacking.count + tp.moreLacking > 10 ? ", …" : "")) }
+        // (with a task file here none is added, so the list is only what that file doesn't have)
+        guard tp.status == .new else {
+            guard tp.status == .here, !tp.lacking.isEmpty else { return [] }
+            return ["The task file here stays as it is. It doesn't have: " + tp.lacking.prefix(10).joined(separator: ", ") + (tp.lacking.count + tp.moreLacking > 10 ? ", …" : "")]
+        }
+        var out = tp.tasks.map { $0.why == nil ? $0.line : tp.imported ? "\($0.name): not added, \($0.why!)" : "\($0.line): \($0.why!)" }
+        if tp.moreTasks > 0 { out.append("…and \(tp.moreTasks) more") }
         return out
     }
 }
@@ -167,8 +183,8 @@ struct McpRow: View {
                         } label: { MenuWell(text: cp.leftOut ? "Leave them out" : "Add them", fill: true) }
                         .faceMenuFill()
                     }
-                    if !undone, let l = WindowWords.lacking(cp) { t.small(l, color: face.caution) }
-                    if !undone, cp.present, !cp.unreadable, !cp.otherKeys.isEmpty { t.small("With the window's other settings: \(cp.otherKeys.prefix(6).joined(separator: ", "))\(cp.otherKeys.count > 6 ? ", …" : "")") }
+                    if !undone, let l = WindowWords.lacking(cp, name: name, imported: imported) { t.small(l, color: face.caution) }
+                    if !undone, cp.present, !cp.unreadable, cp.status == .new, let o = WindowWords.otherKeys(cp) { t.small(o) }
                     if !cp.servers.isEmpty {
                         let k = WindowWords.serversKey(cp, imported: imported)
                         t.key(k.show, k.hide, $showServers)
@@ -200,7 +216,7 @@ struct TasksRow: View {
                     let undone = runner.phase == .undone
                     if imported, let r = runner.receipt, undone || runner.phase == .done || runner.phase == .sidebar {
                         t.value(WindowWords.tasksDone(r.tasksAdded, undone: undone, leftOut: tp.leftOut))
-                        if !undone, !r.tasksAdded.isEmpty { t.small(WindowWords.turnOn(entry.windowWords), color: face.caution) }
+                        if !undone, !r.tasksAdded.isEmpty { t.small(WindowWords.turnOn(WindowWords.window(entry)), color: face.caution) }
                     } else {
                         t.value(WindowWords.tasksValue(tp, imported: imported))
                         if imported, runner.phase == .ready, tp.status == .new, tp.comingCount > 0, let choose {
@@ -210,12 +226,12 @@ struct TasksRow: View {
                             } label: { MenuWell(text: tp.leftOut ? "Leave them out" : "Add them, paused", fill: true) }
                             .faceMenuFill()
                         }
-                        if imported, !undone, tp.status == .new, tp.comingCount > 0 { t.small((tp.leftOut ? "If added: " : "") + WindowWords.turnOn(entry.windowWords)) }
+                        if imported, !undone, tp.status == .new, tp.comingCount > 0 { t.small((tp.leftOut ? "If added: " : "") + WindowWords.turnOn(WindowWords.window(entry))) }
                         if imported, !undone, tp.status == .new, let w = WindowWords.riskyWords(tp) { t.small(w, color: face.caution) }
                     }
                     let lines = WindowWords.taskLines(tp)
                     if !undone, !lines.isEmpty {
-                        let notAdded = tp.tasks.filter { $0.why != nil }.count
+                        let notAdded = tp.status == .new ? tp.tasks.filter { $0.why != nil }.count : 0
                         t.key(WindowWords.tasksKey(notAdded, imported: imported), "Hide the tasks", $showTasks)
                         if showTasks { t.lines(lines) }
                     }

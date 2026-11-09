@@ -258,10 +258,10 @@ struct RestorePage: View {
         SCard(title: "Stays as it is", info: "Restore only adds what is missing. The account, the sign-ins and claude.ai are not part of it; a file that is here (MCP settings, settings.json, a task file) is never replaced or merged into.") {
             SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
             SRow(label: "Sign-ins") { rowValue(imp ? "Never in an export, never written" : "Never in a backup, never written") }
-            SRow(label: "MCP") { rowValue(imp ? "Yours stay; the file's are added only if \(name) has none and you pick Add them"
-                                          : "Not in this Mac's backups: the window's MCP settings travel only in the encrypted export. Yours stay") }
+            SRow(label: "MCP") { rowValue(imp ? "Yours stay; the file's are added only if none is here and you pick Add them"
+                                          : "Not in this Mac's backups: the window's MCP settings travel only in the encrypted export. Yours stay as they are") }
             SRow(label: "settings.json") { rowValue("Yours stays; one is added only if none is here and you pick Add them") }
-            SRow(label: "Scheduled tasks") { rowValue(imp ? "A task file that is here stays; the file's tasks come only if you picked Add them, paused" : "A task file that is there stays as it is; only a missing one comes back") }
+            SRow(label: "Scheduled tasks") { rowValue(imp ? "A task file that is here stays as it is; the file's tasks come only if you picked Add them, paused" : "A task file that is there stays as it is; only a missing one comes back") }
             SRow(label: "claude.ai") { rowValue("Chats and Projects") }
         }
     }

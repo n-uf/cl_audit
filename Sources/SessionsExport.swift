@@ -693,6 +693,7 @@ enum SessionsExport {
         /// The window's claude_desktop_config.json (its MCP servers and other settings, not the sidebar part): only the encrypted image
         /// carries it.
         var config = ConfigPreview()
+        var tasksWithPrompt = 0             // of the tasks, those whose prompt goes with them
 
         /// With keys: sessions, lone files, and setup units (a skill, an agent, CLAUDE.md …).
         var keyed: Int { keyedSessions + keyedFiles + setup.keyedUnits.count }
@@ -707,7 +708,8 @@ enum SessionsExport {
         var present = false
         var servers: [String] = []
         var leftOut: String?
-        mutating func add(_ o: ConfigPreview) { present = present || o.present; servers += o.servers; if leftOut == nil { leftOut = o.leftOut } }
+        var fromBackup = false              // made from a backup, which never keeps them (an import's staged one aside)
+        mutating func add(_ o: ConfigPreview) { present = present || o.present; servers += o.servers; if leftOut == nil { leftOut = o.leftOut }; fromBackup = fromBackup || o.fromBackup }
     }
 
     static func configPreview(_ part: Part) -> ConfigPreview {
@@ -725,7 +727,7 @@ enum SessionsExport {
         if m.items.contains(where: { $0.role == .config }) {
             c.present = true
             c.servers = Setup.readCapped(b.dir.appendingPathComponent(SessionsBackup.configPath).path, limit: SessionsBackup.maxConfigBytes).map { SessionsBackup.mcpServers($0).map(\.name) } ?? []
-        } else { c.leftOut = m.configLeftOut }
+        } else { c.leftOut = m.configLeftOut; c.fromBackup = true }
         return c
     }
 
@@ -751,6 +753,7 @@ enum SessionsExport {
         var hooksUnknown = false
         /// Scheduled tasks' prompts (they go with their tasks, not in `units`: the setup row never shows them)
         var taskPrompts = 0
+        var taskPromptIDs = Set<String>()       // whose they are (the task ids)
         /// From a plain backup: its settings.json has every env value blanked (backups don't keep them).
         var envBlanked = false
         var counts: Setup.Counts { Setup.Counts(units) }
@@ -818,7 +821,7 @@ enum SessionsExport {
                 // a scheduled task's prompt: key-scanned like a skill (it is the person's own words), counted apart; not when the window's
                 // files (its task) are left out
                 if part.source != nil && part.windowOpen { continue }
-                sp.taskPrompts += 1
+                sp.taskPrompts += 1; sp.taskPromptIDs.insert(u.name)
                 guard let k = SecretScan.scan(path: f.src, cancel: cancel, progress: progress) else { if cancel() { return nil }; continue }
                 kinds[u, default: []].formUnion(k)
                 continue
@@ -934,6 +937,12 @@ enum SessionsExport {
         guard let sp = setupPreview(part, cancel: cancel, progress: progress) else { return nil }
         pv.setup = sp
         pv.config = configPreview(part)
+        // how many of the tasks have their prompt in the file (one without it can't be imported)
+        var ids = Set<String>()
+        for f in list where f.role == .window && (f.rel as NSString).lastPathComponent == "scheduled-tasks.json" {
+            if let d = Setup.readCapped(f.src, limit: 64 << 20) { ids.formUnion(SessionsRestore.taskList(d).compactMap { $0["id"] as? String }) }
+        }
+        pv.tasksWithPrompt = ids.intersection(sp.taskPromptIDs).count
         return pv
     }
 

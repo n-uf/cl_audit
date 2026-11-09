@@ -146,9 +146,9 @@ MainActor.assumeIsolated {
     check(pv.config.present && pv.config.servers == ["github", "remote"] && pv.tasks == 4 && pv.setup.taskPrompts == 4 && !pv.setup.units.contains { $0.kind == .task },
           "preview: the config with 2 MCP servers; 4 tasks with 4 prompts, which aren't in the setup row's units")
     let zw = ExportWords.mcpWords(pv, image: false), iw = ExportWords.mcpWords(pv, image: true)
-    check(zw.value == "left out of a zip" && zw.note?.hasPrefix("2 MCP servers (github, remote) and the window's other settings can hold tokens") == true && iw.value == "2 MCP servers (github, remote) and the window's other settings: in the encrypted disk image" && iw.note == ExportWords.fingerprintNote,
+    check(zw.value == "left out of a zip" && zw.note == "A zip leaves out the window's MCP settings (2 servers: github, remote, and the window's other settings): they can hold keys no scan can find. Choose the encrypted disk image to carry them." && iw.value == "2 MCP servers (github, remote) and the window's other settings: in the encrypted disk image" && iw.note == ExportWords.fingerprintNote,
           "export page: a zip says the MCP settings need the image; the image carries them: \(zw.value) / \(iw.value)")
-    check(ExportWords.tasksNote(pv) == "4 scheduled tasks with their prompts: an import adds them only if you pick Add them, and paused", "export page: the tasks travel with their prompts and come back paused: \(ExportWords.tasksNote(pv) ?? "none")")
+    check(ExportWords.tasksNote(pv) == "4 scheduled tasks, 3 with their prompt (one without it can't be imported). An import adds them only if you pick Add them, and they come paused.", "export page: the tasks travel with their prompts and come back paused: \(ExportWords.tasksNote(pv) ?? "none")")
 
     // ---- Export: a zip
     let zipURL = URL(fileURLWithPath: out + "/A.zip")
@@ -263,7 +263,7 @@ MainActor.assumeIsolated {
     let beforeC = tree(dC) + "\n" + tree(cC)
     let stC = try! SessionsImport.materialize(oi, part: oi.parts[0], target: "c")
     let pC = SessionsRestore.plan(tC, stC.backup, addConfig: true, addTasks: true)
-    check(pC.config.status == .here && pC.configPieces.isEmpty && pC.config.lacking == ["remote"] && WindowWords.lacking(pC.config)?.hasPrefix("1 server of the file that isn't here: remote.") == true,
+    check(pC.config.status == .here && pC.configPieces.isEmpty && pC.config.lacking == ["remote"] && WindowWords.lacking(pC.config, name: "C", imported: true)?.hasPrefix("1 server in the file isn't in C's settings: remote. Nothing is merged into C's settings") == true,
           "import: a claude_desktop_config.json here stays; the server it lacks (remote) is listed, nothing merged: \(pC.config.lacking)")
     check(pC.taskPlan.status == .here && pC.tasks.isEmpty && pC.taskPrompts.isEmpty && pC.taskPlan.lacking.contains("Nightly digest") && !pC.taskPlan.lacking.contains("Weekly report")
           && pC.taskSessions.count == 1, "import: a task file here stays; the tasks it lacks are listed; the task's session stays out: \(pC.taskPlan.lacking)")
@@ -313,7 +313,7 @@ MainActor.assumeIsolated {
           && pr.configPieces.isEmpty && !pr.taskPlan.imported,
           "restore: the missing task file comes back as it was, with the missing prompt; this Mac's own backup has no MCP settings, so no MCP row and nothing to add")
     let pr2 = SessionsRestore.plan(tA, bkA, addSetup: true)
-    check(pr2.setup.envBlanked && pr2.setupPieces.contains { $0.rel == ["setup", "settings.json"] } && SetupRow.envBlankedWords.hasPrefix("Env values aren't kept in backups"),
+    check(pr2.setup.envBlanked && pr2.setupPieces.contains { $0.rel == ["setup", "settings.json"] } && SetupRow.envBlankedWords.hasPrefix("Backups don't keep the values in settings.json's env section"),
           "restore: a settings.json that is missing comes back (Add them), and the row says its env values aren't kept in backups")
     let rrA = try! SessionsRestore.run(tA, bkA, addSetup: true, windowClosed: { true })
     check(fm.contents(atPath: scopeA + "/scheduled-tasks.json") == origTasks && SessionsRestore.taskList(origTasks!).first?["enabled"] as? Bool == true && fm.fileExists(atPath: codeA + "/scheduled-tasks/weekly-report/SKILL.md")
@@ -331,6 +331,8 @@ MainActor.assumeIsolated {
     // ---- an export from a plain backup: the image carries the blank settings.json, the page says so; no MCP settings in it
     let bpart0 = SessionsExport.Part(profile: "a", name: "A", backup: bkA)
     let bpv0 = SessionsExport.preview(bpart0)!
+    check(ExportWords.mcpWords(bpv0, image: true).value == "none: backups don't keep the window's MCP settings; export the profile as it is now to carry them",
+          "export (from a plain backup): the MCP row says why there are none")
     check(bpv0.setup.envBlanked && ExportWords.setupNotes(bpv0, setup: true, image: true).contains { $0.hasPrefix("settings.json comes with its env values blank") }
           && !ExportWords.setupNotes(bpv0, setup: true, image: false).contains { $0.contains("env values blank") } && !bpv0.config.present,
           "export (from a plain backup): the page says settings.json comes with blank env values (image); no MCP settings to carry")
@@ -550,15 +552,17 @@ MainActor.assumeIsolated {
 MainActor.assumeIsolated {
     var cp = SessionsRestore.ConfigPlan()
     cp.present = true; cp.servers = [.init(name: "github", runs: "npx"), .init(name: "remote", runs: "a remote server")]
-    check(WindowWords.configValue(cp, name: "Work", imported: true) == "claude_desktop_config.json with 2 MCP servers: left out", "rows: MCP left out by default: \(WindowWords.configValue(cp, name: "Work", imported: true))")
+    check(WindowWords.configValue(cp, name: "Work", imported: true) == "2 MCP servers and the window's other settings: left out", "rows: MCP left out by default: \(WindowWords.configValue(cp, name: "Work", imported: true))")
     cp.leftOut = false
-    check(WindowWords.configValue(cp, name: "Work", imported: true) == "claude_desktop_config.json with 2 MCP servers: added" && WindowWords.configDone(cp, added: true, undone: false, name: "Work", imported: true) == "added: claude_desktop_config.json with 2 MCP servers",
+    check(WindowWords.configValue(cp, name: "Work", imported: true) == "2 MCP servers and the window's other settings: added" && WindowWords.configDone(cp, added: true, undone: false, name: "Work", imported: true) == "added: 2 MCP servers and the window's other settings",
           "rows: MCP added, and the done line")
     cp.status = .here; cp.lacking = ["remote"]
     check(WindowWords.configValue(cp, name: "Work", imported: true) == "not added: Work's claude_desktop_config.json stays as it is"
           && WindowWords.configDone(cp, added: false, undone: false, name: "Work", imported: true) == "not added: Work's claude_desktop_config.json stays as it is",
           "rows: a file here stays; the done line says why it wasn't added: \(WindowWords.configDone(cp, added: false, undone: false, name: "Work", imported: true))")
-    check(WindowWords.configDone(cp, added: true, undone: true, name: "Work", imported: true) == "claude_desktop_config.json with 2 MCP servers: was added, and taken away again", "rows: after Undo")
+    check(WindowWords.configDone(cp, added: true, undone: true, name: "Work", imported: true) == "2 MCP servers and the window's other settings: was added, and taken away again", "rows: after Undo")
+    cp.otherKeys = ["globalShortcut", "preferences"]
+    check(WindowWords.otherKeys(cp) == "Also added with it, whole: the window's other settings (globalShortcut, preferences; values not shown)", "rows: the rest of the file is said to come whole")
     check(WindowWords.serversKey(cp, imported: true) == ("What the file's servers would run (not added: your claude_desktop_config.json stays)", "Hide (not added: your claude_desktop_config.json stays)"),
           "rows: with a file here, both keys of the servers' list keep the not-added caveat")
     cp.status = .blocked("the profile has no Claude window folder")
@@ -574,14 +578,15 @@ MainActor.assumeIsolated {
     check(WindowWords.tasksValue(tp, imported: true) == "1 task: left out", "rows: tasks left out by default: \(WindowWords.tasksValue(tp, imported: true))")
     tp.leftOut = false
     check(WindowWords.tasksValue(tp, imported: true) == "1 task: added, paused" && WindowWords.taskLines(tp) == ["Nightly digest", "Bad: not added, its prompt isn't in the file"], "rows: tasks added, paused; the list says which can't come and why")
-    check(WindowWords.turnOn("the usual Claude app") == "Paused, so nothing runs twice: turn each on with its own switch in the scheduled tasks of the usual Claude app. cl_audit never changes a task after this.",
+    check(WindowWords.turnOn("the usual Claude app") == "Paused, so a task doesn't run on both Macs. To use one, turn it on with its own switch in Scheduled tasks in the usual Claude app. cl_audit never changes a task after this.",
           "rows: where to turn them on")
     check(WindowWords.tasksDone(["Nightly digest"], undone: false, leftOut: false) == "added, paused: Nightly digest" && WindowWords.tasksDone([], undone: false, leftOut: true) == "none added (left out)"
           && WindowWords.tasksDone(["Nightly digest", "Weekly"], undone: true, leftOut: false) == "2 tasks were added, paused, and taken away again", "rows: the done and undone lines")
     tp.status = .here; tp.lacking = ["Nightly digest"]
-    check(WindowWords.tasksValue(tp, imported: true) == "not added: the task file here stays as it is" && WindowWords.taskLines(tp).last == "Not in the task file here (it stays): Nightly digest", "rows: a task file here stays; the tasks it lacks are listed")
+    check(WindowWords.tasksValue(tp, imported: true) == "not added: the task file here stays as it is" && WindowWords.taskLines(tp) == ["The task file here stays as it is. It doesn't have: Nightly digest"],
+          "rows: a task file here stays; only the tasks it lacks are listed (no per-task reasons, none is added)")
     var rp = SessionsRestore.TaskPlan(); rp.present = true; rp.writes = true; rp.prompts = 1; rp.leftOut = false
-    check(WindowWords.tasksValue(rp, imported: false) == "the task file comes back as it was, with 1 prompt", "rows: a restore puts its own task file back as it was")
+    check(WindowWords.tasksValue(rp, imported: false) == "the task file comes back as it was, not paused (they are this Mac's own tasks), with 1 prompt", "rows: a restore puts its own task file back as it was, not paused")
 }
 
 print("checks: \(passed) passed, \(failed) failed")

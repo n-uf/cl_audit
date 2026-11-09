@@ -379,7 +379,9 @@ struct ImportHappens: View {
                 TasksRow(entry: entry, runner: runner, choose: tasks)
                 SRow(label: "Scheduled tasks' sessions", info: "A session that a scheduled task ran (the entry's scheduledTaskId) comes in with its task when the task is added. When the task isn't added, the session is left out, with its transcript and the files in its folder, and the task's name is listed.", stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {
-                        value(p.taskSessions.isEmpty ? "none left out" : "\(p.taskSessions.count): left out with their transcripts, with the task's name (their task isn't added)")
+                        value(p.taskSessions.isEmpty ? "none left out"
+                              : p.taskSessions.count == 1 ? "1 session: left out with its transcript (its task isn't added)"
+                              : "\(p.taskSessions.count) sessions: left out with their transcripts (their tasks aren't added)")
                         if !p.taskSessions.isEmpty { listKey("Show the list", "Hide the list", $showTasks); if showTasks { names(p.taskSessions) } }
                     }
                 }
@@ -558,9 +560,9 @@ struct ImportPage: View {
         return SCard(title: "Stays as it is", info: "Import only adds what is missing. The account, the sign-ins and claude.ai are not part of it; a file that is here (MCP settings, settings.json, a task file) is never replaced or merged into.") {
             SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
             SRow(label: "Sign-ins") { rowValue("Never in an export, never written") }
-            SRow(label: "MCP") { rowValue("Yours stay; the file's are added only if \(name) has none and you pick Add them") }
+            SRow(label: "MCP") { rowValue("Yours stay; the file's are added only if none is here and you pick Add them") }
             SRow(label: "settings.json") { rowValue("Yours stays; one is added only if none is here and you pick Add them") }
-            SRow(label: "Scheduled tasks") { rowValue("A task file that is here stays; the file's tasks come only if you pick Add them, paused") }
+            SRow(label: "Scheduled tasks") { rowValue("A task file that is here stays as it is; the file's tasks come only if you pick Add them, paused") }
             SRow(label: "claude.ai") { rowValue("Chats and Projects") }
         }
     }

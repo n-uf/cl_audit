@@ -134,7 +134,7 @@ final class ExportRunner: ObservableObject {
             t.windowLeftOut = t.windowLeftOut || x.windowLeftOut
             for (k, v) in x.keyKinds { t.keyKinds[k, default: 0] += v }
             t.setup.add(x.setup)
-            t.config.add(x.config)
+            t.config.add(x.config); t.tasksWithPrompt += x.tasksWithPrompt
         }
         return t
     }
@@ -264,7 +264,7 @@ enum ExportWords {
             out.append("\(w) \(sp.sensitive.total + sp.held.total == 1 ? "needs" : "need") the encrypted disk image: left out of a zip")
         }
         if setup, image, sp.envBlanked {
-            out.append("settings.json comes with its env values blank (names kept): backups don't keep them; export the profile as it is now to carry them")
+            out.append("settings.json comes with its env values blank (the names stay): backups don't keep those values. Export the profile as it is now to carry them.")
         }
         if !sp.linked.isEmpty {
             let shown = sp.linked.prefix(3).map { "\($0.label) points to \(tilde($0.target))" }.joined(separator: ", ")
@@ -294,11 +294,17 @@ enum ExportWords {
         guard let p = pv else { return ("counting…", nil) }
         if p.windowLeftOut { return ("left out: the window is open", nil) }
         let c = p.config
-        if !c.present { return (c.leftOut.map { "claude_desktop_config.json left out (\($0))" } ?? "none", nil) }
-        let servers = c.servers.isEmpty ? "no MCP servers" : n(c.servers.count, "MCP server", "MCP servers") + " (" + c.servers.prefix(4).joined(separator: ", ") + (c.servers.count > 4 ? ", …" : "") + ")"
-        let what = "\(servers) and the window's other settings"
-        if image { return ("\(what): in the encrypted disk image", fingerprintNote) }
-        return ("left out of a zip", "\(what) can hold tokens no scan recognises (env values, headers): they need the encrypted disk image, so a zip leaves them out")
+        if !c.present {
+            if let why = c.leftOut { return ("claude_desktop_config.json left out (\(why))", nil) }
+            return (c.fromBackup ? "none: backups don't keep the window's MCP settings; export the profile as it is now to carry them" : "none", nil)
+        }
+        let names = c.servers.prefix(4).joined(separator: ", ") + (c.servers.count > 4 ? ", …" : "")
+        if image {
+            let servers = c.servers.isEmpty ? "no MCP servers" : n(c.servers.count, "MCP server", "MCP servers") + " (" + names + ")"
+            return ("\(servers) and the window's other settings: in the encrypted disk image", fingerprintNote)
+        }
+        let which = c.servers.isEmpty ? "the window's settings" : "\(n(c.servers.count, "server", "servers")): \(names), and the window's other settings"
+        return ("left out of a zip", "A zip leaves out the window's MCP settings (\(which)): they can hold keys no scan can find. Choose the encrypted disk image to carry them.")
     }
 
     /// The image's MCP settings are scrubbed like the window's other files.
@@ -307,8 +313,11 @@ enum ExportWords {
     /// The Claude window row's line about the scheduled tasks: they travel with their prompts and come back paused.
     static func tasksNote(_ pv: SessionsExport.Preview?) -> String? {
         guard let p = pv, !p.windowLeftOut, p.tasks > 0 else { return nil }
-        let prompts = p.setup.taskPrompts
-        return "\(n(p.tasks, "scheduled task", "scheduled tasks")) with \(prompts == p.tasks ? (p.tasks == 1 ? "its prompt" : "their prompts") : n(prompts, "prompt", "prompts")): an import adds them only if you pick Add them, and paused"
+        let with = min(p.tasksWithPrompt, p.tasks), without = p.tasks - with
+        let tasks = n(p.tasks, "scheduled task", "scheduled tasks")
+        let head = without == 0 ? "\(tasks) with \(p.tasks == 1 ? "its prompt" : "their prompts")"
+            : "\(tasks), \(with) with \(with == 1 ? "its" : "their") prompt (\(without == 1 ? "one" : "those") without it can't be imported)"
+        return head + ". An import adds them only if you pick Add them, and they come paused."
     }
 
     /// "5 sessions and 1 skill hold keys: 3 GitHub tokens, 1 private key": the sessions and the setup units (a skill, CLAUDE.md …) together.
@@ -442,7 +451,7 @@ struct ExportPage: View {
             }
             SRow(label: "Claude window", stacked: true) {
                 VStack(alignment: .leading, spacing: 4) {
-                    value(pv.map { $0.windowLeftOut ? "left out: the window is open" : "\(n($0.entries, "Code-tab entry", "Code-tab entries")), \(n($0.tasks, "task", "tasks"))" } ?? "counting…")
+                    value(pv.map { $0.windowLeftOut ? "left out: the window is open" : "\(n($0.entries, "Code-tab entry", "Code-tab entries")), \(n($0.tasks, "scheduled task", "scheduled tasks"))" } ?? "counting…")
                     if pv?.windowLeftOut == true, runner.source == .now {
                         Text("\(name)'s window is open: close it first, or the Code-tab list and sidebar records are left out.").font(.system(size: 10.5)).foregroundStyle(face.caution)
                             .fixedSize(horizontal: false, vertical: true)

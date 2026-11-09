@@ -70,7 +70,7 @@ struct SetupRow: View {
     }
 
     /// A plain backup's settings.json: what its env values are.
-    static let envBlankedWords = "Env values aren't kept in backups: this settings.json has its env names with blank values. They travel only in the encrypted export."
+    static let envBlankedWords = "Backups don't keep the values in settings.json's env section: this one has the names with blank values. The values travel only in an encrypted export of the profile as it is now."
 
     private static func settingsStatus(_ sp: SessionsRestore.SetupPlan) -> SessionsRestore.SetupPlan.Status? {
         sp.entries.first { $0.unit == Setup.Unit(kind: .settings, name: "settings.json") }?.status
