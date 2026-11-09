@@ -80,6 +80,8 @@ if [ $push = 1 ]; then
   # The same app as a disk image (releases/latest/download/cl_audit.dmg): the app and an Applications shortcut to drag
   # it onto. The app inside must be the zip's app, checked by its code directory hash.
   stage="$(mktemp -d)"
+  # whatever fails from here on, no image stays mounted and no temp folder stays behind
+  trap 'hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"' EXIT
   ditto build/cl_audit.app "$stage/cl_audit.app"
   ln -s /Applications "$stage/Applications"
   hdiutil create -quiet -volname "cl_audit $next" -srcfolder "$stage" -fs HFS+ -format UDZO -imagekey zlib-level=9 dist/cl_audit.dmg
@@ -88,7 +90,9 @@ if [ $push = 1 ]; then
   hdiutil attach -quiet -nobrowse -readonly -noautoopen -mountpoint "$stage/mnt" dist/cl_audit.dmg
   zip_cd="$(codesign -dvvv build/cl_audit.app 2>&1 | grep '^CDHash=' || true)"
   dmg_cd="$(codesign -dvvv "$stage/mnt/cl_audit.app" 2>&1 | grep '^CDHash=' || true)"
-  hdiutil detach -quiet "$stage/mnt"
+  # the same hash says the same signature; this says the files on the image still match it
+  codesign --verify --deep --strict "$stage/mnt/cl_audit.app" || { echo "the disk image's app fails its signature check" >&2; exit 1; }
+  hdiutil detach -quiet "$stage/mnt" || hdiutil detach -quiet -force "$stage/mnt"
   rm -rf "$stage"
   [ -n "$zip_cd" ] && [ "$zip_cd" = "$dmg_cd" ] || { echo "the disk image's app differs from the zip's ($zip_cd vs $dmg_cd)" >&2; exit 1; }
   zip_sha="$(shasum -a 256 dist/cl_audit.zip | awk '{print $1}')"
