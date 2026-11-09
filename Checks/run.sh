@@ -1,16 +1,18 @@
 #!/usr/bin/env bash
 # The one entry point for cl_audit's check suites.
 #
-#   Checks/run.sh [signin|backup|firstrun|retention|render|quick-chat|scan|all] [--volume] [--no-build]
+#   Checks/run.sh [signin|backup|firstrun|retention|setup|render|quick-chat|scan|all] [--volume] [--no-build]
 #
 #   signin    the model, rules and page logic checks (sign-in, switch, backups, export and import, crimson faces ...)
 #   backup    the Sessions backup, restore, export and import checks (hostile zips, an encrypted image, a second volume)
 #   firstrun  the first-run page and the Claude lookup
 #   retention which transcripts Claude Code's clean-up deletes (window sessions, release markers, managed settings), Restore/Import's Would be deleted
-#   render    pictures of the pages (switch, backups, restore, export, import, first run) into Checks/.work/render
+#   setup     Claude Code's setup (CLAUDE.md, skills, agents, commands, settings.json with its scripts, the plugin list) in Export, Import, Backup
+#             and Restore: the scan, links, hostile files, never over what is here, Undo, the pages' rows
+#   render    pictures of the pages (switch, backups, restore, export, import, setup row, first run) into Checks/.work/render
 #   quick-chat  the quick chat's own checks (Checks/quick-chat/run.sh, run here under the build lock)
 #   scan      the app's own SecretScan over every file in Checks/ (zero hits expected)
-#   all       signin, backup, firstrun, retention, render, quick-chat, scan (the default)
+#   all       signin, backup, firstrun, retention, setup, render, quick-chat, scan (the default)
 #
 #   --volume    backup: mount a small HFS+ disk image and run the cross-volume checks on it (it is unmounted again)
 #   --no-build  run the binaries built by the last run
@@ -34,15 +36,15 @@ LOCK=/private/tmp/cl_audit-build.lock
 suites=(); volume=0; build=1
 for a in "$@"; do
   case "$a" in
-    signin|backup|firstrun|retention|render|quick-chat|scan) suites+=("$a") ;;
-    all) suites+=(signin backup firstrun retention render quick-chat scan) ;;
+    signin|backup|firstrun|retention|setup|render|quick-chat|scan) suites+=("$a") ;;
+    all) suites+=(signin backup firstrun retention setup render quick-chat scan) ;;
     --volume) volume=1 ;;
     --no-build) build=0 ;;
-    -h|--help) sed -n '2,25p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,27p' "$0"; exit 0 ;;
     *) echo "unknown argument: $a" >&2; exit 64 ;;
   esac
 done
-[[ ${#suites[@]} -gt 0 ]] || suites=(signin backup firstrun retention render quick-chat scan)
+[[ ${#suites[@]} -gt 0 ]] || suites=(signin backup firstrun retention setup render quick-chat scan)
 
 # the app's sources without its own main.swift, plus the widget views the app compiles in
 srcs=()
@@ -76,7 +78,7 @@ fresh_home() {
 # The checks' preference suites land in the real ~/Library/Preferences whatever CFFIXED_USER_HOME says (cfprefsd writes them,
 # sometimes a moment after the run ends). Only these names are ever removed, and only when no run of ours is alive:
 #  - cl-audit-{signin,hide,switch,plan}-test-<pid>.plist, when that pid is dead (the suites' own domains, pid in the name);
-#  - <binary name>.plist for the binaries this script builds (cl_audit-checks-signin, -backup, -firstrun, -retention, -render-pages,
+#  - <binary name>.plist for the binaries this script builds (cl_audit-checks-signin, -backup, -firstrun, -retention, -setup, -render-pages,
 #    -render-firstrun, -scan): a process's name is its preference domain, and these names belong to no other program;
 #  - cl_audit-backwatch-test.plist and cl_audit-reader-switch-test.plist (named by the suites' own code, no pid), only when
 #    they were not there before this run.
@@ -158,11 +160,20 @@ run_retention() {
   run_binary "$dir" "$dir/cl_audit-checks-retention"
 }
 
+# the setup suite: Claude Code's setup in Export, Import, Backup and Restore; the hostile-zip maker is read next to its home
+run_setup() {
+  local dir="$WORK/setup"; mkdir -p "$dir"
+  compile "$dir/cl_audit-checks-setup" "$HERE/setup/main.swift" || return 1
+  cp "$HERE/setup/mkhostile.py" "$dir/mkhostile.py"
+  run_binary "$dir" "$dir/cl_audit-checks-setup"
+}
+
 run_render() {
   local status=0 dir
   dir="$WORK/render/pages"; mkdir -p "$dir"
   rm -rf "$dir/raw" "$dir/out"; mkdir -p "$dir/raw" "$dir/out"
-  if compile "$dir/cl_audit-checks-render-pages" "$HERE/render/pages/main.swift"; then
+  # (-D CL_AUDIT_TESTING: the render opens the setup row's list from the start, a seam only a test build has)
+  if compile "$dir/cl_audit-checks-render-pages" "$HERE/render/pages/main.swift" -D CL_AUDIT_TESTING; then
     run_binary "$dir" "$dir/cl_audit-checks-render-pages" "$dir/raw" || status=$?
     # the pages are drawn in tall windows: crop the empty bottom (needs Pillow; without it the raw pictures stay)
     python3 -I -B "$HERE/render/trim.py" "$dir/raw" "$dir/out" >/dev/null 2>&1 || true

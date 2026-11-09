@@ -1,0 +1,543 @@
+// Setup checks for cl_audit: Claude Code's setup (CLAUDE.md and the .md files it includes, skills, agents, commands, output styles,
+// keybindings, settings.json with the scripts its hooks point to, the plugin list) travels with Export, Import, Backup and Restore.
+// Sources/SessionsSetup.swift (what is carried and how it is found), SessionsRestoreSetup.swift (the plan and the rules of an add),
+// the Export, Import and Restore pages' setup rows, and the format version 2 that carries it.
+//
+// Part 1 works on real files: the scan (links, includes, build leftovers, sign-in names), an export to a zip and to an encrypted
+// image, hostile files made from the good zip (mkhostile.py), an import and a restore into folders that already hold some of it,
+// Undo. Part 2 drives the pages' runners (the Export page's row and menu, the Found line, the Import and Restore rows).
+// Runs only with CFFIXED_USER_HOME = .../Checks/.work/setup/home (Checks/run.sh sets and guards it). Fake data only: example.com
+// addresses, obviously fake keys (cut by an empty interpolation so no whole key is committed), made-up folders. Nothing here opens an
+// app, the Dock or Terminal; the encrypted image is made and opened with hdiutil in the throwaway folder.
+
+import AppKit
+import Foundation
+
+setbuf(stdout, nil)
+let home = NSHomeDirectory()
+guard home.hasSuffix("/Checks/.work/setup/home") else { print("refusing: HOME is \(home)"); exit(2) }
+BackupPrefs.store = MemoryPrefs()          // never the real ~/Library/Preferences
+let fm = FileManager.default
+var passed = 0, failed = 0
+func check(_ ok: Bool, _ what: String, line: Int = #line) {
+    if ok { passed += 1 } else { failed += 1; print("FAIL (line \(line)): \(what)") }
+}
+
+func sid(_ n: Int) -> String { "00000000-0000-4000-8000-" + String(format: "%012d", n) }
+func write(_ path: String, _ text: String) {
+    try? fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+    fm.createFile(atPath: path, contents: Data(text.utf8))
+}
+func read(_ path: String) -> String? { fm.contents(atPath: path).map { String(decoding: $0, as: UTF8.self) } }
+func files(_ dir: String) -> [String] {   // relative paths of regular files
+    var out: [String] = []
+    if let e = fm.enumerator(atPath: dir) { for case let r as String in e { var isDir: ObjCBool = false; if fm.fileExists(atPath: dir + "/" + r, isDirectory: &isDir), !isDir.boolValue { out.append(r) } } }
+    return out.sorted()
+}
+func names(_ dir: String) -> [String] { (try? fm.contentsOfDirectory(atPath: dir)) ?? [] }
+/// Every file's path and bytes under a folder, as one string: "unchanged" means equal.
+func tree(_ dir: String) -> String {
+    files(dir).map { r in "\(r)=\(SwitchEngine.sha(fm.contents(atPath: dir + "/" + r) ?? Data()))" }.joined(separator: "\n")
+}
+func eSh(_ exe: String, _ args: [String], stdin: Data? = nil) -> (status: Int32, out: String, err: String) {
+    guard let r = Tool.run(exe, args, stdin: stdin) else { return (-1, "", "no start") }
+    return (r.status, r.out, r.err)
+}
+func resetRestores() { try? fm.removeItem(at: SessionsRestore.root); try? fm.removeItem(at: SwitchEngine.root) }
+func mode(_ path: String) -> Int { var s = stat(); lstat(path, &s); return Int(s.st_mode & 0o7777) }
+let ghKey = "gh\("")p_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0000"
+
+// ================================================================== part 1: the files
+MainActor.assumeIsolated {
+    resetRestores(); SessionsRestore.runningSessions = { [] }
+    let e2 = home + "/e2"
+    try? fm.removeItem(atPath: e2)
+    try! fm.createDirectory(atPath: e2, withIntermediateDirectories: true)
+    let ecode = e2 + "/.claude-e2", out = e2 + "/out", elsewhere = e2 + "/elsewhere"
+    let eplace = URL(fileURLWithPath: e2 + "/place")
+    try! fm.createDirectory(atPath: out, withIntermediateDirectories: true)
+    BackupPrefs.shared.place = eplace.path
+
+    func w(_ c: String, _ rel: String, _ text: String, exec: Bool = false) {
+        write("\(c)/\(rel)", text)
+        if exec { chmod("\(c)/\(rel)", 0o755) }
+    }
+    /// A made-up Claude Code folder with a setup in it (fake keys, example.com addresses only).
+    func plant(_ c: String, links: Bool) {
+        try? fm.removeItem(atPath: c)
+        w(c, "CLAUDE.md", "# rules\nmail me@example.com anytime\n@docs/style.md\nsee @~/e2/out-of-folder/outside.md and @../escape.md\n```\n@docs/in-fence.md\n```\nand `@docs/inline.md` too\n")
+        w(c, "docs/style.md", "style rules\n @deep.md\n"); w(c, "docs/deep.md", "deep rules\n")
+        w(c, "docs/in-fence.md", "not included"); w(c, "docs/inline.md", "not included")
+        w(c, "skills/alpha/SKILL.md", "---\nname: alpha\n---\nRun refs/notes.md then run.sh\n"); w(c, "skills/alpha/run.sh", "#!/bin/sh\necho alpha\n", exec: true)
+        w(c, "skills/alpha/refs/notes.md", "notes"); w(c, "skills/alpha/auth.py", "print('auth helper')\n")
+        w(c, "skills/alpha/token-counter.md", "counts tokens"); w(c, "skills/alpha/credentials-guide.md", "how to store credentials")
+        w(c, "skills/alpha/.git/config", "[remote \"origin\"]\n url = https://user:token@example.com/x.git\n"); w(c, "skills/alpha/__pycache__/a.pyc", "x")
+        w(c, "skills/alpha/.DS_Store", "x"); w(c, "skills/alpha/.credentials.json", "{\"t\":\"x\"}")
+        w(c, "skills/keyed/SKILL.md", "keyed skill"); w(c, "skills/keyed/run.py", "TOKEN = '\(ghKey)'\n")
+        w(c, "agents/helper.md", "helper agent"); w(c, "agents/team/two.md", "team two"); w(c, "commands/ship.md", "ship it")
+        w(c, "output-styles/terse.md", "be terse"); w(c, "keybindings.json", "{\"bindings\":[]}")
+        w(c, "settings.json", "{\"env\":{\"E2_FAKE_ENV\":\"not-a-real-secret\"},\"hooks\":{\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"command\",\"command\":\"\(c)/bin/guard.sh --strict\"}]}],\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\(e2)/bin/outside.sh\"},{\"type\":\"command\",\"command\":\"/opt/none-e2/gone.sh\"}]}]},\"statusLine\":{\"type\":\"command\",\"command\":\"bash $HOME/e2/.claude-e2/bin/status.sh\"},\"permissions\":{\"allow\":[\"Bash(ls:*)\"]}}")
+        w(c, "bin/guard.sh", "#!/bin/sh\nexit 0\n", exec: true); w(c, "bin/status.sh", "#!/bin/sh\necho ok\n", exec: true); w(c, "bin/unused.sh", "#!/bin/sh\n", exec: true)
+        w(c, "plugins/installed_plugins.json", "{\"plugins\":{\"a@m\":{},\"b@m\":{}}}"); w(c, "plugins/known_marketplaces.json", "{\"m\":{\"url\":\"https://user:token@example.com/m.git\"}}")
+        w(c, "plugins/cache/x/y.txt", "cache"); w(c, "settings.local.json", "{\"local\":true}"); w(c, ".claude.json", "{\"oauthAccount\":{}}")
+        w(c, "projects/-p/\(sid(901)).jsonl", "{\"cwd\":\"/x\",\"text\":\"token \(ghKey)\"}\n"); w(c, "projects/-p/\(sid(902)).jsonl", "{\"cwd\":\"/x\",\"text\":\"also \(ghKey)\"}\n")
+        for f in files("\(c)/projects") { try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3 * 86400)], ofItemAtPath: "\(c)/projects/\(f)") }
+        if links {
+            try? fm.createDirectory(atPath: elsewhere + "/skills/foo", withIntermediateDirectories: true); write(elsewhere + "/skills/foo/SKILL.md", "foreign")
+            write(elsewhere + "/refs/r.md", "r"); write(elsewhere + "/agents/x.md", "x")
+            symlink(elsewhere + "/skills/foo", c + "/skills/linkedskill")
+            w(c, "skills/haslink/SKILL.md", "has a link inside"); symlink(elsewhere + "/refs", c + "/skills/haslink/ref")
+            symlink(elsewhere + "/agents/x.md", c + "/agents/linked.md")
+        }
+    }
+    write(e2 + "/out-of-folder/outside.md", "outside include"); write(e2 + "/bin/outside.sh", "#!/bin/sh\n"); chmod(e2 + "/bin/outside.sh", 0o755)
+    plant(ecode, links: true)
+
+    // ---- a scheduled task's sessions are known by the real key, scheduledTaskId, exactly
+    let tn = ["t1": "Nightly digest"]
+    check(SessionsRestore.taskOrigin(Data(#"{"scheduledTaskId":"t1","title":"x"}"#.utf8), names: tn) == "Nightly digest" && SessionsRestore.taskOrigin(Data(#"{"scheduledTaskId":"t9"}"#.utf8), names: tn) == "t9"
+          && SessionsRestore.taskOrigin(Data(#"{"myScheduledTaskName":"Guess","scheduledTask":"t1"}"#.utf8), names: tn) == nil && SessionsRestore.taskOrigin(Data(#"{"scheduledTaskId":""}"#.utf8), names: tn) == nil,
+          "scheduled tasks: an entry's scheduledTaskId is looked up in the task file (displayName), else shown as the id; a key that merely looks like it is not one")
+
+    // ---- the scan
+    let found = Setup.scan(codeDir: ecode, home: home)
+    let rels = Set(found.files.map(\.rel))
+    let zipRels: Set<String> = ["CLAUDE.md", "docs/style.md", "docs/deep.md", "skills/alpha/SKILL.md", "skills/alpha/run.sh", "skills/alpha/refs/notes.md", "skills/alpha/auth.py",
+                                "skills/alpha/token-counter.md", "skills/alpha/credentials-guide.md", "skills/keyed/SKILL.md", "skills/keyed/run.py", "agents/helper.md", "agents/team/two.md",
+                                "commands/ship.md", "output-styles/terse.md", "keybindings.json", "plugins/installed_plugins.json"]
+    let allRels = zipRels.union(["settings.json", "bin/guard.sh", "bin/status.sh", "plugins/known_marketplaces.json"])
+    check(rels == allRels, "scan: CLAUDE.md and the .md files it includes (also from an included file), skills with their scripts, agents, commands, output styles, keybindings, settings.json, the scripts it points to and the plugin list: \(rels.symmetricDifference(allRels).sorted())")
+    check(!rels.contains("docs/in-fence.md") && !rels.contains("docs/inline.md") && !rels.contains("bin/unused.sh") && !rels.contains("settings.local.json") && !rels.contains(".claude.json") && !rels.contains { $0.hasPrefix("plugins/cache") } && !rels.contains { $0.hasPrefix("projects") },
+          "scan: an @ in a code fence or code span, a script nothing points to, settings.local.json, .claude.json, plugin caches and the transcripts are never carried")
+    check(rels.contains("skills/alpha/auth.py") && rels.contains("skills/alpha/token-counter.md") && rels.contains("skills/alpha/credentials-guide.md") && found.leftOutNames == ["skills/alpha/.credentials.json"],
+          "scan: auth.py, token-counter.md and credentials-guide.md are legitimate skill files; only the exact excluded name (.credentials.json) is left out: \(found.leftOutNames)")
+    check(found.leftOutBuild >= 3 && !rels.contains { $0.contains(".git/") || $0.contains("__pycache__") || $0.hasSuffix(".DS_Store") }, "scan: .git, __pycache__ and .DS_Store inside a skill are left out and counted (\(found.leftOutBuild))")
+    check(found.linked.map(\.label).sorted() == ["agent linked.md", "skill haslink (it holds a link)", "skill linkedskill"] && found.linked.allSatisfy { $0.target.hasPrefix(elsewhere) },
+          "scan: a linked skill, a skill that holds a link anywhere (left out whole) and a linked agent are left out and listed with where they point: \(found.linked.map(\.label))")
+    check(!rels.contains { $0.hasPrefix("skills/haslink") || $0.hasPrefix("skills/linkedskill") } && !rels.contains("agents/linked.md"), "scan: nothing of them is carried, nothing was followed")
+    check(found.outside.contains { $0.contains("@~/e2/out-of-folder/outside.md") && $0.contains("lives outside") } && found.outside.contains { $0.contains("@../escape.md") } && found.outside.contains { $0.contains("hook script outside") && $0.contains("outside.sh") }
+          && !found.outside.contains { $0.contains("gone.sh") }, "scan: an include and a hook script outside the folder are listed, not carried (a path that isn't there isn't listed): \(found.outside)")
+    check(found.files.first { $0.rel == "skills/alpha/run.sh" }?.exec == true && found.files.first { $0.rel == "agents/helper.md" }?.exec == false && found.files.first { $0.rel == "bin/guard.sh" }?.exec == true, "scan: the owner-execute bit is read")
+    // links in other places: CLAUDE.md, skills/, an included file
+    let c2 = e2 + "/.claude-e2b", c3 = e2 + "/.claude-e2c"
+    try? fm.createDirectory(atPath: c2, withIntermediateDirectories: true); write(elsewhere + "/CLAUDE.md", "foreign claude"); symlink(elsewhere + "/CLAUDE.md", c2 + "/CLAUDE.md")
+    try? fm.createDirectory(atPath: elsewhere + "/skillsdir/s1", withIntermediateDirectories: true); write(elsewhere + "/skillsdir/s1/SKILL.md", "x"); symlink(elsewhere + "/skillsdir", c2 + "/skills")
+    w(c3, "CLAUDE.md", "@linked-inc.md\n"); symlink(elsewhere + "/CLAUDE.md", c3 + "/linked-inc.md")
+    let f2 = Setup.scan(codeDir: c2, home: home), f3 = Setup.scan(codeDir: c3, home: home)
+    check(f2.files.isEmpty && f2.linked.map(\.label).sorted() == ["CLAUDE.md", "skills"] && f3.files.map(\.rel) == ["CLAUDE.md"] && f3.linked.first?.label == "included file linked-inc.md",
+          "scan: a linked CLAUDE.md, a linked skills/ and a linked included file are left out and listed, never followed: \(f2.linked.map(\.label)) \(f3.linked.map(\.label))")
+    check(Setup.pathProblem(["skills", "x", "settings.json"]) != nil && Setup.pathProblem(["settings.json"]) == nil && Setup.pathProblem(["settings.local.json"]) != nil && Setup.pathProblem([".claude.json"]) != nil
+          && Setup.pathProblem(["skills", "a", "auth.py"]) == nil && Setup.pathProblem(["skills", "a", "credentials-guide.md"]) == nil && Setup.pathProblem(["plugins", "cache", "x"]) != nil
+          && Setup.pathProblem(["projects", "a.md"]) != nil && Setup.pathProblem(["skills", "x.md"]) != nil && Setup.pathProblem(["skills", "a", ".git", "c"]) != nil,
+          "names: only the exact excluded names and places are refused; sign-in-like words in a skill file's name are fine")
+    // a name that folds to a place that is never carried (or a place that is) is the same place on this Mac's disks
+    check(Setup.pathProblem(["Skills", "a", "x.md"]) != nil && Setup.pathProblem(["PLUGINS", "cache", "x.md"]) != nil && Setup.pathProblem(["Projects", "x.md"]) != nil && Setup.pathProblem(["Agents", "x.md"]) != nil
+          && Setup.pathProblem(["skills", "a", "SKILL.md"]) == nil && Setup.pathProblem(["Notes.md"]) == nil,
+          "names: Skills/, PLUGINS/, Projects/ and Agents/ are those places under another case, refused; a skill file's own capitals are fine")
+
+    // ---- the preview (what the Export page says)
+    let part = SessionsExport.Part(profile: "e2", name: "E2", source: SessionsBackup.Source(profile: "e2", dataDir: "", codeDir: ecode), emails: [])
+    let pv = SessionsExport.preview(part)!
+    check(pv.setup.units.count == 15 && pv.setup.keyedUnits == [Setup.Unit(kind: .skill, name: "keyed")] && pv.keyed == 3 && pv.keyedSessions == 2 && pv.setup.extra.hooks == 3 && pv.setup.extra.statusLine && pv.setup.extra.plugins == 2,
+          "preview: \(pv.setup.units.count) units, 1 skill with a key, 2 sessions with keys (3 in all), 3 hooks, a status line, 2 plugins")
+    let zipWords = ExportWords.setupWords(pv, setup: true, image: false), imgWords = ExportWords.setupWords(pv, setup: true, image: true)
+    check(zipWords == "CLAUDE.md with 2 included files, 2 skills, 2 agents, 1 command, 1 output style, keybindings, the plugin list", "export row for a zip: \(zipWords)")
+    check(imgWords == "CLAUDE.md with 2 included files, settings.json with 3 hooks and a status line, 2 scripts, 2 skills, 2 agents, 1 command, 1 output style, keybindings, 2 plugins to reinstall, the plugin marketplaces", "export row for an image: \(imgWords)")
+    check(ExportWords.setupWords(pv, setup: false, image: true) == "left out" && ExportWords.setupNotes(pv, setup: true, image: false).first == "settings.json, 2 hook scripts and the plugin marketplaces need the encrypted disk image: left out of a zip"
+          && ExportWords.setupNotes(pv, setup: true, image: true).allSatisfy { !$0.contains("need the encrypted") }, "export row: the menu's left out, and a zip says what only the image carries")
+    check(ExportWords.foundWords(pv).hasPrefix("2 sessions and 1 skill hold keys: 3 GitHub tokens"), "Found line counts the skill with the sessions: \(ExportWords.foundWords(pv))")
+    check(ExportWords.setupNotes(pv, setup: true, image: true).contains { $0.contains("3 links left out, never followed") && $0.contains("linkedskill points to") }, "export row: the linked skills are listed with where they point (this page only)")
+
+    // ---- Export: a zip
+    let zipURL = URL(fileURLWithPath: out + "/E2.zip")
+    let zo = try? SessionsExport.run(SessionsExport.Job(parts: [part], keys: .leaveOut, destination: zipURL, rootName: "e2-export", place: eplace))
+    check(zo != nil, "export: a zip with setup is made (an address in CLAUDE.md doesn't stop it)")
+    guard let zo else { print("(export failed; stopping part 1)"); return }
+    let op = try! SessionsImport.open(zipURL, password: nil, place: eplace)
+    let m1 = op.parts[0].manifest
+    let setupItems = m1.items.filter { $0.role == .setup }
+    check(Set(setupItems.map { String($0.path.dropFirst(6)) }) == zipRels.subtracting(["skills/keyed/SKILL.md", "skills/keyed/run.py"]), "export (zip): the plain setup is in; the skill with a key, settings.json, the scripts and the marketplaces are not: \(Set(setupItems.map { String($0.path.dropFirst(6)) }).symmetricDifference(zipRels).sorted())")
+    check(m1.version == 2 && op.export.version == 2 && setupItems.allSatisfy { $0.sha?.count == 64 && $0.original == $0.path }, "export: manifest version 2, a SHA-256 for every setup file, no absolute path")
+    check(zo.setupKeysLeftOut == 1 && Set(zo.setupSensitiveLeftOut.map(\.kind)) == [.settings, .script, .marketplaces] && zo.setupSensitiveLeftOut.count == 4, "export (zip): 1 skill left out for its key; settings.json, 2 scripts and the marketplaces left out for the zip: \(zo.setupSensitiveLeftOut.map(\.name))")
+    check(setupItems.first { $0.path == "setup/skills/alpha/run.sh" }?.exec == true && setupItems.filter { $0.exec == true }.map(\.path) == ["setup/skills/alpha/run.sh"], "export: the execute flag is recorded for the skill's script, for nothing else")
+    var leaked: [String] = []
+    for f in files(op.tree.path) { let t = read(op.tree.path + "/" + f) ?? ""; if t.contains(elsewhere) || t.contains(home) || t.contains(ghKey) { leaked.append(f) } }
+    check(leaked.isEmpty, "export: no link target, no absolute path of this Mac, no key in the file (found in: \(leaked))")
+    check(read(op.tree.path + "/profiles/p1/setup/CLAUDE.md")?.contains("me@example.com") == true && read(op.tree.path + "/profiles/p1/setup/skills/alpha/auth.py") == "print('auth helper')\n", "export: setup is carried as it is: the address in CLAUDE.md stays, no rewriting")
+    check(!files(op.tree.path).contains { $0.contains(".git/") || $0.contains("__pycache__") || $0.contains(".DS_Store") || $0.contains(".credentials") }, "export: .git, __pycache__, .DS_Store and a sign-in name are not in the file")
+    check(zo.sessions == 0 && zo.keysLeftOut == 2, "export: the 2 sessions with keys are left out as before")
+    check(m1.setupLeftOut?.contains("skill linkedskill") == true && !(m1.setupLeftOut ?? []).contains { $0.contains(elsewhere) }, "export: the links are named in the manifest, not where they point")
+
+    // ---- Export: an encrypted image with keys kept
+    let dmgURL = URL(fileURLWithPath: out + "/E2.dmg"), pw = "e2-test-password-not-secret"
+    let io = try? SessionsExport.run(SessionsExport.Job(parts: [part], keys: .keep, password: pw, destination: dmgURL, rootName: "e2-image", place: eplace))
+    check(io != nil && io!.setupKeysKept == 1 && io!.setupSensitiveLeftOut.isEmpty && io!.keysKept == 2, "export (image): the skill with a key is kept, nothing left out for sensitivity, 2 sessions kept")
+    let oi = try! SessionsImport.open(dmgURL, password: pw, place: eplace)
+    let mi = oi.parts[0].manifest.items.filter { $0.role == .setup }
+    check(Set(mi.map { String($0.path.dropFirst(6)) }) == allRels, "export (image): everything is carried, settings.json, the scripts and the marketplaces too")
+    check(mi.filter { $0.exec == true }.map(\.path).sorted() == ["setup/bin/guard.sh", "setup/bin/status.sh", "setup/skills/alpha/run.sh"], "export (image): the execute flag of the scripts settings.json points to is carried")
+    // (the leak check for everything that is not setup still runs: only profiles/pN/setup/ is exempt)
+    check(read(oi.tree.path + "/export.json")?.contains("me@example.com") == false, "export: the structure files hold no address")
+
+    // ---- the leak check exempts the setup's own folder and nothing else
+    do {
+        let lroot = URL(fileURLWithPath: e2 + "/leakroot")
+        try? fm.removeItem(at: lroot)
+        write(lroot.path + "/profiles/p1/setup/CLAUDE.md", "mail ultra-1@example.com and 00000000-0000-4000-8000-000000000099")
+        let known = ["00000000-0000-4000-8000-000000000099"], mails = ["ultra-1@example.com"]
+        check(SessionsExport.leak(in: lroot, ids: Set(known), emails: mails) == nil, "leak: a known address and id inside profiles/p1/setup/ are the operator's own words: not looked at")
+        write(lroot.path + "/profiles/p1/window/setup/x.json", "{\"t\":\"ultra-1@example.com\"}")
+        check(SessionsExport.leak(in: lroot, ids: Set(known), emails: mails)?.contains("address") == true, "leak: a folder called setup anywhere else (under window/) is looked at like any file")
+        try? fm.removeItem(atPath: lroot.path + "/profiles/p1/window")
+        write(lroot.path + "/profiles/p1x/setup/x.md", "ultra-1@example.com")
+        check(SessionsExport.leak(in: lroot, ids: Set(known), emails: mails)?.contains("address") == true, "leak: only profiles/pN/setup/ is exempt, not a look-alike folder")
+        try? fm.removeItem(atPath: lroot.path + "/profiles/p1x")
+        write(lroot.path + "/profiles/p1/records/setup.json", "{\"t\":\"ultra-1@example.com\"}")
+        check(SessionsExport.leak(in: lroot, ids: Set(known), emails: mails)?.contains("address") == true, "leak: a record whose name has setup in it is looked at")
+        try? fm.removeItem(at: lroot)
+    }
+
+    // ---- Import (zip): left out by default
+    func target(_ name: String) -> (SessionsRestore.Target, String) { let d = e2 + "/\(name)"; try? fm.removeItem(atPath: d); try! fm.createDirectory(atPath: d, withIntermediateDirectories: true); return (SessionsRestore.Target(profile: name, dataDir: "", codeDir: d, inUse: nil), d) }
+    let (t1, d1) = target("t1")
+    let st1 = try! SessionsImport.materialize(op, part: op.parts[0], target: "t1")
+    let p0 = SessionsRestore.plan(t1, st1.backup)
+    check(p0.refusal == nil && p0.setup.present && p0.setup.leftOut && p0.setupPieces.isEmpty && p0.setup.entries.count == 10 && p0.count == 0, "import: the setup is left out by default (\(p0.setup.entries.count) units listed, nothing to write): \(p0.refusal ?? "ok")")
+    check(files(d1).isEmpty && (try? SessionsRestore.run(t1, st1.backup, windowClosed: { true })) == nil, "import: and a run without 'Add them' writes nothing")
+    let p1 = SessionsRestore.plan(t1, st1.backup, addSetup: true)
+    check(p1.setupPieces.count == 17 - 2 + 0 && p1.setup.newEntries.count == 10 && p1.setup.execNames == ["skills/alpha/run.sh"], "import: 'Add them': \(p1.setupPieces.count) files in 10 new units, 1 script made executable: \(p1.setup.execNames)")
+    let b1 = try! SessionsImport.commit(st1)
+    let r1 = try! SessionsRestore.run(t1, b1, addSetup: true, windowClosed: { true })
+    var same = true
+    for rel in zipRels.subtracting(["skills/keyed/SKILL.md", "skills/keyed/run.py"]) where fm.contents(atPath: "\(d1)/\(rel)") != fm.contents(atPath: "\(ecode)/\(rel)") { same = false; print("   differs: \(rel)") }
+    check(r1.finished != nil && same && files(d1).count == 15, "import: Add them wrote the 15 files of the 10 units, byte for byte: \(files(d1).count)")
+    check(mode("\(d1)/skills/alpha/run.sh") == 0o700 && mode("\(d1)/skills/alpha/SKILL.md") == 0o600 && mode("\(d1)/agents/helper.md") == 0o600 && mode("\(d1)/CLAUDE.md") == 0o600 && mode("\(d1)/skills") == 0o700 && mode("\(d1)/skills/alpha") == 0o700,
+          "import: files 0600, folders 0700, only the skill's script 0700 (owner only, never group or other, never setuid)")
+    check(r1.setupAdded.count == 10 && r1.setupAdded.contains("skill alpha") && r1.setupAdded.contains("CLAUDE.md"), "import: the receipt names the units it added: \(r1.setupAdded.count)")
+    let u1 = try! SessionsRestore.undo(r1.id, windowClosed: { true })
+    check(u1.undone != nil && files(d1).isEmpty && !fm.fileExists(atPath: d1 + "/skills"), "import: Undo takes the setup back, the folders it made too")
+    SessionsImport.discard(op.work)
+
+    // ---- Import: what is here stays (Different here), a skill folder that exists gets nothing, an include only with a new CLAUDE.md
+    let opZ = try! SessionsImport.open(zipURL, password: nil, place: eplace)
+    let (t2, d2) = target("t2")
+    write("\(d2)/skills/alpha/SKILL.md", "mine, different"); write("\(d2)/agents/helper.md", "helper agent"); write("\(d2)/CLAUDE.md", "my own CLAUDE.md")
+    let before2 = tree(d2)
+    let st2 = try! SessionsImport.materialize(opZ, part: opZ.parts[0], target: "t2")
+    let p2 = SessionsRestore.plan(t2, st2.backup, addSetup: true)
+    func status(_ p: SessionsRestore.Plan, _ k: Setup.Kind, _ n: String) -> SessionsRestore.SetupPlan.Status? { p.setup.entries.first { $0.unit == Setup.Unit(kind: k, name: n) }?.status }
+    check(status(p2, .skill, "alpha") == .different && status(p2, .agent, "helper.md") == .same && status(p2, .claude, "CLAUDE.md") == .different && status(p2, .agent, "team/two.md") == .new && status(p2, .keybindings, "keybindings.json") == .new,
+          "import: a skill that is here but differs: Different here; an agent with the same content: Already here; CLAUDE.md that is here: Different here; the rest New")
+    let b2 = try! SessionsImport.commit(st2)
+    _ = try! SessionsRestore.run(t2, b2, addSetup: true, windowClosed: { true })
+    check(read("\(d2)/skills/alpha/SKILL.md") == "mine, different" && read("\(d2)/CLAUDE.md") == "my own CLAUDE.md" && !fm.fileExists(atPath: d2 + "/skills/alpha/run.sh") && !fm.fileExists(atPath: d2 + "/skills/alpha/refs"),
+          "import: what is here is byte-identical, and nothing is written into a skill folder that exists")
+    check(!fm.fileExists(atPath: d2 + "/docs") && fm.fileExists(atPath: d2 + "/agents/team/two.md") && fm.fileExists(atPath: d2 + "/keybindings.json") && fm.fileExists(atPath: d2 + "/commands/ship.md"), "import: the included files stay out when CLAUDE.md isn't added; the new units come in")
+    check(tree(d2).split(separator: "\n").filter { before2.contains($0) }.count == before2.split(separator: "\n").count, "import: every file that was here is unchanged")
+    SessionsImport.discard(opZ.work)
+
+    // ---- Import: never through a link
+    let opL = try! SessionsImport.open(zipURL, password: nil, place: eplace)
+    let (t3, d3) = target("t3")
+    try? fm.createDirectory(atPath: e2 + "/linked-skills", withIntermediateDirectories: true)
+    symlink(e2 + "/linked-skills", d3 + "/skills")
+    let st3 = try! SessionsImport.materialize(opL, part: opL.parts[0], target: "t3")
+    let p3 = SessionsRestore.plan(t3, st3.backup, addSetup: true)
+    check(p3.setup.notes.contains { $0.hasPrefix("skills here is a link to") && $0.hasSuffix("nothing added there") } && p3.setup.blocked.contains { $0.unit.name == "alpha" } && !p3.setupPieces.contains { $0.dirs.first == "skills" },
+          "import: skills/ is a link here: nothing is added there, and the preview says so: \(p3.setup.notes)")
+    let b3 = try! SessionsImport.commit(st3)
+    _ = try! SessionsRestore.run(t3, b3, addSetup: true, windowClosed: { true })
+    check(files(e2 + "/linked-skills").isEmpty && fm.fileExists(atPath: d3 + "/agents/helper.md"), "import: nothing was written through the link; the other units came in")
+    SessionsImport.discard(opL.work)
+
+    // ---- Import: a link on the way to an included file, a link in the middle of an agent's path, a file where a folder is expected
+    let opP = try! SessionsImport.open(zipURL, password: nil, place: eplace)
+    let (t7, d7) = target("t7")
+    try? fm.createDirectory(atPath: e2 + "/linked-docs", withIntermediateDirectories: true); symlink(e2 + "/linked-docs", d7 + "/docs")
+    try? fm.createDirectory(atPath: e2 + "/linked-team", withIntermediateDirectories: true); write(d7 + "/agents/x.md", "mine"); symlink(e2 + "/linked-team", d7 + "/agents/team")
+    write(d7 + "/skills", "a file where the skills folder should be"); write(d7 + "/commands", "a file where the commands folder should be")
+    let before7 = tree(d7)
+    let st7 = try! SessionsImport.materialize(opP, part: opP.parts[0], target: "t7")
+    let p7 = SessionsRestore.plan(t7, st7.backup, addSetup: true)
+    check(p7.setup.blocked.contains { $0.unit.name == "docs/style.md" } && p7.setup.blocked.contains { $0.unit.name == "docs/deep.md" } && p7.setup.blocked.contains { $0.unit.name == "team/two.md" }
+          && p7.setup.blocked.contains { $0.unit.name == "alpha" } && p7.setup.blocked.contains { $0.unit.name == "ship.md" } && !p7.setupPieces.contains { ["docs", "skills", "commands"].contains($0.dirs.first ?? "") || $0.dirs == ["agents", "team"] },
+          "import: a link on the way (docs/, agents/team/) and a file where a folder is expected (skills, commands) block those units, each one by one: \(p7.setup.blocked.map(\.unit.name).sorted())")
+    let b7 = try! SessionsImport.commit(st7)
+    _ = try! SessionsRestore.run(t7, b7, addSetup: true, windowClosed: { true })
+    check(files(e2 + "/linked-docs").isEmpty && files(e2 + "/linked-team").isEmpty && read(d7 + "/skills") == "a file where the skills folder should be" && read(d7 + "/commands") == "a file where the commands folder should be"
+          && fm.fileExists(atPath: d7 + "/CLAUDE.md") && fm.fileExists(atPath: d7 + "/agents/helper.md") && read(d7 + "/agents/x.md") == "mine" && fm.fileExists(atPath: d7 + "/keybindings.json"),
+          "import: nothing was written through a link or over a file; CLAUDE.md and the other units that were free came in")
+    let after7 = tree(d7)
+    check(before7.split(separator: "\n").allSatisfy { after7.contains($0) }, "import: every file that was here is unchanged")
+    SessionsImport.discard(opP.work)
+
+    // ---- Import (image): settings.json and its scripts
+    let (t4, d4) = target("t4")
+    let st4 = try! SessionsImport.materialize(oi, part: oi.parts[0], target: "t4")
+    let p4 = SessionsRestore.plan(t4, st4.backup, addSetup: true)
+    check(p4.setup.newEntries.count == 15 && p4.setup.hooks.count == 4 && p4.setup.hooks.first?.contains("guard.sh") == true && p4.setup.missingPaths.count == 1 && p4.setup.missingPaths[0].contains("gone.sh") && p4.setup.execNames.sorted() == ["bin/guard.sh", "bin/status.sh", "skills/alpha/run.sh"],
+          "import (image): settings.json with its 4 commands shown, one hook path that isn't here listed, 3 scripts made executable: \(p4.setup.hooks.count) \(p4.setup.missingPaths) \(p4.setup.execNames)")
+    let b4 = try! SessionsImport.commit(st4)
+    let r4 = try! SessionsRestore.run(t4, b4, addSetup: true, windowClosed: { true })
+    check(mode("\(d4)/bin/guard.sh") == 0o700 && mode("\(d4)/bin/status.sh") == 0o700 && mode("\(d4)/settings.json") == 0o600 && read("\(d4)/settings.json") == read("\(ecode)/settings.json") && fm.fileExists(atPath: d4 + "/skills/keyed/run.py"),
+          "import (image): settings.json and the scripts come in, the scripts 0700 because settings.json is added by this run")
+    check(r4.problems.contains { $0.contains("gone.sh") && $0.contains("not here") }, "import: the receipt lists a hook that points where nothing is: \(r4.problems.filter { $0.contains("hook") })")
+    _ = try! SessionsRestore.undo(r4.id, windowClosed: { true })
+    check(files(d4).isEmpty, "import (image): Undo takes all of it back")
+    // settings.json is here, different: stays byte-identical; the scripts then come in 0600 and are listed
+    let (t5, d5) = target("t5")
+    write("\(d5)/settings.json", "{\"env\":{\"OTHER\":\"x\"},\"model\":\"opus\"}")
+    let st5 = try! SessionsImport.materialize(oi, part: oi.parts[0], target: "t5")
+    let p5 = SessionsRestore.plan(t5, st5.backup, addSetup: true)
+    check(status(p5, .settings, "settings.json") == .different && p5.setup.execManual == ["bin/guard.sh", "bin/status.sh"] && p5.setup.execNames == ["skills/alpha/run.sh"]
+          && p5.setup.settingsDiffer.contains("env.E2_FAKE_ENV") && p5.setup.settingsDiffer.contains("hooks.PreToolUse") && p5.setup.settingsDiffer.contains("model") && !p5.setup.settingsDiffer.contains { $0.contains("not-a-real-secret") },
+          "import (image): a settings.json that is here stays; the differing key names (never values) are listed; the scripts stay 0600 and are listed to make executable yourself: \(p5.setup.settingsDiffer)")
+    let b5 = try! SessionsImport.commit(st5)
+    _ = try! SessionsRestore.run(t5, b5, addSetup: true, windowClosed: { true })
+    check(read("\(d5)/settings.json") == "{\"env\":{\"OTHER\":\"x\"},\"model\":\"opus\"}" && mode("\(d5)/bin/guard.sh") == 0o600 && mode("\(d5)/skills/alpha/run.sh") == 0o700, "import (image): the local settings.json is byte-identical; the scripts are 0600; the skill's script 0700")
+
+    // ---- hostile manifests (zips made from the good one) and old and new formats
+    let hostile = out + "/hostile"
+    let mk = eSh("/usr/bin/python3", ["-I", "-B", home + "/../mkhostile.py", zipURL.path, hostile])
+    check(mk.status == 0, "(setup variants made) \(mk.err.suffix(200))")
+    func refusal(_ name: String) -> String {
+        do { let x = try SessionsImport.open(URL(fileURLWithPath: "\(hostile)/\(name).zip"), password: nil, place: eplace); SessionsImport.discard(x.work); return "OPENED" } catch { return "\(error)" }
+    }
+    let bad: [(String, String)] = [
+        // a place or a name an export doesn't carry
+        ("e2-plugin-cache", "doesn't carry"), ("e2-projects", "doesn't carry"), ("e2-todos", "doesn't carry"), ("e2-dotfile", "doesn't carry"), ("e2-git", "doesn't carry"),
+        ("e2-in-skills-root", "doesn't carry"), ("e2-too-deep", "too deep"), ("e2-v1-with-setup", "doesn't carry"), ("e2-not-setup-place", "doesn't carry"), ("e2-setup-in-window", "doesn't carry"),
+        // a name that is never carried, at any depth
+        ("e2-localjson", "sign-in name in its setup"), ("e2-nested-settings", "sign-in name in its setup"), ("e2-claude-json", "sign-in name in its setup"),
+        ("e2-credentials", "sign-in name in its setup"), ("e2-claude-json-nested", "sign-in name in its setup"),
+        // what only the image carries
+        ("e2-zip-settings", "A zip carries no"), ("e2-zip-marketplaces", "A zip carries no"), ("e2-zip-script", "A zip carries no"),
+        // the execute rule
+        ("e2-exec-claude", "executable"), ("e2-exec-agent", "executable"), ("e2-exec-include", "executable"), ("e2-exec-command", "executable"), ("e2-exec-keybindings", "executable"), ("e2-exec-plugins", "executable"),
+        // hashes and sizes
+        ("e2-bad-sha", "isn't what backup.json says"), ("e2-altered", "isn't what backup.json says"), ("e2-no-sha", "no valid hash"), ("e2-short-sha", "no valid hash"), ("e2-upper-sha", "no valid hash"),
+        ("e2-wrong-size", "isn't the size"), ("e2-wrong-total", "don't add up"),
+        // formats
+        ("e2-v3-export", "newer cl_audit"), ("e2-v3-backup", "newer cl_audit"),
+        // paths
+        ("e2-traversal", "isn't a plain one"), ("e2-traversal-deep", "isn't a plain one"), ("e2-empty-component", "isn't a plain one"), ("e2-absolute", "isn't a plain one"), ("e2-setup-dup-item", "isn't a plain one"),
+        ("e2-backslash", ""), ("e2-dup-case", ""), ("e2-file-and-folder", ""),
+        // another case of a place that is never carried, a "script" named like settings.json
+        ("e2-case-skills", "doesn't carry"), ("e2-case-plugins", "doesn't carry"), ("e2-case-projects", "doesn't carry"), ("e2-case-settings", "A zip carries no")]
+    for (name, words) in bad {
+        let before = names(eplace.path).filter { $0.hasPrefix(".import-") }
+        let got = refusal(name)
+        check(got != "OPENED" && (words.isEmpty || got.contains(words)) && names(eplace.path).filter { $0.hasPrefix(".import-") } == before, "hostile: \(name).zip is refused whole, nothing left (\(got.prefix(80)))")
+    }
+    check(refusal("e2-exec-skill-ok") == "OPENED", "hostile: (an execute flag on a skill's own file is allowed: opens)")
+    var v1why = ""
+    let v1: SessionsImport.Opened? = { do { return try SessionsImport.open(URL(fileURLWithPath: hostile + "/e2-v1.zip"), password: nil, place: eplace) } catch { v1why = "\(error)"; return nil } }()
+    check(v1 != nil && v1!.export.version == 1 && v1!.parts[0].manifest.version == 1, "format: an export of version 1 (no setup in it) still imports (\(v1why))")
+    if let v1 {
+        let (t6, _) = target("t6")
+        let st = try! SessionsImport.materialize(v1, part: v1.parts[0], target: "t6")
+        let pv1 = SessionsRestore.plan(t6, st.backup)
+        check(pv1.refusal == nil && !pv1.setup.present && SessionsBackup.load(profile: "t6", id: st.id, place: st.stage)?.version == 2, "format: …its plan says there is no setup in it, and what is staged is a version 2 backup")
+        SessionsImport.discard(v1.work)
+    }
+    // the same name under another Unicode form: the target holds the skill as e + a combining mark, the file as one character
+    if let uz = try? SessionsImport.open(URL(fileURLWithPath: hostile + "/e2-unicode-skill.zip"), password: nil, place: eplace) {
+        let (tu, du) = target("tu")
+        let nfd = "cafe\u{301}"
+        write("\(du)/skills/\(nfd)/SKILL.md", "my cafe skill, different")
+        let folds = fm.fileExists(atPath: "\(du)/skills/caf\u{e9}")            // does this disk treat the two as one name?
+        let stu = try! SessionsImport.materialize(uz, part: uz.parts[0], target: "tu")
+        let pu = SessionsRestore.plan(tu, stu.backup, addSetup: true)
+        let bu = try! SessionsImport.commit(stu)
+        _ = try! SessionsRestore.run(tu, bu, addSetup: true, windowClosed: { true })
+        let sk = names("\(du)/skills")
+        check(!folds || (status(pu, .skill, "caf\u{e9}") == .different && sk.filter { $0.precomposedStringWithCanonicalMapping == "caf\u{e9}" }.count == 1 && files("\(du)/skills/\(nfd)") == ["SKILL.md"]
+                         && read("\(du)/skills/\(nfd)/SKILL.md") == "my cafe skill, different" && fm.fileExists(atPath: "\(du)/skills/alpha/SKILL.md")),
+              "import: a skill under the same name in another Unicode form is the one that is here (this disk folds them: \(folds)): Different here, nothing added inside it, the other units came: \(sk)")
+        SessionsImport.discard(uz.work)
+    } else { check(false, "hostile: e2-unicode-skill.zip opens") }
+
+    // ---- doctored images: a script without the settings.json that names it
+    func doctored(_ name: String, edit: (inout SessionsBackup.Manifest, URL) throws -> Void) -> String {
+        let work = e2 + "/doctor-\(name)"
+        try? fm.removeItem(atPath: work); try! fm.createDirectory(atPath: work, withIntermediateDirectories: true)
+        _ = eSh("/usr/bin/ditto", [oi.tree.path, work + "/" + oi.tree.lastPathComponent])
+        let root = URL(fileURLWithPath: work + "/" + oi.tree.lastPathComponent)
+        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
+        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        do {
+            var m = try dec.decode(SessionsBackup.Manifest.self, from: Data(contentsOf: root.appendingPathComponent("profiles/p1/backup.json")))
+            try edit(&m, root.appendingPathComponent("profiles/p1"))
+            m.bytes = m.items.reduce(0) { $0 + $1.bytes }
+            try enc.encode(m).write(to: root.appendingPathComponent("profiles/p1/backup.json"))
+            var ex = try dec.decode(ExportManifest.self, from: Data(contentsOf: root.appendingPathComponent("export.json")))
+            ex.parts[0].bytes = m.bytes; ex.bytes = m.bytes
+            try enc.encode(ex).write(to: root.appendingPathComponent("export.json"))
+        } catch { return "doctoring failed: \(error)" }
+        let img = URL(fileURLWithPath: out + "/\(name).dmg")
+        try? fm.removeItem(at: img)
+        let r = Tool.run("/usr/bin/hdiutil", ["create", "-srcfolder", work, "-volname", "doctored", "-fs", "APFS", "-format", "UDZO", "-encryption", "AES-256", "-stdinpass", "-quiet", img.path], stdin: Data(pw.utf8), secret: pw)
+        guard r?.status == 0 else { return "image not made: \(r?.err ?? "")" }
+        do { let x = try SessionsImport.open(img, password: pw, place: eplace); SessionsImport.discard(x.work); return "OPENED" } catch { return "\(error)" }
+    }
+    let noSettings = doctored("e2-noset") { m, p in
+        m.items.removeAll { $0.path == "setup/settings.json" }
+        try fm.removeItem(at: p.appendingPathComponent("setup/settings.json"))
+    }
+    check(noSettings.contains("without the settings.json that points to it"), "hostile (image): scripts without their settings.json are refused whole: \(noSettings.prefix(90))")
+    let unnamed = doctored("e2-unnamed") { m, p in
+        let data = Data("#!/bin/sh\n".utf8)
+        try fm.createDirectory(at: p.appendingPathComponent("setup/bin"), withIntermediateDirectories: true)
+        try data.write(to: p.appendingPathComponent("setup/bin/unused.sh"))
+        m.items.append(SessionsBackup.Item(role: .setup, original: "setup/bin/unused.sh", path: "setup/bin/unused.sh", bytes: Int64(data.count), sha: SwitchEngine.sha(data), exec: true))
+    }
+    check(unnamed.contains("no hook in settings.json points to"), "hostile (image): a script no hook names is refused whole: \(unnamed.prefix(90))")
+    let okImage = doctored("e2-okimage") { _, _ in }
+    check(okImage == "OPENED", "(the doctoring itself changes nothing that matters: an untouched copy still opens: \(okImage.prefix(80)))")
+
+    // ---- Backups carry setup (same rules), Restore leaves it out by default and puts back only what is missing
+    let bm = try! SessionsBackup.make(SessionsBackup.Source(profile: "e2", dataDir: "", codeDir: ecode), kind: .manual, window: false, place: eplace)
+    let bset = bm.items.filter { $0.role == .setup }
+    check(bm.version == 2 && Set(bset.map { String($0.path.dropFirst(6)) }) == allRels && bset.allSatisfy { $0.sha?.count == 64 && $0.original.hasPrefix(ecode) },
+          "backup: the same setup parts (links left out), each with its hash; a backup keeps where each file was: \(Set(bset.map { String($0.path.dropFirst(6)) }).symmetricDifference(allRels).sorted())")
+    let bjson = read(SessionsBackup.folder(profile: "e2", place: eplace).appendingPathComponent("\(bm.id)/backup.json").path) ?? ""
+    check(bm.setupLeftOut == ["agent linked.md", "skill haslink (it holds a link)", "skill linkedskill"] && !bjson.contains(elsewhere), "backup: links are named in the manifest, never where they point")
+    let old = try! SessionsBackup.make(SessionsBackup.Source(profile: "e2", dataDir: "", codeDir: ecode), kind: .manual, window: false, setup: false, place: eplace)
+    let pOld = SessionsRestore.plan(SessionsRestore.Target(profile: "e2", dataDir: "", codeDir: ecode, inUse: nil), SessionsRestore.Backup(profile: "e2", id: old.id, place: eplace))
+    check(pOld.refusal == nil && !pOld.setup.present, "backup: one made without setup (an older backup) has none: its Restore row says it isn't in the backup")
+    // delete a skill and an agent on purpose; the restore leaves them out unless asked, then puts back exactly those
+    let te = SessionsRestore.Target(profile: "e2", dataDir: "", codeDir: ecode, inUse: nil)
+    let bk = SessionsRestore.Backup(profile: "e2", id: bm.id, place: eplace)
+    try? fm.removeItem(atPath: ecode + "/skills/alpha"); try? fm.removeItem(atPath: ecode + "/agents/helper.md")
+    let pr0 = SessionsRestore.plan(te, bk), pr1 = SessionsRestore.plan(te, bk, addSetup: true)
+    check(pr0.setup.leftOut && pr0.setupPieces.isEmpty && pr0.setup.newEntries.map(\.unit.name).sorted() == ["alpha", "helper.md"] && pr1.setupPieces.count == 7 && pr1.setup.entries(.same).count == pr1.setup.entries.count - 2,
+          "restore: setup is left out by default; with 'Add them' only the 2 missing units come back (7 files); the rest is Already here: \(pr1.setupPieces.count)")
+    let rr = try! SessionsRestore.run(te, bk, addSetup: true, windowClosed: { true })
+    check(rr.finished != nil && read(ecode + "/agents/helper.md") == "helper agent" && mode(ecode + "/skills/alpha/run.sh") == 0o700 && read(ecode + "/skills/alpha/SKILL.md")?.hasPrefix("---") == true, "restore: the deleted skill and agent are back, the script executable as before")
+    _ = try! SessionsRestore.undo(rr.id, windowClosed: { true })
+    check(!fm.fileExists(atPath: ecode + "/skills/alpha") && !fm.fileExists(atPath: ecode + "/agents/helper.md") && fm.fileExists(atPath: ecode + "/agents/team/two.md"), "restore: Undo takes back exactly those")
+    SessionsImport.discard(oi.work)
+    try? fm.removeItem(atPath: e2)
+    resetRestores()
+}
+
+// ================================================================== part 2: the pages' runners
+// The Export page's "Claude Code setup" row and its menu, the Found line with setup units, the Import page's setup row (left out by
+// default, Add them), the Restore page's setup row.
+MainActor.assumeIsolated {
+    SettingsModel.followsDock = false
+    RunsMonitor.preview = []
+    SessionsRestore.runningSessions = { [] }
+    resetRestores()
+    func settle(line: Int = #line, _ done: () -> Bool) -> Bool {
+        let end = Date().addingTimeInterval(40)
+        while !done(), Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        if !done() { print("(timed out waiting at line \(line))") }
+        return done()
+    }
+    func put(_ path: String, _ text: String) {
+        try? fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        fm.createFile(atPath: path, contents: Data(text.utf8))
+    }
+    let eRoot = home + "/stage-e2"
+    try? fm.removeItem(atPath: eRoot)
+    try! fm.createDirectory(atPath: eRoot, withIntermediateDirectories: true)
+    let placeS = URL(fileURLWithPath: eRoot + "/place")
+    BackupPrefs.shared.place = placeS.path
+    let sa = Seat(account: sid(1301), organization: sid(1302), email: "ultra-1@example.com")
+    let sb = Seat(account: sid(1303), organization: sid(1304), email: "ultra-2@example.com")
+    let wdS = eRoot + "/Claude-xa", cdS = eRoot + "/.claude-xa", wdT = eRoot + "/Claude-xb", cdT = eRoot + "/.claude-xb"
+    put("\(cdS)/CLAUDE.md", "# rules\n @extra.md\n"); put("\(cdS)/extra.md", "extra")
+    put("\(cdS)/skills/alpha/SKILL.md", "alpha"); put("\(cdS)/skills/alpha/run.sh", "#!/bin/sh\n"); chmod("\(cdS)/skills/alpha/run.sh", 0o755)
+    put("\(cdS)/skills/keyed/SKILL.md", "keyed"); put("\(cdS)/skills/keyed/run.py", "K = '\(ghKey)'\n")
+    put("\(cdS)/agents/helper.md", "helper"); put("\(cdS)/commands/ship.md", "ship")
+    put("\(cdS)/settings.json", "{\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\(cdS)/bin/stop.sh\"}]}]},\"statusLine\":{\"type\":\"command\",\"command\":\"\(cdS)/bin/line.sh\"}}")
+    put("\(cdS)/bin/stop.sh", "#!/bin/sh\n"); put("\(cdS)/bin/line.sh", "#!/bin/sh\n")
+    put("\(cdS)/projects/-p/\(sid(1311)).jsonl", "{\"type\":\"user\",\"cwd\":\"/x\",\"text\":\"k \(ghKey)\"}\n")
+    try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-86400)], ofItemAtPath: "\(cdS)/projects/-p/\(sid(1311)).jsonl")
+    try! fm.createDirectory(atPath: "\(wdS)/claude-code-sessions/\(sa.account)/\(sa.organization!)", withIntermediateDirectories: true)
+    try! fm.createDirectory(atPath: "\(wdT)/claude-code-sessions/\(sb.account)/\(sb.organization!)", withIntermediateDirectories: true)
+    try! fm.createDirectory(atPath: cdT + "/projects", withIntermediateDirectories: true)
+    var xa = AccountEntry(id: "xa", name: "Main", label: "MAIN", configDir: cdS); xa.seat = sa; xa.desktop = .separate; xa.desktopDataDir = wdS
+    var xb = AccountEntry(id: "xb", name: "Work", label: "WORK", configDir: cdT); xb.seat = sb; xb.desktop = .separate; xb.desktopDataDir = wdT
+    let m = SettingsModel()
+    m.accounts = [xa, xb]
+    m.selection = SettingsModel.dashboardID
+
+    // ---- the Export page
+    m.showExport("xa")
+    let xr = m.exportRunner(for: "xa")
+    xr.refresh()
+    check(settle { xr.previews != nil }, "pages: the Export page counts, setup too")
+    let pv = xr.total
+    check(pv?.setup.units.count == 9 && pv?.setup.keyedUnits.map(\.name) == ["keyed"] && pv?.keyed == 2 && xr.setup, "pages: 9 setup units, 1 skill holds a key (2 things with keys with the session); the setup is included by default")
+    check(ExportWords.setupWords(pv, setup: xr.setup, image: xr.usesImage) == "CLAUDE.md with 1 included file, 2 skills, 1 agent, 1 command", "pages: the row reads \"CLAUDE.md with 1 included file, 2 skills, 1 agent, 1 command\" for a zip: \(ExportWords.setupWords(pv, setup: xr.setup, image: xr.usesImage))")
+    check(ExportWords.setupNotes(pv, setup: true, image: false) == ["settings.json and 2 hook scripts need the encrypted disk image: left out of a zip"], "pages: a zip says what only the image carries: \(ExportWords.setupNotes(pv, setup: true, image: false))")
+    check(ExportWords.foundWords(pv).hasPrefix("1 session and 1 skill hold keys: 2 GitHub tokens"), "pages: the Found line counts the skill with the session: \(ExportWords.foundWords(pv))")
+    xr.container = .image
+    check(ExportWords.setupWords(pv, setup: true, image: xr.usesImage) == "CLAUDE.md with 1 included file, settings.json with 1 hook and a status line, 2 scripts, 2 skills, 1 agent, 1 command" && ExportWords.setupNotes(pv, setup: true, image: true).isEmpty,
+          "pages: with the image it reads settings.json with 1 hook and a status line, 2 scripts too, and nothing is left out")
+    xr.container = .zip
+    xr.setup = false
+    // (the one session holds a key and is left out with the setup: nothing is left to make a file of)
+    check(ExportWords.setupWords(pv, setup: xr.setup, image: false) == "left out" && !xr.canExport, "pages: the menu's Leave them out: the row says left out, and with nothing else to export the key isn't pressable")
+    xr.setup = true
+    check(xr.canExport, "pages: with the setup in, the export key is ready")
+    // a zip export, setup in; the file is the Import page's input
+    let zipURL = URL(fileURLWithPath: eRoot + "/Main setup.zip")
+    xr.run(to: zipURL)
+    check(settle { if case .done = xr.phase { return true }; return false }, "pages: the zip is made")
+    if case .done(let o) = xr.phase {
+        check(Set(o.setupUnits.map(\.name)) == ["CLAUDE.md", "extra.md", "alpha", "helper.md", "ship.md"] && o.setupKeysLeftOut == 1 && o.setupSensitiveLeftOut.count == 3, "pages: the zip holds 5 setup units; the keyed skill and the 3 sensitive ones are out: \(o.setupUnits.map(\.name))")
+    }
+
+    // ---- the Import page: setup is left out until it is added
+    m.showImport("xb")
+    let ir = m.importRunner(for: "xb")
+    ir.setFile(zipURL)
+    check(settle { ir.phase == .ready && ir.plan != nil }, "pages: the zip is read and counted")
+    let sp0 = ir.plan?.setup
+    check(sp0?.present == true && sp0?.leftOut == true && ir.plan?.setupPieces.isEmpty == true && sp0?.entries.count == 5 && !ir.addSetup && !ir.canImport && ir.plan?.count == 0,
+          "pages: the setup row: 5 units listed, left out by default, nothing to write (the key isn't pressable: nothing else to import)")
+    check(Setup.words(sp0!.counts, extra: sp0!.extra) == "CLAUDE.md with 1 included file, 1 skill, 1 agent, 1 command", "pages: the row's words: \(Setup.words(sp0!.counts, extra: sp0!.extra))")
+    ir.setSetup(true)
+    check(settle { ir.plan?.setup.leftOut == false && (ir.plan?.setupPieces.count ?? 0) > 0 } && ir.addSetup && ir.canImport && ir.plan?.setupPieces.count == 6 && ir.plan?.setup.execNames == ["skills/alpha/run.sh"] && ir.plan?.setup.newEntries.count == 5,
+          "pages: Add them: 6 files in 5 new units, 1 script made executable; the import key is ready")
+    ir.setSetup(false)
+    check(settle { ir.plan?.setup.leftOut == true } && !ir.addSetup && !ir.canImport, "pages: Leave them out again: back to nothing")
+    ir.setSetup(true)
+    _ = settle { ir.plan?.setup.leftOut == false }
+    let beforeT = tree(cdT)
+    ir.commit()
+    guard case .running(let key) = ir.phase else { check(false, "pages: Close and import starts"); return }
+    check(key.addSetup, "pages: the import's key carries the choice")
+    let rr = m.restoreRunner(key)
+    check(settle { rr.phase == .done } && rr.receipt?.setupAdded.count == 5 && fm.fileExists(atPath: cdT + "/skills/alpha/SKILL.md") && !fm.fileExists(atPath: cdT + "/skills/keyed"), "pages: it ran: 5 units added, the keyed skill was never in the file: \(rr.receipt?.setupAdded ?? [])")
+    check(mode(cdT + "/skills/alpha/run.sh") == 0o700, "pages: the script is executable by its owner only")
+    rr.undo()
+    check(settle { rr.phase == .undone } && tree(cdT) == beforeT, "pages: Undo this import takes the setup back exactly")
+
+    // ---- the Restore page: left out by default, Add them puts back only what is missing
+    let bk = try! SessionsBackup.make(SessionsBackup.Source(xa), kind: .manual, window: false, place: placeS)
+    try? fm.removeItem(atPath: cdS + "/skills/alpha"); try? fm.removeItem(atPath: cdS + "/agents/helper.md")
+    let rk = RestoreKey(profile: "xa", backup: bk.id, place: placeS.path)
+    let rs = m.restoreRunner(rk)
+    rs.refresh()
+    check(settle { rs.plan != nil }, "pages: the Restore page counts")
+    check(rs.plan?.setup.present == true && rs.plan?.setup.leftOut == true && rs.plan?.setupPieces.isEmpty == true && rs.plan?.setup.newEntries.map(\.unit.name).sorted() == ["alpha", "helper.md"] && !rs.addSetup,
+          "pages: the setup row is there, left out by default: the 2 units missing now are listed as New: \(rs.plan?.setup.newEntries.map(\.unit.name) ?? [])")
+    rs.setSetup(true)
+    check(settle { rs.plan?.setup.leftOut == false && rs.plan?.setupPieces.count == 3 } && rs.addSetup, "pages: Add them: only the 2 missing units come back (3 files)")
+    // a backup without setup (an older one) says so
+    let old = try! SessionsBackup.make(SessionsBackup.Source(xa), kind: .manual, window: false, setup: false, place: placeS, now: Date().addingTimeInterval(-60))
+    let ro = m.restoreRunner(RestoreKey(profile: "xa", backup: old.id, place: placeS.path))
+    ro.refresh()
+    check(settle { ro.plan != nil } && ro.plan?.setup.present == false && ro.manifest?.version == 2, "pages: a backup made without setup: the row says it isn't in this backup")
+    check(SetupRow.title(Setup.Unit(kind: .skill, name: "alpha")) == "skill alpha" && SetupRow.title(Setup.Unit(kind: .marketplaces, name: "x")) == "the plugin marketplaces", "pages: the list's unit names")
+    resetRestores()
+    try? fm.removeItem(atPath: eRoot)
+    BackupPrefs.shared.place = ""
+}
+
+print("checks: \(passed) passed, \(failed) failed")
+exit(failed == 0 ? 0 : 1)
