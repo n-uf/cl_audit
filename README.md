@@ -951,6 +951,10 @@ never writes:
   When your organisation's managed settings use a policy helper (`policyHelper` or `policyHelpers`, a program that
   computes managed settings when Claude Code starts), cl_audit can't see the period it sets, so it counts the Claude
   window's sessions as deleted too (the safe side).
+- **A key written twice.** In `settings.json` and in a managed document, `cleanupPeriodDays`,
+  `desktopSessionCleanupPeriodDays`, `policyHelper` and `policyHelpers` take their last top-level value, as Claude Code's
+  JSON.parse does (a name written with escapes is the same name; nested ones don't count). Keep for refuses a file that
+  has `cleanupPeriodDays` twice.
 - **A skipped clean-up is only a note.** While `cleanupPeriodDays` or `desktopSessionCleanupPeriodDays` in your own
   `settings.json` isn't a valid number, or the file can't be read, Claude Code (2.1.318) skips its clean-up (unless
   managed settings set `cleanupPeriodDays` or use a policy helper); cl_audit adds a note and still shows what would be
