@@ -805,15 +805,19 @@ Sessions. **Restore…** on a backup puts back what is missing, merged, and neve
 
 - **In it:** the window's Code-tab list (every `claude-code-sessions/<account>/<org>` folder, scheduled tasks
   included, for both accounts and any other found there), its sidebar records (only the `epitaxyPrefs` part of
-  `claude_desktop_config.json`, as its own file), the rest of `claude_desktop_config.json` (`config/…`: the window's **MCP
-  settings** and its other settings, without the sidebar part; one that is a link, over 8 MB or not a JSON object is left out
-  and the reason recorded), each scheduled task's prompt (`setup/scheduled-tasks/<id>/SKILL.md`, which the window runs),
+  `claude_desktop_config.json`, as its own file: the rest of that file, the window's **MCP settings**, is **never in a
+  backup**, since it can carry keys; it travels only in the encrypted export), each scheduled task's prompt
+  (`setup/scheduled-tasks/<id>/SKILL.md`, which the window runs),
   cl_audit's records (the profile's name and its account and standby ids, never an address, and the receipt of the
   switch it was made for) and, on by default, Claude
   Code's transcripts (`<Claude Code folder>/projects`) and Claude Code's **setup** (`setup/…`: CLAUDE.md and what it includes,
   skills, agents, commands, output styles, keybindings, settings.json with its scripts and the plugin list, by the rules
   of [Exporting](#exporting-a-profiles-sessions): links left out and named in the manifest only, never where they point;
-  each file with its SHA-256 and execute bit; format version 2, a version-1 backup is read as before and has no setup).
+  each file with its SHA-256 and execute bit; format version 3, version-1 and -2 backups are read as before).
+  **settings.json in a backup keeps its `env` names with every value blank** (`envBlanked` in the manifest): it is written
+  from the parsed file, so nothing a parse drops comes along, and no command (a hook, `apiKeyHelper`) is ever run. One that
+  isn't a JSON object is left out, with the scripts its hooks run, and listed. Env values travel only in the encrypted
+  export. Backups made by 26.11.8 stay as they were.
   The manifest has the backup's id, profile, kind (before a
   switch, naming the receipt, or manual), when, how many seconds it took, the accounts by id only (never an
   address), counts (sessions, sidebar ones, tasks, transcripts), the size and, per item, its original absolute path
@@ -876,12 +880,11 @@ the window's Code-tab list, and transcripts by their path under the Claude Code 
   there, and is shown only when 90 days would keep some of them ("Keep for 90 days would save 1"): never for one 90 days
   still deletes.
 
-**MCP settings** and **Scheduled tasks** rows: the window's `claude_desktop_config.json` (its MCP servers, listed by name with
-the command each runs, never an env value, a header or an argument) is left out unless you pick **Add them**, and then written
-whole only where the profile has none: one that is here stays byte for byte, and the row lists the backup's servers it lacks
-(nothing is merged). The account in use's task file comes back as it was (this Mac's own tasks, not paused) only when none is
-here, with the tasks' prompts that are missing (`<Claude Code folder>/scheduled-tasks/<id>/SKILL.md`); a prompt that is here
-stays.
+**Scheduled tasks** row: the account in use's task file comes back as it was (this Mac's own tasks, not paused) only when none
+is here, with the tasks' prompts that are missing (`<Claude Code folder>/scheduled-tasks/<id>/SKILL.md`); a prompt that is here
+stays. There is no MCP row: this Mac's own backups don't keep the window's MCP settings (Stays as it is says so in one line);
+only a backup an import staged from an encrypted image has them, and its Restore page has the Import page's MCP row. The
+setup row says in one line that a backup's settings.json has its env values blank, when it has one.
 
 **Stays as it is:** the account (Main stays on the account it works on; Switch back changes that), sign-ins (never in a
 backup, never written), a `claude_desktop_config.json` that is here and `settings.json` other than Keep for, and claude.ai
@@ -986,7 +989,9 @@ is a backup in a file: the same format, so Import restores it by the same rules.
 Restore page and starts as a preview ("Preview · nothing written yet"):
 
 - **What:** **From** is the profile as it is now (a fresh copy is made under the switch lock, in a hidden folder of the
-  backups place, and taken away again), one of its backups, or all profiles. Claude Code: "310 sessions, with their
+  backups place, and taken away again: the only copy that keeps the MCP settings and settings.json's env values, for the
+  image), one of its backups (which keep neither: the image then has settings.json with blank env values, and the setup row
+  says so in one line), or all profiles. Claude Code: "310 sessions, with their
   sub-agent files" (the transcripts and what sits beside them in their folders); Claude window: the Code-tab entries and
   scheduled tasks, and the sidebar records (with the window open they are left out, as for Back up now); Cowork: left out.
   A scheduled task travels with its prompt (`scheduled-tasks/<id>/SKILL.md` in the Claude Code folder, key-scanned like a

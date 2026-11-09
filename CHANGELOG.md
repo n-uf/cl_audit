@@ -8,11 +8,14 @@ the notes before updating.
 
 ## Unreleased
 
-- **The Claude window's MCP settings and scheduled tasks travel too.** Export, Backup and Back up now carry the window's
-  `claude_desktop_config.json` (its MCP servers and other settings) and each scheduled task's prompt. The MCP settings travel
-  only in the encrypted disk image: a zip leaves them out and says so. Import and Restore leave them out until you pick Add
-  them, and the row lists each server and the command it runs; they are added only when this profile has no
+- **The Claude window's MCP settings and scheduled tasks travel too.** Export carries the window's `claude_desktop_config.json`
+  (its MCP servers and other settings) in the encrypted disk image only: a zip leaves it out and says so. Each scheduled task's
+  prompt travels with its task, and backups keep the prompts too. Import leaves the MCP settings out until you pick Add them,
+  and the row lists each server and the command it runs; they are added only when this profile has no
   `claude_desktop_config.json` yet, and one that is here stays exactly as it is.
+- **Backups no longer keep settings.json's env values or the window's MCP settings: they travel only in the encrypted
+  export.** A backup's settings.json keeps the names under `env` with blank values; Restore says so. Backups made with 26.11.8
+  stay as they are.
 - **Imported scheduled tasks come back paused.** Pick Add them, paused, and the file's tasks go into the account you work on
   now, each switched off so nothing runs twice; turn each on in the Claude window's scheduled tasks. A task file that is
   here stays as it is, and the page lists the tasks it lacks. The sessions a task ran now come in with it. Undo takes all of
