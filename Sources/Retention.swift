@@ -463,7 +463,8 @@ enum ManagedSettings {
         if String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .absent }
         let any: Any? = plist ? (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) : (try? JSONSerialization.jsonObject(with: data))
         guard let o = any as? [String: Any] else { return .bad }
-        return .content(o)
+        // a JSON key written twice: the last value counts, as in Claude Code's JSON.parse (a property list can't hold one)
+        return .content(plist ? o : CodeCleanup.lastWins(o, data: data))
     }
 
     /// The managed settings as they apply, or nil when there are none and nothing is wrong.
