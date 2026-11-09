@@ -195,6 +195,13 @@ if role == "b" {
         check(SessionsMove.receipts().count == before + 1 && Store.load().count == 3, "page: pressed twice, made once: one receipt (\(SessionsMove.receipts().count - before))")
         check(!ir.waitsForProfiles && ir.into == "laptop" && ir.suggestedInto?.name == "Work" && ir.madeProfiles.count == 2,
               "page: after Make, Into is still Laptop, Work is offered, and the steps for both made profiles are there at once")
+        // the retarget (round 2): while the staged backup is still Laptop's, Close and import is off; it comes back for Work once it lands
+        ir.setInto("work")
+        check(!ir.canImport && ir.into == "work", "page: right after Into changes, Close and import is off (the staged backup is still the old profile's)")
+        settle { ir.staged?.target == "work" && ir.counting?.key.profile == "work" && ir.counting?.plan != nil }
+        check(ir.canImport && ir.counting?.key.profile == "work", "page: …and on again once it is Work's, counted for Work")
+        ir.setInto("laptop")
+        settle { ir.staged?.target == "laptop" && ir.counting?.plan != nil }
         ir.undoMove()
         settle { ir.moved?.undone != nil }
         check(Store.load().map(\.id) == ["laptop"], "page: Take back the profiles it made")
@@ -422,6 +429,31 @@ MainActor.assumeIsolated {
         check(MoveWords.settingLines(fp).contains { $0.hasPrefix("Minimum backups kept: 7 here, 1 in the file") && $0.contains("removes the older ones") }
               && MoveWords.settingLines(fp).contains { $0.hasPrefix("Days of backups kept") && $0.contains("removes the older ones") },
               "S2: taking fewer backups than here says what the next backup does: \(MoveWords.settingLines(fp))")
+    }
+
+    // ---- the last word under the profiles file's lock (round 2): a folder that became a link, or a window folder that got a sign-in,
+    // between the plan and Make, refuses that profile; a backups place that went away isn't taken
+    do {
+        func acct(_ n: Int) -> [[String: Any]] { [["account": sid(n), "organization": sid(n + 1), "email": "r\(n)@example.com", "inUse": true]] }
+        try? fm.createDirectory(atPath: home + "/Backups-r2", withIntermediateDirectories: true)
+        let late = readJSON(base.merging(["profiles": [["id": "swap", "name": "Swap", "accounts": acct(80)], ["id": "winsign", "name": "Winsign", "accounts": acct(82)],
+                                                       ["id": "fine", "name": "Fine", "accounts": acct(84)]],
+                                          "backups": [BackupPrefs.placeKey: "~/Backups-r2"]], uniquingKeysWith: { $1 }))!
+        let lp = SessionsMove.plan(late, accounts: Store.load())
+        check(lp.create.count == 3 && lp.takeable.contains { $0.key == BackupPrefs.placeKey }, "r2: the plan makes three and would take the backups place")
+        let away = home + "/away-r2"; try? fm.createDirectory(atPath: away, withIntermediateDirectories: true)
+        symlink(away, expand("~/.claude-swap"))
+        write(expand("~/Library/Application Support/Claude-winsign") + "/config.json", "{}")
+        try? fm.removeItem(atPath: home + "/Backups-r2")
+        let lr = try! SessionsMove.apply(lp, takeSettings: true, file: "late")
+        check(lr.made.filter(\.written).map(\.name) == ["Fine"] && everything(away).isEmpty && lr.problems.contains { $0.contains("Swap") } && lr.problems.contains { $0.contains("Winsign") },
+              "r2: a folder that turned into a link, and a window folder that got a sign-in, refuse their profile under the lock: \(lr.made.filter(\.written).map(\.name))")
+        check(lr.settings.isEmpty && lr.problems.contains { $0.contains("backups folder") } && (BackupPrefs.store.string(forKey: BackupPrefs.placeKey) ?? "") == "~/MyBackups",
+              "r2: a backups place that went away between the plan and Make isn't taken")
+        check(SessionsMove.folderUsable("~/.claude-swap", signIn: ".claude.json") == false && SessionsMove.folderUsable("~/.claude-nothing-r2", signIn: ".claude.json"),
+              "r2: a link is never usable; a folder that isn't there is")
+        _ = try! SessionsMove.undo(lr.id)
+        try? fm.removeItem(atPath: expand("~/.claude-swap")); try? fm.removeItem(atPath: expand("~/Library/Application Support/Claude-winsign"))
     }
 
     // ---- doctored images and zips
