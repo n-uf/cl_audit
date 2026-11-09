@@ -91,6 +91,12 @@ enum DefaultProfile {
         var x = e
         x.desktop = .standard
         x.desktopDataDir = ""
+        return x
+    }
+
+    /// The profile linked to the account ~/.claude is signed in to, when it wasn't linked yet; nothing else changes.
+    static func linked(_ e: AccountEntry, seat: Seat?, now: Date = Date()) -> AccountEntry {
+        var x = e
         if x.seat == nil, var s = seat { s.linkedAt = now; x.seat = s }
         return x
     }
@@ -139,13 +145,26 @@ enum DefaultProfile {
         try? fm.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         if let d = try? enc.encode(r) { try? d.write(to: folder.appendingPathComponent("\(r.id).json"), options: .atomic) }
+        cache = nil
     }
 
+    /// The records, kept until the folder changes: the cards that ask are drawn every few seconds.
+    private static var cache: (stamp: Date?, list: [Record])?
+    private static let cacheLock = NSLock()
+
     static func all() -> [Record] {
+        let stamp = (try? FileManager.default.attributesOfItem(atPath: folder.path))?[.modificationDate] as? Date
+        cacheLock.lock(); defer { cacheLock.unlock() }
+        if let c = cache, c.stamp == stamp { return c.list }
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
         return ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(".json") }.sorted()
             .compactMap { (try? Data(contentsOf: folder.appendingPathComponent($0))).flatMap { try? dec.decode(Record.self, from: $0) } }
+        cache = (stamp, list)
+        return list
     }
+
+    /// Forgets the kept records (a check that changes the folder under it).
+    static func forgetCache() { cacheLock.lock(); cache = nil; cacheLock.unlock() }
 
     static func record(forReceipt id: String) -> Record? { all().first { $0.receipt == id } }
 

@@ -81,12 +81,13 @@ final class DefaultProfileRunner: ObservableObject {
         }
         if situation.kind == .windowOnly { closeWindows(); return }
         // otherFolder: ~/.claude must be signed in first (Claude Code's own login; nothing is moved or copied)
-        if Account.signedInSeat(configDir: "~/.claude") != nil { prepareTarget(); return }
+        // (the record is read through the folder cache: this page is on the main thread, and ~/.claude.json can be large)
+        if DefaultProfile.cachedSeat("~/.claude") != nil { prepareTarget(); return }
         guard let claude = m.requireClaude() else { phase = .failed(m.noClaudeWhy); return }
         let email = old.seat?.email ?? Account.expectedEmail(configDir: old.configDir)
         let probe = AccountEntry(id: "default", name: "default", label: "DEFAULT", configDir: "~/.claude")
         guard ClaudeCLI.openLogin(claude, account: Account(probe), email: email) else { phase = .failed("Terminal didn't open."); return }
-        seatAtAsk = Account.signedInSeat(configDir: "~/.claude")
+        seatAtAsk = DefaultProfile.cachedSeat("~/.claude")
         signInStarted = Date()
         phase = .signingIn
         tick(every: 2) { [weak self] in
@@ -95,7 +96,7 @@ final class DefaultProfileRunner: ObservableObject {
             if let started = self.signInStarted, Date().timeIntervalSince(started) > 3600 {
                 self.phase = .ready; self.note = "The sign-in didn't finish in an hour; start again."; return true
             }
-            guard Account.signedInSeat(configDir: "~/.claude") != nil else { return false }
+            guard DefaultProfile.cachedSeat("~/.claude") != nil else { return false }
             self.prepareTarget()
             return true
         }
@@ -110,19 +111,20 @@ final class DefaultProfileRunner: ObservableObject {
         note = "Cancelled. Nothing was moved."
     }
 
+        rollbackPrepared()
     /// Step 1 done (or not needed): the ~/.claude profile is there, linked to the account ~/.claude is signed in to.
     private func prepareTarget() {
-        guard let m = model, let seat = Account.signedInSeat(configDir: "~/.claude") else { return }
-        var created = false, linked = false
+        guard let m = model, let seat = DefaultProfile.cachedSeat("~/.claude") else { return }
         if let t = target {
-            if t.seat == nil, let i = m.accounts.firstIndex(where: { $0.id == t.id }) { m.accounts[i] = DefaultProfile.moved(t, seat: seat); linked = true }
+            if t.seat == nil, let i = m.accounts.firstIndex(where: { $0.id == t.id }) {
+                m.accounts[i] = DefaultProfile.linked(t, seat: seat); pendingLinked = true; pendingLinkedID = t.id
+            }
         } else {
             switch Self.makeDefaultProfile(from: old, among: m.accounts, seat: seat) {
-            case .success(let e): m.accounts.append(e); targetID = e.id; created = true; linked = true
+            case .success(let e): m.accounts.append(e); targetID = e.id; pendingCreated = true; pendingLinked = true
             case .failure(let err): phase = .failed("\(err)"); return
             }
         }
-        pendingCreated = created; pendingLinked = linked
         closeWindows()
     }
     private var pendingCreated = false, pendingLinked = false
@@ -130,6 +132,20 @@ final class DefaultProfileRunner: ObservableObject {
     /// The ~/.claude profile the offer makes when there is none: named after its account, looking like the old profile.
     static func makeDefaultProfile(from old: AccountEntry, among accounts: [AccountEntry], seat: Seat) -> Result<AccountEntry, Error> {
         var d = NewAccountDraft()
+    private var pendingLinkedID: String?
+
+    /// Before the move began (no record yet): what step one did to the profile list is taken back, so a retry starts clean
+    /// and a ~/.claude profile that was only made for this never lingers.
+    private func rollbackPrepared() {
+        guard record == nil, let m = model, let id = targetID else { return }
+        if pendingCreated {
+            m.accounts.removeAll { $0.id == id }
+            targetID = situation.target?.id
+        } else if pendingLinked, pendingLinkedID == id, let i = m.accounts.firstIndex(where: { $0.id == id }) {
+            m.accounts[i].seat = nil
+        }
+        pendingCreated = false; pendingLinked = false; pendingLinkedID = nil
+    }
         var name = FirstRun.suggestedName(folder: "~/.claude")
         var n = 2
         while accounts.contains(where: { $0.name.lowercased() == name.lowercased() || $0.id == Store.newID(from: name, taken: []) }) { name = "\(FirstRun.suggestedName(folder: "~/.claude")) \(n)"; n += 1 }
@@ -160,11 +176,12 @@ final class DefaultProfileRunner: ObservableObject {
         // one at a time: a switch, restore or import of either window under way holds it
         for w in windows {
             guard SwitchMarker.claim(w.key, profile: id, standby: markName) else {
-                releaseMarks(); phase = .failed("Another switch or restore of one of the Claude windows is under way. Wait for it, then try again."); return
+                releaseMarks(); rollbackPrepared()
+                phase = .failed("Another switch or restore of one of the Claude windows is under way. Wait for it, then try again."); return
             }
             claimed.append(w.key)
         }
-        if let why = SessionsRestore.busy() { releaseMarks(); phase = .failed(why); return }
+        if let why = SessionsRestore.busy() { releaseMarks(); rollbackPrepared(); phase = .failed(why); return }
         let apps = windows.flatMap { $0.apps() }
         guard !apps.isEmpty else { backUp(); return }
         phase = .closing
@@ -174,7 +191,7 @@ final class DefaultProfileRunner: ObservableObject {
             guard let self, self.phase == .closing else { return true }
             if windows.allSatisfy({ $0.closed() }) { self.backUp(); return true }
             if Date().timeIntervalSince(started) > 45 {
-                self.releaseMarks(); self.phase = .ready
+                self.releaseMarks(); self.rollbackPrepared(); self.phase = .ready
                 self.note = "A window didn't close; it may be asking about work under way. Answer it, then try again. Nothing was written."
                 return true
             }
@@ -223,7 +240,7 @@ final class DefaultProfileRunner: ObservableObject {
                 switch result {
                 case .success(let (oldID, usualID)): self.move(backup: oldID, usualBackup: usualID, place: place)
                 case .failure(let err):
-                    self.releaseMarks()
+                    self.releaseMarks(); self.rollbackPrepared()
                     self.phase = .failed("The backup couldn't be made (\(err)). Nothing moved. Backups go to \(tilde(place.path)); General ▸ Backups changes that.")
                 }
             }
