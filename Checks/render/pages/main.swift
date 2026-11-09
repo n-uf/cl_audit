@@ -513,6 +513,26 @@ MainActor.assumeIsolated {
         e2Shots("8e-restore-setup", { RestorePage(entry: e2main, key: rk2, model: model, runner: rr2, width: $0) }, height: 3800)
         SetupRow.renderOpen = false
 
+        // ---- 8f the Restore page: a backup that found keys (settings.json's values left blank, a script and the marketplaces left out)
+        let c8f = expand("~/.claude-e2bscan")
+        w2(c8f, "CLAUDE.md", "# My rules\n"); w2(c8f, "skills/review/SKILL.md", "skill review")
+        w2(c8f, "bin/deploy.sh", "#!/bin/sh\ncurl -H 'Authorization: Bearer \(ghFake)' https://example.com\n", exec: true)
+        w2(c8f, "bin/lint.sh", "#!/bin/sh\n", exec: true)
+        w2(c8f, "plugins/known_marketplaces.json", "{\"m\":{\"url\":\"https://example.com/m.git\",\"token\":\"\(ghFake)\"}}")
+        w2(c8f, "settings.json", "{\"apiKeyHelper\":\"echo \(ghFake)\",\"model\":\"opus\",\"permissions\":{\"allow\":[\"Bash(ls:*)\",\"WebFetch(curl -H 'Authorization: Bearer \(ghFake)')\"]},\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\(c8f)/bin/deploy.sh\"},{\"type\":\"command\",\"command\":\"\(c8f)/bin/lint.sh\"}]}]}}")
+        var e2bscan = AccountEntry(id: "e2bscan", name: "Work", label: "WORK", configDir: c8f); e2bscan.seat = u1
+        model.accounts = model.accounts + [e2bscan]
+        let bk8f = try! SessionsBackup.make(SessionsBackup.Source(e2bscan), kind: .manual, window: false, place: BackupPrefs.placeURL, now: Date().addingTimeInterval(-3600))
+        print("keys backup:", bk8f.secretBlanked ?? [], bk8f.secretLeftOut ?? [])
+        try? fm.removeItem(atPath: c8f + "/settings.json"); try? fm.removeItem(atPath: c8f + "/bin/lint.sh")
+        let rk8f = RestoreKey(profile: "e2bscan", backup: bk8f.id, place: BackupPrefs.placeURL.path)
+        let rr8f = model.restoreRunner(rk8f)
+        rr8f.refresh()
+        settleE("the keys restore preview") { rr8f.plan != nil }
+        SetupRow.renderOpen = true
+        e2Shots("8f-restore-keys-left-out", { RestorePage(entry: e2bscan, key: rk8f, model: model, runner: rr8f, width: $0) }, height: 3800)
+        SetupRow.renderOpen = false
+
         // ---- 9: the Claude window's MCP settings and scheduled tasks (stage E2b) on the Export, Import and Restore pages
         let c9 = expand("~/.claude-e2bsrc"), d9 = expand("~/Library/Application Support/Claude-e2bsrc")
         let s9 = "\(d9)/claude-code-sessions/\(u3.account)/\(u3.organization!)"

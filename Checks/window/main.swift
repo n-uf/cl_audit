@@ -357,6 +357,180 @@ MainActor.assumeIsolated {
         SessionsImport.discard(ob.work)
     } else { check(false, "export (image from a plain backup): made and opens") }
 
+    // ---- Backups: a key in a plain backup. The Export page's key scan (SecretScan) runs over what a plain backup is about to write:
+    // settings.json's values (blanked, keys kept), the scripts its hooks run, the marketplaces file (left out). Fake keys, cut by an
+    // empty interpolation so no key shape is in this file.
+    do {
+        let nothing = ""
+        let ghK = "gh\(nothing)p_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0000"
+        let skK = "sk\(nothing)-FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0000"
+        let awsK = "AK\(nothing)IAFAKEFAKEFAKEFAKE"
+        let jwtK = "ey\(nothing)JhbGciOiJIUzI1NiJ9.ey\(nothing)JzdWIiOiJ4Zm9vIn0.FAKESIGNATUREFAKESIGNATURE00"
+        let allKeys = [ghK, skK, awsK, jwtK]
+        let cK = w + "/.claude-k"
+        func plantK(keyed: Bool) {
+            try? fm.removeItem(atPath: cK)
+            write(cK + "/CLAUDE.md", "# rules\n")
+            write(cK + "/hooks/clean.sh", "#!/bin/sh\necho clean\n"); chmod(cK + "/hooks/clean.sh", 0o755)
+            write(cK + "/hooks/status.sh", "#!/bin/sh\necho status\n"); chmod(cK + "/hooks/status.sh", 0o755)
+            write(cK + "/hooks/keyed.sh", keyed ? "#!/bin/sh\ncurl -H 'Authorization: Bearer \(ghK)' https://example.com\n" : "#!/bin/sh\necho no key\n"); chmod(cK + "/hooks/keyed.sh", 0o755)
+            write(cK + "/skills/ok/SKILL.md", "ok skill\n"); write(cK + "/skills/ok/run.sh", "#!/bin/sh\necho ok\n"); chmod(cK + "/skills/ok/run.sh", 0o755)
+            write(cK + "/skills/guard/SKILL.md", "guard skill\n")
+            write(cK + "/skills/guard/run.sh", keyed ? "#!/bin/sh\nTOKEN=\(awsK)\n" : "#!/bin/sh\necho guard\n"); chmod(cK + "/skills/guard/run.sh", 0o755)
+            write(cK + "/plugins/installed_plugins.json", #"{"plugins":{"a@m":{}}}"#)
+            write(cK + "/plugins/known_marketplaces.json", keyed ? #"{"m":{"url":"https://example.com/m.git","token":"\#(skK)"}}"# : #"{"m":{"url":"https://example.com/m.git"}}"#)
+            let cmd: (String) -> [String: Any] = { ["type": "command", "command": cK + "/" + $0] }
+            let settings: [String: Any] = [
+                "env": ["PLAIN": "plain-env-value-w1"],
+                "apiKeyHelper": keyed ? "echo \(skK)" : "my-helper --quiet",
+                "model": "opus",
+                "permissions": ["allow": ["Bash(ls:*)", keyed ? "WebFetch(curl -H 'Authorization: Bearer \(jwtK)')" : "WebFetch(domain:example.com)", "Bash(git:*)"], "deny": [String]()],
+                "nested": ["deep": ["token": keyed ? awsK : "not-a-key", "keep": "task-fix-the-login-page-for-users"], "list": [[keyed ? ghK : "fine-too"], "fine"]],
+                "enabledPlugins": keyed ? [ghK: true, "ok@m": true] : ["ok@m": true],
+                "hooks": ["Stop": [["hooks": [cmd("hooks/clean.sh"), cmd("hooks/keyed.sh"), cmd("skills/guard/run.sh"), cmd("skills/ok/run.sh")]]]],
+                "statusLine": cmd("hooks/status.sh")]
+            try! JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: cK + "/settings.json").createDirs())
+        }
+        let srcK = SessionsBackup.Source(profile: "k", dataDir: "", codeDir: cK)
+        plantK(keyed: true)
+        let origSettingsK = json(fm.contents(atPath: cK + "/settings.json"))!
+        let bK = try! SessionsBackup.make(srcK, kind: .manual, window: false, place: place)
+        let dirK = SessionsBackup.folder(profile: "k", place: place).appendingPathComponent(bK.id).path
+        let relsK = Set(bK.items.map(\.path))
+        check(holds(dirK, ghK).isEmpty && holds(dirK, skK).isEmpty && holds(dirK, awsK).isEmpty && holds(dirK, jwtK).isEmpty && holds(dirK, "WebFetch(curl").isEmpty,
+              "key scan (plain backup): none of the 4 fake keys' bytes is in any file of the backup: \(allKeys.flatMap { holds(dirK, $0) })")
+        check(bK.secretBlanked == ["apiKeyHelper", "enabledPlugins.(a key)", "nested.deep.token", "nested.list[0][0]", "permissions.allow[1]"],
+              "key scan: settings.json's matching values are named by dotted path (an array element by index, a key that is itself a match as \"(a key)\"): \(bK.secretBlanked ?? [])")
+        let sK = json(fm.contents(atPath: dirK + "/setup/settings.json")) ?? [:]
+        check(sK["apiKeyHelper"] as? String == "" && (sK["permissions"] as? [String: Any])?["allow"] as? [String] == ["Bash(ls:*)", "", "Bash(git:*)"]
+              && ((sK["nested"] as? [String: Any])?["deep"] as? [String: String]) == ["token": "", "keep": "task-fix-the-login-page-for-users"]
+              && ((sK["nested"] as? [String: Any])?["list"] as? [Any])?.count == 2 && (((sK["nested"] as? [String: Any])?["list"] as? [Any])?[0] as? [String]) == [""]
+              && (sK["enabledPlugins"] as? [String: Bool]) == ["ok@m": true],
+              "key scan: a value that matches is blank (an array element too, kept in place), one that doesn't stays; a nested one is blanked where it is; keys are kept")
+        check(sK["model"] as? String == "opus" && (sK["env"] as? [String: String]) == ["PLAIN": ""] && same(sK["hooks"] as? [String: Any] ?? [:], origSettingsK["hooks"] as? [String: Any] ?? ["x": 1])
+              && same(sK["statusLine"] as? [String: Any] ?? [:], origSettingsK["statusLine"] as? [String: Any] ?? ["x": 1]) && (sK["permissions"] as? [String: Any])?["deny"] as? [String] == [],
+              "key scan: what doesn't match is as it was (model, hooks, status line, an empty list); env values are still blank")
+        let itemK = bK.items.first { $0.path == "setup/settings.json" }
+        check(itemK?.sha == SwitchEngine.sha(fm.contents(atPath: dirK + "/setup/settings.json") ?? Data()) && itemK?.bytes == Int64(fm.contents(atPath: dirK + "/setup/settings.json")?.count ?? -1),
+              "key scan: the settings.json item's hash and size are the blanked file's")
+        check(!relsK.contains("setup/hooks/keyed.sh") && !relsK.contains("setup/plugins/known_marketplaces.json") && !relsK.contains { $0.hasPrefix("setup/skills/guard/") }
+              && !fm.fileExists(atPath: dirK + "/setup/hooks/keyed.sh") && !fm.fileExists(atPath: dirK + "/setup/skills/guard") && !fm.fileExists(atPath: dirK + "/setup/plugins/known_marketplaces.json"),
+              "key scan: the script that holds a key, the skill whose script holds one (the unit goes whole) and the marketplaces file that holds one are not in the backup, neither listed nor on disk")
+        check(relsK.isSuperset(of: ["setup/hooks/clean.sh", "setup/hooks/status.sh", "setup/skills/ok/SKILL.md", "setup/skills/ok/run.sh", "setup/plugins/installed_plugins.json", "setup/CLAUDE.md", "setup/settings.json"]),
+              "key scan: the scripts and units without a key, and the plugin list, are kept: \(relsK.sorted())")
+        check(bK.secretLeftOut == ["script hooks/keyed.sh", "skill guard", "the plugin marketplaces"] && bK.leftOut >= 4 && bK.cloned + bK.copied == bK.items.count - 1,
+              "key scan: the manifest names what was left out (\(bK.secretLeftOut ?? [])); the counts follow what is in it (left out \(bK.leftOut), cloned \(bK.cloned) + copied \(bK.copied) for \(bK.items.count) items)")
+        let mK = SessionsBackup.load(profile: "k", id: bK.id, place: place)
+        check(mK?.secretBlanked == bK.secretBlanked && mK?.secretLeftOut == bK.secretLeftOut && mK?.envBlanked == true && !(mK?.setupLeftOut ?? []).contains { $0.contains("keyed.sh") },
+              "key scan: backup.json says the same when read back; the left-out names are in their own field")
+        check(allKeys.allSatisfy { k in !(fm.contents(atPath: dirK + "/backup.json").map { $0.range(of: Data(k.utf8)) != nil } ?? true) } && !(read(dirK + "/backup.json") ?? "").contains("echo"),
+              "key scan: backup.json holds names only, never a value")
+        // nothing of the originals changed
+        check(read(cK + "/hooks/keyed.sh")?.contains(ghK) == true && json(fm.contents(atPath: cK + "/settings.json")) .map { same($0, origSettingsK) } == true && fm.fileExists(atPath: cK + "/plugins/known_marketplaces.json"),
+              "key scan: the originals are untouched")
+
+        // Restore: the row says which keys were blank and what was left out; the backup's settings.json comes back blank
+        // (folders of their own: target() empties the ones it is given, and .claude-k is the source; the profile is the backup's)
+        let (tKr, _, cKr) = target("kr")
+        let tK = SessionsRestore.Target(profile: "k", dataDir: tKr.dataDir, codeDir: tKr.codeDir, inUse: tKr.inUse)
+        let bkK = SessionsRestore.Backup(profile: "k", id: bK.id, place: place)
+        let prK = SessionsRestore.plan(tK, bkK, addSetup: true)
+        check(prK.refusal == nil && prK.setup.keysBlanked == bK.secretBlanked! && prK.setup.keysLeftOut == bK.secretLeftOut!,
+              "restore: the plan carries the blanked keys' names and the left-out names: \(prK.refusal ?? "ok") \(prK.setup.keysBlanked) \(prK.setup.keysLeftOut)")
+        let wordsB = SetupRow.keysBlankedWords(prK.setup.keysBlanked), wordsL = SetupRow.keysLeftOutWords(prK.setup.keysLeftOut)
+        check(wordsB == "settings.json held 5 keys (apiKeyHelper, enabledPlugins.(a key), nested.deep.token, nested.list[0][0], …and 1 more): left blank in backups, the names stay. A key travels only in an encrypted export of the profile as it is now."
+              && wordsL == "script hooks/keyed.sh, skill guard, the plugin marketplaces held a key: left out of backups; it travels only in the encrypted export of the profile as it is now."
+              && allKeys.allSatisfy { !wordsB.contains($0) && !wordsL.contains($0) },
+              "restore row: the words name the keys' places and the files, never a value: \(wordsB) / \(wordsL)")
+        check(SetupRow.keysBlankedWords(["apiKeyHelper"]).hasPrefix("settings.json held a key (apiKeyHelper): left blank in backups"), "restore row: one key says \"a key\"")
+        let rrK = try! SessionsRestore.run(tK, bkK, addSetup: true, windowClosed: { true })
+        check(allKeys.allSatisfy { (read(cKr + "/settings.json") ?? "").contains($0) == false } && holds(cKr, ghK).isEmpty && holds(cKr, awsK).isEmpty && !fm.fileExists(atPath: cKr + "/hooks/keyed.sh")
+              && !fm.fileExists(atPath: cKr + "/plugins/known_marketplaces.json") && fm.fileExists(atPath: cKr + "/hooks/clean.sh") && (json(fm.contents(atPath: cKr + "/settings.json"))?["apiKeyHelper"] as? String) == "",
+              "restore: the blank settings.json and the scripts that were kept come back; nothing of a key; the left-out ones are not there")
+        _ = try? SessionsRestore.undo(rrK.id, windowClosed: { true })
+
+        // Export from this plain backup: the page says the image lacks them
+        let kPart = SessionsExport.Part(profile: "k", name: "K", backup: bkK)
+        let kpv = SessionsExport.preview(kPart)!
+        let kNotesImg = ExportWords.setupNotes(kpv, setup: true, image: true), kNotesZip = ExportWords.setupNotes(kpv, setup: true, image: false)
+        check(kpv.setup.keysBlanked == bK.secretBlanked! && kpv.setup.keysLeftOut == bK.secretLeftOut!
+              && kNotesImg.contains { $0.hasPrefix("settings.json comes with 5 values blank where a backup found a key (apiKeyHelper, enabledPlugins.(a key), nested.deep.token, nested.list[0][0], …and 1 more). Export the profile as it is now to carry the keys.") }
+              && kNotesImg.contains { $0 == "script hooks/keyed.sh, skill guard, the plugin marketplaces held a key and isn't in the backup, so the image lacks them: export the profile as it is now to carry them." }
+              && !kNotesZip.contains { $0.contains("held a key") || $0.contains("found a key") },
+              "export (from a plain backup): the page says which values are blank and which files the image lacks (an image only): \(kNotesImg)")
+        let kDmg = URL(fileURLWithPath: out + "/K-from-backup.dmg")
+        if (try? SessionsExport.run(SessionsExport.Job(parts: [kPart], keys: .leaveOut, password: pw, destination: kDmg, rootName: "k-from-backup", place: place))) != nil,
+           let ok = try? SessionsImport.open(kDmg, password: pw, place: place) {
+            let km = ok.parts[0].manifest
+            check(allKeys.allSatisfy { holds(ok.tree.path, $0).isEmpty } && km.secretBlanked == bK.secretBlanked && km.secretLeftOut == bK.secretLeftOut
+                  && !km.items.contains { $0.path.hasSuffix("keyed.sh") || $0.path.contains("skills/guard/") || $0.path.hasSuffix("known_marketplaces.json") },
+                  "export (image from a plain backup): none of the keys, the blanked and left-out names in its manifest, the left-out files not in it")
+            SessionsImport.discard(ok.work)
+        } else { check(false, "export (image from a plain backup with keys): made and opens") }
+
+        // The export image of the profile as it is now, the hidden export copy and an import's staged backup keep every key
+        let nowPart = SessionsExport.Part(profile: "k", name: "K", source: srcK)
+        let nowDmg = URL(fileURLWithPath: out + "/K-now.dmg")
+        if (try? SessionsExport.run(SessionsExport.Job(parts: [nowPart], keys: .leaveOut, password: pw, destination: nowDmg, rootName: "k-now", place: place))) != nil,
+           let on = try? SessionsImport.open(nowDmg, password: pw, place: place) {
+            let nm = on.parts[0].manifest
+            let kept = Set(nm.items.map(\.path))
+            check(nm.secretBlanked == nil && nm.secretLeftOut == nil && !holds(on.tree.path, ghK).isEmpty && !holds(on.tree.path, awsK).isEmpty && !holds(on.tree.path, skK).isEmpty && !holds(on.tree.path, jwtK).isEmpty
+                  && kept.isSuperset(of: ["setup/hooks/keyed.sh", "setup/skills/guard/run.sh", "setup/plugins/known_marketplaces.json", "setup/settings.json"]),
+                  "export (image of the profile as it is now): every key, the script, the skill and the marketplaces file are carried, as before: \(allKeys.map { holds(on.tree.path, $0).count }) \(kept.sorted())")
+            let stK = try! SessionsImport.materialize(on, part: on.parts[0], target: "k2")
+            let loadedK = SessionsBackup.load(profile: "k2", id: stK.id, place: stK.stage)
+            check(!holds(stK.backup.dir.path, ghK).isEmpty && !holds(stK.backup.dir.path, skK).isEmpty && loadedK?.secretBlanked == nil && loadedK?.secretLeftOut == nil && loadedK?.envBlanked == nil,
+                  "import (image): the staged backup keeps what the image brought, keys included, and says nothing of blanked keys")
+            let (tK2, _, _) = target("k2")
+            let prK2 = SessionsRestore.plan(tK2, stK.backup, addSetup: true)
+            check(prK2.setup.keysBlanked.isEmpty && prK2.setup.keysLeftOut.isEmpty && !prK2.setup.envBlanked, "import (image): its setup row has no blanked-key line and no left-out line")
+            SessionsImport.discard(on.work)
+        } else { check(false, "export (image of the profile as it is now): made and opens") }
+        let xK = try! SessionsBackup.make(srcK, kind: .manual, window: false, place: place, forExport: true)
+        let xdir = SessionsBackup.folder(profile: "k", place: place).appendingPathComponent(xK.id).path
+        check(xK.secretBlanked == nil && xK.secretLeftOut == nil && !holds(xdir, ghK).isEmpty && !holds(xdir, skK).isEmpty && !holds(xdir, awsK).isEmpty && !holds(xdir, jwtK).isEmpty,
+              "backup (the hidden export copy): keeps everything for the image, keys included: \(xK.secretBlanked ?? []) \(xK.secretLeftOut ?? []) \(allKeys.map { holds(xdir, $0).count })")
+
+        // a settings.json and files without a key: nothing blanked, nothing left out, every file as it was
+        plantK(keyed: false)
+        let origCleanK = json(fm.contents(atPath: cK + "/settings.json"))!
+        let bC = try! SessionsBackup.make(srcK, kind: .manual, window: false, place: place)
+        let dirC = SessionsBackup.folder(profile: "k", place: place).appendingPathComponent(bC.id).path
+        var wantC = origCleanK; wantC["env"] = ["PLAIN": ""]
+        check(bC.secretBlanked == nil && bC.secretLeftOut == nil && same(json(fm.contents(atPath: dirC + "/setup/settings.json")) ?? [:], wantC)
+              && fm.contents(atPath: dirC + "/setup/hooks/keyed.sh") == fm.contents(atPath: cK + "/hooks/keyed.sh") && fm.contents(atPath: dirC + "/setup/plugins/known_marketplaces.json") == fm.contents(atPath: cK + "/plugins/known_marketplaces.json")
+              && fm.contents(atPath: dirC + "/setup/skills/guard/run.sh") == fm.contents(atPath: cK + "/skills/guard/run.sh") && bC.cloned + bC.copied == bC.items.count - 1,
+              "key scan: with no key anywhere, settings.json is as it was but for env, every script and file is kept byte for byte, and no name is listed")
+        let prC = SessionsRestore.plan(tK, SessionsRestore.Backup(profile: "k", id: bC.id, place: place), addSetup: true)
+        check(prC.setup.keysBlanked.isEmpty && prC.setup.keysLeftOut.isEmpty && prC.setup.envBlanked, "restore: no key lines on the row when none was found")
+        // a settings.json value that only looks near a key (a short sk- word, a word that merely contains one) is not a match
+        check(Setup.secretsBlanked(Data(#"{"a":"task-fix-the-login-page-for-users","b":"mask_ghp_short","c":"sk-short","d":["ok",1,true,null,{"e":2.5}]}"#.utf8))?.keys == [],
+              "key scan: the same shapes as the Export page's: a near miss (a task word, a short key, a number, a null) is not blanked")
+        try? fm.removeItem(atPath: cK)
+    }
+
+    // ---- General ▸ Backups: the one-time line for a place the person picked (once per place, so a second folder gets it again)
+    do {
+        let shared = BackupPrefs.shared
+        let a = w + "/picked-a", b = w + "/picked-b"
+        let wasPlace = shared.place
+        check(!BackupPrefs.noteDue(place: ""), "backups line: cl_audit's own folder (the default) never shows the one-time line")
+        check(BackupPrefs.noteDue(place: a) && BackupPrefs.noteDue(place: b), "backups line: a folder the person picked shows it until dismissed")
+        shared.dismissNote(place: a)
+        check(!BackupPrefs.noteDue(place: a) && !BackupPrefs.noteDue(place: a + "/") && !BackupPrefs.noteDue(place: a + "/../picked-a") && BackupPrefs.noteDue(place: b),
+              "backups line: dismissed for that folder (also another spelling of it), still shown for another")
+        shared.dismissNote(place: b)
+        check(!BackupPrefs.noteDue(place: a) && !BackupPrefs.noteDue(place: b), "backups line: each folder is remembered on its own")
+        shared.dismissNote(place: ""); check((BackupPrefs.store.string(forKey: BackupPrefs.noteKey) ?? "").split(separator: "\n").count == 2, "backups line: dismissing the default place remembers nothing")
+        for i in 0..<25 { shared.dismissNote(place: w + "/picked-n\(i)") }
+        check(BackupPrefs.noteSeen().count == 20 && !BackupPrefs.noteDue(place: w + "/picked-n24") && BackupPrefs.noteDue(place: a), "backups line: the last 20 folders are remembered, no more")
+        shared.reload()
+        check(BackupPrefs.pickedNote.contains("copies of Claude Code's settings and scripts") && BackupPrefs.pickedNote.contains("Any key found in them is left out") && BackupPrefs.pickedNote.contains("once for each folder"),
+              "backups line: the words")
+        shared.place = wasPlace
+    }
+
     // ---- an export never makes a file its own import refuses: a config over 8 MB (or a link, or not JSON) is left out at the source
     let big: [String: Any] = ["mcpServers": ["x": ["command": "x"]], "pad": String(repeating: "a", count: (8 << 20) + 16)]
     try! JSONSerialization.data(withJSONObject: big).write(to: URL(fileURLWithPath: dataA + "/claude_desktop_config.json"))
