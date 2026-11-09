@@ -555,7 +555,7 @@ struct ImportHappens: View {
     private func whereWords(_ p: SessionsRestore.Plan) -> String {
         let inUse = AccountNames.short(entry.seat?.email ?? "its account")
         if p.isMove {
-            return "A move: each entry goes back into \(entry.windowDataWords), in the folder of the account it was on (the file keeps the real account ids), so the window shows them once that account is signed in there. "
+            return "A move: each entry goes back into the folder of its own account, so it shows once you sign in there. "
                 + (p.otherAccount > 0 ? "\(p.otherAccount) from an account \(name) doesn't have go into \(inUse)'s folder, written as a switch would place them." : "")
         }
         return "Entries go into \(entry.windowDataWords), in \(inUse)'s folder, where \(name) works now (open it from \(entry.desktop == .standard ? "the Dock or Applications" : "\(name)'s Dock icon")). The file's accounts are only fingerprints, so every entry is written as a switch would place it (the old account's error keys and Remote Control ids off)."
@@ -649,7 +649,7 @@ struct ImportPage: View {
                 SRowLine(text: "Nothing was written into any profile, and nothing of the file is left unpacked. A file that isn't exactly an export is refused whole rather than guessed at.")
             }
             if let o = runner.opened, o.parts.count > 1 {
-                SRow(label: "Profile in it") {
+                SRow(label: "Profile in the file") {
                     Menu {
                         ForEach(o.parts.indices, id: \.self) { i in Button(o.parts[i].name) { runner.setPart(i) } }
                     } label: { MenuWell(text: o.parts[min(runner.partIndex, o.parts.count - 1)].name, fill: true) }
@@ -681,16 +681,16 @@ struct ImportPage: View {
     }
 
     private var moveCard: some View {
-        SCard(title: "cl_audit's profiles", info: "The file holds cl_audit's own record of its profiles (name, look, Dock place, accounts and the one in use) and its General and backup settings. Import makes the profiles that aren't here and never changes one that is: a profile is here when one of its accounts is a profile's here (or, for a file that names no account, its name). A made profile has no sign-in (each account needs one, through Add account) and no Dock icon until you put it in the Dock; nothing runs. Your settings stay unless you take the file's; a backups folder that isn't on this Mac is never taken. Undo takes back exactly what was made.") {
+        SCard(title: "cl_audit's profiles", info: "The file holds cl_audit's own record of its profiles (name, look, Dock place, accounts and the one in use) and its General and backup settings. Import makes the profiles that aren't here and never changes one that is. A profile counts as already here when it has one of the file's accounts (or, for a file with no accounts, the same name). A made profile works in folders of its own, whatever the file says. It is made with its accounts, looks and settings, but not signed in: after the import, sign in to each account with Add account. No Dock icon yet: you put it in the Dock after the import. Nothing runs. Your settings stay unless you take the file's; a backups folder that isn't on this Mac is never taken. Take back the profiles it made undoes exactly what was made.") {
             if runner.opened?.move == true {
-                SRowLine(text: "A move from another Mac: the file keeps the real account ids, so each profile's entries and tasks go back into its accounts' folders.")
+                SRowLine(text: "A move from another Mac: the file keeps the real accounts, so the entries and tasks go back under them.")
             }
             if let r = runner.moved, r.undone == nil {
                 SRow(label: "Done", first: true, stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {
                         value(MoveWords.done(r))
-                        line("Each made profile has no sign-in yet and no Dock icon: the steps are listed once its sessions are imported.")
-                        Button("Undo: take them back") { runner.undoMove() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                        line("They aren't signed in and have no Dock icon yet: what to do next for each is listed below.")
+                        Button("Take back the profiles it made") { runner.undoMove() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.moveBusy)
                     }
                 }
             } else if let p = runner.movePlan {
@@ -721,8 +721,9 @@ struct ImportPage: View {
                     }
                 }
                 if let key = MoveWords.key(p, take: runner.takeSettings, create: runner.makeProfiles) {
-                    Button(key) { runner.applyMove() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize().padding(.top, 6)
-                    line("First, before the sessions: then each profile's sessions go into its own profile (Profile in it, above).")
+                    Button(key) { runner.applyMove() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                        .disabled(runner.moveBusy)
+                    line("Do this first. Then the page offers the part's own profile for Into, and Close and import puts its sessions there.")
                 }
             }
             if let n = runner.moveNote { SRowLine(text: n, color: face.caution) }
@@ -757,8 +758,13 @@ struct ImportPage: View {
     private var staysCard: some View {
         let inUse = AccountNames.short(target.seat?.email ?? "its account")
         return SCard(title: "Stays as it is", info: "Import only adds what is missing. The account, the sign-ins and claude.ai are not part of it; a file that is here (MCP settings, settings.json, a task file) is never replaced or merged into.") {
-            SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
-            SRow(label: "Sign-ins") { rowValue("Never in an export, never written") }
+            if runner.opened?.move == true {
+                SRow(label: "Account", first: true) { rowValue("\(name) keeps the accounts it has; the import doesn't change them") }
+                SRow(label: "Sign-ins") { rowValue("Never travel: sign in again on this Mac") }
+            } else {
+                SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
+                SRow(label: "Sign-ins") { rowValue("Never in an export, never written") }
+            }
             SRow(label: "MCP") { rowValue("Yours stay; the file's are added only if none is here and you pick Add them") }
             SRow(label: "settings.json") { rowValue("Yours stay; one is added only if none is here and you pick Add them") }
             SRow(label: "Scheduled tasks") { rowValue("A task file that is here stays as it is; the file's tasks come only if you pick Add them, paused") }
@@ -870,7 +876,7 @@ struct MoveSteps: View {
     }
 
     var body: some View {
-        SCard(title: "On this Mac, next", info: "A profile made by the import has its accounts, look and settings, and nothing signed in: each account needs a sign-in on this Mac (Settings ▸ the profile ▸ Claude Code ▸ Accounts, Add account). It has no Dock icon until you put it in the Dock. Its scheduled tasks came paused: turn each on in the Claude window's Scheduled tasks once it is signed in. The other profiles' sessions: Settings ▸ that profile ▸ Sessions ▸ Import…, the same file.") {
+        SCard(title: "On this Mac, next", info: "A profile made by the import is made with its accounts, looks and settings, but not signed in: sign in to each account with Settings ▸ the profile ▸ Claude Code ▸ Accounts ▸ Add account. No Dock icon yet: you put it in the Dock (Settings ▸ the profile ▸ Dock icon ▸ Usage in the Dock). Its scheduled tasks come paused: turn each on in its Claude window, under Scheduled tasks, once it is signed in. Its sessions: Settings ▸ the profile ▸ Sessions ▸ Import…, the same file.") {
             ForEach(Array(runner.madeProfiles.enumerated()), id: \.offset) { i, m in
                 SRow(label: m.name, first: i == 0, stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {

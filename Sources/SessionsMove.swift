@@ -296,8 +296,8 @@ enum SessionsMove {
         Known(key: "appIconPanelKeys", label: "App icon keys", store: .general, kind: .choice(PanelKeys.allCases.map { ($0.rawValue, $0.rawValue) }), def: PanelKeys.classic.rawValue),
         Known(key: "appIconPanelSlot", label: "App icon slot", store: .general, kind: .choice(PanelSlot.allCases.map { ($0.rawValue, $0.rawValue) }), def: PanelSlot.lit.rawValue),
         Known(key: BackupPrefs.placeKey, label: "Backups folder", store: .backups, kind: .place, def: ""),
-        Known(key: BackupPrefs.lastKey, label: "Backups kept (at least)", store: .backups, kind: .int(1...99), def: "\(BackupPrefs.defaultLast)"),
-        Known(key: BackupPrefs.daysKey, label: "Backups kept (days)", store: .backups, kind: .int(0...3650), def: "\(BackupPrefs.defaultDays)"),
+        Known(key: BackupPrefs.lastKey, label: "Minimum backups kept", store: .backups, kind: .int(1...99), def: "\(BackupPrefs.defaultLast)"),
+        Known(key: BackupPrefs.daysKey, label: "Days of backups kept", store: .backups, kind: .int(0...3650), def: "\(BackupPrefs.defaultDays)"),
     ]
 
     private static func store(_ w: Where) -> PrefStore { w == .general ? prefs : BackupPrefs.store }
@@ -725,7 +725,7 @@ enum MoveWords {
     static func profileNotes(_ p: SessionsMove.Plan) -> [String] {
         var out: [String] = []
         if !p.create.isEmpty {
-            out.append("Made with their accounts, looks and settings, no sign-in: each account needs one afterwards, through Add account. No Dock icon yet: putting one in the Dock is a step after the import.")
+            out.append("Made with their accounts, looks and settings, but not signed in: after the import, sign in to each account with Add account. No Dock icon yet: you put it in the Dock after the import. Each works in folders of its own, whatever the file says.")
         }
         if p.fingerprinted { out.append("This file wasn't made as a move: its accounts are only fingerprints, so the profiles come without them. Export ▸ Move to another Mac carries them.") }
         for x in p.notMade.prefix(6) { out.append("\(x.name): not made, \(x.why)") }
@@ -776,9 +776,11 @@ enum MoveWords {
     static func steps(_ m: SessionsMove.Made, tasks: Int = 0) -> [String] {
         var out: [String] = []
         let who = m.signIns.joined(separator: ", ")
-        out.append("Sign in to \(m.signIns.count == 1 ? "its account" : "each of its \(m.signIns.count) accounts") (\(who)): Settings ▸ \(m.name) ▸ Claude Code ▸ Accounts, Add account. Nothing is signed in yet.")
-        out.append(m.inDock ? "Put it in the Dock: Settings ▸ \(m.name) ▸ Usage in the Dock, or the key here. It had a Dock icon on the other Mac." : "It had no Dock icon on the other Mac; Usage in the Dock turns one on.")
-        if tasks > 0 { out.append("\(n(tasks, "scheduled task came", "scheduled tasks came")) paused: turn each on in its Claude window's Scheduled tasks once it's signed in.") }
+        out.append("Sign in to \(m.signIns.count == 1 ? "its account" : "each of its \(m.signIns.count) accounts") (\(who)): Settings ▸ \(m.name) ▸ Claude Code ▸ Accounts ▸ Add account. Nothing is signed in yet.")
+        out.append(m.inDock ? "Put it in the Dock: Settings ▸ \(m.name) ▸ Dock icon ▸ Usage in the Dock, or the key here. It had a Dock icon on the other Mac."
+                   : "It had no Dock icon on the other Mac; Settings ▸ \(m.name) ▸ Dock icon ▸ Usage in the Dock turns one on.")
+        if tasks > 0 { out.append("\(n(tasks, "scheduled task came", "scheduled tasks came")) paused: turn each on in \(m.name)'s Claude window (open it from its Dock icon), under Scheduled tasks, once it's signed in.") }
+        out.append("Its sessions: Settings ▸ \(m.name) ▸ Sessions ▸ Import…, the same file (its part is picked for it).")
         return out
     }
 }
