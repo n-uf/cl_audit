@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.5 — 2026-11-08
+
 - **The first profile is the default profile** (issue #15): the one on `~/.claude` with the usual Claude app, what Claude
   shows when you open it from the Dock or Applications and what Claude Code in Terminal uses. First run offers a
   signed-in `~/.claude` first (**Use**); otherwise **Sign in…** signs Claude Code into `~/.claude` instead of making
