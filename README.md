@@ -366,6 +366,35 @@ A Dock icon draws what the agent saved for its profile, and asks the agent for R
 Press and hold has no event of its own: the Dock asks the app for its menu on both right-click and
 press-and-hold, and the icon checks which mouse button is down at that moment.
 
+## Quick chat
+
+A floating chat over any app, in Claude's own colours: a bar first ("Ask anything"), and after the first message a
+chat window that stays floating, on every Space, until Esc hides it. It never brings cl_audit or the Claude app forward.
+Claude Code answers it on the account a profile has in use, so it needs no API key and follows a switch.
+
+- **Opening it:** the shortcut (off until you turn it on in General ▸ Quick chat; ⌥Space by default), or **Quick
+  chat** in a profile's menu bar or Dock icon menu, which chats on that profile. Esc or ⌘W hides it and keeps the chat;
+  opening it again brings it back as it was.
+- **Asking:** Return sends, Shift-Return adds a line. Answers stream in as Markdown, code blocks have Copy, and under
+  each answer are Copy, Ask again and "answered by Haiku 5.5 · 2.4 s". Follow-ups go on in the same Claude Code
+  session; the pencil (⌘N) starts a new chat and shrinks the window back to the bar. Stop ends an answer where it is.
+- **Model and thinking:** a picker for each under the field. Haiku with thinking off by default; a pick holds for that
+  chat, and New chat goes back to the defaults in General. With thinking on, "Thought for 5 s" sits above the answer
+  and opens to show it.
+- **The account line:** the profile, the address of its account in use (masked unless Privacy shows addresses) and its
+  week, in the level colours; the bar shows the profile and the week. When a limit is full, it says so before you
+  send and offers **Switch account…** for the standby account with the most room, through the Switch page; what you
+  typed goes once the switch is done.
+- **When something goes wrong:** if Claude Code stops mid-answer, the window keeps what arrived, says what happened and
+  offers Retry. Claude Code not installed, or the profile not signed in, says so with a way to fix it.
+
+How it runs: the agent hosts it. Each chat is one `claude` process kept open between messages (closed after 10 minutes
+idle; the next message goes on with the session), in print mode with stream-json in and out, on the profile's own
+folder (`CLAUDE_CONFIG_DIR`) and in quick chat's work folder. It runs with no tools, no MCP servers, no settings files
+and no slash commands, and it gets only an allowlisted part of the Mac's environment (home, user, language, proxies
+and certificates), never a key, a token or another provider's settings, with Claude Code's non-essential traffic
+(telemetry, error reports, update checks) off. Nothing but your messages is sent, and only through Claude Code.
+
 ## Settings
 
 Settings is a page of the same window as the dashboard (switch at the top, or ⌘,). The profiles run along
@@ -584,7 +613,8 @@ beside them; in one column everything follows in that order.
 
 ### General settings
 
-Three columns, each with its subject printed at the top: **cl_audit** (Usage in the background, Privacy, Backups, About),
+Three columns, each with its subject printed at the top: **cl_audit** (Usage in the background, Privacy, Backups,
+Quick chat, About),
 **How usage looks** (Face, Dashboard cards, Widget) and **The Dock** (App icon, Dock). In two columns the Dock goes
 under cl_audit; one column keeps the same order, top to bottom. Every row is one line.
 
@@ -607,6 +637,19 @@ under cl_audit; one column keeps the same order, top to bottom. Every row is one
   say what stays: the last N of each profile plus any made under D days ago. Stored with cl_audit's other
   preferences. Backups already made stay where they were if the folder changes. See
   [Backups of a profile's sessions](#backups-of-a-profiles-sessions).
+- **Quick chat:** see [Quick chat](#quick-chat).
+  - **Shortcut:** off by default. On, it opens the chat from any app: ⌥Space, ⌃⌥Space, ⌥⇧Space, ⌃Space or ⌘Space.
+    It's checked against macOS's own Space shortcuts (Spotlight, Finder's search, the input sources, as this Mac has
+    them set) and the Claude app's Quick Entry, and a line says which it clashes with, or that another app already
+    holds it. It's registered the way macOS's own app shortcuts are, so there's no Accessibility permission to give.
+  - **Profile** the shortcut chats on (the first by default), **Model** (Haiku) and **Thinking** (off) for a new chat.
+  - **Where it keeps things:** each profile's chats, which Claude Code keeps in that profile's folder under
+    `projects/<the work folder's name>/` and deletes after 30 days by default, with their count and size; the work
+    folders and the settings in `~/Library/Application Support/usage-n-uf/quick-chat/`. Each has **Show in Finder**.
+    Nothing goes into macOS preferences.
+  - **Counting:** off by default: quick chats are left out of a profile's Sessions card and backups.
+  - **Remove quick chat data…** moves every profile's quick chats, the work folders and the settings to the Trash,
+    after the chat closes; the shortcut turns off. A profile's other sessions stay as they are.
 - **Face:** the look of the cl_audit window, as on the home site: **Std** (a dark brushed panel, the
   default), **Black** (black anodised) or **Silver** (light brushed silver; the window takes the Mac's light
   appearance). Keys, display windows and LED switches throughout; the Dock icons keep their own designs.

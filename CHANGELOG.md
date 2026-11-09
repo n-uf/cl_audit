@@ -8,7 +8,20 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Quick chat** (issue #11): a floating chat over any app, like ChatGPT's classic one in Claude's colours. A bar
+  first; the first message opens it into a chat window that stays floating on every Space until Esc hides it. Claude
+  Code answers it on the account a profile has in use, so it needs no API key and follows a switch. Answers stream as
+  Markdown with Copy on code blocks; follow-ups go on in the same session; New chat starts again.
+  - Opened by a shortcut (off until turned on; ⌥Space by default, checked for clashes, no Accessibility permission)
+    or by **Quick chat** in a profile's menu bar and Dock icon menus.
+  - A model picker (Haiku by default) and a thinking picker (off by default), and every answer says which model gave
+    it. The account line shows the week in the level colours; a full limit offers **Switch account…** and sends what
+    you typed once the switch is done.
+  - If Claude Code stops mid-answer the window stays, keeps what arrived and offers Retry.
+  - No tools, no MCP servers, no settings files; claude gets only an allowlisted part of the Mac's environment, with
+    its telemetry off. Nothing but your messages is sent.
+  - Settings ▸ General ▸ Quick chat lists where its chats, work folders and settings are, leaves the chats out of a
+    profile's session counts and backups unless asked, and **Remove quick chat data…** moves them all to the Trash.
 
 ## 26.11.2 — 2026-11-08
 
