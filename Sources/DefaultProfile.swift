@@ -232,6 +232,9 @@ enum DefaultProfile {
         var inUsual = 0                     // entries the usual app has already
         var same = 0                        // of the old ones: there unchanged
         var clash = 0                       // of the old ones: there but different (what is there stays, listed)
+        /// otherFolder: of those transcripts, the ones Claude Code's clean-up would delete again where they land (Retention.swift)
+        var tally = Retention.Tally()
+        var retention = Retention()         // what the clean-up does in ~/.claude (the folder they land in)
         var hasWindowData: Bool { entries > 0 || tasks > 0 }
     }
 
@@ -275,9 +278,16 @@ enum DefaultProfile {
         if let src = oldCodeDir {
             let projects = (expand(src) as NSString).appendingPathComponent("projects")
             let have = (codeDir as NSString).appendingPathComponent("projects")
+            p.retention = Retention.read(codeDir: codeDir)
+            let now = Date()
             for proj in ((try? fm.contentsOfDirectory(atPath: projects)) ?? []) {
-                for f in ((try? fm.contentsOfDirectory(atPath: (projects as NSString).appendingPathComponent(proj))) ?? []) where f.hasSuffix(".jsonl") {
-                    if !fm.fileExists(atPath: ((have as NSString).appendingPathComponent(proj) as NSString).appendingPathComponent(f)) { p.transcripts += 1 }
+                let pdir = (projects as NSString).appendingPathComponent(proj)
+                for f in ((try? fm.contentsOfDirectory(atPath: pdir)) ?? []) where f.hasSuffix(".jsonl") {
+                    if !fm.fileExists(atPath: ((have as NSString).appendingPathComponent(proj) as NSString).appendingPathComponent(f)) {
+                        p.transcripts += 1
+                        // the same rule as the Restore page's Would be deleted: the transcript's own entrypoint, its marker, its age
+                        if let t = Retention.Transcript.read(path: (pdir as NSString).appendingPathComponent(f)) { p.tally.add(t, p.retention, now: now) }
+                    }
                 }
             }
         }
