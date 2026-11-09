@@ -8,21 +8,12 @@ the notes before updating.
 
 ## Unreleased
 
-- **Claude Code's setup travels: Export, Import, Backup and Restore carry it.** CLAUDE.md and the `.md` files it pulls in with
-  `@path`, skills, agents, commands, output styles, keybindings, settings.json with the scripts its hooks and status line point to,
-  and the plugin list (never plugin caches, settings.local.json or a sign-in). **Export** has a "Claude Code setup" row (Include
-  them by default): a link is never followed (a linked skill, or one that holds a link, is left out and listed with where it
-  points on that page only), what lives outside the folder is listed, version-history leftovers are left out, the files go through
-  the key scan (the Found line counts a skill with the sessions) and settings.json, its scripts and the plugin marketplaces,
-  which can hold tokens no scan recognises, travel only in the encrypted disk image (a zip leaves them out and says so). The
-  format is now version 2 (each setup file with its SHA-256 and execute flag; version-1 files still import, an older cl_audit
-  refuses a newer one). **Import** and **Restore** leave the setup out until you pick **Add them**, list every unit as New, Already
-  here or Different here (settings.json: the key names that differ, and the command of each hook), and add only what is
-  missing: never over a file, never into a skill folder that exists, never through a link, files 0600, folders 0700; a skill's
-  script (and the scripts of an added settings.json) 0700, owner only. A hostile file is refused whole (a name such as `Skills/`
-  or `Projects/`, the same place under another case, included). Undo takes it back.
-  A scheduled task's sessions are recognised by the entry's `scheduledTaskId`. The test seam for a failed claim is now compiled
-  only into test builds, and an export's work folder is unregistered when it can't be removed.
+- **Claude Code's setup travels: Export, Import, Backup and Restore carry it.** CLAUDE.md and the files it includes, skills, agents,
+  commands, output styles, keybindings, settings.json with the scripts its hooks run, and the list of installed plugins. Export
+  includes it by default; settings.json, its scripts and the plugin marketplaces travel only in the encrypted disk image. Import
+  and Restore leave it out until you pick Add them, and add only what is missing: nothing here is replaced. Links are never
+  followed. Undo takes it back.
+- An older cl_audit can't open an export made by this one, and a backup made by this one isn't listed by an older one.
 
 ## 26.11.7 — 2026-11-09
 
