@@ -1216,7 +1216,18 @@ enum SessionsRestore {
     /// The last import of this profile that is finished and not undone (Undo last import, in Settings ▸ the profile ▸
     /// Sessions, opens its page): newest first. One an Undo only half did (a session held some transcripts) still counts.
     static func lastImport(of profile: String) -> Receipt? {
-        headers().first { $0.profile == profile && $0.importedFrom != nil && $0.finished != nil && $0.undone == nil }
+        headers().first { $0.profile == profile && $0.importedFrom != nil && $0.finished != nil && $0.undone == nil && !carriedOver($0) }
+    }
+
+    /// An import made into a window's data folder that a default-profile move has since carried over to the usual app (and
+    /// that move isn't undone): its own Undo would change only the old folder, so it isn't offered; Undo this move takes the
+    /// sessions out of the usual app (SessionsCard says so).
+    static func carriedOver(_ r: Receipt) -> Bool {
+        guard !r.dataDir.isEmpty else { return false }
+        return DefaultProfile.all().contains {
+            $0.profile == r.profile && $0.receipt != nil && $0.undone == nil && !$0.oldDataDir.isEmpty && $0.started > r.started
+                && FolderKey.canonical($0.oldDataDir) == FolderKey.canonical(r.dataDir)
+        }
     }
 
     /// How many finished restores of a profile read from this backup and weren't undone: their receipts go with the backup.

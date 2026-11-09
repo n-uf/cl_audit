@@ -297,9 +297,23 @@ final class SettingsModel: ObservableObject {
         (id == Self.firstRunID && isFirstRun) || (id == Self.dashboardID && !isFirstRun)
             || (id == Self.newID && draft != nil) || (id == Self.switchID && switchTarget != nil)
             || (id == Self.restoreID && restoreTarget != nil)
+            || (id == Self.defaultProfileID && defaultProfile != nil)
             || (id == Self.exportID && accounts.contains { $0.id == exportingProfile })
             || (id == Self.importID && accounts.contains { $0.id == importingProfile })
             || accounts.contains { $0.id == id }
+    }
+
+    /// The default-profile page (DefaultProfilePage.swift): the offer, and its steps once started.
+    static let defaultProfileID = "__defaultprofile__"
+    @Published var defaultProfile: DefaultProfileRunner?
+
+    /// "Make the default profile…": a fresh page for what the offer is about now, or the one under way. Nothing is changed
+    /// until Make the default profile is pressed on it.
+    func showDefaultProfile() {
+        if let r = defaultProfile, r.isRunning { selection = Self.defaultProfileID; return }
+        guard let s = DefaultProfile.situation(accounts) else { message = "Nothing to move: the default profile is already the one Claude opens."; return }
+        if defaultProfile == nil || defaultProfile?.phase != .done { defaultProfile = DefaultProfileRunner(situation: s, model: self) }
+        selection = Self.defaultProfileID
     }
 
     /// The Switch page (Switch.swift): which profile and which of its standby accounts ("<profile>~<id>").
@@ -791,10 +805,14 @@ final class SettingsModel: ObservableObject {
         showSaved("Claude window \(on ? "on" : "off")")
     }
 
+    /// Checks only: false saves the list and installs nothing (no icon apps, no Dock).
+    nonisolated(unsafe) static var applyInstalls = true
+
     func apply(then done: (() -> Void)? = nil) {
         guard problem == nil else { return }
         do {
             try saveMerged()
+            guard Self.applyInstalls else { done?(); return }
             message = "Applying…"
             let list = accounts
             DispatchQueue.main.async {
@@ -869,7 +887,9 @@ struct SettingsPage: View {
             } else { GeometryReader { geo in ScrollView {
                 let w = geo.size.width - 32
                 if model.selection == SettingsModel.dashboardID {
-                    DashboardSettings(width: w).padding(.horizontal, 16).padding(.vertical, 14)
+                    DashboardSettings(width: w, model: model).padding(.horizontal, 16).padding(.vertical, 14)
+                } else if model.selection == SettingsModel.defaultProfileID, let r = model.defaultProfile {
+                    DefaultProfilePage(model: model, runner: r, width: w).padding(.horizontal, 16).padding(.vertical, 14)
                 } else if model.selection == SettingsModel.switchID, let t = model.switchTarget {
                     SwitchPage(entry: t.entry, standby: t.standby, model: model, runner: model.runner(t.entry, t.standby), width: w)
                         .padding(.horizontal, 16).padding(.vertical, 14)

@@ -30,6 +30,7 @@ struct SessionsCard: View {
     @State private var problem: String?
     @State private var deleting: Listed?                           // Delete… asks first
     @State private var lastImport: SessionsRestore.Receipt?        // the last import that wasn't undone: Undo last import
+    @State private var carriedImport = false                       // an import the default-profile move carried to the usual app
     @State private var exportWords = "Never exported. A file for another Mac or for keeping."
 
     private var name: String { entry.name.isEmpty ? "This profile" : entry.name }
@@ -133,6 +134,10 @@ struct SessionsCard: View {
                     .help("Choose an export (a .zip or .dmg) and preview what it would add. Nothing is written until you press Close and import, and nothing is ever overwritten")
                 text("From an export of this profile, another profile or another Mac.")
             }
+            if lastImport == nil, carriedImport {
+                // an import into the old window's data, carried to the usual app by the default-profile move
+                note(DefaultProfile.importNote)
+            }
             if let l = lastImport {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Button("Undo last import") { model.showRestore(RestoreKey(profile: entry.id, backup: l.backup, place: l.backupPlace, resume: l.id)) }
@@ -225,6 +230,9 @@ struct SessionsCard: View {
         let src = SessionsBackup.Source(e)
         kept = SessionsBackup.KeptCache.get(e.id)
         lastImport = await Task.detached(priority: .utility) { SessionsRestore.lastImport(of: e.id) }.value
+        carriedImport = await Task.detached(priority: .utility) {
+            SessionsRestore.headers().contains { $0.profile == e.id && $0.importedFrom != nil && $0.finished != nil && $0.undone == nil && SessionsRestore.carriedOver($0) }
+        }.value
         exportWords = ExportPrefs.words(profile: e.id)
         let (list, tg, d) = await Task.detached(priority: .utility) { () -> ([Listed], [String: String], (days: Int?, problem: String?)) in
             SessionsImport.sweep(place: place)                 // unpacking and export folders a stopped run left (a day old)

@@ -36,6 +36,14 @@ final class DashboardPrefs: ObservableObject {
 struct DashboardSettings: View {
     @ObservedObject private var prefs = DashboardPrefs.shared
     var width: CGFloat = 1280
+    /// The window's model: the default-profile card (DefaultProfilePage.swift) needs the profiles. nil in renders of the rest.
+    var model: SettingsModel? = nil
+
+    /// The default-profile card first, in the cl_audit column, while there is something to offer.
+    private var defaultCard: [AnyView] {
+        guard let m = model, DefaultProfile.situation(m.accounts) != nil || DefaultProfile.unfinished() != nil else { return [] }
+        return [AnyView(DefaultProfileCard(model: m))]
+    }
 
     /// One subject per column, printed at its top: cl_audit itself (Usage in the background, Privacy, Backups, Quick chat,
     /// About), how usage
@@ -43,11 +51,11 @@ struct DashboardSettings: View {
     /// settings). In two columns the Dock goes under cl_audit; one column keeps the three-column order, top to bottom.
     var body: some View {
         SettingsColumns(width: width,
-                        groups: [[AnyView(ColumnHead(text: "cl_audit")), AnyView(usageCard), AnyView(emailsCard), AnyView(backupsCard),
+                        groups: [[AnyView(ColumnHead(text: "cl_audit"))] + defaultCard + [AnyView(usageCard), AnyView(emailsCard), AnyView(backupsCard),
                                   AnyView(QuickChatCard()), AnyView(aboutCard)],
                                  [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard), AnyView(WidgetCard())],
                                  [AnyView(ColumnHead(text: "The Dock")), AnyView(appIconCard), AnyView(DockCard())]],
-                        two: [[AnyView(ColumnHead(text: "cl_audit · the Dock")), AnyView(usageCard), AnyView(emailsCard),
+                        two: [[AnyView(ColumnHead(text: "cl_audit · the Dock"))] + defaultCard + [AnyView(usageCard), AnyView(emailsCard),
                                AnyView(backupsCard), AnyView(QuickChatCard()), AnyView(aboutCard), AnyView(appIconCard), AnyView(DockCard())],
                               [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard),
                                AnyView(WidgetCard())]])

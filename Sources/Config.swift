@@ -60,6 +60,17 @@ enum DesktopMode: String, Codable, Identifiable {
         !standardTaken && Account.isDefault(configDir: configDir) ? .standard : .separate
     }
 
+    /// One plain line on the profile's Claude window card, under its switch.
+    static func opensWords(_ m: DesktopMode) -> String {
+        switch m {
+        case .standard: return "Opens as the usual Claude app, the one you get from the Dock or Applications."
+        case .separate: return "Opens as its own window, from this profile's Dock icon or menu. Opening Claude directly shows a different window, with other sessions."
+        }
+    }
+
+    /// The small mark a profile on its own window gets on the dashboard card and its tile; the usual app has none.
+    static let ownMark = "own window"
+
     /// The words for the window, in a sentence ("Import writes into …").
     static let usualWords = "the usual Claude app"
     static func ownWords(_ profile: String) -> String { "\(profile)'s own window, opened from its Dock icon" }

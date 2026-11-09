@@ -356,6 +356,8 @@ final class RestoreRunner: ObservableObject {
                     } else {
                         self.note = u.problems.isEmpty ? nil : u.problems.suffix(3).joined(separator: " ")
                         self.phase = .undone
+                        // an undo of the default-profile move's restore also puts the window kind back (DefaultProfileRunner.swift)
+                        if let rec = DefaultProfile.record(forReceipt: u.id) { self.model?.defaultMoveUndone(rec.id) }
                     }
                 case .failure(let err):
                     self.phase = self.priorPhase
