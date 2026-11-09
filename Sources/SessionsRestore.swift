@@ -345,6 +345,8 @@ enum SessionsRestore {
         let plainSetup = setupItems.filter { Setup.unit(of: String($0.path.dropFirst(6))).kind != .task }
         if !plainSetup.isEmpty || m.setupLeftOut != nil {
             planSetup(&p, t, items: plainSetup, leftOutAtSource: (m.setupLeftOut ?? []).filter { !$0.hasPrefix("scheduled task ") }, reader: reader, add: addSetup)
+            // a plain backup's settings.json has its env values blanked (keys kept): the row says so
+            p.setup.envBlanked = m.envBlanked == true && plainSetup.contains { $0.path == "setup/settings.json" }
         }
 
         // 3c. the rest of the window's claude_desktop_config.json (MCP settings): left out unless asked, only where there is none

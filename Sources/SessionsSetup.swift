@@ -88,6 +88,18 @@ enum Setup {
     static let maxSettingsBytes = 8 << 20
     /// What the Export page lists for a settings.json over that.
     static let settingsTooBig = "settings.json (over 8 MB: left out, with the scripts its hooks run)"
+    /// What a plain backup lists for a settings.json it can't read as a JSON object (it is never copied raw).
+    static let settingsUnreadable = "settings.json (not a JSON object it can read: left out of the backup, with the scripts its hooks run)"
+
+    /// settings.json as a plain backup keeps it: the parsed object with every value of its `env` object blanked to "" (the names
+    /// kept), written anew, so nothing the parse drops (a repeated key, a second `env`, comments) survives either. An `env` that isn't
+    /// an object goes. nil: not a JSON object. Nothing is ever run (no apiKeyHelper, no hook).
+    static func envBlanked(_ d: Data) -> Data? {
+        guard var j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return nil }
+        if let env = j["env"] as? [String: Any] { j["env"] = env.mapValues { _ in "" } }
+        else if j["env"] != nil { j.removeValue(forKey: "env") }
+        return try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    }
     /// Why a skill (or a folder of agents, commands, output styles) is left out whole: the walk had to stop in it.
     static let cutWords = "too many files, or folders nested too deep: left out whole"
     /// What a hard-linked file is listed with: never carried (it is another file's content too).

@@ -69,6 +69,9 @@ struct SetupRow: View {
         }
     }
 
+    /// A plain backup's settings.json: what its env values are.
+    static let envBlankedWords = "Env values aren't kept in backups: this settings.json has its env names with blank values. They travel only in the encrypted export."
+
     private static func settingsStatus(_ sp: SessionsRestore.SetupPlan) -> SessionsRestore.SetupPlan.Status? {
         sp.entries.first { $0.unit == Setup.Unit(kind: .settings, name: "settings.json") }?.status
     }
@@ -150,6 +153,7 @@ struct SetupRow: View {
                     // (what a plan holds before the choice is what adding would do: said as such while they are left out)
                     if !undone, !sp.execNames.isEmpty { small((sp.leftOut ? "If added: " : "") + "\(n(sp.execNames.count, "script", "scripts")) made executable (owner only), only inside what this adds") }
                     if !undone, !sp.leftOut, !sp.execManual.isEmpty { small(Self.execManualWords(sp, imported: imported), color: face.caution) }
+                    if !undone, sp.envBlanked { small(Self.envBlankedWords, color: face.caution) }
                     if !undone, !sp.settingsDiffer.isEmpty { small("settings.json here stays as it is; the one in the \(imported ? "file" : "backup") differs in \(sp.settingsDiffer.prefix(6).joined(separator: ", "))", color: face.caution) }
                     ForEach(Array(sp.notes.enumerated()), id: \.offset) { _, s in small(s, color: face.caution) }
                     ForEach(Array(sp.missingPaths.prefix(5).enumerated()), id: \.offset) { _, s in small(s, color: face.caution) }

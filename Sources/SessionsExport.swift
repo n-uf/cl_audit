@@ -751,6 +751,8 @@ enum SessionsExport {
         var hooksUnknown = false
         /// Scheduled tasks' prompts (they go with their tasks, not in `units`: the setup row never shows them)
         var taskPrompts = 0
+        /// From a plain backup: its settings.json has every env value blanked (backups don't keep them).
+        var envBlanked = false
         var counts: Setup.Counts { Setup.Counts(units) }
         func isSensitive(_ u: Setup.Unit) -> Bool { u.sensitive || hookUnits.contains(u) }
         var sensitive: Setup.Counts { Setup.Counts(units.filter(\.sensitive)) }
@@ -760,7 +762,7 @@ enum SessionsExport {
         var plain: Setup.Counts { Setup.Counts(units.filter { !isSensitive($0) }) }
         var isEmpty: Bool { units.isEmpty }
         mutating func add(_ o: SetupPreview) {
-            hookUnits.formUnion(o.hookUnits); hooksUnknown = hooksUnknown || o.hooksUnknown; taskPrompts += o.taskPrompts
+            hookUnits.formUnion(o.hookUnits); hooksUnknown = hooksUnknown || o.hooksUnknown; taskPrompts += o.taskPrompts; envBlanked = envBlanked || o.envBlanked
             units += o.units; files += o.files; bytes += o.bytes; keyedUnits += o.keyedUnits
             for (k, v) in o.keyKinds { keyKinds[k, default: 0] += v }
             extra.hooks += o.extra.hooks; extra.plugins += o.extra.plugins; extra.statusLine = extra.statusLine || o.extra.statusLine
@@ -805,6 +807,10 @@ enum SessionsExport {
         func data(_ rel: String) -> Data? { files.first { $0.rel == rel }.flatMap { Setup.readCapped($0.src, limit: 8 << 20) } }
         sp.hookUnits = held
         sp.hooksUnknown = !known
+        // a plain backup's settings.json has its env values blanked: an export from it carries the blank ones (said on the page)
+        if part.source == nil, let b = part.backup, files.contains(where: { $0.rel == "settings.json" }) {
+            sp.envBlanked = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place)?.envBlanked == true
+        }
         for f in files {
             if cancel() { return nil }
             let u = f.unit
@@ -1098,7 +1104,7 @@ enum SessionsExport {
                 do { lock = try SwitchEngine.Lock.take() } catch { throw ArchiveError("\(error)") }
                 defer { lock.release() }
                 let m: SessionsBackup.Manifest
-                do { m = try SessionsBackup.make(src, kind: .manual, window: !part.windowOpen, transcripts: true, setup: job.setup, place: work.appendingPathComponent("backups"), now: job.now) }
+                do { m = try SessionsBackup.make(src, kind: .manual, window: !part.windowOpen, transcripts: true, setup: job.setup, place: work.appendingPathComponent("backups"), now: job.now, forExport: true) }
                 catch { throw ArchiveError("\(error)") }
                 if !part.windowOpen, !part.windowClosed() { throw ArchiveError("\(part.name)'s Claude window opened during the export; try again.") }
                 backup = SessionsRestore.Backup(profile: src.profile, id: m.id, place: work.appendingPathComponent("backups"))
@@ -1492,7 +1498,7 @@ enum SessionsExport {
                                          window: !items.filter { $0.role == .window }.isEmpty || hasSidebar, transcripts: m.transcripts,
                                          bytes: items.reduce(0) { $0 + $1.bytes }, cloned: cloned, copied: 0, copiedBytes: 0, leftOut: leftOut,
                                          dataDir: "", codeDir: "", items: items, setupLeftOut: setupNames.isEmpty ? nil : Array(Set(setupNames)).sorted(),
-                                         configLeftOut: configLeftOut)
+                                         configLeftOut: configLeftOut, envBlanked: items.contains { $0.path == "setup/settings.json" } ? m.envBlanked : nil)
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try write(try enc.encode(mm), to: URL(fileURLWithPath: create("backup.json")))
         progress(1)

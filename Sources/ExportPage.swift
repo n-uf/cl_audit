@@ -263,6 +263,9 @@ enum ExportWords {
         if setup, !image, let w = Setup.sensitiveWords(sp.sensitive, held: sp.held, unknown: sp.hooksUnknown) {
             out.append("\(w) \(sp.sensitive.total + sp.held.total == 1 ? "needs" : "need") the encrypted disk image: left out of a zip")
         }
+        if setup, image, sp.envBlanked {
+            out.append("settings.json comes with its env values blank (names kept): backups don't keep them; export the profile as it is now to carry them")
+        }
         if !sp.linked.isEmpty {
             let shown = sp.linked.prefix(3).map { "\($0.label) points to \(tilde($0.target))" }.joined(separator: ", ")
             out.append("\(n(sp.linked.count, "link", "links")) left out, never followed: \(shown)" + (sp.linked.count > 3 ? ", …" : ""))

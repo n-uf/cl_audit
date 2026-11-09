@@ -7,9 +7,13 @@
 //                                (the entries and scheduled-tasks.json), for every account that has one
 //   sidebar/epitaxyPrefs.json    the window's sidebar records: only the epitaxyPrefs part of claude_desktop_config.json
 //   config/claude_desktop_config.json   the rest of that file (format 3): MCP servers and the window's other settings, without
-//                                the sidebar part. It can hold tokens no scan recognises (env values, headers, arguments): an export
-//                                carries it only in the encrypted disk image, and Import and Restore add it only when asked, and
-//                                only where the profile has none (SessionsRestoreWindow.swift)
+//                                the sidebar part. It can hold tokens no scan recognises (env values, headers, arguments), so a plain
+//                                backup (a switch's, Back up now) NEVER keeps it: only the hidden copy an export is made from does
+//                                (the encrypted disk image carries it, a zip leaves it out), and so the backup an import of that image
+//                                stages. Import adds it only when asked, only where the profile has none (SessionsRestoreWindow.swift)
+//   setup/settings.json          in a plain backup, with every `env` value blanked (names kept), written from the parsed object
+//                                (`envBlanked`); one that isn't a JSON object is left out with its scripts. Env values travel only in
+//                                the encrypted export. Backups made by 26.11.8 stay as they are.
 //   setup/scheduled-tasks/<id>/SKILL.md   a scheduled task's prompt (with the setup's files, but it goes with its task)
 //   records/…                    cl_audit's own: the profile's entry, and the receipt of the switch it was made for
 //   transcripts/<project>/…      Claude Code's transcripts (<Claude Code folder>/projects), optional
@@ -107,6 +111,9 @@ enum SessionsBackup {
         /// Why the window's claude_desktop_config.json isn't in it although the window was ("over 8 MB", "a link", "not a JSON object",
         /// "needs the encrypted disk image" in a zip): words for the pages. nil: it is in, or there was none.
         var configLeftOut: String? = nil
+        /// settings.json in it has every `env` value blanked (keys kept): a plain backup's (this version on). nil: as it was (an
+        /// export's copy, an import's staged backup, a backup made by 26.11.8).
+        var envBlanked: Bool? = nil
     }
 
     /// What a backup is made from.
@@ -331,9 +338,12 @@ enum SessionsBackup {
     /// Makes a backup under `place` and returns what it holds. `window` false leaves the Code-tab list and the sidebar
     /// records out (the window is open: it rewrites its entries from memory). Throws, with nothing left behind, when it
     /// can't be made whole. Takes no lock: the switch holds one (SwitchEngine.run), Back up now takes it (`manual`).
+    /// A plain backup (a switch's, Back up now, the default-profile move's) keeps no claude_desktop_config.json and keeps settings.json
+    /// with every `env` value blanked (`envBlanked`): those travel only in the encrypted export. `forExport`: the hidden copy an export
+    /// is made from (and taken away again), which keeps both whole for the image (a zip leaves them out).
     @discardableResult
     static func make(_ s: Source, id: String = newID(), kind: Kind, window: Bool = true, transcripts: Bool = true, setup: Bool = true,
-                     receipt: SwitchReceipt? = nil, place: URL, now: Date = Date()) throws -> Manifest {
+                     receipt: SwitchReceipt? = nil, place: URL, now: Date = Date(), forExport: Bool = false) throws -> Manifest {
         guard validProfile(s.profile), validID(id) else { throw BackupError("the profile or backup name isn't a plain one") }
         if let why = placeProblem(place, for: [s]) { throw BackupError(why) }
         let started = Date()
@@ -373,7 +383,23 @@ enum SessionsBackup {
             }
         }
         if let first = g.files.first, !sameVolume(place, as: first.src) { try needRoom() }
+        // settings.json in a plain backup: its env values blanked (keys kept), written from the parsed object; one that can't be
+        // parsed is left out with the scripts its hooks run (an export of the backup must not carry scripts without it)
+        var setupLeftOut = g.setupLeftOut
+        var envBlanked: Bool? = nil
+        var dropScripts = false
+        if !forExport, let sf = g.files.first(where: { $0.role == .setup && $0.rel == "setup/settings.json" }) {
+            if let d = Setup.readCapped(sf.src, limit: Setup.maxSettingsBytes), let blank = Setup.envBlanked(d) {
+                try put(blank, "setup/settings.json", in: partial, dirFor)
+                items.append(Item(role: .setup, original: sf.original, path: sf.rel, bytes: Int64(blank.count), sha: SwitchEngine.sha(blank), exec: false))
+                envBlanked = true
+            } else {
+                setupLeftOut.append(Setup.settingsUnreadable); dropScripts = true; leftOut += 1
+            }
+        }
         for f in g.files {
+            if !forExport, f.role == .setup, f.rel == "setup/settings.json" { continue }        // (written above, blanked, or left out)
+            if dropScripts, f.role == .setup, Setup.unit(of: String(f.rel.dropFirst(6))).kind == .script { leftOut += 1; continue }
             let dst = try dirFor(f.rel)
             var shared = true                                         // cloned (else copied for real)
             switch copyOne(f.src, dst, single: true) {
@@ -403,9 +429,10 @@ enum SessionsBackup {
             items.append(Item(role: .sidebar, original: (s.dataDir as NSString).appendingPathComponent("claude_desktop_config.json"),
                               path: "sidebar/epitaxyPrefs.json", bytes: Int64(data.count), part: "preferences.epitaxyPrefs"))
         }
-        // the rest of claude_desktop_config.json (MCP servers, the window's other settings), without the sidebar part
+        // the rest of claude_desktop_config.json (MCP servers, the window's other settings), without the sidebar part: only in the
+        // copy an export is made from (the encrypted image carries it); a plain backup never keeps it
         var configLeftOut: String?
-        if window {
+        if window, forExport {
             switch windowConfig(dataDir: s.dataDir) {
             case .none: break
             case .leftOut(let why): configLeftOut = why
@@ -433,7 +460,8 @@ enum SessionsBackup {
                          window: window, transcripts: transcripts,
                          bytes: items.reduce(0) { $0 + $1.bytes }, cloned: cloned, copied: copied, copiedBytes: copiedBytes,
                          leftOut: leftOut, dataDir: s.dataDir, codeDir: s.codeDir, items: items,
-                         setupLeftOut: g.setupLeftOut.isEmpty ? nil : g.setupLeftOut, setupHookUnits: g.setupHookUnits, configLeftOut: configLeftOut)
+                         setupLeftOut: setupLeftOut.isEmpty ? nil : setupLeftOut.sorted(), setupHookUnits: g.setupHookUnits, configLeftOut: configLeftOut,
+                         envBlanked: envBlanked)
         var out = m
         out.seconds = (Date().timeIntervalSince(started) * 10).rounded() / 10
         try put(try encode(out), "backup.json", in: partial, dirFor)

@@ -35,6 +35,7 @@ extension SessionsRestore {
         var leftOutAtSource: [String] = []      // what the source left out (links …), by name
         var extra = Setup.Extra()
         var added: [Setup.Unit] = []            // the units whose files the plan writes
+        var envBlanked = false                  // the backup's settings.json has its env values blanked (a plain backup's)
 
         func entries(_ s: Status) -> [Entry] { entries.filter { $0.status == s } }
         var newEntries: [Entry] { entries.filter { $0.status == .new } }
