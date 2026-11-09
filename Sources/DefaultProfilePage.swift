@@ -41,11 +41,13 @@ struct DefaultProfileCard: View {
 
     private func quiet(_ s: DefaultProfile.Situation) -> some View {
         SCard(title: "Default profile", info: "The profile on ~/.claude with the usual Claude app is what Claude shows when opened directly. \(s.old.name) uses its own window.") {
-            SRow(label: "Opens directly", first: true) {
-                HStack(spacing: 8) {
-                    Text("Not \(s.old.name)'s window").font(.system(size: 12)).foregroundStyle(face.muted).lineLimit(1)
+            // the key under the words, so the card never outgrows a 340 pt column
+            SRow(label: "Opens directly", first: true, stacked: true) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Not \(s.old.name)'s window").font(.system(size: 12)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                     Button("Make the default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
     }
