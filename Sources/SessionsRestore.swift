@@ -343,6 +343,7 @@ enum SessionsRestore {
         if running == nil { p.checkedRunning = false; p.notes.append("It couldn't be checked which Claude Code sessions run, so no missing transcript is written back.") }
         let held = running ?? []
         var blocked = 0
+        var markers: [[String]] = []
         for c in items {
             let rel = Array(c.dropFirst())                                  // <project>/…
             let leaf = rel.last!
@@ -351,6 +352,8 @@ enum SessionsRestore {
             let name = rel.joined(separator: "/")
             if skipMemory, isMemory(rel) { continue }                       // left out: listed (memoryFiles), never written
             if !skipSessions.isEmpty, skipSessions.contains(session) { continue }     // a scheduled task's session: transcript and folder stay out
+            // Claude Code's retention marker (<session>.desktop-released.json): written only with its transcript, below
+            if rel.count == 2, SessionsExport.markerID(leaf) != nil { markers.append(c); continue }
             guard let src = reader.file(c) else { continue }
             defer { close(src.fd) }
             let piece = Piece(kind: top ? .transcript : .file, rel: c, base: .code, dirs: ["projects"] + rel.dropLast(), leaf: leaf, bytes: Int64(src.st.st_size))
@@ -389,6 +392,24 @@ enum SessionsRestore {
                         p.partial.append(name)
                     } else { p.changed.append(name) }
                 }
+            }
+        }
+        // a marker comes back only when its transcript is written by this run, and never over a marker that is there; Undo then
+        // takes both back, as pieces of the same run
+        for c in markers {
+            let rel = Array(c.dropFirst()), leaf = rel.last!
+            guard let id = SessionsExport.markerID(leaf), rel.count == 2,
+                  p.transcripts.contains(where: { $0.dirs == ["projects", rel[0]] && $0.leaf.lowercased() == id + ".jsonl" }),
+                  let src = reader.file(c) else { continue }
+            defer { close(src.fd) }
+            let piece = Piece(kind: .file, rel: c, base: .code, dirs: ["projects", rel[0]], leaf: leaf, bytes: Int64(src.st.st_size))
+            switch code.dir(piece.dirs, create: false) {
+            case .blocked: continue
+            case .absent: add(&p, piece, mtime: src.st.st_mtimespec.tv_sec, now: now)
+            case .dir(let dfd):
+                defer { close(dfd) }
+                var cur = stat()
+                if fstatat(dfd, leaf, &cur, AT_SYMLINK_NOFOLLOW) != 0 { add(&p, piece, mtime: src.st.st_mtimespec.tv_sec, now: now) }
             }
         }
         p.partial.sort()
