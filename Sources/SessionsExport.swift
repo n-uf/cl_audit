@@ -11,10 +11,13 @@
 //     profiles/p1/transcripts/…        Claude Code's transcripts
 //
 // What is never in it: a sign-in (nothing a backup excludes: .claude.json, credentials, Keychain, OAuth, auth.json), the
-// MCP settings, settings.json, a switch's receipt, an address or a raw account id. Accounts appear as a fingerprint: "fp-"
-// and the first 8 hex characters of the SHA-256 of the id. Every file of the profile's structure is checked at the end for
-// the raw ids and the addresses it was made from; a hit stops the export. A transcript is the user's own words and is
-// copied as it is.
+// MCP settings, settings.json, a switch's receipt, or an address or an id of any account cl_audit knows. Those appear as a
+// fingerprint: "fp-" and 8 hex characters of an HMAC under a key made for the export alone. Every file of the profile's
+// structure is checked at the end for the known ids and addresses (every profile's accounts, the window's account and
+// organisation folders); a hit stops the export. Any other id and any other address is content (a stranger's address in a
+// title) and passes, as it does in a transcript, which is the user's own words and is copied as it is. A zip also leaves
+// out each Code-tab entry's remoteMcpServersConfig and sessionSettings (connection settings and environment values the key
+// scan can't recognise); the encrypted disk image keeps them.
 //
 // Transcripts are scanned for keys (GitHub tokens, AWS access keys, private keys, Anthropic and OpenAI API keys, Slack,
 // Google, Stripe and npm tokens): a session whose files hold one is left out, or, if the user says so, kept in an
@@ -365,6 +368,235 @@ enum ExportPrefs {
     }
 }
 
+// MARK: - the identities an export must not carry
+
+/// Every account id, organisation id and address cl_audit knows on this Mac (all profiles', not only the ones exported):
+/// the only things the leak check refuses. Anything else in an entry (other ids, a stranger's address) is content, as it is
+/// in a transcript. All lowercase.
+struct Identities: Equatable {
+    var ids = Set<String>()
+    var emails = Set<String>()
+
+    mutating func add(id: String?) {
+        guard let s = id?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), s.count >= 4 else { return }
+        ids.insert(s)
+    }
+    mutating func add(email: String?) {
+        guard let s = email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), s.contains("@") else { return }
+        emails.insert(s)
+    }
+    mutating func add(seat: Seat?) {
+        guard let seat else { return }
+        add(id: seat.account); add(id: seat.organization); add(email: seat.email); add(email: seat.was)
+    }
+    mutating func formUnion(_ o: Identities) { ids.formUnion(o.ids); emails.formUnion(o.emails) }
+
+    /// The account and organisation folders a Claude window's Code tab has filed entries under: their names are ids.
+    mutating func add(windowDir dataDir: String) {
+        guard !dataDir.isEmpty else { return }
+        let fm = FileManager.default
+        let root = (expand(dataDir) as NSString).appendingPathComponent("claude-code-sessions")
+        for a in (try? fm.contentsOfDirectory(atPath: root)) ?? [] where AccountDiscovery.isUUID(a) {
+            add(id: a)
+            for o in (try? fm.contentsOfDirectory(atPath: (root as NSString).appendingPathComponent(a))) ?? [] where AccountDiscovery.isUUID(o) { add(id: o) }
+        }
+    }
+
+    /// The account, organisation and address in one .claude.json (or a `.claude.json.backup*` of it): ids and an address only,
+    /// never a token, and every record (not one per account, not only those with an address).
+    mutating func add(claudeJSON path: String) {
+        guard let data = FileManager.default.contents(atPath: path),
+              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let o = j["oauthAccount"] as? [String: Any] else { return }
+        add(id: o["accountUuid"] as? String); add(id: o["organizationUuid"] as? String); add(email: o["emailAddress"] as? String)
+    }
+
+    /// A Claude Code folder's .claude.json and the backups kept beside it (and, for the usual folder, in ~/.claude/backups).
+    mutating func add(configDir dir: String) {
+        guard !dir.isEmpty else { return }
+        let json = Account.claudeJSON(configDir: dir)
+        add(claudeJSON: json)
+        let fm = FileManager.default
+        for folder in [(json as NSString).deletingLastPathComponent, (NSHomeDirectory() as NSString).appendingPathComponent(".claude/backups")] {
+            for n in ((try? fm.contentsOfDirectory(atPath: folder)) ?? []).sorted() where n.hasPrefix(".claude.json.backup") {
+                add(claudeJSON: (folder as NSString).appendingPathComponent(n))
+            }
+        }
+    }
+
+    /// One profile: its seats (in use and standby), what Claude Code recorded in each of its folders' .claude.json and their
+    /// backups, and its window's folder names.
+    mutating func add(source s: SessionsBackup.Source) {
+        if let e = s.entry {
+            add(seat: e.seat)
+            for q in e.standby { add(seat: q.seat); add(email: q.email) }
+            for dir in [e.configDir, e.keptFolder].compactMap({ $0 }) + e.standby.compactMap(\.configDir) { add(configDir: dir) }
+        }
+        add(configDir: s.codeDir)
+        add(windowDir: s.dataDir)
+    }
+
+    /// Every profile in cl_audit's list, and every Claude Code folder on this Mac with its backups.
+    static func of(accounts: [AccountEntry]) -> Identities {
+        var k = Identities()
+        for e in accounts { k.add(source: SessionsBackup.Source(e)) }
+        for c in Detect.configFolders() { k.add(configDir: c.path) }
+        k.add(configDir: "~/.claude")
+        return k
+    }
+}
+
+/// An export's own scrubbing of the identities (case-insensitive, whole file, outside transcripts): each becomes its keyed
+/// fingerprint. JSON is rewritten string by string on the decoded text, in keys and values (so an address written with
+/// `@` or `\/` is found too) and nothing else in the file is touched; a file that isn't JSON is done as plain text.
+struct Scrubber {
+    private let ids: [String]
+    private let emails: [String]
+    private let fp: Fingerprint
+    private let shortest: Int
+
+    init(_ known: Identities, fp: Fingerprint) {
+        ids = known.ids.sorted { $0.count != $1.count ? $0.count > $1.count : $0 < $1 }
+        emails = known.emails.sorted { $0.count != $1.count ? $0.count > $1.count : $0 < $1 }      // longest first: "jbob@x" before "bob@x"
+        self.fp = fp
+        shortest = (ids + emails).map(\.utf8.count).min() ?? Int.max
+    }
+
+    /// A name that goes in a file or folder name or a manifest: also an address as `plainFileName` writes it ("bob-example.com").
+    func name(_ s: String) -> String {
+        var t = text(s)
+        for e in emails {
+            let plain = SessionsExport.plainFileName(e)
+            if t.range(of: plain, options: .caseInsensitive) != nil { t = t.replacingOccurrences(of: plain, with: fp.of(e), options: .caseInsensitive) }
+        }
+        return t
+    }
+
+    func text(_ s: String) -> String {
+        guard s.utf8.count >= shortest else { return s }
+        var t = s
+        for id in ids where t.range(of: id, options: .caseInsensitive) != nil { t = t.replacingOccurrences(of: id, with: fp.of(id), options: .caseInsensitive) }
+        for e in emails where t.range(of: e, options: .caseInsensitive) != nil { t = t.replacingOccurrences(of: e, with: fp.of(e), options: .caseInsensitive) }
+        return t
+    }
+
+    func data(_ d: Data) -> Data {
+        json(d) ?? Data(text(String(decoding: d, as: UTF8.self)).utf8)
+    }
+
+    /// nil: not JSON this can walk.
+    private func json(_ d: Data) -> Data? {
+        guard (try? JSONSerialization.jsonObject(with: d, options: [.fragmentsAllowed])) != nil else { return nil }
+        let b = [UInt8](d)
+        var out = [UInt8]()
+        out.reserveCapacity(b.count)
+        var i = 0
+        while i < b.count {
+            guard b[i] == 0x22 else { out.append(b[i]); i += 1; continue }
+            var j = i + 1, esc = false
+            while j < b.count, b[j] != 0x22 { if b[j] == 0x5C { esc = true; j += 1 }; j += 1 }
+            guard j < b.count else { return nil }
+            let body = b[(i + 1)..<j]
+            if !esc {
+                let s = String(decoding: body, as: UTF8.self), t = text(s)
+                out.append(0x22); out.append(contentsOf: t == s ? Array(body) : Array(t.utf8)); out.append(0x22)
+            } else {
+                var wrapped: [UInt8] = [0x5B]
+                wrapped += b[i...j]
+                wrapped.append(0x5D)
+                guard let s = ((try? JSONSerialization.jsonObject(with: Data(wrapped))) as? [String])?.first else { return nil }
+                let t = text(s)
+                if t == s { out.append(contentsOf: b[i...j]) }
+                else {
+                    guard let e = try? JSONSerialization.data(withJSONObject: [t], options: [.withoutEscapingSlashes]) else { return nil }
+                    out.append(contentsOf: e.dropFirst().dropLast())
+                }
+            }
+            i = j + 1
+        }
+        return Data(out)
+    }
+}
+
+/// The two fields of a Code-tab entry a zip leaves out: they can hold connection settings and environment values that
+/// the key scan has no way to recognise. The encrypted disk image keeps them.
+enum EntryConnections {
+    static let fields: Set<String> = ["remoteMcpServersConfig", "sessionSettings"]
+
+    /// `data`: the entry without the two fields, every other byte as it was. `held`: how many of the two held something
+    /// (not null, {}, [], "" or false). nil: it can't be done safely (not a UTF-8 JSON object, or the result isn't JSON): a zip
+    /// leaves such an entry out.
+    static func without(_ d: Data) -> (data: Data, held: Int)? {
+        let b = [UInt8](d)
+        guard let members = top(b) else { return nil }
+        if members.isEmpty { return (d, 0) }
+        let drop = members.filter { fields.contains($0.key) }
+        if drop.isEmpty { return (d, 0) }
+        let held = drop.filter { m in
+            let v = String(decoding: b[m.value..<m.end], as: UTF8.self).filter { !$0.isWhitespace }
+            return !["null", "{}", "[]", "\"\"", "false"].contains(v)
+        }.count
+        let kept = members.filter { !fields.contains($0.key) }
+        var out = Array(b[0..<members[0].start])
+        let sep: [UInt8] = members.count >= 2 ? Array(b[members[0].end..<members[1].start]) : [0x2C]
+        for (n, m) in kept.enumerated() { if n > 0 { out += sep }; out += b[m.start..<m.end] }
+        out += b[members[members.count - 1].end...]
+        let r = Data(out)
+        guard (try? JSONSerialization.jsonObject(with: r)) is [String: Any] else { return nil }
+        return (r, held)
+    }
+
+    /// The members of the top-level object: each one's key, where it starts, where its value starts and where it ends.
+    static func top(_ b: [UInt8]) -> [(key: String, start: Int, value: Int, end: Int)]? {
+        guard (try? JSONSerialization.jsonObject(with: Data(b))) is [String: Any] else { return nil }      // valid, so what follows can't run off the end
+        var i = 0
+        func ws() { while i < b.count, [0x20, 0x0A, 0x0D, 0x09].contains(b[i]) { i += 1 } }
+        func string() -> Bool {
+            var j = i + 1
+            while j < b.count { if b[j] == 0x5C { j += 2; continue }; if b[j] == 0x22 { i = j + 1; return true }; j += 1 }
+            return false
+        }
+        func value() -> Bool {
+            guard i < b.count else { return false }
+            if b[i] == 0x22 { return string() }
+            if b[i] == 0x7B || b[i] == 0x5B {
+                var depth = 0
+                while i < b.count {
+                    if b[i] == 0x22 { guard string() else { return false }; continue }
+                    if b[i] == 0x7B || b[i] == 0x5B { depth += 1 }
+                    if b[i] == 0x7D || b[i] == 0x5D { depth -= 1; if depth == 0 { i += 1; return true } }
+                    i += 1
+                }
+                return false
+            }
+            while i < b.count, ![0x2C, 0x7D, 0x5D, 0x20, 0x0A, 0x0D, 0x09].contains(b[i]) { i += 1 }
+            return true
+        }
+        var out: [(key: String, start: Int, value: Int, end: Int)] = []
+        ws()
+        guard i < b.count, b[i] == 0x7B else { return nil }        // (UTF-8 only: a UTF-16 file, or one with a byte-order mark, is not read)
+        i += 1                                         // the {
+        while true {
+            ws()
+            guard i < b.count else { return nil }
+            if b[i] == 0x7D { break }
+            if !out.isEmpty { guard b[i] == 0x2C else { return nil }; i += 1; ws() }
+            let start = i
+            guard i < b.count, b[i] == 0x22, string() else { return nil }
+            var wrapped: [UInt8] = [0x5B]
+            wrapped += b[start..<i]
+            wrapped.append(0x5D)
+            guard let key = ((try? JSONSerialization.jsonObject(with: Data(wrapped))) as? [String])?.first else { return nil }
+            ws()
+            guard i < b.count, b[i] == 0x3A else { return nil }
+            i += 1; ws()
+            let v = i
+            guard value() else { return nil }
+            out.append((key, start, v, i))
+        }
+        return out
+    }
+}
+
 // MARK: - the engine
 
 enum SessionsExport {
@@ -427,6 +659,8 @@ enum SessionsExport {
         var keyedSessions = 0
         var keyedBytes: Int64 = 0
         var keyedFiles = 0                  // lone files with keys (a window entry, a project's other files)
+        var connections = 0                 // entries holding connection settings (a zip leaves them out)
+        var unreadable = 0                  // entries a zip leaves out because they aren't UTF-8 JSON objects it can read
         var keyKinds: [Secret: Int] = [:]   // sessions that hold each kind
         var inUse = 0
         var projects: [Project] = []
@@ -472,7 +706,16 @@ enum SessionsExport {
             if cancel() { return nil }
             if f.role == .window {
                 pv.windowBytes += f.bytes
-                if (f.rel as NSString).lastPathComponent.hasPrefix("local_") || (f.rel as NSString).lastPathComponent == "scheduled-tasks.json" {
+                let leaf = (f.rel as NSString).lastPathComponent
+                // an entry as a zip will hold it: without its two fields (counted), and not at all when it can't be read (counted apart)
+                if leaf.hasPrefix("local_"), f.bytes < 64 << 20, let d = FileManager.default.contents(atPath: f.src) {
+                    guard let w = EntryConnections.without(d) else { pv.unreadable += 1; continue }
+                    if w.held > 0 { pv.connections += 1 }
+                    progress?(Int64(d.count))
+                    if !SecretScan.scan(w.data).isEmpty { pv.keyedFiles += 1; pv.keyedBytes += f.bytes }
+                    continue
+                }
+                if leaf.hasPrefix("local_") || leaf == "scheduled-tasks.json" {
                     guard let kinds = SecretScan.scan(path: f.src, cancel: cancel, progress: progress) else { if cancel() { return nil }; continue }
                     if !kinds.isEmpty { pv.keyedFiles += 1; pv.keyedBytes += f.bytes }
                 }
@@ -550,6 +793,8 @@ enum SessionsExport {
         var keysLeftOut = 0                 // sessions left out for the keys in them
         var keysKept = 0
         var cut = 0                         // transcripts copied up to their last full line
+        var connectionsLeftOut = 0          // Code-tab entries whose connection settings a zip leaves out
+        var unreadableLeftOut = 0           // Code-tab entries a zip leaves out because it can't tell what they hold
     }
 
     struct Job {
@@ -560,6 +805,9 @@ enum SessionsExport {
         var rootName: String                // the folder inside, named for the export
         var place: URL = BackupPrefs.placeURL
         var now = Date()
+        /// Every identity cl_audit knows (all profiles', not only the ones exported): scrubbed wherever it is found, and the
+        /// only things the leak check refuses. What the parts themselves name (their addresses, backups, window folders) is added.
+        var known = Identities()
     }
 
     struct Outcome: Equatable {
@@ -570,6 +818,8 @@ enum SessionsExport {
         var keysLeftOut: Int { parts.reduce(0) { $0 + $1.keysLeftOut } }
         var keysKept: Int { parts.reduce(0) { $0 + $1.keysKept } }
         var cut: Int { parts.reduce(0) { $0 + $1.cut } }
+        var connectionsLeftOut: Int { parts.reduce(0) { $0 + $1.connectionsLeftOut } }
+        var unreadableLeftOut: Int { parts.reduce(0) { $0 + $1.unreadableLeftOut } }
     }
 
     /// "cl_audit Main 2026-11-05"
@@ -630,7 +880,13 @@ enum SessionsExport {
         SessionsImport.register(work)
         defer { SessionsImport.discard(work) }
         let fp = Fingerprint()                             // this export's own random key: nothing else can reproduce its fingerprints
-        let root = work.appendingPathComponent("out").appendingPathComponent(job.rootName)
+        // every identity there is to know, from the start: a part's entries may name another profile's account
+        var known = job.known
+        for p in job.parts { for e in p.emails { known.add(email: e) }; if let s = p.source { known.add(source: s) } }
+        // the names that go in the file (the folder inside, the profiles' names) are scrubbed too: a profile can be named for its address
+        let names = Scrubber(known, fp: fp)
+        let rootName = names.name(job.rootName)
+        let root = work.appendingPathComponent("out").appendingPathComponent(rootName)
         guard (try? fm.createDirectory(at: root.appendingPathComponent("profiles"), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])) != nil else {
             throw ArchiveError("The backups folder \(tilde(job.place.path)) can't be written.")
         }
@@ -659,12 +915,12 @@ enum SessionsExport {
             guard let b = backup else { throw ArchiveError("Nothing to export from.") }
             let dir = "p\(i + 1)"
             let out = root.appendingPathComponent("profiles/\(dir)")
-            let (po, ids) = try buildPart(b, part: part, fp: fp, into: out, keys: job.keys, held: held, live: part.source != nil, now: job.now, cancel: cancel,
+            let (po, ids) = try buildPart(b, part: part, fp: fp, into: out, keys: job.keys, zip: job.password == nil, known: known, held: held, live: part.source != nil, now: job.now, cancel: cancel,
                                           progress: { f in progress?("\(label)writing the files", (Double(i) + f) / Double(job.parts.count)) })
             outcomes.append(po)
             rawIDs.formUnion(ids)
             emails += part.emails
-            manifestParts.append(ExportManifest.Part(dir: dir, name: part.name, profile: part.profile, sessions: po.sessions, entries: po.entries, tasks: po.tasks, bytes: po.bytes))
+            manifestParts.append(ExportManifest.Part(dir: dir, name: names.name(part.name), profile: part.profile, sessions: po.sessions, entries: po.entries, tasks: po.tasks, bytes: po.bytes))
         }
         let total = outcomes.reduce(Int64(0)) { $0 + $1.bytes }
         let em = ExportManifest(created: job.now, app: (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev",
@@ -675,8 +931,8 @@ enum SessionsExport {
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try write(try enc.encode(em), to: root.appendingPathComponent("export.json"))
 
-        // the structure carries no raw id and no address: checked on what is about to be packed
-        if let leak = leak(in: root, ids: rawIDs, emails: emails) { throw ArchiveError("The export would have held \(leak); nothing was made.") }
+        // the structure carries no known id and no known address: checked on what is about to be packed
+        if let leak = leak(in: root, ids: rawIDs.union(known.ids), emails: emails + Array(known.emails)) { throw ArchiveError("The export would have held \(leak); nothing was made.") }
 
         // free room for the file: about the size of what is in it
         var fs = statfs()
@@ -698,7 +954,7 @@ enum SessionsExport {
         if let pw = job.password {
             // hdiutil reads the password from stdin: it is never an argument, and nothing here keeps it
             // (the folder that holds the export's folder: the image's top then has that one folder, as the zip does)
-            let args = ["create", "-srcfolder", root.deletingLastPathComponent().path, "-volname", String(job.rootName.prefix(27)), "-fs", "APFS", "-format", "UDZO",
+            let args = ["create", "-srcfolder", root.deletingLastPathComponent().path, "-volname", String(rootName.prefix(27)), "-fs", "APFS", "-format", "UDZO",
                         "-encryption", "AES-256", "-stdinpass", "-quiet", tmp.path]
             // (composed form, so the same password typed on another Mac or keyboard opens it)
             let npw = pw.precomposedStringWithCanonicalMapping
@@ -730,7 +986,7 @@ enum SessionsExport {
 
     /// Builds `out` (a backup's layout) from the backup `b`: ids and addresses replaced, keys decided, the in-use cut.
     /// Returns what it holds and the raw ids it replaced.
-    private static func buildPart(_ b: SessionsRestore.Backup, part: Part, fp: Fingerprint, into out: URL, keys: Keys, held: Set<String>, live: Bool, now: Date,
+    private static func buildPart(_ b: SessionsRestore.Backup, part: Part, fp: Fingerprint, into out: URL, keys: Keys, zip: Bool, known: Identities, held: Set<String>, live: Bool, now: Date,
                                   cancel: () -> Bool, progress: @escaping (Double) -> Void) throws -> (PartOutcome, Set<String>) {
         let fm = FileManager.default
         guard let m = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) else { throw ArchiveError("The backup isn't there any more.") }
@@ -764,14 +1020,13 @@ enum SessionsExport {
                 }
             }
         }
-        let ids2 = ids.filter { !$0.isEmpty }
+        // what is replaced: this part's own ids and addresses, and every other identity cl_audit knows
+        var ident = known
+        for id in ids where !id.isEmpty { ident.ids.insert(id) }
+        for e in part.emails where !e.isEmpty { ident.emails.insert(e.lowercased()) }
+        let ids2 = ident.ids
+        let scrubber = Scrubber(ident, fp: fp)
         func map(_ s: String) -> String { ids2.contains(s.lowercased()) ? fp.of(s.lowercased()) : s }
-        func scrub(_ data: Data) -> Data {
-            var s = String(decoding: data, as: UTF8.self)
-            for id in ids2.sorted(by: { $0.count > $1.count }) { s = s.replacingOccurrences(of: id, with: fp.of(id), options: .caseInsensitive) }
-            for e in part.emails where !e.isEmpty { s = s.replacingOccurrences(of: e, with: fp.of(e.lowercased()), options: .caseInsensitive) }
-            return Data(s.utf8)
-        }
 
         guard let reader = SessionsRestore.Reader(path: b.dir.path) else { throw ArchiveError("The backup's folder isn't a plain folder.") }
         var made = Set<String>()
@@ -811,11 +1066,21 @@ enum SessionsExport {
             guard name.hasPrefix("local_") || name == "scheduled-tasks.json" else { continue }
             guard let f = reader.file(c), let raw = SessionsRestore.read(f.fd, size: f.st.st_size) else { leftOut += 1; continue }
             close(f.fd)
-            if !SecretScan.scan(raw).isEmpty {
+            var body = raw
+            if zip, name.hasPrefix("local_") {
+                // a zip leaves out an entry's connection settings (the encrypted image keeps them); the keys are looked for in what stays
+                if let r = EntryConnections.without(raw) {
+                    body = r.data
+                    if r.held > 0 { po.connectionsLeftOut += 1 }
+                } else {
+                    po.unreadableLeftOut += 1; leftOut += 1; continue       // an entry this can't read (UTF-16, a byte-order mark, not an object): it can't be vouched for
+                }
+            }
+            if !SecretScan.scan(body).isEmpty {
                 if keys == .leaveOut { po.keysLeftOut += 1; continue }
                 po.keysKept += 1
             }
-            let data = scrub(raw)
+            let data = scrubber.data(body)
             let fa = fp.of(c[1].lowercased()), fo = fp.of(c[2].lowercased())
             let rel = "window/\(fa)/\(fo)/\(name)"
             try write(data, to: URL(fileURLWithPath: create(rel)))
@@ -833,10 +1098,7 @@ enum SessionsExport {
         // 2. the sidebar records and the profile's record
         var hasSidebar = false
         if !windowFiles.isEmpty || m.items.contains(where: { $0.role == .sidebar }), let t = sidebarText {
-            var s = t
-            for id in ids2.sorted(by: { $0.count > $1.count }) { s = s.replacingOccurrences(of: id, with: fp.of(id), options: .caseInsensitive) }
-            for e in part.emails where !e.isEmpty { s = s.replacingOccurrences(of: e, with: fp.of(e.lowercased()), options: .caseInsensitive) }
-            let data = Data(s.utf8)
+            let data = scrubber.data(Data(t.utf8))
             if keys == .leaveOut, !SecretScan.scan(data).isEmpty {
                 po.keysLeftOut += 1
             } else {
@@ -849,6 +1111,7 @@ enum SessionsExport {
         if let d = recordData("records/profile.json"), let rec = try? JSONDecoder().decode(SessionsBackup.ProfileRecord.self, from: d) {
             var r = rec
             r.id = "profile"
+            r.name = scrubber.name(rec.name)
             r.seat = rec.seat.map { SeatID(account: map($0.account), organization: map($0.organization)) }
             r.standby = rec.standby.enumerated().map { i, s in
                 SessionsBackup.ProfileRecord.Standby(id: "standby-\(i + 1)", seat: s.seat.map { SeatID(account: map($0.account), organization: map($0.organization)) })
@@ -976,48 +1239,34 @@ enum SessionsExport {
         return end
     }
 
-    private static let addressRE = try! NSRegularExpression(pattern: #"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"#)
-    private static let uuidRE = try! NSRegularExpression(pattern: #"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"#)
-
-    /// The first thing in a file under `root` (other than transcripts) that a made export must not hold, else nil:
-    /// - a raw id or an address this export was made from (the known ones were replaced; any is a bug);
-    /// - ANY address-shaped text, whoever's it is (an entry can hold another account's);
-    /// - any UUID that a fingerprint or a known non-account id doesn't explain. The explained ones, explicitly: the session
-    ///   ids named by local_<uuid> entries and by the transcripts, anything in a field whose name says "session", the
-    ///   group ids "cg-<uuid>" and "local_<uuid>" in the sidebar records.
+    /// The first thing in a file under `root` (other than transcripts) that a made export must not hold, else nil: an id or an
+    /// address cl_audit knows (`ids`, `emails`: every profile's accounts and the window's folder names; the scrub replaced
+    /// them, so any left is a bug), or a private key. Any other id, and any other address, is content, as in a transcript.
+    /// A name is looked for as written, with the text's own line breaks and spaces taken out (one broken across lines), and, in
+    /// JSON, in each decoded key and string (one written with `@` or `\/`).
     /// It stops the export with a message; nothing is stripped silently.
     static func leak(in root: URL, ids: Set<String>, emails: [String]) -> String? {
         let fm = FileManager.default
         guard let walk = fm.enumerator(atPath: root.path) else { return nil }
         var files: [String] = []
-        var allowed = Set<String>()
-        for case let rel as String in walk {
-            for part in rel.split(separator: "/") {
-                var s = String(part)
-                if s.hasPrefix("local_") { s.removeFirst(6) }
-                s = (s as NSString).deletingPathExtension
-                if UUID(uuidString: s) != nil { allowed.insert(s.lowercased()) }
-            }
-            if !rel.contains("transcripts/") { files.append(rel) }
-        }
-        func addresses(_ s: String) -> Bool { addressRE.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil }
-        /// The keys of an entry that hold a session's id, exactly the ones cl_audit's own code reads or writes in entries and
-        /// transcripts (SessionsRestore: cliSessionId; SwitchEngine: sessionId, cliSessionId, bridgeSessionId, bridgeSessionIds).
-        /// Only a direct key of the entry itself, never one deeper, and never a key that merely contains "session".
-        let sessionKeys: Set<String> = ["sessionId", "cliSessionId", "bridgeSessionId", "bridgeSessionIds"]
-        func unexplained(_ s: String, exempt: Bool, sidebar: Bool) -> String? {
-            if exempt { return nil }
-            for m in uuidRE.matches(in: s, range: NSRange(s.startIndex..., in: s)) {
-                guard let r = Range(m.range, in: s) else { continue }
-                let u = String(s[r]).lowercased()
-                if allowed.contains(u) { continue }
-                // the sidebar records name groups "cg-<id>" and sessions "code:local_<id>": there only
-                let before = s[s.startIndex..<r.lowerBound]
-                if sidebar, before.hasSuffix("cg-") || before.hasSuffix("local_") { continue }
-                return u
+        for case let rel as String in walk where !rel.contains("transcripts/") { files.append(rel) }
+        let wantedIDs = ids.map { $0.lowercased() }.filter { !$0.isEmpty }
+        let wantedMails = emails.map { $0.lowercased() }.filter { !$0.isEmpty }
+        func joined(_ s: String) -> String { String(String.UnicodeScalarView(s.unicodeScalars.filter { !$0.properties.isWhitespace })) }
+        /// "an account id" / "an address" when the text holds one of the known, else nil
+        func held(_ s: String) -> String? {
+            let low = s.lowercased()
+            for pass in 0..<2 {
+                let t = pass == 0 ? low : joined(low)
+                if wantedIDs.contains(where: { t.contains($0) }) { return "an account id" }
+                if wantedMails.contains(where: { t.contains($0) }) { return "an address" }
             }
             return nil
         }
+        // the folder the archive holds everything in: its name can carry an address as a file name writes it ("bob-example.com")
+        let topLow = root.lastPathComponent.lowercased()
+        if wantedIDs.contains(where: { topLow.contains($0) }) { return "an account id in the name of the export's folder" }
+        if wantedMails.contains(where: { topLow.contains($0) || topLow.contains(plainFileName($0).lowercased()) }) { return "an address in the name of the export's folder" }
         for rel in files {
             let path = (root.path as NSString).appendingPathComponent(rel)
             let name = (rel as NSString).lastPathComponent
@@ -1025,38 +1274,57 @@ enum SessionsExport {
             guard lstat(path, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { continue }
             // a file too big to look through can't be vouched for: refused, not skipped
             guard st.st_size < 64 << 20, let d = fm.contents(atPath: path) else { return "\(name), which is too big (or unreadable) to be checked" }
-            let isSidebar = rel.hasSuffix("sidebar/epitaxyPrefs.json")
+            if let what = held(rel) { return "\(what) in the name of \(name)" }
             let text = String(decoding: d, as: UTF8.self)
-            let low = text.lowercased()
-            for id in ids where !id.isEmpty && low.contains(id.lowercased()) { return "an account id in \(name)" }
-            for e in emails where !e.isEmpty && low.contains(e.lowercased()) { return "an address in \(name)" }
-            if low.contains("-----begin ") && low.contains("private key") { return "a private key in \(name)" }
-            if addresses(text) { return "an address (not one of this profile's accounts, so it could not be replaced) in \(name)" }
-            // the fields: an id is judged by the name of the field it is in
-            if let j = try? JSONSerialization.jsonObject(with: d) {
+            if let what = held(text) { return "\(what) in \(name)" }
+            if text.lowercased().contains("-----begin ") && text.lowercased().contains("private key") { return "a private key in \(name)" }
+            if let j = try? JSONSerialization.jsonObject(with: d, options: [.fragmentsAllowed]) {
                 var found: String?
-                /// `key` is the name of the field the value is in and counts only when that field is a direct key of the entry (the
-                /// top-level object): a key one level down, or an array of objects, passes nothing down.
-                func visit(_ v: Any, _ key: String?, direct: Bool, top: Bool) {
+                func visit(_ v: Any) {
                     if found != nil { return }
                     if let o = v as? [String: Any] {
-                        for (k, x) in o {
-                            if let u = unexplained(k, exempt: false, sidebar: isSidebar) { found = "an id nothing explains (\(u.prefix(8))…) as a field name in \(name)"; return }
-                            visit(x, k, direct: top, top: false)           // only the top-level object's own fields are "direct"
-                        }
+                        for (k, x) in o { if let what = held(k) { found = what; return }; visit(x) }
                     } else if let a = v as? [Any] {
-                        for x in a { visit(x, x is String ? key : nil, direct: direct && x is String, top: false) }     // an array of objects passes no name down
-                    } else if let s = v as? String {
-                        let exempt = direct && (key.map { sessionKeys.contains($0) } ?? false)
-                        if let u = unexplained(s, exempt: exempt, sidebar: isSidebar) { found = "an id nothing explains (\(u.prefix(8))…) in the field \(key ?? "?") of \(name)" }
-                    }
+                        for x in a { visit(x) }
+                    } else if let s = v as? String, let what = held(s) { found = what }
                 }
-                visit(j, nil, direct: false, top: true)
-                if let f = found { return f }
-            } else if name != "export.json", let u = unexplained(text, exempt: false, sidebar: isSidebar) {
-                return "an id nothing explains (\(u.prefix(8))…) in \(name)"
+                visit(j)
+                if let what = found { return "\(what) (written in a form the scrub didn't take out) in \(name)" }
+            } else if let what = held(unescaped(text)) {
+                // not JSON the parser takes (an unpaired surrogate, say): the escapes are read here by hand
+                return "\(what) (written in a form the scrub didn't take out) in \(name)"
             }
         }
         return nil
+    }
+
+    /// A text with its JSON escapes read: `\uXXXX` (a surrogate pair as one character, an unpaired one as nothing), `\/`, `\n` and the like.
+    static func unescaped(_ s: String) -> String {
+        let u = Array(s.unicodeScalars)
+        var out = String.UnicodeScalarView()
+        var i = 0
+        func hex4(_ at: Int) -> UInt32? {
+            guard at + 4 <= u.count else { return nil }
+            var v: UInt32 = 0
+            for k in 0..<4 { guard let h = Character(u[at + k]).hexDigitValue else { return nil }; v = v * 16 + UInt32(h) }
+            return v
+        }
+        while i < u.count {
+            guard u[i] == "\\", i + 1 < u.count else { out.append(u[i]); i += 1; continue }
+            let c = u[i + 1]
+            switch c {
+            case "u":
+                guard let v = hex4(i + 2) else { out.append(u[i]); i += 1; continue }
+                i += 6
+                if (0xD800...0xDBFF).contains(v), i + 6 <= u.count, u[i] == "\\", u[i + 1] == "u", let lo = hex4(i + 2), (0xDC00...0xDFFF).contains(lo) {
+                    i += 6
+                    if let sc = Unicode.Scalar(0x10000 + ((v - 0xD800) << 10) + (lo - 0xDC00)) { out.append(sc) }
+                } else if let sc = Unicode.Scalar(v) { out.append(sc) }          // (an unpaired surrogate is none)
+            case "n", "t", "r", "b", "f": out.append(" "); i += 2
+            case "/", "\"", "\\": out.append(c); i += 2
+            default: out.append(u[i]); i += 1
+            }
+        }
+        return String(out)
     }
 }

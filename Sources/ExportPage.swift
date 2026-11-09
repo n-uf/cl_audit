@@ -128,7 +128,7 @@ final class ExportRunner: ObservableObject {
         var t = SessionsExport.Preview(profile: "all", name: "All profiles")
         for x in p {
             t.sessions += x.sessions; t.transcriptBytes += x.transcriptBytes; t.entries += x.entries; t.tasks += x.tasks; t.windowBytes += x.windowBytes
-            t.keyedSessions += x.keyedSessions; t.keyedBytes += x.keyedBytes; t.keyedFiles += x.keyedFiles; t.inUse += x.inUse
+            t.keyedSessions += x.keyedSessions; t.keyedBytes += x.keyedBytes; t.keyedFiles += x.keyedFiles; t.inUse += x.inUse; t.connections += x.connections; t.unreadable += x.unreadable
             t.windowLeftOut = t.windowLeftOut || x.windowLeftOut
             for (k, v) in x.keyKinds { t.keyKinds[k, default: 0] += v }
         }
@@ -181,12 +181,15 @@ final class ExportRunner: ObservableObject {
         guard !list.isEmpty else { return }
         let image = usesImage
         let pw = image ? password : nil
-        let job = SessionsExport.Job(parts: list, keys: keys, password: pw, destination: url, rootName: rootName())
+        let plan = SessionsExport.Job(parts: list, keys: keys, password: pw, destination: url, rootName: rootName())
+        let everyProfile = model?.accounts ?? []
         password = ""; again = ""                     // the secure fields are emptied the moment it starts; the job holds it until hdiutil has it
         lock.lock(); stopFlag = false; lock.unlock()
         phase = .working("starting", 0); note = nil
         let profiles = list.map(\.profile)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            var job = plan
+            job.known = Identities.of(accounts: everyProfile)         // every profile's accounts, whichever are exported
             let result = Result { try SessionsExport.run(job, cancel: { self?.stopped ?? true }, progress: { what, f in
                 DispatchQueue.main.async { if self?.isWorking == true { self?.phase = .working(what, f) } }
             }) }
@@ -343,6 +346,11 @@ struct ExportPage: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
+            }
+            if !runner.usesImage, let p = pv, p.connections > 0 || p.unreadable > 0 {
+                let settings = p.connections > 0 ? "Connection settings in \(n(p.connections, "Code-tab entry", "Code-tab entries")) need the encrypted disk image: left out of a zip." : ""
+                let unread = p.unreadable > 0 ? "\(n(p.unreadable, "Code-tab entry", "Code-tab entries")) it can't read \(p.unreadable == 1 ? "is" : "are") left out of a zip too." : ""
+                SRowLine(text: [settings, unread].filter { !$0.isEmpty }.joined(separator: " "), color: face.caution)
             }
             SRow(label: "Cowork", stacked: true) { value("left out") }
         }

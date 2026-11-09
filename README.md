@@ -880,13 +880,22 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   at random for each export and never written anywhere, so a guessed address or id can't be confirmed by hashing it, and the
   same account is the same fingerprint everywhere in one file only (folder names, the manifests, the sidebar records' scope
   keys, and any account id or address of the profile inside the window's entries and task file). "Made on this Mac" is a
-  random install id kept in cl_audit's preferences, not made from the Mac's name. Before packing, every file but the
-  transcripts is searched: for the raw ids and addresses the export was made from, for **any** address-shaped text (an entry
-  can hold another account's), and for any id nothing explains (the ones named by `local_<id>` entries and transcripts, the
-  exact keys `sessionId`, `cliSessionId`, `bridgeSessionId` and `bridgeSessionIds` as direct keys of an entry (not one that
-  merely contains "session", not one a level down or inside an array of objects), and, in the sidebar records only, the
-  `cg-<id>` group ids and `local_<id>` keys); a file of 64 MB or more can't be checked and is refused. A hit stops the export with a message
-  naming the file; nothing is stripped silently. Transcripts are your own words and are copied as they are.
+  random install id kept in cl_audit's preferences, not made from the Mac's name. The identities replaced are the ones cl_audit
+  knows: every profile's accounts (account ids, organisation ids, addresses, from the list and from what Claude Code recorded in
+  each folder's `.claude.json`: ids and addresses only, never a token) and every account and organisation folder name under each
+  profile's `claude-code-sessions/`, whichever profile is exported, case-insensitively. In the JSON files (entries, the task
+  file, the sidebar records) it is done on the decoded strings and field names, so an address written `@` is found too;
+  every other byte is left as it was. Before packing, every file but the transcripts is searched for those same identities
+  (as written, written with the line breaks and spaces taken out, and decoded) and for a private key; a hit, or a file of 64 MB
+  or more that can't be checked, stops the export with a message naming the file; nothing is stripped silently. Any other id
+  and any other address (a stranger's in a title) is content, as it is in a transcript: your own words, copied as they are. So
+  an export of a backup knows only the identities cl_audit knows **today**: an address of an account that is no longer known
+  anywhere on this Mac passes like a stranger's. The profiles' names, and the folder the archive is made in, are scrubbed too
+  (a profile named for its address shows its fingerprint).
+  A **zip** also leaves out each Code-tab entry's `remoteMcpServersConfig` and `sessionSettings` (connection settings and
+  environment values the key scan can't recognise); the page says so ("Connection settings in 12 Code-tab entries need the
+  encrypted disk image: left out of a zip"), and an entry it can't read as UTF-8 JSON (UTF-16, say) is left out of a zip too,
+  said on the same line. The encrypted disk image keeps them, and the keys looked for are searched in them.
 - **The file:** `<name>/export.json` (format `cl_audit-export`, version 1, when, cl_audit's version, a fingerprint of this Mac's
   name, zip or image, what was done with keys, the profiles and their sizes) and `<name>/profiles/p1/` (a backup's layout:
   `backup.json`, `window/<fp>/<fp>/…`, `sidebar/`, `records/`, `transcripts/…`), one `pN` per profile for "All profiles". The
