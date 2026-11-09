@@ -8,7 +8,20 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Move to another Mac.** A new key on the Export page sets everything a new Mac needs in one click: all profiles, the
+  encrypted disk image, Claude Code's setup, the window's MCP settings and scheduled tasks, and cl_audit's own profiles and
+  settings. You can still change any row. A move keeps the real account ids, so on the new Mac each Code-tab entry and
+  scheduled task goes back into its own account's folder and shows up once you sign in there. That is why a move is only ever
+  the encrypted disk image, never a zip.
+- **cl_audit's own profiles and settings travel.** Export can carry each profile's name, look, place in the order, Dock icon,
+  folders and accounts (which one is in use), plus the General and backup settings, in the encrypted disk image only. Import
+  makes the profiles that aren't on the new Mac and never changes one that is. A made profile has nothing signed in: sign in
+  to each of its accounts with Add account (the done page lists them). It has no Dock icon until you put it in the Dock, a
+  key on the done page. Your settings stay unless you take the file's, and the page lists each one that differs. Undo takes
+  back the profiles, their empty folders and the settings.
+- README ▸ Moving to another Mac now walks through both Macs step by step.
+- A file with cl_audit's profiles, or a move, can't be opened by 26.11.9 or older: they say it is from a newer cl_audit. Every
+  other export still opens there, and this version opens all of theirs.
 
 ## 26.11.9 — 2026-11-09
 
