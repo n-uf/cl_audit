@@ -8,7 +8,7 @@
 #                                  commit "release X" and tag vX
 #   scripts/release.sh --nobump    the same without changing VERSION
 #   scripts/release.sh --push      also push main and the tag, and publish the GitHub Release with a
-#                                  ready-built cl_audit.zip for direct download
+#                                  ready-built cl_audit.zip and cl_audit.dmg for direct download
 # Test overrides: CALENDAR_VERSION_TODAY=YYYY-MM-DD, CALENDAR_VERSION_CURRENT=YY.M.R
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -74,20 +74,42 @@ if [ $push = 1 ]; then
   # The ready-built app for direct download. The file name never changes, so
   # https://github.com/n-uf/cl_audit/releases/latest/download/cl_audit.zip always gets the newest.
   ./build.sh --no-install >/dev/null
-  mkdir -p dist && rm -f dist/cl_audit.zip
+  mkdir -p dist && rm -f dist/cl_audit.zip dist/cl_audit.dmg
   ditto -c -k --keepParent build/cl_audit.app dist/cl_audit.zip
+
+  # The same app as a disk image (releases/latest/download/cl_audit.dmg): the app and an Applications shortcut to drag
+  # it onto. The app inside must be the zip's app, checked by its code directory hash.
+  stage="$(mktemp -d)"
+  ditto build/cl_audit.app "$stage/cl_audit.app"
+  ln -s /Applications "$stage/Applications"
+  hdiutil create -quiet -volname "cl_audit $next" -srcfolder "$stage" -fs HFS+ -format UDZO -imagekey zlib-level=9 dist/cl_audit.dmg
+  hdiutil verify -quiet dist/cl_audit.dmg
+  mkdir "$stage/mnt"
+  hdiutil attach -quiet -nobrowse -readonly -noautoopen -mountpoint "$stage/mnt" dist/cl_audit.dmg
+  zip_cd="$(codesign -dvvv build/cl_audit.app 2>&1 | grep '^CDHash=' || true)"
+  dmg_cd="$(codesign -dvvv "$stage/mnt/cl_audit.app" 2>&1 | grep '^CDHash=' || true)"
+  hdiutil detach -quiet "$stage/mnt"
+  rm -rf "$stage"
+  [ -n "$zip_cd" ] && [ "$zip_cd" = "$dmg_cd" ] || { echo "the disk image's app differs from the zip's ($zip_cd vs $dmg_cd)" >&2; exit 1; }
+  zip_sha="$(shasum -a 256 dist/cl_audit.zip | awk '{print $1}')"
+  dmg_sha="$(shasum -a 256 dist/cl_audit.dmg | awk '{print $1}')"
+
   section="$(awk -v h="## $next " 'index($0, h) == 1 {f=1; next} /^## /{f=0} f' CHANGELOG.md)"
   # The Claude versions on this Mac, which this release was checked with (they can drift: see README ▸ Install).
   cc="$(claude --version 2>/dev/null | awk '{print $1}')"
   app="$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" /Applications/Claude.app/Contents/Info.plist 2>/dev/null)"
   checked="Checked with Claude Code ${cc:-?} and the Claude app ${app:-?}. A newer Claude version can change how Claude Code saves its login or the usage figures; if something stops working, update cl_audit."
   echo "$checked  (update README ▸ Install and the site's checkedWith if these changed)"
-  gh release create "v$next" dist/cl_audit.zip --repo n-uf/cl_audit --title "cl_audit $next" --notes "$section
+  gh release create "v$next" dist/cl_audit.zip dist/cl_audit.dmg --repo n-uf/cl_audit --title "cl_audit $next" --notes "$section
 
 ---
 
 $checked
 
-**Download:** \`cl_audit.zip\` below (Apple silicon, macOS 13 or later). Unzip it, move **cl_audit** to Applications and open it. The first time, macOS says it can't verify the app: open System Settings ▸ Privacy & Security and click **Open Anyway** (once). Or build it from source, see the README."
-  echo "published the GitHub Release v$next with cl_audit.zip"
+**Download:** \`cl_audit.zip\` below (Apple silicon, macOS 13 or later). Unzip it, move **cl_audit** to Applications and open it. The first time, macOS says it can't verify the app: open System Settings ▸ Privacy & Security and click **Open Anyway** (once). Or build it from source, see the README.
+
+Also as a disk image: \`cl_audit.dmg\` below. Open it and drag cl_audit onto Applications.
+
+SHA-256: \`cl_audit.zip\` $zip_sha · \`cl_audit.dmg\` $dmg_sha"
+  echo "published the GitHub Release v$next with cl_audit.zip and cl_audit.dmg"
 fi
