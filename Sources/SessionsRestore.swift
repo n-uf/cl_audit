@@ -75,7 +75,7 @@ enum SessionsRestore {
 
     /// One file to write: where it is in the backup, where it goes.
     struct Piece: Equatable {
-        enum Kind: String, Codable { case entry, tasks, transcript, file, setup }
+        enum Kind: String, Codable { case entry, tasks, transcript, file, setup, config }
         enum Base { case window, code }
         var kind: Kind
         var rel: [String]                   // the file's path inside the backup
@@ -86,6 +86,7 @@ enum SessionsRestore {
         var from: SeatID? = nil             // entry, tasks: the account folder it was in
         var rewrite = false                 // entry: written as a switch would (another account's)
         var exec = false                    // setup: written 0700 (owner-execute) instead of 0600
+        var data: Data? = nil               // tasks (an import): what is written, made by the plan (the tasks paused), not the backup's bytes
 
         var dest: String { dirs.isEmpty ? leaf : dirs.joined(separator: "/") + "/" + leaf }
     }
@@ -123,9 +124,13 @@ enum SessionsRestore {
         var memoryLeftOut = false           // an import from another Mac or profile leaves them out unless asked ("Add them")
         var setup = SetupPlan()             // Claude Code's setup in the backup (SessionsRestoreSetup.swift): left out unless asked
         var setupPieces: [Piece] = []       // what "Add them" writes: the files of the units that are new here
+        var config = ConfigPlan()           // the window's claude_desktop_config.json (SessionsRestoreWindow.swift): left out unless asked
+        var configPieces: [Piece] = []      // what its "Add them" writes: the file, only where the profile has none
+        var taskPlan = TaskPlan()           // the scheduled tasks themselves (an import: left out unless asked, and then paused)
+        var taskPrompts: [Piece] = []       // the prompts of the tasks the tasks file written brings (scheduled-tasks/<id>/SKILL.md)
 
-        var count: Int { entries.count + tasks.count + transcripts.count + files.count + setupPieces.count }
-        var windowNeeded: Bool { !entries.isEmpty || !tasks.isEmpty }
+        var count: Int { entries.count + tasks.count + configPieces.count + transcripts.count + files.count + setupPieces.count + taskPrompts.count }
+        var windowNeeded: Bool { !entries.isEmpty || !tasks.isEmpty || !configPieces.isEmpty }
         var written: Int { count }
     }
 
@@ -144,9 +149,12 @@ enum SessionsRestore {
         return !c.isEmpty && c.allSatisfy(plainName) ? c : nil
     }
 
-    static func plan(_ t: Target, _ b: Backup, foreign: Bool = false, addMemory: Bool = false, addSetup: Bool = false, now: Date = Date()) -> Plan {
+    static func plan(_ t: Target, _ b: Backup, foreign: Bool = false, addMemory: Bool = false, addSetup: Bool = false, addConfig: Bool = false, addTasks: Bool = false,
+                     now: Date = Date()) -> Plan {
         var p = Plan()
-        func refuse(_ why: String) -> Plan { p.refusal = why; p.entries = []; p.tasks = []; p.transcripts = []; p.files = []; p.setupPieces = []; return p }
+        func refuse(_ why: String) -> Plan {
+            p.refusal = why; p.entries = []; p.tasks = []; p.transcripts = []; p.files = []; p.setupPieces = []; p.configPieces = []; p.taskPrompts = []; return p
+        }
         guard SessionsBackup.validProfile(b.profile), SessionsBackup.validID(b.id), SessionsBackup.validProfile(t.profile) else {
             return refuse("The profile or backup name isn't a plain one.")
         }
@@ -169,6 +177,7 @@ enum SessionsRestore {
         var windowItems: [(SessionsBackup.Item, [String])] = []
         var codeItems: [(SessionsBackup.Item, [String])] = []
         var sidebarItem: SessionsBackup.Item?
+        var configItem: SessionsBackup.Item?
         var setupItems: [SessionsBackup.Item] = []
         for it in m.items {
             guard let c = components(it.path), seen.insert(it.path).inserted else {
@@ -199,7 +208,13 @@ enum SessionsRestore {
                     return refuse("backup.json names a setup file in a place, or with a name, a backup doesn't keep them (\(it.path.prefix(80))); nothing is restored from it.")
                 }
                 if it.exec == true, !Setup.execAllowed(c.dropFirst().joined(separator: "/")) { return refuse("backup.json marks a file executable that can't be one; nothing is restored from it.") }
+                if Setup.unit(of: c.dropFirst().joined(separator: "/")).kind == .task, m.version < 3 {
+                    return refuse("backup.json names a setup file in a place, or with a name, a backup doesn't keep them (\(it.path.prefix(80))); nothing is restored from it.")
+                }
                 setupItems.append(it)
+            case .config:
+                guard m.version >= 3, c == ["config", "claude_desktop_config.json"] else { return refuse("backup.json names a window settings file in a place it doesn't keep it.") }
+                configItem = it
             }
             if it.role == .window || it.role == .transcript, c.dropFirst().contains(where: SessionsBackup.isSignIn) {
                 return refuse("The backup holds something named like a sign-in (\((c.last ?? "").prefix(40))). A backup never holds one, so nothing is restored from it.")
@@ -248,22 +263,31 @@ enum SessionsRestore {
             if ax != ay { return ax }
             return (a.1[1], a.1[2]) < (b.1[1], b.1[2])
         }
-        // an import leaves out the sessions that scheduled tasks ran: the task belongs to its account and isn't imported
+        // the scheduled tasks themselves (SessionsRestoreWindow.swift): a restore puts the account in use's task file back when none is
+        // here, as it was; an import adds the file's tasks, paused, only when asked and only where the account in use has no task file
+        let addedTasks = planTasks(&p, t, windowItems: windowItems.map { $0.1 }, windowData: windowData, setupItems: setupItems, reader: reader,
+                                   imported: imported, add: addTasks, now: nowWindow, scope: scopeID, windowThere: win != nil)
+        // an import leaves out the sessions that scheduled tasks ran, unless their task comes too: a task belongs to its account
         var taskNames: [String: String] = [:]
         if imported {
             for (_, c) in windowItems where c[3] == "scheduled-tasks.json" {
-                guard let d = windowData[c.joined(separator: "/")], let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
-                for t in (j["scheduledTasks"] as? [[String: Any]]) ?? [] {
+                guard let d = windowData[c.joined(separator: "/")] else { continue }
+                for t in taskList(d) {
                     // (a task's real keys: id, displayName, enabled, cronExpression …: it is shown by its displayName)
                     if let id = t["id"] as? String { taskNames[id] = (t["displayName"] as? String) ?? (t["name"] as? String) ?? (t["title"] as? String) ?? id }
                 }
             }
         }
+        /// The entry's task, when a task ran it and that task isn't added by this import.
+        func leftOutTask(_ d: Data) -> String? {
+            guard let id = taskID(d), !addedTasks.contains(id) else { return nil }
+            return taskOrigin(d, names: taskNames)
+        }
         // the Claude Code sessions those entries belong to (their transcript and its folder are left out with them)
         var taskCLI = Set<String>()
         if imported {
             for (_, c) in windowItems where c[3].hasPrefix("local_") {
-                guard let d = windowData[c.joined(separator: "/")], taskOrigin(d, names: taskNames) != nil,
+                guard let d = windowData[c.joined(separator: "/")], leftOutTask(d) != nil,
                       let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], let cli = j["cliSessionId"] as? String, !cli.isEmpty else { continue }
                 taskCLI.insert(cli.lowercased())
             }
@@ -286,7 +310,7 @@ enum SessionsRestore {
                 } else if nowWindow.deleted.contains(sid.lowercased()) {
                     p.deletedSince.append(name)
                 } else if let scope = scopeID, win != nil {
-                    if imported, let task = taskOrigin(bdata, names: taskNames) {
+                    if imported, let task = leftOutTask(bdata) {
                         p.taskSessions.append("\(task) · session \(sid.prefix(8))")
                         continue
                     }
@@ -297,15 +321,8 @@ enum SessionsRestore {
                     if rewrite { p.otherAccount += 1 } else { p.ownScope = true }
                     restoredIDs.append((id: "local_" + sid, data: bdata, from: from))
                 }
-            } else if name == "scheduled-tasks.json" {
-                guard let scope = scopeID, win != nil, from == scope else { continue }       // only the account in use's own file
-                if !nowWindow.hasTasks.contains(from) {
-                    p.tasks.append(Piece(kind: .tasks, rel: c, base: .window,
-                                         dirs: ["claude-code-sessions", scope.account, scope.organization], leaf: name,
-                                         bytes: Int64(it.bytes), from: from))
-                }
             }
-            // deleted_ markers and anything else the window keeps are never written back
+            // (scheduled-tasks.json: planTasks, above.) deleted_ markers and anything else the window keeps are never written back
         }
         for (name, paths) in nowWindow.entries where !backupNames.contains(name) {
             p.madeAfter += 1
@@ -324,8 +341,15 @@ enum SessionsRestore {
         }
 
         // 3b. Claude Code's setup (CLAUDE.md, skills, agents …): left out unless asked, never over what is here, never through a link
-        if !setupItems.isEmpty || m.setupLeftOut != nil {
-            planSetup(&p, t, items: setupItems, leftOutAtSource: m.setupLeftOut ?? [], reader: reader, add: addSetup)
+        // (a scheduled task's prompt is planned with its task, never as setup)
+        let plainSetup = setupItems.filter { Setup.unit(of: String($0.path.dropFirst(6))).kind != .task }
+        if !plainSetup.isEmpty || m.setupLeftOut != nil {
+            planSetup(&p, t, items: plainSetup, leftOutAtSource: (m.setupLeftOut ?? []).filter { !$0.hasPrefix("scheduled task ") }, reader: reader, add: addSetup)
+        }
+
+        // 3c. the rest of the window's claude_desktop_config.json (MCP settings): left out unless asked, only where there is none
+        if configItem != nil || m.configLeftOut != nil {
+            planConfig(&p, t, item: configItem, leftOutAtSource: m.configLeftOut, reader: reader, add: addConfig)
         }
 
         // 4. the sidebar: where the restored entries sat, from the backup's own records
@@ -703,7 +727,9 @@ enum SessionsRestore {
     /// What a run put back, for Undo and for finishing it. The header is receipt.json; the steps are journal.jsonl.
     struct Receipt: Codable, Equatable {
         struct Step: Equatable {
-            enum Kind: String, Codable { case entry, tasks, transcript, file, dir, setup }
+            enum Kind: String, Codable { case entry, tasks, transcript, file, dir, setup, config }
+            /// A file of the Claude window's (written and taken back only while it is closed).
+            var inWindow: Bool { kind == .entry || kind == .tasks || kind == .config }
             var kind: Kind
             var path: String
             var sha: String?
@@ -739,12 +765,14 @@ enum SessionsRestore {
         var sessionsAdded = 0               // an import: the sessions (transcripts) it added, for the Sessions card
         var entriesAdded = 0                // an import: the Code-tab entries it added (never counted as sessions)
         var setupAdded: [String] = []       // Claude Code's setup it added, by unit ("skill foo", "CLAUDE.md"): what Undo takes back, listed
+        var configAdded = false             // it added the window's claude_desktop_config.json (MCP settings)
+        var tasksAdded: [String] = []       // an import: the scheduled tasks it added, paused, by name (turned on in the window)
         var steps: [Step] = []              // from the journal
 
         private enum CodingKeys: String, CodingKey {
             case id, profile, dataDir, codeDir, backup, backupPlace, target, started, planned, finished, undone, stopped, problems,
                  sidebar, changed, changedCount, inUse, inUseCount, deletedCount, afterSwitch, partialCount, undoLeft, importedFrom, sessionsAdded, entriesAdded,
-                 setupAdded
+                 setupAdded, configAdded, tasksAdded
         }
 
         /// Wrote something and neither finished nor was undone: Undo applies, and so does finishing it.
@@ -755,7 +783,7 @@ enum SessionsRestore {
         var unchecked: Int { steps.filter { !$0.done && $0.kind != .dir }.count }
         /// Window files this receipt still has to answer for: entry and task steps an Undo hasn't settled yet. A second Undo
         /// with only transcripts left never needs the window.
-        var windowTouched: Bool { steps.contains { ($0.kind == .entry || $0.kind == .tasks) && !$0.settled } }
+        var windowTouched: Bool { steps.contains { $0.inWindow && !$0.settled } }
     }
 
     private struct Event: Codable {
@@ -897,7 +925,7 @@ enum SessionsRestore {
     static func sweepTemps(_ r: Receipt) {
         let prefix = ".restore-\(tag(r.id))-"
         var seen = Set<String>()
-        for s in r.steps where s.kind == .entry || s.kind == .tasks {
+        for s in r.steps where s.inWindow {
             let parent = (s.path as NSString).deletingLastPathComponent
             guard seen.insert(parent).inserted, let b = base(of: s.path, r), let rel = relative(s.path, under: b),
                   let tree = Tree(path: b), case .dir(let pfd) = tree.dir(Array(rel.dropLast()), create: false) else { continue }
@@ -915,7 +943,7 @@ enum SessionsRestore {
     /// window is open (`windowOK` false), and a file with a second link (a temp name that wasn't swept).
     private static func reconcile(_ r: Receipt, journal: Journal, windowOK: Bool) {
         for s in r.steps where !s.done && s.kind != .dir {
-            if !windowOK, s.kind == .entry || s.kind == .tasks { continue }
+            if !windowOK, s.inWindow { continue }
             func drop() { journal.add(Event(op: "gone", kind: nil, path: s.path, sha: nil, bytes: nil), sync: false) }
             guard let b = base(of: s.path, r), let rel = relative(s.path, under: b), let tree = Tree(path: b),
                   case .dir(let pfd) = tree.dir(Array(rel.dropLast()), create: false) else { drop(); continue }
@@ -939,7 +967,8 @@ enum SessionsRestore {
     /// write failed) keeps what is back; its receipt is unfinished until it is finished or undone. `continuing` finishes
     /// an earlier run of the same backup under its receipt (also when nothing is left to write: it is then only closed).
     @discardableResult
-    static func run(_ t: Target, _ b: Backup, continuing: String? = nil, foreign: Bool = false, addMemory: Bool = false, addSetup: Bool = false, afterSwitch: String? = nil,
+    static func run(_ t: Target, _ b: Backup, continuing: String? = nil, foreign: Bool = false, addMemory: Bool = false, addSetup: Bool = false,
+                    addConfig: Bool = false, addTasks: Bool = false, afterSwitch: String? = nil,
                     mark: String? = nil, windowClosed: () -> Bool, stop: () -> Bool = { false },
                     progress: ((_ done: Int, _ total: Int) -> Void)? = nil,
                     receiptWritten: ((_ id: String) -> Void)? = nil, now: Date = Date()) throws -> Receipt {
@@ -958,7 +987,7 @@ enum SessionsRestore {
             if let j = Journal(id: cid) { reconcile(o, journal: j, windowOK: !o.windowTouched || windowClosed()) }
             old = load(cid)
         }
-        let p = plan(t, b, foreign: foreign, addMemory: addMemory, addSetup: addSetup, now: now)
+        let p = plan(t, b, foreign: foreign, addMemory: addMemory, addSetup: addSetup, addConfig: addConfig, addTasks: addTasks, now: now)
         if let why = p.refusal { throw RestoreError(why) }
         guard p.manifest != nil else { throw RestoreError("That backup isn't there any more.") }
         if p.count == 0 {
@@ -992,6 +1021,8 @@ enum SessionsRestore {
             r.problems += p.notes
             if case .imported(let file)? = p.manifest?.kind { r.importedFrom = file; r.sessionsAdded = p.transcripts.count; r.entriesAdded = p.entries.count }
             r.setupAdded = p.setup.addedNames
+            r.configAdded = !p.configPieces.isEmpty
+            r.tasksAdded = p.isImport ? p.taskPlan.addedNames : []
         }
         r.changedCount = p.changed.count; r.changed = Array(p.changed.prefix(200)); r.partialCount = p.partial.count
         r.inUseCount = p.inUse.count; r.inUse = Array(p.inUse.prefix(200)); r.deletedCount = p.deletedSince.count
@@ -1020,18 +1051,20 @@ enum SessionsRestore {
 
         var win: Tree?, code: Tree?
         if p.windowNeeded { win = Tree(path: t.dataDir); if win == nil { throw stopped("The window's data folder isn't there; nothing written.") }; wire(win!) }
-        if !p.transcripts.isEmpty || !p.files.isEmpty || !p.setupPieces.isEmpty { code = Tree(path: t.codeDir); if code == nil { throw stopped("The Claude Code folder isn't there; nothing written.") }; wire(code!) }
+        if !p.transcripts.isEmpty || !p.files.isEmpty || !p.setupPieces.isEmpty || !p.taskPrompts.isEmpty { code = Tree(path: t.codeDir); if code == nil { throw stopped("The Claude Code folder isn't there; nothing written.") }; wire(code!) }
         var done = r.back
         let total = r.planned
         progress?(done, total)
 
         // the window's files first (the window must stay closed), then Claude Code's
-        for piece in p.entries + p.tasks {
+        // (claude_desktop_config.json before the entries: it is new here, made whole while the window is closed; the sidebar step later
+        // works in the window as it does today)
+        for piece in p.configPieces + p.entries + p.tasks {
             if stop() { throw stopped("Stopped by you. What is back is kept.") }
             guard windowClosed() else { throw stopped("The profile's Claude window opened during the restore; stopped. What is back is kept.") }
             guard let tree = win, let f = reader.file(piece.rel) else { throw stopped("A file in the backup changed while restoring; stopped. What is back is kept.") }
             defer { close(f.fd) }
-            guard var data = read(f.fd, size: f.st.st_size) else { throw stopped("A file in the backup couldn't be read; stopped. What is back is kept.") }
+            guard var data = piece.data ?? read(f.fd, size: f.st.st_size) else { throw stopped("A file in the backup couldn't be read; stopped. What is back is kept.") }
             if piece.rewrite { data = (try? SwitchEngine.placed(data)) ?? data }
             let before = tree.made.count
             let opened = tree.dir(piece.dirs, create: true)
@@ -1040,7 +1073,7 @@ enum SessionsRestore {
             defer { close(dfd) }
             let path = (t.dataDir as NSString).appendingPathComponent(piece.dest)
             let hash = SwitchEngine.sha(data)
-            journal.add(Event(op: "intent", kind: piece.kind == .tasks ? .tasks : .entry, path: path, sha: hash, bytes: Int64(data.count)), sync: true)
+            journal.add(Event(op: "intent", kind: piece.kind == .tasks ? .tasks : piece.kind == .config ? .config : .entry, path: path, sha: hash, bytes: Int64(data.count)), sync: true)
             switch createNew(dfd, piece.leaf, data, tag: tmpTag) {
             case .created: journal.add(Event(op: "done", kind: nil, path: path, sha: nil, bytes: nil), sync: false)
             case .exists: gone(path); r.problems.append("\(piece.leaf) appeared meanwhile; left as it is."); continue
@@ -1051,7 +1084,7 @@ enum SessionsRestore {
         var written = Set<String>()                                 // the transcripts this run made (a marker needs its own among them)
         var settingsCreated = false                                 // setup: this run made settings.json (written before its scripts)
         var skillsStarted = Set<String>(), skillsSkipped = Set<String>()
-        for piece in p.transcripts + p.files + p.setupPieces {
+        for piece in p.transcripts + p.files + p.setupPieces + p.taskPrompts {
             if stop() { throw stopped("Stopped by you. What is back is kept.") }
             // a skill is added whole or not at all: when its first file is about to be written, the folder must still be absent (one that
             // appeared since the plan is "Different here" now: nothing is merged into it)
@@ -1220,7 +1253,7 @@ enum SessionsRestore {
             let name = (step.path as NSString).lastPathComponent
             var leaveOpen = false                      // a restored transcript a session holds, or a stop: not settled
             defer { if !leaveOpen { journal?.add(Event(op: "settled", kind: nil, path: step.path, sha: nil, bytes: nil), sync: false) } }
-            if step.kind == .entry || step.kind == .tasks, !windowClosed() {
+            if step.inWindow, !windowClosed() {
                 leaveOpen = true
                 r.problems.append("The Claude window opened during the undo; stopped. What is taken back stays so: Undo again once it is closed.")
                 try? save(r)
@@ -1398,5 +1431,7 @@ extension SessionsRestore.Receipt {
         sessionsAdded = try c.decodeIfPresent(Int.self, forKey: .sessionsAdded) ?? 0
         entriesAdded = try c.decodeIfPresent(Int.self, forKey: .entriesAdded) ?? 0
         setupAdded = try c.decodeIfPresent([String].self, forKey: .setupAdded) ?? []
+        configAdded = try c.decodeIfPresent(Bool.self, forKey: .configAdded) ?? false
+        tasksAdded = try c.decodeIfPresent([String].self, forKey: .tasksAdded) ?? []
     }
 }

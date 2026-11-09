@@ -907,7 +907,18 @@ enum SessionsImport {
                     guard let h = it.sha, h.count == 64, h.allSatisfy({ "0123456789abcdef".contains($0) }) else { throw ArchiveError("A setup file has no valid hash in backup.json (\((c.last ?? "").prefix(40))); refused.") }
                     if it.exec == true, !Setup.execAllowed(rel) { throw ArchiveError("backup.json marks a file executable that is neither a skill's own file nor a script settings.json points to (\((c.last ?? "").prefix(40))); refused.") }
                     if Setup.sensitive(rel), container != "image" { throw ArchiveError("A zip carries no settings.json, hook scripts or plugin marketplaces (only the encrypted disk image does); refused.") }
+                    // a scheduled task's prompt came with format 3
+                    if Setup.unit(of: rel).kind == .task, m.version < 3 { throw ArchiveError("A backup.json names a setup file in a place, or with a name, an export doesn't carry (\(it.path.prefix(60))); refused.") }
                     setupRels.append(rel)
+                case .config:
+                    // the window's claude_desktop_config.json (format 3): one file, in one place, only from an encrypted image, at most 8 MB, a
+                    // JSON object (read only under that cap)
+                    guard m.version >= 3, c == ["config", "claude_desktop_config.json"] else { throw ArchiveError("A backup.json names a window settings file in a place an export doesn't keep it; refused.") }
+                    guard container == "image" else { throw ArchiveError("A zip carries no MCP settings (only the encrypted disk image does); refused.") }
+                    guard it.bytes <= SessionsBackup.maxConfigBytes, let d = try? readSmall(tree.appendingPathComponent("\(base)/\(it.path)").path, limit: SessionsBackup.maxConfigBytes),
+                          SessionsBackup.withoutSidebar(d) != nil else {
+                        throw ArchiveError("The export's claude_desktop_config.json is over 8 MB, isn't a plain file or isn't a JSON object; refused.")
+                    }
                 }
                 guard let real = found.files["\(base)/\(it.path)"] else { throw ArchiveError("A file backup.json names is missing (\((c.last ?? "").prefix(40))); refused.") }
                 guard real == it.bytes, it.bytes >= 0 else { throw ArchiveError("A file's size isn't the size backup.json states (\((c.last ?? "").prefix(40))); refused.") }
@@ -948,6 +959,16 @@ enum SessionsImport {
                 if let bad = includes.first(where: { !allowed.contains($0) }) { throw ArchiveError("The export holds a file its CLAUDE.md doesn't include (\(bad.prefix(50))); refused.") }
             }
             if m.setupLeftOut.map({ $0.count > 500 }) == true { throw ArchiveError("A profile's backup.json lists too many left-out setup names; refused.") }
+            // a scheduled task's prompt comes only with its task: one whose id no task file of this part names isn't part of anything
+            let prompts = setupRels.filter { Setup.unit(of: $0).kind == .task }
+            if !prompts.isEmpty {
+                var ids = Set<String>()
+                for it in m.items where it.role == .window && it.path.hasSuffix("/scheduled-tasks.json") {
+                    guard let d = try? readSmall(tree.appendingPathComponent("\(base)/\(it.path)").path, limit: 64 << 20) else { continue }
+                    ids.formUnion(SessionsRestore.taskList(d).compactMap { $0["id"] as? String })
+                }
+                if let bad = prompts.first(where: { !ids.contains(Setup.unit(of: $0).name) }) { throw ArchiveError("The export holds a scheduled task's prompt without its task (\(bad.prefix(50))); refused.") }
+            }
             parts.append(PartInfo(dir: p.dir, name: p.name, profile: p.profile, manifest: m))
         }
         // nothing else: not a file, not a folder
@@ -1104,6 +1125,7 @@ enum SessionsImport {
         m.version = SessionsBackup.formatVersion
         // (names of setup left out at the source: shown as text only, so cut to plain short ones)
         m.setupLeftOut = m.setupLeftOut.map { Array($0.prefix(200).map { String($0.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 }.prefix(100).map(Character.init)) }) }
+        m.configLeftOut = m.configLeftOut.map { String($0.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 }.prefix(100).map(Character.init)) }
         // which units hold what a hook runs is never the file's own claim: worked out from the settings.json it carries (an export of
         // this backup leaves them out of a zip); without one it isn't known, and such an export leaves out every unit with an
         // executable file

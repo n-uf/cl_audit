@@ -9,9 +9,10 @@
 //   <scripts>                 every file inside the folder that a command in settings.json points to: SENSITIVE
 //   plugins/installed_plugins.json            the list of installed plugins (so Claude Code can reinstall them)
 //   plugins/known_marketplaces.json           the marketplaces: SENSITIVE (it can hold addresses with credentials)
+//   scheduled-tasks/<id>/SKILL.md             a scheduled task's prompt (format 3): it goes with its task, not with the setup row
 //
-// Never: a sign-in (.claude.json*, .credentials*), settings.local.json (machine-local by Claude Code's own definition), plugin
 // settings.json over 8 MB is left out (with its scripts): an import refuses one that big, so an export never carries it.
+// Never: a sign-in (.claude.json*, .credentials*), settings.local.json (machine-local by Claude Code's own definition), plugin
 // caches and repos (everything else under plugins/), projects/, todos/, statsig/, shell-snapshots/, ide/, a dot-file, version
 // history and build leftovers (.git, .hg, .svn, node_modules, .venv, venv, __pycache__, .DS_Store, *.pyc: counted, not an error).
 // A link is never followed: a skill that is one, or contains one anywhere, a link in place of CLAUDE.md, an agent, a command, an
@@ -27,6 +28,9 @@ import Foundation
 enum Setup {
     enum Kind: String, Codable, CaseIterable {
         case claude, include, skill, agent, command, style, keybindings, settings, script, plugins, marketplaces
+        /// A scheduled task's prompt, scheduled-tasks/<task id>/SKILL.md (format 3): the Claude window's task runs it. It travels with
+        /// its task (the window's scheduled-tasks.json), not with the setup row: added only when its task is.
+        case task
     }
 
     struct Unit: Hashable, Comparable {
@@ -67,10 +71,23 @@ enum Setup {
     // MARK: what is where
 
     static let topFolders = ["skills", "agents", "commands", "output-styles"]
+    /// Where the Claude window keeps its scheduled tasks' prompts: <Claude Code folder>/scheduled-tasks/<task id>/SKILL.md. (The window
+    /// works the path out from the task's id each time it loads the task list; the `filePath` a task records is not what it reads.)
+    static let taskFolder = "scheduled-tasks"
+    /// A task id as the Claude window keeps one (it drops any other when it loads the list): lower-case letters, digits, - and _.
+    static func validTaskID(_ s: String) -> Bool {
+        !s.isEmpty && s.utf8.count <= 200 && s.utf8.allSatisfy { ($0 >= 0x61 && $0 <= 0x7A) || ($0 >= 0x30 && $0 <= 0x39) || $0 == 0x2D || $0 == 0x5F }
+    }
+    /// A task's prompt, by its id.
+    static func taskRel(_ id: String) -> String { "\(taskFolder)/\(id)/SKILL.md" }
     /// Folders of the Claude Code folder that are history or machine state, never setup (for includes and scripts).
     static let neverFolders: Set<String> = ["projects", "todos", "plugins", "statsig", "shell-snapshots", "ide"]
     static let buildDirs: Set<String> = [".git", ".hg", ".svn", "node_modules", ".venv", "venv", "__pycache__"]
     static let maxFiles = 20_000
+    /// The most settings.json may hold to travel (an import refuses a bigger one: SessionsImport.validate).
+    static let maxSettingsBytes = 8 << 20
+    /// What the Export page lists for a settings.json over that.
+    static let settingsTooBig = "settings.json (over 8 MB: left out, with the scripts its hooks run)"
     /// Why a skill (or a folder of agents, commands, output styles) is left out whole: the walk had to stop in it.
     static let cutWords = "too many files, or folders nested too deep: left out whole"
     /// What a hard-linked file is listed with: never carried (it is another file's content too).
@@ -84,10 +101,6 @@ enum Setup {
     /// settings.local.json; settings.json only at the top (it is the setup's own file there and nowhere else).
     static func excludedName(_ name: String, top: Bool) -> Bool {
         let n = name.lowercased()
-    /// The most settings.json may hold to travel (an import refuses a bigger one: SessionsImport.validate).
-    static let maxSettingsBytes = 8 << 20
-    /// What the Export page lists for a settings.json over that.
-    static let settingsTooBig = "settings.json (over 8 MB: left out, with the scripts its hooks run)"
         if n.hasPrefix(".claude.json") || n.hasPrefix(".credentials") || n == "settings.local.json" { return true }
         return n == "settings.json" && !top
     }
@@ -105,6 +118,7 @@ enum Setup {
             if c[1] == "installed_plugins.json" { return Unit(kind: .plugins, name: rel) }
             if c[1] == "known_marketplaces.json" { return Unit(kind: .marketplaces, name: rel) }
         }
+        if c.count == 3, first == taskFolder, c[2] == "SKILL.md" { return Unit(kind: .task, name: c[1]) }
         if c.count >= 3, first == "skills" { return Unit(kind: .skill, name: c[1]) }
         if c.count >= 2, first == "agents" { return Unit(kind: .agent, name: c.dropFirst().joined(separator: "/")) }
         if c.count >= 2, first == "commands" { return Unit(kind: .command, name: c.dropFirst().joined(separator: "/")) }
@@ -134,8 +148,12 @@ enum Setup {
         // `Skills`, `PLUGINS` or `Projects` is the place of that name on this Mac's disks (they ignore case and Unicode forms): a name
         // that is one of those places only under another case or form is refused, so no manifest gets past the rules made for the
         // exact name (a plugin cache, a skill folder that exists, a link on the way) by spelling it differently
-        if (topFolders + ["plugins"] + neverFolders.sorted()).contains(where: { first != $0 && first.compare($0, options: [.caseInsensitive]) == .orderedSame }) {
+        if (topFolders + ["plugins", taskFolder] + neverFolders.sorted()).contains(where: { first != $0 && first.compare($0, options: [.caseInsensitive]) == .orderedSame }) {
             return "a place that is never carried, or only under its exact name (\(first.prefix(30)))"
+        }
+        if first == taskFolder {
+            // only a task's prompt, by the name the Claude window gives it (scheduled-tasks/<id>/SKILL.md, the id as the window allows one)
+            return c.count == 3 && validTaskID(c[1]) && c[2] == "SKILL.md" ? nil : "a file of scheduled-tasks/ that isn't a task's prompt"
         }
         if first == "plugins" {
             return c.count == 2 && (c[1] == "installed_plugins.json" || c[1] == "known_marketplaces.json") ? nil : "a plugin file that isn't the list (caches and repos are never carried)"
@@ -439,6 +457,22 @@ enum Setup {
             }
         }
 
+        // the scheduled tasks' prompts (each with its task, which the window's scheduled-tasks.json holds): scheduled-tasks/<id>/SKILL.md,
+        // nothing else of that folder; a link (the folder, a task's folder, the prompt) is never followed
+        let tdir = (base as NSString).appendingPathComponent(taskFolder)
+        if let ts = lst(tdir) {
+            if (ts.st_mode & S_IFMT) == S_IFLNK { found.linked.append(Linked(label: taskFolder, kind: .task, target: target(tdir))) }
+            else if (ts.st_mode & S_IFMT) == S_IFDIR {
+                for id in ((try? FileManager.default.contentsOfDirectory(atPath: tdir)) ?? []).sorted() where validTaskID(id) {
+                    let idir = (tdir as NSString).appendingPathComponent(id)
+                    guard let s = lst(idir) else { continue }
+                    if (s.st_mode & S_IFMT) == S_IFLNK { found.linked.append(Linked(label: "task \(id)", kind: .task, target: target(idir))); continue }
+                    guard (s.st_mode & S_IFMT) == S_IFDIR else { continue }
+                    single(taskRel(id), label: "task \(id)'s prompt", kind: .task)
+                }
+            }
+        }
+
         // keybindings, settings and the plugin list
         single("keybindings.json", label: "keybindings.json", kind: .keybindings)
         // settings.json over 8 MB (a real one is a few KB) is left out with its scripts: an import refuses one that big, and an export
@@ -467,7 +501,7 @@ enum Setup {
                     if pathProblem(comps) != nil { continue }
                     // a file inside skills/, agents/, commands/ or output-styles/ comes with its unit or not at all: a unit left out (a
                     // link, a build leftover, the walk's cap) never leaves one file of it behind as a "unit" of its own
-                    if let top = comps.first, topFolders.contains(top) { continue }
+                    if let top = comps.first, topFolders.contains(top) || top == taskFolder { continue }
                     var cur = base, linked: String?
                     for c in comps { cur = (cur as NSString).appendingPathComponent(c); if let s = lst(cur), (s.st_mode & S_IFMT) == S_IFLNK { linked = target(cur); break } }
                     if let t = linked { found.linked.append(Linked(label: "script \(r)", kind: .script, target: t)); continue }
@@ -598,6 +632,7 @@ enum Setup {
 
     struct Counts: Equatable {
         var claude = 0, includes = 0, skills = 0, agents = 0, commands = 0, styles = 0, keybindings = 0, settings = 0, scripts = 0, plugins = 0, marketplaces = 0
+        var tasks = 0                           // scheduled tasks' prompts (counted for the Found line; the setup row never shows them)
         init(_ units: [Unit]) {
             for u in units {
                 switch u.kind {
@@ -612,10 +647,11 @@ enum Setup {
                 case .script: scripts += 1
                 case .plugins: plugins += 1
                 case .marketplaces: marketplaces += 1
+                case .task: tasks += 1
                 }
             }
         }
-        var total: Int { claude + includes + skills + agents + commands + styles + keybindings + settings + scripts + plugins + marketplaces }
+        var total: Int { claude + includes + skills + agents + commands + styles + keybindings + settings + scripts + plugins + marketplaces + tasks }
     }
 
     private static func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
@@ -641,6 +677,7 @@ enum Setup {
         if c.keybindings > 0 { p.append("keybindings") }
         if c.plugins > 0 { p.append(extra.plugins > 0 ? n(extra.plugins, "plugin", "plugins") + " to reinstall" : "the plugin list") }
         if c.marketplaces > 0 { p.append("the plugin marketplaces") }
+        if c.tasks > 0 { p.append(n(c.tasks, "scheduled task's prompt", "scheduled tasks' prompts")) }
         if p.isEmpty { return c.includes > 0 ? n(c.includes, "included file", "included files") : "none" }
         return p.joined(separator: ", ")
     }

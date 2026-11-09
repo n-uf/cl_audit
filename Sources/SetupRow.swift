@@ -65,6 +65,7 @@ struct SetupRow: View {
         case .script: return "script \(u.name)"
         case .plugins: return "the plugin list"
         case .marketplaces: return "the plugin marketplaces"
+        case .task: return "scheduled task \(u.name)'s prompt"
         }
     }
 

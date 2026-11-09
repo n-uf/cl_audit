@@ -5,8 +5,12 @@
 // A backup is a folder <backups place>/<profile id>/<backup id>/ with a backup.json that says what is in it:
 //   window/<account>/<org>/…     the Claude window's Code-tab list: every claude-code-sessions/<account>/<org> folder
 //                                (the entries and scheduled-tasks.json), for every account that has one
-//   sidebar/epitaxyPrefs.json    the window's sidebar records: only the epitaxyPrefs part of claude_desktop_config.json,
-//                                never the whole file (it holds MCP settings, which may carry keys)
+//   sidebar/epitaxyPrefs.json    the window's sidebar records: only the epitaxyPrefs part of claude_desktop_config.json
+//   config/claude_desktop_config.json   the rest of that file (format 3): MCP servers and the window's other settings, without
+//                                the sidebar part. It can hold tokens no scan recognises (env values, headers, arguments): an export
+//                                carries it only in the encrypted disk image, and Import and Restore add it only when asked, and
+//                                only where the profile has none (SessionsRestoreWindow.swift)
+//   setup/scheduled-tasks/<id>/SKILL.md   a scheduled task's prompt (with the setup's files, but it goes with its task)
 //   records/…                    cl_audit's own: the profile's entry, and the receipt of the switch it was made for
 //   transcripts/<project>/…      Claude Code's transcripts (<Claude Code folder>/projects), optional
 //
@@ -51,7 +55,7 @@ enum SessionsBackup {
 
     /// One thing in a backup: where it was (absolute) and where it is (relative to the backup's folder).
     struct Item: Codable, Equatable {
-        enum Role: String, Codable { case window, sidebar, record, transcript, setup }
+        enum Role: String, Codable { case window, sidebar, record, transcript, setup, config }
         var role: Role
         var original: String
         var path: String
@@ -62,8 +66,10 @@ enum SessionsBackup {
     }
 
     /// The format of backup.json (and of an export's export.json). 2 added `setup` items (Claude Code's CLAUDE.md, skills, agents …);
-    /// a file of version 1 is read as before (it has none), a newer one is refused.
-    static let formatVersion = 2
+    /// 3 added the `config` item (the Claude window's claude_desktop_config.json without its sidebar part) and scheduled tasks' prompts
+    /// (setup/scheduled-tasks/<id>/SKILL.md). Files of version 1 and 2 are read as before (they have none); a newer one is refused.
+    /// (26.11.7 reads only version 1, 26.11.8 up to 2: both refuse a version 3 file with their "newer cl_audit" words.)
+    static let formatVersion = 3
 
     struct Counts: Codable, Equatable {
         var sessions = 0                    // entries in the window's Code-tab list
@@ -98,6 +104,9 @@ enum SessionsBackup {
         /// of a zip. nil: not known (settings.json couldn't be read, or an older backup): a zip then leaves out every unit that holds a
         /// file with the execute bit.
         var setupHookUnits: [String]? = nil
+        /// Why the window's claude_desktop_config.json isn't in it although the window was ("over 8 MB", "a link", "not a JSON object",
+        /// "needs the encrypted disk image" in a zip): words for the pages. nil: it is in, or there was none.
+        var configLeftOut: String? = nil
     }
 
     /// What a backup is made from.
@@ -210,15 +219,22 @@ enum SessionsBackup {
     private static func gather(_ s: Source, window: Bool, transcripts: Bool, setup: Bool = false) -> Gathered {
         var g = Gathered()
         if setup {
-            // Claude Code's setup (CLAUDE.md, skills, agents, commands …): links never followed, left out by name
+            // Claude Code's setup (CLAUDE.md, skills, agents, commands …): links never followed, left out by name. The scheduled tasks'
+            // prompts go with the window's task files: only when those are taken too
             let f = Setup.scan(codeDir: s.codeDir)
-            for r in f.files {
+            for r in f.files where window || r.unit.kind != .task {
                 g.files.append(Planned(role: .setup, src: r.src, rel: "setup/" + r.rel, original: r.src, bytes: r.bytes, exec: r.exec))
                 g.bytes += r.bytes
             }
             // by name and the reason, never where a link pointed: "agent linked.md (a link)", "skills/big (too many files, or folders nested too deep: left out whole)"
             g.setupLeftOut = (f.linked.map { $0.label.contains("(") ? $0.label : $0.label + " (a link)" } + f.leftOutNames.filter { $0.hasSuffix("left out whole)") || $0 == Setup.settingsTooBig }).sorted()
             g.setupHookUnits = f.hookUnits.map { $0.map(Setup.key).sorted() }
+        } else if window {
+            // setup left out (an export without it): the scheduled tasks' prompts still go with their tasks
+            for r in Setup.scan(codeDir: s.codeDir).files where r.unit.kind == .task {
+                g.files.append(Planned(role: .setup, src: r.src, rel: "setup/" + r.rel, original: r.src, bytes: r.bytes, exec: false))
+                g.bytes += r.bytes
+            }
         }
         if window, !s.dataDir.isEmpty {
             let root = (s.dataDir as NSString).appendingPathComponent("claude-code-sessions")
@@ -387,6 +403,18 @@ enum SessionsBackup {
             items.append(Item(role: .sidebar, original: (s.dataDir as NSString).appendingPathComponent("claude_desktop_config.json"),
                               path: "sidebar/epitaxyPrefs.json", bytes: Int64(data.count), part: "preferences.epitaxyPrefs"))
         }
+        // the rest of claude_desktop_config.json (MCP servers, the window's other settings), without the sidebar part
+        var configLeftOut: String?
+        if window {
+            switch windowConfig(dataDir: s.dataDir) {
+            case .none: break
+            case .leftOut(let why): configLeftOut = why
+            case .data(let data):
+                try put(data, configPath, in: partial, dirFor)
+                items.append(Item(role: .config, original: (s.dataDir as NSString).appendingPathComponent("claude_desktop_config.json"),
+                                  path: configPath, bytes: Int64(data.count), part: "all but preferences.epitaxyPrefs"))
+            }
+        }
         // cl_audit's records: the profile (ids only, no address), and the receipt of the switch this is for
         if let e = s.entry {
             let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
@@ -405,7 +433,7 @@ enum SessionsBackup {
                          window: window, transcripts: transcripts,
                          bytes: items.reduce(0) { $0 + $1.bytes }, cloned: cloned, copied: copied, copiedBytes: copiedBytes,
                          leftOut: leftOut, dataDir: s.dataDir, codeDir: s.codeDir, items: items,
-                         setupLeftOut: g.setupLeftOut.isEmpty ? nil : g.setupLeftOut, setupHookUnits: g.setupHookUnits)
+                         setupLeftOut: g.setupLeftOut.isEmpty ? nil : g.setupLeftOut, setupHookUnits: g.setupHookUnits, configLeftOut: configLeftOut)
         var out = m
         out.seconds = (Date().timeIntervalSince(started) * 10).rounded() / 10
         try put(try encode(out), "backup.json", in: partial, dirFor)
@@ -476,6 +504,52 @@ enum SessionsBackup {
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let prefs = (j["preferences"] as? [String: Any])?["epitaxyPrefs"] as? [String: Any] else { return nil }
         return try? JSONSerialization.data(withJSONObject: prefs, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    }
+
+    /// Where a backup keeps the window's claude_desktop_config.json (without its sidebar part), and the most it may hold: a real one is a
+    /// few KB, and an import refuses one bigger, so a backup (and an export) never takes one bigger either.
+    static let configPath = "config/claude_desktop_config.json"
+    static let maxConfigBytes = 8 << 20
+
+    enum ConfigRead: Equatable { case none, leftOut(String), data(Data) }
+
+    /// The window's claude_desktop_config.json as a backup takes it: the whole JSON object without `preferences.epitaxyPrefs` (the
+    /// sidebar part, which travels as sidebar/epitaxyPrefs.json). Read without following a link and under the cap; `.none`: there is
+    /// none (or nothing but the sidebar part); `.leftOut`: why it isn't taken.
+    static func windowConfig(dataDir: String) -> ConfigRead {
+        guard !dataDir.isEmpty else { return .none }
+        let path = (dataDir as NSString).appendingPathComponent("claude_desktop_config.json")
+        var st = stat()
+        guard lstat(path, &st) == 0 else { return .none }
+        if (st.st_mode & S_IFMT) == S_IFLNK { return .leftOut("it is a link") }
+        guard (st.st_mode & S_IFMT) == S_IFREG else { return .leftOut("it isn't a plain file") }
+        guard st.st_size <= maxConfigBytes else { return .leftOut("it is over 8 MB") }
+        guard let d = Setup.readCapped(path, limit: maxConfigBytes) else { return .leftOut("it can't be read") }
+        guard let j = withoutSidebar(d) else { return .leftOut("it isn't a JSON object") }
+        if j.isEmpty { return .none }
+        guard let out = try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return .leftOut("it can't be read") }
+        return .data(out)
+    }
+
+    /// The config's object without `preferences.epitaxyPrefs` (and without `preferences` when that was all it held); nil: not a JSON object.
+    static func withoutSidebar(_ d: Data) -> [String: Any]? {
+        guard var j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return nil }
+        if var prefs = j["preferences"] as? [String: Any] {
+            prefs.removeValue(forKey: "epitaxyPrefs")
+            if prefs.isEmpty { j.removeValue(forKey: "preferences") } else { j["preferences"] = prefs }
+        }
+        return j
+    }
+
+    /// The MCP servers a config names, by name, with what each runs: its `command` (never its arguments, env values or headers, which
+    /// can hold tokens), or "a remote server" for one reached by URL (the URL can hold a token too).
+    static func mcpServers(_ d: Data) -> [(name: String, runs: String)] {
+        guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], let s = j["mcpServers"] as? [String: Any] else { return [] }
+        return s.keys.sorted().map { name in
+            let o = s[name] as? [String: Any]
+            let runs = (o?["command"] as? String).map { String($0.prefix(200)) } ?? (o?["url"] != nil ? "a remote server" : "nothing it names")
+            return (String(name.prefix(100)), runs)
+        }
     }
 
     // MARK: listing, deleting, pruning
@@ -624,6 +698,7 @@ enum SessionsBackup {
             parts.append(n(m.counts.sessions, "session", "sessions"))
             if m.counts.tasks > 0 { parts.append(n(m.counts.tasks, "task", "tasks")) }
             if m.items.contains(where: { $0.role == .sidebar }) { parts.append("sidebar") }
+            if m.items.contains(where: { $0.role == .config }) { parts.append("MCP settings") }
         } else {
             parts.append("window left out")
         }

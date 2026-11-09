@@ -7,11 +7,13 @@
 //     profiles/p1/backup.json          a backup's manifest, ids replaced by fingerprints, no absolute path
 //     profiles/p1/window/<fp>/<fp>/…   the Code-tab entries and scheduled tasks
 //     profiles/p1/sidebar/…            the sidebar records (epitaxyPrefs only)
+//     profiles/p1/config/…             the rest of the window's claude_desktop_config.json (MCP settings): the encrypted image only
 //     profiles/p1/records/profile.json the profile's name and fingerprints
 //     profiles/p1/transcripts/…        Claude Code's transcripts
+//     profiles/p1/setup/…              Claude Code's setup, and the scheduled tasks' prompts (with their tasks)
 //
 // What is never in it: a sign-in (nothing a backup excludes: .claude.json, credentials, Keychain, OAuth, auth.json), the
-// MCP settings, settings.json, a switch's receipt, or an address or an id of any account cl_audit knows. Those appear as a
+// MCP settings or settings.json in a zip, a switch's receipt, or an address or an id of any account cl_audit knows. Those appear as a
 // fingerprint: "fp-" and 8 hex characters of an HMAC under a key made for the export alone. Every file of the profile's
 // structure is checked at the end for the known ids and addresses (every profile's accounts, the window's account and
 // organisation folders); a hit stops the export. Any other id and any other address is content (a stranger's address in a
@@ -688,12 +690,43 @@ enum SessionsExport {
         var inUse = 0
         var projects: [Project] = []
         var setup = SetupPreview()
+        /// The window's claude_desktop_config.json (its MCP servers and other settings, not the sidebar part): only the encrypted image
+        /// carries it.
+        var config = ConfigPreview()
 
         /// With keys: sessions, lone files, and setup units (a skill, an agent, CLAUDE.md …).
         var keyed: Int { keyedSessions + keyedFiles + setup.keyedUnits.count }
         /// The sessions an export of these would hold.
         func sessionsIn(_ keys: Keys) -> Int { keys == .leaveOut ? sessions - keyedSessions : sessions }
         func bytesIn(_ keys: Keys) -> Int64 { transcriptBytes + windowBytes - (keys == .leaveOut ? keyedBytes : 0) }
+    }
+
+    /// The window's claude_desktop_config.json as an export would hold it: whether there is one, its MCP servers by name, or why it is
+    /// left out (a link, over 8 MB, not a JSON object).
+    struct ConfigPreview: Equatable {
+        var present = false
+        var servers: [String] = []
+        var leftOut: String?
+        mutating func add(_ o: ConfigPreview) { present = present || o.present; servers += o.servers; if leftOut == nil { leftOut = o.leftOut } }
+    }
+
+    static func configPreview(_ part: Part) -> ConfigPreview {
+        var c = ConfigPreview()
+        if let s = part.source {
+            guard !part.windowOpen else { return c }
+            switch SessionsBackup.windowConfig(dataDir: s.dataDir) {
+            case .none: break
+            case .leftOut(let why): c.leftOut = why
+            case .data(let d): c.present = true; c.servers = SessionsBackup.mcpServers(d).map(\.name)
+            }
+            return c
+        }
+        guard let b = part.backup, let m = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) else { return c }
+        if m.items.contains(where: { $0.role == .config }) {
+            c.present = true
+            c.servers = Setup.readCapped(b.dir.appendingPathComponent(SessionsBackup.configPath).path, limit: SessionsBackup.maxConfigBytes).map { SessionsBackup.mcpServers($0).map(\.name) } ?? []
+        } else { c.leftOut = m.configLeftOut }
+        return c
     }
 
     /// Claude Code's setup as an export would hold it (SessionsSetup.swift): counted, key-scanned (not the sensitive part: that is
@@ -716,6 +749,8 @@ enum SessionsExport {
         /// settings.json couldn't tell what its hooks run (it can't be read, or an older backup didn't record it): `hookUnits` is then
         /// every unit that holds a file with the execute bit.
         var hooksUnknown = false
+        /// Scheduled tasks' prompts (they go with their tasks, not in `units`: the setup row never shows them)
+        var taskPrompts = 0
         var counts: Setup.Counts { Setup.Counts(units) }
         func isSensitive(_ u: Setup.Unit) -> Bool { u.sensitive || hookUnits.contains(u) }
         var sensitive: Setup.Counts { Setup.Counts(units.filter(\.sensitive)) }
@@ -725,7 +760,7 @@ enum SessionsExport {
         var plain: Setup.Counts { Setup.Counts(units.filter { !isSensitive($0) }) }
         var isEmpty: Bool { units.isEmpty }
         mutating func add(_ o: SetupPreview) {
-            hookUnits.formUnion(o.hookUnits); hooksUnknown = hooksUnknown || o.hooksUnknown
+            hookUnits.formUnion(o.hookUnits); hooksUnknown = hooksUnknown || o.hooksUnknown; taskPrompts += o.taskPrompts
             units += o.units; files += o.files; bytes += o.bytes; keyedUnits += o.keyedUnits
             for (k, v) in o.keyKinds { keyKinds[k, default: 0] += v }
             extra.hooks += o.extra.hooks; extra.plugins += o.extra.plugins; extra.statusLine = extra.statusLine || o.extra.statusLine
@@ -773,6 +808,15 @@ enum SessionsExport {
         for f in files {
             if cancel() { return nil }
             let u = f.unit
+            if u.kind == .task {
+                // a scheduled task's prompt: key-scanned like a skill (it is the person's own words), counted apart; not when the window's
+                // files (its task) are left out
+                if part.source != nil && part.windowOpen { continue }
+                sp.taskPrompts += 1
+                guard let k = SecretScan.scan(path: f.src, cancel: cancel, progress: progress) else { if cancel() { return nil }; continue }
+                kinds[u, default: []].formUnion(k)
+                continue
+            }
             seen.insert(u)
             sp.files += 1; sp.bytes += f.bytes
             if sp.isSensitive(u) { continue }                             // (carried only in the image: not what the key scan is for)
@@ -883,6 +927,7 @@ enum SessionsExport {
         }.sorted { $0.sessions != $1.sessions ? $0.sessions > $1.sessions : $0.name < $1.name }
         guard let sp = setupPreview(part, cancel: cancel, progress: progress) else { return nil }
         pv.setup = sp
+        pv.config = configPreview(part)
         return pv
     }
 
@@ -928,6 +973,9 @@ enum SessionsExport {
         var setupKeysLeftOut = 0            // setup units left out for the keys in them
         var setupKeysKept = 0
         var setupSensitiveLeftOut: [Setup.Unit] = []     // settings.json, its scripts, the marketplaces: a zip doesn't carry them
+        var configCarried = false           // the window's claude_desktop_config.json (MCP settings) is in it (an image)
+        var configLeftOut = false           // …left out because the file is a zip
+        var taskPrompts = 0                 // scheduled tasks' prompts that go with their tasks
     }
 
     struct Job {
@@ -959,6 +1007,9 @@ enum SessionsExport {
         var setupKeysLeftOut: Int { parts.reduce(0) { $0 + $1.setupKeysLeftOut } }
         var setupKeysKept: Int { parts.reduce(0) { $0 + $1.setupKeysKept } }
         var setupSensitiveLeftOut: [Setup.Unit] { parts.flatMap(\.setupSensitiveLeftOut) }
+        var configCarried: Bool { parts.contains(where: \.configCarried) }
+        var configLeftOut: Bool { parts.contains(where: \.configLeftOut) }
+        var taskPrompts: Int { parts.reduce(0) { $0 + $1.taskPrompts } }
     }
 
     /// "cl_audit Main 2026-11-05"
@@ -1199,6 +1250,7 @@ enum SessionsExport {
             }
         }
         var seen = Set<SeatID>()
+        var exportedTaskIDs = Set<String>()                     // the scheduled tasks in the file: their prompts go with them
         for (_, c) in windowFiles {
             if cancel() { throw ArchiveError("Stopped.") }
             let name = c[3]
@@ -1235,6 +1287,7 @@ enum SessionsExport {
             } else if name == "scheduled-tasks.json", let j = try? JSONSerialization.jsonObject(with: raw) as? [String: Any] {
                 let n = (j["scheduledTasks"] as? [Any])?.count ?? 0
                 po.tasks += n; counts.tasks += n
+                for t in (j["scheduledTasks"] as? [Any]) ?? [] { if let id = (t as? [String: Any])?["id"] as? String { exportedTaskIDs.insert(id) } }
             }
         }
         // 2. the sidebar records and the profile's record
@@ -1248,6 +1301,23 @@ enum SessionsExport {
                 items.append(SessionsBackup.Item(role: .sidebar, original: "sidebar/epitaxyPrefs.json", path: "sidebar/epitaxyPrefs.json", bytes: Int64(data.count),
                                                  part: "preferences.epitaxyPrefs"))
                 hasSidebar = true
+            }
+        }
+        // 2b. the rest of the window's claude_desktop_config.json (MCP servers, the window's other settings): its env values, headers and
+        // arguments can hold tokens no key scan recognises, so only the encrypted image carries it; a zip leaves it out and says so. In
+        // the image it is scrubbed like the window's other files (a known address or id becomes its fingerprint) and the leak check
+        // reads it like any of them.
+        var configLeftOut = m.configLeftOut
+        if m.items.contains(where: { $0.role == .config }) {
+            if zip {
+                configLeftOut = "needs the encrypted disk image"; po.configLeftOut = true; leftOut += 1
+            } else if let d = recordData(SessionsBackup.configPath), d.count <= SessionsBackup.maxConfigBytes, SessionsBackup.withoutSidebar(d) != nil {
+                let data = scrubber.data(d)
+                try write(data, to: URL(fileURLWithPath: create(SessionsBackup.configPath)))
+                items.append(SessionsBackup.Item(role: .config, original: SessionsBackup.configPath, path: SessionsBackup.configPath, bytes: Int64(data.count), part: "all but preferences.epitaxyPrefs"))
+                po.configCarried = true; configLeftOut = nil
+            } else {
+                configLeftOut = "it can't be read"; leftOut += 1
             }
         }
         if let d = recordData("records/profile.json"), let rec = try? JSONDecoder().decode(SessionsBackup.ProfileRecord.self, from: d) {
@@ -1340,11 +1410,16 @@ enum SessionsExport {
         // points to, the marketplaces), which a zip never carries. No address check and no fingerprint rewriting: it is the operator's
         // own words, like a transcript. Each file is recorded with its size, SHA-256 and whether its owner-execute bit was set.
         var setupNames: [String] = m.setupLeftOut ?? []
-        if setup {
+        // (a scheduled task's prompt goes with its task whatever the setup row says, and only when its task is in the file)
+        let tasksOnly = !setup
+        do {
             var members: [Setup.Unit: [SessionsBackup.Item]] = [:]
             for it in m.items where it.role == .setup {
                 guard let c = SessionsRestore.components(it.path), c.first == "setup", Setup.pathProblem(Array(c.dropFirst())) == nil else { continue }
-                members[Setup.unit(of: String(it.path.dropFirst(6))), default: []].append(it)
+                let u = Setup.unit(of: String(it.path.dropFirst(6)))
+                if tasksOnly, u.kind != .task { continue }
+                if u.kind == .task, !exportedTaskIDs.contains(u.name) { setupNames.append("\(SetupRow.title(u)) (left out with its task)"); leftOut += 1; continue }
+                members[u, default: []].append(it)
             }
             // a skill (an agent, a command …) that holds a file a hook or the status line runs is sensitive like the script itself: as
             // the backup recorded them from the live settings.json (a linked one too, which is never carried), else every unit with an
@@ -1392,7 +1467,7 @@ enum SessionsExport {
                     cloned += 1; po.bytes += Int64(st.st_size)
                     landed.insert(rel)
                 }
-                po.setupUnits.append(u)
+                if u.kind == .task { po.taskPrompts += 1 } else { po.setupUnits.append(u) }
             }
             for (u, list) in carry where u.kind != .include { if cancel() { throw ArchiveError("Stopped.") }; try copyUnit(u, list) }
             let includes = carry.filter { $0.0.kind == .include }
@@ -1411,12 +1486,13 @@ enum SessionsExport {
 
         // 4. the manifest of this part
         let windowBytes = items.filter { $0.role == .window }.reduce(Int64(0)) { $0 + $1.bytes }
-        po.bytes += windowBytes + items.filter { $0.role == .sidebar || $0.role == .record }.reduce(Int64(0)) { $0 + $1.bytes }
+        po.bytes += windowBytes + items.filter { $0.role == .sidebar || $0.role == .record || $0.role == .config }.reduce(Int64(0)) { $0 + $1.bytes }
         let mm = SessionsBackup.Manifest(id: m.id, profile: part.profile, kind: .manual, created: m.created, seconds: 0,
                                          accounts: seatsOut.sorted { ($0.account, $0.organization) < ($1.account, $1.organization) }, counts: counts,
                                          window: !items.filter { $0.role == .window }.isEmpty || hasSidebar, transcripts: m.transcripts,
                                          bytes: items.reduce(0) { $0 + $1.bytes }, cloned: cloned, copied: 0, copiedBytes: 0, leftOut: leftOut,
-                                         dataDir: "", codeDir: "", items: items, setupLeftOut: setupNames.isEmpty ? nil : Array(Set(setupNames)).sorted())
+                                         dataDir: "", codeDir: "", items: items, setupLeftOut: setupNames.isEmpty ? nil : Array(Set(setupNames)).sorted(),
+                                         configLeftOut: configLeftOut)
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try write(try enc.encode(mm), to: URL(fileURLWithPath: create("backup.json")))
         progress(1)
