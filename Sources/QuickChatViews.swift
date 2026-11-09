@@ -180,7 +180,7 @@ struct QCTurnView: View {
             .padding(.top, 14)
             if turn.thinkingTitle != nil { QCThought(turn: turn) }
             if !turn.answer.isEmpty {
-                QCAnswer(text: turn.answer)
+                QCAnswer(text: turn.answer).equatable()
             }
             if turn.phase == .waiting || turn.phase == .streaming { QCPulse() }
             if turn.phase == .done || turn.phase == .stopped { footer }
@@ -247,8 +247,9 @@ enum QCFormat {
     }
 }
 
-/// An answer's Markdown, block by block (QuickChatMarkdown.swift).
-struct QCAnswer: View {
+/// An answer's Markdown, block by block (QuickChatMarkdown.swift). Equatable on its text, so an answer that's done isn't
+/// parsed and drawn again while a later one streams.
+struct QCAnswer: View, Equatable {
     let text: String
 
     var body: some View {
