@@ -1163,6 +1163,7 @@ enum SessionsExport {
         // 3. the transcripts: keys decided per session, then copied (the in-use cut up to a full line)
         var unitMembers: [Unit: [(SessionsBackup.Item, [String])]] = [:]
         var markers: [(SessionsBackup.Item, [String])] = []
+        var exportedSessions = Set<String>()                          // "<project>/<session>" of every transcript put in the file (by its source name)
         for (it, c) in codeFiles {
             if SessionsBackup.isSignIn((c.last ?? "")) { continue }
             if marker(of: it.path) != nil { markers.append((it, c)); continue }       // decided with its session, below
@@ -1189,7 +1190,9 @@ enum SessionsExport {
             var counted = false
             for (it, _) in members {
                 let src = b.dir.appendingPathComponent(it.path).path
-                let rel = it.path
+                // the name it gets in the file: a known account id or address in a path (a tool result named for it, a project
+                // folder named for an address) becomes its fingerprint, so the file's own names carry nothing known either
+                let rel = scrubber.name(it.path)
                 let dst = try create(rel)
                 var bytes = it.bytes
                 if rel.hasSuffix(".jsonl"), !endsOnLine(src) {
@@ -1207,25 +1210,23 @@ enum SessionsExport {
                 }
                 items.append(SessionsBackup.Item(role: .transcript, original: rel, path: rel, bytes: bytes))
                 cloned += 1; po.bytes += bytes
+                let parts = it.path.split(separator: "/").map(String.init)
+                if parts.count == 3, parts[2].hasSuffix(".jsonl") { exportedSessions.insert(parts[1] + "/" + String(parts[2].dropLast(".jsonl".count)).lowercased()) }
                 if u.isSession, !counted, rel.split(separator: "/").count == 3 { po.sessions += 1; counts.transcripts += 1; counted = true }
             }
         }
         // 3b. Claude Code's retention markers (<session>.desktop-released.json): each travels with its exported transcript and
         // is otherwise left out and counted, never refused (a marker can outlive its transcript)
-        var exported = Set<String>()                                  // "<project>/<session>" of every transcript in the file
-        for it in items where it.role == .transcript {
-            let c = it.path.split(separator: "/").map(String.init)
-            if c.count == 3, c[2].hasSuffix(".jsonl") { exported.insert(c[1] + "/" + String(c[2].dropLast(".jsonl".count)).lowercased()) }
-        }
         for (it, c) in markers {
             if cancel() { throw ArchiveError("Stopped.") }
-            guard let mk = marker(of: it.path), exported.contains(mk.project + "/" + mk.id) else { po.markersLeftOut += 1; leftOut += 1; continue }
+            guard let mk = marker(of: it.path), exportedSessions.contains(mk.project + "/" + mk.id) else { po.markersLeftOut += 1; leftOut += 1; continue }
             guard let f = reader.file(c), f.st.st_size <= 1 << 20, let raw = SessionsRestore.read(f.fd, size: f.st.st_size) else { po.markersLeftOut += 1; leftOut += 1; continue }
             close(f.fd)
             if !SecretScan.scan(raw).isEmpty, keys == .leaveOut { po.markersLeftOut += 1; leftOut += 1; continue }
             let data = scrubber.data(raw)
-            try write(data, to: URL(fileURLWithPath: create(it.path)))
-            items.append(SessionsBackup.Item(role: .transcript, original: it.path, path: it.path, bytes: Int64(data.count)))
+            let mrel = scrubber.name(it.path)
+            try write(data, to: URL(fileURLWithPath: create(mrel)))
+            items.append(SessionsBackup.Item(role: .transcript, original: mrel, path: mrel, bytes: Int64(data.count)))
             cloned += 1; po.bytes += Int64(data.count)
         }
 
@@ -1306,7 +1307,8 @@ enum SessionsExport {
         let fm = FileManager.default
         guard let walk = fm.enumerator(atPath: root.path) else { return nil }
         var files: [String] = []
-        for case let rel as String in walk where !rel.contains("transcripts/") { files.append(rel) }
+        var inTranscripts: [String] = []                              // their contents are the user's words; their NAMES are looked at
+        for case let rel as String in walk { if rel.contains("transcripts/") { inTranscripts.append(rel) } else { files.append(rel) } }
         let wantedIDs = ids.map { $0.lowercased() }.filter { !$0.isEmpty }
         let wantedMails = emails.map { $0.lowercased() }.filter { !$0.isEmpty }
         func joined(_ s: String) -> String { String(String.UnicodeScalarView(s.unicodeScalars.filter { !$0.properties.isWhitespace })) }
@@ -1326,6 +1328,11 @@ enum SessionsExport {
         let topLow = root.lastPathComponent.lowercased()
         if wantedIDs.contains(where: { has(topLow, $0) }) { return "an account id in the name of the export's folder" }
         if wantedMails.contains(where: { has(topLow, $0) || has(topLow, plainFileName($0).lowercased()) }) { return "an address in the name of the export's folder" }
+        for rel in inTranscripts {
+            let low = rel.lowercased()
+            if wantedIDs.contains(where: { has(low, $0) }) { return "an account id in the name of \((rel as NSString).lastPathComponent)" }
+            if wantedMails.contains(where: { has(low, $0) || has(low, plainFileName($0).lowercased()) }) { return "an address in the name of \((rel as NSString).lastPathComponent)" }
+        }
         for rel in files {
             let path = (root.path as NSString).appendingPathComponent(rel)
             let name = (rel as NSString).lastPathComponent
