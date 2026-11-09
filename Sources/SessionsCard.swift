@@ -24,7 +24,8 @@ struct SessionsCard: View {
     }
     @State private var backups: [Listed] = []
     @State private var targets: [String: String] = [:]             // backup id → the account its switch went to, short
-    @State private var days: Int? = CodeCleanup.standard           // nil: settings.json doesn't say (or can't be read)
+    @State private var retention = Retention()                     // what Claude Code's clean-up does (days nil: settings.json doesn't say)
+    private var days: Int? { retention.days }
     @State private var keepProblem: String?
     @State private var working = false
     @State private var problem: String?
@@ -44,10 +45,11 @@ struct SessionsCard: View {
             SRow(label: "Kept here", info: "What \(name) has on this Mac now: Claude Code's session transcripts, the entries of the Claude window's Code tab (for every account it has used), and how much room they take.", first: true, stacked: true) {
                 text(keptWords)
             }
-            SRow(label: "Keep for", info: "How long Claude Code keeps its own transcripts before it deletes them: cleanupPeriodDays in \(tilde(CodeCleanup.file(entry.configDir))), kept with every other setting in that file. Claude Code's default is 30 days. A longer time keeps them available to claude --resume and for backups; it can't bring back what is already deleted.", stacked: true) {
+            SRow(label: "Keep for", info: Retention.keepForInfo(file: tilde(CodeCleanup.file(entry.configDir))), stacked: true) {
                 VStack(alignment: .leading, spacing: 4) {
-                    keepForMenu
+                    if retention.managed, let d = retention.days { text("\(d) days, set by your organisation") } else { keepForMenu }
                     if let keepProblem { note(keepProblem, color: face.danger) }
+                    if let n = retention.keepForNote { note(n) }
                 }
             }
             SRow(label: "Backups", info: "Quick copies of \(name)'s sessions: the window's Code-tab list with its scheduled tasks and sidebar records, cl_audit's records and, usually, Claude Code's transcripts. Clones, so they take seconds and share space with the originals. Never a sign-in. Kept in \(prefs.placeWords).", stacked: true) {
@@ -83,7 +85,7 @@ struct SessionsCard: View {
         var parts = ["\(k.transcripts) in Claude Code", "\(k.entries) in the Claude window" + (k.sidebar > 0 ? " (\(k.sidebar) in the sidebar)" : ""),
                      SessionsBackup.sizeWords(k.bytes)]
         if let o = k.oldest { parts.append(SessionsBackup.tight("since " + Self.since(o))) }
-        return parts.joined(separator: " · ") + ". " + (days.map { "Claude Code deletes its own after \($0) days." } ?? "How long Claude Code keeps its own isn't known (settings.json).")
+        return parts.joined(separator: " · ") + ". " + retention.keptHereWords
     }
 
     private static func since(_ d: Date) -> String {
@@ -111,7 +113,7 @@ struct SessionsCard: View {
         Task {
             do {
                 try await Task.detached(priority: .utility) { try CodeCleanup.set(d, codeDir: dir) }.value
-                days = d
+                retention.days = d
             } catch { keepProblem = "\(error)" }               // the file was left as it was: the menu keeps what it showed
         }
     }
@@ -234,16 +236,16 @@ struct SessionsCard: View {
             SessionsRestore.headers().contains { $0.profile == e.id && $0.importedFrom != nil && $0.finished != nil && $0.undone == nil && SessionsRestore.carriedOver($0) }
         }.value
         exportWords = ExportPrefs.words(profile: e.id)
-        let (list, tg, d) = await Task.detached(priority: .utility) { () -> ([Listed], [String: String], (days: Int?, problem: String?)) in
+        let (list, tg, d) = await Task.detached(priority: .utility) { () -> ([Listed], [String: String], Retention) in
             SessionsImport.sweep(place: place)                 // unpacking and export folders a stopped run left (a day old)
             SessionsRestore.prune(profile: e.id)               // old receipts of finished restores
             let here = SessionsBackup.list(profile: e.id, place: place).map { Listed(m: $0, place: nil) }
             // backups a receipt names in another place (General ▸ Backups was changed since): listed too, with their place
             let more = SessionsBackup.elsewhere(profile: e.id, place: place).map { Listed(m: $0.manifest, place: $0.place) }
             let list = (here + more).sorted { $0.m.created != $1.m.created ? $0.m.created > $1.m.created : $0.id > $1.id }
-            return (list, Self.targets(list.map(\.m), for: e), CodeCleanup.read(codeDir: e.configDir))
+            return (list, Self.targets(list.map(\.m), for: e), Retention.read(codeDir: e.configDir))
         }.value
-        backups = list; targets = tg; days = d.days; keepProblem = d.problem
+        backups = list; targets = tg; retention = d; keepProblem = d.problem
         let k = await Task.detached(priority: .utility) { SessionsBackup.kept(src) }.value
         SessionsBackup.KeptCache.set(e.id, k)
         kept = k

@@ -210,13 +210,15 @@ struct RestorePage: View {
                         value("\(max(p.deletedSince.count, r?.deletedCount ?? 0)): the window deleted them, so they stay deleted")
                     }
                 }
-                SRow(label: "Older than \(p.days ?? 30) days", info: "Claude Code deletes its own transcripts after cleanupPeriodDays (\(tilde(CodeCleanup.file(entry.configDir)))). A transcript comes back with its real age, so one older than that would be deleted again.", stacked: true) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        value(oldWords(p))
-                        if p.old > 0, let d = p.days, d < 90, runner.phase == .ready {
-                            Button("Keep for 90 days") { runner.keepForDays(90) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                if p.showsWouldDelete {
+                    SRow(label: "Would be deleted", info: p.retention.wouldDeleteInfo(file: tilde(CodeCleanup.file(entry.configDir)), comes: "comes back"), stacked: true) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            value(p.wouldDeleteWords)
+                            if p.canKeepLonger, runner.phase == .ready {
+                                Button("Keep for 90 days") { runner.keepForDays(90) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                            }
+                            if let f = runner.keepFailed { Text(f).font(.system(size: 10.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true) }
                         }
-                        if let f = runner.keepFailed { Text(f).font(.system(size: 10.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true) }
                     }
                 }
                 ForEach(Array(p.notes.enumerated()), id: \.offset) { _, s in SRowLine(text: s, color: face.caution) }
@@ -243,12 +245,6 @@ struct RestorePage: View {
         var s = "Entries go into \(entry.windowDataWords), in \(inUse)'s folder, where \(name) works now; never into the folder of an account it no longer uses. Open it from \(entry.desktop == .standard ? "the Dock or Applications" : "\(name)'s Dock icon")."
         if p.otherAccount > 0 { s += " \(n(p.otherAccount, "was", "were")) on another account in the backup: written as a switch would place them." }
         return s
-    }
-
-    private func oldWords(_ p: SessionsRestore.Plan) -> String {
-        guard p.days != nil else { return "unknown: settings.json doesn't say how long Claude Code keeps them" }
-        if p.old == 0 { return "none of the transcripts that come back" }
-        return "\(p.old): Claude Code would delete them again. Keep for 90 days first"
     }
 
     // MARK: Stays as it is, Sidebar

@@ -375,12 +375,10 @@ struct ImportHappens: View {
                 if !p.deletedSince.isEmpty {
                     SRow(label: "Deleted here", stacked: true) { value("\(p.deletedSince.count): the window deleted them here, so they stay deleted") }
                 }
-                if !undone { SRow(label: "Older than \(p.days ?? 30) days", info: "Claude Code deletes its own transcripts after cleanupPeriodDays (\(tilde(CodeCleanup.file(entry.configDir)))). A transcript comes in with its real age, so one older than that would be deleted again.", stacked: true) {
+                if !undone && p.showsWouldDelete { SRow(label: "Would be deleted", info: p.retention.wouldDeleteInfo(file: tilde(CodeCleanup.file(entry.configDir)), comes: "comes in"), stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {
-                        value(p.days == nil ? "unknown: settings.json doesn't say how long Claude Code keeps them"
-                              : p.old == 0 ? "none of the sessions that come in"
-                              : "\(p.old): Claude Code would delete them again. Keep for 90 days first")
-                        if p.old > 0, let d = p.days, d < 90, runner.phase == .ready {
+                        value(p.wouldDeleteWords)
+                        if p.canKeepLonger, runner.phase == .ready {
                             Button("Keep for 90 days") { runner.keepForDays(90) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                         }
                         if let f = runner.keepFailed { Text(f).font(.system(size: 10.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true) }
