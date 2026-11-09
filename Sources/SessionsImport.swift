@@ -921,14 +921,22 @@ enum SessionsImport {
                 sum = s
             }
             guard sum == p.bytes, sum == m.bytes else { throw ArchiveError("A profile's sizes don't add up; refused.") }
-            // a script comes only with the settings.json that points to it (a path no hook names is not a script of the setup)
+            // a script comes only with the settings.json whose own hook or status-line commands name it, and an included file only
+            // with the CLAUDE.md that includes it (an `@` line, followed the way the export followed it): what is left over (a path no
+            // command runs, an .md nothing includes) is not part of the setup, and is refused, never guessed at
             let scripts = setupRels.filter { Setup.unit(of: $0).kind == .script }
             if !scripts.isEmpty {
                 guard setupRels.contains("settings.json"), let sd = try? readSmall(tree.appendingPathComponent("\(base)/setup/settings.json").path, limit: 8 << 20) else {
                     throw ArchiveError("A script is in the export without the settings.json that points to it; refused.")
                 }
-                let text = String(decoding: sd, as: UTF8.self)
-                if let bad = scripts.first(where: { !text.contains($0) }) { throw ArchiveError("A script no hook in settings.json points to (\(bad.prefix(50))); refused.") }
+                let named = Setup.namedPaths(in: sd, among: scripts)
+                if let bad = scripts.first(where: { !named.contains($0) }) { throw ArchiveError("A script no hook in settings.json points to (\(bad.prefix(50))); refused.") }
+            }
+            let includes = setupRels.filter { Setup.unit(of: $0).kind == .include }
+            if !includes.isEmpty {
+                let carried = Set(setupRels)
+                let allowed = Setup.includeClosure(carried: carried) { rel in try? readSmall(tree.appendingPathComponent("\(base)/setup/\(rel)").path, limit: 4 << 20) }
+                if let bad = includes.first(where: { !allowed.contains($0) }) { throw ArchiveError("A file CLAUDE.md in the export doesn't include (\(bad.prefix(50))); refused.") }
             }
             if m.setupLeftOut.map({ $0.count > 500 }) == true { throw ArchiveError("A profile's backup.json lists too many left-out setup names; refused.") }
             parts.append(PartInfo(dir: p.dir, name: p.name, profile: p.profile, manifest: m))

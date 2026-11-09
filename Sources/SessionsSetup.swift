@@ -110,7 +110,14 @@ enum Setup {
             if buildLeftover(n, isDir: i < c.count - 1) || buildLeftover(n, isDir: false) { return "version history or a build leftover (\(n.prefix(30)))" }
         }
         let first = c[0]
-        if c.count == 1 { return nil }                    // CLAUDE.md, keybindings.json, settings.json, a top-level include or script
+        if c.count == 1 {                                 // CLAUDE.md, keybindings.json, settings.json, a top-level include or script
+            // `claude.md`, `Settings.json` or `KEYBINDINGS.JSON` is that file on this Mac's disks: under another case it would pass as an
+            // include or a script, made executable or never shown as the file it is
+            if ["CLAUDE.md", "settings.json", "keybindings.json"].contains(where: { c[0] != $0 && c[0].compare($0, options: [.caseInsensitive]) == .orderedSame }) {
+                return "a file that is another of the setup's under a different case (\(c[0].prefix(30)))"
+            }
+            return nil
+        }
         // `Skills`, `PLUGINS` or `Projects` is the place of that name on this Mac's disks (they ignore case and Unicode forms): a name
         // that is one of those places only under another case or form is refused, so no manifest gets past the rules made for the
         // exact name (a plugin cache, a skill folder that exists, a link on the way) by spelling it differently
@@ -218,6 +225,44 @@ enum Setup {
                 files.append(FileRec(rel: r, src: path, bytes: Int64(st.st_size), exec: st.st_mode & 0o100 != 0))
             }
         }
+    }
+
+    /// The files an import may take as "included": the `@` closure of the carried CLAUDE.md, the way the export found them (a path
+    /// relative to the file that names it, up to 5 deep; `~/…` and absolute paths are matched by their tail, since the file doesn't
+    /// say where the other Mac's Claude Code folder was). `carried` is every setup path the file holds, `read` gives a carried file's
+    /// bytes. Anything else that looks like an include (a leftover .md in a folder of its own) isn't one.
+    static func includeClosure(carried: Set<String>, read: (String) -> Data?) -> Set<String> {
+        var out = Set<String>()
+        guard carried.contains("CLAUDE.md") else { return out }
+        var visited: Set<String> = ["CLAUDE.md"]
+        func follow(_ rel: String, depth: Int) {
+            guard depth < 5, let d = read(rel) else { return }
+            let dir = (rel as NSString).deletingLastPathComponent
+            for tok in includes(in: String(decoding: d, as: UTF8.self)) {
+                var hits: [String] = []
+                if tok.hasPrefix("~/") || tok.hasPrefix("/") {
+                    let p = normalize(tok.hasPrefix("~/") ? "/~home/" + tok.dropFirst(2) : tok)
+                    hits = carried.filter { p.hasSuffix("/" + $0) }.sorted()
+                } else {
+                    let r = String(normalize("/" + (dir.isEmpty ? "" : dir + "/") + tok).dropFirst())
+                    if carried.contains(r) { hits = [r] }
+                }
+                for r in hits where !visited.contains(r) {
+                    visited.insert(r)
+                    if unit(of: r).kind == .include { out.insert(r) }
+                    follow(r, depth: depth + 1)
+                }
+            }
+        }
+        follow("CLAUDE.md", depth: 0)
+        return out
+    }
+
+    /// The carried paths that a command of this settings.json names: the in-folder tail of a path in a hook or status-line command
+    /// (`~`, `$HOME` and `${HOME}` expanded, the folder's own name not needed: the tail after it is what is compared).
+    static func namedPaths(in settings: Data, among rels: [String]) -> Set<String> {
+        let paths = commandPaths(inSettings: settings, home: "/~home").map(normalize)
+        return Set(rels.filter { r in paths.contains { $0.hasSuffix("/" + r) } })
     }
 
     /// What of Claude Code's setup a Claude Code folder holds now. Nothing is written; no link is followed.
