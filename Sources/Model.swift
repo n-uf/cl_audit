@@ -158,7 +158,7 @@ enum FetchState: Equatable {
     var menuText: String? {
         switch self {
         case .idle, .ok: return nil
-        case .noLogin: return "No Claude Code login for this profile"
+        case .noLogin: return "No Claude Code sign-in for this profile"
         case .expired: return "Login expired: use Claude Code once to renew it"
         case .denied: return Self.deniedWords
         case .unreadable: return Self.unreadableWords

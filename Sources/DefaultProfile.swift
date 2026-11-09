@@ -88,7 +88,7 @@ enum DefaultProfile {
     /// The profile after the move: the usual Claude app, no data folder of its own; linked to the account ~/.claude is
     /// signed in to when it wasn't linked yet. Everything else (name, look, Dock icon, window switches) stays.
     static func moved(_ e: AccountEntry, seat: Seat?, now: Date = Date()) -> AccountEntry {
-        var x = e
+        var x = linked(e, seat: seat, now: now)
         x.desktop = .standard
         x.desktopDataDir = ""
         return x
@@ -157,7 +157,7 @@ enum DefaultProfile {
         cacheLock.lock(); defer { cacheLock.unlock() }
         if let c = cache, c.stamp == stamp { return c.list }
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-        return ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(".json") }.sorted()
+        let list: [Record] = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(".json") }.sorted()
             .compactMap { (try? Data(contentsOf: folder.appendingPathComponent($0))).flatMap { try? dec.decode(Record.self, from: $0) } }
         cache = (stamp, list)
         return list
@@ -285,16 +285,16 @@ enum DefaultProfile {
 
     // MARK: words
 
-    static let title = "Make the default profile the one Claude opens directly"
+    static let title = "Make the default profile what Claude opens"
 
     /// The offer's explanation, one short paragraph per kind.
     static func why(_ s: Situation) -> String {
         let name = s.old.name.isEmpty ? "Your profile" : s.old.name
         switch s.kind {
         case .windowOnly:
-            return "\(name) opens its own Claude window, with its own sessions. Opening Claude from the Dock or Applications starts the usual Claude app instead, which shows other sessions. The default profile is the one the usual Claude app shows, and `claude` in Terminal uses."
+            return "\(name) opens its own Claude window, with its own sessions. Opening Claude from the Dock or Applications starts the usual Claude app instead, which shows other sessions. The default profile is the one the usual Claude app shows and the claude command in Terminal uses."
         case .otherFolder:
-            return "\(name) uses its own folder and its own Claude window, so opening Claude from the Dock or Applications shows other sessions. The default profile uses ~/.claude, where the usual Claude app and `claude` in Terminal look."
+            return "\(name) uses its own folder and its own Claude window, so opening Claude from the Dock or Applications shows other sessions. The default profile uses ~/.claude, which the usual Claude app and claude in Terminal use."
         }
     }
 
@@ -304,8 +304,8 @@ enum DefaultProfile {
         switch s.kind {
         case .windowOnly:
             return ["Back up \(name)'s window data and the usual app's own, with both windows closed.",
-                    "Move \(name)'s sessions list and sidebar into the usual app's data. Nothing is overwritten.",
-                    "Make the usual Claude app \(name)'s window."]
+                    "Switch \(name) to the usual Claude app, saved before anything moves.",
+                    "Move \(name)'s sessions list and sidebar into the usual app's data. Nothing is overwritten."]
         case .otherFolder:
             return ["Sign Claude Code into ~/.claude (its own login in Terminal).",
                     "Back up \(name) and the ~/.claude profile, with both windows closed.",
@@ -322,10 +322,11 @@ enum DefaultProfile {
                    e.opensFromDock ? "Opens from: Dock click too, as before; a Dock click opens the usual app."
                                    : "Opens from: only when asked, as before.",
                    e.windowFollowsDock ? "With Dock icon: stays on; the usual Claude app opens and quits with the Dock icon."
-                                       : "With Dock icon: stays off; the usual Claude app is not started by the Dock icon.",
-                   "Sessions follow a switch: stays; a switch then moves the usual app's sessions.",
-                   "\(name)'s old window folder is left as it is (the backup's source, and what Undo needs). Nothing is deleted from it."]
-        if e.desktopDataDir.isEmpty { out.removeLast() }
+                                       : "With Dock icon: stays off; quitting the Dock icon leaves the usual Claude app open.",
+                   "Sessions follow a switch: stays; a switch then moves the usual app's sessions."]
+        if !e.desktopDataDir.isEmpty {
+            out.append("\(name)'s old window folder is left as it is (the backup's source, and what Undo needs). Nothing is deleted from it.")
+        }
         return out
     }
 

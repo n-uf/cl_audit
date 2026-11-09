@@ -48,9 +48,12 @@ final class DefaultProfileRunner: ObservableObject {
     }
 
     /// Renders only: the page at a step.
-    func preview(_ p: Phase, note n: String? = nil, inner i: RestoreRunner? = nil, record r: DefaultProfile.Record? = nil) {
-        phase = p; note = n; inner = i; record = r
+    func preview(_ p: Phase, note n: String? = nil, inner i: RestoreRunner? = nil, record r: DefaultProfile.Record? = nil, nothingToMove nothing: Bool = false) {
+        phase = p; note = n; inner = i; record = r; nothingToMove = nothing
     }
+
+    /// The restore found nothing to write (an empty old window): only the window kind changed.
+    @Published private(set) var nothingToMove = false
 
     var isRunning: Bool {
         switch phase {
@@ -102,7 +105,8 @@ final class DefaultProfileRunner: ObservableObject {
         }
     }
 
-    /// Cancel while waiting for the sign-in or for the windows to close: nothing was written.
+    /// Cancel while waiting for the sign-in or for the windows to close: nothing was written, and the ~/.claude profile this
+    /// page had made (or linked) for the move goes again.
     func cancel() {
         timer?.invalidate(); timer = nil
         guard phase == .signingIn || phase == .closing else { return }
@@ -128,10 +132,6 @@ final class DefaultProfileRunner: ObservableObject {
         closeWindows()
     }
     private var pendingCreated = false, pendingLinked = false
-
-    /// The ~/.claude profile the offer makes when there is none: named after its account, looking like the old profile.
-    static func makeDefaultProfile(from old: AccountEntry, among accounts: [AccountEntry], seat: Seat) -> Result<AccountEntry, Error> {
-        var d = NewAccountDraft()
     private var pendingLinkedID: String?
 
     /// Before the move began (no record yet): what step one did to the profile list is taken back, so a retry starts clean
@@ -146,6 +146,10 @@ final class DefaultProfileRunner: ObservableObject {
         }
         pendingCreated = false; pendingLinked = false; pendingLinkedID = nil
     }
+
+    /// The ~/.claude profile the offer makes when there is none: named after its account, looking like the old profile.
+    static func makeDefaultProfile(from old: AccountEntry, among accounts: [AccountEntry], seat: Seat) -> Result<AccountEntry, Error> {
+        var d = NewAccountDraft()
         var name = FirstRun.suggestedName(folder: "~/.claude")
         var n = 2
         while accounts.contains(where: { $0.name.lowercased() == name.lowercased() || $0.id == Store.newID(from: name, taken: []) }) { name = "\(FirstRun.suggestedName(folder: "~/.claude")) \(n)"; n += 1 }
@@ -310,6 +314,7 @@ final class DefaultProfileRunner: ObservableObject {
     private func finishWithoutRestore() {
         guard var r = record else { return }
         r.finished = Date(); record = r; DefaultProfile.save(r)
+        nothingToMove = true
         phase = .done
     }
 

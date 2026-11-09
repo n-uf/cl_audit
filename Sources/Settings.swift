@@ -2013,7 +2013,7 @@ struct AccountSettings: View {
         let usual = DefaultProfile.cachedSeat("~/.claude")        // drawn every few seconds: the record is read when it changed
         if entry.desktop == .separate, entry.claudeWindow, !DefaultProfile.dismissed, let mine = entry.seat, mine.same(usual) {
             VStack(alignment: .leading, spacing: 5) {
-                Text("This account is also what the usual Claude app and `claude` in Terminal use (~/.claude), but \(entry.name.isEmpty ? "this profile" : entry.name) opens its own window, so Claude opened from the Dock shows other sessions.")
+                Text("This account is also what the usual Claude app and the claude command in Terminal use (~/.claude), but \(entry.name.isEmpty ? "this profile" : entry.name) opens its own window, so Claude opened from the Dock shows other sessions.")
                     .font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
                 Button("Make the default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
             }
@@ -2297,7 +2297,7 @@ struct AccountSettings: View {
     // this, whether or not cl_audit is open). Off, the card folds to the switch row.
     var windowCard: some View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
-        return SCard(title: "Claude window", info: "\(name)'s Claude window: its own (own sign-in, chats and settings), or the usual Claude app for ~/.claude. Whether it goes with the Dock icon and what may open it; the cl_audit agent does this, whether or not cl_audit is open.") {
+        return SCard(title: "Claude window", info: "\(name)'s Claude window: the usual Claude app, or its own (own sign-in, chats and settings). Whether it goes with the Dock icon and what may open it; the cl_audit agent does this, whether or not cl_audit is open.") {
             SRow(label: "Claude window", info: "On: a Claude window signed in to \(name)'s account; open it from the dashboard, the Dock icon or the menu bar icon. Off: none, and nothing opens one; its folder and sign-in are kept, so turning it back on needs no new sign-in. Its data folder: \(entry.desktop == .standard ? FolderKey.standardDataDir : (entry.desktopDataDir.isEmpty ? "none yet" : entry.desktopDataDir)).", first: true) {
                 SSwitch(isOn: Binding(get: { entry.claudeWindow }, set: { model.setClaudeWindow(entry.id, $0) }),
                         on: entry.desktop == .standard ? "the usual Claude app" : "its own window", off: "none",
@@ -2306,9 +2306,12 @@ struct AccountSettings: View {
             }
             if entry.claudeWindow { SRowLine(text: DesktopMode.opensWords(entry.desktop)) }
             if entry.claudeWindow, entry.desktop == .separate, DefaultProfile.situation(model.accounts)?.old.id == entry.id {
-                HStack(spacing: 8) {
-                    Button("Make the default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-                    Text("Opens the usual Claude app instead, with these sessions in it.").font(.system(size: 10.5)).foregroundStyle(face.muted).lineLimit(1)
+                let key = Button("Make the default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                let why = Text("Then Claude opens with these sessions.").font(.system(size: 10.5)).foregroundStyle(face.muted)
+                // one line when it fits, else the words under the key (never cut off)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) { key; why.lineLimit(1).fixedSize() }
+                    VStack(alignment: .leading, spacing: 4) { key; why.fixedSize(horizontal: false, vertical: true) }
                 }
                 .padding(.vertical, 3)
             }

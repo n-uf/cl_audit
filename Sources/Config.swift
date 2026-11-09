@@ -64,7 +64,7 @@ enum DesktopMode: String, Codable, Identifiable {
     static func opensWords(_ m: DesktopMode) -> String {
         switch m {
         case .standard: return "Opens as the usual Claude app, the one you get from the Dock or Applications."
-        case .separate: return "Opens as its own window, from this profile's Dock icon or menu. Opening Claude directly shows a different window, with other sessions."
+        case .separate: return "Opens as its own window, from this profile's Dock icon or menu. Claude opened from the Dock or Applications is a different window, with other sessions."
         }
     }
 

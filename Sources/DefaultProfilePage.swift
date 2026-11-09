@@ -20,11 +20,13 @@ struct DefaultProfileCard: View {
         // a move that stopped part way comes first: its files are written, and only its restore can finish or undo them
         if let r = DefaultProfile.unfinished() {
             unfinished(r)
+        } else if let s = DefaultProfile.situation(model.accounts) {
+            if DefaultProfile.dismissed { quiet(s) } else { offer(s) }
         }
     }
 
     private func offer(_ s: DefaultProfile.Situation) -> some View {
-        SCard(title: DefaultProfile.title, info: "One time, and never automatic. It moves \(s.old.name)'s sessions to the usual Claude app, with a backup first and nothing overwritten, and has an Undo. \"Not now\" hides this card; it stays in Settings ▸ General (and on the profile's Claude window card).") {
+        SCard(title: DefaultProfile.title, info: "One time, and never automatic. It moves \(s.old.name)'s sessions to the usual Claude app, with a backup first and nothing overwritten, and has an Undo. \"Not now\" folds this card to one line; the button also stays on the profile's Claude window card.") {
             VStack(alignment: .leading, spacing: 8) {
                 Text(DefaultProfile.why(s)).font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
@@ -41,7 +43,7 @@ struct DefaultProfileCard: View {
         SCard(title: "Default profile", info: "The profile on ~/.claude with the usual Claude app is what Claude shows when opened directly. \(s.old.name) uses its own window.") {
             SRow(label: "Opens directly", first: true) {
                 HStack(spacing: 8) {
-                    Text("Another window than \(s.old.name)'s").font(.system(size: 12)).foregroundStyle(face.muted).lineLimit(1)
+                    Text("Not \(s.old.name)'s window").font(.system(size: 12)).foregroundStyle(face.muted).lineLimit(1)
                     Button("Make the default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 }
             }
@@ -120,7 +122,7 @@ struct DefaultProfilePage: View {
         case .backingUp: return Top(text: "Moving ●", dim: "· step \(kind == .windowOnly ? 1 : 2) of \(stepCount) · the backups", tone: .mint)
         case .moving:
             let p: (done: Int, total: Int) = runner.inner?.progress ?? (0, 0)
-            return Top(text: "Moving ●", dim: "· step \(kind == .windowOnly ? 2 : 3) of \(stepCount) · \(p.done) of \(p.total) files", tone: .mint)
+            return Top(text: "Moving ●", dim: "· step \(kind == .windowOnly ? 3 : 3) of \(stepCount) · \(p.done) of \(p.total) files", tone: .mint)
         case .done:
             let r = runner.inner?.receipt
             let added = r.map { "\($0.back) files added" } ?? "the window kind changed"
@@ -174,7 +176,7 @@ struct DefaultProfilePage: View {
     }
 
     private var whyCard: some View {
-        SCard(title: "Why", info: "The default profile is the one on ~/.claude with the usual Claude app: what Claude shows when it is opened from the Dock or Applications, and what `claude` uses in Terminal. Profiles you add later get their own folders and windows.") {
+        SCard(title: "Why", info: "The default profile is the one on ~/.claude with the usual Claude app: what Claude shows when it is opened from the Dock or Applications, and what the claude command in Terminal uses. Profiles you add later get their own folders and windows.") {
             VStack(alignment: .leading, spacing: 8) {
                 Text(DefaultProfile.why(s)).font(.system(size: 12.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
                 SRowLine(text: kind == .windowOnly
@@ -210,12 +212,16 @@ struct DefaultProfilePage: View {
     private var settingsCard: some View {
         SCard(title: "What each setting becomes", info: "Settings that depend on the kind of Claude window. After the move \(name) opens the usual Claude app; the rest of the profile (name, look, Dock icon, alerts) is as it was.") {
             VStack(alignment: .leading, spacing: 5) {
-                let e = runner.target ?? s.old
-                ForEach(Array(DefaultProfile.settingsAfter(kind == .windowOnly ? e : s.old).enumerated()), id: \.offset) { _, line in
+                // from the profile as the offer saw it: its switches are the ones that stay, and its old window folder is named
+                ForEach(Array(DefaultProfile.settingsAfter(s.old).enumerated()), id: \.offset) { _, line in
                     Text(line).font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if kind == .otherFolder {
-                    SRowLine(text: "The default profile is the one on ~/.claude: \(runner.target?.name ?? "a new profile") (made now if there is none), with the usual Claude app.")
+                    // before the move the ~/.claude profile may not exist yet; after it, it does
+                    let after = runner.phase == .done
+                    SRowLine(text: after ? "The default profile is \(runner.target?.name ?? "the ~/.claude profile"), on ~/.claude, with the usual Claude app."
+                             : runner.target != nil ? "The default profile is \(runner.target?.name ?? ""), on ~/.claude, with the usual Claude app."
+                             : "The default profile is a new profile on ~/.claude, made in step 1, with the usual Claude app.")
                 }
             }
             .padding(.vertical, 4)
@@ -278,12 +284,15 @@ struct DefaultProfilePage: View {
         if runner.phase == .done || runner.phase == .moving {
             SCard(title: "Result", info: "What the restore wrote (its receipt is in cl_audit's folder, restores/): what is back, what stayed as it was, and what Undo takes back.") {
                 VStack(alignment: .leading, spacing: 8) {
+                    // by the receipt: what the restore wrote, not what the preview counted
                     if let r = runner.inner?.receipt {
                         value("\(r.back) files added · \(r.changedCount) already in the usual app and different: left as they are, listed on the restore's page · \(r.inUseCount) held by a running session: left alone")
                     } else if runner.phase == .moving {
                         value("working…")
+                    } else if runner.nothingToMove {
+                        value("There was nothing in \(name)'s window folder to move; only the window kind changed.")
                     } else {
-                        value("Nothing was in \(name)'s window folder to move; only the window kind changed.")
+                        value("Done.")
                     }
                     SRowLine(text: DefaultProfile.importNote)
                     if runner.phase == .done, kind == .otherFolder { oldProfile }
@@ -308,8 +317,8 @@ struct DefaultProfilePage: View {
                 HStack(spacing: 8) {
                     Button("Remove \(name)…") { runner.removeOld() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 }
-                SRowLine(text: runner.canKeepOldAsStandby ? "Removing signs its folder out with `claude auth logout`, and asks about deleting it."
-                         : "It is the same Claude account as the default profile's, so it can't stand by. Removing signs its folder out with `claude auth logout`, and asks about deleting it.")
+                SRowLine(text: runner.canKeepOldAsStandby ? "Removing signs its folder out of Claude Code, and asks about deleting it. After either choice this move can't be undone."
+                         : "It is the same Claude account as the default profile's, so it can't stand by. Removing signs its folder out of Claude Code, and asks about deleting it. After that this move can't be undone.")
             }
         }
     }

@@ -726,9 +726,9 @@ and earlier could make the first profile on a new folder such as `~/.claude-acco
 the folder to `~/.claude` later and keep the window kind) shows other sessions when Claude is opened directly.
 
 For that, cl_audit offers once, in a card, never automatically: **Make the default profile the one Claude opens
-directly** (Settings ▸ General, the first card; **Not now** hides it, and it can still be found in Settings ▸ General
-and on the profile's Claude window card, and as a note on the Accounts card when the account in use is also what the
-usual app uses). It shows for the sole or first profile when that profile has its own window, whatever its folder
+directly** (Settings ▸ General, the first card). **Not now** folds that card to one line in Settings ▸ General; the
+**Make the default profile…** key also stays on the profile's Claude window card. Until **Not now**, the Accounts card
+carries a note when the account in use is also the one the usual app uses; **Not now** takes that note away too. It shows for the sole or first profile when that profile has its own window, whatever its folder
 (including `~/.claude`), and for a `~/.claude` profile without a sign-in next to a profile on its own window. It does
 not show when the usual app already belongs to a signed-in profile. The page lists what each step does and what each
 window-dependent setting becomes (Claude window stays as it is, and is now the usual app; Dock icon, Open Claude and
@@ -747,7 +747,7 @@ the menu bar icon open the usual app; Opens from, With Dock icon and Sessions fo
   sign-in). The `~/.claude` profile is the one already in the list, or is made then. Then the same moves, plus the old
   profile's transcripts into `~/.claude/projects` (never over one that is there). Last, the old profile can stay as a
   standby account of the default profile (its folder and sign-in untouched; only when it is another Claude account),
-  or be removed with the usual remove flow (which signs its folder out with `claude auth logout`).
+  or be removed with the usual remove flow (which signs its folder out of Claude Code).
 - **Nothing is deleted** from the old window's folder: it stays as the backup's source and for Undo.
 - **Undo this move** (on the page, or **Undo this restore** on the move's restore page) takes back exactly what was
   added, only files unchanged since, and puts the profile's window kind back (and removes a `~/.claude` profile the
@@ -764,6 +764,16 @@ the menu bar icon open the usual app; Opens from, With Dock icon and Sessions fo
 Import, Restore and the Switch page say which window they write into: "the usual Claude app", or "Main's own window,
 opened from its Dock icon" (with the profile's name), and the Import and Restore previews say whose data the entries go
 into and where to open it.
+
+Technical notes. A profile's window kind is `AccountEntry.desktop`, decided once when the profile is made
+(`DesktopMode.forNew`: the usual app for `~/.claude` while no profile has it, else its own window) and stored; nothing
+works it out from the folder's name later. The default folder is always used with `CLAUDE_CONFIG_DIR` unset: set to
+`~/.claude`, Claude Code takes it for a custom folder (its record moves to `~/.claude/.claude.json` and its Keychain item
+gets a hash suffix), which is not the sign-in the usual app and cl_audit read. The move keeps a record of its own in
+cl_audit's folder (`default-moves/`) next to the restore's receipt and journal (`restores/`); the receipt's id is written
+into the record the moment the restore creates it. The agent watches a profile that has no readable sign-in every 3
+seconds (one stat of its folder's record) and reads the Keychain only once that record names an account, at most every 30
+seconds.
 
 ### Removing a profile
 

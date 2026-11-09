@@ -101,7 +101,7 @@ enum FirstRun {
     /// The one line on step 2 when ~/.claude is already signed in.
     static let usesDefaultLine = "The first profile uses ~/.claude as it is, with the usual Claude app. Other accounts come later, with Add account or New profile."
     /// The one line under Sign in…, when ~/.claude has no sign-in yet.
-    static let signsIntoDefaultLine = "Sign in… signs Claude Code into ~/.claude, the default folder; the usual Claude app shares it. Other accounts come later, with Add account or New profile."
+    static let signsIntoDefaultLine = "Sign in… signs Claude Code into ~/.claude, the folder the usual Claude app uses too. Other accounts come later, with Add account or New profile."
 
     /// Why the optional address can't be used, or nil (empty is fine).
     static func addressProblem(_ email: String) -> String? {
@@ -387,7 +387,7 @@ struct FirstRunPage: View {
                     waiting
                 } else {
                     if found.isEmpty {
-                        Text("Claude Code isn't signed in in ~/.claude yet.").font(.system(size: 11.5)).foregroundStyle(face.muted)
+                        Text("Claude Code isn't signed in to ~/.claude yet.").font(.system(size: 11.5)).foregroundStyle(face.muted)
                         signInRow
                     } else {
                         Text("Found on this Mac").font(.system(size: 11, weight: .semibold)).foregroundStyle(face.muted)
@@ -436,7 +436,7 @@ struct FirstRunPage: View {
 
     private var signInRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(model.firstRun.signInDir == nil ? "Or sign in to a Claude account" : "Sign in again").font(.system(size: 11, weight: .semibold)).foregroundStyle(face.muted)
+            Text(model.firstRun.signInDir == nil ? "Sign in to a Claude account" : "Sign in again").font(.system(size: 11, weight: .semibold)).foregroundStyle(face.muted)
             HStack(spacing: 6) {
                 WellField(placeholder: "Address (optional)", text: Binding(get: { model.firstRun.email },
                                                                                    set: { model.firstRun.email = $0; model.firstRun.problem = nil }),
