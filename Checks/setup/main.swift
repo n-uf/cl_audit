@@ -208,6 +208,10 @@ MainActor.assumeIsolated {
             check(got == ["skills/plain/SKILL.md", "agents/helper.md"] && hzo.setupSensitiveLeftOut.contains(Setup.Unit(kind: .skill, name: "guard")), "export (zip): the skill that holds a hook's script is left out with settings.json, nothing of it is in the file: \(got.sorted())")
             check(hop.parts[0].manifest.setupLeftOut?.contains("skill guard (needs the encrypted disk image)") == true, "export (zip): and it is named in the file as left out for the image: \(hop.parts[0].manifest.setupLeftOut ?? [])")
             check(!files(hop.tree.path).contains { $0.contains("guard") } && !(files(hop.tree.path).contains { (read(hop.tree.path + "/" + $0) ?? "").contains("a-value-no-key-scan-knows") }), "export (zip): the script's token is nowhere in the zip")
+            // a zip carries no settings.json: what its hooks run isn't known to the import's backup (a zip made from it is then careful)
+            let st = try? SessionsImport.materialize(hop, part: hop.parts[0], target: "e2hz")
+            let sj = st.flatMap { read($0.backup.dir.appendingPathComponent("backup.json").path) } ?? "setupHookUnits"
+            check(!sj.contains("setupHookUnits"), "import (zip): without settings.json its backup records no hook-held units (not known)")
             SessionsImport.discard(hop.work)
         } else { check(false, "export (zip): the skill-with-a-hook-script export is made and opens") }
         let hi = URL(fileURLWithPath: out + "/E2h.dmg")
@@ -216,6 +220,10 @@ MainActor.assumeIsolated {
             let items = hop.parts[0].manifest.items.filter { $0.role == .setup }
             check(Set(items.map { String($0.path.dropFirst(6)) }) == ["skills/guard/SKILL.md", "skills/guard/run.sh", "skills/plain/SKILL.md", "agents/helper.md", "settings.json"] && items.first { $0.path == "setup/skills/guard/run.sh" }?.exec == true,
                   "export (image): the skill comes whole, as the skill, its script executable per the record")
+            // the import's own backup records the hook-held skill from the settings.json it carries, so a zip made from it later leaves it out too
+            let st = try? SessionsImport.materialize(hop, part: hop.parts[0], target: "e2h")
+            let sj = st.flatMap { read($0.backup.dir.appendingPathComponent("backup.json").path) } ?? ""
+            check(sj.contains("\"setupHookUnits\"") && sj.contains("\"skill:guard\""), "import (image): its backup records the skill that holds a hook's script, worked out from the settings.json it carries")
             SessionsImport.discard(hop.work)
         } else { check(false, "export (image): the skill-with-a-hook-script image is made and opens") }
         try? fm.removeItem(atPath: c4)
