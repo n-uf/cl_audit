@@ -237,6 +237,7 @@ enum SessionsRestore {
             for (_, c) in windowItems where c[3] == "scheduled-tasks.json" {
                 guard let d = windowData[c.joined(separator: "/")], let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { continue }
                 for t in (j["scheduledTasks"] as? [[String: Any]]) ?? [] {
+                    // (a task's real keys: id, displayName, enabled, cronExpression …: it is shown by its displayName)
                     if let id = t["id"] as? String { taskNames[id] = (t["displayName"] as? String) ?? (t["name"] as? String) ?? (t["title"] as? String) ?? id }
                 }
             }
@@ -315,16 +316,13 @@ enum SessionsRestore {
         return p
     }
 
-    /// The name of the scheduled task that ran this session's entry, when the entry says so: a key naming a scheduled task
-    /// (its name, else its id looked up in the task files). nil: an ordinary session.
-    /// (UNVERIFIED against a real entry: no code of cl_audit knows which key marks a scheduled task's session, and the
-    /// operator's real data was not read to find out. Any top-level key with "scheduledtask" in its name is taken to.)
+    /// The name of the scheduled task that ran this session's entry, when the entry says so: the entry's `scheduledTaskId` (the key a
+    /// real Code-tab entry carries, taken exactly), looked up in scheduled-tasks.json's `id` for the task's `displayName`, else the
+    /// id itself. nil: an ordinary session.
     static func taskOrigin(_ entry: Data, names: [String: String]) -> String? {
-        guard let j = (try? JSONSerialization.jsonObject(with: entry)) as? [String: Any] else { return nil }
-        let keys = j.keys.filter { $0.lowercased().contains("scheduledtask") }.sorted()
-        for k in keys where k.lowercased().contains("name") { if let s = j[k] as? String, !s.isEmpty { return s } }
-        for k in keys { if let s = j[k] as? String, !s.isEmpty { return names[s] ?? s } }
-        return nil
+        guard let j = (try? JSONSerialization.jsonObject(with: entry)) as? [String: Any],
+              let id = j["scheduledTaskId"] as? String, !id.isEmpty else { return nil }
+        return names[id] ?? id
     }
 
     private static func isMemory(_ rel: [String]) -> Bool { rel.count >= 3 && rel[1] == "memory" }
