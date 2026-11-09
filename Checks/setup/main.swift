@@ -586,6 +586,16 @@ MainActor.assumeIsolated {
     check(namedScript == "OPENED", "(the same doctoring with a hook that does run bin/run opens: \(namedScript.prefix(80)))")
     let mcpScript = doctored("e2-mcp-command-script") { m, p in try rewriteSettings(&m, p, settings: #"{"mcpServers":{"x":{"command":"bash ~/.claude/bin/run --now"}}}"#, script: ("bin/run", true)) }
     check(mcpScript.contains("no hook in settings.json points to"), "hostile (image): a script only an MCP server's command names is no hook script: refused whole, never made executable: \(mcpScript.prefix(90))")
+    // a settings.json over 8 MB (and no script, so nothing else reads it before the import's own record of its hooks): refused whole,
+    // never read into memory
+    let hugeSettings = doctored("e2-huge-settings") { m, p in
+        for it in m.items where it.role == .setup && Setup.unit(of: String(it.path.dropFirst(6))).kind == .script { try fm.removeItem(at: p.appendingPathComponent(it.path)) }
+        m.items.removeAll { $0.role == .setup && Setup.unit(of: String($0.path.dropFirst(6))).kind == .script }
+        let sdata = Data((#"{"model":"x","pad":""# + String(repeating: "a", count: (8 << 20) + 1024) + #""}"#).utf8)
+        try sdata.write(to: p.appendingPathComponent("setup/settings.json"))
+        if let i = m.items.firstIndex(where: { $0.path == "setup/settings.json" }) { m.items[i].bytes = Int64(sdata.count); m.items[i].sha = SwitchEngine.sha(sdata) }
+    }
+    check(hugeSettings.contains("over 8 MB"), "hostile (image): a settings.json over 8 MB is refused whole, not read: \(hugeSettings.prefix(90))")
     // the closure of includes and the paths a command names, directly
     do {
         let docs: [String: String] = ["CLAUDE.md": "# r\n @docs/a.md and @~/.claude-x/rules/x.md\n", "docs/a.md": " @b.md\n", "docs/b.md": "b", "rules/x.md": "x", "rules/y.md": "y", "z.md": "z"]
@@ -636,6 +646,8 @@ MainActor.assumeIsolated {
               && SetupRow.hooksKey(plan(.different), imported: true) == ("What the file's hooks would run (not added: settings.json here stays)", "Hide (not added: settings.json here stays)")
               && SetupRow.hooksKey(plan(.new), imported: false) == ("What its hooks and status line run", "Hide what they run"),
               "setup row: the hooks key for the same settings.json here, a different one (the caveat stays while they show), and a new one")
+        check(SetupRow.hooksKey(plan(.blocked("a link")), imported: true) == ("What the file's hooks would run (not added: settings.json can't be added here)", "Hide (not added: settings.json can't be added here)"),
+              "setup row: the hooks key when settings.json can't be added here says that, not that one here stays: \(SetupRow.hooksKey(plan(.blocked("a link")), imported: true).show)")
     }
 
     // ---- the paths a command names, and the names refused under another case, directly
@@ -646,6 +658,13 @@ MainActor.assumeIsolated {
         let mcp = Data(#"{"mcpServers":{"x":{"command":"~/.claude/bin/mcp.sh"}},"hooks":{"Stop":[{"hooks":[{"type":"command","command":"~/.claude/bin/x.sh"}]}]},"statusLine":{"type":"command"}}"#.utf8)
         check(Setup.commands(inSettings: mcp) == ["~/.claude/bin/x.sh"] && Setup.namedPaths(in: mcp, among: ["bin/x.sh", "bin/mcp.sh"]) == ["bin/x.sh"],
               "scripts: hooks and the status line's command only; an MCP server's command and a status line without one are not scripts: \(Setup.commands(inSettings: mcp))")
+        // a crafted settings.json naming 200,000 different paths in one hook: read in a moment (a list searched for each one would take minutes)
+        let many = (0..<200_000).map { "/p/\($0)" }.joined(separator: " ")
+        let big = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"\#(many) /p/0"}]}]}}"#.utf8)
+        let t0 = Date()
+        let paths = Setup.commandPaths(inSettings: big, home: home)
+        let took = Date().timeIntervalSince(t0)
+        check(paths.count == 200_000 && paths.first == "/p/0" && took < 5, "scripts: 200,000 paths in one hook command are read once each, in order, quickly (\(paths.count) in \(String(format: "%.2f", took)) s)")
         let c5 = e2 + "/.claude-e2m"
         w(c5, "settings.json", #"{"mcpServers":{"x":{"command":"\#(c5)/bin/mcp.sh"}},"hooks":{"Stop":[{"hooks":[{"type":"command","command":"\#(c5)/bin/x.sh"}]}]}}"#)
         w(c5, "bin/x.sh", "#!/bin/sh\n", exec: true); w(c5, "bin/mcp.sh", "#!/bin/sh\n", exec: true)
