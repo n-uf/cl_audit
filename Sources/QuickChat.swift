@@ -192,6 +192,8 @@ final class QuickChatModel: ObservableObject {
     private var process: QuickChatProcess?
     private var processKey = ""
     private var session: String?
+    /// The current `claude` started its session (its first line came): one that ends before can't go on with it.
+    private var processStarted = false
     private var pending = "", pendingThinking = ""
     private var flushWork: DispatchWorkItem?
     private var idleTimer: Timer?
@@ -217,7 +219,8 @@ final class QuickChatModel: ObservableObject {
         flush()
         turns[i].phase = .stopped
         turns[i].seconds = Date().timeIntervalSince(turns[i].started)
-        process?.stop()
+        // the process goes at once, so the next message never meets one still stopping; the session stays
+        closeProcess()
     }
 
     /// Retry a failed answer, or ask the last question again.
@@ -309,6 +312,7 @@ final class QuickChatModel: ObservableObject {
                 }
                 self.process = p
                 self.processKey = key
+                self.processStarted = false
             }
             self.idleTimer?.invalidate()
             if self.process?.send(q) != true { self.fail(.stopped(detail: "Claude Code didn't take the message.")) }
@@ -320,6 +324,7 @@ final class QuickChatModel: ObservableObject {
         switch e {
         case .started(let s, let model):
             session = s
+            processStarted = true
             if !model.isEmpty { setModel(model, turn: i) }
         case .text(let t):
             // the answer begins: how long it thought before
@@ -385,6 +390,8 @@ final class QuickChatModel: ObservableObject {
         process = nil
         processKey = ""
         flush()
+        // it ended before its session began (a session to go on with that is gone, say): Retry starts a new one
+        if !processStarted { session = nil }
         guard let i = turns.indices.last, turns[i].busy else { return }
         var detail = "claude exited with code \(status)"
         if !tail.isEmpty { detail += ": \(tail)" }
