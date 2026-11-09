@@ -536,6 +536,7 @@ final class QuickChat {
     private func makePanel() -> QuickChatPanel {
         let p = QuickChatPanel()
         p.onEscape = { [weak self] in self?.hide() }
+        p.onNewChat = { [weak self] in self?.model.newChat() }
         let root = QuickChatRoot(model: model) { [weak self] size in self?.fit(size) }
         let h = QuickChatHostingView(rootView: root)
         p.contentView = h
@@ -591,6 +592,29 @@ final class QuickChat {
 /// over full-screen apps.
 final class QuickChatPanel: NSPanel {
     var onEscape: () -> Void = {}
+    var onNewChat: () -> Void = {}
+
+    /// The agent has no menu bar of its own, so the Edit keys are handled here: cut, copy, paste, select all, undo and
+    /// redo go to whatever has the keyboard (the field, or a selected answer); ⌘N starts a new chat, ⌘W hides.
+    override func performKeyEquivalent(with e: NSEvent) -> Bool {
+        let flags = e.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        guard flags.contains(.command), !flags.contains(.control), !flags.contains(.option),
+              let key = e.charactersIgnoringModifiers?.lowercased() else { return super.performKeyEquivalent(with: e) }
+        let shift = flags.contains(.shift)
+        var action: Selector?
+        switch key {
+        case "x": action = #selector(NSText.cut(_:))
+        case "c": action = #selector(NSText.copy(_:))
+        case "v": action = #selector(NSText.paste(_:))
+        case "a": action = #selector(NSText.selectAll(_:))
+        case "z": action = shift ? Selector(("redo:")) : Selector(("undo:"))
+        case "n" where !shift: onNewChat(); return true
+        case "w" where !shift: onEscape(); return true
+        default: break
+        }
+        if let action, NSApp.sendAction(action, to: nil, from: self) { return true }
+        return super.performKeyEquivalent(with: e)
+    }
 
     init() {
         super.init(contentRect: NSRect(x: 0, y: 0, width: QuickChatRoot.width, height: 140),
