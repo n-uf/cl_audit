@@ -186,7 +186,7 @@ final class RestoreRunner: ObservableObject {
     func importNow() { autoStart = true; refresh() }
 
     /// The backup is an export's, unpacked (SessionsImport.swift): the page and the words say import.
-    var isImport: Bool { manifest?.kind.isImport ?? receipt?.importedFrom != nil }
+    var isImport: Bool { manifest?.kind.isImport ?? (receipt?.importedFrom != nil) }
     /// "cl_audit Work 2026-10-30.zip"
     var importFile: String? {
         if case .imported(let f)? = manifest?.kind { return f }
