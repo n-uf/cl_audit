@@ -340,7 +340,7 @@ struct ImportHappens: View {
                     value(p.entries.isEmpty ? "none to add: the window stays as it is"
                           : undone ? "\(p.entries.count): were added to \(entry.windowDataWords) while it was closed, and taken away again"
                           : runner.phase == .done || runner.phase == .sidebar ? "\(p.entries.count): added to \(entry.windowDataWords) while it was closed"
-                          : "\(p.entries.count): into \(entry.windowDataWords); \(entry.windowWords) closes and opens again")
+                          : "\(p.entries.count): into \(entry.windowDataWords); \(entry.desktop == .standard ? "the usual Claude app" : "that window") closes and opens again")
                 }
                 if !undone, p.entries.isEmpty == false || p.taskSessions.isEmpty == false {
                     SRowLine(text: whereWords(p))

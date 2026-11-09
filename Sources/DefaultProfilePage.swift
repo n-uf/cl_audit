@@ -77,7 +77,20 @@ struct DefaultProfilePage: View {
     var width: CGFloat = 980
     var counts: DefaultProfile.Preview? = nil           // renders only
     @State private var preview: DefaultProfile.Preview?
+    var importCarried: Bool? = nil                       // renders only
+    /// An import made earlier into the old window's data was carried over by this move (said only then).
+    @State private var carried = false
     @Environment(\.face) private var face
+
+    private func loadCarried() async {
+        let dir = Account(s.old).claudeUserDataDir ?? "", since = runner.record?.started ?? Date()
+        carried = await Task.detached(priority: .utility) {
+            !dir.isEmpty && SessionsRestore.headers().contains {
+                $0.importedFrom != nil && $0.finished != nil && $0.undone == nil && $0.started < since
+                    && FolderKey.canonical($0.dataDir) == FolderKey.canonical(dir)
+            }
+        }.value
+    }
 
     private var s: DefaultProfile.Situation { runner.situation }
     private var name: String { s.old.name.isEmpty ? "the profile" : s.old.name }
@@ -90,7 +103,7 @@ struct DefaultProfilePage: View {
             SettingsColumns(width: width, groups: [[AnyView(whyCard), AnyView(movesCard), AnyView(settingsCard)],
                                                   [AnyView(stepsCard), AnyView(resultCard)]])
         }
-        .task { if counts == nil { await loadPreview() } }
+        .task { if counts == nil { await loadPreview() }; await loadCarried() }
     }
 
     private var title: String {
@@ -294,7 +307,7 @@ struct DefaultProfilePage: View {
                     } else {
                         value("Done.")
                     }
-                    SRowLine(text: DefaultProfile.importNote)
+                    if importCarried ?? carried { SRowLine(text: DefaultProfile.importNote) }
                     if runner.phase == .done, kind == .otherFolder { oldProfile }
                 }
                 .padding(.vertical, 4)

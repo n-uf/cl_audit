@@ -2313,6 +2313,7 @@ struct AccountSettings: View {
                     HStack(spacing: 8) { key; why.lineLimit(1).fixedSize() }
                     VStack(alignment: .leading, spacing: 4) { key; why.fixedSize(horizontal: false, vertical: true) }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.vertical, 3)
             }
             if entry.claudeWindow {
