@@ -327,7 +327,9 @@ extension SessionsRestore {
         var order: [SeatID] = []
         for task in keep {
             guard let id = task["id"] as? String, let c = sourceOf[id], c.count == 4 else { continue }
-            let dest = t.folder(for: SeatID(account: c[1], organization: c[2]), move: true) ?? scope
+            // (lower-cased: two spellings of one account are one folder)
+            let found = t.folder(for: SeatID(account: c[1], organization: c[2]), move: true) ?? scope
+            let dest = SeatID(account: found.account.lowercased(), organization: found.organization.lowercased())
             if groups[dest] == nil { groups[dest] = (c, []); order.append(dest) }
             groups[dest]?.tasks.append(task)
         }
