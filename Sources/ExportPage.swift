@@ -159,13 +159,21 @@ final class ExportRunner: ObservableObject {
     }
 
     /// Move to another Mac, in one click: every profile (when there are more than one), the encrypted image, Claude Code's setup, the
-    /// window's MCP settings and scheduled tasks (an image carries them), cl_audit's profiles and settings, transcripts with keys kept
-    /// (the image protects them), the real account ids. Each row can still be changed afterwards (the zip only by turning the move off).
+    /// window's MCP settings and scheduled tasks (an image carries them), cl_audit's profiles and settings, the real account ids. The
+    /// keys choice stays as it is. Each row can still be changed afterwards (the zip only by turning the move off); a row the person had
+    /// set otherwise and the preset changed is said on the page (`presetChanged`).
     func movePreset() {
         guard phase == .preview else { return }
-        if (model?.accounts.count ?? 0) > 1 { source = .all } else if case .backup = source { source = .now }
-        move = true; container = .image; setup = true; profiles = true; keys = .keep
+        var changed: [String] = []
+        let from: Source = (model?.accounts.count ?? 0) > 1 ? .all : { if case .backup = source { return .now }; return source }()
+        if from != source { changed.append("From (now \(from == .all ? "All profiles" : "the profile as it is now"))") }
+        if !setup { changed.append("Claude Code setup (now Include them)") }
+        source = from
+        move = true; container = .image; setup = true; profiles = true
+        presetChanged = changed
     }
+    /// The rows the Move preset set differently from what the person had chosen (said once, under the Move row).
+    @Published var presetChanged: [String] = []
 
     /// The profiles exported (cl_audit's records of them), for cl_audit.json: those of the parts.
     func exportedEntries() -> [AccountEntry] {
@@ -369,6 +377,9 @@ enum ExportWords {
            : "Not a move: accounts appear only as fingerprints."
     }
 
+    /// Under the Move row while it is on: sign-ins never travel.
+    static let signInsLine = "Sign-ins don't travel. On the new Mac you sign in again to each account (Add account)."
+
     /// "5 sessions and 1 skill hold keys: 3 GitHub tokens, 1 private key": the sessions and the setup units (a skill, CLAUDE.md …) together.
     static func foundWords(_ pv: SessionsExport.Preview?) -> String {
         guard let p = pv else { return "scanning the transcripts…" }
@@ -493,6 +504,13 @@ struct ExportPage: View {
             SRow(label: "Move", info: "Move to another Mac: everything a new Mac needs in one encrypted disk image: every profile's sessions, Claude Code's setup, the window's MCP settings and scheduled tasks, and cl_audit's own profiles and settings. A move keeps the real account ids and addresses (no fingerprints), because the Claude window files its Code-tab list and scheduled tasks by account: the new Mac puts them back where the window looks once you sign in there. That is why a move is only ever the encrypted image. Sign-ins never travel: you sign in to each account on the new Mac.", stacked: true) {
                 VStack(alignment: .leading, spacing: 6) {
                     value(ExportWords.moveWords(runner.move))
+                    if runner.move {
+                        Text(ExportWords.signInsLine).font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                        if !runner.presetChanged.isEmpty {
+                            Text("The Move preset changed: " + runner.presetChanged.joined(separator: ", ") + ". Keys found stays as you chose.")
+                                .font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
                     Menu {
                         Button("Move to another Mac") { runner.movePreset() }
                         Button("Not a move") { runner.move = false }
