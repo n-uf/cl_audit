@@ -69,7 +69,7 @@ enum WindowWords {
     static func serversKey(_ cp: SessionsRestore.ConfigPlan, imported: Bool) -> (show: String, hide: String) {
         let whose = imported ? "file" : "backup"
         switch cp.status {
-        case .new: return ("What each server runs", "Hide what they run")
+        case .new: return ("What each server runs (the program only: arguments and env values aren't shown)", "Hide what they run")
         case .here: return ("What the \(whose)'s servers would run (not added: your claude_desktop_config.json stays)", "Hide (not added: your claude_desktop_config.json stays)")
         case .blocked: return ("What the \(whose)'s servers would run (not added: it can't be added here)", "Hide (not added: it can't be added here)")
         }

@@ -106,7 +106,7 @@ MainActor.assumeIsolated {
     check(faked.count == 1 && faked[0].name == "echocalendar: python3 cal.py" && faked[0].runs.hasPrefix("echox") && !faked[0].runs.unicodeScalars.contains { $0.value == 0x202E },
           "config: server names and commands are one plain line each: no newline, no bidi mark, no line separator: \(faked)")
     check(SessionsRestore.taskName(["displayName": "Nightly\u{2067} digest\n"], id: "x") == "Nightly digest", "tasks: a task's name the same")
-    check(SessionsBackup.mcpServers(fm.contents(atPath: dataA + "/claude_desktop_config.json")!).map { "\($0.name)=\($0.runs)" } == ["github=npx", "remote=a remote server"],
+    check(SessionsBackup.mcpServers(fm.contents(atPath: dataA + "/claude_desktop_config.json")!).map { "\($0.name)=\($0.runs)" } == ["github=npx (2 arguments not shown)", "remote=a remote server (its address isn't shown)"],
           "config: each MCP server by name and what it runs: its command, or a remote server (never an argument, env value, header or URL)")
     let found = Setup.scan(codeDir: codeA, home: home)
     let prompts = found.files.filter { $0.unit.kind == .task }.map(\.rel).sorted()
@@ -506,7 +506,8 @@ MainActor.assumeIsolated {
     cp.status = .blocked("the profile has no Claude window folder")
     check(WindowWords.serversKey(cp, imported: true).hide == "Hide (not added: it can't be added here)", "rows: …and when it can't be added")
     cp.status = .new
-    check(WindowWords.serversKey(cp, imported: true) == ("What each server runs", "Hide what they run"), "rows: a file that is added: plain keys")
+    check(WindowWords.serversKey(cp, imported: true) == ("What each server runs (the program only: arguments and env values aren't shown)", "Hide what they run"),
+          "rows: a file that is added: the key says once what isn't shown")
     check(WindowWords.tasksKey(1, imported: true) == "Show the tasks (1 can't come)" && WindowWords.tasksKey(1, imported: false) == "Show the tasks (1 without the backup's prompt)" && WindowWords.tasksKey(0, imported: false) == "Show the tasks",
           "rows: the tasks' key: an import's can't come; a restore's all come back, some without the backup's prompt")
     var tp = SessionsRestore.TaskPlan()

@@ -569,13 +569,16 @@ enum SessionsBackup {
         return j
     }
 
-    /// The MCP servers a config names, by name, with what each runs: its `command` (never its arguments, env values or headers, which
-    /// can hold tokens), or "a remote server" for one reached by URL (the URL can hold a token too).
+    /// The MCP servers a config names, by name, with what each runs: its `command` and how many arguments it gets (never the arguments,
+    /// env values or headers, which can hold tokens), or "a remote server" for one reached by URL (the URL can hold a token too).
     static func mcpServers(_ d: Data) -> [(name: String, runs: String)] {
         guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], let s = j["mcpServers"] as? [String: Any] else { return [] }
         return s.keys.sorted().map { name in
             let o = s[name] as? [String: Any]
-            let runs = (o?["command"] as? String).map { oneLine($0, max: 200) } ?? (o?["url"] != nil ? "a remote server" : "nothing it names")
+            // the program, and how many arguments it is given (never the arguments: a package or script name sits beside tokens there)
+            let args = (o?["args"] as? [Any])?.count ?? 0
+            let hidden = args == 0 ? "" : " (\(args) \(args == 1 ? "argument" : "arguments") not shown)"
+            let runs = (o?["command"] as? String).map { oneLine($0, max: 200) + hidden } ?? (o?["url"] != nil ? "a remote server (its address isn't shown)" : "nothing it names")
             return (oneLine(name, max: 100), runs)
         }
     }
