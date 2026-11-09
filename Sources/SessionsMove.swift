@@ -390,6 +390,7 @@ enum SessionsMove {
         var hereWords: String
         var fileWords: String
         var problem: String?                // it can't be taken (the backups place: not here, a system folder)
+        var caution: String? = nil          // what taking it would do (fewer backups kept: older ones go at the next backup)
     }
 
     struct Plan: Equatable {
@@ -494,6 +495,10 @@ enum SessionsMove {
             guard file != mine else { continue }
             var d = Diff(key: k.key, label: k.label, store: k.store, here: mine, file: file, hereWords: words(k, mine), fileWords: words(k, file))
             if case .place = k.kind { d.problem = placeProblem(file) }
+            // keeping fewer backups than this Mac does: the next backup removes the older ones beyond it
+            if k.store == .backups, case .int = k.kind, let f = Int(file), let h = Int(mine), f < h {
+                d.caution = "fewer than here: the next backup removes the older ones"
+            }
             p.settings.append(d)
         }
         return p
@@ -741,7 +746,8 @@ enum MoveWords {
 
     /// One line per setting that differs: "Face: Std here, Silver in the file", with why one can't be taken.
     static func settingLines(_ p: SessionsMove.Plan) -> [String] {
-        p.settings.map { d in "\(d.label): \(d.hereWords) here, \(d.fileWords) in the file" + (d.problem.map { " (can't be taken: \($0))" } ?? "") }
+        p.settings.map { d in "\(d.label): \(d.hereWords) here, \(d.fileWords) in the file" + (d.problem.map { " (can't be taken: \($0))" } ?? "")
+            + (d.caution.map { " (\($0))" } ?? "") }
     }
 
     /// The key that does it: "Make 2 profiles", "Make 2 profiles and take 3 settings", "Take 3 settings".
