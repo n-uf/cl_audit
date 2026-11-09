@@ -705,6 +705,21 @@ do {
     check(x.days == 7, "spaces and line breaks around the names and values: 7")
     x = r("\u{FEFF}{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":7}")
     check(x.days == 7, "after a byte order mark: 7")
+    // UTF-16LE with its mark (FF FE): Foundation reads it, and Claude Code reads it as UTF-16LE: the last one counts there too
+    func utf16le(_ s: String) -> Data { Data([0xFF, 0xFE]) + s.data(using: .utf16LittleEndian)! }
+    try? utf16le("{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":7}").write(to: URL(fileURLWithPath: p("\(c)/settings.json")))
+    x = Retention.read(codeDir: p(c))
+    check(x.days == 7 && x.skipped == nil && terminalFate(8, x) == .delete, "UTF-16LE with its mark, 365 then 7: 7 (the last): \(String(describing: x.days))")
+    // a trailing odd byte: Foundation still reads the file (first value); Node drops the byte and JSON.parse takes the last
+    try? (utf16le("{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":7}") + Data([0x20])).write(to: URL(fileURLWithPath: p("\(c)/settings.json")))
+    x = Retention.read(codeDir: p(c))
+    check(x.days == 7 && x.skipped == nil, "UTF-16LE with a trailing odd byte, 365 then 7: 7: \(String(describing: x.days))")
+    clean(); settings(c, "{\"cleanupPeriodDays\":365}")
+    try? fm.createDirectory(atPath: p("managed/ClaudeCode"), withIntermediateDirectories: true)
+    try? utf16le("{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":7}").write(to: URL(fileURLWithPath: p(fileA)))
+    x = r()
+    check(x.managed && x.days == 7 && windowFate(8, x) == .delete, "managed-settings.json in UTF-16LE with its mark, 365 then 7: 7, the window's sessions too: \(String(describing: x.days))")
+    clean()
     // the last one that is invalid is invalid (the 26.11.6 rules unchanged: a note, counted with 30 days); the first one doesn't rescue it
     x = r("{\"cleanupPeriodDays\":7,\"cleanupPeriodDays\":\"x\"}")
     check(x.days == 30 && x.skipped == .key("cleanupPeriodDays") && x.problem == "cleanupPeriodDays in settings.json isn't a valid number." && terminalFate(20, x) == .keep && terminalFate(40, x) == .delete,

@@ -915,7 +915,19 @@ enum CodeCleanup {
     /// `cleanupPeriodDays`); only the top level counts. A value that can't be read stands as a string, which is invalid
     /// for the numbers and, for a helper, names one (the safe side).
     static func lastWins(_ obj: [String: Any], data: Data) -> [String: Any] {
-        guard let text = String(data: data, encoding: .utf8) else { return obj }
+        // decoded as Claude Code reads the file: UTF-16LE when it starts with FF FE (that mark dropped; like Node, a trailing odd
+        // byte is dropped and a bad pair can't stop the decode), else UTF-8. Anything else Foundation accepted (UTF-16BE, UTF-32)
+        // Claude Code reads as UTF-8 and can't parse.
+        let utf16LE = data.count >= 2 && data[data.startIndex] == 0xFF && data[data.startIndex + 1] == 0xFE
+        let text: String
+        if utf16LE {
+            let body = data.dropFirst(2)
+            let units = stride(from: body.startIndex, to: body.startIndex + body.count / 2 * 2, by: 2).map { UInt16(body[$0]) | UInt16(body[$0 + 1]) << 8 }
+            text = String(decoding: units, as: UTF16.self)
+        } else {
+            guard let t = String(data: data, encoding: .utf8) else { return obj }
+            text = t
+        }
         let wanted = [key, desktopKey] + ManagedSettings.helperKeys
         var last: [String: Range<String.Index>] = [:]
         for m in scanKeys(text).members where wanted.contains(m.name) { last[m.name] = m.value }
