@@ -28,7 +28,8 @@ struct PillButtonStyle: ButtonStyle {
             KeyLook(kind: primary ? .primary : .plain, pressed: configuration.isPressed,
                     height: compact ? 22 : 26, radius: compact ? 3 : 4, hPad: compact ? 9 : 12) {
                 HStack(spacing: 6) {
-                    if let tint, !primary { LED(color: tint, lit: lit) }
+                    // a key that can't be pressed shows its LED dark and grey, no glow (a lit one read as "ready", only paler)
+                    if let tint, !primary { LED(color: tint, lit: enabled && lit) }
                     configuration.label
                 }
             }
