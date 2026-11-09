@@ -562,10 +562,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func switchAccount(_ sender: NSMenuItem) { if let k = sender.representedObject as? String { Installer.openSwitch(k) } }
     @objc func showDashboard() { details.close(); Installer.openDashboard() }
     @objc func logIn() {
-        guard let claude = ClaudeCLI.find() else { ClaudeInstall.showAlert(); return }
         // the folder the numbers are read from: the account's own once it has one
         let reading = Account(entry.readingEntry())
-        ClaudeCLI.openLogin(claude, account: reading, email: reading.expectedEmail() ?? expectedEmail)
+        let email = reading.expectedEmail() ?? expectedEmail
+        // the look for claude can take a few seconds (login shell): off the main thread
+        DispatchQueue.global(qos: .userInitiated).async {
+            guard let claude = ClaudeCLI.find() else { ClaudeInstall.showAlert(); return }
+            ClaudeCLI.openLogin(claude, account: reading, email: email)
+        }
     }
 }
 
