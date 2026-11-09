@@ -207,6 +207,14 @@ struct DashboardSettings: View {
                     if let placeProblem {
                         Text(placeProblem).font(.system(size: 10.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
                     }
+                    // once per folder the person picked (never for cl_audit's own): what the copies hold (BackupPrefs.pickedNote)
+                    if custom, BackupPrefs.noteDue(place: backups.place) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(BackupPrefs.pickedNote).font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
+                            Button("Got it") { backups.dismissNote(place: backups.place) }
+                                .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                        }
+                    }
                 }
             }
             SRow(label: "Keep the last", info: "The newest backups of each profile that are always kept, however old.") {
