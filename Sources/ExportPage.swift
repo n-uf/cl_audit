@@ -273,7 +273,8 @@ enum ExportWords {
         let cutSuffix = " (\(Setup.cutWords))"
         let whole = sp.leftOutNames.filter { $0.hasSuffix(cutSuffix) }.map { String($0.dropLast(cutSuffix.count)) }
         let hard = sp.leftOutNames.filter { $0.hasSuffix(Setup.hardLinkWords) }.map { String($0.dropLast(Setup.hardLinkWords.count)) }
-        let signIn = sp.leftOutNames.filter { !$0.hasSuffix(cutSuffix) && !$0.hasSuffix(Setup.hardLinkWords) }
+        let signIn = sp.leftOutNames.filter { !$0.hasSuffix(cutSuffix) && !$0.hasSuffix(Setup.hardLinkWords) && $0 != Setup.settingsTooBig }
+        if sp.leftOutNames.contains(Setup.settingsTooBig) { out.append("settings.json is over 8 MB: left out, with the scripts its hooks run (an import refuses one that big)") }
         if !signIn.isEmpty { out.append("\(n(signIn.count, "file", "files")) with a sign-in name left out: \(signIn.prefix(2).joined(separator: ", "))") }
         if !whole.isEmpty {
             let what = whole.allSatisfy { $0.hasPrefix("skills/") } ? n(whole.count, "skill", "skills") : n(whole.count, "skill or folder", "skills or folders")

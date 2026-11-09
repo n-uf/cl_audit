@@ -627,6 +627,34 @@ MainActor.assumeIsolated {
     }
 
     // ---- the setup row's words for scripts added without the execute bit, and the hooks key, true to settings.json's status here
+    // ---- an export never makes a file its own import refuses: a settings.json over 8 MB (which an import refuses) is left out at the
+    // export, with the scripts its hooks run, and the Export page says so; the image made without it opens
+    do {
+        let c9 = e2 + "/.claude-e2big"
+        try? fm.removeItem(atPath: c9)
+        w(c9, "CLAUDE.md", "rules\n"); w(c9, "skills/g/SKILL.md", "g"); w(c9, "skills/g/run.sh", "#!/bin/sh\n", exec: true); w(c9, "bin/x.sh", "#!/bin/sh\n", exec: true)
+        w(c9, "settings.json", #"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"\#(c9)/bin/x.sh"}]}]},"pad":""# + String(repeating: "a", count: (8 << 20) + 16) + #""}"#)
+        let f9 = Setup.scan(codeDir: c9, home: home)
+        check(!f9.files.contains { $0.rel == "settings.json" || $0.rel == "bin/x.sh" } && f9.leftOutNames.contains(Setup.settingsTooBig) && f9.hookUnits == nil,
+              "scan: a settings.json over 8 MB is left out with its scripts (which units its hooks run isn't known): \(f9.files.map(\.rel).sorted())")
+        let part9 = SessionsExport.Part(profile: "e2big", name: "E2big", source: SessionsBackup.Source(profile: "e2big", dataDir: "", codeDir: c9), emails: [])
+        let pv9 = SessionsExport.preview(part9)!
+        let notes9 = ExportWords.setupNotes(pv9, setup: true, image: true)
+        check(notes9.contains("settings.json is over 8 MB: left out, with the scripts its hooks run (an import refuses one that big)") && !notes9.contains { $0.contains("sign-in name") },
+              "export row: the page says settings.json is over 8 MB and left out (not as a sign-in name): \(notes9)")
+        let big = URL(fileURLWithPath: out + "/E2big.dmg")
+        if (try? SessionsExport.run(SessionsExport.Job(parts: [part9], keys: .leaveOut, password: pw, destination: big, rootName: "e2big-image", place: eplace))) != nil {
+            do {
+                let o = try SessionsImport.open(big, password: pw, place: eplace)
+                let rels = Set(o.parts[0].manifest.items.filter { $0.role == .setup }.map { String($0.path.dropFirst(6)) })
+                check(rels == ["CLAUDE.md", "skills/g/SKILL.md", "skills/g/run.sh"] && o.parts[0].manifest.setupLeftOut?.contains(Setup.settingsTooBig) == true,
+                      "export (image): made without settings.json and its script, and its own import opens it: \(rels.sorted())")
+                SessionsImport.discard(o.work)
+            } catch { check(false, "export (image) with a settings.json over 8 MB at the source: its own import refuses it: \(error)") }
+        } else { check(false, "export (image) with a settings.json over 8 MB at the source: made") }
+        try? fm.removeItem(atPath: c9)
+    }
+
     do {
         let settingsU = Setup.Unit(kind: .settings, name: "settings.json")
         func plan(_ s: SessionsRestore.SetupPlan.Status?, scripts: Int = 4) -> SessionsRestore.SetupPlan {

@@ -11,6 +11,7 @@
 //   plugins/known_marketplaces.json           the marketplaces: SENSITIVE (it can hold addresses with credentials)
 //
 // Never: a sign-in (.claude.json*, .credentials*), settings.local.json (machine-local by Claude Code's own definition), plugin
+// settings.json over 8 MB is left out (with its scripts): an import refuses one that big, so an export never carries it.
 // caches and repos (everything else under plugins/), projects/, todos/, statsig/, shell-snapshots/, ide/, a dot-file, version
 // history and build leftovers (.git, .hg, .svn, node_modules, .venv, venv, __pycache__, .DS_Store, *.pyc: counted, not an error).
 // A link is never followed: a skill that is one, or contains one anywhere, a link in place of CLAUDE.md, an agent, a command, an
@@ -83,6 +84,10 @@ enum Setup {
     /// settings.local.json; settings.json only at the top (it is the setup's own file there and nowhere else).
     static func excludedName(_ name: String, top: Bool) -> Bool {
         let n = name.lowercased()
+    /// The most settings.json may hold to travel (an import refuses a bigger one: SessionsImport.validate).
+    static let maxSettingsBytes = 8 << 20
+    /// What the Export page lists for a settings.json over that.
+    static let settingsTooBig = "settings.json (over 8 MB: left out, with the scripts its hooks run)"
         if n.hasPrefix(".claude.json") || n.hasPrefix(".credentials") || n == "settings.local.json" { return true }
         return n == "settings.json" && !top
     }
@@ -436,7 +441,13 @@ enum Setup {
 
         // keybindings, settings and the plugin list
         single("keybindings.json", label: "keybindings.json", kind: .keybindings)
-        single("settings.json", label: "settings.json", kind: .settings)
+        // settings.json over 8 MB (a real one is a few KB) is left out with its scripts: an import refuses one that big, and an export
+        // never makes a file its own import refuses
+        if let st = lst((base as NSString).appendingPathComponent("settings.json")), (st.st_mode & S_IFMT) == S_IFREG, st.st_size > maxSettingsBytes {
+            found.leftOutNames.append(settingsTooBig)
+        } else {
+            single("settings.json", label: "settings.json", kind: .settings)
+        }
         let pdir = (base as NSString).appendingPathComponent("plugins")
         if let ps = lst(pdir) {
             if (ps.st_mode & S_IFMT) == S_IFLNK { found.linked.append(Linked(label: "plugins", kind: .plugins, target: target(pdir))) }

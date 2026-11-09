@@ -217,7 +217,7 @@ enum SessionsBackup {
                 g.bytes += r.bytes
             }
             // by name and the reason, never where a link pointed: "agent linked.md (a link)", "skills/big (too many files, or folders nested too deep: left out whole)"
-            g.setupLeftOut = (f.linked.map { $0.label.contains("(") ? $0.label : $0.label + " (a link)" } + f.leftOutNames.filter { $0.hasSuffix("left out whole)") }).sorted()
+            g.setupLeftOut = (f.linked.map { $0.label.contains("(") ? $0.label : $0.label + " (a link)" } + f.leftOutNames.filter { $0.hasSuffix("left out whole)") || $0 == Setup.settingsTooBig }).sorted()
             g.setupHookUnits = f.hookUnits.map { $0.map(Setup.key).sorted() }
         }
         if window, !s.dataDir.isEmpty {
