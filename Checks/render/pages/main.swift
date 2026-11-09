@@ -75,6 +75,7 @@ func fixPatch(_ m: SessionsBackup.Manifest, seconds: Double) {   // made-up dura
     if ProcessInfo.processInfo.environment["B2_ONLY"] != nil, !name.hasPrefix("6") { return }      // stage B2 renders only
     if ProcessInfo.processInfo.environment["E_ONLY"] != nil, !name.hasPrefix("7") { return }       // stage E renders only
     if ProcessInfo.processInfo.environment["E2_ONLY"] != nil, !name.hasPrefix("8") { return }      // stage E2 (the setup row) renders only
+    if ProcessInfo.processInfo.environment["E2B_ONLY"] != nil, !name.hasPrefix("9") { return }     // stage E2b (MCP settings, scheduled tasks) renders only
     _ = NSApplication.shared
     let host = NSHostingView(rootView: v)
     host.frame = NSRect(x: 0, y: 0, width: w, height: h)
@@ -509,6 +510,95 @@ MainActor.assumeIsolated {
         settleE("the setup restore preview") { rr2.plan != nil }
         SetupRow.renderOpen = true
         e2Shots("8e-restore-setup", { RestorePage(entry: e2main, key: rk2, model: model, runner: rr2, width: $0) }, height: 3800)
+        SetupRow.renderOpen = false
+
+        // ---- 9: the Claude window's MCP settings and scheduled tasks (stage E2b) on the Export, Import and Restore pages
+        let c9 = expand("~/.claude-e2bsrc"), d9 = expand("~/Library/Application Support/Claude-e2bsrc")
+        let s9 = "\(d9)/claude-code-sessions/\(u3.account)/\(u3.organization!)"
+        try! fm.createDirectory(atPath: s9, withIntermediateDirectories: true)
+        let mcp: [String: Any] = ["mcpServers": ["github": ["command": "npx", "args": ["-y", "@example/server-github"], "env": ["GITHUB_TOKEN": "sample-value"]],
+                                                 "postgres": ["command": "/opt/homebrew/bin/postgres-mcp", "args": ["--read-only"]],
+                                                 "linear": ["url": "https://mcp.example.com/sse"]],
+                                  "globalShortcut": "Alt+Space", "preferences": ["menuBarEnabled": true]]
+        try! JSONSerialization.data(withJSONObject: mcp, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: d9 + "/claude_desktop_config.json"))
+        let tasks9: [[String: Any]] = [
+            ["id": "nightly-digest", "displayName": "Nightly digest", "cronExpression": "0 3 * * *", "enabled": true, "filePath": c9 + "/scheduled-tasks/nightly-digest/SKILL.md", "cwd": appCwd, "createdAt": 1],
+            ["id": "weekly-report", "displayName": "Weekly report", "cronExpression": "0 9 * * 1", "enabled": true, "filePath": c9 + "/scheduled-tasks/weekly-report/SKILL.md", "cwd": appCwd, "createdAt": 1],
+            ["id": "dependency-check", "displayName": "Dependency check", "cronExpression": "0 8 * * *", "enabled": true, "filePath": c9 + "/scheduled-tasks/dependency-check/SKILL.md", "cwd": appCwd, "createdAt": 1]]
+        try! JSONSerialization.data(withJSONObject: ["scheduledTasks": tasks9], options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: s9 + "/scheduled-tasks.json"))
+        for t in ["nightly-digest", "weekly-report"] { w2(c9, "scheduled-tasks/\(t)/SKILL.md", "---\nname: \(t)\n---\nThe \(t) prompt.\n") }
+        for k in 0..<5 {
+            let task = k == 4 ? ",\"scheduledTaskId\":\"nightly-digest\"" : ""
+            putE("\(s9)/local_\(uuid(9000 + k)).json", "{\"sessionId\":\"local_\(uuid(9000 + k))\",\"cliSessionId\":\"\(uuid(9100 + k))\",\"title\":\"session \(k)\",\"cwd\":\"\(appCwd)\",\"isArchived\":false\(task)}", daysAgo: 2)
+            putE("\(c9)/projects/-app/\(uuid(9100 + k)).jsonl", exTranscript(400 + k, cwd: appCwd), daysAgo: 2)
+        }
+        var e2bsrc = AccountEntry(id: "e2bsrc", name: "Work", label: "WORK", configDir: c9); e2bsrc.seat = u3; e2bsrc.desktop = .separate; e2bsrc.desktopDataDir = d9
+        let tc9 = expand("~/.claude-e2bdst"), td9 = expand("~/Library/Application Support/Claude-e2bdst")
+        try! fm.createDirectory(atPath: "\(td9)/claude-code-sessions/\(u2.account)/\(u2.organization!)", withIntermediateDirectories: true)
+        try! fm.createDirectory(atPath: tc9 + "/projects", withIntermediateDirectories: true)
+        var e2bdst = AccountEntry(id: "e2bdst", name: "Main", label: "MAIN", configDir: tc9); e2bdst.seat = u2; e2bdst.desktop = .separate; e2bdst.desktopDataDir = td9
+        let hc9 = expand("~/.claude-e2bhas"), hd9 = expand("~/Library/Application Support/Claude-e2bhas")
+        let hs9 = "\(hd9)/claude-code-sessions/\(u2.account)/\(u2.organization!)"
+        try! fm.createDirectory(atPath: hs9, withIntermediateDirectories: true)
+        try! fm.createDirectory(atPath: hc9 + "/projects", withIntermediateDirectories: true)
+        putE(hd9 + "/claude_desktop_config.json", #"{"mcpServers":{"github":{"command":"npx"},"notes":{"command":"notes-mcp"}}}"#, daysAgo: 10)
+        putE(hs9 + "/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"weekly-report","displayName":"Weekly report","enabled":true}]}"#, daysAgo: 10)
+        var e2bhas = AccountEntry(id: "e2bhas", name: "Laptop", label: "LAPTOP", configDir: hc9); e2bhas.seat = u2; e2bhas.desktop = .separate; e2bhas.desktopDataDir = hd9
+        model.accounts = [exmain, exwork, imain, e2main, e2work, e2imain, e2bsrc, e2bdst, e2bhas]
+
+        // 9a/9b the Export page: the MCP settings left out of a zip (and why), carried in the image; the tasks travel with their prompts
+        let xr9 = model.exportRunner(for: "e2bsrc")
+        xr9.refresh()
+        settleE("the window export preview") { xr9.previews != nil }
+        @MainActor func exportPage9(_ name: String) { e2Shots(name, { ExportPage(entry: e2bsrc, model: model, runner: xr9, width: $0) }) }
+        exportPage9("9a-export-window-zip")
+        xr9.container = .image
+        xr9.password = "typed-in-a-secure-field"; xr9.again = "typed-in-a-secure-field"
+        exportPage9("9b-export-window-image")
+        xr9.password = ""; xr9.again = ""; xr9.container = .zip
+
+        // 9c/9d the Import page: left out by default, then both added (the servers and the tasks listed)
+        let img9 = URL(fileURLWithPath: exportsDir + "/cl_audit Work 2026-11-09.dmg")
+        try? fm.removeItem(at: img9)
+        _ = try! SessionsExport.run(SessionsExport.Job(parts: [SessionsExport.Part(profile: "e2bsrc", name: "Work", source: SessionsBackup.Source(e2bsrc), emails: [u3.email!])], keys: .leaveOut,
+                                                       password: pw2, destination: img9, rootName: "cl_audit Work 2026-11-09", now: Date().addingTimeInterval(-3600)))
+        @MainActor func openImport(_ id: String) -> ImportRunner {
+            let ir = model.importRunner(for: id)
+            ir.setFile(img9); ir.password = pw2; ir.open()
+            settleE("the window import preview (\(id))") { ir.phase == .ready && ir.plan != nil && ir.counting?.notYet == nil && ir.counting?.plan != nil }
+            return ir
+        }
+        let ir9 = openImport("e2bdst")
+        @MainActor func importPage9(_ name: String, _ e: AccountEntry, _ ir: ImportRunner) { e2Shots(name, { ImportPage(entry: e, model: model, runner: ir, width: $0) }, height: 4400) }
+        importPage9("9c-import-window-left-out", e2bdst, ir9)
+        ir9.setConfig(true)
+        settleE("the window import, config added") { ir9.plan?.config.leftOut == false }
+        ir9.setTasks(true)
+        settleE("the window import, tasks added") { ir9.plan?.taskPlan.leftOut == false }
+        SetupRow.renderOpen = true
+        importPage9("9d-import-window-added-open", e2bdst, ir9)
+        // 9e into a profile that has its own config and task file: both stay, what they lack is listed
+        let ih9 = openImport("e2bhas")
+        ih9.setConfig(true)
+        settleE("the window import (has its own), config") { ih9.plan?.config.leftOut == false }
+        ih9.setTasks(true)
+        settleE("the window import (has its own), tasks") { ih9.plan?.taskPlan.leftOut == false }
+        importPage9("9e-import-window-here-stays", e2bhas, ih9)
+        SetupRow.renderOpen = false
+
+        // 9f/9g the Restore page: a backup of Work from before its config, task file and a prompt went: left out, then added
+        let bk9 = try! SessionsBackup.make(SessionsBackup.Source(e2bsrc), kind: .manual, place: BackupPrefs.placeURL, now: Date().addingTimeInterval(-1800))
+        try? fm.removeItem(atPath: d9 + "/claude_desktop_config.json"); try? fm.removeItem(atPath: s9 + "/scheduled-tasks.json"); try? fm.removeItem(atPath: c9 + "/scheduled-tasks/weekly-report")
+        let rk9 = RestoreKey(profile: "e2bsrc", backup: bk9.id, place: BackupPrefs.placeURL.path)
+        let rr9 = model.restoreRunner(rk9)
+        rr9.refresh()
+        settleE("the window restore preview") { rr9.plan != nil }
+        @MainActor func restorePage9(_ name: String) { e2Shots(name, { RestorePage(entry: e2bsrc, key: rk9, model: model, runner: rr9, width: $0) }, height: 4000) }
+        restorePage9("9f-restore-window-left-out")
+        rr9.setConfig(true)
+        settleE("the window restore, config added") { rr9.plan?.config.leftOut == false }
+        SetupRow.renderOpen = true
+        restorePage9("9g-restore-window-added")
         SetupRow.renderOpen = false
     }
 }
