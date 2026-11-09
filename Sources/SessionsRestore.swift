@@ -364,10 +364,13 @@ enum SessionsRestore {
         // 3b. Claude Code's setup (CLAUDE.md, skills, agents …): left out unless asked, never over what is here, never through a link
         // (a scheduled task's prompt is planned with its task, never as setup)
         let plainSetup = setupItems.filter { Setup.unit(of: String($0.path.dropFirst(6))).kind != .task }
-        if !plainSetup.isEmpty || m.setupLeftOut != nil {
+        if !plainSetup.isEmpty || m.setupLeftOut != nil || m.secretLeftOut != nil {
             planSetup(&p, t, items: plainSetup, leftOutAtSource: (m.setupLeftOut ?? []).filter { !$0.hasPrefix("scheduled task ") }, reader: reader, add: addSetup)
             // a plain backup's settings.json has its env values blanked (keys kept): the row says so
             p.setup.envBlanked = m.envBlanked == true && plainSetup.contains { $0.path == "setup/settings.json" }
+            // and the values the key scan matched (where, never what), and the files left out for holding a key
+            p.setup.keysBlanked = plainSetup.contains { $0.path == "setup/settings.json" } ? (m.secretBlanked ?? []) : []
+            p.setup.keysLeftOut = m.secretLeftOut ?? []
         }
 
         // 3c. the rest of the window's claude_desktop_config.json (MCP settings): left out unless asked, only where there is none

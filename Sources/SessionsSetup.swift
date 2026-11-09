@@ -100,6 +100,35 @@ enum Setup {
         else if j["env"] != nil { j.removeValue(forKey: "env") }
         return try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     }
+    /// settings.json as a plain backup keeps it: `envBlanked`, and then every string value anywhere in it (an array element too) that the
+    /// Export page's key scan (SecretScan) matches blanked to "" as well, its key kept: an apiKeyHelper like `echo sk-…`, a bearer token in
+    /// a permissions.allow entry, a token in a nested value. `keys` names where (dotted paths, "permissions.allow[2]": names only, never
+    /// a value, cut to plain short ones). A key that is itself a match is dropped, listed as "(a key)". nil: not a JSON object.
+    /// Nothing is ever run.
+    static func secretsBlanked(_ d: Data) -> (data: Data, keys: [String])? {
+        guard let first = envBlanked(d), var j = (try? JSONSerialization.jsonObject(with: first)) as? [String: Any] else { return nil }
+        var keys = Set<String>()
+        func join(_ path: String, _ k: String) -> String { path.isEmpty ? k : path + "." + k }
+        func walk(_ v: Any, _ path: String) -> Any {
+            if let s = v as? String {
+                if SecretScan.scan(Data(s.utf8)).isEmpty { return s }
+                keys.insert(SessionsBackup.oneLine(path, max: 100)); return ""
+            }
+            if let a = v as? [Any] { return a.enumerated().map { walk($0.element, path + "[\($0.offset)]") } }
+            if let o = v as? [String: Any] {
+                var out: [String: Any] = [:]
+                for (k, x) in o {
+                    if !SecretScan.scan(Data(k.utf8)).isEmpty { keys.insert(SessionsBackup.oneLine(join(path, "(a key)"), max: 100)); continue }
+                    out[k] = walk(x, join(path, SessionsBackup.oneLine(k, max: 40)))
+                }
+                return out
+            }
+            return v
+        }
+        j = (walk(j, "") as? [String: Any]) ?? [:]
+        guard let out = try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return nil }
+        return (out, keys.sorted())
+    }
     /// Why a skill (or a folder of agents, commands, output styles) is left out whole: the walk had to stop in it.
     static let cutWords = "too many files, or folders nested too deep: left out whole"
     /// What a hard-linked file is listed with: never carried (it is another file's content too).

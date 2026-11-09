@@ -1172,6 +1172,10 @@ enum SessionsImport {
         m.version = SessionsBackup.neededVersion(items, move: m.move == true)
         // (names of setup left out at the source: shown as text only, so cut to plain short ones)
         m.setupLeftOut = m.setupLeftOut.map { Array($0.prefix(200).map { String($0.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 }.prefix(100).map(Character.init)) }) }
+        // (where a backup blanked a key and what it left out for one: shown as text only, so cut the same way; only when the file has the
+        // settings.json they speak of)
+        m.secretBlanked = items.contains { $0.path == "setup/settings.json" } ? m.secretBlanked.map { Array($0.prefix(200).map { SessionsBackup.oneLine($0, max: 100) }) } : nil
+        m.secretLeftOut = m.secretLeftOut.map { Array($0.prefix(200).map { SessionsBackup.oneLine($0, max: 100) }) }
         m.configLeftOut = m.configLeftOut.map { String($0.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 }.prefix(100).map(Character.init)) }
         // which units hold what a hook runs is never the file's own claim: worked out from the settings.json it carries (an export of
         // this backup leaves them out of a zip); without one it isn't known, and such an export leaves out every unit with an

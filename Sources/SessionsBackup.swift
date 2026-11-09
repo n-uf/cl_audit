@@ -13,7 +13,10 @@
 //                                stages. Import adds it only when asked, only where the profile has none (SessionsRestoreWindow.swift)
 //   setup/settings.json          in a plain backup, with every `env` value blanked (names kept), written from the parsed object
 //                                (`envBlanked`); one that isn't a JSON object is left out with its scripts. Env values travel only in
-//                                the encrypted export. Backups made by 26.11.8 stay as they are.
+//                                the encrypted export. Backups made by 26.11.8 stay as they are. Then the Export page's key scan
+//                                (SecretScan) runs over the rest: every string value in it that matches is blanked too (`secretBlanked`:
+//                                dotted paths, never a value), and a hook script, a unit that holds one, or plugins/known_marketplaces.json
+//                                whose bytes match is left out (`secretLeftOut`), all read from the copy that landed in the backup.
 //   setup/scheduled-tasks/<id>/SKILL.md   a scheduled task's prompt (with the setup's files, but it goes with its task)
 //   records/…                    cl_audit's own: the profile's entry, and the receipt of the switch it was made for
 //   transcripts/<project>/…      Claude Code's transcripts (<Claude Code folder>/projects), optional
@@ -124,6 +127,12 @@ enum SessionsBackup {
         /// settings.json in it has every `env` value blanked (keys kept): a plain backup's (this version on). nil: as it was (an
         /// export's copy, an import's staged backup, a backup made by 26.11.8).
         var envBlanked: Bool? = nil
+        /// Where a plain backup's settings.json had a value the Export page's key scan matches (dotted paths such as
+        /// "permissions.allow[2]": names only, never a value): each is blank in the backup, its key kept. nil: none (or not a plain backup).
+        var secretBlanked: [String]? = nil
+        /// Setup a plain backup left out because it held a key (a script a hook runs, the plugin marketplaces, a skill that holds such a
+        /// script), by name as the pages call it ("script hooks/x.sh"). Like `secretBlanked`, those travel only in an encrypted export.
+        var secretLeftOut: [String]? = nil
         /// A move's part (format 4): its window folders are named by the real account and organisation ids, not fingerprints, so an
         /// import puts each entry and task file back into its own account's folder. Only ever from an encrypted image. nil: not a move.
         var move: Bool? = nil
@@ -352,7 +361,9 @@ enum SessionsBackup {
     /// records out (the window is open: it rewrites its entries from memory). Throws, with nothing left behind, when it
     /// can't be made whole. Takes no lock: the switch holds one (SwitchEngine.run), Back up now takes it (`manual`).
     /// A plain backup (a switch's, Back up now, the default-profile move's) keeps no claude_desktop_config.json and keeps settings.json
-    /// with every `env` value blanked (`envBlanked`): those travel only in the encrypted export. `forExport`: the hidden copy an export
+    /// with every `env` value blanked (`envBlanked`) and every other value the key scan matches blanked too (`secretBlanked`), and leaves
+    /// out a hook script, a unit holding one, or the plugin marketplaces that hold a key (`secretLeftOut`): those travel only in the
+    /// encrypted export. `forExport`: the hidden copy an export
     /// is made from (and taken away again), which keeps both whole for the image (a zip leaves them out).
     @discardableResult
     static func make(_ s: Source, id: String = newID(), kind: Kind, window: Bool = true, transcripts: Bool = true, setup: Bool = true,
@@ -400,16 +411,20 @@ enum SessionsBackup {
         // parsed is left out with the scripts its hooks run (an export of the backup must not carry scripts without it)
         var setupLeftOut = g.setupLeftOut
         var envBlanked: Bool? = nil
+        var secretBlanked: [String]? = nil
         var dropScripts = false
         if !forExport, let sf = g.files.first(where: { $0.role == .setup && $0.rel == "setup/settings.json" }) {
-            if let d = Setup.readCapped(sf.src, limit: Setup.maxSettingsBytes), let blank = Setup.envBlanked(d) {
-                try put(blank, "setup/settings.json", in: partial, dirFor)
-                items.append(Item(role: .setup, original: sf.original, path: sf.rel, bytes: Int64(blank.count), sha: SwitchEngine.sha(blank), exec: false))
+            // (env values blanked, then every other string value the Export page's key scan matches)
+            if let d = Setup.readCapped(sf.src, limit: Setup.maxSettingsBytes), let blank = Setup.secretsBlanked(d) {
+                try put(blank.data, "setup/settings.json", in: partial, dirFor)
+                items.append(Item(role: .setup, original: sf.original, path: sf.rel, bytes: Int64(blank.data.count), sha: SwitchEngine.sha(blank.data), exec: false))
                 envBlanked = true
+                secretBlanked = blank.keys.isEmpty ? nil : blank.keys
             } else {
                 setupLeftOut.append(Setup.settingsUnreadable); dropScripts = true; leftOut += 1
             }
         }
+        var landedShared: [String: (shared: Bool, bytes: Int64)] = [:]       // setup files: cloned or copied (for taking one back out)
         for f in g.files {
             if !forExport, f.role == .setup, f.rel == "setup/settings.json" { continue }        // (written above, blanked, or left out)
             if dropScripts, f.role == .setup, Setup.unit(of: String(f.rel.dropFirst(6))).kind == .script { leftOut += 1; continue }
@@ -427,12 +442,48 @@ enum SessionsBackup {
             guard mode(dst)?.kind == S_IFREG else { unlink(dst); leftOut += 1; continue }
             if shared { cloned += 1 } else { copied += 1; copiedBytes += f.bytes }
             if f.role == .setup {
+                landedShared[f.rel] = (shared, f.bytes)
                 // the hash of what landed (what a restore checks it against), and the execute bit the original had
                 var landedStat = stat()
                 guard let h = Setup.sha(path: dst), lstat(dst, &landedStat) == 0 else { unlink(dst); leftOut += 1; continue }
                 items.append(Item(role: .setup, original: f.original, path: f.rel, bytes: Int64(landedStat.st_size), sha: h, exec: f.exec))
             } else {
                 items.append(Item(role: f.role, original: f.original, path: f.rel, bytes: f.bytes))
+            }
+        }
+
+        // a plain backup: what held a key stays out. The key scan of the Export page runs over the copies that landed (never the originals:
+        // what is scanned is what would be kept) of the scripts settings.json's hooks and status line run, of plugins/known_marketplaces.json,
+        // and of every file of a skill, agent, command or output style that holds such a script (that unit is one: it goes whole or not at
+        // all). A file that can't be read back counts as a match.
+        var secretLeftOut: [String] = []
+        if !forExport {
+            let holders = Set((g.setupHookUnits ?? []).compactMap(Setup.unit(key:)))
+            var held: [Setup.Unit: [String]] = [:]
+            for it in items where it.role == .setup && it.path.hasPrefix("setup/") {
+                let u = Setup.unit(of: String(it.path.dropFirst(6)))
+                if u.kind == .script || u.kind == .marketplaces || holders.contains(u) { held[u, default: []].append(it.path) }
+            }
+            for (u, rels) in held.sorted(by: { $0.key < $1.key }) {
+                let hit = rels.contains { rel in
+                    guard let k = SecretScan.scan(path: (partial.path as NSString).appendingPathComponent(rel)) else { return true }
+                    return !k.isEmpty
+                }
+                guard hit else { continue }
+                for rel in rels {
+                    let path = (partial.path as NSString).appendingPathComponent(rel)
+                    unlink(path)
+                    // (and the folders made for it, while they are empty: rmdir refuses a folder that holds anything)
+                    var dir = (path as NSString).deletingLastPathComponent
+                    while dir.count > partial.path.count, rmdir(dir) == 0 { made.remove(dir); dir = (dir as NSString).deletingLastPathComponent }
+                    if let l = landedShared[rel] {
+                        if l.shared { cloned -= 1 } else { copied -= 1; copiedBytes -= l.bytes }
+                    }
+                }
+                let gone = Set(rels)
+                items.removeAll { gone.contains($0.path) }
+                leftOut += rels.count
+                secretLeftOut.append(oneLine(SetupRow.title(u), max: 100))
             }
         }
 
@@ -474,7 +525,7 @@ enum SessionsBackup {
                          bytes: items.reduce(0) { $0 + $1.bytes }, cloned: cloned, copied: copied, copiedBytes: copiedBytes,
                          leftOut: leftOut, dataDir: s.dataDir, codeDir: s.codeDir, items: items,
                          setupLeftOut: setupLeftOut.isEmpty ? nil : setupLeftOut.sorted(), setupHookUnits: g.setupHookUnits, configLeftOut: configLeftOut,
-                         envBlanked: envBlanked)
+                         envBlanked: envBlanked, secretBlanked: secretBlanked, secretLeftOut: secretLeftOut.isEmpty ? nil : secretLeftOut.sorted())
         var out = m
         out.version = neededVersion(items)
         out.seconds = (Date().timeIntervalSince(started) * 10).rounded() / 10
@@ -827,7 +878,34 @@ final class BackupPrefs: ObservableObject {
     }
 
     /// Re-reads the store (a check swapped it).
-    func reload() { place = Self.store.string(forKey: Self.placeKey) ?? ""; last = Self.keepLast; days = Self.keepDays }
+    func reload() { place = Self.store.string(forKey: Self.placeKey) ?? ""; last = Self.keepLast; days = Self.keepDays; seen = Self.store.string(forKey: Self.noteKey) ?? "" }
+
+    // MARK: the one-time line for a place the person picked
+
+    /// General ▸ Backups says once, per place, when the backups go to a folder the person picked (not cl_audit's own): backups hold copies
+    /// of Claude Code's settings and scripts, and the keys found in them are left out. Per place, not once overall: what that folder is
+    /// (a synced or shared one, an external drive) is what the line is about, so a second picked folder gets it again; dismissing it for
+    /// one folder says nothing about another. Remembered as the folders' canonical paths, one per line (the last 20), in the same store
+    /// as the place; the default place never shows it.
+    static let noteKey = "backupsNoteSeen"
+    static let pickedNote = "Backups in this folder hold copies of Claude Code's settings and scripts (CLAUDE.md, settings.json, the scripts its hooks run). Any key found in them is left out. Shown once for each folder you pick."
+    @Published var seen: String = BackupPrefs.store.string(forKey: BackupPrefs.noteKey) ?? ""
+
+    static func noteSeen() -> [String] { (store.string(forKey: noteKey) ?? "").split(separator: "\n").map(String.init) }
+
+    /// Whether the line shows for this `place` (the stored setting: "" is cl_audit's own folder, which never shows it).
+    static func noteDue(place: String) -> Bool {
+        !place.isEmpty && !noteSeen().contains(FolderKey.canonical(place))
+    }
+
+    /// Dismisses it for this place.
+    func dismissNote(place: String) {
+        guard !place.isEmpty else { return }
+        var list = Self.noteSeen().filter { $0 != FolderKey.canonical(place) }
+        list.append(FolderKey.canonical(place))
+        seen = list.suffix(20).joined(separator: "\n")
+        Self.store.set(seen, forKey: Self.noteKey)
+    }
 
     static var defaultPlace: URL { Store.folder.appendingPathComponent("backups") }
 
