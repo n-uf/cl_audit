@@ -39,7 +39,24 @@ extension SessionsRestore {
             var id: String
             var name: String
             var why: String?                    // why it isn't added (nil: it comes in, paused on an import)
+            var schedule: String? = nil         // its cronExpression, as written
+            var mode: String? = nil             // its permissionMode when it isn't the default one
+            var folder: String? = nil           // the folder it runs in (cwd), ~ for the home folder
+            /// It runs with permission checks off (bypassPermissions) or with permissions approved on the other Mac: worth a look
+            /// before it is turned on.
+            var risky = false
+            /// "Nightly digest · 0 3 * * * · in ~/projects/app · permissions: acceptEdits"
+            var line: String {
+                var parts = [name]
+                if let s = schedule { parts.append(s) }
+                if let f = folder { parts.append("in " + f) }
+                if let m = mode { parts.append("permissions: " + m) }
+                if risky, mode != "bypassPermissions" { parts.append("approved permissions") }
+                return parts.joined(separator: " · ")
+            }
         }
+        var moreTasks = 0                       // tasks past the first 200: written as the others, not listed one by one
+        var risky: Int { coming.filter(\.risky).count }
         var present = false                     // the backup holds a task file the plan could use
         var imported = false
         var leftOut = true                      // an import's choice: left out unless asked ("Add them, paused")
@@ -172,13 +189,18 @@ extension SessionsRestore {
         var promptPieces: [Piece] = []
         var keep: [[String: Any]] = []
         for (task, id) in list {
-            var entry = TaskPlan.Task(id: String(id.prefix(200)), name: taskName(task, id: id), why: nil)
+            var entry = TaskPlan.Task(id: SessionsBackup.oneLine(id, max: 200), name: taskName(task, id: id), why: nil)
+            // what the person turns on when they flip its switch: its schedule, its folder, its permission mode and approvals
+            entry.schedule = (task["cronExpression"] as? String).map { SessionsBackup.oneLine($0, max: 60) } ?? (task["fireAt"] != nil ? "once" : nil)
+            entry.folder = (task["cwd"] as? String).map { SessionsBackup.oneLine(tilde($0), max: 120) }
+            if let m = task["permissionMode"] as? String, m != "default" { entry.mode = SessionsBackup.oneLine(m, max: 40) }
+            entry.risky = (task["permissionMode"] as? String) == "bypassPermissions" || !((task["approvedPermissions"] as? [Any]) ?? []).isEmpty
             let item = prompts[id]
             if !Setup.validTaskID(id) {
                 entry.why = "its id isn't one the Claude window keeps"
-            } else if let fp = task["filePath"], !((fp as? String).map { $0 == Setup.taskRel(id) || $0.hasSuffix("/" + Setup.taskRel(id)) } ?? false) {
-                // (the window reads a task's prompt from its id's own folder whatever this says; one that names anything else isn't a task as the window makes them)
-                entry.why = "it names a prompt file somewhere else"
+            } else if !((task["filePath"] as? String).map { $0 == Setup.taskRel(id) || $0.hasSuffix("/" + Setup.taskRel(id)) } ?? false) {
+                // (the window reads a task's prompt from its id's own folder; a task without that `filePath`, as a string, isn't one as the window makes them)
+                entry.why = task["filePath"] is String ? "it names a prompt file somewhere else" : "it doesn't record its prompt file the way the window does"
             } else if item == nil {
                 // (a restore puts its own file back whole: such a task comes back too, and the row says what it lacks)
                 entry.why = imported ? "its prompt isn't in the file" : "back without its prompt (none in the backup)"

@@ -78,7 +78,7 @@ MainActor.assumeIsolated {
             ["id": "nightly-digest", "displayName": "Nightly digest", "cronExpression": "0 3 * * *", "enabled": true, "filePath": codeA + "/scheduled-tasks/nightly-digest/SKILL.md",
              "cwd": "/w/project", "createdAt": 1_700_000_000_000, "permissionMode": "default", "lastRunAt": 1_700_000_100_000],
             ["id": "weekly-report", "displayName": "Weekly report", "cronExpression": "0 9 * * 1", "enabled": false, "filePath": codeA + "/scheduled-tasks/weekly-report/SKILL.md",
-             "cwd": "/w/project", "createdAt": 1_700_000_000_000],
+             "cwd": "/w/project", "createdAt": 1_700_000_000_000, "permissionMode": "bypassPermissions", "approvedPermissions": ["Bash(ls:*)"]],
             ["id": "elsewhere-task", "displayName": "Elsewhere", "cronExpression": "0 1 * * *", "enabled": true, "filePath": w + "/somewhere/prompt.md", "createdAt": 1],
             ["id": "Bad Id", "displayName": "Bad id", "cronExpression": "0 1 * * *", "enabled": true, "createdAt": 1]]
         try! JSONSerialization.data(withJSONObject: ["scheduledTasks": tasks], options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: scopeA + "/scheduled-tasks.json"))
@@ -208,6 +208,10 @@ MainActor.assumeIsolated {
           "import: the tasks are listed and left out by default; 2 can come: \(p0.taskPlan.coming.map(\.id))")
     check(p0.taskPlan.tasks.first { $0.id == "elsewhere-task" }?.why == "it names a prompt file somewhere else" && p0.taskPlan.tasks.first { $0.id == "Bad Id" }?.why == "its id isn't one the Claude window keeps",
           "import: a task whose filePath points elsewhere, and one with an id the window drops, are listed, never written")
+    let lines0 = p0.taskPlan.coming.map(\.line)
+    check(lines0 == ["Nightly digest · 0 3 * * * · in /w/project", "Weekly report · 0 9 * * 1 · in /w/project · permissions: bypassPermissions"]
+          && p0.taskPlan.risky == 1 && WindowWords.riskyWords(p0.taskPlan)?.hasPrefix("1 task runs with permission checks off or with permissions approved on the other Mac") == true,
+          "import: each task shows its schedule, its folder and a permission mode that isn't the default; one with bypassPermissions or approved permissions is flagged: \(lines0)")
     check(p0.taskSessions.count == 1 && p0.taskSessions[0].hasPrefix("Nightly digest") && !p0.entries.contains { $0.leaf == "local_\(sid(11)).json" } && !p0.transcripts.contains { $0.leaf == "\(sid(111)).jsonl" }
           && p0.entries.contains { $0.leaf == "local_\(sid(10)).json" }, "import: with the tasks left out, the session the task ran stays out, with its transcript, as before")
     let p1 = SessionsRestore.plan(tB, stB.backup, addConfig: true, addTasks: true)
@@ -434,6 +438,8 @@ MainActor.assumeIsolated {
         var list = (j["scheduledTasks"] as? [Any]) ?? []
         list.append(["id": "../../escape", "displayName": "Climb", "enabled": true])
         list.append(["id": "outside-path", "displayName": "Outside", "enabled": true, "filePath": "/private/tmp/w-escape/SKILL.md"])
+        list.append(["id": "number-path", "displayName": "Number path", "enabled": true, "filePath": 5])
+        list.append(["id": "no-path", "displayName": "No path", "enabled": true])
         list.append("not an object")
         list.append(["displayName": "No id", "enabled": true])
         j["scheduledTasks"] = list
@@ -446,6 +452,8 @@ MainActor.assumeIsolated {
         let (tG, dG, cG) = target("g")
         let stG = try! SessionsImport.materialize(oc, part: oc.parts[0], target: "g")
         let pG = SessionsRestore.plan(tG, stG.backup, addTasks: true)
+        check(pG.taskPlan.tasks.first { $0.id == "number-path" }?.why == "it doesn't record its prompt file the way the window does" && pG.taskPlan.tasks.first { $0.id == "no-path" }?.why == "it doesn't record its prompt file the way the window does",
+              "hostile: a task whose filePath isn't a string, or that has none, isn't added (listed)")
         check(pG.taskPlan.tasks.first { $0.id.contains("escape") }?.why == "its id isn't one the Claude window keeps" && pG.taskPlan.tasks.first { $0.id == "outside-path" }?.why != nil
               && pG.taskPlan.coming.map(\.id) == ["nightly-digest", "weekly-report"], "hostile: a climbing id and a filePath outside are listed and not added: \(pG.taskPlan.tasks.map { "\($0.id):\($0.why ?? "ok")" })")
         let bG = try! SessionsImport.commit(stG)

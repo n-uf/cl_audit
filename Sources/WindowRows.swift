@@ -114,9 +114,17 @@ enum WindowWords {
     }
 
     /// The tasks that don't come, with why, and (a task file here) the ones it lacks.
+    /// The tasks that come with permission checks off or with permissions approved on the other Mac: said in the row's words.
+    static func riskyWords(_ tp: SessionsRestore.TaskPlan) -> String? {
+        let k = tp.risky
+        guard k > 0 else { return nil }
+        return "\(n(k, "task runs", "tasks run")) with permission checks off or with permissions approved on the other Mac (see the list): look at \(k == 1 ? "it" : "each") before you turn \(k == 1 ? "it" : "them") on."
+    }
+
     static func taskLines(_ tp: SessionsRestore.TaskPlan) -> [String] {
         // (a task file that is here, or none can be written: no task is listed as if it came)
-        var out = tp.tasks.compactMap { $0.why == nil ? (tp.status == .new ? $0.name : nil) : tp.imported ? "\($0.name): not added, \($0.why!)" : "\($0.name): \($0.why!)" }
+        // each with its schedule, folder and permission mode: what turning it on would run
+        var out = tp.tasks.compactMap { $0.why == nil ? (tp.status == .new ? $0.line : nil) : tp.imported ? "\($0.name): not added, \($0.why!)" : "\($0.line): \($0.why!)" }
         if tp.status == .here, !tp.lacking.isEmpty { out.append("Not in the task file here (it stays): " + tp.lacking.prefix(10).joined(separator: ", ")) }
         return out
     }
@@ -194,6 +202,7 @@ struct TasksRow: View {
                             .faceMenuFill()
                         }
                         if imported, !undone, tp.status == .new, !tp.coming.isEmpty { t.small((tp.leftOut ? "If added: " : "") + WindowWords.turnOn(entry.windowWords)) }
+                        if imported, !undone, tp.status == .new, let w = WindowWords.riskyWords(tp) { t.small(w, color: face.caution) }
                     }
                     let lines = WindowWords.taskLines(tp)
                     if !undone, !lines.isEmpty {
