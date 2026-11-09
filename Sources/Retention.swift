@@ -138,8 +138,10 @@ struct Retention: Equatable {
     /// the user's own settings.json. Only a note: the counts and Keep for are as if the clean-up ran.
     var skipNote: String? {
         switch skipped {
-        case .key(let k)?: return "Claude Code 2.1.318 skips its clean-up while \(k) in settings.json isn't a valid number; fix it and these would be deleted."
-        case .unreadable?: return "Claude Code 2.1.318 skips its clean-up while settings.json can't be read; fix it and these would be deleted."
+        case .key(let k)?:
+            let counts = k == CodeCleanup.key ? "cl_audit counts with its default, 30 days." : "cl_audit counts as if it weren't set."
+            return "Until \(k) in settings.json is a valid number, Claude Code (2.1.318) skips its clean-up; \(counts)"
+        case .unreadable?: return "Until settings.json can be read, Claude Code (2.1.318) skips its clean-up; cl_audit counts with Claude Code's defaults."
         case nil: return nil
         }
     }
@@ -151,7 +153,7 @@ struct Retention: Equatable {
         if managed, let days { return "Your organisation's managed settings make Claude Code delete sessions \(days) days after their last use." }
         guard let days else { return "How long Claude Code keeps sessions isn't known: cleanupPeriodDays in settings.json can't be read." }
         if managedError { return "Claude Code deletes sessions \(days) days after their last use, the Claude window's too: there is an error in your organisation's managed settings." }
-        if helper { return "Your organisation's managed settings may set how long Claude Code keeps sessions (a policy helper computes them), so cl_audit counts every session, the Claude window's too, as deleted \(days) days after its last use." }
+        if helper { return "Your organisation may set how long Claude Code keeps sessions with a program cl_audit can't see, so every session, the Claude window's too, is counted as deleted \(days) days after its last use." }
         if let desktopDays { return "Claude Code deletes terminal sessions \(days) days after their last use and ones from the Claude window \(max(desktopDays, days)) days after." }
         return "Claude Code deletes terminal sessions \(days) days after their last use; ones from the Claude window it keeps (Claude Code 2.1.248 and later)."
     }
@@ -165,7 +167,7 @@ struct Retention: Equatable {
             return "An error in your organisation's managed settings makes Claude Code delete the Claude window's sessions after \(days) days too, like the others."
         }
         if helper, let days {
-            return "Your organisation's managed settings may set this for every session, the Claude window's too (a policy helper computes them); cl_audit counts with \(days) days for all of them."
+            return "Your organisation may set this for every session, the Claude window's too, with a program cl_audit can't see; cl_audit counts \(days) days for all of them."
         }
         if let desktopDays, let days {
             return "Sessions from the Claude window are deleted after \(max(desktopDays, days)) days, the longer of this and desktopSessionCleanupPeriodDays (\(desktopDays))."
@@ -189,7 +191,7 @@ struct Retention: Equatable {
             return "There is an error in your organisation's managed settings, so Claude Code deletes every session after cleanupPeriodDays (\(days) days here), the Claude window's too. \(again)"
         }
         if helper, let days {
-            return "Your organisation's managed settings may set cleanupPeriodDays (a policy helper computes them), so every session older than \(days) days is counted, the Claude window's too. \(again)"
+            return "Your organisation's managed settings may set cleanupPeriodDays with a program cl_audit can't see, so every session older than \(days) days is counted, the Claude window's too. \(again)"
         }
         var s = "Claude Code deletes the transcript of a session once it is older than cleanupPeriodDays (\(file), 30 by default). \(again) "
         s += "Sessions started or last continued in the Claude window aren't counted: Claude Code keeps them at any age (2.1.248 and later)"

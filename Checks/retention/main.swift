@@ -224,7 +224,7 @@ do {
         check(r.skipped == .key("desktopSessionCleanupPeriodDays") && r.desktopDays == nil && !r.managedError && r.exempts && r.days == 30, "desktopSessionCleanupPeriodDays \(bad): Claude Code skips its clean-up (a note); counted with 30 days, no cap")
         check(fate(transcript(c, 70, win, age: 400), r) == .keep && fate(transcript(c, 71, line("cli"), age: 400), r) == .delete, "…a terminal session of 400 days is still counted as deleted, the window's kept (\(bad))")
     }
-    check(r.keptHereWords == "Claude Code deletes terminal sessions 30 days after their last use; ones from the Claude window it keeps (Claude Code 2.1.248 and later). Claude Code 2.1.318 skips its clean-up while desktopSessionCleanupPeriodDays in settings.json isn't a valid number; fix it and these would be deleted.", "Kept here: the rule, then the skip as a note: \(r.keptHereWords)")
+    check(r.keptHereWords == "Claude Code deletes terminal sessions 30 days after their last use; ones from the Claude window it keeps (Claude Code 2.1.248 and later). Until desktopSessionCleanupPeriodDays in settings.json is a valid number, Claude Code (2.1.318) skips its clean-up; cl_audit counts as if it weren't set.", "Kept here: the rule, then the skip as a note: \(r.keptHereWords)")
     check(!r.keptHereWords.contains("doesn't delete any session"), "never 'doesn't delete any session'")
     check(r.keepForNote == nil && r.menuDays == 30, "Keep for: the menu shows 30 (cleanupPeriodDays is fine), no extra note")
     // huge numbers are valid to Claude Code (zod int(): any safe integer): no skip
@@ -255,11 +255,12 @@ do {
         check(r.days == 30 && r.menuDays == nil && r.problem != nil && r.skipped == .key("cleanupPeriodDays") && fate(transcript(c, 12, line("cli"), age: 400), r) == .delete,
               "cleanupPeriodDays \(bad): skipped as a note; counted as not set (30 days: a 400-day terminal session is deleted), the Keep for menu shows unknown")
     }
-    check(r.keptHereWords.hasSuffix("Claude Code 2.1.318 skips its clean-up while cleanupPeriodDays in settings.json isn't a valid number; fix it and these would be deleted."), "…worded: \(r.keptHereWords)")
+    check(r.keptHereWords.hasSuffix("Until cleanupPeriodDays in settings.json is a valid number, Claude Code (2.1.318) skips its clean-up; cl_audit counts with its default, 30 days."), "…worded: \(r.keptHereWords)")
+    check(r.problem == "cleanupPeriodDays in settings.json isn't a valid number.", "the Keep for menu's red line: \(r.problem ?? "none")")
     settings(c, "{ not json")
     r = Retention.read(codeDir: p(c))
     check(r.days == 30 && r.menuDays == nil && r.skipped == .unreadable && fate(transcript(c, 13, line("cli"), age: 400), r) == .delete, "a settings.json that isn't JSON: skipped as a note, counted with 30 days")
-    check(r.keptHereWords == "Claude Code deletes terminal sessions 30 days after their last use; ones from the Claude window it keeps (Claude Code 2.1.248 and later). Claude Code 2.1.318 skips its clean-up while settings.json can't be read; fix it and these would be deleted.", "…worded: \(r.keptHereWords)")
+    check(r.keptHereWords == "Claude Code deletes terminal sessions 30 days after their last use; ones from the Claude window it keeps (Claude Code 2.1.248 and later). Until settings.json can be read, Claude Code (2.1.318) skips its clean-up; cl_audit counts with Claude Code's defaults.", "…worded: \(r.keptHereWords)")
     // a settings.json over 2 MiB: can't be read (bounded), a note, counted with 30 days
     settings(c, "{\"cleanupPeriodDays\":4,\"pad\":\"\(String(repeating: "x", count: 3 * 1024 * 1024))\"}")
     r = Retention.read(codeDir: p(c))
@@ -575,13 +576,13 @@ do {
     check(Retention(days: 20, managed: true).keptHereWords == "Your organisation's managed settings make Claude Code delete sessions 20 days after their last use.", "Kept here, managed")
     check(Retention(days: 30, managedError: true).keptHereWords == "Claude Code deletes sessions 30 days after their last use, the Claude window's too: there is an error in your organisation's managed settings.", "Kept here, managed error")
     check(Retention(days: nil).keptHereWords == "How long Claude Code keeps sessions isn't known: cleanupPeriodDays in settings.json can't be read.", "Kept here, unknown")
-    check(Retention(days: 30, skipped: .key("cleanupPeriodDays")).keptHereWords == "Claude Code deletes terminal sessions 30 days after their last use; ones from the Claude window it keeps (Claude Code 2.1.248 and later). Claude Code 2.1.318 skips its clean-up while cleanupPeriodDays in settings.json isn't a valid number; fix it and these would be deleted.", "Kept here, skipped (days key): the rule, then the note")
+    check(Retention(days: 30, skipped: .key("cleanupPeriodDays")).keptHereWords == "Claude Code deletes terminal sessions 30 days after their last use; ones from the Claude window it keeps (Claude Code 2.1.248 and later). Until cleanupPeriodDays in settings.json is a valid number, Claude Code (2.1.318) skips its clean-up; cl_audit counts with its default, 30 days.", "Kept here, skipped (days key): the rule, then the note")
     check(Retention(days: 30, desktopDays: 90, skipped: .unreadable).keepForNote == "Sessions from the Claude window are deleted after 90 days, the longer of this and desktopSessionCleanupPeriodDays (90).", "a skip doesn't hide the Keep for note")
-    check(Retention(days: 30, managedError: true, skipped: .key("cleanupPeriodDays")).wouldDeleteInfo(file: file, comes: "comes back").hasSuffix("(30 days here), the Claude window's too. A transcript comes back with its real age, so one older than that would be deleted again. Claude Code 2.1.318 skips its clean-up while cleanupPeriodDays in settings.json isn't a valid number; fix it and these would be deleted."), "a managed error and a skip: both said")
+    check(Retention(days: 30, managedError: true, skipped: .key("cleanupPeriodDays")).wouldDeleteInfo(file: file, comes: "comes back").hasSuffix("(30 days here), the Claude window's too. A transcript comes back with its real age, so one older than that would be deleted again. Until cleanupPeriodDays in settings.json is a valid number, Claude Code (2.1.318) skips its clean-up; cl_audit counts with its default, 30 days."), "a managed error and a skip: both said")
     var helperR = Retention(days: 30); helperR.helper = true
-    check(helperR.keptHereWords == "Your organisation's managed settings may set how long Claude Code keeps sessions (a policy helper computes them), so cl_audit counts every session, the Claude window's too, as deleted 30 days after its last use.", "Kept here, a policy helper")
-    check(helperR.keepForNote == "Your organisation's managed settings may set this for every session, the Claude window's too (a policy helper computes them); cl_audit counts with 30 days for all of them.", "the policy helper's Keep for note")
-    check(helperR.wouldDeleteInfo(file: file, comes: "comes in") == "Your organisation's managed settings may set cleanupPeriodDays (a policy helper computes them), so every session older than 30 days is counted, the Claude window's too. A transcript comes in with its real age, so one older than that would be deleted again.", "the policy helper's Would be deleted info")
+    check(helperR.keptHereWords == "Your organisation may set how long Claude Code keeps sessions with a program cl_audit can't see, so every session, the Claude window's too, is counted as deleted 30 days after its last use.", "Kept here, a policy helper")
+    check(helperR.keepForNote == "Your organisation may set this for every session, the Claude window's too, with a program cl_audit can't see; cl_audit counts 30 days for all of them.", "the policy helper's Keep for note")
+    check(helperR.wouldDeleteInfo(file: file, comes: "comes in") == "Your organisation's managed settings may set cleanupPeriodDays with a program cl_audit can't see, so every session older than 30 days is counted, the Claude window's too. A transcript comes in with its real age, so one older than that would be deleted again.", "the policy helper's Would be deleted info")
     check(Retention(days: 30).keepForNote == nil, "no note under Keep for when the window's sessions simply stay")
     check(Retention(days: 30, desktopDays: 90).keepForNote == "Sessions from the Claude window are deleted after 90 days, the longer of this and desktopSessionCleanupPeriodDays (90).", "the cap's note")
     check(Retention(days: 20, managed: true).keepForNote == "Your organisation's managed settings set 20 days for every session, the Claude window's too. Changing it here wouldn't change that.", "the managed note")
@@ -631,7 +632,7 @@ MainActor.assumeIsolated {
         let planK = SessionsRestore.plan(tgt, backup, now: now)
         check(planK.retention.skipped == skip && planK.old == 4 && planK.showsWouldDelete && planK.canKeepLonger && planK.wouldDeleteWords == plan.wouldDeleteWords,
               "plan with \(what): skipped as a note, the row shows the same counts and Keep for 90 days: \(planK.tally)")
-        check(planK.retention.wouldDeleteInfo(file: "~/.claude-rt/settings.json", comes: "comes back").hasSuffix("fix it and these would be deleted."), "…the info ends with the note (\(what))")
+        check(planK.retention.wouldDeleteInfo(file: "~/.claude-rt/settings.json", comes: "comes back").hasSuffix(planK.retention.skipNote ?? "-") && planK.retention.skipNote?.hasPrefix("Until ") == true, "…the info ends with the note (\(what))")
     }
     try? fm.removeItem(atPath: code + "/settings.json")
     // with Keep for 90 days (settings.json) the 40-day one is no longer counted

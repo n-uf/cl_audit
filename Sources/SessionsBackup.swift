@@ -739,7 +739,7 @@ enum CodeCleanup {
         }
         if let v = j[key] {
             s.daysPresent = true
-            if let n = whole(v) { s.days = n } else { s.daysInvalid = true; s.problem = "cleanupPeriodDays in settings.json isn't a whole number of days." }
+            if let n = whole(v) { s.days = n } else { s.daysInvalid = true; s.problem = "cleanupPeriodDays in settings.json isn't a valid number." }
         }
         if let v = j[desktopKey] { s.desktopPresent = true; if let n = whole(v, zero: true) { s.desktop = n } else { s.desktopInvalid = true } }
         return s
