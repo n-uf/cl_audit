@@ -193,12 +193,11 @@ final class QuickChatProcess {
         process.standardError = errors
         try process.run()
         let out = output.fileHandleForReading, err = errors.fileHandleForReading
-        // stdout: whole lines, parsed off the main thread, delivered on it; at its end, the process's exit
+        // stdout: whole lines, parsed off the main thread, delivered on it; at its end, the process's exit. Read with
+        // read(2), which reports a failed read as an error rather than raising
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             var buffer = Data()
-            while true {
-                let chunk = out.availableData
-                if chunk.isEmpty { break }
+            while let chunk = Self.read(out) {
                 buffer.append(chunk)
                 while let nl = buffer.firstIndex(of: 0x0A) {
                     let line = buffer[buffer.startIndex..<nl]
@@ -220,15 +219,24 @@ final class QuickChatProcess {
         }
         // stderr: only its last 4 KB is kept, for "what happened"
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            while true {
-                let chunk = err.availableData
-                if chunk.isEmpty { break }
+            while let chunk = Self.read(err) {
                 guard let self else { return }
                 self.lock.lock()
                 self.errTail.append(chunk)
                 if self.errTail.count > 4096 { self.errTail = self.errTail.suffix(4096) }
                 self.lock.unlock()
             }
+        }
+    }
+
+    /// What's there to read, as soon as some is; nil at the end or on an error.
+    private static func read(_ h: FileHandle) -> Data? {
+        var buf = [UInt8](repeating: 0, count: 65536)
+        while true {
+            let n = Darwin.read(h.fileDescriptor, &buf, buf.count)
+            if n > 0 { return Data(buf[0..<n]) }
+            if n < 0, errno == EINTR { continue }
+            return nil
         }
     }
 
@@ -247,9 +255,10 @@ final class QuickChatProcess {
         guard !already, process.isRunning else { return }
         try? input.fileHandleForWriting.close()
         process.terminate()
-        let pid = process.processIdentifier
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) { [weak self] in
-            if self?.process.isRunning == true { kill(pid, SIGKILL) }
+        // the fallback holds the process itself: the chat lets go of this object right after Stop
+        let p = process
+        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
+            if p.isRunning { kill(p.processIdentifier, SIGKILL) }
         }
     }
 
