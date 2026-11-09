@@ -1,0 +1,418 @@
+import AppKit
+import SwiftUI
+// Stage B1 renders: Settings ▸ a profile ▸ Sessions card, General ▸ Backups, the Switch page's Backup card.
+// Sample data only (example.com), a throwaway home, fake profiles, sign-ins, sessions and transcripts.
+
+setbuf(stdout, nil)
+BackupPrefs.store = MemoryPrefs()          // never the real ~/Library/Preferences
+let out = CommandLine.arguments[1]
+let home = NSHomeDirectory()
+guard home.hasSuffix("/Checks/.work/render/pages/home"), expand("~") == home else { print("refusing: home is \(home)"); exit(1) }
+let fm = FileManager.default
+SettingsModel.followsDock = false
+RunsMonitor.preview = []
+
+func uuid(_ n: Int) -> String { "00000000-0000-4000-8000-" + String(format: "%012d", n) }
+func seat(_ n: Int, _ email: String) -> Seat { Seat(account: uuid(n), organization: uuid(n + 100), email: email) }
+let u1 = seat(1, "ultra-1@example.com"), u2 = seat(2, "ultra-2@example.com"), u3 = seat(3, "ultra-3@example.com")
+func sign(_ dir: String, _ s: Seat) {
+    let d = expand(dir); try? fm.createDirectory(atPath: d, withIntermediateDirectories: true)
+    let o: [String: Any] = ["accountUuid": s.account, "organizationUuid": s.organization!, "emailAddress": s.email!,
+                            "organizationType": "claude_max", "planDisplayName": "Ultra"]
+    try! JSONSerialization.data(withJSONObject: ["oauthAccount": o]).write(to: URL(fileURLWithPath: dir == "~/.claude" ? expand("~/.claude.json") : d + "/.claude.json"))
+}
+sign("~/.claude", u1); sign("~/.claude-ultra-2", u2); sign("~/.claude-ultra-3", u3)
+
+// the usual Claude app's folder: signed in to ultra-1
+let wd = expand("~/Library/Application Support/Claude-main")   // the profile's own window data: the real Claude app is not it
+let odir = "\(wd)/claude-code-sessions/\(u1.account)/\(u1.organization!)"
+let odir2 = "\(wd)/claude-code-sessions/\(u2.account)/\(u2.organization!)"
+try! fm.createDirectory(atPath: odir, withIntermediateDirectories: true)
+try! fm.createDirectory(atPath: odir2, withIntermediateDirectories: true)
+func addEntries(_ from: Int, _ to: Int, archivedBelow: Int) {
+    for i in from..<to { fm.createFile(atPath: "\(odir)/local_\(uuid(1000 + i)).json", contents: Data((i < archivedBelow ? #"{"isArchived":true}"# : #"{"isArchived":false}"#).utf8)) }
+}
+func sparse(_ path: String, _ mb: Int, daysAgo: Int) {
+    try? fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+    fm.createFile(atPath: path, contents: Data(#"{"type":"user"}"#.utf8))
+    let h = FileHandle(forWritingAtPath: path)!; try! h.truncate(atOffset: UInt64(mb) * 1_048_576); try! h.close()
+    try! fm.setAttributes([.modificationDate: Date().addingTimeInterval(-Double(daysAgo) * 86400)], ofItemAtPath: path)
+}
+func addTranscripts(_ from: Int, _ to: Int) {
+    for i in from..<to { sparse(expand("~/.claude/projects/-Users-me-proj\(i % 3)/\(uuid(2000 + i)).jsonl"), 2 + (i * 7) % 38, daysAgo: i == 0 ? 84 : 1 + (i * 3) % 40) }
+}
+let scope = "\(u1.account)/\(u1.organization!)"
+func writeWindow(tasks: Int) {
+    fm.createFile(atPath: "\(odir)/scheduled-tasks.json", contents: Data(("{\"scheduledTasks\":[" + (0..<tasks).map { "{\"id\":\"t\($0)\"}" }.joined(separator: ",") + "]}").utf8))
+    let prefs: [String: Any] = ["preferences": ["epitaxyPrefs": [
+        "dframe-code-sections": [scope: ["sections": [["shown": true], ["shown": true]]]],
+        "dframe-group-scopes": [scope: ["groups": [["id": "1"], ["id": "2"]]]]]]]
+    try! JSONSerialization.data(withJSONObject: prefs).write(to: URL(fileURLWithPath: "\(wd)/claude_desktop_config.json"))
+}
+try! JSONSerialization.data(withJSONObject: ["lastKnownAccountUuid": u1.account]).write(to: URL(fileURLWithPath: "\(wd)/config.json"))
+for i in 0..<4 { fm.createFile(atPath: "\(odir2)/local_\(uuid(1500 + i)).json", contents: Data(#"{"isArchived":false}"#.utf8)) }
+
+try! fm.createDirectory(at: Store.statusFolder, withIntermediateDirectories: true)
+func status(_ id: String, _ email: String, week: Double, fable: Double, resetsIn: Double) {
+    var st = IconStatus(state: "ok"); st.loginEmail = email; st.expectedEmail = email; st.updatedAt = Date(); st.plan = "Ultra"
+    st.weekly = week; st.weeklyResets = Date().addingTimeInterval(resetsIn); st.noFiveHour = true
+    st.scoped = [ScopedLimit(name: "Fable", percent: fable, resets: Date().addingTimeInterval(resetsIn))]
+    let e = JSONEncoder(); e.dateEncodingStrategy = .secondsSince1970
+    try! e.encode(st).write(to: Store.statusFolder.appendingPathComponent("\(id).json"))
+}
+status("main", u1.email!, week: 94, fable: 60, resetsIn: 7 * 3600)
+status("main~k2", u2.email!, week: 12, fable: 3, resetsIn: 4 * 86400)
+status("main~k3", u3.email!, week: 40, fable: 20, resetsIn: 3 * 86400)
+
+func fixPatch(_ m: SessionsBackup.Manifest, seconds: Double) {   // made-up duration, in our own throwaway manifest
+    let f = SessionsBackup.folder(profile: m.profile, place: BackupPrefs.placeURL).appendingPathComponent("\(m.id)/backup.json")
+    var j = try! JSONSerialization.jsonObject(with: Data(contentsOf: f)) as! [String: Any]
+    j["seconds"] = seconds
+    try! JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted]).write(to: f)
+}
+
+@MainActor func snapshot(_ v: some View, _ name: String, _ w: CGFloat, _ h: CGFloat = 3600) {
+    if ProcessInfo.processInfo.environment["B2_ONLY"] != nil, !name.hasPrefix("6") { return }      // stage B2 renders only
+    if ProcessInfo.processInfo.environment["E_ONLY"] != nil, !name.hasPrefix("7") { return }       // stage E renders only
+    _ = NSApplication.shared
+    let host = NSHostingView(rootView: v)
+    host.frame = NSRect(x: 0, y: 0, width: w, height: h)
+    let win = NSWindow(contentRect: host.frame, styleMask: .borderless, backing: .buffered, defer: false)
+    win.contentView = host
+    host.layoutSubtreeIfNeeded()
+    RunLoop.main.run(until: Date().addingTimeInterval(2.5))
+    guard let rep = host.bitmapImageRepForCachingDisplay(in: host.bounds) else { return }
+    host.cacheDisplay(in: host.bounds, to: rep)
+    try? rep.representation(using: .png, properties: [:])?.write(to: URL(fileURLWithPath: out + "/\(name).png"))
+    print(name)
+}
+
+MainActor.assumeIsolated {
+    var main = AccountEntry(id: "main", name: "Claude Main", label: "MAIN", configDir: "~/.claude"); main.seat = u1
+    main.desktop = .separate; main.desktopDataDir = "~/Library/Application Support/Claude-main"
+    let k2 = StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-ultra-2", id: "k2")
+    let k3 = StandbyAccount(email: u3.email!, seat: u3, configDir: "~/.claude-ultra-3", id: "k3")
+    main.standby = [k2, k3]
+    var empty = main; empty.id = "nobackups"      // the same profile, but no backup of it yet
+    try! JSONEncoder().encode(ConfigFile(accounts: [main])).write(to: Store.configURL)
+    let model = SettingsModel()
+    model.accounts = [main]
+
+    // ---- the backups: an older one, one by Back up now, one made by a switch
+    let src = SessionsBackup.Source(main)
+    let place = BackupPrefs.placeURL
+    let now = Date()
+    addEntries(0, 22, archivedBelow: 6); addTranscripts(0, 19); writeWindow(tasks: 2)
+    let mOld = try! SessionsBackup.make(src, kind: .manual, place: place, now: now.addingTimeInterval(-20 * 86400)); fixPatch(mOld, seconds: 2)
+    addEntries(22, 41, archivedBelow: 9); addTranscripts(19, 37); writeWindow(tasks: 3)
+    let mMan = try! SessionsBackup.make(src, kind: .manual, place: place, now: now.addingTimeInterval(-2 * 86400 - 3600)); fixPatch(mMan, seconds: 3)
+    let rid = SessionsBackup.newID(now.addingTimeInterval(-86400)) + "-main"
+    var rc = SwitchReceipt(id: rid, profile: "main", standby: "k2", dataDir: wd, from: SeatID(u1), to: SeatID(u2), started: now.addingTimeInterval(-86400))
+    let mSw = try! SessionsBackup.make(src, kind: .beforeSwitch(rid), transcripts: true, receipt: rc, place: place, now: now.addingTimeInterval(-86400 - 7200)); fixPatch(mSw, seconds: 4)
+    rc.backup = mSw.id; rc.backupPlace = place.path
+    rc.steps = (0..<24).map { _ in SwitchReceipt.Step(kind: .entry, path: "/x", sha: nil, parked: "/p", original: "/o", done: true) }
+    var saved = rc; saved.linked = now.addingTimeInterval(-86400 + 600)      // a switch that finished: not "stopped half way"
+    try! SwitchEngine.save(saved)
+    print("backups:", mOld.id, mMan.id, mSw.id)
+
+    let bgDark = Color(white: 0.1), bgLight = Color(white: 0.84)
+    @MainActor func framed(_ v: some View, _ f: Face, _ w: CGFloat, column: CGFloat? = nil) -> some View {
+        let face = FaceTheme.of(f)
+        return v.environment(\.settingsColumnWidth, column ?? w)
+            .frame(width: w).padding(16)
+            .background(face.light ? bgLight : bgDark)
+            .environment(\.face, face).environment(\.colorScheme, face.light ? .light : .dark)
+    }
+    let widths: [(String, CGFloat)] = [("w460", 460), ("w340", 340)]
+
+    // 1. Sessions card with 3 backups; 2. with none
+    for f in [Face.std, .silver] { for (wn, w) in widths {
+        snapshot(framed(SessionsCard(entry: main, model: model), f, w), "1-sessions-3-backups-\(f.rawValue)-\(wn)", w + 32)
+        snapshot(framed(SessionsCard(entry: empty, model: model), f, w), "2-sessions-none-\(f.rawValue)-\(wn)", w + 32)
+    } }
+
+    // 3. General: the whole column (cropped later): default place, then a custom one
+    for f in [Face.std, .silver] { for (wn, w) in widths {
+        snapshot(framed(DashboardSettings(width: w), f, w), "3a-general-default-\(f.rawValue)-\(wn)", w + 32, 4200)
+    } }
+    BackupPrefs.shared.place = "~/Documents/Claude backups/cl_audit"
+    for f in [Face.std, .silver] { for (wn, w) in widths {
+        snapshot(framed(DashboardSettings(width: w), f, w), "3b-general-custom-\(f.rawValue)-\(wn)", w + 32, 4200)
+    } }
+    BackupPrefs.shared.place = ""
+
+    // 4./5. the Switch page
+    let r = model.runner(main, k2)
+    @MainActor func page(_ e: AccountEntry, _ name: String) {
+        // the whole page as the app lays it out: two columns of ~349 pt (a 740 pt window) and two of 460 pt
+        for f in [Face.std, .silver] { for (wn, w) in widths + [("page708", 708), ("page1248", 1248)] {
+            snapshot(framed(SwitchPage(entry: e, standby: k2, model: model, runner: r, width: w), f, w), "\(name)-\(f.rawValue)-\(wn)", w + 32, 4200)
+        } }
+    }
+    r.preview(.ready, moves: true)
+    page(main, "4-switch-before-move")
+    r.preview(.moving, receipt: nil, moves: true)
+    page(main, "5a-switch-making-backup")
+    r.preview(.moving, receipt: nil, moves: true, backup: SwitchRunner.BackupRef(id: mSw.id, place: place.path))
+    page(main, "5a2-switch-backup-reported")
+    r.preview(.failed("The backup of the sessions couldn't be made (couldn't write in ~/Backups). Nothing moved. Backups go to ~/Backups; General ▸ Backups changes that."),
+              receipt: nil, moves: true, failedStep: 1, backupFailed: true)
+    page(main, "5a3-switch-backup-failed")
+    r.preview(.moving, receipt: rc, moves: true)
+    page(main, "5b-switch-moving")
+    let after = FolderRules.completeSwitch("main", to: "k2", in: [main])![0]
+    model.accounts = [after]
+    var linked = rc; linked.linked = Date()
+    r.preview(.done, receipt: linked, sidebarOpened: true, moves: true, codeSeen: "ultra-2", windowSeen: "ultra-2", codeOn: true, windowOn: true)
+    page(after, "5c-switch-done")
+
+    // ================================================================ stage B2: the Restore page, Undo this switch
+    SessionsRestore.runningSessions = { [uuid(2000 + 25).lowercased()] }
+    let b2Now = Date()
+    // the live state moves on from the backup mSw: 4 entries and 13 transcripts gone, 3 entries changed, 6 made after, 1 deleted
+    for i in 30..<34 { try? fm.removeItem(atPath: "\(odir)/local_\(uuid(1000 + i)).json") }
+    for i in 20..<33 where i != 25 { try? fm.removeItem(atPath: expand("~/.claude/projects/-Users-me-proj\(i % 3)/\(uuid(2000 + i)).jsonl")) }
+    try? fm.removeItem(atPath: expand("~/.claude/projects/-Users-me-proj0/\(uuid(2000)).jsonl"))
+    for i in 10..<13 { fm.createFile(atPath: "\(odir)/local_\(uuid(1000 + i)).json", contents: Data(#"{"isArchived":false,"edited":true}"#.utf8)) }
+    for k in 0..<6 { fm.createFile(atPath: "\(odir2)/local_\(uuid(3000 + k)).json", contents: Data(#"{"isArchived":false}"#.utf8)) }
+    try? fm.removeItem(atPath: "\(odir)/local_\(uuid(1036)).json"); fm.createFile(atPath: "\(odir2)/deleted_\(uuid(1036))", contents: Data())
+    let backupRef = SessionsRestore.Backup(profile: "main", id: mSw.id, place: place)
+    var plan = SessionsRestore.plan(SessionsRestore.Target(after), backupRef)
+    let sidebarSessions = plan.entries.prefix(3).map { "local_" + String($0.leaf.dropFirst(6).dropLast(5)) }
+    plan.sidebar = SidebarPlan(groups: [SidebarPlan.Group(id: "cg-1", name: "Work", sort: nil, sessions: Array(sidebarSessions.prefix(2))),
+                                        SidebarPlan.Group(id: "cg-2", name: "Notes", sort: nil, sessions: Array(sidebarSessions.suffix(1)))],
+                               pinned: [sidebarSessions[0]], restored: true)
+    plan.partial = ["-Users-me-proj1/\(uuid(2013)).jsonl"]            // a copy a crash cut short (the Partial copy row)
+    print("plan:", plan.entries.count, "entries", plan.transcripts.count, "transcripts", plan.backEntries, "back", plan.changed.count, "changed", plan.inUse.count, "in use", plan.old, "old", plan.madeAfter, "after", plan.deletedSince.count, "deleted", plan.refusal ?? "")
+    let rkey = RestoreKey(profile: "main", backup: mSw.id, place: place.path)
+    let rrun = model.restoreRunner(rkey)
+    @MainActor func restorePage(_ name: String) {
+        for f in [Face.std, .silver] { for (wn, w) in [("page708", CGFloat(708)), ("page1248", CGFloat(1248))] {
+            snapshot(framed(RestorePage(entry: after, key: rkey, model: model, runner: rrun, width: w), f, w), "\(name)-\(f.rawValue)-\(wn)", w + 32, 3000)
+        } }
+    }
+    rrun.preview(.ready, plan: plan)
+    restorePage("6a-restore-preview")
+    let planN = plan.count
+    rrun.preview(.writing, plan: plan, receipt: nil, progress: (52, 86))
+    restorePage("6b-restore-restoring")
+    var rcpt = SessionsRestore.Receipt(id: SessionsRestore.receiptID(b2Now, "main"), profile: "main", dataDir: wd, codeDir: expand("~/.claude"), backup: mSw.id,
+                                       backupPlace: place.path, target: SeatID(u2), started: b2Now, planned: 86, finished: b2Now)
+    rcpt.steps = (0..<86).map { SessionsRestore.Receipt.Step(kind: .entry, path: "/x/\($0)", sha: "x", bytes: 1, done: true) }
+    rcpt.changedCount = plan.changed.count; rcpt.changed = plan.changed; rcpt.inUseCount = plan.inUse.count; rcpt.inUse = plan.inUse; rcpt.sidebar = plan.sidebar
+    rrun.preview(.done, plan: plan, receipt: rcpt, progress: (86, 86))
+    restorePage("6c-restore-restored")
+    rrun.preview(.stopped("Stopped by you. What is back is kept."), plan: plan, receipt: { var r = rcpt; r.finished = nil; r.stopped = "Stopped by you. What is back is kept."; r.steps = Array(r.steps.prefix(52)); return r }(), progress: (52, 86))
+    restorePage("6d-restore-stopped")
+    rrun.preview(.ready, plan: plan, notYet: RestoreRunner.NotYet(title: "A switch of Claude Main is unfinished",
+        words: "A switch of this profile stopped half way on 5 Nov 18:40. Undo it first: its receipt puts back exactly what it moved; then restore if anything is still missing.", switchKey: "main~k2"))
+    restorePage("6e-restore-not-yet")
+    var refused = plan; refused.refusal = "A file in the backup isn't a plain file with one link, or isn't there (local_x.json). Nothing is restored from it."
+    rrun.preview(.ready, plan: refused)
+    restorePage("6f-restore-refused")
+    _ = planN
+    rrun.preview(.undoing, plan: plan, receipt: rcpt, progress: (86, 86))
+    restorePage("6i-restore-undoing")
+    var partly = rcpt; partly.undoLeft = 2
+    rrun.preview(.done, plan: plan, receipt: partly, progress: (86, 86))
+    restorePage("6k-restore-partly-undone")
+
+    // a backup a receipt names in another place is listed in the Sessions card with where it is
+    let placeOld = URL(fileURLWithPath: expand("~/Old/backups"))
+    let mOther = try! SessionsBackup.make(src, kind: .manual, window: false, transcripts: false, place: placeOld, now: b2Now.addingTimeInterval(-3 * 86400))
+    var rOther = SwitchReceipt(id: SwitchEngine.receiptID(b2Now.addingTimeInterval(-3 * 86400), "main"), profile: "main", standby: "k3", dataDir: wd,
+                               from: SeatID(u1), to: SeatID(u3), started: b2Now.addingTimeInterval(-3 * 86400))
+    rOther.backup = mOther.id; rOther.backupPlace = placeOld.path; rOther.linked = b2Now.addingTimeInterval(-3 * 86400 + 600)
+    try! SwitchEngine.save(rOther)
+    for f in [Face.std, .silver] {
+        snapshot(framed(SessionsCard(entry: after, model: model), f, 460), "6j-sessions-other-place-\(f.rawValue)-w460", 492)
+    }
+
+    // Undo this switch…: the Switch page back to ultra-1, explained before it starts, and at Done
+    var back = after
+    back.standby = [StandbyAccount(email: u1.email!, seat: u1, configDir: "~/.claude-ultra-1", id: "k1")]
+    let rBack = model.runner(back, back.standby[0])
+    rBack.undoes = SwitchRunner.SwitchUndo(receipt: rid, backup: mSw.id, place: place.path)
+    rBack.preview(.ready, moves: true)
+    rBack.undoes = SwitchRunner.SwitchUndo(receipt: rid, backup: mSw.id, place: place.path)
+    @MainActor func undoPage(_ name: String) {
+        for f in [Face.std, .silver] { for (wn, w) in [("page708", CGFloat(708)), ("page1248", CGFloat(1248))] {
+            snapshot(framed(SwitchPage(entry: back, standby: back.standby[0], model: model, runner: rBack, width: w), f, w), "\(name)-\(f.rawValue)-\(wn)", w + 32, 4200)
+        } }
+    }
+    undoPage("6g-undo-switch-before")
+    var undoRc = rc; undoRc.id = SessionsBackup.newID() + "-main"; undoRc.from = SeatID(u2); undoRc.to = SeatID(u1); undoRc.linked = Date(); undoRc.backup = nil; undoRc.backupPlace = nil
+    var backNow = back; backNow.seat = u1; backNow.standby = [StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-ultra-2", id: "k2")]
+    model.accounts = [backNow]
+    rBack.preview(.done, receipt: undoRc, moves: true, codeSeen: "ultra-1", windowSeen: "ultra-1", codeOn: true, windowOn: true)
+    rBack.undoes = SwitchRunner.SwitchUndo(receipt: rid, backup: mSw.id, place: place.path)
+    @MainActor func undoDone(_ name: String) {
+        for f in [Face.std, .silver] { for (wn, w) in [("page708", CGFloat(708)), ("page1248", CGFloat(1248))] {
+            snapshot(framed(SwitchPage(entry: backNow, standby: back.standby[0], model: model, runner: rBack, width: w), f, w), "\(name)-\(f.rawValue)-\(wn)", w + 32, 4200)
+        } }
+    }
+    undoDone("6h-undo-switch-done")
+
+    // ================================================================ stage E: Export and Import
+    // Sample data only: made-up profiles "Main" (what is exported), "Work" (the file imported) and "Main" again as the target,
+    // example.com addresses, planted keys that are obviously fake.
+    setbuf(stdout, nil)
+    func settleE(_ what: String, secs: Double = 60, _ done: () -> Bool) {
+        let end = Date().addingTimeInterval(secs)
+        while !done(), Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        if !done() { print("(timed out waiting for \(what))") }
+    }
+    func exLine(_ i: Int, _ n: Int, cwd: String, extra: String = "") -> String {
+        let c = String(data: try! JSONEncoder().encode(cwd), encoding: .utf8)!
+        return "{\"type\":\"user\",\"n\":\(n),\"cwd\":\(c),\"text\":\"line \(i)-\(n) \(extra)\"}\n"
+    }
+    func exTranscript(_ i: Int, lines: Int = 3, cwd: String, extra: String = "") -> String { (1...lines).map { exLine(i, $0, cwd: cwd, extra: extra) }.joined() }
+    func putE(_ path: String, _ text: String, mb: Int = 0, daysAgo: Double = 2) {
+        try? fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        fm.createFile(atPath: path, contents: Data(text.utf8))
+        if mb > 0 { let h = FileHandle(forWritingAtPath: path)!; try! h.truncate(atOffset: UInt64(mb) * 1_048_576); try! h.close() }
+        try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-daysAgo * 86400)], ofItemAtPath: path)
+    }
+    let appCwd = expand("~/projects/app"), siteCwd = expand("~/projects/site"), infraCwd = expand("~/projects/infra-other")
+    try! fm.createDirectory(atPath: appCwd, withIntermediateDirectories: true)
+    try! fm.createDirectory(atPath: siteCwd, withIntermediateDirectories: true)
+    let ghFake = "gh\("")p_FAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE0000", pemFake = "---\("")--BEGIN RSA PRIVATE KEY-----\\nFAKEFAKEFAKE\\n-----END RSA PRIVATE KEY-----"
+
+    // Main: the profile the Export page is about. 40 sessions in three project folders, 5 holding fake keys, 2 in use.
+    let mdata = expand("~/Library/Application Support/Claude-exmain"), mcode = expand("~/.claude-exmain")
+    var inUseIDs: [String] = []
+    for k in 0..<22 { putE("\(mcode)/projects/-app/\(uuid(7000 + k)).jsonl", exTranscript(k, cwd: appCwd, extra: k == 3 || k == 9 ? ghFake : ""), mb: k < 12 ? 160 : 4) }
+    for k in 0..<12 { putE("\(mcode)/projects/-site/\(uuid(7100 + k)).jsonl", exTranscript(k, cwd: siteCwd), mb: k < 8 ? 130 : 6) }
+    for k in 0..<6 { putE("\(mcode)/projects/-infra/\(uuid(7200 + k)).jsonl", exTranscript(k, cwd: infraCwd, extra: k < 3 ? pemFake : (k == 3 ? ghFake : "")), mb: 2) }
+    putE("\(mcode)/projects/-infra/\(uuid(7205)).jsonl", exTranscript(5, cwd: infraCwd, extra: pemFake), mb: 2)
+    inUseIDs = [uuid(7001).lowercased(), uuid(7002).lowercased()]
+    let mscope = "\(mdata)/claude-code-sessions/\(u1.account)/\(u1.organization!)"
+    for k in 0..<84 { putE("\(mscope)/local_\(uuid(7300 + k)).json", k % 4 == 0 ? #"{"isArchived":true}"# : #"{"isArchived":false}"#) }
+    putE("\(mscope)/scheduled-tasks.json", "{\"scheduledTasks\":[" + (0..<12).map { "{\"id\":\"t\($0)\",\"name\":\"Task \($0)\"}" }.joined(separator: ",") + "]}")
+    var exmain = AccountEntry(id: "exmain", name: "Main", label: "MAIN", configDir: mcode); exmain.seat = u1; exmain.desktop = .separate; exmain.desktopDataDir = mdata
+
+    // Work: what gets exported to a file (small, real), and the target "Main" that imports it, with some of it already there
+    let wdata = expand("~/Library/Application Support/Claude-exwork"), wcode = expand("~/.claude-exwork")
+    let wscope = "\(wdata)/claude-code-sessions/\(u3.account)/\(u3.organization!)"
+    for k in 0..<26 { putE("\(wcode)/projects/-app/\(uuid(7500 + k)).jsonl", exTranscript(100 + k, cwd: appCwd), daysAgo: k < 4 ? 50 : 3) }
+    for k in 0..<10 { putE("\(wcode)/projects/-infra/\(uuid(7600 + k)).jsonl", exTranscript(200 + k, cwd: infraCwd), daysAgo: 3) }
+    putE("\(wcode)/projects/-app/memory/MEMORY.md", "Remember: this project prefers tabs.\n", daysAgo: 3)
+    putE("\(wcode)/projects/-app/memory/style.md", "Short sentences.\n", daysAgo: 3)
+    for k in 0..<14 { putE("\(wscope)/local_\(uuid(7700 + k)).json", #"{"sessionId":"local_\#(uuid(7700 + k))","title":"w\#(k)"\#(k >= 12 ? #","scheduledTaskId":"t1""# : "")}"#) }
+    putE("\(wscope)/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"t1","name":"Nightly digest"}]}"#)
+    var exwork = AccountEntry(id: "exwork", name: "Work", label: "WORK", configDir: wcode); exwork.seat = u3; exwork.desktop = .separate; exwork.desktopDataDir = wdata
+    let tdata = expand("~/Library/Application Support/Claude-imain"), tcode = expand("~/.claude-imain")
+    let tscope = "\(tdata)/claude-code-sessions/\(u2.account)/\(u2.organization!)"
+    try! fm.createDirectory(atPath: tscope, withIntermediateDirectories: true)
+    for k in 0..<6 { putE("\(tcode)/projects/-app/\(uuid(7500 + 4 + k)).jsonl", exTranscript(104 + k, cwd: appCwd), daysAgo: 4) }            // the same content
+    for k in 0..<2 { putE("\(tcode)/projects/-app/\(uuid(7500 + 12 + k)).jsonl", exTranscript(112 + k, lines: 5, cwd: appCwd), daysAgo: 4) }   // longer here
+    for k in 0..<3 { putE("\(tcode)/projects/-app/\(uuid(7500 + 16 + k)).jsonl", "{\"other\":\(k)}\n", daysAgo: 4) }                          // different
+    var imain = AccountEntry(id: "imain", name: "Main", label: "MAIN", configDir: tcode); imain.seat = u2; imain.desktop = .separate; imain.desktopDataDir = tdata
+
+    model.accounts = [exmain, exwork, imain]
+    SessionsRestore.runningSessions = { Set(inUseIDs) }
+    let exportsDir = expand("~/Exports")
+    try! fm.createDirectory(atPath: exportsDir, withIntermediateDirectories: true)
+
+    @MainActor func eShots<V: View>(_ name: String, _ make: (CGFloat) -> V, height: CGFloat = 3000) {
+        for f in [Face.std, .silver] { for (wn, w) in [("page708", CGFloat(708)), ("page1248", CGFloat(1248))] {
+            snapshot(framed(make(w), f, w), "\(name)-\(f.rawValue)-\(wn)", w + 32, height)
+        } }
+    }
+
+    // ---- 7a/7b the Sessions card: Export and Import rows, never used and used
+    for f in [Face.std, .silver] { for (wn, w) in [("w460", CGFloat(460)), ("w340", CGFloat(340))] {
+        snapshot(framed(SessionsCard(entry: exmain, model: model), f, w), "7a-sessions-card-never-\(f.rawValue)-\(wn)", w + 32)
+    } }
+    ExportPrefs.remember(profile: "exmain", date: Date().addingTimeInterval(-2 * 86400), bytes: 5_500_000_000)
+    var doneImport = SessionsRestore.Receipt(id: SessionsRestore.receiptID(Date().addingTimeInterval(-86400), "exmain"), profile: "exmain", dataDir: mdata, codeDir: mcode, backup: SessionsBackup.newID(),
+                                              backupPlace: BackupPrefs.placeURL.path, target: SeatID(u1), started: Date().addingTimeInterval(-86400), finished: Date().addingTimeInterval(-86400 + 60))
+    doneImport.importedFrom = "cl_audit Work 2026-10-30.zip"; doneImport.sessionsAdded = 180; doneImport.entriesAdded = 30
+    try! SessionsRestore.save(doneImport)
+    for f in [Face.std, .silver] { for (wn, w) in [("w460", CGFloat(460)), ("w340", CGFloat(340))] {
+        snapshot(framed(SessionsCard(entry: exmain, model: model), f, w), "7b-sessions-card-last-\(f.rawValue)-\(wn)", w + 32)
+    } }
+    try? fm.removeItem(at: SessionsRestore.root)
+    ExportPrefs.remember(profile: "exmain", date: Date().addingTimeInterval(-2 * 86400), bytes: 5_500_000_000)
+
+    // ---- 7c.. the Export page
+    let xr = model.exportRunner(for: "exmain")
+    xr.refresh()
+    settleE("the export preview") { xr.previews != nil }
+    print("export preview:", xr.total?.sessions ?? -1, "sessions", xr.total?.keyedSessions ?? -1, "keyed", xr.total?.inUse ?? -1, "in use", xr.total?.keyKinds ?? [:])
+    @MainActor func exportPage(_ name: String) { eShots(name, { ExportPage(entry: exmain, model: model, runner: xr, width: $0) }) }
+    exportPage("7c-export-preview-zip")
+    xr.keys = .keep
+    exportPage("7d-export-keep-image")
+    xr.password = "typed-in-a-secure-field"; xr.again = "typed-in-a-secure-field"
+    exportPage("7d2-export-keep-image-password")
+    xr.password = ""; xr.again = ""
+    xr.keys = .leaveOut
+    let oc = SessionsExport.Outcome(file: URL(fileURLWithPath: exportsDir + "/cl_audit Main 2026-11-05.zip"), bytes: 5_100_000_000,
+                                    parts: [SessionsExport.PartOutcome(name: "Main", sessions: 35, entries: 84, tasks: 12, bytes: 5_300_000_000, keysLeftOut: 5, keysKept: 0, cut: 2)])
+    xr.preview(.working("making the zip", 0.42), previews: xr.previews ?? [])
+    exportPage("7e-export-exporting")
+    xr.preview(.done(oc), previews: xr.previews ?? [])
+    exportPage("7f-export-exported")
+    xr.preview(.failed("The zip couldn't be made (No space left on device). Nothing was left behind."), previews: xr.previews ?? [])
+    exportPage("7f2-export-failed")
+
+    // ---- the Import page: Work's file, made for real
+    let exportNow = Date().addingTimeInterval(-7 * 86400)
+    let workZip = URL(fileURLWithPath: exportsDir + "/cl_audit Work 2026-10-30.zip")
+    let made = try! SessionsExport.run(SessionsExport.Job(parts: [SessionsExport.Part(profile: "exwork", name: "Work", source: SessionsBackup.Source(exwork), emails: [u3.email!])], keys: .leaveOut,
+                                                           destination: workZip, rootName: "cl_audit Work 2026-10-30", now: exportNow))
+    print("work export:", made.sessions, "sessions", SessionsBackup.sizeWords(made.bytes))
+    let ir0 = ImportRunner(profile: "imain", model: model)
+    @MainActor func importPage(_ name: String, _ r: ImportRunner) { eShots(name, { ImportPage(entry: imain, model: model, runner: r, width: $0) }) }
+    importPage("7g-import-choose", ir0)
+    let irPw = ImportRunner(profile: "imain", model: model)
+    irPw.preview(.password(nil), file: URL(fileURLWithPath: exportsDir + "/cl_audit Work 2026-10-30.dmg"))
+    importPage("7h-import-password", irPw)
+    irPw.preview(.password("That password isn't right."))
+    importPage("7h2-import-password-wrong", irPw)
+    let irRead = ImportRunner(profile: "imain", model: model)
+    irRead.preview(.opening("unpacking"), file: workZip)
+    importPage("7i-import-reading", irRead)
+    let irBad = ImportRunner(profile: "imain", model: model)
+    irBad.preview(.refused("The zip holds a link (profiles/p1/lnk); refused."), file: URL(fileURLWithPath: exportsDir + "/cl_audit Work 2026-10-30 (edited).zip"))
+    importPage("7j-import-refused", irBad)
+
+    let ir = model.importRunner(for: "imain")
+    ir.setFile(workZip)
+    settleE("the import preview") { ir.phase == .ready && ir.plan != nil && ir.counting?.notYet == nil && ir.counting?.plan != nil }
+    var anotherMac = ir.opened!; anotherMac.sameMac = false
+    let o0 = ir.opened!, s0 = ir.staged!, c0 = ir.counting!
+    ir.preview(.ready, opened: anotherMac)
+    if let p = ir.plan {
+        print("import plan: new", p.transcripts.count, "transcripts", p.entries.count, "entries; here", p.backTranscripts, "/", p.backEntries, "; grown/different", p.changed.count + p.partial.count,
+              "; tasks", p.taskSessions.count, "; folders", c0.foldersMissing, "; old", p.old, "; refusal", p.refusal ?? "none")
+    }
+    importPage("7k-import-preview", ir)
+    c0.preview(.ready, plan: c0.plan, notYet: RestoreRunner.NotYet(title: "A switch of Main is unfinished",
+        words: "A switch of this profile stopped half way on 5 Nov at 18:40. Undo it first: its receipt puts back exactly what it moved, then restore if anything's still missing.", switchKey: "imain~k2"))
+    importPage("7n-import-not-yet", ir)
+    c0.preview(.ready, plan: c0.plan, notYet: nil)
+
+    // importing: the Restore page's steps, in import words
+    let key0 = RestoreKey(profile: "imain", backup: s0.id, place: s0.stage.path, resume: "render-only")      // (its own runner: the real run below has the same backup id)
+    let irRun = ImportRunner(profile: "imain", model: model)
+    irRun.preview(.running(key0))
+    let rrMid = model.restoreRunner(key0)
+    rrMid.preview(.writing, plan: c0.plan, receipt: nil, progress: (3, 8))
+    importPage("7l-import-importing", irRun)
+    _ = o0
+
+    // the real thing: Close and import, Imported
+    ir.preview(.ready, opened: o0)
+    ir.commit()
+    guard case .running(let key) = ir.phase else { fatalError("the import didn't start") }
+    let rr = model.restoreRunner(key)
+    settleE("the import") { rr.phase == .done }
+    print("imported:", rr.receipt?.back ?? -1, "added", rr.receipt?.changedCount ?? -1, "listed", rr.receipt?.sessionsAdded ?? -1, "sessions", rr.receipt?.entriesAdded ?? -1, "entries")
+    importPage("7m-import-imported", ir)
+    rr.undo()
+    settleE("the undo") { rr.phase == .undone }
+    importPage("7o-import-undone", ir)
+}
+print("done")
