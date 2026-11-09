@@ -161,7 +161,10 @@ struct QuickChatTurn: Identifiable, Equatable {
 /// The chat's state, drawn by QuickChatViews and driven by its keys. Main thread only.
 final class QuickChatModel: ObservableObject {
     @Published var turns: [QuickChatTurn] = []
-    @Published var field = ""
+    @Published var field = "" {
+        // what you typed changed after Switch account…: it no longer goes by itself
+        didSet { if field != oldValue, !sendingWaiting { switchWait = nil } }
+    }
     /// A problem shown in the bar, before the chat has a message (Claude Code missing, no profile).
     @Published var barProblem: QuickChatProblem?
     @Published var target: QuickChatTarget?
@@ -194,8 +197,12 @@ final class QuickChatModel: ObservableObject {
     var defaults: () -> QuickChatSettings = { .init() }
     /// A limit filled during the chat: the controller looks for an account to offer.
     var limitFilled: () -> Void = {}
-    /// Switch account… was clicked with a question in the field: it goes once the switch is done.
-    private var sendAfterSwitch = false
+    /// Switch account… was clicked with a question in the field: it goes once the profile is on another account with
+    /// room, if that comes within 10 minutes and the question wasn't changed, the chat not hidden or started anew.
+    private var switchWait: (from: String?, since: Date)?
+    private var sendingWaiting = false
+    /// The account line last drawn as full: a limit that resets is drawn again even though its numbers didn't change.
+    private var drawnBlocked = false
 
     private var process: QuickChatProcess?
     private var processKey = ""
@@ -249,7 +256,7 @@ final class QuickChatModel: ObservableObject {
         field = ""
         barProblem = nil
         note = nil
-        sendAfterSwitch = false
+        switchWait = nil
         let d = defaults()
         choice = d.model; thinking = d.thinking
         focusTick += 1
@@ -262,18 +269,26 @@ final class QuickChatModel: ObservableObject {
     /// Switch account…: the Switch page with the best standby account picked. What's typed goes once it's done.
     func switchAccount() {
         guard let offer else { return }
-        sendAfterSwitch = !field.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let typed = !field.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        switchWait = typed ? (target?.email, Date()) : nil
         openSwitch(offer.key)
     }
 
-    /// The profile, its account and its limits, as the agent sees them now. After a switch with a question waiting
-    /// (Switch account…), the question goes as soon as the account in use has room.
+    /// The chat was hidden: a question waiting for a switch no longer goes by itself.
+    func hidden() { switchWait = nil }
+
+    /// Another profile: its own account line, nothing carried over from the last one.
+    func forgetAccount() { level = nil; offer = nil; note = nil; switchWait = nil; drawnBlocked = false }
+
+    /// The profile, its account and its limits, as the agent sees them now. After Switch account… with a question
+    /// waiting, the question goes once the profile is on another account with room (however many readings that takes).
     func update(target new: QuickChatTarget?, level: QuickChatLevel?, offer best: () -> QuickChatSwitchOffer?) {
         let before = target
         if new != target { target = new }
-        // Claude Code's own numbers after an answer are newer than the agent's last reading: keep the fuller of the two
+        // Claude Code's own numbers after an answer are newer than the agent's last reading: keep the fuller of the two,
+        // for the same profile on the same account only
         var l = level
-        if let mine = self.level, var theirs = l, before?.email == new?.email {
+        if let mine = self.level, var theirs = l, before?.profileID == new?.profileID, before?.email == new?.email {
             func same(_ a: Date?, _ b: Date?) -> Bool {
                 guard let a, let b else { return true }
                 return abs(a.timeIntervalSince(b)) < 3600
@@ -284,15 +299,19 @@ final class QuickChatModel: ObservableObject {
             l = theirs
         }
         if l != self.level { self.level = l }
+        else if drawnBlocked != blocked { objectWillChange.send() }     // a full limit reset: drawn again
+        drawnBlocked = blocked
         let offer = l?.full() == nil ? nil : best()
         if offer != self.offer { self.offer = offer }
-        guard sendAfterSwitch, !blocked, !busy, let t = target else { return }
-        if before?.email != t.email || before == nil {
-            sendAfterSwitch = false
-            let who = t.email.map(AccountNames.short) ?? "another account"
-            note = "\(t.name) switched to \(who). Sending what you typed."
-            send()
-        }
+        guard let wait = switchWait else { return }
+        if Date().timeIntervalSince(wait.since) > 600 { switchWait = nil; return }
+        guard !blocked, !busy, let t = target, t.email != wait.from else { return }
+        switchWait = nil
+        let who = t.email.map(AccountNames.short) ?? "another account"
+        note = "\(t.name) switched to \(who). Sending what you typed."
+        sendingWaiting = true
+        send()
+        sendingWaiting = false
     }
 
     // MARK: talking to Claude Code
@@ -536,18 +555,28 @@ final class QuickChat {
             shortcutState = hotKey.register(settings.shortcut) ?? "on"
         } else {
             shortcutState = nil
+            releaseRole()
         }
         (NSApp.delegate as? AgentDelegate)?.beat()
     }
 
+    /// Back to no windows at all when nothing of the quick chat needs them and the agent has no menu bar icon.
+    private func releaseRole() {
+        guard !holdsAccessory, NSApp.activationPolicy() == .accessory,
+              (NSApp.delegate as? AgentDelegate)?.hasMenuBarIcons == false else { return }
+        NSApp.setActivationPolicy(.prohibited)
+    }
+
     /// Opens the bar (or the chat as it was) over whatever is in front. `profile`: chat on that one (its menu's item).
+    /// The shortcut names none: a chat under way stays on its profile, a new one goes to the settings' profile.
     func open(profile: String? = nil) {
         let list = entries()
-        let pick = list.first { $0.id == (profile ?? settings.profile) } ?? list.first
+        let wanted = profile ?? (model.isWindow ? model.target?.profileID : nil) ?? settings.profile
+        let pick = list.first { $0.id == wanted } ?? list.first
         let target = pick.map(QuickChatTarget.init)
-        // another profile: a new chat; the same one is brought up to date by refresh, which also sees a switch made
-        // while the chat was hidden
-        if let t = model.target, let n = target, t.profileID != n.profileID { model.newChat(); model.target = n }
+        // another profile: a new chat, with nothing of the last one's account line; the same one is brought up to date
+        // by refresh, which also sees a switch made while the chat was hidden
+        if let t = model.target, let n = target, t.profileID != n.profileID { model.newChat(); model.forgetAccount(); model.target = n }
         if model.target == nil || target == nil { model.target = target }
         refresh()
         if target != nil, model.barProblem == .noProfile { model.barProblem = nil }
@@ -563,6 +592,8 @@ final class QuickChat {
 
     func hide() {
         panel?.orderOut(nil)
+        model.hidden()
+        releaseRole()
     }
 
     func shutdown() { hotKey.unregister(); model.shutdown() }

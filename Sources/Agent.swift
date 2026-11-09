@@ -199,6 +199,8 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     private var cleanupWork: DispatchWorkItem?
     private var cleanupTimer: Timer?
     private var menuBar: MenuBarItems?                  // the profiles' menu bar icons (MenuBar.swift)
+    /// Some profile has its icon in the menu bar (the quick chat leaves the accessory role alone then).
+    var hasMenuBarIcons: Bool { !(menuBar?.shown.isEmpty ?? true) }
     private lazy var claudeUpdates = ClaudeUpdateWatch(defaults: defaults)   // reopens windows an update closed
     private var observers: [NSObjectProtocol] = []
     private var askedForAlerts = false
