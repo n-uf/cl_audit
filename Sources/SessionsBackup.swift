@@ -734,9 +734,10 @@ enum CodeCleanup {
         case .data(let x): d = x
         }
         if isBlank(d) { return s }
-        guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else {
+        guard let parsed = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else {
             s.unreadable = true; s.problem = "settings.json isn't a JSON object."; return s
         }
+        let j = lastWins(parsed, data: d)                       // a name written twice: the last one counts, as in JSON.parse
         if let v = j[key] {
             s.daysPresent = true
             if let n = whole(v) { s.days = n } else { s.daysInvalid = true; s.problem = "cleanupPeriodDays in settings.json isn't a valid number." }
@@ -810,6 +811,7 @@ enum CodeCleanup {
         expected[key] = days
         let scan = scanKeys(text)
         if obj[key] != nil, scan.top.isEmpty { throw BackupError(byHand) }    // there, but not under its plain name
+        if scan.members.filter({ $0.name == key }).count != scan.top.count { throw BackupError(byHand) }   // also under an escaped name
         var out: String?
         switch (scan.top.count, scan.anywhere) {
         case (1, 1):
@@ -832,7 +834,9 @@ enum CodeCleanup {
 
     /// Looks through JSON text: the value ranges of the top-level keys named `key`, how many strings anywhere equal the
     /// key, and where the top-level object opens. Works on the text's bytes (the structure is ASCII).
-    private static func scanKeys(_ text: String) -> (top: [Range<String.Index>], anywhere: Int, open: String.Index?) {
+    /// `members` is every member of the top-level object, in order: its name as JSON.parse reads it (escapes decoded) and
+    /// the range of its value. `top` is the value ranges of the members written with the plain name.
+    private static func scanKeys(_ text: String) -> (top: [Range<String.Index>], anywhere: Int, open: String.Index?, members: [(name: String, value: Range<String.Index>)]) {
         let b = Array(text.utf8)
         func at(_ n: Int) -> String.Index { text.utf8.index(text.utf8.startIndex, offsetBy: n) }
         func space(_ i: inout Int) { while i < b.count, [0x20, 0x09, 0x0A, 0x0D].contains(b[i]) { i += 1 } }
@@ -869,12 +873,19 @@ enum CodeCleanup {
                 while i < b.count, ![0x2C, 0x7D, 0x5D, 0x20, 0x09, 0x0A, 0x0D].contains(b[i]) { i += 1 }
             }
         }
+        /// A member name as JSON.parse reads it: the raw bytes between the quotes, escapes decoded.
+        func decoded(_ raw: [UInt8]) -> String {
+            guard raw.contains(0x5C) else { return String(decoding: raw, as: UTF8.self) }
+            let quoted = Data([0x22] + raw + [0x22])
+            return ((try? JSONSerialization.jsonObject(with: quoted, options: .fragmentsAllowed)) as? String) ?? "\u{0}"
+        }
         var top: [Range<String.Index>] = []
+        var members: [(name: String, value: Range<String.Index>)] = []
         var i = 0
         space(&i)
         if i < b.count, b[i] == 0xEF { i += 3 }                           // a byte order mark
         space(&i)
-        guard i < b.count, b[i] == 0x7B else { return ([], 0, nil) }
+        guard i < b.count, b[i] == 0x7B else { return ([], 0, nil, []) }
         let open = at(i)
         i += 1
         while i < b.count {
@@ -893,8 +904,26 @@ enum CodeCleanup {
             var end = i
             while end > start, [0x20, 0x09, 0x0A, 0x0D].contains(b[end - 1]) { end -= 1 }
             if name == k { top.append(at(start)..<at(end)) }
+            members.append((decoded(name), at(start)..<at(end)))
         }
-        return (top, anywhere, open)
+        return (top, anywhere, open, members)
+    }
+
+    /// Claude Code reads settings with JSON.parse, where a name that appears twice in an object keeps its LAST value;
+    /// Foundation keeps the first. This puts the last top-level value of the keys that matter here (the two day counts and
+    /// the policy helpers) into the parsed object. Names are compared as JSON.parse reads them (`"cleanupPeriodDays"` is
+    /// `cleanupPeriodDays`); only the top level counts. A value that can't be read stands as a string, which is invalid
+    /// for the numbers and, for a helper, names one (the safe side).
+    static func lastWins(_ obj: [String: Any], data: Data) -> [String: Any] {
+        guard let text = String(data: data, encoding: .utf8) else { return obj }
+        let wanted = [key, desktopKey] + ManagedSettings.helperKeys
+        var last: [String: Range<String.Index>] = [:]
+        for m in scanKeys(text).members where wanted.contains(m.name) { last[m.name] = m.value }
+        var out = obj
+        for (name, r) in last {
+            out[name] = (try? JSONSerialization.jsonObject(with: Data(text[r].utf8), options: .fragmentsAllowed)) ?? "unreadable"
+        }
+        return out
     }
 
     /// The choices of Keep for: Claude Code's default, 90 days, a year.
