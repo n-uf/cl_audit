@@ -43,17 +43,26 @@ private enum LegacyLifecycle: String, Decodable {
     var windowFollowsDock: Bool { self == .windowFollows || self == .lockstep }
 }
 
-/// Which Claude window a profile opens. Every profile has one: the usual Claude app for the profile using
-/// ~/.claude, its own Claude window (own sign-in, chats and settings in its own folder) for the others.
-/// Not a setting: New profile picks it from the folder.
+/// Which Claude window a profile opens. Every profile has one: the usual Claude app (the one from the Dock or
+/// Applications, data in ~/Library/Application Support/Claude), or its own Claude window (own sign-in, chats and
+/// settings in its own data folder, opened by cl_audit).
+///
+/// The kind is profile data (AccountEntry.desktop): decided once, when the profile is made, and stored. Nothing works it
+/// out from the profile's Claude Code folder afterwards, so a folder that is renamed or moved doesn't change which window
+/// the profile opens, and only a move on the default-profile page (DefaultProfile.swift) changes it.
 enum DesktopMode: String, Codable, Identifiable {
     case standard, separate
     var id: String { rawValue }
 
-    /// The window for a profile using this Claude Code folder.
-    static func `for`(configDir: String) -> DesktopMode {
-        FolderKey.canonical(configDir) == FolderKey.canonical("~/.claude") ? .standard : .separate
+    /// The window a NEW profile gets: the usual Claude app when it uses ~/.claude (Claude Code's default folder, the one the
+    /// usual app shares) and no profile has the usual app yet; its own window otherwise. Called only when a profile is made.
+    static func forNew(configDir: String, standardTaken: Bool) -> DesktopMode {
+        !standardTaken && Account.isDefault(configDir: configDir) ? .standard : .separate
     }
+
+    /// The words for the window, in a sentence ("Import writes into …").
+    static let usualWords = "the usual Claude app"
+    static func ownWords(_ profile: String) -> String { "\(profile)'s own window, opened from its Dock icon" }
 }
 
 struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
@@ -267,6 +276,19 @@ enum ClaudeCLI {
     /// is set up for filled in. The person signs in in the browser; nothing here sees the password.
     @discardableResult
     static func openLogin(_ claude: String, account: Account, email: String?) -> Bool {
+        let file = loginScript(account.configDir)
+        do {
+            try (loginLines(claude, account: account, email: email).joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
+        } catch { return false }
+        return openTerminal(file)
+    }
+
+    /// The Terminal script of a login, line by line. The default folder (~/.claude) is signed in with CLAUDE_CONFIG_DIR
+    /// UNSET (also against one the login shell exports): set to ~/.claude, Claude Code takes it for a custom folder and
+    /// writes ~/.claude/.claude.json and a Keychain item "Claude Code-credentials-<hash>" instead of the default folder's
+    /// ~/.claude.json and "Claude Code-credentials" that cl_audit and the usual Claude app read. Any other folder sets it.
+    static func loginLines(_ claude: String, account: Account, email: String?) -> [String] {
         func q(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
         var lines = ["#!/bin/zsh -l", "clear"]
         lines.append(account.isDefaultDir ? "unset CLAUDE_CONFIG_DIR" : "export CLAUDE_CONFIG_DIR=\(q(account.configDir))")
@@ -274,13 +296,11 @@ enum ClaudeCLI {
         var cmd = "\(q(claude)) auth login --claudeai"
         if let email { cmd += " --email \(q(email))" }
         lines += [cmd, "echo", "echo 'Done. cl_audit picks up the new sign-in by itself within half a minute.'"]
-        let file = loginScript(account.configDir)
-        do {
-            try (lines.joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
-        } catch { return false }
-        return Installer.run("/usr/bin/open", ["-a", "Terminal", file.path]) == 0
+        return lines
     }
+
+    /// The check's seam: opens a login script in Terminal (a check records the script and never opens one).
+    nonisolated(unsafe) static var openTerminal: (URL) -> Bool = { Installer.run("/usr/bin/open", ["-a", "Terminal", $0.path]) == 0 }
 
     /// Signs out the Claude Code login of a settings folder (`claude auth logout`), which also removes its
     /// Keychain item. Blocks; call off the main thread.

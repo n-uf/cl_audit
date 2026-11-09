@@ -58,8 +58,11 @@ struct NewAccountDraft: Equatable {
     var label: String { customLabel ?? String(name.uppercased().filter { $0.isLetter || $0.isNumber }.prefix(6)) }
     var newConfigDir: String { "~/.claude-\(id)" }
     var configDir: String { source == .existing ? (existingDir ?? "") : newConfigDir }
-    /// The usual Claude app for ~/.claude, its own Claude window for any other folder.
-    var window: DesktopMode { .for(configDir: configDir) }
+    /// The usual Claude app is a profile's already (set when the draft starts): the new profile then gets its own window.
+    var standardTaken = false
+    /// The window the new profile gets, decided here once and stored in its entry (`entry.desktop`): the usual Claude app
+    /// for ~/.claude while no profile has it, its own window otherwise. Never worked out from a folder again afterwards.
+    var window: DesktopMode { .forNew(configDir: configDir, standardTaken: standardTaken) }
     var dataDir: String {
         switch window {
         case .separate: return "~/Library/Application Support/Claude-\(id)"

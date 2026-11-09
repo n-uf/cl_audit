@@ -599,6 +599,7 @@ final class SettingsModel: ObservableObject {
             let used = Set(accounts.map(\.color))
             d.color = TileColor.accents.first { !used.contains($0) } ?? .purple
             d.template = accounts.first(where: { $0.id == selection }) ?? accounts.first
+            d.standardTaken = FolderRules.windowOwner(.standard, FolderKey.standardDataDir, among: accounts) != nil
             draft = d
         }
         selection = Self.newID

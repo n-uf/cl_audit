@@ -1,8 +1,9 @@
 // FirstRun: "Set up cl_audit", the page a fresh install opens on instead of a profile it made by itself.
 //
 //   1  Claude Code   found (with its version and where), or how to install it, checked again by itself
-//   2  Account       a Claude Code folder on this Mac that is signed in (one click), or Sign in… (Claude Code's own
-//                    browser sign-in in Terminal, in a folder of its own); the address is optional
+//   2  Account       ~/.claude when it is signed in (one click: Use), or Sign in… (Claude Code's own browser sign-in
+//                    in Terminal, in ~/.claude); the address is optional. The first profile is the default one:
+//                    ~/.claude with the usual Claude app (DesktopMode.standard), whatever else is on this Mac
 //   3  Name          prefilled from the account (a team's name, else the address's name part), a colour, Done
 //
 // Who sees it: no profile exists (a fresh install, or every profile removed), or the only profile is the "main" that
@@ -63,11 +64,13 @@ enum FirstRun {
         var id: String { path }
     }
 
-    /// The Claude Code folders on this Mac (~/.claude, ~/.claude-*) that are signed in: address and ids only, never the
-    /// sign-in itself.
+    /// The first profile is the default one: Claude Code's default folder ~/.claude with the usual Claude app. So the only
+    /// folder offered here is ~/.claude, when it is signed in (address and ids only, never the sign-in itself); another
+    /// account's folder (~/.claude-*) is added later, with Add account or New profile, as a profile or account of its own.
     static func foundFolders(folders: [FolderChoice] = Detect.configFolders(), among accounts: [AccountEntry] = []) -> [FoundFolder] {
         folders.compactMap { f in
-            guard Account.signedInSeat(configDir: f.path) != nil, let email = Account.expectedEmail(configDir: f.path),
+            guard Account.isDefault(configDir: f.path),
+                  Account.signedInSeat(configDir: f.path) != nil, let email = Account.expectedEmail(configDir: f.path),
                   !accounts.contains(where: { !isImplicitMain($0, signedInCounts: false) && FolderKey.canonical($0.configDir) == FolderKey.canonical(f.path) }) else { return nil }
             let facts = AccountFacts.of(configDir: f.path)
             let detail = [facts?.plan.map(Account.planWords), facts?.org].compactMap { $0 }.joined(separator: " · ")
@@ -87,16 +90,18 @@ enum FirstRun {
         return name.isEmpty ? "Claude" : name
     }
 
-    /// The folder Sign in… signs in to: ~/.claude when nothing is signed in there (the usual Claude app then shares it),
-    /// else a new ~/.claude-<name> (the address's name part when typed).
-    static func signInFolder(email: String) -> String {
-        if Account.signedInSeat(configDir: "~/.claude") == nil { return "~/.claude" }
-        let local = email.split(separator: "@").first.map(String.init) ?? "account"
-        let id = Store.newID(from: local, taken: [])
-        var dir = "~/.claude-\(id)", n = 2
-        while FolderKind.of(dir) != .missing { dir = "~/.claude-\(id)-\(n)"; n += 1 }
-        return dir
-    }
+    /// The folder Sign in… signs in to: always ~/.claude (Claude Code's own login there, with CLAUDE_CONFIG_DIR unset: the
+    /// default profile, which the usual Claude app shares). It is offered only while ~/.claude has no sign-in; one that is
+    /// signed in is used as it is (a signed-in ~/.claude is offered first, Use).
+    static let signInFolder = "~/.claude"
+
+    /// ~/.claude is signed in: the first profile uses it as it is; the page says so in one line.
+    static func defaultSignedIn() -> Bool { Account.signedInSeat(configDir: signInFolder) != nil }
+
+    /// The one line on step 2 when ~/.claude is already signed in.
+    static let usesDefaultLine = "The first profile uses ~/.claude as it is, with the usual Claude app. Other accounts come later, with Add account or New profile."
+    /// The one line under Sign in…, when ~/.claude has no sign-in yet.
+    static let signsIntoDefaultLine = "Sign in… signs Claude Code into ~/.claude, the default folder; the usual Claude app shares it. Other accounts come later, with Add account or New profile."
 
     /// Why the optional address can't be used, or nil (empty is fine).
     static func addressProblem(_ email: String) -> String? {
@@ -127,10 +132,8 @@ extension SettingsModel {
         if let p = FirstRun.addressProblem(firstRun.email) { firstRun.problem = p; return }
         guard let claude = requireClaude() else { firstRun.problem = claudeLooked ? ClaudeInstall.missing : noClaudeWhy; return }
         let email = firstRun.email.trimmingCharacters(in: .whitespaces)
-        let dir = firstRun.signInDir ?? FirstRun.signInFolder(email: email)
-        if dir != "~/.claude" {
-            try? FileManager.default.createDirectory(at: URL(fileURLWithPath: expand(dir)), withIntermediateDirectories: true)
-        }
+        // always ~/.claude: the first profile is the default one, never a new folder
+        let dir = FirstRun.signInFolder
         let probe = AccountEntry(id: "setup", name: "setup", label: "SETUP", configDir: dir)
         guard ClaudeCLI.openLogin(claude, account: Account(probe), email: email.isEmpty ? nil : email) else {
             firstRun.problem = "Terminal didn't open."; return
@@ -374,7 +377,7 @@ struct FirstRunPage: View {
     private var accountCard: some View {
         let ready = model.claude != nil
         let found = FirstRun.foundFolders(among: model.accounts)
-        return SCard(title: "2 · Account", info: "The claude.ai account to watch first. Claude Code folders on this Mac that are signed in are listed (their address only, never the sign-in). Sign in… opens Claude Code's own sign-in in Terminal; the browser's claude.ai account decides which account it is. More accounts and profiles come later, in Settings.") {
+        return SCard(title: "2 · Account", info: "The claude.ai account the first profile watches. The first profile is the default one: Claude Code's default folder ~/.claude with the usual Claude app (the one from the Dock or Applications). A signed-in ~/.claude is listed (its address only, never the sign-in). Otherwise Sign in… opens Claude Code's own sign-in in Terminal, in ~/.claude; the browser's claude.ai account decides which account it is. More accounts and profiles come later, in Settings (Add account, New profile), each with its own folder, and its own window.") {
             VStack(alignment: .leading, spacing: 8) {
                 if !ready {
                     Text("Needs Claude Code first (step 1).").font(.system(size: 11.5)).foregroundStyle(face.muted)
@@ -384,12 +387,13 @@ struct FirstRunPage: View {
                     waiting
                 } else {
                     if found.isEmpty {
-                        Text("No signed-in Claude Code folder found on this Mac.").font(.system(size: 11.5)).foregroundStyle(face.muted)
+                        Text("Claude Code isn't signed in in ~/.claude yet.").font(.system(size: 11.5)).foregroundStyle(face.muted)
+                        signInRow
                     } else {
                         Text("Found on this Mac").font(.system(size: 11, weight: .semibold)).foregroundStyle(face.muted)
                         ForEach(found) { f in foundRow(f) }
+                        SRowLine(text: FirstRun.usesDefaultLine)
                     }
-                    signInRow
                 }
                 if let p = model.firstRun.problem { Text(p).font(.system(size: 11)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true) }
             }
@@ -440,6 +444,7 @@ struct FirstRunPage: View {
                 Button("Sign in…") { model.firstRunSignIn() }
                     .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
             }
+            SRowLine(text: FirstRun.signsIntoDefaultLine)
             SRowLine(text: "Terminal opens with Claude Code's sign-in; approve in the browser. The address only fills it in: the browser's claude.ai account decides.")
         }
     }
