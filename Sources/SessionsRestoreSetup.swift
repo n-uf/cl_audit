@@ -165,7 +165,7 @@ extension SessionsRestore {
                 sp.settingsDiffer = here.map { Setup.settingsDifferences(here: $0, there: d) } ?? []
             }
             // absolute paths in its commands that are not on this Mac (and that this plan wouldn't put there either)
-            let willBe = Set(groups.values.joined().filter { status[Setup.unit(of: $0.rel)] == .new }.map { (t.codeDir as NSString).appendingPathComponent($0.rel) })
+            let willBe = Set(groups.values.joined().filter { status[Setup.unit(of: $0.rel)] == .new }.map { Setup.normalize(t.codeDir + "/" + $0.rel) })
             sp.missingPaths = Setup.commandPaths(inSettings: d, home: NSHomeDirectory()).filter {
                 !FileManager.default.fileExists(atPath: $0) && !willBe.contains(Setup.normalize($0))
             }.map { "hook points to \(tilde($0)): not here" }
