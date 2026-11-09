@@ -429,7 +429,7 @@ struct ImportPage: View {
 
     private var topBar: some View {
         let t = topLine
-        return DisplayWindow(text: t.text, dim: t.dim, tone: t.tone, height: 24, size: 10).frame(maxWidth: .infinity, alignment: .leading)
+        return DisplayWindow(text: t.text, dim: DisplayWindow.narrowed(t.dim, width: width), tone: t.tone, height: 24, size: 10).frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var topLine: (text: String, dim: String?, tone: DisplayWindow.Tone) {

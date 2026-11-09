@@ -134,7 +134,7 @@ struct DefaultProfilePage: View {
 
     private var topBar: some View {
         let t = topLine
-        let display = DisplayWindow(text: t.text, dim: t.dim, tone: t.tone, height: 24, size: 10)
+        let display = DisplayWindow(text: t.text, dim: DisplayWindow.narrowed(t.dim, width: width), tone: t.tone, height: 24, size: 10)
         return ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) { display; Spacer(minLength: 6); topKeys }
             VStack(alignment: .leading, spacing: 8) { display; HStack(spacing: 10) { topKeys } }
@@ -325,5 +325,14 @@ struct OwnWindowMark: View {
             .padding(.horizontal, 6).padding(.vertical, 2)
             .background(Capsule().fill(face.text.opacity(0.08)))
             .help("This profile opens its own Claude window, with its own sessions. Claude opened from the Dock or Applications is another window.")
+    }
+}
+
+extension DisplayWindow {
+    /// The display never wraps, so on a narrow page its second half keeps only the first two parts ("· nothing written yet ·
+    /// nothing is ever overwritten" becomes "· nothing written yet"), which always fits a 340 pt column.
+    static func narrowed(_ dim: String?, width: CGFloat) -> String? {
+        guard width < 460, let dim else { return dim }
+        return dim.components(separatedBy: " · ").prefix(2).joined(separator: " · ")
     }
 }

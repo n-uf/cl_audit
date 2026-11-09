@@ -135,7 +135,7 @@ struct SwitchPage: View {
     /// The display and the keys on one line; when they don't fit the page, the keys go under the display (one under the
     /// other if they still don't fit).
     private func topBar(_ t: Top) -> some View {
-        let display = DisplayWindow(text: t.text, dim: t.dim, tone: t.tone, height: 24, size: 10)
+        let display = DisplayWindow(text: t.text, dim: DisplayWindow.narrowed(t.dim, width: width), tone: t.tone, height: 24, size: 10)
         return ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) { display; Spacer(minLength: 6); topKeys }
             VStack(alignment: .leading, spacing: 8) { display; HStack(spacing: 10) { topKeys } }
