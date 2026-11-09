@@ -698,26 +698,40 @@ enum CodeCleanup {
 
     static func days(codeDir: String) -> Int? { read(codeDir: codeDir).days }
 
-    /// A JSON value that is a plain whole number of days, 1 or more (not true, not a fraction or an exponent form);
-    /// with `zero`, 0 too (desktopSessionCleanupPeriodDays: 0 means no cap).
+    /// A JSON value that is a whole number of days, 1 or more (not true, not a string, not a fraction: 30 and 30.0 are the
+    /// same to Claude Code, whose zod `int()` takes both); with `zero`, 0 too (desktopSessionCleanupPeriodDays: 0 is no cap).
     static func whole(_ v: Any?, zero: Bool = false) -> Int? {
-        guard let n = v as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(), !["d", "f"].contains(String(cString: n.objCType)),
-              n.intValue > 0 || (zero && n.intValue == 0) else { return nil }
-        return n.intValue
+        guard let n = v as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID() else { return nil }
+        let d = n.doubleValue
+        guard d.isFinite, d == d.rounded(), d >= (zero ? 0 : 1), d < 1e9 else { return nil }
+        return Int(d)
     }
 
     // MARK: sessions from the Claude window (read only; the organisation's managed settings are ManagedSettings in Retention.swift)
 
     static let desktopKey = "desktopSessionCleanupPeriodDays"
 
-    /// `desktopSessionCleanupPeriodDays` in settings.json (the user's; Claude Code ignores it in project and local
-    /// settings): the number (0: no cap), nil when it isn't there; `invalid` when it is there as something else, which
-    /// Claude Code reports as a settings error.
-    static func userDesktop(codeDir: String) -> (days: Int?, invalid: Bool) {
-        guard let d = FileManager.default.contents(atPath: file(codeDir)),
-              let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], let v = j[desktopKey] else { return (nil, false) }
-        guard let n = whole(v, zero: true) else { return (nil, true) }
-        return (n, false)
+    /// What the user's own settings.json holds about the two keys (Claude Code ignores desktopSessionCleanupPeriodDays in
+    /// project and local settings). A key that is there but isn't a whole number is `…Invalid`; a file that can't be read or
+    /// isn't a JSON object is `unreadable`. Claude Code skips its clean-up in both cases (Retention.swift).
+    struct UserState: Equatable {
+        var days: Int?                      // cleanupPeriodDays; nil: not there, or invalid
+        var daysPresent = false, daysInvalid = false
+        var desktop: Int?                   // desktopSessionCleanupPeriodDays (0: no cap); nil: not there, or invalid
+        var desktopPresent = false, desktopInvalid = false
+        var unreadable = false
+    }
+
+    static func userState(codeDir: String) -> UserState {
+        var s = UserState()
+        var st = stat()
+        guard lstat(file(codeDir), &st) == 0 else { return s }
+        guard let d = FileManager.default.contents(atPath: file(codeDir)) else { s.unreadable = true; return s }
+        if isBlank(d) { return s }
+        guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { s.unreadable = true; return s }
+        if let v = j[key] { s.daysPresent = true; if let n = whole(v) { s.days = n } else { s.daysInvalid = true } }
+        if let v = j[desktopKey] { s.desktopPresent = true; if let n = whole(v, zero: true) { s.desktop = n } else { s.desktopInvalid = true } }
+        return s
     }
 
     private static func isBlank(_ d: Data) -> Bool { String(decoding: d, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
