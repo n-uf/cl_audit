@@ -76,6 +76,7 @@ func fixPatch(_ m: SessionsBackup.Manifest, seconds: Double) {   // made-up dura
     if ProcessInfo.processInfo.environment["E_ONLY"] != nil, !name.hasPrefix("7") { return }       // stage E renders only
     if ProcessInfo.processInfo.environment["E2_ONLY"] != nil, !name.hasPrefix("8") { return }      // stage E2 (the setup row) renders only
     if ProcessInfo.processInfo.environment["E2B_ONLY"] != nil, !name.hasPrefix("9") { return }     // stage E2b (MCP settings, scheduled tasks) renders only
+    if ProcessInfo.processInfo.environment["E2C_ONLY"] != nil, !name.hasPrefix("m") { return }     // stage E2c (a move to another Mac) renders only
     _ = NSApplication.shared
     let host = NSHostingView(rootView: v)
     host.frame = NSRect(x: 0, y: 0, width: w, height: h)
@@ -613,6 +614,78 @@ MainActor.assumeIsolated {
         SetupRow.renderOpen = true
         restorePage9("9g-restore-window-setup-added")
         SetupRow.renderOpen = false
+
+        // ---- m: a move to another Mac (stage E2c): the Export page with the Move preset on, the Import page of a move file (the profiles it
+        // makes, the settings row), and the done page (the sign-ins to do, the Dock step). Two made-up profiles, Studio and Travel, are the
+        // "other Mac" here: they are in the list only while the Export page is drawn. (No sidebar records and no Claude window for them:
+        // the import's run opens nothing.)
+        SessionsMove.prefs = MemoryPrefs()
+        Store.announce = {}
+        DockWriter.backend = DockWriter.Backend(read: { DockWriter.Lists(pinned: [], recent: []) }, write: { _ in }, restart: {})
+        let u4 = seat(4, "studio-1@example.com"), u5 = seat(5, "studio-2@example.com"), u6 = seat(6, "travel-1@example.com")
+        func mvProfile(_ id: String, _ name: String, _ s: Seat, standby: Seat?) -> AccountEntry {
+            var e = AccountEntry(id: id, name: name, label: name.uppercased(), configDir: "~/.claude-\(id)")
+            e.seat = s; e.desktop = .separate; e.desktopDataDir = "~/Library/Application Support/Claude-\(id)"; e.claudeWindow = false
+            if let q = standby { e.standby = [StandbyAccount(email: q.email!, seat: q, configDir: nil, id: "q\(id.prefix(3))")] }
+            let scope = expand(e.desktopDataDir) + "/claude-code-sessions/\(s.account)/\(s.organization!)"
+            for k in 0..<3 {
+                putE("\(scope)/local_\(uuid(9500 + k + (id == "mvstudio" ? 0 : 10))).json", "{\"sessionId\":\"local_\(uuid(9500 + k))\",\"cliSessionId\":\"\(uuid(9600 + k + (id == "mvstudio" ? 0 : 10)))\",\"title\":\"\(name) session \(k)\",\"cwd\":\"\(appCwd)\",\"isArchived\":false}", daysAgo: 2)
+                putE(expand(e.configDir) + "/projects/-app/\(uuid(9600 + k + (id == "mvstudio" ? 0 : 10))).jsonl", exTranscript(500 + k, cwd: appCwd), daysAgo: 2)
+            }
+            if id == "mvstudio" {
+                let t: [[String: Any]] = [["id": "morning-brief", "displayName": "Morning brief", "cronExpression": "0 8 * * *", "enabled": true,
+                                           "filePath": expand(e.configDir) + "/scheduled-tasks/morning-brief/SKILL.md", "cwd": appCwd, "createdAt": 1]]
+                try! JSONSerialization.data(withJSONObject: ["scheduledTasks": t]).write(to: URL(fileURLWithPath: scope + "/scheduled-tasks.json"))
+                w2(expand(e.configDir), "scheduled-tasks/morning-brief/SKILL.md", "The morning brief.\n")
+                w2(expand(e.configDir), "CLAUDE.md", "# Studio rules\n")
+                e.color = .teal; e.menuBar = true
+            } else { e.iconHidden = true; e.color = .pink }
+            return e
+        }
+        let mvStudio = mvProfile("mvstudio", "Studio", u4, standby: u5), mvTravel = mvProfile("mvtravel", "Travel", u6, standby: nil)
+        let before = model.accounts
+        model.accounts = [mvStudio, mvTravel]
+        // the other Mac's settings: Silver, emails hidden, 7 backups kept
+        SessionsMove.prefs.set("silver", forKey: "face"); SessionsMove.prefs.set(false, forKey: Privacy.key); BackupPrefs.store.set(7, forKey: BackupPrefs.lastKey)
+        let xrM = model.exportRunner(for: "mvstudio")
+        xrM.movePreset()
+        xrM.refresh()
+        settleE("the move export preview") { xrM.previews != nil }
+        xrM.password = "typed-in-a-secure-field"; xrM.again = "typed-in-a-secure-field"
+        e2Shots("ma-export-move", { ExportPage(entry: mvStudio, model: model, runner: xrM, width: $0) }, height: 3800)
+        xrM.password = ""; xrM.again = ""
+        let imgM = URL(fileURLWithPath: exportsDir + "/cl_audit all profiles 2026-11-09.dmg")
+        try? fm.removeItem(at: imgM)
+        var jobM = SessionsExport.Job(parts: [mvStudio, mvTravel].map { SessionsExport.Part(profile: $0.id, name: $0.name, source: SessionsBackup.Source($0), emails: [$0.seat?.email].compactMap { $0 }) },
+                                      keys: .keep, password: pw2, destination: imgM, rootName: "cl_audit all profiles 2026-11-09", now: Date().addingTimeInterval(-600))
+        jobM.move = true; jobM.profiles = SessionsMove.make([mvStudio, mvTravel], parts: ["mvstudio": "p1", "mvtravel": "p2"], all: [mvStudio, mvTravel], move: true)
+        _ = try! SessionsExport.run(jobM)
+        // the new Mac: Studio's and Travel's folders aren't on it (moved aside in this throwaway home), this Mac's own settings (none
+        // stored), and the list without Studio and Travel
+        for id in ["mvstudio", "mvtravel"] {
+            for d in [expand("~/.claude-\(id)"), expand("~/Library/Application Support/Claude-\(id)")] { try? fm.moveItem(atPath: d, toPath: d + "-other-mac") }
+        }
+        SessionsMove.prefs = MemoryPrefs(); BackupPrefs.store.set(nil, forKey: BackupPrefs.lastKey)
+        model.accounts = before
+        try! Store.save(before)
+        let irM = model.importRunner(for: "e2bdst")
+        irM.setFile(imgM); irM.password = pw2; irM.open()
+        settleE("the move import preview") { irM.phase == .ready && irM.movePlan != nil && irM.counting?.plan != nil }
+        irM.takeSettings = true
+        @MainActor func importPageM(_ name: String) { e2Shots(name, { ImportPage(entry: e2bdst, model: model, runner: irM, width: $0) }, height: 4400) }
+        importPageM("mb-import-move-profiles")
+        irM.takeSettings = false
+        irM.applyMove()
+        settleE("the move's profiles made") { irM.moved != nil && irM.into == "mvstudio" && irM.counting?.plan != nil && irM.phase == .ready }
+        importPageM("mc-import-move-made")
+        irM.setTasks(true)
+        settleE("the move import, tasks added") { irM.plan?.taskPlan.leftOut == false }
+        irM.commit()
+        if case .running(let keyM) = irM.phase {
+            let runM = model.restoreRunner(keyM)
+            settleE("the move import ran") { runM.phase == .done }
+            importPageM("md-import-move-done")
+        } else { print("the move import didn't start: \(irM.note ?? "")") }
     }
 }
 print("done")
