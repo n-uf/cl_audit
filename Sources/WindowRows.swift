@@ -65,10 +65,13 @@ enum WindowWords {
         return "Also added with it, whole: the window's other settings (\(cp.otherKeys.prefix(6).joined(separator: ", "))\(cp.otherKeys.count > 6 ? ", …" : ""); values not shown)"
     }
 
+    /// Under the open list of servers (the show key's caveat is gone once it is open).
+    static let neverShown = "Arguments, env values, headers and addresses are never shown."
+
     /// What Undo says (SessionsRestore.undo) about a config the window changed since it was added.
     static let configChangedProblem = "claude_desktop_config.json changed since; left as it is."
     /// The done line's note: the window rewrites this file when it opens, so Undo may find it changed.
-    static let configUndoNote = "The Claude window may rewrite claude_desktop_config.json when it opens. If it has, Undo leaves the file as it is, with these servers in it: remove them in the window yourself."
+    static let configUndoNote = "The Claude window may rewrite claude_desktop_config.json when it opens. If it has, Undo leaves the file as it is, with these servers in it: remove them in the Claude window's own settings yourself."
 
     /// The servers a file that is here lacks (nothing is merged into it).
     static func lacking(_ cp: SessionsRestore.ConfigPlan, name: String, imported: Bool) -> String? {
@@ -191,7 +194,10 @@ struct McpRow: View {
                     if !cp.servers.isEmpty {
                         let k = WindowWords.serversKey(cp, imported: imported)
                         t.key(k.show, k.hide, $showServers)
-                        if showServers { t.lines(cp.servers.map { "\($0.name): \($0.runs.replacingOccurrences(of: NSHomeDirectory(), with: "~"))" } + (cp.moreServers > 0 ? ["…and \(cp.moreServers) more"] : [])) }
+                        if showServers {
+                            t.lines(cp.servers.map { "\($0.name): \($0.runs.replacingOccurrences(of: NSHomeDirectory(), with: "~"))" } + (cp.moreServers > 0 ? ["…and \(cp.moreServers) more"] : []))
+                            t.small(WindowWords.neverShown)
+                        }
                     }
                 }
             }

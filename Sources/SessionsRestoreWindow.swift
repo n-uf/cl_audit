@@ -250,7 +250,7 @@ extension SessionsRestore {
                 entry.why = "its id isn't one the Claude window keeps"
             } else if !((task["filePath"] as? String).map { $0 == Setup.taskRel(id) || $0.hasSuffix("/" + Setup.taskRel(id)) } ?? false) {
                 // (the window reads a task's prompt from its id's own folder; a task without that `filePath`, as a string, isn't one as the window makes them)
-                entry.why = task["filePath"] is String ? "it names a prompt file somewhere else" : "it doesn't record its prompt file the way the window does"
+                entry.why = task["filePath"] is String ? "it names a prompt file somewhere else" : "it doesn't say where its prompt is"
             } else if item == nil {
                 // (a restore puts its own file back whole: such a task comes back too, and the row says what it lacks)
                 entry.why = imported ? "its prompt isn't in the file" : "back without its prompt (none in the backup)"

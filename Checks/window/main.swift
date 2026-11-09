@@ -150,7 +150,7 @@ MainActor.assumeIsolated {
     check(pv.config.present && pv.config.servers == ["github", "remote"] && pv.tasks == 4 && pv.setup.taskPrompts == 4 && !pv.setup.units.contains { $0.kind == .task },
           "preview: the config with 2 MCP servers; 4 tasks with 4 prompts, which aren't in the setup row's units")
     let zw = ExportWords.mcpWords(pv, image: false), iw = ExportWords.mcpWords(pv, image: true)
-    check(zw.value == "left out of a zip" && zw.note == "A zip leaves out the window's MCP settings (2 servers: github, remote, and the window's other settings): they can hold keys no scan can find. Choose the encrypted disk image to carry them." && iw.value == "2 MCP servers (github, remote) and the window's other settings: in the encrypted disk image" && iw.note == ExportWords.fingerprintNote,
+    check(zw.value == "left out of a zip" && zw.note == "A zip leaves out the window's MCP settings (2 servers: github, remote, and the window's other settings): they can hold keys no scan can find. Choose the encrypted disk image to carry them." && iw.value == "2 MCP servers (github, remote) and the window's other settings: in the encrypted disk image" && iw.note == nil && ExportWords.mcpInfo(pv, image: true) == ExportWords.fingerprintNote && ExportWords.mcpInfo(pv, image: false) == nil,
           "export page: a zip says the MCP settings need the image; the image carries them: \(zw.value) / \(iw.value)")
     check(ExportWords.tasksNote(pv) == "4 scheduled tasks, 3 with their prompt (one without it can't be imported). An import adds them only if you pick Add them, and they come paused.", "export page: the tasks travel with their prompts and come back paused: \(ExportWords.tasksNote(pv) ?? "none")")
 
@@ -478,7 +478,7 @@ MainActor.assumeIsolated {
         let (tG, dG, cG) = target("g")
         let stG = try! SessionsImport.materialize(oc, part: oc.parts[0], target: "g")
         let pG = SessionsRestore.plan(tG, stG.backup, addTasks: true)
-        check(pG.taskPlan.tasks.first { $0.id == "number-path" }?.why == "it doesn't record its prompt file the way the window does" && pG.taskPlan.tasks.first { $0.id == "no-path" }?.why == "it doesn't record its prompt file the way the window does",
+        check(pG.taskPlan.tasks.first { $0.id == "number-path" }?.why == "it doesn't say where its prompt is" && pG.taskPlan.tasks.first { $0.id == "no-path" }?.why == "it doesn't say where its prompt is",
               "hostile: a task whose filePath isn't a string, or that has none, isn't added (listed)")
         check(pG.taskPlan.tasks.first { $0.id.contains("escape") }?.why == "its id isn't one the Claude window keeps" && pG.taskPlan.tasks.first { $0.id == "outside-path" }?.why != nil
               && pG.taskPlan.coming.map(\.id) == ["nightly-digest", "weekly-report"], "hostile: a climbing id and a filePath outside are listed and not added: \(pG.taskPlan.tasks.map { "\($0.id):\($0.why ?? "ok")" })")

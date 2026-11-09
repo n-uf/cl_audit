@@ -561,7 +561,7 @@ struct ImportPage: View {
             SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
             SRow(label: "Sign-ins") { rowValue("Never in an export, never written") }
             SRow(label: "MCP") { rowValue("Yours stay; the file's are added only if none is here and you pick Add them") }
-            SRow(label: "settings.json") { rowValue("Yours stays; one is added only if none is here and you pick Add them") }
+            SRow(label: "settings.json") { rowValue("Yours stay; one is added only if none is here and you pick Add them") }
             SRow(label: "Scheduled tasks") { rowValue("A task file that is here stays as it is; the file's tasks come only if you pick Add them, paused") }
             SRow(label: "claude.ai") { rowValue("Chats and Projects") }
         }

@@ -260,7 +260,7 @@ struct RestorePage: View {
             SRow(label: "Sign-ins") { rowValue(imp ? "Never in an export, never written" : "Never in a backup, never written") }
             SRow(label: "MCP") { rowValue(imp ? "Yours stay; the file's are added only if none is here and you pick Add them"
                                           : "Not in this Mac's backups: the window's MCP settings travel only in the encrypted export. Yours stay as they are") }
-            SRow(label: "settings.json") { rowValue("Yours stays; one is added only if none is here and you pick Add them") }
+            SRow(label: "settings.json") { rowValue("Yours stay; one is added only if none is here and you pick Add them") }
             SRow(label: "Scheduled tasks") { rowValue(imp ? "A task file that is here stays as it is; the file's tasks come only if you picked Add them, paused" : "A task file that is there stays as it is; only a missing one comes back") }
             SRow(label: "claude.ai") { rowValue("Chats and Projects") }
         }

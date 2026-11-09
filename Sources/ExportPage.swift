@@ -301,14 +301,19 @@ enum ExportWords {
         let names = c.servers.prefix(4).joined(separator: ", ") + (c.servers.count > 4 ? ", …" : "")
         if image {
             let servers = c.servers.isEmpty ? "no MCP servers" : n(c.servers.count, "MCP server", "MCP servers") + " (" + names + ")"
-            return ("\(servers) and the window's other settings: in the encrypted disk image", fingerprintNote)
+            return ("\(servers) and the window's other settings: in the encrypted disk image", nil)
         }
         let which = c.servers.isEmpty ? "the window's settings" : "\(n(c.servers.count, "server", "servers")): \(names), and the window's other settings"
         return ("left out of a zip", "A zip leaves out the window's MCP settings (\(which)): they can hold keys no scan can find. Choose the encrypted disk image to carry them.")
     }
 
     /// The image's MCP settings are scrubbed like the window's other files.
-    static let fingerprintNote = "Addresses and account ids cl_audit knows are replaced by fingerprints in them, as everywhere in an export: a server that uses one needs it put back by hand after the import."
+    /// (Information, not a warning: the preview can't tell whether the scrub will change anything in them.)
+    static let fingerprintNote = "Addresses and account ids cl_audit knows are replaced by fingerprints in these settings, as everywhere in an export. A server that uses one needs it put back by hand after the import."
+    static func mcpInfo(_ pv: SessionsExport.Preview?, image: Bool) -> String? {
+        guard image, let p = pv, !p.windowLeftOut, p.config.present else { return nil }
+        return fingerprintNote
+    }
 
     /// The Claude window row's line about the scheduled tasks: they travel with their prompts and come back paused.
     static func tasksNote(_ pv: SessionsExport.Preview?) -> String? {
@@ -467,6 +472,9 @@ struct ExportPage: View {
                     value(w.value)
                     if let note = w.note {
                         Text(note).font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if let info = ExportWords.mcpInfo(pv, image: runner.usesImage) {
+                        Text(info).font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
