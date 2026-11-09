@@ -199,11 +199,16 @@ struct ClaudeMissingLine: View {
 
     var body: some View {
         if model.claudeKnownMissing {
-            HStack(spacing: 6) {
+            let warning = HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill").font(.system(size: 10)).foregroundStyle(face.caution)
-                Text(ClaudeInstall.missing + " ·").font(.system(size: 11)).foregroundStyle(face.caution).lineLimit(1)
-                Button("Install…") { model.showInstallHelp() }
-                    .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                Text(ClaudeInstall.missing + " ·").font(.system(size: 11)).foregroundStyle(face.caution).lineLimit(1).fixedSize()
+            }
+            let install = Button("Install…") { model.showInstallHelp() }
+                .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+            // one line when it fits, else the key under the words (never cut off)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 6) { warning; install }
+                VStack(alignment: .leading, spacing: 4) { warning; install }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 4)
@@ -243,15 +248,33 @@ struct ClaudeInstallCard: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack(alignment: .top, spacing: 8) {
                 Image(systemName: "checkmark.circle.fill").foregroundStyle(FaceTheme.ledOn).font(.system(size: 14))
-                Text("Claude Code\(model.claudeVersion.map { " " + $0 } ?? "") · \(tilde(c.path))\(c.fromApp ? " · from the Claude app" : "")")
+                // the Claude app's copy lives in a long path: said as "from the Claude app", the path is in the tooltip
+                Text("Claude Code\(model.claudeVersion.map { " " + $0 } ?? "") · \(c.fromApp ? "from the Claude app" : tilde(c.path))")
                     .font(.system(size: 12.5, weight: .medium)).foregroundStyle(face.text)
                     .fixedSize(horizontal: false, vertical: true)
+                    .help(tilde(c.path))
             }
             if c.fromApp {
                 SRowLine(text: "The Claude app keeps its own copy, and it works for signing in. If you install Claude Code itself later, cl_audit uses that one.")
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var command: some View {
+        Text(ClaudeInstall.command).font(.system(size: 11, design: .monospaced)).foregroundStyle(face.text)
+            .textSelection(.enabled)
+            .padding(.horizontal, 8).padding(.vertical, 5)
+            .background(WellShape(well: face.track, radius: 5))
+    }
+
+    private var copyKey: some View {
+        Button(copied ? "Copied" : "Copy") {
+            ClaudeInstall.copyCommand()
+            copied = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+        }
+        .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
     }
 
     private var missing: some View {
@@ -262,17 +285,10 @@ struct ClaudeInstallCard: View {
             }
             Text("Open Terminal, paste this and press Return (it takes a minute). cl_audit notices by itself when it's done.")
                 .font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 8) {
-                Text(ClaudeInstall.command).font(.system(size: 11, design: .monospaced)).foregroundStyle(face.text)
-                    .textSelection(.enabled).lineLimit(1).minimumScaleFactor(0.7)
-                    .padding(.horizontal, 8).frame(height: 26)
-                    .background(WellShape(well: face.track, radius: 5))
-                Button(copied ? "Copied" : "Copy") {
-                    ClaudeInstall.copyCommand()
-                    copied = true
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
-                }
-                .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+            // the command on one line beside Copy; in a narrow card it wraps whole under no key (never cut off), Copy under it
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { command.lineLimit(1).fixedSize(horizontal: true, vertical: false); copyKey }
+                VStack(alignment: .leading, spacing: 8) { command.fixedSize(horizontal: false, vertical: true); copyKey }
             }
             HStack(spacing: 8) {
                 Button("Install page") { NSWorkspace.shared.open(ClaudeInstall.docs) }
@@ -417,7 +433,7 @@ struct FirstRunPage: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(model.firstRun.signInDir == nil ? "Or sign in to a Claude account" : "Sign in again").font(.system(size: 11, weight: .semibold)).foregroundStyle(face.muted)
             HStack(spacing: 6) {
-                WellField(placeholder: "name@example.com (optional)", text: Binding(get: { model.firstRun.email },
+                WellField(placeholder: "Address (optional)", text: Binding(get: { model.firstRun.email },
                                                                                    set: { model.firstRun.email = $0; model.firstRun.problem = nil }),
                           onSubmit: { model.firstRunSignIn() }, onCancel: {})
                 Button("Sign in…") { model.firstRunSignIn() }
@@ -429,15 +445,21 @@ struct FirstRunPage: View {
 
     private var waiting: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 8) {
+            let state = HStack(spacing: 8) {
                 TimelineView(.periodic(from: .now, by: 0.5)) { ctx in
                     LED(color: FaceTheme.ledAmber, lit: Int(ctx.date.timeIntervalSinceReferenceDate * 2) % 2 == 0)
                 }
-                Text("signing in…").font(.system(size: 12)).foregroundStyle(face.caution)
-                Spacer(minLength: 6)
+                Text("signing in…").font(.system(size: 12)).foregroundStyle(face.caution).lineLimit(1).fixedSize()
+            }
+            let keys = HStack(spacing: 6) {
                 Button("Show Terminal") { _ = Installer.run("/usr/bin/open", ["-a", "Terminal"]) }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 Button("Cancel") { model.firstRunCancelSignIn() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+            }
+            // one line when it fits; in a narrow card the keys go on a line of their own
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 8) { state; Spacer(minLength: 6); keys }
+                VStack(alignment: .leading, spacing: 6) { state; keys }
             }
             SRowLine(text: "Finish in the browser\(model.firstRun.email.isEmpty ? "" : " as \(Privacy.masked(model.firstRun.email))"); cl_audit goes on by itself once the account shows up.")
         }
@@ -449,12 +471,12 @@ struct FirstRunPage: View {
         let ready = step == .name
         return SCard(title: "3 · Name and colour", info: "What cl_audit calls this profile, and its colour in the dashboard and panels. Both can be changed later in Settings.") {
             VStack(spacing: 0) {
-                SRow(label: "Name", first: true, stacked: cardWidth < SRow<EmptyView>.stackBelow - 200) {
+                SRow(label: "Name", first: true, stacked: cardWidth < 400) {
                     SField(placeholder: "e.g. work", text: Binding(get: { model.firstRun.name },
                                                                     set: { model.firstRun.name = $0; model.firstRun.nameEdited = true; finishing = nil }), width: nil)
                         .disabled(!ready)
                 }
-                SRow(label: "Colour", stacked: false) {
+                SRow(label: "Colour", stacked: cardWidth < 400) {
                     FlowLayout(spacing: 6) {
                         ForEach(TileColor.accents, id: \.self) { c in
                             Swatch(color: c, selected: model.firstRun.color == c, size: 16).onTapGesture { if ready { model.firstRun.color = c } }
