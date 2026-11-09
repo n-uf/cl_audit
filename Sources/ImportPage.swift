@@ -159,12 +159,12 @@ final class ImportRunner: ObservableObject {
                 DispatchQueue.main.async {
                     guard let self, self.isCurrent(g) else { SessionsImport.discard(o.work); return }
                     self.opened = o; self.partIndex = idx
-                    // cl_audit's own profiles in the file (a move): what an import would make here; the part goes into its own profile when
-                    // that one is here already
+                    // cl_audit's own profiles in the file (a move): what an import would make here. Into stays the person's choice (the page
+                    // only suggests the part's own profile); a file whose accounts are fingerprints starts with its profiles left out
                     if let f = o.app {
                         let plan = SessionsMove.plan(f, accounts: self.profiles)
                         self.movePlan = plan
-                        if let here = plan.profile(forPart: o.parts[idx].dir), self.profiles.contains(where: { $0.id == here }) { self.into = here }
+                        self.makeProfiles = !plan.fingerprinted
                     }
                     self.stage()
                 }
@@ -262,8 +262,6 @@ final class ImportRunner: ObservableObject {
         guard let o = opened, i != partIndex, i < o.parts.count else { return }
         if let s = staged { try? FileManager.default.removeItem(at: s.stage.appendingPathComponent(s.target)) }
         staged = nil; counting = nil; partIndex = i
-        // a move: into that part's own profile, when it is here
-        if let here = movePlan?.profile(forPart: o.parts[i].dir), profiles.contains(where: { $0.id == here }) { into = here }
         lock.lock(); generation += 1; lock.unlock()           // what the old part's staging was still doing is no longer current
         stage()
     }
@@ -274,17 +272,19 @@ final class ImportRunner: ObservableObject {
     /// part's own profile is there to count them against. Writes only cl_audit's profiles file, the made profiles' empty folders and the
     /// settings; never the Dock, never an app, never a sign-in. Its receipt lets Undo take exactly that back.
     func applyMove() {
-        guard let o = opened, let plan = movePlan, !plan.isEmpty, moved == nil || moved?.undone != nil else { return }
+        guard !moveBusy, let o = opened, let plan = movePlan, !plan.isEmpty, moved == nil || moved?.undone != nil else { return }
         let create = makeProfiles, take = takeSettings
         var p = plan
         if !create { p.create = [] }
         guard !p.create.isEmpty || (take && !p.takeable.isEmpty) else { return }
         moveNote = nil
+        moveBusy = true                                       // a second press while this runs does nothing: one run, one receipt
         let file = o.fileName
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result { try SessionsMove.apply(p, takeSettings: take, file: file) }
             DispatchQueue.main.async {
                 guard let self else { return }
+                self.moveBusy = false
                 switch result {
                 case .failure(let err): self.moveNote = "\(err)"
                 case .success(let r):
@@ -300,12 +300,14 @@ final class ImportRunner: ObservableObject {
     /// Undo for the profiles and settings: the profiles it made (unchanged since, their sessions' import undone first) and their empty
     /// folders go, the settings it took are put back.
     func undoMove() {
-        guard let r = moved, r.undone == nil else { return }
+        guard !moveBusy, let r = moved, r.undone == nil else { return }
         moveNote = nil
+        moveBusy = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result { try SessionsMove.undo(r.id) }
             DispatchQueue.main.async {
                 guard let self else { return }
+                self.moveBusy = false
                 switch result {
                 case .failure(let err): self.moveNote = "\(err)"
                 case .success(let u):
@@ -320,17 +322,29 @@ final class ImportRunner: ObservableObject {
         }
     }
 
-    /// The profiles file changed: the window's list takes it in, the plan is counted again, and the part goes into its own profile.
+    /// The profiles file changed: the window's list takes it in and the plan is counted again. Into stays as the person chose it (unless
+    /// that profile was taken back); the part's own profile is only suggested (`suggestedInto`).
     private func followMove() {
         model?.takeInOutsideChanges()
-        guard let o = opened, let f = o.app else { return }
-        let plan = SessionsMove.plan(f, accounts: profiles)
-        movePlan = plan
-        if partIndex < o.parts.count, let here = plan.profile(forPart: o.parts[partIndex].dir), profiles.contains(where: { $0.id == here }), here != into {
-            setInto(here)
-        } else if !profiles.contains(where: { $0.id == into }) {
-            setInto(profile)                                  // (the profile it went into was taken back)
-        } else { recount() }
+        guard let f = opened?.app else { return }
+        movePlan = SessionsMove.plan(f, accounts: profiles)
+        if !profiles.contains(where: { $0.id == into }) { setInto(profile) } else { recount() }
+    }
+
+    /// Make or take back is running: its key does nothing until it ends.
+    @Published private(set) var moveBusy = false
+
+    /// The file's own profile for the part chosen, when it is here and isn't Into: the page offers it ("Into Studio"), never sets it.
+    var suggestedInto: AccountEntry? {
+        guard let o = opened, partIndex < o.parts.count, let id = movePlan?.profile(forPart: o.parts[partIndex].dir), id != into else { return nil }
+        return profiles.first { $0.id == id }
+    }
+
+    /// A move file whose profiles aren't made yet (and are to be): Close and import waits, or the part would go into a profile that isn't
+    /// its own. Making them, or picking Leave them out, lets it go.
+    var waitsForProfiles: Bool {
+        guard let p = movePlan, !p.create.isEmpty, makeProfiles else { return false }
+        return moved == nil || moved?.undone != nil
     }
 
     /// The made profiles (still made), for the done page.
@@ -375,7 +389,7 @@ final class ImportRunner: ObservableObject {
         addMemory = false                               // "Add them" was a choice about that file; the next one starts with them left out
         addSetup = false
         addConfig = false; addTasks = false
-        movePlan = nil; makeProfiles = true; takeSettings = false; moved = nil; moveNote = nil
+        movePlan = nil; makeProfiles = true; takeSettings = false; moved = nil; moveNote = nil; moveBusy = false
     }
 
     /// cl_audit is quitting: the password goes and what is being opened is told to stop. Nothing is removed here (a big tree on the
@@ -645,6 +659,14 @@ struct ImportPage: View {
                     ForEach(runner.profiles, id: \.id) { p in Button(p.name.isEmpty ? p.id : p.name) { runner.setInto(p.id) } }
                 } label: { MenuWell(text: name, fill: true) }
                 .faceMenuFill().disabled(runner.isOpening)
+            }
+            // a move: the part's own profile is offered, never chosen for the person
+            if let s = runner.suggestedInto {
+                VStack(alignment: .leading, spacing: 6) {
+                    line("This part is \(s.name)'s in the file, and \(s.name) is here: its sessions belong there.")
+                    Button("Into \(s.name)") { runner.setInto(s.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                }
+                .padding(.vertical, 4)
             }
             SRowLine(text: "The file is unpacked as a backup of \(name) first, then restored from: the same rules as Restore.")
         }
