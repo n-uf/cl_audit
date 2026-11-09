@@ -122,6 +122,10 @@ check("rule", QuickChatMarkdown.blocks("a\n\n---\n\nb") == [.paragraph("a"), .ru
 check("empty", QuickChatMarkdown.blocks("") == [])
 check("a year is not a list", QuickChatMarkdown.blocks("2026. A year.") == [.paragraph("2026. A year.")])
 check("inline code", QuickChatMarkdown.inline("use `ls`").runs.contains { $0.inlinePresentationIntent?.contains(.code) == true })
+let links = QuickChatMarkdown.inline("[web](https://example.com) [mail](mailto:a@example.com) [file](file:///etc/hosts) [app](sample-app://x)")
+let kept = links.runs.compactMap { $0.link?.scheme }
+check("only web and mail links stay links", kept == ["https", "mailto"], kept)
+check("a dropped link keeps its words", String(links.characters).contains("file") && String(links.characters).contains("app"))
 
 // MARK: the process, against the stand-in
 

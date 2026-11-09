@@ -94,8 +94,16 @@ enum QuickChatMarkdown {
         return (n, String(rest.dropFirst(2)))
     }
 
-    /// The inline part (bold, italics, `code`, links) as Foundation reads it; the plain text when it can't.
+    /// The inline part (bold, italics, `code`, links) as Foundation reads it; the plain text when it can't. Only web and
+    /// mail links stay links: an answer can't hand the Mac a file:// or an app's own link to open.
     static func inline(_ s: String) -> AttributedString {
-        (try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(s)
+        guard var a = try? AttributedString(markdown: s, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)) else {
+            return AttributedString(s)
+        }
+        let unsafe = a.runs.compactMap { run in run.link.map { safeLink($0) ? nil : run.range } ?? nil }
+        for r in unsafe { a[r].link = nil }
+        return a
     }
+
+    static func safeLink(_ url: URL) -> Bool { ["http", "https", "mailto"].contains(url.scheme?.lowercased() ?? "") }
 }
