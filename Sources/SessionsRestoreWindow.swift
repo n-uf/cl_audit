@@ -28,6 +28,8 @@ extension SessionsRestore {
         var servers: [Server] = []              // what adding brings: each server's name and what it runs
         var otherKeys: [String] = []            // the file's other top-level settings, by name
         var lacking: [String] = []              // a file is here: the servers it doesn't have (by name; nothing is merged)
+        var moreServers = 0                     // servers past the first 200 (the page lists those)
+        var moreLacking = 0
         var unreadable = false                  // the backup's file isn't a JSON object under 8 MB: never added
         var leftOutAtSource: String?            // why the source left it out (a zip, a link, over 8 MB …)
         var added: Bool { !leftOut && status == .new && present && !unreadable }
@@ -56,7 +58,7 @@ extension SessionsRestore {
             }
         }
         var moreTasks = 0                       // tasks past the first 200: written as the others, not listed one by one
-        var risky: Int { coming.filter(\.risky).count }
+        var risky: Int { riskyCount }
         var present = false                     // the backup holds a task file the plan could use
         var imported = false
         var leftOut = true                      // an import's choice: left out unless asked ("Add them, paused")
@@ -66,9 +68,16 @@ extension SessionsRestore {
         var prompts = 0                         // prompts the plan writes (each with its task)
         var promptsHere = 0                     // prompts already here, the same
         var writes = false                      // the plan writes a task file
+        // (the lists keep the first 200 for the page; the counts are of all of them)
+        var comingCount = 0                     // tasks that come (or would, if added)
+        var riskyCount = 0                      // of them, with permission checks off or approved permissions
+        var moreLacking = 0                     // tasks the file here lacks past those listed
         var coming: [Task] { tasks.filter { $0.why == nil } }
         var addedNames: [String] { writes ? coming.map(\.name) : [] }
     }
+
+    /// The most entries a plan keeps for the page (tasks, servers and the names a file here lacks): the rest are counted.
+    static let listCap = 200
 
     /// The tasks of a scheduled-tasks.json: the objects of its `scheduledTasks` array (anything else in it is skipped). [] when it isn't one.
     static func taskList(_ d: Data) -> [[String: Any]] {
@@ -113,7 +122,9 @@ extension SessionsRestore {
             close(f.fd)
         }
         guard let d = data, let j = SessionsBackup.withoutSidebar(d) else { cp.unreadable = true; return }
-        cp.servers = SessionsBackup.mcpServers(d).map { ConfigPlan.Server(name: $0.name, runs: $0.runs) }
+        let servers = SessionsBackup.mcpServers(d)
+        cp.servers = servers.prefix(listCap).map { ConfigPlan.Server(name: $0.name, runs: $0.runs) }
+        cp.moreServers = max(0, servers.count - listCap)
         cp.otherKeys = j.keys.filter { $0 != "mcpServers" }.sorted().prefix(200).map { SessionsBackup.oneLine($0, max: 60) }
         // where it would go: the window's data folder, which must be there; a file of that name (or a link, or a folder) means "here"
         if t.dataDir.isEmpty { cp.status = .blocked("the profile has no Claude window folder"); return }
@@ -123,7 +134,8 @@ extension SessionsRestore {
         if lstat(here, &st) == 0 {
             cp.status = .here
             let mine = Set(Setup.readCapped(here, limit: SessionsBackup.maxConfigBytes).map { SessionsBackup.mcpServers($0).map(\.name) } ?? [])
-            cp.lacking = cp.servers.map(\.name).filter { !mine.contains($0) }
+            let lacking = servers.map(\.name).filter { !mine.contains($0) }
+            cp.lacking = Array(lacking.prefix(listCap)); cp.moreLacking = max(0, lacking.count - listCap)
             return
         }
         cp.status = .new
@@ -188,6 +200,7 @@ extension SessionsRestore {
         }
         var promptPieces: [Piece] = []
         var keep: [[String: Any]] = []
+        var all: [(id: String, name: String)] = []              // every task, for what a file here lacks (the page lists the first 200)
         for (task, id) in list {
             var entry = TaskPlan.Task(id: SessionsBackup.oneLine(id, max: 200), name: taskName(task, id: id), why: nil)
             // what the person turns on when they flip its switch: its schedule, its folder, its permission mode and approvals
@@ -216,8 +229,9 @@ extension SessionsRestore {
                     }
                 }
             }
-            if entry.why == nil { keep.append(task) }
-            tp.tasks.append(entry)
+            if entry.why == nil { keep.append(task); tp.comingCount += 1; if entry.risky { tp.riskyCount += 1 } }
+            all.append((entry.id, entry.name))
+            if tp.tasks.count < listCap { tp.tasks.append(entry) } else { tp.moreTasks += 1 }
         }
 
         // where the file goes: the account in use's folder, only when it has no task file
@@ -228,7 +242,8 @@ extension SessionsRestore {
             tp.status = .here
             let path = (SwitchEngine.scopeDir(t.dataDir, scope) as NSString).appendingPathComponent("scheduled-tasks.json")
             let mine = Set(Setup.readCapped(path, limit: 64 << 20).map { taskList($0).compactMap { $0["id"] as? String } } ?? [])
-            tp.lacking = tp.tasks.filter { !mine.contains($0.id) }.map(\.name)
+            let lacking = all.filter { !mine.contains($0.id) }.map(\.name)
+            tp.lacking = Array(lacking.prefix(listCap)); tp.moreLacking = max(0, lacking.count - listCap)
             return []
         }
         tp.status = .new

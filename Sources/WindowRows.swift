@@ -37,7 +37,7 @@ enum WindowWords {
 
     /// "claude_desktop_config.json with 3 MCP servers", "claude_desktop_config.json (no MCP servers)"
     static func config(_ cp: SessionsRestore.ConfigPlan) -> String {
-        "claude_desktop_config.json " + (cp.servers.isEmpty ? "(no MCP servers)" : "with " + n(cp.servers.count, "MCP server", "MCP servers"))
+        "claude_desktop_config.json " + (cp.servers.isEmpty ? "(no MCP servers)" : "with " + n(cp.servers.count + cp.moreServers, "MCP server", "MCP servers"))
     }
 
     /// The MCP row's value before the run.
@@ -84,7 +84,7 @@ enum WindowWords {
 
     /// The Scheduled tasks row's value before the run.
     static func tasksValue(_ tp: SessionsRestore.TaskPlan, imported: Bool) -> String {
-        let coming = tp.coming.count
+        let coming = tp.comingCount
         if !imported {
             switch tp.status {
             case .blocked(let why): return "can't come back: \(why)"
@@ -125,7 +125,8 @@ enum WindowWords {
         // (a task file that is here, or none can be written: no task is listed as if it came)
         // each with its schedule, folder and permission mode: what turning it on would run
         var out = tp.tasks.compactMap { $0.why == nil ? (tp.status == .new ? $0.line : nil) : tp.imported ? "\($0.name): not added, \($0.why!)" : "\($0.line): \($0.why!)" }
-        if tp.status == .here, !tp.lacking.isEmpty { out.append("Not in the task file here (it stays): " + tp.lacking.prefix(10).joined(separator: ", ")) }
+        if tp.status == .new, tp.moreTasks > 0 { out.append("…and \(tp.moreTasks) more") }
+        if tp.status == .here, !tp.lacking.isEmpty { out.append("Not in the task file here (it stays): " + tp.lacking.prefix(10).joined(separator: ", ") + (tp.lacking.count + tp.moreLacking > 10 ? ", …" : "")) }
         return out
     }
 }
@@ -163,7 +164,7 @@ struct McpRow: View {
                     if !cp.servers.isEmpty {
                         let k = WindowWords.serversKey(cp, imported: imported)
                         t.key(k.show, k.hide, $showServers)
-                        if showServers { t.lines(cp.servers.map { "\($0.name): \($0.runs.replacingOccurrences(of: NSHomeDirectory(), with: "~"))" }) }
+                        if showServers { t.lines(cp.servers.map { "\($0.name): \($0.runs.replacingOccurrences(of: NSHomeDirectory(), with: "~"))" } + (cp.moreServers > 0 ? ["…and \(cp.moreServers) more"] : [])) }
                     }
                 }
             }
@@ -194,14 +195,14 @@ struct TasksRow: View {
                         if !undone, !r.tasksAdded.isEmpty { t.small(WindowWords.turnOn(entry.windowWords), color: face.caution) }
                     } else {
                         t.value(WindowWords.tasksValue(tp, imported: imported))
-                        if imported, runner.phase == .ready, tp.status == .new, !tp.coming.isEmpty, let choose {
+                        if imported, runner.phase == .ready, tp.status == .new, tp.comingCount > 0, let choose {
                             Menu {
                                 Button("Leave them out") { choose(false) }
                                 Button("Add them, paused") { choose(true) }
                             } label: { MenuWell(text: tp.leftOut ? "Leave them out" : "Add them, paused", fill: true) }
                             .faceMenuFill()
                         }
-                        if imported, !undone, tp.status == .new, !tp.coming.isEmpty { t.small((tp.leftOut ? "If added: " : "") + WindowWords.turnOn(entry.windowWords)) }
+                        if imported, !undone, tp.status == .new, tp.comingCount > 0 { t.small((tp.leftOut ? "If added: " : "") + WindowWords.turnOn(entry.windowWords)) }
                         if imported, !undone, tp.status == .new, let w = WindowWords.riskyWords(tp) { t.small(w, color: face.caution) }
                     }
                     let lines = WindowWords.taskLines(tp)

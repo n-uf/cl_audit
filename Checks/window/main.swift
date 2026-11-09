@@ -483,6 +483,32 @@ MainActor.assumeIsolated {
         SessionsImport.discard(os.work)
     } else { check(false, "hostile (image): the config with a sidebar part opens: \(withSidebar.prefix(80))") }
 
+    // a task file of 300,000 tasks and a config of 100,000 servers: the plan keeps the first 200 of each for the page (and counts the
+    // rest), and is made in a moment
+    let hugeName = "w-huge-lists"
+    let hugeLists = doctored(hugeName) { m, _, p in
+        guard let it = m.items.first(where: { $0.role == .window && $0.path.hasSuffix("/scheduled-tasks.json") }) else { return }
+        var list = SessionsRestore.taskList(try Data(contentsOf: p.appendingPathComponent(it.path))) as [Any]
+        for i in 0..<300_000 { list.append(["id": "t\(i)", "displayName": "Task \(i)", "filePath": "/x/scheduled-tasks/t\(i)/SKILL.md"]) }
+        let data = try JSONSerialization.data(withJSONObject: ["scheduledTasks": list])
+        try data.write(to: p.appendingPathComponent(it.path))
+        if let i = m.items.firstIndex(where: { $0.path == it.path }) { m.items[i].bytes = Int64(data.count) }
+        var servers: [String: Any] = [:]
+        for i in 0..<100_000 { servers["s\(i)"] = ["command": "x"] }
+        try setConfig(&m, p, try JSONSerialization.data(withJSONObject: ["mcpServers": servers]))
+    }
+    if hugeLists == "OPENED", let oh = try? SessionsImport.open(URL(fileURLWithPath: out + "/\(hugeName).dmg"), password: pw, place: place) {
+        let (tH, _, _) = target("h")
+        let stH = try! SessionsImport.materialize(oh, part: oh.parts[0], target: "h")
+        let t0 = Date()
+        let pH = SessionsRestore.plan(tH, stH.backup, addConfig: true, addTasks: true)
+        let took = Date().timeIntervalSince(t0)
+        check(pH.taskPlan.tasks.count == 200 && pH.taskPlan.moreTasks == 300_004 - 200 && pH.config.servers.count == 200 && pH.config.moreServers == 99_800
+              && WindowWords.taskLines(pH.taskPlan).count <= 202 && WindowWords.config(pH.config).contains("100000 MCP servers") && took < 60,
+              "huge lists: the plan keeps 200 tasks and 200 servers for the page and counts the rest, in \(String(format: "%.1f", took)) s")
+        SessionsImport.discard(oh.work)
+    } else { check(false, "huge lists: the image opens: \(hugeLists.prefix(80))") }
+
     // ---- the older rules refuse version 3: 26.11.7 reads `version == 1`, 26.11.8 `<= 2`; and a reader without the config role can't decode it
     let v3 = oi.parts[0].manifest.version
     check(v3 == 3 && !(v3 == 1) && !(v3 <= 2), "format: this build writes 3, which 26.11.7's guard (== 1) and 26.11.8's (<= 2) refuse")
@@ -520,7 +546,7 @@ MainActor.assumeIsolated {
           "rows: the tasks' key: an import's can't come; a restore's all come back, some without the backup's prompt")
     var tp = SessionsRestore.TaskPlan()
     tp.present = true; tp.imported = true
-    tp.tasks = [.init(id: "a", name: "Nightly digest", why: nil), .init(id: "b", name: "Bad", why: "its prompt isn't in the file")]
+    tp.tasks = [.init(id: "a", name: "Nightly digest", why: nil), .init(id: "b", name: "Bad", why: "its prompt isn't in the file")]; tp.comingCount = 1
     check(WindowWords.tasksValue(tp, imported: true) == "1 task: left out", "rows: tasks left out by default: \(WindowWords.tasksValue(tp, imported: true))")
     tp.leftOut = false
     check(WindowWords.tasksValue(tp, imported: true) == "1 task: added, paused" && WindowWords.taskLines(tp) == ["Nightly digest", "Bad: not added, its prompt isn't in the file"], "rows: tasks added, paused; the list says which can't come and why")
