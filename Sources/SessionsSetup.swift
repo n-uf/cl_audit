@@ -491,7 +491,7 @@ enum Setup {
     /// relative one depends on where the command runs, so it isn't guessed). The command is split on spaces, quotes and shell
     /// punctuation; each token is expanded against `home`.
     static func commandPaths(inSettings data: Data, home: String) -> [String] {
-        var out: [String] = []
+        var out: [String] = [], seen = Set<String>()     // (a set, so a crafted settings.json of a million paths stays quick)
         let seps = CharacterSet(charactersIn: " \t\n\"'`;|&()<>=,{}")
         for cmd in commands(inSettings: data) {
             for raw in cmd.components(separatedBy: seps) where !raw.isEmpty {
@@ -500,7 +500,7 @@ enum Setup {
                 else if t.hasPrefix("$HOME/") { t = home + String(t.dropFirst(5)) }
                 else if t.hasPrefix("${HOME}/") { t = home + String(t.dropFirst(7)) }
                 guard t.hasPrefix("/"), t.count > 1 else { continue }
-                if !out.contains(t) { out.append(t) }
+                if seen.insert(t).inserted { out.append(t) }
             }
         }
         return out
