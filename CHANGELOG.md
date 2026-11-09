@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.9 — 2026-11-09
+
 - **The Claude window's MCP settings and scheduled tasks travel too.** Export carries the window's `claude_desktop_config.json`
   (its MCP servers and other settings) in the encrypted disk image only: a zip leaves it out and says so. Each scheduled task's
   prompt travels with its task, and backups keep the prompts too. Import leaves the MCP settings out until you pick Add them,
