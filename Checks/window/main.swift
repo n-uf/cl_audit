@@ -179,7 +179,7 @@ MainActor.assumeIsolated {
         let pz = try? SessionsExport.run(SessionsExport.Job(parts: [SessionsExport.Part(profile: "p", name: "P", source: SessionsBackup.Source(profile: "p", dataDir: "", codeDir: cP), emails: [])],
                                                            keys: .leaveOut, destination: plainZip, rootName: "plain-export", place: place))
         if pz != nil, let o = try? SessionsImport.open(plainZip, password: nil, place: place) {
-            check(o.export.version == 2 && o.parts[0].manifest.version == 2 && SessionsBackup.formatVersion == 3, "format: a file with no format-3 part is written as version 2 (the constant stays 3, the highest written)")
+            check(o.export.version == 2 && o.parts[0].manifest.version == 2 && SessionsBackup.formatVersion == 4, "format: a file with no format-3 part is written as version 2 (the constant is 4, the highest written)")
             SessionsImport.discard(o.work)
         } else { check(false, "format: the plain zip is made and opens") }
         let bP = try! SessionsBackup.make(SessionsBackup.Source(profile: "p", dataDir: "", codeDir: cP), kind: .manual, window: false, place: place)
@@ -446,8 +446,8 @@ MainActor.assumeIsolated {
         try fm.removeItem(at: p.appendingPathComponent("config")); try fm.removeItem(at: p.appendingPathComponent("setup/scheduled-tasks"))
     }
     check(v2 == "OPENED", "format: a version 2 file (setup, no window settings) is read: \(v2.prefix(90))")
-    let v4 = doctored("w-v4") { m, ex, _ in m.version = 4; ex.version = 4 }
-    check(v4.contains("newer cl_audit"), "format: a version 4 file is refused with the newer-cl_audit words: \(v4.prefix(90))")
+    let v5 = doctored("w-v5") { m, ex, _ in m.version = 5; ex.version = 5 }
+    check(v5.contains("newer cl_audit"), "format: a version 5 file is refused with the newer-cl_audit words: \(v5.prefix(90))")
     let orphan = doctored("w-prompt-without-task") { m, _, p in
         let data = Data("a prompt no task names\n".utf8)
         try fm.createDirectory(at: p.appendingPathComponent("setup/scheduled-tasks/orphan-prompt"), withIntermediateDirectories: true)

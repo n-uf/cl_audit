@@ -405,8 +405,14 @@ enum Store {
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         try enc.encode(ConfigFile(accounts: after)).write(to: configURL, options: .atomic)
-        DistributedNotificationCenter.default().postNotificationName(changed, object: nil, userInfo: nil, deliverImmediately: true)
+        announce()
         return after
+    }
+
+    /// Tells every cl_audit process the profiles file changed. A check's seam: a suite in a throwaway home sets it to do nothing,
+    /// so the cl_audit and agent running on the Mac (which read the real file) aren't woken by a file they never see.
+    nonisolated(unsafe) static var announce: () -> Void = {
+        DistributedNotificationCenter.default().postNotificationName(Store.changed, object: nil, userInfo: nil, deliverImmediately: true)
     }
 
     /// Replaces the whole list (the cl_audit window, after merging its changes into the file as it is).

@@ -1,7 +1,7 @@
 // Setup checks for cl_audit: Claude Code's setup (CLAUDE.md and the .md files it includes, skills, agents, commands, output styles,
 // keybindings, settings.json with the scripts its hooks point to, the plugin list) travels with Export, Import, Backup and Restore.
 // Sources/SessionsSetup.swift (what is carried and how it is found), SessionsRestoreSetup.swift (the plan and the rules of an add),
-// the Export, Import and Restore pages' setup rows, and the format (version 2 brought setup; this build writes 3 and reads 1 to 3).
+// the Export, Import and Restore pages' setup rows, and the format (version 2 brought setup; this build writes up to 4 and reads 1 to 4).
 //
 // Part 1 works on real files: the scan (links, includes, build leftovers, sign-in names), an export to a zip and to an encrypted
 // image, hostile files made from the good zip (mkhostile.py), an import and a restore into folders that already hold some of it,
@@ -476,7 +476,7 @@ MainActor.assumeIsolated {
         ("e2-bad-sha", "isn't what backup.json says"), ("e2-altered", "isn't what backup.json says"), ("e2-no-sha", "no valid hash"), ("e2-short-sha", "no valid hash"), ("e2-upper-sha", "no valid hash"),
         ("e2-wrong-size", "isn't the size"), ("e2-wrong-total", "don't add up"),
         // formats
-        ("e2-v4-export", "newer cl_audit"), ("e2-v4-backup", "newer cl_audit"),
+        ("e2-v5-export", "newer cl_audit"), ("e2-v5-backup", "newer cl_audit"),
         // paths
         ("e2-traversal", "isn't a plain one"), ("e2-traversal-deep", "isn't a plain one"), ("e2-empty-component", "isn't a plain one"), ("e2-absolute", "isn't a plain one"), ("e2-setup-dup-item", "isn't a plain one"),
         ("e2-backslash", ""), ("e2-dup-case", ""), ("e2-file-and-folder", ""),

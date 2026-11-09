@@ -71,15 +71,18 @@ enum SessionsBackup {
 
     /// The format of backup.json (and of an export's export.json). 2 added `setup` items (Claude Code's CLAUDE.md, skills, agents …);
     /// 3 added the `config` item (the Claude window's claude_desktop_config.json without its sidebar part) and scheduled tasks' prompts
-    /// (setup/scheduled-tasks/<id>/SKILL.md). Files of version 1 and 2 are read as before (they have none); a newer one is refused.
-    /// (26.11.7 reads only version 1, 26.11.8 up to 2: both refuse a version 3 file with their "newer cl_audit" words.)
-    static let formatVersion = 3
+    /// (setup/scheduled-tasks/<id>/SKILL.md). 4 added cl_audit's own profiles and settings (an export's cl_audit.json, SessionsMove.swift)
+    /// and the move: a part whose window folders are the real account and organisation ids (`move`), only ever in an encrypted image.
+    /// Files of version 1 to 3 are read as before (they have none); a newer one is refused.
+    /// (26.11.7 reads only version 1, 26.11.8 up to 2, 26.11.9 up to 3: each refuses a newer file with its "newer cl_audit" words.)
+    static let formatVersion = 4
 
-    /// The lowest format that holds these items, which is what a backup and an export write: 3 only when a format-3 part is in it
-    /// (the window's config, a scheduled task's prompt), else 2, so 26.11.8 still imports a plain zip from this build. (formatVersion
-    /// stays the highest written: what this build reads up to.)
-    static func neededVersion(_ items: [Item]) -> Int {
-        items.contains { $0.role == .config || ($0.role == .setup && $0.path.hasPrefix("setup/\(Setup.taskFolder)/")) } ? 3 : 2
+    /// The lowest format that holds these items, which is what a backup and an export write: 4 for a move's part, 3 only when a format-3
+    /// part is in it (the window's config, a scheduled task's prompt), else 2, so 26.11.8 still imports a plain zip from this build.
+    /// (formatVersion stays the highest written: what this build reads up to.)
+    static func neededVersion(_ items: [Item], move: Bool = false) -> Int {
+        if move { return 4 }
+        return items.contains { $0.role == .config || ($0.role == .setup && $0.path.hasPrefix("setup/\(Setup.taskFolder)/")) } ? 3 : 2
     }
 
     struct Counts: Codable, Equatable {
@@ -121,6 +124,9 @@ enum SessionsBackup {
         /// settings.json in it has every `env` value blanked (keys kept): a plain backup's (this version on). nil: as it was (an
         /// export's copy, an import's staged backup, a backup made by 26.11.8).
         var envBlanked: Bool? = nil
+        /// A move's part (format 4): its window folders are named by the real account and organisation ids, not fingerprints, so an
+        /// import puts each entry and task file back into its own account's folder. Only ever from an encrypted image. nil: not a move.
+        var move: Bool? = nil
     }
 
     /// What a backup is made from.
@@ -786,6 +792,8 @@ protocol PrefStore: AnyObject {
     func string(forKey: String) -> String?
     func int(forKey: String) -> Int?
     func set(_ value: Any?, forKey: String)
+    /// The value as stored (a Bool, a number, a string), nil when none is.
+    func object(forKey: String) -> Any?
 }
 extension UserDefaults: PrefStore {
     func int(forKey key: String) -> Int? { object(forKey: key) as? Int }
@@ -796,6 +804,7 @@ final class MemoryPrefs: PrefStore {
     func string(forKey k: String) -> String? { lock.lock(); defer { lock.unlock() }; return d[k] as? String }
     func int(forKey k: String) -> Int? { lock.lock(); defer { lock.unlock() }; return d[k] as? Int }
     func set(_ v: Any?, forKey k: String) { lock.lock(); d[k] = v; lock.unlock() }
+    func object(forKey k: String) -> Any? { lock.lock(); defer { lock.unlock() }; return d[k] }
 }
 
 /// Kept with the app's other preferences (as DashboardPrefs does). The engine reads the values straight from the
