@@ -37,16 +37,18 @@ struct DashboardSettings: View {
     @ObservedObject private var prefs = DashboardPrefs.shared
     var width: CGFloat = 1280
 
-    /// One subject per column, printed at its top: cl_audit itself (Usage in the background, Privacy, About), how usage
+    /// One subject per column, printed at its top: cl_audit itself (Usage in the background, Privacy, Backups, Quick chat,
+    /// About), how usage
     /// looks (Face, Dashboard cards, Widget), and the Dock (App icon, Dock). Menu bar icons are each profile's own (its
     /// settings). In two columns the Dock goes under cl_audit; one column keeps the three-column order, top to bottom.
     var body: some View {
         SettingsColumns(width: width,
-                        groups: [[AnyView(ColumnHead(text: "cl_audit")), AnyView(usageCard), AnyView(emailsCard), AnyView(backupsCard), AnyView(aboutCard)],
+                        groups: [[AnyView(ColumnHead(text: "cl_audit")), AnyView(usageCard), AnyView(emailsCard), AnyView(backupsCard),
+                                  AnyView(QuickChatCard()), AnyView(aboutCard)],
                                  [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard), AnyView(WidgetCard())],
                                  [AnyView(ColumnHead(text: "The Dock")), AnyView(appIconCard), AnyView(DockCard())]],
                         two: [[AnyView(ColumnHead(text: "cl_audit · the Dock")), AnyView(usageCard), AnyView(emailsCard),
-                               AnyView(backupsCard), AnyView(aboutCard), AnyView(appIconCard), AnyView(DockCard())],
+                               AnyView(backupsCard), AnyView(QuickChatCard()), AnyView(aboutCard), AnyView(appIconCard), AnyView(DockCard())],
                               [AnyView(ColumnHead(text: "How usage looks")), AnyView(faceCard), AnyView(cardsCard),
                                AnyView(WidgetCard())]])
     }
