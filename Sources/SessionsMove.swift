@@ -416,17 +416,25 @@ enum SessionsMove {
     /// The first of `name(1)`, `name(2)` … that no profile uses and that is either not on this Mac or a plain folder (not a link) without
     /// a sign-in record (`signIn`: Claude Code's .claude.json, the window's config.json) in it. `there`: it is on this Mac already.
     static func freeFolder(name: (Int) -> String, owned: (String) -> Bool, signIn: String) -> (dir: String, there: Bool) {
-        for n in 1...99 {
+        // (every name is checked the same way; when none of 999 is free, the 1000th is returned as it is, and the lock's own test in
+        // apply refuses the profile if that one isn't usable either)
+        var st = stat()
+        for n in 1...999 {
             let dir = name(n)
-            if owned(dir) { continue }
-            let path = expand(dir)
-            var st = stat()
-            guard lstat(path, &st) == 0 else { return (dir, false) }
-            guard (st.st_mode & S_IFMT) == S_IFDIR else { continue }               // a link or a file of that name: never used
-            if lstat((path as NSString).appendingPathComponent(signIn), &st) == 0 { continue }       // signed in to something: not ours
-            return (dir, true)
+            if owned(dir) || !folderUsable(dir, signIn: signIn) { continue }
+            return (dir, lstat(expand(dir), &st) == 0)
         }
-        return (name(100), false)
+        return (name(1000), lstat(expand(name(1000)), &st) == 0)
+    }
+
+    /// A made profile's folder may be this one: not on this Mac, or a plain folder (never a link or a file) with no sign-in record
+    /// (`signIn`) in it. Asked when the plan picks it and again under the profiles file's lock, before the record is written.
+    static func folderUsable(_ dir: String, signIn: String) -> Bool {
+        let path = expand(dir)
+        var st = stat()
+        guard lstat(path, &st) == 0 else { return errno == ENOENT }
+        guard (st.st_mode & S_IFMT) == S_IFDIR else { return false }              // a link or a file of that name: never used
+        return lstat((path as NSString).appendingPathComponent(signIn), &st) != 0 && errno == ENOENT
     }
 
     /// The accounts of a profile as cl_audit keeps them: the one in use (`seat`) and the others standing by, each without a kept sign-in.
@@ -589,7 +597,7 @@ enum SessionsMove {
                         || FolderRules.configOwner(e.configDir, among: out) != nil
                         || FolderRules.windowOwner(e.desktop, e.desktop == .standard ? FolderKey.standardDataDir : e.desktopDataDir, among: out) != nil
                         || e.desktop == .standard || isDefaultFolder(e.configDir)
-                        || FileManager.default.fileExists(atPath: (expand(e.configDir) as NSString).appendingPathComponent(".claude.json"))
+                        || !folderUsable(e.configDir, signIn: ".claude.json") || !folderUsable(e.desktopDataDir, signIn: "config.json")
                     if clash { continue }
                     // after the profiles that are here (their order never changes), the made ones in the file's order
                     out.append(e)
@@ -605,7 +613,7 @@ enum SessionsMove {
         }
         for i in r.made.indices {
             r.made[i].written = wrote.contains(r.made[i].id)
-            if !r.made[i].written { r.problems.append("\(r.made[i].name) wasn't made: a profile with its name, account or folder appeared meanwhile.") }
+            if !r.made[i].written { r.problems.append("\(r.made[i].name) wasn't made: a profile with its name, account or folder appeared meanwhile, or its folder is now a link or holds a sign-in.") }
         }
         try? save(r)
         // 2. their folders: made empty, only those that aren't there (a folder that is there is used as it is)
@@ -624,6 +632,8 @@ enum SessionsMove {
         if takeSettings {
             for d in p.takeable {
                 guard let k = known.first(where: { $0.key == d.key }) else { continue }
+                // a backups place is looked at again now, not only when the page was counted (a folder can go, or become a link)
+                if case .place = k.kind, let why = placeProblem(d.file) { r.problems.append("The backups folder \(d.file) wasn't taken: \(why)."); continue }
                 let s = store(k.store)
                 let before = s.object(forKey: k.key) == nil ? nil : current(k)
                 r.settings.append(SettingStep(key: k.key, store: k.store, before: before, after: d.file))
