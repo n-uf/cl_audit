@@ -1142,7 +1142,7 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
 4. After that, pick **Into**: the page offers the part's own profile ("Into Studio"); it never picks it for you. **Close and
    import** puts that profile's sessions in. Each Code-tab entry and scheduled task goes back into the folder of the account it
    was on, so the window shows it once that account is signed in. Then the same for each other profile: Settings ▸ that
-   profile ▸ Sessions ▸ Import…, the same file (its own part is picked for it).
+   profile ▸ Sessions ▸ Import…, the same file: Into is that profile there, and Profile in the file shows its part.
 5. **Sign in to each account** of each made profile: Settings ▸ the profile ▸ Claude Code ▸ Accounts ▸ Add account. The page
    lists which as soon as the profiles are made. Nothing is signed in by an import: sign-ins never travel, and cl_audit never
    reads the Keychain.

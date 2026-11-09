@@ -484,7 +484,7 @@ enum SessionsMove {
             let data = freeFolder(name: { ownDataDir(e.id, $0) }, owned: { FolderRules.windowOwner(.separate, $0, among: taken) != nil }, signIn: "config.json")
             e.configDir = code.dir; e.desktopDataDir = data.dir
             for (dir, there) in [(code.dir, code.there), (data.dir, data.there)] where there {
-                notes.append("uses the folder \(dir) already on this Mac (nothing in it changes)")
+                notes.append("uses the folder \(dir) that is already on this Mac (nothing in it changes)")
             }
             accountsEntry(&e, fp.accounts, now: now)
             // no Dock icon until the person puts it in the Dock (the done page's step): nothing builds an app or writes the Dock before
@@ -790,7 +790,7 @@ enum MoveWords {
         out.append(m.inDock ? "Put it in the Dock: Settings ▸ \(m.name) ▸ Dock icon ▸ Usage in the Dock, or the key here. It had a Dock icon on the other Mac."
                    : "It had no Dock icon on the other Mac; Settings ▸ \(m.name) ▸ Dock icon ▸ Usage in the Dock turns one on.")
         if tasks > 0 { out.append("\(n(tasks, "scheduled task came", "scheduled tasks came")) paused: turn each on in \(m.name)'s Claude window (open it from its Dock icon), under Scheduled tasks, once it's signed in.") }
-        out.append("Its sessions: Settings ▸ \(m.name) ▸ Sessions ▸ Import…, the same file (its part is picked for it).")
+        out.append("Its sessions: Settings ▸ \(m.name) ▸ Sessions ▸ Import…, the same file. Into is \(m.name) there, and Profile in the file shows \(m.name)'s part.")
         return out
     }
 }

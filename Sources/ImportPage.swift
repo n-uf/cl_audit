@@ -822,7 +822,7 @@ struct ImportPage: View {
             if let note = runner.note { SRowLine(text: note, color: face.danger) }
             // a move whose profiles aren't made yet: the key waits, and says why
             if runner.waitsForProfiles, let p = runner.movePlan {
-                SRowLine(text: "Make the profiles first: press \(MoveWords.key(p, take: runner.takeSettings, create: true) ?? "Make the profiles") (or pick Leave them out), or these sessions would go into \(name).",
+                SRowLine(text: "Make the profiles first (\(MoveWords.key(p, take: runner.takeSettings, create: true) ?? "Make the profiles")), or pick Leave them out. Otherwise these sessions go into \(name).",
                          color: face.caution)
             }
             // Cancel and the key on one line when they fit; else the key above Cancel (neither is ever cut off)

@@ -166,8 +166,8 @@ final class ExportRunner: ObservableObject {
         guard phase == .preview else { return }
         var changed: [String] = []
         let from: Source = (model?.accounts.count ?? 0) > 1 ? .all : { if case .backup = source { return .now }; return source }()
-        if from != source { changed.append("From (now \(from == .all ? "All profiles" : "the profile as it is now"))") }
-        if !setup { changed.append("Claude Code setup (now Include them)") }
+        if from != source { changed.append("From to \(from == .all ? "All profiles" : "the profile as it is now")") }
+        if !setup { changed.append("Claude Code setup to Include them") }
         source = from
         move = true; container = .image; setup = true; profiles = true
         presetChanged = changed
@@ -507,8 +507,8 @@ struct ExportPage: View {
                     if runner.move {
                         Text(ExportWords.signInsLine).font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                         if !runner.presetChanged.isEmpty {
-                            Text("The Move preset changed: " + runner.presetChanged.joined(separator: ", ") + ". Keys found stays as you chose.")
-                                .font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                            Text("The Move preset set " + runner.presetChanged.joined(separator: " and ") + ". Your Keys found choice is unchanged.")
+                                .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                     Menu {
@@ -704,7 +704,7 @@ struct ExportPage: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             SRowLine(text: runner.move
-                     ? "One encrypted disk image (AES-256), made with macOS's own hdiutil; Finder asks for the password. Your accounts' real ids and addresses are inside it, the password protects them; no sign-in or token is ever put in."
+                     ? "One encrypted disk image (AES-256), made with macOS's own hdiutil; Finder asks for the password. Your accounts' real identifiers and addresses are inside it, protected by the password. No sign-in or token is ever put in."
                      : runner.usesImage
                      ? "One encrypted disk image (AES-256), made with macOS's own hdiutil; Finder asks for the password. Accounts appear only as a fingerprint of their id, never an address or a token."
                      : "One file, made with macOS's own ditto, so Finder opens it. Accounts appear only as a fingerprint of their id, never an address or a token.")
