@@ -669,7 +669,8 @@ final class SettingsModel: ObservableObject {
         guard let i = accounts.firstIndex(where: { $0.id == id }) else { return }
         accounts.remove(at: i)
         refreshFirstRun()
-        if selection == id { selection = accounts.isEmpty ? Self.firstRunID : accounts[max(0, i - 1)].id }
+        if isFirstRun { selection = Self.firstRunID }       // the last profile is gone: Set up cl_audit again
+        else if selection == id { selection = accounts.isEmpty ? Self.firstRunID : accounts[max(0, i - 1)].id }
     }
 
     func revert() {
