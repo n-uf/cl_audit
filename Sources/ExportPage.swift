@@ -35,6 +35,11 @@ final class ExportRunner: ObservableObject {
     @Published var keys: SessionsExport.Keys = .leaveOut
     /// Claude Code's setup (CLAUDE.md, skills, agents, commands …) goes in: on by default.
     @Published var setup = true
+    /// cl_audit's own profiles and settings go in (SessionsMove.swift; the encrypted image only): off by default, on in the Move preset.
+    @Published var profiles = false
+    /// A move to another Mac: the real account ids and addresses stay (no fingerprints), so the new Mac puts the Code-tab entries and
+    /// tasks back in each account's folder. Only ever the encrypted image: the zip choice is off while it is on.
+    @Published var move = false { didSet { if move { container = .image } } }
     @Published var container: Container = .zip
     @Published var password = ""
     @Published var again = ""
@@ -148,7 +153,25 @@ final class ExportRunner: ObservableObject {
         if password != again { return "The two don't match." }
         return nil
     }
-    var canExport: Bool { phase == .preview && previews != nil && passwordProblem == nil && (total?.sessionsIn(keys) ?? 0) + (total?.entries ?? 0) + (setup ? (total?.setup.units.count ?? 0) : 0) > 0 }
+    var canExport: Bool {
+        phase == .preview && previews != nil && passwordProblem == nil && (!move || usesImage)
+            && (total?.sessionsIn(keys) ?? 0) + (total?.entries ?? 0) + (setup ? (total?.setup.units.count ?? 0) : 0) + (profiles && usesImage ? 1 : 0) > 0
+    }
+
+    /// Move to another Mac, in one click: every profile (when there are more than one), the encrypted image, Claude Code's setup, the
+    /// window's MCP settings and scheduled tasks (an image carries them), cl_audit's profiles and settings, transcripts with keys kept
+    /// (the image protects them), the real account ids. Each row can still be changed afterwards (the zip only by turning the move off).
+    func movePreset() {
+        guard phase == .preview else { return }
+        if (model?.accounts.count ?? 0) > 1 { source = .all } else if case .backup = source { source = .now }
+        move = true; container = .image; setup = true; profiles = true; keys = .keep
+    }
+
+    /// The profiles exported (cl_audit's records of them), for cl_audit.json: those of the parts.
+    func exportedEntries() -> [AccountEntry] {
+        let ids = parts().map(\.profile)
+        return (model?.accounts ?? []).filter { ids.contains($0.id) }
+    }
 
     /// "cl_audit Main 2026-11-05"
     func rootName(now: Date = Date()) -> String {
@@ -188,6 +211,12 @@ final class ExportRunner: ObservableObject {
         var plan = SessionsExport.Job(parts: list, keys: keys, password: pw, destination: url, rootName: rootName())
         plan.setup = setup
         let everyProfile = model?.accounts ?? []
+        plan.move = move && image
+        if profiles {
+            // (each profile's part folder is p1, p2 … in the order of the parts, as the engine names them)
+            let dirs = Dictionary(list.enumerated().map { ($1.profile, "p\($0 + 1)") }, uniquingKeysWith: { a, _ in a })
+            plan.profiles = SessionsMove.make(exportedEntries(), parts: dirs, all: everyProfile, move: plan.move)
+        }
         password = ""; again = ""                     // the secure fields are emptied the moment it starts; the job holds it until hdiutil has it
         lock.lock(); stopFlag = false; lock.unlock()
         phase = .working("starting", 0); note = nil
@@ -325,6 +354,21 @@ enum ExportWords {
         return head + ". An import adds them only if you pick Add them, and they come paused."
     }
 
+    /// The "cl_audit's profiles" row: each exported profile's record (name, look, Dock place, accounts) and cl_audit's General and backup
+    /// settings. They name addresses and accounts, so only the encrypted disk image carries them.
+    static func profilesWords(count: Int, names: [String], on: Bool, image: Bool) -> (value: String, note: String?) {
+        if !on { return ("left out", nil) }
+        if !image { return ("left out of a zip", "A zip leaves out cl_audit's profiles and settings (names, accounts and their addresses): choose the encrypted disk image to carry them.") }
+        let list = names.prefix(4).joined(separator: ", ") + (names.count > 4 ? ", …" : "")
+        return ("\(n(count, "profile", "profiles")) (\(list)) with their accounts, looks and Dock places, and cl_audit's General and backup settings: in the encrypted disk image", nil)
+    }
+
+    /// The Move row: what a move carries and why only the encrypted image can.
+    static func moveWords(_ on: Bool) -> String {
+        on ? "On: the real account ids and addresses stay, so the new Mac puts each Code-tab entry and task back in its account's folder. Only in the encrypted disk image."
+           : "Not a move: accounts appear only as fingerprints."
+    }
+
     /// "5 sessions and 1 skill hold keys: 3 GitHub tokens, 1 private key": the sessions and the setup units (a skill, CLAUDE.md …) together.
     static func foundWords(_ pv: SessionsExport.Preview?) -> String {
         guard let p = pv else { return "scanning the transcripts…" }
@@ -357,7 +401,7 @@ struct ExportPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(runner.source == .all ? "Export all profiles' sessions" : "Export \(name)'s sessions").font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
+            Text(runner.move ? "Move to another Mac" : runner.source == .all ? "Export all profiles' sessions" : "Export \(name)'s sessions").font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
             topBar
             SettingsColumns(width: width, groups: [[AnyView(whatCard), AnyView(keysCard)], [AnyView(previewCard), AnyView(fileCard)]])
         }
@@ -395,6 +439,8 @@ struct ExportPage: View {
         case .done(let o):
             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([o.file]) }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
             Button("Back to \(name)'s settings") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+        case .preview where !runner.move:
+            Button("Move to another Mac") { runner.movePreset() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
         default: EmptyView()
         }
     }
@@ -444,6 +490,16 @@ struct ExportPage: View {
                 } label: { MenuWell(text: fromWords, fill: true) }
                 .faceMenuFill().disabled(runner.phase != .preview)
             }
+            SRow(label: "Move", info: "Move to another Mac: everything a new Mac needs in one encrypted disk image: every profile's sessions, Claude Code's setup, the window's MCP settings and scheduled tasks, and cl_audit's own profiles and settings. A move keeps the real account ids and addresses (no fingerprints), because the Claude window files its Code-tab list and scheduled tasks by account: the new Mac puts them back where the window looks once you sign in there. That is why a move is only ever the encrypted image. Sign-ins never travel: you sign in to each account on the new Mac.", stacked: true) {
+                VStack(alignment: .leading, spacing: 6) {
+                    value(ExportWords.moveWords(runner.move))
+                    Menu {
+                        Button("Move to another Mac") { runner.movePreset() }
+                        Button("Not a move") { runner.move = false }
+                    } label: { MenuWell(text: runner.move ? "Move to another Mac" : "Not a move", fill: true) }
+                    .faceMenuFill().disabled(runner.phase != .preview)
+                }
+            }
             SRow(label: "Claude Code", stacked: true) {
                 VStack(alignment: .leading, spacing: 4) {
                     value(pv.map { "\(n($0.sessions, "session", "sessions")), with their sub-agent files · \(SessionsBackup.sizeWords($0.transcriptBytes))" } ?? "counting…")
@@ -473,7 +529,7 @@ struct ExportPage: View {
                     if let note = w.note {
                         Text(note).font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    if let info = ExportWords.mcpInfo(pv, image: runner.usesImage) {
+                    if !runner.move, let info = ExportWords.mcpInfo(pv, image: runner.usesImage) {         // (a move scrubs nothing)
                         Text(info).font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -496,6 +552,21 @@ struct ExportPage: View {
                     ForEach(Array(setupNotes.enumerated()), id: \.offset) { _, s in
                         Text(s).font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+            }
+            SRow(label: "cl_audit's profiles", info: "cl_audit's own record of each profile exported: its name, label and look, how it behaves, its place in the order (which the Dock group follows), its Claude Code and window folders, and its accounts with the one in use; and cl_audit's General and backup settings. They name your accounts and their addresses, so only the encrypted disk image carries them. An import makes the profiles that aren't on that Mac and never changes one that is; each made profile needs its sign-ins there, and its Dock icon is a step after the import.", stacked: true) {
+                let names = runner.exportedEntries().map(\.name)
+                let w = ExportWords.profilesWords(count: names.count, names: names, on: runner.profiles, image: runner.usesImage)
+                VStack(alignment: .leading, spacing: 6) {
+                    value(w.value)
+                    Menu {
+                        Button("Include them") { runner.profiles = true }
+                        Button("Leave them out") { runner.profiles = false }
+                    } label: { MenuWell(text: runner.profiles ? "Include them" : "Leave them out", fill: true) }
+                    .faceMenuFill().disabled(runner.phase != .preview)
+                    if let note = w.note {
+                        Text(note).font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
@@ -529,10 +600,10 @@ struct ExportPage: View {
             SRow(label: "Password", info: "None: a zip, which Finder opens. An encrypted disk image (AES-256) needs the password to open at all. The password is typed here, handed to macOS's hdiutil on its standard input, and never stored, shown again or logged: lose it and the file can't be opened.", stacked: runner.usesImage) {
                 VStack(alignment: .leading, spacing: 6) {
                     Menu {
-                        Button("None: a zip") { runner.container = .zip }.disabled(runner.imageNeeded)
+                        Button("None: a zip") { runner.container = .zip }.disabled(runner.imageNeeded || runner.move)
                         Button("An encrypted disk image") { runner.container = .image }
                     } label: { MenuWell(text: runner.usesImage ? "An encrypted disk image" : "None: a zip", fill: true) }
-                    .faceMenuFill().disabled(runner.phase != .preview || runner.imageNeeded)
+                    .faceMenuFill().disabled(runner.phase != .preview || runner.imageNeeded || runner.move)
                     if runner.usesImage {
                         WellSecure(placeholder: "Password", text: $runner.password)
                         WellSecure(placeholder: "Again", text: $runner.again)
@@ -545,6 +616,7 @@ struct ExportPage: View {
                 }
             }
             if runner.imageNeeded { SRowLine(text: "Keeping keys needs the encrypted disk image.") }
+            if runner.move { SRowLine(text: "A move is always the encrypted disk image: it keeps the real account ids.") }
         }
     }
 
@@ -613,7 +685,9 @@ struct ExportPage: View {
                 Text(runner.fileName()).font(.system(size: 12, design: .monospaced)).foregroundStyle(face.text).lineLimit(1).truncationMode(.middle)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
-            SRowLine(text: runner.usesImage
+            SRowLine(text: runner.move
+                     ? "One encrypted disk image (AES-256), made with macOS's own hdiutil; Finder asks for the password. A move keeps the real account ids and addresses inside it; never a token or a sign-in."
+                     : runner.usesImage
                      ? "One encrypted disk image (AES-256), made with macOS's own hdiutil; Finder asks for the password. Accounts appear only as a fingerprint of their id, never an address or a token."
                      : "One file, made with macOS's own ditto, so Finder opens it. Accounts appear only as a fingerprint of their id, never an address or a token.")
             if case .working(let what, let f) = runner.phase {
