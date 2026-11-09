@@ -1,8 +1,8 @@
 // SessionsMove: cl_audit's own profiles and settings in an export (format 4), for a move to another Mac.
 //
 // An export can carry cl_audit.json beside its export.json: each exported profile's record (its name and label, its look and how it
-// behaves, its place in the profile order, whether it had a Dock icon, its two folders as ~ paths, its accounts and which one is in
-// use) and cl_audit's General and backup settings. It names addresses and account ids, so only the encrypted disk image carries it:
+// behaves, its place in the profile order, whether it had a Dock icon, its accounts and which one is in use) and cl_audit's General and
+// backup settings. Never its folders: a made profile always gets its own. It names addresses and account ids, so only the encrypted disk image carries it:
 // a zip leaves it out and says so. In a move (SessionsExport.Job.move) the ids and addresses are the real ones; in any other export
 // they are fingerprints like everywhere else in the file, so an import of that file can't name the accounts.
 //
@@ -11,8 +11,11 @@
 // account, when a profile here has its name. One whose name a profile here already has (with other accounts) isn't made. The others
 // are made, under the file's id when it is free here (another id when it isn't). A profile made by an import:
 // - has no sign-in. Each of its accounts needs one, through Add account: sign-ins never travel, and the Keychain is never read;
-// - has Usage in the Dock off, whatever the file says. Making it writes only cl_audit's profiles file and the two folders it works in
-//   (made empty, only when they aren't there). No Dock icon app is built, the Dock is never written, no Claude app is opened or quit.
+// - works in its own folders, the usual ones for its id (~/.claude-<id> and its own window, Claude-<id>), whatever the file says: never
+//   ~/.claude, never the usual Claude app's window, never a folder the file names. One of those names that is already on this Mac is
+//   used only when no profile has it, it is a plain folder and it holds no sign-in (else the next name), and the page says so;
+// - has Usage in the Dock off, whatever the file says, and comes after the profiles that are here (their order doesn't change).
+//   Making it writes only cl_audit's profiles file and the two folders it works in (made empty, only when they aren't there). No Dock icon app is built, the Dock is never written, no Claude app is opened or quit.
 //   Putting it in the Dock is a step the person takes on the done page (Usage in the Dock, which builds its Dock icon app);
 // - is written down in a receipt (moves/<id>/move.json) before it is made, so Undo takes back exactly it: a profile unchanged since
 //   whose sessions' import isn't still in place, and the folders it made, once empty.
@@ -21,8 +24,8 @@
 // there on this Mac and is inside the home folder or on a volume of its own.
 //
 // The file is untrusted: read through a 1 MB cap, at most 16 levels deep, every field checked for its type and range; a profile
-// whose name can't be one is left out, an account whose ids aren't ids is dropped, paths that aren't a profile's usual folders are
-// replaced by the usual ones, and anything else odd falls back to the default. Each is said on the page.
+// whose name can't be one is left out, an account whose ids aren't ids is dropped, and anything else odd falls back to the default.
+// Each is said on the page.
 
 import Foundation
 
@@ -79,8 +82,8 @@ enum SessionsMove {
         var list: [[String: Any]] = []
         for e in exported.prefix(maxProfiles) {
             var p: [String: Any] = ["id": e.id, "name": e.name, "label": e.label, "place": all.firstIndex { $0.id == e.id } ?? list.count,
-                                    "inDock": !e.iconHidden, "window": e.desktop.rawValue,
-                                    "configDir": tilde(expand(e.configDir)), "dataDir": e.desktopDataDir.isEmpty ? "" : tilde(expand(e.desktopDataDir))]
+                                    "inDock": !e.iconHidden, "window": e.desktop.rawValue]
+            // (no folders: a made profile always gets its own on the new Mac, whatever a file says)
             if let part = parts[e.id] { p["part"] = part }
             if let d = try? JSONEncoder().encode(e), let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] {
                 var look: [String: Any] = [:]
@@ -150,15 +153,12 @@ enum SessionsMove {
         s.range(of: #"^[a-z0-9][a-z0-9-]{0,39}$"#, options: .regularExpression) != nil && SessionsBackup.validProfile(s)
     }
 
-    /// The usual Claude Code folder of a profile, as a ~ path: ~/.claude or ~/.claude-<plain name>. Anything else from a file is not one.
-    static func validConfigDir(_ s: String) -> Bool {
-        s.range(of: #"^~/\.claude(-[A-Za-z0-9][A-Za-z0-9._-]{0,59})?$"#, options: .regularExpression) != nil
-    }
-
-    /// A profile's own Claude window folder, as a ~ path: ~/Library/Application Support/Claude-<plain name>.
-    static func validDataDir(_ s: String) -> Bool {
-        s.range(of: #"^~/Library/Application Support/Claude-[A-Za-z0-9][A-Za-z0-9._-]{0,59}$"#, options: .regularExpression) != nil
-    }
+    /// The folders a profile made by an import gets: always the usual ones for its own id, never a folder the file names (that could be
+    /// ~/.claude, the usual Claude app's window, or anywhere else on this Mac).
+    static func ownConfigDir(_ id: String, _ n: Int = 1) -> String { n == 1 ? "~/.claude-\(id)" : "~/.claude-\(id)-\(n)" }
+    /// ~/.claude however it is spelled (Claude Code's default folder): never a made profile's.
+    static func isDefaultFolder(_ dir: String) -> Bool { FolderKey.canonical(dir) == FolderKey.canonical("~/.claude") }
+    static func ownDataDir(_ id: String, _ n: Int = 1) -> String { "~/Library/Application Support/Claude-\(id)" + (n == 1 ? "" : "-\(n)") }
 
     static func validEmail(_ s: String) -> Bool {
         s.utf8.count <= 254 && s.contains("@") && !s.hasPrefix("@") && !s.hasSuffix("@") && !s.contains(where: { $0.isWhitespace })
@@ -213,17 +213,12 @@ enum SessionsMove {
                 if let data = try? JSONSerialization.data(withJSONObject: dict), let e = try? JSONDecoder().decode(AccountEntry.self, from: data) { entry = e }
                 if odd > 0 { notes.append("\(odd) of its settings can't be read: \(odd == 1 ? "that one is" : "those are") left at the default") }
             }
-            // its folders: only a profile's usual ones, as ~ paths; anything else is the usual one for its id
-            if let c = o["configDir"] as? String, validConfigDir(c) { entry.configDir = c }
-            else if o["configDir"] != nil { notes.append("its Claude Code folder in the file isn't one a profile uses: \(entry.configDir) instead") }
-            entry.desktop = (o["window"] as? String) == DesktopMode.standard.rawValue ? .standard : .separate
-            if entry.desktop == .separate {
-                if let dd = o["dataDir"] as? String, validDataDir(dd) { entry.desktopDataDir = dd }
-                else {
-                    entry.desktopDataDir = "~/Library/Application Support/Claude-\(id)"
-                    if let dd = o["dataDir"] as? String, !dd.isEmpty { notes.append("its window folder in the file isn't one a profile uses: \(entry.desktopDataDir) instead") }
-                }
-            } else { entry.desktopDataDir = "" }
+            // its folders: never the file's (a file could name ~/.claude, the usual Claude app's window or any folder): always its own
+            // Claude Code folder and its own window, the usual ones for its id (settled in `plan`, once the id is final here)
+            entry.configDir = ownConfigDir(id)
+            entry.desktop = .separate
+            entry.desktopDataDir = ownDataDir(id)
+            if (o["window"] as? String) == DesktopMode.standard.rawValue { notes.append("it used the usual Claude app on the other Mac: here it gets a window of its own") }
             entry.seat = nil; entry.standby = []; entry.keptFolder = nil
             // its accounts: real ids only, each account once in the whole file (one account belongs to one profile)
             var accounts: [Account] = []
@@ -411,6 +406,22 @@ enum SessionsMove {
         var isEmpty: Bool { create.isEmpty && settings.isEmpty }
     }
 
+    /// The first of `name(1)`, `name(2)` … that no profile uses and that is either not on this Mac or a plain folder (not a link) without
+    /// a sign-in record (`signIn`: Claude Code's .claude.json, the window's config.json) in it. `there`: it is on this Mac already.
+    static func freeFolder(name: (Int) -> String, owned: (String) -> Bool, signIn: String) -> (dir: String, there: Bool) {
+        for n in 1...99 {
+            let dir = name(n)
+            if owned(dir) { continue }
+            let path = expand(dir)
+            var st = stat()
+            guard lstat(path, &st) == 0 else { return (dir, false) }
+            guard (st.st_mode & S_IFMT) == S_IFDIR else { continue }               // a link or a file of that name: never used
+            if lstat((path as NSString).appendingPathComponent(signIn), &st) == 0 { continue }       // signed in to something: not ours
+            return (dir, true)
+        }
+        return (name(100), false)
+    }
+
     /// The accounts of a profile as cl_audit keeps them: the one in use (`seat`) and the others standing by, each without a kept sign-in.
     static func accountsEntry(_ e: inout AccountEntry, _ accounts: [Account], now: Date) {
         guard let first = accounts.first else { e.seat = nil; e.standby = []; return }
@@ -451,23 +462,14 @@ enum SessionsMove {
             if ids.contains(e.id) { e.id = Store.newID(from: e.name, taken: ids) }
             if !validID(e.id) || ids.contains(e.id) { e.id = Store.newID(from: "profile", taken: ids) }
             var notes = fp.notes
-            // its folders: the file's when no profile here uses them, else the usual ones for its id
-            if FolderRules.configOwner(e.configDir, among: taken) != nil {
-                var dir = "~/.claude-\(e.id)", n = 2
-                while FolderRules.configOwner(dir, among: taken) != nil { dir = "~/.claude-\(e.id)-\(n)"; n += 1 }
-                notes.append("its Claude Code folder \(e.configDir) is another profile's here: \(dir) instead")
-                e.configDir = dir
-            }
-            if e.desktop == .standard, FolderRules.windowOwner(.standard, FolderKey.standardDataDir, among: taken) != nil {
-                e.desktop = .separate
-                e.desktopDataDir = "~/Library/Application Support/Claude-\(e.id)"
-                notes.append("the usual Claude app is another profile's here: it gets its own window")
-            }
-            if e.desktop == .separate, FolderRules.windowOwner(.separate, e.desktopDataDir, among: taken) != nil || e.desktopDataDir.isEmpty {
-                var dir = "~/Library/Application Support/Claude-\(e.id)", n = 2
-                while FolderRules.windowOwner(.separate, dir, among: taken) != nil { dir = "~/Library/Application Support/Claude-\(e.id)-\(n)"; n += 1 }
-                if !e.desktopDataDir.isEmpty { notes.append("its window folder is another profile's here: \(dir) instead") }
-                e.desktopDataDir = dir
+            // its folders: always its own, the usual ones for its id (never the file's: never ~/.claude, never the usual Claude app). A
+            // folder of that name no profile uses is taken as it is only when it holds no sign-in (and isn't a link); else the next name
+            e.desktop = .separate
+            let code = freeFolder(name: { ownConfigDir(e.id, $0) }, owned: { FolderRules.configOwner($0, among: taken) != nil }, signIn: ".claude.json")
+            let data = freeFolder(name: { ownDataDir(e.id, $0) }, owned: { FolderRules.windowOwner(.separate, $0, among: taken) != nil }, signIn: "config.json")
+            e.configDir = code.dir; e.desktopDataDir = data.dir
+            for (dir, there) in [(code.dir, code.there), (data.dir, data.there)] where there {
+                notes.append("uses the folder \(dir) already on this Mac (nothing in it changes)")
             }
             accountsEntry(&e, fp.accounts, now: now)
             // no Dock icon until the person puts it in the Dock (the done page's step): nothing builds an app or writes the Dock before
@@ -563,7 +565,8 @@ enum SessionsMove {
     static func apply(_ p: Plan, takeSettings: Bool, file: String, now: Date = Date()) throws -> Receipt {
         var r = Receipt(id: SessionsBackup.newID(now), started: now, file: SessionsBackup.oneLine(file, max: 200), move: p.move, made: p.create)
         do { try save(r) } catch { throw BackupError("The import's receipt couldn't be saved; nothing was made.") }
-        // 1. the profiles: each still free (its id, name, accounts and folders) in the file as it is now, put at its place in the order
+        // 1. the profiles: each still free (its id, name, accounts and folders, its folder still without a sign-in) in the file as it is
+        // now, added after the profiles that are here
         var wrote = Set<String>()
         do {
             try Store.edit { list in
@@ -574,8 +577,11 @@ enum SessionsMove {
                         || e.seats.contains { s in out.contains { $0.has(s) } }
                         || FolderRules.configOwner(e.configDir, among: out) != nil
                         || FolderRules.windowOwner(e.desktop, e.desktop == .standard ? FolderKey.standardDataDir : e.desktopDataDir, among: out) != nil
+                        || e.desktop == .standard || isDefaultFolder(e.configDir)
+                        || FileManager.default.fileExists(atPath: (expand(e.configDir) as NSString).appendingPathComponent(".claude.json"))
                     if clash { continue }
-                    out.insert(e, at: min(max(m.place, 0), out.count))
+                    // after the profiles that are here (their order never changes), the made ones in the file's order
+                    out.append(e)
                     wrote.insert(e.id)
                 }
                 return out
