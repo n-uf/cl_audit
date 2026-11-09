@@ -540,8 +540,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     organisation's managed settings (or an error in them), HIPAA or zero data retention make `cleanupPeriodDays` apply to
     everything; the line and the note under Keep for say which case applies. While `cleanupPeriodDays` or
     `desktopSessionCleanupPeriodDays` in `settings.json` isn't a valid number (or the file can't be read), Claude Code
-    2.1.318 doesn't clean up at all: the line adds that as a note, and everything else still says what would be deleted
-    once you fix it. See [How cl_audit tells](#how-cl_audit-tells-what-claude-code-deletes).
+    2.1.318 skips its clean-up; cl_audit adds a note and still shows what would be deleted once it's fixed. See [How cl_audit tells](#how-cl_audit-tells-what-claude-code-deletes).
   - **Keep for:** how long Claude Code keeps the transcripts of sessions you ran in the terminal: 30 days (its default), 90 days or a year. It writes
     `cleanupPeriodDays` in the Claude Code folder's `settings.json`, changing only that number in the file's own
     text (or adding the key after the opening brace of an ordinary object); everything else stays byte for byte. A
@@ -949,13 +948,14 @@ never writes:
   them ends the window exemption (the first source that holds any setting supplies the value, else the smallest); so does a
   managed document that is there but can't be used (not readable, not a plain file, too big, not a JSON object, a bad
   value). The cap is the smallest any source sets; a 0 counts only when none caps. A missing file is simply not there.
-  A source that names a policy helper (`policyHelper` or `policyHelpers`, a program that computes managed settings when
-  Claude Code starts) may set `cleanupPeriodDays` where cl_audit can't see it, so the window's sessions are counted too.
+  When your organisation's managed settings use a policy helper (`policyHelper` or `policyHelpers`, a program that
+  computes managed settings when Claude Code starts), cl_audit can't see the period it sets, so it counts the Claude
+  window's sessions as deleted too (the safe side).
 - **A skipped clean-up is only a note.** While `cleanupPeriodDays` or `desktopSessionCleanupPeriodDays` in your own
-  `settings.json` isn't a valid number, or the file can't be read, Claude Code 2.1.318 skips its clean-up altogether
-  (unless managed settings set `cleanupPeriodDays` or name a policy helper). cl_audit adds one sentence saying so, but the
-  counts, Would be deleted and Keep for stay as if the clean-up ran (the bad value counts as not set), because fixing the
-  file, or another Claude Code version, deletes them. Any whole number up to 2^53−1 is valid, as for Claude Code. A
+  `settings.json` isn't a valid number, or the file can't be read, Claude Code (2.1.318) skips its clean-up (unless
+  managed settings set `cleanupPeriodDays` or use a policy helper); cl_audit adds a note and still shows what would be
+  deleted once it's fixed. It counts with the defaults: 30 days for an invalid `cleanupPeriodDays`, no limit for an
+  invalid `desktopSessionCleanupPeriodDays`, both for a file that can't be read. Any whole number up to 2^53−1 is valid, as for Claude Code. A
   `settings.json` that is a link to nowhere, a folder or a FIFO counts as no file (it is read at most 2 MiB, never
   waiting). The same skip for a bad managed document isn't modelled: there it says the sessions are deleted (the safe
   side).

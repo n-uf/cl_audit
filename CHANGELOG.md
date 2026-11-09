@@ -13,8 +13,10 @@ the notes before updating.
   `desktopSessionCleanupPeriodDays` gives them a limit, you deleted or archived them in the window, or your
   organisation's managed settings (or an error in them), HIPAA or zero data retention make `cleanupPeriodDays` apply to
   everything. **Kept here** and **Keep for** say which sessions the number is for. While `cleanupPeriodDays` or
-  `desktopSessionCleanupPeriodDays` in `settings.json` isn't a valid number, Claude Code doesn't clean up: cl_audit adds a
-  note, and still shows what would be deleted once it's fixed. Restore,
+  `desktopSessionCleanupPeriodDays` in `settings.json` isn't a valid number, Claude Code skips its clean-up; cl_audit
+  adds a note and still shows what would be deleted once it's fixed. When your organisation's managed settings use a
+  policy helper, cl_audit can't see the period it sets, so it counts the Claude window's sessions as deleted too (the
+  safe side). Restore,
   Import and the default-profile move show **Would be deleted** (instead of "Older than 30 days") with only the sessions
   Claude Code would really delete, and **Keep for 90 days** only when it would save some. Your organisation's settings
   are read, never changed.
