@@ -288,7 +288,9 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
             items[id] = nil
         }
         guard !list.isEmpty else {
-            if accessory { NSApp.setActivationPolicy(.prohibited); accessory = false }
+            // no icon left: no windows either, unless the quick chat's panel is up (it set the accessory role itself)
+            if accessory, !QuickChat.shared.isOpen { NSApp.setActivationPolicy(.prohibited) }
+            accessory = false
             return
         }
         if !accessory { NSApp.setActivationPolicy(.accessory); accessory = true }   // still no Dock icon
@@ -373,6 +375,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
             switches.forEach(menu.addItem)
             menu.addItem(.separator())
         }
+        add("Quick chat", #selector(quickChat(_:)))
         if p.entry.claudeWindow { add("Open Claude window", #selector(openClaude(_:))) }
         add("Refresh now", #selector(refreshNow(_:)))
         if p.expired { add("Renew login now (uses a little usage)", #selector(renewLogin(_:))) }
@@ -388,6 +391,8 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         return profiles().first(where: { $0.entry.id == id })?.entry
     }
     @objc private func openClaude(_ sender: NSMenuItem) { if let e = entry(sender) { Launcher.openClaude(Account(e)) } }
+    /// The quick chat, on this profile (QuickChat.swift).
+    @objc private func quickChat(_ sender: NSMenuItem) { QuickChat.shared.open(profile: sender.representedObject as? String) }
     @objc private func refreshNow(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { refresh(id) } }
     @objc private func renewLogin(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { renew(id) } }
     @objc private func dashboard(_ sender: NSMenuItem) { Installer.openDashboard() }

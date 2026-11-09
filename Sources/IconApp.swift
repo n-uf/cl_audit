@@ -529,6 +529,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             switches.forEach(m.addItem)
             m.addItem(.separator())
         }
+        add("Quick chat", #selector(quickChat))
         if entry.claudeWindow {
             add(claudeOpen ? "Show Claude window" : "Open Claude window", #selector(openClaude))
             if claudeOpen { add("Quit Claude window", #selector(quitClaudeWindow)) }
@@ -552,6 +553,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                                      deliverImmediately: true)
         redraw()
         DispatchQueue.main.asyncAfter(deadline: .now() + 15.5) { [weak self] in self?.redraw() }
+    }
+    /// Asks the agent to open the quick chat on this profile (QuickChat.swift).
+    @objc func quickChat() {
+        DistributedNotificationCenter.default().postNotificationName(QuickChat.openNote, object: accountID, userInfo: nil,
+                                                                     deliverImmediately: true)
     }
     /// Asks the agent to renew this profile's sign-in through Claude Code now.
     @objc func renewLogin() {

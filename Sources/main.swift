@@ -90,6 +90,21 @@ if args.count >= 3, args[1] == "--render-settings" {
     exit(0)
 }
 
+if args.count >= 2, args[1] == "--quick-chat" {
+    // --quick-chat [PROFILE]: asks the agent to open the quick chat (on that profile)
+    DistributedNotificationCenter.default().postNotificationName(QuickChat.openNote, object: args.count > 2 ? args[2] : nil,
+                                                                 userInfo: nil, deliverImmediately: true)
+    RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+    exit(0)
+}
+
+if args.count >= 4, args[1] == "--render-quick-chat" {
+    // --render-quick-chat OUT.png STATE: the bar or the chat window with sample data (bar, typing, notinstalled,
+    // streaming, answer, failed, notsigned), for checking
+    if #available(macOS 14, *) { MainActor.assumeIsolated { QuickChatRender.write(to: args[2], state: args[3]) } }
+    exit(0)
+}
+
 if args.count >= 4, args[1] == "--render-launcher" {
     if #available(macOS 14, *) { MainActor.assumeIsolated { ManagerUI.renderSample(to: args[2], main: args[3] == "main") } }
     exit(0)

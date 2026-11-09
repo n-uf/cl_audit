@@ -242,6 +242,11 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
                 }
             }
         }, refresh: { [weak self] id in self?.refresh(id) }, renew: { [weak self] id in self?.readers[id]?.renewLogin() })
+        // the quick chat (QuickChat.swift): its panel and its `claude`, on the profiles as they are now
+        QuickChat.shared.start(entries: { [weak self] in
+            guard let self else { return [] }
+            return self.order.compactMap { self.readers[$0]?.entry }
+        })
         // the Mac's accent colour changed: the icons in Accent are drawn again
         observers.append(NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil,
                                                                 queue: .main) { [weak self] _ in self?.menuBar?.update() })
@@ -410,5 +415,6 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
 
     func applicationWillTerminate(_ note: Notification) {
         agentLog.log("agent \(self.myBuild, privacy: .public) quitting, pid \(getpid())")
+        QuickChat.shared.shutdown()
     }
 }
