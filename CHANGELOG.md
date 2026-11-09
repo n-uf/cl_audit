@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.10 — 2026-11-09
+
 - **Move to another Mac.** A new key on the Export page sets everything a new Mac needs in one click: all profiles, the
   encrypted disk image, Claude Code's setup, the window's MCP settings and scheduled tasks, and cl_audit's own profiles and
   settings. You can still change any row, and your choice for keys found stays. A move keeps your accounts' real identifiers,
