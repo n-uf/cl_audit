@@ -1443,7 +1443,8 @@ enum SessionsExport {
         var files: [String] = []
         var inTranscripts: [String] = []                              // their contents are the user's words; their NAMES are looked at
         // Claude Code's setup (profiles/pN/setup/…, and only there) is the operator's own words too, copied as they are: no address or id
-        // check on it (nothing else is written under that path: a window or sidebar file there would be looked at like any other)
+        // check on it, and that includes the NAMES of its files and folders (a skill called for an id isn't looked at, unlike a transcript's
+        // name); nothing else is written under that path: a window or sidebar file there would be looked at like any other
         let setupRoot = try! NSRegularExpression(pattern: "^profiles/p[0-9]+/setup/")
         for case let rel as String in walk {
             if rel.contains("transcripts/") { inTranscripts.append(rel) }
