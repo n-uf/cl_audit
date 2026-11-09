@@ -656,7 +656,10 @@ under cl_audit; one column keeps the same order, top to bottom. Every row is one
   backups" (`~/Library/Application Support/usage-n-uf/backups`) or a folder you pick with **Change…** (a Finder
   panel; **Use default** goes back), with **Show in Finder**. **Keep the last** (3) and **And any under** (30 days)
   say what stays: the last N of each profile plus any made under D days ago. Stored with cl_audit's other
-  preferences. Backups already made stay where they were if the folder changes. See
+  preferences. Backups already made stay where they were if the folder changes. When the folder is one you picked, a
+  line says once that backups hold copies of Claude Code's settings and scripts (keys found in them are left out); **Got it**
+  hides it for that folder, and a folder you pick later shows it again (remembered per folder, since where the copies sit is
+  what the line is about; cl_audit's own folder never shows it). See
   [Backups of a profile's sessions](#backups-of-a-profiles-sessions).
 - **Quick chat:** see [Quick chat](#quick-chat).
   - **Shortcut:** off by default. On, it opens the chat from any app: ⌥Space, ⌃⌥Space, ⌥⇧Space, ⌃Space or ⌘Space.
@@ -819,6 +822,15 @@ Sessions. **Restore…** on a backup puts back what is missing, merged, and neve
   from the parsed file, so nothing a parse drops comes along, and no command (a hook, `apiKeyHelper`) is ever run. One that
   isn't a JSON object is left out, with the scripts its hooks run, and listed. Env values travel only in the encrypted
   export. Backups made by 26.11.8 still hold them (and their MCP settings) as they were.
+  **A plain backup then runs the Export page's key check** (the same `SecretScan` as "sessions mention API keys or tokens") over
+  what it is about to write, reading the copies that landed in the backup, never the originals. Every string value anywhere in
+  settings.json that matches (an `apiKeyHelper` like `echo sk-…`, a bearer token in a `permissions.allow` entry, a nested value; an
+  array element too) is blanked to `""` with its key kept, and the manifest lists where, as dotted paths such as
+  `permissions.allow[2]` (`secretBlanked`: names only, never a value). A script a hook or the status line runs, a skill, agent or
+  command that holds such a script (the unit goes whole or not at all), and `plugins/known_marketplaces.json` whose bytes match are
+  left out and named in the manifest (`secretLeftOut`, "script hooks/x.sh"). A file that can't be read back counts as a match.
+  Restore says it on the setup row ("held a key: left out of backups; it travels only in the encrypted export"); Export from a
+  backup says the image lacks them. The image of the profile as it is now, and an import's staged backup, keep everything.
   The manifest has the backup's id, profile, kind (before a
   switch, naming the receipt, or manual), when, how many seconds it took, the accounts by id only (never an
   address), counts (sessions, sidebar ones, tasks, transcripts), the size and, per item, its original absolute path

@@ -8,7 +8,19 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Backups leave out the keys they find.** Before a backup writes Claude Code's setup, cl_audit runs the same key check the
+  Export page uses ("sessions mention API keys or tokens") over what it is about to keep. Any value in settings.json that
+  looks like a key (an `apiKeyHelper` command such as `echo sk-…`, a token inside a permission entry, a value deep in the file)
+  is blanked, and its name stays. A script your hooks run, a skill whose script holds a key, or the plugin marketplaces file
+  that holds one is left out of the backup. Restore says which values are blank and which files are missing ("held a key: left
+  out of backups; it travels only in the encrypted export"), and so does Export when you export from a backup (the image then
+  lacks them; export the profile as it is now to carry the keys). Nothing is ever run, and the files on your Mac are never
+  changed. The key itself is never written down anywhere, only where it was.
+- **A line on General ▸ Backups when you pick the backups folder.** Backups hold copies of Claude Code's settings and scripts
+  (keys found in them are left out). The line shows once for each folder you pick, until you press Got it; a second folder
+  shows it again, and cl_audit's own folder never does.
+- A backup made by this version can name blanked values and left-out files in its `backup.json`; older versions ignore those
+  lines and read the backup as before.
 
 ## 26.11.10 — 2026-11-09
 
