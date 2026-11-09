@@ -132,7 +132,7 @@ final class SettingsModel: ObservableObject {
         guard !fresh.isEmpty, fresh != saved else { return }     // our own save, or nothing new
         let merged = Self.merge(base: saved, local: accounts, remote: fresh)
         saved = fresh
-        if merged != accounts { accounts = merged }
+        if merged != accounts { accounts = merged; refreshFirstRun() }
         if !isValid(selection) { selection = homeSelection }
     }
 
@@ -188,7 +188,8 @@ final class SettingsModel: ObservableObject {
         saved = Store.load()
         // No profiles is no profile: a fresh install gets the first-run page (FirstRun.swift), not an automatic "main"
         accounts = saved
-        selection = FirstRun.needed(saved) ? Self.firstRunID : Self.dashboardID
+        isFirstRun = FirstRun.needed(saved)          // decided here and at the events below, not on every redraw
+        selection = isFirstRun ? Self.firstRunID : Self.dashboardID
         firstRun.color = TileColor.accents.first ?? .purple
         timer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             guard let self else { return }
@@ -217,7 +218,7 @@ final class SettingsModel: ObservableObject {
     /// Profiles not linked to a Claude account seat yet get the one their folder is signed in to (one profile per
     /// seat: see FolderRules.linkSeats). Saved like any other change; only cl_audit does this.
     func linkSeats() {
-        guard Self.followsDock, !needsApply, problem == nil else { return }
+        guard Self.followsDock, !isFirstRun, !needsApply, problem == nil else { return }   // not under the first-run page
         let linked = FolderRules.linkStandbySeats(FolderRules.linkSeats(accounts))
         if linked != accounts { accounts = linked }
     }
@@ -282,7 +283,7 @@ final class SettingsModel: ObservableObject {
     func reloadIfClean() {
         guard !needsApply else { return }
         let fresh = Store.load()
-        if !fresh.isEmpty, fresh != accounts { saved = fresh; accounts = fresh }
+        if !fresh.isEmpty, fresh != accounts { saved = fresh; accounts = fresh; refreshFirstRun() }
         if !isValid(selection) { selection = homeSelection }
     }
 
@@ -581,7 +582,14 @@ final class SettingsModel: ObservableObject {
     /// itself, never signed in); what has been picked there so far.
     static let firstRunID = "__firstrun__"
     @Published var firstRun = FirstRunDraft()
-    var isFirstRun: Bool { FirstRun.needed(accounts) }
+    /// Decided when the window loads and when the profiles change here (removed, loaded from the file, Done), never on a
+    /// redraw: a briefly unreadable ~/.claude.json can't flip Settings to this page, and a sign-in landing in ~/.claude
+    /// from the page keeps it until Done.
+    @Published private(set) var isFirstRun = false
+    func refreshFirstRun() {
+        let now = FirstRun.needed(accounts, signedInCounts: !isFirstRun)
+        if now != isFirstRun { isFirstRun = now }
+    }
 
     func startNew() {
         if draft == nil {
@@ -658,11 +666,13 @@ final class SettingsModel: ObservableObject {
     func remove(_ id: String) {
         guard let i = accounts.firstIndex(where: { $0.id == id }) else { return }
         accounts.remove(at: i)
+        refreshFirstRun()
         if selection == id { selection = accounts.isEmpty ? Self.firstRunID : accounts[max(0, i - 1)].id }
     }
 
     func revert() {
         accounts = saved.isEmpty ? accounts : saved
+        refreshFirstRun()
         if !accounts.contains(where: { $0.id == selection }) { selection = accounts.first?.id }
         message = ""
     }

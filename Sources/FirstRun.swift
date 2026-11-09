@@ -39,13 +39,15 @@ enum FirstRun {
 
     /// That profile as it was made: nothing changed in it, no standby account, and ~/.claude isn't signed in. A "main"
     /// someone renamed, restyled or signed in to is a profile they use.
-    static func isImplicitMain(_ e: AccountEntry) -> Bool {
-        e == implicitMain && Account.signedInSeat(configDir: "~/.claude") == nil
+    /// `signedInCounts: false` leaves the sign-in out (the page is already up: a sign-in landing in ~/.claude from it
+    /// must not take the page away before Done).
+    static func isImplicitMain(_ e: AccountEntry, signedInCounts: Bool = true) -> Bool {
+        e == implicitMain && (!signedInCounts || Account.signedInSeat(configDir: "~/.claude") == nil)
     }
 
     /// The first-run page is for: no profile at all, or only the implicit "main".
-    static func needed(_ list: [AccountEntry]) -> Bool {
-        list.isEmpty || (list.count == 1 && isImplicitMain(list[0]))
+    static func needed(_ list: [AccountEntry], signedInCounts: Bool = true) -> Bool {
+        list.isEmpty || (list.count == 1 && isImplicitMain(list[0], signedInCounts: signedInCounts))
     }
 
     static func step(claude: Bool, draft: FirstRunDraft) -> Step {
@@ -66,7 +68,7 @@ enum FirstRun {
     static func foundFolders(folders: [FolderChoice] = Detect.configFolders(), among accounts: [AccountEntry] = []) -> [FoundFolder] {
         folders.compactMap { f in
             guard Account.signedInSeat(configDir: f.path) != nil, let email = Account.expectedEmail(configDir: f.path),
-                  !accounts.contains(where: { !isImplicitMain($0) && FolderKey.canonical($0.configDir) == FolderKey.canonical(f.path) }) else { return nil }
+                  !accounts.contains(where: { !isImplicitMain($0, signedInCounts: false) && FolderKey.canonical($0.configDir) == FolderKey.canonical(f.path) }) else { return nil }
             let facts = AccountFacts.of(configDir: f.path)
             let detail = [facts?.plan.map(Account.planWords), facts?.org].compactMap { $0 }.joined(separator: " · ")
             return FoundFolder(path: f.path, email: email, detail: detail)
@@ -177,8 +179,11 @@ extension SettingsModel {
         do { try NewAccountSetup.createOrConnect(&d) } catch { return error.localizedDescription }
         var e = d.entry
         if var s = Account.signedInSeat(configDir: e.configDir) { s.linkedAt = Date(); e.seat = s }
-        accounts.removeAll { FirstRun.isImplicitMain($0) }        // an older version's own "main": nothing in it, and it goes
+        // an older version's own "main", exactly as made: nothing in it, and it goes (even when ~/.claude got signed in
+        // meanwhile, from this page: that account is the new profile's now)
+        accounts.removeAll { FirstRun.isImplicitMain($0, signedInCounts: false) }
         accounts.append(e)
+        refreshFirstRun()
         firstRun = FirstRunDraft(color: firstRun.color)
         selection = e.id
         return nil
