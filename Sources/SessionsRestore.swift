@@ -206,12 +206,17 @@ enum SessionsRestore {
             }
         }
         // the window's files are small: read once and kept; transcripts can be thousands and big: each checked, then closed at once
+        // (each at most 64 MB, all of them at most 512 MB: a window's entries are a few KB each, so a backup that holds more was not
+        // made from one, and isn't read into memory)
         var windowData: [String: Data] = [:]
+        var windowBytes = 0
         for (_, c) in windowItems {
             guard let f = reader.file(c), let d = read(f.fd, size: f.st.st_size) else {
                 return refuse("A file in the backup isn't a plain file with one link, or isn't there (\(c.last ?? "")). Nothing is restored from it.")
             }
             close(f.fd)
+            windowBytes += d.count
+            guard windowBytes <= 512 << 20 else { return refuse("The backup's window files add up to more than a Claude window keeps (512 MB). Nothing is restored from it.") }
             windowData[c.joined(separator: "/")] = d
         }
         for (_, c) in codeItems {

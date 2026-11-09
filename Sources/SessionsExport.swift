@@ -757,7 +757,7 @@ enum SessionsExport {
         let files = m.items.filter { $0.role == .setup && $0.path.hasPrefix("setup/") }.map { (rel: String($0.path.dropFirst(6)), exec: $0.exec ?? false) }
         var out = Setup.heldUnits(known: nil, files: files)
         if files.contains(where: { $0.rel == "settings.json" }) {
-            out.formUnion(Setup.hookUnits(rels: files.map(\.rel), settings: FileManager.default.contents(atPath: dir.appendingPathComponent("setup/settings.json").path)) ?? [])
+            out.formUnion(Setup.hookUnits(rels: files.map(\.rel), settings: Setup.readCapped(dir.appendingPathComponent("setup/settings.json").path, limit: 8 << 20)) ?? [])
         }
         return out
     }
@@ -767,7 +767,7 @@ enum SessionsExport {
         let (files, found, held, known) = setupFiles(of: part)
         var kinds: [Setup.Unit: Set<Secret>] = [:]
         var seen = Set<Setup.Unit>()
-        func data(_ rel: String) -> Data? { files.first { $0.rel == rel }.flatMap { FileManager.default.contents(atPath: $0.src) } }
+        func data(_ rel: String) -> Data? { files.first { $0.rel == rel }.flatMap { Setup.readCapped($0.src, limit: 8 << 20) } }
         sp.hookUnits = held
         sp.hooksUnknown = !known
         for f in files {
@@ -1399,8 +1399,7 @@ enum SessionsExport {
             if !includes.isEmpty {
                 let candidates = landed.union(includes.flatMap { $0.1.map { String($0.path.dropFirst(6)) } })
                 let reached = Setup.includeClosure(carried: candidates) { rel in
-                    guard let d = FileManager.default.contents(atPath: b.dir.appendingPathComponent("setup/" + rel).path), d.count <= 4 << 20 else { return nil }
-                    return d
+                    Setup.readCapped(b.dir.appendingPathComponent("setup/" + rel).path, limit: 4 << 20)
                 }
                 for (u, list) in includes {
                     if cancel() { throw ArchiveError("Stopped.") }

@@ -925,8 +925,17 @@ enum SessionsImport {
             // with the CLAUDE.md that includes it (an `@` line, followed the way the export followed it): what is left over (a path no
             // command runs, an .md nothing includes) is not part of the setup, and is refused, never guessed at
             let scripts = setupRels.filter { Setup.unit(of: $0).kind == .script }
+            // settings.json is only ever read through the 8 MB cap (a real one is a few KB): one bigger is refused here, so nothing
+            // after this reads a huge one whole
+            var settingsData: Data? = nil
+            if setupRels.contains("settings.json") {
+                guard let d = try? readSmall(tree.appendingPathComponent("\(base)/setup/settings.json").path, limit: 8 << 20) else {
+                    throw ArchiveError("The export's settings.json is over 8 MB or isn't a plain file; refused.")
+                }
+                settingsData = d
+            }
             if !scripts.isEmpty {
-                guard setupRels.contains("settings.json"), let sd = try? readSmall(tree.appendingPathComponent("\(base)/setup/settings.json").path, limit: 8 << 20) else {
+                guard let sd = settingsData else {
                     throw ArchiveError("A script is in the export without the settings.json that points to it; refused.")
                 }
                 let named = Setup.namedPaths(in: sd, among: scripts)
@@ -1074,9 +1083,10 @@ enum SessionsImport {
                 seats.insert(SeatID(account: c[1], organization: c[2]))
                 if name.hasPrefix("local_"), name.hasSuffix(".json") {
                     counts.sessions += 1
-                    if !SidebarPlan.flag("isArchived", in: FileManager.default.contents(atPath: dst) ?? Data()) { counts.sidebar += 1 }
+                    // (read through the restore's own cap for a window file, 64 MB: one bigger is refused when it is restored)
+                    if !SidebarPlan.flag("isArchived", in: (try? readSmall(dst, limit: 64 << 20)) ?? Data()) { counts.sidebar += 1 }
                 } else if name == "scheduled-tasks.json",
-                          let d = FileManager.default.contents(atPath: dst), let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                          let d = try? readSmall(dst, limit: 64 << 20), let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
                     counts.tasks += (j["scheduledTasks"] as? [Any])?.count ?? 0
                 }
             } else if it.role == .transcript, c.count == 3, name.hasSuffix(".jsonl") { counts.transcripts += 1 }
@@ -1099,7 +1109,9 @@ enum SessionsImport {
         // executable file
         let setupRels = items.filter { $0.role == .setup }.map { String($0.path.dropFirst(6)) }
         m.setupHookUnits = setupRels.contains("settings.json")
-            ? Setup.hookUnits(rels: setupRels, settings: FileManager.default.contents(atPath: (partial.path as NSString).appendingPathComponent("setup/settings.json"))).map { $0.map(Setup.key).sorted() }
+            // (through the 8 MB cap; one that can't be read so is "not known", never "none")
+            ? (try? readSmall((partial.path as NSString).appendingPathComponent("setup/settings.json"), limit: 8 << 20))
+                .flatMap { Setup.hookUnits(rels: setupRels, settings: $0) }.map { $0.map(Setup.key).sorted() }
             : nil
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let manifestPath = (partial.path as NSString).appendingPathComponent("backup.json")

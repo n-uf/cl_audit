@@ -218,6 +218,17 @@ enum Setup {
         return "/" + out.joined(separator: "/")
     }
 
+    /// A plain file read whole only when it is at most `limit` bytes (a link is not followed): a setup file in a backup (an imported
+    /// one came from someone's file) is never read into memory whatever its size.
+    static func readCapped(_ path: String, limit: Int) -> Data? {
+        let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_size <= limit else { return nil }
+        return SessionsRestore.read(fd, size: st.st_size)
+    }
+
     static func sha(path: String) -> String? {
         let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
         guard fd >= 0 else { return nil }
@@ -436,7 +447,7 @@ enum Setup {
         }
 
         // the scripts settings.json points to
-        if let f = found.files.first(where: { $0.rel == "settings.json" }), let d = FileManager.default.contents(atPath: f.src), d.count <= 8 << 20 {
+        if let f = found.files.first(where: { $0.rel == "settings.json" }), let d = readCapped(f.src, limit: 8 << 20) {
             for path in commandPaths(inSettings: d, home: home) {
                 let abs = normalize(path), b = normalize(base)
                 if abs.hasPrefix(b + "/") {
