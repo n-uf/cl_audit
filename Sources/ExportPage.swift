@@ -249,8 +249,9 @@ enum ExportWords {
         let sp = p.setup
         if sp.units.isEmpty { return sp.linked.isEmpty ? "none" : "none carried (see below)" }
         if !setup { return "left out" }
+        var plainExtra = Setup.Extra(); plainExtra.plugins = sp.extra.plugins          // (the plugin list is carried in a zip; only the marketplaces file is held back)
         return image ? Setup.words(sp.counts, extra: sp.extra)
-            : (sp.plain.total == 0 ? "none: only settings.json and the like, which need the encrypted disk image" : Setup.words(sp.plain, extra: Setup.Extra(settings: nil, plugins: nil)))
+            : (sp.plain.total == 0 ? "none: only settings.json and the like, which need the encrypted disk image" : Setup.words(sp.plain, extra: plainExtra))
     }
 
     /// What is left out and why: sensitive setup in a zip, links (and where they point: on this page only), what points outside the folder.
@@ -413,7 +414,7 @@ struct ExportPage: View {
                 let unread = p.unreadable > 0 ? "\(n(p.unreadable, "Code-tab file", "Code-tab files")) it can't read \(p.unreadable == 1 ? "is" : "are") left out of a zip too." : ""
                 SRowLine(text: [settings, unread].filter { !$0.isEmpty }.joined(separator: " "), color: face.caution)
             }
-            SRow(label: "Claude Code setup", info: "Claude Code's own setup, from \(tilde(entry.configDir)): CLAUDE.md and the .md files it pulls in with @path, skills, agents, commands, output styles, keybindings, settings.json (with the scripts its hooks and status line point to) and the plugin list, so a move to another Mac brings them. Never the plugins themselves, settings.local.json or a sign-in. A link is never followed: a skill that is one, or holds one, is left out and listed. settings.json, its scripts and the plugin marketplaces can hold tokens no scan recognises, so only the encrypted disk image carries them; a zip leaves them out. Importing leaves them out unless you add them.", stacked: true) {
+            SRow(label: "Claude Code setup", info: "Claude Code's own setup, from \(tilde(entry.configDir)): CLAUDE.md and the .md files it includes (its @ lines), skills, agents, commands, output styles, keybindings, settings.json (with the scripts its hooks and status line point to) and the plugin list, so a move to another Mac brings them. Never the plugins themselves, settings.local.json or a sign-in. A link is never followed: a skill that is one, or holds one, is left out and listed. settings.json, its scripts and the plugin marketplaces can hold tokens no scan recognises, so only the encrypted disk image carries them; a zip leaves them out. Importing leaves them out unless you add them.", stacked: true) {
                 VStack(alignment: .leading, spacing: 6) {
                     value(setupWords)
                     if let sp = pv?.setup, !sp.isEmpty || !sp.linked.isEmpty {
@@ -522,6 +523,8 @@ struct ExportPage: View {
     private var exportLabel: String {
         guard let p = pv else { return "Counting…" }
         let sessions = p.sessionsIn(runner.keys)
+        // nothing but the setup goes: the key says so (not "0 entries")
+        if sessions == 0, p.entries == 0, runner.setup, !p.setup.isEmpty { return "Export the setup · ≈ \(SessionsBackup.sizeWords(p.setup.bytes))" }
         let what = sessions > 0 ? "\(sessions) \(sessions == 1 ? "session" : "sessions")" : "\(p.entries) \(p.entries == 1 ? "entry" : "entries")"
         return "Export \(what) · ≈ \(SessionsBackup.sizeWords(p.bytesIn(runner.keys)))"
     }

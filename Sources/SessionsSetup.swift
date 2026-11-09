@@ -312,7 +312,7 @@ enum Setup {
                     else { abs = (importerDir as NSString).appendingPathComponent(tok) }
                     abs = normalize(abs)
                     let b = normalize(base)
-                    guard abs.hasPrefix(b + "/") else { found.outside.append("@\(tok) in \(rel): lives outside \(tilde(base)), not carried"); continue }
+                    guard abs.hasPrefix(b + "/") else { found.outside.append("\(rel) includes \(tok): outside \(tilde(base)), not carried"); continue }
                     let r = String(abs.dropFirst(b.count + 1))
                     let comps = r.split(separator: "/").map(String.init)
                     if visited.contains(r) { continue }

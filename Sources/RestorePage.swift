@@ -254,7 +254,8 @@ struct RestorePage: View {
         SCard(title: "Stays as it is", info: "Restore only adds what is missing. The account, the sign-ins, MCP settings and claude.ai are not part of it.") {
             SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
             SRow(label: "Sign-ins") { rowValue(imp ? "Never in an export, never written" : "Never in a backup, never written") }
-            SRow(label: "MCP") { rowValue("The window's MCP settings: never touched. settings.json: only added when missing, and only if you add the setup") }
+            SRow(label: "MCP") { rowValue("The window's MCP settings: never touched") }
+            SRow(label: "settings.json") { rowValue("Yours stays; one is added only if none is here and you pick Add them") }
             SRow(label: "Scheduled tasks") { rowValue(imp ? "Not imported: the tasks belong to the account that had them" : "A task file that is there stays as it is; only a missing one comes back") }
             SRow(label: "claude.ai") { rowValue("Chats and Projects") }
         }

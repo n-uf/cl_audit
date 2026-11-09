@@ -1341,7 +1341,7 @@ enum SessionsExport {
                         kinds.formUnion(k)
                     }
                     if !kinds.isEmpty {
-                        if keys == .leaveOut { po.setupKeysLeftOut += 1; setupNames.append("\(u.name): holds a key"); leftOut += list.count; continue }
+                        if keys == .leaveOut { po.setupKeysLeftOut += 1; setupNames.append("\(SetupRow.title(u)) (held a key)"); leftOut += list.count; continue }
                         po.setupKeysKept += 1
                     }
                 }

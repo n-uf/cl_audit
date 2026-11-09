@@ -210,7 +210,8 @@ enum SessionsBackup {
                 g.files.append(Planned(role: .setup, src: r.src, rel: "setup/" + r.rel, original: r.src, bytes: r.bytes, exec: r.exec))
                 g.bytes += r.bytes
             }
-            g.setupLeftOut = f.linked.map(\.label).sorted()
+            // by name and the reason, never where a link pointed: "agent linked.md (a link)", "skills/big (too deep or too many files: left out whole)"
+            g.setupLeftOut = (f.linked.map { $0.label.contains("(") ? $0.label : $0.label + " (a link)" } + f.leftOutNames.filter { $0.hasSuffix("left out whole)") }).sorted()
         }
         if window, !s.dataDir.isEmpty {
             let root = (s.dataDir as NSString).appendingPathComponent("claude-code-sessions")

@@ -36,10 +36,12 @@ struct SetupRow: View {
         Button(on.wrappedValue ? hide : show) { on.wrappedValue.toggle() }.buttonStyle(.plain).font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize()
     }
 
-    private func lines(_ list: [String]) -> some View {
+    /// `wrap`: a line that is too long goes on over more lines (a command the person must read whole before adding it), else it is cut in the middle.
+    private func lines(_ list: [String], wrap: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             ForEach(Array(list.prefix(60).enumerated()), id: \.offset) { _, s in
-                Text(s).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(face.muted).lineLimit(1).truncationMode(.middle)
+                Text(s).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(face.muted).lineLimit(wrap ? nil : 1).truncationMode(.middle)
+                    .fixedSize(horizontal: false, vertical: wrap)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             if list.count > 60 { Text("…and \(list.count - 60) more").font(.system(size: 10.5)).foregroundStyle(face.muted) }
@@ -64,22 +66,32 @@ struct SetupRow: View {
         }
     }
 
-    /// "New: skill foo", "Already here: agent x", "Different here: CLAUDE.md, stays as it is".
+    /// One header per status, one unit a line under it: "New:", "  skill foo", "Already here:", "  agent x", "Different here (stays as it is):" …
     private func listLines(_ sp: SessionsRestore.SetupPlan) -> [String] {
         var out: [String] = []
-        for (label, status) in [("New", SessionsRestore.SetupPlan.Status.new), ("Already here", .same), ("Different here", .different)] {
-            for e in sp.entries(status) { out.append("\(label): \(Self.title(e.unit))" + (e.files > 1 ? " (\(e.files) files)" : "") + (status == .different ? ", stays as it is" : "")) }
+        for (label, status) in [("New", SessionsRestore.SetupPlan.Status.new), ("Already here", .same), ("Different here (stays as it is)", .different)] {
+            let list = sp.entries(status)
+            if list.isEmpty { continue }
+            out.append(label + ":")
+            for e in list { out.append("  " + Self.title(e.unit) + (e.files > 1 ? " (\(e.files) files)" : "")) }
         }
-        for e in sp.blocked { if case .blocked(let why) = e.status { out.append("Not added: \(Self.title(e.unit)), \(why)") } }
+        let blocked = sp.blocked
+        if !blocked.isEmpty {
+            out.append("Can't be added:")
+            for e in blocked { if case .blocked(let why) = e.status { out.append("  \(Self.title(e.unit)): \(why)") } }
+        }
         return out
     }
+
+    /// A command as the person reads it: this Mac's home folder as `~`.
+    private func home(_ s: String) -> String { s.replacingOccurrences(of: NSHomeDirectory(), with: "~") }
 
     var body: some View {
         let p = runner.plan
         let undone = runner.phase == .undone
         let r = runner.receipt
         if let sp = p?.setup, sp.present || !sp.leftOutAtSource.isEmpty {
-            SRow(label: "Claude Code setup", info: "CLAUDE.md and what it includes, skills, agents, commands, output styles, keybindings, settings.json with the scripts its hooks point to, and the plugin list, in the \(imported ? "file" : "backup"). Left out unless you add them: \(imported ? "a file can't prove it was made for a move, and hooks run commands on their own" : "a skill missing now was most likely deleted on purpose"). Adding puts back only what is missing here, as new files: nothing that is there is replaced, nothing is written into a skill folder that exists, and nothing through a link. Undo takes back exactly what was added.", stacked: true) {
+            SRow(label: "Claude Code setup", info: "CLAUDE.md and what it includes, skills, agents, commands, output styles, keybindings, settings.json with the scripts its hooks point to, and the plugin list, in the \(imported ? "file" : "backup"). Left out unless you add them: \(imported ? "a file can't prove it was made for a move, and hooks run commands on their own" : "a skill missing now was most likely deleted on purpose"). Adding brings only what is missing here, as new files: nothing that is there is replaced, nothing is written into a skill folder that exists, and nothing through a link. Undo takes back exactly what was added.", stacked: true) {
                 VStack(alignment: .leading, spacing: 6) {
                     if undone, let r {
                         value(r.setupAdded.isEmpty ? "none were added" : "\(r.setupAdded.count): were added, and taken away again")
@@ -99,18 +111,20 @@ struct SetupRow: View {
                         } label: { MenuWell(text: sp.leftOut ? "Leave them out" : "Add them", fill: true) }
                         .faceMenuFill()
                         let nw = sp.newEntries.count, same = sp.entries(.same).count, diff = sp.entries(.different).count
-                        small("\(nw) new here · \(same) already here · \(diff) different here (stays as it is)" + (sp.blocked.isEmpty ? "" : " · \(sp.blocked.count) can't be added"))
+                        small("\(nw) new here · \(same) already here · \(diff) different here (\(diff == 1 ? "stays as it is" : "they stay as they are"))" + (sp.blocked.isEmpty ? "" : " · \(sp.blocked.count) can't be added"))
                     }
-                    if !undone, !sp.execNames.isEmpty { small("\(n(sp.execNames.count, "script", "scripts")) made executable (owner only), only inside what this adds") }
-                    if !undone, !sp.execManual.isEmpty { small("\(n(sp.execManual.count, "script", "scripts")) to make executable yourself: their settings.json isn't added by this", color: face.caution) }
-                    if !undone, !sp.settingsDiffer.isEmpty { small("settings.json here differs in \(sp.settingsDiffer.prefix(6).joined(separator: ", ")): it stays as it is", color: face.caution) }
+                    // (what a plan holds before the choice is what adding would do: said as such while they are left out)
+                    if !undone, !sp.execNames.isEmpty { small((sp.leftOut ? "If added: " : "") + "\(n(sp.execNames.count, "script", "scripts")) made executable (owner only), only inside what this adds") }
+                    if !undone, !sp.leftOut, !sp.execManual.isEmpty { small("\(n(sp.execManual.count, "script", "scripts")) added but not runnable: your settings.json here stays, so nothing calls \(sp.execManual.count == 1 ? "it" : "them"). Make \(sp.execManual.count == 1 ? "it" : "them") executable yourself only if you add the hooks to it.", color: face.caution) }
+                    if !undone, !sp.settingsDiffer.isEmpty { small("settings.json here stays as it is; the one in the \(imported ? "file" : "backup") differs in \(sp.settingsDiffer.prefix(6).joined(separator: ", "))", color: face.caution) }
                     ForEach(Array(sp.notes.enumerated()), id: \.offset) { _, s in small(s, color: face.caution) }
                     ForEach(Array(sp.missingPaths.prefix(5).enumerated()), id: \.offset) { _, s in small(s, color: face.caution) }
-                    if !sp.leftOutAtSource.isEmpty { small("left out at the source: \(sp.leftOutAtSource.prefix(4).joined(separator: ", "))" + (sp.leftOutAtSource.count > 4 ? ", …" : "")) }
+                    if !sp.leftOutAtSource.isEmpty { small("Not in the \(imported ? "file" : "backup"): \(sp.leftOutAtSource.prefix(4).joined(separator: ", "))" + (sp.leftOutAtSource.count > 4 ? ", …" : "")) }
                     if !sp.isEmpty { listKey("Show the list", "Hide the list", $showList); if showList { lines(listLines(sp)) } }
                     if !sp.hooks.isEmpty {
-                        listKey("What its hooks and status line run", "Hide what they run", $showHooks)
-                        if showHooks { lines(sp.hooks) }
+                        let added = sp.entries.first { $0.unit == Setup.Unit(kind: .settings, name: "settings.json") }?.status == .new
+                        listKey(added ? "What its hooks and status line run" : "What the \(imported ? "file" : "backup")'s hooks would run (not added: settings.json here stays)", "Hide what they run", $showHooks)
+                        if showHooks { lines(sp.hooks.map(home), wrap: true) }
                     }
                 }
             }
