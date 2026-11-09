@@ -160,7 +160,7 @@ struct DefaultProfilePage: View {
         case .moving:
             if let k = runner.inner?.key { Button("Show the restore") { model.showRestore(k) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)) }
         case .done:
-            Button("Undo this move") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+            if runner.undoRefused == nil { Button("Undo this move") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)) }
             Button("Back to the settings") { model.selection = runner.targetID ?? model.homeSelection }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
         case .undone:
             Button("Back to the settings") { model.selection = model.homeSelection }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
@@ -235,8 +235,9 @@ struct DefaultProfilePage: View {
         case .ready, .failed, .undone: break
         case .signingIn: upTo(0, current: 0)
         case .closing, .backingUp: upTo(w ? 0 : 1, current: w ? 0 : 1)
-        case .moving: upTo(w ? 1 : 2, current: w ? 1 : 2); if w { out[2] = .done }
-        case .done: upTo(w ? 3 : 3, current: w ? nil : (runner.oldHandled ? nil : 3)); if !w, runner.oldHandled { out[3] = .done }
+        // windowOnly: the backups, the profile switched to the usual app (saved before the restore), then the restore
+        case .moving: upTo(w ? 2 : 2, current: 2)
+        case .done: upTo(3, current: w ? nil : (runner.oldDone ? nil : 3)); if !w, runner.oldDone { out[3] = .done }
         }
         return out
     }
@@ -260,6 +261,9 @@ struct DefaultProfilePage: View {
         }
     }
 
+                if runner.phase == .done, let why = runner.undoRefused {
+                    Text(why).font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                }
     @ViewBuilder private func marker(_ s: StepState) -> some View {
         switch s {
         case .done: Image(systemName: "checkmark.circle.fill").font(.system(size: 12)).foregroundStyle(FaceTheme.ledOn)
@@ -292,7 +296,7 @@ struct DefaultProfilePage: View {
     @ViewBuilder private var oldProfile: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("\(name) now").font(.system(size: 11, weight: .semibold)).foregroundStyle(face.muted)
-            if runner.oldHandled {
+            if runner.oldDone {
                 value("Done.")
             } else {
                 if runner.canKeepOldAsStandby {

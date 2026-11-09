@@ -1106,6 +1106,8 @@ enum SessionsRestore {
         defer { lock.release() }
         guard var r = load(id) else { throw RestoreError("No receipt for that restore.") }
         guard r.undone == nil else { return r }
+        // a default-profile move whose old profile was kept as a standby account or removed: not undone any more
+        if let why = DefaultProfile.undoRefusal(receipt: id) { throw RestoreError(why) }
         if let why = blocker(profile: r.profile, except: r.id) { throw RestoreError(why.words) }
         if r.windowTouched {
             if let why = markerBlocker(profile: r.profile, dataDir: r.dataDir, own: mark) { throw RestoreError(why) }

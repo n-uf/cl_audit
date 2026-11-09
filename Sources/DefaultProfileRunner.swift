@@ -302,8 +302,23 @@ final class DefaultProfileRunner: ObservableObject {
         phase = .failed(why)
     }
 
-    /// "Undo this move": the restore's Undo; its end puts the window kind back.
-    func undo() { inner?.undo() }
+    /// "Undo this move": the restore's Undo; its end puts the window kind back. Not once the old profile was kept as a
+    /// standby account or removed.
+    func undo() {
+        if let r = record, let why = DefaultProfile.undoRefusal(r) { note = why; return }
+        inner?.undo()
+    }
+
+    /// The move can't be undone any more (the old profile was kept as a standby account or removed).
+    var undoRefused: String? { record.flatMap { DefaultProfile.undoRefusal($0) } ?? (oldRemoved ? DefaultProfile.undoRefusalWords(removed: true) : nil) }
+
+    /// The old profile is gone from the list (removed from the remove flow).
+    private var oldRemoved: Bool {
+        situation.kind == .otherFolder && phase == .done && model?.accounts.contains { $0.id == situation.old.id } == false
+    }
+
+    /// The old profile has been dealt with (kept as a standby account, or removed): the page's last step is done.
+    var oldDone: Bool { oldHandled || oldRemoved }
 
     // MARK: what the old profile becomes (otherFolder)
 
@@ -333,11 +348,9 @@ final class DefaultProfileRunner: ObservableObject {
     /// Remove it: the existing remove flow (it signs its own folder out with `claude auth logout`, and asks about deleting it).
     func removeOld() {
         guard let m = model else { return }
-        m.askRemove(old.id)
-        oldHandled = true
-        objectWillChange.send()
+        m.askRemove(old.id)         // the sheet asks; once it is removed (SettingsModel.removeAccount) the move can't be undone
     }
-    @Published var oldHandled = false
+    @Published private(set) var oldHandled = false
 
     // MARK: timer
 
@@ -347,6 +360,7 @@ final class DefaultProfileRunner: ObservableObject {
             if step() { t.invalidate(); if self?.timer === t { self?.timer = nil } }
         }
     }
+        if var r = record { r.oldHandled = "standby"; record = r; DefaultProfile.save(r) }
 
     deinit { timer?.invalidate() }
 }

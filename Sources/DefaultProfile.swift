@@ -129,6 +129,9 @@ enum DefaultProfile {
         var open: Bool { undone == nil && finished == nil && (flipped || linkedSeat || created || receipt != nil) }
     }
 
+        /// otherFolder: what became of the old profile after the move ("standby" or "removed"). From then on the move can't
+        /// be undone: Undo would take a profile or a folder away that now holds the only copy of something.
+        var oldHandled: String?
     static var folder: URL { Store.folder.appendingPathComponent("default-moves") }
 
     static func save(_ r: Record) {

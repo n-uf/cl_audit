@@ -663,6 +663,7 @@ final class SettingsModel: ObservableObject {
     /// waiting for Apply are applied with it.
     func removeAccount(_ e: AccountEntry, deleteFolders: Bool) {
         remove(e.id)
+        DefaultProfile.noteOldRemoved(profile: e.id)         // a default-profile move that carried it over can't be undone now
         var hidden = UserDefaults.standard.stringArray(forKey: "dashboardHidden") ?? []
         hidden.removeAll { $0 == e.id }
         UserDefaults.standard.set(hidden, forKey: "dashboardHidden")

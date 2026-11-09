@@ -323,6 +323,7 @@ final class RestoreRunner: ObservableObject {
     func undo() {
         guard phase != .closing, phase != .writing, phase != .undoing, let r = receipt, r.undone == nil, let e = entry, let w = window else { return }
         note = nil
+        if let why = DefaultProfile.undoRefusal(receipt: r.id) { note = why; return }
         if let why = SessionsRestore.blocker(profile: key.profile, except: r.id) { note = why.words; return }
         guard r.windowTouched else { runUndo(r.id); return }
         if let why = SessionsRestore.markerBlocker(profile: key.profile, dataDir: SessionsRestore.Target(e).dataDir, own: markName) { note = why; return }
