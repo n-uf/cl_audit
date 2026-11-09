@@ -677,5 +677,155 @@ do {
     check(pv2.tally.old == 1, "move: an archive marker (in its grace) already in ~/.claude/projects wins over the old folder's delete marker: \(pv2.tally)")
 }
 
+// ============ 11. a key written twice at the top level: the last one counts (JSON.parse; Foundation keeps the first) ============
+do {
+    resetHome()
+    let c = ".claude-k"
+    let win = line("claude-desktop"), term = line("cli")
+    let fileA = "managed/ClaudeCode/managed-settings.json"
+    let sCache = "\(c)/remote-settings.json"
+    let helperJSON = "{\"path\":\"/usr/local/bin/sample-helper\"}"
+    func clean() { for n in ["managed", c] { try? fm.removeItem(atPath: p(n)) }; try? fm.createDirectory(atPath: p(c), withIntermediateDirectories: true) }
+    func r(_ json: String? = nil) -> Retention { if let json { settings(c, json) }; return Retention.read(codeDir: p(c)) }
+    var n = 100
+    func terminalFate(_ age: Double, _ x: Retention) -> Retention.Verdict? { n += 1; return fate(transcript(c, n, term, age: age), x) }
+    func windowFate(_ age: Double, _ x: Retention) -> Retention.Verdict? { n += 1; return fate(transcript(c, n, win, age: age), x) }
+
+    // the user's settings.json: cleanupPeriodDays
+    clean()
+    var x = r("{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":7}")
+    check(x.days == 7 && x.skipped == nil && x.problem == nil, "cleanupPeriodDays 365, then 7: 7 (the last)")
+    check(terminalFate(8, x) == .delete && terminalFate(6, x) == .keep, "…a terminal session of 8 days is deleted, of 6 days kept")
+    check(CodeCleanup.read(codeDir: p(c)).days == 7 && CodeCleanup.days(codeDir: p(c)) == 7, "…and Keep for reads 7")
+    x = r("{\"cleanupPeriodDays\":7,\"cleanupPeriodDays\":365}")
+    check(x.days == 365 && terminalFate(100, x) == .keep, "cleanupPeriodDays 7, then 365: 365")
+    x = r("{\"cleanupPeriodDays\":90,\"cleanupPeriodDays\":60,\"cleanupPeriodDays\":10}")
+    check(x.days == 10 && terminalFate(11, x) == .delete && terminalFate(9, x) == .keep, "a key three times: the third")
+    x = r("{ \"other\": 1, \"cleanupPeriodDays\" : 365 ,\n \"x\": [1, {\"cleanupPeriodDays\": 3}], \"cleanupPeriodDays\" :\n 7 }")
+    check(x.days == 7, "spaces and line breaks around the names and values: 7")
+    x = r("\u{FEFF}{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":7}")
+    check(x.days == 7, "after a byte order mark: 7")
+    // the last one that is invalid is invalid (the 26.11.6 rules unchanged: a note, counted with 30 days); the first one doesn't rescue it
+    x = r("{\"cleanupPeriodDays\":7,\"cleanupPeriodDays\":\"x\"}")
+    check(x.days == 30 && x.skipped == .key("cleanupPeriodDays") && x.problem == "cleanupPeriodDays in settings.json isn't a valid number." && terminalFate(20, x) == .keep && terminalFate(40, x) == .delete,
+          "cleanupPeriodDays 7, then \"x\": invalid, skipped as a note, counted with 30 days")
+    x = r("{\"cleanupPeriodDays\":\"x\",\"cleanupPeriodDays\":7}")
+    check(x.days == 7 && x.skipped == nil && x.problem == nil, "cleanupPeriodDays \"x\", then 7: 7, no note")
+    x = r("{\"cleanupPeriodDays\":7,\"cleanupPeriodDays\":null}")
+    check(x.days == 30 && x.skipped == .key("cleanupPeriodDays"), "cleanupPeriodDays 7, then null: invalid (null isn't a number), as for a lone null")
+    // escaped names are the same key for JSON.parse
+    x = r("{\"cleanupPeriodDays\":365,\"cleanup\\u0050eriodDays\":7}")
+    check(x.days == 7, "an escaped name (\\u0050) after the plain one: the escaped one is the last, 7")
+    x = r("{\"cleanup\\u0050eriodDays\":7,\"cleanupPeriodDays\":365}")
+    check(x.days == 365, "an escaped name before the plain one: the plain one is the last, 365")
+    x = r("{\"c\\u006cean\\u0075pPeriod\\u0044ays\":365,\"\\u0063leanupPeriodDays\":7}")
+    check(x.days == 7, "two escaped spellings: 7")
+    x = r("{\"cleanupPeriodDays\":365,\"cleanupPeriodDay\\u0073\":7}")
+    check(x.days == 7 && terminalFate(8, x) == .delete, "…the same, with a different letter escaped: 7")
+    // only the top level counts
+    x = r("{\"cleanupPeriodDays\":7,\"projects\":{\"cleanupPeriodDays\":1,\"cleanupPeriodDays\":2},\"list\":[{\"cleanupPeriodDays\":3,\"cleanupPeriodDays\":4}]}")
+    check(x.days == 7 && x.skipped == nil, "a key twice one level down (and in a list) is ignored: the top level's 7")
+    x = r("{\"nested\":{\"cleanupPeriodDays\":1},\"cleanupPeriodDays\":7,\"after\":{\"cleanupPeriodDays\":2}}")
+    check(x.days == 7, "nested ones before and after the top-level key don't change it: 7")
+    x = r("{\"nested\":{\"cleanupPeriodDays\":1,\"cleanupPeriodDays\":2}}")
+    check(x.days == 30 && x.skipped == nil && !x.managed, "only nested ones: not set, 30")
+    // a repeated key that isn't one of ours changes nothing
+    x = r("{\"cleanupPeriodDays\":7,\"model\":\"a\",\"model\":\"b\"}")
+    check(x.days == 7 && x.skipped == nil, "another key twice: no effect")
+
+    // desktopSessionCleanupPeriodDays
+    x = r("{\"desktopSessionCleanupPeriodDays\":500,\"desktopSessionCleanupPeriodDays\":90}")
+    check(x.desktopDays == 90 && windowFate(60, x) == .keep && windowFate(100, x) == .delete, "the cap 500, then 90: 90 (a window session of 100 days is deleted, of 60 kept)")
+    x = r("{\"desktopSessionCleanupPeriodDays\":90,\"desktopSessionCleanupPeriodDays\":0}")
+    check(x.desktopDays == nil && windowFate(4000, x) == .keep, "the cap 90, then 0: no cap")
+    x = r("{\"desktopSessionCleanupPeriodDays\":0,\"desktopSessionCleanupPeriodDays\":90}")
+    check(x.desktopDays == 90 && windowFate(100, x) == .delete, "the cap 0, then 90: 90")
+    x = r("{\"desktopSessionCleanupPeriodDays\":90,\"desktopSessionCleanupPeriodDays\":\"x\"}")
+    check(x.desktopDays == nil && x.skipped == .key("desktopSessionCleanupPeriodDays") && windowFate(4000, x) == .keep, "the cap 90, then \"x\": invalid, skipped as a note")
+    x = r("{\"desktopSessionCleanupPeriodDays\":\"x\",\"desktop\\u0053essionCleanupPeriodDays\":90}")
+    check(x.desktopDays == 90 && x.skipped == nil, "the cap \"x\", then an escaped name with 90: 90, no note")
+    x = r("{\"desktopSessionCleanupPeriodDays\":90,\"inner\":{\"desktopSessionCleanupPeriodDays\":1,\"desktopSessionCleanupPeriodDays\":2}}")
+    check(x.desktopDays == 90, "the cap twice one level down: ignored")
+    x = r("{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":10,\"desktopSessionCleanupPeriodDays\":500,\"desktopSessionCleanupPeriodDays\":200}")
+    check(x.days == 10 && x.desktopDays == 200 && windowFate(150, x) == .keep && windowFate(250, x) == .delete && terminalFate(11, x) == .delete,
+          "both keys twice: days 10 and cap 200, each the last")
+
+    // managed settings: managed-settings.json, a drop-in, the server cache
+    clean(); settings(c, "{\"cleanupPeriodDays\":365}"); put(fileA, "{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":7}")
+    x = r()
+    check(x.managed && x.days == 7 && x.source == .file && !x.managedError && terminalFate(8, x) == .delete && windowFate(8, x) == .delete && windowFate(6, x) == .keep,
+          "managed-settings.json with cleanupPeriodDays 365, then 7: 7, for the window's sessions too")
+    clean(); put("managed/ClaudeCode/managed-settings.d/10-a.json", "{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":9}")
+    x = r()
+    check(x.managed && x.days == 9 && x.source == .file && windowFate(10, x) == .delete && windowFate(8, x) == .keep, "a drop-in with the key twice: 9")
+    clean(); put(fileA, "{\"cleanupPeriodDays\":3}"); put("managed/ClaudeCode/managed-settings.d/10-a.json", "{\"cleanupPeriodDays\":50,\"cleanupPeriodDays\":20}"); put("managed/ClaudeCode/managed-settings.d/20-b.json", "{\"x\":1}")
+    check(r().days == 20, "managed-settings.json 3, then a drop-in with 50 and 20: the drop-in's last, 20")
+    clean(); put(sCache, "{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":11}")
+    x = r()
+    check(x.managed && x.days == 11 && x.source == .server && windowFate(12, x) == .delete && windowFate(10, x) == .keep, "the server cache with the key twice: 11")
+    clean(); put(sCache, "{\"cleanup\\u0050eriodDays\":365,\"cleanupPeriodDays\":12}"); put(fileA, "{\"cleanupPeriodDays\":365,\"cleanup\\u0050eriodDays\":8}")
+    check(r().days == 12, "escaped names in managed documents: the server cache (the winning source) says 12")
+    clean(); put(fileA, "{\"cleanupPeriodDays\":365,\"cleanup\\u0050eriodDays\":8}")
+    check(r().days == 8, "managed-settings.json with an escaped name last: 8")
+    clean(); put(fileA, "{\"cleanupPeriodDays\":7,\"cleanupPeriodDays\":\"x\"}")
+    x = r()
+    check(x.managedError && x.days == 30 && windowFate(400, x) == .delete, "managed: 7, then \"x\": a managed error, no exemption (the user's own 30 days)")
+    clean(); put(fileA, "{\"cleanupPeriodDays\":\"x\",\"cleanupPeriodDays\":7}")
+    x = r()
+    check(!x.managedError && x.days == 7 && x.managed, "managed: \"x\", then 7: 7, no error")
+    clean(); put(fileA, "{\"cleanupPeriodDays\":1,\"nested\":{\"cleanupPeriodDays\":5,\"cleanupPeriodDays\":6},\"cleanupPeriodDays\":2,\"cleanupPeriodDays\":4}")
+    check(r().days == 4, "managed, three at the top level and two nested: 4")
+    clean(); put(fileA, "{\"desktopSessionCleanupPeriodDays\":500,\"desktopSessionCleanupPeriodDays\":90}")
+    x = r()
+    check(x.desktopDays == 90 && windowFate(100, x) == .delete, "a managed cap twice: the last, 90")
+    clean(); put(fileA, "{\"desktopSessionCleanupPeriodDays\":90,\"desktopSessionCleanupPeriodDays\":\"x\"}")
+    check(r().managedError, "a managed cap 90, then \"x\": a managed error")
+    // the plist can't hold a key twice (MDM): nothing to read there. The other sources keep their rules
+    clean(); put(fileA, "{\"cleanupPeriodDays\":20,\"cleanupPeriodDays\":6}"); put(sCache, "{\"cleanupPeriodDays\":365}")
+    x = r()
+    check(x.days == 365 && x.source == .server && x.managed, "the server cache wins over managed-settings.json (6 there): the source order is unchanged")
+
+    // policy helpers: the last value of policyHelper / policyHelpers
+    clean(); put(fileA, "{\"policyHelper\":\(helperJSON),\"policyHelper\":null}")
+    check(!r().helper, "policyHelper, then null: no helper")
+    clean(); put(fileA, "{\"policyHelper\":null,\"policyHelper\":\(helperJSON)}")
+    x = r()
+    check(x.helper && !x.managed && !x.exempts, "policyHelper null, then a helper: a helper")
+    clean(); put(sCache, "{\"policyHelpers\":{\"macos\":\(helperJSON)},\"policyHelpers\":null}")
+    check(!r().helper, "policyHelpers, then null (the server cache): no helper")
+    clean(); put(sCache, "{\"policyHelpers\":null,\"policyHelpers\":{\"macos\":\(helperJSON)}}")
+    check(r().helper, "policyHelpers null, then a helper (the server cache): a helper")
+    clean(); put("managed/ClaudeCode/managed-settings.d/10-a.json", "{\"policyHelper\":\(helperJSON),\"policy\\u0048elper\":null}")
+    check(!r().helper, "a drop-in: a helper, then null under an escaped name: no helper")
+    clean(); put("managed/ClaudeCode/managed-settings.d/10-a.json", "{\"policyHelper\":null,\"policy\\u0048elper\":\(helperJSON)}")
+    check(r().helper, "a drop-in: null, then a helper under an escaped name: a helper")
+    clean(); put(fileA, "{\"policyHelper\":\(helperJSON),\"x\":{\"policyHelper\":null}}")
+    check(r().helper, "a null one level down doesn't undo the top-level helper")
+    clean(); put(fileA, "{\"policyHelper\":null,\"x\":{\"policyHelper\":\(helperJSON)}}")
+    check(!r().helper, "a helper one level down isn't the top level's: no helper")
+    clean(); put(fileA, "{\"policyHelper\":\(helperJSON),\"policyHelper\":null}"); put("managed/ClaudeCode/managed-settings.d/10-a.json", "{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":9}")
+    x = r()
+    check(!x.helper && x.managed && x.days == 9, "a helper cancelled by null in one document, the days twice in a drop-in: no helper, 9 days")
+
+    // Keep for: a file with the key twice at the top level is refused, and left as it was
+    clean()
+    for (what, json) in [("cleanupPeriodDays twice", "{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":7}"),
+                         ("cleanupPeriodDays three times", "{\"cleanupPeriodDays\":1,\"cleanupPeriodDays\":2,\"cleanupPeriodDays\":3}"),
+                         ("an escaped name after the plain one", "{\"cleanupPeriodDays\":365,\"cleanup\\u0050eriodDays\":7}"),
+                         ("an escaped name before the plain one", "{\"cleanup\\u0050eriodDays\":7,\"cleanupPeriodDays\":365}"),
+                         ("only an escaped name", "{\"cleanup\\u0050eriodDays\":7}"),
+                         ("two escaped names", "{\"cleanup\\u0050eriodDays\":7,\"cleanupPeriodDay\\u0073\":8}")] {
+        settings(c, json)
+        var said: String?
+        do { try CodeCleanup.set(90, codeDir: p(c)) } catch { said = "\(error)" }
+        let after = try? String(contentsOfFile: p("\(c)/settings.json"), encoding: .utf8)
+        check(said == CodeCleanup.byHand && after == json, "Keep for with \(what): refused, the file unchanged (\(said ?? "no error"))")
+    }
+    check(CodeCleanup.byHand == "settings.json has a form cl_audit doesn't edit; set cleanupPeriodDays there by hand.", "…and the words say what to do: set it by hand")
+    // once at the top level and nothing else: Keep for changes that one number (a file with the usual form)
+    settings(c, "{\"cleanupPeriodDays\":365}")
+    check((try? CodeCleanup.set(90, codeDir: p(c))) != nil && r().days == 90, "Keep for with the key once: still works, 90")
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
