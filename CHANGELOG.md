@@ -15,14 +15,14 @@ the notes before updating.
   `claude_desktop_config.json` yet, and one that is here stays exactly as it is.
 - **Backups no longer keep settings.json's env values or the window's MCP settings: they travel only in the encrypted
   export.** A backup's settings.json keeps the names under `env` with blank values; Restore says so. Backups made with 26.11.8
-  stay as they are.
+  still hold them.
 - **Imported scheduled tasks come back paused.** Pick Add them, paused, and the file's tasks go into the account you work on
   now, each switched off so nothing runs twice; turn each on in the Claude window's scheduled tasks. A task file that is
   here stays as it is, and the page lists the tasks it lacks. The sessions a task ran now come in with it. Undo takes all of
   it back.
-- Export leaves out a `settings.json` over 8 MB (and the scripts its hooks run) and says so, instead of making a file its own
-  Import refuses.
-- An export or backup made by this version can't be opened by 26.11.8 or older; this version still opens theirs.
+- Export now says when settings.json is over 8 MB and leaves it out, so you never get a file Import refuses.
+- An export or backup that holds the MCP settings or a scheduled task's prompt can't be opened by 26.11.8 or older; one
+  without them still can. This version opens theirs.
 
 ## 26.11.8 — 2026-11-09
 

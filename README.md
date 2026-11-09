@@ -813,11 +813,12 @@ Sessions. **Restore…** on a backup puts back what is missing, merged, and neve
   Code's transcripts (`<Claude Code folder>/projects`) and Claude Code's **setup** (`setup/…`: CLAUDE.md and what it includes,
   skills, agents, commands, output styles, keybindings, settings.json with its scripts and the plugin list, by the rules
   of [Exporting](#exporting-a-profiles-sessions): links left out and named in the manifest only, never where they point;
-  each file with its SHA-256 and execute bit; format version 3, version-1 and -2 backups are read as before).
+  each file with its SHA-256 and execute bit; format version 2, or 3 when it holds a task's prompt; version-1 and -2 backups
+  are read as before).
   **settings.json in a backup keeps its `env` names with every value blank** (`envBlanked` in the manifest): it is written
   from the parsed file, so nothing a parse drops comes along, and no command (a hook, `apiKeyHelper`) is ever run. One that
   isn't a JSON object is left out, with the scripts its hooks run, and listed. Env values travel only in the encrypted
-  export. Backups made by 26.11.8 stay as they were.
+  export. Backups made by 26.11.8 still hold them (and their MCP settings) as they were.
   The manifest has the backup's id, profile, kind (before a
   switch, naming the receipt, or manual), when, how many seconds it took, the accounts by id only (never an
   address), counts (sessions, sidebar ones, tasks, transcripts), the size and, per item, its original absolute path
@@ -1085,12 +1086,13 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   transcript: one whose transcript isn't in the file (it is gone, or left out for keys) is left out too and counted on the
   page ("5 leftover markers left out"), never a reason to stop. **Restore** and **Import** write a marker only together with
   its transcript in the same run, never over a marker that is there; Undo takes both back.
-- **The file:** `<name>/export.json` (format `cl_audit-export`, version 3, when, cl_audit's version, a fingerprint of this Mac's
+- **The file:** `<name>/export.json` (format `cl_audit-export`, version 2 or 3, when, cl_audit's version, a fingerprint of this Mac's
   name, zip or image, what was done with keys, the profiles and their sizes) and `<name>/profiles/p1/` (a backup's layout:
   `backup.json`, `window/<fp>/<fp>/…`, `sidebar/`, `config/` (image only), `records/`, `transcripts/…`, `setup/…`), one `pN`
   per profile for "All profiles". The manifests carry no absolute path of this Mac. **Version 2** added the `setup/` part (each
   item with its `sha` and `exec`); **version 3** added `config/claude_desktop_config.json` and the scheduled tasks' prompts
-  (`setup/scheduled-tasks/<id>/SKILL.md`). Version-1 and version-2 files still import; 26.11.7 (which reads version 1 only)
+  (`setup/scheduled-tasks/<id>/SKILL.md`). A file is written in the lowest version that holds it: 3 only with one of those
+  parts, else 2, so 26.11.8 still imports it. Version-1 and version-2 files still import; 26.11.7 (which reads version 1 only)
   and 26.11.8 (up to 2) refuse a version-3 file with their "newer cl_audit" message. The format keeps room for a later `app`
   part (cl_audit's own profiles and settings).
 
@@ -1109,6 +1111,8 @@ until you pick **Add them** for each (hooks and MCP servers run commands on thei
 a file can prove it was made for a move on your Mac); each adds only what is missing, never into a file that is there, and
 Undo last import takes it back. Use the encrypted disk image if `settings.json`, its scripts, the plugin marketplaces and the
 MCP settings should come along: a zip leaves them out, and any skill, agent or command that holds a script a hook runs.
+Export the profile as it is now, not from a backup: backups keep neither the MCP settings nor settings.json's env values
+(backups made by 26.11.8 still hold them).
 
 ### Importing an export
 
@@ -1126,12 +1130,16 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
   nothing else changed, each with its prompt where the window looks for it (`<Claude Code folder>/scheduled-tasks/<id>/SKILL.md`;
   the window works that path out from the task's id, whatever `filePath` the task records). A task is written only with its
   prompt: one whose prompt isn't in the file, whose id the window wouldn't keep, whose `filePath` points anywhere but its own
-  prompt, or whose prompt here is a different one, is listed and not written. The done page says which came paused and where to
+  prompt, or whose prompt here is a different one, is listed and not written. The list shows each task's schedule, the folder it
+  runs in and a permission mode that isn't the default, and the row flags a task that runs with permission checks off or with
+  permissions approved on the other Mac. The done page says which came paused and where to
   turn them on; cl_audit never changes a task after that), **Scheduled tasks' sessions** (a session a task ran, by the entry's
   `scheduledTaskId`, comes in with its task; when the task isn't added it is left out with its transcript, with the task's
-  name), **MCP settings** (left out unless you pick **Add them**, which lists each server's name and the command it runs, never
-  an env value, a header or an argument; the whole `claude_desktop_config.json` is written only where the profile has none: one
-  that is here stays byte for byte and the row lists the servers it lacks; a zip has none and the row says so), **Folder not here** (added, shown
+  name), **MCP settings** (left out unless you pick **Add them**, which lists each server's name and the program it runs with how
+  many arguments aren't shown, never an argument, an env value, a header or a URL; the whole `claude_desktop_config.json` is
+  written only where the profile has none, and always without its sidebar part, which only the sidebar step arranges: one that
+  is here stays byte for byte and the row lists the servers it lacks; a zip has none and the row says so. The Claude window may
+  rewrite the file when it opens; Undo then leaves it as it is and says so), **Folder not here** (added, shown
   once that folder exists), **Would be deleted** (only the sessions Claude Code would delete again, as on the Restore page; **Keep for 90 days** when it would keep some). Entries go into the folder of the account the target
   works on now, never a fingerprint's, written as a switch would place them (the old account's error keys and Remote Control
   ids off), and the sidebar's groups and pins follow them through the fingerprint (one Return in a helper session). **Close and
