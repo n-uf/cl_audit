@@ -102,6 +102,8 @@ check("the default folder runs without CLAUDE_CONFIG_DIR", dflt.environment(base
 check("project key", QuickChatCommand.projectKey("/Users/sample/Library/Application Support/usage-n-uf/quick-chat/main")
       == "-Users-sample-Library-Application-Support-usage-n-uf-quick-chat-main")
 check("project key, dots and dashes", QuickChatCommand.projectKey("/private/tmp/a-1/.b_c") == "-private-tmp-a-1--b-c")
+// Claude Code counts UTF-16 units: an emoji is two, so two dashes; an accented letter one
+check("project key, beyond ASCII", QuickChatCommand.projectKey("/Users/Dé/😀b") == "-Users-D----b", QuickChatCommand.projectKey("/Users/Dé/😀b"))
 
 // MARK: Markdown
 

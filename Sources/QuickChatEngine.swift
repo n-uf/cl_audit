@@ -152,10 +152,13 @@ struct QuickChatCommand: Equatable {
         return env
     }
 
-    /// The folder name Claude Code keeps this work folder's sessions under, in the profile's folder: every character
-    /// that isn't a letter or a digit becomes "-" (~/.claude/projects/<this>/).
+    /// The folder name Claude Code keeps this work folder's sessions under, in the profile's folder: every UTF-16 unit
+    /// that isn't an ASCII letter or digit becomes "-", as Claude Code counts them (~/.claude/projects/<this>/).
     static func projectKey(_ folder: String) -> String {
-        String(folder.map { $0.isASCII && ($0.isLetter || $0.isNumber) ? $0 : "-" })
+        String(folder.utf16.map { u -> Character in
+            guard u < 128, let s = Unicode.Scalar(u), s.properties.isAlphabetic || ("0"..."9").contains(s) else { return "-" }
+            return Character(s)
+        })
     }
 }
 
