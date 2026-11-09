@@ -58,6 +58,9 @@ enum Setup {
         var leftOutBuild = 0                // .git, node_modules, .DS_Store, *.pyc …
         var leftOutNames: [String] = []     // files with a sign-in name, left out one by one
         var cut: [String] = []              // folders a walk stopped in (too deep, too many files): their unit is left out whole
+        /// The units holding a file settings.json's hooks or status line run, from the live settings.json (also a linked one, which
+        /// isn't carried); nil: it couldn't be read.
+        var hookUnits: Set<Unit>? = []
     }
 
     // MARK: what is where
@@ -144,12 +147,47 @@ enum Setup {
 
     static func sensitive(_ rel: String) -> Bool { unit(of: rel).sensitive }
 
+    /// The kinds of unit that can hold a file a hook runs without being sensitive by their own kind.
+    static let holderKinds: Set<Kind> = [.skill, .agent, .command, .style, .include]
+
     /// The units (a skill, an agent, a command, an output style) that hold a file a command of settings.json runs: what such a unit
     /// holds can carry a token no key scan recognises, the same reason settings.json and its scripts travel only in the image.
-    static func hookUnits(rels: [String], settings: Data?) -> Set<Unit> {
+    /// No settings.json: none. nil: a settings.json that isn't a JSON object, so nothing can tell what its hooks run.
+    static func hookUnits(rels: [String], settings: Data?) -> Set<Unit>? {
         guard let s = settings else { return [] }
+        guard settingsInfo(s) != nil else { return nil }
         let named = namedPaths(in: s, among: rels)
-        return Set(named.map(unit(of:)).filter { [.skill, .agent, .command, .style, .include].contains($0.kind) })
+        return Set(named.map(unit(of:)).filter { holderKinds.contains($0.kind) })
+    }
+
+    /// The hook-held units of a Claude Code folder, from its settings.json as it is now, also when that is a link (which is never
+    /// carried): it is read only to learn the paths its hooks and status line run; its target is never written or shown. Nothing
+    /// else is followed. No settings.json: none. nil: one that can't be read (a link to nowhere or to something that isn't a plain
+    /// file, too big, not a JSON object).
+    static func hookUnits(codeDir: String, rels: [String]) -> Set<Unit>? {
+        let path = (codeDir as NSString).appendingPathComponent("settings.json")
+        var st = stat()
+        guard lstat(path, &st) == 0 else { return errno == ENOENT ? [] : nil }
+        let fd = open(path, O_RDONLY | O_NONBLOCK)                // (the one link followed: settings.json's own, to read it)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_size <= 8 << 20, let d = SessionsRestore.read(fd, size: st.st_size) else { return nil }
+        return hookUnits(rels: rels, settings: d)
+    }
+
+    /// The units a zip leaves out with settings.json: the ones that hold a file its hooks or status line run (`known`), or, when that
+    /// couldn't be learned (settings.json unreadable, a backup from before it was recorded), every one that holds a file with the
+    /// execute bit.
+    static func heldUnits(known: Set<Unit>?, files: [(rel: String, exec: Bool)]) -> Set<Unit> {
+        if let k = known { return k }
+        return Set(files.filter(\.exec).map { unit(of: $0.rel) }.filter { holderKinds.contains($0.kind) })
+    }
+
+    /// A unit as a backup.json records it ("skill:guard"): names only.
+    static func key(_ u: Unit) -> String { "\(u.kind.rawValue):\(u.name)" }
+    static func unit(key: String) -> Unit? {
+        guard let i = key.firstIndex(of: ":"), let k = Kind(rawValue: String(key[..<i])) else { return nil }
+        return Unit(kind: k, name: String(key[key.index(after: i)...]))
     }
 
     // MARK: reading the disk
@@ -406,6 +444,8 @@ enum Setup {
         }
         found.files.sort { $0.rel < $1.rel }
         found.outside = Array(Set(found.outside)).sorted()
+        // what the hooks run, from settings.json as it is (a linked one too: read for its command paths only, never carried)
+        found.hookUnits = hookUnits(codeDir: base, rels: found.files.map(\.rel))
         return found
     }
 
@@ -572,11 +612,13 @@ enum Setup {
 
     /// "settings.json, the 3 scripts it runs and the plugin marketplaces" (what only the encrypted image carries); `held`: units that
     /// hold a script it runs ("1 skill that holds a script it runs").
-    static func sensitiveWords(_ c: Counts, held: Counts = Counts([])) -> String? {
+    /// `unknown`: settings.json couldn't tell which files its hooks run, so `held` is every unit with an executable file.
+    static func sensitiveWords(_ c: Counts, held: Counts = Counts([]), unknown: Bool = false) -> String? {
         var p: [String] = []
         if c.settings > 0 { p.append("settings.json") }
         if c.scripts > 0 { p.append(c.scripts == 1 ? "the script it runs" : "the \(c.scripts) scripts it runs") }
-        if held.total > 0 { p.append("\(words(held)) that \(held.total == 1 ? "holds" : "hold") a script it runs") }
+        if held.total > 0, unknown { p.append("\(words(held)) with an executable file (settings.json couldn't be read, so which files its hooks run isn't known)") }
+        else if held.total > 0 { p.append("\(words(held)) that \(held.total == 1 ? "holds" : "hold") a script it runs") }
         if c.marketplaces > 0 { p.append("the plugin marketplaces") }
         guard !p.isEmpty else { return nil }
         return p.count == 1 ? p[0] : p.dropLast().joined(separator: ", ") + " and " + p.last!

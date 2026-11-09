@@ -1094,6 +1094,13 @@ enum SessionsImport {
         m.version = SessionsBackup.formatVersion
         // (names of setup left out at the source: shown as text only, so cut to plain short ones)
         m.setupLeftOut = m.setupLeftOut.map { Array($0.prefix(200).map { String($0.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 }.prefix(100).map(Character.init)) }) }
+        // which units hold what a hook runs is never the file's own claim: worked out from the settings.json it carries (an export of
+        // this backup leaves them out of a zip); without one it isn't known, and such an export leaves out every unit with an
+        // executable file
+        let setupRels = items.filter { $0.role == .setup }.map { String($0.path.dropFirst(6)) }
+        m.setupHookUnits = setupRels.contains("settings.json")
+            ? Setup.hookUnits(rels: setupRels, settings: FileManager.default.contents(atPath: (partial.path as NSString).appendingPathComponent("setup/settings.json"))).map { $0.map(Setup.key).sorted() }
+            : nil
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let manifestPath = (partial.path as NSString).appendingPathComponent("backup.json")
         do { try enc.encode(m).write(to: URL(fileURLWithPath: manifestPath), options: .withoutOverwriting) }

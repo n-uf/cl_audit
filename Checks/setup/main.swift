@@ -221,6 +221,84 @@ MainActor.assumeIsolated {
         try? fm.removeItem(atPath: c4)
     }
 
+    // ---- settings.json that is a link (into a dotfiles folder): never carried, but what its hooks run is still known, so a skill that
+    // holds its script stays out of a zip (from the folder and from a backup of it); one that can't be read keeps every unit with an
+    // executable file out of a zip
+    do {
+        let c6 = e2 + "/.claude-e2l", dots = e2 + "/dotfiles"
+        let token = "a-linked-hook-value-no-key-scan-knows"
+        try? fm.removeItem(atPath: c6); try? fm.removeItem(atPath: dots)
+        w(c6, "skills/guard/SKILL.md", "guard skill"); w(c6, "skills/guard/run.sh", "#!/bin/sh\nexport DEPLOY_TOKEN=\(token)\n", exec: true)
+        w(c6, "skills/plain/SKILL.md", "plain skill"); w(c6, "skills/tool/SKILL.md", "tool skill"); w(c6, "skills/tool/bin/tool.sh", "#!/bin/sh\necho tool\n", exec: true)
+        write(dots + "/settings.json", #"{"hooks":{"PreToolUse":[{"hooks":[{"type":"command","command":"~/e2/.claude-e2l/skills/guard/run.sh"}]}]}}"#)
+        symlink(dots + "/settings.json", c6 + "/settings.json")
+        let guardU = Setup.Unit(kind: .skill, name: "guard"), toolU = Setup.Unit(kind: .skill, name: "tool")
+        let fl = Setup.scan(codeDir: c6, home: home)
+        check(!fl.files.contains { $0.rel == "settings.json" } && fl.linked.map(\.label) == ["settings.json"] && fl.hookUnits == [guardU],
+              "scan (linked settings.json): not carried, listed as a link, and the skill its hook runs a file of is still known: \(fl.hookUnits.map { $0.map(\.name).sorted() } ?? ["unreadable"])")
+        /// What an export holds: its setup paths, whether the needle's bytes are anywhere in it (every unpacked file, and the file itself), its left-out names.
+        func opened(_ url: URL, _ password: String? = nil) -> (rels: Set<String>, hit: Bool, leftOut: [String], linkTarget: Bool)? {
+            guard let o = try? SessionsImport.open(url, password: password, place: eplace) else { return nil }
+            defer { SessionsImport.discard(o.work) }
+            let rels = Set(o.parts[0].manifest.items.filter { $0.role == .setup }.map { String($0.path.dropFirst(6)) })
+            let needle = Data(token.utf8), target = Data(dots.utf8)
+            let all = files(o.tree.path).map { fm.contents(atPath: o.tree.path + "/" + $0) ?? Data() } + [fm.contents(atPath: url.path) ?? Data()]
+            return (rels, all.contains { $0.range(of: needle) != nil }, o.parts[0].manifest.setupLeftOut ?? [], all.contains { $0.range(of: target) != nil })
+        }
+        let lpart = SessionsExport.Part(profile: "e2l", name: "E2l", source: SessionsBackup.Source(profile: "e2l", dataDir: "", codeDir: c6), emails: [])
+        let lpv = SessionsExport.preview(lpart)!
+        check(lpv.setup.hookUnits == [guardU] && !lpv.setup.hooksUnknown && ExportWords.setupWords(lpv, setup: true, image: false) == "2 skills" && lpv.setup.keyedUnits.isEmpty,
+              "preview (linked settings.json): the skill that holds its hook's script is marked for the image, the other 2 go in a zip: \(ExportWords.setupWords(lpv, setup: true, image: false))")
+        let lz = URL(fileURLWithPath: out + "/E2l.zip")
+        if (try? SessionsExport.run(SessionsExport.Job(parts: [lpart], keys: .leaveOut, destination: lz, rootName: "e2l-export", place: eplace))) != nil, let z = opened(lz) {
+            check(z.rels == ["skills/plain/SKILL.md", "skills/tool/SKILL.md", "skills/tool/bin/tool.sh"] && !z.hit && z.leftOut.contains("skill guard (needs the encrypted disk image)") && !z.linkTarget,
+                  "export (zip, linked settings.json): the skill that holds the hook's script is left out, its token's bytes are nowhere in the file, the link's target neither: \(z.rels.sorted()) \(z.leftOut)")
+        } else { check(false, "export (zip, linked settings.json): made and opens") }
+        let li = URL(fileURLWithPath: out + "/E2l.dmg")
+        if (try? SessionsExport.run(SessionsExport.Job(parts: [lpart], keys: .leaveOut, password: pw, destination: li, rootName: "e2l-image", place: eplace))) != nil, let o = opened(li, pw) {
+            check(o.rels == ["skills/guard/SKILL.md", "skills/guard/run.sh", "skills/plain/SKILL.md", "skills/tool/SKILL.md", "skills/tool/bin/tool.sh"] && !o.linkTarget,
+                  "export (image, linked settings.json): the image carries the skill whole; settings.json itself (a link) never, nor where it points: \(o.rels.sorted())")
+        } else { check(false, "export (image, linked settings.json): made and opens") }
+        // a backup made with the linked settings.json records the skill by name; an export from that backup leaves it out of a zip too
+        let lb = try! SessionsBackup.make(SessionsBackup.Source(profile: "e2l", dataDir: "", codeDir: c6), kind: .manual, window: false, place: eplace)
+        let lbPath = SessionsBackup.folder(profile: "e2l", place: eplace).appendingPathComponent("\(lb.id)/backup.json").path
+        check(lb.setupHookUnits == ["skill:guard"] && !(read(lbPath) ?? dots).contains(dots), "backup (linked settings.json): the hook-held skill is recorded by name, never where the link points: \(lb.setupHookUnits ?? ["none"])")
+        let bpart = SessionsExport.Part(profile: "e2l", name: "E2l", backup: SessionsRestore.Backup(profile: "e2l", id: lb.id, place: eplace))
+        let bpv = SessionsExport.preview(bpart)!
+        check(bpv.setup.hookUnits == [guardU] && !bpv.setup.hooksUnknown, "preview (from that backup): the same skill is marked for the image")
+        let bz = URL(fileURLWithPath: out + "/E2l-backup.zip")
+        if (try? SessionsExport.run(SessionsExport.Job(parts: [bpart], keys: .leaveOut, destination: bz, rootName: "e2l-backup-export", place: eplace))) != nil, let z = opened(bz) {
+            check(z.rels == ["skills/plain/SKILL.md", "skills/tool/SKILL.md", "skills/tool/bin/tool.sh"] && !z.hit, "export (zip from a backup made with a linked settings.json): the skill is left out, its token nowhere: \(z.rels.sorted())")
+        } else { check(false, "export (zip from the backup): made and opens") }
+        // a backup from before the names were recorded: not known, so every skill with an executable file stays out of a zip
+        if var j = (try? JSONSerialization.jsonObject(with: fm.contents(atPath: lbPath) ?? Data())) as? [String: Any] {
+            j.removeValue(forKey: "setupHookUnits")
+            try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]).write(to: URL(fileURLWithPath: lbPath))
+        }
+        let opv = SessionsExport.preview(bpart)!
+        let oz = URL(fileURLWithPath: out + "/E2l-older.zip")
+        if (try? SessionsExport.run(SessionsExport.Job(parts: [bpart], keys: .leaveOut, destination: oz, rootName: "e2l-older-export", place: eplace))) != nil, let z = opened(oz) {
+            check(opv.setup.hooksUnknown && opv.setup.hookUnits == [guardU, toolU] && z.rels == ["skills/plain/SKILL.md"] && !z.hit && z.leftOut.contains("skill tool (needs the encrypted disk image)"),
+                  "export (zip from an older backup that didn't record them): both skills with an executable file are left out: \(z.rels.sorted()) \(z.leftOut)")
+        } else { check(false, "export (zip from an older backup): made and opens") }
+        // settings.json can't be read (a link to nowhere, a folder): every unit with an executable file stays out of a zip
+        unlink(c6 + "/settings.json"); symlink(dots + "/gone.json", c6 + "/settings.json")
+        check(Setup.scan(codeDir: c6, home: home).hookUnits == nil, "scan: a settings.json that links to nowhere can't be read: which units its hooks run is not known")
+        let upv = SessionsExport.preview(lpart)!
+        let uNote = ExportWords.setupNotes(upv, setup: true, image: false).first ?? ""
+        check(upv.setup.hooksUnknown && upv.setup.hookUnits == [guardU, toolU] && ExportWords.setupWords(upv, setup: true, image: false) == "1 skill" && uNote.contains("2 skills with an executable file"),
+              "preview (unreadable settings.json): both skills with an executable file are marked for the image, and the note says why: \(uNote)")
+        let uz = URL(fileURLWithPath: out + "/E2l-unread.zip")
+        if (try? SessionsExport.run(SessionsExport.Job(parts: [lpart], keys: .leaveOut, destination: uz, rootName: "e2l-unread-export", place: eplace))) != nil, let z = opened(uz) {
+            check(z.rels == ["skills/plain/SKILL.md"] && !z.hit && z.leftOut.contains("skill guard (needs the encrypted disk image)") && z.leftOut.contains("skill tool (needs the encrypted disk image)"),
+                  "export (zip, unreadable settings.json): only the skill without an executable file is in it: \(z.rels.sorted())")
+        } else { check(false, "export (zip, unreadable settings.json): made and opens") }
+        unlink(c6 + "/settings.json"); try? fm.createDirectory(atPath: c6 + "/settings.json", withIntermediateDirectories: true)
+        check(Setup.hookUnits(codeDir: c6, rels: ["skills/guard/run.sh"]) == nil && Setup.hookUnits(codeDir: e2 + "/no-such-folder", rels: []) == [],
+              "settings.json that is a folder can't be read; no settings.json at all runs nothing")
+        try? fm.removeItem(atPath: c6); try? fm.removeItem(atPath: dots)
+    }
+
     // ---- the leak check exempts the setup's own folder and nothing else
     do {
         let lroot = URL(fileURLWithPath: e2 + "/leakroot")

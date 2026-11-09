@@ -713,6 +713,9 @@ enum SessionsExport {
         /// Units (a skill, an agent …) that hold a file a hook or the status line of settings.json runs: the same as settings.json's
         /// own scripts, they can hold a token no key scan recognises, so only the encrypted image carries them.
         var hookUnits: Set<Setup.Unit> = []
+        /// settings.json couldn't tell what its hooks run (it can't be read, or an older backup didn't record it): `hookUnits` is then
+        /// every unit that holds a file with the execute bit.
+        var hooksUnknown = false
         var counts: Setup.Counts { Setup.Counts(units) }
         func isSensitive(_ u: Setup.Unit) -> Bool { u.sensitive || hookUnits.contains(u) }
         var sensitive: Setup.Counts { Setup.Counts(units.filter(\.sensitive)) }
@@ -722,7 +725,7 @@ enum SessionsExport {
         var plain: Setup.Counts { Setup.Counts(units.filter { !isSensitive($0) }) }
         var isEmpty: Bool { units.isEmpty }
         mutating func add(_ o: SetupPreview) {
-            hookUnits.formUnion(o.hookUnits)
+            hookUnits.formUnion(o.hookUnits); hooksUnknown = hooksUnknown || o.hooksUnknown
             units += o.units; files += o.files; bytes += o.bytes; keyedUnits += o.keyedUnits
             for (k, v) in o.keyKinds { keyKinds[k, default: 0] += v }
             extra.hooks += o.extra.hooks; extra.plugins += o.extra.plugins; extra.statusLine = extra.statusLine || o.extra.statusLine
@@ -730,24 +733,43 @@ enum SessionsExport {
         }
     }
 
-    /// The setup of a part: from the source's Claude Code folder as it is now, or from the chosen backup's `setup` items.
-    static func setupFiles(of part: Part) -> (files: [Setup.FileRec], found: Setup.Found?) {
-        if let s = part.source { let f = Setup.scan(codeDir: s.codeDir); return (f.files, f) }
-        guard let b = part.backup, let m = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) else { return ([], nil) }
+    /// The setup of a part: from the source's Claude Code folder as it is now, or from the chosen backup's `setup` items; with the
+    /// units a zip leaves out for holding what a hook runs, and whether settings.json told which those are (`known`).
+    static func setupFiles(of part: Part) -> (files: [Setup.FileRec], found: Setup.Found?, held: Set<Setup.Unit>, known: Bool) {
+        if let s = part.source {
+            let f = Setup.scan(codeDir: s.codeDir)
+            return (f.files, f, Setup.heldUnits(known: f.hookUnits, files: f.files.map { ($0.rel, $0.exec) }), f.hookUnits != nil)
+        }
+        guard let b = part.backup, let m = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) else { return ([], nil, [], true) }
         let list = m.items.filter { $0.role == .setup }.compactMap { it -> Setup.FileRec? in
             guard it.path.hasPrefix("setup/") else { return nil }
             return Setup.FileRec(rel: String(it.path.dropFirst(6)), src: b.dir.appendingPathComponent(it.path).path, bytes: it.bytes, exec: it.exec ?? false)
         }
-        return (list, nil)
+        return (list, nil, hookHeld(m, dir: b.dir), m.setupHookUnits != nil)
+    }
+
+    /// The units of a backup's setup that a zip leaves out for holding what a hook or the status line runs: as its backup.json
+    /// recorded them when it was made (from the live settings.json, a linked one too). A backup that didn't record them (an older
+    /// one, or settings.json couldn't be read): every unit that holds a file with the execute bit, and any its carried settings.json
+    /// names.
+    static func hookHeld(_ m: SessionsBackup.Manifest, dir: URL) -> Set<Setup.Unit> {
+        if let names = m.setupHookUnits { return Set(names.compactMap(Setup.unit(key:))) }
+        let files = m.items.filter { $0.role == .setup && $0.path.hasPrefix("setup/") }.map { (rel: String($0.path.dropFirst(6)), exec: $0.exec ?? false) }
+        var out = Setup.heldUnits(known: nil, files: files)
+        if files.contains(where: { $0.rel == "settings.json" }) {
+            out.formUnion(Setup.hookUnits(rels: files.map(\.rel), settings: FileManager.default.contents(atPath: dir.appendingPathComponent("setup/settings.json").path)) ?? [])
+        }
+        return out
     }
 
     static func setupPreview(_ part: Part, cancel: () -> Bool, progress: ((Int64) -> Void)?) -> SetupPreview? {
         var sp = SetupPreview()
-        let (files, found) = setupFiles(of: part)
+        let (files, found, held, known) = setupFiles(of: part)
         var kinds: [Setup.Unit: Set<Secret>] = [:]
         var seen = Set<Setup.Unit>()
         func data(_ rel: String) -> Data? { files.first { $0.rel == rel }.flatMap { FileManager.default.contents(atPath: $0.src) } }
-        sp.hookUnits = Setup.hookUnits(rels: files.map(\.rel), settings: data("settings.json"))
+        sp.hookUnits = held
+        sp.hooksUnknown = !known
         for f in files {
             if cancel() { return nil }
             let u = f.unit
@@ -1324,12 +1346,13 @@ enum SessionsExport {
                 guard let c = SessionsRestore.components(it.path), c.first == "setup", Setup.pathProblem(Array(c.dropFirst())) == nil else { continue }
                 members[Setup.unit(of: String(it.path.dropFirst(6))), default: []].append(it)
             }
-            // a skill (an agent, a command …) that holds a file a hook or the status line runs is sensitive like the script itself
-            let allRels = members.values.flatMap { $0.map { String($0.path.dropFirst(6)) } }
-            let hookHeld = Setup.hookUnits(rels: allRels, settings: members.keys.contains(Setup.Unit(kind: .settings, name: "settings.json")) ? FileManager.default.contents(atPath: b.dir.appendingPathComponent("setup/settings.json").path) : nil)
+            // a skill (an agent, a command …) that holds a file a hook or the status line runs is sensitive like the script itself: as
+            // the backup recorded them from the live settings.json (a linked one too, which is never carried), else every unit with an
+            // executable file
+            let holders = hookHeld(m, dir: b.dir)
             for (u, list) in members.sorted(by: { $0.key < $1.key }) {
                 if cancel() { throw ArchiveError("Stopped.") }
-                let sensitive = u.sensitive || hookHeld.contains(u)
+                let sensitive = u.sensitive || holders.contains(u)
                 if sensitive, zip { po.setupSensitiveLeftOut.append(u); setupNames.append("\(SetupRow.title(u)) (needs the encrypted disk image)"); leftOut += list.count; continue }
                 if !sensitive {
                     var kinds = Set<Secret>()

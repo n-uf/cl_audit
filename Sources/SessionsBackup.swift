@@ -93,6 +93,11 @@ enum SessionsBackup {
         var items: [Item]
         /// Setup (CLAUDE.md, skills …) left out because it is a link: names only, never where it pointed.
         var setupLeftOut: [String]? = nil
+        /// The setup units ("skill:guard") that hold a file settings.json's hooks or status line run, learned from the live settings.json
+        /// when the backup was made (also a linked one, which isn't carried): names only. An export from this backup leaves them out
+        /// of a zip. nil: not known (settings.json couldn't be read, or an older backup): a zip then leaves out every unit that holds a
+        /// file with the execute bit.
+        var setupHookUnits: [String]? = nil
     }
 
     /// What a backup is made from.
@@ -182,6 +187,7 @@ enum SessionsBackup {
     private struct Gathered {
         var files: [Planned] = []
         var setupLeftOut: [String] = []
+        var setupHookUnits: [String]? = nil
         var counts = Counts()
         var accounts: [SeatID] = []
         var bytes: Int64 = 0
@@ -212,6 +218,7 @@ enum SessionsBackup {
             }
             // by name and the reason, never where a link pointed: "agent linked.md (a link)", "skills/big (too deep or too many files: left out whole)"
             g.setupLeftOut = (f.linked.map { $0.label.contains("(") ? $0.label : $0.label + " (a link)" } + f.leftOutNames.filter { $0.hasSuffix("left out whole)") }).sorted()
+            g.setupHookUnits = f.hookUnits.map { $0.map(Setup.key).sorted() }
         }
         if window, !s.dataDir.isEmpty {
             let root = (s.dataDir as NSString).appendingPathComponent("claude-code-sessions")
@@ -398,7 +405,7 @@ enum SessionsBackup {
                          window: window, transcripts: transcripts,
                          bytes: items.reduce(0) { $0 + $1.bytes }, cloned: cloned, copied: copied, copiedBytes: copiedBytes,
                          leftOut: leftOut, dataDir: s.dataDir, codeDir: s.codeDir, items: items,
-                         setupLeftOut: g.setupLeftOut.isEmpty ? nil : g.setupLeftOut)
+                         setupLeftOut: g.setupLeftOut.isEmpty ? nil : g.setupLeftOut, setupHookUnits: g.setupHookUnits)
         var out = m
         out.seconds = (Date().timeIntervalSince(started) * 10).rounded() / 10
         try put(try encode(out), "backup.json", in: partial, dirFor)
