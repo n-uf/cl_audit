@@ -336,20 +336,26 @@ enum SessionsMove {
     }
 
     /// Why a backups place from a file can't be taken here, or nil: it must be a folder that is here, inside the home folder (not the
-    /// home folder itself) or on a volume of its own (/Volumes/<name>/…), and not a link.
+    /// home folder itself, not ~/Library, ~/Public or a hidden folder such as ~/.ssh) or on a disk of its own (/Volumes/<name>/…). It is
+    /// judged by where it really is (every link on the way resolved): /Volumes/Macintosh HD/… is this Mac's own disk, not one of its own.
     static func placeProblem(_ raw: String) -> String? {
         if raw.isEmpty { return nil }
         let path = (expand(raw) as NSString).standardizingPath
-        let home = NSHomeDirectory()
-        let comps = path.split(separator: "/").map(String.init)
-        guard path.hasPrefix("/"), !comps.contains(".."), !comps.contains(".") else { return "it isn't a plain folder path" }
-        let inHome = path.hasPrefix(home + "/") && path != home
-        let onVolume = comps.count >= 2 && comps[0] == "Volumes"
-        guard inHome || onVolume else { return "it is a system folder, not one in your home folder or on a disk of its own" }
+        guard path.hasPrefix("/"), !path.split(separator: "/").contains(where: { $0 == ".." || $0 == "." }) else { return "it isn't a plain folder path" }
+        guard let r = realpath(path, nil) else { return "that folder isn't on this Mac" }
+        let real = String(cString: r); free(r)
+        let home: String = { guard let h = realpath(NSHomeDirectory(), nil) else { return NSHomeDirectory() }; defer { free(h) }; return String(cString: h) }()
         var st = stat()
-        guard lstat(path, &st) == 0 else { return "that folder isn't on this Mac" }
-        guard (st.st_mode & S_IFMT) == S_IFDIR else { return "it isn't a folder here" }
-        return nil
+        guard stat(real, &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR else { return "it isn't a folder here" }
+        let comps = real.split(separator: "/").map(String.init)
+        if real.hasPrefix(home + "/") {
+            let inside = real.dropFirst(home.count + 1).split(separator: "/").map(String.init)
+            if inside.contains(where: { $0.hasPrefix(".") }) { return "it is a hidden folder" }
+            if let first = inside.first, ["Library", "Public"].contains(first) { return "it is in ~/\(first), which isn't a place for backups" }
+            return nil
+        }
+        if comps.count >= 2, comps[0] == "Volumes" { return nil }
+        return "it is a system folder (or this Mac's own disk outside your home folder), not one in your home folder or on a disk of its own"
     }
 
     // MARK: - the plan (read-only)
