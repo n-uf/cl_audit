@@ -579,7 +579,12 @@ MainActor.assumeIsolated {
           "rows: a file here stays; the done line says why it wasn't added: \(WindowWords.configDone(cp, added: false, undone: false, name: "Work", imported: true))")
     check(WindowWords.configDone(cp, added: true, undone: true, name: "Work", imported: true) == "2 MCP servers and the window's other settings: was added, and taken away again", "rows: after Undo")
     cp.otherKeys = ["globalShortcut", "preferences"]
+    let wasLeftOut = cp.leftOut
+    cp.leftOut = false
     check(WindowWords.otherKeys(cp) == "Also added with it, whole: the window's other settings (globalShortcut, preferences; values not shown)", "rows: the rest of the file is said to come whole")
+    cp.leftOut = true
+    check(WindowWords.otherKeys(cp) == "Adding them also adds, whole: the window's other settings (globalShortcut, preferences; values not shown)", "rows: …said as what adding would do while the servers are left out")
+    cp.leftOut = wasLeftOut
     check(WindowWords.serversKey(cp, imported: true) == ("What the file's servers would run (not added: your claude_desktop_config.json stays)", "Hide (not added: your claude_desktop_config.json stays)"),
           "rows: with a file here, both keys of the servers' list keep the not-added caveat")
     cp.status = .blocked("the profile has no Claude window folder")
@@ -599,7 +604,7 @@ MainActor.assumeIsolated {
           "rows: where to turn them on")
     check(WindowWords.tasksDone(["Nightly digest"], undone: false, leftOut: false) == "1 task added, paused: Nightly digest" && WindowWords.tasksDone([], undone: false, leftOut: true) == "none added (left out)"
           && WindowWords.tasksDone(["Nightly digest", "Weekly"], undone: true, leftOut: false) == "2 tasks were added, paused, and taken away again", "rows: the done and undone lines")
-    check(WindowWords.tasksDone(Array(repeating: "T", count: 200), count: 300_000, risky: 2, undone: false, leftOut: false).hasPrefix("300000 tasks added, paused, 2 with permission checks off or approved permissions: T, T")
+    check(WindowWords.tasksDone(Array(repeating: "T", count: 200), count: 300_000, risky: 2, undone: false, leftOut: false) == "300000 tasks added, paused: T, T, T, T, T, …. With permission checks off or approved permissions: 2 (see the list)"
           && WindowWords.tasksDone(["T"], count: 300_000, undone: true, leftOut: false) == "300000 tasks were added, paused, and taken away again",
           "rows: the done line counts all the tasks added and flags the risky ones, not only the 200 listed")
     tp.status = .here; tp.lacking = ["Nightly digest"]

@@ -59,10 +59,11 @@ enum WindowWords {
         return cp.leftOut || cp.status == .new ? "none added (left out)" : configValue(cp, name: name, imported: imported)
     }
 
-    /// The rest of the file, which adding writes too.
+    /// The rest of the file, which adding writes too (said as what adding would do while the servers are left out).
     static func otherKeys(_ cp: SessionsRestore.ConfigPlan) -> String? {
         guard !cp.otherKeys.isEmpty else { return nil }
-        return "Also added with it, whole: the window's other settings (\(cp.otherKeys.prefix(6).joined(separator: ", "))\(cp.otherKeys.count > 6 ? ", …" : ""); values not shown)"
+        let list = "the window's other settings (\(cp.otherKeys.prefix(6).joined(separator: ", "))\(cp.otherKeys.count > 6 ? ", …" : ""); values not shown)"
+        return (cp.leftOut ? "Adding them also adds, whole: " : "Also added with it, whole: ") + list
     }
 
     /// Under the open list of servers (the show key's caveat is gone once it is open).
@@ -133,8 +134,9 @@ enum WindowWords {
         let k = max(count ?? added.count, added.count)
         if undone { return k == 0 ? "none were added" : "\(n(k, "task was", "tasks were")) added, paused, and taken away again" }
         if k == 0 { return "none added" + (leftOut ? " (left out)" : "") }
-        let flagged = risky > 0 ? ", \(risky) with permission checks off or approved permissions" : ""
-        return "\(n(k, "task", "tasks")) added, paused\(flagged): \(added.prefix(5).joined(separator: ", "))" + (k > 5 ? ", …" : "")
+        // (the names first, then how many of all of them are flagged: never a count that reads as naming the tasks after it)
+        let flagged = risky > 0 ? ". With permission checks off or approved permissions: \(risky) (see the list)" : ""
+        return "\(n(k, "task", "tasks")) added, paused: \(added.prefix(5).joined(separator: ", "))" + (k > 5 ? ", …" : "") + flagged
     }
 
     /// The tasks that don't come, with why, and (a task file here) the ones it lacks.
