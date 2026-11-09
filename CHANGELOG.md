@@ -19,7 +19,8 @@ the notes before updating.
   refuses a newer one). **Import** and **Restore** leave the setup out until you pick **Add them**, list every unit as New, Already
   here or Different here (settings.json: the key names that differ, and the command of each hook), and add only what is
   missing: never over a file, never into a skill folder that exists, never through a link, files 0600, folders 0700; a skill's
-  script (and the scripts of an added settings.json) 0700, owner only. A hostile file is refused whole. Undo takes it back.
+  script (and the scripts of an added settings.json) 0700, owner only. A hostile file is refused whole (a name such as `Skills/`
+  or `Projects/`, the same place under another case, included). Undo takes it back.
   A scheduled task's sessions are recognised by the entry's `scheduledTaskId`. The test seam for a failed claim is now compiled
   only into test builds, and an export's work folder is unregistered when it can't be removed.
 
