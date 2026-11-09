@@ -275,7 +275,8 @@ enum Setup {
     }
 
     /// The files an import may take as "included": the `@` closure of the carried CLAUDE.md, the way the export found them (a path
-    /// relative to the file that names it, up to 5 deep; `~/…` and absolute paths are matched by their tail, since the file doesn't
+    /// relative to the file that names it, up to 5 deep; `~/…`, absolute paths and a relative one whose `../` leaves the folder are
+    /// matched by their tail, since the file doesn't
     /// say where the other Mac's Claude Code folder was). `carried` is every setup path the file holds, `read` gives a carried file's
     /// bytes. Anything else that looks like an include (a leftover .md in a folder of its own) isn't one.
     static func includeClosure(carried: Set<String>, read: (String) -> Data?) -> Set<String> {
@@ -291,8 +292,16 @@ enum Setup {
                     let p = normalize(tok.hasPrefix("~/") ? "/~home/" + tok.dropFirst(2) : tok)
                     hits = carried.filter { p.hasSuffix("/" + $0) }.sorted()
                 } else {
-                    let r = String(normalize("/" + (dir.isEmpty ? "" : dir + "/") + tok).dropFirst())
-                    if carried.contains(r) { hits = [r] }
+                    // relative to the file that names it; one whose `../` leaves the folder and comes back in (`@../.claude/x.md`, which
+                    // the export resolved on its own Mac, where the folder's name was known) is matched by its tail, like a `~/` path
+                    let pad = String(repeating: "/~up", count: 12)
+                    let p = normalize(pad + "/" + (dir.isEmpty ? "" : dir + "/") + tok)
+                    if p.hasPrefix(pad + "/") {
+                        let r = String(p.dropFirst(pad.count + 1))
+                        if carried.contains(r) { hits = [r] }
+                    } else {
+                        hits = carried.filter { p.hasSuffix("/" + $0) }.sorted()
+                    }
                 }
                 for r in hits where !visited.contains(r) {
                     visited.insert(r)

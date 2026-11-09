@@ -567,6 +567,9 @@ MainActor.assumeIsolated {
         let deep = Setup.includeClosure(carried: Set(chain.keys)) { chain[$0].map { Data($0.utf8) } }
         check(deep == ["c1.md", "c2.md", "c3.md", "c4.md", "c5.md"], "includes: followed as deep as the export follows them (5 files), no further: \(deep.sorted())")
         check(Setup.includeClosure(carried: ["docs/a.md"]) { _ in Data(" @docs/a.md".utf8) }.isEmpty, "includes: without a CLAUDE.md there are none")
+        let up: [String: String] = ["CLAUDE.md": " @../.claude/rules/up.md\n @docs/a.md\n", "rules/up.md": "u", "docs/a.md": " @../../.claude/docs/b.md\n", "docs/b.md": "b", "rules/other.md": "o"]
+        let ups = Setup.includeClosure(carried: Set(up.keys)) { up[$0].map { Data($0.utf8) } }
+        check(ups == ["rules/up.md", "docs/a.md", "docs/b.md"], "includes: a relative @../ that leaves the folder and comes back in is matched by its tail, like ~/: \(ups.sorted())")
         let s = Data(#"{"note":"bin/run","hooks":{"Stop":[{"hooks":[{"type":"command","command":"bash $HOME/.claude/bin/x.sh --flag"}]}]},"statusLine":{"type":"command","command":"~/.claude/bin/line.sh"}}"#.utf8)
         check(Setup.namedPaths(in: s, among: ["bin/run", "bin/x.sh", "bin/line.sh", "bin/other.sh"]) == ["bin/x.sh", "bin/line.sh"], "scripts: only a path a hook or status-line command names")
         // a `command` under another key (an MCP server's) is no hook's: not carried, not accepted, not shown as what the hooks run
