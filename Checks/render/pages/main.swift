@@ -74,6 +74,7 @@ func fixPatch(_ m: SessionsBackup.Manifest, seconds: Double) {   // made-up dura
 @MainActor func snapshot(_ v: some View, _ name: String, _ w: CGFloat, _ h: CGFloat = 3600) {
     if ProcessInfo.processInfo.environment["B2_ONLY"] != nil, !name.hasPrefix("6") { return }      // stage B2 renders only
     if ProcessInfo.processInfo.environment["E_ONLY"] != nil, !name.hasPrefix("7") { return }       // stage E renders only
+    if ProcessInfo.processInfo.environment["E2_ONLY"] != nil, !name.hasPrefix("8") { return }      // stage E2 (the setup row) renders only
     _ = NSApplication.shared
     let host = NSHostingView(rootView: v)
     host.frame = NSRect(x: 0, y: 0, width: w, height: h)
@@ -414,5 +415,101 @@ MainActor.assumeIsolated {
     rr.undo()
     settleE("the undo") { rr.phase == .undone }
     importPage("7o-import-undone", ir)
+
+    // ================================================================ stage E2: Claude Code's setup (renders 8a..8e)
+    // The setup row of the Export, Import and Restore pages, at 340, 460 and 708, Std and Silver. Sample data only: made-up profiles,
+    // example.com addresses, fake keys.
+    do {
+        let c2 = expand("~/.claude-e2main"), d2 = expand("~/Library/Application Support/Claude-e2main")
+        let away = expand("~/elsewhere-e2")
+        func w2(_ c: String, _ rel: String, _ text: String, exec: Bool = false) {
+            putE("\(c)/\(rel)", text, daysAgo: 30)
+            if exec { chmod("\(c)/\(rel)", 0o755) }
+        }
+        func plant2(_ c: String, links: Bool) {
+            w2(c, "CLAUDE.md", "# My rules\n@docs/style.md\nsee @~/notes-outside-e2/rules.md\n"); w2(c, "docs/style.md", "style")
+            for (i, s) in ["pdf-tools", "release-notes", "git-helper", "sql-review", "writing-style", "data-clean"].enumerated() {
+                w2(c, "skills/\(s)/SKILL.md", "skill \(s)"); if i < 3 { w2(c, "skills/\(s)/run.sh", "#!/bin/sh\n", exec: true) }
+            }
+            w2(c, "skills/keyed-skill/SKILL.md", "keyed"); w2(c, "skills/keyed-skill/deploy.py", "KEY = '\(ghFake)'\n")
+            for a in ["reviewer", "planner", "tester", "writer"] { w2(c, "agents/\(a).md", "agent \(a)") }
+            for k in ["ship", "triage", "standup", "changelog", "bump", "audit"] { w2(c, "commands/\(k).md", "command \(k)") }
+            w2(c, "output-styles/terse.md", "terse"); w2(c, "keybindings.json", "{}")
+            w2(c, "settings.json", "{\"hooks\":{\"PreToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\(c)/bin/guard.sh\"}]}],\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"/opt/tools-e2/notify.sh\"}]}],\"PostToolUse\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\(c)/bin/fmt.sh\"}]}],\"SessionStart\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\(c)/bin/start.sh\"}]}]},\"statusLine\":{\"type\":\"command\",\"command\":\"\(c)/bin/line.sh\"}}")
+            for s in ["guard", "fmt", "start"] { w2(c, "bin/\(s).sh", "#!/bin/sh\n", exec: true) }; w2(c, "bin/line.sh", "#!/bin/sh\n", exec: true)
+            w2(c, "plugins/installed_plugins.json", "{\"plugins\":{\"a@m\":{},\"b@m\":{}}}"); w2(c, "plugins/known_marketplaces.json", "{}")
+            if links {
+                try? fm.createDirectory(atPath: away + "/skills/foo", withIntermediateDirectories: true)
+                symlink(away + "/skills/foo", c + "/skills/linked-one"); symlink(away + "/skills/foo", c + "/skills/linked-two")
+            }
+        }
+        putE(expand("~/notes-outside-e2/rules.md"), "outside", daysAgo: 30)
+        plant2(c2, links: true)
+        for k in 0..<6 { putE("\(c2)/projects/-app/\(uuid(8000 + k)).jsonl", exTranscript(k, cwd: appCwd, extra: k < 2 ? ghFake : ""), daysAgo: 3) }
+        try! fm.createDirectory(atPath: "\(d2)/claude-code-sessions/\(u1.account)/\(u1.organization!)", withIntermediateDirectories: true)
+        var e2main = AccountEntry(id: "e2main", name: "Main", label: "MAIN", configDir: c2); e2main.seat = u1; e2main.desktop = .separate; e2main.desktopDataDir = d2
+        model.accounts = [exmain, exwork, imain, e2main]
+        SessionsRestore.runningSessions = { [] }
+        @MainActor func e2Shots<V: View>(_ name: String, _ make: (CGFloat) -> V, height: CGFloat = 3200) {
+            for f in [Face.std, .silver] { for w in [CGFloat(340), 460, 708] {
+                snapshot(framed(make(w), f, w), "\(name)-\(f.rawValue)-w\(Int(w))", w + 32, height)
+            } }
+        }
+
+        // ---- 8a/8b the Export page: the setup row on a zip (sensitive part left out, links listed), then the image with a skill that holds a key
+        let xr2 = model.exportRunner(for: "e2main")
+        xr2.refresh()
+        settleE("the setup export preview") { xr2.previews != nil }
+        print("setup preview:", xr2.total?.setup.units.count ?? -1, "units", xr2.total?.setup.keyedUnits.count ?? -1, "keyed", xr2.total?.setup.linked.count ?? -1, "linked")
+        @MainActor func exportPage2(_ name: String) { e2Shots(name, { ExportPage(entry: e2main, model: model, runner: xr2, width: $0) }) }
+        exportPage2("8a-export-setup-zip")
+        xr2.keys = .keep
+        xr2.password = "typed-in-a-secure-field"; xr2.again = "typed-in-a-secure-field"
+        exportPage2("8b-export-setup-image-keys")
+        xr2.password = ""; xr2.again = ""; xr2.keys = .leaveOut
+
+        // ---- 8c/8d the Import page: a real image made from another profile, and a target that has some of it
+        let c3 = expand("~/.claude-e2work"), d3 = expand("~/Library/Application Support/Claude-e2work")
+        plant2(c3, links: false)
+        for k in 0..<4 { putE("\(c3)/projects/-app/\(uuid(8100 + k)).jsonl", exTranscript(300 + k, cwd: appCwd), daysAgo: 3) }
+        let wscope3 = "\(d3)/claude-code-sessions/\(u3.account)/\(u3.organization!)"
+        try! fm.createDirectory(atPath: wscope3, withIntermediateDirectories: true)
+        var e2work = AccountEntry(id: "e2work", name: "Work", label: "WORK", configDir: c3); e2work.seat = u3; e2work.desktop = .separate; e2work.desktopDataDir = d3
+        let tc = expand("~/.claude-e2imain"), td = expand("~/Library/Application Support/Claude-e2imain")
+        let tscope3 = "\(td)/claude-code-sessions/\(u2.account)/\(u2.organization!)"
+        try! fm.createDirectory(atPath: tscope3, withIntermediateDirectories: true)
+        w2(tc, "skills/pdf-tools/SKILL.md", "my own version, different"); w2(tc, "skills/git-helper/SKILL.md", "skill git-helper"); w2(tc, "skills/git-helper/run.sh", "#!/bin/sh\n", exec: true)
+        w2(tc, "agents/reviewer.md", "agent reviewer"); w2(tc, "settings.json", "{\"model\":\"opus\",\"env\":{\"MINE\":\"x\"}}")
+        var e2imain = AccountEntry(id: "e2imain", name: "Main", label: "MAIN", configDir: tc); e2imain.seat = u2; e2imain.desktop = .separate; e2imain.desktopDataDir = td
+        model.accounts = [exmain, exwork, imain, e2main, e2work, e2imain]
+        let pw2 = "render-password-not-secret"
+        let img2 = URL(fileURLWithPath: exportsDir + "/cl_audit Work 2026-11-07.dmg")
+        try? fm.removeItem(at: img2)
+        _ = try! SessionsExport.run(SessionsExport.Job(parts: [SessionsExport.Part(profile: "e2work", name: "Work", source: SessionsBackup.Source(e2work), emails: [u3.email!])], keys: .leaveOut,
+                                                       password: pw2, destination: img2, rootName: "cl_audit Work 2026-11-07", now: Date().addingTimeInterval(-86400)))
+        let ir2 = model.importRunner(for: "e2imain")
+        ir2.setFile(img2)                              // (an image asks for its password: setFile empties it, so it is typed after)
+        ir2.password = pw2
+        ir2.open()
+        settleE("the setup import preview") { ir2.phase == .ready && ir2.plan != nil && ir2.counting?.notYet == nil && ir2.counting?.plan != nil }
+        @MainActor func importPage2(_ name: String) { e2Shots(name, { ImportPage(entry: e2imain, model: model, runner: ir2, width: $0) }, height: 3800) }
+        importPage2("8c-import-setup-left-out")
+        ir2.setSetup(true)
+        settleE("the setup import counted again") { ir2.plan?.setup.leftOut == false }
+        SetupRow.renderOpen = true
+        importPage2("8d-import-setup-added-open")
+        SetupRow.renderOpen = false
+
+        // ---- 8e the Restore page: a backup of Main from before two things were deleted on purpose
+        let bk2 = try! SessionsBackup.make(SessionsBackup.Source(e2main), kind: .manual, window: false, place: BackupPrefs.placeURL, now: Date().addingTimeInterval(-3600))
+        try? fm.removeItem(atPath: c2 + "/skills/data-clean"); try? fm.removeItem(atPath: c2 + "/agents/tester.md"); try? fm.removeItem(atPath: c2 + "/commands/audit.md")
+        let rk2 = RestoreKey(profile: "e2main", backup: bk2.id, place: BackupPrefs.placeURL.path)
+        let rr2 = model.restoreRunner(rk2)
+        rr2.refresh()
+        settleE("the setup restore preview") { rr2.plan != nil }
+        SetupRow.renderOpen = true
+        e2Shots("8e-restore-setup", { RestorePage(entry: e2main, key: rk2, model: model, runner: rr2, width: $0) }, height: 3800)
+        SetupRow.renderOpen = false
+    }
 }
 print("done")
