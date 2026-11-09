@@ -64,6 +64,24 @@ enum WindowWords {
         return "\(n(cp.lacking.count, "server", "servers")) of the file that \(cp.lacking.count == 1 ? "isn't" : "aren't") here: \(cp.lacking.prefix(5).joined(separator: ", "))\(cp.lacking.count > 5 ? ", …" : ""). Nothing is merged into your file: add \(cp.lacking.count == 1 ? "it" : "them") yourself if you want \(cp.lacking.count == 1 ? "it" : "them")."
     }
 
+    /// The key that shows what the servers run: while the file can't be added, both keys keep the caveat, so the commands never show
+    /// without the line saying they won't run (as the setup row's hooks key does).
+    static func serversKey(_ cp: SessionsRestore.ConfigPlan, imported: Bool) -> (show: String, hide: String) {
+        let whose = imported ? "file" : "backup"
+        switch cp.status {
+        case .new: return ("What each server runs", "Hide what they run")
+        case .here: return ("What the \(whose)'s servers would run (not added: your claude_desktop_config.json stays)", "Hide (not added: your claude_desktop_config.json stays)")
+        case .blocked: return ("What the \(whose)'s servers would run (not added: it can't be added here)", "Hide (not added: it can't be added here)")
+        }
+    }
+
+    /// The key of the tasks' list: on an import, how many can't come; on a restore every task comes back with the file, so how many
+    /// come without their prompt.
+    static func tasksKey(_ notAdded: Int, imported: Bool) -> String {
+        guard notAdded > 0 else { return "Show the tasks" }
+        return imported ? "Show the tasks (\(notAdded) can't come)" : "Show the tasks (\(notAdded) without the backup's prompt)"
+    }
+
     /// The Scheduled tasks row's value before the run.
     static func tasksValue(_ tp: SessionsRestore.TaskPlan, imported: Bool) -> String {
         let coming = tp.coming.count
@@ -135,7 +153,8 @@ struct McpRow: View {
                     if !undone, let l = WindowWords.lacking(cp) { t.small(l, color: face.caution) }
                     if !undone, cp.present, !cp.unreadable, !cp.otherKeys.isEmpty { t.small("With the window's other settings: \(cp.otherKeys.prefix(6).joined(separator: ", "))\(cp.otherKeys.count > 6 ? ", …" : "")") }
                     if !cp.servers.isEmpty {
-                        t.key(cp.status == .new ? "What each server runs" : "What the \(imported ? "file" : "backup")'s servers run (not added)", "Hide what they run", $showServers)
+                        let k = WindowWords.serversKey(cp, imported: imported)
+                        t.key(k.show, k.hide, $showServers)
                         if showServers { t.lines(cp.servers.map { "\($0.name): \($0.runs.replacingOccurrences(of: NSHomeDirectory(), with: "~"))" }) }
                     }
                 }
@@ -179,7 +198,7 @@ struct TasksRow: View {
                     let lines = WindowWords.taskLines(tp)
                     if !undone, !lines.isEmpty {
                         let notAdded = tp.tasks.filter { $0.why != nil }.count
-                        t.key(notAdded > 0 ? "Show the tasks (\(notAdded) can't come)" : "Show the tasks", "Hide the tasks", $showTasks)
+                        t.key(WindowWords.tasksKey(notAdded, imported: imported), "Hide the tasks", $showTasks)
                         if showTasks { t.lines(lines) }
                     }
                 }
