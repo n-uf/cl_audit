@@ -104,7 +104,8 @@ Privacy ▸ **Usage history** turns that off.
 **Where it goes: only to Anthropic.** cl_audit uses the token for two requests to Anthropic's own server:
 `api.anthropic.com/api/oauth/usage` (your 5-hour and weekly figures) and `api.anthropic.com/api/oauth/profile`
 (which account a profile is signed in to). There is no cl_audit server, no analytics and no sign-up, and
-nothing else goes over the network. **Renew sign-in** (off by default) runs Claude Code once with a tiny prompt
+nothing else goes over the network, with one exception: what you type in [Quick chat](#quick-chat) goes to
+Anthropic through Claude Code, as any Claude Code prompt does. **Renew sign-in** (off by default) runs Claude Code once with a tiny prompt
 when the saved access key has run out, so Claude Code fetches a fresh one itself; cl_audit never writes it.
 
 **What it doesn't change.** Any app running under your macOS user can read Claude Code's saved login the
