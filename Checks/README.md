@@ -5,7 +5,7 @@ The check suites of cl_audit: programs that compile the app's own sources (witho
 `build.sh`.
 
 ```
-Checks/run.sh [signin|backup|firstrun|render|quick-chat|scan|all] [--volume] [--no-build]
+Checks/run.sh [signin|backup|firstrun|retention|render|quick-chat|scan|all] [--volume] [--no-build]
 ```
 
 The suites are heavy (a compile of all the sources, then minutes of runs): run them through a heavy-work queue if your
@@ -14,6 +14,7 @@ machine has one.
 | Suite | What it covers | Checks |
 |---|---|---|
 | `firstrun` | the first-run page, the Claude lookup (the order of places, the shell, the app's copy), the sign-in step (always in ~/.claude) | 172 |
+| `retention` | which transcripts Claude Code's clean-up deletes: the window's sessions by the transcript's own `entrypoint` (first and last 64 KB), release markers (delete, archive and its grace), the hard cap `desktopSessionCleanupPeriodDays`, the organisation's managed settings source by source and in order, the counts and words of Would be deleted (Restore, Import, the default-profile move), Keep for 90 days only when it helps | 141 |
 | `render` | pictures of the pages (Sessions card, General › Backups, the Switch page, Restore, Export, Import, first run), Std and Silver, into `Checks/.work/render/` | – |
 | `quick-chat` | the quick chat's engine and Markdown (its own `quick-chat/run.sh`, run here under the build lock) | 95 |
 | `scan` | the app's own `SecretScan` over every file in `Checks/` (no secret-shaped string is committed), then `tools/leakscan.py`: no real address, id, personal path, and none of the words in your local `Checks/.work/leakwords` (one per line, never committed; without it that check is skipped and says so) | 0 hits |
@@ -56,7 +57,7 @@ and `render/trim.py`. The first-run suite and its render come from a saved copy 
 - `cfprefsd` writes the checks' preference files to the real `~/Library/Preferences` whatever `CFFIXED_USER_HOME` says.
   `run.sh` removes exactly these, and only when no run of ours is alive: `cl-audit-{signin,hide,switch,plan}-test-<pid>.plist`
   when that pid is dead; `<binary>.plist` for the binaries it builds (`cl_audit-checks-signin`, `-backup`, `-firstrun`,
-  `-render-pages`, `-render-firstrun`, `-scan`), names no other program has; and `cl_audit-backwatch-test.plist` and
+  `-retention`, `-render-pages`, `-render-firstrun`, `-scan`), names no other program has; and `cl_audit-backwatch-test.plist` and
   `cl_audit-reader-switch-test.plist` (named by the suites, no pid) only when they were not there before the run. No generic
   name is ever removed.
 - Every compile goes through `/usr/bin/lockf -k /private/tmp/cl_audit-build.lock`, the lock `build.sh` users share.
@@ -69,6 +70,7 @@ and `render/trim.py`. The first-run suite and its render come from a saved copy 
 ```
 run.sh                  the entry point
 firstrun/main.swift     the first-run suite
+retention/main.swift    the retention suite (its managed-settings sources are folders inside its throwaway home)
 render/pages/main.swift the page renders; render/firstrun/main.swift the first-run render; render/trim.py crops them
 backup/xz.py, xz/*.py   make the ~100 zlib probe zips of the backup suite's "zlib" checks (nothing binary is committed)
 backup/vol.sh           the HFS+ disk image for --volume
@@ -90,4 +92,4 @@ roles it knows (`other`, `other-tz` under `Checks/.work/backup/`).
 
 Fix the app when the check is right; fix the check when the app's behaviour changed on purpose (the menu bar checks, for
 instance, list the menu's items and were extended when Quick chat joined it). A suite's last line says `N of M checks passed`
-(`checks: N passed, M failed` for `firstrun`).
+(`checks: N passed, M failed` for `firstrun` and `retention`).
