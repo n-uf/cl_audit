@@ -303,6 +303,13 @@ enum ExportWords {
         if setup, image, sp.envBlanked {
             out.append("settings.json comes with its env values blank (the names stay): backups don't keep those values. Export the profile as it is now to carry them.")
         }
+        if setup, image, !sp.keysBlanked.isEmpty {
+            let names = sp.keysBlanked.prefix(4).joined(separator: ", ") + (sp.keysBlanked.count > 4 ? ", …and \(sp.keysBlanked.count - 4) more" : "")
+            out.append("settings.json comes with \(sp.keysBlanked.count == 1 ? "a value" : "\(sp.keysBlanked.count) values") blank where a backup found a key (\(names)). Export the profile as it is now to carry the keys.")
+        }
+        if setup, image, !sp.keysLeftOut.isEmpty {
+            out.append("\(sp.keysLeftOut.prefix(4).joined(separator: ", "))\(sp.keysLeftOut.count > 4 ? ", …" : "") held a key and isn't in the backup, so the image lacks \(sp.keysLeftOut.count == 1 ? "it" : "them"): export the profile as it is now to carry \(sp.keysLeftOut.count == 1 ? "it" : "them").")
+        }
         if !sp.linked.isEmpty {
             let shown = sp.linked.prefix(3).map { "\($0.label) points to \(tilde($0.target))" }.joined(separator: ", ")
             out.append("\(n(sp.linked.count, "link", "links")) left out, never followed: \(shown)" + (sp.linked.count > 3 ? ", …" : ""))

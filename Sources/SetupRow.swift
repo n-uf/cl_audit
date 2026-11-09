@@ -72,6 +72,21 @@ struct SetupRow: View {
     /// A plain backup's settings.json: what its env values are.
     static let envBlankedWords = "Backups don't keep the values in settings.json's env section: this one has the names with blank values. The values travel only in an encrypted export of the profile as it is now."
 
+    /// "apiKeyHelper, permissions.allow[2], …and 3 more": where a value held a key (names only).
+    private static func listed(_ names: [String], shown: Int = 4) -> String {
+        names.prefix(shown).joined(separator: ", ") + (names.count > shown ? ", …and \(names.count - shown) more" : "")
+    }
+
+    /// A plain backup's settings.json: where a value looked like a key (the Export page's scan) and was blanked.
+    static func keysBlankedWords(_ names: [String]) -> String {
+        "settings.json held \(names.count == 1 ? "a key" : "\(names.count) keys") (\(listed(names))): left blank in backups, the names stay. A key travels only in an encrypted export of the profile as it is now."
+    }
+
+    /// What a plain backup left out because it held a key.
+    static func keysLeftOutWords(_ names: [String]) -> String {
+        "\(listed(names)) held a key: left out of backups; it travels only in the encrypted export of the profile as it is now."
+    }
+
     private static func settingsStatus(_ sp: SessionsRestore.SetupPlan) -> SessionsRestore.SetupPlan.Status? {
         sp.entries.first { $0.unit == Setup.Unit(kind: .settings, name: "settings.json") }?.status
     }
@@ -127,7 +142,7 @@ struct SetupRow: View {
         let p = runner.plan
         let undone = runner.phase == .undone
         let r = runner.receipt
-        if let sp = p?.setup, sp.present || !sp.leftOutAtSource.isEmpty {
+        if let sp = p?.setup, sp.present || !sp.leftOutAtSource.isEmpty || !sp.keysLeftOut.isEmpty {
             SRow(label: "Claude Code setup", info: "CLAUDE.md and what it includes, skills, agents, commands, output styles, keybindings, settings.json with the scripts its hooks point to, and the plugin list, in the \(imported ? "file" : "backup"). Left out unless you add them: \(imported ? "a file can't prove it was made for a move, and hooks run commands on their own" : "a skill missing now was most likely deleted on purpose"). Adding brings only what is missing here, as new files: nothing that is there is replaced, nothing is written into a skill folder that exists, and nothing through a link. Undo takes back exactly what was added.", stacked: true) {
                 VStack(alignment: .leading, spacing: 6) {
                     if undone, let r {
@@ -154,6 +169,8 @@ struct SetupRow: View {
                     if !undone, !sp.execNames.isEmpty { small((sp.leftOut ? "If added: " : "") + "\(n(sp.execNames.count, "script", "scripts")) made executable (owner only), only inside what this adds") }
                     if !undone, !sp.leftOut, !sp.execManual.isEmpty { small(Self.execManualWords(sp, imported: imported), color: face.caution) }
                     if !undone, sp.envBlanked { small(Self.envBlankedWords, color: face.caution) }
+                    if !undone, !sp.keysBlanked.isEmpty { small(Self.keysBlankedWords(sp.keysBlanked), color: face.caution) }
+                    if !undone, !sp.keysLeftOut.isEmpty { small(Self.keysLeftOutWords(sp.keysLeftOut), color: face.caution) }
                     if !undone, !sp.settingsDiffer.isEmpty { small("settings.json here stays as it is; the one in the \(imported ? "file" : "backup") differs in \(sp.settingsDiffer.prefix(6).joined(separator: ", "))", color: face.caution) }
                     ForEach(Array(sp.notes.enumerated()), id: \.offset) { _, s in small(s, color: face.caution) }
                     ForEach(Array(sp.missingPaths.prefix(5).enumerated()), id: \.offset) { _, s in small(s, color: face.caution) }
