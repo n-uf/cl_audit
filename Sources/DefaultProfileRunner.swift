@@ -111,11 +111,11 @@ final class DefaultProfileRunner: ObservableObject {
         timer?.invalidate(); timer = nil
         guard phase == .signingIn || phase == .closing else { return }
         releaseMarks()
+        rollbackPrepared()
         phase = .ready
         note = "Cancelled. Nothing was moved."
     }
 
-        rollbackPrepared()
     /// Step 1 done (or not needed): the ~/.claude profile is there, linked to the account ~/.claude is signed in to.
     private func prepareTarget() {
         guard let m = model, let seat = DefaultProfile.cachedSeat("~/.claude") else { return }
@@ -275,6 +275,8 @@ final class DefaultProfileRunner: ObservableObject {
         let runner = m.restoreRunner(key)
         inner = runner
         phase = .moving
+        // the receipt's id goes into the record the moment the engine writes it: a quit part way still finds the restore
+        runner.onReceipt = { [rid = r.id] receipt in DefaultProfile.attachReceipt(record: rid, receipt: receipt) }
         runner.objectWillChange.sink { [weak self] _ in DispatchQueue.main.async { self?.innerChanged() } }.store(in: &cancellables)
         runner.refresh()
         // the preview is counted off the main thread: start once it is there
@@ -296,8 +298,6 @@ final class DefaultProfileRunner: ObservableObject {
         case .done, .sidebar:
             if phase == .moving, runner.receipt != nil {
                 r.finished = Date(); record = r; DefaultProfile.save(r)
-        // the receipt's id goes into the record the moment the engine writes it: a quit part way still finds the restore
-        runner.onReceipt = { [rid = r.id] receipt in DefaultProfile.attachReceipt(record: rid, receipt: receipt) }
                 phase = .done
                 model?.forgetRestore()
             }
@@ -362,6 +362,7 @@ final class DefaultProfileRunner: ObservableObject {
         m.accounts[ti] = e
         m.remove(old.id)
         m.apply()
+        if var r = record { r.oldHandled = "standby"; record = r; DefaultProfile.save(r) }
         oldHandled = true
         note = "\(old.name) now stands by on \(e.name). Its folder and sign-in are as they were."
         objectWillChange.send()
@@ -382,7 +383,6 @@ final class DefaultProfileRunner: ObservableObject {
             if step() { t.invalidate(); if self?.timer === t { self?.timer = nil } }
         }
     }
-        if var r = record { r.oldHandled = "standby"; record = r; DefaultProfile.save(r) }
 
     deinit { timer?.invalidate() }
 }
@@ -392,6 +392,9 @@ extension SettingsModel {
     /// move made goes. Everything else about the profile is as it is.
     func defaultMoveUndone(_ recordID: String, quiet: Bool = false) {
         guard var r = DefaultProfile.all().first(where: { $0.id == recordID }), r.undone == nil else { return }
+        if DefaultProfile.undoRefusal(r) != nil { return }
+        // files were written and the restore wasn't undone: the window kind stays with them (Finish or Undo on the restore's page)
+        if let rc = DefaultProfile.restoreFor(r), rc.undone == nil { return }
         if let i = accounts.firstIndex(where: { $0.id == r.profile }) {
             if r.created { accounts.remove(at: i); refreshFirstRun(); if selection == r.profile { selection = accounts.first?.id } }
             else { accounts[i] = DefaultProfile.reverted(accounts[i], r) }
@@ -402,6 +405,3 @@ extension SettingsModel {
         if !quiet { message = "Undid the move to the default profile" }
     }
 }
-        if DefaultProfile.undoRefusal(r) != nil { return }
-        // files were written and the restore wasn't undone: the window kind stays with them (Finish or Undo on the restore's page)
-        if let rc = DefaultProfile.restoreFor(r), rc.undone == nil { return }

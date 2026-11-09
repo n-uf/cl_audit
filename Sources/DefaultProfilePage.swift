@@ -50,11 +50,11 @@ struct DefaultProfileCard: View {
         }
     }
 
+    /// A move that changed the profile and wasn't finished or undone. With files written, only that restore's page can finish
+    /// or undo them (never "Put it back": the window kind stays with the files).
     private func unfinished(_ r: DefaultProfile.Record) -> some View {
         let rc = DefaultProfile.restoreFor(r).flatMap { $0.undone == nil ? SessionsRestore.load($0.id) : nil }
         return SCard(title: "The move to the default profile stopped", info: "cl_audit stopped part way through the move. Its restore keeps a receipt of every file it wrote, so it can be finished or undone exactly; the profile's window kind goes back only with an Undo.") {
-    /// A move that changed the profile and wasn't finished or undone. With files written, only that restore's page can finish
-    /// or undo them (never "Put it back": the window kind stays with the files).
             VStack(alignment: .leading, spacing: 8) {
                 if let rc {
                     Text("\(rc.back) \(rc.back == 1 ? "file is" : "files are") already in the usual app's data. Open the restore to finish the move or undo it.")
@@ -261,15 +261,15 @@ struct DefaultProfilePage: View {
                     }
                 }
                 if let note = runner.note { Text(note).font(.system(size: 11)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true) }
+                if runner.phase == .done, let why = runner.undoRefused {
+                    Text(why).font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                }
                 if case .failed(let why) = runner.phase { Text(why).font(.system(size: 11)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true) }
             }
             .padding(.vertical, 4)
         }
     }
 
-                if runner.phase == .done, let why = runner.undoRefused {
-                    Text(why).font(.system(size: 11)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                }
     @ViewBuilder private func marker(_ s: StepState) -> some View {
         switch s {
         case .done: Image(systemName: "checkmark.circle.fill").font(.system(size: 12)).foregroundStyle(FaceTheme.ledOn)
