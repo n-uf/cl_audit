@@ -157,7 +157,8 @@ MainActor.assumeIsolated {
     let m1 = op.parts[0].manifest
     let setupItems = m1.items.filter { $0.role == .setup }
     check(Set(setupItems.map { String($0.path.dropFirst(6)) }) == zipRels.subtracting(["skills/keyed/SKILL.md", "skills/keyed/run.py"]), "export (zip): the plain setup is in; the skill with a key, settings.json, the scripts and the marketplaces are not: \(Set(setupItems.map { String($0.path.dropFirst(6)) }).symmetricDifference(zipRels).sorted())")
-    check(m1.version == 3 && op.export.version == 3 && setupItems.allSatisfy { $0.sha?.count == 64 && $0.original == $0.path }, "export: manifest version 3, a SHA-256 for every setup file, no absolute path")
+    check(m1.version == 2 && op.export.version == 2 && setupItems.allSatisfy { $0.sha?.count == 64 && $0.original == $0.path },
+          "export: manifest version 2 (no format-3 part in it, so 26.11.8 can import it), a SHA-256 for every setup file, no absolute path")
     check(zo.setupKeysLeftOut == 1 && Set(zo.setupSensitiveLeftOut.map(\.kind)) == [.settings, .script, .marketplaces] && zo.setupSensitiveLeftOut.count == 4, "export (zip): 1 skill left out for its key; settings.json, 2 scripts and the marketplaces left out for the zip: \(zo.setupSensitiveLeftOut.map(\.name))")
     check(setupItems.first { $0.path == "setup/skills/alpha/run.sh" }?.exec == true && setupItems.filter { $0.exec == true }.map(\.path) == ["setup/skills/alpha/run.sh"], "export: the execute flag is recorded for the skill's script, for nothing else")
     var leaked: [String] = []
@@ -498,7 +499,7 @@ MainActor.assumeIsolated {
         let (t6, _) = target("t6")
         let st = try! SessionsImport.materialize(v1, part: v1.parts[0], target: "t6")
         let pv1 = SessionsRestore.plan(t6, st.backup)
-        check(pv1.refusal == nil && !pv1.setup.present && SessionsBackup.load(profile: "t6", id: st.id, place: st.stage)?.version == 3, "format: …its plan says there is no setup in it, and what is staged is a version 3 backup")
+        check(pv1.refusal == nil && !pv1.setup.present && SessionsBackup.load(profile: "t6", id: st.id, place: st.stage)?.version == 2, "format: …its plan says there is no setup in it, and what is staged is a version 2 backup (the lowest that holds it)")
         SessionsImport.discard(v1.work)
     }
     // the same name under another Unicode form: the target holds the skill as e + a combining mark, the file as one character
@@ -706,7 +707,7 @@ MainActor.assumeIsolated {
     // ---- Backups carry setup (same rules), Restore leaves it out by default and puts back only what is missing
     let bm = try! SessionsBackup.make(SessionsBackup.Source(profile: "e2", dataDir: "", codeDir: ecode), kind: .manual, window: false, place: eplace)
     let bset = bm.items.filter { $0.role == .setup }
-    check(bm.version == 3 && Set(bset.map { String($0.path.dropFirst(6)) }) == allRels && bset.allSatisfy { $0.sha?.count == 64 && $0.original.hasPrefix(ecode) },
+    check(bm.version == 2 && Set(bset.map { String($0.path.dropFirst(6)) }) == allRels && bset.allSatisfy { $0.sha?.count == 64 && $0.original.hasPrefix(ecode) },
           "backup: the same setup parts (links left out), each with its hash; a backup keeps where each file was: \(Set(bset.map { String($0.path.dropFirst(6)) }).symmetricDifference(allRels).sorted())")
     let bjson = read(SessionsBackup.folder(profile: "e2", place: eplace).appendingPathComponent("\(bm.id)/backup.json").path) ?? ""
     check(bm.setupLeftOut == ["agent linked.md (a link)", "skill haslink (it holds a link)", "skill linkedskill (a link)"] && !bjson.contains(elsewhere), "backup: links are named in the manifest, never where they point")
@@ -842,7 +843,7 @@ MainActor.assumeIsolated {
     let old = try! SessionsBackup.make(SessionsBackup.Source(xa), kind: .manual, window: false, setup: false, place: placeS, now: Date().addingTimeInterval(-60))
     let ro = m.restoreRunner(RestoreKey(profile: "xa", backup: old.id, place: placeS.path))
     ro.refresh()
-    check(settle { ro.plan != nil } && ro.plan?.setup.present == false && ro.manifest?.version == 3, "pages: a backup made without setup: the row says it isn't in this backup")
+    check(settle { ro.plan != nil } && ro.plan?.setup.present == false && ro.manifest?.version == 2, "pages: a backup made without setup: the row says it isn't in this backup")
     check(SetupRow.title(Setup.Unit(kind: .skill, name: "alpha")) == "skill alpha" && SetupRow.title(Setup.Unit(kind: .marketplaces, name: "x")) == "the plugin marketplaces", "pages: the list's unit names")
     resetRestores()
     try? fm.removeItem(atPath: eRoot)

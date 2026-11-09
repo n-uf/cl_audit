@@ -1122,7 +1122,7 @@ enum SessionsImport {
         m.window = items.contains { $0.role == .window || $0.role == .sidebar }
         m.transcripts = items.contains { $0.role == .transcript }
         m.leftOut = min(max(0, m.leftOut), maxFiles)
-        m.version = SessionsBackup.formatVersion
+        m.version = SessionsBackup.neededVersion(items)
         // (names of setup left out at the source: shown as text only, so cut to plain short ones)
         m.setupLeftOut = m.setupLeftOut.map { Array($0.prefix(200).map { String($0.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 }.prefix(100).map(Character.init)) }) }
         m.configLeftOut = m.configLeftOut.map { String($0.unicodeScalars.filter { $0.value >= 32 && $0.value != 127 }.prefix(100).map(Character.init)) }

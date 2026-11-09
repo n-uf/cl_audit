@@ -982,6 +982,7 @@ enum SessionsExport {
         var configCarried = false           // the window's claude_desktop_config.json (MCP settings) is in it (an image)
         var configLeftOut = false           // …left out because the file is a zip
         var taskPrompts = 0                 // scheduled tasks' prompts that go with their tasks
+        var version = SessionsBackup.formatVersion          // the format its backup.json was written in
     }
 
     struct Job {
@@ -1120,11 +1121,12 @@ enum SessionsExport {
             manifestParts.append(ExportManifest.Part(dir: dir, name: names.name(part.name), profile: part.profile, sessions: po.sessions, entries: po.entries, tasks: po.tasks, bytes: po.bytes))
         }
         let total = outcomes.reduce(Int64(0)) { $0 + $1.bytes }
-        let em = ExportManifest(created: job.now, app: (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev",
+        var em = ExportManifest(created: job.now, app: (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "dev",
                                 machine: InstallID.current, container: job.password == nil ? "zip" : "image",
                                 keys: job.keys == .leaveOut ? "left out" : "kept",
                                 keysLeftOut: outcomes.reduce(0) { $0 + $1.keysLeftOut }, keysKept: outcomes.reduce(0) { $0 + $1.keysKept },
                                 parts: manifestParts, bytes: total)
+        em.version = outcomes.map(\.version).max() ?? 2                 // the highest of its parts', no higher
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try write(try enc.encode(em), to: root.appendingPathComponent("export.json"))
 
@@ -1493,12 +1495,14 @@ enum SessionsExport {
         // 4. the manifest of this part
         let windowBytes = items.filter { $0.role == .window }.reduce(Int64(0)) { $0 + $1.bytes }
         po.bytes += windowBytes + items.filter { $0.role == .sidebar || $0.role == .record || $0.role == .config }.reduce(Int64(0)) { $0 + $1.bytes }
-        let mm = SessionsBackup.Manifest(id: m.id, profile: part.profile, kind: .manual, created: m.created, seconds: 0,
+        var mm = SessionsBackup.Manifest(id: m.id, profile: part.profile, kind: .manual, created: m.created, seconds: 0,
                                          accounts: seatsOut.sorted { ($0.account, $0.organization) < ($1.account, $1.organization) }, counts: counts,
                                          window: !items.filter { $0.role == .window }.isEmpty || hasSidebar, transcripts: m.transcripts,
                                          bytes: items.reduce(0) { $0 + $1.bytes }, cloned: cloned, copied: 0, copiedBytes: 0, leftOut: leftOut,
                                          dataDir: "", codeDir: "", items: items, setupLeftOut: setupNames.isEmpty ? nil : Array(Set(setupNames)).sorted(),
                                          configLeftOut: configLeftOut, envBlanked: items.contains { $0.path == "setup/settings.json" } ? m.envBlanked : nil)
+        mm.version = SessionsBackup.neededVersion(items)            // the lowest that holds it: 26.11.8 imports a file without format-3 parts
+        po.version = mm.version
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try write(try enc.encode(mm), to: URL(fileURLWithPath: create("backup.json")))
         progress(1)

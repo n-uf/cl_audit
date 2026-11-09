@@ -164,6 +164,21 @@ MainActor.assumeIsolated {
     for f in files(oz.tree.path) where (read(oz.tree.path + "/" + f) ?? "").contains(envValue) || (read(oz.tree.path + "/" + f) ?? "").contains(headerValue) || (read(oz.tree.path + "/" + f) ?? "").contains("mcpServers") { zipHits.append(f) }
     check(zipHits.isEmpty && fm.contents(atPath: zipURL.path)!.range(of: Data(envValue.utf8)) == nil && holds(oz.tree.path, settingsEnvValue).isEmpty,
           "export (zip): no MCP env value, header or server list anywhere in it, and no settings.json env value: \(zipHits)")
+    // the lowest format that holds it: a file without the window's config or a task's prompt is version 2 (26.11.8 imports it)
+    do {
+        let cP = w + "/.claude-plain"
+        write(cP + "/CLAUDE.md", "rules\n")
+        let plainZip = URL(fileURLWithPath: out + "/plain.zip")
+        let pz = try? SessionsExport.run(SessionsExport.Job(parts: [SessionsExport.Part(profile: "p", name: "P", source: SessionsBackup.Source(profile: "p", dataDir: "", codeDir: cP), emails: [])],
+                                                           keys: .leaveOut, destination: plainZip, rootName: "plain-export", place: place))
+        if pz != nil, let o = try? SessionsImport.open(plainZip, password: nil, place: place) {
+            check(o.export.version == 2 && o.parts[0].manifest.version == 2 && SessionsBackup.formatVersion == 3, "format: a file with no format-3 part is written as version 2 (the constant stays 3, the highest written)")
+            SessionsImport.discard(o.work)
+        } else { check(false, "format: the plain zip is made and opens") }
+        let bP = try! SessionsBackup.make(SessionsBackup.Source(profile: "p", dataDir: "", codeDir: cP), kind: .manual, window: false, place: place)
+        check(bP.version == 2 && bA.version == 3, "format: a plain backup without prompts is version 2; one with them is 3")
+        try? fm.removeItem(atPath: cP)
+    }
     // an export without the setup row still carries the prompts with their tasks
     let nz = URL(fileURLWithPath: out + "/A-nosetup.zip")
     if (try? SessionsExport.run(SessionsExport.Job(parts: [part], keys: .leaveOut, setup: false, destination: nz, rootName: "a-nosetup", place: place))) != nil, let o = try? SessionsImport.open(nz, password: nil, place: place) {

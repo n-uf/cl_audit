@@ -75,6 +75,13 @@ enum SessionsBackup {
     /// (26.11.7 reads only version 1, 26.11.8 up to 2: both refuse a version 3 file with their "newer cl_audit" words.)
     static let formatVersion = 3
 
+    /// The lowest format that holds these items, which is what a backup and an export write: 3 only when a format-3 part is in it
+    /// (the window's config, a scheduled task's prompt), else 2, so 26.11.8 still imports a plain zip from this build. (formatVersion
+    /// stays the highest written: what this build reads up to.)
+    static func neededVersion(_ items: [Item]) -> Int {
+        items.contains { $0.role == .config || ($0.role == .setup && $0.path.hasPrefix("setup/\(Setup.taskFolder)/")) } ? 3 : 2
+    }
+
     struct Counts: Codable, Equatable {
         var sessions = 0                    // entries in the window's Code-tab list
         var sidebar = 0                     // of them, those in the sidebar (not archived)
@@ -463,6 +470,7 @@ enum SessionsBackup {
                          setupLeftOut: setupLeftOut.isEmpty ? nil : setupLeftOut.sorted(), setupHookUnits: g.setupHookUnits, configLeftOut: configLeftOut,
                          envBlanked: envBlanked)
         var out = m
+        out.version = neededVersion(items)
         out.seconds = (Date().timeIntervalSince(started) * 10).rounded() / 10
         try put(try encode(out), "backup.json", in: partial, dirFor)
         guard renamex_np(partial.path, final.path, UInt32(RENAME_EXCL)) == 0 else { throw BackupError("couldn't put the backup in place") }
