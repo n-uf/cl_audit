@@ -108,10 +108,10 @@ enum SessionsRestore {
         var partial: [String] = []          // there, shorter, and the backup's file begins with it: a shorter copy of it, left as it is
         var inUse: [String] = []            // a running Claude Code session holds them: left alone
         var deletedSince: [String] = []     // the window deleted them since: they stay deleted
-        var old = 0                         // transcripts to write that Claude Code's own clean-up would delete again (see Retention.swift)
-        var oldWindow = 0                   // of them, sessions of the Claude window (only when a limit is set for those)
-        var unsure = 0                      // transcripts to write whose keep time can't be told (settings.json doesn't say)
+        var tally = Retention.Tally()       // transcripts to write that Claude Code's own clean-up would delete again (see Retention.swift)
         var retention = Retention()         // what Claude Code's clean-up does here: cleanupPeriodDays, desktopSessionCleanupPeriodDays, managed
+        var old: Int { tally.old }          // would be deleted again
+        var unsure: Int { tally.unsure }    // how long Claude Code keeps them can't be told (settings.json doesn't say)
         var days: Int? { retention.days }   // cleanupPeriodDays as it applies (30 when not set); nil: unknown
         var otherAccount = 0                // entries to write that were on another account in the backup
         var sidebar: SidebarPlan?
@@ -302,14 +302,7 @@ enum SessionsRestore {
         // 3. Claude Code's transcripts now
         p.retention = Retention.read(codeDir: t.codeDir)
         if !codeItems.isEmpty {
-            // the sessions the window's Code tab will name afterwards: its entries now, and the ones this restore writes
-            // (managed settings give every transcript one limit: nothing to tell then)
-            var windowCLI = Set<String>()
-            if !p.retention.managed {
-                if !t.dataDir.isEmpty { windowCLI = Retention.windowSessions(dataDir: t.dataDir) }
-                for r in restoredIDs { if let id = Retention.cliSession(r.data) { windowCLI.insert(id) } }
-            }
-            planTranscripts(&p, t, codeItems.map { $0.1 }, reader: reader, now: now, skipSessions: taskCLI, skipMemory: skipMemory, windowSessions: windowCLI)
+            planTranscripts(&p, t, codeItems.map { $0.1 }, reader: reader, now: now, skipSessions: taskCLI, skipMemory: skipMemory)
         }
 
         // 4. the sidebar: where the restored entries sat, from the backup's own records
@@ -337,7 +330,7 @@ enum SessionsRestore {
     private static func isMemory(_ rel: [String]) -> Bool { rel.count >= 3 && rel[1] == "memory" }
 
     private static func planTranscripts(_ p: inout Plan, _ t: Target, _ items: [[String]], reader: Reader, now: Date,
-                                        skipSessions: Set<String> = [], skipMemory: Bool = false, windowSessions: Set<String> = []) {
+                                        skipSessions: Set<String> = [], skipMemory: Bool = false) {
         p.memoryFiles = items.map { Array($0.dropFirst()) }.filter(isMemory).map { $0.joined(separator: "/") }.sorted()
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: t.codeDir, isDirectory: &isDir), isDir.boolValue, let code = Tree(path: t.codeDir) else {
@@ -354,6 +347,29 @@ enum SessionsRestore {
         let held = running ?? []
         var blocked = 0
         var markers: [[String]] = []
+        // Claude Code's clean-up decides by the transcript as it will be written (the backup's bytes) and its release marker:
+        // one already there stays as it is (a restore never writes over it), else the backup's; "<project>/<id>" → its path
+        let projectsDir = (t.codeDir as NSString).appendingPathComponent("projects")
+        var backupMarkers: [String: [String]] = [:], sessionFolders = Set<String>()
+        for c in items {
+            let rel = Array(c.dropFirst())
+            if rel.count == 2, let id = SessionsExport.markerID(rel[1]) { backupMarkers[rel[0] + "/" + id] = c }
+            if rel.count >= 3 { sessionFolders.insert(rel[0] + "/" + rel[1].lowercased()) }
+        }
+        func facts(_ src: (fd: Int32, st: stat), project: String, leaf: String) -> Retention.Transcript {
+            let stem = String(leaf.dropLast(".jsonl".count))
+            var isDir: ObjCBool = false
+            let folder = sessionFolders.contains(project + "/" + stem.lowercased())
+                || (FileManager.default.fileExists(atPath: ((projectsDir as NSString).appendingPathComponent(project) as NSString).appendingPathComponent(stem), isDirectory: &isDir) && isDir.boolValue)
+            return Retention.Transcript.read(fd: src.fd, st: src.st, name: leaf, hasFolder: folder) { id in
+                let there = ((projectsDir as NSString).appendingPathComponent(project) as NSString).appendingPathComponent(id + Retention.Marker.suffix)
+                var st = stat()
+                if lstat(there, &st) == 0 { return Retention.Marker.read(path: there) }
+                guard let c = backupMarkers[project + "/" + id.lowercased()], let m = reader.file(c) else { return nil }
+                defer { close(m.fd) }
+                return Retention.Marker.read(fd: m.fd, st: m.st)
+            }
+        }
         for c in items {
             let rel = Array(c.dropFirst())                                  // <project>/…
             let leaf = rel.last!
@@ -373,12 +389,12 @@ enum SessionsRestore {
             case .blocked:
                 if top { blocked += 1 }
             case .absent:
-                if holds { leave() } else { add(&p, piece, mtime: src.st.st_mtimespec.tv_sec, now: now, windowSessions: windowSessions) }
+                if holds { leave() } else { add(&p, piece, facts: top ? facts(src, project: rel[0], leaf: leaf) : nil, mtime: src.st.st_mtimespec.tv_sec, now: now) }
             case .dir(let dfd):
                 defer { close(dfd) }
                 var cur = stat()
                 if fstatat(dfd, leaf, &cur, AT_SYMLINK_NOFOLLOW) != 0 {
-                    if holds { leave() } else { add(&p, piece, mtime: src.st.st_mtimespec.tv_sec, now: now, windowSessions: windowSessions) }
+                    if holds { leave() } else { add(&p, piece, facts: top ? facts(src, project: rel[0], leaf: leaf) : nil, mtime: src.st.st_mtimespec.tv_sec, now: now) }
                     continue
                 }
                 guard (cur.st_mode & S_IFMT) == S_IFREG else { p.changed.append(name); continue }      // a link or folder where a file goes
@@ -431,16 +447,11 @@ enum SessionsRestore {
         p.transcripts.sort { $0.leaf < $1.leaf }
     }
 
-    private static func add(_ p: inout Plan, _ piece: Piece, mtime: Int, now: Date, windowSessions: Set<String> = []) {
+    private static func add(_ p: inout Plan, _ piece: Piece, facts: Retention.Transcript? = nil, mtime: Int, now: Date) {
         if piece.kind == .transcript {
             p.transcripts.append(piece)
-            // Claude Code's clean-up: sessions of the window are kept (unless a limit is set for them), the rest after cleanupPeriodDays
-            let window = windowSessions.contains(String(piece.leaf.dropLast(".jsonl".count)).lowercased())
-            switch p.retention.verdict(window: window, modified: Date(timeIntervalSince1970: TimeInterval(mtime)), now: now) {
-            case .delete: p.old += 1; if window { p.oldWindow += 1 }
-            case .unknown: p.unsure += 1
-            case .keep: break
-            }
+            // Claude Code's clean-up (Retention.swift): by the transcript's own entrypoint, its release marker and its age
+            p.tally.add(facts ?? Retention.Transcript(modified: Date(timeIntervalSince1970: TimeInterval(mtime))), p.retention, now: now)
         } else {
             p.files.append(piece)
         }

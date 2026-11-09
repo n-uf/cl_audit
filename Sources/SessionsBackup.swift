@@ -698,44 +698,26 @@ enum CodeCleanup {
 
     static func days(codeDir: String) -> Int? { read(codeDir: codeDir).days }
 
-    /// A JSON value that is a plain whole number of days, 1 or more (not true, not a fraction or an exponent form).
-    static func whole(_ v: Any?) -> Int? {
-        guard let n = v as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(), !["d", "f"].contains(String(cString: n.objCType)), n.intValue > 0 else { return nil }
+    /// A JSON value that is a plain whole number of days, 1 or more (not true, not a fraction or an exponent form);
+    /// with `zero`, 0 too (desktopSessionCleanupPeriodDays: 0 means no cap).
+    static func whole(_ v: Any?, zero: Bool = false) -> Int? {
+        guard let n = v as? NSNumber, CFGetTypeID(n) != CFBooleanGetTypeID(), !["d", "f"].contains(String(cString: n.objCType)),
+              n.intValue > 0 || (zero && n.intValue == 0) else { return nil }
         return n.intValue
     }
 
-    // MARK: sessions from the Claude window, and the organisation's managed settings (read only, never written)
+    // MARK: sessions from the Claude window (read only; the organisation's managed settings are ManagedSettings in Retention.swift)
 
     static let desktopKey = "desktopSessionCleanupPeriodDays"
-    /// Where managed settings are on macOS (Claude Code's docs, "Deploy managed settings"): managed-settings.json, then
-    /// every *.json in managed-settings.d/ in alphabetical order, a later single value replacing an earlier one. A check's
-    /// seam: the folder to read instead. (An MDM profile and server-managed settings can't be read from here.)
-    nonisolated(unsafe) static var managedDir = "/Library/Application Support/ClaudeCode"
 
     /// `desktopSessionCleanupPeriodDays` in settings.json (the user's; Claude Code ignores it in project and local
-    /// settings): nil when it isn't there or isn't a whole number of days.
-    static func desktopDays(codeDir: String) -> Int? {
+    /// settings): the number (0: no cap), nil when it isn't there; `invalid` when it is there as something else, which
+    /// Claude Code reports as a settings error.
+    static func userDesktop(codeDir: String) -> (days: Int?, invalid: Bool) {
         guard let d = FileManager.default.contents(atPath: file(codeDir)),
-              let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return nil }
-        return whole(j[desktopKey])
-    }
-
-    /// What the managed settings files set: `cleanupPeriodDays` and `desktopSessionCleanupPeriodDays` (nil: not set, or
-    /// not a whole number, which Claude Code drops).
-    static func managedValues() -> (days: Int?, desktop: Int?) {
-        let fm = FileManager.default
-        let dir = managedDir
-        let dropIns = (dir as NSString).appendingPathComponent("managed-settings.d")
-        var files = [(dir as NSString).appendingPathComponent("managed-settings.json")]
-        files += ((try? fm.contentsOfDirectory(atPath: dropIns)) ?? []).filter { !$0.hasPrefix(".") && $0.hasSuffix(".json") }.sorted()
-            .map { (dropIns as NSString).appendingPathComponent($0) }
-        var days: Int?, desktop: Int?
-        for f in files {
-            guard let d = fm.contents(atPath: f), let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { continue }
-            if let n = whole(j[key]) { days = n }
-            if let n = whole(j[desktopKey]) { desktop = n }
-        }
-        return (days, desktop)
+              let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], let v = j[desktopKey] else { return (nil, false) }
+        guard let n = whole(v, zero: true) else { return (nil, true) }
+        return (n, false)
     }
 
     private static func isBlank(_ d: Data) -> Bool { String(decoding: d, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
