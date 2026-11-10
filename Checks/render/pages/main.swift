@@ -277,6 +277,16 @@ MainActor.assumeIsolated {
         snapshot(framed(AccountSettings(entry: .constant(withOld), model: model, width: w), f, w), "o8-accounts-leftover-\(f.rawValue)-\(wn)", w + 32, 3200)
         snapshot(framed(AccountSettings(entry: .constant(withOld), model: model, width: w, adding: "ultra-5@example.com"), f, w), "o9-accounts-add-address-\(f.rawValue)-\(wn)", w + 32, 3200)
     } }
+    // a folder from before that holds sessions: never offered for the Trash, Show in Finder instead
+    sign("~/.claude-old-work", u3)
+    for n in 0..<2 { try? fm.createDirectory(atPath: expand("~/.claude-old-work/projects/-p"), withIntermediateDirectories: true)
+                     fm.createFile(atPath: expand("~/.claude-old-work/projects/-p/\(uuid(900 + n)).jsonl"), contents: Data("{}\n".utf8)) }
+    var withWork = main; withWork.leftoverFolders = ["~/.claude-old-work"]
+    model.accounts = [withWork]
+    LeftoverCounts.shared.countNow(withWork.leftoverFolders)
+    for f in [Face.std, .silver] { for (wn, w) in oWidths {
+        snapshot(framed(AccountSettings(entry: .constant(withWork), model: model, width: w), f, w), "o8f-accounts-leftover-sessions-\(f.rawValue)-\(wn)", w + 32, 3200)
+    } }
     model.accounts = [main]
     if ProcessInfo.processInfo.environment["ONEFOLDER_ONLY"] != nil { print("done"); exit(0) }
 
