@@ -1262,6 +1262,12 @@ enum SessionsRestore {
             guard windowClosed() else { throw RestoreError("Quit the profile's Claude window first, then Undo.") }
             sweepTemps(r)
         }
+        // a move's side files the import wrote (SessionsSideApply.swift) go first: their history lines and trust name the folders the
+        // sessions were pointed at
+        if !SideFiles.linked(restore: id).isEmpty {
+            do { r.problems += try SideFiles.undoLinked(restore: id, windowClosed: windowClosed) }
+            catch { throw RestoreError("\(error)") }
+        }
         // the folders an import's sessions were pointed at (SessionsRepoint.swift) are taken back first, so what this restore wrote is
         // where it wrote it again; a session resumed since stays re-pointed (said)
         if !SessionsRepoint.linked(restore: id).isEmpty {

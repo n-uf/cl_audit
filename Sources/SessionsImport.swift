@@ -601,6 +601,8 @@ enum SessionsImport {
         var app: SessionsMove.File? = nil
         /// A move's code checklist (code.json, format 5), read and cleaned (CodeChecklist.read); nil: none in the file.
         var checklist: CodeChecklist.File? = nil
+        /// A move's side files (side.json and side/, format 6), read and cleaned (SideFiles.read); nil: none in the file.
+        var side: SideFiles.File? = nil
     }
 
     /// An unpacked part made a backup of the target, waiting in `work/stage` (not in the backups place yet).
@@ -666,6 +668,14 @@ enum SessionsImport {
                 throw ArchiveError("export.json names the code checklist in a way an export doesn't; refused.")
             }
         }
+        // a move's side files came with format 6, only in a move; one known name, its size capped, with its hash
+        if let a = em.side {
+            guard em.version >= 6, em.move == true else { throw ArchiveError("export.json names side files outside a move, or in a format older than the one they came with; refused.") }
+            guard a.path == SideFiles.fileName, a.bytes >= 0, a.bytes <= Int64(SideFiles.maxManifest), a.sha.count == 64, a.sha.allSatisfy({ "0123456789abcdef".contains($0) }) else {
+                throw ArchiveError("export.json names the side files in a way an export doesn't; refused.")
+            }
+            guard let sb = em.sideBytes, sb >= 0, sb <= ceiling else { throw ArchiveError("export.json states sizes for the side files that can't be right; refused.") }
+        } else if em.sideBytes != nil { throw ArchiveError("export.json states side files' sizes without side files; refused.") }
         var seen = Set<String>(), sum: Int64 = 0
         for p in em.parts {
             guard p.dir.range(of: #"^p[0-9]{1,3}$"#, options: .regularExpression) != nil, seen.insert(p.dir).inserted, p.bytes >= 0, p.bytes <= ceiling,
@@ -673,7 +683,9 @@ enum SessionsImport {
             sum += p.bytes
         }
         guard sum == em.bytes else { throw ArchiveError("export.json's sizes don't add up.") }
-        return (em, min(ceiling, em.bytes * 2 + (64 << 20)))
+        // (a move's side files are stated apart: they count toward what may be unpacked)
+        let stated = em.bytes + (em.sideBytes ?? 0) + (em.side?.bytes ?? 0)
+        return (em, min(ceiling, stated * 2 + (64 << 20)))
     }
 
     private static func openZip(_ file: URL, work: URL, x: URL, cancel: @escaping () -> Bool, progress: ((String) -> Void)?) throws -> Opened {
@@ -715,7 +727,7 @@ enum SessionsImport {
         let (export, stated) = try checkExport(try index.read(em, path: file.path, limit: 4 << 20))
         // a move (the real account ids) and cl_audit's profiles (addresses, ids) are only ever in an encrypted image: a zip that claims
         // either is refused before anything is unpacked
-        if export.move == true || export.profiles != nil || export.checklist != nil {
+        if export.move == true || export.profiles != nil || export.checklist != nil || export.side != nil {
             throw ArchiveError("This zip claims to be a move or to hold cl_audit's profiles. Those are only ever in an encrypted disk image, never a zip; refused.")
         }
         let cap = unpackCap(stated: stated, entries: index.entries.count)
@@ -780,7 +792,7 @@ enum SessionsImport {
         guard let exportData = try? readSmall(mounted.appendingPathComponent("export.json").path, limit: 4 << 20) else { throw ArchiveError("The image has no export.json; that isn't an export.") }
         let (export, cap) = try checkExport(exportData)
         guard let vol = volumeSpace(work.path) else { throw ArchiveError("The disk the backups are on can't be looked at (its free space is unknown); nothing is copied.") }
-        guard roomFor(declared: export.bytes, free: vol.free, total: vol.total) else {
+        guard roomFor(declared: export.bytes + (export.sideBytes ?? 0), free: vol.free, total: vol.total) else {
             throw ArchiveError("The disk is nearly full: copying \(SessionsBackup.sizeWords(export.bytes)) out would leave less than \(SessionsBackup.sizeWords(unpackFloor(volumeBytes: vol.total))) free. Nothing was copied.")
         }
         // checked where it is, then copied out file by file (plain files with one link only)
@@ -807,6 +819,14 @@ enum SessionsImport {
                 throw ArchiveError("The file's code.json (the code checklist) can't be read: it isn't one, it is nested too deep or it is over 256 KB. Refused.")
             }
             o.checklist = f
+        }
+        // the side files: side.json read under its cap and cleaned name by name (validate checked it and every file it names)
+        if let a = export.side {
+            guard let d = try? readSmall(tree.appendingPathComponent(a.path).path, limit: SideFiles.maxManifest),
+                  let f = SideFiles.read(d, parts: Set(export.parts.map(\.dir))) else {
+                throw ArchiveError("The file's side.json (the moved sessions' side files) can't be read: it isn't one or it is over \(SideFiles.maxManifest >> 20) MB. Refused.")
+            }
+            o.side = f
         }
         return o
     }
@@ -936,6 +956,27 @@ enum SessionsImport {
                 throw ArchiveError("code.json is missing or isn't what export.json says it is; refused.")
             }
             expectedFiles[a.path] = real
+        }
+        // a move's side files (format 6): side.json, and exactly the files it names under side/<part>/, each the size and hash it states
+        if let a = export.side {
+            guard container == "image" else { throw ArchiveError("A zip carries no side files (only a move's encrypted disk image does); refused.") }
+            guard let real = found.files[a.path], real == a.bytes, Setup.sha(path: tree.appendingPathComponent(a.path).path) == a.sha,
+                  let d = try? readSmall(tree.appendingPathComponent(a.path).path, limit: SideFiles.maxManifest),
+                  let f = SideFiles.read(d, parts: Set(export.parts.map(\.dir))) else {
+                throw ArchiveError("side.json is missing, isn't what export.json says it is, or isn't a list of side files; refused.")
+            }
+            expectedFiles[a.path] = real
+            expectedDirs.insert(SideFiles.dirName)
+            for p in f.parts { expectedDirs.insert("\(SideFiles.dirName)/\(p.dir)") }
+            var sum: Int64 = 0
+            for (file, want) in SideFiles.expected(f) {
+                guard let size = found.files[file], size == want.bytes, Setup.sha(path: tree.appendingPathComponent(file).path) == want.sha else {
+                    throw ArchiveError("A side file isn't what side.json says it is (\((file as NSString).lastPathComponent)); refused.")
+                }
+                expectedFiles[file] = size
+                sum += size
+            }
+            guard sum == export.sideBytes else { throw ArchiveError("The side files' sizes don't add up; refused.") }
         }
         var parts: [PartInfo] = []
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
@@ -1217,6 +1258,10 @@ enum SessionsImport {
         do { try enc.encode(m).write(to: URL(fileURLWithPath: manifestPath), options: .withoutOverwriting) }
         catch { throw ArchiveError("The backups folder can't be written.") }
         guard chmod(manifestPath, 0o600) == 0 else { throw ArchiveError("The backup's manifest couldn't be made private; refused.") }
+        // a move's side files for this part: kept with the backup (side/, outside its manifest), for the import and any Restore of it
+        if o.move, let sp = o.side?.parts.first(where: { $0.dir == part.dir }), !sp.sessions.isEmpty || !sp.trust.isEmpty {
+            try SideFiles.stash(o.tree, part: sp, into: partial.path)
+        }
         guard renamex_np(partial.path, final.path, UInt32(RENAME_EXCL)) == 0 else { throw ArchiveError("Couldn't put the backup in place.") }
         done = true
         return Staged(id: id, target: target, stage: stage)

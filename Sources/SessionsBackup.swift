@@ -81,11 +81,13 @@ enum SessionsBackup {
     /// and the move: a part whose window folders are the real account and organisation ids (`move`), only ever in an encrypted image.
     /// 5 added a move's code checklist (an export's code.json, CodeChecklist.swift): only an export.json says 5, and only when it holds
     /// one; a backup.json stays at 4 at most.
-    /// Files of version 1 to 4 are read as before (they have none); a newer one is refused.
-    /// (26.11.7 reads only version 1, 26.11.8 up to 2, 26.11.9 up to 3, 26.11.10 and 26.11.11 up to 4: each refuses a newer file with its
-    /// "newer cl_audit" words.)
-    static let formatVersion = 5
-    /// The highest a backup.json is written in and read up to (a backup, an export's part): 4. Only an export.json goes to 5.
+    /// 6 added a move's side files (an export's side.json and side/, SessionsSide.swift: task lists, plans, prompt history, trust, Rewind):
+    /// only an export.json says 6, and only when it holds them.
+    /// Files of version 1 to 5 are read as before (they have none); a newer one is refused.
+    /// (26.11.7 reads only version 1, 26.11.8 up to 2, 26.11.9 up to 3, 26.11.10 and 26.11.11 up to 4, 26.11.12 up to 5: each refuses a
+    /// newer file with its "newer cl_audit" words.)
+    static let formatVersion = 6
+    /// The highest a backup.json is written in and read up to (a backup, an export's part): 4. Only an export.json goes to 5 or 6.
     static let backupVersion = 4
 
     /// The lowest format that holds these items, which is what a backup and an export write: 4 for a move's part, 3 only when a format-3

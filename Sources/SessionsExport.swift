@@ -355,6 +355,11 @@ struct ExportManifest: Codable, Equatable {
     /// A move's code checklist (CodeChecklist.swift, format 5): each project's clone source, branch and what wasn't pushed or committed,
     /// code.json beside export.json, in a move's encrypted image only.
     var checklist: AppFile? = nil
+    /// A move's side files (SessionsSide.swift, format 6): side.json beside export.json and the files under side/<part>/, in a move's
+    /// encrypted image only.
+    var side: AppFile? = nil
+    /// The side files' bytes in all (side.json's own aside): what an import may unpack for them, beside the parts' bytes.
+    var sideBytes: Int64? = nil
 
     struct AppFile: Codable, Equatable {
         var path: String                    // "cl_audit.json"
@@ -1048,6 +1053,9 @@ enum SessionsExport {
         var profiles: Data? = nil
         /// A move's code checklist (CodeChecklist.encode): written only into a move's encrypted image, as code.json (format 5).
         var checklist: Data? = nil
+        /// A move's side files (SessionsSide.swift): which kinds go in; written only into a move's encrypted image, as side.json and side/
+        /// (format 6), from the profiles exported as they are now. nil: none.
+        var side: SideFiles.Kinds? = nil
     }
 
     struct Outcome: Equatable {
@@ -1072,6 +1080,7 @@ enum SessionsExport {
         var profilesCarried = false         // cl_audit.json is in it
         var profilesLeftOut = false         // …left out because the file is a zip
         var checklistCarried = false        // code.json (a move's code checklist) is in it
+        var side: SideFiles.Preview? = nil  // a move's side files that are in it (side.json), with the keys found in them
     }
 
     /// "cl_audit Main 2026-11-05"
@@ -1152,6 +1161,9 @@ enum SessionsExport {
         var manifestParts: [ExportManifest.Part] = []
         var rawIDs = Set<String>()
         var emails: [String] = []
+        var sideParts: [SideFiles.Part] = []
+        var sidePreview = SideFiles.Preview()
+        sidePreview.rewindCarried = job.side?.rewind == true
         for (i, part) in job.parts.enumerated() {
             if cancel() { throw ArchiveError("Stopped.") }
             let label = job.parts.count > 1 ? "\(part.name): " : ""
@@ -1176,6 +1188,17 @@ enum SessionsExport {
             outcomes.append(po)
             rawIDs.formUnion(ids)
             emails += part.emails
+            // a move's side files (format 6): of the sessions this part carries, read from the profile as it is now (a backup has none), into
+            // the encrypted image only
+            if job.move, job.password != nil, let kinds = job.side, let src = part.source {
+                progress?("\(label)side files", Double(i) / Double(job.parts.count))
+                var refs = SideFiles.sessions(projectsDir: out.appendingPathComponent("transcripts").path)
+                let titles = SideFiles.titles(windowDir: out.appendingPathComponent("window").path)
+                for k in refs.indices { refs[k].title = titles[refs[k].id] }
+                guard let g = SideFiles.gather(codeDir: src.codeDir, sessions: refs, kinds: kinds, keys: job.keys, dir: dir, out: root, cancel: cancel) else { throw ArchiveError("Stopped.") }
+                if !g.part.sessions.isEmpty || !g.part.trust.isEmpty { sideParts.append(g.part) }
+                sidePreview.add(g.preview)
+            }
             manifestParts.append(ExportManifest.Part(dir: dir, name: names.name(part.name), profile: part.profile, sessions: po.sessions, entries: po.entries, tasks: po.tasks, bytes: po.bytes))
         }
         let total = outcomes.reduce(Int64(0)) { $0 + $1.bytes }
@@ -1210,6 +1233,19 @@ enum SessionsExport {
             em.checklist = ExportManifest.AppFile(path: CodeChecklist.fileName, bytes: Int64(data.count), sha: SwitchEngine.sha(data))
             em.version = max(em.version, 5)
             checklistCarried = true
+        }
+        // a move's side files (format 6): side.json beside export.json, only when there are some; a file without them stays at the lower
+        // version, so 26.11.12 still opens it
+        var sideCarried: SideFiles.Preview? = nil
+        if !sideParts.isEmpty, job.move, job.password != nil {
+            guard let data = SideFiles.encode(SideFiles.File(parts: sideParts)) else { throw ArchiveError("The side files' list came out larger than \(SideFiles.maxManifest >> 20) MB; nothing was made.") }
+            try write(data, to: root.appendingPathComponent(SideFiles.fileName))
+            em.side = ExportManifest.AppFile(path: SideFiles.fileName, bytes: Int64(data.count), sha: SwitchEngine.sha(data))
+            em.sideBytes = SideFiles.expected(SideFiles.File(parts: sideParts)).values.reduce(Int64(0)) { $0 + $1.bytes }
+            em.version = max(em.version, 6)
+            sideCarried = sidePreview
+        } else if let d = try? fm.contentsOfDirectory(atPath: root.appendingPathComponent(SideFiles.dirName).path), d.allSatisfy({ !$0.hasPrefix(".") }) {
+            try? fm.removeItem(at: root.appendingPathComponent(SideFiles.dirName))        // (gathered nothing: no empty folder in the file)
         }
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try write(try enc.encode(em), to: root.appendingPathComponent("export.json"))
@@ -1261,7 +1297,7 @@ enum SessionsExport {
         guard rename(tmp.path, job.destination.path) == 0 else { throw ArchiveError("The file couldn't be put at \(tilde(job.destination.path)).") }
         progress?("done", 1)
         return Outcome(file: job.destination, bytes: Int64(made.st_size), parts: outcomes, move: job.move, profilesCarried: profilesCarried, profilesLeftOut: profilesLeftOut,
-                       checklistCarried: checklistCarried)
+                       checklistCarried: checklistCarried, side: sideCarried)
     }
 
     private static func write(_ data: Data, to url: URL) throws {
@@ -1675,7 +1711,8 @@ enum SessionsExport {
         // name); nothing else is written under that path: a window or sidebar file there would be looked at like any other
         let setupRoot = try! NSRegularExpression(pattern: "^profiles/p[0-9]+/setup/")
         for case let rel as String in walk {
-            if rel.contains("transcripts/") { inTranscripts.append(rel) }
+            // (a move's side files are the user's words like a transcript: their names are looked at, their contents were key-scanned)
+            if rel.contains("transcripts/") || rel == SideFiles.dirName || rel.hasPrefix(SideFiles.dirName + "/") { inTranscripts.append(rel) }
             else if setupRoot.firstMatch(in: rel, range: NSRange(rel.startIndex..., in: rel)) != nil { continue }
             else { files.append(rel) }
         }

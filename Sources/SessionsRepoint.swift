@@ -250,6 +250,64 @@ enum SessionsRepoint {
         return out
     }
 
+    /// Rewind's own lines (Claude Code 2.1.318's program text): a `file-history-snapshot` line's snapshot.trackedFileBackups keys (a tracked
+    /// file: relative to the session's folder, or absolute when outside it or written by an older Claude Code) and each backup's
+    /// realParentDir (its folder's real path, which Rewind compares before it restores); a `file-history-delta` line's trackingPath and
+    /// backup.realParentDir. Each absolute path that `map` changes is rewritten, every other byte as it was; nil: unchanged.
+    static func rewriteRewind(line b: [UInt8], map: (String) -> String?) -> [UInt8]? {
+        guard contains(b, Array("\"file-history-".utf8)), let top = EntryConnections.top(b),
+              let t = top.first(where: { $0.key == "type" }), let type = stringValue(b, t.value, t.end) else { return nil }
+        var edits: [(from: Int, to: Int, bytes: [UInt8])] = []
+        /// a string token at [from, to): rewritten when it is an absolute path the map changes
+        func path(_ from: Int, _ to: Int) {
+            guard let v = stringValue(b, from, to), v.hasPrefix("/"), let n = map(v), n != v, let e = jsonString(n) else { return }
+            edits.append((from, to, e))
+        }
+        /// the members of the object at [from, to) (offsets in the line)
+        func members(_ from: Int, _ to: Int) -> [(key: String, start: Int, value: Int, end: Int)]? {
+            guard from < to, b[from] == 0x7B, let m = EntryConnections.top(Array(b[from..<to])) else { return nil }
+            return m.map { ($0.key, from + $0.start, from + $0.value, from + $0.end) }
+        }
+        func realParent(_ m: [(key: String, start: Int, value: Int, end: Int)]?) {
+            if let r = m?.first(where: { $0.key == "realParentDir" }) { path(r.value, r.end) }
+        }
+        switch type {
+        case "file-history-snapshot":
+            guard let s = top.first(where: { $0.key == "snapshot" }), let sm = members(s.value, s.end),
+                  let tb = sm.first(where: { $0.key == "trackedFileBackups" }), let files = members(tb.value, tb.end) else { return nil }
+            for f in files {
+                path(f.start, keyEnd(b, f.start))
+                realParent(members(f.value, f.end))
+            }
+        case "file-history-delta":
+            if let tp = top.first(where: { $0.key == "trackingPath" }) { path(tp.value, tp.end) }
+            if let bk = top.first(where: { $0.key == "backup" }) { realParent(members(bk.value, bk.end)) }
+        default: return nil
+        }
+        guard !edits.isEmpty else { return nil }
+        var out: [UInt8] = []
+        var at = 0
+        for e in edits.sorted(by: { $0.from < $1.from }) where e.from >= at {
+            out += b[at..<e.from]; out += e.bytes; at = e.to
+        }
+        out += b[at...]
+        guard (try? JSONSerialization.jsonObject(with: Data(out))) is [String: Any] else { return nil }
+        return out
+    }
+
+    /// The string a JSON string token at [from, to) holds, or nil when it isn't one.
+    private static func stringValue(_ b: [UInt8], _ from: Int, _ to: Int) -> String? {
+        guard from < to, to <= b.count, b[from] == 0x22 else { return nil }
+        return ((try? JSONSerialization.jsonObject(with: Data([UInt8(0x5B)] + Array(b[from..<to]) + [UInt8(0x5D)]))) as? [String])?.first
+    }
+
+    /// Where a key's string token that starts at `from` ends (after its closing quote).
+    private static func keyEnd(_ b: [UInt8], _ from: Int) -> Int {
+        var j = from + 1
+        while j < b.count { if b[j] == 0x5C { j += 2; continue }; if b[j] == 0x22 { return j + 1 }; j += 1 }
+        return b.count
+    }
+
     private static func contains(_ hay: [UInt8], _ needle: [UInt8]) -> Bool {
         guard hay.count >= needle.count else { return false }
         return hay.withUnsafeBufferPointer { h in
@@ -357,6 +415,7 @@ enum SessionsRepoint {
         var dropped: [String] = []          // entry fields dropped (a worktree that isn't here)
         var undone = false
         var left: String? = nil             // why Undo left it re-pointed
+        var sideWritten: Bool? = nil        // a move's prompt history and trust that waited for this folder were written (SessionsSideApply.swift)
     }
 
     struct Receipt: Codable, Equatable {
@@ -446,6 +505,14 @@ enum SessionsRepoint {
                 r.problems.append("\(error)")
                 try? save(r)
             }
+        }
+        // a moved session's prompt history and trust that waited for its folder (SessionsSideApply.swift) are written now
+        let picked = Dictionary(r.sessions.filter { !$0.undone }.map { ($0.session, (from: $0.from, to: $0.to)) }, uniquingKeysWith: { a, _ in a })
+        let waited = Set(SideFiles.waiting(profile: t.profile).map(\.session)).intersection(picked.keys)
+        if !waited.isEmpty {
+            r.problems += SideFiles.applyPending(t, picked: picked, windowClosed: windowClosed)
+            let still = Set(SideFiles.waiting(profile: t.profile).map(\.session))
+            for k in r.sessions.indices where waited.contains(r.sessions[k].session) && !still.contains(r.sessions[k].session) { r.sessions[k].sideWritten = true }
         }
         r.finished = Date()
         try save(r)
@@ -732,7 +799,10 @@ enum SessionsRepoint {
         var passing = false                                     // a line over 64 MB: copied as it streams
         func endLine(_ newline: Bool) {
             if passing { if newline { emit([0x0A]) }; passing = false; return }
-            if let r = SessionsRepoint.rewrite(line: line, map: map) { emit(r); lines += 1 } else { emit(line) }
+            // (a line's cwd, and Rewind's paths in its own lines)
+            if let r = SessionsRepoint.rewrite(line: line, map: map) { emit(r); lines += 1 }
+            else if let r = SessionsRepoint.rewriteRewind(line: line, map: map) { emit(r); lines += 1 }
+            else { emit(line) }
             if newline { emit([0x0A]) }
             line.removeAll(keepingCapacity: true)
         }
@@ -978,6 +1048,7 @@ enum RepointWords {
         if d.entries > 0 { parts.append(n(d.entries, "Code-tab entry", "Code-tab entries") + " changed") }
         if d.dropped.contains("worktreePath") { parts.append("its worktree isn't on this Mac, so it runs in the project folder") }
         if d.memory > 0 { parts.append(n(d.memory, "memory file", "memory files") + " copied") }
+        if d.sideWritten == true { parts.append("its prompt history and trust added") }
         return parts.joined(separator: " · ")
     }
 }
