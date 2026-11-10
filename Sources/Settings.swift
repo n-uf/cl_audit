@@ -1371,6 +1371,12 @@ struct AccountSettings: View {
     var width: CGFloat = 1280
     @Environment(\.face) private var face
 
+    /// `adding`, `picked`: Add account's address row open, and a standby account selected, from the start (renders only).
+    init(entry: Binding<AccountEntry>, model: SettingsModel, width: CGFloat = 1280, adding: String? = nil, picked: String? = nil) {
+        _entry = entry; self.model = model; self.width = width
+        _adding = State(initialValue: adding); _picked = State(initialValue: picked)
+    }
+
     var status: IconStatus? { _ = model.tick; return Store.status(for: entry) }
     /// What the folder's .claude.json names, as the profile's record has it (the agent's reader wrote it).
     var expected: String? { status?.expectedEmail }
@@ -1593,8 +1599,7 @@ struct AccountSettings: View {
         let plan = (status?.plan).map(Account.planWords)
         let ok = v.lit && move == nil && !mismatch && !["expired", "noLogin", "denied", "unreadable"].contains(status?.state)
         return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: ok ? .ok : .warn,
-                          detail: ([plan] + [entry.standby.isEmpty ? nil : "\(entry.name.isEmpty ? "the profile" : entry.name) works on it"])
-                            .compactMap { $0 }.joined(separator: " · "), inUse: true) {
+                          detail: [plan].compactMap { $0 }.joined(separator: " · "), inUse: true) {
             Menu {
                 ForEach(loginItems) { it in
                     switch it.kind {
