@@ -494,6 +494,38 @@ MainActor.assumeIsolated {
           && SideFiles.judge(name: "2.1.318", exe: home + "/.local/share/claude/versions/2.1.318", args: ["2.1.318"], configDir: nil, want: std, std: std) == true
           && SideFiles.judge(name: "claude", exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: "/elsewhere", want: want, std: std) == false,
           "process: the Claude app itself isn't Claude Code; its own Claude Code run from a terminal is; a versions/ launch is; another folder's isn't")
+    check(SideFiles.judge(name: "Claude", exe: "/Applications/Claude-Work.app/Contents/MacOS/Claude", args: [], configDir: nil, want: std, std: std) == false,
+          "process: a profile's own window copy (Claude-Work.app) isn't Claude Code")
+
+    // ---- round 2: retire keeps a session waiting with trust only; a doctored receipt's ".." removes nothing; the history lock's budget
+    let place = BackupPrefs.placeURL
+    let restoreID = SessionsRestore.receiptID(Date(), "studio")
+    let sideID = SessionsRestore.receiptID(Date().addingTimeInterval(1), "studio") + "-side"
+    var trustOnly = SideFiles.Receipt(id: sideID, profile: "studio", codeDir: cc, dataDir: wd, restore: restoreID, started: Date(), kinds: .movePreset)
+    trustOnly.waiting = [SideFiles.Waiting(session: S2, title: nil, from: old, history: nil, historyLines: 0, trust: [SideFiles.Trust(session: S2, key: old, trusted: true)], why: "its folder isn't on this Mac yet")]
+    try! SideFiles.save(trustOnly)
+    SideFiles.retire(restore: restoreID, backup: SessionsRestore.Backup(profile: "studio", id: m.id, place: place))
+    check(SideFiles.load(sideID)?.waiting.first?.trust.count == 1, "retire: a session waiting with trust only keeps its receipt and trust")
+    let outside = place.deletingLastPathComponent().appendingPathComponent(m.id).appendingPathComponent("side").path
+    try! fm.createDirectory(atPath: outside, withIntermediateDirectories: true)
+    SideFiles.retire(restore: restoreID, backup: SessionsRestore.Backup(profile: "..", id: m.id, place: place))
+    SideFiles.retire(restore: restoreID, backup: SessionsRestore.Backup(profile: "studio", id: "../../x", place: place))
+    SideFiles.retire(restore: "../" + restoreID, backup: SessionsRestore.Backup(profile: "studio", id: m.id, place: place))
+    check(fm.fileExists(atPath: outside) && SideFiles.load(sideID) != nil, "retire: a doctored receipt (\"..\" in its profile, backup id or own id) removes nothing")
+    try? fm.removeItem(atPath: (outside as NSString).deletingLastPathComponent)
+    let hfile = home + "/hist-budget/history.jsonl"
+    write(hfile, hline("one", old, S2, ts: 1) + "\n")
+    SideFiles.lockBudget = -1
+    let budgetErr: String = { do { try SideFiles.appendHistory(hfile, lines: [Data(hline("two", old, S2, ts: 2).utf8)]); return "appended" } catch { return "\(error)" } }()
+    SideFiles.lockBudget = 4
+    check(budgetErr.contains("took too long") && read(hfile) == hline("one", old, S2, ts: 1) + "\n" && !fm.fileExists(atPath: hfile + ".lock"),
+          "history: past Claude Code's lock budget nothing is written, said, the lock let go: \(budgetErr)")
+    var bigHist = Data(count: Int(SideFiles.maxHistoryCheck) + 10)
+    bigHist[bigHist.count - 1] = 0x0A
+    try! bigHist.write(to: URL(fileURLWithPath: hfile))
+    let bigErr: String = { do { try SideFiles.appendHistory(hfile, lines: [Data(hline("two", old, S2, ts: 2).utf8)]); return "appended" } catch { return "\(error)" } }()
+    check(bigErr.contains("can't be checked quickly") && (try? Data(contentsOf: URL(fileURLWithPath: hfile)).count) == bigHist.count, "history: over 64 MB it isn't checked under the lock, nothing is added, said")
+    try? fm.removeItem(atPath: home + "/hist-budget")
     // .claude.json splicing on its own
     check(SideFiles.spliced(Array("{}".utf8), key: "/a", value: "{\"x\":1}") == .added(Data(#"{"projects": {"/a": {"x":1}}}"#.utf8)), "splice: a file with no projects gets one")
     check(SideFiles.spliced(Array(#"{"projects":{"/a":{}}}"#.utf8), key: "/a", value: "{}") == .there, "splice: a key that is there is never replaced")
