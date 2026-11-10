@@ -432,7 +432,7 @@ do {
     // a hand-edited profile id never names a marker outside cl_audit's folder
     let mk = SwitchRunner.marker(for: "../../evil")
     check(mk.deletingLastPathComponent().path == Store.folder.path && !mk.lastPathComponent.contains("/"), "the sign-in marker stays in cl_audit's folder")
-    check(!AddAccountWords.looksLikeAddress("a@b.c\nx@y.z") && AddAccountWords.looksLikeAddress(" a@b.co\n"), "an address with a newline inside is refused")
+    check(!AddAccountWords.looksLikeAddress("a@example.com\nx@example.com") && AddAccountWords.looksLikeAddress(" a@example.com\n"), "an address with a newline inside is refused")
 }
 
 print("checks: \(passed) passed, \(failed) failed")
