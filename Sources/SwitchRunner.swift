@@ -69,7 +69,11 @@ final class SwitchRunner: ObservableObject {
     private var entry: AccountEntry? { model?.accounts.first { $0.id == profile } }
 
     /// The marker a sign-in again leaves when Claude Code's login ended well.
-    static func marker(for profile: String) -> URL { Store.folder.appendingPathComponent("signed-in-\(profile).done") }
+    /// Named after the profile id's hash, so a hand-edited id ("../x") never names a file outside cl_audit's folder. A
+    /// Terminal sign-in that ends after a newer one began can leave its marker late; the newer run cleared the old one when
+    /// it began and judges the folder's account first, so a late marker only ends a sign-in again whose account is
+    /// already the one in use (cl_quick's SignIn works the same way).
+    static func marker(for profile: String) -> URL { Store.folder.appendingPathComponent("signed-in-\(Account.sha8(profile)).done") }
     private func clearMarker() { try? FileManager.default.removeItem(at: Self.marker(for: profile)) }
 
     // MARK: the profile's Claude window (shared with Restore, Export and the default-profile move)

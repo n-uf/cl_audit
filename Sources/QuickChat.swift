@@ -183,7 +183,7 @@ final class QuickChatModel: ObservableObject {
     @Published var scrollTick = 0
     /// The account in use's limits, for the account line (QuickChatLevel.swift).
     @Published var level: QuickChatLevel?
-    /// While a limit is full: the standby account with the most room, for Switch account….
+    /// While a limit is full: the standby account offered first (SwitchMenu.best), for Switch account….
     @Published var offer: QuickChatSwitchOffer?
     /// A line between messages: "Main switched to ultra-3. Sending what you typed."
     @Published var note: String?

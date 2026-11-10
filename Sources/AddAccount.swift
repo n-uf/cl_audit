@@ -174,7 +174,7 @@ extension AccountEntry {
     /// The profile with an address remembered as a standby account (Another address…), or why it can't be. Its account
     /// is known once it signs in (the switch to it). One profile per account: an address another profile has is refused.
     func remembering(_ typed: String, among accounts: [AccountEntry], now: Date = Date()) -> Result<AccountEntry, AddAccountWords.Refusal> {
-        let email = typed.trimmingCharacters(in: .whitespaces)
+        let email = typed.trimmingCharacters(in: .whitespacesAndNewlines)
         guard AddAccountWords.looksLikeAddress(email) else { return .failure(.notAnAddress) }
         func addresses(_ e: AccountEntry) -> [String] {
             ([e.seat?.email, Account.expectedEmail(configDir: e.configDir)] + e.standby.map { $0.email }).compactMap { $0?.lowercased() }
@@ -211,8 +211,8 @@ enum AddAccountWords {
 
     /// Something@something.something, no spaces: Claude Code's own sign-in page checks the rest.
     static func looksLikeAddress(_ s: String) -> Bool {
-        let t = s.trimmingCharacters(in: .whitespaces)
-        guard !t.contains(" "), let at = t.firstIndex(of: "@"), at != t.startIndex else { return false }
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.contains(where: { $0.isWhitespace || $0.isNewline }), let at = t.firstIndex(of: "@"), at != t.startIndex else { return false }
         let host = t[t.index(after: at)...]
         return host.contains(".") && !host.hasPrefix(".") && !host.hasSuffix(".") && !host.contains("@")
     }
