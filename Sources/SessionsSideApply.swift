@@ -117,6 +117,12 @@ extension SideFiles {
         let looks = short == "claude" || short == "claude.exe" || short.hasPrefix("claude") && !short.contains("helper")
         guard let exe else { return looks ? nil : false }
         if exe.hasSuffix("/Claude.app/Contents/MacOS/Claude") || exe.contains("/Claude.app/Contents/Frameworks/") { return false }
+        // a profile's own window copy (…/Claude-Work.app/Contents/MacOS/Claude): any app bundle's program that isn't Claude Code's own
+        // claude.app is a window, not Claude Code
+        if let r = exe.range(of: ".app/Contents/MacOS/") {
+            let bundle = (String(exe[..<r.lowerBound]) as NSString).lastPathComponent + ".app"
+            if bundle != "claude.app" { return false }
+        }
         let leaf = (exe as NSString).lastPathComponent.lowercased()
         let codeLike = leaf == "claude" || leaf == "claude.exe" || exe.contains("/claude-code/") || exe.contains("/claude/versions/")
             || ((args.first ?? "") as NSString).lastPathComponent.lowercased() == "claude"
