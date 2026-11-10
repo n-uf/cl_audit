@@ -79,7 +79,7 @@ let base = ["PATH": "/usr/bin:/bin", "HOME": "/Users/sample", "LANG": "en_GB.UTF
             "CLAUDE_CODE_ENABLE_TELEMETRY": "1", "OTEL_EXPORTER_OTLP_ENDPOINT": "https://collector.example", "ANTHROPIC_CUSTOM_HEADERS": "X: y",
             "ANTHROPIC_MODEL": "opus", "NODE_OPTIONS": "--require /tmp/x.js"]
 let env = cmd.environment(base)
-check("no API key", env["ANTHROPIC_API_KEY"] == nil && env["ANTHROPIC_AUTH_TOKEN"] == nil && env["CLAUDE_CODE_OAUTH_TOKEN"] == nil
+check("its environment carries none of the API key or token variables",env["ANTHROPIC_API_KEY"] == nil && env["ANTHROPIC_AUTH_TOKEN"] == nil && env["CLAUDE_CODE_OAUTH_TOKEN"] == nil
       && env["CLAUDE_CODE_OAUTH_REFRESH_TOKEN"] == nil)
 check("no other endpoint", env["ANTHROPIC_BASE_URL"] == nil)
 check("no other provider", env["CLAUDE_CODE_USE_BEDROCK"] == nil && env["AWS_BEARER_TOKEN_BEDROCK"] == nil && env["CLAUDE_CODE_USE_VERTEX"] == nil

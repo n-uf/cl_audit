@@ -2,7 +2,7 @@
 //
 // One `claude` process per chat, kept open between messages: print mode with stream-json in and out, no tools, no MCP
 // servers, no settings files, no slash commands, and Claude Code's non-essential traffic off. It runs on the profile's
-// own folder (CLAUDE_CONFIG_DIR), so it answers on the account the profile has in use and needs no API key, and in
+// own folder (CLAUDE_CONFIG_DIR), so it answers on the account the profile has in use (and counts against its limits), and in
 // quick chat's own work folder, so its sessions stay apart from the profile's others. Nothing else is sent anywhere.
 //
 // Everything here but `QuickChatProcess` is a plain function of its input, for the checks (Checks/quick-chat).

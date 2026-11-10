@@ -17,7 +17,7 @@ struct QuickChatCard: View {
     @Environment(\.face) private var face
 
     var body: some View {
-        SCard(title: "Quick chat", info: "A floating chat over any app: a bar first, a chat window after the first message. Claude Code answers it on the account a profile has in use, so it needs no API key; it sends nothing but your messages. Also in each profile's menu bar and Dock icon menus.") {
+        SCard(title: "Quick chat", info: "A floating chat over any app: a bar first, a chat window after the first message. Your own Claude Code answers it, signed in to the account a profile has in use and counting against its limits; it sends nothing but your messages. Also in each profile's menu bar and Dock icon menus.") {
             SRow(label: "Shortcut", info: "Opens the quick chat from any app. Off until you turn it on. It's registered the way macOS's own app shortcuts are, so macOS asks for no Accessibility permission and it sees no other key.", first: true, stacked: true) {
                 VStack(alignment: .leading, spacing: 6) {
                     HStack(spacing: 10) {
