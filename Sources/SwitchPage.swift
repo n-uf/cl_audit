@@ -64,14 +64,15 @@ struct SwitchPage: View {
         case .ready: return nil
         case .waiting:
             let until = (runner.goal?.started ?? Date()).addingTimeInterval(SwitchRunner.giveUp)
-            return Top(text: again ? "Signing in again" : "Switching", dim: "· waiting for the sign-in · gives up at \(until.formatted(date: .omitted, time: .shortened))", tone: .mint)
+            // short words: the display never gets wider than the page (it is one line)
+            return Top(text: again ? "Signing in" : "Switching", dim: "· waiting · until \(until.formatted(date: .omitted, time: .shortened))", tone: .mint)
         case .reached:
             if again { return Top(text: "Signed in again", dim: "· \(to)", tone: .ok) }
-            return Top(text: "\(name) works on \(to)", dim: "· \(from) on standby", tone: .ok)
+            return Top(text: "Now on \(to)", dim: "· \(from) on standby", tone: .ok)
         case .other(let e):
             if let c = clash { return Top(text: "Signed in as \(AccountNames.short(e))", dim: "· \(c.owner.name)'s account", tone: .warn) }
             return Top(text: "Signed in as \(AccountNames.short(e))", dim: "· not \(to)", tone: .amber)
-        case .timedOut: return Top(text: "No sign-in", dim: "· 10 minutes passed · nothing changed", tone: .amber)
+        case .timedOut: return Top(text: "No sign-in", dim: "· nothing changed", tone: .amber)
         case .failed: return Top(text: "Not started", dim: "· nothing changed", tone: .warn)
         }
     }
@@ -134,7 +135,7 @@ struct SwitchPage: View {
                     labelled("Before") { standbyBox(was, selected: false) }
                 } else if !again, !(runner.phase == .reached) {
                     let list = pickList
-                    labelled(runner.phase == .ready ? "To" : "Next") {
+                    labelled(runner.phase == .ready ? "To" : runner.phase == .waiting ? "Next" : "Wanted") {
                         VStack(alignment: .leading, spacing: 12) {
                             ForEach(list) { s in standbyBox(s, selected: s.id == standby.id) }
                             if runner.phase == .ready, list.count > 1 {
@@ -201,8 +202,16 @@ struct SwitchPage: View {
     /// A standby account: its address, plan and when it was last in use. No limits: it isn't read.
     private func standbyBox(_ s: StandbyAccount, selected: Bool) -> some View {
         let pickable = runner.phase == .ready && !selected && s.seat != nil
+        // the lit badge: what the account is to this switch, short in a narrow column so the address keeps its room
+        let lit: String? = {
+            switch runner.phase {
+            case .reached: return nil
+            case .ready, .waiting: return width < 420 ? "To" : "Switching to"
+            default: return "Wanted"
+            }
+        }()
         return AccountBox(lamp: nil, badge: "Standby", detail: s.plan.map(Account.planWords),
-                          unlit: !selected, selected: selected, litBadge: runner.phase == .reached ? nil : "Switching to") {
+                          unlit: !selected, selected: selected, litBadge: lit) {
             BoxText(text: Privacy.masked(s.email), role: selected ? .title : .softTitle)
         } content: {
             BoxText(text: (s.lastInUse.map { "Last in use " + AccountBook.ago($0) } ?? "Not in use on \(name) yet") + ".", role: .note)
@@ -216,7 +225,20 @@ struct SwitchPage: View {
 
     // MARK: what changes, and what doesn't
 
-    private var changesCard: some View {
+    @ViewBuilder private var changesCard: some View {
+        if again { againCard } else { switchChanges }
+    }
+
+    /// A sign-in again on the account in use: the same account, so nothing moves to anything.
+    private var againCard: some View {
+        SCard(title: "What changes", info: "A sign-in again: Claude Code's own sign-in on \(name)'s folder, as the account in use, in Terminal, finished in the browser. It moves nothing.") {
+            SRow(label: "Claude Code", first: true, stacked: true) {
+                value("Claude Code on \(entry.configDir) signs in again as \(to). Sessions and the Claude window are not touched.")
+            }
+        }
+    }
+
+    private var switchChanges: some View {
         let isDefault = Account(entry).isDefaultDir
         return SCard(title: "What changes", info: "A switch signs Claude Code in again on \(name)'s folder as the other account, in Terminal, finished in the browser. It moves nothing.") {
             SRow(label: "Claude Code", first: true, stacked: true) {
@@ -259,8 +281,15 @@ struct SwitchPage: View {
                 step(3, again ? "cl_audit checks Claude Code's sign-in ended well" : "cl_audit checks the account",
                      "The folder is looked at every 2 seconds, for up to 10 minutes.", check: check)
             }
-            keys.padding(.top, 8)
-            if let line = statusLine { SRowLine(text: line, color: isBad ? face.danger : nil) }
+            // the keys, then the line under them: one under the other, never side by side
+            VStack(alignment: .leading, spacing: 8) {
+                keys
+                if let line = statusLine {
+                    Text(line).font(.system(size: 10.5)).foregroundStyle(isBad ? face.danger : face.muted)
+                        .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.top, 8)
         }
     }
 
@@ -283,9 +312,9 @@ struct SwitchPage: View {
         case .ready:
             return standby.seat == nil ? "Remembered by its address: the sign-in tells which account it is." : nil
         case .waiting:
-            return "Nothing has changed yet: \(name) stays on \(from) until the folder names another account."
+            return "Nothing has changed yet: \(name) stays on \(from) until the folder names another account. Back keeps waiting."
         case .reached:
-            return again ? "Claude Code's sign-in on \(entry.configDir) works again." : "\(from) is on standby: switch back any time."
+            return again ? "Claude Code's sign-in on \(entry.configDir) works again." : nil
         case .other(let e):
             if let c = clash {
                 return "\(Privacy.masked(e)) is \(c.owner.name)'s account, so \(name) doesn't take it: its numbers wait until you sign in as \(to) (or another of \(name)'s accounts)."
