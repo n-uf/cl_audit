@@ -161,7 +161,7 @@ struct SwitchPage: View {
     private func labelled<C: View>(_ label: String, @ViewBuilder _ content: () -> C) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Text(label).font(.system(size: 9, weight: .semibold)).tracking(1.4).textCase(.uppercase)
-                .foregroundStyle(face.muted).lineLimit(1).fixedSize().frame(width: 50, alignment: .leading).padding(.top, 12)
+                .foregroundStyle(face.muted).lineLimit(1).fixedSize().frame(width: 56, alignment: .leading).padding(.top, 12)
             content()
         }
     }
@@ -202,19 +202,23 @@ struct SwitchPage: View {
     /// A standby account: its address, plan and when it was last in use. No limits: it isn't read.
     private func standbyBox(_ s: StandbyAccount, selected: Bool) -> some View {
         let pickable = runner.phase == .ready && !selected && s.seat != nil
-        // the lit badge: what the account is to this switch, short in a narrow column so the address keeps its room
-        let lit: String? = {
-            switch runner.phase {
-            case .reached: return nil
-            case .ready, .waiting: return width < 420 ? "To" : "Switching to"
-            default: return "Wanted"
+        func box(_ lit: String?) -> some View {
+            AccountBox(lamp: nil, badge: "Standby", detail: s.plan.map(Account.planWords),
+                       unlit: !selected, selected: selected, litBadge: lit) {
+                BoxText(text: Privacy.masked(s.email), role: selected ? .title : .softTitle)
+            } content: {
+                BoxText(text: (s.lastInUse.map { "Last in use " + AccountBook.ago($0) } ?? "Not in use on \(name) yet") + ".", role: .note)
             }
-        }()
-        return AccountBox(lamp: nil, badge: "Standby", detail: s.plan.map(Account.planWords),
-                          unlit: !selected, selected: selected, litBadge: lit) {
-            BoxText(text: Privacy.masked(s.email), role: selected ? .title : .softTitle)
-        } content: {
-            BoxText(text: (s.lastInUse.map { "Last in use " + AccountBook.ago($0) } ?? "Not in use on \(name) yet") + ".", role: .note)
+        }
+        // the lit badge while it's going: "Switching to" when the address fits beside it in the box's own width, else the
+        // short "To"; once it has ended the account wanted is still a standby account, and says so
+        let going = selected && (runner.phase == .ready || runner.phase == .waiting)
+        return Group {
+            if going {
+                ViewThatFits(in: .horizontal) { box("Switching to"); box("To") }
+            } else {
+                box(nil)
+            }
         }
         .contentShape(Rectangle())
         .onTapGesture {
