@@ -361,11 +361,15 @@ final class DefaultProfileRunner: ObservableObject {
     func keepOldAsStandby() {
         guard canKeepOldAsStandby, let m = model, let t = target, let ti = m.accounts.firstIndex(where: { $0.id == t.id }),
               let s = old.seat else { return }
-        let st = Store.status(for: old)
+        let st = Store.lastStatus(of: old)
         var e = m.accounts[ti]
         e.standby.append(StandbyAccount(email: s.email ?? "", seat: Seat(account: s.account, organization: s.organization, email: s.email),
                                         plan: st?.plan, lastInUse: Date(), lastWeek: st?.weekly, lastWeekResets: st?.weeklyResets))
-        e.standby += old.standby
+        // its own standby accounts go along, each once (one account, one standby list), never the default's account in use
+        for q in old.standby where !(e.seat.map { s in q.seat.map { s.same($0) } ?? false } ?? false)
+            && !e.standby.contains(where: { x in (x.seat != nil && q.seat.map { x.seat!.same($0) } == true) || x.email.lowercased() == q.email.lowercased() }) {
+            e.standby.append(q)
+        }
         // only the folders an earlier cl_audit made for a standby sign-in: never the old profile's own folder, which holds
         // its sessions, settings and CLAUDE.md and stays exactly as it is
         for d in old.leftoverFolders where !e.leftoverFolders.contains(d) && !FolderKey.overlaps(d, e.configDir) && !FolderKey.overlaps(d, old.configDir) {

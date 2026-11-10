@@ -78,7 +78,7 @@ enum Cleanup {
         // 3. saved usage of unknown profiles, and of standby accounts (<profile>~<id>.json, 26.11.12 and earlier: a standby
         // account isn't read any more)
         for f in (try? fm.contentsOfDirectory(at: Store.statusFolder, includingPropertiesForKeys: nil)) ?? []
-        where f.pathExtension == "json" && !ids.contains(f.deletingPathExtension().lastPathComponent) {
+        where ["json", "prev"].contains(f.pathExtension) && !ids.contains(f.deletingPathExtension().lastPathComponent) {
             if !dry { try? fm.removeItem(at: f) }
             removed.append("saved usage of \(f.deletingPathExtension().lastPathComponent)")
         }

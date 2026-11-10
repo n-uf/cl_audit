@@ -555,12 +555,29 @@ enum Store {
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970; enc.outputFormatting = [.sortedKeys]
         guard let data = try? enc.encode(s) else { return nil }
         try? FileManager.default.createDirectory(at: statusFolder, withIntermediateDirectories: true)
+        // the numbers of the account the profile was on, kept once when another account's take their place, so a switch
+        // can still remember its last week however the agent and the window take turns (FolderRules.noteAccounts)
+        if let old = status(id), let was = old.readFor, was != s.readFor, s.readFor != nil,
+           let bytes = try? Data(contentsOf: statusFolder.appendingPathComponent("\(id).json")) {
+            try? bytes.write(to: statusFolder.appendingPathComponent("\(id).prev"), options: .atomic)
+        }
         try? data.write(to: statusFolder.appendingPathComponent("\(id).json"), options: .atomic)
         DistributedNotificationCenter.default().postNotificationName(statusChanged, object: id, userInfo: nil, deliverImmediately: true)
         return data
     }
 
+    /// The last numbers saved for the account a profile is linked to (`e.seat`), read before or after another account's
+    /// took their place (status/<id>.json, else the copy kept then, status/<id>.prev), or nil. Only numbers read for that
+    /// very account count.
+    static func lastStatus(of e: AccountEntry) -> IconStatus? {
+        guard let want = e.seat?.email?.lowercased(), !want.isEmpty else { return nil }
+        let dec = JSONDecoder(); dec.dateDecodingStrategy = .secondsSince1970
+        let prev = (try? Data(contentsOf: statusFolder.appendingPathComponent("\(e.id).prev"))).flatMap { try? dec.decode(IconStatus.self, from: $0) }
+        return [status(e.id), prev].compactMap { $0 }.first { $0.readFor == want }
+    }
+
     static func removeStatus(_ id: String) {
+        try? FileManager.default.removeItem(at: statusFolder.appendingPathComponent("\(id).prev"))
         try? FileManager.default.removeItem(at: statusFolder.appendingPathComponent("\(id).json"))
     }
 

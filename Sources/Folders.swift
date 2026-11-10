@@ -70,7 +70,7 @@ enum FolderRules {
     /// A folder signed out changes nothing (the account stays the profile's; it signs in again). `status`: the numbers of
     /// the account a profile was on, as last saved (only its own).
     static func noteAccounts(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = { FolderFactsCache.facts($0)?.seat },
-                             status: (AccountEntry) -> IconStatus? = { Store.status(for: $0) },
+                             status: (AccountEntry) -> IconStatus? = { Store.lastStatus(of: $0) },
                              now: Date = Date()) -> [AccountEntry] {
         var out = accounts
         for i in out.indices {
@@ -92,10 +92,14 @@ enum FolderRules {
             s.linkedAt = now
             s.was = old?.email
             out[i].seat = s
-            // the account it was on stands by: never a sign-in, only what's known of it
+            // the account it was on stands by: never a sign-in, only what's known of it. One account is on one standby
+            // list only: a stale entry for it on another profile's list goes (this profile just had it in use).
             if let old {
                 let st = status(accounts[i])
-                out[i].standby.append(StandbyAccount(email: old.email ?? "", seat: Seat(account: old.account, organization: old.organization, email: old.email),
+                let oldSeat = Seat(account: old.account, organization: old.organization, email: old.email)
+                for j in out.indices where j != i { out[j].standby.removeAll { Self.isThat(oldSeat, $0) } }
+                out[i].standby.removeAll { Self.isThat(oldSeat, $0) }
+                out[i].standby.append(StandbyAccount(email: old.email ?? "", seat: oldSeat,
                                                      addedAt: now, plan: st?.plan, lastInUse: now, lastWeek: st?.weekly, lastWeekResets: st?.weeklyResets))
             }
         }
