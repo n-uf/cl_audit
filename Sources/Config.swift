@@ -518,6 +518,11 @@ enum Store {
         DistributedNotificationCenter.default().postNotificationName(Store.changed, object: nil, userInfo: nil, deliverImmediately: true)
     }
 
+    /// Tells every cl_audit process a profile's saved numbers changed (object: its id). A check's seam, as `announce`.
+    nonisolated(unsafe) static var announceStatus: (String) -> Void = { id in
+        DistributedNotificationCenter.default().postNotificationName(Store.statusChanged, object: id, userInfo: nil, deliverImmediately: true)
+    }
+
     /// Replaces the whole list (the cl_audit window, after merging its changes into the file as it is).
     static func save(_ accounts: [AccountEntry]) throws { try edit { _ in accounts } }
 
@@ -564,7 +569,7 @@ enum Store {
             try? bytes.write(to: statusFolder.appendingPathComponent("\(id).prev"), options: .atomic)
         }
         try? data.write(to: statusFolder.appendingPathComponent("\(id).json"), options: .atomic)
-        DistributedNotificationCenter.default().postNotificationName(statusChanged, object: id, userInfo: nil, deliverImmediately: true)
+        announceStatus(id)
         return data
     }
 
