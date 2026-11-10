@@ -17,44 +17,80 @@ enum Leftovers {
         let keychainItem: String
         var inside = Inside()
         var id: String { path }
-        /// A folder that holds sessions is never offered for the Trash: they may be someone's work.
-        var trashable: Bool { inside.sessions == 0 }
+        /// Only a folder known to hold no sessions is offered for the Trash: sessions may be someone's work, and a folder
+        /// whose sessions couldn't be counted (or aren't counted yet) may hold some.
+        var trashable: Bool { inside.counted && inside.known && inside.sessions == 0 }
     }
 
-    /// What a folder holds, counted from its names only (nothing is opened): Claude Code's sessions (its projects'
-    /// transcripts), its settings.json and CLAUDE.md, and whatever else is at its top.
+    /// What a folder holds, counted from its names only (nothing is opened, no link is followed): Claude Code's sessions
+    /// (its projects' transcripts), its account record, settings.json and CLAUDE.md, and whatever else is at its top.
     struct Inside: Equatable {
         var sessions = 0
         var settings = false
         var claudeMD = false
         var other = 0
+        var record = false              // .claude.json: the account record (the sign-in itself is in the Keychain)
+        var projects: Int?              // the folders in `projects`; nil: no `projects`
+        /// false: `projects` is there but couldn't be listed, is a link (never followed), or held too much to count.
+        var known = true
+        /// false: not counted yet (the card counts off the main thread: LeftoverCounts).
+        var counted = true
 
-        static func of(_ path: String, fm: FileManager = .default) -> Inside {
+        /// The most names read for one folder: a bigger one counts as "couldn't be counted".
+        static let cap = 5000
+
+        static func of(_ path: String, fm: FileManager = .default, cap: Int = Inside.cap) -> Inside {
             let dir = expand(path)
             var i = Inside()
+            var read = 0
+            func kind(_ p: String) -> mode_t? { var st = stat(); return lstat(p, &st) == 0 ? st.st_mode & S_IFMT : nil }
             let projects = (dir as NSString).appendingPathComponent("projects")
-            for p in (try? fm.contentsOfDirectory(atPath: projects)) ?? [] {
-                i.sessions += ((try? fm.contentsOfDirectory(atPath: (projects as NSString).appendingPathComponent(p))) ?? []).filter { $0.hasSuffix(".jsonl") }.count
+            if let k = kind(projects) {
+                if k != S_IFDIR { i.known = false }                      // a link or a file: never followed
+                else if let names = try? fm.contentsOfDirectory(atPath: projects) {
+                    let folders = names.filter { $0 != ".DS_Store" }
+                    i.projects = folders.count
+                    for p in folders {
+                        read += 1
+                        if read > cap { i.known = false; break }
+                        let sub = (projects as NSString).appendingPathComponent(p)
+                        switch kind(sub) {
+                        case S_IFLNK: i.known = false                     // a project that is a link: not looked into
+                        case S_IFDIR:
+                            guard let files = try? fm.contentsOfDirectory(atPath: sub) else { i.known = false; continue }
+                            read += files.count
+                            i.sessions += files.filter { $0.hasSuffix(".jsonl") }.count
+                            if read > cap { i.known = false }
+                        default: break
+                        }
+                        if read > cap { break }
+                    }
+                } else { i.known = false }                               // there, but can't be listed
             }
-            for n in (try? fm.contentsOfDirectory(atPath: dir)) ?? [] {
+            for n in ((try? fm.contentsOfDirectory(atPath: dir)) ?? []).prefix(cap) {
                 switch n {
                 case "settings.json": i.settings = true
                 case "CLAUDE.md": i.claudeMD = true
-                case "projects", ".claude.json", ".DS_Store": break
+                case ".claude.json": i.record = true
+                case "projects", ".DS_Store": break
                 default: i.other += 1
                 }
             }
             return i
         }
 
-        /// "its sign-in record, settings.json, CLAUDE.md and 3 other items", in plain words.
+        /// "the account record (.claude.json), projects (2 sessions), settings.json and 3 other items", in plain words.
         var words: String {
             func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
-            var parts = ["its sign-in record"]
-            if sessions > 0 { parts.append(n(sessions, "session", "sessions")) }
+            var parts: [String] = []
+            if record { parts.append("the account record (.claude.json)") }
+            if !known { parts.append("projects (its sessions couldn't be counted)") }
+            else if let p = projects { parts.append(sessions > 0 ? "projects (\(n(sessions, "session", "sessions")))"
+                                                               : p == 0 ? "projects (empty)" : "projects (\(n(p, "folder", "folders")), no sessions)") }
             if settings { parts.append("settings.json") }
             if claudeMD { parts.append("CLAUDE.md") }
             if other > 0 { parts.append(n(other, "other item", "other items")) }
+            if parts.isEmpty { return "nothing" }
             return parts.count == 1 ? parts[0] : parts.dropLast().joined(separator: ", ") + " and " + parts.last!
         }
     }
@@ -80,24 +116,31 @@ enum Leftovers {
         }
     }
 
-    /// A profile's leftover folders worth offering now.
-    static func offered(_ e: AccountEntry, among accounts: [AccountEntry]) -> [Folder] {
-        e.leftoverFolders.filter { offerable($0, among: accounts) }.map { Folder(path: $0, keychainItem: keychainItem($0), inside: Inside.of($0)) }
+    /// A profile's leftover folders worth offering now. `inside`: what each holds (nil: not counted yet); the card passes
+    /// LeftoverCounts' cache, so nothing is counted on the main thread.
+    static func offered(_ e: AccountEntry, among accounts: [AccountEntry], inside: (String) -> Inside? = { Inside.of($0) }) -> [Folder] {
+        e.leftoverFolders.filter { offerable($0, among: accounts) }.map {
+            Folder(path: $0, keychainItem: keychainItem($0), inside: inside($0) ?? Inside(counted: false))
+        }
     }
 
     /// The card's line for one.
     static func line(_ f: Folder) -> String {
-        let p = tilde(expand(f.path))
-        if !f.trashable {
-            return "\(p): made by an earlier cl_audit for one of this profile's sign-ins. It holds \(f.inside.sessions == 1 ? "1 session" : "\(f.inside.sessions) sessions"), so it isn't offered for the Trash: open it in Finder to look first."
+        let p = tilde(expand(f.path)) + ": made by an earlier cl_audit for one of this profile's accounts."
+        if !f.inside.counted { return p + " Looking at what's in it…" }
+        if !f.inside.known {
+            return p + " Its sessions couldn't be counted (its projects folder can't be read, or is a link), so it isn't offered for the Trash: open it in Finder to look first."
         }
-        return "\(p): made by an earlier cl_audit for one of this profile's sign-ins. Nothing uses it now."
+        if f.inside.sessions > 0 {
+            return p + " It holds \(f.inside.sessions == 1 ? "1 session" : "\(f.inside.sessions) sessions"), so it isn't offered for the Trash: open it in Finder to look first."
+        }
+        return p + " Nothing uses it now."
     }
 
     /// The question before Move to Trash.
     static func question(_ f: Folder) -> (title: String, detail: String) {
         ("Move \(tilde(expand(f.path))) to the Trash?",
-         "In it: \(f.inside.words). Everything in it goes with it; you can put it back from the Trash. Its sign-in stays in your Keychain as “\(f.keychainItem)”: delete that in Keychain Access if you no longer need it. cl_audit doesn't touch it.")
+         "In it: \(f.inside.words). Everything in it goes with it; you can put it back from the Trash. The sign-in itself isn't in the folder: Claude Code keeps it in your Keychain as “\(f.keychainItem)”. Delete that in Keychain Access if you no longer need it; cl_audit doesn't touch it.")
     }
 
     /// The check's seam: moves a folder to the Trash (recoverable).
@@ -107,6 +150,7 @@ enum Leftovers {
     static func trash(_ f: Folder, among accounts: [AccountEntry]) -> String? {
         guard offerable(f.path, among: accounts) else { return "\(tilde(expand(f.path))) isn't there as a plain folder any more, or a profile uses it now." }
         let now = Inside.of(f.path)
+        guard now.known else { return "\(tilde(expand(f.path)))'s sessions couldn't be counted, so it stays: open it in Finder to look." }
         guard now.sessions == 0 else { return "\(tilde(expand(f.path))) holds sessions now, so it stays: open it in Finder to look." }
         do { try toTrash(URL(fileURLWithPath: expand(f.path))); return nil }
         catch { return "\(tilde(expand(f.path))) couldn't be moved to the Trash: \(error.localizedDescription)" }
