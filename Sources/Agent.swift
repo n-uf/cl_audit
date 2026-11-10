@@ -269,6 +269,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return }
             self.readers.values.forEach { $0.watchSignIn(); $0.save() }      // save: the account answer (AccountResolver) kept current
             self.standbyReaders.values.forEach { $0.watchSignIn() }
+            self.noteAccounts()
         }
         // the folders' .claude.json, the windows' config.json and the Claude app's logs watched: a sign-in changed in
         // Terminal or the Claude app is followed within a second, not at the next look (SignInFiles)
@@ -346,6 +347,15 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
                 n += 1
             }
         }
+    }
+
+    /// Each profile works on the account its folder is signed in to (FolderRules.noteAccounts): also while the cl_audit
+    /// window is closed, so a sign-in made in Terminal, or by another app on the same folder, shows at once. Written only
+    /// when something changed, under the profiles file's lock (Store.edit reads it fresh); every cl_audit takes it in.
+    func noteAccounts() {
+        guard let list = Store.loadChecked(), FolderRules.noteAccounts(list) != list else { return }
+        do { _ = try Store.edit { FolderRules.noteAccounts($0) } }
+        catch { agentLog.error("agent: the account a folder is signed in to couldn't be noted: \(String(describing: error), privacy: .public)") }
     }
 
     func tick() {

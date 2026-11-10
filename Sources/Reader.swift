@@ -99,7 +99,7 @@ final class UsageReader {
                 adoptSaved()
                 agentLog.log("reader \(self.id, privacy: .public): the profile works on another account; reading it")
             }
-            // else: linked to the account this folder is signed in to (Use this account): its numbers, read since that
+            // else: linked to the account this folder is signed in to (FolderRules.noteAccounts): its numbers, read since that
             // sign-in, are this account's and show now
             tick()
             return
@@ -200,7 +200,8 @@ final class UsageReader {
     private var lastResolved: ResolvedAccount?
 
     /// The folder read is signed in to another account than the one the profile is linked to: its numbers show, labelled
-    /// with that account (AccountResolver), but no alerts go out about them in this profile's name and no renewal runs.
+    /// with that account (AccountResolver), but no alerts go out about them in this profile's name and no renewal runs,
+    /// until the profile follows it (FolderRules.noteAccounts, within seconds).
     private var onOtherAccount: Bool {
         guard let linked = entry.seat, let seen = signIn.seen else { return false }
         return !seen.same(linked)
@@ -434,8 +435,8 @@ final class UsageReader {
             renewNote = "Not renewed: its Claude Code folder isn't there"
             save(); return
         }
-        // never in a folder signed in to another account, whose sign-in would be renewed in this profile's name; that one
-        // shows Log in… instead
+        // never in a folder signed in to another account, whose sign-in would be renewed in this profile's name; the
+        // profile follows that one by itself, or signs back in with Log in…
         guard Self.renewsInItsFolder(entry.seat, account.configDir) else {
             renewNote = "Not renewed: this folder is signed in to another account"
             save(); return

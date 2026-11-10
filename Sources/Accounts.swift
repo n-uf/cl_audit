@@ -94,6 +94,25 @@ enum AccountBook {
     }
 }
 
+/// An account that moved between two profiles by signing in to another one's folder (FolderRules.noteAccounts).
+struct AccountNote: Codable, Equatable, Hashable {
+    enum Kind: String, Codable { case came, left }
+    var kind: Kind
+    var email: String              // the account; shown masked as Settings ▸ General ▸ Emails says
+    var profile: String            // the other profile's name
+    var at: Date
+
+    /// "ultra-3 came from Work's standby accounts: it signed in to this profile's folder." / "ultra-3 left for Main: it
+    /// signed in to Main's folder, so it's Main's account now."
+    var words: String {
+        let a = Privacy.masked(email.isEmpty ? "An account" : email)
+        switch kind {
+        case .came: return "\(a) came from \(profile)'s standby accounts: it signed in to this profile's folder."
+        case .left: return "\(a) left for \(profile): it signed in to \(profile)'s folder, so it's \(profile)'s account now."
+        }
+    }
+}
+
 /// One element of a list read on its own: nil when it can't be read, so the rest of the list still is.
 struct Lossy<T: Decodable>: Decodable {
     let value: T?

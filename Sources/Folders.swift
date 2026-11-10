@@ -61,42 +61,64 @@ enum FolderRules {
             ?? accounts.first { $0.id != id && $0.seat == nil && seat.same(signedIn($0.configDir)) }
     }
 
-    /// Profiles not linked yet get the seat their folder is signed in to now, unless an earlier profile has it
-    /// (linked, or signed in to it and not linked yet). Linked profiles are left as they are.
-    static func linkSeats(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = Account.signedInSeat,
-                          now: Date = Date()) -> [AccountEntry] {
+    /// cl_quick's noteAccount, for every profile: the account Claude Code in a profile's folder is signed in to is the
+    /// one it works on, whoever signed it in (the Switch page, `claude auth login` in Terminal, another app on the same
+    /// folder). When it changes, the profile follows by itself: the new account is in use, the one before joins its
+    /// standby accounts (its plan, when it left and its last week remembered, never its sign-in), and nothing else
+    /// moves. One account, one profile:
+    /// - an account another profile works on (its account in use) is refused: the profile stays as it is, and its numbers
+    ///   wait (Reader.swift) until its folder is on an account of its own again (`inUseElsewhere`);
+    /// - an account on another profile's standby list moves here: it leaves that list, with a note on both profiles;
+    /// - a profile not linked yet takes the account only when no earlier profile not linked yet is signed in to it too.
+    /// A folder signed out changes nothing (the account stays the profile's; it signs in again). `status`: the numbers of
+    /// the account a profile was on, as last saved (only its own).
+    static func noteAccounts(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = { FolderFactsCache.facts($0)?.seat },
+                             status: (AccountEntry) -> IconStatus? = { Store.status(for: $0) },
+                             now: Date = Date()) -> [AccountEntry] {
         var out = accounts
-        for i in out.indices where out[i].seat == nil {
+        for i in out.indices {
             guard var s = signedIn(out[i].configDir) else { continue }
-            if out.indices.contains(where: { $0 != i && out[$0].has(s) }) { continue }
-            if out.indices.contains(where: { $0 < i && out[$0].seat == nil && s.same(signedIn(out[$0].configDir)) }) { continue }
+            let old = out[i].seat
+            if let old, s.same(old) { continue }
+            // another profile works on it: refused
+            if out.indices.contains(where: { $0 != i && out[$0].seat.map { s.same($0) } == true }) { continue }
+            if old == nil, out.indices.contains(where: { $0 < i && out[$0].seat == nil && s.same(signedIn(out[$0].configDir)) }) { continue }
+            // on another profile's standby list: it comes here, said on both
+            let email = s.email ?? ""
+            for j in out.indices where j != i && out[j].standby.contains(where: { Self.isThat(s, $0) }) {
+                out[j].standby.removeAll { Self.isThat(s, $0) }
+                out[j].accountNote = AccountNote(kind: .left, email: email, profile: out[i].name, at: now)
+                out[i].accountNote = AccountNote(kind: .came, email: email, profile: out[j].name, at: now)
+            }
+            // it leaves its own standby list
+            out[i].standby.removeAll { Self.isThat(s, $0) }
             s.linkedAt = now
+            s.was = old?.email
             out[i].seat = s
-            // one of its own standby accounts is now the one in use: it isn't standing by as well
-            out[i].standby.removeAll { s.same($0.seat) }
+            // the account it was on stands by: never a sign-in, only what's known of it
+            if let old {
+                let st = status(accounts[i])
+                out[i].standby.append(StandbyAccount(email: old.email ?? "", seat: Seat(account: old.account, organization: old.organization, email: old.email),
+                                                     addedAt: now, plan: st?.plan, lastInUse: now, lastWeek: st?.weekly, lastWeekResets: st?.weeklyResets))
+            }
         }
         return out
     }
 
-    /// A standby account added by its address ("Sign in to another account…") gets its seat once its folder's sign-in
-    /// names one, unless that account is already the profile's own or another profile's: then it stays without one and
-    /// Accounts says so. One whose seat is known keeps it (a folder signed in to another account later only holds its
-    /// numbers back, as for the account in use).
-    static func linkStandbySeats(_ accounts: [AccountEntry],
-                                 signedIn: (String) -> Seat? = { FolderFactsCache.facts($0)?.seat }) -> [AccountEntry] {
-        var out = accounts
-        for i in out.indices {
-            for j in out[i].standby.indices where out[i].standby[j].seat == nil {
-                guard let dir = out[i].standby[j].configDir, var s = signedIn(dir) else { continue }
-                if out[i].has(s) || s.same(signedIn(out[i].configDir)) { continue }
-                // another profile's: linked to it, keeping it, or (not linked yet) its folder signed in to it
-                if seatOwner(s, among: out, except: out[i].id, signedIn: signedIn) != nil { continue }
-                s.linkedAt = Date()
-                out[i].standby[j].seat = s
-                if let e = s.email { out[i].standby[j].email = e }
-            }
-        }
-        return out
+    /// A standby entry for the account signed in: by its seat, or, for one remembered by its address only (Add account ▸
+    /// Another address…, not signed in yet), by the address (cl_quick's placeholder rule).
+    static func isThat(_ s: Seat, _ q: StandbyAccount) -> Bool {
+        if let seat = q.seat { return s.same(seat) }
+        return s.email.map { $0.lowercased() == q.email.lowercased() } ?? false
+    }
+
+    /// The profile whose account in use the folder is signed in to, when that isn't this profile's account: refused by
+    /// `noteAccounts` (one account, one profile). nil otherwise.
+    static func inUseElsewhere(_ e: AccountEntry, among accounts: [AccountEntry],
+                               signedIn: (String) -> Seat? = Account.signedInSeat) -> (seat: Seat, owner: AccountEntry)? {
+        guard let now = signedIn(e.configDir), !(e.seat.map { now.same($0) } ?? false),
+              let owner = accounts.first(where: { $0.id != e.id && ($0.seat.map { now.same($0) } ?? false) }) else { return nil }
+        return (now, owner)
     }
 
     /// The claude.ai account id the profile's Claude window last used (lastKnownAccountUuid in its data folder's
@@ -113,39 +135,12 @@ enum FolderRules {
     }
 
     /// The profile's Claude window is signed in to another claude.ai account than its Claude Code folder (or, with
-    /// none there, than the account the profile is linked to). Both moved to the same new account is the link's
-    /// business ("Use this account"), not the window's.
+    /// none there, than the account the profile is linked to). The window's own sign-in is left alone: a switch changes
+    /// only Claude Code's.
     static func windowOnAnotherAccount(_ e: AccountEntry, signedIn: (String) -> Seat? = Account.signedInSeat,
                                        window: (AccountEntry) -> String? = windowAccount) -> Bool {
         guard let w = window(e), let mine = signedIn(e.configDir)?.account ?? e.seat?.account else { return false }
         return w != mine
-    }
-
-    /// A linked profile whose folder is now signed in to another seat (Claude Code was signed in to another account
-    /// there): that seat, and the profile that already has it, if any (then linking to it is refused).
-    struct SeatMove: Equatable {
-        let to: Seat
-        let owner: AccountEntry?
-    }
-
-    static func seatMove(_ e: AccountEntry, among accounts: [AccountEntry],
-                         signedIn: (String) -> Seat? = Account.signedInSeat) -> SeatMove? {
-        guard let linked = e.seat, let now = signedIn(e.configDir), !now.same(linked) else { return nil }
-        return SeatMove(to: now, owner: seatOwner(now, among: accounts, except: e.id, signedIn: signedIn))
-    }
-
-    /// "Use this account": links the profile to the seat its folder is signed in to now. Everything else stays (name,
-    /// look, Dock icon and its place, Claude window, settings). nil when there's nothing to link or another profile
-    /// has that seat.
-    static func relink(_ id: String, in accounts: [AccountEntry], signedIn: (String) -> Seat? = Account.signedInSeat,
-                       now: Date = Date()) -> [AccountEntry]? {
-        guard let i = accounts.firstIndex(where: { $0.id == id }),
-              let move = seatMove(accounts[i], among: accounts, signedIn: signedIn), move.owner == nil else { return nil }
-        var out = accounts, s = move.to
-        s.linkedAt = now
-        s.was = accounts[i].seat?.email
-        out[i].seat = s
-        return out
     }
 
     /// A profile that can't be linked because another profile has the seat its folder is signed in to.
