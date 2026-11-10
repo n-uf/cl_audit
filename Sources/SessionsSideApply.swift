@@ -448,19 +448,22 @@ extension SideFiles {
             guard (st.st_mode & S_IFMT) == S_IFREG, st.st_nlink == 1 else { throw SideError("\(h) is a link or isn't a plain file; no prompt history was added.") }
         }
         return try withLock(historyLock(path), what: h) {
+            let t0 = Date()
             let fd = open(path, O_RDWR | O_APPEND | O_NOFOLLOW | O_NONBLOCK)
             guard fd >= 0 else { throw SideError("\(h) can't be opened; no prompt history was added.") }
             defer { close(fd) }
             var s = stat()
             guard fstat(fd, &s) == 0, (s.st_mode & S_IFMT) == S_IFREG, s.st_nlink == 1 else { throw SideError("\(h) isn't a plain file; no prompt history was added.") }
-            // the lines already there (read whole, under its cap): none of them goes in twice
-            guard Int64(s.st_size) <= maxHistoryFile, let have = SessionsRestore.read(fd, size: s.st_size) else {
-                throw SideError("\(h) is over \(SessionsBackup.sizeWords(maxHistoryFile)), so it can't be checked for lines already there; no prompt history was added.")
+            // the lines already there (read whole, under a lower cap, so Claude Code's lock is held only briefly): none goes in twice
+            guard Int64(s.st_size) <= maxHistoryCheck, let have = SessionsRestore.read(fd, size: s.st_size) else {
+                throw SideError("\(h) is over \(SessionsBackup.sizeWords(maxHistoryCheck)), so it can't be checked quickly for prompts already there; none were added.")
             }
             var seen = Set(have.split(separator: 0x0A, omittingEmptySubsequences: true).map { Data($0) })
             var fresh: [Data] = []
             for l in lines where !seen.contains(l) { fresh.append(l); seen.insert(l) }
             guard !fresh.isEmpty else { return 0 }
+            // the same budget as the settings lock: past it, nothing is written (Claude Code could take the lock over)
+            guard Date().timeIntervalSince(t0) < lockBudget else { throw SideError("\(h) took too long to read, and Claude Code could take its lock over meanwhile; no prompts were added.") }
             try prepare(fresh)
             var body = Data()
             if let last = have.last, last != 0x0A { body.append(0x0A) }

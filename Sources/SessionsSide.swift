@@ -51,6 +51,7 @@ enum SideFiles {
     static let maxPlan = 4 << 20                        // one plan
     static let maxHistoryFile: Int64 = 512 << 20        // history.jsonl is read this far, no further
     static let maxHistoryLine = 1 << 20                 // a longer line is left out
+    static let maxHistoryCheck: Int64 = 64 << 20        // history.jsonl is checked for lines already there (under Claude Code's lock) only up to this
     static let maxHistoryLines = 5000                   // lines of one session
     static let maxHistoryBytes: Int64 = 32 << 20        // history lines of a part
     static let maxPaste = 8 << 20                       // one pasted text
