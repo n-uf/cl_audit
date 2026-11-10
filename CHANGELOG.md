@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.11 — 2026-11-09
+
 - **Backups leave out the keys they find in your Claude Code settings and scripts.** Before a backup writes Claude Code's setup,
   cl_audit runs the same key check the Export page uses ("sessions mention API keys or tokens") over three things: settings.json,
   the scripts your hooks run (with the skills that hold them), and the plugin marketplaces file. It does not check CLAUDE.md or
