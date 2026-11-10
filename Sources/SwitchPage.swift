@@ -312,6 +312,7 @@ struct SwitchPage: View {
         case .ready:
             return standby.seat == nil ? "Remembered by its address: the sign-in tells which account it is." : nil
         case .waiting:
+            if again { return "Nothing else changes: \(name) stays on \(from). cl_audit waits for Claude Code's sign-in to end. Back keeps waiting." }
             return "Nothing has changed yet: \(name) stays on \(from) until the folder names another account. Back keeps waiting."
         case .reached:
             return again ? "Claude Code's sign-in on \(entry.configDir) works again." : nil
