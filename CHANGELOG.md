@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.13 — 2026-11-10
+
 - **A move brings each session's side files.** Its task list, its plan, the prompts you typed in it (the up-arrow history, with
   pasted text) and its project folder's trust and allowed tools now travel with the session, in the encrypted disk image only.
   Rewind's copies of the files the sessions edited are a row of their own on the Export page, with their size, left out unless
