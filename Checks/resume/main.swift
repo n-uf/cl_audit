@@ -403,6 +403,18 @@ MainActor.assumeIsolated {
     check(evw.contains { $0.contains("couldn't read the files not committed (its git settings run programs)") }, "hostile config: the page warns: \(evw)")
     _ = git(evil, ["config", "--unset", "filter.probe.clean"]); _ = git(evil, ["config", "include.path", "/srv/other.inc"])
     check(CodeChecklist.gather([evil: 1], git: CodeChecklist.gitPath()).projects.first?.note == "not read: its git settings run programs", "hostile config: an include counts too")
+    // a filter in a worktree's own config (extensions.worktreeConfig on): the marker never appears either
+    _ = git(evil, ["config", "--unset", "include.path"])
+    _ = git(evil, ["config", "extensions.worktreeConfig", "true"])
+    _ = git(evil, ["config", "--worktree", "filter.probe.clean", "sh -c 'touch \(marker); cat'"])
+    try? fm.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_577_836_900)], ofItemAtPath: evil + "/a.txt")
+    let wtc = CodeChecklist.gather([evil: 1], git: CodeChecklist.gitPath()).projects.first
+    check(!fm.fileExists(atPath: marker) && wtc?.note == "not read: its git settings run programs" && wtc?.uncommitted == nil,
+          "hostile config: a filter in config.worktree never runs (status skipped): \(wtc?.note ?? "nil")")
+    // …and a repo with that extension on but nothing to run is read as usual
+    _ = git(evil, ["config", "--worktree", "--unset", "filter.probe.clean"])
+    let wtok = CodeChecklist.gather([evil: 1], git: CodeChecklist.gitPath()).projects.first
+    check(!fm.fileExists(atPath: marker) && wtok?.note == nil && wtok?.uncommitted != nil, "hostile config: with nothing to run, the worktree config doesn't block the read")
 
     // ---- git that never answers, with a child holding the pipe: killed by group, the whole list within its budget
     let slow = code + "/fakegit/git", slowMark = code + "/SLOW_CHILD_RAN"
@@ -429,7 +441,14 @@ MainActor.assumeIsolated {
                                         ("https://user:pa/ss@host/o/r", nil), ("https://host?token=x", "https://host"), ("https://abc@host#f", "https://host"),
                                         ("--upload-pack=curl${IFS}x|sh", nil), ("-oProxyCommand=x@host:r", nil), ("ext::sh%20-c%20x", nil), ("fd::7", nil), ("FD::7", nil),
                                         ("https://host:abc/o", nil), ("https://host:8443/o/r", "https://host:8443/o/r"), ("https://host/@scope/x", nil),
-                                        ("ssh://git@host/o/r?x=1", "ssh://git@host/o/r")]
+                                        ("ssh://git@host/o/r?x=1", "ssh://git@host/o/r"),
+                                        // round 2: a "#" or "?" inside the password (split at the address's last "@" first), the scp form's last "@",
+                                        // bracketed IPv6 hosts, a bare path with "#"
+                                        ("https://user:1234#x@host/r", nil), ("https://user:1234?x@host/r", nil), ("user:p@ss@host:org/repo", "host:org/repo"),
+                                        ("https://[::1]:8443/o/r", "https://[::1]:8443/o/r"), ("https://[2001:db8::1]/o/r", "https://[2001:db8::1]/o/r"),
+                                        ("https://u:pw@[2001:db8::1]:22/o/r", "https://[2001:db8::1]:22/o/r"), ("https://[::1]x/o", nil), ("/srv/git/repo#1.git", "/srv/git/repo#1.git")]
+    check(CodeChecklist.cleanedRemote("https://[::1]x/o").why == CodeChecklist.remoteUnreadable && CodeChecklist.cleanedRemote("https://user:1234#x@host/r").why == CodeChecklist.remoteLeftOut
+          && CodeChecklist.cleanedRemote("bad url with spaces").why == CodeChecklist.remoteUnreadable, "remote: the reason a remote is left out is the true one (can't read it, or it may hold a key)")
     check(CodeChecklist.commands(CodeChecklist.Project(path: "~/code/x", git: true, remote: "https://host/o/r", branch: "main", sessions: 1), here: false).first
           == "git clone -- https://host/o/r ~/code/x", "commands: git clone -- <address> <path> (nothing in the address can be an option)")
     let leftOut = CodeChecklist.Project(path: "~/code/x", git: true, sessions: 1, note: CodeChecklist.remoteLeftOut)
@@ -516,7 +535,8 @@ MainActor.assumeIsolated {
         try d.write(to: root.appendingPathComponent("code.json"))
         ex.checklist = ExportManifest.AppFile(path: "code.json", bytes: Int64(d.count), sha: SwitchEngine.sha(d))
     }
-    check(doctored("ok") { _, _ in } == "OPENED", "(an untouched copy opens)")
+    let untouched = doctored("ok") { _, _ in }
+    check(untouched == "OPENED", "(an untouched copy opens): \(untouched.prefix(160))")
     let notOne = doctored("code-not-json") { root, ex in try setCode(root, &ex, Data("[]".utf8)) }
     check(notOne.contains("code checklist") && notOne.contains("Refused"), "hostile image: code.json that isn't a checklist refuses the file: \(notOne.prefix(90))")
     let badHash = doctored("code-hash") { root, ex in try setCode(root, &ex, clData([])); ex.checklist?.sha = String(repeating: "0", count: 64) }
