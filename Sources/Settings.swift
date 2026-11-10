@@ -1573,7 +1573,6 @@ struct AccountSettings: View {
             }
             rowLine("Numbers are still \(name)'s (from Claude Code), not the window's account.")
         }
-        // "Sessions follow" went: the Switch page asks every time, with no answer chosen
     }
 
     // MARK: Accounts (Accounts.swift): the one in use, the standby ones, Add account

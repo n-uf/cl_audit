@@ -731,8 +731,6 @@ enum SessionsBackup {
         }
         // a restore that stopped half way finishes from its backup
         for r in SessionsRestore.unfinished(profile: profile) where FolderKey.canonical(r.backupPlace) == here { ids.insert(r.backup) }
-        // and the backup an Undo this switch is about to restore from (until that restore has run)
-        for u in SessionsRestore.pendingUndoBackups(profile: profile) where FolderKey.canonical(u.place) == here { ids.insert(u.id) }
         return (ids, unreadable)
     }
 

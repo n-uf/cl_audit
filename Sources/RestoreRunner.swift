@@ -2,11 +2,11 @@
 // doing the writing.
 //
 //   preview   counted from the backup against what is there now; nothing is written, and the page says why a restore
-//             may not start yet (a switch that stopped half way, another switch/restore/import, claude-transplant)
-//   1. the profile's Claude window closes (only if something in the window comes back; the same quit as a switch)
+//             may not start yet (a restore that stopped half way, another restore/import/move, claude-transplant)
+//   1. the profile's Claude window closes (only if something in the window comes back; gracefully, only that window)
 //   2. what's listed comes back, merged and never overwriting (SessionsRestore.run), with a receipt as it goes
 //   3. the window opens again (if it was closed for this); the sidebar's groups and pins are arranged by one Return in a
-//      helper session, as after a switch (the same link, the same plan type)
+//      helper session (SwitchSidebar.swift)
 //
 // Stop keeps what is back; Finish picks up from the same receipt (also after cl_audit stopped: the tile of the profile
 // shows "Restore stopped" and the page opens on it); Undo takes back exactly what the receipt says it put back.
@@ -14,13 +14,12 @@
 import AppKit
 
 /// Which backup a Restore page is about: the profile, the backup and where it is (General ▸ Backups, or the place a
-/// receipt recorded), or a stopped restore to finish, and the switch it undoes when it follows "Undo this switch".
+/// receipt recorded), or a stopped restore to finish.
 struct RestoreKey: Equatable {
     var profile: String
     var backup: String
     var place: String
     var resume: String? = nil               // a stopped restore's receipt
-    var afterSwitch: String? = nil          // Undo this switch: the receipt of the switch that was switched back
     var addMemory = false                   // an import: add the memory files of a file from another Mac or profile (left out otherwise)
     var addSetup = false                    // add Claude Code's setup (CLAUDE.md, skills, agents …) that is missing here (left out otherwise)
     var addConfig = false                   // add the window's MCP settings (claude_desktop_config.json) where there is none (left out otherwise)
@@ -51,7 +50,6 @@ final class RestoreRunner: ObservableObject {
     struct NotYet: Equatable {
         var title: String
         var words: String
-        var switchKey: String?          // "Open the switch"
     }
 
     let key: RestoreKey
@@ -236,18 +234,16 @@ final class RestoreRunner: ObservableObject {
             let p = SessionsRestore.plan(target, b, addMemory: memory, addSetup: setup, addConfig: config, addTasks: tasks)
             var not: NotYet?
             if let why = SessionsRestore.blocker(profile: profile, except: resume) {
-                not = NotYet(title: why.switchKey != nil ? "A switch of \(e.name) is unfinished" : "A restore of \(e.name) is unfinished",
-                             words: why.words, switchKey: why.switchKey)
+                not = NotYet(title: "A restore of \(e.name) is unfinished", words: why)
             } else if p.windowNeeded, let m = w.flatMap({ SwitchMarker.current($0) }) {       // only a restore that writes in the window waits for it
                 if m.standby.hasPrefix("restore-") {
-                    not = NotYet(title: "A restore of \(e.name) is under way", words: "Its window stays closed until that restore ends (or its Undo does). Wait for it, or open it.", switchKey: nil)
+                    not = NotYet(title: "A restore of \(e.name) is under way", words: "Its window stays closed until that restore ends (or its Undo does). Wait for it, or open it.")
                 } else {
-                    not = NotYet(title: "A switch of \(e.name) is under way", words: "Its window stays closed until the switch is linked or undone. Wait for it, or open it.",
-                                 switchKey: AccountEntry.switchKey(m.profile, m.standby))
+                    not = NotYet(title: "\(e.name)'s window is held closed", words: "An import's folder pick or the default-profile move is writing its files. Wait for it to end.")
                 }
             } else if let why = SessionsRestore.busy() {
-                not = NotYet(title: why.contains("claude-transplant") ? "claude-transplant is moving sessions" : "Another switch, restore or import is under way",
-                             words: why, switchKey: nil)
+                not = NotYet(title: why.contains("claude-transplant") ? "claude-transplant is moving sessions" : "Another restore, import or move is under way",
+                             words: why)
             }
             let folders = p.isImport && p.refusal == nil ? SessionsImport.foldersMissing(p, backup: b) : 0
             let away = p.isImport && p.refusal == nil ? SessionsRepoint.staged(p, backup: b).filter { !$0.here } : []
@@ -330,13 +326,13 @@ final class RestoreRunner: ObservableObject {
 
     private func write() {
         guard let e = entry else { return }
-        let target = SessionsRestore.Target(e), b = backup, resume = resumeID, afterSwitch = key.afterSwitch, mark = markName, memory = key.addMemory, setup = addSetup, config = addConfig, tasks = addTasks
+        let target = SessionsRestore.Target(e), b = backup, resume = resumeID, mark = markName, memory = key.addMemory, setup = addSetup, config = addConfig, tasks = addTasks
         let picked = picks.sorted { $0.key < $1.key }.map { SessionsRepoint.Pick(session: $0.key, folder: $0.value) }
         let sideKinds = sidePlan == nil ? SideFiles.Kinds.nothing : self.sideKinds
         phase = .writing
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result {
-                try SessionsRestore.run(target, b, continuing: resume, addMemory: memory, addSetup: setup, addConfig: config, addTasks: tasks, afterSwitch: afterSwitch, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) },
+                try SessionsRestore.run(target, b, continuing: resume, addMemory: memory, addSetup: setup, addConfig: config, addTasks: tasks, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) },
                                         stop: { self?.stopRequested ?? true },
                                         progress: { d, t in DispatchQueue.main.async { self?.progress = (d, t) } },
                                         receiptWritten: { id in self?.onReceipt?(id) })
@@ -440,7 +436,7 @@ final class RestoreRunner: ObservableObject {
         guard phase != .closing, phase != .writing, phase != .undoing, let r = receipt, r.undone == nil, let e = entry, let w = window else { return }
         note = nil
         if let why = DefaultProfile.undoRefusal(receipt: r.id) { note = why; return }
-        if let why = SessionsRestore.blocker(profile: key.profile, except: r.id) { note = why.words; return }
+        if let why = SessionsRestore.blocker(profile: key.profile, except: r.id) { note = why; return }
         // (a re-point after the import changed Code-tab entries: its Undo, which runs first, needs the window closed too)
         // (and a move's history and trust, shared files, are taken back only while it is closed)
         guard r.windowTouched || SessionsRepoint.touchesWindow(restore: r.id) || SideFiles.touchesShared(restore: r.id) else { runUndo(r.id); return }

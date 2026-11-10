@@ -197,8 +197,8 @@ final class RepointRunner: ObservableObject {
             }
         }
         guard needsWindow else { go(); return }
-        if let why = SessionsRestore.blocker(profile: e.id) { busy = false; note = why.words; return }
-        guard SwitchMarker.claim(window, profile: e.id, standby: mark) else { busy = false; note = "A switch or restore of this Claude window is under way; try again once it ends."; return }
+        if let why = SessionsRestore.blocker(profile: e.id) { busy = false; note = why; return }
+        guard SwitchMarker.claim(window, profile: e.id, standby: mark) else { busy = false; note = "A restore of this Claude window is under way; try again once it ends."; return }
         claimed = true
         let apps = SwitchRunner.windowApps(e)
         if apps.isEmpty { go(); return }

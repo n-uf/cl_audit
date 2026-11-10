@@ -786,7 +786,6 @@ enum SessionsRestore {
         var inUse: [String] = []
         var inUseCount = 0
         var deletedCount = 0
-        var afterSwitch: String?            // Undo this switch: the receipt of the switch that was switched back
         var partialCount = 0                // shorter copies of a backup file that were there: left as they were
         var undoLeft = 0                    // an Undo left this many restored transcripts in place (a session holds them): it is still open
         var importedFrom: String?           // an import: the export file's name (the receipt is then "Undo last import")
@@ -801,7 +800,7 @@ enum SessionsRestore {
 
         private enum CodingKeys: String, CodingKey {
             case id, profile, dataDir, codeDir, backup, backupPlace, target, started, planned, finished, undone, stopped, problems,
-                 sidebar, changed, changedCount, inUse, inUseCount, deletedCount, afterSwitch, partialCount, undoLeft, importedFrom, sessionsAdded, entriesAdded,
+                 sidebar, changed, changedCount, inUse, inUseCount, deletedCount, partialCount, undoLeft, importedFrom, sessionsAdded, entriesAdded,
                  setupAdded, configAdded, tasksAdded, tasksAddedCount, tasksRisky
         }
 
@@ -901,29 +900,27 @@ enum SessionsRestore {
 
     // MARK: whether one may start
 
-    /// Why a restore of this profile may not start, or nil: a switch of it that stopped half way (its receipt puts back
-    /// exactly what it moved; then restore if anything is still missing) or another restore that stopped.
-    static func blocker(profile: String, except id: String? = nil) -> (words: String, switchKey: String?)? {
-        if let s = SwitchEngine.unfinished(profile: profile).first {
-            return ("A switch of this profile stopped half way on \(SessionsBackup.dateWords(s.started)). Undo it first: its receipt puts back exactly what it moved; then restore if anything is still missing.",
-                    AccountEntry.switchKey(s.profile, s.standby))
-        }
+    /// Why a restore of this profile may not start, or nil: another restore that stopped half way. (A switch of
+    /// 26.11.12 and earlier that stopped half way no longer blocks: nothing can finish or undo it now, and the Sessions
+    /// card says what it left where.)
+    static func blocker(profile: String, except id: String? = nil) -> String? {
         if let r = unfinished(profile: profile).first(where: { $0.id != id }) {
-            return ("A restore of this profile stopped half way on \(SessionsBackup.dateWords(r.started)). Finish it or undo it first.", nil)
+            return "A restore of this profile stopped half way on \(SessionsBackup.dateWords(r.started)). Finish it or undo it first."
         }
         return nil
     }
 
-    /// A switch (or another restore) that holds this Claude window closed right now (SwitchMarker), or nil. The restore
-    /// that asks is not one: its own mark is `restore-<id>` (its runner's name, passed as `own`) by this process for this profile.
+    /// Another restore (or an import's re-point, the default-profile move) that holds this Claude window closed right now
+    /// (SwitchMarker), or nil. The restore that asks is not one: its own mark is `restore-<id>` (its runner's name, passed
+    /// as `own`) by this process for this profile.
     static func markerBlocker(profile: String, dataDir: String, own: String? = nil) -> String? {
         guard !dataDir.isEmpty, let m = SwitchMarker.current(FolderKey.canonical(dataDir)) else { return nil }
         // exempt: only the mark of the caller itself (each restore runner has its own name, "restore-<id>")
         if let own, m.pid == getpid(), m.profile == profile, m.standby == own { return nil }
-        return "A switch or a restore of this Claude window is under way (since \(SessionsBackup.dateWords(m.started))). Wait for it, or undo it."
+        return "A restore of this Claude window is under way (since \(SessionsBackup.dateWords(m.started))). Wait for it, or undo it."
     }
 
-    /// Whether one switch, restore or import is under way elsewhere (cl_audit's own lock) or claude-transplant is moving
+    /// Whether one restore, import or move is under way elsewhere (cl_audit's own lock) or claude-transplant is moving
     /// sessions (its lock): the words, or nil. Takes the locks and lets go at once. Taking claude-transplant's flock for
     /// that instant can make a `lockf -t 0` caller that starts in that very moment fail once; it is only a look.
     static func busy() -> String? {
@@ -998,14 +995,14 @@ enum SessionsRestore {
     /// an earlier run of the same backup under its receipt (also when nothing is left to write: it is then only closed).
     @discardableResult
     static func run(_ t: Target, _ b: Backup, continuing: String? = nil, foreign: Bool = false, addMemory: Bool = false, addSetup: Bool = false,
-                    addConfig: Bool = false, addTasks: Bool = false, afterSwitch: String? = nil,
+                    addConfig: Bool = false, addTasks: Bool = false,
                     mark: String? = nil, windowClosed: () -> Bool, stop: () -> Bool = { false },
                     progress: ((_ done: Int, _ total: Int) -> Void)? = nil,
                     receiptWritten: ((_ id: String) -> Void)? = nil, now: Date = Date()) throws -> Receipt {
         let lock: SwitchEngine.Lock
         do { lock = try SwitchEngine.Lock.take() } catch { throw RestoreError("\(error)") }
         defer { lock.release() }
-        if let why = blocker(profile: t.profile, except: continuing) { throw RestoreError(why.words) }
+        if let why = blocker(profile: t.profile, except: continuing) { throw RestoreError(why) }
         var old: Receipt?
         if let cid = continuing {
             guard let o = load(cid), o.profile == t.profile, o.backup == b.id, o.undone == nil else {
@@ -1047,7 +1044,6 @@ enum SessionsRestore {
             r = Receipt(id: receiptID(now, t.profile), profile: t.profile, dataDir: t.dataDir, codeDir: t.codeDir, backup: b.id,
                         backupPlace: b.place.path, target: t.inUse, started: now, planned: p.count)
             r.sidebar = p.sidebar
-            r.afterSwitch = afterSwitch
             r.problems += p.notes
             if case .imported(let file)? = p.manifest?.kind { r.importedFrom = file; r.sessionsAdded = p.transcripts.count; r.entriesAdded = p.entries.count }
             r.setupAdded = p.setup.addedNames
@@ -1256,7 +1252,7 @@ enum SessionsRestore {
         guard r.undone == nil else { return r }
         // a default-profile move whose old profile was kept as a standby account or removed: not undone any more
         if let why = DefaultProfile.undoRefusal(receipt: id) { throw RestoreError(why) }
-        if let why = blocker(profile: r.profile, except: r.id) { throw RestoreError(why.words) }
+        if let why = blocker(profile: r.profile, except: r.id) { throw RestoreError(why) }
         if r.windowTouched {
             if let why = markerBlocker(profile: r.profile, dataDir: r.dataDir, own: mark) { throw RestoreError(why) }
             guard windowClosed() else { throw RestoreError("Quit the profile's Claude window first, then Undo.") }
@@ -1437,19 +1433,6 @@ enum SessionsRestore {
         }
     }
 
-    /// Backups an Undo this switch flow still needs: a switch back (its receipt says `undoes`) names the switch it undoes,
-    /// and that switch's backup is what the restore after it reads, until a restore of it has finished (or 30 days pass).
-    static func pendingUndoBackups(profile: String, now: Date = Date()) -> [(id: String, place: String)] {
-        var out: [(String, String)] = []
-        let restores = ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter(validReceiptID).compactMap(header)
-        for back in SwitchEngine.receipts(profile: profile) {
-            guard let u = back.undoes, now.timeIntervalSince(back.started) < 30 * 86400,
-                  let first = SwitchEngine.load(u), let b = first.backup else { continue }
-            if restores.contains(where: { $0.afterSwitch == u && $0.finished != nil }) { continue }
-            out.append((b, first.backupPlace ?? BackupPrefs.placeURL.path))
-        }
-        return out
-    }
 }
 
 /// A receipt written by an earlier build has fewer keys: every one that has a default is read if present, else defaulted
@@ -1472,7 +1455,6 @@ extension SessionsRestore.Receipt {
         inUse = try c.decodeIfPresent([String].self, forKey: .inUse) ?? []
         inUseCount = try c.decodeIfPresent(Int.self, forKey: .inUseCount) ?? 0
         deletedCount = try c.decodeIfPresent(Int.self, forKey: .deletedCount) ?? 0
-        afterSwitch = try c.decodeIfPresent(String.self, forKey: .afterSwitch)
         partialCount = try c.decodeIfPresent(Int.self, forKey: .partialCount) ?? 0
         undoLeft = try c.decodeIfPresent(Int.self, forKey: .undoLeft) ?? 0
         importedFrom = try c.decodeIfPresent(String.self, forKey: .importedFrom)

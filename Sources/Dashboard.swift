@@ -184,7 +184,7 @@ struct DashboardSettings: View {
     var backupsCard: some View {
         let place = BackupPrefs.placeURL
         let custom = !backups.place.isEmpty
-        return SCard(title: "Backups", info: "A backup is a quick copy of a profile's sessions on this Mac, made by every switch that moves them and by Back up now in the profile's Sessions card. It never holds a sign-in. Here: the folder they go to, and how many are kept. Backups already made stay where they were if you change the folder.") {
+        return SCard(title: "Backups", info: "A backup is a quick copy of a profile's sessions on this Mac, made by Back up now in the profile's Sessions card (and, up to 26.11.12, by each switch that moved them). It never holds a sign-in. Here: the folder they go to, and how many are kept. Backups already made stay where they were if you change the folder.") {
             SRow(label: "Where", info: "The folder backups are made in: one folder per profile, one per backup. Clones need the same volume as the Claude window's data; another volume gets full copies, which take longer and more room.", first: true, stacked: true) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text(backups.placeWords).font(.system(size: custom ? 11.5 : 12, design: custom ? .monospaced : .default)).foregroundStyle(face.soft)
@@ -221,7 +221,7 @@ struct DashboardSettings: View {
                 MiniStepper(text: "\(backups.last)", down: { backups.last = max(1, backups.last - 1) }, up: { backups.last = min(50, backups.last + 1) })
                     .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
             }
-            SRow(label: "And any under", info: "Backups made within this many days are kept too. After a switch's backup is made (and after Back up now), the ones past both are deleted; one an unfinished switch names is never deleted. 0 keeps only the last few.") {
+            SRow(label: "And any under", info: "Backups made within this many days are kept too. After Back up now, the ones past both are deleted; one an old switch that stopped half way names is never deleted. 0 keeps only the last few.") {
                 MiniStepper(text: "\(backups.days) days", down: { step(-1) }, up: { step(1) })
                     .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
             }

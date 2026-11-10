@@ -6,7 +6,7 @@
 //                is there now), Stays as it is, Sidebar, Steps
 //   Restoring    step 2 of 3 · 52 of 86 back · Stop, keep what's back
 //   Restored     86 back · nothing overwritten · 3 listed · Undo this restore, Back to Main's settings
-//   Not yet      one thing first · nothing written: a switch that stopped half way, another switch/restore/import, or
+//   Not yet      one thing first · nothing written: a restore that stopped half way, another restore/import/move, or
 //                claude-transplant moving sessions
 //
 // Display colours, as on the Switch page: green = in use / done, mint = under way, amber = waiting or a warning, red = failed.
@@ -248,7 +248,7 @@ struct RestorePage: View {
 
     private func whereWords(_ p: SessionsRestore.Plan) -> String {
         var s = "Entries go into \(entry.windowDataWords), in \(inUse)'s folder, where \(name) works now; never into the folder of an account it no longer uses. Open it from \(entry.desktop == .standard ? "the Dock or Applications" : "\(name)'s Dock icon")."
-        if p.otherAccount > 0 { s += " \(n(p.otherAccount, "was", "were")) on another account in the backup: written as a switch would place them." }
+        if p.otherAccount > 0 { s += " \(n(p.otherAccount, "was", "were")) on another account in the backup: written without their old account's error marks and Remote Control ids." }
         return s
     }
 
@@ -416,7 +416,7 @@ struct RestorePage: View {
 
     private var firstCard: some View {
         let nyt = runner.notYet
-        return SCard(title: "First", info: "A restore waits for what is under way: a switch that stopped half way (Undo puts back exactly what it moved), another switch, restore or import, and claude-transplant while it moves sessions. Nothing is written until then.") {
+        return SCard(title: "First", info: "A restore waits for what is under way: a restore that stopped half way, another restore, import or move, and claude-transplant while it moves sessions. Nothing is written until then.") {
             HStack(alignment: .top, spacing: 10) {
                 ZStack {
                     Circle().stroke(FaceTheme.ledAmber, lineWidth: 1.2)
@@ -426,9 +426,6 @@ struct RestorePage: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(nyt?.title ?? "").font(.system(size: 13, weight: .semibold)).foregroundStyle(face.text).fixedSize(horizontal: false, vertical: true)
                     Text(nyt?.words ?? "").font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                    if let k = nyt?.switchKey {
-                        Button("Open the switch") { model.showSwitch(k) }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize().padding(.top, 2)
-                    }
                 }
             }
             .padding(.vertical, 6)
@@ -439,7 +436,7 @@ struct RestorePage: View {
                 restoreKey
             }
             .padding(.top, 8)
-            SRowLine(text: "One switch, restore or import at a time, and none while claude-transplant is moving sessions.")
+            SRowLine(text: "One restore, import or move at a time, and none while claude-transplant is moving sessions.")
         }
     }
 

@@ -335,8 +335,7 @@ enum DefaultProfile {
                    e.opensFromDock ? "Opens from: Dock click too, as before; a Dock click opens the usual app."
                                    : "Opens from: only when asked, as before.",
                    e.windowFollowsDock ? "With Dock icon: stays on; the usual Claude app opens and quits with the Dock icon."
-                                       : "With Dock icon: stays off; quitting the Dock icon leaves the usual Claude app open.",
-                   "Sessions follow a switch: stays; a switch then moves the usual app's sessions."]
+                                       : "With Dock icon: stays off; quitting the Dock icon leaves the usual Claude app open."]
         if !e.desktopDataDir.isEmpty {
             out.append("\(name)'s old window folder is left as it is (the backup's source, and what Undo needs). Nothing is deleted from it.")
         }

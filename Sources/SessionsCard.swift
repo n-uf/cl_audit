@@ -1,6 +1,7 @@
 // SessionsCard: Settings ▸ a profile ▸ Sessions (after the Claude Code card). What is kept here (Claude Code's
 // transcripts, the Claude window's entries), how long Claude Code keeps its own, and the backups of the profile's
-// sessions (SessionsBackup.swift): made by every switch that moves them and by Back up now, listed here, deleted here.
+// sessions (SessionsBackup.swift): made by Back up now (up to 26.11.12 also by each switch that moved them), listed here,
+// deleted here. A switch of 26.11.12 or earlier that stopped half way is said once, with where it left the sessions.
 // Restore… opens the Restore page (RestorePage.swift): a preview first, nothing written until the key is pressed. Where
 // backups go and how many are kept: General. Export… (ExportPage.swift) makes the sessions one file for another Mac or for
 // keeping; Import… (ImportPage.swift) restores such a file, and Undo last import takes back what the last one added.
@@ -24,6 +25,8 @@ struct SessionsCard: View {
     }
     @State private var backups: [Listed] = []
     @State private var targets: [String: String] = [:]             // backup id → the account its switch went to, short
+    /// A switch of 26.11.12 or earlier that stopped half way, not dismissed yet: said once, with where its sessions are.
+    @State private var oldSwitch: SwitchReceipt?
     @State private var retention = Retention()                     // what Claude Code's clean-up does
     private var days: Int? { retention.menuDays }                  // nil: settings.json's own value can't be told (counted as 30)
     @State private var keepProblem: String?
@@ -43,8 +46,17 @@ struct SessionsCard: View {
     private var switching: Bool { _ = model.tick; return SwitchMarker.blocks(Account(entry)) }
 
     var body: some View {
-        SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. Backups are quick copies on this Mac, made by every switch that moves the sessions and by Back up now; Restore… puts back what is missing, merged, and never overwrites anything. Chats and Projects on claude.ai belong to each account and aren't here.") {
-            SRow(label: "Kept here", info: "What \(name) has on this Mac now: " + Retention.keptHereInfo, first: true, stacked: true) {
+        SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. A switch of account moves none of them: each stays with the account it ran on. Backups are quick copies on this Mac, made by Back up now (and, up to 26.11.12, by each switch that moved the sessions); Restore… puts back what is missing, merged, and never overwrites anything. Chats and Projects on claude.ai belong to each account and aren't here.") {
+            if let s = oldSwitch {
+                SRow(label: "An old switch", first: true, stacked: true) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        note(Self.oldSwitchWords(s, for: entry))
+                        Button("OK") { Self.dismissOldSwitch(s.id); oldSwitch = nil }
+                            .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    }
+                }
+            }
+            SRow(label: "Kept here", info: "What \(name) has on this Mac now: " + Retention.keptHereInfo, first: oldSwitch == nil, stacked: true) {
                 text(keptWords)
             }
             SRow(label: "Keep for", info: Retention.keepForInfo(file: tilde(CodeCleanup.file(entry.configDir))), stacked: true) {
@@ -163,7 +175,7 @@ struct SessionsCard: View {
     private var backupsList: some View {
         VStack(alignment: .leading, spacing: 8) {
             if backups.isEmpty {
-                text("None yet. One is made each time a switch moves \(name)'s sessions, and by Back up now.")
+                text("None yet. Back up now makes one.")
             }
             ForEach(backups) { l in row(l) }
             HStack(spacing: 8) {
@@ -171,7 +183,7 @@ struct SessionsCard: View {
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(working || switching)
             }
             if switching {
-                note("A switch or a restore of \(entry.name) is under way: a switch makes its own backup first.")
+                note("A restore of \(entry.name) is under way: back up once it ends.")
             } else if windowOpen {
                 note("\(entry.name)'s window is open: close it first, or the Code-tab list and sidebar records are left out.")
             }
@@ -254,9 +266,30 @@ struct SessionsCard: View {
             return (list, Self.targets(list.map(\.m), for: e), Retention.read(codeDir: e.configDir))
         }.value
         backups = list; targets = tg; retention = d; keepProblem = d.problem
+        let unfinished = await Task.detached(priority: .utility) { SwitchEngine.unfinished(profile: e.id) }.value
+        oldSwitch = unfinished.first { !Self.oldSwitchDismissed($0.id) }
         let k = await Task.detached(priority: .utility) { SessionsBackup.kept(src) }.value
         SessionsBackup.KeptCache.set(e.id, k)
         kept = k
+    }
+
+    /// What a switch of 26.11.12 or earlier that stopped half way left where: some of the window's sessions sit under the
+    /// account it went to (they show while the window is signed in to it), their originals set aside in cl_audit's own
+    /// folder (switches/<id>/parked), and the backup made before it holds them all as they were. Its Undo is gone with
+    /// the switch that moved sessions: nothing is put back by itself, and its backup is kept from pruning.
+    static func oldSwitchWords(_ r: SwitchReceipt, for e: AccountEntry) -> String {
+        let to = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { r.to.same($0) }?.email.map(AccountNames.short) ?? "the other account"
+        let n = r.moved
+        return "A switch on \(SessionsBackup.dateWords(r.started)) stopped half way: \(n) of the Claude window's \(n == 1 ? "session sits" : "sessions sit") under \(to) now and \(n == 1 ? "shows" : "show") while the window is signed in to it. "
+            + (r.backup != nil ? "The backup made before it (in the list below) holds them as they were: Restore… puts back what is missing. " : "")
+            + "Switches no longer move sessions, so nothing more happens to them."
+    }
+
+    private static let dismissedKey = "oldSwitchSeen"
+    static func oldSwitchDismissed(_ id: String) -> Bool { (UserDefaults.standard.stringArray(forKey: dismissedKey) ?? []).contains(id) }
+    static func dismissOldSwitch(_ id: String) {
+        let d = UserDefaults.standard
+        d.set(Array(Set((d.stringArray(forKey: dismissedKey) ?? []) + [id])), forKey: dismissedKey)
     }
 
     /// For each switch's backup, the account that switch went to (the receipt names it by id; this profile knows both
