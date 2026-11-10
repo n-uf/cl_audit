@@ -123,11 +123,20 @@ same way; that is how Claude Code stores it. cl_audit makes it neither safer nor
 only software you trust. cl_audit's code is open to check: `Login.read` in `Sources/Model.swift` and
 `request` in `Sources/Reader.swift`.
 
+**One sign-in per profile.** cl_audit reads only the sign-in of the account in use in each profile's folder. A
+profile's standby accounts have no sign-in kept anywhere: switching to one is Claude Code's own sign-in again, in
+Terminal and the browser. The Claude Code folders 26.11.12 and earlier made for standby accounts' sign-ins are listed
+with **Move to Trash…** (see [Profile settings](#profile-settings)); their Keychain items are named so you can delete them
+in Keychain Access, and cl_audit never touches them.
+
 ## Words used here
 
 - **Profile:** one Claude setup in cl_audit: its Claude Code folder and sign-in, and, if you want them, a Dock
   icon and a Claude window. **Account** means only the claude.ai account a profile is signed in to: each
   profile is linked to one account seat (account and organisation), and no two profiles share one.
+- **In use / standby:** a profile's folder holds one signed-in account at a time, the one **in use**; the profile's
+  other accounts are **standby**: remembered on it, signed out, never read. A **switch** signs Claude Code in again on
+  the same folder as one of them.
 - **Usage only:** a profile with **Usage in the Dock** and **Claude window** both off: its usage shows on the
   dashboard, in the launcher and in alerts, with nothing in the Dock and no window.
 - **Dock icon:** the profile's own small app ("cl_audit &lt;profile&gt;") that shows its usage. It only shows:
@@ -213,124 +222,62 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
 - The same box is in the details panel; the launcher shows the countdown; the Dock icon's menu starts with "5-hour
   full · back at 15:28, in 1h 42m"; the Dock icon itself becomes the countdown (the time large, "5H FULL" under
   it, a crimson frame).
-- **Another account with room.** When the profile has other accounts (Settings ▸ the profile ▸ Claude Code ▸
-  Accounts), only the one in use is lit. The card shows the others as **unlit trays** under its limits, most room
-  first, their levels dimmed, each on a compact line (the address, STANDBY, then its 5-hour and week rows). An
-  account with no numbers (no sign-in kept for it) stays off the card. **While a limit is full, the tray with the
-  most room is selected already**: its row lights mint across the card with the lit bar, and its STANDBY display
-  becomes the lit **Switch account** key, which opens the Switch page with that account picked; a click on another
-  tray picks it instead. **With room left nothing is selected**: a click selects a tray, a second click deselects it
-  (as in Settings). The alert adds "The other account has 92% of its week left" with **Switch account…** (and
-  Later): alerts reach the lock screen, so they never name an account by its address or any part of it. Room means
-  current numbers too: an account whose sign-in ran out, or whose numbers are older than three of the profile's read
-  intervals, isn't preselected. **The menus** (the menu bar icon's and the Dock icon's, with the same items) show the
-  account in use under the profile's name with a lit green lamp ("ultra-1 · in use"; the Dock menu's first line reads
-  "Claude Main · ultra-1 in use") and have **Switch account ›**, a submenu with the account in use ticked ("in use ·
-  week 94%") and every other account, most room first, each with its week ("week 12%", or "no numbers"; one not linked to its account yet is greyed, "· sign in first"). While a limit
-  is full, the best one also sits on the top level, "Switch to ultra-3…  week 12%": right under the full line in the
-  Dock menu, first in the menu bar menu's actions. All of them
-  open the **Switch page** in cl_audit: the account in use (NOW) and, under TO, every other account with their
-  limits, most room first, the one it was opened for picked in mint (click another to switch to it instead; the
-  answers given so far go with it); what stays (name, Dock icon, look; the folder with its projects, settings, MCP
-  and CLAUDE.md; Claude Code's history); the sessions (the Claude window's sessions in the sidebar, its sections and
-  groups, pins and scheduled tasks, counted from the window's own files) with **Move them?**: **Move to ultra-2** or
-  **Leave with ultra-1**, asked every time with nothing chosen; with **Move to ultra-2**, a **Backup** card (below);
-  and the steps. A short name is the address before the @, its first letter only while emails are hidden (and in the
-  menus).
-- **A switch waiting for you.** At the steps only you can do (Claude Code's sign-in in the browser, the Claude
-  window's own sign-in, the Return in the sidebar session), the Switch page waits out of sight when the browser or
-  the Claude window is in front. Then, once per step and only while the page isn't in front (cl_audit's window isn't
-  the key window, or another page is selected), one alert says which: "Claude Main: the switch is waiting for you ·
-  Step 3 of 5: finish the sign-in in the browser. cl_audit checks the account before it goes on." Its keys are
-  **Show switch** (opens that switch's page) and **Cancel switch** (Claude Code's sign-in only: the sessions go back;
-  after linking there is nothing to cancel, so **Show switch** alone); a plain click on it is Show switch too. It
-  goes when the step moves on, the switch ends or the page comes to the front, never outlives cl_audit, and follows
-  the profile's alerts. Several switches (one per profile) each have their own alert. A step that is over in a moment
-  never alerts (it must be seen twice in a row), nor does the window's sign-in of a profile without a Claude window,
-  nor the Return step before its session is open or after its link missed. Like every alert it names no account.
-- **Switching.** **Close and switch to ultra-2** (once the sessions question is answered) does it in order, each
-  step checked before the next:
-  1. Only that profile's Claude window closes, gracefully (it may ask about work under way; nothing is forced, and
-     if it doesn't close, nothing moves). From here until the profile is switched or the switch is undone, nothing
-     opens that window again (its Dock icon, the menu bar, cl_audit's rules and reopening after a Claude update all
-     wait; a click shows the switch instead), and a second switch of it is refused. This holds only while that
-     cl_audit runs.
-  2. With **Move to ultra-2**, a **backup** of the sessions is made first, right after the window is known closed
-     and before anything moves (see [Backups](#backups-of-a-profiles-sessions)); if it can't be made, the switch
-     stops with nothing moved. Then its Code sessions and scheduled tasks move to ultra-2 the way
-     [claude-transplant](https://github.com/vitaliyhayda/claude-transplant) moves them: same ids, each entry kept byte
-     for byte or re-encoded without the old account's error keys and Remote Control ids, through a write that can't
-     overwrite, checked, and only then the original parked in cl_audit's folder (`switches/<id>/`), never deleted.
-     Both task files are backed up; the old account's is emptied first, then ultra-2's gets them, so a task never
-     runs in both. One switch at a time, and none while claude-transplant runs (its own lock is held meanwhile).
-     Sessions the other account already has, or deleted, stay where they are. A receipt (accounts by id, never by
-     address) says what each step will do before it does it, so Undo puts back whatever got done, also after a stop
-     or a crash: the Switch page shows a switch that stopped half way with **Undo**, and a new switch waits for it.
-     A session whose Claude Code transcript still points at the old account's Remote Control copy gets Claude Code's
-     own empty pointer line, in one append, and only when nothing is writing that transcript (changed in the last
-     seconds, open in a program, or Claude Code running that session: left as it is; a Claude Code session is seen
-     by its id on the command line, `--resume <id>` or `--session-id <id>`, not one resumed from its own picker,
-     which the first two checks cover); Undo takes the line off again if it's still the transcript's last bytes.
-     claude-transplant's lock file is made if it isn't there yet, so a first claude-transplant run waits too.
-  3. Claude Code's own sign-in opens in Terminal for the profile's folder, with ultra-2's address filled in: finish
-     in the browser. Until then **Cancel switch** puts the sessions back from the receipt. cl_audit never copies
-     or moves a stored sign-in.
-  4. Once the folder is signed in as ultra-2, the profile works on it (name, Dock icon, folder, projects and
-     settings stay); the account it was on joins standby, with the folder that kept its own sign-in if it had one.
-     Each account takes its own last numbers with it, and numbers read for one account never show under another's
-     name (until the next read, an account without its own shows none).
-  5. The window opens again; log out there and sign in as ultra-2. Once it's on ultra-2, a new Code session opens
-     in it, named "cl_audit · arrange sidebar", with a prompt filled in: press Return, and it puts the moved
-     sessions back in their groups (made by the same name where ultra-2 has none) and pins them again, with the
-     app's own sidebar tools, then archives itself. When the window would ask before moving sessions (its
-     permission mode there isn't auto), the step says so: allow them. cl_audit sends the link to that window's own
-     process, not through `open`, so it never lands in another Claude window; the first time, macOS asks to let
-     cl_audit control Claude. Without that leave, it opens the link the usual way only when no other Claude window
-     runs, and otherwise says what to do.
-  The sidebar's groups, order and pins are kept by claude.ai for each account (synced per organisation), so
-  cl_audit doesn't write them: before the move it notes, from the window's own copy, which group each moved session
-  sat in, in what order, and which were pinned (in the receipt). The prompt holds only session ids, group names and
-  their order: no address, title or transcript. Run again, it changes nothing; in a window that doesn't have those
-  sessions, it changes nothing either. Groups none of the moved sessions sat in aren't made. The way back is the same
-  switch the other way.
-- **The Backup card.** Shown while the answer is **Move to ultra-2**. Before the switch: **When** (every time the
-  sessions move, right after the window closes and before anything moves), **What** (the window's Code-tab list for
-  both accounts with its scheduled tasks, its sidebar records, cl_audit's records), **Transcripts** (a switch:
-  "Claude Code's too, 310", on by default; fixed once the switch starts) and **Takes** ("a few seconds, as clones";
-  on another volume it says it's a full copy and how big), then what's never in a backup. During and after: "Made ·
-  Before switch to ultra-2 · 5 Nov 18:40 · 3 s", and step 1 reads "Main's Claude window closed, backup made" with a
-  check "Backup · 3 s ✓". The switch's receipt names the backup and the backup names the receipt, so Undo and the
-  backup point at each other; Undo leaves the backup where it is. After a switch's backup is made, the backups past
-  the number kept (General ▸ Backups) are deleted, never one a half-done switch names.
-- **While it runs.** The page keeps every block; only the steps move on. Display colours mean one thing each: green
-  is the account in use, mint is switching and the account switched to, amber is waiting for you or a warning, red
-  is a failure; only the account in use is lit. A step under way is mint, one waiting for you amber, a done one a
-  green tick, a failed one red. Each sign-in shows what its check saw ("Claude Code · ultra-2 ✓", "Window · ultra-1 ·
-  not ultra-2"), compared by account, never by name. The line at the top says how far it got ("Switching · step 3
-  of 5 · Claude Code") and holds the keys that lead out: **Cancel switch** (a red lamp, always in sight: while the
-  window closes, and until Claude Code has signed in, when it puts everything back), then **Undo this switch…** (the
-  switch the other way, then what the switch changed comes back from its backup: see
-  [Restoring a backup](#restoring-a-backup)) once the profile is on ultra-2, and at Done "Main works on ultra-2 · ultra-1 on standby"
-  with **Back to Main's settings**. Cancelled while the window was asked to quit, the window opens again if it
-  closes anyway. When something fails, that step turns red and the line says where it stopped: the window didn't
-  close (nothing moved), stopped half way (**Undo**), signed in as another account, the sidebar session didn't
-  open, cancelled (**Close and switch** starts it again), or Undo itself stopped (**Try Undo again**; the receipt
-  keeps the rest). Beside the profile's tile in Settings a display says the same in two lines: "Switch from ·
-  ultra-1" while the page is open, "Switching ● · to ultra-2" in mint while it runs, "Switched to · ultra-2" at
-  Done, and "Stopped half way · Undo it" in amber, with the page closed too, until it's undone. One switch of a
-  profile runs at a time: while one does, every way to the Switch page leads to it.
-- **The other account is back.** When a standby account's full limit resets (ultra-1's week, after the profile
-  switched to ultra-2), one alert says so: "Claude Main: the other account is back · Its week starts again" (no
-  address, as with every alert), with **Switch back…** and **Stay**; it follows the profile's Notify when back. The
-  card gets a row, "ultra-1 is back: its week starts again", with **Stay** and **Switch back to ultra-1…**, and the
-  Dock icon's and menu bar icon's menus list **Switch back to ultra-1…** above Switch account ›. The agent watches it from the
-  account's last numbers: with a folder of its own, numbers read after the reset, current and not full (a reset
-  that comes late waits for that read); without one, whose numbers nothing reads after a switch, once the reset
-  time it last saw has passed. Missing numbers never count as "not full". Stay takes the offer away until it comes
-  back again (if Stay starts cl_audit, it shows nothing and quits again); it goes by itself when the account fills
-  up again or is switched to. **Switch back** opens the Switch page ("Switch Claude Main back to ultra-1"), the same switch the other way:
-  every session in the window's sidebar goes back, those started on ultra-2 too, and the sidebar step puts them in
-  their groups again (ultra-1's groups are still there, by their ids).
+- **Another account.** A profile is one Claude Code folder, and the folder holds one signed-in account at a time: the
+  one **in use**. The profile's other accounts (Settings ▸ the profile ▸ Claude Code ▸ Accounts) are remembered on it,
+  **signed out**: no folder or Keychain item of their own, nothing reads them, so they show no usage. The card shows
+  them as **unlit trays** under its limits, one line each: the address, STANDBY, then its plan and when it was last in
+  use ("Ultra · last in use 3 days ago"; "week full when it left" while the week it left with full hasn't started
+  again). They come in the order a full limit offers them: those not known to be full first, the least used by the
+  week they left with, then the most recently in use. **While a limit is full, the first is selected already**: its
+  row lights mint across the card with the lit bar, and its STANDBY display becomes the lit **Switch account** key,
+  which opens the Switch page with that account picked; a click on another tray picks it instead. **With room left
+  nothing is selected**: a click selects a tray, a second click deselects it (as in Settings). The alert adds "Switch to
+  another of its accounts: Claude Code on its folder signs in again." with **Switch account…** (and Later): alerts
+  reach the lock screen, so they never name an account by its address or any part of it. **The menus** (the menu bar
+  icon's and the Dock icon's, with the same items) show the account in use under the profile's name with a lit green
+  lamp ("ultra-1 · in use"; the Dock menu's first line reads "Claude Main · ultra-1 in use") and have **Switch account
+  ›**, a submenu with the account in use ticked ("in use · week 94%") and every other account in the same order, each
+  with when it was last in use ("3 days ago", or "week full"). While a limit is full, the first one not known to be full
+  also sits on the top level, "Switch to ultra-3…": right under the full line in the Dock menu, first in the menu bar
+  menu's actions. All of them open the **Switch page** in cl_audit. A short name is the address before the @, its first
+  letter only while emails are hidden (and in the menus).
+- **The Switch page.** The account in use (NOW, lit, with its limits) and, under TO, the account picked (in mint) and the
+  profile's other accounts below it (click another to switch to it instead); **What changes**: Claude Code in Terminal
+  and editors on the profile's folder moves to that account, sessions running now included (for a folder other than
+  `~/.claude`: Claude Code pointed at it with `CLAUDE_CONFIG_DIR`), and the Claude app keeps its own sign-in; the
+  sessions stay in the folder, each with the account it ran on (one started on ultra-1 isn't continued on ultra-2); the
+  Claude window's own sign-in, sessions, sidebar and scheduled tasks stay as they are; the profile's name, Dock icon,
+  look, folder and settings stay; the account it leaves stays on the profile as a standby account. Then the steps and
+  **Switch to ultra-2**.
+- **Switching** is signing in again on the same folder, as the other account, the way
+  cl_quick does: Claude Code's own sign-in opens in Terminal for the profile's folder
+  (`claude auth login --claudeai --email <address>`, with `CLAUDE_CONFIG_DIR` unset for `~/.claude` and set for any other
+  folder, and a key or another provider the shell's settings name unset), finished in the browser. The browser's
+  claude.ai account decides which account signs in, so cl_audit checks: it looks at the folder's `.claude.json` every
+  2 seconds, for up to 10 minutes, until its account changes. **Reached** ("Main works on ultra-2 · ultra-1 on
+  standby", with Switch back to ultra-1… and Back to Main's settings); **another account** ("Signed in as ultra-3 · not
+  ultra-2": the profile works on ultra-3 now, ultra-1 stands by; Sign in as ultra-2 again, after switching the
+  browser's account, or Keep ultra-3); **timed out** ("No sign-in · 10 minutes passed · nothing changed", with Try
+  again). Signed out for a moment while you sign in is still waiting. **Cancel** stops waiting: nothing changed, so
+  there is nothing to put back. Nothing moves: no session, sidebar, scheduled task or file, and the Claude window
+  isn't closed or touched. cl_audit never sees a password or a token, and never copies, moves or reads a sign-in.
+  Beside the profile's tile in Settings a display says the same in two lines ("Switching ● · to ultra-2" in mint while it
+  waits; "Switched to · ultra-2"; "Signed in as · ultra-3"). One switch of a profile at a time.
+- **The folder's account is the one in use, whoever signed it in.** Run `claude auth login` yourself in Terminal, or
+  sign in from another app on the same folder: within seconds the profile works on that account and the one before
+  stands by (the agent notices it too while cl_audit's window is closed). One account belongs to one profile: an account
+  another profile works on is refused (the card says whose, and the profile's numbers wait until its folder is on one of
+  its own); an account on another profile's standby list moves to this one, said on both profiles' Accounts card.
+- **A switch waiting for you.** While Claude Code's sign-in waits in the browser, the Switch page is easy to lose behind
+  it. Then, only while the page isn't in front, one alert says so: "Claude Main: the switch is waiting for you · Finish
+  Claude Code's sign-in in Terminal and the browser. cl_audit checks the account when it's done." with **Show switch**
+  and **Cancel switch**; a plain click on it is Show switch too. It goes when the switch ends or the page comes to the
+  front, never outlives cl_audit, and follows the profile's alerts. Like every alert it names no account.
+- **Switches from 26.11.12 and earlier** moved the Claude window's sessions to the other account and made a backup first.
+  Their backups stay listed and restorable (Settings ▸ the profile ▸ Sessions). One that stopped half way can't be
+  finished or undone any more: the Sessions card says once how many of the window's sessions sit under which account
+  (they show while the window is signed in to it) and that the backup made before it holds them as they were;
+  **Restore…** puts back what is missing. That backup is never pruned.
 
 ### Widget
 
@@ -398,7 +345,7 @@ cl_audit stays in the Dock as a launcher:
 | Click | The profile's click action; by default its usage for 3 s while its Claude window opens |
 | Double-click or ⌥-click | The details panel: both limits with bars and reset times, the sign-in, Open Claude, Sign in, Refresh, Settings |
 | Press and hold | The details panel next to a short Dock menu (on by default, per profile) |
-| Right-click | The menu: numbers, reset times, the sign-in, and actions (Switch account › with each of the profile's other accounts and their weeks (and, while a limit is full, Switch to … for the best one), Quick chat, Open or Show Claude window, Quit Claude window, Refresh now, Dashboard, Profile settings…, and Quit and keep Claude window when the window follows the Dock icon) |
+| Right-click | The menu: numbers, reset times, the sign-in, and actions (Switch account › with each of the profile's other accounts and when it was last in use (and, while a limit is full, Switch to … for the one offered first), Quick chat, Open or Show Claude window, Quit Claude window, Refresh now, Dashboard, Profile settings…, and Quit and keep Claude window when the window follows the Dock icon) |
 
 A Dock icon draws what the agent saved for its profile, and asks the agent for Refresh now. With the sign-in expired or
 signed out, its one key is Log in… (Claude Code's own sign-in in Terminal).
@@ -425,7 +372,8 @@ and follows a switch.
   A model may still answer at once when it judges the question needs no thinking.
 - **The account line:** the profile, the address of its account in use (masked unless Privacy shows addresses) and its
   week, in the level colours; the bar shows the profile and the week. When a limit is full, it says so before you
-  send and offers **Switch account…** for the standby account with the most room, through the Switch page; what you
+  send and offers **Switch account…** for the standby account offered first (not known to be full, the least used by
+  the week it left with), through the Switch page; what you
   typed goes once the switch is done.
 - **When something goes wrong:** if Claude Code stops mid-answer, the window keeps what arrived, says what happened and
   offers Retry. Claude Code not installed, or the profile not signed in, says so with a way to fix it.
@@ -489,86 +437,59 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   **Shared** (what the folder links to from another one: instructions, agents, skills, commands, memory and
   history). Shared is read-only here: cl_audit never moves or deletes real files, so a grey line says to change the
   links in the folder in Finder. The card's labels sit above their values (it stacks in any column under 480 pt,
-  which in Settings is every column), so accounts and paths get the card's full width. Folders other profiles use
-  (their own or one keeping a standby sign-in) are marked and can't be picked. The Claude window follows from the
+  which in Settings is every column), so accounts and paths get the card's full width. Folders other profiles use are
+  marked and can't be picked. The Claude window follows from the
   folder (see Profile above); it isn't a setting.
 
-  **Accounts** lists the profile's claude.ai accounts, one box each. A profile works on one at a time, marked
-  **IN USE**: the one Claude Code in its folder is signed in to. The others are **STANDBY**. Each box shows the
-  address, the plan and organisation ("Ultra · Personal"), and every limit its plan has as bars, drawn like the
-  dashboard's (Ultra: week and Fable; Max: 5-hour, week and Fable; Pro: 5-hour and week; usage credits while it
-  spends them). A standby account's limits come from a sign-in kept for it in a small Claude Code folder of its own
-  (say `~/.claude-ultra-2`), read like the profile's own, so you can see which account has room, but only while
-  that folder is signed in to the account cl_audit linked: one signed in to another account, or not linked yet, isn't
-  read. When that kept sign-in has run out, or its folder is gone, its old numbers aren't shown anywhere (not in its
-  box, the card's trays or the menus): the box says when they were last read, with **Sign in again**. A folder that
-  isn't there is never read, and cl_audit never starts Claude Code for it (not Renew sign-in, logout, quick chat,
-  Terminal or the Claude window), so a folder you deleted isn't made again; a sign-in you start makes its new folder
-  first, and never goes through a link. Only the account in use is lit ("Main works on it"); the standby accounts are unlit,
-  most room first. Click one below its address to select it: its row lights in mint, and a **Switch account** key
-  takes the place of STANDBY and opens the Switch page (click again to deselect). The order holds still while one is
-  selected.
-  - **Every account keeps a folder of its own.** With more than one account, the account in use gets one too
-    (**Sign in…** in its box: "Keep its limits showing after a switch: sign it in once to a folder of its own"; one
-    confirmation in the browser). Once that folder is signed in to it, the profile's numbers come from there, renewed
-    by itself, instead of from the working folder, which still signs in again at each switch. So both accounts' limits
-    stay live whichever is in use; nothing moves between Keychain items, it's one more sign-in, once per account. The
-    box then says "Its limits come from a sign-in kept for it, renewed by itself." Log in… and the Dock icon's log-in
-    sign in the folder the numbers come from.
-  - Before a switch leaves an account without a folder of its own, the Switch page asks first: "Keep ultra-1's limits
-    showing after the switch" with **Sign in ultra-1…** or **Skip**. Skipped, that account's box on standby says when
-    it was last read, with **Sign in again**, and shows no numbers.
+  **Accounts** lists the profile's claude.ai accounts, one box each. A profile is one Claude Code folder, and the folder
+  holds one signed-in account at a time: **IN USE**, the one Claude Code in its folder is signed in to, lit, with
+  the plan and organisation ("Ultra · Personal") and every limit its plan has as bars, drawn like the dashboard's
+  (Ultra: week and Fable; Max: 5-hour, week and Fable; Pro: 5-hour and week; usage credits while it spends them). The
+  others are **STANDBY**: remembered on the profile, signed out, with no folder or Keychain item of their own. Nothing
+  reads them, so a standby box shows no limits: its plan and when it was last in use on the profile ("Last in use on
+  Main 3 days ago"; "its week was full when it left" while that week hasn't started again), or "Remembered by its
+  address: it signs in when you switch to it". They come in the order a full limit offers them. Click one below its
+  address to select it: its row lights in mint, and a **Switch account** key takes the place of STANDBY and opens the
+  Switch page (click again to deselect). The order holds still while one is selected.
   - The **account in use** box shows the profile's **active account** (see
     [Which account is in use](#which-account-is-in-use)): its lamp is green while it is in use, grey when only Claude
-    Code's account can be shown (the Claude app signed out or unreadable), and a clock marks a sign-in that ran out; a
-    long address is cut at its end. Its address is a pop-up with the account Claude Code in the folder is signed in to,
-    ticked, and **Renew sign-in by itself** (opt-in, see the (i)). Signed in to another account in Terminal, the numbers
-    still show, saying whose they are, and that account is never listed on standby at the same time. The note and key
-    about the stored account's own kept folder show only while that account is the one in the box. If another profile has the account Claude Code's folder is signed in to,
-    the line under Accounts names it, with **Open** it instead: one profile per account. Anything else needing a word gets one grey line. A
-    **Claude window** row says when the profile's window is signed in to another account than its Claude Code
-    (only the account id is known, from the window's `config.json`; the usual Claude app is checked too). For a
-    week after linking, the line under Accounts says when, which account it was and what stays with it, and that
-    **New profile** gives the old account a profile again. See
-    [Moving a profile to another account](#moving-a-profile-to-another-account).
-  - A **standby** account's address is a pop-up with **Sign in…** (again) and **Remove from <profile>**, which
-    takes it off the profile and leaves its folder and the sign-in in it as they are. Without a sign-in kept, its
-    box says "Limits unknown: no sign-in kept for it" with **Sign in…**, which makes its folder and opens Claude
-    Code's own sign-in in Terminal with the address filled in; once done, its limits show and its sign-in renews by
-    itself. A folder signed in to the wrong account, or to another profile's, says so in the box.
+    Code's account can be shown (the Claude app signed out or unreadable), and an account in use is never listed on
+    standby at the same time. Its address is a pop-up: it ticks the account Claude Code in the folder is signed in to
+    (red with a warning sign inside when it is another profile's account; a clock when the sign-in ran out; a
+    long address is cut at its end), then **Sign in again…** (Claude Code's sign-in in Terminal with its address
+    filled in, watched like a switch: "Signing in again" until Claude Code's login ends well) and **Renew sign-in by
+    itself** (opt-in, see the (i)). Whatever account signs in to the folder, from cl_audit or Terminal, is the one in
+    use, by itself: the one before joins standby. If another profile works on that account, the line under Accounts
+    names it, with **Open** it instead: one profile per account, and the profile's numbers wait until its folder is on
+    one of its own. An account that came from another profile's standby list (or left for another profile) says so in
+    one line with **OK**. A **Claude window** row says when the profile's window is signed in to another account than
+    its Claude Code (only the account id is known, from the window's `config.json`; the usual Claude app is checked
+    too): a switch leaves the window's own sign-in alone. For a week after a switch, the line under Accounts says when,
+    which account it was and what stays with it. See [Moving a profile to another account](#moving-a-profile-to-another-account).
+  - A **standby** account's address is a pop-up with **Switch to it…** and **Forget…** (asks first; it only takes the
+    account off the profile, nothing on this Mac changes, and Add account can bring it back).
   - **Add account** opens a pop-up (macOS's own menu) of what it finds on this Mac, two lines a row: the address,
-    then in grey what is known about it. One click adds it. Accounts signed in in Claude Code folders no profile uses
-    ("Ultra · Personal · signed in, ~/.claude-ultra-3 · limits once added") and the accounts this profile's Claude
-    window has used, with their addresses from Claude Code's records ("Pro · Personal · needs a sign-in · used in
-    Main's window in August"); other profiles' accounts are greyed and can't be added ("Work's · one profile per
-    account"). Found accounts show no usage: cl_audit reads limits only for a profile's own accounts. Old or team
-    accounts the window once used are only listed, never added by themselves. **Sign in to another account…** (last in
-    the pop-up) turns the key into the address and **Sign in**: cl_audit makes a folder for it, named under the field
-    ("in a folder of its own (~/.claude-ultra-4); Main keeps working meanwhile"), and opens Claude Code's own sign-in
-    there in Terminal. An account belongs to one profile; no sign-in is ever copied between folders. New profile still
-    starts with one account.
-  - **A new account is a standby box from the start**, its display and one line saying what's left. **Signing in**
-    (mint): "Finish the sign-in in the browser, as ultra-4@example.com." with **Cancel** (takes it off the profile
-    again; its folder stays) and **Show Terminal**. **Wrong account** (amber), when Claude Code's sign-in in its
-    folder is the profile's own account or another profile's: "The browser signed in as ultra-1, not ultra-4. Switch
-    the browser's account, then sign in again." with **Cancel** and **Sign in again…**; cl_audit sees only what Claude
-    Code recorded in the folder, not the browser, so it names the account the sign-in came back as. A sign-in to any
-    other account is simply the account it names, linked within seconds. A sign-in under way for 15 minutes with
-    nothing new in the folder turns amber, **Not finished**: "The sign-in didn't finish. Sign in again, or cancel."
-    with **Cancel** and **Sign in again…**. cl_audit remembers (in memory only, nothing is saved) which account the
-    folder was signed in to when you clicked Sign in…, and the sign-in is under way until that changes; after a restart
-    of cl_audit it goes by the dates of the Terminal script each sign-in writes and of the folder's record. An account
-    already linked (found as needing a sign-in, or signed in to another account since) shows the same states without
-    **Cancel**: only an account with no seat yet can be taken off with it; Remove from the address menu does it for
-    any. **Standby**: "No numbers yet: cl_audit reads them within a few minutes, from the sign-in kept in its folder."
-    until its limits show; it is renewed while its folder is there, and once that kept sign-in runs out all the same, "Last read … Sign in again to
-    read it." and no numbers.
+    then in grey what is known about it. One click remembers it on the profile, signed out: nothing signs in and no
+    folder is made. Accounts signed in in Claude Code folders no profile uses ("Ultra · Personal · signed in at
+    ~/.claude-ultra-3") and the accounts this profile's Claude window has used, with their addresses from Claude Code's
+    records ("Pro · Personal · used in Main's window in August"); other profiles' accounts are greyed and can't be added
+    ("Work's · one profile per account"). **Another address…** (last in the pop-up) turns the key into the address and
+    **Remember**: "Remembered on Main, signed out: it signs in when you switch to it." An account belongs to one
+    profile; no sign-in is ever copied. New profile still starts with one account.
+  - **Folders from before.** Up to 26.11.12 cl_audit kept a standby account's sign-in, and the account in use's when it
+    had standby accounts, in a small Claude Code folder of its own (`~/.claude-ultra-2`). Those folders aren't used any
+    more. Each one that is still there (a plain folder in your home folder that no profile uses) is listed under
+    Accounts with **Move to Trash…** and **Keep it**. Move to Trash asks first and names the folder's Keychain item
+    ("Its sign-in stays in your Keychain as “Claude Code-credentials-1a2b3c4d”: delete that in Keychain Access if you no
+    longer need it"); cl_audit never touches that item, never signs the folder out, and never deletes a folder by
+    itself. Keep it stops asking.
+  - A folder that isn't there is never read, and cl_audit never starts Claude Code for it (not Renew sign-in, logout,
+    quick chat, Terminal or the Claude window), so a folder you deleted isn't made again; a sign-in you start makes its
+    new folder first, and never goes through a link.
 
-  Whether the Claude window's sessions go with the account (the sessions, the sidebar's sections and groups, pins
-  and scheduled tasks) isn't a setting: the Switch page asks every time, with nothing chosen. As on every card, the
-  pop-ups and fields fill their width, so their right edges line up; the
-  address row is one line with Sign in and Cancel at its end (Cancel is a × when narrower), or, narrower still, the
-  address on its own line with Sign in and × under it.
+  As on every card, the pop-ups and fields fill their width, so their right edges line up; the
+  address row is one line with its key and Cancel at its end (Cancel is a × when narrower), or, narrower still, the
+  address on its own line with its key and × under it.
 - **Sessions** (after Claude Code): what the profile keeps and the backups of it.
   - **Kept here:** "310 in Claude Code · 84 in the Claude window (24 in the sidebar) · 5.6 GB · since 6 Oct. Claude
     Code deletes terminal sessions 30 days after their last use; ones from the Claude window it keeps (Claude Code
@@ -590,7 +511,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   - **Backups:** one row each, "Before switch to ultra-2 · 5 Nov 18:40" over "84 sessions · 12 tasks · sidebar ·
     transcripts · 5.5 GB, sharing space with the originals" (on another volume: "a full copy"). **Restore…** opens
     the Restore page on that backup (see [Restoring a backup](#restoring-a-backup)). The **⋯** menu has **Show in Finder** and **Delete…**, which
-    asks first and refuses a backup that a half-done switch names, or whose switch's receipt can't be read. **Back up now** makes one: with the profile's window open it says "close it first, or the Code-tab
+    asks first and refuses a backup that an old switch which stopped half way names, or whose switch's receipt can't be read. **Back up now** makes one: with the profile's window open it says "close it first, or the Code-tab
     list and sidebar records are left out" and backs up only what is safe, Claude Code's transcripts and cl_audit's
     records. A line under the list says how many are kept (General ▸ Backups).
   - **Export:** **Export…** opens the Export page (see [Exporting a profile's sessions](#exporting-a-profiles-sessions)); the
@@ -781,7 +702,7 @@ carries a note when the account in use is also the one the usual app uses; **Not
 (including `~/.claude`), and for a `~/.claude` profile without a sign-in next to a profile on its own window. It does
 not show when the usual app already belongs to a signed-in profile. The page lists what each step does and what each
 window-dependent setting becomes (Claude window stays as it is, and is now the usual app; Dock icon, Open Claude and
-the menu bar icon open the usual app; Opens from, With Dock icon and Sessions follow stay as set).
+the menu bar icon open the usual app; Opens from and With Dock icon stay as set).
 
 - **A profile already on `~/.claude`** (a sign-in exists): window data only. No sign-in step and no transcript move,
   since it is the same Claude Code folder. Both Claude windows are closed (the usual app's and the profile's own),
@@ -790,16 +711,18 @@ the menu bar icon open the usual app; Opens from, With Dock icon and Sessions fo
   (`~/Library/Application Support/Claude-<profile>`) into the usual app's (`~/Library/Application Support/Claude`):
   every entry, not only an import's, by the restore engine, merging and never overwriting. An entry the usual app
   already has by id stays exactly as it is and is listed; one missing is written into the account folder the profile
-  works on, as a switch would place it. A helper session then arranges the sidebar groups, as after a switch.
+  works on, without its old account's error keys and Remote Control ids. A helper session then arranges the sidebar
+  groups.
 - **A profile on another folder** (`~/.claude-account` with its own window): step one signs Claude Code into
   `~/.claude` (its own login, in Terminal, with the old profile's address filled in; cl_audit never moves or copies a
   sign-in). The `~/.claude` profile is the one already in the list, or is made then. Then the same moves, plus the old
   profile's transcripts into `~/.claude/projects` (never over one that is there). The What moves card says, as the
   Restore page does, how many of those transcripts Claude Code's clean-up would delete again where they land (**Would
   be deleted**, by the Sessions card's rule and `~/.claude`'s settings; the row isn't there when none would be), and the
-  restore's own page says the same with its **Keep for 90 days** key. Last, the old profile can stay as a
-  standby account of the default profile (its folder and sign-in untouched; only when it is another Claude account),
-  or be removed with the usual remove flow (which signs its folder out of Claude Code).
+  restore's own page says the same with its **Keep for 90 days** key. Last, the old profile's account can stay as a
+  standby account of the default profile (remembered, signed out; only when it is another Claude account): its folder
+  and sign-in stay exactly as they are, and the default profile lists the folder under **Folders from before**; or the
+  old profile is removed with the usual remove flow (which signs its folder out of Claude Code).
 - **Nothing is deleted** from the old window's folder: it stays as the backup's source and for Undo.
 - **Undo this move** (on the page, or **Undo this restore** on the move's restore page) takes back exactly what was
   added, only files unchanged since, and puts the profile's window kind back (and removes a `~/.claude` profile the
@@ -840,9 +763,9 @@ another profile shares items from are never deleted, and Claude must be closed f
 ### Backups of a profile's sessions
 
 A backup is a quick copy of a profile's sessions on this Mac, in `<backups folder>/<profile id>/<backup id>/` with a
-`backup.json` that says what is in it. One is made by every switch that moves the sessions (right after the window is
-known closed, before anything moves, under the switch's lock) and by **Back up now** in Settings ▸ the profile ▸
-Sessions. **Restore…** on a backup puts back what is missing, merged, and never overwrites anything (see
+`backup.json` that says what is in it. One is made by **Back up now** in Settings ▸ the profile ▸ Sessions (and by the
+default-profile move). Up to 26.11.12 every switch that moved the sessions made one too ("Before switch to ultra-2");
+those stay listed and restorable. **Restore…** on a backup puts back what is missing, merged, and never overwrites anything (see
 [Restoring a backup](#restoring-a-backup)).
 
 - **In it:** the window's Code-tab list (every `claude-code-sessions/<account>/<org>` folder, scheduled tasks
@@ -850,8 +773,8 @@ Sessions. **Restore…** on a backup puts back what is missing, merged, and neve
   `claude_desktop_config.json`, as its own file: the rest of that file, the window's **MCP settings**, is **never in a
   backup**, since it can carry keys; it travels only in the encrypted export), each scheduled task's prompt
   (`setup/scheduled-tasks/<id>/SKILL.md`, which the window runs),
-  cl_audit's records (the profile's name and its account and standby ids, never an address, and the receipt of the
-  switch it was made for) and, on by default, Claude
+  cl_audit's records (the profile's name and its account and standby ids, never an address; an old switch's backup also
+  holds that switch's receipt) and, on by default, Claude
   Code's transcripts (`<Claude Code folder>/projects`) and Claude Code's **setup** (`setup/…`: CLAUDE.md and what it includes,
   skills, agents, commands, output styles, keybindings, settings.json with its scripts and the plugin list, by the rules
   of [Exporting](#exporting-a-profiles-sessions): links left out and named in the manifest only, never where they point;
@@ -897,31 +820,29 @@ Sessions. **Restore…** on a backup puts back what is missing, merged, and neve
 - **If it can't be made,** a switch stops with nothing moved and says why (step 1 on the Switch page). The window is
   checked closed again when the backup is done; if it opened meanwhile, the backup is taken away and nothing moves.
   The receipt records the backup's id and folder, so changing the folder later doesn't lose it. **Back up now** with the window open
-  leaves out the Code-tab list and sidebar records (the window rewrites its entries from memory); a switch always
-  has the window closed.
-- **How many are kept:** General ▸ Backups sets the last N (3) and any under D days (30). After a switch's backup
-  (and after Back up now) the rest are deleted, never one named by a switch that stopped half way (its Undo and the
-  backup point at each other, nor one a restore that stopped half way needs); **Delete…** in the list asks first
-  and refuses those too.
+  leaves out the Code-tab list and sidebar records (the window rewrites its entries from memory).
+- **How many are kept:** General ▸ Backups sets the last N (3) and any under D days (30). After Back up now the rest are
+  deleted, never one named by an old switch that stopped half way (it holds the sessions that switch moved, as they
+  were), nor one a restore that stopped half way needs; **Delete…** in the list asks first and refuses those too.
 
 ### Restoring a backup
 
 **Restore…** on a backup in Settings ▸ the profile ▸ Sessions opens the **Restore page**, a sibling of the Switch page
 with the same keys and the same line at the top. It starts as a **preview** ("Preview · nothing written yet ·
 nothing is ever overwritten"); nothing is written until **Close and restore N** is pressed. The backup can be any in
-General ▸ Backups, or one a switch's or restore's receipt names in a folder General ▸ Backups no longer points at: the
+General ▸ Backups, or one an old switch's or a restore's receipt names in a folder General ▸ Backups no longer points at: the
 Sessions list shows those too, with where they are ("in ~/Old/backups"), and Restore, Show in Finder and Delete… use
 that place.
 
 **What happens** is counted from the backup against what is there now, by session id across every account folder of
 the window's Code-tab list, and transcripts by their path under the Claude Code folder's `projects`:
 
-- **Back where it was:** entries (and transcripts) that are there, unchanged since: nothing to do. An entry a switch
-  re-encoded when it moved it (the old account's error keys and Remote Control ids off) counts as unchanged. A
+- **Back where it was:** entries (and transcripts) that are there, unchanged since: nothing to do. An entry an old
+  switch re-encoded when it moved it (the old account's error keys and Remote Control ids off) counts as unchanged. A
   transcript that has grown since (the backup is its first part) counts here too.
-- **Missing, restored:** written back. Entries go into the folder of the account the profile works on now (where a
-  switch would have moved them), never into the folder of an account it no longer uses; an entry that was on another
-  account in the backup is written as a switch would place it. A task file comes back only when the account in use's
+- **Missing, restored:** written back. Entries go into the folder of the account the profile works on now, never into
+  the folder of an account it no longer uses; an entry that was on another account in the backup is written without
+  that account's error keys and Remote Control ids. A task file comes back only when the account in use's
   own is missing; one that is there is never replaced, even when it is empty. A transcript comes back as a clone of the
   backup's file (a real copy from another volume), with the backup's modification time.
 - **Made after it:** sessions made later stay. **Deleted since:** an entry the window deleted since (its own
@@ -952,7 +873,7 @@ setup row says in one line that a backup's settings.json has its env values blan
 **Stays as it is:** the account (Main stays on the account it works on; Switch back changes that), sign-ins (never in a
 backup, never written), a `claude_desktop_config.json` that is here and `settings.json` other than Keep for, and claude.ai
 (Chats and Projects). **Sidebar:** the groups and pins of the restored sessions are taken from the backup's own sidebar records
-and arranged by one Return in a helper session, as after a switch; the window's cache is off, so claude.ai's copy wins
+and arranged by one Return in a helper session; the window's cache is off, so claude.ai's copy wins
 at sign-in.
 
 **Steps:** 1 the profile's Claude window closes (only that window, about half a minute; skipped when nothing in the
@@ -967,10 +888,9 @@ arranged. The page then reads **Restored · 86 back · nothing overwritten · 3 
   `backup.json` names that is missing, a newer manifest, or another profile's backup). A project folder (or `projects`
   itself) that is a link is not written through: its transcripts are left out and the page says so.
 - **The window stays closed** while its files are written, asked again before every one; if it opens, the run stops
-  with what is back kept and the receipt says so. **One switch, restore or import at a time** (the switch lock, and
-  claude-transplant's lock too), and none while a switch of the profile stopped half way: the page says **Not yet ·
-  one thing first**, names it and offers **Open the switch** (Undo puts back exactly what it moved; then restore if
-  anything is still missing).
+  with what is back kept and the receipt says so. **One restore, import or move at a time** (cl_audit's lock, and
+  claude-transplant's lock too), and none while another restore of the profile stopped half way: the page says **Not
+  yet · one thing first** and names it. (An old switch that stopped half way no longer holds a restore back.)
 - **A receipt** in cl_audit's folder (`restores/<id>/receipt.json`, with `journal.jsonl` beside it: one line before a
   file is written and flushed to disk, one after) says what was put back. The line before holds the hash the file must
   have (an entry's own bytes as written; a transcript's from the backup's file, read before the clone is made), so a
@@ -992,18 +912,12 @@ arranged. The page then reads **Restored · 86 back · nothing overwritten · 3 
   offers to finish after a stop rather than finishing by itself: it would have to close the window unasked. Receipts of
   finished or undone restores go when their backup is gone (its place can be looked at, and the backup isn't in it; a
   place on a disk that isn't plugged in says nothing) or after 30 days; one that wrote something and didn't finish never
-  does. Deleting a backup says when it ends Undo for a finished restore from it. A backup an Undo this switch is about
-  to restore from is kept from pruning until that restore has run (30 days at most). A file in a project folder that is
+  does. Deleting a backup says when it ends Undo for a finished restore from it. A file in a project folder that is
   shorter than the backup's file and that the backup's file begins with (what a crash during a copy from another
   volume leaves, among other things) is shown as "Shorter copy" and left as it is; the receipt remembers how many, so the
   Restored page says so too. An Undo that leaves a restored transcript a running session holds does not close the
   receipt: it says how many it left and why, and Undo again once the session has ended takes the rest. If which
   sessions run can't be read, an Undo that has transcripts to take back takes nothing back and says so.
-- **Undo this switch…** on the Switch page is the switch the other way and then a restore from the backup the
-  switch made: the page says so before it starts ("Switches back to ultra-1, then puts back anything the switch
-  changed from its backup: nothing is overwritten"), the sessions follow, and its last step (and a key at Done) opens
-  the Restore page on that backup, counted fresh after the switch back. It stays two pages because the restore needs the
-  window closed again and its counts only mean something after the sessions have moved back.
 
 ### How cl_audit tells what Claude Code deletes
 
@@ -1051,7 +965,7 @@ never writes:
 is a backup in a file: the same format, so Import restores it by the same rules. The **Export page** is a sibling of the
 Restore page and starts as a preview ("Preview · nothing written yet"):
 
-- **What:** **From** is the profile as it is now (a fresh copy is made under the switch lock, in a hidden folder of the
+- **What:** **From** is the profile as it is now (a fresh copy is made under cl_audit's lock, in a hidden folder of the
   backups place, and taken away again: the only copy that keeps the MCP settings and settings.json's env values, for the
   image), one of its backups (which keep neither: the image then has settings.json with blank env values, and the setup row
   says so in one line), or all profiles. Claude Code: "310 sessions, with their
@@ -1333,8 +1247,7 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
   is here stays byte for byte and the row lists the servers it lacks; a zip has none and the row says so. The Claude window may
   rewrite the file when it opens; Undo then leaves it as it is and says so), **Folder not here** (added, shown
   once that folder exists), **Would be deleted** (only the sessions Claude Code would delete again, as on the Restore page; **Keep for 90 days** when it would keep some). Entries go into the folder of the account the target
-  works on now, never a fingerprint's, written as a switch would place them (the old account's error keys and Remote Control
-  ids off), and the sidebar's groups and pins follow them through the fingerprint (one Return in a helper session). **Close and
+  works on now, never a fingerprint's, without the old account's error keys and Remote Control ids, and the sidebar's groups and pins follow them through the fingerprint (one Return in a helper session). **Close and
   import 210 sessions** then runs the Restore page's steps (window closes, files added with a receipt kept as it goes, window
   opens), with the page reading "Importing ●" and "Imported · 210 added · nothing overwritten".
 - **Undo last import,** under the profile's Sessions, opens that import's page, where **Undo this import** takes back exactly what
@@ -1433,10 +1346,13 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
 
 ### Moving a profile to another account
 
-For example to a new plan, whose weekly limit starts at zero. A profile keeps everything (name, look, Dock icon,
-Claude window, settings); only its sign-ins and its link change. Two sign-ins move, Claude Code's and the Claude
-window's, and **Claude Code's is the one cl_audit reads the usage from**: signing in only the Claude app leaves the
-numbers on the old account.
+For example to a new plan, whose weekly limit starts at zero. Claude Code's side is a **switch**: add the account
+(Claude Code ▸ Accounts ▸ **Add account**) and use **Switch to it…** (or Switch account in the menus), or sign Claude
+Code in yourself (step 5 below): either way the profile works on the account its folder is signed in to, by itself,
+and the old one stays as a standby account. A profile keeps everything (name, look, Dock icon, Claude window,
+settings). The steps below are for when the Claude window should move too: a switch leaves the window's own sign-in
+and its sessions alone. Two sign-ins move then, Claude Code's and the Claude window's, and **Claude Code's is the one
+cl_audit reads the usage from**: signing in only the Claude app leaves the numbers on the old account.
 
 1. **Back up**, if the window's Code sessions should come along (step 3): `~/.claude` and
    `~/Library/Application Support/Claude` (without its caches).
@@ -1455,14 +1371,12 @@ numbers on the old account.
    `env -u CLAUDE_CONFIG_DIR claude auth login --claudeai --email <new>` for `~/.claude`,
    `CLAUDE_CONFIG_DIR=<folder> claude auth login --claudeai --email <new>` for a profile's own folder, and finish in
    the browser.
-6. **Link it:** the agent notices within half a minute; the profile then shows no numbers until you press **Use
-   this account** (Claude Code card, in the account in use's box), which links it (refused if another profile
-   already has that account).
+6. **Nothing to link:** within seconds the profile works on the new account and the old one stands by (refused if
+   another profile works on that account: the card says whose).
 
 Staying with the old account: a CI token from `claude setup-token` (make a new one), claude.ai connectors and MCP
-servers, cloud sessions and environments, synced plugins, and the plan and billing. To keep watching the old
-account's limits, add it to the profile as a standby account (Claude Code ▸ Accounts ▸ **Add account**), or give it
-a profile of its own (**New profile**).
+servers, cloud sessions and environments, synced plugins, and the plan and billing. Its standby box remembers it,
+signed out; to watch its limits at the same time, give it a profile of its own (**New profile**).
 
 ### Uninstalling
 

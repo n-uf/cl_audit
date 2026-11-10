@@ -39,6 +39,44 @@ Nothing pending.
   in. Now the app's settings file names the account; its log gives the organisation (else its sessions folder does) and
   whether it signed out (a sign-out newer than the settings file). Without a settings file, the log's own account line
   says it, as before.
+- **A profile is one Claude Code folder, and switching signs in again on it.** A profile's folder holds one signed-in
+  account at a time, the one in use. Its other accounts are standby: remembered on the profile (address, plan, when they
+  were last in use), signed out, with no folder or Keychain item of their own, so nothing reads them and they show no
+  usage (on the Accounts card, the dashboard's trays, the menus and the alert). **Switch to ultra-2** opens Claude Code's
+  own sign-in in Terminal for the profile's folder with that address filled in, as cl_quick does; cl_audit watches the
+  folder for up to 10 minutes and says what came of it: on ultra-2, signed in as another account (the browser's), or no
+  sign-in. The Switch page says first what that affects: Claude Code in Terminal and editors on that folder, running
+  sessions included; the Claude app keeps its own sign-in. **Nothing moves any more**: the switch no longer closes the
+  Claude window, backs it up, moves its sessions and scheduled tasks to the other account or rebuilds its sidebar. Sessions
+  stay in the folder, each with the account it ran on.
+- **The folder's account is the one in use, whoever signed it in.** Sign in with `claude auth login` yourself, or from
+  another app on the same folder, and within seconds the profile works on that account and the one before stands by (the
+  agent does this too while cl_audit's window is closed). **Use this account** is gone. One account belongs to one profile:
+  another profile's account in use is refused, as before; an account on another profile's standby list moves to this one,
+  with a line on both profiles' Accounts card.
+- **Add account only remembers.** One click on a found account, or **Another address…**, adds it signed out: nothing signs in
+  and no folder is made until you switch to it. **Forget…** takes a standby account off the profile. **Sign in again…** on the
+  account in use is watched like a switch.
+- **A full limit offers the standby account least used** by the week it left with, not known to be full (its week as last
+  read when it left is kept for this and never shown), then the one most recently in use.
+- **Gone with the standby accounts' numbers:** "the other account is back" and its Switch back offer, the standby accounts'
+  saved numbers (cleared by the clean-up), and **Undo this switch**.
+- **The folders kept for standby sign-ins** (`~/.claude-<name>`, made by 26.11.12 and earlier for each standby account and for
+  the account in use) aren't used any more. Each one that is still there is listed under the profile's Accounts, **Folders
+  from before**, with **Move to Trash…** (it asks first and names the folder's Keychain item, which cl_audit never touches:
+  delete it in Keychain Access if you like) and **Keep it**. Nothing is deleted by itself. Your profiles file is read as it
+  was: the standby accounts stay, without their folders.
+- **An earlier switch that stopped half way** (it had moved some of the Claude window's sessions to the other account) can't
+  be finished or undone any more. The profile's Sessions card says once how many sessions sit under which account (they show
+  while the window is signed in to it) and that the backup made before it holds them; Restore… puts back what is missing.
+  Restore no longer waits for such a switch, and that backup is never pruned. Earlier switches' backups stay listed and
+  restorable.
+- The default-profile move's **Keep as a standby account** remembers the old profile's account signed out, and lists its
+  folder under Folders from before.
+- Claude Code's sign-in in Terminal now unsets `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` and the
+  Bedrock, Vertex and Foundry switches first, so a key in your shell's settings can't sign the folder in another way.
+- Confirmed only from Claude Code's own program text, not by running it: the Keychain item of a folder other than
+  `~/.claude` is `Claude Code-credentials-` and the first 8 hex characters of the SHA-256 of its path.
 
 ## 26.11.14 — 2026-11-10
 
