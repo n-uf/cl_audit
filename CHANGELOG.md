@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.12 — 2026-11-09
+
 - **A moved session opens in the right folder.** Import lists each session whose folder isn't on this Mac (Folder not here)
   with **Pick its folder on this Mac…**. A picked folder points the session there right after the import: its saved chat moves
   to the folder named for the new place, the folder paths inside it and in its Code-tab entry are updated (nothing else
