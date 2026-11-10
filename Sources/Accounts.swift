@@ -118,7 +118,9 @@ enum AccountBook {
 
 /// An account that moved between two profiles by signing in to another one's folder (FolderRules.noteAccounts).
 struct AccountNote: Codable, Equatable, Hashable {
-    enum Kind: String, Codable { case came, left }
+    /// came / left: an account signed in to another profile's folder. standsBy: an account this profile remembered on
+    /// standby was another profile's account in use until now, and stands by there (one account, one standby list).
+    enum Kind: String, Codable { case came, left, standsBy }
     var kind: Kind
     var email: String              // the account; shown masked as Settings ▸ General ▸ Emails says
     var profile: String            // the other profile's name
@@ -131,6 +133,7 @@ struct AccountNote: Codable, Equatable, Hashable {
         switch kind {
         case .came: return "\(a) came from \(profile)'s standby accounts: it signed in to this profile's folder."
         case .left: return "\(a) left for \(profile): it signed in to \(profile)'s folder, so it's \(profile)'s account now."
+        case .standsBy: return "\(a) stands by on \(profile) now: it was \(profile)'s account in use, and an account stands by on one profile only."
         }
     }
 }

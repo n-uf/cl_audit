@@ -97,7 +97,10 @@ enum FolderRules {
             if let old {
                 let st = status(accounts[i])
                 let oldSeat = Seat(account: old.account, organization: old.organization, email: old.email)
-                for j in out.indices where j != i { out[j].standby.removeAll { Self.isThat(oldSeat, $0) } }
+                for j in out.indices where j != i && out[j].standby.contains(where: { Self.isThat(oldSeat, $0) }) {
+                    out[j].standby.removeAll { Self.isThat(oldSeat, $0) }
+                    out[j].accountNote = AccountNote(kind: .standsBy, email: old.email ?? "", profile: out[i].name, at: now)
+                }
                 out[i].standby.removeAll { Self.isThat(oldSeat, $0) }
                 out[i].standby.append(StandbyAccount(email: old.email ?? "", seat: oldSeat,
                                                      addedAt: now, plan: st?.plan, lastInUse: now, lastWeek: st?.weekly, lastWeekResets: st?.weeklyResets))
