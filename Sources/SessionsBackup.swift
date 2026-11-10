@@ -1,7 +1,7 @@
-// SessionsBackup: a quick copy of a profile's sessions, on this Mac. One is made by Back up now (Settings ▸ a profile ▸
-// Sessions) and by the default-profile move; up to 26.11.13 every switch that moved the sessions made one too (kind
-// beforeSwitch, with its receipt in records/receipt.json), and those stay listed and restorable. They are kept as
-// General ▸ Backups says.
+// SessionsBackup: a quick copy of a profile's sessions, on this Mac. One is made by every switch that moves the sessions
+// (SwitchEngine.run, right after the window is known closed and before anything moves; kind beforeSwitch, with its receipt
+// in records/receipt.json), by Back up now (Settings ▸ a profile ▸ Sessions) and by the default-profile move. They are
+// listed there, kept as General ▸ Backups says, and restorable.
 //
 // A backup is a folder <backups place>/<profile id>/<backup id>/ with a backup.json that says what is in it:
 //   window/<account>/<org>/…     the Claude window's Code-tab list: every claude-code-sessions/<account>/<org> folder
@@ -384,7 +384,7 @@ enum SessionsBackup {
     /// is made from (and taken away again), which keeps both whole for the image (a zip leaves them out).
     @discardableResult
     static func make(_ s: Source, id: String = newID(), kind: Kind, window: Bool = true, transcripts: Bool = true, setup: Bool = true,
-                     place: URL, now: Date = Date(), forExport: Bool = false) throws -> Manifest {
+                     receipt: SwitchReceipt? = nil, place: URL, now: Date = Date(), forExport: Bool = false) throws -> Manifest {
         guard validProfile(s.profile), validID(id) else { throw BackupError("the profile or backup name isn't a plain one") }
         if let why = placeProblem(place, for: [s]) { throw BackupError(why) }
         let started = Date()
@@ -526,13 +526,18 @@ enum SessionsBackup {
                                   path: configPath, bytes: Int64(data.count), part: "all but preferences.epitaxyPrefs"))
             }
         }
-        // cl_audit's records: the profile (ids only, no address)
+        // cl_audit's records: the profile (ids only, no address), and the receipt of the switch this is for
         if let e = s.entry {
             let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
             if let data = try? enc.encode(ProfileRecord(e)) {
                 try put(data, "records/profile.json", in: partial, dirFor)
                 items.append(Item(role: .record, original: Store.configURL.path, path: "records/profile.json", bytes: Int64(data.count), part: "accounts[id=\(e.id)]"))
             }
+        }
+        if let r = receipt, let data = try? SwitchEngine.encoded(r) {
+            try put(data, "records/receipt.json", in: partial, dirFor)
+            items.append(Item(role: .record, original: SwitchEngine.root.appendingPathComponent("\(r.id)/receipt.json").path,
+                              path: "records/receipt.json", bytes: Int64(data.count)))
         }
 
         let m = Manifest(id: id, profile: s.profile, kind: kind, created: now, seconds: 0, accounts: g.accounts, counts: g.counts,

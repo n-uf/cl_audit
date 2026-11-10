@@ -25,7 +25,7 @@ struct SessionsCard: View {
     }
     @State private var backups: [Listed] = []
     @State private var targets: [String: String] = [:]             // backup id → the account its switch went to, short
-    /// A switch of 26.11.13 or earlier that stopped half way, not dismissed yet: said once, with where its sessions are.
+    /// A switch that stopped half way, not dismissed yet: said, with where its sessions are and Undo it.
     @State private var oldSwitch: SwitchReceipt?
     @State private var retention = Retention()                     // what Claude Code's clean-up does
     private var days: Int? { retention.menuDays }                  // nil: settings.json's own value can't be told (counted as 30)
@@ -46,13 +46,18 @@ struct SessionsCard: View {
     private var switching: Bool { _ = model.tick; return SwitchMarker.blocks(Account(entry)) }
 
     var body: some View {
-        SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. A switch of account moves none of them: each stays with the account it ran on. Backups are quick copies on this Mac, made by Back up now (and, up to 26.11.13, by each switch that moved the sessions); Restore… puts back what is missing, merged, and never overwrites anything. Chats and Projects on claude.ai belong to each account and aren't here.") {
+        SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. A switch of account moves the window's Code-tab list and scheduled tasks to the new account, inside this profile's folder; the transcripts stay where they are. Backups are quick copies on this Mac, made by each switch that moves sessions and by Back up now; Restore… puts back what is missing, merged, and never overwrites anything. Chats and Projects on claude.ai belong to each account and aren't here.") {
             if let s = oldSwitch {
-                SRow(label: "An old switch", first: true, stacked: true) {
+                SRow(label: "A switch stopped", first: true, stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {
                         note(Self.oldSwitchWords(s, for: entry))
-                        Button("OK") { Self.dismissOldSwitch(s.id); oldSwitch = nil }
-                            .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                        HStack(spacing: 8) {
+                            Button("Undo it") { undoSwitch(s) }
+                                .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize().disabled(windowOpen || working)
+                            Button("Not now") { Self.dismissOldSwitch(s.id); oldSwitch = nil }
+                                .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                        }
+                        if windowOpen { note("Quit \(name)'s Claude window first: Undo puts its sessions back while it's closed.") }
                     }
                 }
             }
@@ -273,16 +278,32 @@ struct SessionsCard: View {
         kept = k
     }
 
-    /// What a switch of 26.11.13 or earlier that stopped half way left where: some of the window's sessions sit under the
-    /// account it went to (they show while the window is signed in to it), their originals set aside in cl_audit's own
-    /// folder (switches/<id>/parked), and the backup made before it holds them all as they were. Its Undo is gone with
-    /// the switch that moved sessions: nothing is put back by itself, and its backup is kept from pruning.
+    /// A switch that moved sessions and stopped before Claude Code signed in as the new account (or a switch of 26.11.13 and
+    /// earlier that stopped half way): some of the window's sessions sit under the account it went to (they show while
+    /// the window is signed in to it), their originals set aside in cl_audit's own folder (switches/<id>/parked). Undo it
+    /// puts them back from its receipt; the backup made before it is kept from pruning meanwhile.
     static func oldSwitchWords(_ r: SwitchReceipt, for e: AccountEntry) -> String {
         let to = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { r.to.same($0) }?.email.map(AccountNames.short) ?? "the other account"
         let n = r.moved
-        return "A switch on \(SessionsBackup.dateWords(r.started)) stopped half way: \(n) of the Claude window's \(n == 1 ? "session sits" : "sessions sit") under \(to) now and \(n == 1 ? "shows" : "show") while the window is signed in to it. "
-            + (r.backup != nil ? "The backup made before it (in the list below) holds them as they were: Restore… puts back what is missing. " : "")
-            + "Switches no longer move sessions, so nothing more happens to them."
+        return "A switch on \(SessionsBackup.dateWords(r.started)) moved \(n) of the Claude window's \(n == 1 ? "sessions" : "sessions") to \(to) and stopped before Claude Code signed in as \(to): \(n == 1 ? "it shows" : "they show") only while the window is signed in to \(to). "
+            + "Undo it puts \(n == 1 ? "it" : "them") back under the account in use"
+            + (r.backup != nil ? "; the backup made before it (in the list below) holds them as they were too." : ".")
+    }
+
+    /// Undo it: the receipt's own Undo, off the main thread, with the window closed.
+    private func undoSwitch(_ r: SwitchReceipt) {
+        let e = entry
+        working = true; problem = nil
+        Task {
+            let result = await Task.detached(priority: .utility) {
+                Result { try SwitchEngine.undo(r.id, windowClosed: { SwitchRunner.windowClosed(e) }) }
+            }.value
+            working = false
+            switch result {
+            case .success(let done): oldSwitch = nil; if !done.problems.isEmpty { problem = done.problems.joined(separator: " ") }
+            case .failure(let err): problem = "\(err)"
+            }
+        }
     }
 
     private static let dismissedKey = "oldSwitchSeen"
