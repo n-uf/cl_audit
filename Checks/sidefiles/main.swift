@@ -147,7 +147,7 @@ if role == "b" {
         let newEntry = projects?[new] as? [String: Any]
         check(newEntry?["hasTrustDialogAccepted"] as? Bool == true && (newEntry?["allowedTools"] as? [String]) == ["Bash(npm test)", "Edit"] && (newEntry?["mcpServers"] as? [String: Any])?.isEmpty == true
               && newEntry?["lastCost"] == nil, "B: new/garden-app is trusted with its allowed tools; its MCP servers left out; nothing else of the old entry: \(String(describing: newEntry))")
-        check((projects?[same] as? [String: Any])?["hasTrustDialogAccepted"] as? Bool == false && r.problems.contains { $0.contains("already has its own entry") },
+        check((projects?[same] as? [String: Any])?["hasTrustDialogAccepted"] as? Bool == false && r.problems.contains { $0.contains("already has its own trust") },
               "B: an entry already there for that folder wins, and that is said")
         check(projects?[code] == nil && projects?["/elsewhere"] == nil, "B: trust kept for a folder above the project (and another project) isn't carried")
         let value = r.steps.first { $0.kind == .trust }?.value ?? "?"
@@ -156,8 +156,19 @@ if role == "b" {
               "B: .claude.json is byte for byte as it was but the one key added after the last project (other projects, the account block, key order kept): \(cfg.prefix(300))")
         let unsplice = SideFiles.unspliced(Array(cfg.utf8), key: new, value: value)
         check(unsplice.map { String(decoding: $0, as: UTF8.self) } == configB, "B: taking the key out again gives the old file byte for byte")
-        check(fm.contents(atPath: SideFiles.root.path + "/\(r.id)/saved/" + (r.steps.first { $0.kind == .trust }?.saved ?? "x")) == Data(configB.utf8),
-              "B: a copy of .claude.json as it was is kept in the receipt")
+        // no copy of .claude.json anywhere in cl_audit's folder (only the key and the entry written are kept); an old one is swept
+        func copies() -> [String] { files(Store.folder.path).filter { read(Store.folder.path + "/" + $0)?.contains("oauthAccount") == true } }
+        check(copies().isEmpty && r.steps.first { $0.kind == .trust }?.saved == nil, "B: no copy of .claude.json anywhere in cl_audit's folder after the import: \(copies())")
+        write(SideFiles.root.path + "/\(r.id)/saved/claude-json-9.copy", configB)
+        SideFiles.sweepConfigCopies()
+        check(copies().isEmpty, "B: a copy the first build kept is swept")
+        // the same again (a second Restore, an import again): no prompt doubled, nothing written twice
+        let again = try! SideFiles.apply(t, b, kinds: kinds, restore: rr.id, folders: folders, windowClosed: { true })!
+        check(again.written.historyLines == 0 && again.written.there >= 4 && read(cc + "/history.jsonl") == hist && read(cc + "/.claude.json") == cfg && again.written.trust == 0,
+              "B: applied again: no prompt added twice, no file or trust written again: \(again.written)")
+        check(SideWords.after(r.written.taskLists, "task list", "task lists") == "1\u{00A0}task list added" && r.written.taskLists == 1
+              && SideWords.after(2, "typed prompt", "typed prompts", waiting: 2) == "2\u{00A0}typed prompts added · 2 wait for a folder you pick",
+              "B: after the import, a row says what was added and what waits: \(SideWords.after(r.written.taskLists, "task list", "task lists"))")
         // Rewind's paths in the re-pointed transcript
         let t2 = read(cc + "/projects/\(enc(new))/\(S2).jsonl") ?? ""
         let snap = t2.split(separator: "\n").first { $0.contains("file-history-snapshot") }.map(String.init) ?? ""
@@ -185,25 +196,32 @@ if role == "b" {
         check(r2.written.tasks == 3 && r2.written.historyLines == 2 && r2.waiting.count == 1 && r2.waiting.first?.session == S2 && r2.waiting.first?.historyLines == 2,
               "B: a Restore of the imported backup writes them too; S2's folder isn't here, so its 2 history lines and trust wait (S1's 2 lines written): \(r2.written) \(r2.waiting.map(\.session))")
         check(json(fm.contents(atPath: cc + "/.claude.json")).flatMap { ($0["projects"] as? [String: Any])?[new] } == nil, "B: no trust written for a folder that isn't on this Mac")
-        check(SideWords.written(r2).contains("1 session waits for its folder"), "B: the page says what waits: \(SideWords.written(r2))")
+        check(SideWords.written(r2).replacingOccurrences(of: "\u{00A0}", with: " ").contains("1 session waits for its folder"), "B: the page says what waits: \(SideWords.written(r2))")
         // the Sessions page's Pick, later (the code cloned first): its history and trust are written then, into the import's receipt
         try! fm.createDirectory(atPath: new, withIntermediateDirectories: true)
         codeRuns = true
         let blocked = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: new)], windowClosed: { true })
-        check(blocked.problems.contains { $0.contains("Claude Code runs for this profile") } && SideFiles.load(r2.id)?.waiting.count == 1 && !(read(cc + "/history.jsonl") ?? "").contains(new),
+        check(blocked.problems.contains { $0.contains("Claude Code is running for this profile") && $0.contains("Undo this Pick") } && SideFiles.load(r2.id)?.waiting.count == 1 && !(read(cc + "/history.jsonl") ?? "").contains(new),
               "B: with Claude Code running for this profile, nothing shared is written (said), and S2 keeps waiting: \(blocked.problems)")
         _ = try! SessionsRepoint.undo(blocked.id, windowClosed: { true })
         codeRuns = false
         let later = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: new)], windowClosed: { true })
         let r2b = SideFiles.load(r2.id)
         let hist2 = read(cc + "/history.jsonl") ?? ""
-        check(later.sessions.count == 1 && r2b?.waiting.isEmpty == true && hist2.components(separatedBy: #""project":"\#(new)""#).count - 1 == 2
-              && (json(fm.contents(atPath: cc + "/.claude.json"))?["projects"] as? [String: Any])?[new] != nil,
+        check(later.sessions.count == 1 && SideFiles.waiting(profile: e.id).isEmpty && r2b?.waiting.first?.pick == later.id && hist2.components(separatedBy: #""project":"\#(new)""#).count - 1 == 2
+              && (json(fm.contents(atPath: cc + "/.claude.json"))?["projects"] as? [String: Any])?[new] != nil && later.sessions[0].sideWritten == true,
               "B: picked later from Sessions: S2's 2 history lines (project new/garden-app) and its trust are written then: \(later.problems)")
-        // Undo of that import: the lines and the key written later go too (they are in its receipt)
+        // that Pick's Undo takes back what it wrote (S1's lines from the import stay), and S2 waits for its folder again
         _ = try! SessionsRepoint.undo(later.id, windowClosed: { true })
+        let afterPickUndo = read(cc + "/history.jsonl") ?? ""
+        check(!afterPickUndo.contains(#""project":"\#(new)""#) && afterPickUndo.contains(S1) && read(cc + "/.claude.json") == configB && SideFiles.waiting(profile: e.id).map(\.session) == [S2],
+              "B: the later Pick's Undo takes back the prompts and trust it added; the session waits again")
+        // picked again, then the import's Undo takes it all back (the Pick's lines are in the import's receipt)
+        let later2 = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: new)], windowClosed: { true })
+        check((read(cc + "/history.jsonl") ?? "").components(separatedBy: #""project":"\#(new)""#).count - 1 == 2, "B: picked again: its prompts are added again")
+        _ = try! SessionsRepoint.undo(later2.id, windowClosed: { true })
         let u2 = try! SessionsRestore.undo(rr2.id, windowClosed: { true })
-        check(u2.undone != nil && read(cc + "/history.jsonl") == histB && read(cc + "/.claude.json") == configB, "B: the import's Undo takes back the lines and trust written at the later Pick too")
+        check(u2.undone != nil && read(cc + "/history.jsonl") == histB && read(cc + "/.claude.json") == configB, "B: the Pick's Undo, then the import's: both files byte for byte as they were")
 
         // ---- refusals: a link, Claude Code's lock held, a running Claude Code, a pasted text already there with other bytes, a line changed since
         let rr3 = try! SessionsRestore.run(t, b, addMemory: true, windowClosed: { true })
@@ -213,9 +231,9 @@ if role == "b" {
         try! fm.createDirectory(atPath: cc + "/history.jsonl.lock", withIntermediateDirectories: false)
         write(cc + "/paste-cache/\(pasteHash).txt", "other text under that name\n")
         let r3 = try! SideFiles.apply(t, b, kinds: kinds, restore: rr3.id, folders: [S2: (old, new)], windowClosed: { true })!
-        check(r3.written.trust == 0 && r3.problems.contains { $0.contains(".claude.json is a link") } && read(home + "/elsewhere.json") == configB,
+        check(r3.written.trust == 0 && r3.problems.contains { $0.contains("settings file for this profile is a link") } && read(home + "/elsewhere.json") == configB,
               "B: .claude.json that is a link: never written through: \(r3.problems)")
-        check(r3.written.historyLines == 0 && r3.problems.contains { $0.contains("history.jsonl is locked") } && read(cc + "/history.jsonl") == histB,
+        check(r3.written.historyLines == 0 && r3.problems.contains { $0.contains("prompt history file is locked") } && read(cc + "/history.jsonl") == histB,
               "B: Claude Code's lock folder held: no line added, said")
         check(read(cc + "/paste-cache/\(pasteHash).txt") == "other text under that name\n" && r3.problems.contains { $0.contains("other content") },
               "B: a pasted text already there with other bytes is left as it is, said")
@@ -232,7 +250,7 @@ if role == "b" {
         _ = try! SessionsRestore.undo(rr4.id, windowClosed: { true })
         let rr5 = try! SessionsRestore.run(t, b, addMemory: true, windowClosed: { true })
         let r5 = try! SideFiles.apply(t, b, kinds: kinds, restore: rr5.id, folders: [S2: (old, new)], windowClosed: { true })!
-        check(r5.written.historyLines == 0 && r5.problems.contains { $0.contains("history.jsonl is a link") } && read(home + "/hist-real.jsonl") == histB,
+        check(r5.written.historyLines == 0 && r5.problems.contains { $0.contains("prompt history file is a link") } && read(home + "/hist-real.jsonl") == histB,
               "B: history.jsonl that is a link: never appended through: \(r5.problems)")
         try! fm.removeItem(atPath: cc + "/history.jsonl"); try! fm.moveItem(atPath: home + "/hist-real.jsonl", toPath: cc + "/history.jsonl")
         _ = try! SessionsRestore.undo(rr5.id, windowClosed: { true })
@@ -274,6 +292,33 @@ if role == "b" {
               && ((pc?[new] as? [String: Any])?["mcpServers"] as? [String: Any])?["db"] != nil, "B: the folder at the same path is trusted as on the old Mac; with Add them, the project's MCP servers come with its trust: \(rw.written)")
         _ = try! SessionsRestore.undo(rrw.id, windowClosed: { true })
         check(!fm.fileExists(atPath: cc + "/file-history/\(S2)/\(fh1)") && read(cc + "/.claude.json") == configC, "B: Undo takes Rewind's backups and both keys back")
+        // ---- a Claude Code process that can't be read counts as running; Claude Code's lock held too long; trust for ~ refused
+        let rr7 = try! SessionsRestore.run(t, b, addMemory: true, windowClosed: { true })
+        SideFiles.codeRunning = { _ in nil }
+        let r7 = try! SideFiles.apply(t, b, kinds: kinds, restore: rr7.id, folders: [S2: (old, new)], windowClosed: { true })!
+        check(r7.written.historyLines == 0 && r7.written.trust == 0 && r7.problems.contains { $0.contains("couldn't be told whether Claude Code is running") } && read(cc + "/history.jsonl") == histB,
+              "B: whether Claude Code runs can't be told (a process that can't be read): nothing shared written, said: \(r7.problems)")
+        SideFiles.codeRunning = { _ in codeRuns }
+        _ = try! SessionsRestore.undo(rr7.id, windowClosed: { true })
+        let rr8 = try! SessionsRestore.run(t, b, addMemory: true, windowClosed: { true })
+        let before8 = read(cc + "/.claude.json")
+        SideFiles.lockBudget = -1
+        let r8 = try! SideFiles.apply(t, b, kinds: kinds, restore: rr8.id, folders: [S2: (old, new)], windowClosed: { true })!
+        SideFiles.lockBudget = 4
+        check(r8.written.trust == 0 && r8.problems.contains { $0.contains("took too long") } && read(cc + "/.claude.json") == before8 && !fm.fileExists(atPath: cc + "/.claude.json.lock"),
+              "B: Claude Code's settings lock held past its budget: the trust isn't written, said, the lock let go: \(r8.problems)")
+        _ = try! SessionsRestore.undo(rr8.id, windowClosed: { true })
+        let homeTrust = SideFiles.Trust(session: S2, key: home, trusted: true, allowedTools: ["Bash"])
+        if case .refused(let why) = SideFiles.trustEntry(homeTrust, (home, home), mcp: false, label: "x") { check(why.contains("home folder"), "B: trust for ~ refused, said: \(why)") }
+        else { check(false, "B: trust for the home folder is refused") }
+        check(SideFiles.broad("/") && SideFiles.broad("/Users") && SideFiles.broad(home) && SideFiles.broad((home as NSString).deletingLastPathComponent) && !SideFiles.broad(home + "/code") && !SideFiles.broad(new),
+              "B: never trust /, /Users, the home folder or above it; a project folder is fine")
+        // ---- when the import can't be undone any more (30 days on): the stash goes with its receipt
+        let stashDir = b.dir.appendingPathComponent("side").path
+        check(fm.fileExists(atPath: stashDir), "B: (the stash is there before)")
+        SessionsRestore.prune(profile: e.id, now: Date().addingTimeInterval(40 * 86400))
+        check(!fm.fileExists(atPath: stashDir) && SideFiles.receipts().filter { $0.restore == rr.id }.isEmpty && SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) != nil,
+              "B: once the import can't be undone, its side files kept with the backup go (the backup stays), and its receipts with them")
         check(dockCalls == 0 && securityCalls == 0, "B: no Dock write and no Keychain call")
     }
     print("checks: \(passed) passed, \(failed) failed")
@@ -327,8 +372,9 @@ MainActor.assumeIsolated {
     check(pv.taskLists == 1 && pv.plans == 1 && pv.historyLines == 4 && pv.pastes == 1 && pv.trust == 2 && pv.mcpServers == 1 && pv.rewindFiles == 2 && !pv.rewindCarried,
           "preview: 1 task list, 1 plan, 4 history lines (the key line left out), 1 pasted text, trust for 2 folders (1 MCP server), Rewind 2 backups left out: \(pv)")
     check(pv.hits.count == 1 && pv.hits[0].what.contains("prompt history") && pv.hits[0].kinds == [.github] && !pv.hits[0].kept, "preview: the key in a history line is listed: \(pv.hits)")
-    check(SideWords.carried(pv, kinds: .movePreset) == "1 task list · 1 plan · 4 prompt history lines (1 pasted text) · trust for 2 folders (1 MCP server)", "export page: \(SideWords.carried(pv, kinds: .movePreset))")
-    check(SideWords.rewind(pv, on: false).hasPrefix("left out: 2 backups, "), "export page: Rewind's row says its size, off: \(SideWords.rewind(pv, on: false))")
+    func plain(_ s: String) -> String { s.replacingOccurrences(of: "\u{00A0}", with: " ") }
+    check(plain(SideWords.carried(pv, kinds: .movePreset)) == "1 task list · 1 plan · 4 typed prompts (1 pasted text) · trust and allowed tools for 2 folders (1 MCP server)", "export page: \(SideWords.carried(pv, kinds: .movePreset))")
+    check(plain(SideWords.rewind(pv, on: false)).hasPrefix("left out: 2 backups, "), "export page: Rewind's row says its size, off: \(SideWords.rewind(pv, on: false))")
     let pvKeep = SideFiles.gather(codeDir: cc, sessions: refs, kinds: .movePreset, keys: .keep, dir: "p1", out: nil)!.preview
     check(pvKeep.historyLines == 5 && pvKeep.hits.first?.kept == true, "preview: keys kept: the line with the key goes in (the image only)")
     // caps on their own: a history line over 1 MB, a plan over 4 MB
@@ -416,6 +462,38 @@ MainActor.assumeIsolated {
     let mixed = Data((hline("mine", old, S2, ts: 1) + "\n" + hline("not mine", old, S9, ts: 2) + "\n" + "[1]\n" + #"{"sessionId":"\#(S2)"}"# + "\n").utf8)
     let hl = SideFiles.historyLines(mixed, session: S2, project: { _ in new })
     check(hl.lines.count == 1 && hl.dropped == 3 && String(decoding: hl.lines[0], as: UTF8.self) == hline("mine", new, S2, ts: 1), "hostile history: a line of another session, one that isn't an object and one without its text are dropped")
+    // a crafted Rewind mode (M1): bounded, never converted as it is (that trapped)
+    check(SideFiles.cleanMode(70000) == 0o600 && SideFiles.cleanMode(-1) == 0o600 && SideFiles.cleanMode(Int.max) == 0o600 && SideFiles.cleanMode(0o644) == 0o644 && SideFiles.cleanMode(0o4755) == 0o755,
+          "hostile mode: 70000, -1 and Int.max become 0600; setuid dropped")
+    let modes = SideFiles.read(manifest([["id": S2, "cwd": old, "rewind": [["name": fh1, "file": "side/p1/1", "bytes": 4, "sha": sha0, "mode": 70000],
+                                                                        ["name": fh2, "file": "side/p1/2", "bytes": 4, "sha": sha0, "mode": -5]]]]), parts: ["p1"])
+    check(modes?.parts.first?.sessions.first?.rewind.map(\.mode) == [0o600, 0o600], "hostile side.json: a Rewind mode out of range is read as 0600")
+    // a number JSON can't hold (M2): -1e999 is read as -inf, which the serializer would abort on; 1e999 doesn't read at all
+    let inf = home + "/inf"
+    write(inf + "/projects/-x/\(S2).jsonl", s2Lines(old)[0] + "\n")
+    let ref = [SideFiles.SessionRef(id: S2, cwd: old, transcript: inf + "/projects/-x/\(S2).jsonl")]
+    write(inf + "/.claude.json", #"{"projects": {"\#(old)": {"hasTrustDialogAccepted": true, "allowedTools": ["Edit"], "mcpServers": {"db": {"timeout": -1e999}}}}}"#)
+    let gi = SideFiles.gather(codeDir: inf, sessions: ref, kinds: .movePreset, keys: .leaveOut, dir: "p1", out: nil)!
+    check(gi.part.trust.count == 1 && gi.part.trust[0].trusted && gi.part.trust[0].mcp == nil, "-1e999 in .claude.json's MCP servers (Export): the folder's trust carried, its MCP servers left out, no abort")
+    write(inf + "/.claude.json", #"{"projects": {"\#(old)": {"hasTrustDialogAccepted": true, "mcpServers": {"db": {"timeout": 1e999}}}}}"#)
+    let gi2 = SideFiles.gather(codeDir: inf, sessions: ref, kinds: .movePreset, keys: .leaveOut, dir: "p1", out: nil)!
+    check(gi2.part.trust.isEmpty && gi2.preview.configNote != nil, "1e999 in .claude.json (Export): the file isn't read, said: \(gi2.preview.configNote ?? "")")
+    let infSide = SideFiles.read(manifest([["id": S2, "cwd": old]], trust: [["session": S2, "key": old, "trusted": true, "mcp": #"{"mcpServers":{"a":{"x":-1e999}}}"#]]), parts: ["p1"])
+    check(infSide?.parts.first?.trust.first?.mcp == nil, "-1e999 in side.json's MCP servers (Import): dropped when read")
+    var crafted = SideFiles.Trust(session: S2, key: old, trusted: true)
+    crafted.mcp = #"{"mcpServers":{"a":{"x":-1e999}}}"#
+    check(SideFiles.entryJSON(crafted, mcp: true) == nil, "-1e999 reaching the writer with MCP on: refused, no abort")
+    if case .refused(let why) = SideFiles.trustEntry(crafted, (old, old), mcp: true, label: "“x”") { check(why.contains("can't be written"), "…and said: \(why)") } else { check(false, "-1e999: the entry is refused with a line") }
+    // whether a process is Claude Code for a folder (the process list itself is never read here)
+    let want = FolderKey.canonical(cc), std = FolderKey.canonical(home + "/.claude")
+    check(SideFiles.judge(name: "claude", exe: nil, args: [], configDir: nil, want: want, std: std) == nil
+          && SideFiles.judge(name: "zsh", exe: nil, args: [], configDir: nil, want: want, std: std) == false,
+          "process: one that looks like Claude Code but can't be read is unknown (counted as running); another isn't")
+    check(SideFiles.judge(name: "Claude", exe: "/Applications/Claude.app/Contents/MacOS/Claude", args: [], configDir: nil, want: std, std: std) == false
+          && SideFiles.judge(name: "claude", exe: home + "/Library/Application Support/Claude/claude-code/2.1.318/claude.app/Contents/MacOS/claude", args: ["claude"], configDir: cc, want: want, std: std) == true
+          && SideFiles.judge(name: "2.1.318", exe: home + "/.local/share/claude/versions/2.1.318", args: ["2.1.318"], configDir: nil, want: std, std: std) == true
+          && SideFiles.judge(name: "claude", exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: "/elsewhere", want: want, std: std) == false,
+          "process: the Claude app itself isn't Claude Code; its own Claude Code run from a terminal is; a versions/ launch is; another folder's isn't")
     // .claude.json splicing on its own
     check(SideFiles.spliced(Array("{}".utf8), key: "/a", value: "{\"x\":1}") == .added(Data(#"{"projects": {"/a": {"x":1}}}"#.utf8)), "splice: a file with no projects gets one")
     check(SideFiles.spliced(Array(#"{"projects":{"/a":{}}}"#.utf8), key: "/a", value: "{}") == .there, "splice: a key that is there is never replaced")
