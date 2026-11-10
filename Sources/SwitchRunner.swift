@@ -132,7 +132,9 @@ final class SwitchRunner: ObservableObject {
 
     /// One look at the folder: its file is read off the main thread, and what it said is judged here, on the main thread.
     func look() {
-        guard phase == .waiting, let e = entry, let g = goal else { return }
+        guard phase == .waiting, let g = goal else { return }
+        // the profile was removed while its sign-in was waited for: stop looking (nothing to note it on)
+        guard let e = entry else { cancel(); return }
         let dir = e.configDir, marker = Self.marker(for: profile)
         reads.async { [weak self] in
             let now = Account.signedInSeat(configDir: dir)
