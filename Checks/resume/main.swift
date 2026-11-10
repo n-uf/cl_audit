@@ -98,7 +98,7 @@ if role == "b" {
         check(lines.first?.hasPrefix("Clone https://example.com/sam/garden-app.git at ") == true && lines.contains { $0.contains("2 commits weren't pushed on the old Mac") },
               "B: the page's lines: where to clone it, what wasn't pushed: \(lines)")
         let cmds = garden.map { CodeChecklist.commands($0, here: false) } ?? []
-        check(cmds.first?.hasPrefix("git clone https://example.com/sam/garden-app.git ") == true && cmds.last == "git checkout feature/forms" && !cmds.joined().contains(tok),
+        check(cmds.first?.hasPrefix("git clone -- https://example.com/sam/garden-app.git ") == true && cmds.last == "git checkout feature/forms" && !cmds.joined().contains(tok),
               "B: the commands as text: clone, cd, checkout: \(cmds)")
         check(garden?.worktrees?.first?.branch == "claude/wt-forms" && lines.contains { $0.hasPrefix("Worktree wt-forms on claude/wt-forms") }, "B: the worktree the session ran in is listed with its branch")
 
@@ -178,12 +178,22 @@ if role == "b" {
         check(Set(later.map(\.id)) == [S2, S3, S4], "later: the Sessions page lists S2, S3 and the long one (S1's folder is here): \(later.map { $0.id.suffix(3) })")
         // a long folder (over 200 characters): its name is cut and gets Claude Code's hash
         try! fm.createDirectory(atPath: longB, withIntermediateDirectories: true)
+        let s4Path = proj + "/" + ProjectName.encoded(longA) + "/\(S4).jsonl"
+        let s4Before = read(s4Path)
         let lr = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S4, folder: longB)], windowClosed: { true })
-        let py = Process(); py.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
-        py.arguments = ["-I", "-c", "import sys\ns=sys.argv[1]\nh=0\nfor u in s.encode('utf-16-le').decode('utf-16-le'):\n  pass\nb=s.encode('utf-16-le')\nh=0\nfor i in range(0,len(b),2):\n  c=b[i]|(b[i+1]<<8)\n  h=(h*31+c)&0xffffffff\nif h>=2**31: h-=2**32\nh=abs(h)\nd='0123456789abcdefghijklmnopqrstuvwxyz'\nout=''\nwhile True:\n  out=d[h%36]+out; h//=36\n  if h==0: break\nprint(out)", longB]
-        let pp = Pipe(); py.standardOutput = pp
-        try? py.run(); py.waitUntilExit()
-        let pyHash = String(decoding: pp.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        /// The hash counted independently (Python: Java's hashCode over the UTF-16 units, 32 bits, absolute value, base 36).
+        func pyHashOf(_ s: String) -> String {
+            let py = Process(); py.executableURL = URL(fileURLWithPath: "/usr/bin/python3")
+            py.arguments = ["-I", "-c", "import sys\ns=sys.argv[1]\nb=s.encode('utf-16-le','surrogatepass')\nh=0\nfor i in range(0,len(b),2):\n  c=b[i]|(b[i+1]<<8)\n  h=(h*31+c)&0xffffffff\nif h>=2**31: h-=2**32\nh=abs(h)\nd='0123456789abcdefghijklmnopqrstuvwxyz'\nout=''\nwhile True:\n  out=d[h%36]+out; h//=36\n  if h==0: break\nprint(out)", s]
+            let pp = Pipe(); py.standardOutput = pp
+            try? py.run(); py.waitUntilExit()
+            return String(decoding: pp.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        let pyHash = pyHashOf(longB)
+        // Integer.MIN_VALUE (abs: 2147483648, as JavaScript's Math.abs gives), a negative hash, a surrogate pair (two units, two "-")
+        check(ProjectName.hash("polygenelubricants") == "zik0zk" && pyHashOf("polygenelubricants") == "zik0zk", "names: the INT_MIN hash is 2147483648 in base 36")
+        check(ProjectName.hash("/srv/code/plant-list") == pyHashOf("/srv/code/plant-list") && ProjectName.hash("/x/😀/y") == pyHashOf("/x/😀/y")
+              && ProjectName.encoded("/x/😀/y") == "-x----y", "names: a negative hash and a surrogate pair against the independent count")
         let longName = String(enc(longB).prefix(200)) + "-" + pyHash
         check(longB.count > 200 && ProjectName.encoded(longB) == longName && ProjectName.hash(longB) == pyHash && !pyHash.isEmpty,
               "long: the name is the first 200 characters, '-' and the Java-style hash in base 36 (an independent count: \(pyHash))")
@@ -221,6 +231,23 @@ if role == "b" {
         refused = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: code + "/gone2/app")], windowClosed: { true })
         check(refused.problems.first?.contains("already has a session of that id") == true && read(proj + "/" + enc(code + "/gone2/app") + "/\(S2).jsonl") == "{}\n", "refused: never over a session that is there")
         try! fm.removeItem(atPath: proj + "/" + enc(code + "/gone2/app"))
+        // links: a picked folder that is a link to Claude's own folder; the destination project folder a link; its session folder a link
+        try? fm.createSymbolicLink(atPath: code + "/linkpick", withDestinationPath: t.codeDir)
+        refused = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: code + "/linkpick")], windowClosed: { true })
+        check(refused.sessions.isEmpty && refused.problems.first?.contains("Claude's or cl_audit's own folder") == true, "link: a picked link to Claude's own folder is refused: \(refused.problems)")
+        let dest = proj + "/" + enc(code + "/gone2/app"), elsewhere = home + "/elsewhere"
+        try! fm.createDirectory(atPath: elsewhere, withIntermediateDirectories: true)
+        try! fm.createSymbolicLink(atPath: dest, withDestinationPath: elsewhere)
+        refused = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: code + "/gone2/app")], windowClosed: { true })
+        check(refused.sessions.isEmpty && refused.problems.first?.contains("is a link") == true && everything(elsewhere).isEmpty && read(proj + "/" + enc(gone) + "/\(S2).jsonl") == s2Before,
+              "link: a destination project folder that is a link: refused, nothing written through it: \(refused.problems)")
+        try! fm.removeItem(atPath: dest)
+        try! fm.createDirectory(atPath: dest, withIntermediateDirectories: true)
+        try! fm.createSymbolicLink(atPath: dest + "/\(S2)", withDestinationPath: elsewhere)
+        refused = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: code + "/gone2/app")], windowClosed: { true })
+        check(refused.sessions.isEmpty && refused.problems.first?.contains("already has a session of that id") == true && everything(elsewhere).isEmpty,
+              "link: a link where its session folder would go: refused, nothing written through it")
+        try! fm.removeItem(atPath: dest)
         // an entry that isn't one
         let savedEntry = fm.contents(atPath: s2Entry)!
         try! Data("{ not json".utf8).write(to: URL(fileURLWithPath: s2Entry))
@@ -231,8 +258,23 @@ if role == "b" {
         try! savedEntry.write(to: URL(fileURLWithPath: s2Entry))
         check(read(proj + "/" + enc(gone) + "/\(S2).jsonl") == s2Before, "hostile: …and after its Undo the transcript is where it was")
 
+        // a session resumed since: Undo leaves it in its new folder and says so
+        let rs = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: code + "/gone2/app")], windowClosed: { true })
+        let s2New = proj + "/" + enc(code + "/gone2/app") + "/\(S2).jsonl"
+        if let h = FileHandle(forWritingAtPath: s2New) { h.seekToEndOfFile(); h.write(Data((#"{"type":"user","cwd":"/later","text":"resumed"}"# + "\n").utf8)); h.closeFile() }
+        let ru2 = try! SessionsRepoint.undo(rs.id, windowClosed: { true })
+        check(rs.sessions.count == 1 && ru2.problems.contains { $0.contains("stays in its new folder") && $0.contains("changed since") } && fm.fileExists(atPath: s2New)
+              && !fm.fileExists(atPath: proj + "/" + enc(gone) + "/\(S2).jsonl"), "resumed: Undo leaves a session resumed since where it is, and says so: \(ru2.problems)")
+        // a crash midway: the receipt on disk says the last old file wasn't taken away yet and the run never finished; Undo still restores
+        let rdir = SessionsRepoint.root.appendingPathComponent(lr.id).appendingPathComponent("receipt.json")
+        if var j = json(fm.contents(atPath: rdir.path)), var steps = j["steps"] as? [[String: Any]], let k = steps.lastIndex(where: { $0["kind"] as? String == "parked" }) {
+            steps[k]["done"] = false; j["steps"] = steps; j.removeValue(forKey: "finished")
+            try! JSONSerialization.data(withJSONObject: j).write(to: rdir)
+        }
+        let cu = try! SessionsRepoint.undo(lr.id, windowClosed: { true })
+        check(cu.undone != nil && read(s4Path) == s4Before && s4Before != nil && !fm.fileExists(atPath: proj + "/" + longName),
+              "crash: Undo from a receipt cut short restores the old transcript byte for byte and takes the new one away: \(cu.problems)")
         // the import's Undo: the re-point first, then the import, exactly
-        _ = try? SessionsRepoint.undo(lr.id, windowClosed: { true })
         let ru = try! SessionsRestore.undo(rr.id, windowClosed: { true })
         check(ru.undone != nil && SessionsRepoint.linked(restore: rr.id).isEmpty && !fm.fileExists(atPath: newDir) && !fm.fileExists(atPath: oldT),
               "undo: the import's Undo takes back the re-point first, then what it added: \(ru.problems)")
@@ -329,21 +371,71 @@ MainActor.assumeIsolated {
     check(op?.unpushed == 2 && op?.uncommitted == 0 && op?.branch == "feature/forms" && op?.remote == "https://example.com/sam/garden-app.git" && op?.sessions == 1,
           "checklist: 2 commits not pushed; the remote's user, token and query taken out: \(op?.remote ?? "nil")")
     check(op?.worktrees?.count == 1 && op?.worktrees?.first?.branch == "claude/wt-forms", "checklist: the worktree the session ran in, with its branch")
-    check(gp?.git == true && gp?.uncommitted == 3 && gp?.unpushed == nil && gp?.note == "no upstream", "checklist: 3 files not committed; no upstream")
+    check(gp?.git == true && gp?.uncommitted == 3 && gp?.unpushed == nil && gp?.upstream == false && gp?.unread == nil, "checklist: 3 files not committed; its branch isn't on a remote yet (read, not unread)")
+    check(sp?.fullyRead == true && op?.fullyRead == true && sp?.upstream == true, "checklist: every field read for the repos with an upstream")
     check(lp?.git == false && lp?.note == "not a git repo", "checklist: a folder that isn't a git repo")
     let warn = CodeChecklist.warnings(cl)
-    check(warn.contains("garden-app: 2 commits not pushed: push them before you move") && warn.contains { $0.hasPrefix("app: 3 files not committed") } && warn.contains { $0.contains("not a git repo") },
+    check(warn.contains("garden-app: 2 commits not pushed: push them before you move") && warn.contains { $0.hasPrefix("app: 3 files not committed") } && warn.contains { $0.contains("not a git repo") }
+          && warn.contains("app: its branch main isn't on a remote yet: push it before you move"),
           "export page: the warnings: \(warn)")
+    check(CodeChecklist.summary(cl).hasSuffix("things to fix first (the list goes in the image)"), "export page: the Code row says the list goes in the image: \(CodeChecklist.summary(cl))")
     let indexAfter = mtime(old + "/.git/index")
     check(indexAfter == indexBefore && git(old, ["status", "--porcelain"]).1 == gitStatusBefore, "git: reading wrote nothing into the repo (the index untouched)")
     let none = CodeChecklist.gather(folders, git: nil)
-    check(none.git == "git isn't on that Mac" && none.projects.allSatisfy { !$0.git && $0.remote == nil } && none.projects.count == 4, "checklist without git: the folders only, and it says so")
+    check(none.git == "git isn't on the old Mac" && none.projects.allSatisfy { !$0.git && $0.remote == nil } && none.projects.count == 4, "checklist without git: the folders only, and it says so")
+    check(CodeChecklist.summary(none) == "4 projects: not read, git isn't on this Mac (the list of folders goes in the image)" && !CodeChecklist.summary(none).contains("all pushed"),
+          "export page without git: never 'all pushed and committed': \(CodeChecklist.summary(none))")
+    // a clean, fully read list says so, and still that the list goes in the image
+    let clean = CodeChecklist.gather([same: 1], git: CodeChecklist.gitPath())
+    check(CodeChecklist.summary(clean) == "1 project, 1 in git: all pushed and committed (the list goes in the image)", "export page: all read, nothing to fix: \(CodeChecklist.summary(clean))")
+
+    // ---- a repo whose own config runs a program: never status (the filter's marker never appears)
+    let evil = code + "/evil/app", marker = code + "/FILTER_RAN"
+    try! fm.createDirectory(atPath: evil, withIntermediateDirectories: true)
+    _ = git(evil, ["init", "-q"]); write(evil + "/a.txt", "hi\n"); write(evil + "/.gitattributes", "a.txt filter=probe\n")
+    _ = git(evil, ["add", "."]); _ = git(evil, ["commit", "-q", "-m", "one"])
+    _ = git(evil, ["config", "filter.probe.clean", "sh -c 'touch \(marker); cat'"])
+    try? fm.setAttributes([.modificationDate: Date(timeIntervalSince1970: 1_577_836_800)], ofItemAtPath: evil + "/a.txt")        // stat-dirty, as after a copy
+    let ev = CodeChecklist.gather([evil: 1], git: CodeChecklist.gitPath()).projects.first
+    check(!fm.fileExists(atPath: marker) && ev?.note == "not read: its git settings run programs" && ev?.unread?.contains(.uncommitted) == true && ev?.uncommitted == nil,
+          "hostile config: a repo's own filter never runs (status skipped), and it is said: \(ev?.note ?? "nil")")
+    let evw = CodeChecklist.warnings(CodeChecklist.File(created: Date(), git: nil, projects: ev.map { [$0] } ?? []))
+    check(evw.contains { $0.contains("couldn't read the files not committed (its git settings run programs)") }, "hostile config: the page warns: \(evw)")
+    _ = git(evil, ["config", "--unset", "filter.probe.clean"]); _ = git(evil, ["config", "include.path", "/srv/other.inc"])
+    check(CodeChecklist.gather([evil: 1], git: CodeChecklist.gitPath()).projects.first?.note == "not read: its git settings run programs", "hostile config: an include counts too")
+
+    // ---- git that never answers, with a child holding the pipe: killed by group, the whole list within its budget
+    let slow = code + "/fakegit/git", slowMark = code + "/SLOW_CHILD_RAN"
+    write(slow, "#!/bin/sh\n( sleep 4; touch \(slowMark) ) &\nsleep 30\n")
+    chmod(slow, 0o755)
+    CodeChecklist.timeout = 1; CodeChecklist.budget = 1.5
+    let t0 = Date()
+    let slowList = CodeChecklist.gather([same: 1, longA: 1], git: slow)
+    let took = Date().timeIntervalSince(t0)
+    CodeChecklist.timeout = 10; CodeChecklist.budget = 60
+    check(took < 8 && slowList.projects.count == 2 && slowList.projects.allSatisfy { !$0.git && ($0.note ?? "").hasPrefix("not read") },
+          "timeout: git that hangs is stopped and nothing is taken for 'not a git repo' (\(String(format: "%.1f", took)) s): \(slowList.projects.map { $0.note ?? "" })")
+    check(slowList.projects.contains { $0.note == "not read: out of time" }, "timeout: past the budget, the rest is 'not read: out of time'")
+    check(CodeChecklist.gather([same: 1], git: slow, cancel: { true }).projects.first?.note == "not read: stopped", "cancel: the Export page's Stop stops the reading")
+    Thread.sleep(forTimeInterval: 4.5)
+    check(!fm.fileExists(atPath: slowMark), "timeout: the child that held the pipe was killed with its group (its marker never appears)")
     // credentials out of a remote's address
     let remotes: [(String, String?)] = [("https://user:\(tok)@git.example.com/o/r.git", "https://git.example.com/o/r.git"), ("https://\(tok)@git.example.com/o/r", "https://git.example.com/o/r"),
                                         ("git@example.com:o/r.git", "git@example.com:o/r.git"), ("ssh://git@host:22/o/r.git", "ssh://git@host:22/o/r.git"),
                                         ("ssh://u:pw@host/o/r", "ssh://host/o/r"), ("u:pw@host:o/r", "host:o/r"), ("/srv/git/bare.git", "/srv/git/bare.git"),
                                         ("https://git.example.com/o/\(tok).git", nil), ("https://host/o/r?token=abc#x", "https://host/o/r"), ("bad url with spaces", nil),
-                                        ("https://ex.com/a\u{202E}b\n2nd", "https://ex.com/ab")]
+                                        ("https://ex.com/a\u{202E}b\n2nd", "https://ex.com/ab"),
+                                        // round 1: a "/" in the password, a query or fragment right after the host, options and transports
+                                        ("https://user:pa/ss@host/o/r", nil), ("https://host?token=x", "https://host"), ("https://abc@host#f", "https://host"),
+                                        ("--upload-pack=curl${IFS}x|sh", nil), ("-oProxyCommand=x@host:r", nil), ("ext::sh%20-c%20x", nil), ("fd::7", nil), ("FD::7", nil),
+                                        ("https://host:abc/o", nil), ("https://host:8443/o/r", "https://host:8443/o/r"), ("https://host/@scope/x", nil),
+                                        ("ssh://git@host/o/r?x=1", "ssh://git@host/o/r")]
+    check(CodeChecklist.commands(CodeChecklist.Project(path: "~/code/x", git: true, remote: "https://host/o/r", branch: "main", sessions: 1), here: false).first
+          == "git clone -- https://host/o/r ~/code/x", "commands: git clone -- <address> <path> (nothing in the address can be an option)")
+    let leftOut = CodeChecklist.Project(path: "~/code/x", git: true, sessions: 1, note: CodeChecklist.remoteLeftOut)
+    check(CodeChecklist.lines(leftOut, here: false).first?.contains("held something like a key, so it is left out") == true
+          && CodeChecklist.warnings(CodeChecklist.File(created: Date(), git: nil, projects: [leftOut])).contains { $0.contains("held something like a key") },
+          "a remote left out: the pages say why, not 'no remote'")
     for (raw, want) in remotes { check(CodeChecklist.strippedRemote(raw) == want, "remote: \(raw.prefix(30)) → \(CodeChecklist.strippedRemote(raw) ?? "nil")") }
     check(CodeChecklist.shellWord("~/code/my app") == "~/'code/my app'" && CodeChecklist.shellWord("it's") == #"'it'\''s'"# && CodeChecklist.shellWord("~/code/app") == "~/code/app",
           "commands: a path with a space or a quote is quoted, ~/ kept for the shell")
