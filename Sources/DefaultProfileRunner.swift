@@ -358,6 +358,17 @@ final class DefaultProfileRunner: ObservableObject {
     /// The old profile's folder, with its sessions, settings and sign-in, stays exactly as it is and is never offered for
     /// the Trash; only the folders an earlier cl_audit made for its standby sign-ins join the default profile's Folders from
     /// before. Nothing is moved, copied or signed out.
+    /// The default profile's leftovers once the old profile is kept as a standby account: its own, plus only the folders an
+    /// earlier cl_audit made for the old profile's standby sign-ins; never the old profile's own folder (its sessions,
+    /// settings and CLAUDE.md stay exactly as they are) nor the default's.
+    static func leftovers(of old: AccountEntry, into e: AccountEntry) -> [String] {
+        var out = e.leftoverFolders
+        for d in old.leftoverFolders where !out.contains(d) && !FolderKey.overlaps(d, e.configDir) && !FolderKey.overlaps(d, old.configDir) {
+            out.append(d)
+        }
+        return out
+    }
+
     func keepOldAsStandby() {
         guard canKeepOldAsStandby, let m = model, let t = target, let ti = m.accounts.firstIndex(where: { $0.id == t.id }),
               let s = old.seat else { return }
@@ -370,11 +381,7 @@ final class DefaultProfileRunner: ObservableObject {
             && !e.standby.contains(where: { x in (x.seat != nil && q.seat.map { x.seat!.same($0) } == true) || x.email.lowercased() == q.email.lowercased() }) {
             e.standby.append(q)
         }
-        // only the folders an earlier cl_audit made for a standby sign-in: never the old profile's own folder, which holds
-        // its sessions, settings and CLAUDE.md and stays exactly as it is
-        for d in old.leftoverFolders where !e.leftoverFolders.contains(d) && !FolderKey.overlaps(d, e.configDir) && !FolderKey.overlaps(d, old.configDir) {
-            e.leftoverFolders.append(d)
-        }
+        e.leftoverFolders = Self.leftovers(of: old, into: e)
         m.accounts[ti] = e
         m.remove(old.id)
         m.apply()

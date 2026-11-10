@@ -77,8 +77,7 @@ enum Cleanup {
         }
         // 3. saved usage of unknown profiles, and of standby accounts (<profile>~<id>.json, 26.11.13 and earlier: a standby
         // account isn't read any more)
-        for f in (try? fm.contentsOfDirectory(at: Store.statusFolder, includingPropertiesForKeys: nil)) ?? []
-        where ["json", "prev"].contains(f.pathExtension) && !ids.contains(f.deletingPathExtension().lastPathComponent) {
+        for f in staleStatus(in: Store.statusFolder, ids: ids) {
             if !dry { try? fm.removeItem(at: f) }
             removed.append("saved usage of \(f.deletingPathExtension().lastPathComponent)")
         }
@@ -113,6 +112,13 @@ enum Cleanup {
                                      : CleanupRecord(at: Date(), removedAt: Date(), removed: removed)
         if let data = try? enc.encode(record) { try? data.write(to: recordURL, options: .atomic) }
         return removed
+    }
+
+    /// Saved numbers no profile owns: `<id>.json` and `<id>.prev` whose id isn't a profile's (a removed profile's, and a
+    /// standby account's `<profile>~<id>.json` from 26.11.13 and earlier). Nothing else in the folder.
+    static func staleStatus(in folder: URL, ids: Set<String>) -> [URL] {
+        ((try? FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)) ?? [])
+            .filter { ["json", "prev"].contains($0.pathExtension) && !ids.contains($0.deletingPathExtension().lastPathComponent) }
     }
 
     /// Quits the app at exactly this place (not other copies with its bundle id), without its Claude window.
