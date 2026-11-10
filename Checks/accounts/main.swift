@@ -367,14 +367,15 @@ do {
     let all = [def]
     var w = def; w.leftoverFolders = ["~/.claude-withwork"]
     let f = Leftovers.offered(w, among: all).first
-    check(f?.inside == Leftovers.Inside(sessions: 2, settings: false, claudeMD: true, other: 1) && f?.trashable == false,
+    check(f?.inside == Leftovers.Inside(sessions: 2, settings: false, claudeMD: true, other: 1, projects: 2) && f?.trashable == false,
           "a folder's sessions, CLAUDE.md and other items are counted; one with sessions isn't trashable")
     check(Leftovers.line(f!).contains("holds 2 sessions") && Leftovers.line(f!).contains("Finder"), "…and its line says why and offers Finder")
     let before = trashed.count
     check(Leftovers.trash(f!, among: all) != nil && trashed.count == before, "…and Move to Trash refuses it")
+    sign("~/.claude-ultra-1", u1)
     let plain = Leftovers.Folder(path: "~/.claude-ultra-1", keychainItem: "k", inside: Leftovers.Inside.of("~/.claude-ultra-1"))
-    check(Leftovers.question(plain).detail.hasPrefix("In it: its sign-in record, settings.json.") || Leftovers.question(plain).detail.contains("In it: its sign-in record"),
-          "the Trash question says what is in the folder: \(Leftovers.question(plain).detail.prefix(60))")
+    check(Leftovers.question(plain).detail.hasPrefix("In it: the account record (.claude.json)") && Leftovers.question(plain).detail.contains("isn't in the folder"),
+          "the Trash question says what is in the folder, and that the sign-in itself is in the Keychain: \(Leftovers.question(plain).detail.prefix(60))")
 
     // offerable: only ~/.claude-<name> directly in the home folder, never a profile's window folder
     try? fm.createDirectory(atPath: expand("~/Documents/x"), withIntermediateDirectories: true)
@@ -433,6 +434,83 @@ do {
     let mk = SwitchRunner.marker(for: "../../evil")
     check(mk.deletingLastPathComponent().path == Store.folder.path && !mk.lastPathComponent.contains("/"), "the sign-in marker stays in cl_audit's folder")
     check(!AddAccountWords.looksLikeAddress("a@example.com\nx@example.com") && AddAccountWords.looksLikeAddress(" a@example.com\n"), "an address with a newline inside is refused")
+}
+
+// ============ 11. review round 2: sessions unknown, counted off the main thread, links, the agent's note, the other profile's note ============
+do {
+    let all = [profile("main", "~/.claude", u1)]
+    func folder(_ p: String) -> Leftovers.Folder { Leftovers.offered({ var e = all[0]; e.leftoverFolders = [p]; return e }(), among: all).first! }
+    // a projects folder that can't be listed: sessions unknown, never trashable, said so
+    put(expand("~/.claude-locked/projects/-p/\(uuid(81)).jsonl"), "{}")
+    chmod(expand("~/.claude-locked/projects"), 0o000)
+    let locked = folder("~/.claude-locked")
+    chmod(expand("~/.claude-locked/projects"), 0o700)
+    check(!locked.inside.known && !locked.trashable, "a projects folder that can't be listed: sessions unknown, not trashable")
+    check(Leftovers.line(locked).contains("couldn't be counted") && Leftovers.line(locked).contains("Finder"), "…and its line says so and offers Finder")
+    check(Leftovers.question(locked).detail.contains("projects (its sessions couldn't be counted)"), "…and the Trash question names projects")
+    chmod(expand("~/.claude-locked/projects"), 0o000)
+    let before = trashed.count
+    check(Leftovers.trash(locked, among: all) != nil && trashed.count == before, "…and Move to Trash refuses it at the click too")
+    chmod(expand("~/.claude-locked/projects"), 0o700)
+    // projects is a link: never followed
+    put(expand("~/elsewhere/-p/\(uuid(82)).jsonl"), "{}")
+    try? fm.createDirectory(atPath: expand("~/.claude-plink"), withIntermediateDirectories: true)
+    try? fm.createSymbolicLink(atPath: expand("~/.claude-plink/projects"), withDestinationPath: expand("~/elsewhere"))
+    let plink = folder("~/.claude-plink")
+    check(!plink.inside.known && plink.inside.sessions == 0 && !plink.trashable, "a projects link isn't followed: sessions unknown, not trashable")
+    // a project folder that is a link: not looked into either
+    put(expand("~/.claude-sublink/projects/-real/notes.txt"), "x")
+    try? fm.createSymbolicLink(atPath: expand("~/.claude-sublink/projects/-q"), withDestinationPath: expand("~/elsewhere/-p"))
+    check(!folder("~/.claude-sublink").inside.known, "a project folder that is a link: sessions unknown")
+    // an empty projects and one with folders but no sessions
+    put(expand("~/.claude-nosess/projects/-p/notes.txt"), "x"); put(expand("~/.claude-nosess/projects/-q/notes.txt"), "x")
+    let nosess = folder("~/.claude-nosess")
+    check(nosess.trashable && Leftovers.question(nosess).detail.contains("projects (2 folders, no sessions)"), "projects with folders but no sessions: trashable, said with its count")
+    // the cap: a folder with more names than that is not counted
+    for n in 0..<6 { put(expand("~/.claude-big/projects/-p\(n)/x.txt"), "x") }
+    check(!Leftovers.Inside.of("~/.claude-big", cap: 4).known && Leftovers.Inside.of("~/.claude-big").known, "more names than the cap: sessions unknown")
+    // a leaf swapped for a link between the offer and the click: nothing moves
+    try? fm.createDirectory(atPath: expand("~/.claude-swap"), withIntermediateDirectories: true)
+    let swap = folder("~/.claude-swap")
+    check(swap.trashable, "a plain empty folder is offered for the Trash")
+    try? fm.removeItem(atPath: expand("~/.claude-swap"))
+    try? fm.createSymbolicLink(atPath: expand("~/.claude-swap"), withDestinationPath: expand("~/elsewhere"))
+    check(Leftovers.trash(swap, among: all) != nil && trashed.count == before, "swapped for a link after the offer: refused at the click, nothing moves")
+    // not counted yet: never trashable, and says it is looking
+    let pending = Leftovers.offered({ var e = all[0]; e.leftoverFolders = ["~/.claude-nosess"]; return e }(), among: all, inside: { _ in nil }).first!
+    check(!pending.trashable && Leftovers.line(pending).hasSuffix("Looking at what's in it…"), "not counted yet: not trashable, the line says it is looking")
+
+    // the card's counts: off the main thread, kept until the folder changes, counted again when it appears
+    MainActor.assumeIsolated {
+        let c = LeftoverCounts()
+        check(c.inside("~/.claude-nosess") == nil, "nothing counted yet")
+        c.countNow(["~/.claude-nosess"])
+        check(c.inside("~/.claude-nosess")?.projects == 2, "counted: kept")
+        Thread.sleep(forTimeInterval: 1.1)
+        put(expand("~/.claude-nosess/projects/-r/\(uuid(83)).jsonl"), "{}")
+        check(c.inside("~/.claude-nosess") == nil, "the projects folder changed: counted again")
+        c.refresh(["~/.claude-nosess"])
+        let deadline = Date().addingTimeInterval(5)
+        while c.inside("~/.claude-nosess") == nil && Date() < deadline { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        check(c.inside("~/.claude-nosess")?.sessions == 1, "refresh counts off the main thread and publishes it")
+    }
+
+    // the agent notes the folder's account under the profiles file's lock, end to end, and the other profile is told
+    let n1 = profile("n1", "~/.claude-n1", u1)
+    let n2 = profile("n2", "~/.claude-n2", u3, standby: [StandbyAccount(email: u1.email!, id: "r1")])     // remembered by address
+    sign("~/.claude-n1", u2); sign("~/.claude-n2", u3)
+    try! Store.save([n1, n2])
+    AgentDelegate().noteAccounts()
+    let after = Store.loadChecked() ?? []
+    let a1 = after.first { $0.id == "n1" }, a2 = after.first { $0.id == "n2" }
+    check(a1?.seat.map { $0.same(u2) } == true && a1?.standby.contains { $0.seat.map { $0.same(u1) } == true } == true,
+          "the agent: n1 follows its folder to ultra-2, ultra-1 stands by on it (saved under the lock)")
+    check(a2?.standby.isEmpty == true && a2?.accountNote?.kind == .standsBy && a2?.accountNote?.profile == "N1",
+          "the remembered entry on n2 goes, and n2 says why: \(a2?.accountNote?.words ?? "no note")")
+    check(a2?.accountNote?.words.contains("stands by on N1 now") == true, "…in words")
+    let lock = Store.folder.appendingPathComponent("accounts.lock").path
+    check(fm.fileExists(atPath: lock), "the profiles file's lock was taken")
+    for d in ["~/.claude-n1", "~/.claude-n2"] { sign(d, nil) }
 }
 
 print("checks: \(passed) passed, \(failed) failed")
