@@ -547,8 +547,9 @@ MainActor.assumeIsolated {
     check(notMove.contains("outside a move") || notMove.contains("don't agree"), "hostile image: a checklist in a file that isn't a move is refused: \(notMove.prefix(90))")
     let old4 = doctored("code-v4") { _, ex in ex.version = 4 }
     check(old4.contains("older than the one it came with"), "format: a checklist in a version-4 file is refused: \(old4.prefix(90))")
-    let v6 = doctored("v6") { _, ex in ex.version = 6 }
-    check(v6.contains("newer cl_audit"), "format: version 6 is refused with the newer-cl_audit words")
+    // (6 is a move's side files now, read by this build: the newer format is 7)
+    let v7 = doctored("v7") { _, ex in ex.version = 7 }
+    check(v7.contains("newer cl_audit"), "format: version 7 is refused with the newer-cl_audit words")
     let unnamed = doctored("code-unnamed") { _, ex in ex.checklist = nil }
     check(unnamed != "OPENED", "hostile image: a code.json export.json doesn't name is refused (a file its manifest doesn't name): \(unnamed.prefix(90))")
     SessionsImport.discard(base0.work)
