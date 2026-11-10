@@ -432,7 +432,7 @@ enum SessionsRepoint {
         for pick in picks {
             let id = pick.session.lowercased()
             do {
-                guard AccountDiscovery.isUUID(id) else { throw RepointError("A session id that isn't one; left as it is.") }
+                guard AccountDiscovery.isUUID(id) else { throw RepointError("A session with a broken id; left as it is.") }
                 // where its transcript is now
                 guard let found = locate(id, projects: projects) else { throw RepointError("Session \(id.prefix(8)): its transcript isn't in \(tilde(projects)); left as it is.") }
                 guard let s = session(id: id, project: found.project, transcript: found.path, entries: byCli[id] ?? []) else {
@@ -471,14 +471,20 @@ enum SessionsRepoint {
         guard folderHere(picked) else { throw RepointError("\(label): \(tilde(picked)) isn't a folder; left as it is.") }
         guard clean(picked), picked != "/" else { throw RepointError("\(label): the picked folder's path can't be used (control characters, or the top of the disk); left as it is.") }
         let home = (realpath(NSHomeDirectory(), nil)).map { p -> String in defer { free(p) }; return String(cString: p) } ?? NSHomeDirectory()
-        let own = [t.codeDir, t.dataDir, Store.folder.path].filter { !$0.isEmpty }
+        // (each as written and as its real path: a linked ~/.claude is still Claude's own)
+        func resolved(_ p: String) -> String {
+            guard let c = realpath(p, nil) else { return p }
+            defer { free(c) }
+            return String(cString: c)
+        }
+        let own = [t.codeDir, t.dataDir, Store.folder.path].filter { !$0.isEmpty }.flatMap { [$0, resolved($0)] }
         if picked == home || picked == NSHomeDirectory() || own.contains(where: { inside(picked, $0) }) {
             throw RepointError("\(label): \(tilde(picked)) is Claude's or cl_audit's own folder (or the home folder); pick the project's folder.")
         }
         guard picked != s.folder else { throw RepointError("\(label): it already points at \(tilde(picked)).") }
         let newName = ProjectName.encoded(picked)
         guard newName != s.project else {
-            throw RepointError("\(label): Claude Code's name for \(tilde(picked)) is the same as for its old folder (\(newName.prefix(60))), so it can't be moved there; left as it is.")
+            throw RepointError("\(label): \(tilde(picked)) would get the same folder name in Claude Code as the old folder (\(newName.prefix(60))), so it can't be moved there; left as it is.")
         }
         // a running Claude Code session holds it (or it was written to a moment ago)
         var tst = stat()
@@ -537,14 +543,14 @@ enum SessionsRepoint {
         func made(_ path: String, _ write: () throws -> (sha: String, lines: Int, kept: Int)) throws {
             r.steps.append(Step(kind: .made, session: s.id, path: path)); try save(r)
             let i = r.steps.count - 1
-            do {
-                let w = try write()
-                r.steps[i].sha = w.sha; r.steps[i].done = true
-                done.lines += w.lines; done.keptLines += w.kept; done.files += 1
-                try save(r)
-            } catch {
-                r.steps.remove(at: i); try? save(r); throw error
+            let w: (sha: String, lines: Int, kept: Int)
+            do { w = try write() } catch {
+                r.steps.remove(at: i); try? save(r); throw error            // nothing was put in place
             }
+            // the file is in place: its step stays whatever happens to the save, so Undo and a retry still see it
+            r.steps[i].sha = w.sha; r.steps[i].done = true
+            done.lines += w.lines; done.keptLines += w.kept; done.files += 1
+            try save(r)
         }
         try made(newBase + "/" + s.id + ".jsonl") {
             try copyFile(from: oldDir, [s.id + ".jsonl"], to: newDir, [s.id + ".jsonl"], rewrite: true, tag: tag, map: map)
@@ -832,7 +838,7 @@ enum SessionsRepoint {
             do { lock = try SwitchEngine.Lock.take() } catch { throw RepointError("\(error)") }
         }
         defer { lock?.release() }
-        guard var r = load(id) else { throw RepointError("No receipt for that re-point.") }
+        guard var r = load(id) else { throw RepointError("No record of that change.") }
         guard r.undone == nil else { return r }
         let sessions = r.steps.map(\.session).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
         let running = SessionsRestore.runningSessions() ?? []
@@ -858,7 +864,7 @@ enum SessionsRepoint {
             }
             if let why {
                 if let k = r.sessions.firstIndex(where: { $0.session == sid }) { r.sessions[k].left = why }
-                r.problems.append("\(r.sessions.first { $0.session == sid }?.title.map { "“\($0)”" } ?? "Session \(sid.prefix(8))") stays re-pointed: \(why).")
+                r.problems.append("\(r.sessions.first { $0.session == sid }?.title.map { "“\($0)”" } ?? "Session \(sid.prefix(8))") stays in its new folder: \(why).")
                 for i in idx { r.steps[i].settled = true }
                 try save(r)
                 continue
@@ -966,7 +972,7 @@ enum RepointWords {
 
     static func done(_ d: SessionsRepoint.Done) -> String {
         var parts = ["now in \(tilde(d.to))"]
-        if d.lines > 0 { parts.append(n(d.lines, "line", "lines") + " re-pointed") }
+        if d.lines > 0 { parts.append(n(d.lines, "folder path", "folder paths") + " in the chat updated") }
         if d.entries > 0 { parts.append(n(d.entries, "Code-tab entry", "Code-tab entries") + " changed") }
         if d.dropped.contains("worktreePath") { parts.append("its worktree isn't on this Mac, so it runs in the project folder") }
         if d.memory > 0 { parts.append(n(d.memory, "memory file", "memory files") + " copied") }
