@@ -1,4 +1,4 @@
-// Renders the first-run page (and the Add account pop-up's rows) to PNGs, Std and Silver, width 708. Throwaway HOME only;
+// Renders the first-run page to PNGs, Std and Silver, width 708. Throwaway HOME only;
 // no app is launched, nothing is shown on screen (an unshown window), Terminal and the Dock aren't touched.
 
 import AppKit
@@ -133,38 +133,5 @@ for w in [CGFloat(420), 340] { for face in [Face.std, .silver] {
     }
 } }
 
-// 8. the Add account pop-up's rows with Claude Code missing (macOS draws the real menu; these are its rows)
-struct MenuRows: View {
-    let rows: [AddAccountRow]
-    var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(rows) { r in
-                switch r.kind {
-                case .divider: Divider().padding(.vertical, 4)
-                case .caption: Text(r.title).font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.vertical, 3)
-                default:
-                    let ns = AddAccountPopup.title(r)
-                    Group {
-                        if let a = try? AttributedString(ns, including: \.appKit) { Text(a) } else { Text(r.title) }
-                    }
-                    .padding(.horizontal, 12).padding(.vertical, 4)
-                }
-            }
-        }
-        .padding(.vertical, 6).frame(width: 330, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .windowBackgroundColor)))
-        .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.primary.opacity(0.18)))
-    }
-}
-for face in [Face.std, .silver] {
-    let rows = AddAccountPopup.rows(found: [], profile: "Work")
-    render("8-add-account-popup", face: face, width: 372) { MenuRows(rows: rows) }
-    // with accounts found on this Mac: one signed in in a folder no profile uses, one this profile's window used, another
-    // profile's (dimmed); a click only remembers it
-    let found = [FoundAccount(seat: Seat(account: "a1", organization: "o1", email: "ultra-3@example.com"), plan: "Ultra", org: "Personal", folder: "~/.claude-ultra-3"),
-                 FoundAccount(seat: Seat(account: "a2", organization: "o2", email: "pro-1@example.com"), plan: "Pro", org: "Personal",
-                              usedInWindow: Date().addingTimeInterval(-40 * 86400)),
-                 FoundAccount(seat: Seat(account: "a3", organization: "o3", email: "team-1@example.com"), owner: "Main")]
-    render("8b-add-account-popup-found", face: face, width: 372) { MenuRows(rows: AddAccountPopup.rows(found: found, profile: "Work")) }
-}
+// 8 and 8b (the Add account pop-up) went with Add account: a profile's accounts are found on this Mac by themselves.
 print("done")

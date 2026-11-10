@@ -230,28 +230,41 @@ MainActor.assumeIsolated {
     let goal = SwitchRunner.Goal(standby: "k2", wantedSeat: u2, wantedEmail: u2.email!, from: u1, started: Date().addingTimeInterval(-75))
     r.preview(.ready, goal: nil, target: k2)
     page(main, k2, "o1-switch-ready")
-    r.preview(.waiting, goal: goal, target: k2)
+    // the move: what it plans (the window's sessions under ultra-1), then the receipt it leaves (for Undo)
+    let swPlan: SwitchPlan? = { if case .success(let p) = SwitchEngine.plan(main, standby: k2, owned: []) { return p }; return nil }()
+    var moved = SwitchReceipt(id: SwitchEngine.receiptID(Date(), "main"), profile: "main", standby: "k2", dataDir: wd, from: SeatID(u1), to: SeatID(u2), started: Date())
+    moved.steps = (swPlan?.move ?? []).map { SwitchReceipt.Step(kind: .entry, path: $0, sha: nil, parked: nil, original: nil, done: true) }
+    r.preview(.closing, goal: goal, target: k2, planned: swPlan)
+    page(main, k2, "o10-switch-closing")
+    r.preview(.moving, goal: goal, target: k2, planned: swPlan)
+    page(main, k2, "o11-switch-moving")
+    r.preview(.waiting, goal: goal, target: k2, planned: swPlan, receipt: moved, note: SwitchRunner.heldWords(1))
     page(main, k2, "o2-switch-waiting")
     // the folder signed in to ultra-2: the profile follows it (FolderRules.noteAccounts), ultra-1 stands by
     sign("~/.claude", u2)
     let after = FolderRules.noteAccounts([main], signedIn: { $0 == "~/.claude" ? u2 : nil }, status: { _ in Store.status(for: main) })[0]
     model.accounts = [after]
-    r.preview(.reached, goal: goal, target: k2)
+    var linked = moved; linked.linked = Date()
+    r.preview(.reached, goal: goal, target: k2, planned: swPlan, receipt: linked)
     page(after, k2, "o3-switch-reached")
     // the browser was signed in as ultra-3: the profile is on ultra-3 now
     sign("~/.claude", u3)
     let onOther = FolderRules.noteAccounts([main], signedIn: { $0 == "~/.claude" ? u3 : nil }, status: { _ in Store.status(for: main) })[0]
     model.accounts = [onOther]
-    r.preview(.other(u3.email!), goal: goal, target: k2)
+    r.preview(.other(u3.email!), goal: goal, target: k2, planned: swPlan, receipt: moved)
     page(onOther, k2, "o4-switch-other-account")
     sign("~/.claude", u1)
     model.accounts = [main]
-    r.preview(.timedOut, goal: goal, target: k2)
+    r.preview(.timedOut, goal: goal, target: k2, planned: swPlan, receipt: moved)
     page(main, k2, "o5-switch-timed-out")
+    var undone = moved; undone.undone = Date()
+    r.preview(.undone, goal: goal, target: k2, planned: swPlan, receipt: undone)
+    page(main, k2, "o12-switch-undone")
     let again = SwitchRunner.Goal(standby: nil, wantedSeat: u1, wantedEmail: u1.email!, from: u1, started: Date().addingTimeInterval(-30))
     r.preview(.waiting, goal: again, target: nil)
     page(main, k2, "o6-switch-sign-in-again")
     r.preview(.ready, goal: nil, target: k2)
+    if swPlan?.moves != true { print("note: the render world has no window sessions to move; o1–o5 show no move") }
 
     // the dashboard card: the account in use's limits, the standby accounts in unlit trays (no levels); then its week full,
     // the one offered first selected
@@ -268,14 +281,16 @@ MainActor.assumeIsolated {
     status("main", u1.email!, week: 94, fable: 60, resetsIn: 7 * 3600)
 
     // the Accounts card (the profile's settings page, cropped later): standby rows, a folder from before (~/.claude-ultra-2,
-    // signed in, no profile's) offered to the Trash; then Add account's Another address… row open
+    // signed in, no profile's) offered to the Trash; then the accounts found on this Mac, one known by its id only
     var withOld = main; withOld.leftoverFolders = ["~/.claude-ultra-2"]
     withOld.standby.append(StandbyAccount(email: "ultra-4@example.com", id: "k4"))      // remembered by its address only
     model.accounts = [withOld]
     LeftoverCounts.shared.countNow(withOld.leftoverFolders)      // the card counts off the main thread; a picture can't wait
+    var found = main
+    found.standby.append(StandbyAccount(email: "", seat: Seat(account: "7c1e9a40-0000-4000-8000-000000000071", organization: nil, email: nil), id: "k7"))
     for f in [Face.std, .silver] { for (wn, w) in oWidths {
         snapshot(framed(AccountSettings(entry: .constant(withOld), model: model, width: w), f, w), "o8-accounts-leftover-\(f.rawValue)-\(wn)", w + 32, 3200)
-        snapshot(framed(AccountSettings(entry: .constant(withOld), model: model, width: w, adding: "ultra-5@example.com"), f, w), "o9-accounts-add-address-\(f.rawValue)-\(wn)", w + 32, 3200)
+        snapshot(framed(AccountSettings(entry: .constant(found), model: model, width: w), f, w), "o9-accounts-found-\(f.rawValue)-\(wn)", w + 32, 3200)
     } }
     // a folder from before that holds sessions: never offered for the Trash, Show in Finder instead
     sign("~/.claude-old-work", u3)

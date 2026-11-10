@@ -177,14 +177,6 @@ do {
     check(ClaudeInstall.command == "curl -fsSL https://claude.ai/install.sh | bash", "the install command")
     check(ClaudeInstall.missingInstall == "Claude Code isn't installed on this Mac · Install…", "the reason line")
 
-    // Add account only remembers an account (the one-folder model): it needs no Claude Code, so Another address… stays live
-    let rows = AddAccountPopup.rows(found: [], profile: "x")
-    check(rows.last?.kind == .other && rows.last?.enabled == true, "Add account: Another address… is live without Claude Code (nothing signs in)")
-    var other = 0
-    let menu = AddAccountPopup.menu(rows, onAdd: { _ in }, onOther: { other += 1 })
-    if let a = menu.items.last?.target as? MenuAction { a.run() }
-    check(other == 1, "…and it opens the address row")
-
     // zero profiles everywhere
     let launcher = LauncherModel(); launcher.reload()
     check(launcher.rows.isEmpty && launcher.filtered.isEmpty && launcher.shownRows.isEmpty, "the launcher model has no rows and doesn't crash")

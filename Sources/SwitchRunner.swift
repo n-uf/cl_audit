@@ -315,7 +315,9 @@ final class SwitchRunner: ObservableObject {
     }
 
     /// Renders only: the page as it looks in a phase.
-    func preview(_ p: Phase, goal g: Goal?, target: StandbyAccount? = nil) {
+    func preview(_ p: Phase, goal g: Goal?, target: StandbyAccount? = nil, planned plan: SwitchPlan? = nil, receipt r: SwitchReceipt? = nil,
+                 note: String? = nil) {
         phase = p; goal = g; targetSnapshot = target ?? targetSnapshot
+        planned = plan; receipt = r; moveNote = note
     }
 }

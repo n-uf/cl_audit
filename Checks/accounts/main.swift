@@ -1,7 +1,8 @@
 // The one-folder model's checks for cl_audit (cl_quick's model): a profile is one Claude Code folder, its account in use is
 // the one signed in there, its standby accounts are remembered signed out. What an older profiles file becomes, the folders
 // it kept (offered to the Trash, never deleted silently, their Keychain items never touched), the folder's account followed
-// by itself, the account book, the switch's watch, the sign-in script, Add account, the menus' lines, the clean-up of the
+// by itself, the account book, the switch's watch, the sign-in script, the accounts found on this Mac and the Claude app's
+// account (claude-transplant's way), the move inside the one folder with Undo, the menus' lines, the clean-up of the
 // standby accounts' old files, and the old switches' receipts read only.
 //
 // Runs only with HOME and CFFIXED_USER_HOME = .../Checks/.work/accounts/home (Checks/run.sh sets and guards it). Sample
@@ -282,25 +283,157 @@ do {
     sign("~/.claude", u1)
 }
 
-// ============ 8. Add account remembers ============
+// ============ 8. claude-transplant's way: the accounts found on this Mac, the Claude app's account, the move ============
 do {
-    let main = profile("main", "~/.claude", u1, standby: [StandbyAccount(email: u2.email!, seat: u2, id: "k2")])
-    let work = profile("work", "~/.claude-work", u3)
-    check((try? main.remembering("nope", among: [main, work]).get()) == nil, "not an address: refused")
-    if case .failure(let why) = main.remembering(" Ultra-2@example.com ", among: [main, work]) { check(why == .already("Main"), "one of its own: refused") } else { check(false, "one of its own") }
-    if case .failure(let why) = main.remembering("ultra-3@example.com", among: [main, work]) { check(why.words.contains("“Work”"), "another profile's: refused, by name") } else { check(false, "another profile's") }
-    let added = try? main.remembering("ultra-5@example.com", among: [main, work]).get()
-    check(added?.standby.last?.email == "ultra-5@example.com" && added?.standby.last?.seat == nil, "an address is remembered, signed out, with no seat yet")
-    let before = opened.count
-    _ = try? main.remembering("ultra-6@example.com", among: [main, work]).get()
-    check(opened.count == before, "remembering opens no sign-in")
-    let f = FoundAccount(seat: u4, plan: "Max", org: "Personal", folder: "~/.claude-somewhere")
-    let viaFound = main.adding(f, among: [main, work], signedIn: { _ in nil })
-    check(viaFound?.standby.last?.seat.map { $0.same(u4) } == true && viaFound?.standby.last?.plan == "Max", "a found account is remembered with its plan, no folder")
-    check(main.adding(FoundAccount(seat: u3), among: [main, work], signedIn: { _ in nil }) == nil, "another profile's account can't be added")
-    let rows = AddAccountPopup.rows(found: [f], profile: "Main")
-    check(rows.last?.kind == .other && rows.last?.title == "Another address…" && rows.first { $0.kind == .account }?.detail?.contains("limits") == false,
-          "the pop-up: found accounts (no limits promised), then Another address…")
+    let u5 = seat(5, "ultra-5@example.com"), u6 = seat(6, "ultra-6@example.com")
+    // a profile with its own window: sessions under u2, an agent session under u5 naming its address; its folder's backup
+    // names u3 (Personal); a transcript names u6's account id; another profile has u4 on standby
+    let wd8 = expand("~/Library/Application Support/Claude-acc8")
+    put("\(wd8)/claude-code-sessions/\(u2.account)/\(u2.organization!)/local_\(uuid(801)).json", #"{"sessionId":"local_x"}"#)
+    put("\(wd8)/local-agent-mode-sessions/\(u5.account)/\(u5.organization!)/r.json", #"{"emailAddress":"ultra-5@example.com","token":"never-read"}"#)
+    put("\(wd8)/claude-code-sessions/\(u4.account)/\(u4.organization!)/local_\(uuid(802)).json", "{}")
+    put("\(wd8)/claude-code-sessions/not-an-id/\(u2.organization!)/local_\(uuid(803)).json", "{}")
+    sign("~/.claude-p8", u1)
+    let b = """
+    {"oauthAccount":{"accountUuid":"\(u3.account)","organizationUuid":"\(u3.organization!)","emailAddress":"ultra-3@example.com","organizationType":"claude_max","organizationName":"ultra-3's Organization","planDisplayName":"Max"},"accessToken":"never-read"}
+    """
+    put(expand("~/.claude-p8/backups/.claude.json.backup.1700000000"), b)
+    put(expand("~/.claude-p8/projects/-x/\(uuid(804)).jsonl"), #"{"type":"user","accountUuid":"\#(u6.account)"}"# + "\n")
+    var p8 = profile("p8", "~/.claude-p8", u1); p8.desktop = .separate; p8.desktopDataDir = wd8
+    var o8 = profile("o8", "~/.claude-o8", seat(9, "o9@example.com"), standby: [StandbyAccount(email: u4.email!, seat: u4, id: "o4")])
+    o8.claudeWindow = false
+    let found = AccountList.find([p8, o8])
+    check(found.logins.emails[u5.account] == "ultra-5@example.com" && found.logins.emails[u3.account] == "ultra-3@example.com",
+          "addresses from the agent sessions and the folder's backups")
+    check(found.logins.orgs[u3.organization!] == "Personal" && found.logins.plans[u3.account] == "Max", "a personal plan's organisation is Personal; the plan is kept")
+    check(found.window["p8"]?.keys.contains(SeatID(u2)) == true && found.window["p8"]?.keys.contains(SeatID(u5)) == true
+          && found.window["p8"]?.keys.contains { $0.account == "not-an-id" } == false, "the window's pairs, from both session folders, only real ids")
+    check(found.folder["p8"]?.contains(SeatID(u3)) == true && found.folder["p8"]?.contains(SeatID(u1)) == true, "the folder's pairs: its .claude.json and its backups")
+    check(found.transcripts["p8"] == [u6.account], "the transcripts' account id")
+    var forgetting = p8; forgetting.forgotten = [AccountList.key(u3)]
+    let listed = AccountList.adding(found, to: [forgetting, o8], now: t0)
+    let sb = listed[0].standby
+    check(sb.contains { $0.seat?.same(u2) == true } && sb.contains { $0.seat?.same(u5) == true && $0.email == "ultra-5@example.com" },
+          "the window's accounts go on standby, with an address where one is known")
+    check(!sb.contains { $0.seat?.account == u3.account }, "a forgotten one doesn't come back")
+    check(!sb.contains { $0.seat?.account == u4.account } && !sb.contains { $0.seat?.account == u1.account },
+          "never another profile's account, never the one in use")
+    check(sb.first { $0.seat?.account == u6.account }.map { $0.seat?.organization == nil && $0.label == "account 00000000" } == true,
+          "a transcript's account id alone: listed by its id")
+    check(sb.first { $0.seat?.same(u2) == true }?.lastInUse != nil, "last in use: when the window last wrote a session under it")
+    check(AccountList.adding(found, to: listed, now: t0) == listed, "found again: nothing added twice")
+    check(listed[1] == o8, "the other profile is left as it was")
+    check(AccountList.label(Seat(account: u3.account, organization: u3.organization, email: nil), found.logins) == "ultra-3@example.com · Personal"
+          && AccountList.label(Seat(account: uuid(77), organization: nil, email: nil), found.logins) == "account 00000000", "labels: address · organisation, or account and 8 characters")
+    let tree8 = tree(wd8)
+    check(tree(wd8) == tree8 && fm.contents(atPath: "\(wd8)/local-agent-mode-sessions/\(u5.account)/\(u5.organization!)/r.json") != nil, "finding changes nothing")
+    // an account found by its id alone is reached by that id
+    let idGoal = SwitchRunner.Goal(standby: "x", wantedSeat: Seat(account: u6.account, organization: nil, email: nil), wantedEmail: "", from: u1, started: t0)
+    check(SwitchRunner.reached(idGoal, u6) && !SwitchRunner.reached(idGoal, u2), "an account known by its id alone: reached by that id")
+
+    // the Claude app's account: its log after the launch, cross-checked with config.json
+    let launched = t0
+    func at(_ s: Double) -> String { AppSignIn.timeFormat.string(from: launched.addingTimeInterval(s)) }
+    let ok = "\(at(5)) [info] [LocalSessionManager] Initialization succeeded in 12ms, accountId=\(u2.account), orgId=\(u2.organization!), sessions=3"
+    func judge(_ lines: [String], known: String? = nil) -> AppSignIn.Login? {
+        AppSignIn.judge(lines: lines.map { Substring($0) }, launched: launched, lastKnown: known, now: launched.addingTimeInterval(3600))
+    }
+    check(judge([ok, ""])?.account == u2.account && judge([ok, ""])?.org == u2.organization && judge([ok, ""])?.state == .known, "Initialization succeeded names the account")
+    check(judge([ok, ""], known: u3.account)?.state == .unknown, "config.json names another account: unknown")
+    check(judge([ok, ""], known: u2.account)?.state == .known, "…the same one: known")
+    check(judge([ok])?.state == .unknown, "the file's last line (still being written): unknown")
+    let before = "\(AppSignIn.timeFormat.string(from: launched.addingTimeInterval(-60))) [info] [LocalSessionManager] Initialization succeeded, accountId=\(u2.account), orgId=\(u2.organization!)"
+    check(judge([before, ""])?.state == .unknown, "a line from before the launch: unknown")
+    let out = "\(at(9)) [info] [account] Login-state transition (loggedOut: false → true, loading: false)"
+    check(judge([ok, out, ""])?.state == .loggedOut, "a later Login-state transition to loggedOut: signed out")
+    check(judge([ok, "\(at(9)) [info] [LocalSessionManager] Account logged out", ""])?.state == .loggedOut, "Account logged out: signed out")
+    check(judge([ok, "\(at(9)) [info] [account] Login-state transition (loggedOut: true -> false)", ""])?.state == .unknown, "a transition that isn't to signed out: unknown")
+    check(judge(["\(at(7)) [info] [LocalSessionManager] Initialization succeeded, accountId=nope, orgId=\(u2.organization!)", ""])?.state == .unknown, "an id that isn't one: unknown")
+    check(judge(["\(at(7)) [info] something else entirely", ""]) == nil, "no account line in the file: look at the next one")
+    let logs = URL(fileURLWithPath: expand("~/Library/Logs/Claude-acc8"))
+    put(logs.appendingPathComponent("main.log").path, "\(at(20)) [info] nothing about accounts\n")
+    put(logs.appendingPathComponent("main1.log").path, ok + "\n")
+    put(logs.appendingPathComponent("main01.log").path, "\(at(30)) [info] [LocalSessionManager] Account logged out\n")
+    check(AppSignIn.logFiles(logs).map(\.lastPathComponent) == ["main.log", "main1.log"], "the log files newest first, only main.log and mainN.log")
+    check(AppSignIn.fromLog(logs: logs, launched: launched, lastKnown: nil, now: launched.addingTimeInterval(3600)).account == u2.account, "the newest file without an account line: the next one decides")
+    put("\(wd8)/config.json", #"{"lastKnownAccountUuid":"\#(u2.account.uppercased())","oauth:tokenCache":"never-read"}"#)
+    check(AppSignIn.lastKnown(dataDir: wd8) == u2.account, "config.json: only lastKnownAccountUuid")
+    check(AppSignIn.current(dataDir: wd8, launched: nil, onlyApp: false, logs: logs).source == "config", "the app not running alone: config.json says it")
+    check(AppSignIn.current(dataDir: wd8, launched: launched, onlyApp: true, logs: logs, now: launched.addingTimeInterval(3600)).org == u2.organization, "the only Claude app running: its log says it, with the organisation")
+    var p8u = p8; p8u.claudeWindow = true
+    check(FolderRules.windowOnAnotherAccount(p8u, signedIn: { _ in u1 }, window: { _ in u2.account }) && !FolderRules.windowOnAnotherAccount(p8u, signedIn: { _ in u2 }, window: { _ in u2.account.uppercased() }),
+          "the window on another account than Claude Code: said; the same (any case): not")
+    check(FolderRules.windowWords(p8u, window: u2.account, names: [u2.account: u2.email!]).hasSuffix("Usage shown is Claude Code's.")
+          && FolderRules.windowWords(p8u, window: uuid(55), names: [:]).contains("account 00000000"), "said plainly, by address or the id's first 8")
+
+    // who owns a session now: `claude` processes' command lines and the folder's live registrations
+    put(expand("~/.claude-p8/sessions/4242.json"), #"{"pid":4242,"sessionId":"\#(uuid(902))"}"#)
+    put(expand("~/.claude-p8/sessions/4343.json"), #"{"pid":4343,"sessionId":"\#(uuid(903))"}"#)
+    put(expand("~/.claude-p8/sessions/4444.json"), #"{"pid":1,"sessionId":"\#(uuid(904))"}"#)
+    let ps = " 100 /opt/homebrew/bin/claude --resume \(uuid(901).uppercased())\n 101 /bin/zsh -c claude \(uuid(905))\n 102 claude\n"
+    let owned = SwitchEngine.owned(ps: ps, codeDir: "~/.claude-p8", alive: { $0 == 4242 || $0 == 4444 })
+    check(owned == [uuid(901), uuid(902)], "owned: an id on a claude command line, a live registration; not another program's, not a dead or mismatched registration: \(owned.sorted())")
+}
+
+// ============ 8b. the move inside the one folder: backup, held sessions, tasks with their state, Undo ============
+do {
+    let wdE = expand("~/Library/Application Support/Claude-move8")
+    let src = SwitchEngine.scopeDir(wdE, SeatID(u1)), dst = SwitchEngine.scopeDir(wdE, SeatID(u2))
+    let a = "local_\(uuid(811)).json", h = "local_\(uuid(812)).json", tk = "local_\(uuid(813)).json"
+    let aBytes = #"{"sessionId":"local_a","cliSessionId":"\#(uuid(821))","error":"old","bridgeSessionIds":["b1"]}"#
+    put("\(src)/\(a)", aBytes)
+    put("\(src)/\(h)", #"{"sessionId":"local_h","cliSessionId":"\#(uuid(822))"}"#)
+    put("\(src)/\(tk)", #"{"sessionId":"local_t","scheduledTaskId":"t1"}"#)
+    put("\(src)/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"t1","notifySessionId":"local_t"}],"recordedSkips":{"t1":{"n":2}},"runRetries":{}}"#)
+    put("\(dst)/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"t9"}],"runRetries":{"t9":1}}"#)
+    var e = profile("mv", "~/.claude-mv", u1, standby: [StandbyAccount(email: u2.email!, seat: u2, id: "k2")])
+    e.desktop = .separate; e.desktopDataDir = wdE
+    let k2 = e.standby[0]
+    guard case .success(let p) = SwitchEngine.plan(e, standby: k2, dataDir: wdE, owned: [uuid(822)]) else { check(false, "plan"); exit(1) }
+    check(p.move == [a, tk].sorted() && p.held == [h] && p.tasks == 1 && p.moves, "the plan: the free sessions move, the owned one is held, the task goes")
+    check(fm.fileExists(atPath: "\(src)/\(a)") && !fm.fileExists(atPath: dst + "/" + a), "planning moves nothing")
+    let place = URL(fileURLWithPath: home + "/bk8")
+    check((try? SwitchEngine.run(p, windowClosed: { false }, backups: place)) == nil && !fm.fileExists(atPath: dst + "/" + a), "the window open: refused, nothing moved")
+    let r = try! SwitchEngine.run(p, windowClosed: { true }, backups: place)
+    check(r.held == [h] && r.backup != nil && SessionsBackup.load(profile: "mv", id: r.backup!, place: place)?.kind == .beforeSwitch(r.id), "a backup first, naming the receipt; the held one noted")
+    let moved = (try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: dst + "/" + a)))) as? [String: Any]
+    check(moved != nil && moved?["error"] == nil && (moved?["bridgeSessionIds"] as? [Any])?.isEmpty == true && moved?["sessionId"] as? String == "local_a",
+          "moved without the old account's error keys and Remote Control ids, same id")
+    check(!fm.fileExists(atPath: "\(src)/\(a)") && fm.fileExists(atPath: "\(src)/\(h)") && fm.fileExists(atPath: SwitchEngine.root.path + "/\(r.id)/parked/\(a)"),
+          "the original parked, never deleted; the held one stays")
+    let dt = (try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: "\(dst)/scheduled-tasks.json")))) as? [String: Any]
+    let st = (try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: "\(src)/scheduled-tasks.json")))) as? [String: Any]
+    check(((dt?["scheduledTasks"] as? [[String: Any]])?.compactMap { $0["id"] as? String }) == ["t9", "t1"]
+          && (dt?["recordedSkips"] as? [String: Any])?["t1"] != nil && (dt?["runRetries"] as? [String: Any])?["t9"] as? Int == 1,
+          "the task and its skips joined the new account's, its own kept")
+    check((st?["scheduledTasks"] as? [Any])?.isEmpty == true && (st?["recordedSkips"] as? [String: Any])?["t1"] == nil, "the old account keeps no task and no state for it")
+    check(SwitchEngine.unfinished(profile: "mv").map(\.id) == [r.id], "not linked yet: unfinished, for Undo")
+    let back = try! SwitchEngine.undo(r.id, windowClosed: { true })
+    check(back.undone != nil && (try? Data(contentsOf: URL(fileURLWithPath: "\(src)/\(a)"))) == Data(aBytes.utf8) && !fm.fileExists(atPath: dst + "/" + a),
+          "Undo: the original back byte for byte, the copy gone")
+    let st2 = (try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: "\(src)/scheduled-tasks.json")))) as? [String: Any]
+    check((st2?["scheduledTasks"] as? [Any])?.count == 1 && SwitchEngine.unfinished(profile: "mv").isEmpty, "Undo: the tasks back, nothing unfinished")
+    // linked: the way back is a switch
+    guard case .success(let p2) = SwitchEngine.plan(e, standby: k2, dataDir: wdE, owned: []) else { check(false, "plan 2"); exit(1) }
+    let r2 = try! SwitchEngine.run(p2, windowClosed: { true }, backups: place)
+    SwitchEngine.markLinked(r2.id)
+    check(SwitchEngine.load(r2.id)?.linked != nil && (try? SwitchEngine.undo(r2.id, windowClosed: { true })) == nil, "linked: not undone")
+    check(SwitchEngine.unfinished(profile: "mv").isEmpty, "linked: not unfinished")
+    // a target with the same task and other state: the tasks stay, and so do their sessions
+    put("\(wdE)/claude-code-sessions/\(u3.account)/\(u3.organization!)/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"t1"}],"recordedSkips":{"t1":{"n":1}}}"#)
+    put("\(SwitchEngine.scopeDir(wdE, SeatID(u2)))/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"t1"}],"recordedSkips":{"t1":{"n":9}}}"#)
+    var back2 = e; back2.seat = u2; back2.standby = [StandbyAccount(email: u3.email!, seat: u3, id: "k3")]
+    guard case .success(let p3) = SwitchEngine.plan(back2, standby: back2.standby[0], dataDir: wdE, owned: []) else { check(false, "plan 3"); exit(1) }
+    check(p3.tasks == 0 && p3.held.contains(tk) && p3.move.contains(a), "a task the new account has with other state: the tasks stay, the session of it is held, the rest move")
+    check(SwitchEngine.taskProblem(source: SwitchEngine.scopeDir(wdE, SeatID(u2)), target: SwitchEngine.scopeDir(wdE, SeatID(u3)))?.contains("other state") == true,
+          "said as a state collision")
+    put("\(wdE)/claude-code-sessions/\(uuid(70))/\(uuid(71))/scheduled-tasks.json", "{ not json")
+    check(SwitchEngine.taskProblem(source: "\(wdE)/claude-code-sessions/\(uuid(70))/\(uuid(71))", target: dst) == "its scheduled-tasks.json can't be read", "an unreadable registry stops the tasks")
+    // nothing to move: only the sign-in (no receipt, no backup)
+    let empty = expand("~/Library/Application Support/Claude-empty8")
+    guard case .success(let p4) = SwitchEngine.plan(e, standby: k2, dataDir: empty, owned: []) else { check(false, "plan 4"); exit(1) }
+    check(!p4.moves, "no session on the account in use: nothing to move")
+    check(SessionsBackup.list(profile: "mv", place: place).count == 2, "a backup per switch that moved something")
 }
 
 // ============ 9. the standby accounts' old files, and old switches read only ============
@@ -325,11 +458,13 @@ do {
     check(SessionsRestore.blocker(profile: "main") == nil, "…and no longer stops a restore")
     let e = profile("main", "~/.claude", u1, standby: [StandbyAccount(email: u2.email!, seat: u2, id: "k2")])
     let words = SessionsCard.oldSwitchWords(r, for: e)
-    check(words.contains("3 of the Claude window's sessions sit under ultra-2") && words.contains("Restore…"), "the Sessions card says where its sessions are, and the backup")
-    check(!SessionsCard.oldSwitchDismissed(r.id), "said until OK")
+    check(words.contains("moved 3 of the Claude window's sessions to ultra-2") && words.contains("Undo it") && words.contains("backup"),
+          "the Sessions card says where its sessions are, Undo it, and the backup: \(words)")
+    check(!SessionsCard.oldSwitchDismissed(r.id), "said until Not now")
     SessionsCard.dismissOldSwitch(r.id)
-    check(SessionsCard.oldSwitchDismissed(r.id), "OK: not said again")
-    check((try? Data(contentsOf: dir.appendingPathComponent("receipt.json"))) == receiptBytes, "the receipt itself is never written or deleted")
+    check(SessionsCard.oldSwitchDismissed(r.id), "Not now: not said again")
+    check((try? Data(contentsOf: dir.appendingPathComponent("receipt.json"))) == receiptBytes, "reading it never writes the receipt")
+    try? fm.removeItem(at: dir)
     UserDefaults.standard.removeObject(forKey: "oldSwitchSeen")
 }
 
@@ -433,7 +568,6 @@ do {
     // a hand-edited profile id never names a marker outside cl_audit's folder
     let mk = SwitchRunner.marker(for: "../../evil")
     check(mk.deletingLastPathComponent().path == Store.folder.path && !mk.lastPathComponent.contains("/"), "the sign-in marker stays in cl_audit's folder")
-    check(!AddAccountWords.looksLikeAddress("a@example.com\nx@example.com") && AddAccountWords.looksLikeAddress(" a@example.com\n"), "an address with a newline inside is refused")
 }
 
 // ============ 11. review round 2: sessions unknown, counted off the main thread, links, the agent's note, the other profile's note ============
