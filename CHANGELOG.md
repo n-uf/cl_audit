@@ -8,7 +8,26 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **A moved session opens in the right folder.** Import lists each session whose folder isn't on this Mac (Folder not here)
+  with **Pick its folder on this Mac…**. A picked folder points the session there right after the import: its transcript moves
+  under that folder's name, the folder paths in its lines and in its Code-tab entry are rewritten (nothing else changes), and a
+  worktree that isn't on this Mac is dropped so it runs in the project folder. Undo this import takes that back too, exactly.
+  Clone the code later if you like: Settings ▸ a profile ▸ Sessions ▸ Folder not here lists the imported sessions still
+  waiting, each with **Pick its folder…**, and **Undo** takes back the last one. A folder path over 200 characters gets the same
+  shortened name Claude Code gives it.
+- **A move brings a checklist of your code.** The Export page's Code row reads each project with read-only git and warns about
+  what is only on this Mac ("garden-app: 3 commits not pushed: push them before you move"). The list travels in the encrypted
+  disk image only, with any user name, password or token taken out of the remote's address. The new Mac's Import page shows it
+  per project (where to clone it from, where it was, the branch, what wasn't pushed or committed) with the commands to copy;
+  cl_audit never runs git there.
+- **Memory files start as Add them when you import a move**; every other import still leaves them out unless you add them.
+- Quick chat's info now says your own Claude Code answers, on the account in use, and counts against its limits.
+- A move file with the code checklist is format 5: 26.11.11 and older refuse it ("from a newer cl_audit"). A move without it,
+  and every other export, stays at the lower version as before.
+- Confirmed only from the programs' own text, not by running them: that Claude Code files a session under its folder's name
+  (and shortens a long one with that hash), that the Code tab runs a re-pointed session in its folder instead of refusing
+  ("The project folder … no longer exists"), and which worktree fields it reads. The Claude window's own way of marking the
+  sessions it imports ("Choose folder") isn't used: its values carry meanings cl_audit can't vouch for.
 
 ## 26.11.11 — 2026-11-09
 
