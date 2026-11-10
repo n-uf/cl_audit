@@ -143,8 +143,9 @@ enum SideFiles {
     static func pasteHash(_ d: Data) -> String { String(SwitchEngine.sha(d).prefix(16)) }
 
     /// A Rewind backup's mode, as cl_audit writes it: the owner's bits and read for others, never setuid, setgid or sticky.
+    /// (A mode outside 0…0o7777, from a crafted side.json, is 0600: never converted as it is, which would trap.)
     static func cleanMode(_ m: Int?) -> mode_t {
-        guard let m, m >= 0 else { return 0o600 }
+        guard let m, (0...0o7777).contains(m) else { return 0o600 }
         let v = mode_t(m) & 0o755
         return v & 0o600 == 0o600 ? v : 0o600
     }
@@ -572,6 +573,7 @@ enum SideFiles {
                 s.historyLines = max(0, min(s.historyLines, maxHistoryLines))
                 s.pastes = s.pastes.filter { ok($0, validHash, cap: Int64(maxPaste)) }
                 s.rewind = Array(s.rewind.prefix(maxRewindFiles)).filter { ok($0, validBackupName, cap: maxRewindFile) }
+                    .map { var n = $0; n.mode = $0.mode.map { (0...0o777).contains($0) ? $0 : 0o600 }; return n }
                 s.rewindFiles = max(0, min(s.rewindFiles, 1_000_000)); s.rewindBytes = max(0, min(s.rewindBytes, 1 << 50))
                 dropped += (t0 - s.tasks.count) + (r0 - s.rewind.count) + (p0 - s.pastes.count)
                 return s
