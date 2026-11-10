@@ -92,7 +92,7 @@ enum Tool {
     /// Runs a tool with a plain environment. `stdin` is written and closed (a password goes this way, never as an
     /// argument). `poll` is asked every 0.2 s and returns true to stop the tool; so does `cancel`. What the tool printed
     /// is capped, and `secret` is taken out of it before it is returned. nil: it couldn't start.
-    static func run(_ exe: String, _ args: [String], stdin: Data? = nil, secret: String? = nil,
+    static func run(_ exe: String, _ args: [String], stdin: Data? = nil, secret: String? = nil, extraEnv: [String: String] = [:],
                     cancel: () -> Bool = { false }, poll: () -> Bool = { false }) -> Output? {
         signal(SIGPIPE, SIG_IGN)
         let p = Process()
@@ -102,6 +102,7 @@ enum Tool {
         if let t = ProcessInfo.processInfo.environment["TMPDIR"] { env["TMPDIR"] = t }
         if let h = ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] { env["CFFIXED_USER_HOME"] = h }
         env["HOME"] = NSHomeDirectory()
+        for (k, v) in extraEnv { env[k] = v }
         p.environment = env
         let outPipe = Pipe(), errPipe = Pipe(), inPipe = Pipe()
         p.standardOutput = outPipe; p.standardError = errPipe
@@ -351,6 +352,9 @@ struct ExportManifest: Codable, Equatable {
     var move: Bool? = nil
     /// cl_audit's own profiles and settings (SessionsMove.swift, format 4): one file beside export.json, in an encrypted image only.
     var profiles: AppFile? = nil
+    /// A move's code checklist (CodeChecklist.swift, format 5): each project's clone source, branch and what wasn't pushed or committed,
+    /// code.json beside export.json, in a move's encrypted image only.
+    var checklist: AppFile? = nil
 
     struct AppFile: Codable, Equatable {
         var path: String                    // "cl_audit.json"
@@ -681,6 +685,7 @@ enum SessionsExport {
     struct Preview: Equatable {
         struct Project: Equatable {
             var name: String                // "~/projects/app"
+            var cwd: String? = nil          // the folder a transcript of it says it ran in (absolute), when one does
             var sessions = 0
             var bytes: Int64 = 0
             var inUse = 0
@@ -959,6 +964,7 @@ enum SessionsExport {
         pv.projects = byProject.map { key, value in
             var p = value
             p.name = projectWords(key, sample: sampleFor[key])
+            p.cwd = sampleFor[key].flatMap { cwd(inTranscript: $0) }
             return p
         }.sorted { $0.sessions != $1.sessions ? $0.sessions > $1.sessions : $0.name < $1.name }
         guard let sp = setupPreview(part, cancel: cancel, progress: progress) else { return nil }
@@ -1018,7 +1024,7 @@ enum SessionsExport {
         var configCarried = false           // the window's claude_desktop_config.json (MCP settings) is in it (an image)
         var configLeftOut = false           // …left out because the file is a zip
         var taskPrompts = 0                 // scheduled tasks' prompts that go with their tasks
-        var version = SessionsBackup.formatVersion          // the format its backup.json was written in
+        var version = SessionsBackup.backupVersion          // the format its backup.json was written in
     }
 
     struct Job {
@@ -1040,6 +1046,8 @@ enum SessionsExport {
         /// cl_audit's own profiles and settings (SessionsMove.make): carried in an encrypted image only (a zip leaves them out and says
         /// so). Outside a move their ids and addresses become fingerprints like everything else.
         var profiles: Data? = nil
+        /// A move's code checklist (CodeChecklist.encode): written only into a move's encrypted image, as code.json (format 5).
+        var checklist: Data? = nil
     }
 
     struct Outcome: Equatable {
@@ -1063,6 +1071,7 @@ enum SessionsExport {
         var move = false                    // a move: the real ids (an encrypted image)
         var profilesCarried = false         // cl_audit.json is in it
         var profilesLeftOut = false         // …left out because the file is a zip
+        var checklistCarried = false        // code.json (a move's code checklist) is in it
     }
 
     /// "cl_audit Main 2026-11-05"
@@ -1192,6 +1201,16 @@ enum SessionsExport {
         }
         if job.move { em.move = true }
         if job.move || profilesCarried { em.version = max(em.version, 4) }
+        // a move's code checklist (format 5): beside export.json, only in a move's encrypted image (it names the person's folders and
+        // remotes); a file without it stays at the lower version, so an older cl_audit still opens it
+        var checklistCarried = false
+        if let data = job.checklist, job.move, job.password != nil {
+            guard data.count <= CodeChecklist.maxBytes, CodeChecklist.read(data) != nil else { throw ArchiveError("The code checklist came out larger than \(CodeChecklist.maxBytes >> 10) KB or unreadable; nothing was made.") }
+            try write(data, to: root.appendingPathComponent(CodeChecklist.fileName))
+            em.checklist = ExportManifest.AppFile(path: CodeChecklist.fileName, bytes: Int64(data.count), sha: SwitchEngine.sha(data))
+            em.version = max(em.version, 5)
+            checklistCarried = true
+        }
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         try write(try enc.encode(em), to: root.appendingPathComponent("export.json"))
 
@@ -1241,7 +1260,8 @@ enum SessionsExport {
         // the Save panel has asked about a file that is there: it is replaced, in one step
         guard rename(tmp.path, job.destination.path) == 0 else { throw ArchiveError("The file couldn't be put at \(tilde(job.destination.path)).") }
         progress?("done", 1)
-        return Outcome(file: job.destination, bytes: Int64(made.st_size), parts: outcomes, move: job.move, profilesCarried: profilesCarried, profilesLeftOut: profilesLeftOut)
+        return Outcome(file: job.destination, bytes: Int64(made.st_size), parts: outcomes, move: job.move, profilesCarried: profilesCarried, profilesLeftOut: profilesLeftOut,
+                       checklistCarried: checklistCarried)
     }
 
     private static func write(_ data: Data, to url: URL) throws {
@@ -1257,7 +1277,7 @@ enum SessionsExport {
                                   cancel: () -> Bool, progress: @escaping (Double) -> Void) throws -> (PartOutcome, Set<String>) {
         let fm = FileManager.default
         guard let m = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) else { throw ArchiveError("The backup isn't there any more.") }
-        guard m.version >= 1, m.version <= SessionsBackup.formatVersion else { throw ArchiveError("That backup is from a newer cl_audit.") }
+        guard m.version >= 1, m.version <= SessionsBackup.backupVersion else { throw ArchiveError("That backup is from a newer cl_audit.") }
         try fm.createDirectory(at: out, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         var po = PartOutcome(name: part.name)
 

@@ -599,6 +599,8 @@ enum SessionsImport {
         var move = false
         /// cl_audit's own profiles and settings in it, read and checked (SessionsMove.read); nil: none in the file.
         var app: SessionsMove.File? = nil
+        /// A move's code checklist (code.json, format 5), read and cleaned (CodeChecklist.read); nil: none in the file.
+        var checklist: CodeChecklist.File? = nil
     }
 
     /// An unpacked part made a backup of the target, waiting in `work/stage` (not in the backups place yet).
@@ -657,6 +659,13 @@ enum SessionsImport {
                 throw ArchiveError("export.json names cl_audit's profiles in a way an export doesn't; refused.")
             }
         }
+        // a move's code checklist came with format 5, only in a move; one known name, small, with its hash
+        if let a = em.checklist {
+            guard em.version >= 5, em.move == true else { throw ArchiveError("export.json names a code checklist outside a move, or in a format older than the one it came with; refused.") }
+            guard a.path == CodeChecklist.fileName, a.bytes >= 0, a.bytes <= CodeChecklist.maxBytes, a.sha.count == 64, a.sha.allSatisfy({ "0123456789abcdef".contains($0) }) else {
+                throw ArchiveError("export.json names the code checklist in a way an export doesn't; refused.")
+            }
+        }
         var seen = Set<String>(), sum: Int64 = 0
         for p in em.parts {
             guard p.dir.range(of: #"^p[0-9]{1,3}$"#, options: .regularExpression) != nil, seen.insert(p.dir).inserted, p.bytes >= 0, p.bytes <= ceiling,
@@ -706,7 +715,7 @@ enum SessionsImport {
         let (export, stated) = try checkExport(try index.read(em, path: file.path, limit: 4 << 20))
         // a move (the real account ids) and cl_audit's profiles (addresses, ids) are only ever in an encrypted image: a zip that claims
         // either is refused before anything is unpacked
-        if export.move == true || export.profiles != nil {
+        if export.move == true || export.profiles != nil || export.checklist != nil {
             throw ArchiveError("This zip claims to be a move or to hold cl_audit's profiles. Those are only ever in an encrypted disk image, never a zip; refused.")
         }
         let cap = unpackCap(stated: stated, entries: index.entries.count)
@@ -791,6 +800,13 @@ enum SessionsImport {
             }
             guard f.move == o.move else { throw ArchiveError("cl_audit.json and export.json don't agree on whether this is a move; refused.") }
             o.app = f
+        }
+        // the code checklist: read under its 256 KB cap and cleaned field by field; one that isn't a checklist at all refuses the file
+        if let a = export.checklist {
+            guard let d = try? readSmall(tree.appendingPathComponent(a.path).path, limit: CodeChecklist.maxBytes), let f = CodeChecklist.read(d) else {
+                throw ArchiveError("The file's code.json (the code checklist) can't be read: it isn't one, it is nested too deep or it is over 256 KB. Refused.")
+            }
+            o.checklist = f
         }
         return o
     }
@@ -913,6 +929,14 @@ enum SessionsImport {
             }
             expectedFiles[a.path] = real
         }
+        // a move's code checklist (format 5): the same, beside it
+        if let a = export.checklist {
+            guard container == "image" else { throw ArchiveError("A zip carries no code checklist (only a move's encrypted disk image does); refused.") }
+            guard let real = found.files[a.path], real == a.bytes, Setup.sha(path: tree.appendingPathComponent(a.path).path) == a.sha else {
+                throw ArchiveError("code.json is missing or isn't what export.json says it is; refused.")
+            }
+            expectedFiles[a.path] = real
+        }
         var parts: [PartInfo] = []
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
         for p in export.parts {
@@ -922,7 +946,7 @@ enum SessionsImport {
             guard let size = found.files["\(base)/backup.json"], size <= 64 << 20,
                   let bj = try? readSmall(tree.appendingPathComponent("\(base)/backup.json").path, limit: 64 << 20),
                   let m = try? dec.decode(SessionsBackup.Manifest.self, from: bj) else { throw ArchiveError("A profile's backup.json is missing or can't be read; refused.") }
-            guard m.version >= 1, m.version <= SessionsBackup.formatVersion else { throw ArchiveError("That export holds a backup from a newer cl_audit; nothing is imported from it.") }
+            guard m.version >= 1, m.version <= SessionsBackup.backupVersion else { throw ArchiveError("That export holds a backup from a newer cl_audit; nothing is imported from it.") }
             guard SessionsBackup.validID(m.id), SessionsBackup.validProfile(m.profile), m.items.count <= maxFiles else { throw ArchiveError("A profile's backup.json names things that aren't plain ones; refused.") }
             // a move's part (format 4) names its window folders by the real ids: only in a move, only from an image; every other part
             // has fingerprints there. The two never mix in one file.

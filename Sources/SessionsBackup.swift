@@ -79,9 +79,14 @@ enum SessionsBackup {
     /// 3 added the `config` item (the Claude window's claude_desktop_config.json without its sidebar part) and scheduled tasks' prompts
     /// (setup/scheduled-tasks/<id>/SKILL.md). 4 added cl_audit's own profiles and settings (an export's cl_audit.json, SessionsMove.swift)
     /// and the move: a part whose window folders are the real account and organisation ids (`move`), only ever in an encrypted image.
-    /// Files of version 1 to 3 are read as before (they have none); a newer one is refused.
-    /// (26.11.7 reads only version 1, 26.11.8 up to 2, 26.11.9 up to 3: each refuses a newer file with its "newer cl_audit" words.)
-    static let formatVersion = 4
+    /// 5 added a move's code checklist (an export's code.json, CodeChecklist.swift): only an export.json says 5, and only when it holds
+    /// one; a backup.json stays at 4 at most.
+    /// Files of version 1 to 4 are read as before (they have none); a newer one is refused.
+    /// (26.11.7 reads only version 1, 26.11.8 up to 2, 26.11.9 up to 3, 26.11.10 and 26.11.11 up to 4: each refuses a newer file with its
+    /// "newer cl_audit" words.)
+    static let formatVersion = 5
+    /// The highest a backup.json is written in and read up to (a backup, an export's part): 4. Only an export.json goes to 5.
+    static let backupVersion = 4
 
     /// The lowest format that holds these items, which is what a backup and an export write: 4 for a move's part, 3 only when a format-3
     /// part is in it (the window's config, a scheduled task's prompt), else 2, so 26.11.8 still imports a plain zip from this build.
@@ -99,7 +104,7 @@ enum SessionsBackup {
     }
 
     struct Manifest: Codable, Equatable, Identifiable {
-        var version = SessionsBackup.formatVersion
+        var version = SessionsBackup.backupVersion
         var id: String
         var profile: String
         var kind: Kind
