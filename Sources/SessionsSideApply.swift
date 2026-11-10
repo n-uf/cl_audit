@@ -810,7 +810,11 @@ extension SideFiles {
             case .dir:
                 if s.done { rmdir(s.path) }
             case .lines:
-                guard let name = s.saved, let d = readCapped(savedDir(r.id).appendingPathComponent(name).path, limit: Int(maxHistoryBytes) + (1 << 20)) else { continue }
+                guard let name = s.saved, let d = readCapped(savedDir(r.id).appendingPathComponent(name).path, limit: Int(maxHistoryBytes) + (1 << 20)) else {
+                    // (its copy went when the import could no longer be undone: the lines stay, and that is said)
+                    if s.done { r.left.append("\(s.count) prompt history \(s.count == 1 ? "line" : "lines") added stay: cl_audit no longer keeps the copy it would take them out by.") }
+                    continue
+                }
                 let lines = d.split(separator: 0x0A, omittingEmptySubsequences: true).map { Data($0) }
                 // (an append that wasn't marked done may still have landed: whatever of it is there goes, and only a done one is missed)
                 var st = stat()
@@ -843,15 +847,22 @@ extension SideFiles {
     /// prompt history, pasted text and the rest kept with its backup (<backup>/side/) go, and its side receipts with the copies of history
     /// lines they kept for Undo. A session still waiting for its folder keeps only its own lines and trust, in its receipt, until it is
     /// picked or that receipt is undone.
+    /// (The restore receipt's profile and backup id are checked first: one that isn't a plain name removes nothing.)
     static func retire(restore id: String, backup b: SessionsRestore.Backup) {
+        guard SessionsRestore.validReceiptID(id), SessionsBackup.validProfile(b.profile), SessionsBackup.validID(b.id) else { return }
         let fm = FileManager.default
         let stash = b.dir.appendingPathComponent(dirName)
         var st = stat()
         if lstat(stash.path, &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR { try? fm.removeItem(at: stash) }
         for r in receipts() where r.restore == id {
-            let keep = r.undone == nil ? Set(r.waiting.compactMap(\.history)) : []
-            if keep.isEmpty { try? fm.removeItem(at: dir(r.id)); continue }
-            for n in ((try? fm.contentsOfDirectory(atPath: savedDir(r.id).path)) ?? []) where !keep.contains(n) { unlink(savedDir(r.id).appendingPathComponent(n).path) }
+            // a session still waiting (no Pick yet), with history or only trust, keeps the receipt; only the files no one waits for go
+            let waiting = r.undone == nil ? r.waiting.filter { $0.pick == nil } : []
+            if waiting.isEmpty { try? fm.removeItem(at: dir(r.id)); continue }
+            let keep = Set(waiting.compactMap(\.history))
+            let sfd = open(savedDir(r.id).path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
+            guard sfd >= 0 else { continue }
+            defer { close(sfd) }
+            for n in ((try? fm.contentsOfDirectory(atPath: savedDir(r.id).path)) ?? []) where !keep.contains(n) && SessionsRestore.plainName(n) { unlinkat(sfd, n, 0) }
         }
     }
 
