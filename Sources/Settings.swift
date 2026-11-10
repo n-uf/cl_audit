@@ -1843,7 +1843,8 @@ struct AccountSettings: View {
     }
 
     /// The folders an earlier cl_audit made for this profile's accounts (Leftovers.swift), each still there: Move to
-    /// Trash… (asks first, names its Keychain item) or Keep it (cl_audit stops asking).
+    /// Trash… (asks first, says what is in it, names its Keychain item), or Show in Finder for one that holds sessions
+    /// (never offered for the Trash); Keep it (cl_audit stops asking).
     @ViewBuilder var leftoverRows: some View {
         let list: [Leftovers.Folder] = { _ = model.tick; return Leftovers.offered(entry, among: model.accounts) }()
         if !list.isEmpty {
@@ -1858,7 +1859,13 @@ struct AccountSettings: View {
                             Spacer(minLength: 0)
                             Button("Keep it") { entry = Leftovers.dropping(f.path, from: entry) }
                                 .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize()
-                            Button("Move to Trash…") { trashLeftover(f) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                                .help("Keeps the folder and stops this list asking about it")
+                            if f.trashable {
+                                Button("Move to Trash…") { trashLeftover(f) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                            } else {
+                                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: expand(f.path))]) }
+                                    .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                            }
                         }
                     }
                     .padding(10)

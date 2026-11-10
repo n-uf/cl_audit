@@ -11,11 +11,52 @@
 import AppKit
 
 enum Leftovers {
-    /// One folder offered: its path as recorded, and the name of the Keychain item that holds its sign-in.
+    /// One folder offered: its path as recorded, the name of the Keychain item that holds its sign-in, and what is in it.
     struct Folder: Equatable, Identifiable {
         let path: String
         let keychainItem: String
+        var inside = Inside()
         var id: String { path }
+        /// A folder that holds sessions is never offered for the Trash: they may be someone's work.
+        var trashable: Bool { inside.sessions == 0 }
+    }
+
+    /// What a folder holds, counted from its names only (nothing is opened): Claude Code's sessions (its projects'
+    /// transcripts), its settings.json and CLAUDE.md, and whatever else is at its top.
+    struct Inside: Equatable {
+        var sessions = 0
+        var settings = false
+        var claudeMD = false
+        var other = 0
+
+        static func of(_ path: String, fm: FileManager = .default) -> Inside {
+            let dir = expand(path)
+            var i = Inside()
+            let projects = (dir as NSString).appendingPathComponent("projects")
+            for p in (try? fm.contentsOfDirectory(atPath: projects)) ?? [] {
+                i.sessions += ((try? fm.contentsOfDirectory(atPath: (projects as NSString).appendingPathComponent(p))) ?? []).filter { $0.hasSuffix(".jsonl") }.count
+            }
+            for n in (try? fm.contentsOfDirectory(atPath: dir)) ?? [] {
+                switch n {
+                case "settings.json": i.settings = true
+                case "CLAUDE.md": i.claudeMD = true
+                case "projects", ".claude.json", ".DS_Store": break
+                default: i.other += 1
+                }
+            }
+            return i
+        }
+
+        /// "its sign-in record, settings.json, CLAUDE.md and 3 other items", in plain words.
+        var words: String {
+            func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
+            var parts = ["its sign-in record"]
+            if sessions > 0 { parts.append(n(sessions, "session", "sessions")) }
+            if settings { parts.append("settings.json") }
+            if claudeMD { parts.append("CLAUDE.md") }
+            if other > 0 { parts.append(n(other, "other item", "other items")) }
+            return parts.count == 1 ? parts[0] : parts.dropLast().joined(separator: ", ") + " and " + parts.last!
+        }
     }
 
     /// The Keychain item Claude Code keeps a folder's sign-in in (named only; never read).
@@ -41,18 +82,22 @@ enum Leftovers {
 
     /// A profile's leftover folders worth offering now.
     static func offered(_ e: AccountEntry, among accounts: [AccountEntry]) -> [Folder] {
-        e.leftoverFolders.filter { offerable($0, among: accounts) }.map { Folder(path: $0, keychainItem: keychainItem($0)) }
+        e.leftoverFolders.filter { offerable($0, among: accounts) }.map { Folder(path: $0, keychainItem: keychainItem($0), inside: Inside.of($0)) }
     }
 
     /// The card's line for one.
     static func line(_ f: Folder) -> String {
-        "\(tilde(expand(f.path))): a folder an earlier cl_audit made for a sign-in of this profile's. It isn't used any more."
+        let p = tilde(expand(f.path))
+        if !f.trashable {
+            return "\(p): made by an earlier cl_audit for one of this profile's sign-ins. It holds \(f.inside.sessions == 1 ? "1 session" : "\(f.inside.sessions) sessions"), so it isn't offered for the Trash: open it in Finder to look first."
+        }
+        return "\(p): made by an earlier cl_audit for one of this profile's sign-ins. Nothing uses it now."
     }
 
     /// The question before Move to Trash.
     static func question(_ f: Folder) -> (title: String, detail: String) {
         ("Move \(tilde(expand(f.path))) to the Trash?",
-         "Its sign-in stays in your Keychain as “\(f.keychainItem)”: delete that in Keychain Access if you no longer need it. cl_audit doesn't touch it. You can put the folder back from the Trash.")
+         "In it: \(f.inside.words). Everything in it goes with it; you can put it back from the Trash. Its sign-in stays in your Keychain as “\(f.keychainItem)”: delete that in Keychain Access if you no longer need it. cl_audit doesn't touch it.")
     }
 
     /// The check's seam: moves a folder to the Trash (recoverable).
@@ -61,6 +106,8 @@ enum Leftovers {
     /// Moves the folder to the Trash, checked again first (it may have changed since it was listed). Why not, or nil.
     static func trash(_ f: Folder, among accounts: [AccountEntry]) -> String? {
         guard offerable(f.path, among: accounts) else { return "\(tilde(expand(f.path))) isn't there as a plain folder any more, or a profile uses it now." }
+        let now = Inside.of(f.path)
+        guard now.sessions == 0 else { return "\(tilde(expand(f.path))) holds sessions now, so it stays: open it in Finder to look." }
         do { try toTrash(URL(fileURLWithPath: expand(f.path))); return nil }
         catch { return "\(tilde(expand(f.path))) couldn't be moved to the Trash: \(error.localizedDescription)" }
     }

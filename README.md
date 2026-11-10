@@ -478,11 +478,13 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     profile; no sign-in is ever copied. New profile still starts with one account.
   - **Folders from before.** Up to 26.11.12 cl_audit kept a standby account's sign-in, and the account in use's when it
     had standby accounts, in a small Claude Code folder of its own (`~/.claude-ultra-2`). Those folders aren't used any
-    more. Each one that is still there (a plain folder in your home folder that no profile uses) is listed under
-    Accounts with **Move to Trash…** and **Keep it**. Move to Trash asks first and names the folder's Keychain item
-    ("Its sign-in stays in your Keychain as “Claude Code-credentials-1a2b3c4d”: delete that in Keychain Access if you no
-    longer need it"); cl_audit never touches that item, never signs the folder out, and never deletes a folder by
-    itself. Keep it stops asking.
+    more. Each one that is still there (a plain `~/.claude-<name>` folder directly in your home folder that no profile
+    uses as its folder or Claude window folder) is listed under Accounts with **Move to Trash…** and **Keep it**. Move
+    to Trash asks first, says what is in it ("its sign-in record, settings.json and 2 other items") and names the
+    folder's Keychain item ("Its sign-in stays in your Keychain as “Claude Code-credentials-1a2b3c4d”: delete that in
+    Keychain Access if you no longer need it"); cl_audit never touches that item, never signs the folder out, and never
+    deletes a folder by itself. A folder that holds sessions is never offered for the Trash: it says how many and offers
+    **Show in Finder** instead. Keep it stops this list asking.
   - A folder that isn't there is never read, and cl_audit never starts Claude Code for it (not Renew sign-in, logout,
     quick chat, Terminal or the Claude window), so a folder you deleted isn't made again; a sign-in you start makes its
     new folder first, and never goes through a link.
@@ -721,7 +723,7 @@ the menu bar icon open the usual app; Opens from and With Dock icon stay as set)
   be deleted**, by the Sessions card's rule and `~/.claude`'s settings; the row isn't there when none would be), and the
   restore's own page says the same with its **Keep for 90 days** key. Last, the old profile's account can stay as a
   standby account of the default profile (remembered, signed out; only when it is another Claude account): its folder
-  and sign-in stay exactly as they are, and the default profile lists the folder under **Folders from before**; or the
+  with its sessions, settings and sign-in stays exactly as it is and is never offered for the Trash; or the
   old profile is removed with the usual remove flow (which signs its folder out of Claude Code).
 - **Nothing is deleted** from the old window's folder: it stays as the backup's source and for Undo.
 - **Undo this move** (on the page, or **Undo this restore** on the move's restore page) takes back exactly what was

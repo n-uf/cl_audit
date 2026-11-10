@@ -63,16 +63,17 @@ Nothing pending.
   saved numbers (cleared by the clean-up), and **Undo this switch**.
 - **The folders kept for standby sign-ins** (`~/.claude-<name>`, made by 26.11.12 and earlier for each standby account and for
   the account in use) aren't used any more. Each one that is still there is listed under the profile's Accounts, **Folders
-  from before**, with **Move to Trash…** (it asks first and names the folder's Keychain item, which cl_audit never touches:
-  delete it in Keychain Access if you like) and **Keep it**. Nothing is deleted by itself. Your profiles file is read as it
+  from before**, with **Move to Trash…** (it asks first, says what is in it and names the folder's Keychain item, which
+  cl_audit never touches: delete it in Keychain Access if you like) and **Keep it**. A folder that holds sessions is never
+  offered for the Trash (Show in Finder instead). Nothing is deleted by itself. Your profiles file is read as it
   was: the standby accounts stay, without their folders.
 - **An earlier switch that stopped half way** (it had moved some of the Claude window's sessions to the other account) can't
   be finished or undone any more. The profile's Sessions card says once how many sessions sit under which account (they show
   while the window is signed in to it) and that the backup made before it holds them; Restore… puts back what is missing.
   Restore no longer waits for such a switch, and that backup is never pruned. Earlier switches' backups stay listed and
   restorable.
-- The default-profile move's **Keep as a standby account** remembers the old profile's account signed out, and lists its
-  folder under Folders from before.
+- The default-profile move's **Keep as a standby account** remembers the old profile's account signed out; the old
+  profile's folder, with its sessions and settings, stays exactly as it is.
 - Claude Code's sign-in in Terminal now unsets `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` and the
   Bedrock, Vertex and Foundry switches first, so a key in your shell's settings can't sign the folder in another way.
 - Confirmed only from Claude Code's own program text, not by running it: the Keychain item of a folder other than

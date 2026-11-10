@@ -355,8 +355,9 @@ final class DefaultProfileRunner: ObservableObject {
 
     /// Keep it: the default profile remembers the old one's account as a standby account (signed out there: switching to it
     /// signs it in on the default profile's folder), and the old profile leaves the list. Its own standby accounts go along.
-    /// The old profile's folder, with its sign-in, stays exactly as it is: cl_audit no longer uses it, so the default
-    /// profile lists it as left over (Move to Trash… or Keep it); nothing is moved, copied or signed out.
+    /// The old profile's folder, with its sessions, settings and sign-in, stays exactly as it is and is never offered for
+    /// the Trash; only the folders an earlier cl_audit made for its standby sign-ins join the default profile's Folders from
+    /// before. Nothing is moved, copied or signed out.
     func keepOldAsStandby() {
         guard canKeepOldAsStandby, let m = model, let t = target, let ti = m.accounts.firstIndex(where: { $0.id == t.id }),
               let s = old.seat else { return }
@@ -365,7 +366,9 @@ final class DefaultProfileRunner: ObservableObject {
         e.standby.append(StandbyAccount(email: s.email ?? "", seat: Seat(account: s.account, organization: s.organization, email: s.email),
                                         plan: st?.plan, lastInUse: Date(), lastWeek: st?.weekly, lastWeekResets: st?.weeklyResets))
         e.standby += old.standby
-        for d in [old.configDir] + old.leftoverFolders where !e.leftoverFolders.contains(d) && !FolderKey.overlaps(d, e.configDir) {
+        // only the folders an earlier cl_audit made for a standby sign-in: never the old profile's own folder, which holds
+        // its sessions, settings and CLAUDE.md and stays exactly as it is
+        for d in old.leftoverFolders where !e.leftoverFolders.contains(d) && !FolderKey.overlaps(d, e.configDir) && !FolderKey.overlaps(d, old.configDir) {
             e.leftoverFolders.append(d)
         }
         m.accounts[ti] = e
@@ -373,7 +376,7 @@ final class DefaultProfileRunner: ObservableObject {
         m.apply()
         if var r = record { r.oldHandled = "standby"; record = r; DefaultProfile.save(r) }
         oldHandled = true
-        note = "\(old.name)'s account now stands by on \(e.name), signed out. Its folder is as it was: \(e.name)'s Accounts list it as left over."
+        note = "\(old.name)'s account now stands by on \(e.name), signed out. \(tilde(expand(old.configDir))) stays exactly as it is, with its sessions and settings."
         objectWillChange.send()
     }
 
