@@ -527,7 +527,9 @@ enum SessionsRepoint {
             if let m = SwitchMarker.current(FolderKey.canonical(t.dataDir)), !(m.pid == getpid() && m.standby == mark) {
                 throw RepointError("\(label): a switch or a restore of the Claude window is under way; left as it is.")
             }
-            guard windowClosed() else { throw RepointError("\(label): its Code-tab entry needs the Claude window closed; left as it is.") }
+            guard windowClosed() else {
+                throw RepointError("\(label): its Code-tab entry needs the Claude window closed, and it was open, so nothing was changed for it. Pick its folder again under the profile's Sessions ▸ Folder not here (the window closes for a moment then).")
+            }
         }
         var done = Done(session: s.id, title: s.title, from: s.folder, to: picked)
         // 1. the new files: the transcript, then its folder
