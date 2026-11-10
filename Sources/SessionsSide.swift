@@ -424,8 +424,9 @@ enum SideFiles {
         // trust: the project entries in .claude.json for each session's folder (its cwd, and its project folder when that differs). A
         // folder above it (Claude Code also looks up the tree to the repository's top) isn't carried: it would trust more on the new Mac
         if kinds.trust {
-            let cfg = configFile(codeDir: codeDir)
-            switch projectsOf(cfg) {
+            // (an older settings file Claude Code reads instead: the trust it uses isn't in .claude.json, so none is carried)
+            let cfg = legacyConfig(codeDir) ? "" : configFile(codeDir: codeDir)
+            switch cfg.isEmpty ? .failure(ConfigProblem("Claude Code reads an older settings file in this profile, so no folder's trust is carried.")) : projectsOf(cfg) {
             case .failure(let why): pv.configNote = why.description
             case .success(let projects):
                 for ref in refs.prefix(maxSessions) {
@@ -482,10 +483,10 @@ enum SideFiles {
     /// The `projects` object of a .claude.json, read once under its cap, never through a link.
     static func projectsOf(_ path: String) -> Result<[String: Any], ConfigProblem> {
         var st = stat()
-        guard lstat(path, &st) == 0 else { return .failure(ConfigProblem("Claude Code's .claude.json isn't there, so no folder's trust is carried.")) }
-        guard (st.st_mode & S_IFMT) == S_IFREG else { return .failure(ConfigProblem("Claude Code's .claude.json is a link or isn't a plain file, so it isn't read.")) }
-        guard st.st_size <= maxConfig, let d = readCapped(path, limit: maxConfig) else { return .failure(ConfigProblem("Claude Code's .claude.json is over \(SessionsBackup.sizeWords(Int64(maxConfig))), so it isn't read.")) }
-        guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return .failure(ConfigProblem("Claude Code's .claude.json can't be read as JSON, so no trust is carried.")) }
+        guard lstat(path, &st) == 0 else { return .failure(ConfigProblem("Claude Code's settings file for this profile isn't there, so no folder's trust is carried.")) }
+        guard (st.st_mode & S_IFMT) == S_IFREG else { return .failure(ConfigProblem("Claude Code's settings file for this profile is a link or isn't a plain file, so it isn't read.")) }
+        guard st.st_size <= maxConfig, let d = readCapped(path, limit: maxConfig) else { return .failure(ConfigProblem("Claude Code's settings file for this profile is over \(SessionsBackup.sizeWords(Int64(maxConfig))), so it isn't read.")) }
+        guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return .failure(ConfigProblem("Claude Code's settings file for this profile can't be read, so no trust is carried.")) }
         return .success((j["projects"] as? [String: Any]) ?? [:])
     }
 

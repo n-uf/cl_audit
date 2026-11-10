@@ -29,6 +29,7 @@ extension SideFiles {
         var key: String? = nil                          // trust: the folder added to projects
         var value: String? = nil                        // trust: the entry as written (JSON text)
         var count = 0                                   // lines: how many
+        var pick: String? = nil                         // written at a later Pick: its re-point receipt (that Pick's Undo takes it back)
         var done = false
         var settled = false
     }
@@ -43,6 +44,7 @@ extension SideFiles {
         var trust: [Trust] = []
         var mcp = false                                 // the MCP servers were added
         var why: String
+        var pick: String? = nil                         // written by that later Pick (its re-point receipt); nil: still waiting
     }
 
     struct Written: Codable, Equatable {
@@ -90,22 +92,42 @@ extension SideFiles {
         let me = getpid(), uid = getuid()
         let want = FolderKey.canonical(codeDir)
         let std = FolderKey.canonical(NSHomeDirectory() + "/.claude")
+        var unknown = false
         for pid in pids.prefix(Int(got)) where pid > 0 && pid != me {
             var info = proc_bsdinfo()
             guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0, info.pbi_uid == uid else { continue }
-            guard let (exe, args, env) = procArgs(pid) else { continue }
-            let name = (exe as NSString).lastPathComponent.lowercased()
-            let codeLike = (name == "claude" || name == "claude.exe" || exe.contains("/claude-code/") || args.contains { $0.hasSuffix("/claude") || $0.contains("@anthropic-ai/claude-code") })
-            guard codeLike, !exe.contains(".app/Contents/MacOS/"), !exe.contains(".app/Contents/Frameworks/") else { continue }
-            let dir = env.first { $0.hasPrefix("CLAUDE_CONFIG_DIR=") }.map { String($0.dropFirst("CLAUDE_CONFIG_DIR=".count)) }
-            let key = dir.map { FolderKey.canonical(expand($0)) } ?? std
-            if key == want { return true }
+            var nameBuf = [CChar](repeating: 0, count: 256)
+            let short = proc_name(pid, &nameBuf, UInt32(nameBuf.count)) > 0 ? String(cString: nameBuf) : ""
+            let p = procArgs(pid)
+            switch judge(name: short, exe: p?.exe, args: p?.args ?? [], configDir: p?.configDir, want: want, std: std) {
+            case true?: return true
+            case nil: unknown = true
+            case false?: break
+            }
         }
-        return false
+        return unknown ? nil : false
     }
 
-    /// A process's executable path, arguments and environment (KERN_PROCARGS2), or nil.
-    static func procArgs(_ pid: pid_t) -> (String, [String], [String])? {
+    /// One process: true when it is Claude Code for the folder `want`; nil when it may be Claude Code but couldn't be read (counted as
+    /// running by the caller: nothing shared is written); false otherwise. The Claude app's own main program isn't Claude Code (its window
+    /// is checked apart); the Claude Code it carries, run from a terminal, is.
+    static func judge(name: String, exe: String?, args: [String], configDir: String?, want: String, std: String) -> Bool? {
+        let short = name.lowercased()
+        let looks = short == "claude" || short == "claude.exe" || short.hasPrefix("claude") && !short.contains("helper")
+        guard let exe else { return looks ? nil : false }
+        if exe.hasSuffix("/Claude.app/Contents/MacOS/Claude") || exe.contains("/Claude.app/Contents/Frameworks/") { return false }
+        let leaf = (exe as NSString).lastPathComponent.lowercased()
+        let codeLike = leaf == "claude" || leaf == "claude.exe" || exe.contains("/claude-code/") || exe.contains("/claude/versions/")
+            || ((args.first ?? "") as NSString).lastPathComponent.lowercased() == "claude"
+            || args.contains { $0.hasSuffix("/claude") || $0.contains("@anthropic-ai/claude-code") }
+        guard codeLike else { return false }
+        let key = configDir.map { FolderKey.canonical(expand($0)) } ?? std
+        return key == want
+    }
+
+    /// A process's executable path, its arguments and its CLAUDE_CONFIG_DIR (KERN_PROCARGS2), or nil. Nothing else of its environment is
+    /// kept: each entry is compared as bytes and dropped.
+    static func procArgs(_ pid: pid_t) -> (exe: String, args: [String], configDir: String?)? {
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
         var size = 0
         guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size, size < 4 << 20 else { return nil }
@@ -117,17 +139,23 @@ extension SideFiles {
         while i < size && buf[i] != 0 { i += 1 }
         let exe = String(decoding: buf[s0..<i], as: UTF8.self)
         while i < size && buf[i] == 0 { i += 1 }
-        var strings: [String] = []
+        var args: [String] = []
+        var configDir: String?
+        let prefix = Array("CLAUDE_CONFIG_DIR=".utf8)
+        var n = 0
         while i < size {
             let start = i
             while i < size && buf[i] != 0 { i += 1 }
             if i == start { break }
-            strings.append(String(decoding: buf[start..<i], as: UTF8.self))
+            if n < argc { args.append(String(decoding: buf[start..<i], as: UTF8.self)) }
+            else if i - start >= prefix.count, Array(buf[start..<(start + prefix.count)]) == prefix {
+                configDir = String(decoding: buf[(start + prefix.count)..<i], as: UTF8.self)
+            }
+            n += 1
             i += 1
         }
-        let args = Array(strings.prefix(argc))
-        let env = Array(strings.dropFirst(argc))
-        return (exe, args, env)
+        for k in buf.indices { buf[k] = 0 }                 // (the rest of the environment isn't kept)
+        return (exe, args, configDir)
     }
 
     // MARK: the receipt
@@ -139,7 +167,34 @@ extension SideFiles {
         let d = dir(r.id)
         try FileManager.default.createDirectory(at: d.appendingPathComponent("saved"), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        try enc.encode(r).write(to: d.appendingPathComponent("receipt.json"), options: .atomic)
+        let url = d.appendingPathComponent("receipt.json")
+        try enc.encode(r).write(to: url, options: .atomic)
+        chmod(url.path, 0o600)                          // (it holds folders' trust entries)
+    }
+
+    /// The page's words for the two shared files (their names are in the README only).
+    static let settingsWords = "Claude Code's settings file for this profile"
+    static let historyWords = "Claude Code's prompt history file"
+    /// How long one hold of Claude Code's lock may last before cl_audit gives up instead of writing (Claude Code's own lock goes stale
+    /// at 10 s and may then be taken over).
+    nonisolated(unsafe) static var lockBudget: TimeInterval = 4
+
+    /// Claude Code reads <its folder>/.config.json instead of .claude.json when that older file is there and not empty (its program
+    /// text): then the file cl_audit would change isn't the one it reads.
+    static func legacyConfig(_ codeDir: String) -> Bool {
+        var st = stat()
+        return lstat((codeDir as NSString).appendingPathComponent(".config.json"), &st) == 0 && (st.st_mode & S_IFMT) == S_IFREG && st.st_size > 0
+    }
+
+    /// Copies of .claude.json that receipts of the first build of this kept (whole files, with the account block): taken away.
+    static func sweepConfigCopies() {
+        let fm = FileManager.default
+        for id in ((try? fm.contentsOfDirectory(atPath: root.path)) ?? []).filter(SessionsRestore.validReceiptID) {
+            let saved = savedDir(id).path
+            for n in ((try? fm.contentsOfDirectory(atPath: saved)) ?? []) where n.hasPrefix("claude-json-") && n.hasSuffix(".copy") {
+                unlink((saved as NSString).appendingPathComponent(n))
+            }
+        }
     }
 
     static func load(_ id: String) -> Receipt? {
@@ -156,7 +211,7 @@ extension SideFiles {
     static func linked(restore id: String) -> [Receipt] { receipts().filter { $0.restore == id && $0.undone == nil } }
 
     /// The sessions of a profile whose history or trust waits for a folder.
-    static func waiting(profile: String) -> [Waiting] { receipts().filter { $0.profile == profile && $0.undone == nil }.flatMap(\.waiting) }
+    static func waiting(profile: String) -> [Waiting] { receipts().filter { $0.profile == profile && $0.undone == nil }.flatMap(\.waiting).filter { $0.pick == nil } }
 
     /// A small file in the receipt's folder: never over one, never through a link.
     private static func writeSaved(_ d: Data, id: String, name: String) throws {
@@ -378,37 +433,49 @@ extension SideFiles {
 
     /// Appends `lines` to history.jsonl the way Claude Code does (made 0600 when missing, its lock folder held, one write). Returns the
     /// lines as written (a newline is put first when the file doesn't end with one).
-    static func appendHistory(_ path: String, lines: [Data]) throws {
+    /// Only the lines not already in the file byte for byte go in (`prepare` is told them, under the lock, before they are written, so
+    /// the receipt has them first); returns how many went in.
+    @discardableResult
+    static func appendHistory(_ path: String, lines: [Data], prepare: ([Data]) throws -> Void = { _ in }) throws -> Int {
+        let h = historyWords
         var st = stat()
         if lstat(path, &st) != 0 {
             let fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-            guard fd >= 0 else { throw SideError("history.jsonl couldn't be made; no prompt history was added.") }
+            guard fd >= 0 else { throw SideError("\(h) couldn't be made; no prompt history was added.") }
             close(fd)
         } else {
-            guard (st.st_mode & S_IFMT) == S_IFREG, st.st_nlink == 1 else { throw SideError("history.jsonl is a link or isn't a plain file; no prompt history was added.") }
+            guard (st.st_mode & S_IFMT) == S_IFREG, st.st_nlink == 1 else { throw SideError("\(h) is a link or isn't a plain file; no prompt history was added.") }
         }
-        try withLock(historyLock(path), what: "history.jsonl") {
+        return try withLock(historyLock(path), what: h) {
             let fd = open(path, O_RDWR | O_APPEND | O_NOFOLLOW | O_NONBLOCK)
-            guard fd >= 0 else { throw SideError("history.jsonl can't be opened; no prompt history was added.") }
+            guard fd >= 0 else { throw SideError("\(h) can't be opened; no prompt history was added.") }
             defer { close(fd) }
             var s = stat()
-            guard fstat(fd, &s) == 0, (s.st_mode & S_IFMT) == S_IFREG, s.st_nlink == 1 else { throw SideError("history.jsonl isn't a plain file; no prompt history was added.") }
-            var body = Data()
-            if s.st_size > 0 {
-                var last: UInt8 = 0
-                if pread(fd, &last, 1, s.st_size - 1) == 1, last != 0x0A { body.append(0x0A) }
+            guard fstat(fd, &s) == 0, (s.st_mode & S_IFMT) == S_IFREG, s.st_nlink == 1 else { throw SideError("\(h) isn't a plain file; no prompt history was added.") }
+            // the lines already there (read whole, under its cap): none of them goes in twice
+            guard Int64(s.st_size) <= maxHistoryFile, let have = SessionsRestore.read(fd, size: s.st_size) else {
+                throw SideError("\(h) is over \(SessionsBackup.sizeWords(maxHistoryFile)), so it can't be checked for lines already there; no prompt history was added.")
             }
-            for l in lines { body += l; body.append(0x0A) }
+            var seen = Set(have.split(separator: 0x0A, omittingEmptySubsequences: true).map { Data($0) })
+            var fresh: [Data] = []
+            for l in lines where !seen.contains(l) { fresh.append(l); seen.insert(l) }
+            guard !fresh.isEmpty else { return 0 }
+            try prepare(fresh)
+            var body = Data()
+            if let last = have.last, last != 0x0A { body.append(0x0A) }
+            for l in fresh { body += l; body.append(0x0A) }
             let ok = body.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) == body.count }
-            guard ok, fsync(fd) == 0 else { throw SideError("history.jsonl couldn't be written whole; Undo takes back what landed.") }
+            guard ok, fsync(fd) == 0 else { throw SideError("\(h) couldn't be written whole; Undo takes back what landed.") }
+            return fresh.count
         }
     }
 
     /// Takes `lines` out of history.jsonl (each one only where a line is byte for byte the same; the first such one), under Claude Code's
     /// lock, by a temp file renamed over it. Returns how many weren't found.
     static func removeHistory(_ path: String, lines: [Data]) throws -> Int {
-        try withLock(historyLock(path), what: "history.jsonl") {
-            guard let (d, st) = readPlain(path, limit: maxHistoryFile) else { throw SideError("history.jsonl can't be read (a link, or over \(SessionsBackup.sizeWords(maxHistoryFile))); its lines stay.") }
+        try withLock(historyLock(path), what: historyWords) {
+            guard let got = readPlain(path, limit: maxHistoryFile) else { throw SideError("\(historyWords) can't be read (a link, or over \(SessionsBackup.sizeWords(maxHistoryFile))); its lines stay.") }
+            let (d, st) = got
             var want: [Data: Int] = [:]
             for l in lines { want[l, default: 0] += 1 }
             var out = Data(); out.reserveCapacity(d.count)
@@ -436,6 +503,7 @@ extension SideFiles {
     /// old folder, picked folder); the others resolve to their recorded folder when it is here, else they wait.
     static func apply(_ t: SessionsRestore.Target, _ b: SessionsRestore.Backup, kinds: Kinds, restore: String?, folders: [String: Folder] = [:],
                       windowClosed: () -> Bool, now: Date = Date()) throws -> Receipt? {
+        sweepConfigCopies()
         guard let part = stashed(b), !part.sessions.isEmpty || !part.trust.isEmpty else { return nil }
         guard kinds != .nothing else { return nil }
         let lock: SwitchEngine.Lock
@@ -561,31 +629,40 @@ extension SideFiles {
 
     /// history.jsonl and .claude.json, under the shared-file rules: no Claude Code process for this folder, the window closed.
     private static func writeShared(_ r: inout Receipt, lines: [(session: String, data: Data)], trust: [(session: String, key: String, value: String, mcp: Bool)],
-                                    windowClosed: () -> Bool) throws {
+                                    pick: String? = nil, windowClosed: () -> Bool) throws {
         guard !lines.isEmpty || !trust.isEmpty else { return }
         let why: String? = {
-            guard let running = codeRunning(r.codeDir) else { return "it couldn't be checked whether Claude Code runs for this profile" }
-            if running { return "Claude Code runs for this profile" }
+            guard let running = codeRunning(r.codeDir) else { return "it couldn't be told whether Claude Code is running for this profile" }
+            if running { return "Claude Code is running for this profile" }
             if !windowClosed() { return "the profile's Claude window is open" }
             return nil
         }()
         if let why {
-            r.problems.append("Prompt history and trust weren't written: \(why). Pick the session's folder again under Sessions (or import again) once it is quit.")
+            // (what works from here: the import's Undo and the import again; for a Pick, its Undo and the Pick again)
+            r.problems.append("Prompt history and trust weren't written, because \(why). Quit Claude Code for this profile and its window, then "
+                              + (pick == nil ? "Undo this import and import it again." : "Undo this Pick under the profile's Sessions and pick the folder again."))
             return
         }
-        // the history lines, one append under Claude Code's lock
+        // the history lines, one append under Claude Code's lock; a line already there byte for byte isn't added again (a second
+        // Restore, an import again, a Pick retried)
         if !lines.isEmpty {
             let path = (r.codeDir as NSString).appendingPathComponent("history.jsonl")
             let name = "lines-\(r.steps.count).jsonl"
-            var body = Data()
-            for l in lines { body += l.data; body.append(0x0A) }
-            try writeSaved(body, id: r.id, name: name)
-            r.steps.append(Step(kind: .lines, session: Set(lines.map(\.session)).count == 1 ? lines[0].session : "", path: path, sha: SwitchEngine.sha(body), saved: name, count: lines.count))
-            try save(r)
+            let session = Set(lines.map(\.session)).count == 1 ? lines[0].session : ""
+            var stepAt: Int?
             do {
-                try appendHistory(path, lines: lines.map(\.data))
-                r.steps[r.steps.count - 1].done = true
-                r.written.historyLines += lines.count
+                let added = try appendHistory(path, lines: lines.map(\.data)) { fresh in
+                    var body = Data()
+                    for l in fresh { body += l; body.append(0x0A) }
+                    try writeSaved(body, id: r.id, name: name)
+                    var s = Step(kind: .lines, session: session, path: path, sha: SwitchEngine.sha(body), saved: name, count: fresh.count)
+                    s.pick = pick
+                    r.steps.append(s); stepAt = r.steps.count - 1
+                    try save(r)
+                }
+                if let i = stepAt { r.steps[i].done = true }
+                r.written.historyLines += added
+                r.written.there += lines.count - added
             } catch {
                 r.problems.append("\(error)")
             }
@@ -596,51 +673,56 @@ extension SideFiles {
             let cfg = configFile(codeDir: r.codeDir)
             var st = stat()
             guard lstat(cfg, &st) == 0 else {
-                r.problems.append("Trust wasn't written: this profile has no .claude.json yet (Claude Code makes it the first time it runs). Run Claude Code here once, then import again; nothing else changes.")
+                r.problems.append("Trust wasn't written, because \(settingsWords) isn't there yet (Claude Code makes it the first time it runs). To add it: Undo this import, run Claude Code in this profile once, then import again.")
                 return
             }
-            guard (st.st_mode & S_IFMT) == S_IFREG, st.st_nlink == 1 else { r.problems.append("Trust wasn't written: .claude.json is a link or isn't a plain file."); return }
-            do {
-                try withLock(cfg + ".lock", what: ".claude.json") {
-                    guard let (d, rst) = readPlain(cfg, limit: Int64(maxConfig)) else { throw SideError("Trust wasn't written: .claude.json is over \(SessionsBackup.sizeWords(Int64(maxConfig))) or can't be read.") }
-                    var bytes = [UInt8](d)
-                    var added: [(session: String, key: String, value: String, mcp: Bool)] = []
-                    for tr in trust {
-                        switch spliced(bytes, key: tr.key, value: tr.value) {
-                        case .added(let n): bytes = [UInt8](n); added.append(tr)
-                        case .there: r.written.kept += 1; r.problems.append("\(tilde(tr.key)) already has its own entry in .claude.json; it was kept as it is.")
-                        case .unreadable(let why): throw SideError("Trust wasn't written: .claude.json \(why).")
+            guard (st.st_mode & S_IFMT) == S_IFREG, st.st_nlink == 1 else { r.problems.append("Trust wasn't written, because \(settingsWords) is a link or isn't a plain file."); return }
+            if legacyConfig(r.codeDir) { r.problems.append("Trust wasn't written, because Claude Code reads an older settings file in this profile (.config.json), not the one cl_audit would change."); return }
+            // one folder at a time: the lock is held only around one read, splice and replace (each well under Claude Code's 10 s,
+            // after which it would take a lock over), and the receipt keeps no copy of the file: only the key and the entry written
+            for tr in trust {
+                do {
+                    try withLock(cfg + ".lock", what: settingsWords) {
+                        let t0 = Date()
+                        guard let got = readPlain(cfg, limit: Int64(maxConfig)) else { throw SideError("Trust wasn't written, because \(settingsWords) is over \(SessionsBackup.sizeWords(Int64(maxConfig))) or can't be read.") }
+                        let (d, rst) = got
+                        let n: Data
+                        switch spliced([UInt8](d), key: tr.key, value: tr.value) {
+                        case .added(let x): n = x
+                        case .there: r.written.kept += 1; r.problems.append("\(tilde(tr.key)) already has its own trust in \(settingsWords); it was kept as it is."); return
+                        case .unreadable(let why): throw SideError("Trust wasn't written, because \(settingsWords): \(why).")
                         }
+                        guard Date().timeIntervalSince(t0) < lockBudget else { throw SideError("Trust for \(tilde(tr.key)) wasn't written: \(settingsWords) took too long to read, and Claude Code could take its lock over meanwhile.") }
+                        var s = Step(kind: .trust, session: tr.session, path: cfg, key: tr.key, value: tr.value)
+                        s.pick = pick
+                        r.steps.append(s); try save(r)
+                        let i = r.steps.count - 1
+                        try replaceFile(cfg, with: n, was: rst)
+                        r.steps[i].done = true
+                        r.written.trust += 1
+                        if tr.mcp { r.written.mcp += 1 }
+                        // read back: what landed is what was written
+                        guard let back = readPlain(cfg, limit: Int64(maxConfig)), back.0 == n else { throw SideError("\(settingsWords) didn't read back as written; Undo takes the trust back if it is still as written.") }
                     }
-                    guard !added.isEmpty else { return }
-                    let name = "claude-json-\(r.steps.count).copy"
-                    try writeSaved(d, id: r.id, name: name)
-                    for a in added { r.steps.append(Step(kind: .trust, session: a.session, path: cfg, saved: name, key: a.key, value: a.value)) }
-                    try save(r)
-                    try replaceFile(cfg, with: Data(bytes), was: rst)
-                    // read back: what landed is what was written
-                    guard let back = readPlain(cfg, limit: Int64(maxConfig)), back.0 == Data(bytes) else { throw SideError(".claude.json didn't read back as written; Undo takes the trust back if it is still as written.") }
-                    for i in r.steps.indices where r.steps[i].kind == .trust && r.steps[i].saved == name { r.steps[i].done = true }
-                    r.written.trust += added.count
-                    r.written.mcp += added.filter(\.mcp).count
+                } catch {
+                    r.problems.append("\(error)")
                 }
-            } catch {
-                r.problems.append("\(error)")
+                try save(r)
             }
-            try save(r)
         }
     }
 
     /// A session picked later (Sessions ▸ Folder not here, or an import's Pick): its waiting history lines and trust are written now, into
     /// the receipt that kept them (so the import's Undo still takes them back). `picked`: session → (old folder, picked folder).
     @discardableResult
-    static func applyPending(_ t: SessionsRestore.Target, picked: [String: Folder], windowClosed: () -> Bool) -> [String] {
+    static func applyPending(_ t: SessionsRestore.Target, picked: [String: Folder], pick: String, windowClosed: () -> Bool) -> [String] {
+        sweepConfigCopies()
         var problems: [String] = []
-        for var r in receipts() where r.profile == t.profile && r.undone == nil && r.waiting.contains(where: { picked[$0.session] != nil }) {
+        for var r in receipts() where r.profile == t.profile && r.undone == nil && r.waiting.contains(where: { picked[$0.session] != nil && $0.pick == nil }) {
             var lines: [(session: String, data: Data)] = []
             var trust: [(session: String, key: String, value: String, mcp: Bool)] = []
             var done: [String] = []
-            for w in r.waiting {
+            for w in r.waiting where w.pick == nil {
                 guard let f = picked[w.session] else { continue }
                 if let h = w.history, let d = readCapped(savedDir(r.id).appendingPathComponent(h).path, limit: Int(maxHistoryBytes)) {
                     lines += historyLines(d, session: w.session, project: projectMap((w.from, f.to))).lines.map { (w.session, $0) }
@@ -656,9 +738,11 @@ extension SideFiles {
             }
             let before = r.problems.count
             do {
-                try writeShared(&r, lines: lines, trust: trust, windowClosed: windowClosed)
-                // (written or said: a session whose history couldn't be written keeps waiting)
-                if r.problems.count == before { r.waiting.removeAll { done.contains($0.session) } }
+                try writeShared(&r, lines: lines, trust: trust, pick: pick, windowClosed: windowClosed)
+                // (written, even in part: marked as this Pick's, whose Undo takes it back and lets it wait again; nothing written because
+                // Claude Code ran or the window was open: it keeps waiting)
+                let blocked = r.problems.suffix(r.problems.count - before).contains { $0.hasPrefix("Prompt history and trust weren't written") }
+                if !blocked { for k in r.waiting.indices where done.contains(r.waiting[k].session) { r.waiting[k].pick = pick } }
                 problems += r.problems.suffix(r.problems.count - before)
                 try save(r)
             } catch { problems.append("\(error)") }
@@ -676,14 +760,40 @@ extension SideFiles {
         var lock: SwitchEngine.Lock?
         if !locked { do { lock = try SwitchEngine.Lock.take() } catch { throw SideError("\(error)") } }
         defer { lock?.release() }
+        sweepConfigCopies()
         guard var r = load(id) else { throw SideError("No record of those side files.") }
         guard r.undone == nil else { return r }
-        let shared = r.steps.contains { ($0.kind == .lines || $0.kind == .trust) && $0.done && !$0.settled }
+        try undoSteps(&r, r.steps.indices.filter { _ in true }, windowClosed: windowClosed)
+        r.waiting = []
+        r.undone = Date()
+        try save(r)
+        try? FileManager.default.removeItem(at: savedDir(r.id))         // (the copies of history lines it kept for Undo: not needed any more)
+        return r
+    }
+
+    /// A later Pick's Undo (Sessions ▸ Folder not here ▸ Undo): the prompt history and trust that Pick wrote (`pick`: its re-point
+    /// receipt) are taken back, and the session waits for its folder again.
+    static func undoPick(_ pick: String, windowClosed: () -> Bool) throws -> [String] {
+        var left: [String] = []
+        for var r in receipts() where r.undone == nil && r.steps.contains(where: { $0.pick == pick && !$0.settled }) {
+            let before = r.left.count
+            try undoSteps(&r, r.steps.indices.filter { r.steps[$0].pick == pick }, windowClosed: windowClosed)
+            for k in r.waiting.indices where r.waiting[k].pick == pick { r.waiting[k].pick = nil }
+            for k in r.steps.indices where r.steps[k].pick == pick { r.written.historyLines -= r.steps[k].kind == .lines && r.steps[k].done ? r.steps[k].count : 0; r.written.trust -= r.steps[k].kind == .trust && r.steps[k].done ? 1 : 0 }
+            try save(r)
+            left += r.left.suffix(r.left.count - before)
+        }
+        return left
+    }
+
+    /// Takes back the given steps, newest first (see undo).
+    private static func undoSteps(_ r: inout Receipt, _ which: [Int], windowClosed: () -> Bool) throws {
+        let shared = which.contains { (r.steps[$0].kind == .lines || r.steps[$0].kind == .trust) && r.steps[$0].done && !r.steps[$0].settled }
         if shared {
-            guard let running = codeRunning(r.codeDir), !running else { throw SideError("Quit Claude Code for this profile first (prompt history and trust are shared files), then Undo.") }
+            guard let running = codeRunning(r.codeDir), !running else { throw SideError("Quit Claude Code for this profile first (the prompt history and trust it uses are shared with it), then Undo.") }
             guard windowClosed() else { throw SideError("Quit the profile's Claude window first, then Undo.") }
         }
-        for i in r.steps.indices.reversed() where !r.steps[i].settled {
+        for i in which.reversed() where !r.steps[i].settled {
             let s = r.steps[i]
             defer { r.steps[i].settled = true; try? save(r) }
             switch s.kind {
@@ -707,18 +817,14 @@ extension SideFiles {
             case .trust:
                 guard s.done, let key = s.key, let value = s.value else { continue }
                 do {
-                    try withLock(s.path + ".lock", what: ".claude.json") {
-                        guard let (d, st) = readPlain(s.path, limit: Int64(maxConfig)) else { throw SideError(".claude.json can't be read; the trust for \(tilde(key)) stays.") }
-                        guard let out = unspliced([UInt8](d), key: key, value: value) else { r.left.append("The trust for \(tilde(key)) changed since (or went); it stays."); return }
-                        try replaceFile(s.path, with: out, was: st)
+                    try withLock(s.path + ".lock", what: settingsWords) {
+                        guard let got = readPlain(s.path, limit: Int64(maxConfig)) else { throw SideError("\(settingsWords) can't be read; the trust for \(tilde(key)) stays.") }
+                        guard let out = unspliced([UInt8](got.0), key: key, value: value) else { r.left.append("The trust for \(tilde(key)) changed since (or went); it stays."); return }
+                        try replaceFile(s.path, with: out, was: got.1)
                     }
                 } catch { r.left.append("\(error)") }
             }
         }
-        r.waiting = []
-        r.undone = Date()
-        try save(r)
-        return r
     }
 
     /// Undo of every side-file receipt that follows an import's restore (the import's Undo does this first).
@@ -726,6 +832,22 @@ extension SideFiles {
         var left: [String] = []
         for r in linked(restore: id) { left += try undo(r.id, locked: true, windowClosed: windowClosed).left }
         return left
+    }
+
+    /// An import's receipt goes (30 days after it, or its backup is gone: SessionsRestore.prune), so it can't be undone any more: the
+    /// prompt history, pasted text and the rest kept with its backup (<backup>/side/) go, and its side receipts with the copies of history
+    /// lines they kept for Undo. A session still waiting for its folder keeps only its own lines and trust, in its receipt, until it is
+    /// picked or that receipt is undone.
+    static func retire(restore id: String, backup b: SessionsRestore.Backup) {
+        let fm = FileManager.default
+        let stash = b.dir.appendingPathComponent(dirName)
+        var st = stat()
+        if lstat(stash.path, &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR { try? fm.removeItem(at: stash) }
+        for r in receipts() where r.restore == id {
+            let keep = r.undone == nil ? Set(r.waiting.compactMap(\.history)) : []
+            if keep.isEmpty { try? fm.removeItem(at: dir(r.id)); continue }
+            for n in ((try? fm.contentsOfDirectory(atPath: savedDir(r.id).path)) ?? []) where !keep.contains(n) { unlink(savedDir(r.id).appendingPathComponent(n).path) }
+        }
     }
 
     /// Whether Undo of the import needs the window (shared files were written).

@@ -510,7 +510,7 @@ enum SessionsRepoint {
         let picked = Dictionary(r.sessions.filter { !$0.undone }.map { ($0.session, (from: $0.from, to: $0.to)) }, uniquingKeysWith: { a, _ in a })
         let waited = Set(SideFiles.waiting(profile: t.profile).map(\.session)).intersection(picked.keys)
         if !waited.isEmpty {
-            r.problems += SideFiles.applyPending(t, picked: picked, windowClosed: windowClosed)
+            r.problems += SideFiles.applyPending(t, picked: picked, pick: r.id, windowClosed: windowClosed)
             let still = Set(SideFiles.waiting(profile: t.profile).map(\.session))
             for k in r.sessions.indices where waited.contains(r.sessions[k].session) && !still.contains(r.sessions[k].session) { r.sessions[k].sideWritten = true }
         }
@@ -912,6 +912,10 @@ enum SessionsRepoint {
         defer { lock?.release() }
         guard var r = load(id) else { throw RepointError("No record of that change.") }
         guard r.undone == nil else { return r }
+        // the prompt history and trust this Pick wrote for a moved session (SessionsSideApply.swift) go first; the session waits for its
+        // folder again
+        do { r.problems += try SideFiles.undoPick(id, windowClosed: windowClosed) } catch { throw RepointError("\(error)") }
+        for k in r.sessions.indices { r.sessions[k].sideWritten = nil }
         let sessions = r.steps.map(\.session).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
         let running = SessionsRestore.runningSessions() ?? []
         for sid in sessions.reversed() {

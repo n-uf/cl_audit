@@ -1429,7 +1429,11 @@ enum SessionsRestore {
             var isDir: ObjCBool = false
             let reachable = fm.fileExists(atPath: profileDir, isDirectory: &isDir) && isDir.boolValue
             let backupGone = reachable && !fm.fileExists(atPath: (profileDir as NSString).appendingPathComponent(h.backup))
-            if backupGone || now.timeIntervalSince(end) > 30 * 86400 { try? fm.removeItem(at: dir(n)) }
+            if backupGone || now.timeIntervalSince(end) > 30 * 86400 {
+                // (an import's side files go with it: SessionsSideApply.swift)
+                if h.importedFrom != nil { SideFiles.retire(restore: n, backup: Backup(profile: h.profile, id: h.backup, place: URL(fileURLWithPath: h.backupPlace))) }
+                try? fm.removeItem(at: dir(n))
+            }
         }
     }
 
