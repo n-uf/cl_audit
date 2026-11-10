@@ -15,12 +15,83 @@ struct StandbyAccount: Codable, Equatable, Hashable, Identifiable {
     var seat: Seat?                // the account and organisation, once a sign-in or the window's records said
     var configDir: String?         // the Claude Code folder that keeps its sign-in (its limits come from it); nil: none kept
     var addedAt: Date?
+    var plan: String?              // Claude's own name for its plan ("Ultra"), as last seen in use
+    var lastInUse: Date?           // when it was last the profile's account in use (it left the folder then); nil: never here
+    /// Its week as last read while it was in use, and when that week starts again: kept to pick which standby account a
+    /// full limit offers (AccountBook.offerOrder), never shown. A standby account isn't read.
+    var lastWeek: Double?
+    var lastWeekResets: Date?
 
-    init(email: String, seat: Seat? = nil, configDir: String? = nil, addedAt: Date? = Date(), id: String = StandbyAccount.newID()) {
+    init(email: String, seat: Seat? = nil, configDir: String? = nil, addedAt: Date? = Date(), id: String = StandbyAccount.newID(),
+         plan: String? = nil, lastInUse: Date? = nil, lastWeek: Double? = nil, lastWeekResets: Date? = nil) {
         self.id = id; self.email = email; self.seat = seat; self.configDir = configDir; self.addedAt = addedAt
+        self.plan = plan; self.lastInUse = lastInUse; self.lastWeek = lastWeek; self.lastWeekResets = lastWeekResets
     }
 
     static func newID() -> String { String(UUID().uuidString.lowercased().filter(\.isHexDigit).prefix(8)) }
+
+    /// Known to be full: its week was full when it was last read, and that week hasn't started again yet.
+    func knownFull(now: Date = Date()) -> Bool {
+        guard let w = lastWeek, AtLimit.isFull(w) else { return false }
+        return (lastWeekResets ?? .distantFuture) > now
+    }
+}
+
+/// The bookkeeping of a profile's accounts that needs nothing but its records (cl_quick's AccountBook): what a switch
+/// says it affects, how long ago, and which standby account to offer first.
+enum AccountBook {
+    /// What a switch affects, for the Switch page: Claude Code on the folder (in Terminal and editors for ~/.claude, the
+    /// uses pointed at it with CLAUDE_CONFIG_DIR for any other), sessions running now included; not the Claude app, which
+    /// runs its own claude with its own sign-in. `email` as it should be shown (masked where the caller masks).
+    static func switchWords(folder: String, email: String, isDefault: Bool) -> String {
+        (isDefault ? "Claude Code in Terminal and editors on \(folder)" : "Claude Code pointed at \(folder) with CLAUDE_CONFIG_DIR")
+            + " moves to \(email), sessions running now included; the Claude app keeps its own sign-in."
+            + " Finish the sign-in in Terminal and the browser as that account."
+    }
+
+    /// "just now", "12 min ago", "3 h ago", "yesterday", "4 days ago", "3 weeks ago".
+    static func ago(_ d: Date, now: Date = Date()) -> String {
+        let s = max(0, now.timeIntervalSince(d))
+        switch s {
+        case ..<60: return "just now"
+        case ..<3600: return "\(Int(s / 60)) min ago"
+        case ..<86400: return "\(Int(s / 3600)) h ago"
+        case ..<(2 * 86400): return "yesterday"
+        case ..<(14 * 86400): return "\(Int(s / 86400)) days ago"
+        default: return "\(Int(s / (7 * 86400))) weeks ago"
+        }
+    }
+
+    /// "On standby · Ultra · last in use 3 days ago": a standby account's line. No usage: it isn't read.
+    static func standbyWords(_ s: StandbyAccount, now: Date = Date()) -> String {
+        (["On standby", s.plan.map(Account.planWords), s.lastInUse.map { "last in use " + ago($0, now: now) }]).compactMap { $0 }
+            .joined(separator: " · ")
+    }
+
+    /// The standby accounts in the order a full limit offers them (cl_quick's rule): those not known to be full first, the
+    /// least used first by their week as last read (one never read here counts as unknown, after those read), then the most
+    /// recently in use; those known to be full last. Only accounts with a seat can be switched to; the others come at the
+    /// end, in the profile's order.
+    static func offerOrder(_ list: [StandbyAccount], now: Date = Date()) -> [StandbyAccount] {
+        list.enumerated().sorted { a, b in
+            func rank(_ s: StandbyAccount) -> Int { s.seat == nil ? 2 : s.knownFull(now: now) ? 1 : 0 }
+            let (x, y) = (a.element, b.element)
+            if rank(x) != rank(y) { return rank(x) < rank(y) }
+            // a week that started again since it was read counts as empty
+            func used(_ s: StandbyAccount) -> Double {
+                guard let w = s.lastWeek else { return 101 }
+                return (s.lastWeekResets.map { $0 <= now } ?? false) ? 0 : w
+            }
+            if used(x) != used(y) { return used(x) < used(y) }
+            let (p, q) = (x.lastInUse ?? .distantPast, y.lastInUse ?? .distantPast)
+            return p != q ? p > q : a.offset < b.offset
+        }.map(\.element)
+    }
+
+    /// The one to offer while a limit is full: the first that isn't known to be full and can be switched to, or nil.
+    static func best(_ list: [StandbyAccount], now: Date = Date()) -> StandbyAccount? {
+        offerOrder(list, now: now).first { $0.seat != nil && !$0.knownFull(now: now) }
+    }
 }
 
 /// One element of a list read on its own: nil when it can't be read, so the rest of the list still is.
