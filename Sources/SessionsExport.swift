@@ -457,7 +457,8 @@ struct Identities: Equatable {
         if let e = s.entry {
             add(seat: e.seat)
             for q in e.standby { add(seat: q.seat); add(email: q.email) }
-            for dir in [e.configDir, e.keptFolder].compactMap({ $0 }) + e.standby.compactMap(\.configDir) { add(configDir: dir) }
+            // its folder, and those older versions made for its accounts (their records name its accounts too)
+            for dir in [e.configDir] + e.leftoverFolders { add(configDir: dir) }
         }
         add(configDir: s.codeDir)
         add(windowDir: s.dataDir)

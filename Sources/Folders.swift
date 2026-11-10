@@ -28,14 +28,11 @@ enum FolderKey {
 // MARK: - Who uses what
 
 enum FolderRules {
-    /// The other account whose Claude Code folder is this one, contains it or sits inside it. A folder that keeps one
-    /// of a profile's standby sign-ins (Accounts.swift) is that profile's too.
+    /// The other account whose Claude Code folder is this one, contains it or sits inside it. (A profile has exactly one
+    /// folder; the folders older versions made for its accounts are left over, no profile's.)
     static func configOwner(_ path: String, among accounts: [AccountEntry], except id: String? = nil) -> AccountEntry? {
         guard !path.isEmpty else { return nil }
         return accounts.first { $0.id != id && !$0.configDir.isEmpty && FolderKey.overlaps($0.configDir, path) }
-            ?? accounts.first { a in a.id != id && a.standby.contains { s in s.configDir.map { !$0.isEmpty && FolderKey.overlaps($0, path) } ?? false } }
-            // the folder kept for the account in use (its own sign-in) is the profile's too
-            ?? accounts.first { a in a.id != id && (a.keptFolder.map { !$0.isEmpty && FolderKey.overlaps($0, path) } ?? false) }
     }
 
     /// The desktop window an account opens, as one key: the standard window or its own window's folder.

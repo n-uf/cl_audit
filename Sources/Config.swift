@@ -109,10 +109,11 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     /// The profile's other accounts (Accounts.swift): it works on one at a time, the one `seat` and `configDir` are
     /// signed in to; these wait. Older files have none: the profile's one account is the one in use.
     var standby: [StandbyAccount] = []
-    var sessionsFollow: Bool = true           // switching accounts takes the Claude window's sessions along
-    /// The folder that keeps the account in use's own sign-in for when it's on standby again (it came from standby
-    /// with one), so after a switch its limits still show. nil: none (Sign in… on its box makes one).
-    var keptFolder: String? = nil
+    /// Claude Code folders 26.11.12 and earlier made for this profile's accounts (a standby account's own sign-in, and the
+    /// account in use's kept one: `keptFolder` and each standby account's `configDir` in older files). cl_audit no longer
+    /// uses them; Settings ▸ the profile ▸ Accounts lists each one that is still there with Move to Trash… and Keep it
+    /// (Leftovers.swift). Never deleted silently, and their Keychain items are never touched.
+    var leftoverFolders: [String] = []
     /// An account that moved between this profile and another (FolderRules.noteAccounts), said on its Accounts card until
     /// dismissed. nil: nothing to say.
     var accountNote: AccountNote? = nil
@@ -122,9 +123,9 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, notifyBack, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, opensFromDock, seat, claudeWindow, showFable, menuBar, menuBarLook, standby, sessionsFollow, keptFolder, accountNote
+        case id, name, label, configDir, desktop, desktopDataDir, style, pollMinutes, notify, notifyPercent, notifyBack, autoRenew, color, frame, accent, clickAction, peekSeconds, longPressDetails, panelDesign, windowDot, iconHidden, dockRuns, windowFollowsDock, opensFromDock, seat, claudeWindow, showFable, menuBar, menuBarLook, standby, leftoverFolders, accountNote
     }
-    private enum LegacyKeys: String, CodingKey { case clickShowsDetails, openAtLogin, lifecycle }
+    private enum LegacyKeys: String, CodingKey { case clickShowsDetails, openAtLogin, lifecycle, keptFolder }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -176,8 +177,14 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
             let profile = id, dropped = raw.count - standby.count
             agentLog.error("profile \(profile, privacy: .public): \(dropped) standby account(s) couldn't be read and were left out")
         }
-        sessionsFollow = try c.decodeIfPresent(Bool.self, forKey: .sessionsFollow) ?? true
-        keptFolder = try c.decodeIfPresent(String.self, forKey: .keptFolder)
+        // the folders older files kept sign-ins in: left over now, listed once each (never the profile's own folder)
+        leftoverFolders = (try? c.decodeIfPresent([String].self, forKey: .leftoverFolders)) ?? []
+        let kept = (try? legacy.decodeIfPresent(String.self, forKey: .keptFolder)) ?? nil
+        let standbyDirs = ((try? c.decodeIfPresent([Lossy<LegacyStandbyFolder>].self, forKey: .standby)) ?? []).compactMap { $0.value?.configDir }
+        for d in [kept].compactMap({ $0 }) + standbyDirs where !d.isEmpty && !FolderKey.overlaps(d, configDir)
+            && !leftoverFolders.contains(where: { FolderKey.canonical($0) == FolderKey.canonical(d) }) {
+            leftoverFolders.append(d)
+        }
         accountNote = try? c.decodeIfPresent(AccountNote.self, forKey: .accountNote)
         if let action = try c.decodeIfPresent(ClickAction.self, forKey: .clickAction) {
             clickAction = action

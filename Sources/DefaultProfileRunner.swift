@@ -353,21 +353,27 @@ final class DefaultProfileRunner: ObservableObject {
         return !s.same(t.seat) && !t.has(s)
     }
 
-    /// Keep it: the default profile gets the old one's account as a standby account (its folder and sign-in stay exactly
-    /// as they are, nothing is moved or copied), and the old profile leaves the list. Its own standby accounts go along.
+    /// Keep it: the default profile remembers the old one's account as a standby account (signed out there: switching to it
+    /// signs it in on the default profile's folder), and the old profile leaves the list. Its own standby accounts go along.
+    /// The old profile's folder, with its sign-in, stays exactly as it is: cl_audit no longer uses it, so the default
+    /// profile lists it as left over (Move to Trash… or Keep it); nothing is moved, copied or signed out.
     func keepOldAsStandby() {
         guard canKeepOldAsStandby, let m = model, let t = target, let ti = m.accounts.firstIndex(where: { $0.id == t.id }),
               let s = old.seat else { return }
-        var seat = s; seat.linkedAt = Date()
+        let st = Store.status(for: old)
         var e = m.accounts[ti]
-        e.standby.append(StandbyAccount(email: s.email ?? "", seat: seat, configDir: old.configDir))
+        e.standby.append(StandbyAccount(email: s.email ?? "", seat: Seat(account: s.account, organization: s.organization, email: s.email),
+                                        plan: st?.plan, lastInUse: Date(), lastWeek: st?.weekly, lastWeekResets: st?.weeklyResets))
         e.standby += old.standby
+        for d in [old.configDir] + old.leftoverFolders where !e.leftoverFolders.contains(d) && !FolderKey.overlaps(d, e.configDir) {
+            e.leftoverFolders.append(d)
+        }
         m.accounts[ti] = e
         m.remove(old.id)
         m.apply()
         if var r = record { r.oldHandled = "standby"; record = r; DefaultProfile.save(r) }
         oldHandled = true
-        note = "\(old.name) now stands by on \(e.name). Its folder and sign-in are as they were."
+        note = "\(old.name)'s account now stands by on \(e.name), signed out. Its folder is as it was: \(e.name)'s Accounts list it as left over."
         objectWillChange.send()
     }
 

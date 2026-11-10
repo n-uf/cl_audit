@@ -15,7 +15,6 @@ struct StandbyAccount: Codable, Equatable, Hashable, Identifiable {
     var id: String                 // short and fixed: names its saved status (status/<profile>~<id>.json)
     var email: String              // as found or typed; shown
     var seat: Seat?                // the account and organisation, once a sign-in or the window's records said
-    var configDir: String?         // the Claude Code folder that keeps its sign-in (its limits come from it); nil: none kept
     var addedAt: Date?
     var plan: String?              // Claude's own name for its plan ("Ultra"), as last seen in use
     var lastInUse: Date?           // when it was last the profile's account in use (it left the folder then); nil: never here
@@ -24,9 +23,9 @@ struct StandbyAccount: Codable, Equatable, Hashable, Identifiable {
     var lastWeek: Double?
     var lastWeekResets: Date?
 
-    init(email: String, seat: Seat? = nil, configDir: String? = nil, addedAt: Date? = Date(), id: String = StandbyAccount.newID(),
+    init(email: String, seat: Seat? = nil, addedAt: Date? = Date(), id: String = StandbyAccount.newID(),
          plan: String? = nil, lastInUse: Date? = nil, lastWeek: Double? = nil, lastWeekResets: Date? = nil) {
-        self.id = id; self.email = email; self.seat = seat; self.configDir = configDir; self.addedAt = addedAt
+        self.id = id; self.email = email; self.seat = seat; self.addedAt = addedAt
         self.plan = plan; self.lastInUse = lastInUse; self.lastWeek = lastWeek; self.lastWeekResets = lastWeekResets
     }
 
@@ -114,6 +113,10 @@ struct AccountNote: Codable, Equatable, Hashable {
         }
     }
 }
+
+/// What 26.11.12 and earlier kept for a standby account besides what it still keeps: the folder its own sign-in was kept
+/// in. Read once, when the profiles file is read, to list that folder as left over (AccountEntry.leftoverFolders).
+struct LegacyStandbyFolder: Decodable { var configDir: String? }
 
 /// One element of a list read on its own: nil when it can't be read, so the rest of the list still is.
 struct Lossy<T: Decodable>: Decodable {
@@ -245,10 +248,9 @@ enum AccountDiscovery {
                 byID[f.id] = old
             } else { byID[f.id] = f; order.append(f.id) }
         }
-        // the profile's own folders, and any folder inside or around one of them, aren't offered
-        let mine = [e.configDir] + e.standby.compactMap(\.configDir)
+        // the profile's own folder, and any folder inside or around it, isn't offered
         for c in folders {
-            guard let s = signedIn(c.path), s.email != nil, !mine.contains(where: { !$0.isEmpty && FolderKey.overlaps($0, c.path) }) else { continue }
+            guard let s = signedIn(c.path), s.email != nil, !(!e.configDir.isEmpty && FolderKey.overlaps(e.configDir, c.path)) else { continue }
             let f = AccountFacts.of(configDir: c.path)
             // a folder another profile uses: that profile's account (shown dimmed below, by its seat)
             let usedBy = FolderRules.configOwner(c.path, among: accounts, except: e.id)

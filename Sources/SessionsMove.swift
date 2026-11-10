@@ -74,7 +74,7 @@ enum SessionsMove {
     /// The profile fields carried as they are (each checked when read back): how it looks and behaves.
     static let carried: [String] = ["style", "color", "frame", "accent", "panelDesign", "windowDot", "menuBar", "menuBarLook", "pollMinutes", "notify",
                                     "notifyPercent", "notifyBack", "autoRenew", "clickAction", "peekSeconds", "longPressDetails", "dockRuns",
-                                    "windowFollowsDock", "opensFromDock", "claudeWindow", "showFable", "sessionsFollow"]
+                                    "windowFollowsDock", "opensFromDock", "claudeWindow", "showFable"]
 
     /// cl_audit.json for these profiles (`parts`: profile id → the part folder that holds its sessions). `all`: every profile here, in
     /// order, for each one's place. The ids and addresses are the real ones: an export that isn't a move scrubs them like any other file.
@@ -219,7 +219,7 @@ enum SessionsMove {
             entry.desktop = .separate
             entry.desktopDataDir = ownDataDir(id)
             if (o["window"] as? String) == DesktopMode.standard.rawValue { notes.append("it used the usual Claude app on the other Mac: here it gets a window of its own") }
-            entry.seat = nil; entry.standby = []; entry.keptFolder = nil
+            entry.seat = nil; entry.standby = []; entry.leftoverFolders = []
             // its accounts: real ids only, each account once in the whole file (one account belongs to one profile)
             var accounts: [Account] = []
             let list = (o["accounts"] as? [Any]) ?? []
@@ -447,7 +447,7 @@ enum SessionsMove {
         e.standby = accounts.dropFirst().map { a in
             var sid = String(a.seat.account.filter(\.isHexDigit).prefix(8))
             while !used.insert(sid).inserted { sid = StandbyAccount.newID() }
-            return StandbyAccount(email: a.email ?? "", seat: Seat(account: a.seat.account, organization: a.seat.organization, email: a.email), configDir: nil, addedAt: now, id: sid)
+            return StandbyAccount(email: a.email ?? "", seat: Seat(account: a.seat.account, organization: a.seat.organization, email: a.email), addedAt: now, id: sid)
         }
     }
 
@@ -489,7 +489,7 @@ enum SessionsMove {
             accountsEntry(&e, fp.accounts, now: now)
             // no Dock icon until the person puts it in the Dock (the done page's step): nothing builds an app or writes the Dock before
             e.iconHidden = true
-            e.keptFolder = nil
+            e.leftoverFolders = []
             let signIns = fp.accounts.map { $0.email ?? "an account (its address isn't in the file)" }
             p.create.append(Made(id: e.id, name: e.name, part: fp.part, entry: e, place: fp.place,
                                  signIns: signIns.isEmpty ? [f.fingerprinted ? "its account (the file names it only by a fingerprint)" : "its account"] : signIns,

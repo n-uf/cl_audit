@@ -1545,6 +1545,7 @@ struct AccountSettings: View {
                 }
                 addAccountRow
                 usualAppNote
+                leftoverRows
             }
         }
         // one grey line, worded like New profile's and short enough for one line in a 460 pt column
@@ -1835,6 +1836,44 @@ struct AccountSettings: View {
         // a folder that is gone is never made again: nothing starts, the line says so (A4)
         if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why; return }
         if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: email) }
+    }
+
+    /// The folders an earlier cl_audit made for this profile's accounts (Leftovers.swift), each still there: Move to
+    /// Trash… (asks first, names its Keychain item) or Keep it (cl_audit stops asking).
+    @ViewBuilder var leftoverRows: some View {
+        let list: [Leftovers.Folder] = { _ = model.tick; return Leftovers.offered(entry, among: model.accounts) }()
+        if !list.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Folders from before").font(.system(size: 9, weight: .semibold)).tracking(1.4).textCase(.uppercase)
+                    .foregroundStyle(face.muted)
+                ForEach(list) { f in
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(Leftovers.line(f)).font(.system(size: 11.5)).foregroundStyle(face.soft)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 8) {
+                            Spacer(minLength: 0)
+                            Button("Keep it") { entry = Leftovers.dropping(f.path, from: entry) }
+                                .buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize()
+                            Button("Move to Trash…") { trashLeftover(f) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                        }
+                    }
+                    .padding(10)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(face.text.opacity(0.05)))
+                }
+            }
+            .padding(.top, 4)
+        }
+    }
+
+    func trashLeftover(_ f: Leftovers.Folder) {
+        let q = Leftovers.question(f)
+        let a = NSAlert()
+        a.messageText = q.title
+        a.informativeText = q.detail
+        a.addButton(withTitle: "Move to Trash"); a.addButton(withTitle: "Cancel")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
+        if let why = Leftovers.trash(f, among: model.accounts) { model.message = why; return }
+        entry = Leftovers.dropping(f.path, from: entry)
     }
 
     /// An account that moved between this profile and another one (AccountNote): the line and OK, which takes it away.
