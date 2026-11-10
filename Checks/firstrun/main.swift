@@ -177,20 +177,13 @@ do {
     check(ClaudeInstall.command == "curl -fsSL https://claude.ai/install.sh | bash", "the install command")
     check(ClaudeInstall.missingInstall == "Claude Code isn't installed on this Mac · Install…", "the reason line")
 
-    // every sign-in route says why
-    let rows = AddAccountPopup.rows(found: [], profile: "x", canSignIn: false)
-    check(rows.contains { $0.kind == .installClaude && $0.title == ClaudeInstall.missingInstall && $0.enabled }, "Add account: a row says why")
-    check(rows.first { $0.kind == .signInOther }?.enabled == false, "Add account: Sign in to another account… stays greyed, with that row above it")
-    let idx = rows.firstIndex { $0.kind == .installClaude }!, idx2 = rows.firstIndex { $0.kind == .signInOther }!
-    check(idx == idx2 - 1, "the reason sits right above the greyed key")
-    var installed = 0
-    let menu = AddAccountPopup.menu(rows, onAdd: { _ in }, onOther: {}, onInstall: { installed += 1 })
-    let item = menu.items.first { $0.title == ClaudeInstall.missingInstall }
-    check(item != nil && item!.isEnabled, "the menu has the enabled reason item")
-    if let item, let a = item.target as? MenuAction { a.run() }
-    check(installed == 1, "…and it opens the install help")
-    let ok = AddAccountPopup.rows(found: [], profile: "x", canSignIn: true)
-    check(!ok.contains { $0.kind == .installClaude } && ok.first { $0.kind == .signInOther }?.enabled == true, "with Claude Code there, no reason row and the key is live")
+    // Add account only remembers an account (the one-folder model): it needs no Claude Code, so Another address… stays live
+    let rows = AddAccountPopup.rows(found: [], profile: "x")
+    check(rows.last?.kind == .other && rows.last?.enabled == true, "Add account: Another address… is live without Claude Code (nothing signs in)")
+    var other = 0
+    let menu = AddAccountPopup.menu(rows, onAdd: { _ in }, onOther: { other += 1 })
+    if let a = menu.items.last?.target as? MenuAction { a.run() }
+    check(other == 1, "…and it opens the address row")
 
     // zero profiles everywhere
     let launcher = LauncherModel(); launcher.reload()
@@ -227,7 +220,6 @@ do {
     check(m.claudeLooked, "a full look finished")
     check(FirstRun.step(claude: m.claude != nil, draft: m.firstRun) == .account, "step 2 is enabled")
     check(m.requireClaude() == p(".local/bin/claude") && m.message.isEmpty, "requireClaude gives the path, says nothing")
-    check(!AddAccountPopup.rows(found: [], profile: "x", canSignIn: m.claudeNow() != nil).contains { $0.kind == .installClaude }, "no reason row once found")
     check(FirstRun.foundFolders().isEmpty, "no signed-in folder yet")
     check(FirstRun.signInFolder == "~/.claude" && !FirstRun.defaultSignedIn(), "Sign in… uses ~/.claude, nothing signed in there yet")
 

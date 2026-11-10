@@ -77,7 +77,7 @@ if role == "b" {
         check(plan.move && plan.create.map(\.name) == ["Work", "Home"] && plan.here.isEmpty && plan.notMade.isEmpty, "B: the plan makes Work and Home, in their order: \(plan.create.map(\.name))")
         let work = plan.create.first { $0.name == "Work" }, homeP = plan.create.first { $0.name == "Home" }
         check(work?.entry.seat?.account == sid(1) && work?.entry.seat?.organization == sid(2) && work?.entry.seat?.email == a1
-              && work?.entry.standby.map { $0.seat?.account } == [sid(3)] && work?.entry.standby.first?.email == a2 && work?.entry.standby.first?.configDir == nil
+              && work?.entry.standby.map { $0.seat?.account } == [sid(3)] && work?.entry.standby.first?.email == a2 && work?.entry.leftoverFolders == []
               && work?.signIns == [a1, a2] && homeP?.signIns == [a3],
               "B: Work keeps its two accounts (the one in use first, the other standing by with no kept sign-in), Home its one; each listed to sign in")
         check(work?.entry.color == .teal && work?.entry.style == .rings && work?.entry.pollMinutes == 7 && work?.entry.notifyPercent == 80 && work?.entry.menuBar == true
