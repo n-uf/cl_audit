@@ -112,7 +112,11 @@ struct SwitchPage: View {
     }
 
     /// Back to the profile's settings; the page starts over the next time it opens.
-    private func leave() { runner.reset(); model.selection = entry.id }
+    private func leave() {
+        // while the sign-in is waited for, Back only leaves the page: the watch goes on (the tile and the alert say so)
+        if !runner.isRunning { runner.reset() }
+        model.selection = entry.id
+    }
 
     /// The account it was on before, now on standby (by its ids).
     private var cameFrom: StandbyAccount? {
@@ -225,7 +229,7 @@ struct SwitchPage: View {
             }
             if entry.claudeWindow {
                 SRow(label: "Claude window", stacked: true) {
-                    value("\(entry.windowWordsCap) keeps its own sign-in, sessions, sidebar and scheduled tasks.")
+                    value("Its own sign-in, sessions, sidebar and scheduled tasks stay as they are (\(entry.windowWords)).")
                 }
             }
             SRow(label: "Stays", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
