@@ -9,6 +9,7 @@
 //   git -C <top> rev-list --count @{u}..             commits not pushed
 //   git -C <top> config --local --get-regexp <…>     whether the repo's own config runs a program (a filter, a diff driver, a monitor,
 //                                                    a pager, an ssh command) or includes another file: then `status` is never run
+//                                                    (with extensions.worktreeConfig on, each worktree's config.worktree too, --worktree)
 //   git -C <top> status --porcelain                  files not committed (one line each)
 //   git -C <top> remote, remote get-url origin       the clone source (else the first remote's), with any user name, password or
 //                                                    token, the query and the fragment taken out (https://user:tok@host/… →
@@ -199,50 +200,63 @@ enum CodeChecklist {
     }
 
     /// Why a remote is left out, as the pages say it.
+    /// Why a remote is left out, as the pages say it: it may hold a credential or a key, or it is in a form that can't be read safely.
     static let remoteLeftOut = "its address held something like a key, so it is left out"
+    static let remoteUnreadable = "its address is in a form cl_audit can't read, so it is left out"
+    static func isRemoteNote(_ note: String?) -> Bool { note == remoteLeftOut || note == remoteUnreadable }
 
-    /// The clone source without credentials: a URL's user name and password, its query and its fragment out, except an ssh user with no
-    /// password (ssh://git@host/…, git@host:org/repo). nil (left out) when nothing is left, an "@" or a ":" that isn't a port is still in
-    /// a URL's address, it starts with "-" (an option to git when pasted), it is an `ext::` or `fd::` transport, or a key shape is in it.
-    static func strippedRemote(_ raw: String) -> String? {
+    /// The clone source without credentials (nil: left out). See `cleanedRemote` for the rules.
+    static func strippedRemote(_ raw: String) -> String? { cleanedRemote(raw).value }
+
+    /// The clone source without credentials: a URL's user name and password out (split at the last "@" of its address, before anything
+    /// else is cut), then its query and fragment; an ssh user with no password stays (ssh://git@host/…, git@host:org/repo). A host may
+    /// be a bracketed IPv6 address, with a port of digits after the "]". Left out, with the reason: an "@" after the address (it can't be
+    /// told from a password), a ":" that isn't a port, a start with "-" (an option to git when pasted), an `ext::` or `fd::` transport,
+    /// a key shape, or a form that can't be read (spaces, an odd scheme, nothing left).
+    static func cleanedRemote(_ raw: String) -> (value: String?, why: String?) {
+        let odd: (String?, String?) = (nil, remoteUnreadable), key: (String?, String?) = (nil, remoteLeftOut)
         var s = oneLine(raw, max: 2048)
-        guard !s.isEmpty, !s.contains(" "), !s.hasPrefix("-") else { return nil }
+        guard !s.isEmpty, !s.contains(" ") else { return odd }
+        guard !s.hasPrefix("-") else { return key }
         let low = s.lowercased()
-        guard !low.hasPrefix("ext::"), !low.hasPrefix("fd::") else { return nil }
-        if let q = s.firstIndex(where: { $0 == "?" || $0 == "#" }) { s = String(s[..<q]) }
+        guard !low.hasPrefix("ext::"), !low.hasPrefix("fd::") else { return key }
         if let r = s.range(of: "://") {
             let scheme = s[..<r.lowerBound].lowercased()
-            guard !scheme.isEmpty, scheme.allSatisfy({ $0.isLetter || $0.isNumber || "+.-".contains($0) }) else { return nil }
+            guard !scheme.isEmpty, scheme.allSatisfy({ $0.isLetter || $0.isNumber || "+.-".contains($0) }) else { return odd }
             let ssh = scheme == "ssh" || scheme == "git+ssh" || scheme == "ssh+git"
             let rest = s[r.upperBound...]
-            // the user part ends at the last "@" before the path (a password may hold a "/")
-            var auth: String, path: String
-            if let at = rest.lastIndex(of: "@") {
-                let user = rest[..<at]
-                // (a "/" before the "@": a password holding one, or an "@" in the path; either way it can't be told apart safely)
-                if user.contains("/") { return nil }
-                let after = rest[rest.index(after: at)...]
-                let slash = after.firstIndex(of: "/") ?? after.endIndex
+            // the address ends at the first "/", "?" or "#"; an "@" after that can't be told from a password holding one of them
+            let end = rest.firstIndex(where: { $0 == "/" || $0 == "?" || $0 == "#" }) ?? rest.endIndex
+            if rest[end...].contains("@") { return key }
+            var auth = String(rest[..<end])
+            var path = String(rest[end...])
+            if let at = auth.lastIndex(of: "@") {
+                let user = auth[..<at]
                 let keepUser = ssh && !user.contains(":") && !user.isEmpty
-                auth = (keepUser ? String(user) + "@" : "") + after[..<slash]
-                path = String(after[slash...])
-            } else {
-                let slash = rest.firstIndex(of: "/") ?? rest.endIndex
-                auth = String(rest[..<slash]); path = String(rest[slash...])
+                auth = (keepUser ? String(user) + "@" : "") + auth[auth.index(after: at)...]
             }
-            // what is left of the address: a host, a plain user for ssh, a port of digits; nothing else
+            if let q = path.firstIndex(where: { $0 == "?" || $0 == "#" }) { path = String(path[..<q]) }
+            // what is left of the address: a host (or [IPv6]), a plain user for ssh, a port of digits; nothing else
             let hostPart = auth.split(separator: "@", omittingEmptySubsequences: false).last.map(String.init) ?? ""
-            if let c = hostPart.firstIndex(of: ":"), !(hostPart[hostPart.index(after: c)...].allSatisfy(\.isNumber)) { return nil }
-            if !ssh, auth.contains("@") || path.contains("@") { return nil }
-            guard !auth.isEmpty || scheme == "file" else { return nil }
+            var portPart = Substring(hostPart)
+            if hostPart.hasPrefix("[") {
+                guard let close = hostPart.firstIndex(of: "]"), hostPart[hostPart.index(after: hostPart.startIndex)..<close].allSatisfy({ $0.isHexDigit || $0 == ":" || $0 == "." })
+                else { return odd }
+                portPart = hostPart[hostPart.index(after: close)...]
+                if !portPart.isEmpty, !portPart.hasPrefix(":") { return odd }
+            }
+            if let c = portPart.firstIndex(of: ":"), !(portPart[portPart.index(after: c)...].allSatisfy(\.isNumber)) { return hostPart.hasPrefix("[") ? odd : key }
+            guard !auth.isEmpty || scheme == "file" else { return odd }
             s = scheme + "://" + auth + path
-        } else if !s.hasPrefix("/"), let at = s.firstIndex(of: "@"), !s[..<at].contains("/"), s[s.index(after: at)...].contains(":") {
-            // scp-like: user@host:path. A user part holding a ":" (a password) goes; a plain user (git@) stays
+        } else if !s.hasPrefix("/"), let at = s.lastIndex(of: "@"), !s[..<at].contains("/") {
+            // scp-like: user@host:path, split at the last "@". A user part holding a ":" (a password) goes; a plain user (git@) stays
+            guard s[s.index(after: at)...].contains(":") else { return key }
             let user = s[..<at]
-            if user.contains(":") || user.isEmpty { s = String(s[s.index(after: at)...]) }
+            if user.contains(":") || user.contains("@") || user.isEmpty { s = String(s[s.index(after: at)...]) }
         }
-        guard !s.isEmpty, SecretScan.scan(Data(s.utf8)).isEmpty else { return nil }
-        return s
+        guard !s.isEmpty else { return odd }
+        guard SecretScan.scan(Data(s.utf8)).isEmpty else { return key }
+        return (s, nil)
     }
 
     /// Where a folder is, as the checklist writes it: "~/…" under this Mac's home folder.
@@ -280,7 +294,14 @@ enum CodeChecklist {
             } else { s.unread.append(.unpushed) }
         }
         // a repo whose own config runs a program: never `status`
-        let cfg = git(g, dir, ["config", "--local", "--get-regexp", runsPrograms], until: end, cancel: cancel)
+        // (with extensions.worktreeConfig on, each worktree's config.worktree is read too: the same check runs on it with --worktree;
+        // with it off, git ignores config.worktree, and --worktree would refuse a repo with several worktrees)
+        var cfg = git(g, dir, ["config", "--local", "--get-regexp", runsPrograms], until: end, cancel: cancel)
+        if cfg?.status == 1 {
+            let ext = git(g, dir, ["config", "--local", "--type=bool", "--get", "extensions.worktreeconfig"], until: end, cancel: cancel)
+            if ext == nil || (ext!.status != 0 && ext!.status != 1) { cfg = ext }                 // couldn't tell: not read
+            else if ext?.line == "true" { cfg = git(g, dir, ["config", "--worktree", "--get-regexp", runsPrograms], until: end, cancel: cancel) }
+        }
         if cfg == nil || cfg!.status == 0 || (cfg!.status != 1) { s.runsPrograms = cfg?.status == 0; s.unread.append(.uncommitted) }
         else if let r = git(g, dir, ["status", "--porcelain", "--untracked-files=normal", "--ignore-submodules=all"], until: end, cancel: cancel), r.status == 0 {
             s.uncommitted = r.out.split(separator: "\n", omittingEmptySubsequences: true).count
@@ -327,7 +348,7 @@ enum CodeChecklist {
                         if names == nil || (names!.status != 0) { unread.append(.remote) }
                         p.unread = unread.isEmpty ? nil : unread
                         if st.runsPrograms { p.note = "not read: its git settings run programs" }
-                        if url != nil, p.remote == nil { p.note = remoteLeftOut }
+                        if let u = url, p.remote == nil { p.note = cleanedRemote(u).why ?? remoteLeftOut }
                     }
                 } else {
                     p = projects[key] ?? Project(path: written(folder, home: home), git: false, sessions: 0, note: out() ? "not read: out of time" : "not a git repo")
@@ -489,7 +510,7 @@ enum CodeChecklist {
             if let u = p.unread, !u.isEmpty {
                 out.append("\(n): couldn't read \(unreadWords(u))" + (p.note == "not read: its git settings run programs" ? " (its git settings run programs)" : "") + ": check it before you move")
             }
-            if p.git, p.remote == nil { out.append("\(n): " + (p.note == remoteLeftOut ? "\(remoteLeftOut): copy the folder by hand" : "no remote to clone it from: copy the folder by hand")) }
+            if p.git, p.remote == nil { out.append("\(n): " + (isRemoteNote(p.note) ? "\(p.note!): copy the folder by hand" : "no remote to clone it from: copy the folder by hand")) }
             if !p.git, p.note == "not a git repo" { out.append("\(n): not a git repo: copy the folder by hand") }
             if !p.git, let note = p.note, note.hasPrefix("not read: out of time") || note.hasPrefix("not read: stopped") || note.hasPrefix("not read: git didn't") {
                 out.append("\(n): \(note): check it before you move")
@@ -524,7 +545,7 @@ enum CodeChecklist {
     static func lines(_ p: Project, here: Bool) -> [String] {
         var out: [String] = []
         if p.git {
-            let noRemote = p.note == remoteLeftOut ? "Was at \(p.path); \(remoteLeftOut): copy it by hand" : "Was at \(p.path), with no remote to clone it from: copy it by hand"
+            let noRemote = isRemoteNote(p.note) ? "Was at \(p.path); \(p.note!): copy it by hand" : "Was at \(p.path), with no remote to clone it from: copy it by hand"
             var what = here ? "On this Mac at \(p.path)" : (p.remote.map { "Clone \($0) at \(p.path)" } ?? noRemote)
             if let b = p.branch { what += ", branch \(b)" + (p.head.map { " (latest commit \($0))" } ?? "") } else if let h = p.head { what += ", at commit \(h)" }
             out.append(what)
