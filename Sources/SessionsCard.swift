@@ -64,7 +64,7 @@ struct SessionsCard: View {
                 importRow
             }
             if !repoint.sessions.isEmpty || repoint.last != nil {
-                SRow(label: "Folder not here", info: "Imported sessions whose folder isn't on this Mac: Claude Code lists a session only where its folder is, and the Code tab won't run it. Clone or copy the code first, then Pick its folder: its saved chat moves to the folder named for the new place, the folder paths inside it and in its Code-tab entry are updated (nothing else changes), and a worktree that isn't here is dropped so it runs in the project folder. The window closes for a moment when an entry changes. Undo takes back the last change (a session you have resumed since stays where it is, and Undo says so).", stacked: true) {
+                SRow(label: "Folder not here", info: "Imported sessions whose folder isn't on this Mac: Claude Code lists a session only where its folder is, and the Code tab won't run it. Clone or copy the code first, then Pick its folder: its saved chat moves to the folder named for the new place, the folder paths inside it and in its Code-tab entry are updated (nothing else changes), and a worktree that isn't here is dropped so it runs in the project folder. The window closes for a moment when an entry changes. A moved session's prompt history and trust that waited for its folder are added then. Undo takes back the last change, those included (a session you have resumed since stays where it is, and Undo says so).", stacked: true) {
                     MissingFoldersRow(entry: entry, runner: repoint)
                 }
             }

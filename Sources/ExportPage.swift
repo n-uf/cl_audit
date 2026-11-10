@@ -727,18 +727,19 @@ struct ExportPage: View {
 
     private var keysCard: some View {
         let found = pv?.keyed ?? 0
-        return SCard(title: "Keys found", info: "The transcripts are searched for GitHub tokens, AWS access keys, private keys, and Anthropic, OpenAI, Slack, Google, Stripe and npm keys. A session whose files hold one is left out, or, if you say so, kept in an encrypted disk image that needs a password. The keys themselves are never shown or written anywhere.") {
+        return SCard(title: "Keys found", info: "The transcripts are searched for GitHub tokens, AWS access keys, private keys, and Anthropic, OpenAI, Slack, Google, Stripe and npm keys. A session whose files hold one is left out, or, if you say so, kept in an encrypted disk image that needs a password. The keys themselves are never shown or written anywhere. For a move, prompt history, pasted text, plans, task lists, trust and Rewind's copies are searched too.") {
             SRow(label: "Found", first: true, stacked: true) { value(foundWords, color: found > 0 ? face.caution : nil) }
             // a move's side files (prompt history, pasted text, plans, task lists, trust, Rewind): their hits, under the same choice
             let sideHits = runner.move ? (runner.side?.hits ?? []) : []
             if !sideHits.isEmpty {
                 SRow(label: "In side files", stacked: true) {
-                    value(sideHits.prefix(6).map { "\($0.what): \($0.kinds.map(\.words).joined(separator: ", "))" }.joined(separator: "; ")
+                    let list = sideHits.prefix(6).map { "\($0.what): \($0.kinds.map(\.words).joined(separator: ", "))" }.joined(separator: "; ")
+                    value(list.prefix(1).uppercased() + list.dropFirst() + (sideHits.count > 6 ? "; and \(sideHits.count - 6) more" : "")
                           + (runner.keys == .leaveOut ? ". Each line or file that holds one is left out." : ". Kept, in the encrypted disk image."), color: face.caution)
                 }
             }
             if found > 0 || !sideHits.isEmpty {
-                SRow(label: "Those \(found + sideHits.count)") {
+                SRow(label: found + sideHits.count == 1 ? "That 1" : "Those \(found + sideHits.count)") {
                     Menu {
                         Button("Leave them out") { runner.keys = .leaveOut }
                         Button("Keep them: needs a password") { runner.keys = .keep }

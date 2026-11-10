@@ -706,6 +706,7 @@ enum SideFiles {
         var rewindFiles = 0
         var rewindBytes: Int64 = 0
         var rewindOnOldMac: Int64 = 0                   // what the old Mac had (shown when Rewind wasn't carried)
+        var tools: [String] = []                        // the allowed tools the trust would add (shown on the row)
         var leftOut: [String] = []
         var hits: [Hit] = []
         var isEmpty: Bool { sessions == 0 }
@@ -724,6 +725,7 @@ enum SideFiles {
         }
         pl.trust = Set(p.trust.filter { $0.trusted || !$0.allowedTools.isEmpty }.map(\.key)).count
         pl.mcpServers = p.trust.reduce(0) { $0 + $1.mcpServers.count }
+        for t in p.trust { for x in t.allowedTools where !pl.tools.contains(x) { pl.tools.append(SessionsBackup.oneLine(x, max: 60)) } }
         pl.leftOut = p.leftOut; pl.hits = p.hits
         return pl
     }

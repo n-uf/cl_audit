@@ -49,6 +49,7 @@ extension SideFiles {
 
     struct Written: Codable, Equatable {
         var tasks = 0                                   // task files
+        var taskLists = 0                               // sessions whose task list got a file
         var plans = 0
         var historyLines = 0
         var pastes = 0
@@ -542,7 +543,11 @@ extension SideFiles {
                 }
                 try? save(r)
             }
-            if kinds.tasks { for it in s.tasks { write(["tasks", s.id], it) { $0.tasks += 1 } } }
+            if kinds.tasks {
+                let before = r.written.tasks
+                for it in s.tasks { write(["tasks", s.id], it) { $0.tasks += 1 } }
+                if r.written.tasks > before { r.written.taskLists += 1 }
+            }
             if kinds.plans, let it = s.plan {
                 var p = it; p.name = it.name + ".md"
                 write(["plans"], p) { $0.plans += 1 }
@@ -859,17 +864,26 @@ extension SideFiles {
 // MARK: - the pages' words
 
 enum SideWords {
-    static func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
+    /// "3 typed prompts": a non-breaking space, so a line never breaks between a number and its noun.
+    static func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k)\u{00A0}\(k == 1 ? one : many)" }
     static func size(_ b: Int64) -> String { SessionsBackup.sizeWords(b) }
 
-    /// Export: "2 task lists · 1 plan · 41 prompt history lines (2 pasted texts) · trust for 2 folders"
+    /// Export: "1 task list · 1 plan · 41 typed prompts (2 pasted texts) · trust and allowed tools for 2 folders"
     static func carried(_ p: SideFiles.Preview, kinds: SideFiles.Kinds) -> String {
         var parts: [String] = []
         if kinds.tasks, p.taskLists > 0 { parts.append(n(p.taskLists, "task list", "task lists")) }
         if kinds.plans, p.plans > 0 { parts.append(n(p.plans, "plan", "plans")) }
-        if kinds.history, p.historyLines > 0 { parts.append(n(p.historyLines, "prompt history line", "prompt history lines") + (p.pastes > 0 ? " (\(n(p.pastes, "pasted text", "pasted texts")))" : "")) }
-        if kinds.trust, p.trust > 0 { parts.append("trust for " + n(p.trust, "folder", "folders") + (p.mcpServers > 0 ? " (\(n(p.mcpServers, "MCP server", "MCP servers")))" : "")) }
+        if kinds.history, p.historyLines > 0 { parts.append(n(p.historyLines, "typed prompt", "typed prompts") + (p.pastes > 0 ? " (\(n(p.pastes, "pasted text", "pasted texts")))" : "")) }
+        if kinds.trust, p.trust > 0 { parts.append("trust and allowed tools for " + n(p.trust, "folder", "folders") + (p.mcpServers > 0 ? " (\(n(p.mcpServers, "MCP server", "MCP servers")))" : "")) }
         return parts.isEmpty ? "none" : parts.joined(separator: " · ")
+    }
+
+    /// Import, after it ran: what a kind's row says ("2 typed prompts added · 2 wait for their folder").
+    static func after(_ added: Int, _ one: String, _ many: String, waiting: Int = 0, there: Int = 0) -> String {
+        var s = added > 0 ? n(added, one, many) + " added" : "none added"
+        if there > 0 { s += " · \(there) already here" }
+        if waiting > 0 { s += " · \(waiting) \(waiting == 1 ? "waits" : "wait") for a folder you pick" }
+        return s
     }
 
     static func rewind(_ p: SideFiles.Preview, on: Bool) -> String {
@@ -885,14 +899,15 @@ enum SideWords {
     static func written(_ r: SideFiles.Receipt) -> String {
         let w = r.written
         var parts: [String] = []
-        if w.tasks > 0 { parts.append(n(w.tasks, "task file", "task files")) }
+        if w.taskLists > 0 { parts.append(n(w.taskLists, "task list", "task lists")) }
         if w.plans > 0 { parts.append(n(w.plans, "plan", "plans")) }
-        if w.historyLines > 0 { parts.append(n(w.historyLines, "prompt history line", "prompt history lines")) }
+        if w.historyLines > 0 { parts.append(n(w.historyLines, "typed prompt", "typed prompts")) }
         if w.pastes > 0 { parts.append(n(w.pastes, "pasted text", "pasted texts")) }
         if w.trust > 0 { parts.append("trust for " + n(w.trust, "folder", "folders")) }
-        if w.rewind > 0 { parts.append(n(w.rewind, "Rewind backup", "Rewind backups")) }
+        if w.rewind > 0 { parts.append(n(w.rewind, "Rewind copy", "Rewind copies")) }
         var s = parts.isEmpty ? "nothing new" : parts.joined(separator: " · ")
-        if !r.waiting.isEmpty { s += " · " + n(r.waiting.count, "session waits", "sessions wait") + " for its folder (history and trust are written when you pick it)" }
+        let waiting = r.waiting.filter { $0.pick == nil }.count
+        if waiting > 0 { s += " · " + n(waiting, "session waits", "sessions wait") + " for its folder (its prompts and trust are added when you pick it)" }
         return s
     }
 
