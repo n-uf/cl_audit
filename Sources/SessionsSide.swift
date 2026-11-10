@@ -43,7 +43,8 @@ enum SideFiles {
 
     // MARK: caps (each one said on the page when it is hit)
 
-    static let maxManifest = 8 << 20                    // side.json
+    static let maxManifest = 32 << 20                   // side.json (its index of every file, about 200 bytes each)
+    static let maxItems = 100_000                       // files of a part in all: keeps the index under its cap (said when hit)
     static let maxSessions = 2000                       // sessions a part carries side files for
     static let maxTaskFiles = 200                       // task files of one session
     static let maxTaskFile = 1 << 20                    // one task file
@@ -233,6 +234,8 @@ enum SideFiles {
         var leftOut: [String] = []
         var configNote: String?                          // why trust isn't read (no .claude.json, too big, a link …)
         var isEmpty: Bool { sessions == 0 && trust == 0 }
+        /// What goes into the file: every carried kind's bytes (Rewind's only when it is included).
+        var bytes: Int64 { taskBytes + planBytes + historyBytes + pasteBytes + (rewindCarried ? rewindBytes : 0) }
         mutating func add(_ o: Preview) {
             sessions += o.sessions; taskLists += o.taskLists; taskBytes += o.taskBytes; plans += o.plans; planBytes += o.planBytes
             historyLines += o.historyLines; historyBytes += o.historyBytes; pastes += o.pastes; pasteBytes += o.pasteBytes
@@ -294,8 +297,10 @@ enum SideFiles {
             return !k
         }
         func leftOut(_ s: String) { if !part.leftOut.contains(s) { part.leftOut.append(s) } }
+        let itemsCap = "Over \(maxItems) side files in one profile: the rest were left out (the file's list of them would be too big)."
         /// A small file carried: written to the image (when making it) with its size and hash.
         func put(_ name: String, _ data: Data) -> Item? {
+            guard seq < maxItems else { leftOut(itemsCap); return nil }
             seq += 1
             let file = "\(dirName)/\(dir)/\(seq)"
             if let sideDir {
@@ -307,6 +312,7 @@ enum SideFiles {
         }
         /// A big file carried (a Rewind backup): cloned or copied into the image, checked after.
         func putFile(_ name: String, _ src: String, bytes: Int64, mode: Int) -> Item? {
+            guard seq < maxItems else { leftOut(itemsCap); return nil }
             seq += 1
             let file = "\(dirName)/\(dir)/\(seq)"
             guard let sideDir else { return Item(name: name, file: file, bytes: bytes, sha: "", mode: mode) }
@@ -409,7 +415,7 @@ enum SideFiles {
                         guard f.bytes <= maxRewindFile else { leftOut("A Rewind backup over \(SessionsBackup.sizeWords(maxRewindFile)) was left out."); continue }
                         guard rewindTotal + f.bytes <= maxRewind else { leftOut("Rewind backups over \(SessionsBackup.sizeWords(maxRewind)) in all were left out."); break }
                         let path = fdir + "/" + f.name
-                        guard let kinds = SecretScan.scan(path: path, cancel: cancel) else { if cancel() { return nil }; continue }
+                        guard let kinds = SecretScan.scan(path: path, cancel: cancel) else { if cancel() { return nil }; leftOut("A Rewind copy couldn't be searched for keys, so it was left out."); continue }
                         if hit("Rewind's copies of the files \(label) edited", kinds) { continue }
                         var st = stat()
                         let mode = lstat(path, &st) == 0 ? Int(st.st_mode & 0o777) : 0o600

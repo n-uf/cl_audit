@@ -1257,9 +1257,11 @@ enum SessionsExport {
         }
 
         // free room for the file: about the size of what is in it
+        // (a move's side files count too: Rewind's copies can be hundreds of MB)
+        let need = total + (em.sideBytes ?? 0)
         var fs = statfs()
-        if statfs(destDir.path, &fs) == 0, Int64(fs.f_bavail) * Int64(fs.f_bsize) < total + total / 10 + (64 << 20) {
-            throw ArchiveError("\(tilde(destDir.path)) doesn't have room for the file (\(SessionsBackup.sizeWords(total)) needed).")
+        if statfs(destDir.path, &fs) == 0, Int64(fs.f_bavail) * Int64(fs.f_bsize) < need + need / 10 + (64 << 20) {
+            throw ArchiveError("\(tilde(destDir.path)) doesn't have room for the file (\(SessionsBackup.sizeWords(need)) needed).")
         }
         if cancel() { throw ArchiveError("Stopped.") }
         // (an image's temp name ends in .dmg itself: hdiutil adds that to any name without it, and the file it made would then

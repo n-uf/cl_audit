@@ -816,7 +816,9 @@ struct ExportPage: View {
         // nothing but the setup goes: the key says so (not "0 entries")
         if sessions == 0, p.entries == 0, runner.setup, !p.setup.isEmpty { return "Export the setup · ≈ \(SessionsBackup.sizeWords(p.setup.bytes))" }
         let what = sessions > 0 ? "\(sessions) \(sessions == 1 ? "session" : "sessions")" : "\(p.entries) \(p.entries == 1 ? "entry" : "entries")"
-        return "Export \(what) · ≈ \(SessionsBackup.sizeWords(p.bytesIn(runner.keys)))"
+        // (a move's side files are in the file too: their bytes count)
+        let side = runner.move ? (runner.side?.bytes ?? 0) : 0
+        return "Export \(what) · ≈ \(SessionsBackup.sizeWords(p.bytesIn(runner.keys) + side))"
     }
 
     @ViewBuilder private var exportKey: some View {
