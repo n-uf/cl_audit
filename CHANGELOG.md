@@ -145,8 +145,8 @@ Nothing pending.
 - **Quick chat** (issue #11): a floating chat over any app, like ChatGPT's classic one in Claude's colours. A bar
   first; the first message opens it into a chat window that stays floating on every Space until Esc hides it. Your own
   Claude Code answers it, signed in to the account a profile has in use, so it counts against that account's limits and
-  follows a switch. Answers stream as
-  Markdown with Copy on code blocks; follow-ups go on in the same session; New chat starts again.
+  follows a switch. Answers stream as Markdown with Copy on code blocks; follow-ups go on in the same session; New chat
+  starts again.
   - Opened by a shortcut (off until turned on; ⌥Space by default, checked for clashes, no Accessibility permission)
     or by **Quick chat** in a profile's menu bar and Dock icon menus.
   - A model picker (Haiku by default) and a thinking picker (off by default), and every answer says which model gave

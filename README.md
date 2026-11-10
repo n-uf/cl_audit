@@ -378,7 +378,8 @@ press-and-hold, and the icon checks which mouse button is down at that moment.
 
 A floating chat over any app, in Claude's own colours: a bar first ("Ask anything"), and after the first message a
 chat window that stays floating, on every Space, until Esc hides it. It never brings cl_audit or the Claude app forward.
-Your own Claude Code answers it, signed in to the account a profile has in use, so it counts against that account's limits and follows a switch.
+Your own Claude Code answers it, signed in to the account a profile has in use, so it counts against that account's limits
+and follows a switch.
 
 - **Opening it:** the shortcut (off until you turn it on in General ▸ Quick chat; ⌥Space by default), or **Quick
   chat** in a profile's menu bar or Dock icon menu, which chats on that profile. Esc or ⌘W hides it and keeps the chat;
