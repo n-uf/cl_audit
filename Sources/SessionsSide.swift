@@ -434,7 +434,7 @@ enum SideFiles {
                     for k in keysFor {
                         guard !part.trust.contains(where: { $0.session == ref.id && $0.key == k }), let v = projects[k] as? [String: Any] else { continue }
                         guard let t = trust(of: v, session: ref.id, key: k) else { continue }
-                        if let tools = try? JSONSerialization.data(withJSONObject: t.allowedTools), hit("the allowed tools of \(tilde(k))", SecretScan.scan(tools)) { continue }
+                        if let tools = jsonData(t.allowedTools), hit("the allowed tools of \(tilde(k))", SecretScan.scan(tools)) { continue }
                         var tt = t
                         if let m = t.mcp, hit("the MCP servers of \(tilde(k))", SecretScan.scan(Data(m.utf8))) { tt.mcp = nil; tt.mcpServers = [] }
                         if !kinds.mcp { tt.mcp = nil; tt.mcpServers = [] }
@@ -464,11 +464,19 @@ enum SideFiles {
         for k in ["enabledMcpjsonServers", "disabledMcpjsonServers"] {
             if let a = v[k] as? [Any] { let s = a.compactMap { $0 as? String }.filter { $0.utf8.count <= 256 }; if !s.isEmpty { mcp[k] = Array(s.prefix(200)) } }
         }
-        if !mcp.isEmpty, let d = try? JSONSerialization.data(withJSONObject: mcp, options: [.sortedKeys, .withoutEscapingSlashes]), d.count <= maxEntry {
+        // (an MCP block with a number JSON can't hold, -1e999 read as -inf, is left out: never handed to the serializer, which would abort)
+        if !mcp.isEmpty, let d = jsonData(mcp, options: [.sortedKeys, .withoutEscapingSlashes]), d.count <= maxEntry {
             t.mcp = String(decoding: d, as: UTF8.self)
         } else { t.mcpServers = [] }
-        if let d = try? JSONSerialization.data(withJSONObject: t.allowedTools), d.count > maxEntry { t.allowedTools = [] }
+        if (jsonData(t.allowedTools)?.count ?? Int.max) > maxEntry { t.allowedTools = [] }
         return t
+    }
+
+    /// JSON for a value read from a file, or nil when it can't be JSON (a non-finite number, an odd type): checked first, because
+    /// JSONSerialization.data raises an exception no `try` catches on such a value.
+    static func jsonData(_ o: Any, options: JSONSerialization.WritingOptions = []) -> Data? {
+        guard JSONSerialization.isValidJSONObject(o) else { return nil }
+        return try? JSONSerialization.data(withJSONObject: o, options: options)
     }
 
     /// The `projects` object of a .claude.json, read once under its cap, never through a link.
@@ -583,7 +591,7 @@ enum SideFiles {
                 guard ids.contains(t.session), SessionsRepoint.clean(t.key), t.key != "/" else { dropped += 1; return nil }
                 t.allowedTools = Array(t.allowedTools.prefix(maxTools)).filter { $0.utf8.count <= 4096 && !$0.unicodeScalars.contains { $0.value < 0x20 } }
                 if let m = t.mcp {
-                    guard m.utf8.count <= maxEntry, let j = (try? JSONSerialization.jsonObject(with: Data(m.utf8))) as? [String: Any],
+                    guard m.utf8.count <= maxEntry, let j = (try? JSONSerialization.jsonObject(with: Data(m.utf8))) as? [String: Any], JSONSerialization.isValidJSONObject(j),
                           Set(j.keys).isSubset(of: ["mcpServers", "enabledMcpjsonServers", "disabledMcpjsonServers"]) else { t.mcp = nil; t.mcpServers = []; dropped += 1; return t }
                     t.mcpServers = ((j["mcpServers"] as? [String: Any])?.keys.sorted() ?? []).map { SessionsBackup.oneLine($0, max: 80) }
                 } else { t.mcpServers = [] }

@@ -288,7 +288,8 @@ extension SideFiles {
             if let s = j["enabledMcpjsonServers"] as? [String] { e["enabledMcpjsonServers"] = s }
             if let s = j["disabledMcpjsonServers"] as? [String] { e["disabledMcpjsonServers"] = s }
         }
-        guard let d = try? JSONSerialization.data(withJSONObject: e, options: [.sortedKeys, .withoutEscapingSlashes]), d.count <= maxEntry + (64 << 10) else { return nil }
+        // (checked before it is serialized: a crafted number such as -1e999 would abort the app there; such an entry is refused)
+        guard let d = jsonData(e, options: [.sortedKeys, .withoutEscapingSlashes]), d.count <= maxEntry + (64 << 10) else { return nil }
         return String(decoding: d, as: UTF8.self)
     }
 
@@ -507,10 +508,11 @@ extension SideFiles {
                 lines += got.lines.map { (s.id, $0) }
             }
             for tr in trusts {
-                guard let key = trustKey(tr.key, f) else { r.problems.append("\(label): the trust kept for \(tilde(tr.key)) is for a folder above its project, so it isn't carried over."); continue }
-                guard SessionsRepoint.folderHere(key) else { continue }
-                guard let v = entryJSON(tr, mcp: kinds.mcp) else { continue }
-                if !trustAdd.contains(where: { $0.key == key }) { trustAdd.append((s.id, key, v, kinds.mcp && tr.mcp != nil)) }
+                switch trustEntry(tr, f, mcp: kinds.mcp, label: label) {
+                case .write(let key, let v): if !trustAdd.contains(where: { $0.key == key }) { trustAdd.append((s.id, key, v, kinds.mcp && tr.mcp != nil)) }
+                case .refused(let why): r.problems.append(why)
+                case .skip: break
+                }
             }
         }
         try writeShared(&r, lines: lines, trust: trustAdd, windowClosed: windowClosed)
@@ -527,6 +529,27 @@ extension SideFiles {
             guard let o = old, let m = f.from == f.to ? (SessionsRepoint.inside(o, f.from) ? o : nil) : map(o), SessionsRepoint.folderHere(m) else { return f.to }
             return m
         }
+    }
+
+    enum TrustEntry { case write(String, String), refused(String), skip }
+
+    /// A carried trust entry as it goes in here: its folder on this Mac and the entry; refused (said) for a folder above the project, for
+    /// the top of the disk, /Users, the home folder or a folder above it (Claude Code trusts what is below a trusted folder), and for an
+    /// entry that can't be written; skipped when the folder isn't on this Mac.
+    static func trustEntry(_ tr: Trust, _ f: Folder, mcp: Bool, label: String) -> TrustEntry {
+        guard let key = trustKey(tr.key, f) else { return .refused("\(label): the trust kept for \(tilde(tr.key)) is for a folder above its project, so it isn't carried over.") }
+        if broad(key) { return .refused("\(label): trust for \(tilde(key)) would cover everything in it (it is the top of the disk, /Users or your home folder, or holds it), so it isn't added.") }
+        guard SessionsRepoint.folderHere(key) else { return .skip }
+        guard let v = entryJSON(tr, mcp: mcp) else { return .refused("\(label): the trust kept for \(tilde(key)) holds something that can't be written as Claude Code's settings, so it isn't added.") }
+        return .write(key, v)
+    }
+
+    /// A folder trust must never be written for: "/", /Users, the home folder (as written or its real path), or a folder above it.
+    static func broad(_ key: String) -> Bool {
+        var homes = [NSHomeDirectory()]
+        if let r = realpath(NSHomeDirectory(), nil) { homes.append(String(cString: r)); free(r) }
+        if key == "/" || key == "/Users" || key == "/private" { return true }
+        return homes.contains { $0 == key || $0.hasPrefix(key.hasSuffix("/") ? key : key + "/") }
     }
 
     /// A carried trust key on this Mac: inside the old folder → its place under the new one; a folder above the project → nil.
@@ -623,8 +646,11 @@ extension SideFiles {
                     lines += historyLines(d, session: w.session, project: projectMap((w.from, f.to))).lines.map { (w.session, $0) }
                 }
                 for tr in w.trust {
-                    guard let key = trustKey(tr.key, (w.from, f.to)), SessionsRepoint.folderHere(key), let v = entryJSON(tr, mcp: w.mcp) else { continue }
-                    if !trust.contains(where: { $0.key == key }) { trust.append((w.session, key, v, w.mcp && tr.mcp != nil)) }
+                    switch trustEntry(tr, (w.from, f.to), mcp: w.mcp, label: w.title.map { "“\($0)”" } ?? "Session \(w.session.prefix(8))") {
+                    case .write(let key, let v): if !trust.contains(where: { $0.key == key }) { trust.append((w.session, key, v, w.mcp && tr.mcp != nil)) }
+                    case .refused(let why): r.problems.append(why)
+                    case .skip: break
+                    }
                 }
                 done.append(w.session)
             }
