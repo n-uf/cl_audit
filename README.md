@@ -1167,7 +1167,7 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
    pick **Include them**. Keys found also searches the history, pasted text, plans and task lists: a line or file holding a key
    is left out, or kept in the image if you keep keys. Not carried: session environments (hooks write them again, and they hold
    tokens), the image cache, shell snapshots, debug files and old to-do lists. From `.claude.json` only those fields of the
-   sessions' own folders are read; cl_audit never copies the file itself, and a backup never holds any of this.
+   sessions' own folders are read; cl_audit never copies the file itself, and a backup cl_audit makes never holds any of this.
 2. Type a password twice (not stored anywhere: lose it and the file can't be opened), then **Export** and choose where.
    Close the profiles' Claude windows first, or their Code-tab lists are left out (the page tells you per profile). Your
    Keys found choice stays as you set it. Sign-ins don't travel. On the new Mac you sign in again to each account (Add
@@ -1233,8 +1233,20 @@ already follow the account.
 under a lock folder, read from the end per project, never sorted) and `.claude.json` (a lock folder, read again under it, a temp
 file renamed over it), which `.claude.json` fields mean trust (`hasTrustDialogAccepted`, `allowedTools`), and how Rewind finds
 its copies (by the names in the session's own lines, a file in the session's folder by a relative path, one outside it by its
-full path, each with its folder's real path). A Restore of the imported backup brings the side files the same way, and Undo
-this import takes back exactly what was written (a history line or a trust entry changed since stays, and Undo says so).
+full path, each with its folder's real path), how a plan is named (the name the session's own lines give it) and where a session's
+task list is kept (`tasks/<session id>/` in its Claude Code folder). Undo this import takes back exactly what was written (a
+history line or a trust entry changed since stays, and Undo says so). A prompt already in `history.jsonl` is never added twice, and
+trust is never added for the top of the disk, `/Users` or your home folder.
+
+**Where the side files are kept, and for how long.** The import keeps them with the imported backup, in a private folder beside
+its files (`side/` in that backup's folder, readable by your user only; never in the backup's own list, so an export of that
+backup never carries them): task lists, plans, prompt history, pasted text, Rewind's copies, and the trust entries with any MCP
+servers. They stay as long as the import can be undone (30 days, or until the backup is deleted), so a Restore of that backup
+brings them the same way the import did; after that they are deleted with the import's record, and a later Restore of that backup
+brings the sessions without them. A session still waiting for its folder keeps only its own prompts and trust, in cl_audit's
+record of the import (`sides/` in cl_audit's folder, readable by your user only), until it is picked or the import is undone.
+The record keeps the trust entries it added (to take them back), never a copy of `.claude.json`. A Pick from the Sessions page
+adds a waiting session's prompts and trust, and that Pick's **Undo** takes them back too.
 
 Undo is two steps: **Undo this import** on the done page (or Undo last import under the profile's Sessions) takes back the
 sessions, then **Take back the profiles it made** removes the made profiles (those unchanged since), their empty folders and the settings it

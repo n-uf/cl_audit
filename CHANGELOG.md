@@ -18,13 +18,19 @@ the notes before updating.
   `history.jsonl`, pointed at each session's folder on this Mac; a folder's trust becomes its entry in `.claude.json` only when it
   has none, with every other byte of the file kept. Both are written only while Claude Code isn't running for that profile and
   its window is closed, and only for a folder that is on this Mac: a session whose folder you pick later gets them then. A Pick
-  also points Rewind's saved paths at the new folder. Undo this import takes all of it back, leaving (and naming) anything
-  changed since. A Restore of the imported backup brings them the same way.
-- Files with side files are format 6; a move without them stays at 5 or 4, so 26.11.12 still opens it.
-- Confirmed only from Claude Code's own program text, not by running it: how it writes `history.jsonl` and `.claude.json` (a lock
-  folder; the history appended and read from the end, `.claude.json` replaced whole), which fields mean trust
-  (`hasTrustDialogAccepted`, `allowedTools`), and how Rewind finds its copies (relative paths inside the session's folder, full
-  paths outside it, each with its folder's real path).
+  also points Rewind's saved paths at the new folder; that Pick's Undo takes back the prompt history and trust it added. Undo this
+  import takes all of it back, leaving (and naming) anything changed since. A prompt already there is never added twice, and
+  trust is never added for the top of the disk, `/Users` or your home folder. A folder's MCP servers travel in the image but start
+  left out on Import.
+- The side files stay with the imported backup, readable by your user only, as long as the import can be undone (30 days, or
+  until the backup is deleted), so a Restore of that backup brings them too; then they are deleted. cl_audit never keeps a copy
+  of `.claude.json`.
+- A file with side files is format 6; a move without them stays at 5 or 4, so 26.11.12 still opens it.
+- Confirmed only from Claude Code 2.1.318's own program text, not by running it: how it writes `history.jsonl` and `.claude.json`
+  (a lock folder; the history appended and read from the end, `.claude.json` replaced whole), which fields mean trust
+  (`hasTrustDialogAccepted`, `allowedTools`), how Rewind finds its copies (relative paths inside the session's folder, full paths
+  outside it, each with its folder's real path), how a plan is named (the name the session's own lines give it) and where a
+  session's task list is kept (`tasks/<session id>/`).
 
 ## 26.11.12 — 2026-11-09
 
