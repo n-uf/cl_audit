@@ -188,8 +188,8 @@ if role == "b" {
         check(longB.count > 200 && ProjectName.encoded(longB) == longName && ProjectName.hash(longB) == pyHash && !pyHash.isEmpty,
               "long: the name is the first 200 characters, '-' and the Java-style hash in base 36 (an independent count: \(pyHash))")
         check(lr.problems.isEmpty && fm.fileExists(atPath: proj + "/" + longName + "/\(S4).jsonl"), "long: re-pointed under the hashed name: \(lr.problems)")
-        check(ProjectName.hash("") == "0" && ProjectName.hash("a") == "2p" && ProjectName.hash("/Users/sam/code/garden-app") == "ippsmz"
-              && ProjectName.encoded("/Users/sam/code/garden-app") == "-Users-sam-code-garden-app" && ProjectName.encoded("/a/é.b") == "-a---b",
+        check(ProjectName.hash("") == "0" && ProjectName.hash("a") == "2p" && ProjectName.hash("/srv/code/garden-app") == "p6etl0"
+              && ProjectName.encoded("/srv/code/garden-app") == "-srv-code-garden-app" && ProjectName.encoded("/a/é.b") == "-a---b",
               "names: known values (an accented letter is one unit, '-')")
         // S3 again, later, and the import's Undo takes the re-point back first
         let r2 = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S3, folder: new)], restore: rr.id, windowClosed: { true })
@@ -339,10 +339,10 @@ MainActor.assumeIsolated {
     let none = CodeChecklist.gather(folders, git: nil)
     check(none.git == "git isn't on that Mac" && none.projects.allSatisfy { !$0.git && $0.remote == nil } && none.projects.count == 4, "checklist without git: the folders only, and it says so")
     // credentials out of a remote's address
-    let remotes: [(String, String?)] = [("https://user:\(tok)@github.com/o/r.git", "https://github.com/o/r.git"), ("https://\(tok)@github.com/o/r", "https://github.com/o/r"),
-                                        ("git@github.com:o/r.git", "git@github.com:o/r.git"), ("ssh://git@host:22/o/r.git", "ssh://git@host:22/o/r.git"),
+    let remotes: [(String, String?)] = [("https://user:\(tok)@git.example.com/o/r.git", "https://git.example.com/o/r.git"), ("https://\(tok)@git.example.com/o/r", "https://git.example.com/o/r"),
+                                        ("git@example.com:o/r.git", "git@example.com:o/r.git"), ("ssh://git@host:22/o/r.git", "ssh://git@host:22/o/r.git"),
                                         ("ssh://u:pw@host/o/r", "ssh://host/o/r"), ("u:pw@host:o/r", "host:o/r"), ("/srv/git/bare.git", "/srv/git/bare.git"),
-                                        ("https://github.com/o/\(tok).git", nil), ("https://host/o/r?token=abc#x", "https://host/o/r"), ("bad url with spaces", nil),
+                                        ("https://git.example.com/o/\(tok).git", nil), ("https://host/o/r?token=abc#x", "https://host/o/r"), ("bad url with spaces", nil),
                                         ("https://ex.com/a\u{202E}b\n2nd", "https://ex.com/ab")]
     for (raw, want) in remotes { check(CodeChecklist.strippedRemote(raw) == want, "remote: \(raw.prefix(30)) → \(CodeChecklist.strippedRemote(raw) ?? "nil")") }
     check(CodeChecklist.shellWord("~/code/my app") == "~/'code/my app'" && CodeChecklist.shellWord("it's") == #"'it'\''s'"# && CodeChecklist.shellWord("~/code/app") == "~/code/app",
