@@ -177,7 +177,7 @@ enum SessionsRestore {
         }
         p.manifest = m
         guard foreign || m.profile == t.profile else { return refuse("That backup is another profile's.") }
-        guard m.version >= 1, m.version <= SessionsBackup.formatVersion else { return refuse("That backup is from a newer cl_audit; nothing is restored from it.") }
+        guard m.version >= 1, m.version <= SessionsBackup.backupVersion else { return refuse("That backup is from a newer cl_audit; nothing is restored from it.") }
         guard let reader = Reader(path: b.dir.path) else { return refuse("The backup's folder isn't a plain folder (a link, or gone).") }
         let imported = m.kind.isImport
         p.isImport = imported
@@ -1261,6 +1261,12 @@ enum SessionsRestore {
             if let why = markerBlocker(profile: r.profile, dataDir: r.dataDir, own: mark) { throw RestoreError(why) }
             guard windowClosed() else { throw RestoreError("Quit the profile's Claude window first, then Undo.") }
             sweepTemps(r)
+        }
+        // the folders an import's sessions were pointed at (SessionsRepoint.swift) are taken back first, so what this restore wrote is
+        // where it wrote it again; a session resumed since stays re-pointed (said)
+        if !SessionsRepoint.linked(restore: id).isEmpty {
+            do { r.problems += try SessionsRepoint.undoLinked(restore: id, windowClosed: windowClosed) }
+            catch { throw RestoreError("\(error)") }
         }
         // which Claude Code sessions run: one `ps`, only when transcripts are among what is taken back. If it can't be read,
         // nothing is taken back (a failed look must not turn the undo into a no-op recorded as done).
