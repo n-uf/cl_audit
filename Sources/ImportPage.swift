@@ -807,7 +807,7 @@ struct ImportPage: View {
         // the key says the larger part only; the other is a small line under it (a long key pushes its card out of its column)
         let what = runner.sessionCount > 0 ? ImportWords.counts(sessions: runner.sessionCount, entries: 0)
             : ImportWords.counts(sessions: 0, entries: runner.entryCount) ?? "\(p.count) \(p.count == 1 ? "file" : "files")"
-        return (p.windowNeeded ? "Close and import " : "Import ") + (what ?? "")
+        return (p.windowNeeded || runner.counting?.windowForPicks == true ? "Close and import " : "Import ") + (what ?? "")
     }
 
     /// "and 12 Code-tab entries", under the key when the import has both.
@@ -833,7 +833,9 @@ struct ImportPage: View {
                 }
                 .padding(.vertical, 6).frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                stepRow(1, "\(target.windowWordsCap) closes", runner.plan?.windowNeeded == false ? "Nothing in the window comes in, so it needn't close." : "Only that window, about half a minute; your other Claude windows stay open.")
+                let forPicks = runner.plan?.windowNeeded == false && runner.counting?.windowForPicks == true
+                stepRow(1, "\(target.windowWordsCap) closes", forPicks ? "Only that window, for about half a minute (a picked folder changes the session's Code-tab entry)."
+                        : runner.plan?.windowNeeded == false ? "Nothing in the window comes in, so it needn't close." : "Only that window, about half a minute; your other Claude windows stay open.")
                 stepRow(2, "What's listed is added", "Merged by the rules on the left; nothing overwritten.")
                 stepRow(3, "The window opens; the sidebar, as before", "Press Return in the session that opens.")
             }
@@ -860,7 +862,7 @@ struct ImportPage: View {
                 }
             }
             .padding(.top, 8)
-            SRowLine(text: "Undo last import, under \(name)'s Sessions afterwards, removes exactly what it added.").padding(.top, 6)
+            SRowLine(text: "Undo last import, under \(name)'s Sessions afterwards, removes what it added (a session you have resumed since stays where it is, and Undo says so).").padding(.top, 6)
         }
     }
 

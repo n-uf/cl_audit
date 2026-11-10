@@ -96,6 +96,14 @@ final class RestoreRunner: ObservableObject {
         setPick(session, url.path)
     }
 
+    /// A picked session has a Code-tab entry, which its re-point rewrites: the window closes for it (also when nothing else in the window
+    /// comes in). A pick for a session the list doesn't know counts as having one.
+    var windowForPicks: Bool {
+        picks.keys.contains { id in folderSessions.first { $0.id == id }.map { !$0.entries.isEmpty } ?? true }
+    }
+    /// The window closes for this restore: something in it comes in, or a picked session's entry changes.
+    var closesWindow: Bool { (plan?.windowNeeded ?? false) || windowForPicks }
+
     func setPick(_ session: String, _ folder: String?) {
         guard phase == .ready else { return }
         if let folder { picks[session] = folder } else { picks.removeValue(forKey: session) }
@@ -195,7 +203,7 @@ final class RestoreRunner: ObservableObject {
     var resumeID: String? { key.resume ?? receipt.flatMap { $0.unfinished ? $0.id : nil } }
 
     /// A step 1 that is needed: something in the window comes back.
-    var needsWindow: Bool { plan?.windowNeeded ?? false }
+    var needsWindow: Bool { closesWindow }
 
     // MARK: the preview (read-only), off the main thread
 
@@ -266,8 +274,8 @@ final class RestoreRunner: ObservableObject {
         stopLock.lock(); stopFlag = false; stopLock.unlock()
         progress = (receipt?.back ?? 0, (receipt?.back ?? 0) + p.count)
         reopenTimer?.invalidate(); reopenTimer = nil
-        // (a picked folder rewrites the session's Code-tab entry: the window closes for that too)
-        guard p.windowNeeded || !picks.isEmpty else { write(); return }
+        // (a picked folder rewrites the session's Code-tab entry: the window closes for that too, when it has one)
+        guard p.windowNeeded || windowForPicks else { write(); return }
         // the window stays closed from here until the restore ends; one at a time
         guard claimWindow(w) else {
             note = "Another switch or restore of this Claude window is under way."; return

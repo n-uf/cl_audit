@@ -314,13 +314,16 @@ struct RestorePage: View {
         let back = runner.receipt?.back ?? 0
         let undoneNow = runner.phase == .undone
         // after an Undo the plan is the old one (or none): the receipt says whether window files were among what it took away
-        let needsWindow = undoneNow ? (runner.receipt?.steps.contains { $0.inWindow } ?? true) : (plan?.windowNeeded ?? true)
+        let needsWindow = undoneNow ? (runner.receipt?.steps.contains { $0.inWindow } ?? true) : (plan.map { _ in runner.closesWindow } ?? true)
+        // (the window closes only for a picked folder: that session's Code-tab entry changes)
+        let forPicks = !undoneNow && !(plan?.windowNeeded ?? true) && runner.windowForPicks
         let verb = imp ? "added" : "put back"
         let grown = runner.receipt?.changedCount ?? 0
         return SCard(title: "Steps", info: "What \(imp ? "importing" : "restoring") does, in order. A receipt in cl_audit's folder keeps what was \(verb) as it goes: if the Mac stops, cl_audit offers to finish it, and Undo this \(imp ? "import" : "restore") takes back exactly that.") {
             VStack(alignment: .leading, spacing: 0) {
                 step(1, needsWindow ? (state(1) == .done ? "\(w) closed" : "\(w) closes") : "The window stays as it is",
-                     needsWindow ? "Only that window, for about half a minute; your other Claude windows stay open."
+                     forPicks ? "Only that window, for about half a minute (a picked folder changes the session's Code-tab entry)."
+                     : needsWindow ? "Only that window, for about half a minute; your other Claude windows stay open."
                                  : "Nothing in the window \(imp ? "comes in" : "comes back"), so it needn't close.")
                 step(2, undoMode ? "What it \(verb) is taken away" : undoneNow ? "What it \(verb) was taken away"
                         : state(2) == .done ? (imp ? "What's listed was added" : "What's listed came back") : (imp ? "What's listed is added" : "What's listed comes back"),
@@ -403,7 +406,7 @@ struct RestorePage: View {
 
     private var restoreKey: some View {
         let ok = plan != nil && plan?.refusal == nil && count > 0 && runner.notYet == nil
-        let needsWindow = plan?.windowNeeded ?? true
+        let needsWindow = plan.map { _ in runner.closesWindow } ?? true
         let verb = imp ? "import" : "restore"
         return Button(plan == nil ? "Counting…" : count == 0 && plan?.refusal == nil ? "Nothing to \(verb)" : needsWindow ? "Close and \(verb) \(count)" : "\(verb.capitalized) \(count)") { runner.start() }
             .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(!ok)
