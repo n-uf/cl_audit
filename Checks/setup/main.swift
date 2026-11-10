@@ -476,7 +476,7 @@ MainActor.assumeIsolated {
         ("e2-bad-sha", "isn't what backup.json says"), ("e2-altered", "isn't what backup.json says"), ("e2-no-sha", "no valid hash"), ("e2-short-sha", "no valid hash"), ("e2-upper-sha", "no valid hash"),
         ("e2-wrong-size", "isn't the size"), ("e2-wrong-total", "don't add up"),
         // formats
-        ("e2-v6-export", "newer cl_audit"), ("e2-v5-backup", "newer cl_audit"),
+        ("e2-v7-export", "newer cl_audit"), ("e2-v5-backup", "newer cl_audit"),
         // paths
         ("e2-traversal", "isn't a plain one"), ("e2-traversal-deep", "isn't a plain one"), ("e2-empty-component", "isn't a plain one"), ("e2-absolute", "isn't a plain one"), ("e2-setup-dup-item", "isn't a plain one"),
         ("e2-backslash", ""), ("e2-dup-case", ""), ("e2-file-and-folder", ""),

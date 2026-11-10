@@ -157,9 +157,9 @@ def wrong_total(z):                                                 # the manife
 make('e2-wrong-total', wrong_total, sizes=False)
 
 # ---- formats
-def v6_export(z):                                                   # an export.json newer than this build's (5)
-    z.export['version'] = 6
-make('e2-v6-export', v6_export)
+def v7_export(z):                                                   # an export.json newer than this build's (6)
+    z.export['version'] = 7
+make('e2-v7-export', v7_export)
 
 def v5_backup(z):                                                   # a backup.json newer than this build's (4)
     z.manifest['version'] = 5

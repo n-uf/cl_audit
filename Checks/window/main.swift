@@ -179,8 +179,8 @@ MainActor.assumeIsolated {
         let pz = try? SessionsExport.run(SessionsExport.Job(parts: [SessionsExport.Part(profile: "p", name: "P", source: SessionsBackup.Source(profile: "p", dataDir: "", codeDir: cP), emails: [])],
                                                            keys: .leaveOut, destination: plainZip, rootName: "plain-export", place: place))
         if pz != nil, let o = try? SessionsImport.open(plainZip, password: nil, place: place) {
-            check(o.export.version == 2 && o.parts[0].manifest.version == 2 && SessionsBackup.formatVersion == 5 && SessionsBackup.backupVersion == 4,
-                  "format: a file with no format-3 part is written as version 2 (the constants: 5 the highest export.json, 4 the highest backup.json)")
+            check(o.export.version == 2 && o.parts[0].manifest.version == 2 && SessionsBackup.formatVersion == 6 && SessionsBackup.backupVersion == 4,
+                  "format: a file with no format-3 part is written as version 2 (the constants: 6 the highest export.json, 4 the highest backup.json)")
             SessionsImport.discard(o.work)
         } else { check(false, "format: the plain zip is made and opens") }
         let bP = try! SessionsBackup.make(SessionsBackup.Source(profile: "p", dataDir: "", codeDir: cP), kind: .manual, window: false, place: place)
