@@ -221,7 +221,7 @@ MainActor.assumeIsolated {
     var work = AccountEntry(id: "work", name: "Work", label: "WORK", configDir: "~/.claude-work")
     work.desktop = .separate; work.desktopDataDir = "~/Library/Application Support/Claude-work"
     work.seat = Seat(account: sid(1), organization: sid(2), email: a1)
-    work.standby = [StandbyAccount(email: a2, seat: Seat(account: sid(3), organization: sid(4), email: a2), configDir: "~/.claude-work-standby", id: "s1")]
+    work.standby = [StandbyAccount(email: a2, seat: Seat(account: sid(3), organization: sid(4), email: a2), id: "s1")]
     work.color = .teal; work.style = .rings; work.pollMinutes = 7; work.notifyPercent = 80; work.menuBar = true
     var homeE = AccountEntry(id: "home", name: "Home", label: "HOME", configDir: "~/.claude-home")
     homeE.desktop = .separate; homeE.desktopDataDir = "~/Library/Application Support/Claude-home"

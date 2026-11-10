@@ -1,6 +1,8 @@
 import AppKit
 import SwiftUI
-// Stage B1 renders: Settings ▸ a profile ▸ Sessions card, General ▸ Backups, the Switch page's Backup card.
+// Stage B1 renders: Settings ▸ a profile ▸ Sessions card, General ▸ Backups; the one-folder model's Switch page in each
+// state, the dashboard card with standby accounts and the Accounts card (ONEFOLDER_ONLY=1: those alone); then the later
+// stages' pages.
 // Sample data only (example.com), a throwaway home, fake profiles, sign-ins, sessions and transcripts.
 
 setbuf(stdout, nil)
@@ -61,8 +63,6 @@ func status(_ id: String, _ email: String, week: Double, fable: Double, resetsIn
     try! e.encode(st).write(to: Store.statusFolder.appendingPathComponent("\(id).json"))
 }
 status("main", u1.email!, week: 94, fable: 60, resetsIn: 7 * 3600)
-status("main~k2", u2.email!, week: 12, fable: 3, resetsIn: 4 * 86400)
-status("main~k3", u3.email!, week: 40, fable: 20, resetsIn: 3 * 86400)
 
 func fixPatch(_ m: SessionsBackup.Manifest, seconds: Double) {   // made-up duration, in our own throwaway manifest
     let f = SessionsBackup.folder(profile: m.profile, place: BackupPrefs.placeURL).appendingPathComponent("\(m.id)/backup.json")
@@ -71,7 +71,16 @@ func fixPatch(_ m: SessionsBackup.Manifest, seconds: Double) {   // made-up dura
     try! JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted]).write(to: f)
 }
 
+/// An old switch's receipt (26.11.12 and earlier wrote them; cl_audit only reads them now), written here as that version did.
+func saveReceipt(_ r: SwitchReceipt) {
+    let dir = SwitchEngine.root.appendingPathComponent(r.id)
+    try! fm.createDirectory(at: dir, withIntermediateDirectories: true)
+    let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+    try! enc.encode(r).write(to: dir.appendingPathComponent("receipt.json"))
+}
+
 @MainActor func snapshot(_ v: some View, _ name: String, _ w: CGFloat, _ h: CGFloat = 3600) {
+    if ProcessInfo.processInfo.environment["ONEFOLDER_ONLY"] != nil, !name.hasPrefix("o") { return }  // the one-folder renders only
     if ProcessInfo.processInfo.environment["B2_ONLY"] != nil, !name.hasPrefix("6") { return }      // stage B2 renders only
     if ProcessInfo.processInfo.environment["E_ONLY"] != nil, !name.hasPrefix("7") { return }       // stage E renders only
     if ProcessInfo.processInfo.environment["E2_ONLY"] != nil, !name.hasPrefix("8") { return }      // stage E2 (the setup row) renders only
@@ -94,15 +103,17 @@ func fixPatch(_ m: SessionsBackup.Manifest, seconds: Double) {   // made-up dura
 MainActor.assumeIsolated {
     var main = AccountEntry(id: "main", name: "Claude Main", label: "MAIN", configDir: "~/.claude"); main.seat = u1
     main.desktop = .separate; main.desktopDataDir = "~/Library/Application Support/Claude-main"
-    let k2 = StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-ultra-2", id: "k2")
-    let k3 = StandbyAccount(email: u3.email!, seat: u3, configDir: "~/.claude-ultra-3", id: "k3")
+    let k2 = StandbyAccount(email: u2.email!, seat: u2, id: "k2", plan: "Ultra", lastInUse: Date().addingTimeInterval(-3 * 86400),
+                            lastWeek: 12, lastWeekResets: Date().addingTimeInterval(4 * 86400))
+    let k3 = StandbyAccount(email: u3.email!, seat: u3, id: "k3", plan: "Max", lastInUse: Date().addingTimeInterval(-9 * 86400),
+                            lastWeek: 100, lastWeekResets: Date().addingTimeInterval(2 * 86400))
     main.standby = [k2, k3]
     var empty = main; empty.id = "nobackups"      // the same profile, but no backup of it yet
     try! JSONEncoder().encode(ConfigFile(accounts: [main])).write(to: Store.configURL)
     let model = SettingsModel()
     model.accounts = [main]
 
-    // ---- the backups: an older one, one by Back up now, one made by a switch
+    // ---- the backups: an older one, one by Back up now, one an old switch made (26.11.12 and earlier)
     let src = SessionsBackup.Source(main)
     let place = BackupPrefs.placeURL
     let now = Date()
@@ -112,11 +123,11 @@ MainActor.assumeIsolated {
     let mMan = try! SessionsBackup.make(src, kind: .manual, place: place, now: now.addingTimeInterval(-2 * 86400 - 3600)); fixPatch(mMan, seconds: 3)
     let rid = SessionsBackup.newID(now.addingTimeInterval(-86400)) + "-main"
     var rc = SwitchReceipt(id: rid, profile: "main", standby: "k2", dataDir: wd, from: SeatID(u1), to: SeatID(u2), started: now.addingTimeInterval(-86400))
-    let mSw = try! SessionsBackup.make(src, kind: .beforeSwitch(rid), transcripts: true, receipt: rc, place: place, now: now.addingTimeInterval(-86400 - 7200)); fixPatch(mSw, seconds: 4)
+    let mSw = try! SessionsBackup.make(src, kind: .beforeSwitch(rid), transcripts: true, place: place, now: now.addingTimeInterval(-86400 - 7200)); fixPatch(mSw, seconds: 4)
     rc.backup = mSw.id; rc.backupPlace = place.path
     rc.steps = (0..<24).map { _ in SwitchReceipt.Step(kind: .entry, path: "/x", sha: nil, parked: "/p", original: "/o", done: true) }
     var saved = rc; saved.linked = now.addingTimeInterval(-86400 + 600)      // a switch that finished: not "stopped half way"
-    try! SwitchEngine.save(saved)
+    saveReceipt(saved)
     print("backups:", mOld.id, mMan.id, mSw.id)
 
     let bgDark = Color(white: 0.1), bgLight = Color(white: 0.84)
@@ -206,30 +217,66 @@ MainActor.assumeIsolated {
     } }
     BackupPrefs.shared.place = ""
 
-    // 4./5. the Switch page
-    let r = model.runner(main, k2)
-    @MainActor func page(_ e: AccountEntry, _ name: String) {
-        // the whole page as the app lays it out: two columns of ~349 pt (a 740 pt window) and two of 460 pt
-        for f in [Face.std, .silver] { for (wn, w) in widths + [("page708", 708), ("page1248", 1248)] {
-            snapshot(framed(SwitchPage(entry: e, standby: k2, model: model, runner: r, width: w), f, w), "\(name)-\(f.rawValue)-\(wn)", w + 32, 4200)
+    // o. the one-folder model: the Switch page in each state, the dashboard card with standby accounts, the Accounts card
+    // (Add account's address row, the folders from before), at 340, 460 and 708, Std and Silver
+    let oWidths: [(String, CGFloat)] = [("w340", 340), ("w460", 460), ("w708", 708)]
+    let r = model.runner(of: "main")
+    @MainActor func page(_ e: AccountEntry, _ s: StandbyAccount, _ name: String) {
+        for f in [Face.std, .silver] { for (wn, w) in oWidths {
+            snapshot(framed(SwitchPage(entry: e, standby: s, model: model, runner: r, width: w), f, w), "\(name)-\(f.rawValue)-\(wn)", w + 32, 2400)
         } }
     }
-    r.preview(.ready, moves: true)
-    page(main, "4-switch-before-move")
-    r.preview(.moving, receipt: nil, moves: true)
-    page(main, "5a-switch-making-backup")
-    r.preview(.moving, receipt: nil, moves: true, backup: SwitchRunner.BackupRef(id: mSw.id, place: place.path))
-    page(main, "5a2-switch-backup-reported")
-    r.preview(.failed("The backup of the sessions couldn't be made (couldn't write in ~/Backups). Nothing moved. Backups go to ~/Backups; General ▸ Backups changes that."),
-              receipt: nil, moves: true, failedStep: 1, backupFailed: true)
-    page(main, "5a3-switch-backup-failed")
-    r.preview(.moving, receipt: rc, moves: true)
-    page(main, "5b-switch-moving")
-    let after = FolderRules.completeSwitch("main", to: "k2", in: [main])![0]
+    let goal = SwitchRunner.Goal(standby: "k2", wantedSeat: u2, wantedEmail: u2.email!, from: u1, started: Date().addingTimeInterval(-75))
+    r.preview(.ready, goal: nil, target: k2)
+    page(main, k2, "o1-switch-ready")
+    r.preview(.waiting, goal: goal, target: k2)
+    page(main, k2, "o2-switch-waiting")
+    // the folder signed in to ultra-2: the profile follows it (FolderRules.noteAccounts), ultra-1 stands by
+    sign("~/.claude", u2)
+    let after = FolderRules.noteAccounts([main], signedIn: { $0 == "~/.claude" ? u2 : nil }, status: { _ in Store.status(for: main) })[0]
     model.accounts = [after]
-    var linked = rc; linked.linked = Date()
-    r.preview(.done, receipt: linked, sidebarOpened: true, moves: true, codeSeen: "ultra-2", windowSeen: "ultra-2", codeOn: true, windowOn: true)
-    page(after, "5c-switch-done")
+    r.preview(.reached, goal: goal, target: k2)
+    page(after, k2, "o3-switch-reached")
+    // the browser was signed in as ultra-3: the profile is on ultra-3 now
+    sign("~/.claude", u3)
+    let onOther = FolderRules.noteAccounts([main], signedIn: { $0 == "~/.claude" ? u3 : nil }, status: { _ in Store.status(for: main) })[0]
+    model.accounts = [onOther]
+    r.preview(.other(u3.email!), goal: goal, target: k2)
+    page(onOther, k2, "o4-switch-other-account")
+    sign("~/.claude", u1)
+    model.accounts = [main]
+    r.preview(.timedOut, goal: goal, target: k2)
+    page(main, k2, "o5-switch-timed-out")
+    let again = SwitchRunner.Goal(standby: nil, wantedSeat: u1, wantedEmail: u1.email!, from: u1, started: Date().addingTimeInterval(-30))
+    r.preview(.waiting, goal: again, target: nil)
+    page(main, k2, "o6-switch-sign-in-again")
+    r.preview(.ready, goal: nil, target: k2)
+
+    // the dashboard card: the account in use's limits, the standby accounts in unlit trays (no levels); then its week full,
+    // the one offered first selected
+    let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
+    for f in [Face.std, .silver] { for (wn, w) in oWidths {
+        snapshot(framed(AccountCard(row: AccountRow(entry: main, status: Store.status(for: main)), actions: acts).frame(width: min(w, 460)), f, w),
+                 "o7a-card-standby-\(f.rawValue)-\(wn)", w + 32, 900)
+    } }
+    status("main", u1.email!, week: 100, fable: 60, resetsIn: 7 * 3600)
+    for f in [Face.std, .silver] { for (wn, w) in oWidths {
+        snapshot(framed(AccountCard(row: AccountRow(entry: main, status: Store.status(for: main)), actions: acts).frame(width: min(w, 460)), f, w),
+                 "o7b-card-standby-full-\(f.rawValue)-\(wn)", w + 32, 900)
+    } }
+    status("main", u1.email!, week: 94, fable: 60, resetsIn: 7 * 3600)
+
+    // the Accounts card (the profile's settings page, cropped later): standby rows, a folder from before (~/.claude-ultra-2,
+    // signed in, no profile's) offered to the Trash; then Add account's Another address… row open
+    var withOld = main; withOld.leftoverFolders = ["~/.claude-ultra-2"]
+    withOld.standby.append(StandbyAccount(email: "ultra-4@example.com", id: "k4"))      // remembered by its address only
+    model.accounts = [withOld]
+    for f in [Face.std, .silver] { for (wn, w) in oWidths {
+        snapshot(framed(AccountSettings(entry: .constant(withOld), model: model, width: w), f, w), "o8-accounts-leftover-\(f.rawValue)-\(wn)", w + 32, 3200)
+        snapshot(framed(AccountSettings(entry: .constant(withOld), model: model, width: w, adding: "ultra-5@example.com"), f, w), "o9-accounts-add-address-\(f.rawValue)-\(wn)", w + 32, 3200)
+    } }
+    model.accounts = [main]
+    if ProcessInfo.processInfo.environment["ONEFOLDER_ONLY"] != nil { print("done"); exit(0) }
 
     // ================================================================ stage B2: the Restore page, Undo this switch
     SessionsRestore.runningSessions = { [uuid(2000 + 25).lowercased()] }
@@ -269,8 +316,8 @@ MainActor.assumeIsolated {
     restorePage("6c-restore-restored")
     rrun.preview(.stopped("Stopped by you. What is back is kept."), plan: plan, receipt: { var r = rcpt; r.finished = nil; r.stopped = "Stopped by you. What is back is kept."; r.steps = Array(r.steps.prefix(52)); return r }(), progress: (52, 86))
     restorePage("6d-restore-stopped")
-    rrun.preview(.ready, plan: plan, notYet: RestoreRunner.NotYet(title: "A switch of Claude Main is unfinished",
-        words: "A switch of this profile stopped half way on 5 Nov 18:40. Undo it first: its receipt puts back exactly what it moved; then restore if anything is still missing.", switchKey: "main~k2"))
+    rrun.preview(.ready, plan: plan, notYet: RestoreRunner.NotYet(title: "A restore of Claude Main is unfinished",
+        words: "A restore of this profile stopped half way on 5 Nov 18:40. Finish it or undo it first."))
     restorePage("6e-restore-not-yet")
     var refused = plan; refused.refusal = "A file in the backup isn't a plain file with one link, or isn't there (local_x.json). Nothing is restored from it."
     rrun.preview(.ready, plan: refused)
@@ -288,35 +335,18 @@ MainActor.assumeIsolated {
     var rOther = SwitchReceipt(id: SwitchEngine.receiptID(b2Now.addingTimeInterval(-3 * 86400), "main"), profile: "main", standby: "k3", dataDir: wd,
                                from: SeatID(u1), to: SeatID(u3), started: b2Now.addingTimeInterval(-3 * 86400))
     rOther.backup = mOther.id; rOther.backupPlace = placeOld.path; rOther.linked = b2Now.addingTimeInterval(-3 * 86400 + 600)
-    try! SwitchEngine.save(rOther)
+    saveReceipt(rOther)
     for f in [Face.std, .silver] {
         snapshot(framed(SessionsCard(entry: after, model: model), f, 460), "6j-sessions-other-place-\(f.rawValue)-w460", 492)
     }
-
-    // Undo this switch…: the Switch page back to ultra-1, explained before it starts, and at Done
-    var back = after
-    back.standby = [StandbyAccount(email: u1.email!, seat: u1, configDir: "~/.claude-ultra-1", id: "k1")]
-    let rBack = model.runner(back, back.standby[0])
-    rBack.undoes = SwitchRunner.SwitchUndo(receipt: rid, backup: mSw.id, place: place.path)
-    rBack.preview(.ready, moves: true)
-    rBack.undoes = SwitchRunner.SwitchUndo(receipt: rid, backup: mSw.id, place: place.path)
-    @MainActor func undoPage(_ name: String) {
-        for f in [Face.std, .silver] { for (wn, w) in [("page708", CGFloat(708)), ("page1248", CGFloat(1248))] {
-            snapshot(framed(SwitchPage(entry: back, standby: back.standby[0], model: model, runner: rBack, width: w), f, w), "\(name)-\(f.rawValue)-\(wn)", w + 32, 4200)
-        } }
+    // an old switch that stopped half way: the Sessions card says what it left where, once
+    var stopped = rc; stopped.id = SwitchEngine.receiptID(b2Now.addingTimeInterval(-5 * 86400), "main"); stopped.started = b2Now.addingTimeInterval(-5 * 86400)
+    stopped.steps = (0..<7).map { _ in SwitchReceipt.Step(kind: .entry, path: "/x", sha: nil, parked: "/p", original: "/o", done: true) }
+    saveReceipt(stopped)
+    for f in [Face.std, .silver] {
+        snapshot(framed(SessionsCard(entry: after, model: model), f, 460), "6l-sessions-old-switch-\(f.rawValue)-w460", 492)
     }
-    undoPage("6g-undo-switch-before")
-    var undoRc = rc; undoRc.id = SessionsBackup.newID() + "-main"; undoRc.from = SeatID(u2); undoRc.to = SeatID(u1); undoRc.linked = Date(); undoRc.backup = nil; undoRc.backupPlace = nil
-    var backNow = back; backNow.seat = u1; backNow.standby = [StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-ultra-2", id: "k2")]
-    model.accounts = [backNow]
-    rBack.preview(.done, receipt: undoRc, moves: true, codeSeen: "ultra-1", windowSeen: "ultra-1", codeOn: true, windowOn: true)
-    rBack.undoes = SwitchRunner.SwitchUndo(receipt: rid, backup: mSw.id, place: place.path)
-    @MainActor func undoDone(_ name: String) {
-        for f in [Face.std, .silver] { for (wn, w) in [("page708", CGFloat(708)), ("page1248", CGFloat(1248))] {
-            snapshot(framed(SwitchPage(entry: backNow, standby: back.standby[0], model: model, runner: rBack, width: w), f, w), "\(name)-\(f.rawValue)-\(wn)", w + 32, 4200)
-        } }
-    }
-    undoDone("6h-undo-switch-done")
+    try? fm.removeItem(at: SwitchEngine.root.appendingPathComponent(stopped.id))
 
     // ================================================================ stage E: Export and Import
     // Sample data only: made-up profiles "Main" (what is exported), "Work" (the file imported) and "Main" again as the target,
@@ -454,8 +484,8 @@ MainActor.assumeIsolated {
               "; tasks", p.taskSessions.count, "; folders", c0.foldersMissing, "; old", p.old, "; refusal", p.refusal ?? "none")
     }
     importPage("7k-import-preview", ir)
-    c0.preview(.ready, plan: c0.plan, notYet: RestoreRunner.NotYet(title: "A switch of Main is unfinished",
-        words: "A switch of this profile stopped half way on 5 Nov at 18:40. Undo it first: its receipt puts back exactly what it moved, then restore if anything's still missing.", switchKey: "imain~k2"))
+    c0.preview(.ready, plan: c0.plan, notYet: RestoreRunner.NotYet(title: "A restore of Main is unfinished",
+        words: "A restore of this profile stopped half way on 5 Nov at 18:40. Finish it or undo it first."))
     importPage("7n-import-not-yet", ir)
     c0.preview(.ready, plan: c0.plan, notYet: nil)
 
@@ -708,7 +738,7 @@ MainActor.assumeIsolated {
         func mvProfile(_ id: String, _ name: String, _ s: Seat, standby: Seat?) -> AccountEntry {
             var e = AccountEntry(id: id, name: name, label: name.uppercased(), configDir: "~/.claude-\(id)")
             e.seat = s; e.desktop = .separate; e.desktopDataDir = "~/Library/Application Support/Claude-\(id)"; e.claudeWindow = false
-            if let q = standby { e.standby = [StandbyAccount(email: q.email!, seat: q, configDir: nil, id: "q\(id.prefix(3))")] }
+            if let q = standby { e.standby = [StandbyAccount(email: q.email!, seat: q, id: "q\(id.prefix(3))")] }
             let scope = expand(e.desktopDataDir) + "/claude-code-sessions/\(s.account)/\(s.organization!)"
             for k in 0..<3 {
                 putE("\(scope)/local_\(uuid(9500 + k + (id == "mvstudio" ? 0 : 10))).json", "{\"sessionId\":\"local_\(uuid(9500 + k))\",\"cliSessionId\":\"\(uuid(9600 + k + (id == "mvstudio" ? 0 : 10)))\",\"title\":\"\(name) session \(k)\",\"cwd\":\"\(appCwd)\",\"isArchived\":false}", daysAgo: 2)

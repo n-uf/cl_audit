@@ -157,7 +157,14 @@ struct MenuRows: View {
     }
 }
 for face in [Face.std, .silver] {
-    let rows = AddAccountPopup.rows(found: [], profile: "Work", canSignIn: false)
+    let rows = AddAccountPopup.rows(found: [], profile: "Work")
     render("8-add-account-popup", face: face, width: 372) { MenuRows(rows: rows) }
+    // with accounts found on this Mac: one signed in in a folder no profile uses, one this profile's window used, another
+    // profile's (dimmed); a click only remembers it
+    let found = [FoundAccount(seat: Seat(account: "a1", organization: "o1", email: "ultra-3@example.com"), plan: "Ultra", org: "Personal", folder: "~/.claude-ultra-3"),
+                 FoundAccount(seat: Seat(account: "a2", organization: "o2", email: "pro-1@example.com"), plan: "Pro", org: "Personal",
+                              usedInWindow: Date().addingTimeInterval(-40 * 86400)),
+                 FoundAccount(seat: Seat(account: "a3", organization: "o3", email: "team-1@example.com"), owner: "Main")]
+    render("8b-add-account-popup-found", face: face, width: 372) { MenuRows(rows: AddAccountPopup.rows(found: found, profile: "Work")) }
 }
 print("done")
