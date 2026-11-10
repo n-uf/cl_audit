@@ -8,7 +8,23 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **A move brings each session's side files.** Its task list, its plan, the prompts you typed in it (the up-arrow history, with
+  pasted text) and its project folder's trust and allowed tools now travel with the session, in the encrypted disk image only.
+  Rewind's copies of the files the sessions edited are a row of their own on the Export page, with their size, left out unless
+  you include them. Keys found searches these too. Not carried: session environments (they hold tokens, and hooks write them
+  again), the image cache, shell snapshots, debug files and old to-do lists.
+- **Import puts them back without overwriting anything.** Each kind is a row on the Import page, on for a move (a project's MCP
+  servers start left out, like the window's MCP settings). Files already there stay. The prompt history is added at the end of
+  `history.jsonl`, pointed at each session's folder on this Mac; a folder's trust becomes its entry in `.claude.json` only when it
+  has none, with every other byte of the file kept. Both are written only while Claude Code isn't running for that profile and
+  its window is closed, and only for a folder that is on this Mac: a session whose folder you pick later gets them then. A Pick
+  also points Rewind's saved paths at the new folder. Undo this import takes all of it back, leaving (and naming) anything
+  changed since. A Restore of the imported backup brings them the same way.
+- Files with side files are format 6; a move without them stays at 5 or 4, so 26.11.12 still opens it.
+- Confirmed only from Claude Code's own program text, not by running it: how it writes `history.jsonl` and `.claude.json` (a lock
+  folder; the history appended and read from the end, `.claude.json` replaced whole), which fields mean trust
+  (`hasTrustDialogAccepted`, `allowedTools`), and how Rewind finds its copies (relative paths inside the session's folder, full
+  paths outside it, each with its folder's real path).
 
 ## 26.11.12 — 2026-11-09
 

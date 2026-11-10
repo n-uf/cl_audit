@@ -1160,6 +1160,14 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
    clone on the new Mac won't have what is only here. The list (each project's clone source with any user name, password or
    token taken out of the address, or left out when it can't be cleaned, the branch, the latest commit and those counts) goes
    into the encrypted disk image only. Without git on this Mac it lists the folders only and says so.
+   The **Side files** row lists what each moved session keeps beside its chat: its task list, its plan, the prompts you typed
+   in it (the up-arrow history, with any pasted text) and its project folder's trust and allowed tools in Claude Code's
+   `.claude.json`, with that folder's MCP servers. They go into the encrypted disk image only. **Rewind** is a row of its own
+   with its size: Rewind's copies of the files the sessions edited can be hundreds of MB, so a move leaves them out unless you
+   pick **Include them**. Keys found also searches the history, pasted text, plans and task lists: a line or file holding a key
+   is left out, or kept in the image if you keep keys. Not carried: session environments (hooks write them again, and they hold
+   tokens), the image cache, shell snapshots, debug files and old to-do lists. From `.claude.json` only those fields of the
+   sessions' own folders are read; cl_audit never copies the file itself, and a backup never holds any of this.
 2. Type a password twice (not stored anywhere: lose it and the file can't be opened), then **Export** and choose where.
    Close the profiles' Claude windows first, or their Code-tab lists are left out (the page tells you per profile). Your
    Keys found choice stays as you set it. Sign-ins don't travel. On the new Mac you sign in again to each account (Add
@@ -1189,7 +1197,16 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
    profile's Claude window closes for a moment while its entries change. Undo this import takes that back too (a session you
    have resumed since stays where it is, and Undo says so). Leave the others: they are added anyway, and once you have cloned
    the code, Settings ▸ the profile ▸ Sessions ▸ **Folder not here** lists them with **Pick its folder…** (the window closes
-   for a moment while the entry is written; **Undo** takes back the last change). Memory files start as **Add them** for a move, since they belong to its sessions. **Close and
+   for a moment while the entry is written; **Undo** takes back the last change). Memory files start as **Add them** for a move, since they belong to its sessions.
+   The side files are rows too (**Task lists**, **Plans**, **Prompt history**, **Trust**, **Rewind** when the file has it, each
+   with its count and size), on for a move like the memory; **Project MCP servers** start left out, as the window's MCP settings
+   do. Task lists, plans, pasted text and Rewind's copies are added where missing (one already there stays, and the page says
+   so). The prompt history goes at the end of the profile's `history.jsonl`, each line pointed at the session's folder on this
+   Mac, and a folder's trust becomes that folder's entry in `.claude.json`, only when it has none (an entry already there wins),
+   with nothing else in the file changed. Both are written the way Claude Code writes them (its own lock, the file replaced
+   whole for `.claude.json`), only while Claude Code isn't running for that profile and its window is closed, and only for a
+   folder that is on this Mac: a session whose folder you pick later gets its history and trust then. Rewind's saved paths are
+   pointed at a picked folder with the rest of the session. **Close and
    import** puts that profile's sessions in. Each Code-tab entry and scheduled task goes back into the folder of the account it
    was on, so the window shows it once that account is signed in. Then the same for each other profile: Settings ▸ that
    profile ▸ Sessions ▸ Import…, the same file: Into is that profile there, and Profile in the file shows its part.
@@ -1206,8 +1223,18 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
 the files it includes, skills, agents, commands, output styles, keybindings, `settings.json` with its hooks and their
 scripts, the plugin list so Claude Code can reinstall the plugins); the Claude window's MCP settings and scheduled tasks
 with their prompts and the sessions they ran; and cl_audit's own profiles (names, looks, Dock places, accounts and which one
-is in use) and General and backup settings. **What never moves:** sign-ins (Claude Code's and the window's), the Keychain,
-`settings.local.json`, and claude.ai chats and Projects, which already follow the account.
+is in use) and General and backup settings; each session's task list, plan, prompt history and pasted text, its folder's trust
+and allowed tools (and, if you add them, the folder's MCP servers), and Rewind's copies when you include them. **What never
+moves:** sign-ins (Claude Code's and the window's), the Keychain, `settings.local.json`, `.claude.json` itself (only the trust
+fields above), session environments, the image cache, shell snapshots, debug files, and claude.ai chats and Projects, which
+already follow the account.
+
+**Confirmed only from the programs' own text, not by running them:** how Claude Code 2.1.318 writes `history.jsonl` (appended
+under a lock folder, read from the end per project, never sorted) and `.claude.json` (a lock folder, read again under it, a temp
+file renamed over it), which `.claude.json` fields mean trust (`hasTrustDialogAccepted`, `allowedTools`), and how Rewind finds
+its copies (by the names in the session's own lines, a file in the session's folder by a relative path, one outside it by its
+full path, each with its folder's real path). A Restore of the imported backup brings the side files the same way, and Undo
+this import takes back exactly what was written (a history line or a trust entry changed since stays, and Undo says so).
 
 Undo is two steps: **Undo this import** on the done page (or Undo last import under the profile's Sessions) takes back the
 sessions, then **Take back the profiles it made** removes the made profiles (those unchanged since), their empty folders and the settings it
