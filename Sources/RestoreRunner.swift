@@ -243,7 +243,7 @@ final class RestoreRunner: ObservableObject {
                     not = NotYet(title: "A restore of \(e.name) is under way", words: "Its window stays closed until that restore ends (or its Undo does). Wait for it, or open it.", switchKey: nil)
                 } else {
                     not = NotYet(title: "A switch of \(e.name) is under way", words: "Its window stays closed until the switch is linked or undone. Wait for it, or open it.",
-                                 switchKey: AccountEntry.standbyStatusID(m.profile, m.standby))
+                                 switchKey: AccountEntry.switchKey(m.profile, m.standby))
                 }
             } else if let why = SessionsRestore.busy() {
                 not = NotYet(title: why.contains("claude-transplant") ? "claude-transplant is moving sessions" : "Another switch, restore or import is under way",

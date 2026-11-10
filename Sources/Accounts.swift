@@ -1,10 +1,12 @@
-// Accounts: a profile works on one Claude account at a time and may keep others, so it can switch to one when a limit
-// is full (Settings ▸ a profile ▸ Claude Code ▸ Accounts). The one in use is the profile's `seat`, signed in in its
-// Claude Code folder; the others wait in `standby`, each with its limits read from a sign-in kept in a small folder of
-// its own. cl_audit never copies or moves a sign-in: each folder's sign-in is Claude Code's own, made in Terminal.
+// Accounts: a profile is one Claude Code folder, and the folder holds one signed-in account at a time (cl_quick's model).
+// The account signed in there is the one in use, the profile's `seat`; the others it has had or was given wait in
+// `standby`: remembered on the profile (address, ids, plan, when last in use), signed out, with no folder or Keychain
+// item of their own, never read, so they show no usage. A switch signs Claude Code in again on the same folder as one
+// of them (SwitchRunner.swift). cl_audit never copies or moves a sign-in: the folder's sign-in is Claude Code's own,
+// made in Terminal.
 //
-// Here: what a standby account is, what Claude Code recorded about a folder's account (no tokens), the entry the agent
-// reads a standby account's limits with, the accounts Add account finds on this Mac, and the folder a new sign-in goes in.
+// Here: what a standby account is, the account book (what a switch affects, which standby account to offer), what Claude
+// Code recorded about a folder's account (no tokens), and the accounts Add account finds on this Mac.
 
 import Foundation
 
@@ -120,51 +122,6 @@ struct Lossy<T: Decodable>: Decodable {
 }
 
 extension AccountEntry {
-    /// The saved status of one of its standby accounts.
-    static func standbyStatusID(_ profile: String, _ standby: String) -> String { "\(profile)~\(standby)" }
-    var standbyStatusIDs: [String] { standby.map { Self.standbyStatusID(id, $0.id) } }
-
-    /// The entry the agent reads a standby account's limits with: this profile with that account's folder and seat, and
-    /// nothing a profile does besides reading: no alerts, Dock icon, menu bar icon or window. Its sign-in is renewed while
-    /// its folder is there (when it runs out all the same, its box says when it was last read), and it is read only while
-    /// its folder is signed in to that account (the reader holds back numbers for any other). nil while no sign-in is kept for it, or while its seat isn't linked yet (a folder
-    /// signed in to an account it can't be, the profile's own or another profile's, is never read).
-    func readerEntry(for s: StandbyAccount) -> AccountEntry? {
-        // a kept folder that isn't there (deleted) is never read: its reader would renew a sign-in for a folder the person
-        // removed, and Claude Code would make it again. A link to a folder is read; only launching refuses links (FolderGuard)
-        guard let dir = s.configDir, !dir.isEmpty, s.seat != nil, FolderGuard.isFolder(dir) else { return nil }
-        var r = self
-        r.id = Self.standbyStatusID(id, s.id)
-        r.configDir = dir
-        r.seat = s.seat
-        // renewed while its folder is there (FolderGuard stops any renew for a folder that isn't); when its kept sign-in runs
-        // out all the same, its box says when it was last read, with Sign in again
-        r.notify = false; r.notifyBack = false; r.autoRenew = true
-        r.iconHidden = true; r.claudeWindow = false; r.menuBar = false
-        r.standby = []
-        r.keptFolder = nil                    // the profile's own account's folder: never this one's
-        return r
-    }
-
-    /// The Claude Code folder the profile's numbers are read from: the account in use's own folder (keptFolder: signed in
-    /// once, renewed by itself), once it's signed in to that account, so its limits stay live whatever the working folder
-    /// is signed in to (a switch signs that one in again each time); else the working folder.
-    var readingFolder: String {
-        // the folder's .claude.json, read again only when it changes (it can be large; this is asked every beat)
-        guard let k = keptFolder, !k.isEmpty, let s = seat, s.same(FolderFactsCache.facts(k)?.seat) else { return configDir }
-        return k
-    }
-
-    /// The account in use has a folder of its own, signed in to it.
-    var readsOwnFolder: Bool { readingFolder != configDir }
-
-    /// The profile as its reader sees it: the same, reading from `readingFolder`.
-    func readingEntry() -> AccountEntry {
-        var r = self
-        r.configDir = readingFolder
-        return r
-    }
-
     /// Every seat this profile has: the one in use and its standby accounts'.
     var seats: [Seat] { [seat].compactMap { $0 } + standby.compactMap(\.seat) }
 
@@ -322,32 +279,5 @@ enum AccountDiscovery {
             let (x, y) = (a.element.usedInWindow ?? .distantPast, b.element.usedInWindow ?? .distantPast)
             return x != y ? x > y : a.offset < b.offset
         }.map(\.element)
-    }
-}
-
-/// The small folder a standby account's sign-in is kept in: ~/.claude-<the address's first part>, numbered when that's
-/// taken. Only Claude Code's own sign-in goes in it (made in Terminal); cl_audit reads it for the limits and renews it.
-enum StandbyFolder {
-    static func name(for email: String, exists: (String) -> Bool = { FileManager.default.fileExists(atPath: expand($0)) }) -> String {
-        let local = email.split(separator: "@").first.map(String.init) ?? "account"
-        var slug = local.lowercased().map { $0.isLetter || $0.isNumber ? String($0) : "-" }.joined()
-        while slug.contains("--") { slug = slug.replacingOccurrences(of: "--", with: "-") }
-        slug = slug.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        if slug.isEmpty { slug = "account" }
-        let base = "~/.claude-\(slug)"
-        if !exists(base) { return base }
-        var n = 2
-        while exists("\(base)-\(n)") { n += 1 }
-        return "\(base)-\(n)"
-    }
-
-    /// Makes the folder (only the owner can open it) and returns its path, or nil when it couldn't be made.
-    static func make(for email: String) -> String? {
-        let path = name(for: email)
-        do {
-            try FileManager.default.createDirectory(atPath: expand(path), withIntermediateDirectories: false,
-                                                    attributes: [.posixPermissions: 0o700])
-            return path
-        } catch { return nil }
     }
 }

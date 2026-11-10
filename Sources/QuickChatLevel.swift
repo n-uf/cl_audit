@@ -3,8 +3,9 @@
 // The numbers come from the agent's own reading of the profile (Reader.swift), and after each answer from what Claude
 // Code itself reports (its rate_limit_event), which is newer. The colours are the levels' everywhere in cl_audit
 // (Painter.color: green, amber from 50%, red from 80%, crimson from 95%). A full limit is AtLimit's: the one that holds
-// the profile back. While one is, the bar says so before you send and offers the profile's standby account with the most
-// room through the existing switch (SwitchMenu.best → the Switch page); what you typed waits and goes once it's done.
+// the profile back. While one is, the bar says so before you send and offers the profile's standby account offered first
+// (not known to be full, the least used by its last week) through the switch (SwitchMenu.best → the Switch page); what
+// you typed waits and goes once it's done.
 
 import AppKit
 import SwiftUI
@@ -68,7 +69,8 @@ struct QuickChatLevel: Equatable {
     static func color(_ p: Double?) -> Color { Color(nsColor: Painter.color(p, stale: false)) }
 }
 
-/// The standby account a full limit offers: the one with the most room (SwitchMenu.best), for the Switch page.
+/// The standby account a full limit offers (SwitchMenu.best: not known to be full, the least used first), for the Switch
+/// page. `words`: when it was last in use, or empty.
 struct QuickChatSwitchOffer: Equatable {
     var key: String
     var short: String
@@ -76,8 +78,7 @@ struct QuickChatSwitchOffer: Equatable {
 
     static func best(_ e: AccountEntry) -> QuickChatSwitchOffer? {
         let listed = e.listed(by: AccountView.of(Store.status(for: e)))     // never the account in use on standby too
-        let lines = SwitchMenu.lines(listed)
-        return SwitchMenu.best(lines, backs: listed.backOffers()).map { QuickChatSwitchOffer(key: $0.key, short: $0.short, words: $0.words) }
+        return SwitchMenu.best(SwitchMenu.lines(listed)).map { QuickChatSwitchOffer(key: $0.key, short: $0.short, words: $0.words) }
     }
 }
 

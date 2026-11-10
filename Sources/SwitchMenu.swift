@@ -2,10 +2,10 @@
 //
 //   - the account in use, with a lit (green) lamp under the profile's name: "ultra-1 · in use" (the Dock menu's top line:
 //     "Claude Main · ultra-1 in use")
-//   - Switch account ›: a submenu with the account in use ticked ("in use · week 94%") and every standby account, most
-//     room first, each with its week ("week 12%", or "no numbers"); picking one opens the Switch page with it picked
-//   - while a limit is full, the best one also on the top level: "Switch to ultra-3…  week 12%"
-//   - a standby account that is back keeps its own "Switch back to ultra-1…" (SwitchBack.swift)
+//   - Switch account ›: a submenu with the account in use ticked ("in use · week 94%") and every standby account, in the
+//     order a full limit offers them, each with when it was last in use ("3 days ago"; a standby account isn't read, so
+//     it has no week); picking one opens the Switch page with it picked
+//   - while a limit is full, the one offered first also on the top level: "Switch to ultra-3…"
 //
 // Names are short names (AccountNames.short), which follow Settings ▸ General ▸ Emails.
 
@@ -16,9 +16,9 @@ enum SwitchMenu {
     struct Line: Equatable {
         let key: String             // "<profile>~<standby account>": the Switch page's
         let short: String
-        let words: String           // "week 12%", "5-hour 8%" or "no numbers"
+        let words: String           // "3 days ago", "week full", or "" when nothing is known
+        /// Not known to be full: it may be offered while a limit is full.
         let room: Bool
-        /// Linked to its account and organization (what a switch plans with); one that isn't can't be switched to yet.
         var canSwitch = true
     }
 
@@ -40,30 +40,22 @@ enum SwitchMenu {
         return "\(week ? "week" : "5-hour") \(Int(p.rounded()))%"
     }
 
-    /// Every standby account, most room first, then those whose limits are unknown (no sign-in kept for them), each with its
-    /// week. The order is the card's and the Switch page's (SwitchOffer).
-    static func lines(_ e: AccountEntry, status: (String) -> IconStatus? = Store.status, now: Date = Date()) -> [Line] {
-        let offers = e.switchOffers(status: status, now: now)
-        let known = Set(offers.map(\.standby.id))
-        let line: (SwitchOffer) -> Line = { o in
-            Line(key: o.key, short: o.short, words: weekWords(o.used, week: o.status?.weekly != nil), room: o.room,
-                 canSwitch: AccountSettings.canSwitch(o.standby))
-        }
-        return offers.map(line) + e.standby.filter { !known.contains($0.id) }.map { s in
-            Line(key: AccountEntry.standbyStatusID(e.id, s.id), short: AccountNames.short(s.email), words: "no numbers", room: false,
-                 canSwitch: AccountSettings.canSwitch(s))
+    /// Every standby account, in the order a full limit offers them (the card's and the Switch page's, SwitchOffer), each with
+    /// when it was last in use.
+    static func lines(_ e: AccountEntry, now: Date = Date()) -> [Line] {
+        e.switchOffers(now: now).map { o in
+            let full = o.knownFull(now: now)
+            let words = full ? "week full" : o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? ""
+            return Line(key: o.key, short: o.short, words: words, room: !full, canSwitch: o.standby.seat != nil || !o.standby.email.isEmpty)
         }
     }
 
-    /// The best one to offer while a limit is full: the standby account with the most room that can be switched to, unless it
-    /// is back and has its own Switch back item.
-    static func best(_ lines: [Line], backs: [BackOffer]) -> Line? {
-        lines.first { l in l.room && l.canSwitch && !backs.contains { $0.key == l.key } }
-    }
+    /// The one to offer while a limit is full: the first standby account not known to be full.
+    static func best(_ lines: [Line]) -> Line? { lines.first { $0.room && $0.canSwitch } }
 
-    /// "Switch to ultra-3…  week 12%": on the top level, only while a limit is full.
+    /// "Switch to ultra-3…": on the top level, only while a limit is full.
     static func bestItem(_ l: Line, target: AnyObject, action: Selector) -> NSMenuItem {
-        let i = NSMenuItem(title: "Switch to \(l.short)…  \(l.words)", action: action, keyEquivalent: "")
+        let i = NSMenuItem(title: "Switch to \(l.short)…", action: action, keyEquivalent: "")
         i.target = target; i.representedObject = l.key
         return i
     }
@@ -80,35 +72,19 @@ enum SwitchMenu {
             sub.addItem(i)
         }
         for l in lines {
-            if l.canSwitch {
-                let i = NSMenuItem(title: "\(l.short)…  \(l.words)", action: action, keyEquivalent: "")
-                i.target = target; i.representedObject = l.key
-                sub.addItem(i)
-            } else {
-                // not linked to its account yet: nothing to switch to (Settings ▸ Accounts finishes the sign-in)
-                let i = NSMenuItem(title: "\(l.short)…  \(l.words) · sign in first", action: nil, keyEquivalent: "")
-                i.isEnabled = false
-                sub.addItem(i)
-            }
+            let i = NSMenuItem(title: "\(l.short)…" + (l.words.isEmpty ? "" : "  \(l.words)"), action: l.canSwitch ? action : nil, keyEquivalent: "")
+            i.target = target; i.representedObject = l.key; i.isEnabled = l.canSwitch
+            sub.addItem(i)
         }
         let top = NSMenuItem(title: "Switch account", action: nil, keyEquivalent: "")
         top.submenu = sub
         return top
     }
 
-    /// The group both menus carry besides the full-limit item: "Switch back to ultra-1…" for each account that is back, then
-    /// Switch account ›. Empty for a profile with one account that isn't back.
-    static func group(_ v: AccountView, backs: [BackOffer], lines: [Line], inUseUsed: Double?, inUseWeek: Bool,
+    /// The group both menus carry besides the full-limit item: Switch account ›. Empty for a profile with one account.
+    static func group(_ v: AccountView, lines: [Line], inUseUsed: Double?, inUseWeek: Bool,
                       target: AnyObject, action: Selector) -> [NSMenuItem] {
-        var out: [NSMenuItem] = backs.map { b in
-            let i = NSMenuItem(title: b.title, action: action, keyEquivalent: "")
-            i.target = target; i.representedObject = b.key; i.toolTip = b.words
-            return i
-        }
-        if let sub = submenuItem(v, lines: lines, inUseUsed: inUseUsed, inUseWeek: inUseWeek, target: target, action: action) {
-            out.append(sub)
-        }
-        return out
+        submenuItem(v, lines: lines, inUseUsed: inUseUsed, inUseWeek: inUseWeek, target: target, action: action).map { [$0] } ?? []
     }
 
     /// A small lit green lamp for a menu item's image (the account in use).

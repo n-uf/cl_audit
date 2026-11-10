@@ -906,7 +906,7 @@ enum SessionsRestore {
     static func blocker(profile: String, except id: String? = nil) -> (words: String, switchKey: String?)? {
         if let s = SwitchEngine.unfinished(profile: profile).first {
             return ("A switch of this profile stopped half way on \(SessionsBackup.dateWords(s.started)). Undo it first: its receipt puts back exactly what it moved; then restore if anything is still missing.",
-                    AccountEntry.standbyStatusID(s.profile, s.standby))
+                    AccountEntry.switchKey(s.profile, s.standby))
         }
         if let r = unfinished(profile: profile).first(where: { $0.id != id }) {
             return ("A restore of this profile stopped half way on \(SessionsBackup.dateWords(r.started)). Finish it or undo it first.", nil)

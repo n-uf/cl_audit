@@ -1,47 +1,30 @@
-// Switch: a profile working on another of its accounts (Accounts.swift) when a limit is full. Stage 2 offers it where a
-// full limit shows (the dashboard card's at-limit box, the alert, the Dock and menu bar menus) and opens the Switch
-// page, which says what stays and what follows. The switch itself comes later; this page changes nothing yet.
+// Switch: a profile working on another of its accounts (Accounts.swift), offered where a full limit shows (the dashboard
+// card's at-limit box, the alert, the Dock and menu bar menus, the quick chat) and run on the Switch page
+// (SwitchPage.swift, SwitchRunner.swift).
 //
 // Here: the standby accounts a profile can switch to, an account's short name, and what the Claude window's sidebar
-// holds for an account, counted read-only from the window's own files (no session, title or group name is kept).
+// holds for an account, counted read-only from the window's own files (no session, title or group name is kept; the
+// default-profile move uses it).
 
 import Foundation
 
-/// A standby account the profile could switch to now, with its limits as the agent last saved them.
+/// A standby account the profile could switch to. A standby account isn't read, so it has no limits: only what is
+/// remembered of it (its plan, when it was last in use, whether its week was full when it left).
 struct SwitchOffer {
     let profile: String
     let standby: StandbyAccount
-    let status: IconStatus?
-    /// How old its numbers may be and still count (a few of its profile's read intervals).
-    var maxAge: TimeInterval = 15 * 60
-    var now = Date()
 
     /// "<profile>~<standby>": names the page, the alert's action and the menu items.
-    var key: String { AccountEntry.standbyStatusID(profile, standby.id) }
+    var key: String { AccountEntry.switchKey(profile, standby.id) }
     var short: String { AccountNames.short(standby.email) }
-    /// Its numbers are current: read without a problem (its sign-in good, the right account), recently.
-    var fresh: Bool {
-        guard let s = status, s.state == "ok", s.problem == nil, let at = s.updatedAt else { return false }
-        return now.timeIntervalSince(at) <= maxAge
-    }
-    /// It has current numbers and none of its limits is full. An account with old numbers (a sign-in that ran out days
-    /// ago, say) is never offered as having room.
-    var room: Bool {
-        guard fresh, let s = status, s.weekly != nil || s.fiveHour != nil else { return false }
-        return AtLimit.blocker(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly, weeklyResets: s.weeklyResets) == nil
-    }
-    /// How much of its week is used (or its 5-hour window's, on a plan without a week shown).
-    var used: Double? { status?.weekly ?? status?.fiveHour }
+    /// Its week was full when it left, and hasn't started again yet.
+    func knownFull(now: Date = Date()) -> Bool { standby.knownFull(now: now) }
 
-    /// "ultra-2: week 8% used"
-    var usedWords: String {
-        guard let p = used else { return "\(short): no numbers yet" }
-        return "\(short): \(status?.weekly != nil ? "week" : "5-hour") \(Int(p.rounded()))% used"
-    }
-    /// "ultra-2 has 92% of its week left"
-    var leftWords: String? {
-        guard let p = used else { return nil }
-        return "\(short) has \(max(0, 100 - Int(p.rounded())))% of its \(status?.weekly != nil ? "week" : "5-hour limit") left"
+    /// "Ultra · last in use 3 days ago", or "on standby".
+    func lineWords(now: Date = Date()) -> String {
+        let parts = [standby.plan.map(Account.planWords), standby.lastInUse.map { "last in use " + AccountBook.ago($0, now: now) },
+                     knownFull(now: now) ? "week full when it left" : nil].compactMap { $0 }
+        return parts.isEmpty ? "on standby" : parts.joined(separator: " · ")
     }
 
     static func parse(_ key: String) -> (profile: String, standby: String)? {
@@ -54,35 +37,15 @@ extension AccountEntry {
     /// "<profile>~<standby id>": the Switch page for that account, as the menus, the alerts and the card name it.
     static func switchKey(_ profile: String, _ standby: String) -> String { "\(profile)~\(standby)" }
 
-    /// Its standby accounts with a kept sign-in, those with room (current numbers, nothing full) first, the least used
-    /// first. Numbers count as current for three of the profile's read intervals, and at least 15 minutes.
-    func switchOffers(status: (String) -> IconStatus? = Store.status, now: Date = Date()) -> [SwitchOffer] {
-        let maxAge = max(15 * 60, 3 * Double(max(pollMinutes, 1)) * 60)
-        return standby.filter { ($0.configDir ?? "").isEmpty == false }
-            // only numbers read for that account (Store.status(for:standby:))
-            .map { SwitchOffer(profile: id, standby: $0, status: status(Self.standbyStatusID(id, $0.id))?.only(for: $0.seat?.email ?? $0.email),
-                               maxAge: maxAge, now: now) }
-            .enumerated()
-            .sorted { a, b in
-                if a.element.room != b.element.room { return a.element.room }
-                let (x, y) = (a.element.used ?? 101, b.element.used ?? 101)
-                return x != y ? x < y : a.offset < b.offset
-            }
-            .map(\.element)
+    /// Its standby accounts in the order a full limit offers them (AccountBook.offerOrder: not known to be full first, the
+    /// least used by its last week, then the most recently in use).
+    func switchOffers(now: Date = Date()) -> [SwitchOffer] {
+        AccountBook.offerOrder(standby, now: now).map { SwitchOffer(profile: id, standby: $0) }
     }
 
-    /// The one to offer when a limit is full: the standby account with the most room, or nil.
-    func bestOffer(status: (String) -> IconStatus? = Store.status, now: Date = Date()) -> SwitchOffer? {
-        switchOffers(status: status, now: now).first { $0.room }
-    }
-}
-
-extension SwitchOffer {
-    /// Every standby account of a profile, most room first (as switchOffers orders those with a kept sign-in), then
-    /// those whose limits are unknown (no sign-in kept for them), in the profile's order.
-    static func byRoom(_ e: AccountEntry, status: (String) -> IconStatus? = Store.status, now: Date = Date()) -> [StandbyAccount] {
-        let known = e.switchOffers(status: status, now: now).map(\.standby)
-        return known + e.standby.filter { s in !known.contains { $0.id == s.id } }
+    /// The one to offer when a limit is full (AccountBook.best), or nil.
+    func bestOffer(now: Date = Date()) -> SwitchOffer? {
+        AccountBook.best(standby, now: now).map { SwitchOffer(profile: id, standby: $0) }
     }
 }
 
@@ -167,18 +130,14 @@ struct SidebarCounts: Equatable {
     }
 }
 
-/// The full alert's words about another account with room: "ultra-2 has 92% of its week left."
-/// An alert reaches the lock screen and Notification Center, so it never names an account by its address or any part
-/// of it ("ultra-2"): "The other account has 92% of its week left", and the Switch page says which.
+/// The full alert's words about switching to another account. An alert reaches the lock screen and Notification Center,
+/// so it never names an account by its address or any part of it ("ultra-2"): the Switch page says which.
 enum SwitchWords {
     static func alertLine(_ offer: SwitchOffer?, accounts: Int) -> String? {
-        guard let o = offer, let p = o.used else { return nil }
-        let which = accounts > 1 ? "Another account" : "The other account"
-        return "\(which) has \(max(0, 100 - Int(p.rounded())))% of its \(o.status?.weekly != nil ? "week" : "5-hour limit") left."
+        guard offer != nil else { return nil }
+        return accounts > 1 ? "Switch to another of its accounts: Claude Code on its folder signs in again."
+                            : "Switch to its other account: Claude Code on its folder signs in again."
     }
-    /// The full-limit alert's button, worded like the card's and the menus' (it opens the Switch page, which asks about the
-    /// sessions)
+    /// The full-limit alert's button, worded like the card's and the menus' (it opens the Switch page)
     static let button = "Switch account…"
-    /// The "the other account is back" alert's button.
-    static let backButton = "Switch back…"
 }

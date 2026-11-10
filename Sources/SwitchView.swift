@@ -14,14 +14,12 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
         defer { done() }
         guard let key = response.notification.request.content.userInfo[SwitchAlert.keyField] as? String else { return }
         if SwitchAlert.isQuiet(response.actionIdentifier) {
-            // Stay on "the other account is back": the offer goes from the card and the menus
-            if response.actionIdentifier == SwitchAlert.stay { BackWatch.dismiss(key) }
             // Cancel switch on "the switch is waiting for you": the runner's own cancel, only while Claude Code's sign-in waits
             // (a cl_audit started just for this button has no switch to cancel and quits again below)
             if response.actionIdentifier == SwitchAlert.cancelSwitch {
                 DispatchQueue.main.async { if self.launched { self.manager.cancelWaitingSwitch(key) } }
             }
-            // started just for this button: show nothing, quit. (A Stay within 5 s of opening cl_audit yourself quits it
+            // started just for this button: show nothing, quit. (A Later within 5 s of opening cl_audit yourself quits it
             // too, but only while none of its windows is on screen yet.)
             DispatchQueue.main.async { if Date().timeIntervalSince(self.launchedAt) < 5 { self.quietLaunch = true; self.quitIfQuiet() } }
             return
@@ -43,11 +41,12 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
 /// rides along in the alert's userInfo.
 enum SwitchAlert {
     static let category = "switch"
-    static let backCategory = "switchBack"              // "the other account is back": Switch back, Stay
-    static let backKind = "back"                        // --post-alert's last word for it
     static let action = "switch"
     static let later = "later"
+    /// "the other account is back"'s Stay (26.11.12 and earlier): an old alert's button still needs no window.
     static let stay = "stay"
+    /// Categories older builds registered: taken away when the categories are set again.
+    static let retired: Set<String> = ["switchBack", "switchWaitingLinked"]
     static let keyField = "switch"
     /// "the switch is waiting for you" (SwitchWaiting.swift): Show switch (the `action` above) and Cancel switch.
     static let waitingCategory = "switchWaiting"
@@ -79,15 +78,11 @@ enum LaunchPlan: Equatable {
 
 extension SwitchAlert {
 
-    /// The alerts' categories: Switch account… and Later; Switch back… and Stay; Show switch and Cancel switch; Show switch.
+    /// The alerts' categories: Switch account… and Later; Show switch and Cancel switch.
     static func categories() -> [UNNotificationCategory] {
         [UNNotificationCategory(identifier: category,
                                 actions: [UNNotificationAction(identifier: action, title: SwitchWords.button, options: [.foreground]),
                                           UNNotificationAction(identifier: later, title: "Later", options: [])],
-                                intentIdentifiers: [], options: []),
-         UNNotificationCategory(identifier: backCategory,
-                                actions: [UNNotificationAction(identifier: action, title: SwitchWords.backButton, options: [.foreground]),
-                                          UNNotificationAction(identifier: stay, title: "Stay", options: [])],
                                 intentIdentifiers: [], options: []),
          UNNotificationCategory(identifier: waitingCategory,
                                 actions: [UNNotificationAction(identifier: action, title: SwitchWaiting.showButton, options: [.foreground]),
@@ -100,7 +95,7 @@ extension SwitchAlert {
     /// done, and an alert added before would show without its buttons. The target rides in each alert's userInfo. Never on
     /// the main thread.
     @discardableResult
-    static func register(center: UNUserNotificationCenter = .current(), back: Bool = false, wanting: String? = nil) -> String {
+    static func register(center: UNUserNotificationCenter = .current(), wanting: String? = nil) -> String {
         func current() -> Set<UNNotificationCategory> {
             var got: Set<UNNotificationCategory> = []
             let done = DispatchSemaphore(value: 0)
@@ -109,41 +104,13 @@ extension SwitchAlert {
             return got
         }
         let ours = Set(categories().map(\.identifier))
-        var set = current().filter { !$0.identifier.hasPrefix("switch.") && !ours.contains($0.identifier) }
+        var set = current().filter { !$0.identifier.hasPrefix("switch.") && !ours.contains($0.identifier) && !retired.contains($0.identifier) }
         categories().forEach { set.insert($0) }
         center.setNotificationCategories(set)
-        let wanted = wanting ?? (back ? backCategory : category)
+        let wanted = wanting ?? category
         let deadline = Date().addingTimeInterval(2)
         while Date() < deadline, !current().contains(where: { $0.identifier == wanted }) { usleep(100_000) }
         return wanted
-    }
-}
-
-/// A standby account that is back, on its profile's dashboard card (SwitchBack.swift): "ultra-1 is back: its week
-/// starts again", Stay, and Switch back to ultra-1….
-struct BackOfferRow: View {
-    let offer: BackOffer
-    let open: (String) -> Void
-    @Environment(\.face) private var face
-
-    var body: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(spacing: 8) { words; Spacer(minLength: 6); stay; key }
-            VStack(alignment: .leading, spacing: 6) {
-                words
-                HStack(spacing: 8) { Spacer(minLength: 0); stay; key }
-            }
-        }
-    }
-
-    private var words: some View {
-        Text(offer.words).font(.system(size: 12)).foregroundStyle(face.soft).lineLimit(1)
-    }
-    private var stay: some View {
-        Button("Stay") { BackWatch.dismiss(offer.key) }.buttonStyle(.plain).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize()
-    }
-    private var key: some View {
-        Button(offer.title) { open(offer.key) }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
     }
 }
 
@@ -234,34 +201,25 @@ struct TileDisplayGlass: View {
     }
 }
 
-/// One standby account on the dashboard card: its offer (Switch.swift) and its limits as the card draws them.
+/// One standby account on the dashboard card: its offer (Switch.swift). No limits: a standby account isn't read.
 struct CardTray: Identifiable {
     let offer: SwitchOffer
-    let limits: [Limit]
     var id: String { offer.key }
 }
 
 extension AccountEntry {
-    /// The standby accounts the card shows, as trays, most room first (SwitchOffer order): those with a kept sign-in and
-    /// numbers. One with no numbers stays off the card. A tray shows the 5-hour and weekly rows (a plan without a 5-hour
-    /// limit, just the week); a model's own limit is on the Switch page and in Settings.
-    func cardTrays(status: (String) -> IconStatus? = Store.status, now: Date = Date()) -> [CardTray] {
-        switchOffers(status: status, now: now).compactMap { o in
-            guard o.status?.weekly != nil || o.status?.fiveHour != nil, let e = readerEntry(for: o.standby) else { return nil }
-            let all = AccountRow(entry: e, status: o.status).limits
-            let main = all.filter { $0.id == "5h" || $0.id == "wk" }
-            return CardTray(offer: o, limits: main.isEmpty ? all : main)
-        }
+    /// The standby accounts the card shows, as trays, in the order a full limit offers them (AccountBook.offerOrder).
+    func cardTrays(now: Date = Date()) -> [CardTray] {
+        switchOffers(now: now).map { CardTray(offer: $0) }
     }
 
-    /// The one preselected while a limit is full: the tray with the most room that can be switched to, unless it is back and
-    /// has its own row with Switch back (SwitchBack.swift).
-    func cardBest(_ trays: [CardTray], backs: [BackOffer]) -> String? {
-        trays.first { t in t.offer.room && AccountSettings.canSwitch(t.offer.standby) && !backs.contains { $0.key == t.offer.key } }?.id
+    /// The one preselected while a limit is full: the first that can be switched to and isn't known to be full.
+    func cardBest(_ trays: [CardTray], now: Date = Date()) -> String? {
+        trays.first { t in t.offer.standby.seat != nil && !t.offer.standby.knownFull(now: now) }?.id
     }
 }
 
-/// Which tray on the card is selected. While a limit is full the one with the most room is selected already, and a click
+/// Which tray on the card is selected. While a limit is full the one offered first is selected already, and a click
 /// picks another instead (never deselects). With room left nothing is selected: a click selects, a second click on the
 /// same tray deselects, as in Settings.
 enum TrayPick {
@@ -276,28 +234,28 @@ enum TrayPick {
     }
 }
 
-/// A profile's standby accounts on its dashboard card: unlit trays under the limits, their levels dimmed. Only the account
-/// in use is lit. The selected tray lights mint across the card (the lit bar), and its Standby display becomes the lit
-/// Switch account key, which opens the Switch page with that account picked.
+/// A profile's standby accounts on its dashboard card: unlit trays under the limits, one line each (its plan and when it
+/// was last in use; no levels: it isn't read). Only the account in use is lit. The selected tray lights mint across the
+/// card (the lit bar), and its Standby display becomes the lit Switch account key, which opens the Switch page with that
+/// account picked.
 struct StandbyTrays: View {
     let limits: [Limit]                 // the account in use's: whether one is full
     let trays: [CardTray]
     let best: String?                   // preselected while a limit is full
-    let design: PanelDesign
     let open: (String) -> Void
     @State private var picked: String?
     @Environment(\.face) private var face
 
     /// `picked`: the tray clicked at the start (renders only).
-    init(limits: [Limit], trays: [CardTray], best: String?, design: PanelDesign, open: @escaping (String) -> Void, picked: String? = nil) {
-        self.limits = limits; self.trays = trays; self.best = best; self.design = design; self.open = open
+    init(limits: [Limit], trays: [CardTray], best: String?, open: @escaping (String) -> Void, picked: String? = nil) {
+        self.limits = limits; self.trays = trays; self.best = best; self.open = open
         _picked = State(initialValue: picked)
     }
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 15)) { ctx in
             let full = AtLimit.blocker(limits, now: ctx.date) != nil
-            let sel = TrayPick.selected(picked: picked, full: full, best: best, keys: trays.filter { AccountSettings.canSwitch($0.offer.standby) }.map(\.id))
+            let sel = TrayPick.selected(picked: picked, full: full, best: best, keys: trays.filter { $0.offer.standby.seat != nil }.map(\.id))
             VStack(spacing: 9) {
                 ForEach(trays) { t in tray(t, selected: sel == t.id, full: full, selection: sel, now: ctx.date) }
             }
@@ -308,10 +266,11 @@ struct StandbyTrays: View {
 
     private func tray(_ t: CardTray, selected: Bool, full: Bool, selection: String?, now: Date) -> some View {
         let key = t.offer.key
-        let can = AccountSettings.canSwitch(t.offer.standby)       // an account not linked yet can't be selected
-        let help = !can ? "" : selected ? (full ? "Click another account to pick it instead" : "Click to deselect")
-                                        : "Click to select, then Switch account"
-        // a click on the address or the limits selects; the lit key (and the Standby display) stay outside the click area, so
+        // any standby account can be switched to: one remembered by its address only is found by it once it signs in
+        let can = true
+        let help = selected ? (full ? "Click another account to pick it instead" : "Click to deselect")
+                            : "Click to select, then Switch account"
+        // a click on the address or the line selects; the lit key (and the Standby display) stay outside the click area, so
         // the key never selects or deselects, as in Settings
         return AccountBox(lamp: nil, badge: "Standby", detail: nil, unlit: !selected, dimsContent: true,
                           selected: selected, litBadge: "Switch account", litAction: { open(key) }, compact: true) {
@@ -323,7 +282,7 @@ struct StandbyTrays: View {
                 .onTapGesture { if can { picked = TrayPick.tapped(key, selected: selection, full: full) } }
                 .help(help)
         } content: {
-            TrayRows(limits: t.limits, design: design, now: now)
+            BoxNote(text: t.offer.lineWords(now: now), size: 11).lineLimit(1).truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
                 .onTapGesture { if can { picked = TrayPick.tapped(key, selected: selection, full: full) } }
@@ -331,38 +290,4 @@ struct StandbyTrays: View {
         }
     }
 }
-
-/// A standby account's limits in its tray, small: a row per limit (name, bar, percentage, "in 3 days" or, full, when it's
-/// back).
-struct TrayRows: View {
-    let limits: [Limit]
-    let design: PanelDesign
-    var now: Date
-    @Environment(\.face) private var face
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            ForEach(limits) { l in row(l, now: now) }
-        }
-    }
-
-    private func row(_ l: Limit, now: Date) -> some View {
-        let full = AtLimit.holding(l.p, l.resets, now: now)
-        let words = full ? (l.resets.map { TimeWords.back($0, now: now) } ?? "full") : (l.resets.map { "in " + DetailsFormat.short($0) } ?? "")
-        return HStack(spacing: 8) {
-            Text(l.name).font(.system(size: 11.5)).foregroundStyle(face.soft).frame(width: 46, alignment: .leading).lineLimit(1)
-            Group {
-                if design == .segments { SegmentBar(p: l.p, height: 5) } else { LevelBar(p: l.p, height: 4) }
-            }
-            .frame(maxWidth: .infinity)
-            Text(Painter.pct(l.p)).font(.system(size: 11, weight: .bold, design: .monospaced)).monospacedDigit()
-                .foregroundStyle(l.p == nil ? face.muted : face.levelColor(l.p)).frame(width: 38, alignment: .trailing)
-            Text(words).font(.system(size: 10.5)).foregroundStyle(full ? face.danger : face.muted).lineLimit(1)
-                .frame(width: 92, alignment: .leading)
-        }
-    }
-}
-
-
-
 

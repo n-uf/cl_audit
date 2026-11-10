@@ -58,9 +58,10 @@ enum Launcher {
     /// front (the agent reopening windows after a Claude update).
     static func openClaude(_ account: Account, activate: Bool = true) {
         guard account.hasWindow else { return }        // a profile without a Claude window never opens one
-        // a switch is moving its sessions: the window stays closed meanwhile; asked for by a click, cl_audit shows that switch
+        // a restore (or an import's re-point, the default-profile move) is writing its files: the window stays closed
+        // meanwhile; asked for by a click, cl_audit shows that run's page
         if let m = SwitchMarker.blocking(account) {
-            if activate { Installer.openSwitch(AccountEntry.standbyStatusID(m.profile, m.standby)) }
+            if activate { Installer.openSwitch(AccountEntry.switchKey(m.profile, m.standby)) }
             return
         }
         let running = NSRunningApplication.runningApplications(withBundleIdentifier: claudeBundleID)
@@ -981,19 +982,16 @@ struct AccountCard: View {
             ProfileControls(row: row, actions: actions)
             // one style for every card on the dashboard (Settings ▸ General); each profile's panel design is for its panels
             // while a limit is full: the limits on the left and one box with when it's back (AtLimit.swift)
-            // only the account in use is lit; the profile's standby accounts sit in unlit trays under its limits, most
-            // room first (read once per drawing). While a limit is full the one with the most room is selected already,
-            // and its Switch account key opens the Switch page (SwitchView.swift)
+            // only the account in use is lit; the profile's standby accounts sit in unlit trays under its limits, one line
+            // each (no levels: a standby account isn't read), the one a full limit offers first on top. While a limit is
+            // full that one is selected already, and its Switch account key opens the Switch page (SwitchView.swift)
             let listed = row.entry.listed(by: row.view)       // never the account in use on standby too
             let trays = listed.cardTrays()
-            // a standby account that is back has its own row with Switch back (SwitchBack.swift), not a second offer
-            let backs = listed.backOffers()
             CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits)
             if !trays.isEmpty {
-                StandbyTrays(limits: row.limits, trays: trays, best: row.entry.cardBest(trays, backs: backs),
-                             design: prefs.cardStyle, open: actions.switchAccount, picked: pickedForRender)
+                StandbyTrays(limits: row.limits, trays: trays, best: row.entry.cardBest(trays),
+                             open: actions.switchAccount, picked: pickedForRender)
             }
-            ForEach(backs) { b in BackOfferRow(offer: b, open: actions.switchAccount) }
           }
             Spacer(minLength: 12)         // cards in a row share one height; the buttons stay at the bottom
             HStack(spacing: 7) {
@@ -1092,8 +1090,8 @@ final class ManagerUI {
         terminal: { [weak self] r in self?.closePalette(); Launcher.openTerminal(r.account) },
         logIn: { [weak self] r in
             self?.closePalette()
-            // the folder the numbers are read from: the account's own once it has one
-            ClaudeCLI.logIn(Account(r.entry.readingEntry()), email: r.status?.expectedEmail)
+            // the profile's one folder; a folder that is gone is said, never made again (ClaudeCLI.logIn)
+            ClaudeCLI.logIn(Account(r.entry), email: r.status?.expectedEmail)
         },
         mainScreen: { [weak self] in self?.closePalette(); self?.showMain() },
         settings: { [weak self] in self?.showMain(page: .settings) },

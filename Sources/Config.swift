@@ -544,19 +544,6 @@ enum Store {
         return out
     }
 
-    /// A standby account's saved numbers, only if they're that account's.
-    /// Its numbers are dropped (the state and when they were read stay) while its kept sign-in has run out or its kept
-    /// folder is gone: they'd be old numbers shown as current, on every screen that shows a standby account.
-    static func status(for e: AccountEntry, standby s: StandbyAccount) -> IconStatus? {
-        guard var st = status(AccountEntry.standbyStatusID(e.id, s.id))?.only(for: s.seat?.email ?? s.email) else { return nil }
-        let gone = s.configDir.map { !FileManager.default.fileExists(atPath: expand($0)) } ?? true
-        if st.state == "expired" || gone {
-            st.fiveHour = nil; st.weekly = nil; st.fiveHourResets = nil; st.weeklyResets = nil
-            st.scoped = nil; st.credits = nil
-        }
-        return st
-    }
-
     static func writeStatus(_ id: String, _ s: IconStatus) -> Data? {
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970; enc.outputFormatting = [.sortedKeys]
         guard let data = try? enc.encode(s) else { return nil }

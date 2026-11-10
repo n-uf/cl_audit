@@ -316,6 +316,14 @@ struct RemoveAccountSheet: View {
 enum LegacyCleanup {
     static func run(_ accounts: [AccountEntry], defaults: UserDefaults) {
         forgetLoginItems(defaults: defaults)
+        forgetBackOffers(defaults: defaults)
+    }
+
+    /// "The other account is back" (26.11.12 and earlier) is gone with the standby accounts' numbers: its offers
+    /// (switches/back/<profile>~<id>.json, cl_audit's own files) and the agent's "was full" marks (sbfull.<key>) go once.
+    static func forgetBackOffers(defaults: UserDefaults, root: URL = SwitchEngine.root) {
+        try? FileManager.default.removeItem(at: root.appendingPathComponent("back"))
+        for k in defaults.dictionaryRepresentation().keys where k.hasPrefix("sbfull.") { defaults.removeObject(forKey: k) }
     }
 
     /// The cl_audit.app this process belongs to (the agent's parent, or cl_audit itself).

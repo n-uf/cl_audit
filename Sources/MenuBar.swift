@@ -363,17 +363,15 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
             i.target = self; i.representedObject = id
             menu.addItem(i)
         }
-        // the profile's other accounts (Accounts.swift; SwitchMenu.swift): while a limit is full, the best one with room
-        // first, then Switch account › with every standby account and its week; one that is back also has its own
-        // Switch back to … (SwitchBack.swift). Each opens cl_audit's Switch page with that account picked
+        // the profile's other accounts (Accounts.swift; SwitchMenu.swift): while a limit is full, the one offered first,
+        // then Switch account › with every standby account. Each opens cl_audit's Switch page with that account picked
         let listed = p.entry.listed(by: p.view)              // never the account in use on standby too
-        let backs = listed.backOffers()
         let lines = SwitchMenu.lines(listed, now: now)
         let isFull = p.usage.flatMap { AtLimit.blocker(fiveHour: $0.fiveHour, fiveHourResets: $0.fiveHourResets, weekly: $0.weekly,
                                                        weeklyResets: $0.weeklyResets, now: now) } != nil
-        var switches = SwitchMenu.group(p.view, backs: backs, lines: lines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
+        var switches = SwitchMenu.group(p.view, lines: lines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
                                         inUseWeek: p.usage?.weekly != nil, target: self, action: #selector(switchAccount(_:)))
-        if isFull, let best = SwitchMenu.best(lines, backs: backs) {
+        if isFull, let best = SwitchMenu.best(lines) {
             switches.insert(SwitchMenu.bestItem(best, target: self, action: #selector(switchAccount(_:))), at: 0)
         }
         if !switches.isEmpty {

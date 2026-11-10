@@ -55,7 +55,7 @@ final class UsageReader {
     /// `startIn`: seconds until the first fetch, so profiles don't all ask at once.
     init(_ e: AccountEntry, defaults: UserDefaults, startIn: TimeInterval = 0) {
         entry = e
-        account = Account(e.readingEntry())       // the account's own folder once it has one (Accounts.swift)
+        account = Account(e)
         self.defaults = defaults
         nextFetch = Date().addingTimeInterval(startIn)
         adoptSaved()                             // the numbers don't blank while the agent restarts
@@ -86,9 +86,11 @@ final class UsageReader {
         let pollChanged = e.pollMinutes != entry.pollMinutes
         entry = e
         if seatChanged {
-            let want = Account(e.readingEntry())
+            let want = Account(e)
             let readsNewAlready = want.configDir == account.configDir && (e.seat.map { $0.same(signIn.seen) } ?? false)
+            let folderMoved = want.configDir != account.configDir
             account = want
+            if folderMoved { generation += 1 }       // replies under way for the old folder are dropped
             if !readsNewAlready {
                 // the profile works on another account (a switch): the old one's numbers, sign-in and marks go (no "is
                 // back" from the switch itself); the new one's are read afresh
@@ -102,37 +104,28 @@ final class UsageReader {
             tick()
             return
         }
-        if followReadingFolder() || pollChanged { nextFetch = .distantPast; tick(); return }
+        if followFolder() || pollChanged { nextFetch = .distantPast; tick(); return }
         if renewsByItself && state == .expired { maybeRenew() }
         save()
     }
 
-    /// Reading the account's own folder (always renewed, as a standby account's), or the profile's choice (Renew
-    /// sign-in). From the folder read now, not the file: it's what a renewal would run in.
-    private var renewsByItself: Bool { entry.autoRenew || account.configDir != Account(entry).configDir }
+    /// The profile's choice (Renew sign-in).
+    private var renewsByItself: Bool { entry.autoRenew }
 
     /// Bumped when the folder or the account read changes: a reply asked for before is dropped.
     private(set) var generation = 0
 
-    /// The Claude Code folder read now (the account's own, or the working folder).
-    var folderRead: String { account.configDir }
-
-    /// Another folder to read, the same account: its own sign-in; replies under way for the old folder are dropped.
-    private func readAnotherFolder(now: Date = Date()) {
+    /// The profile's folder changed (Settings ▸ Claude Code ▸ Folder): read from there from now on, its own sign-in;
+    /// replies under way for the old folder are dropped. True when it moved.
+    @discardableResult
+    private func followFolder(now: Date = Date()) -> Bool {
+        let want = Account(entry)
+        guard want.configDir != account.configDir else { return false }
+        account = want
         loginEmail = nil; profileFor = nil; nextFetch = .distantPast; cachedLogin = nil
         generation += 1
         signInChangedAt = now
         signIn = SignInWatch(); _ = signInChanged()
-    }
-
-    /// The account's own folder got signed in (or stopped being): read from there from now on. True when it moved.
-    @discardableResult
-    private func followReadingFolder() -> Bool {
-        let want = Account(entry.readingEntry())
-        guard want.configDir != account.configDir else { return false }
-        agentLog.log("reader \(self.id, privacy: .public): reading from \(want.configDir == Account(self.entry).configDir ? "the working folder" : "the account's own folder", privacy: .public)")
-        account = want
-        readAnotherFolder()
         return true
     }
 
@@ -143,7 +136,6 @@ final class UsageReader {
     /// reset has passed is read again at once (then at most once a minute until Anthropic's numbers move on).
     func tick() {
         guard !stopped else { return }
-        if entry.keptFolder != nil { followReadingFolder() }
         if signInChanged() { startOver() }
         if var local = UsageParser.fromStatusLine(account), local.fetchedAt > (usage?.fetchedAt ?? .distantPast),
            local.fetchedAt > (signInChangedAt ?? .distantPast) {
@@ -405,8 +397,8 @@ final class UsageReader {
 
     private var renewKey: String { "lastRenewAttempt.\(id)" }
 
-    /// An automatic renewal may run: Renew sign-in on (always, for a standby account), none under way, and the folder
-    /// signed in to the account the profile linked; one signed in to another account waits for a choice.
+    /// An automatic renewal may run: Renew sign-in on, none under way, and the folder signed in to the account the
+    /// profile works on; one signed in to another account is never renewed in its name.
     static func mayRenewByItself(autoRenew: Bool, renewing: Bool, onOtherAccount: Bool) -> Bool {
         autoRenew && !renewing && !onOtherAccount
     }
@@ -613,17 +605,16 @@ final class UsageReader {
     }
 
     /// Tests only: takes the alerts instead of macOS (id, title, body, thread).
-    static var testPoster: ((String, String, String, String, String?) -> Int32)?    // (…, thread, switch or back key)
+    static var testPoster: ((String, String, String, String, String?) -> Int32)?    // (…, thread, switch key)
 
     /// Hands one alert to cl_audit's own program (UsageDock --post-alert). 0 sent, 2 not allowed, else failed. With a
-    /// switch offer, the alert has its Switch account… button; with a standby account that is back (`backKey`), Switch
-    /// back and Stay.
-    static func post(id: String, title: String, body: String, thread: String, offer: SwitchOffer? = nil, backKey: String? = nil) -> Int32 {
-        if let t = testPoster { return t(id, title, body, thread, offer?.key ?? backKey) }
+    /// switch offer, the alert has its Switch account… button.
+    static func post(id: String, title: String, body: String, thread: String, offer: SwitchOffer? = nil) -> Int32 {
+        if let t = testPoster { return t(id, title, body, thread, offer?.key) }
         guard let app = LegacyCleanup.agentParentApp() else { return 1 }
         let p = Process()
         p.executableURL = app.appendingPathComponent("Contents/MacOS/UsageDock")
-        p.arguments = ["--post-alert", id, title, body, thread] + (offer.map { [$0.key] } ?? backKey.map { [$0, SwitchAlert.backKind] } ?? [])
+        p.arguments = ["--post-alert", id, title, body, thread] + (offer.map { [$0.key] } ?? [])
         p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
         guard (try? p.run()) != nil else { return 1 }
         let deadline = Date().addingTimeInterval(20)

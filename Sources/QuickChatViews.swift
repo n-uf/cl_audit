@@ -411,7 +411,8 @@ struct QCProblemView: View {
         case .noProfile: return "Set one up in cl_audit."
         case .limitFull:
             guard let o = model.offer, let name = model.target?.name else { return "" }
-            return "\(name)'s other account, \(o.short), has room (\(o.words) used)." + (model.field.isEmpty ? "" : " What you typed goes once the switch is done.")
+            return "\(name) can switch to its other account, \(o.short)" + (o.words.isEmpty ? "." : " (last in use \(o.words)).")
+                + (model.field.isEmpty ? "" : " What you typed goes once the switch is done.")
         }
     }
 
@@ -785,7 +786,7 @@ enum QuickChatRender {
         case "full":
             m.field = q1
             level.week = 100; level.weekResets = Date().addingTimeInterval(26 * 3600); m.level = level
-            m.offer = QuickChatSwitchOffer(key: "main~u3", short: "ultra-3", words: "week 12%")
+            m.offer = QuickChatSwitchOffer(key: "main~u3", short: "ultra-3", words: "3 days ago")
         case "level95": level.week = 96; m.level = level; m.turns = [t1]
         default: break
         }

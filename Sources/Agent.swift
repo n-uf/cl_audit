@@ -189,9 +189,6 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     var timer: Timer?
     var readers: [String: UsageReader] = [:]
     var order: [String] = []
-    /// One reader per standby account with a kept sign-in (Accounts.swift), by its status id (<profile>~<id>): only
-    /// its limits, for the Accounts list and the dashboard; no alerts, Dock icon or menu bar icon of its own.
-    var standbyReaders: [String: UsageReader] = [:]
     var pausedUntil: Date?
     var rules: AgentRules?
     private var cleanupWork: DispatchWorkItem?
@@ -268,7 +265,6 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         signInTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             guard let self else { return }
             self.readers.values.forEach { $0.watchSignIn(); $0.save() }      // save: the account answer (AccountResolver) kept current
-            self.standbyReaders.values.forEach { $0.watchSignIn() }
             self.noteAccounts()
         }
         // the folders' .claude.json, the windows' config.json and the Claude app's logs watched: a sign-in changed in
@@ -319,34 +315,10 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             }
         }
         order = list.map(\.id)
-        reloadStandby(list, startAfter: fresh)
         askForAlerts(list)
         rules?.update(list)
         menuBar?.update()
         beat()
-    }
-
-    /// The standby accounts' readers: one for each with a kept sign-in; a removed one's reader, saved status and marks go.
-    private func reloadStandby(_ list: [AccountEntry], startAfter fresh: Int) {
-        var wanted: [String: AccountEntry] = [:]
-        for e in list { for s in e.standby { if let r = e.readerEntry(for: s) { wanted[r.id] = r } } }
-        for id in standbyReaders.keys where wanted[id] == nil {
-            standbyReaders[id]?.stop()
-            standbyReaders[id] = nil
-            UsageReader.forget(id, in: defaults)
-            Store.removeStatus(id)
-            agentLog.log("agent: standby \(id, privacy: .public) removed")
-        }
-        var n = fresh
-        for (id, r) in wanted.sorted(by: { $0.key < $1.key }) {
-            if let reader = standbyReaders[id] { reader.update(r) }
-            else {
-                let reader = UsageReader(r, defaults: defaults, startIn: Double(n) * 2)
-                standbyReaders[id] = reader
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double(n) * 2 + 0.1) { [weak reader] in reader?.tick() }
-                n += 1
-            }
-        }
     }
 
     /// Each profile works on the account its folder is signed in to (FolderRules.noteAccounts): also while the cl_audit
@@ -364,24 +336,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             Uninstall.offerTrashCleanup(defaults: defaults, where: p.components(separatedBy: "/Contents/").first ?? p)
         }
         for id in order { readers[id]?.tick() }
-        for id in standbyReaders.keys.sorted() { standbyReaders[id]?.tick() }
         if QuickChat.shared.isOpen { QuickChat.shared.refresh() }
-        // a standby account whose full limit reset: "the other account is back", with Switch back (SwitchBack.swift)
-        BackWatch.check(order.compactMap { readers[$0]?.entry }, defaults: defaults) { e, s, b in
-            guard e.notifyBack else { return }
-            let (title, body) = BackWatch.words(e, b)
-            let key = AccountEntry.standbyStatusID(e.id, s.id)
-            let id = "\(e.id).sbback.\(s.id).\(Int(b.at.timeIntervalSince1970))"
-            DispatchQueue.global(qos: .utility).async {
-                let code = UsageReader.post(id: id, title: title, body: body, thread: e.id, backKey: key)
-                // tried once, like the profile's own "back" (a late one is no use); the offer stays on the card and menus
-                switch code {
-                case 0: agentLog.log("\(e.id, privacy: .public): standby account back, alert sent")
-                case 2: agentLog.log("\(e.id, privacy: .public): standby account back, alert dropped: notifications for cl_audit aren't allowed")
-                default: agentLog.error("\(e.id, privacy: .public): standby account back, alert not sent (\(code))")
-                }
-            }
-        }
         claudeUpdates.tick(order.compactMap { readers[$0]?.entry })
         rules?.tick()
         menuBar?.update()
@@ -393,12 +348,9 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     /// Refresh now: one profile (object: its id) or all of them.
     func refresh(_ id: String?) {
         if let id {
-            (readers[id] ?? standbyReaders[id])?.refreshNow()
-            // a profile's Refresh now reads its standby accounts too
-            for (k, r) in standbyReaders where k.hasPrefix(id + "~") { r.refreshNow() }
+            readers[id]?.refreshNow()
         } else {
             order.forEach { readers[$0]?.refreshNow() }
-            standbyReaders.values.forEach { $0.refreshNow() }
         }
         beat()
     }

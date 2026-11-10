@@ -118,12 +118,10 @@ if args.count >= 4, args[1] == "--post-alert" {
     let center = UNUserNotificationCenter.current()
     let done = DispatchSemaphore(value: 0)
     var code: Int32 = 1
-    // ... [SWITCH_KEY [back]]: "Switch account…" and "Later", or (back: a standby account is back) "Switch back…" and
-    // "Stay", answered by cl_audit's window (SwitchView.swift); the categories are registered, and macOS has them,
-    // before the alert is added
+    // ... [SWITCH_KEY]: "Switch account…" and "Later", answered by cl_audit's window (SwitchView.swift); the categories are
+    // registered, and macOS has them, before the alert is added
     let switchKey = args.count > 6 && !args[6].isEmpty ? args[6] : nil
-    let back = args.count > 7 && args[7] == SwitchAlert.backKind
-    let category = switchKey.map { _ in SwitchAlert.register(center: center, back: back) }
+    let category = switchKey.map { _ in SwitchAlert.register(center: center) }
     center.getNotificationSettings { s in
         guard s.authorizationStatus == .authorized || s.authorizationStatus == .provisional else { code = 2; done.signal(); return }
         let c = UNMutableNotificationContent()

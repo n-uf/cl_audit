@@ -470,11 +470,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         m.addItem(top)
         if let n = view.line { m.addItem(info(n)) }
         m.addItem(.separator())
-        // the profile's other accounts (Accounts.swift): Switch account › with every standby account and its week; while a
-        // limit is full, the best one with room also right under the full line; one that is back has its own Switch back
-        // to … (SwitchBack.swift). Each opens cl_audit's Switch page with that account picked
+        // the profile's other accounts (Accounts.swift): Switch account › with every standby account; while a limit is full,
+        // the one offered first also right under the full line. Each opens cl_audit's Switch page with that account picked
         let listed = entry.listed(by: view)                  // never the account in use on standby too
-        let backs = listed.backOffers()
         let lines = SwitchMenu.lines(listed)
         // while a limit is full, both times first: "5-hour full · back at 15:28, in 1h 42m"
         if let full = AtLimit.blocker(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
@@ -483,7 +481,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             i.attributedTitle = NSAttributedString(string: i.title, attributes: [
                 .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: Painter.crimson])
             m.addItem(i)
-            if let best = SwitchMenu.best(lines, backs: backs) {
+            if let best = SwitchMenu.best(lines) {
                 m.addItem(SwitchMenu.bestItem(best, target: self, action: #selector(switchAccount(_:))))
             }
         }
@@ -522,7 +520,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         func add(_ title: String, _ action: Selector, enabled: Bool = true) {
             let i = NSMenuItem(title: title, action: action, keyEquivalent: ""); i.target = self; i.isEnabled = enabled; m.addItem(i)
         }
-        let switches = SwitchMenu.group(view, backs: backs, lines: lines, inUseUsed: usage?.weekly ?? usage?.fiveHour,
+        let switches = SwitchMenu.group(view, lines: lines, inUseUsed: usage?.weekly ?? usage?.fiveHour,
                                         inUseWeek: usage?.weekly != nil, target: self, action: #selector(switchAccount(_:)))
         if !switches.isEmpty {
             switches.forEach(m.addItem)
@@ -561,8 +559,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func switchAccount(_ sender: NSMenuItem) { if let k = sender.representedObject as? String { Installer.openSwitch(k) } }
     @objc func showDashboard() { details.close(); Installer.openDashboard() }
     @objc func logIn() {
-        // the folder the numbers are read from: the account's own once it has one
-        let reading = Account(entry.readingEntry())
+        // the profile's one folder; a folder that is gone is said, never made again (ClaudeCLI.logIn)
+        let reading = Account(entry)
         ClaudeCLI.logIn(reading, email: reading.expectedEmail() ?? expectedEmail)
     }
 }

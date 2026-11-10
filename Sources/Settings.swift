@@ -1158,6 +1158,8 @@ struct InSettingsColumn<Content: View>: View {
 struct AddressRow: View {
     @Binding var email: String
     let canSignIn: Bool
+    /// The key's words: "Sign in" (a new profile's sign-in), "Remember" (Add account's address).
+    var signInTitle = "Sign in"
     let signIn: () -> Void
     let cancel: () -> Void
 
@@ -1181,7 +1183,7 @@ struct AddressRow: View {
         WellField(placeholder: "name@example.com", text: $email, onSubmit: signIn, onCancel: cancel)
     }
     private var signInKey: some View {
-        Button("Sign in", action: signIn)
+        Button(signInTitle, action: signIn)
             .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(!canSignIn).fixedSize()
     }
     private var cancelKey: some View {
@@ -1534,9 +1536,10 @@ struct AccountSettings: View {
                 if let n = entry.accountNote { accountNoteRow(n) }
                 inUseBox(move)
                     .alignmentGuide(.rowLine) { d in d[VerticalAlignment.top] }
-                // the others, most room first (held still while one is selected); click one to select it, again to deselect
+                // the others, the one a full limit offers first on top (held still while one is selected); click one to
+                // select it, again to deselect
                 ForEach(standbyOrder) { s in standbyBox(s) }
-                if standbyOrder.contains(where: Self.canSwitch), picked == nil {
+                if !standbyOrder.isEmpty, picked == nil {
                     Text("Click a standby account to select it: its Switch account key opens the Switch page.")
                         .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                 }
@@ -1618,175 +1621,74 @@ struct AccountSettings: View {
                 Button("Refresh now") { DistributedNotificationCenter.default().postNotificationName(Installer.refreshAllNote, object: entry.id, userInfo: nil, deliverImmediately: true) }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true))
             }
-            // the line and key about the stored account's own kept folder: only under that account (AccountView.showsSeat)
-            if !entry.standby.isEmpty, seatShown { ownFolderLine }
+            signInAgainLine
         }
     }
 
-    /// With more than one account, the one in use has a folder of its own too, signed in once, so its limits keep
-    /// showing after a switch (the working folder signs in again each time): said, or offered.
-    @ViewBuilder var ownFolderLine: some View {
-        let kept = entry.keptFolder.flatMap { $0.isEmpty ? nil : $0 }
-        let ready = kept.flatMap { FolderFactsCache.facts($0) }.map { $0.seat.same(entry.seat) } ?? false
-        if ready {
-            Text("Its limits come from a sign-in kept for it, renewed by itself.")
-                .font(.system(size: 10.5)).foregroundStyle(face.muted).lineLimit(1).minimumScaleFactor(0.9)
-        } else {
-            let why = kept == nil ? "Keep its limits showing after a switch: sign it in once to a folder of its own."
-                                  : "Waiting for the sign-in in its own folder: finish it in the browser, or sign in again."
-            ViewThatFits(in: .horizontal) {
+    /// A sign-in again on the account in use (its pop-up's Sign in again…): the same watch a switch has (SwitchRunner),
+    /// said here while it runs and when it ended.
+    @ViewBuilder var signInAgainLine: some View {
+        let r = model.runner(of: entry.id)
+        if r.goal?.again == true {
+            switch r.phase {
+            case .waiting:
                 HStack(spacing: 8) {
-                    Text(why).font(.system(size: 11.5)).foregroundStyle(face.caution).lineLimit(1)
+                    BoxNote(text: "Signing in again: finish it in Terminal and the browser.", tone: .caution).lineLimit(1)
                     Spacer(minLength: 6)
-                    ownFolderKey
+                    Button("Cancel") { r.cancel() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(why).font(.system(size: 11.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
-                    ownFolderKey
-                }
+            case .reached: BoxNote(text: "Signed in again.", size: 10.5)
+            case .timedOut: BoxNote(text: "No sign-in came in 10 minutes; nothing changed.", tone: .caution)
+            case .other(let e): BoxNote(text: "Signed in as \(Privacy.masked(e)): that's the account in use now.", tone: .caution)
+            case .failed(let why): BoxNote(text: why, tone: .danger)
+            case .ready: EmptyView()
             }
         }
     }
 
-    private var ownFolderKey: some View {
-        Button("Sign in…") { signInOwnFolder() }
-            .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-    }
-
-    /// The account in use, signed in once to a folder of its own (made now if it has none): Claude Code's sign-in there
-    /// in Terminal, with its address filled in. Its numbers come from there once that's done (Reader.swift).
-    func signInOwnFolder() {
-        // its kept folder deleted: never made again here (asked before the look for claude)
-        if let k = entry.keptFolder, !k.isEmpty, let why = ClaudeCLI.goneLine(k) { model.message = why; return }
-        guard let email = entry.seat?.email ?? expected, let claude = model.requireClaude() else { return }
-        var dir = entry.keptFolder ?? ""
-        if dir.isEmpty {
-            guard let made = StandbyFolder.make(for: email) else { model.message = "Couldn't make a folder for its sign-in"; return }
-            dir = made
-            entry.keptFolder = made
-        }
-        ClaudeCLI.openLogin(claude, account: Account(AccountEntry(id: entry.id, name: entry.name, label: entry.label, configDir: dir)), email: email)
-    }
-
-    /// A standby account: its address (a pop-up with Sign in… and Remove), its plan, STANDBY, and its limits from the
-    /// sign-in kept for it, or why there are none.
+    /// A standby account: its address (a pop-up with Switch to it… and Forget…), its plan, STANDBY, and when it was last
+    /// in use. No limits: it is remembered signed out, so nothing reads it.
     func standbyBox(_ s: StandbyAccount) -> some View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
-        let st: IconStatus? = { _ = model.tick; return Store.status(for: entry, standby: s) }()
-        let read = s.configDir.map { FolderFactsCache.read($0) }
-        let facts = read?.facts
-        // its plan and organisation once its folder is signed in to it: never those of another account's sign-in
-        let mine = s.seat.map { m in facts?.seat.same(m) ?? false } ?? false
-        let plan = (st?.plan).map(Account.planWords) ?? (mine ? facts?.plan : nil)
-        let hasNumbers = AccountRow(entry: entry.readerEntry(for: s) ?? entry, status: st).limits.contains { $0.p != nil }
-        // not linked yet and its folder signed in to an account it can't have (the profile's own, or another profile's):
-        // the wrong account. A sign-in that names a free account links by itself within seconds (Folders.swift).
-        // (the folders' records come through FolderFactsCache: this is drawn every few seconds)
-        let clash = s.seat == nil ? StandbyLook.clash(of: facts?.seat, for: entry, among: model.accounts,
-                                                       inUse: FolderFactsCache.facts(entry.configDir)?.seat,
-                                                       signedIn: { FolderFactsCache.facts($0)?.seat }) : nil
-        // when a sign-in was started in its folder: the script each one writes; for an account not linked yet, else when
-        // it was added (nothing new is saved)
-        let started = s.configDir.flatMap { StandbyLook.signInStarted(configDir: $0, addedAt: s.seat == nil ? s.addedAt : nil) }
-        // a kept folder that is gone counts as none kept: no numbers from it (they'd be old)
-        let hasFolder = s.configDir.map { FileManager.default.fileExists(atPath: expand($0)) } ?? false
-        let look = StandbyLook.of(email: s.email, hasFolder: hasFolder, linked: s.seat != nil, folderSeat: facts?.seat,
-                                  clash: clash, state: st?.state, hasNumbers: hasNumbers, problem: st?.problem,
-                                  attempt: SignInAttempts.attempt(s.id), startedAt: started, signedInAt: read?.stamp,
-                                  lastRead: st?.updatedAt)
-        let why = look.line
-        // unlit; clicked, its row lights and the Switch account key takes the place of "Standby" (an account not linked
-        // yet can't be switched to: no key)
-        let canSwitch = Self.canSwitch(s)
-        let selected = picked == s.id && canSwitch
-        // a warning and its keys keep full strength; only the limits (and "no numbers yet") dim
-        return AccountBox(lamp: nil, badge: look.badge, badgeTone: look.tone,
-                          detail: [plan, mine ? facts?.org : nil].compactMap { $0 }.joined(separator: " · "),
-                          unlit: !selected, dimsContent: look.dims, selected: selected, litBadge: "Switch account",
-                          litAction: { model.showSwitch(AccountEntry.standbyStatusID(entry.id, s.id)) }) {
+        // unlit; clicked, its row lights and the Switch account key takes the place of "Standby"
+        let selected = picked == s.id
+        let line = s.lastInUse.map { "Last in use on \(name) " + AccountBook.ago($0) }
+            ?? (s.seat == nil ? "Remembered by its address: it signs in when you switch to it" : "Not in use on \(name) yet")
+        let full = s.knownFull() ? "; its week was full when it left" : ""
+        return AccountBox(lamp: nil, badge: "Standby", detail: s.plan.map(Account.planWords),
+                          unlit: !selected, selected: selected, litBadge: "Switch account",
+                          litAction: { model.showSwitch(AccountEntry.switchKey(entry.id, s.id)) }) {
             Menu {
-                if model.claudeKnownMissing {
-                    Button(ClaudeInstall.missingInstall) { model.showInstallHelp() }
-                    Divider()
-                }
-                Button(s.configDir == nil ? "Sign in…" : "Sign in again…") { signInStandby(s) }
+                Button("Switch to it…") { model.showSwitch(AccountEntry.switchKey(entry.id, s.id)) }
                 Divider()
-                Button("Remove from \(name)") { removeStandby(s) }
+                Button("Forget…") { forgetStandby(s) }
             } label: { AccountBoxTitle(text: Privacy.masked(s.email)) }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
         } content: {
-            // a click below the address selects the account (again: deselects); the address menu, the lit key and a
-            // Sign in… key stay outside the click area, so they never select or deselect
-            if let why {
-                // the line of what's left (signing in, the wrong account, no numbers yet) and its keys: on one row while
-                // they fit, else the keys under it
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 8) {
-                        selectArea(s, canSwitch, selected) { BoxNote(text: why, tone: look.lineTone).lineLimit(1) }
-                        standbyKeys(look.keys, s)
-                    }
-                    VStack(alignment: .leading, spacing: 6) {
-                        selectArea(s, canSwitch, selected) {
-                            BoxNote(text: why, tone: look.lineTone).fixedSize(horizontal: false, vertical: true)
-                        }
-                        standbyKeys(look.keys, s)
-                    }
-                }
-            } else {
-                selectArea(s, canSwitch, selected) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        limitsOrWhy(st, entry: entry.readerEntry(for: s) ?? entry, none: nil)
-                    }
-                }
-            }
+            // a click below the address selects the account (again: deselects); the address menu and the lit key stay
+            // outside the click area, so they never select or deselect
+            selectArea(s, selected) { BoxNote(text: line + full + ".").fixedSize(horizontal: false, vertical: true) }
         }
     }
 
     /// The part of a standby box a click selects (again: deselects).
-    private func selectArea<V: View>(_ s: StandbyAccount, _ canSwitch: Bool, _ selected: Bool, @ViewBuilder _ v: () -> V) -> some View {
+    private func selectArea<V: View>(_ s: StandbyAccount, _ selected: Bool, @ViewBuilder _ v: () -> V) -> some View {
         v().frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .onTapGesture {
-                guard canSwitch else { return }
                 if picked == s.id { picked = nil; heldOrder = [] }
-                else { if picked == nil { heldOrder = SwitchOffer.byRoom(entry).map(\.id) }; picked = s.id }
+                else { if picked == nil { heldOrder = AccountBook.offerOrder(entry.standby).map(\.id) }; picked = s.id }
             }
-            .help(canSwitch ? (selected ? "Click to deselect" : "Click to select, then Switch account") : "")
+            .help(selected ? "Click to deselect" : "Click to select, then Switch account")
     }
 
-    /// A standby account the profile can switch to: linked to its account and organization (what a switch plans with).
-    static func canSwitch(_ s: StandbyAccount) -> Bool { s.seat?.organization != nil }
-
-    /// Most room first; while one is selected, the order it had then, so the boxes don't move under the pointer.
+    /// In the order a full limit offers them (AccountBook.offerOrder); while one is selected, the order it had then, so the
+    /// boxes don't move under the pointer.
     private var standbyOrder: [StandbyAccount] {
-        let now = SwitchOffer.byRoom(entry.listed(by: view))    // never the account in use on standby too
+        let now = AccountBook.offerOrder(entry.listed(by: view).standby)    // never the account in use on standby too
         guard picked != nil, !heldOrder.isEmpty else { return now }
         let at = Dictionary(heldOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
         return now.enumerated().sorted { (at[$0.element.id] ?? Int.max, $0.offset) < (at[$1.element.id] ?? Int.max, $1.offset) }.map(\.element)
-    }
-
-    /// The keys a standby account's line needs (StandbyLook): Cancel takes a new account off the profile again (as Remove
-    /// does: its folder and anything signed in there stay), Show Terminal brings Terminal forward (where Claude Code's
-    /// sign-in waits), Sign in… / Sign in again… start the sign-in in its folder.
-    func standbyKeys(_ keys: [StandbyLook.Key], _ s: StandbyAccount) -> some View {
-        HStack(spacing: 6) {
-            ForEach(keys, id: \.self) { k in
-                switch k {
-                case .cancel:
-                    Button("Cancel") { removeStandby(s) }
-                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-                case .showTerminal:
-                    Button("Show Terminal") { _ = Installer.run("/usr/bin/open", ["-a", "Terminal"]) }
-                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-                case .signIn:
-                    Button("Sign in…") { signInStandby(s) }
-                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-                case .signInAgain:
-                    Button("Sign in again…") { signInStandby(s) }
-                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-                }
-            }
-        }
     }
 
     /// The limits as the dashboard draws them, or one line why there are none yet.
@@ -1800,14 +1702,14 @@ struct AccountSettings: View {
         }
     }
 
-    /// Add account: the key with what was found on this Mac, or, after "Sign in to another account…", the address row.
+    /// Add account: the key with what was found on this Mac, or, after "Another address…", the address row.
     @ViewBuilder var addAccountRow: some View {
         if let typed = adding {
             AddressRow(email: Binding(get: { typed }, set: { adding = $0; addProblem = nil }),
-                       canSignIn: true,            // never greyed: without Claude Code it says why (addByAddress)
-                       signIn: { addProblem = addByAddress() },
+                       canSignIn: true, signInTitle: "Remember",
+                       signIn: { addProblem = rememberAddress() },
                        cancel: { adding = nil; addProblem = nil })
-            rowLine(addProblem ?? AddAccountWords.signInLine(profile: entry.name, typed: typed),
+            rowLine(addProblem ?? AddAccountWords.rememberLine(profile: entry.name),
                     color: addProblem == nil ? nil : face.danger)
         } else {
             ViewThatFits(in: .horizontal) {
@@ -1822,19 +1724,18 @@ struct AccountSettings: View {
     }
 
     /// The accounts found on this Mac (Accounts.swift), in macOS's own menu with two lines a row (AddAccount.swift): the
-    /// address, then in grey what is known of it. One click adds it; other profiles' are greyed and can't be added; then
-    /// Sign in to another account…. Found accounts show no usage: limits are read only for a profile's own accounts.
+    /// address, then in grey what is known of it. One click remembers it (nothing signs in); other profiles' are greyed
+    /// and can't be added; then Another address….
     private var addAccountMenu: some View {
         AddAccountKey(pressed: addOpen)
             .accessibilityHidden(true)                  // the layer over it is the control: VoiceOver reads it once
             .overlay {
                 MenuTrigger(label: "Add account", opened: { addOpen = $0 }) {
                     let found = FoundAccountsCache.list(for: entry, among: model.accounts)
-                    let rows = AddAccountPopup.rows(found: found, profile: entry.name, canSignIn: model.claudeNow() != nil || !model.claudeLooked)
+                    let rows = AddAccountPopup.rows(found: found, profile: entry.name)
                     return AddAccountPopup.menu(rows,
                         onAdd: { id in if let f = found?.first(where: { $0.id == id }) { addFound(f) } },
-                        onOther: { adding = ""; addProblem = nil },
-                        onInstall: { model.showInstallHelp() })
+                        onOther: { adding = ""; addProblem = nil })
                 }
             }
             .fixedSize()
@@ -1846,64 +1747,40 @@ struct AccountSettings: View {
         FoundAccountsCache.forget()
     }
 
-    /// Sign in to another account…: a folder of its own for the new account, the account added (its seat comes with
-    /// the sign-in), and Claude Code's sign-in in Terminal with the address filled in.
-    func addByAddress() -> String? {
-        let email = (adding ?? "").trimmingCharacters(in: .whitespaces)
-        guard email.contains("@"), !email.hasPrefix("@"), !email.hasSuffix("@") else { return "Type the account's email address." }
-        let known = [entry.seat?.email, expected].compactMap { $0?.lowercased() } + entry.standby.map { $0.email.lowercased() }
-        if known.contains(email.lowercased()) { return "That's already one of \(entry.name)'s accounts." }
-        if let owner = model.accounts.first(where: { o in o.id != entry.id && ([o.seat?.email, Account.expectedEmail(configDir: o.configDir)] + o.standby.map(\.email)).contains { $0?.lowercased() == email.lowercased() } }) {
-            return "That's the account of “\(owner.name)”. One profile per account."
-        }
-        guard let claude = model.requireClaude() else { return model.noClaudeWhy }
-        guard let dir = StandbyFolder.make(for: email) else { return "Couldn't make a folder for its sign-in in your home folder." }
-        let s = StandbyAccount(email: email, configDir: dir)
-        entry.standby.append(s)
-        guard ClaudeCLI.openLogin(claude, account: Account(AccountEntry(id: s.id, name: entry.name, label: entry.label, configDir: dir)), email: email) else {
-            return "Terminal didn't open: use Sign in… on the account."
-        }
-        SignInAttempts.began(s.id, folderSeat: nil)             // a folder made just now: nothing in it yet
-        adding = nil
-        FoundAccountsCache.forget()
-        return nil
-    }
-
-    /// Sign in… on a standby account: its folder (made now if it has none) and Claude Code's sign-in there in Terminal.
-    func signInStandby(_ s: StandbyAccount) {
-        // its kept folder deleted: never made again here (asked before the look for claude)
-        if let k = s.configDir, let why = ClaudeCLI.goneLine(k) { model.message = why; return }
-        guard let i = entry.standby.firstIndex(where: { $0.id == s.id }), let claude = model.requireClaude() else { return }
-        var dir = s.configDir
-        if dir == nil {
-            guard let made = StandbyFolder.make(for: s.email) else { model.message = "Couldn't make a folder for its sign-in"; return }
-            dir = made
-            entry.standby[i].configDir = made
-        }
-        guard let dir else { return }
-        // what the folder is signed in to now, kept in memory: the sign-in is under way until that changes (AddAccount.swift)
-        let was = FolderFactsCache.facts(dir)?.seat
-        if ClaudeCLI.openLogin(claude, account: Account(AccountEntry(id: s.id, name: entry.name, label: entry.label, configDir: dir)), email: s.email) {
-            SignInAttempts.began(s.id, folderSeat: was)
+    /// Another address…: the address remembered as a standby account, signed out (nothing signs in now). Returns why it
+    /// can't be, or nil.
+    func rememberAddress() -> String? {
+        switch entry.remembering(adding ?? "", among: model.accounts) {
+        case .failure(let why): return why.words
+        case .success(let out):
+            entry = out
+            adding = nil
+            FoundAccountsCache.forget()
+            return nil
         }
     }
 
-    /// Takes the account off this profile. Its folder and the sign-in in it stay where they are (cl_audit never deletes
-    /// a Claude Code folder); Add account finds it again.
-    func removeStandby(_ s: StandbyAccount) {
+    /// Forget… on a standby account: asks first, then takes it off this profile. Nothing on disk changes; it can be
+    /// added again, and it is remembered again whenever it signs in to this profile's folder.
+    func forgetStandby(_ s: StandbyAccount) {
+        let a = NSAlert()
+        a.messageText = "Forget \(Privacy.masked(s.email))?"
+        a.informativeText = "\(entry.name.isEmpty ? "This profile" : entry.name) stops listing it. Nothing on this Mac changes, and Add account can bring it back."
+        a.addButton(withTitle: "Forget"); a.addButton(withTitle: "Cancel")
+        guard a.runModal() == .alertFirstButtonReturn else { return }
         entry.standby.removeAll { $0.id == s.id }
-        SignInAttempts.forget(s.id)
+        if picked == s.id { picked = nil }
         FoundAccountsCache.forget()
     }
 
     /// Login's (i): what it is, the pop-up, and Renew sign-in (now an item in the pop-up).
     var loginInfo: String {
-        "The claude.ai accounts this profile has. It works on one at a time, IN USE: the one Claude Code in its folder is signed in to. The others STANDBY: their limits show too, read from a sign-in kept for each in a small folder of its own, so you can see which has room. Add account lists the accounts found on this Mac (signed in in a Claude Code folder, or used by this profile's Claude window) and Sign in to another account…, which opens Claude Code's own sign-in in Terminal in a new folder. An account belongs to one profile. cl_audit's background agent reads each sign-in from the Keychain, read-only, the same way Claude Code does; no new Keychain permission, and no sign-in is ever copied. Removing a standby account leaves its folder as it is.\n\nRenew sign-in (in the account in use's pop-up): Claude Code's sign-in uses a short-lived access key, which Claude Code swaps for a fresh one whenever it runs. cl_audit only reads that key, so after a while without Claude Code it runs out and the usage stops updating. On: cl_audit then runs Claude Code once in the background (a one-line prompt, \"Reply with OK.\", on Haiku, nothing saved) so it swaps the key; at most every 30 min, using a sliver of this profile's usage. Off: the usage waits until you next use Claude Code. Standby sign-ins are renewed while their folders are there; when one runs out, its box says when it was last read."
+        "The claude.ai accounts this profile has. Its Claude Code folder holds one sign-in at a time: IN USE is the account signed in there, and the only one whose limits cl_audit reads. The others are STANDBY: remembered on the profile, signed out, with no folder of their own, so they show no limits, only when they were last in use. Switching to one signs Claude Code in again on the same folder, as that account (the Switch page); the account it leaves goes on standby. Whatever account signs in to the folder, even from Terminal, is the one in use: cl_audit follows it. Add account remembers an account found on this Mac or an address you type; nothing signs in until you switch to it. An account belongs to one profile. cl_audit's background agent reads the sign-in from the Keychain, read-only, the same way Claude Code does; no new Keychain permission, and no sign-in is ever copied.\n\nRenew sign-in (in the account in use's pop-up): Claude Code's sign-in uses a short-lived access key, which Claude Code swaps for a fresh one whenever it runs. cl_audit only reads that key, so after a while without Claude Code it runs out and the usage stops updating. On: cl_audit then runs Claude Code once in the background (a one-line prompt, \"Reply with OK.\", on Haiku, nothing saved) so it swaps the key; at most every 30 min, using a sliver of this profile's usage. Off: the usage waits until you next use Claude Code."
             + (model.claudeKnownMissing ? " Needs Claude Code installed; it wasn't found." : "")
             + (status?.renewNote.map { "\nLast: \($0)" } ?? "")
     }
 
-    /// Add account ▸ Sign in to another account…: the address being typed (nil: the key shows), and why it can't start.
+    /// Add account ▸ Another address…: the address being typed (nil: the key shows), and why it can't be remembered.
     @State var adding: String?
     @State var addProblem: String?
     /// Add account's pop-up is open: its key shows pressed.
@@ -1934,13 +1811,10 @@ struct AccountSettings: View {
         }
     }
 
-    /// What "no sign-in" says: the folder has none. When numbers show anyway because they are read from the account's
-    /// kept sign-in in another folder, it says which part is missing, so a red "In use" isn't read as "not signed in at all".
+    /// What "no sign-in" says: the folder has none (its standby accounts are kept).
     var noSignInWords: String {
-        let numbers = AccountRow(entry: entry, status: status).limits.contains { $0.p != nil }
-        let kept = !(entry.keptFolder ?? "").isEmpty
-        return numbers && kept ? "This folder has no Claude Code sign-in; the account's numbers come from another sign-in."
-                               : "No Claude Code sign-in in this folder yet."
+        entry.standby.isEmpty ? "No Claude Code sign-in in this folder yet."
+                              : "Signed out: no Claude Code sign-in in this folder. Its standby accounts are kept."
     }
 
     /// The sign-in is there but isn't in a form cl_audit knows: with Claude Code's version when it's known.
@@ -1949,15 +1823,18 @@ struct AccountSettings: View {
         return "Signed in, but the sign-in isn't in a form cl_audit knows (Claude Code \(v)): Refresh now, or sign in again from Terminal."
     }
 
-    /// "Log in…": Claude Code's own sign-in in Terminal, with the address filled in, for the folder the numbers are read
-    /// from (the account's own once it has one).
+    /// "Sign in again…": Claude Code's own sign-in in Terminal on the profile's folder, with the account in use's address
+    /// filled in, watched like a switch (SwitchRunner.signInAgain); with no account known, a plain sign-in.
     func logInKey(email: String?) -> some View {
-        Button("Log in…") {
-            let reading = Account(entry.readingEntry())
-            if let why = ClaudeCLI.goneLine(reading.configDir) { model.message = why }
-            else if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: reading, email: email) }
-        }
-        .buttonStyle(.pill(.red, compact: true))
+        Button("Sign in again…") { signInAgain(email: email) }
+            .buttonStyle(.pill(.red, compact: true))
+    }
+
+    func signInAgain(email: String?) {
+        if entry.seat?.email != nil || expected != nil { model.runner(of: entry.id).signInAgain(); return }
+        // a folder that is gone is never made again: nothing starts, the line says so (A4)
+        if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why; return }
+        if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: email) }
     }
 
     /// An account that moved between this profile and another one (AccountNote): the line and OK, which takes it away.
@@ -1986,27 +1863,17 @@ struct AccountSettings: View {
     /// give it a profile with New profile."
     func linkedWords(was: String, at: Date) -> AttributedString {
         let w = Privacy.masked(was)
-        var a = AttributedString("Linked \(Self.when(at)) · was \(w). Stays with \(w): a CI token from claude setup-token, connectors, cloud sessions, and the window's earlier Code sessions (")
+        var a = AttributedString("Switched \(Self.when(at)) · was \(w), now on standby. Stays with \(w): a CI token from claude setup-token, connectors, cloud sessions, and the sessions it ran (")
         var howTo = AttributedString("how-to")
         howTo.link = URL(string: "https://github.com/n-uf/cl_audit#moving-a-profile-to-another-account")
-        var newProfile = AttributedString("New profile")
-        newProfile.link = URL(string: Self.newProfileLink)
-        a += howTo + AttributedString("). To watch \(w) again, give it a profile with ") + newProfile + AttributedString(".")
+        a += howTo + AttributedString(").")
         return a
     }
-
-    /// The "New profile" link in a grey line: opens the New profile page.
-    static let newProfileLink = "cl-audit-settings://new-profile"
 
     func rowLine(_ s: AttributedString) -> some View {
         Text(s).font(.system(size: 10.5)).foregroundStyle(face.muted)
             .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
             .padding(.bottom, 2)
-            .environment(\.openURL, OpenURLAction { url in
-                guard url.absoluteString == Self.newProfileLink else { return .systemAction }
-                model.startNew()
-                return .handled
-            })
     }
 
     /// One line of the Account pop-up.
@@ -2049,6 +1916,9 @@ struct AccountSettings: View {
         items.append(LoginItem(id: "d2", kind: .divider))
         // without Claude Code the items that need it are greyed; this one, right above them, says why
         if !canSignIn { items.append(LoginItem(id: "install", title: ClaudeInstall.missingInstall) { model.showInstallHelp() }) }
+        if move == nil {
+            items.append(LoginItem(id: "again", title: "Sign in again…", enabled: canSignIn) { signInAgain(email: linked ?? here) })
+        }
         items.append(LoginItem(id: "renew", title: "Renew sign-in by itself", enabled: canSignIn, kind: .toggle(entry.autoRenew)) {
             entry.autoRenew.toggle()
         })
