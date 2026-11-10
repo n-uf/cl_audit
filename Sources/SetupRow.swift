@@ -84,7 +84,17 @@ struct SetupRow: View {
 
     /// What a plain backup left out because it held a key.
     static func keysLeftOutWords(_ names: [String]) -> String {
-        "\(listed(names)) held a key: left out of backups; it travels only in the encrypted export of the profile as it is now."
+        "\(listed(names)) held a key: left out of backups; \(names.count == 1 ? "it travels" : "they travel") only in the encrypted export of the profile as it is now."
+    }
+
+    /// Hooks of settings.json a plain backup dropped whole (a hook is never blanked: Claude Code would ignore the whole file).
+    static func hooksDroppedWords(_ names: [String]) -> String {
+        "\(names.count == 1 ? "a hook held a key" : "\(names.count) hooks held a key"): left out of backups (\(listed(names))); \(names.count == 1 ? "it travels" : "they travel") only in the encrypted export of the profile as it is now."
+    }
+
+    /// Permission rules a plain backup dropped.
+    static func rulesDroppedWords(_ names: [String]) -> String {
+        "\(names.count == 1 ? "a permission rule held a key" : "\(names.count) permission rules held a key"): left out of backups (\(listed(names))); \(names.count == 1 ? "it travels" : "they travel") only in the encrypted export of the profile as it is now."
     }
 
     private static func settingsStatus(_ sp: SessionsRestore.SetupPlan) -> SessionsRestore.SetupPlan.Status? {
@@ -170,6 +180,8 @@ struct SetupRow: View {
                     if !undone, !sp.leftOut, !sp.execManual.isEmpty { small(Self.execManualWords(sp, imported: imported), color: face.caution) }
                     if !undone, sp.envBlanked { small(Self.envBlankedWords, color: face.caution) }
                     if !undone, !sp.keysBlanked.isEmpty { small(Self.keysBlankedWords(sp.keysBlanked), color: face.caution) }
+                    if !undone, !sp.hooksDropped.isEmpty { small(Self.hooksDroppedWords(sp.hooksDropped), color: face.caution) }
+                    if !undone, !sp.rulesDropped.isEmpty { small(Self.rulesDroppedWords(sp.rulesDropped), color: face.caution) }
                     if !undone, !sp.keysLeftOut.isEmpty { small(Self.keysLeftOutWords(sp.keysLeftOut), color: face.caution) }
                     if !undone, !sp.settingsDiffer.isEmpty { small("settings.json here stays as it is; the one in the \(imported ? "file" : "backup") differs in \(sp.settingsDiffer.prefix(6).joined(separator: ", "))", color: face.caution) }
                     ForEach(Array(sp.notes.enumerated()), id: \.offset) { _, s in small(s, color: face.caution) }

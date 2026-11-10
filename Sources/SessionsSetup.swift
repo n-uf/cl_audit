@@ -100,15 +100,80 @@ enum Setup {
         else if j["env"] != nil { j.removeValue(forKey: "env") }
         return try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     }
-    /// settings.json as a plain backup keeps it: `envBlanked`, and then every string value anywhere in it (an array element too) that the
-    /// Export page's key scan (SecretScan) matches blanked to "" as well, its key kept: an apiKeyHelper like `echo sk-…`, a bearer token in
-    /// a permissions.allow entry, a token in a nested value. `keys` names where (dotted paths, "permissions.allow[2]": names only, never
-    /// a value, cut to plain short ones). A key that is itself a match is dropped, listed as "(a key)". nil: not a JSON object.
-    /// Nothing is ever run.
-    static func secretsBlanked(_ d: Data) -> (data: Data, keys: [String])? {
+    /// What a plain backup writes for settings.json (`secretsBlanked`), and what it said about it: `keys` where a value was blanked,
+    /// `hooks` the hook entries that were dropped ("PreToolUse (Bash)"), `rules` the permission rules that were dropped
+    /// ("permissions.deny[1]"): names only, never a value.
+    struct Blanked {
+        var data: Data
+        var keys: [String]
+        var hooks: [String]
+        var rules: [String]
+    }
+
+    /// Whether a JSON value, or any name or value inside it, is matched by the Export page's key scan (SecretScan).
+    static func holdsKey(_ v: Any) -> Bool {
+        if let s = v as? String { return !SecretScan.scan(Data(s.utf8)).isEmpty }
+        if let a = v as? [Any] { return a.contains { holdsKey($0) } }
+        if let o = v as? [String: Any] { return o.contains { holdsKey($0.key) || holdsKey($0.value) } }
+        return false
+    }
+
+    /// settings.json as a plain backup keeps it: `envBlanked`, then the Export page's key scan (SecretScan) over every string in it:
+    ///  - inside `hooks`, never a blank: a hook entry any of whose values matches (a command, an http hook's url or headers) is dropped
+    ///    whole, its matcher group too when that empties, and the event too when that empties. Claude Code 2.1.318 checks each hook
+    ///    against its schema before it applies the file: an http hook's `url` of "" fails `url()`, and for PreToolUse and
+    ///    PermissionRequest that is a fatal error ("nothing it sits in is applied"): the restored file would be ignored whole.
+    ///    A blanked command hook would pass but run an empty command, so a guard would silently stop guarding.
+    ///  - in `permissions.allow`, `deny` and `ask`, a rule that matches is dropped (a "" rule is skipped with a warning: "Invalid
+    ///    permission rule … was skipped").
+    ///  - any other matching string value, anywhere (an array element too), is blanked to "" with its key kept: the same review found
+    ///    "" safe there (`apiKeyHelper`: an empty string is ignored; `statusLine.command` and the rest accept ""). An apiKeyHelper like
+    ///    `echo sk-…` and a value deep in the file are such values.
+    /// A name that is itself a match is dropped, listed as "(a key)". The lists are dotted paths and hook names: names only, never a
+    /// value, cut to plain short ones. nil: not a JSON object. Nothing is ever run.
+    static func secretsBlanked(_ d: Data) -> Blanked? {
         guard let first = envBlanked(d), var j = (try? JSONSerialization.jsonObject(with: first)) as? [String: Any] else { return nil }
         var keys = Set<String>()
+        var hooks: [String] = [], rules: [String] = []
         func join(_ path: String, _ k: String) -> String { path.isEmpty ? k : path + "." + k }
+        func label(_ s: String) -> String { SessionsBackup.oneLine(s, max: 40) }
+        /// `hooks`: nil when the whole value goes (not the shape Claude Code reads).
+        func hooksValue(_ v: Any) -> Any? {
+            guard let events = v as? [String: Any] else {
+                if holdsKey(v) { hooks.append("hooks"); return nil }
+                return v
+            }
+            var out: [String: Any] = [:]
+            for (ev, val) in events {
+                if holdsKey(ev) { hooks.append("(an event name)"); continue }
+                let evName = label(ev)
+                guard let groups = val as? [Any] else {
+                    if holdsKey(val) { hooks.append(evName) } else { out[ev] = val }
+                    continue
+                }
+                var kept: [Any] = []
+                for g in groups {
+                    guard var group = g as? [String: Any] else {
+                        if holdsKey(g) { hooks.append(evName) } else { kept.append(g) }
+                        continue
+                    }
+                    let matcher = group["matcher"] as? String
+                    let tag = matcher.map { "\(evName) (\(holdsKey($0) ? "a matcher" : label($0)))" } ?? evName
+                    guard let list = group["hooks"] as? [Any] else {
+                        if holdsKey(group) { hooks.append(tag) } else { kept.append(group) }       // (the older shape: the hook is the group)
+                        continue
+                    }
+                    if holdsKey(group.filter { $0.key != "hooks" }) { hooks += Array(repeating: tag, count: max(1, list.count)); continue }
+                    let keep = list.filter { e in if holdsKey(e) { hooks.append(tag); return false }; return true }
+                    if keep.isEmpty, !list.isEmpty { continue }
+                    group["hooks"] = keep
+                    kept.append(group)
+                }
+                if kept.isEmpty, !groups.isEmpty { continue }
+                out[ev] = kept
+            }
+            return out
+        }
         func walk(_ v: Any, _ path: String) -> Any {
             if let s = v as? String {
                 if SecretScan.scan(Data(s.utf8)).isEmpty { return s }
@@ -119,7 +184,16 @@ enum Setup {
                 var out: [String: Any] = [:]
                 for (k, x) in o {
                     if !SecretScan.scan(Data(k.utf8)).isEmpty { keys.insert(SessionsBackup.oneLine(join(path, "(a key)"), max: 100)); continue }
-                    out[k] = walk(x, join(path, SessionsBackup.oneLine(k, max: 40)))
+                    if path.isEmpty, k == "hooks" { if let h = hooksValue(x) { out[k] = h }; continue }
+                    if path == "permissions", ["allow", "deny", "ask"].contains(k), let list = x as? [Any] {
+                        var kept: [Any] = []
+                        for (i, e) in list.enumerated() {
+                            if holdsKey(e) { rules.append("permissions.\(k)[\(i)]") } else { kept.append(e) }
+                        }
+                        out[k] = kept
+                        continue
+                    }
+                    out[k] = walk(x, join(path, label(k)))
                 }
                 return out
             }
@@ -127,7 +201,30 @@ enum Setup {
         }
         j = (walk(j, "") as? [String: Any]) ?? [:]
         guard let out = try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return nil }
-        return (out, keys.sorted())
+        return Blanked(data: out, keys: keys.sorted(), hooks: hooks.map { SessionsBackup.oneLine($0, max: 100) }.sorted(), rules: rules.sorted())
+    }
+
+    /// The kinds of key in a file for a plain backup: the byte scan, and for a file that starts with a UTF-16 byte order mark (FF FE or
+    /// FE FF) also the scan of its decoding, as a settings file is decoded (a script saved by an editor as UTF-16 would otherwise never
+    /// match: its bytes have a zero between letters). nil: it couldn't be read, or it is a UTF-16 file over 8 MB (not decoded): the caller
+    /// counts nil as a match.
+    static func keysIn(path: String) -> Set<Secret>? {
+        guard var found = SecretScan.scan(path: path) else { return nil }
+        let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { return nil }
+        var mark = [UInt8](repeating: 0, count: 2)
+        guard st.st_size >= 2, pread(fd, &mark, 2, 0) == 2, (mark == [0xFF, 0xFE]) || (mark == [0xFE, 0xFF]) else { return found }
+        guard st.st_size <= 8 << 20, let d = SessionsRestore.read(fd, size: st.st_size) else { return nil }       // (the caller counts nil as a match)
+        let le = mark[0] == 0xFF
+        let body = d.dropFirst(2)
+        let units = stride(from: body.startIndex, to: body.startIndex + body.count / 2 * 2, by: 2).map { i -> UInt16 in
+            le ? UInt16(body[i]) | UInt16(body[i + 1]) << 8 : UInt16(body[i]) << 8 | UInt16(body[i + 1])
+        }
+        found.formUnion(SecretScan.scan(Data(String(decoding: units, as: UTF16.self).utf8)))
+        return found
     }
     /// Why a skill (or a folder of agents, commands, output styles) is left out whole: the walk had to stop in it.
     static let cutWords = "too many files, or folders nested too deep: left out whole"

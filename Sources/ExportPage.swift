@@ -307,6 +307,11 @@ enum ExportWords {
             let names = sp.keysBlanked.prefix(4).joined(separator: ", ") + (sp.keysBlanked.count > 4 ? ", …and \(sp.keysBlanked.count - 4) more" : "")
             out.append("settings.json comes with \(sp.keysBlanked.count == 1 ? "a value" : "\(sp.keysBlanked.count) values") blank where a backup found a key (\(names)). Export the profile as it is now to carry the keys.")
         }
+        if setup, image, !sp.hooksDropped.isEmpty || !sp.rulesDropped.isEmpty {
+            let k = sp.hooksDropped.count + sp.rulesDropped.count
+            let names = (sp.hooksDropped + sp.rulesDropped).prefix(4).joined(separator: ", ") + (k > 4 ? ", …and \(k - 4) more" : "")
+            out.append("settings.json comes without \(k == 1 ? "a hook or permission rule" : "\(k) hooks and permission rules") that held a key (\(names)): a backup doesn't keep one. Export the profile as it is now to carry \(k == 1 ? "it" : "them").")
+        }
         if setup, image, !sp.keysLeftOut.isEmpty {
             out.append("\(sp.keysLeftOut.prefix(4).joined(separator: ", "))\(sp.keysLeftOut.count > 4 ? ", …" : "") held a key and isn't in the backup, so the image lacks \(sp.keysLeftOut.count == 1 ? "it" : "them"): export the profile as it is now to carry \(sp.keysLeftOut.count == 1 ? "it" : "them").")
         }

@@ -776,6 +776,8 @@ enum SessionsExport {
         /// From a plain backup: where its settings.json held a key and has a blank now, and what it left out for holding one (names only).
         var keysBlanked: [String] = []
         var keysLeftOut: [String] = []
+        var hooksDropped: [String] = []         // hooks and permission rules of its settings.json a plain backup dropped (names only)
+        var rulesDropped: [String] = []
         var counts: Setup.Counts { Setup.Counts(units) }
         func isSensitive(_ u: Setup.Unit) -> Bool { u.sensitive || hookUnits.contains(u) }
         var sensitive: Setup.Counts { Setup.Counts(units.filter(\.sensitive)) }
@@ -786,7 +788,7 @@ enum SessionsExport {
         var isEmpty: Bool { units.isEmpty }
         mutating func add(_ o: SetupPreview) {
             hookUnits.formUnion(o.hookUnits); hooksUnknown = hooksUnknown || o.hooksUnknown; taskPrompts += o.taskPrompts; envBlanked = envBlanked || o.envBlanked
-            keysBlanked += o.keysBlanked; keysLeftOut += o.keysLeftOut
+            keysBlanked += o.keysBlanked; keysLeftOut += o.keysLeftOut; hooksDropped += o.hooksDropped; rulesDropped += o.rulesDropped
             units += o.units; files += o.files; bytes += o.bytes; keyedUnits += o.keyedUnits
             for (k, v) in o.keyKinds { keyKinds[k, default: 0] += v }
             extra.hooks += o.extra.hooks; extra.plugins += o.extra.plugins; extra.statusLine = extra.statusLine || o.extra.statusLine
@@ -833,7 +835,10 @@ enum SessionsExport {
         sp.hooksUnknown = !known
         // a plain backup's settings.json has its env values blanked: an export from it carries the blank ones (said on the page)
         if part.source == nil, let b = part.backup, let m = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) {
-            if files.contains(where: { $0.rel == "settings.json" }) { sp.envBlanked = m.envBlanked == true; sp.keysBlanked = m.secretBlanked ?? [] }
+            if files.contains(where: { $0.rel == "settings.json" }) {
+                sp.envBlanked = m.envBlanked == true; sp.keysBlanked = m.secretBlanked ?? []
+                sp.hooksDropped = m.secretHooksDropped ?? []; sp.rulesDropped = m.secretRulesDropped ?? []
+            }
             sp.keysLeftOut = m.secretLeftOut ?? []
         }
         for f in files {
@@ -1569,7 +1574,9 @@ enum SessionsExport {
                                          dataDir: "", codeDir: "", items: items, setupLeftOut: setupNames.isEmpty ? nil : Array(Set(setupNames)).sorted(),
                                          configLeftOut: configLeftOut, envBlanked: items.contains { $0.path == "setup/settings.json" } ? m.envBlanked : nil,
                                          secretBlanked: items.contains { $0.path == "setup/settings.json" } ? m.secretBlanked : nil,
-                                         secretLeftOut: setup && !zip ? m.secretLeftOut : nil)
+                                         secretLeftOut: setup && !zip ? m.secretLeftOut : nil,
+                                         secretHooksDropped: items.contains { $0.path == "setup/settings.json" } ? m.secretHooksDropped : nil,
+                                         secretRulesDropped: items.contains { $0.path == "setup/settings.json" } ? m.secretRulesDropped : nil)
         mm.version = SessionsBackup.neededVersion(items, move: move)    // the lowest that holds it: 26.11.8 imports a file without format-3 parts
         if move { mm.move = true }
         po.version = mm.version

@@ -38,6 +38,8 @@ extension SessionsRestore {
         var envBlanked = false                  // the backup's settings.json has its env values blanked (a plain backup's)
         var keysBlanked: [String] = []          // where its settings.json held a key and has a blank now ("permissions.allow[2]": names only)
         var keysLeftOut: [String] = []          // what the backup left out for holding a key ("script hooks/x.sh", "the plugin marketplaces")
+        var hooksDropped: [String] = []         // hooks of its settings.json the backup dropped for holding a key ("PreToolUse (Bash)")
+        var rulesDropped: [String] = []         // permission rules it dropped for holding one ("permissions.deny[1]")
 
         func entries(_ s: Status) -> [Entry] { entries.filter { $0.status == s } }
         var newEntries: [Entry] { entries.filter { $0.status == .new } }

@@ -371,6 +371,8 @@ enum SessionsRestore {
             // and the values the key scan matched (where, never what), and the files left out for holding a key
             p.setup.keysBlanked = plainSetup.contains { $0.path == "setup/settings.json" } ? (m.secretBlanked ?? []) : []
             p.setup.keysLeftOut = m.secretLeftOut ?? []
+            p.setup.hooksDropped = plainSetup.contains { $0.path == "setup/settings.json" } ? (m.secretHooksDropped ?? []) : []
+            p.setup.rulesDropped = plainSetup.contains { $0.path == "setup/settings.json" } ? (m.secretRulesDropped ?? []) : []
         }
 
         // 3c. the rest of the window's claude_desktop_config.json (MCP settings): left out unless asked, only where there is none
