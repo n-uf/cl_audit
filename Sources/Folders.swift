@@ -109,8 +109,8 @@ enum FolderRules {
         return out
     }
 
-    /// A standby entry for the account signed in: by its seat, or, for one remembered by its address only (Add account ▸
-    /// Another address…, not signed in yet), by the address (cl_quick's placeholder rule).
+    /// A standby entry for the account signed in: by its seat, or, for one remembered by its address only (from an older
+    /// build's Another address…, not signed in yet), by the address (cl_quick's placeholder rule).
     static func isThat(_ s: Seat, _ q: StandbyAccount) -> Bool {
         if let seat = q.seat { return s.same(seat) }
         return s.email.map { $0.lowercased() == q.email.lowercased() } ?? false
@@ -125,26 +125,27 @@ enum FolderRules {
         return (now, owner)
     }
 
-    /// The claude.ai account id the profile's Claude window last used (lastKnownAccountUuid in its data folder's
-    /// config.json, while a sign-in is stored there), or nil. Only the id: nothing else from that file is read or kept.
-    /// The usual Claude app is checked too.
+    /// The claude.ai account id the profile's Claude window is signed in to (AppSignIn: the app's log after its launch,
+    /// else its data folder's config.json), or nil (signed out, or not known). Only the id is kept.
     static func windowAccount(_ e: AccountEntry) -> String? {
-        guard e.claudeWindow else { return nil }
-        let dir = Account(e).claudeUserDataDir ?? expand(FolderKey.standardDataDir)
-        guard let data = FileManager.default.contents(atPath: (dir as NSString).appendingPathComponent("config.json")),
-              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              j.keys.contains(where: { $0.hasPrefix("oauth:tokenCache") }),
-              let id = j["lastKnownAccountUuid"] as? String, !id.isEmpty else { return nil }
-        return id
+        let l = AppSignIn.cached(for: e)
+        return l.state == .known ? l.account : nil
     }
 
     /// The profile's Claude window is signed in to another claude.ai account than its Claude Code folder (or, with
-    /// none there, than the account the profile is linked to). The window's own sign-in is left alone: a switch changes
-    /// only Claude Code's.
+    /// none there, than the account the profile works on). Said plainly; the window's own sign-in is the person's.
     static func windowOnAnotherAccount(_ e: AccountEntry, signedIn: (String) -> Seat? = Account.signedInSeat,
                                        window: (AccountEntry) -> String? = windowAccount) -> Bool {
         guard let w = window(e), let mine = signedIn(e.configDir)?.account ?? e.seat?.account else { return false }
-        return w != mine
+        return w.lowercased() != mine.lowercased()
+    }
+
+    /// "The Claude app uses a…@example.com; Claude Code uses b…@example.com. Usage shown is Claude Code's.": the two
+    /// sign-ins when they differ, each by its address where one is known on this Mac (else "account <first 8>").
+    static func windowWords(_ e: AccountEntry, window: String, names: [String: String]) -> String {
+        let app = names[window.lowercased()].map(Privacy.masked) ?? "account \(window.prefix(8))"
+        let code = (Account.signedInSeat(configDir: e.configDir) ?? e.seat).map { s in s.email.map(Privacy.masked) ?? "account \(s.account.prefix(8))" } ?? "no account"
+        return "The Claude app uses \(app); Claude Code uses \(code). Usage shown is Claude Code's."
     }
 
     /// A profile that can't be linked because another profile has the seat its folder is signed in to.
