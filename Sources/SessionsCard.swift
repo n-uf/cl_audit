@@ -1,7 +1,7 @@
 // SessionsCard: Settings ▸ a profile ▸ Sessions (after the Claude Code card). What is kept here (Claude Code's
 // transcripts, the Claude window's entries), how long Claude Code keeps its own, and the backups of the profile's
-// sessions (SessionsBackup.swift): made by Back up now (up to 26.11.12 also by each switch that moved them), listed here,
-// deleted here. A switch of 26.11.12 or earlier that stopped half way is said once, with where it left the sessions.
+// sessions (SessionsBackup.swift): made by Back up now (up to 26.11.13 also by each switch that moved them), listed here,
+// deleted here. A switch of 26.11.13 or earlier that stopped half way is said once, with where it left the sessions.
 // Restore… opens the Restore page (RestorePage.swift): a preview first, nothing written until the key is pressed. Where
 // backups go and how many are kept: General. Export… (ExportPage.swift) makes the sessions one file for another Mac or for
 // keeping; Import… (ImportPage.swift) restores such a file, and Undo last import takes back what the last one added.
@@ -25,7 +25,7 @@ struct SessionsCard: View {
     }
     @State private var backups: [Listed] = []
     @State private var targets: [String: String] = [:]             // backup id → the account its switch went to, short
-    /// A switch of 26.11.12 or earlier that stopped half way, not dismissed yet: said once, with where its sessions are.
+    /// A switch of 26.11.13 or earlier that stopped half way, not dismissed yet: said once, with where its sessions are.
     @State private var oldSwitch: SwitchReceipt?
     @State private var retention = Retention()                     // what Claude Code's clean-up does
     private var days: Int? { retention.menuDays }                  // nil: settings.json's own value can't be told (counted as 30)
@@ -46,7 +46,7 @@ struct SessionsCard: View {
     private var switching: Bool { _ = model.tick; return SwitchMarker.blocks(Account(entry)) }
 
     var body: some View {
-        SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. A switch of account moves none of them: each stays with the account it ran on. Backups are quick copies on this Mac, made by Back up now (and, up to 26.11.12, by each switch that moved the sessions); Restore… puts back what is missing, merged, and never overwrites anything. Chats and Projects on claude.ai belong to each account and aren't here.") {
+        SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. A switch of account moves none of them: each stays with the account it ran on. Backups are quick copies on this Mac, made by Back up now (and, up to 26.11.13, by each switch that moved the sessions); Restore… puts back what is missing, merged, and never overwrites anything. Chats and Projects on claude.ai belong to each account and aren't here.") {
             if let s = oldSwitch {
                 SRow(label: "An old switch", first: true, stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {
@@ -273,7 +273,7 @@ struct SessionsCard: View {
         kept = k
     }
 
-    /// What a switch of 26.11.12 or earlier that stopped half way left where: some of the window's sessions sit under the
+    /// What a switch of 26.11.13 or earlier that stopped half way left where: some of the window's sessions sit under the
     /// account it went to (they show while the window is signed in to it), their originals set aside in cl_audit's own
     /// folder (switches/<id>/parked), and the backup made before it holds them all as they were. Its Undo is gone with
     /// the switch that moved sessions: nothing is put back by itself, and its backup is kept from pruning.

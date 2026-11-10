@@ -75,7 +75,7 @@ enum Cleanup {
             if !dry { AccountRemoval.purgeFiles(id) }
             removed.append("files macOS kept for \(Installer.managerID).\(id)")
         }
-        // 3. saved usage of unknown profiles, and of standby accounts (<profile>~<id>.json, 26.11.12 and earlier: a standby
+        // 3. saved usage of unknown profiles, and of standby accounts (<profile>~<id>.json, 26.11.13 and earlier: a standby
         // account isn't read any more)
         for f in (try? fm.contentsOfDirectory(at: Store.statusFolder, includingPropertiesForKeys: nil)) ?? []
         where ["json", "prev"].contains(f.pathExtension) && !ids.contains(f.deletingPathExtension().lastPathComponent) {

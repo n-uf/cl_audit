@@ -1,5 +1,5 @@
 // SessionsBackup: a quick copy of a profile's sessions, on this Mac. One is made by Back up now (Settings ▸ a profile ▸
-// Sessions) and by the default-profile move; up to 26.11.12 every switch that moved the sessions made one too (kind
+// Sessions) and by the default-profile move; up to 26.11.13 every switch that moved the sessions made one too (kind
 // beforeSwitch, with its receipt in records/receipt.json), and those stay listed and restorable. They are kept as
 // General ▸ Backups says.
 //
@@ -376,7 +376,7 @@ enum SessionsBackup {
     /// Makes a backup under `place` and returns what it holds. `window` false leaves the Code-tab list and the sidebar
     /// records out (the window is open: it rewrites its entries from memory). Throws, with nothing left behind, when it
     /// can't be made whole. Takes no lock: Back up now takes it (`manual`), as does the default-profile move.
-    /// A plain backup (Back up now, the default-profile move's; a switch's from 26.11.12 and earlier) keeps no claude_desktop_config.json and keeps settings.json
+    /// A plain backup (Back up now, the default-profile move's; a switch's from 26.11.13 and earlier) keeps no claude_desktop_config.json and keeps settings.json
     /// with every `env` value blanked (`envBlanked`), a hook entry or permission rule the key scan matches dropped, every other value it
     /// matches blanked too (`secretBlanked`; Setup.secretsBlanked), and leaves
     /// out a hook script, a unit holding one, or the plugin marketplaces that hold a key (`secretLeftOut`): those travel only in the

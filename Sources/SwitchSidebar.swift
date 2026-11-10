@@ -1,5 +1,5 @@
 // SwitchSidebar: the Code sidebar's arrangement, put back after a restore writes sessions into another account's folder
-// (RestoreRunner.swift). Up to 26.11.12 a switch carried it across too; a switch now moves no session.
+// (RestoreRunner.swift). Up to 26.11.13 a switch carried it across too; a switch now moves no session.
 //
 // The window keeps its sidebar per account and organisation, and claude.ai syncs it per account, so sessions written
 // into another account's folder arrive there ungrouped. cl_audit notes from the window's mirror

@@ -71,7 +71,7 @@ func fixPatch(_ m: SessionsBackup.Manifest, seconds: Double) {   // made-up dura
     try! JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted]).write(to: f)
 }
 
-/// An old switch's receipt (26.11.12 and earlier wrote them; cl_audit only reads them now), written here as that version did.
+/// An old switch's receipt (26.11.13 and earlier wrote them; cl_audit only reads them now), written here as that version did.
 func saveReceipt(_ r: SwitchReceipt) {
     let dir = SwitchEngine.root.appendingPathComponent(r.id)
     try! fm.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -113,7 +113,7 @@ MainActor.assumeIsolated {
     let model = SettingsModel()
     model.accounts = [main]
 
-    // ---- the backups: an older one, one by Back up now, one an old switch made (26.11.12 and earlier)
+    // ---- the backups: an older one, one by Back up now, one an old switch made (26.11.13 and earlier)
     let src = SessionsBackup.Source(main)
     let place = BackupPrefs.placeURL
     let now = Date()

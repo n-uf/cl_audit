@@ -61,7 +61,7 @@ Nothing pending.
   read when it left is kept for this and never shown), then the one most recently in use.
 - **Gone with the standby accounts' numbers:** "the other account is back" and its Switch back offer, the standby accounts'
   saved numbers (cleared by the clean-up), and **Undo this switch**.
-- **The folders kept for standby sign-ins** (`~/.claude-<name>`, made by 26.11.12 and earlier for each standby account and for
+- **The folders kept for standby sign-ins** (`~/.claude-<name>`, made by 26.11.13 and earlier for each standby account and for
   the account in use) aren't used any more. Each one that is still there is listed under the profile's Accounts, **Folders
   from before**, with **Move to Trash…** (it asks first, says what is in it and names the folder's Keychain item, which
   cl_audit never touches: delete it in Keychain Access if you like) and **Keep it**. A folder that holds sessions is never

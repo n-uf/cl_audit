@@ -1,4 +1,4 @@
-// SwitchEngine: what is left of the switch that moved a profile's Claude window sessions between its accounts (26.11.12
+// SwitchEngine: what is left of the switch that moved a profile's Claude window sessions between its accounts (26.11.13
 // and earlier). A switch now signs Claude Code in again on the profile's own folder and moves nothing (SwitchRunner.swift);
 // what stays here is shared by the writers that still touch the window's files (Restore, Import, the default-profile
 // move, re-pointing a moved session, a move's side files):
@@ -49,7 +49,7 @@ struct SwitchReceipt: Codable, Equatable {
     var backup: String?
     /// The folder that backup is in (General ▸ Backups at the time): a later change of that folder doesn't lose it.
     var backupPlace: String?
-    /// The receipt of the switch this one switched back ("Undo this switch", 26.11.12 and earlier).
+    /// The receipt of the switch this one switched back ("Undo this switch", 26.11.13 and earlier).
     var undoes: String?
 
     /// Something was moved, and the switch was neither linked nor undone: it stopped half way.
@@ -202,7 +202,7 @@ enum SwitchEngine {
 /// Dock icon, the menu bar, the agent's rules and reopening after a Claude update), and a second run on it is refused. It
 /// holds only while the cl_audit that wrote it runs: the same process id, still running cl_audit's program (a crashed
 /// cl_audit whose id another program got holds nothing). Stale marks go at cl_audit's start and on reading. (`standby`
-/// names the run: "restore-…", "repoint-…", "default-…"; a switch of 26.11.12 and earlier put a standby account's id there.)
+/// names the run: "restore-…", "repoint-…", "default-…"; a switch of 26.11.13 and earlier put a standby account's id there.)
 enum SwitchMarker {
     struct Mark: Codable, Equatable { var pid: Int32; var exe: String; var profile: String; var standby: String; var started: Date }
 

@@ -319,7 +319,7 @@ enum LegacyCleanup {
         forgetBackOffers(defaults: defaults)
     }
 
-    /// "The other account is back" (26.11.12 and earlier) is gone with the standby accounts' numbers: its offers
+    /// "The other account is back" (26.11.13 and earlier) is gone with the standby accounts' numbers: its offers
     /// (switches/back/<profile>~<id>.json, cl_audit's own files) and the agent's "was full" marks (sbfull.<key>) go once.
     static func forgetBackOffers(defaults: UserDefaults, root: URL = SwitchEngine.root) {
         try? FileManager.default.removeItem(at: root.appendingPathComponent("back"))

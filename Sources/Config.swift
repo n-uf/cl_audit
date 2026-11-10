@@ -109,7 +109,7 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     /// The profile's other accounts (Accounts.swift): it works on one at a time, the one `seat` and `configDir` are
     /// signed in to; these wait. Older files have none: the profile's one account is the one in use.
     var standby: [StandbyAccount] = []
-    /// Claude Code folders 26.11.12 and earlier made for this profile's accounts (a standby account's own sign-in, and the
+    /// Claude Code folders 26.11.13 and earlier made for this profile's accounts (a standby account's own sign-in, and the
     /// account in use's kept one: `keptFolder` and each standby account's `configDir` in older files). cl_audit no longer
     /// uses them; Settings ▸ the profile ▸ Accounts lists each one that is still there with Move to Trash… and Keep it
     /// (Leftovers.swift). Never deleted silently, and their Keychain items are never touched.

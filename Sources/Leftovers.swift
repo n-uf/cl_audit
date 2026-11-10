@@ -1,4 +1,4 @@
-// Leftovers: the Claude Code folders cl_audit 26.11.12 and earlier made for a profile's accounts (each standby account's
+// Leftovers: the Claude Code folders cl_audit 26.11.13 and earlier made for a profile's accounts (each standby account's
 // own sign-in, ~/.claude-<name>, and the account in use's kept one). A profile is one folder now and its standby accounts
 // are signed out, so those folders are no longer used. They are the person's: listed on the profile's Accounts card, each
 // with Move to Trash… (recoverable from the Trash) and Keep it, never deleted silently.

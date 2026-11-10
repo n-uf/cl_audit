@@ -43,7 +43,7 @@ enum SwitchAlert {
     static let category = "switch"
     static let action = "switch"
     static let later = "later"
-    /// "the other account is back"'s Stay (26.11.12 and earlier): an old alert's button still needs no window.
+    /// "the other account is back"'s Stay (26.11.13 and earlier): an old alert's button still needs no window.
     static let stay = "stay"
     /// Categories older builds registered: taken away when the categories are set again.
     static let retired: Set<String> = ["switchBack", "switchWaitingLinked"]

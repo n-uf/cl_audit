@@ -901,7 +901,7 @@ enum SessionsRestore {
     // MARK: whether one may start
 
     /// Why a restore of this profile may not start, or nil: another restore that stopped half way. (A switch of
-    /// 26.11.12 and earlier that stopped half way no longer blocks: nothing can finish or undo it now, and the Sessions
+    /// 26.11.13 and earlier that stopped half way no longer blocks: nothing can finish or undo it now, and the Sessions
     /// card says what it left where.)
     static func blocker(profile: String, except id: String? = nil) -> String? {
         if let r = unfinished(profile: profile).first(where: { $0.id != id }) {

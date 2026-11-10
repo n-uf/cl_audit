@@ -135,7 +135,7 @@ struct AccountNote: Codable, Equatable, Hashable {
     }
 }
 
-/// What 26.11.12 and earlier kept for a standby account besides what it still keeps: the folder its own sign-in was kept
+/// What 26.11.13 and earlier kept for a standby account besides what it still keeps: the folder its own sign-in was kept
 /// in. Read once, when the profiles file is read, to list that folder as left over (AccountEntry.leftoverFolders).
 struct LegacyStandbyFolder: Decodable { var configDir: String? }
 
