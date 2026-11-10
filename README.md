@@ -8,6 +8,13 @@
 
 # cl_audit
 
+> [!CAUTION]
+> ## Not yet stable
+>
+> **cl_audit is young and still changing. Its settings, the data it stores and the way it reads Claude's files are not final.**
+>
+> Version numbers are dates (YY.M.R), not semantic versions, so any release may change them, and a newer Claude Code or Claude app can stop parts of cl_audit working until it is updated. Backups and exports stay readable by newer versions, but an older cl_audit can't open newer ones. Read the [CHANGELOG](CHANGELOG.md) before you upgrade. For figures you can rely on, Claude's own Settings ▸ Usage page and `/usage` in Claude Code are the source.
+
 Usage audit for all your Claude setups on one Mac. A small background agent inside cl_audit reads how much
 of each **profile**'s 5-hour and weekly limits is used and sends the alerts. Each profile can have its own
 Dock icon showing its usage (a click opens that profile's Claude window) and its own icon in the menu bar. The
