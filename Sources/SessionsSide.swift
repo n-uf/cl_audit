@@ -282,7 +282,7 @@ enum SideFiles {
     /// and returns the part for side.json. `keys`: a file (or history line) with a key in it is left out, unless kept. Nothing in the
     /// Claude Code folder is ever written.
     static func gather(codeDir: String, sessions refs: [SessionRef], kinds: Kinds, keys: SessionsExport.Keys, dir: String, out: URL?,
-                       cancel: () -> Bool = { false }) -> (part: Part, preview: Preview)? {
+                       itemBudget: Int = maxItems, cancel: () -> Bool = { false }) -> (part: Part, preview: Preview)? {
         var part = Part(dir: dir)
         var pv = Preview()
         pv.rewindCarried = kinds.rewind
@@ -298,10 +298,11 @@ enum SideFiles {
             return !k
         }
         func leftOut(_ s: String) { if !part.leftOut.contains(s) { part.leftOut.append(s) } }
-        let itemsCap = "Over \(maxItems) side files in one profile: the rest were left out (the file's list of them would be too big)."
+        // (`itemBudget`: what is left of the cap after the profiles before this one in the same file: the list is one for the file)
+        let itemsCap = "Over \(maxItems) side files in the file: the rest were left out (the file's list of them would be too big)."
         /// A small file carried: written to the image (when making it) with its size and hash.
         func put(_ name: String, _ data: Data) -> Item? {
-            guard seq < maxItems else { leftOut(itemsCap); return nil }
+            guard seq < itemBudget else { leftOut(itemsCap); return nil }
             seq += 1
             let file = "\(dirName)/\(dir)/\(seq)"
             if let sideDir {
@@ -313,7 +314,7 @@ enum SideFiles {
         }
         /// A big file carried (a Rewind backup): cloned or copied into the image, checked after.
         func putFile(_ name: String, _ src: String, bytes: Int64, mode: Int) -> Item? {
-            guard seq < maxItems else { leftOut(itemsCap); return nil }
+            guard seq < itemBudget else { leftOut(itemsCap); return nil }
             seq += 1
             let file = "\(dirName)/\(dir)/\(seq)"
             guard let sideDir else { return Item(name: name, file: file, bytes: bytes, sha: "", mode: mode) }

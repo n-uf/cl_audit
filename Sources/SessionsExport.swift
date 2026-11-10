@@ -1195,7 +1195,10 @@ enum SessionsExport {
                 var refs = SideFiles.sessions(projectsDir: out.appendingPathComponent("transcripts").path)
                 let titles = SideFiles.titles(windowDir: out.appendingPathComponent("window").path)
                 for k in refs.indices { refs[k].title = titles[refs[k].id] }
-                guard let g = SideFiles.gather(codeDir: src.codeDir, sessions: refs, kinds: kinds, keys: job.keys, dir: dir, out: root, cancel: cancel) else { throw ArchiveError("Stopped.") }
+                // (side.json's list is one for the file: each profile gets what the ones before it left of the cap)
+                let used = SideFiles.expected(SideFiles.File(parts: sideParts)).count
+                guard let g = SideFiles.gather(codeDir: src.codeDir, sessions: refs, kinds: kinds, keys: job.keys, dir: dir, out: root,
+                                               itemBudget: max(0, SideFiles.maxItems - used), cancel: cancel) else { throw ArchiveError("Stopped.") }
                 if !g.part.sessions.isEmpty || !g.part.trust.isEmpty { sideParts.append(g.part) }
                 sidePreview.add(g.preview)
             }
