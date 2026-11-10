@@ -131,42 +131,6 @@ struct AccountBoxTitle: View {
     }
 }
 
-/// Add account's key: "ADD ACCOUNT ▾", a menu.
-struct AddAccountKey: View {
-    var pressed = false             // while its pop-up is open
-    var body: some View {
-        KeyLook(pressed: pressed, height: 26, radius: 4, hPad: 11) {
-            HStack(spacing: 5) {
-                Text("Add account")
-                Image(systemName: "chevron.down").font(.system(size: 7.5, weight: .bold))
-            }
-        }
-    }
-}
-
-/// What Add account found, per profile, looked for off the main thread (it reads a few small files and the window's
-/// folder list) and again once a minute; the card, drawn every few seconds, shows the last result. Main thread only.
-enum FoundAccountsCache {
-    private static var kept: [String: (at: Date, list: [FoundAccount])] = [:]
-    private static var looking: Set<String> = []
-
-    /// The last list for this profile, nil while the first look is under way.
-    static func list(for e: AccountEntry, among accounts: [AccountEntry], now: Date = Date()) -> [FoundAccount]? {
-        let key = e.id + "|" + e.standby.map(\.id).joined(separator: ",") + "|" + accounts.map(\.id).joined(separator: ",")
-        let k = kept[key]
-        if (k == nil || now.timeIntervalSince(k!.at) >= 60), !looking.contains(key) {
-            looking.insert(key)
-            DispatchQueue.global(qos: .utility).async {
-                let list = AccountDiscovery.found(for: e, among: accounts)
-                DispatchQueue.main.async { kept[key] = (Date(), list); looking.remove(key) }
-            }
-        }
-        return k?.list
-    }
-
-    static func forget() { kept = [:] }
-}
-
 /// What Claude Code recorded about a folder's account (AccountFacts), read again only when its .claude.json changed:
 /// the account boxes are drawn every few seconds. Main thread only.
 enum FolderFactsCache {

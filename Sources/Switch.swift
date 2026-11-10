@@ -16,7 +16,7 @@ struct SwitchOffer {
 
     /// "<profile>~<standby>": names the page, the alert's action and the menu items.
     var key: String { AccountEntry.switchKey(profile, standby.id) }
-    var short: String { AccountNames.short(standby.email) }
+    var short: String { AccountNames.short(standby.label) }
     /// Its week was full when it left, and hasn't started again yet.
     func knownFull(now: Date = Date()) -> Bool { standby.knownFull(now: now) }
 

@@ -274,7 +274,7 @@ struct StandbyTrays: View {
         // the key never selects or deselects, as in Settings
         return AccountBox(lamp: nil, badge: "Standby", detail: nil, unlit: !selected, dimsContent: true,
                           selected: selected, litBadge: "Switch account", litAction: { open(key) }, compact: true) {
-            Text(Privacy.masked(t.offer.standby.email)).font(.system(size: 12.5, weight: .semibold))
+            Text(Privacy.masked(t.offer.standby.label)).font(.system(size: 12.5, weight: .semibold))
                 .foregroundStyle(selected ? (face.light ? Face.std.theme.text : face.text) : face.soft)
                 .lineLimit(1).truncationMode(.tail).hidesEmail()
                 .frame(maxWidth: .infinity, alignment: .leading)

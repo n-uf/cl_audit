@@ -27,7 +27,7 @@ struct SwitchPage: View {
     /// A sign-in again on the account in use (no standby account picked).
     private var again: Bool { runner.goal?.again == true }
     /// The account it goes to (or went to), short.
-    private var to: String { AccountNames.short(runner.goal?.wantedEmail ?? standby.email) }
+    private var to: String { AccountNames.short(runner.goal.map { $0.wantedEmail.isEmpty ? standby.label : $0.wantedEmail } ?? standby.label) }
     /// The account it came from, short: the one in use when it began.
     private var from: String {
         AccountNames.short(runner.goal?.from?.email ?? entry.seat?.email ?? Account.expectedEmail(configDir: entry.configDir) ?? "its account")
@@ -224,7 +224,7 @@ struct SwitchPage: View {
         func box(_ lit: String?) -> some View {
             AccountBox(lamp: nil, badge: "Standby", detail: s.plan.map(Account.planWords),
                        unlit: !selected, selected: selected, litBadge: lit) {
-                BoxText(text: Privacy.masked(s.email), role: selected ? .title : .softTitle)
+                BoxText(text: Privacy.masked(s.label), role: selected ? .title : .softTitle)
             } content: {
                 BoxText(text: (s.lastInUse.map { "Last in use " + AccountBook.ago($0) } ?? "Not in use on \(name) yet") + ".", role: .note)
             }

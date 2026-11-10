@@ -535,7 +535,7 @@ MainActor.assumeIsolated {
     // ---- the done page's steps and the rows' words
     let made = SessionsMove.Made(id: "work", name: "Work", part: "p1", entry: work, place: 0, signIns: [a1, a2], inDock: true)
     let steps = MoveWords.steps(made, tasks: 2)
-    check(steps.count == 4 && steps[0].contains(a1) && steps[0].contains("Accounts ▸ Add account") && steps[1].hasPrefix("Put it in the Dock") && steps[1].contains("Dock icon ▸ Usage in the Dock")
+    check(steps.count == 4 && steps[0].contains(a1) && steps[0].contains("Accounts ▸ Sign in with another account…") && steps[1].hasPrefix("Put it in the Dock") && steps[1].contains("Dock icon ▸ Usage in the Dock")
           && steps[2].contains("paused") && steps[3].contains("Sessions ▸ Import…"),
           "words: the done page lists each account to sign in, the Dock step and the paused tasks: \(steps)")
     check(dockCalls == 0 && securityCalls == 0, "A: the Dock was never written, the Keychain never asked")

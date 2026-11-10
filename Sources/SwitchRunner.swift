@@ -239,7 +239,7 @@ final class SwitchRunner: ObservableObject {
     private func begin(_ e: AccountEntry, _ g: Goal) {
         clearMarker()
         guard let claude = model?.requireClaude() else { goal = g; releaseWindow(); phase = .failed(model?.noClaudeWhy ?? ClaudeInstall.missing + "."); return }
-        guard ClaudeCLI.openLogin(claude, account: Account(e), email: g.wantedEmail, marker: g.again ? Self.marker(for: profile) : nil) else {
+        guard ClaudeCLI.openLogin(claude, account: Account(e), email: g.wantedEmail.isEmpty ? nil : g.wantedEmail, marker: g.again ? Self.marker(for: profile) : nil) else {
             goal = g; releaseWindow(); phase = .failed("Terminal didn't open."); return
         }
         goal = g
@@ -294,7 +294,8 @@ final class SwitchRunner: ObservableObject {
     }
 
     static func reached(_ g: Goal, _ cur: Seat) -> Bool {
-        if let w = g.wantedSeat { return w.same(cur) }
+        // an account found by its id alone (no organisation known): the same account id is it
+        if let w = g.wantedSeat { return w.organization == nil ? w.account.lowercased() == cur.account.lowercased() : w.same(cur) }
         return cur.email.map { $0.lowercased() == g.wantedEmail.lowercased() } ?? false
     }
 

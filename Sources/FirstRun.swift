@@ -66,7 +66,7 @@ enum FirstRun {
 
     /// The first profile is the default one: Claude Code's default folder ~/.claude with the usual Claude app. So the only
     /// folder offered here is ~/.claude, when it is signed in (address and ids only, never the sign-in itself); another
-    /// account's folder (~/.claude-*) is added later, with Add account or New profile, as a profile or account of its own.
+    /// account's folder (~/.claude-*) is found later by itself (AccountList), or made a profile with New profile.
     static func foundFolders(folders: [FolderChoice] = Detect.configFolders(), among accounts: [AccountEntry] = []) -> [FoundFolder] {
         folders.compactMap { f in
             guard Account.isDefault(configDir: f.path),
@@ -99,9 +99,9 @@ enum FirstRun {
     static func defaultSignedIn() -> Bool { Account.signedInSeat(configDir: signInFolder) != nil }
 
     /// The one line on step 2 when ~/.claude is already signed in.
-    static let usesDefaultLine = "The first profile uses ~/.claude as it is, with the usual Claude app. Other accounts come later, with Add account or New profile."
+    static let usesDefaultLine = "The first profile uses ~/.claude as it is, with the usual Claude app. Other accounts come later, by themselves or with New profile."
     /// The one line under Sign in…, when ~/.claude has no sign-in yet.
-    static let signsIntoDefaultLine = "Sign in… signs Claude Code into ~/.claude, the folder the usual Claude app uses too. Other accounts come later, with Add account or New profile."
+    static let signsIntoDefaultLine = "Sign in… signs Claude Code into ~/.claude, the folder the usual Claude app uses too. Other accounts come later, by themselves or with New profile."
 
     /// Why the optional address can't be used, or nil (empty is fine).
     static func addressProblem(_ email: String) -> String? {
@@ -377,7 +377,7 @@ struct FirstRunPage: View {
     private var accountCard: some View {
         let ready = model.claude != nil
         let found = FirstRun.foundFolders(among: model.accounts)
-        return SCard(title: "2 · Account", info: "The claude.ai account the first profile watches. The first profile is the default one: Claude Code's default folder ~/.claude with the usual Claude app (the one from the Dock or Applications). A signed-in ~/.claude is listed (its address only, never the sign-in). Otherwise Sign in… opens Claude Code's own sign-in in Terminal, in ~/.claude; the browser's claude.ai account decides which account it is. More accounts and profiles come later, in Settings (Add account, New profile), each with its own folder, and its own window.") {
+        return SCard(title: "2 · Account", info: "The claude.ai account the first profile watches. The first profile is the default one: Claude Code's default folder ~/.claude with the usual Claude app (the one from the Dock or Applications). A signed-in ~/.claude is listed (its address only, never the sign-in). Otherwise Sign in… opens Claude Code's own sign-in in Terminal, in ~/.claude; the browser's claude.ai account decides which account it is. More accounts come later by themselves (the accounts found on this Mac are listed on the profile), and more profiles with New profile, each with its own folder and its own window.") {
             VStack(alignment: .leading, spacing: 8) {
                 if !ready {
                     Text("Needs Claude Code first (step 1).").font(.system(size: 11.5)).foregroundStyle(face.muted)

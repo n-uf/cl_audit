@@ -195,6 +195,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     private var cleanupTimer: Timer?
     /// Every few seconds: a profile waiting for a sign-in looks at its folder's record (Reader.watchSignIn).
     private var signInTimer: Timer?
+    private var discoverTimer: Timer?
     private var signInWatch: SignInFiles?
     private var menuBar: MenuBarItems?                  // the profiles' menu bar icons (MenuBar.swift)
     /// Some profile has its icon in the menu bar (the quick chat leaves the accessory role alone then).
@@ -267,11 +268,16 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             self.readers.values.forEach { $0.watchSignIn(); $0.save() }      // save: the account answer (AccountResolver) kept current
             self.noteAccounts()
         }
+        // the accounts found on this Mac: at the start and every minute
+        discoverTimer?.invalidate()
+        discoverAccounts()
+        discoverTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.discoverAccounts() }
         // the folders' .claude.json, the windows' config.json and the Claude app's logs watched: a sign-in changed in
         // Terminal or the Claude app is followed within a second, not at the next look (SignInFiles)
         signInWatch = SignInFiles(onChange: { [weak self] in
             guard let self else { return }
             self.readers.values.forEach { $0.watchSignIn(); $0.save() }
+            self.noteAccounts()
         })
         signInWatch?.watch(Store.load())
         // once the readers run: what older versions left behind (per-profile login items), then the clean-up
@@ -328,6 +334,22 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         guard let list = Store.loadChecked(), FolderRules.noteAccounts(list) != list else { return }
         do { _ = try Store.edit { FolderRules.noteAccounts($0) } }
         catch { agentLog.error("agent: the account a folder is signed in to couldn't be noted: \(String(describing: error), privacy: .public)") }
+    }
+
+    /// The accounts found on this Mac for each profile (AccountList, claude-transplant's logins()/accounts()) go on its
+    /// standby list when no profile has them: read off the main thread, written under the profiles file's lock.
+    private var discovering = false
+    func discoverAccounts() {
+        guard !discovering, let list = Store.loadChecked(), !list.isEmpty else { return }
+        discovering = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let found = AccountList.find(list)
+            if AccountList.adding(found, to: list) != list {
+                do { _ = try Store.edit { AccountList.adding(found, to: $0) } }
+                catch { agentLog.error("agent: the accounts found couldn't be noted: \(String(describing: error), privacy: .public)") }
+            }
+            DispatchQueue.main.async { self?.discovering = false }
+        }
     }
 
     func tick() {

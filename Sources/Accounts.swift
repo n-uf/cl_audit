@@ -6,7 +6,7 @@
 // made in Terminal.
 //
 // Here: what a standby account is, the account book (what a switch affects, which standby account to offer), what Claude
-// Code recorded about a folder's account (no tokens), and the accounts Add account finds on this Mac.
+// Code recorded about a folder's account (no tokens). The accounts found on this Mac are AccountList.swift's.
 
 import Foundation
 
@@ -186,32 +186,6 @@ struct AccountFacts: Equatable {
     }
 }
 
-/// An account Add account offers: found on this Mac, not yet one of the profile's.
-struct FoundAccount: Identifiable, Equatable {
-    var seat: Seat                 // its email is set
-    var plan: String?
-    var org: String?
-    var folder: String?            // a Claude Code folder no profile uses that is signed in to it: its limits show at once
-    var usedInWindow: Date?        // when this profile's Claude window last used it
-    var owner: String?             // the profile that has it (shown dimmed)
-
-    var id: String { seat.account + "/" + (seat.organization ?? "") }
-    var email: String { seat.email ?? "" }
-    var signedIn: Bool { folder != nil }
-
-    // The pop-up's two lines are AddAccount.swift's (`second(profile:)`).
-
-    /// "today", "this week", "in October", "in August 2025".
-    static func whenUsed(_ d: Date, now: Date = Date()) -> String {
-        let cal = Calendar.current
-        if cal.isDate(d, inSameDayAs: now) { return "today" }
-        if now.timeIntervalSince(d) < 7 * 86400 { return "this week" }
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_GB")
-        f.dateFormat = cal.component(.year, from: d) == cal.component(.year, from: now) ? "'in' MMMM" : "'in' MMMM yyyy"
-        return f.string(from: d)
-    }
-}
-
 enum AccountDiscovery {
     /// What Claude Code recorded about every account it knows on this Mac, by account id: each Claude Code folder's
     /// .claude.json and the backups Claude Code keeps of the usual one.
@@ -253,57 +227,4 @@ enum AccountDiscovery {
 
     static func isUUID(_ s: String) -> Bool { UUID(uuidString: s) != nil }
 
-    /// What Add account lists for a profile: accounts signed in in Claude Code folders no profile uses (their limits show
-    /// at once) and the accounts this profile's Claude window has used (they need a sign-in first), each once, by its
-    /// seat; other profiles' accounts dimmed with their name. The profile's own accounts aren't listed. An account with
-    /// no address known is left out (there'd be nothing to sign in as).
-    static func found(for e: AccountEntry, among accounts: [AccountEntry],
-                       facts: [String: AccountFacts] = knownFacts(),
-                       folders: [FolderChoice] = Detect.configFolders(),
-                       window: [(seat: Seat, used: Date?)]? = nil,
-                       signedIn: (String) -> Seat? = Account.signedInSeat) -> [FoundAccount] {
-        var byID: [String: FoundAccount] = [:]
-        var order: [String] = []
-        func add(_ f: FoundAccount) {
-            if var old = byID[f.id] {
-                old.folder = old.folder ?? f.folder
-                old.usedInWindow = [old.usedInWindow, f.usedInWindow].compactMap { $0 }.max()
-                old.plan = old.plan ?? f.plan; old.org = old.org ?? f.org
-                byID[f.id] = old
-            } else { byID[f.id] = f; order.append(f.id) }
-        }
-        // the profile's own folder, and any folder inside or around it, isn't offered
-        for c in folders {
-            guard let s = signedIn(c.path), s.email != nil, !(!e.configDir.isEmpty && FolderKey.overlaps(e.configDir, c.path)) else { continue }
-            let f = AccountFacts.of(configDir: c.path)
-            // a folder another profile uses: that profile's account (shown dimmed below, by its seat)
-            let usedBy = FolderRules.configOwner(c.path, among: accounts, except: e.id)
-            add(FoundAccount(seat: s, plan: f?.plan, org: f?.org, folder: usedBy == nil ? c.path : nil))
-        }
-        // the profile's own window folder (the usual Claude app's for the standard one); none set yet: no window history
-        let windowDir: String? = e.desktop == .standard ? expand(FolderKey.standardDataDir) : Account(e).claudeUserDataDir
-        for w in window ?? windowDir.map({ windowSeats(dataDir: $0) }) ?? [] {
-            // the address from Claude Code's records, or from a folder signed in to that account just above
-            let f = facts[w.seat.account]
-            guard let email = f?.seat.email ?? byID.values.first(where: { $0.seat.account == w.seat.account })?.seat.email else { continue }
-            var seat = w.seat
-            seat.email = email
-            let same = f.map { $0.seat.same(seat) } ?? false
-            add(FoundAccount(seat: seat, plan: same ? f?.plan : nil, org: same ? f?.org : nil, folder: nil, usedInWindow: w.used))
-        }
-        var out: [FoundAccount] = []
-        for id in order {
-            guard var f = byID[id], !e.has(f.seat), !f.seat.same(signedIn(e.configDir)) else { continue }
-            f.owner = FolderRules.seatOwner(f.seat, among: accounts, except: e.id)?.name
-            if f.owner != nil { f.folder = nil }
-            out.append(f)
-        }
-        // signed in first, then the window's by when it last used them, other profiles' last
-        return out.enumerated().sorted { a, b in
-            func rank(_ f: FoundAccount) -> Int { f.owner != nil ? 2 : f.signedIn ? 0 : 1 }
-            if rank(a.element) != rank(b.element) { return rank(a.element) < rank(b.element) }
-            let (x, y) = (a.element.usedInWindow ?? .distantPast, b.element.usedInWindow ?? .distantPast)
-            return x != y ? x > y : a.offset < b.offset
-        }.map(\.element)
-    }
 }

@@ -10,7 +10,7 @@
 // organisation ids) is a profile's here, in use or standing by (one account belongs to one profile), or, for a file that names no
 // account, when a profile here has its name. One whose name a profile here already has (with other accounts) isn't made. The others
 // are made, under the file's id when it is free here (another id when it isn't). A profile made by an import:
-// - has no sign-in. Each of its accounts needs one, through Add account: sign-ins never travel, and the Keychain is never read;
+// - has no sign-in. Each of its accounts needs one (Sign in with another account…): sign-ins never travel, and the Keychain is never read;
 // - works in its own folders, the usual ones for its id (~/.claude-<id> and its own window, Claude-<id>), whatever the file says: never
 //   ~/.claude, never the usual Claude app's window, never a folder the file names. One of those names that is already on this Mac is
 //   used only when no profile has it, it is a plain folder and it holds no sign-in (else the next name), and the page says so;
@@ -735,7 +735,7 @@ enum MoveWords {
     static func profileNotes(_ p: SessionsMove.Plan) -> [String] {
         var out: [String] = []
         if !p.create.isEmpty {
-            out.append("Made with their accounts, looks and settings, but not signed in: after the import, sign in to each account with Add account. No Dock icon yet: you put it in the Dock after the import. Each works in folders of its own, whatever the file says.")
+            out.append("Made with their accounts, looks and settings, but not signed in: after the import, sign in to each account (Accounts ▸ Sign in with another account…). No Dock icon yet: you put it in the Dock after the import. Each works in folders of its own, whatever the file says.")
         }
         if p.fingerprinted { out.append("This file wasn't made as a move: its accounts are only fingerprints, so the profiles come without them. Export ▸ Move to another Mac carries them.") }
         for x in p.notMade.prefix(6) { out.append("\(x.name): not made, \(x.why)") }
@@ -786,7 +786,7 @@ enum MoveWords {
     static func steps(_ m: SessionsMove.Made, tasks: Int = 0) -> [String] {
         var out: [String] = []
         let who = m.signIns.joined(separator: ", ")
-        out.append("Sign in to \(m.signIns.count == 1 ? "its account" : "each of its \(m.signIns.count) accounts") (\(who)): Settings ▸ \(m.name) ▸ Claude Code ▸ Accounts ▸ Add account. Nothing is signed in yet.")
+        out.append("Sign in to \(m.signIns.count == 1 ? "its account" : "each of its \(m.signIns.count) accounts") (\(who)): Settings ▸ \(m.name) ▸ Claude Code ▸ Accounts ▸ Sign in with another account…. Nothing is signed in yet.")
         out.append(m.inDock ? "Put it in the Dock: Settings ▸ \(m.name) ▸ Dock icon ▸ Usage in the Dock, or the key here. It had a Dock icon on the other Mac."
                    : "It had no Dock icon on the other Mac; Settings ▸ \(m.name) ▸ Dock icon ▸ Usage in the Dock turns one on.")
         if tasks > 0 { out.append("\(n(tasks, "scheduled task came", "scheduled tasks came")) paused: turn each on in \(m.name)'s Claude window (open it from its Dock icon), under Scheduled tasks, once it's signed in.") }

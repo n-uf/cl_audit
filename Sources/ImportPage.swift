@@ -715,7 +715,7 @@ struct ImportPage: View {
     }
 
     private var moveCard: some View {
-        SCard(title: "cl_audit's profiles", info: "The file holds cl_audit's own record of its profiles (name, look, Dock place, accounts and the one in use) and its General and backup settings. Import makes the profiles that aren't here and never changes one that is. A profile counts as already here when it has one of the file's accounts (or, for a file with no accounts, the same name). A made profile works in folders of its own, whatever the file says. It is made with its accounts, looks and settings, but not signed in: after the import, sign in to each account with Add account. No Dock icon yet: you put it in the Dock after the import. Nothing runs. Your settings stay unless you take the file's; a backups folder that isn't on this Mac is never taken. Take back the profiles it made undoes exactly what was made.") {
+        SCard(title: "cl_audit's profiles", info: "The file holds cl_audit's own record of its profiles (name, look, Dock place, accounts and the one in use) and its General and backup settings. Import makes the profiles that aren't here and never changes one that is. A profile counts as already here when it has one of the file's accounts (or, for a file with no accounts, the same name). A made profile works in folders of its own, whatever the file says. It is made with its accounts, looks and settings, but not signed in: after the import, sign in to each account (Accounts ▸ Sign in with another account…). No Dock icon yet: you put it in the Dock after the import. Nothing runs. Your settings stay unless you take the file's; a backups folder that isn't on this Mac is never taken. Take back the profiles it made undoes exactly what was made.") {
             if runner.opened?.move == true {
                 SRowLine(text: "A move from another Mac: the file keeps the real accounts, so the entries and tasks go back under them.")
             }
@@ -911,7 +911,7 @@ struct MoveSteps: View {
     }
 
     var body: some View {
-        SCard(title: "On this Mac, next", info: "A profile made by the import is made with its accounts, looks and settings, but not signed in: sign in to each account with Settings ▸ the profile ▸ Claude Code ▸ Accounts ▸ Add account. No Dock icon yet: you put it in the Dock (Settings ▸ the profile ▸ Dock icon ▸ Usage in the Dock). Its scheduled tasks come paused: turn each on in its Claude window, under Scheduled tasks, once it is signed in. Its sessions: Settings ▸ the profile ▸ Sessions ▸ Import…, the same file.") {
+        SCard(title: "On this Mac, next", info: "A profile made by the import is made with its accounts, looks and settings, but not signed in: sign in to each account with Settings ▸ the profile ▸ Claude Code ▸ Accounts ▸ Sign in with another account…. No Dock icon yet: you put it in the Dock (Settings ▸ the profile ▸ Dock icon ▸ Usage in the Dock). Its scheduled tasks come paused: turn each on in its Claude window, under Scheduled tasks, once it is signed in. Its sessions: Settings ▸ the profile ▸ Sessions ▸ Import…, the same file.") {
             ForEach(Array(runner.madeProfiles.enumerated()), id: \.offset) { i, m in
                 SRow(label: m.name, first: i == 0, stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {

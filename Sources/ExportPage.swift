@@ -475,7 +475,7 @@ enum ExportWords {
     }
 
     /// Under the Move row while it is on: sign-ins never travel.
-    static let signInsLine = "Sign-ins don't travel. On the new Mac you sign in again to each account (Add account)."
+    static let signInsLine = "Sign-ins don't travel. On the new Mac you sign in again to each account (Accounts ▸ Sign in with another account…)."
 
     /// "5 sessions and 1 skill hold keys: 3 GitHub tokens, 1 private key": the sessions and the setup units (a skill, CLAUDE.md …) together.
     static func foundWords(_ pv: SessionsExport.Preview?) -> String {
