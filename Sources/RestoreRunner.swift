@@ -28,6 +28,9 @@ struct RestoreKey: Equatable {
     /// An import: the folders picked on this Mac for sessions whose folder isn't here (session id → folder); each is re-pointed there
     /// right after the import, while the window is still closed (SessionsRepoint.swift).
     var repoint: [String: String] = [:]
+    /// A move's side files kept with the backup (SessionsSide.swift): which kinds are written. nil: every kind the backup keeps, the
+    /// project MCP servers left out (an import of a move starts so, like its memory).
+    var side: SideFiles.Kinds? = nil
     var id: String { "\(profile)/\(backup)/\(resume ?? "")" }
 }
 
@@ -82,6 +85,18 @@ final class RestoreRunner: ObservableObject {
     @Published private(set) var repointNote: String?
     /// The Import page keeps its own picks (its preview runner is made again on each choice): told of each pick.
     var onPick: ((String, String?) -> Void)?
+    /// A move's side files the backup keeps (SessionsSide.swift), counted; nil: none.
+    @Published private(set) var sidePlan: SideFiles.Plan?
+    /// The kinds written (the Import page's rows).
+    @Published private(set) var sideKinds = SideFiles.Kinds.nothing
+    /// What writing them did (its receipt), and why when it couldn't.
+    @Published private(set) var sided: SideFiles.Receipt?
+    @Published private(set) var sideNote: String?
+    /// History lines or trust will be written: they are shared files, written only while the window is closed.
+    var sideNeedsWindow: Bool {
+        guard let p = sidePlan else { return false }
+        return (sideKinds.history && p.historyLines > 0) || (sideKinds.trust && p.trust > 0)
+    }
 
     /// Pick its folder on this Mac…: an Open panel for a folder; the pick is kept for the import (nothing is written now).
     func pickFolder(_ session: String) {
@@ -102,7 +117,7 @@ final class RestoreRunner: ObservableObject {
         picks.keys.contains { id in folderSessions.first { $0.id == id }.map { !$0.entries.isEmpty } ?? true }
     }
     /// The window closes for this restore: something in it comes in, or a picked session's entry changes.
-    var closesWindow: Bool { (plan?.windowNeeded ?? false) || windowForPicks }
+    var closesWindow: Bool { (plan?.windowNeeded ?? false) || windowForPicks || sideNeedsWindow }
 
     func setPick(_ session: String, _ folder: String?) {
         guard phase == .ready else { return }
@@ -236,9 +251,12 @@ final class RestoreRunner: ObservableObject {
             }
             let folders = p.isImport && p.refusal == nil ? SessionsImport.foldersMissing(p, backup: b) : 0
             let away = p.isImport && p.refusal == nil ? SessionsRepoint.staged(p, backup: b).filter { !$0.here } : []
+            let side = p.refusal == nil ? SideFiles.stashed(b).map(SideFiles.plan) : nil
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.plan = p; self.notYet = not; self.foldersMissing = folders; self.folderSessions = away
+                self.sidePlan = side.flatMap { $0.isEmpty ? nil : $0 }
+                self.sideKinds = self.sidePlan.map { self.key.side ?? SideFiles.importKinds($0) } ?? .nothing
                 // a pick for a session that no longer comes in is let go
                 self.picks = self.picks.filter { k, _ in away.contains { $0.id == k } }
                 if self.manifest == nil { self.manifest = p.manifest }
@@ -274,8 +292,9 @@ final class RestoreRunner: ObservableObject {
         stopLock.lock(); stopFlag = false; stopLock.unlock()
         progress = (receipt?.back ?? 0, (receipt?.back ?? 0) + p.count)
         reopenTimer?.invalidate(); reopenTimer = nil
-        // (a picked folder rewrites the session's Code-tab entry: the window closes for that too, when it has one)
-        guard p.windowNeeded || windowForPicks else { write(); return }
+        // (a picked folder rewrites the session's Code-tab entry, and a move's history and trust are shared files: the window closes for
+        // those too, when it has one)
+        guard closesWindow else { write(); return }
         // the window stays closed from here until the restore ends; one at a time
         guard claimWindow(w) else {
             note = "Another switch or restore of this Claude window is under way."; return
@@ -313,6 +332,7 @@ final class RestoreRunner: ObservableObject {
         guard let e = entry else { return }
         let target = SessionsRestore.Target(e), b = backup, resume = resumeID, afterSwitch = key.afterSwitch, mark = markName, memory = key.addMemory, setup = addSetup, config = addConfig, tasks = addTasks
         let picked = picks.sorted { $0.key < $1.key }.map { SessionsRepoint.Pick(session: $0.key, folder: $0.value) }
+        let sideKinds = sidePlan == nil ? SideFiles.Kinds.nothing : self.sideKinds
         phase = .writing
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result {
@@ -327,8 +347,20 @@ final class RestoreRunner: ObservableObject {
             if case .success(let r) = result, r.finished != nil, !picked.isEmpty {
                 moved = Result { try SessionsRepoint.apply(target, picks: picked, restore: r.id, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) }) }
             }
+            // a move's side files, last: by the folder each session resolves to here (the one just picked, or its own when it is here)
+            var sided: Result<SideFiles.Receipt?, Error>?
+            if case .success(let r) = result, r.finished != nil, sideKinds != .nothing {
+                var folders: [String: SideFiles.Folder] = [:]
+                if case .success(let m)? = moved { for d in m.sessions where !d.undone { folders[d.session] = (d.from, d.to) } }
+                sided = Result { try SideFiles.apply(target, b, kinds: sideKinds, restore: r.id, folders: folders, windowClosed: { SwitchRunner.windowClosed(e) }) }
+            }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                switch sided {
+                case .success(let s)?: self.sided = s; self.sideNote = s.flatMap { $0.problems.isEmpty ? nil : $0.problems.prefix(3).joined(separator: " ") }
+                case .failure(let err)?: self.sideNote = "The side files weren't written: \(err)."
+                case nil: break
+                }
                 switch moved {
                 case .success(let m)?: self.repointed = m; self.repointNote = m.problems.isEmpty ? nil : m.problems.prefix(3).joined(separator: " ")
                 case .failure(let err)?: self.repointNote = "The picked folders weren't applied: \(err). Pick them again under \(e.name)'s Sessions."
@@ -410,7 +442,8 @@ final class RestoreRunner: ObservableObject {
         if let why = DefaultProfile.undoRefusal(receipt: r.id) { note = why; return }
         if let why = SessionsRestore.blocker(profile: key.profile, except: r.id) { note = why.words; return }
         // (a re-point after the import changed Code-tab entries: its Undo, which runs first, needs the window closed too)
-        guard r.windowTouched || SessionsRepoint.touchesWindow(restore: r.id) else { runUndo(r.id); return }
+        // (and a move's history and trust, shared files, are taken back only while it is closed)
+        guard r.windowTouched || SessionsRepoint.touchesWindow(restore: r.id) || SideFiles.touchesShared(restore: r.id) else { runUndo(r.id); return }
         if let why = SessionsRestore.markerBlocker(profile: key.profile, dataDir: SessionsRestore.Target(e).dataDir, own: markName) { note = why; return }
         guard claimWindow(w) else { note = "Another switch or restore of this Claude window is under way."; return }
         let apps = SwitchRunner.windowApps(e)
@@ -440,6 +473,7 @@ final class RestoreRunner: ObservableObject {
                 case .success(let u):
                     self.receipt = u
                     if let rp = self.repointed { self.repointed = SessionsRepoint.load(rp.id) ?? rp }
+                    if let sd = self.sided { self.sided = SideFiles.load(sd.id) ?? sd }
                     if u.undone == nil {
                         // some restored transcripts are held by a running session: left in place, the receipt stays open
                         self.note = "\(u.undoLeft) restored \(u.undoLeft == 1 ? "transcript is" : "transcripts are") held by a running Claude Code session, so \(u.undoLeft == 1 ? "it was" : "they were") left in place and this restore stays open. Undo again once the session has ended takes the rest."
@@ -533,8 +567,11 @@ final class RestoreRunner: ObservableObject {
     /// Renders only: the page as it looks at a step.
     func preview(_ p: Phase, plan pl: SessionsRestore.Plan? = nil, receipt r: SessionsRestore.Receipt? = nil, progress pr: (Int, Int) = (0, 0),
                  notYet n: NotYet? = nil, note nt: String? = nil, sidebarOpened o: Bool = false, linkSent l: Bool = false,
-                 folders f: [SessionsRepoint.Session]? = nil, picks pk: [String: String]? = nil, repointed rp: SessionsRepoint.Receipt? = nil) {
+                 folders f: [SessionsRepoint.Session]? = nil, picks pk: [String: String]? = nil, repointed rp: SessionsRepoint.Receipt? = nil,
+                 side sp: SideFiles.Plan? = nil, sideKinds sk: SideFiles.Kinds? = nil, sided sd: SideFiles.Receipt? = nil) {
         frozen = true
+        if let sp { sidePlan = sp; sideKinds = sk ?? SideFiles.importKinds(sp) }
+        if let sd { sided = sd }
         if let f { folderSessions = f; foldersMissing = f.count }
         if let pk { picks = pk }
         if let rp { repointed = rp }

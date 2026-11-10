@@ -214,7 +214,7 @@ final class ImportRunner: ObservableObject {
         // (only for the profile Into shows: while a retarget to another one runs, its own recount comes when it lands)
         guard let s = staged, s.target == into, let model else { return }
         let key = RestoreKey(profile: s.target, backup: s.id, place: s.stage.path, addMemory: addMemory, addSetup: addSetup, addConfig: addConfig, addTasks: addTasks,
-                             repoint: picks)
+                             repoint: picks, side: sideKinds)
         let r = RestoreRunner(key: key, model: model)
         r.onPick = { [weak self] session, folder in
             if let folder { self?.picks[session] = folder } else { self?.picks.removeValue(forKey: session) }
@@ -249,6 +249,15 @@ final class ImportRunner: ObservableObject {
     func setTasks(_ on: Bool) {
         guard on != addTasks else { return }
         addTasks = on
+        recount()
+    }
+
+    /// A move's side files (task lists, plans, prompt history, trust, MCP servers, Rewind): which kinds go in (the preview is counted again).
+    /// nil: as a move starts (every kind the file carries, the MCP servers left out).
+    @Published private(set) var sideKinds: SideFiles.Kinds?
+    func setSide(_ k: SideFiles.Kinds) {
+        guard k != (counting?.sideKinds ?? sideKinds) else { return }
+        sideKinds = k
         recount()
     }
 
@@ -388,7 +397,7 @@ final class ImportRunner: ObservableObject {
             // (only the picks for sessions this import adds: the preview let go of the others)
             let keep = counting?.picks ?? picks
             let key = RestoreKey(profile: b.profile, backup: b.id, place: b.place.path, addMemory: addMemory, addSetup: addSetup, addConfig: addConfig, addTasks: addTasks,
-                                 repoint: keep)
+                                 repoint: keep, side: counting?.sidePlan == nil ? nil : (counting?.sideKinds ?? sideKinds))
             if let o = opened { SessionsImport.discard(o.work) }
             opened = nil; staged = nil; counting = nil
             phase = .running(key)
@@ -409,6 +418,7 @@ final class ImportRunner: ObservableObject {
         addConfig = false; addTasks = false
         movePlan = nil; makeProfiles = true; takeSettings = false; moved = nil; moveNote = nil; moveBusy = false
         picks = [:]; checklist = nil
+        sideKinds = nil
     }
 
     /// cl_audit is quitting: the password goes and what is being opened is told to stop. Nothing is removed here (a big tree on the
@@ -454,6 +464,8 @@ struct ImportHappens: View {
     /// The window's MCP settings and its scheduled tasks in the file: the choices (nil on a page that only shows them).
     var config: ((Bool) -> Void)? = nil
     var tasks: ((Bool) -> Void)? = nil
+    /// A move's side files: the kinds chosen (nil on a page that only shows them).
+    var side: ((SideFiles.Kinds) -> Void)? = nil
     @State private var showDiffer = false
     @State private var showTasks = false
     @State private var showMemory = false
@@ -548,6 +560,7 @@ struct ImportHappens: View {
                 SetupRow(entry: entry, runner: runner, imported: true, choose: setup)
                 McpRow(entry: entry, runner: runner, imported: true, choose: config)
                 FoldersRow(entry: entry, runner: runner, undone: undone)
+                SideRows(runner: runner, undone: undone, choose: side)
                 if !p.inUse.isEmpty {
                     SRow(label: "In use", stacked: true) { value("\(n(p.inUse.count, "transcript", "transcripts")) a running Claude Code session holds: left alone, listed") }
                 }
@@ -757,7 +770,7 @@ struct ImportPage: View {
         Group {
             if let c = runner.counting, runner.phase == .ready {
                 ImportHappens(entry: target, runner: c, memory: { runner.setMemory($0) }, addMemory: runner.addMemory, setup: { runner.setSetup($0) },
-                              config: { runner.setConfig($0) }, tasks: { runner.setTasks($0) })
+                              config: { runner.setConfig($0) }, tasks: { runner.setTasks($0) }, side: { runner.setSide($0) })
             } else {
                 SCard(title: "What happens", info: "Counted from the file against what is there now, once the file is read.") {
                     SRow(label: "Nothing yet", first: true, stacked: true) {

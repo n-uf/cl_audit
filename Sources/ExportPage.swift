@@ -32,14 +32,22 @@ final class ExportRunner: ObservableObject {
     let profile: String
     private weak var model: SettingsModel?
     @Published var source: Source = .now { didSet { if source != oldValue { refresh() } } }
-    @Published var keys: SessionsExport.Keys = .leaveOut
+    @Published var keys: SessionsExport.Keys = .leaveOut { didSet { if keys != oldValue { refreshSide() } } }
     /// Claude Code's setup (CLAUDE.md, skills, agents, commands …) goes in: on by default.
     @Published var setup = true
     /// cl_audit's own profiles and settings go in (SessionsMove.swift; the encrypted image only): off by default, on in the Move preset.
     @Published var profiles = false
     /// A move to another Mac: the real account ids and addresses stay (no fingerprints), so the new Mac puts the Code-tab entries and
     /// tasks back in each account's folder. Only ever the encrypted image: the zip choice is off while it is on.
-    @Published var move = false { didSet { if move { container = .image }; if move != oldValue { refreshCode() } } }
+    @Published var move = false { didSet { if move { container = .image }; if move != oldValue { refreshCode(); refreshSide() } } }
+    /// A move's side files (SessionsSide.swift): task lists, plans, prompt history, trust go in; Rewind's backups only when included
+    /// (they can be hundreds of MB).
+    @Published var rewind = false { didSet { if rewind != oldValue { refreshSide() } } }
+    var sideKinds: SideFiles.Kinds { var k = SideFiles.Kinds.movePreset; k.rewind = rewind; return k }
+    /// What they come to now (read-only), with the keys found in them; nil while counting or outside a move.
+    @Published private(set) var side: SideFiles.Preview?
+    @Published private(set) var sideCounting = false
+    private var sideGeneration = 0
     /// A move's code checklist as read now (CodeChecklist.swift): the page warns from it before the export; the export reads it again.
     @Published private(set) var code: CodeChecklist.File?
     @Published private(set) var codeCounting = false
@@ -122,6 +130,7 @@ final class ExportRunner: ObservableObject {
                 guard let self, !current() else { return }
                 self.previews = out
                 self.refreshCode()
+                self.refreshSide()
             }
         }
     }
@@ -157,10 +166,40 @@ final class ExportRunner: ObservableObject {
         }
     }
 
+    /// A move: the side files counted and key-scanned now, off the main thread (each profile exported as it is now; a backup keeps none).
+    func refreshSide() {
+        guard !frozen else { return }
+        lock.lock(); sideGeneration += 1; let mine = sideGeneration; lock.unlock()
+        guard move else { side = nil; sideCounting = false; return }
+        let sources = parts().compactMap(\.source)
+        let kinds = sideKinds, keys = keys
+        sideCounting = true
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let current: () -> Bool = { [weak self] in
+                guard let self else { return true }
+                self.lock.lock(); defer { self.lock.unlock() }
+                return self.sideGeneration != mine
+            }
+            var total = SideFiles.Preview()
+            total.rewindCarried = kinds.rewind
+            for (i, s) in sources.enumerated() {
+                var refs = SideFiles.sessions(codeDir: s.codeDir)
+                let titles = s.dataDir.isEmpty ? [:] : SideFiles.titles(windowDir: (s.dataDir as NSString).appendingPathComponent("claude-code-sessions"))
+                for k in refs.indices { refs[k].title = titles[refs[k].id] }
+                guard let g = SideFiles.gather(codeDir: s.codeDir, sessions: refs, kinds: kinds, keys: keys, dir: "p\(i + 1)", out: nil, cancel: current) else { return }
+                total.add(g.preview)
+            }
+            DispatchQueue.main.async {
+                guard let self, !current(), self.move else { return }
+                self.side = total; self.sideCounting = false
+            }
+        }
+    }
+
     /// The page is left: nothing is counted for it any more (an export under way goes on).
     func leave() {
         password = ""; again = ""                       // no password stays in a runner that is kept for later
-        lock.lock(); generation += 1; codeGeneration += 1; lock.unlock()
+        lock.lock(); generation += 1; codeGeneration += 1; sideGeneration += 1; lock.unlock()
     }
 
     // MARK: numbers for the words
@@ -256,6 +295,7 @@ final class ExportRunner: ObservableObject {
         plan.setup = setup
         let everyProfile = model?.accounts ?? []
         plan.move = move && image
+        if plan.move { plan.side = sideKinds }
         if profiles {
             // (each profile's part folder is p1, p2 … in the order of the parts, as the engine names them)
             let dirs = Dictionary(list.enumerated().map { ($1.profile, "p\($0 + 1)") }, uniquingKeysWith: { a, _ in a })
@@ -298,7 +338,8 @@ final class ExportRunner: ObservableObject {
     func tryAgain() { phase = .preview; note = nil; refresh() }
 
     /// Renders only: the page as it looks at a step.
-    func preview(_ p: Phase, previews pv: [SessionsExport.Preview], code c: CodeChecklist.File? = nil) {
+    func preview(_ p: Phase, previews pv: [SessionsExport.Preview], code c: CodeChecklist.File? = nil, side sd: SideFiles.Preview? = nil) {
+        if let sd { side = sd }
         frozen = true
         phase = p; previews = pv
         if let c { code = c }
@@ -597,6 +638,8 @@ struct ExportPage: View {
                 SRow(label: "Code", info: "A move carries the sessions, not the code they ran in. For each project folder of the sessions, cl_audit reads with read-only git (never a fetch, nothing written): where it can be cloned from (any user name, password or token taken out of the address), the branch, the last commit, and how many commits aren't pushed and files aren't committed. That list goes into the encrypted disk image only, and the new Mac's Import page shows it with the commands to copy. Push and commit first: a clone won't have what is only on this Mac.", stacked: true) {
                     codeRow
                 }
+                SideExportRow(preview: runner.side, kinds: runner.sideKinds, counting: runner.sideCounting,
+                              rewind: runner.phase == .preview ? { runner.rewind = $0 } : nil)
             }
             SRow(label: "Claude Code", stacked: true) {
                 VStack(alignment: .leading, spacing: 4) {
@@ -686,8 +729,16 @@ struct ExportPage: View {
         let found = pv?.keyed ?? 0
         return SCard(title: "Keys found", info: "The transcripts are searched for GitHub tokens, AWS access keys, private keys, and Anthropic, OpenAI, Slack, Google, Stripe and npm keys. A session whose files hold one is left out, or, if you say so, kept in an encrypted disk image that needs a password. The keys themselves are never shown or written anywhere.") {
             SRow(label: "Found", first: true, stacked: true) { value(foundWords, color: found > 0 ? face.caution : nil) }
-            if found > 0 {
-                SRow(label: "Those \(pv?.keyed ?? 0)") {
+            // a move's side files (prompt history, pasted text, plans, task lists, trust, Rewind): their hits, under the same choice
+            let sideHits = runner.move ? (runner.side?.hits ?? []) : []
+            if !sideHits.isEmpty {
+                SRow(label: "In side files", stacked: true) {
+                    value(sideHits.prefix(6).map { "\($0.what): \($0.kinds.map(\.words).joined(separator: ", "))" }.joined(separator: "; ")
+                          + (runner.keys == .leaveOut ? ". Each line or file that holds one is left out." : ". Kept, in the encrypted disk image."), color: face.caution)
+                }
+            }
+            if found > 0 || !sideHits.isEmpty {
+                SRow(label: "Those \(found + sideHits.count)") {
                     Menu {
                         Button("Leave them out") { runner.keys = .leaveOut }
                         Button("Keep them: needs a password") { runner.keys = .keep }
