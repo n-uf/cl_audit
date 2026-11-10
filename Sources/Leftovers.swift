@@ -23,14 +23,20 @@ enum Leftovers {
         Account(AccountEntry(id: "leftover", name: "", label: "", configDir: path)).keychainServices.first ?? "Claude Code-credentials"
     }
 
-    /// Whether a path may be offered: still there, a plain folder (never a link or a file), not ~/.claude, inside the home
-    /// folder, and no profile's folder (nor inside or around one).
+    /// Whether a path may be offered: only a folder named like the ones cl_audit made (`~/.claude-<name>`, directly in the
+    /// home folder), still there, a plain folder (never a link or a file), never ~/.claude, and no profile's Claude Code
+    /// folder or Claude window folder (nor inside or around one). A hand-edited list naming any other folder offers nothing.
     static func offerable(_ path: String, among accounts: [AccountEntry]) -> Bool {
         let p = expand(path)
+        let name = (p as NSString).lastPathComponent
+        guard !path.isEmpty, name.hasPrefix(".claude-"), name.count > ".claude-".count,
+              (p as NSString).deletingLastPathComponent == NSHomeDirectory() else { return false }
         var st = stat()
-        guard !path.isEmpty, lstat(p, &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR else { return false }
-        guard !Account.isDefault(configDir: p), FolderKey.canonical(p).hasPrefix(FolderKey.canonical(NSHomeDirectory()) + "/") else { return false }
-        return FolderRules.configOwner(p, among: accounts) == nil
+        guard lstat(p, &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR, !Account.isDefault(configDir: p) else { return false }
+        if FolderRules.configOwner(p, among: accounts) != nil { return false }
+        return !accounts.contains { a in
+            [a.desktopDataDir, a.desktop == .standard ? FolderKey.standardDataDir : ""].contains { !$0.isEmpty && FolderKey.overlaps($0, p) }
+        }
     }
 
     /// A profile's leftover folders worth offering now.
