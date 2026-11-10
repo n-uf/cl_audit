@@ -9,17 +9,21 @@ the notes before updating.
 ## Unreleased
 
 - **A moved session opens in the right folder.** Import lists each session whose folder isn't on this Mac (Folder not here)
-  with **Pick its folder on this Mac…**. A picked folder points the session there right after the import: its transcript moves
-  under that folder's name, the folder paths in its lines and in its Code-tab entry are rewritten (nothing else changes), and a
-  worktree that isn't on this Mac is dropped so it runs in the project folder. Undo this import takes that back too, exactly.
+  with **Pick its folder on this Mac…**. A picked folder points the session there right after the import: its saved chat moves
+  to the folder named for the new place, the folder paths inside it and in its Code-tab entry are updated (nothing else
+  changes), and a worktree that isn't on this Mac is dropped so it runs in the project folder. That profile's Claude window
+  closes for a moment while its entries change. Undo this import takes that back too (a session you have resumed since stays
+  where it is, and Undo says so).
   Clone the code later if you like: Settings ▸ a profile ▸ Sessions ▸ Folder not here lists the imported sessions still
   waiting, each with **Pick its folder…**, and **Undo** takes back the last one. A folder path over 200 characters gets the same
   shortened name Claude Code gives it.
 - **A move brings a checklist of your code.** The Export page's Code row reads each project with read-only git and warns about
-  what is only on this Mac ("garden-app: 3 commits not pushed: push them before you move"). The list travels in the encrypted
-  disk image only, with any user name, password or token taken out of the remote's address. The new Mac's Import page shows it
-  per project (where to clone it from, where it was, the branch, what wasn't pushed or committed) with the commands to copy;
-  cl_audit never runs git there.
+  what is only on this Mac ("garden-app: 3 commits not pushed: push them before you move"), and about anything it couldn't
+  read. It never runs a program a repo's own settings name (a filter, for one); such a repo is listed as not read. The list
+  travels in the encrypted disk image only, with any user name, password or token taken out of the remote's address (an
+  address it can't clean is left out, and says so). The new Mac's Import page shows it per project (where to clone it from,
+  where it was, the branch, what wasn't pushed or committed on the old Mac) with the commands to copy; cl_audit never runs git
+  there.
 - **Memory files start as Add them when you import a move**; every other import still leaves them out unless you add them.
 - Quick chat's info now says your own Claude Code answers, on the account in use, and counts against its limits.
 - A move file with the code checklist is format 5: 26.11.11 and older refuse it ("from a newer cl_audit"). A move without it,

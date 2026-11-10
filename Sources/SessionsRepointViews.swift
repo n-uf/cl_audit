@@ -23,7 +23,7 @@ struct FoldersRow: View {
     private var ran: Bool { runner.phase == .done || runner.phase == .sidebar || runner.phase == .undone }
 
     var body: some View {
-        SRow(label: "Folder not here", info: "Claude Code files a session under the folder it ran in, and the Code tab runs it there. A session whose folder isn't on this Mac (not cloned yet, or cloned somewhere else) is added anyway; pick where its folder is on this Mac and the session is pointed there right after the import: its transcript moves under that folder's name, the folder paths in its lines and in its Code-tab entry are rewritten (nothing else), and a worktree that isn't here is dropped so it runs in the project folder. Undo this import takes that back too. You can also leave it and pick later, once the code is here, under the profile's Sessions.", stacked: true) {
+        SRow(label: "Folder not here", info: "Claude Code files a session under the folder it ran in, and the Code tab runs it there. A session whose folder isn't on this Mac (not cloned yet, or cloned somewhere else) is added anyway; pick where its folder is on this Mac and the session is pointed there right after the import: its saved chat moves to the folder named for the new place, the folder paths inside it and in its Code-tab entry are updated (nothing else changes), and a worktree that isn't here is dropped so it runs in the project folder. The profile's Claude window closes for a moment while an entry changes. Undo this import takes that back too (a session you have resumed since stays where it is, and Undo says so). You can also leave it and pick later, once the code is here, under the profile's Sessions.", stacked: true) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(summary).font(.system(size: 12.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                 ForEach(runner.folderSessions.prefix(40)) { s in item(s) }
@@ -80,7 +80,7 @@ struct CodeCard: View {
     @Environment(\.face) private var face
 
     var body: some View {
-        SCard(title: "Code", info: "A move carries the sessions, not the code they ran in. On the old Mac, cl_audit read each project with read-only git: where to clone it from (any user name, password or token taken out of the address), the branch and last commit, and how many commits weren't pushed and files weren't committed there. It travels only in the encrypted disk image. cl_audit never runs git on this Mac: the commands are here for you to copy. Clone first or after: once a folder is here, point its sessions at it (Pick its folder on this Mac…).") {
+        SCard(title: "Code", info: "A move carries the sessions, not the code they ran in. On the old Mac, cl_audit read each project with read-only git: where to clone it from (any user name, password or token taken out of the address), the branch and latest commit, and how many commits weren't pushed and files weren't committed there. It travels only in the encrypted disk image. cl_audit never runs git on this Mac: the commands are here for you to copy. Clone first or after: once a folder is here, point its sessions at it (Pick its folder on this Mac…).") {
             if list.projects.isEmpty {
                 SRow(label: "Projects", first: true, stacked: true) { value("none: the sessions named no folder") }
             }
@@ -93,7 +93,13 @@ struct CodeCard: View {
                                 .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                         }
                         let cmds = CodeChecklist.commands(p, here: here)
-                        if !cmds.isEmpty { commands(cmds) }
+                        if !cmds.isEmpty {
+                            commands(cmds)
+                            if !here {
+                                Text("Clone it into the folder you picked, or pick the folder you cloned it to.").font(.system(size: 10.5)).foregroundStyle(face.muted)
+                                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
                     }
                 }
             }
@@ -244,9 +250,13 @@ struct MissingFoldersRow: View {
             }
             if runner.sessions.count > 30 { note("…and \(runner.sessions.count - 30) more.") }
             if let l = runner.last {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Button("Undo") { runner.undo(entry: entry) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.busy)
-                    text("Last pointed \(SessionsBackup.dateWords(l.started)): " + (l.sessions.first.map { "\($0.title.map { "“\($0)”" } ?? "a session") \(RepointWords.done($0))" } ?? "nothing"))
+                let undo = Button("Undo") { runner.undo(entry: entry) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.busy)
+                let more = l.sessions.count > 1 ? " (and \(l.sessions.count - 1) more: Undo takes back all of them)" : ""
+                let words = text("Last change \(SessionsBackup.dateWords(l.started)): " + (l.sessions.first.map { "\($0.title.map { "“\($0)”" } ?? "a session") \(RepointWords.done($0))" } ?? "nothing") + more)
+                // (Undo beside the words when they have room, under them in a narrow column)
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) { undo; words.frame(minWidth: 300) }
+                    VStack(alignment: .leading, spacing: 6) { words; undo }
                 }
             }
             if runner.busy { note("Working… the window closes only if a Code-tab entry changes.") }

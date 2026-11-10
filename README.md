@@ -1155,10 +1155,11 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
    profiles and settings.
    The page's **Code** row lists the projects your sessions ran in, read with read-only git (never a fetch, nothing written),
    and warns about work that is only on this Mac: "garden-app: 3 commits not pushed: push them before you move", files not
-   committed, a branch with no upstream, a folder that isn't a git repo. Push and commit first: a clone on the new Mac won't
-   have what is only here. The list (each project's clone source with any user name, password or token taken out of the
-   address, the branch, the last commit and those counts) goes into the encrypted disk image only. Without git on this Mac it
-   lists the folders only and says so.
+   committed, a branch that isn't on a remote yet, a folder that isn't a git repo, and anything git couldn't read. It never
+   runs a program a repo's own settings name (a filter, for one): such a repo is listed as not read. Push and commit first: a
+   clone on the new Mac won't have what is only here. The list (each project's clone source with any user name, password or
+   token taken out of the address, or left out when it can't be cleaned, the branch, the latest commit and those counts) goes
+   into the encrypted disk image only. Without git on this Mac it lists the folders only and says so.
 2. Type a password twice (not stored anywhere: lose it and the file can't be opened), then **Export** and choose where.
    Close the profiles' Claude windows first, or their Code-tab lists are left out (the page tells you per profile). Your
    Keys found choice stays as you set it. Sign-ins don't travel. On the new Mac you sign in again to each account (Add
@@ -1169,8 +1170,9 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
 1. Install cl_audit and go through its first run: it sets up your first profile (on `~/.claude`, with its sign-in).
 2. Get your code: clone each project first, or after the import. The Import page's **Code** card shows, per project, where to
    clone it from, where it was, its branch, and what wasn't pushed or committed on the old Mac, with the commands as text to
-   copy (`git clone …`, `cd …`, `git checkout …`). cl_audit never runs git on the new Mac. At the same path as on the old Mac,
-   a session needs nothing more.
+   copy (`git clone -- …`, `cd …`, `git checkout …`). cl_audit never runs git on the new Mac. At the same path as on the old
+   Mac, a session needs nothing more; elsewhere, clone it into the folder you pick for its sessions (or pick the folder you
+   cloned it to).
 3. Settings ▸ that profile ▸ Sessions ▸ **Import…**, choose the file, type its password. The page says it is a move. Its
    **cl_audit's profiles** card lists the profiles it makes (those not on this Mac yet), the ones already here (a profile counts
    as already here when it has one of the file's accounts, or, for a file with no accounts, the same name) and the settings that
@@ -1181,12 +1183,13 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
    and the key waits.
 4. After that, pick **Into**: the page offers the part's own profile ("Into Studio"); it never picks it for you. **Folder not
    here** lists each session whose folder isn't on this Mac (not cloned yet, or cloned somewhere else). **Pick its folder on
-   this Mac…** for each one you have: right after the import, the session is pointed there: its transcript moves under that
-   folder's name in Claude Code's folder, the folder paths in its lines and in its Code-tab entry are rewritten (nothing else in
-   them changes), and a worktree that isn't on this Mac is dropped, so the session runs in the project folder. Leave the others:
-   they are added anyway, and once you have cloned the code, Settings ▸ the profile ▸ Sessions ▸ **Folder not here** lists them
-   with **Pick its folder…** (the profile's Claude window closes for a moment while the entry is written; **Undo** takes back the
-   last one). Memory files start as **Add them** for a move, since they belong to its sessions. **Close and
+   this Mac…** for each one you have: right after the import, the session is pointed there: its saved chat moves to the
+   folder named for the new place in Claude Code's folder, the folder paths inside it and in its Code-tab entry are updated
+   (nothing else changes), and a worktree that isn't on this Mac is dropped, so the session runs in the project folder. The
+   profile's Claude window closes for a moment while its entries change. Undo this import takes that back too (a session you
+   have resumed since stays where it is, and Undo says so). Leave the others: they are added anyway, and once you have cloned
+   the code, Settings ▸ the profile ▸ Sessions ▸ **Folder not here** lists them with **Pick its folder…** (the window closes
+   for a moment while the entry is written; **Undo** takes back the last change). Memory files start as **Add them** for a move, since they belong to its sessions. **Close and
    import** puts that profile's sessions in. Each Code-tab entry and scheduled task goes back into the folder of the account it
    was on, so the window shows it once that account is signed in. Then the same for each other profile: Settings ▸ that
    profile ▸ Sessions ▸ Import…, the same file: Into is that profile there, and Profile in the file shows its part.
