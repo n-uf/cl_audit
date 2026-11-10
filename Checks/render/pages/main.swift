@@ -101,7 +101,8 @@ func saveReceipt(_ r: SwitchReceipt) {
 }
 
 MainActor.assumeIsolated {
-    var main = AccountEntry(id: "main", name: "Claude Main", label: "MAIN", configDir: "~/.claude"); main.seat = u1
+    // (named "Main": the app puts "Claude " before a profile's name itself)
+    var main = AccountEntry(id: "main", name: "Main", label: "MAIN", configDir: "~/.claude"); main.seat = u1
     main.desktop = .separate; main.desktopDataDir = "~/Library/Application Support/Claude-main"
     let k2 = StandbyAccount(email: u2.email!, seat: u2, id: "k2", plan: "Ultra", lastInUse: Date().addingTimeInterval(-3 * 86400),
                             lastWeek: 12, lastWeekResets: Date().addingTimeInterval(4 * 86400))
@@ -316,7 +317,7 @@ MainActor.assumeIsolated {
     restorePage("6c-restore-restored")
     rrun.preview(.stopped("Stopped by you. What is back is kept."), plan: plan, receipt: { var r = rcpt; r.finished = nil; r.stopped = "Stopped by you. What is back is kept."; r.steps = Array(r.steps.prefix(52)); return r }(), progress: (52, 86))
     restorePage("6d-restore-stopped")
-    rrun.preview(.ready, plan: plan, notYet: RestoreRunner.NotYet(title: "A restore of Claude Main is unfinished",
+    rrun.preview(.ready, plan: plan, notYet: RestoreRunner.NotYet(title: "A restore of Main is unfinished",
         words: "A restore of this profile stopped half way on 5 Nov 18:40. Finish it or undo it first."))
     restorePage("6e-restore-not-yet")
     var refused = plan; refused.refusal = "A file in the backup isn't a plain file with one link, or isn't there (local_x.json). Nothing is restored from it."

@@ -23,6 +23,7 @@ guard home.hasSuffix("/Checks/.work/accounts/home"), expand("~") == home else { 
 let fm = FileManager.default
 SettingsModel.followsDock = false
 Store.announce = {}
+Store.announceStatus = { _ in }
 BackupPrefs.store = MemoryPrefs()
 var opened: [String] = []                                // the scripts Terminal would have opened
 ClaudeCLI.openTerminal = { url in opened.append((try? String(contentsOf: url, encoding: .utf8)) ?? ""); return true }
@@ -62,7 +63,7 @@ do {
     let old = """
     {"accounts":[{"id":"main","name":"Main","label":"MAIN","configDir":"~/.claude","keptFolder":"~/.claude-ultra-1","sessionsFollow":false,
       "seat":{"account":"\(u1.account)","organization":"\(u1.organization!)","email":"ultra-1@example.com"},
-      "standby":[{"id":"k2","email":"ultra-2@example.com","seat":{"account":"\(u2.account)","organization":"\(u2.organization!)","email":"ultra-2@example.com"},"configDir":"~/.claude-ultra-2","addedAt":1700000000},
+      "standby":[{"id":"k2","email":"ultra-2@example.com","seat":{"account":"\(u2.account)","organization":"\(u2.organization!)","email":"ultra-2@example.com"},"configDir":"~/.claude-ultra-2","addedAt":784000000},
                  {"id":"k3","email":"ultra-3@example.com","configDir":"~/.claude-ultra-3"},
                  {"id":"bad","email":7},
                  {"id":"k4","email":"ultra-4@example.com","configDir":"~/.claude"}]},
@@ -330,6 +331,108 @@ do {
     check(SessionsCard.oldSwitchDismissed(r.id), "OK: not said again")
     check((try? Data(contentsOf: dir.appendingPathComponent("receipt.json"))) == receiptBytes, "the receipt itself is never written or deleted")
     UserDefaults.standard.removeObject(forKey: "oldSwitchSeen")
+}
+
+// ============ 10. review round 1: crafted dates, leftovers, one standby list, the leaving week, the sweep, two writers ============
+do {
+    // crafted dates in the profiles file: read as nothing, never a trap
+    let crafted = """
+    {"accounts":[{"id":"cr","name":"Cr","label":"CR","configDir":"~/.claude-cr","standby":[
+      {"id":"a","email":"a@example.com","lastInUse":-1e300,"addedAt":1e300,"lastWeekResets":-1e300,"lastWeek":1e308},
+      {"id":"b","email":"b@example.com","lastInUse":4e9,"lastWeek":-5},
+      {"id":"c","email":"c@example.com","lastInUse":-978307200,"lastWeek":42}]}]}
+    """
+    let list = (try? JSONDecoder().decode(ConfigFile.self, from: Data(crafted.utf8)))?.accounts ?? []
+    let sb = list.first?.standby ?? []
+    check(sb.count == 3 && sb.allSatisfy { $0.lastInUse == nil && $0.lastWeekResets == nil } && sb[0].addedAt == nil,
+          "crafted dates (±1e300, far ahead, before 2000) are read as none")
+    check(sb[0].lastWeek == nil && sb[1].lastWeek == nil && sb[2].lastWeek == 42, "a week that isn't 0…1000 is read as none")
+    let words = [Date(timeIntervalSinceReferenceDate: -1e300), Date(timeIntervalSinceReferenceDate: 1e300), .distantPast, .distantFuture]
+        .map { AccountBook.ago($0, now: t0) }
+    check(words.count == 4 && words[1] == "just now" && words[3] == "just now" && words[0].hasSuffix("weeks ago"), "ago never traps: \(words)")
+    var e = profile("cr", "~/.claude-cr", u1, standby: sb)
+    e.id = "cr"
+    check(SwitchMenu.lines(e, now: t0).count == 3 && e.cardTrays(now: t0).count == 3, "the menus and the card draw them")
+
+    // the default-profile move's Keep it never lists the old profile's own folder
+    var old = profile("old", "~/.claude-old", u2); old.leftoverFolders = ["~/.claude-old-u3", "~/.claude-old"]
+    let def = profile("main", "~/.claude", u1)
+    check(DefaultProfileRunner.leftovers(of: old, into: def) == ["~/.claude-old-u3"], "Keep it: only the old profile's own leftovers, never its own folder")
+
+    // what a folder holds; one with sessions is never offered for the Trash
+    put(expand("~/.claude-withwork/projects/-p/\(uuid(77)).jsonl"), "{}")
+    put(expand("~/.claude-withwork/projects/-q/\(uuid(78)).jsonl"), "{}")
+    put(expand("~/.claude-withwork/CLAUDE.md"), "# x")
+    put(expand("~/.claude-withwork/skills/a/SKILL.md"), "x")
+    let all = [def]
+    var w = def; w.leftoverFolders = ["~/.claude-withwork"]
+    let f = Leftovers.offered(w, among: all).first
+    check(f?.inside == Leftovers.Inside(sessions: 2, settings: false, claudeMD: true, other: 1) && f?.trashable == false,
+          "a folder's sessions, CLAUDE.md and other items are counted; one with sessions isn't trashable")
+    check(Leftovers.line(f!).contains("holds 2 sessions") && Leftovers.line(f!).contains("Finder"), "…and its line says why and offers Finder")
+    let before = trashed.count
+    check(Leftovers.trash(f!, among: all) != nil && trashed.count == before, "…and Move to Trash refuses it")
+    let plain = Leftovers.Folder(path: "~/.claude-ultra-1", keychainItem: "k", inside: Leftovers.Inside.of("~/.claude-ultra-1"))
+    check(Leftovers.question(plain).detail.hasPrefix("In it: its sign-in record, settings.json.") || Leftovers.question(plain).detail.contains("In it: its sign-in record"),
+          "the Trash question says what is in the folder: \(Leftovers.question(plain).detail.prefix(60))")
+
+    // offerable: only ~/.claude-<name> directly in the home folder, never a profile's window folder
+    try? fm.createDirectory(atPath: expand("~/Documents/x"), withIntermediateDirectories: true)
+    try? fm.createDirectory(atPath: expand("~/.claude-deep/.claude-inner"), withIntermediateDirectories: true)
+    try? fm.createDirectory(atPath: expand("~/.claude-window"), withIntermediateDirectories: true)
+    var withWindow = profile("win", "~/.claude-win", u4); withWindow.desktop = .separate; withWindow.desktopDataDir = "~/.claude-window"
+    check(!Leftovers.offerable("~/Documents", among: all) && !Leftovers.offerable("~/Documents/x", among: all), "a folder not named ~/.claude-<name> isn't offered")
+    check(!Leftovers.offerable("~/.claude-deep/.claude-inner", among: all), "nor one deeper than the home folder")
+    check(!Leftovers.offerable("~/.claude-", among: all), "nor the bare prefix")
+    check(Leftovers.offerable("~/.claude-window", among: all) && !Leftovers.offerable("~/.claude-window", among: all + [withWindow]),
+          "nor a profile's Claude window folder")
+
+    // one account on one standby list: a stale entry for the leaving account on another profile's list goes
+    let p1 = profile("p1", "~/.claude-p1", u1)
+    let p2 = profile("p2", "~/.claude-p2", u3, standby: [StandbyAccount(email: u1.email!, seat: u1, id: "x1")])
+    let noted = FolderRules.noteAccounts([p1, p2], signedIn: { $0 == "~/.claude-p1" ? u2 : ($0 == "~/.claude-p2" ? u3 : nil) }, status: { _ in nil }, now: t0)
+    let holders = noted.filter { $0.standby.contains { $0.seat.map { $0.same(u1) } == true } }.map(\.id)
+    check(holders == ["p1"], "the leaving account stands by on one list only: \(holders)")
+
+    // the leaving account's week, even after another account's numbers took its place
+    let me = profile("lw", "~/.claude-lw", u1)
+    var a = IconStatus(state: "ok"); a.loginEmail = u1.email; a.weekly = 88; a.weeklyResets = t0.addingTimeInterval(3600); a.plan = "Max"
+    var b = IconStatus(state: "ok"); b.loginEmail = u2.email; b.weekly = 3
+    _ = Store.writeStatus("lw", a)
+    check(Store.lastStatus(of: me)?.weekly == 88, "the account's own numbers")
+    _ = Store.writeStatus("lw", b)
+    check(Store.lastStatus(of: me)?.weekly == 88 && fm.fileExists(atPath: Store.statusFolder.appendingPathComponent("lw.prev").path),
+          "another account's numbers took their place: the leaving account's are still found (lw.prev)")
+    let after = FolderRules.noteAccounts([me], signedIn: { _ in u2 }, now: t0)[0]
+    check(after.standby.first?.lastWeek == 88 && after.standby.first?.plan == "Max", "…and remembered with it when it stands by")
+
+    // Cleanup's sweep: a standby account's old status file and a removed profile's go, nothing else
+    for n in ["keep.json", "keep.prev", "keep~k2.json", "gone.json", "gone.prev", "notes.txt"] { put(Store.statusFolder.appendingPathComponent("sweep/" + n).path, "{}") }
+    let stale = Cleanup.staleStatus(in: Store.statusFolder.appendingPathComponent("sweep"), ids: ["keep"]).map(\.lastPathComponent).sorted()
+    check(stale == ["gone.json", "gone.prev", "keep~k2.json"], "the clean-up sweeps a standby account's and a removed profile's saved numbers only: \(stale)")
+
+    // two writers: the window's stale copy saved over the agent's note heals at the next note
+    let base = [profile("tw", "~/.claude-tw", u1)]
+    let remote = FolderRules.noteAccounts(base, signedIn: { _ in u2 }, now: t0)          // the agent noted ultra-2
+    var local = base; local[0].name = "Tw renamed"                                       // the window renamed it meanwhile
+    let merged = SettingsModel.merge(base: base, local: local, remote: remote)
+    check(merged[0].name == "Tw renamed", "the window's change wins the merge (its copy still names ultra-1)")
+    let healed = FolderRules.noteAccounts(merged, signedIn: { _ in u2 }, now: t0)
+    check(healed[0].seat.map { $0.same(u2) } == true && healed[0].standby.map { $0.seat?.account } == [u1.account] && healed[0].name == "Tw renamed",
+          "the next note puts the folder's account back, the rename kept, one standby entry")
+
+    // the login script is written for its owner only
+    opened = []
+    _ = ClaudeCLI.openLogin(home + "/fakebin/claude", account: Account(profile("ls", "~/.claude-ls", u1)), email: "ls@example.com")
+    let script = ClaudeCLI.loginScript(expand("~/.claude-ls"))
+    let mode = ((try? fm.attributesOfItem(atPath: script.path))?[.posixPermissions] as? NSNumber)?.intValue
+    check(mode == 0o700 && opened.count == 1, "the login script is 0700 (\(String(mode ?? 0, radix: 8))) and only handed to the Terminal stand-in")
+    try? fm.removeItem(at: script)
+
+    // a hand-edited profile id never names a marker outside cl_audit's folder
+    let mk = SwitchRunner.marker(for: "../../evil")
+    check(mk.deletingLastPathComponent().path == Store.folder.path && !mk.lastPathComponent.contains("/"), "the sign-in marker stays in cl_audit's folder")
+    check(!AddAccountWords.looksLikeAddress("a@b.c\nx@y.z") && AddAccountWords.looksLikeAddress(" a@b.co\n"), "an address with a newline inside is refused")
 }
 
 print("checks: \(passed) passed, \(failed) failed")
