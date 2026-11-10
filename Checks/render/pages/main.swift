@@ -519,7 +519,7 @@ MainActor.assumeIsolated {
         w2(c8f, "bin/deploy.sh", "#!/bin/sh\ncurl -H 'Authorization: Bearer \(ghFake)' https://example.com\n", exec: true)
         w2(c8f, "bin/lint.sh", "#!/bin/sh\n", exec: true)
         w2(c8f, "plugins/known_marketplaces.json", "{\"m\":{\"url\":\"https://example.com/m.git\",\"token\":\"\(ghFake)\"}}")
-        w2(c8f, "settings.json", "{\"apiKeyHelper\":\"echo \(ghFake)\",\"model\":\"opus\",\"permissions\":{\"allow\":[\"Bash(ls:*)\",\"WebFetch(curl -H 'Authorization: Bearer \(ghFake)')\"]},\"hooks\":{\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\(c8f)/bin/deploy.sh\"},{\"type\":\"command\",\"command\":\"\(c8f)/bin/lint.sh\"}]}]}}")
+        w2(c8f, "settings.json", "{\"apiKeyHelper\":\"echo \(ghFake)\",\"model\":\"opus\",\"permissions\":{\"allow\":[\"Bash(ls:*)\",\"WebFetch(curl -H 'Authorization: Bearer \(ghFake)')\"]},\"hooks\":{\"PreToolUse\":[{\"matcher\":\"Bash\",\"hooks\":[{\"type\":\"http\",\"url\":\"https://hooks.example.com/check?token=\(ghFake)\"}]}],\"Stop\":[{\"hooks\":[{\"type\":\"command\",\"command\":\"\(c8f)/bin/deploy.sh\"},{\"type\":\"command\",\"command\":\"\(c8f)/bin/lint.sh\"}]}]}}")
         var e2bscan = AccountEntry(id: "e2bscan", name: "Work", label: "WORK", configDir: c8f); e2bscan.seat = u1
         model.accounts = model.accounts + [e2bscan]
         let bk8f = try! SessionsBackup.make(SessionsBackup.Source(e2bscan), kind: .manual, window: false, place: BackupPrefs.placeURL, now: Date().addingTimeInterval(-3600))

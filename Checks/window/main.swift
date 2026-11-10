@@ -379,15 +379,27 @@ MainActor.assumeIsolated {
             write(cK + "/skills/guard/run.sh", keyed ? "#!/bin/sh\nTOKEN=\(awsK)\n" : "#!/bin/sh\necho guard\n"); chmod(cK + "/skills/guard/run.sh", 0o755)
             write(cK + "/plugins/installed_plugins.json", #"{"plugins":{"a@m":{}}}"#)
             write(cK + "/plugins/known_marketplaces.json", keyed ? #"{"m":{"url":"https://example.com/m.git","token":"\#(skK)"}}"# : #"{"m":{"url":"https://example.com/m.git"}}"#)
+            // a script saved as UTF-16LE with its byte order mark: the byte scan can't see a key in it (a zero between letters)
+            let wide = "#!/bin/sh\n" + (keyed ? "TOKEN=\(ghK)\n" : "echo wide\n")
+            try! Data([0xFF, 0xFE] + wide.utf16.flatMap { [UInt8($0 & 0xFF), UInt8($0 >> 8)] }).write(to: URL(fileURLWithPath: cK + "/hooks/wide.sh").createDirs())
+            chmod(cK + "/hooks/wide.sh", 0o755)
             let cmd: (String) -> [String: Any] = { ["type": "command", "command": cK + "/" + $0] }
+            let httpHook: (String) -> [String: Any] = { ["type": "http", "url": $0] }
             let settings: [String: Any] = [
                 "env": ["PLAIN": "plain-env-value-w1"],
                 "apiKeyHelper": keyed ? "echo \(skK)" : "my-helper --quiet",
                 "model": "opus",
-                "permissions": ["allow": ["Bash(ls:*)", keyed ? "WebFetch(curl -H 'Authorization: Bearer \(jwtK)')" : "WebFetch(domain:example.com)", "Bash(git:*)"], "deny": [String]()],
+                "permissions": ["allow": ["Bash(ls:*)", keyed ? "WebFetch(curl -H 'Authorization: Bearer \(jwtK)')" : "WebFetch(domain:example.com)", "Bash(git:*)"], "deny": ["Bash(rm:*)"],
+                                "ask": [keyed ? "Bash(curl -H x:\(skK))" : "Bash(git push:*)"]],
                 "nested": ["deep": ["token": keyed ? awsK : "not-a-key", "keep": "task-fix-the-login-page-for-users"], "list": [[keyed ? ghK : "fine-too"], "fine"]],
                 "enabledPlugins": keyed ? [ghK: true, "ok@m": true] : ["ok@m": true],
-                "hooks": ["Stop": [["hooks": [cmd("hooks/clean.sh"), cmd("hooks/keyed.sh"), cmd("skills/guard/run.sh"), cmd("skills/ok/run.sh")]]]],
+                "hooks": [
+                    "Stop": [["hooks": [cmd("hooks/clean.sh"), cmd("hooks/keyed.sh"), cmd("hooks/wide.sh"), cmd("skills/guard/run.sh"), cmd("skills/ok/run.sh"), httpHook("https://hooks.example.com/stop")]]],
+                    // an http hook with a key in its url (blanked it would be an invalid url: Claude Code would ignore the whole file), next to a clean one
+                    "PreToolUse": [["matcher": "Bash", "hooks": [httpHook(keyed ? "https://hooks.example.com/check?token=\(ghK)" : "https://hooks.example.com/check?token=none"), cmd("hooks/clean.sh")]]],
+                    // a command hook with a key, alone in its matcher and its event
+                    "PostToolUse": [["matcher": "Edit", "hooks": [["type": "command", "command": keyed ? "echo \(skK)" : "echo hi"]]]],
+                    "Notification": [["hooks": [["type": "command", "command": keyed ? "notify --token \(jwtK)" : "notify --quiet"]]]]],
                 "statusLine": cmd("hooks/status.sh")]
             try! JSONSerialization.data(withJSONObject: settings, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: cK + "/settings.json").createDirs())
         }
@@ -399,17 +411,37 @@ MainActor.assumeIsolated {
         let relsK = Set(bK.items.map(\.path))
         check(holds(dirK, ghK).isEmpty && holds(dirK, skK).isEmpty && holds(dirK, awsK).isEmpty && holds(dirK, jwtK).isEmpty && holds(dirK, "WebFetch(curl").isEmpty,
               "key scan (plain backup): none of the 4 fake keys' bytes is in any file of the backup: \(allKeys.flatMap { holds(dirK, $0) })")
-        check(bK.secretBlanked == ["apiKeyHelper", "enabledPlugins.(a key)", "nested.deep.token", "nested.list[0][0]", "permissions.allow[1]"],
-              "key scan: settings.json's matching values are named by dotted path (an array element by index, a key that is itself a match as \"(a key)\"): \(bK.secretBlanked ?? [])")
+        check(bK.secretBlanked == ["apiKeyHelper", "enabledPlugins.(a key)", "nested.deep.token", "nested.list[0][0]"],
+              "key scan: settings.json's matching values outside hooks and permission rules are named by dotted path (an array element by index, a key that is itself a match as \"(a key)\"): \(bK.secretBlanked ?? [])")
         let sK = json(fm.contents(atPath: dirK + "/setup/settings.json")) ?? [:]
-        check(sK["apiKeyHelper"] as? String == "" && (sK["permissions"] as? [String: Any])?["allow"] as? [String] == ["Bash(ls:*)", "", "Bash(git:*)"]
+        check(sK["apiKeyHelper"] as? String == ""
               && ((sK["nested"] as? [String: Any])?["deep"] as? [String: String]) == ["token": "", "keep": "task-fix-the-login-page-for-users"]
               && ((sK["nested"] as? [String: Any])?["list"] as? [Any])?.count == 2 && (((sK["nested"] as? [String: Any])?["list"] as? [Any])?[0] as? [String]) == [""]
               && (sK["enabledPlugins"] as? [String: Bool]) == ["ok@m": true],
               "key scan: a value that matches is blank (an array element too, kept in place), one that doesn't stays; a nested one is blanked where it is; keys are kept")
-        check(sK["model"] as? String == "opus" && (sK["env"] as? [String: String]) == ["PLAIN": ""] && same(sK["hooks"] as? [String: Any] ?? [:], origSettingsK["hooks"] as? [String: Any] ?? ["x": 1])
-              && same(sK["statusLine"] as? [String: Any] ?? [:], origSettingsK["statusLine"] as? [String: Any] ?? ["x": 1]) && (sK["permissions"] as? [String: Any])?["deny"] as? [String] == [],
-              "key scan: what doesn't match is as it was (model, hooks, status line, an empty list); env values are still blank")
+        // hooks are never blanked (Claude Code 2.1.318: an http hook's url of "" fails its schema, and for PreToolUse that is fatal: the restored file would be ignored whole)
+        let hooksK = sK["hooks"] as? [String: Any] ?? [:]
+        let origHooksK = origSettingsK["hooks"] as? [String: Any] ?? [:]
+        let preK = ((hooksK["PreToolUse"] as? [[String: Any]])?.first)
+        let allHookEntries = hooksK.values.flatMap { ($0 as? [[String: Any]] ?? []).flatMap { $0["hooks"] as? [[String: Any]] ?? [] } }
+        check(Set(hooksK.keys) == ["Stop", "PreToolUse"] && same(["Stop": hooksK["Stop"] as Any], ["Stop": origHooksK["Stop"] as Any])
+              && (hooksK["PreToolUse"] as? [[String: Any]])?.count == 1 && preK?["matcher"] as? String == "Bash" && (preK?["hooks"] as? [[String: Any]])?.count == 1
+              && same((preK?["hooks"] as? [[String: Any]])?.first ?? [:], ["type": "command", "command": cK + "/hooks/clean.sh"]),
+              "key scan: an http hook with a key in its url is dropped whole (its matcher keeps the one clean hook), a command hook with a key too, an event they empty goes; the clean hooks, the clean http hook included, stay: \(Set(hooksK.keys))")
+        check(!allHookEntries.isEmpty && allHookEntries.allSatisfy { e in
+                  if e["type"] as? String == "http" { return (e["url"] as? String).flatMap { URL(string: $0) }.map { $0.scheme == "https" && ($0.host ?? "").isEmpty == false } == true }
+                  return !((e["command"] as? String) ?? "").isEmpty
+              },
+              "key scan: every hook in the backup's settings.json is one Claude Code accepts (a command that isn't empty, an http url that parses): no blank hook")
+        check(bK.secretHooksDropped == ["Notification", "PostToolUse (Edit)", "PreToolUse (Bash)"],
+              "key scan: the dropped hooks are named by event and matcher (names only): \(bK.secretHooksDropped ?? [])")
+        check(bK.secretRulesDropped == ["permissions.allow[1]", "permissions.ask[0]"]
+              && (sK["permissions"] as? [String: Any])?["allow"] as? [String] == ["Bash(ls:*)", "Bash(git:*)"] && (sK["permissions"] as? [String: Any])?["ask"] as? [String] == []
+              && (sK["permissions"] as? [String: Any])?["deny"] as? [String] == ["Bash(rm:*)"],
+              "key scan: a permission rule that holds a key is dropped, not left blank (listed by its place in allow, deny or ask); the others stay: \(bK.secretRulesDropped ?? [])")
+        check(sK["model"] as? String == "opus" && (sK["env"] as? [String: String]) == ["PLAIN": ""]
+              && same(sK["statusLine"] as? [String: Any] ?? [:], origSettingsK["statusLine"] as? [String: Any] ?? ["x": 1]),
+              "key scan: what doesn't match is as it was (model, status line); env values are still blank")
         let itemK = bK.items.first { $0.path == "setup/settings.json" }
         check(itemK?.sha == SwitchEngine.sha(fm.contents(atPath: dirK + "/setup/settings.json") ?? Data()) && itemK?.bytes == Int64(fm.contents(atPath: dirK + "/setup/settings.json")?.count ?? -1),
               "key scan: the settings.json item's hash and size are the blanked file's")
@@ -418,7 +450,9 @@ MainActor.assumeIsolated {
               "key scan: the script that holds a key, the skill whose script holds one (the unit goes whole) and the marketplaces file that holds one are not in the backup, neither listed nor on disk")
         check(relsK.isSuperset(of: ["setup/hooks/clean.sh", "setup/hooks/status.sh", "setup/skills/ok/SKILL.md", "setup/skills/ok/run.sh", "setup/plugins/installed_plugins.json", "setup/CLAUDE.md", "setup/settings.json"]),
               "key scan: the scripts and units without a key, and the plugin list, are kept: \(relsK.sorted())")
-        check(bK.secretLeftOut == ["script hooks/keyed.sh", "skill guard", "the plugin marketplaces"] && bK.leftOut >= 4 && bK.cloned + bK.copied == bK.items.count - 1,
+        check(!relsK.contains("setup/hooks/wide.sh") && !fm.fileExists(atPath: dirK + "/setup/hooks/wide.sh") && bK.secretLeftOut?.contains("script hooks/wide.sh") == true,
+              "key scan: a script saved as UTF-16 (byte order mark, a zero between letters) that holds a key is found, left out and listed")
+        check(bK.secretLeftOut == ["script hooks/keyed.sh", "script hooks/wide.sh", "skill guard", "the plugin marketplaces"] && bK.leftOut >= 5 && bK.cloned + bK.copied == bK.items.count - 1,
               "key scan: the manifest names what was left out (\(bK.secretLeftOut ?? [])); the counts follow what is in it (left out \(bK.leftOut), cloned \(bK.cloned) + copied \(bK.copied) for \(bK.items.count) items)")
         let mK = SessionsBackup.load(profile: "k", id: bK.id, place: place)
         check(mK?.secretBlanked == bK.secretBlanked && mK?.secretLeftOut == bK.secretLeftOut && mK?.envBlanked == true && !(mK?.setupLeftOut ?? []).contains { $0.contains("keyed.sh") },
@@ -438,10 +472,17 @@ MainActor.assumeIsolated {
         check(prK.refusal == nil && prK.setup.keysBlanked == bK.secretBlanked! && prK.setup.keysLeftOut == bK.secretLeftOut!,
               "restore: the plan carries the blanked keys' names and the left-out names: \(prK.refusal ?? "ok") \(prK.setup.keysBlanked) \(prK.setup.keysLeftOut)")
         let wordsB = SetupRow.keysBlankedWords(prK.setup.keysBlanked), wordsL = SetupRow.keysLeftOutWords(prK.setup.keysLeftOut)
-        check(wordsB == "settings.json held 5 keys (apiKeyHelper, enabledPlugins.(a key), nested.deep.token, nested.list[0][0], …and 1 more): left blank in backups, the names stay. A key travels only in an encrypted export of the profile as it is now."
-              && wordsL == "script hooks/keyed.sh, skill guard, the plugin marketplaces held a key: left out of backups; it travels only in the encrypted export of the profile as it is now."
-              && allKeys.allSatisfy { !wordsB.contains($0) && !wordsL.contains($0) },
-              "restore row: the words name the keys' places and the files, never a value: \(wordsB) / \(wordsL)")
+        let wordsH = SetupRow.hooksDroppedWords(prK.setup.hooksDropped), wordsR = SetupRow.rulesDroppedWords(prK.setup.rulesDropped)
+        check(prK.setup.hooksDropped == bK.secretHooksDropped! && prK.setup.rulesDropped == bK.secretRulesDropped!,
+              "restore: the plan carries the dropped hooks' and rules' names: \(prK.setup.hooksDropped) \(prK.setup.rulesDropped)")
+        check(wordsB == "settings.json held 4 keys (apiKeyHelper, enabledPlugins.(a key), nested.deep.token, nested.list[0][0]): left blank in backups, the names stay. A key travels only in an encrypted export of the profile as it is now."
+              && wordsL == "script hooks/keyed.sh, script hooks/wide.sh, skill guard, the plugin marketplaces held a key: left out of backups; they travel only in the encrypted export of the profile as it is now."
+              && wordsH == "3 hooks held a key: left out of backups (Notification, PostToolUse (Edit), PreToolUse (Bash)); they travel only in the encrypted export of the profile as it is now."
+              && wordsR == "2 permission rules held a key: left out of backups (permissions.allow[1], permissions.ask[0]); they travel only in the encrypted export of the profile as it is now."
+              && SetupRow.hooksDroppedWords(["Stop"]) == "a hook held a key: left out of backups (Stop); it travels only in the encrypted export of the profile as it is now."
+              && SetupRow.keysLeftOutWords(["the plugin marketplaces"]).contains("; it travels only")
+              && allKeys.allSatisfy { !wordsB.contains($0) && !wordsL.contains($0) && !wordsH.contains($0) && !wordsR.contains($0) },
+              "restore row: the words name the keys' places, the hooks, the rules and the files, never a value: \(wordsB) / \(wordsL) / \(wordsH) / \(wordsR)")
         check(SetupRow.keysBlankedWords(["apiKeyHelper"]).hasPrefix("settings.json held a key (apiKeyHelper): left blank in backups"), "restore row: one key says \"a key\"")
         let rrK = try! SessionsRestore.run(tK, bkK, addSetup: true, windowClosed: { true })
         check(allKeys.allSatisfy { (read(cKr + "/settings.json") ?? "").contains($0) == false } && holds(cKr, ghK).isEmpty && holds(cKr, awsK).isEmpty && !fm.fileExists(atPath: cKr + "/hooks/keyed.sh")
@@ -454,8 +495,9 @@ MainActor.assumeIsolated {
         let kpv = SessionsExport.preview(kPart)!
         let kNotesImg = ExportWords.setupNotes(kpv, setup: true, image: true), kNotesZip = ExportWords.setupNotes(kpv, setup: true, image: false)
         check(kpv.setup.keysBlanked == bK.secretBlanked! && kpv.setup.keysLeftOut == bK.secretLeftOut!
-              && kNotesImg.contains { $0.hasPrefix("settings.json comes with 5 values blank where a backup found a key (apiKeyHelper, enabledPlugins.(a key), nested.deep.token, nested.list[0][0], …and 1 more). Export the profile as it is now to carry the keys.") }
-              && kNotesImg.contains { $0 == "script hooks/keyed.sh, skill guard, the plugin marketplaces held a key and isn't in the backup, so the image lacks them: export the profile as it is now to carry them." }
+              && kNotesImg.contains { $0 == "settings.json comes with 4 values blank where a backup found a key (apiKeyHelper, enabledPlugins.(a key), nested.deep.token, nested.list[0][0]). Export the profile as it is now to carry the keys." }
+              && kNotesImg.contains { $0 == "settings.json comes without 5 hooks and permission rules that held a key (Notification, PostToolUse (Edit), PreToolUse (Bash), permissions.allow[1], …and 1 more): a backup doesn't keep one. Export the profile as it is now to carry them." }
+              && kNotesImg.contains { $0 == "script hooks/keyed.sh, script hooks/wide.sh, skill guard, the plugin marketplaces held a key and isn't in the backup, so the image lacks them: export the profile as it is now to carry them." }
               && !kNotesZip.contains { $0.contains("held a key") || $0.contains("found a key") },
               "export (from a plain backup): the page says which values are blank and which files the image lacks (an image only): \(kNotesImg)")
         let kDmg = URL(fileURLWithPath: out + "/K-from-backup.dmg")
@@ -463,6 +505,7 @@ MainActor.assumeIsolated {
            let ok = try? SessionsImport.open(kDmg, password: pw, place: place) {
             let km = ok.parts[0].manifest
             check(allKeys.allSatisfy { holds(ok.tree.path, $0).isEmpty } && km.secretBlanked == bK.secretBlanked && km.secretLeftOut == bK.secretLeftOut
+                  && km.secretHooksDropped == bK.secretHooksDropped && km.secretRulesDropped == bK.secretRulesDropped
                   && !km.items.contains { $0.path.hasSuffix("keyed.sh") || $0.path.contains("skills/guard/") || $0.path.hasSuffix("known_marketplaces.json") },
                   "export (image from a plain backup): none of the keys, the blanked and left-out names in its manifest, the left-out files not in it")
             SessionsImport.discard(ok.work)
@@ -475,12 +518,13 @@ MainActor.assumeIsolated {
            let on = try? SessionsImport.open(nowDmg, password: pw, place: place) {
             let nm = on.parts[0].manifest
             let kept = Set(nm.items.map(\.path))
-            check(nm.secretBlanked == nil && nm.secretLeftOut == nil && !holds(on.tree.path, ghK).isEmpty && !holds(on.tree.path, awsK).isEmpty && !holds(on.tree.path, skK).isEmpty && !holds(on.tree.path, jwtK).isEmpty
+            check(nm.secretBlanked == nil && nm.secretLeftOut == nil && nm.secretHooksDropped == nil && nm.secretRulesDropped == nil && !holds(on.tree.path, ghK).isEmpty && !holds(on.tree.path, awsK).isEmpty && !holds(on.tree.path, skK).isEmpty && !holds(on.tree.path, jwtK).isEmpty
                   && kept.isSuperset(of: ["setup/hooks/keyed.sh", "setup/skills/guard/run.sh", "setup/plugins/known_marketplaces.json", "setup/settings.json"]),
                   "export (image of the profile as it is now): every key, the script, the skill and the marketplaces file are carried, as before: \(allKeys.map { holds(on.tree.path, $0).count }) \(kept.sorted())")
             let stK = try! SessionsImport.materialize(on, part: on.parts[0], target: "k2")
             let loadedK = SessionsBackup.load(profile: "k2", id: stK.id, place: stK.stage)
-            check(!holds(stK.backup.dir.path, ghK).isEmpty && !holds(stK.backup.dir.path, skK).isEmpty && loadedK?.secretBlanked == nil && loadedK?.secretLeftOut == nil && loadedK?.envBlanked == nil,
+            check(!holds(stK.backup.dir.path, ghK).isEmpty && !holds(stK.backup.dir.path, skK).isEmpty && loadedK?.secretBlanked == nil && loadedK?.secretLeftOut == nil && loadedK?.secretHooksDropped == nil && loadedK?.secretRulesDropped == nil && loadedK?.envBlanked == nil
+                  && !(read(stK.backup.dir.path + "/setup/settings.json") ?? "").isEmpty && holds(stK.backup.dir.path, "check?token=").count == 1,
                   "import (image): the staged backup keeps what the image brought, keys included, and says nothing of blanked keys")
             let (tK2, _, _) = target("k2")
             let prK2 = SessionsRestore.plan(tK2, stK.backup, addSetup: true)
@@ -489,7 +533,7 @@ MainActor.assumeIsolated {
         } else { check(false, "export (image of the profile as it is now): made and opens") }
         let xK = try! SessionsBackup.make(srcK, kind: .manual, window: false, place: place, forExport: true)
         let xdir = SessionsBackup.folder(profile: "k", place: place).appendingPathComponent(xK.id).path
-        check(xK.secretBlanked == nil && xK.secretLeftOut == nil && !holds(xdir, ghK).isEmpty && !holds(xdir, skK).isEmpty && !holds(xdir, awsK).isEmpty && !holds(xdir, jwtK).isEmpty,
+        check(xK.secretBlanked == nil && xK.secretLeftOut == nil && xK.secretHooksDropped == nil && xK.secretRulesDropped == nil && holds(xdir, "check?token=").count == 1 && !holds(xdir, ghK).isEmpty && !holds(xdir, skK).isEmpty && !holds(xdir, awsK).isEmpty && !holds(xdir, jwtK).isEmpty,
               "backup (the hidden export copy): keeps everything for the image, keys included: \(xK.secretBlanked ?? []) \(xK.secretLeftOut ?? []) \(allKeys.map { holds(xdir, $0).count })")
 
         // a settings.json and files without a key: nothing blanked, nothing left out, every file as it was
@@ -498,7 +542,7 @@ MainActor.assumeIsolated {
         let bC = try! SessionsBackup.make(srcK, kind: .manual, window: false, place: place)
         let dirC = SessionsBackup.folder(profile: "k", place: place).appendingPathComponent(bC.id).path
         var wantC = origCleanK; wantC["env"] = ["PLAIN": ""]
-        check(bC.secretBlanked == nil && bC.secretLeftOut == nil && same(json(fm.contents(atPath: dirC + "/setup/settings.json")) ?? [:], wantC)
+        check(bC.secretBlanked == nil && bC.secretLeftOut == nil && bC.secretHooksDropped == nil && bC.secretRulesDropped == nil && fm.fileExists(atPath: dirC + "/setup/hooks/wide.sh") && same(json(fm.contents(atPath: dirC + "/setup/settings.json")) ?? [:], wantC)
               && fm.contents(atPath: dirC + "/setup/hooks/keyed.sh") == fm.contents(atPath: cK + "/hooks/keyed.sh") && fm.contents(atPath: dirC + "/setup/plugins/known_marketplaces.json") == fm.contents(atPath: cK + "/plugins/known_marketplaces.json")
               && fm.contents(atPath: dirC + "/setup/skills/guard/run.sh") == fm.contents(atPath: cK + "/skills/guard/run.sh") && bC.cloned + bC.copied == bC.items.count - 1,
               "key scan: with no key anywhere, settings.json is as it was but for env, every script and file is kept byte for byte, and no name is listed")
@@ -507,6 +551,13 @@ MainActor.assumeIsolated {
         // a settings.json value that only looks near a key (a short sk- word, a word that merely contains one) is not a match
         check(Setup.secretsBlanked(Data(#"{"a":"task-fix-the-login-page-for-users","b":"mask_ghp_short","c":"sk-short","d":["ok",1,true,null,{"e":2.5}]}"#.utf8))?.keys == [],
               "key scan: the same shapes as the Export page's: a near miss (a task word, a short key, a number, a null) is not blanked")
+        // the older hook shape (the hook is the group itself), a hooks value that isn't an object, and a matcher that is itself a match
+        let oldShape = Setup.secretsBlanked(Data("{\"hooks\":{\"Stop\":[{\"command\":\"echo \(ghK)\"},{\"command\":\"echo ok\"}],\"Pre\":[{\"matcher\":\"\(skK)\",\"hooks\":[{\"type\":\"command\",\"command\":\"x\"}]}]},\"permissions\":{\"allow\":[\"a\",\"\(skK)\"],\"deny\":[\"d\"]}}".utf8))
+        let oldHooks = (json(oldShape?.data)?["hooks"] as? [String: Any]) ?? [:]
+        check(oldShape?.hooks == ["Pre (a matcher)", "Stop"] && Set(oldHooks.keys) == ["Stop"] && (oldHooks["Stop"] as? [[String: Any]])?.count == 1 && oldShape?.rules == ["permissions.allow[1]"],
+              "key scan: a hook in the older shape is dropped on its own, a group whose matcher holds a key goes whole (named \"a matcher\", never the key): \(oldShape?.hooks ?? [])")
+        check(Setup.secretsBlanked(Data("{\"hooks\":\"\(ghK)\"}".utf8))?.hooks == ["hooks"] && json(Setup.secretsBlanked(Data("{\"hooks\":\"\(ghK)\"}".utf8))?.data)?["hooks"] == nil,
+              "key scan: a hooks value that isn't an object and holds a key goes whole")
         try? fm.removeItem(atPath: cK)
     }
 
@@ -522,11 +573,15 @@ MainActor.assumeIsolated {
               "backups line: dismissed for that folder (also another spelling of it), still shown for another")
         shared.dismissNote(place: b)
         check(!BackupPrefs.noteDue(place: a) && !BackupPrefs.noteDue(place: b), "backups line: each folder is remembered on its own")
-        shared.dismissNote(place: ""); check((BackupPrefs.store.string(forKey: BackupPrefs.noteKey) ?? "").split(separator: "\n").count == 2, "backups line: dismissing the default place remembers nothing")
+        let nl = w + "/picked\nnewline"
+        check(BackupPrefs.noteDue(place: nl), "backups line: a folder whose name holds a newline shows it")
+        shared.dismissNote(place: nl)
+        check(!BackupPrefs.noteDue(place: nl) && BackupPrefs.noteSeen().count == 3, "backups line: and can be dismissed (the list is kept as JSON, not as lines)")
+        shared.dismissNote(place: ""); check(BackupPrefs.noteSeen().count == 3, "backups line: dismissing the default place remembers nothing")
         for i in 0..<25 { shared.dismissNote(place: w + "/picked-n\(i)") }
         check(BackupPrefs.noteSeen().count == 20 && !BackupPrefs.noteDue(place: w + "/picked-n24") && BackupPrefs.noteDue(place: a), "backups line: the last 20 folders are remembered, no more")
         shared.reload()
-        check(BackupPrefs.pickedNote.contains("copies of Claude Code's settings and scripts") && BackupPrefs.pickedNote.contains("Any key found in them is left out") && BackupPrefs.pickedNote.contains("once for each folder"),
+        check(BackupPrefs.pickedNote.contains("copies of Claude Code's settings and scripts") && BackupPrefs.pickedNote.contains("A key found in settings.json or a script its hooks run is left out") && !BackupPrefs.pickedNote.contains("Any key") && BackupPrefs.pickedNote.contains("once for each folder"),
               "backups line: the words")
         shared.place = wasPlace
     }
