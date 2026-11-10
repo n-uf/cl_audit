@@ -398,10 +398,12 @@ enum ClaudeCLI {
         lines.append("echo \(q("Signing in to Claude Code for \(tilde(account.configDir))…"))")
         var cmd = "\(q(claude)) auth login --claudeai"
         if let email { cmd += " --email \(q(email))" }
-        lines.append(cmd)
+        lines += [cmd, "s=$?"]
         // with a marker the script says when the login ended well (exit 0)
-        if let marker { lines += ["s=$?", "if [ $s -eq 0 ]; then : > \(q(marker.path)); fi"] }
-        lines += ["echo", "echo 'Done. cl_audit picks up the new sign-in by itself within half a minute.'"]
+        if let marker { lines.append("if [ $s -eq 0 ]; then : > \(q(marker.path)); fi") }
+        lines += ["echo",
+                  "if [ $s -eq 0 ]; then echo 'Done. cl_audit picks up the new sign-in by itself within seconds.'; "
+                  + "else echo 'The sign-in did not finish. Close this window and try again from cl_audit.'; fi"]
         return lines
     }
 

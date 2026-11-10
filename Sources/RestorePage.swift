@@ -256,7 +256,7 @@ struct RestorePage: View {
 
     private var staysCard: some View {
         SCard(title: "Stays as it is", info: "Restore only adds what is missing. The account, the sign-ins and claude.ai are not part of it; a file that is here (MCP settings, settings.json, a task file) is never replaced or merged into.") {
-            SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
+            SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): a switch changes that") }
             SRow(label: "Sign-ins") { rowValue(imp ? "Never in an export, never written" : "Never in a backup, never written") }
             SRow(label: "MCP") { rowValue(imp ? "Yours stay; the file's are added only if none is here and you pick Add them"
                                           : "Not in this Mac's backups: the window's MCP settings travel only in the encrypted export. Yours stay as they are") }
@@ -347,9 +347,9 @@ struct RestorePage: View {
 
     private var footnote: String {
         switch runner.phase {
-        case .ready: return "It keeps a receipt as it goes, like a switch: if the Mac stops, the next start of cl_audit offers to finish it first."
+        case .ready: return "It keeps a receipt as it goes: if the Mac stops, the next start of cl_audit offers to finish it first."
         case .done, .sidebar: return imp ? "Undo this import takes back exactly what it added; Undo last import, under \(name)'s Sessions, does the same later."
-                                          : "Undo this restore takes back exactly what it put back, as Undo does for a switch."
+                                          : "Undo this restore takes back exactly what it put back."
         default: return ""
         }
     }

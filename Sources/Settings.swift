@@ -1546,7 +1546,7 @@ struct AccountSettings: View {
                 // select it, again to deselect
                 ForEach(standbyOrder) { s in standbyBox(s) }
                 if !standbyOrder.isEmpty, picked == nil {
-                    Text("Click a standby account to select it: its Switch account key opens the Switch page.")
+                    Text("Click a standby account to select it, then Switch account.")
                         .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                 }
                 addAccountRow

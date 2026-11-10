@@ -58,11 +58,11 @@ struct StandbyAccount: Codable, Equatable, Hashable, Identifiable {
 /// The bookkeeping of a profile's accounts that needs nothing but its records (cl_quick's AccountBook): what a switch
 /// says it affects, how long ago, and which standby account to offer first.
 enum AccountBook {
-    /// What a switch affects, for the Switch page: Claude Code on the folder (in Terminal and editors for ~/.claude, the
-    /// uses pointed at it with CLAUDE_CONFIG_DIR for any other), sessions running now included; not the Claude app, which
+    /// What a switch affects, for the Switch page: Claude Code in Terminal and editors on the folder (for any folder but
+    /// ~/.claude, those that use it through CLAUDE_CONFIG_DIR), sessions running now included; not the Claude app, which
     /// runs its own claude with its own sign-in. `email` as it should be shown (masked where the caller masks).
     static func switchWords(folder: String, email: String, isDefault: Bool) -> String {
-        (isDefault ? "Claude Code in Terminal and editors on \(folder)" : "Claude Code pointed at \(folder) with CLAUDE_CONFIG_DIR")
+        (isDefault ? "Claude Code in Terminal and editors on \(folder)" : "Claude Code in Terminal and editors using \(folder)")
             + " moves to \(email), sessions running now included; the Claude app keeps its own sign-in."
             + " Finish the sign-in in Terminal and the browser as that account."
     }

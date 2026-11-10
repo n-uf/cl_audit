@@ -196,7 +196,7 @@ do {
     check(AccountBook.switchWords(folder: "~/.claude", email: "u2", isDefault: true)
           == "Claude Code in Terminal and editors on ~/.claude moves to u2, sessions running now included; the Claude app keeps its own sign-in. Finish the sign-in in Terminal and the browser as that account.",
           "what a switch affects, for ~/.claude")
-    check(AccountBook.switchWords(folder: "~/.claude-work", email: "u2", isDefault: false).hasPrefix("Claude Code pointed at ~/.claude-work with CLAUDE_CONFIG_DIR moves to u2"),
+    check(AccountBook.switchWords(folder: "~/.claude-work", email: "u2", isDefault: false).hasPrefix("Claude Code in Terminal and editors using ~/.claude-work moves to u2"),
           "…and for another folder")
     var e = profile("main", "~/.claude", u1, standby: [full, low]); e.id = "main"
     let lines = SwitchMenu.lines(e, now: now)
@@ -234,7 +234,8 @@ do {
     check(l1.firstIndex(of: unset).map { $0 < cmd } == true, "a key or another provider from the shell's settings is unset before the sign-in")
     check(l1.contains("unset CLAUDE_CONFIG_DIR") && l1[cmd] == "'/opt/claude' auth login --claudeai --email 'ultra-2@example.com'",
           "~/.claude signs in with CLAUDE_CONFIG_DIR unset, the address filled in")
-    check(!l1.contains { $0.contains("s=$?") }, "no marker for a switch")
+    check(!l1.contains { $0.contains(".done") } && l1.contains { $0.hasPrefix("if [ $s -eq 0 ]; then echo 'Done.") },
+          "no marker for a switch; \"Done.\" only when the login ended well")
     let marker = URL(fileURLWithPath: home + "/m it's.done")
     let l2 = ClaudeCLI.loginLines("/opt/claude", account: other, email: "a'b@example.com", marker: marker)
     check(l2.contains("export CLAUDE_CONFIG_DIR='\(home)/.claude-o'\\''brien'") && l2.contains { $0.hasSuffix("--email 'a'\\''b@example.com'") },

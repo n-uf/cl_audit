@@ -231,8 +231,8 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   order, never shown). **While a limit is full, the first is selected already**: its
   row lights mint across the card with the lit bar, and its STANDBY display becomes the lit **Switch account** key,
   which opens the Switch page with that account picked; a click on another tray picks it instead. **With room left
-  nothing is selected**: a click selects a tray, a second click deselects it (as in Settings). The alert adds "Switch to
-  another of its accounts: Claude Code on its folder signs in again." with **Switch account…** (and Later): alerts
+  nothing is selected**: a click selects a tray, a second click deselects it (as in Settings). The alert adds "You can
+  switch to another of its accounts: Claude Code signs in again on this profile's folder." with **Switch account…** (and Later): alerts
   reach the lock screen, so they never name an account by its address or any part of it. **The menus** (the menu bar
   icon's and the Dock icon's, with the same items) show the account in use under the profile's name with a lit green
   lamp ("ultra-1 · in use"; the Dock menu's first line reads "Claude Main · ultra-1 in use") and have **Switch account
@@ -243,8 +243,8 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   letter only while emails are hidden (and in the menus).
 - **The Switch page.** The account in use (NOW, lit, with its limits) and, under TO, the account picked (in mint) and the
   profile's other accounts below it (click another to switch to it instead); **What changes**: Claude Code in Terminal
-  and editors on the profile's folder moves to that account, sessions running now included (for a folder other than
-  `~/.claude`: Claude Code pointed at it with `CLAUDE_CONFIG_DIR`), and the Claude app keeps its own sign-in; the
+  and editors using the profile's folder moves to that account, sessions running now included, and the Claude app
+  keeps its own sign-in; the
   sessions stay in the folder, each with the account it ran on (one started on ultra-1 isn't continued on ultra-2); the
   Claude window's own sign-in, sessions, sidebar and scheduled tasks stay as they are; the profile's name, Dock icon,
   look, folder and settings stay; the account it leaves stays on the profile as a standby account. Then the steps and
@@ -470,10 +470,10 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     account off the profile, nothing on this Mac changes, and Add account can bring it back).
   - **Add account** opens a pop-up (macOS's own menu) of what it finds on this Mac, two lines a row: the address,
     then in grey what is known about it. One click remembers it on the profile, signed out: nothing signs in and no
-    folder is made. Accounts signed in in Claude Code folders no profile uses ("Ultra · Personal · signed in at
+    folder is made. Accounts signed in in Claude Code folders no profile uses ("Ultra · Personal · old folder
     ~/.claude-ultra-3") and the accounts this profile's Claude window has used, with their addresses from Claude Code's
     records ("Pro · Personal · used in Main's window in August"); other profiles' accounts are greyed and can't be added
-    ("Work's · one profile per account"). **Another address…** (last in the pop-up) turns the key into the address and
+    ("On Work · one profile per account"). **Another address…** (last in the pop-up) turns the key into the address and
     **Remember**: "Remembered on Main, signed out: it signs in when you switch to it." An account belongs to one
     profile; no sign-in is ever copied. New profile still starts with one account.
   - **Folders from before.** Up to 26.11.13 cl_audit kept a standby account's sign-in, and the account in use's when it
@@ -872,7 +872,7 @@ stays. There is no MCP row: this Mac's own backups don't keep the window's MCP s
 only a backup an import staged from an encrypted image has them, and its Restore page has the Import page's MCP row. The
 setup row says in one line that a backup's settings.json has its env values blank, when it has one.
 
-**Stays as it is:** the account (Main stays on the account it works on; Switch back changes that), sign-ins (never in a
+**Stays as it is:** the account (Main stays on the account it works on; a switch changes that), sign-ins (never in a
 backup, never written), a `claude_desktop_config.json` that is here and `settings.json` other than Keep for, and claude.ai
 (Chats and Projects). **Sidebar:** the groups and pins of the restored sessions are taken from the backup's own sidebar records
 and arranged by one Return in a helper session; the window's cache is off, so claude.ai's copy wins

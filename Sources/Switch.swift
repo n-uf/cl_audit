@@ -134,8 +134,8 @@ struct SidebarCounts: Equatable {
 enum SwitchWords {
     static func alertLine(_ offer: SwitchOffer?, accounts: Int) -> String? {
         guard offer != nil else { return nil }
-        return accounts > 1 ? "Switch to another of its accounts: Claude Code on its folder signs in again."
-                            : "Switch to its other account: Claude Code on its folder signs in again."
+        return accounts > 1 ? "You can switch to another of its accounts: Claude Code signs in again on this profile's folder."
+                            : "You can switch to its other account: Claude Code signs in again on this profile's folder."
     }
     /// The full-limit alert's button, worded like the card's and the menus' (it opens the Switch page)
     static let button = "Switch account…"

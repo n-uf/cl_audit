@@ -145,12 +145,12 @@ struct MenuTrigger: NSViewRepresentable {
 
 extension FoundAccount {
     /// The pop-up's grey line: plan · organisation · where it was seen.
-    /// "Ultra · Personal · signed in at ~/.claude-ultra-3", "Pro · Personal · used in Main's window in August",
-    /// "Work's · one profile per account".
+    /// "Ultra · Personal · old folder ~/.claude-ultra-3", "Pro · Personal · used in Main's window in August",
+    /// "On Work · one profile per account".
     func second(profile: String, now: Date = Date()) -> String {
-        if let owner { return "\(AddAccountWords.possessive(owner)) · one profile per account" }
+        if let owner { return "On \(owner) · one profile per account" }
         var parts = [plan, org].compactMap { $0 }
-        if let folder { parts.append("signed in at \(tilde(expand(folder)))") }
+        if let folder { parts.append("old folder \(tilde(expand(folder)))") }
         if let used = usedInWindow {
             parts.append("used in \(profile.isEmpty ? "this profile's" : AddAccountWords.possessive(profile)) window \(Self.whenUsed(used, now: now))")
         }

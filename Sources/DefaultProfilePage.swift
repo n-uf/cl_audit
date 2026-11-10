@@ -340,7 +340,7 @@ struct DefaultProfilePage: View {
                     HStack(spacing: 8) {
                         Button("Keep \(name) as a standby account") { runner.keepOldAsStandby() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
                     }
-                    SRowLine(text: "Its folder and sign-in stay exactly as they are; the default profile can switch to it when a limit is full.")
+                    SRowLine(text: "Its account is remembered on the default profile, signed out: switching to it signs it in on the default profile's folder. Its own folder stays exactly as it is, with its sessions and settings.")
                 }
                 HStack(spacing: 8) {
                     Button("Remove \(name)…") { runner.removeOld() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()

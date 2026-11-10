@@ -44,8 +44,8 @@ Nothing pending.
   were last in use), signed out, with no folder or Keychain item of their own, so nothing reads them and they show no
   usage (on the Accounts card, the dashboard's trays, the menus and the alert). **Switch to ultra-2** opens Claude Code's
   own sign-in in Terminal for the profile's folder with that address filled in, as cl_quick does; cl_audit watches the
-  folder for up to 10 minutes and says what came of it: on ultra-2, signed in as another account (the browser's), or no
-  sign-in. The Switch page says first what that affects: Claude Code in Terminal and editors on that folder, running
+  folder for up to 10 minutes and says whether it reached ultra-2, signed in as another account (the browser's), or timed
+  out. The Switch page says first what that affects: Claude Code in Terminal and editors on that folder, running
   sessions included; the Claude app keeps its own sign-in. **Nothing moves any more**: the switch no longer closes the
   Claude window, backs it up, moves its sessions and scheduled tasks to the other account or rebuilds its sidebar. Sessions
   stay in the folder, each with the account it ran on.

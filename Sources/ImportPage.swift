@@ -796,7 +796,7 @@ struct ImportPage: View {
                 SRow(label: "Account", first: true) { rowValue("\(name) keeps the accounts it has; the import doesn't change them") }
                 SRow(label: "Sign-ins") { rowValue("Never travel: sign in again on this Mac") }
             } else {
-                SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): Switch back changes that") }
+                SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): a switch changes that") }
                 SRow(label: "Sign-ins") { rowValue("Never in an export, never written") }
             }
             SRow(label: "MCP") { rowValue("Yours stay; the file's are added only if none is here and you pick Add them") }
