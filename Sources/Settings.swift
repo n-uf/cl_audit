@@ -1648,7 +1648,7 @@ struct AccountSettings: View {
             case .timedOut: BoxNote(text: "No sign-in came in 10 minutes; nothing changed.", tone: .caution)
             case .other(let e): BoxNote(text: "Signed in as \(Privacy.masked(e)): that's the account in use now.", tone: .caution)
             case .failed(let why): BoxNote(text: why, tone: .danger)
-            case .ready: EmptyView()
+            case .ready, .closing, .moving, .undone: EmptyView()     // a sign-in again moves nothing
             }
         }
     }

@@ -48,7 +48,7 @@ struct SwitchPage: View {
     private var title: String {
         if again { return runner.phase == .reached ? "Signed Claude \(name) in again" : "Sign Claude \(name) in again" }
         switch runner.phase {
-        case .waiting: return "Switching Claude \(name) to \(to)"
+        case .closing, .moving, .waiting: return "Switching Claude \(name) to \(to)"
         case .reached: return "Switched Claude \(name) to \(to)"
         case .other(let e): return "Claude \(name) signed in as \(AccountNames.short(e))"
         default: return "Switch Claude \(name) to \(to)"
@@ -72,8 +72,15 @@ struct SwitchPage: View {
         case .other(let e):
             if let c = clash { return Top(text: "Signed in as \(AccountNames.short(e))", dim: "· \(c.owner.name)'s account", tone: .warn) }
             return Top(text: "Signed in as \(AccountNames.short(e))", dim: "· not \(to)", tone: .amber)
-        case .timedOut: return Top(text: "No sign-in", dim: "· nothing changed", tone: .amber)
-        case .failed: return Top(text: "Not started", dim: "· nothing changed", tone: .warn)
+        case .timedOut:
+            if runner.canUndo { return Top(text: "No sign-in", dim: "· sessions on \(to)", tone: .amber) }
+            return Top(text: "No sign-in", dim: "· nothing changed", tone: .amber)
+        case .failed:
+            if runner.canUndo { return Top(text: "Stopped", dim: "· Undo puts it back", tone: .warn) }
+            return Top(text: "Not started", dim: "· nothing changed", tone: .warn)
+        case .closing: return Top(text: "Switching", dim: "· closing the window", tone: .mint)
+        case .moving: return Top(text: "Switching", dim: "· moving sessions", tone: .mint)
+        case .undone: return Top(text: "Undone", dim: "· still on \(from)", tone: .ok)
         }
     }
 
@@ -101,15 +108,27 @@ struct SwitchPage: View {
             Button("Back to \(name)'s settings") { leave() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
         case .other(let e):
             Button("Sign in as \(to) again") { runner.retry() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
-            if clash == nil {
+            if runner.canUndo { undoKey }
+            if clash == nil, !runner.canUndo {
                 Button("Keep \(AccountNames.short(e))") { leave() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
             }
         case .timedOut, .failed:
             Button("Try again") { runner.retry() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            if runner.canUndo { undoKey }
             Button("Back to \(name)'s settings") { leave() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
-        case .ready:
+        case .closing:
+            Button("Cancel") { runner.cancel() }.buttonStyle(.pill(FaceTheme.ledRed, compact: true))
+        case .undone:
+            Button("Back to \(name)'s settings") { leave() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+        case .ready, .moving:
             EmptyView()
         }
+    }
+
+    /// Undo the move: the sessions back under the account in use (the window must be closed; it is, until the sign-in ends).
+    private var undoKey: some View {
+        Button("Undo the move") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+            .help("Puts \(name)'s sessions and scheduled tasks back under \(from), from the switch's receipt. Quit \(name)'s Claude window first if it's open.")
     }
 
     /// Back to the profile's settings; the page starts over the next time it opens.
@@ -244,49 +263,85 @@ struct SwitchPage: View {
 
     @ViewBuilder private var switchChanges: some View {
         switch runner.phase {
-        case .ready, .waiting: switchPlan
+        case .ready, .closing, .moving, .waiting: switchPlan
         case .reached: switchDone
         case .other(let e): switchOther(e)
-        case .timedOut, .failed: switchNothing
+        case .timedOut, .failed, .undone: switchNothing
         }
     }
 
-    private var changesInfo: String { "A switch signs Claude Code in again on \(name)'s folder as the other account, in Terminal, finished in the browser. It moves nothing." }
+    private var changesInfo: String { "A switch moves \(name)'s Claude window sessions and scheduled tasks from the account in use to the other one, inside \(name)'s folder (claude-transplant's way: with a backup first, a receipt and Undo), then signs Claude Code in again on that folder as the other account, in Terminal, finished in the browser. The Claude app's own sign-in is yours to change: cl_audit never signs anything in or out." }
+
+    /// What this switch moves: the plan it ran with, or (before it starts) one read now. Sessions a running Claude Code
+    /// owns are counted when it starts.
+    private var plan: SwitchPlan? {
+        if let p = runner.planned { return p }
+        guard runner.phase == .ready, !again, case .success(let p)? = (entry.seat != nil && standby.seat != nil)
+                ? SwitchEngine.plan(entry, standby: standby, owned: []) : nil else { return nil }
+        return p
+    }
+    private var moves: Bool { plan?.moves == true || runner.receipt != nil }
+
+    private func sessionWords(_ p: SwitchPlan?) -> String {
+        guard let p, p.moves else { return "none of the Claude window's sessions are on \(from), so nothing moves" }
+        func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
+        var parts: [String] = []
+        if !p.move.isEmpty { parts.append(n(p.move.count, "Code-tab session", "Code-tab sessions")) }
+        if p.tasks > 0 { parts.append(n(p.tasks, "scheduled task", "scheduled tasks")) }
+        return parts.joined(separator: " and ")
+    }
 
     /// Once it reached the account: what is true now, in the past tense.
     private var switchDone: some View {
         SCard(title: "What changed", info: changesInfo) {
             SRow(label: "Claude Code", first: true, stacked: true) {
-                value("Terminal and editors on \(entry.configDir) work on \(to) now, sessions that were running included. The Claude app kept its own sign-in.")
+                value("Terminal and editors on \(entry.configDir) work on \(to) now, sessions that were running included.")
             }
             SRow(label: "Sessions", stacked: true) {
-                value("They stayed in \(entry.configDir), each with the account it ran on: one started on \(from) isn't continued on \(to).")
+                value(runner.receipt != nil
+                      ? "\(sessionWords(plan).prefix(1).uppercased() + sessionWords(plan).dropFirst()) moved to \(to), with a backup made first. Claude Code's transcripts stayed in \(entry.configDir)."
+                      : "Nothing moved: none of the Claude window's sessions were on \(from).")
             }
             if entry.claudeWindow {
                 SRow(label: "Claude window", stacked: true) {
-                    value("Its own sign-in, sessions, sidebar and scheduled tasks stayed as they were (\(entry.windowWords)).")
+                    value("Open it and sign it in to \(to) yourself (\(entry.windowWords)): its sessions show on that account.")
                 }
             }
             SRow(label: "Stayed", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
-            SRowLine(text: "\(from) stands by on \(name) now: no folder of its own, nothing read, switch back any time.")
+            SRowLine(text: "\(from) stands by on \(name) now: nothing read, switch back any time.")
+            if let n = runner.moveNote { SRowLine(text: n) }
         }
     }
 
-    /// Another account signed in: what the folder is on now; nothing else moved.
+    /// Another account signed in: what the folder is on now, and where the moved sessions are.
     private func switchOther(_ e: String) -> some View {
         SCard(title: "What changed", info: changesInfo) {
             SRow(label: "Claude Code", first: true, stacked: true) {
-                value("Terminal and editors on \(entry.configDir) signed in as \(AccountNames.short(e)), not \(to). Sessions, the Claude window and \(name)'s settings stayed as they were.")
+                value("Terminal and editors on \(entry.configDir) signed in as \(AccountNames.short(e)), not \(to).")
+            }
+            if runner.canUndo {
+                SRow(label: "Sessions", stacked: true) {
+                    value("\(sessionWords(plan).prefix(1).uppercased() + sessionWords(plan).dropFirst()) moved to \(to) already. Sign in as \(to) again, or Undo the move to put them back under \(from).")
+                }
             }
         }
     }
 
-    /// No sign-in: nothing changed.
+    /// No sign-in, stopped, or undone: what is where now.
     private var switchNothing: some View {
         SCard(title: "What changed", info: changesInfo) {
-            SRow(label: "Nothing", first: true, stacked: true) {
-                value("\(name) is still on \(from): Claude Code on \(entry.configDir), its sessions, the Claude window and \(name)'s settings are as they were.")
+            if runner.canUndo {
+                SRow(label: "Sessions", first: true, stacked: true) {
+                    value("\(sessionWords(plan).prefix(1).uppercased() + sessionWords(plan).dropFirst()) moved to \(to); Claude Code on \(entry.configDir) is still on \(from). Try again, or Undo the move to put them back.")
+                }
+            } else {
+                SRow(label: "Nothing", first: true, stacked: true) {
+                    value(runner.phase == .undone
+                          ? "The move is undone: \(name)'s sessions and scheduled tasks are back under \(from), and Claude Code is still on \(from)."
+                          : "\(name) is still on \(from): Claude Code on \(entry.configDir), its sessions, the Claude window and \(name)'s settings are as they were.")
+                }
             }
+            if let n = runner.moveNote { SRowLine(text: n) }
         }
     }
 
@@ -297,15 +352,20 @@ struct SwitchPage: View {
                 value(AccountBook.switchWords(folder: entry.configDir, email: Privacy.masked(runner.goal?.wantedEmail ?? standby.email), isDefault: isDefault))
             }
             SRow(label: "Sessions", stacked: true) {
-                value("They stay in \(entry.configDir), each with the account it ran on: one started on \(from) isn't continued on \(to).")
+                value(moves
+                      ? "\(sessionWords(plan).prefix(1).uppercased() + sessionWords(plan).dropFirst()) move from \(from) to \(to), inside \(name)'s folder, with a backup made first. A session Claude Code is running stays with \(from) until a later switch. Transcripts stay in \(entry.configDir)."
+                      : standby.seat == nil ? "Nothing moves now: \(to) hasn't been signed in on this Mac, so its sessions' folder isn't known yet."
+                      : "Nothing moves: \(sessionWords(plan)).")
             }
             if entry.claudeWindow {
                 SRow(label: "Claude window", stacked: true) {
-                    value("Its own sign-in, sessions, sidebar and scheduled tasks stay as they are (\(entry.windowWords)).")
+                    value(moves ? "It closes for the move (\(entry.windowWords)). Sign it in to \(to) yourself when you open it again: cl_audit never signs it in or out."
+                                : "Its own sign-in stays as it is (\(entry.windowWords)): sign it in to \(to) yourself if you like.")
                 }
             }
             SRow(label: "Stays", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
-            SRowLine(text: "\(from) stays on \(name) as a standby account: no folder of its own, nothing read, switch back any time.")
+            SRowLine(text: "\(from) stays on \(name) as a standby account: nothing read, switch back any time.")
+            if let n = runner.moveNote { SRowLine(text: n) }
         }
     }
 
@@ -313,24 +373,35 @@ struct SwitchPage: View {
 
     private enum StepState { case pending, now, waiting, done, failed }
 
+    /// The sign-in's three steps, after the window's close and the move when the switch moves sessions (steps 1 and 2).
     private func state(_ n: Int) -> StepState {
+        let k = moves ? 2 : 0                                  // the sign-in's steps start after the move's
+        let failedAt = runner.receipt != nil ? k + 1 : (moves && runner.phase != .ready ? 2 : 1)
         switch runner.phase {
         case .ready: return .pending
-        case .waiting: return n == 1 ? .done : n == 2 ? .waiting : .now
+        case .closing: return n == 1 ? .now : .pending
+        case .moving: return n == 1 ? .done : n == 2 ? .now : .pending
+        case .waiting: return n <= k + 1 ? .done : n == k + 2 ? .waiting : .now
         case .reached: return .done
-        case .other: return n < 3 ? .done : .failed
-        case .timedOut: return n == 1 ? .done : n == 2 ? .failed : .pending
-        case .failed: return n == 1 ? .failed : .pending
+        case .other: return n < k + 3 ? .done : .failed
+        case .timedOut: return n <= k + 1 ? .done : n == k + 2 ? .failed : .pending
+        case .failed: return n < failedAt ? .done : n == failedAt ? .failed : .pending
+        case .undone: return n <= k ? .done : .pending
         }
     }
 
     private var stepsCard: some View {
-        SCard(title: "Steps", info: "Claude Code's own sign-in, then a check of the account it signed in. cl_audit never sees a password or a token and doesn't touch the Keychain.") {
+        let k = moves ? 2 : 0
+        return SCard(title: "Steps", info: "When the switch moves sessions: the profile's Claude window closes, a backup is made, the sessions and scheduled tasks move (with a receipt, for Undo). Then Claude Code's own sign-in, and a check of the account it signed in. cl_audit never sees a password or a token and doesn't touch the Keychain.") {
             ClaudeMissingLine(model: model)
             VStack(alignment: .leading, spacing: 0) {
-                step(1, "Claude Code's sign-in opens in Terminal", "For \(entry.configDir), with \(Privacy.masked(runner.goal?.wantedEmail ?? standby.email)) filled in.")
-                step(2, "Finish it in the browser as \(to)", "If the browser is signed in to claude.ai as someone else, switch its account there first.")
-                step(3, again ? "cl_audit checks Claude Code's sign-in ended well" : "cl_audit checks the account",
+                if moves {
+                    step(1, "\(name)'s Claude window closes", "Only that window, by its own quit; it stays closed until the sign-in ends.")
+                    step(2, "Its sessions move to \(to)", "A backup first, then \(sessionWords(plan)), each checked; a receipt keeps Undo possible.")
+                }
+                step(k + 1, "Claude Code's sign-in opens in Terminal", "For \(entry.configDir), with \(Privacy.masked(runner.goal?.wantedEmail ?? standby.email)) filled in.")
+                step(k + 2, "Finish it in the browser as \(to)", "If the browser is signed in to claude.ai as someone else, switch its account there first.")
+                step(k + 3, again ? "cl_audit checks Claude Code's sign-in ended well" : "cl_audit checks the account",
                      "The folder is looked at every 2 seconds, for up to 10 minutes.", check: check)
             }
             // the keys, then the line under them: one under the other, never side by side
@@ -363,20 +434,28 @@ struct SwitchPage: View {
         switch runner.phase {
         case .ready:
             return standby.seat == nil ? "Remembered by its address: the sign-in tells which account it is." : nil
+        case .closing:
+            return "Waiting for \(name)'s Claude window to quit (it may ask about work under way). Nothing has moved yet."
+        case .moving:
+            return runner.receipt == nil ? "Making the backup, then moving the sessions. The window stays closed." : "Putting the sessions back."
         case .waiting:
             if again { return "Nothing else changes: \(name) stays on \(from). cl_audit waits for Claude Code's sign-in to end. Back keeps waiting." }
+            if runner.receipt != nil { return "The sessions are under \(to) now; Claude Code stays on \(from) until the folder names another account. Back keeps waiting." }
             return "Nothing has changed yet: \(name) stays on \(from) until the folder names another account. Back keeps waiting."
         case .reached:
-            return again ? "Claude Code's sign-in on \(entry.configDir) works again." : nil
+            if again { return "Claude Code's sign-in on \(entry.configDir) works again." }
+            return entry.claudeWindow ? "Open \(name)'s Claude window and sign it in to \(to): cl_audit doesn't sign the app in or out." : nil
         case .other(let e):
             if let c = clash {
                 return "\(Privacy.masked(e)) is \(c.owner.name)'s account, so \(name) doesn't take it: its numbers wait until you sign in as \(to) (or another of \(name)'s accounts)."
             }
             return "\(name) works on \(AccountNames.short(e)) now, and \(from) is on standby. To get \(to), switch the browser's claude.ai account first, then sign in again."
         case .timedOut:
-            return "Nothing changed: \(name) is still on \(from)."
+            return runner.canUndo ? "No sign-in came in 10 minutes: Claude Code is still on \(from)." : "Nothing changed: \(name) is still on \(from)."
         case .failed(let why):
             return why
+        case .undone:
+            return runner.moveNote
         }
     }
 
