@@ -9,7 +9,7 @@
 import Foundation
 
 /// A standby account the profile could switch to. A standby account isn't read, so it has no limits: only what is
-/// remembered of it (its plan, when it was last in use, whether its week was full when it left).
+/// remembered of it (its plan, when it was last in use). Its kept week only orders the offers; it is never shown.
 struct SwitchOffer {
     let profile: String
     let standby: StandbyAccount
@@ -22,8 +22,7 @@ struct SwitchOffer {
 
     /// "Ultra · last in use 3 days ago", or "on standby".
     func lineWords(now: Date = Date()) -> String {
-        let parts = [standby.plan.map(Account.planWords), standby.lastInUse.map { "last in use " + AccountBook.ago($0, now: now) },
-                     knownFull(now: now) ? "week full when it left" : nil].compactMap { $0 }
+        let parts = [standby.plan.map(Account.planWords), standby.lastInUse.map { "last in use " + AccountBook.ago($0, now: now) }].compactMap { $0 }
         return parts.isEmpty ? "on standby" : parts.joined(separator: " · ")
     }
 

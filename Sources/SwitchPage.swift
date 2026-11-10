@@ -201,13 +201,11 @@ struct SwitchPage: View {
     /// A standby account: its address, plan and when it was last in use. No limits: it isn't read.
     private func standbyBox(_ s: StandbyAccount, selected: Bool) -> some View {
         let pickable = runner.phase == .ready && !selected && s.seat != nil
-        let full = s.knownFull() ? "its week was full when it left" : nil
         return AccountBox(lamp: nil, badge: "Standby", detail: s.plan.map(Account.planWords),
                           unlit: !selected, selected: selected, litBadge: runner.phase == .reached ? nil : "Switching to") {
             BoxText(text: Privacy.masked(s.email), role: selected ? .title : .softTitle)
         } content: {
-            BoxText(text: [s.lastInUse.map { "Last in use " + AccountBook.ago($0) } ?? "Not in use on \(name) yet", full]
-                        .compactMap { $0 }.joined(separator: "; ") + ".", role: .note)
+            BoxText(text: (s.lastInUse.map { "Last in use " + AccountBook.ago($0) } ?? "Not in use on \(name) yet") + ".", role: .note)
         }
         .contentShape(Rectangle())
         .onTapGesture {

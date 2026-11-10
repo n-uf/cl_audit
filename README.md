@@ -226,9 +226,9 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   one **in use**. The profile's other accounts (Settings ▸ the profile ▸ Claude Code ▸ Accounts) are remembered on it,
   **signed out**: no folder or Keychain item of their own, nothing reads them, so they show no usage. The card shows
   them as **unlit trays** under its limits, one line each: the address, STANDBY, then its plan and when it was last in
-  use ("Ultra · last in use 3 days ago"; "week full when it left" while the week it left with full hasn't started
-  again). They come in the order a full limit offers them: those not known to be full first, the least used by the
-  week they left with, then the most recently in use. **While a limit is full, the first is selected already**: its
+  use ("Ultra · last in use 3 days ago"). They come in the order a full limit offers them: those not known to be full
+  first, the least used by the week they left with, then the most recently in use (that week is kept only for this
+  order, never shown). **While a limit is full, the first is selected already**: its
   row lights mint across the card with the lit bar, and its STANDBY display becomes the lit **Switch account** key,
   which opens the Switch page with that account picked; a click on another tray picks it instead. **With room left
   nothing is selected**: a click selects a tray, a second click deselects it (as in Settings). The alert adds "Switch to
@@ -237,7 +237,7 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   icon's and the Dock icon's, with the same items) show the account in use under the profile's name with a lit green
   lamp ("ultra-1 · in use"; the Dock menu's first line reads "Claude Main · ultra-1 in use") and have **Switch account
   ›**, a submenu with the account in use ticked ("in use · week 94%") and every other account in the same order, each
-  with when it was last in use ("3 days ago", or "week full"). While a limit is full, the first one not known to be full
+  with when it was last in use ("3 days ago"). While a limit is full, the first one not known to be full
   also sits on the top level, "Switch to ultra-3…": right under the full line in the Dock menu, first in the menu bar
   menu's actions. All of them open the **Switch page** in cl_audit. A short name is the address before the @, its first
   letter only while emails are hidden (and in the menus).
@@ -447,7 +447,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   (Ultra: week and Fable; Max: 5-hour, week and Fable; Pro: 5-hour and week; usage credits while it spends them). The
   others are **STANDBY**: remembered on the profile, signed out, with no folder or Keychain item of their own. Nothing
   reads them, so a standby box shows no limits: its plan and when it was last in use on the profile ("Last in use on
-  Main 3 days ago"; "its week was full when it left" while that week hasn't started again), or "Remembered by its
+  Main 3 days ago"), or "Remembered by its
   address: it signs in when you switch to it". They come in the order a full limit offers them. Click one below its
   address to select it: its row lights in mint, and a **Switch account** key takes the place of STANDBY and opens the
   Switch page (click again to deselect). The order holds still while one is selected.

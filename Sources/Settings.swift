@@ -1659,7 +1659,6 @@ struct AccountSettings: View {
         let selected = picked == s.id
         let line = s.lastInUse.map { "Last in use on \(name) " + AccountBook.ago($0) }
             ?? (s.seat == nil ? "Remembered by its address: it signs in when you switch to it" : "Not in use on \(name) yet")
-        let full = s.knownFull() ? "; its week was full when it left" : ""
         return AccountBox(lamp: nil, badge: "Standby", detail: s.plan.map(Account.planWords),
                           unlit: !selected, selected: selected, litBadge: "Switch account",
                           litAction: { model.showSwitch(AccountEntry.switchKey(entry.id, s.id)) }) {
@@ -1672,7 +1671,7 @@ struct AccountSettings: View {
         } content: {
             // a click below the address selects the account (again: deselects); the address menu and the lit key stay
             // outside the click area, so they never select or deselect
-            selectArea(s, selected) { BoxNote(text: line + full + ".").fixedSize(horizontal: false, vertical: true) }
+            selectArea(s, selected) { BoxNote(text: line + ".").fixedSize(horizontal: false, vertical: true) }
         }
     }
 

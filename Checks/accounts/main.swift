@@ -200,8 +200,9 @@ do {
           "…and for another folder")
     var e = profile("main", "~/.claude", u1, standby: [full, low]); e.id = "main"
     let lines = SwitchMenu.lines(e, now: now)
-    check(lines.map(\.key) == ["main~s3", "main~s1"] && lines[1].words == "week full" && !lines[1].room && SwitchMenu.best(lines)?.key == "main~s3",
-          "the menus: the order offered, \"week full\" for one known to be full, the best not full")
+    check(lines.map(\.key) == ["main~s3", "main~s1"] && lines[1].words == "" && !lines[1].room && SwitchMenu.best(lines)?.key == "main~s3",
+          "the menus: the order offered, the kept week never shown (only when last in use), the best not known to be full")
+    check(!SwitchOffer(profile: "main", standby: full).lineWords(now: now).contains("full"), "the card's tray never shows the kept week")
     check(!lines.contains { $0.words.contains("%") }, "the menus show no standby usage")
     check(SwitchWords.alertLine(SwitchOffer(profile: "main", standby: low), accounts: 2)?.contains("@") == false, "the alert names no account")
 }

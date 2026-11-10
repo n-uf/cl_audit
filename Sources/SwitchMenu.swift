@@ -16,7 +16,7 @@ enum SwitchMenu {
     struct Line: Equatable {
         let key: String             // "<profile>~<standby account>": the Switch page's
         let short: String
-        let words: String           // "3 days ago", "week full", or "" when nothing is known
+        let words: String           // "3 days ago", or "" when it was never in use here
         /// Not known to be full: it may be offered while a limit is full.
         let room: Bool
         var canSwitch = true
@@ -44,8 +44,8 @@ enum SwitchMenu {
     /// when it was last in use.
     static func lines(_ e: AccountEntry, now: Date = Date()) -> [Line] {
         e.switchOffers(now: now).map { o in
-            let full = o.knownFull(now: now)
-            let words = full ? "week full" : o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? ""
+            let full = o.knownFull(now: now)          // orders and picks the offer only; never shown
+            let words = o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? ""
             return Line(key: o.key, short: o.short, words: words, room: !full, canSwitch: o.standby.seat != nil || !o.standby.email.isEmpty)
         }
     }
