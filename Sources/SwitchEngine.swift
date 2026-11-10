@@ -1,51 +1,21 @@
-// SwitchEngine: moving a profile's Claude window sessions from the account in use to another of its accounts, on this
-// Mac (Switch.swift is what the page shows; SwitchView.swift the page). The rules are claude-transplant's:
+// SwitchEngine: what is left of the switch that moved a profile's Claude window sessions between its accounts (26.11.12
+// and earlier). A switch now signs Claude Code in again on the profile's own folder and moves nothing (SwitchRunner.swift);
+// what stays here is shared by the writers that still touch the window's files (Restore, Import, the default-profile
+// move, re-pointing a moved session, a move's side files):
 //
-// - only with that window closed (the Claude app rewrites its session entries from memory), checked again before each
-//   entry and before the tasks and pointer steps; while a switch is under way no window opener starts it (SwitchMarker);
-// - one switch at a time (cl_audit's lock), and none while claude-transplant runs: its own lock (a flock) is held for the
-//   whole run;
-// - before anything moves, under the same lock, a backup of the window's Code-tab list, its sidebar records and
-//   cl_audit's records (and, if asked, Claude Code's transcripts) is made (SessionsBackup.swift); if it can't be, nothing
-//   moves. The receipt names the backup, and the backup names the receipt;
-// - every entry keeps its id: kept byte for byte, or re-encoded without the old account's error keys and Remote Control
-//   ids when it has them, through a write that can't overwrite (a private temp file, then a hard link), checked, and
-//   only then is the original parked in cl_audit's own folder: nothing is deleted;
-// - the scheduled tasks move with them: both task files are backed up, the source is emptied first, then the target
-//   gets them (a stop in between leaves them in neither, never in both, and Undo puts them back);
-// - a session whose transcript points at the old account's Remote Control copy gets Claude Code's own empty pointer
-//   line, appended in one O_APPEND write, and only when nothing else is writing that transcript; Undo takes it off
-//   again if it's still the transcript's last bytes;
-// - the receipt says what each step will do before it's done (paths, hashes, backups) and marks it done after, so Undo
-//   puts back whatever got done, also after a stop or a crash (only what is unchanged since). Receipts name accounts by
-//   their ids only, never by address.
-//
-// The sidebar's groups, order and pins are synced to claude.ai per account, so they're not written here: the receipt
-// notes them (SwitchSidebar.swift), and the window on the new account rebuilds them with its own sidebar tools.
+// - the window's folder of sessions for one account and organisation, and how a session entry is placed in another
+//   account's folder (its old account's error keys and Remote Control ids off);
+// - a write that can't overwrite (a private temp file, then a hard link) and SHA-256;
+// - one writer at a time (cl_audit's lock, switches/.lock), and none while claude-transplant runs: its own lock (a flock) is
+//   held for the whole run;
+// - the window marks (SwitchMarker): while a restore, an import's re-point or the default-profile move holds a Claude window
+//   closed, no window opener starts it;
+// - the old switches' receipts (switches/<id>/receipt.json), read only: an old backup says which switch it was made before,
+//   a switch that stopped half way keeps its backup from pruning, and the Sessions card says so. cl_audit no longer writes,
+//   undoes or deletes them. Receipts name accounts by their ids only, never by address.
 
 import CryptoKit
 import Foundation
-
-/// What a switch would do, read without changing anything.
-struct SwitchPlan: Equatable {
-    var profile: String
-    var standby: String
-    var dataDir: String                 // the window's data folder (expanded)
-    var codeDir: String                 // the profile's Claude Code folder (expanded): the Code sessions' transcripts
-    var from: Seat
-    var to: Seat
-    var move: [String] = []             // entries to move ("local_<id>.json")
-    var already: [String] = []          // the target has that id already: left where they are
-    var deleted: [String] = []          // the target deleted a session with that id: left where they are
-    var tasks = 0                       // scheduled tasks to move
-    var sessionsFollow = true
-    var backupTranscripts = true        // the backup (SessionsBackup.swift) takes Claude Code's transcripts too
-    var undoes: String? = nil           // Undo this switch: the receipt of the switch this one switches back
-    var entry: AccountEntry? = nil      // cl_audit's record of the profile, for the backup
-
-    var sourceDir: String { SwitchEngine.scopeDir(dataDir, SeatID(from)) }
-    var targetDir: String { SwitchEngine.scopeDir(dataDir, SeatID(to)) }
-}
 
 /// An account and organisation by their ids only: what a receipt keeps.
 struct SeatID: Codable, Equatable, Hashable {
@@ -58,7 +28,7 @@ struct SeatID: Codable, Equatable, Hashable {
     func same(_ s: Seat?) -> Bool { s.map { $0.account == account && ($0.organization ?? "") == organization } ?? false }
 }
 
-/// The record of one switch, in cl_audit's folder (switches/<id>/receipt.json), saved before and after every step.
+/// The record of one old switch, in cl_audit's folder (switches/<id>/receipt.json): read only.
 struct SwitchReceipt: Codable, Equatable {
     var id: String
     var profile: String
@@ -68,7 +38,7 @@ struct SwitchReceipt: Codable, Equatable {
     var to: SeatID
     var started: Date
     var finished: Date?                 // every step done
-    var linked: Date?                   // the profile works on the new account: from then on, the way back is a switch
+    var linked: Date?                   // the profile worked on the new account: from then on, the way back was a switch
     var undone: Date?
     var steps: [Step] = []
     var problems: [String] = []
@@ -79,11 +49,10 @@ struct SwitchReceipt: Codable, Equatable {
     var backup: String?
     /// The folder that backup is in (General ▸ Backups at the time): a later change of that folder doesn't lose it.
     var backupPlace: String?
-    /// Undo this switch: the receipt of the switch this one switches back. That switch's backup is what the restore after
-    /// it reads, so it is kept from pruning until that restore has run (SessionsRestore.pendingUndoBackups).
+    /// The receipt of the switch this one switched back ("Undo this switch", 26.11.12 and earlier).
     var undoes: String?
 
-    /// Something was moved, and the switch was neither linked nor undone: Undo still applies.
+    /// Something was moved, and the switch was neither linked nor undone: it stopped half way.
     var unfinished: Bool { undone == nil && linked == nil && !steps.isEmpty }
     var moved: Int { steps.filter { $0.kind == .entry && $0.done }.count }
 
@@ -104,13 +73,10 @@ struct SwitchReceipt: Codable, Equatable {
 }
 
 enum SwitchError: Error, Equatable, CustomStringConvertible {
-    case notReady(String), busy(String), windowOpen, failed(String)
-    /// The backup before the move couldn't be made (or the window opened while it was): step 1 of the switch.
-    case backup(String)
+    case busy(String), failed(String)
     var description: String {
         switch self {
-        case .notReady(let s), .busy(let s), .failed(let s), .backup(let s): return s
-        case .windowOpen: return "The profile's Claude window opened during the switch; stopped. Undo puts back what moved."
+        case .busy(let s), .failed(let s): return s
         }
     }
 }
@@ -121,122 +87,10 @@ enum SwitchEngine {
         (expand(dataDir) as NSString).appendingPathComponent("claude-code-sessions/\(s.account)/\(s.organization)")
     }
 
-    /// Where switches keep their receipts, parked originals and backups.
+    /// Where the old switches' receipts are, and the window marks and the lock.
     static var root: URL { Store.folder.appendingPathComponent("switches") }
 
-    // MARK: the plan (read-only)
-
-    /// `follow`: the Switch page's answer to "Move them?" (asked every time); nil only for older callers (the profile's
-    /// old Sessions follow setting).
-    static func plan(_ e: AccountEntry, standby s: StandbyAccount, dataDir: String? = nil, follow: Bool? = nil) -> Result<SwitchPlan, SwitchError> {
-        let follow = follow ?? e.sessionsFollow
-        guard let from = e.seat, from.organization != nil else { return .failure(.notReady("The account in use isn't linked yet.")) }
-        guard let to = s.seat, to.organization != nil else { return .failure(.notReady("\(s.email) isn't linked yet: sign in to it first.")) }
-        // the ids name folders: only real ids (never a path)
-        guard [from.account, from.organization!, to.account, to.organization!].allSatisfy(AccountDiscovery.isUUID) else {
-            return .failure(.notReady("An account id isn't one Claude would use; nothing is moved."))
-        }
-        guard !from.same(to) else { return .failure(.notReady("That's the account in use.")) }
-        let dir = dataDir ?? (e.desktop == .standard ? expand(FolderKey.standardDataDir) : Account(e).claudeUserDataDir ?? "")
-        guard !dir.isEmpty else { return .failure(.notReady("The profile's Claude window has no folder.")) }
-        var p = SwitchPlan(profile: e.id, standby: s.id, dataDir: expand(dir), codeDir: Account(e).configDir, from: from, to: to,
-                           sessionsFollow: follow, entry: e)
-        guard follow else { return .success(p) }
-        let fm = FileManager.default
-        let names = ((try? fm.contentsOfDirectory(atPath: p.sourceDir)) ?? []).filter { $0.hasPrefix("local_") && $0.hasSuffix(".json") }.sorted()
-        for n in names {
-            let id = String(n.dropFirst("local_".count).dropLast(".json".count))
-            if fm.fileExists(atPath: (p.targetDir as NSString).appendingPathComponent(n)) { p.already.append(n) }
-            else if fm.fileExists(atPath: (p.targetDir as NSString).appendingPathComponent("deleted_\(id)")) { p.deleted.append(n) }
-            else { p.move.append(n) }
-        }
-        p.tasks = tasks(in: p.sourceDir).count
-        return .success(p)
-    }
-
-    // MARK: running it
-
-    /// Moves what the plan says. `windowClosed` is asked first and before every step: the window must stay closed. If
-    /// it stops (the window opened, a write failed), the receipt stays as it is, unfinished, for Undo.
-    ///
-    /// When the sessions move, a backup of them is made first, right here under the lock: the window is known closed and
-    /// nothing has moved. The receipt names it (saved before the first move) and it names the receipt. If it can't be
-    /// made, the switch stops with nothing moved. `backups`: where it goes (General ▸ Backups unless given).
-    @discardableResult
-    static func run(_ p: SwitchPlan, windowClosed: () -> Bool, now: Date = Date(), backups: URL? = nil,
-                    backupMade: ((_ id: String, _ place: String) -> Void)? = nil) throws -> SwitchReceipt {
-        let lock = try Lock.take()
-        defer { lock.release() }
-        guard windowClosed() else { throw SwitchError.notReady("The profile's Claude window is open; nothing moved.") }
-        var r = SwitchReceipt(id: receiptID(now, p.profile), profile: p.profile, standby: p.standby, dataDir: p.dataDir,
-                              from: SeatID(p.from), to: SeatID(p.to), started: now)
-        r.undoes = p.undoes
-        let place = backups ?? BackupPrefs.placeURL
-        if p.sessionsFollow {
-            let id = SessionsBackup.newID(now)
-            r.backup = id; r.backupPlace = place.path
-            do {
-                try SessionsBackup.make(SessionsBackup.Source(profile: p.profile, dataDir: p.dataDir, codeDir: p.codeDir, entry: p.entry),
-                                        id: id, kind: .beforeSwitch(r.id), window: true, transcripts: p.backupTranscripts,
-                                        receipt: r, place: place, now: now)
-            } catch {
-                throw SwitchError.backup("The backup of the sessions couldn't be made (\(error)). Nothing moved. Backups go to \(tilde(place.path)); General ▸ Backups changes that.")
-            }
-            // still closed? a window that opened meanwhile may have changed what was copied: the backup is taken away
-            guard windowClosed() else {
-                SessionsBackup.discard(profile: p.profile, id: id, place: place)
-                throw SwitchError.backup("The Claude window opened during the backup; nothing moved. Close it and try again.")
-            }
-        }
-        // old backups age out once this one is made, also when the switch stops
-        defer { if p.sessionsFollow { SessionsBackup.prune(profile: p.profile, place: place) } }
-        let dir = root.appendingPathComponent(r.id)
-        do {
-            try FileManager.default.createDirectory(at: dir.appendingPathComponent("parked"), withIntermediateDirectories: true,
-                                                    attributes: [.posixPermissions: 0o700])
-            try save(r)
-        } catch {
-            // no receipt: nothing names the backup, and nothing moved
-            if let id = r.backup { SessionsBackup.discard(profile: p.profile, id: id, place: place) }
-            try? FileManager.default.removeItem(at: dir)
-            throw error
-        }
-        if let id = r.backup { backupMade?(id, place.path) }           // known to the page before the first move
-        do {
-            try moveAll(p, &r, dir: dir, windowClosed: windowClosed)
-        } catch {
-            r.problems.append("\(error)")
-            try? save(r)
-            throw error
-        }
-        r.finished = Date()
-        try save(r)
-        return r
-    }
-
-    private static func moveAll(_ p: SwitchPlan, _ r: inout SwitchReceipt, dir: URL, windowClosed: () -> Bool) throws {
-        guard p.sessionsFollow else { return }
-        let hasTasks = !tasks(in: p.sourceDir).isEmpty
-        if !p.move.isEmpty || hasTasks { try FileManager.default.createDirectory(atPath: p.targetDir, withIntermediateDirectories: true) }
-        if !p.move.isEmpty {
-            // their groups and pins, from the window's mirror (the window is closed, so it's current), before anything moves
-            r.sidebar = p.sidebar()
-            try save(r)
-        }
-        for name in p.move {
-            guard windowClosed() else { throw SwitchError.windowOpen }
-            do { try moveEntry(name, p, parked: dir.appendingPathComponent("parked"), &r) }
-            catch { r.problems.append("\(name) didn't move: \(error)."); try save(r) }
-        }
-        // the scheduled tasks, also when there's no session to move
-        guard windowClosed() else { throw SwitchError.windowOpen }
-        if !tasks(in: p.sourceDir).isEmpty { try moveTasks(p, backups: dir, &r) }
-        let placed = r.steps.filter { $0.kind == .entry && $0.done }.map(\.path)
-        for path in placed {
-            guard windowClosed() else { throw SwitchError.windowOpen }
-            clearPointer(entryPath: path, p, &r)
-        }
-    }
+    // MARK: a session entry in another account's folder
 
     /// The old account's error keys go; its Remote Control ids are cleared. An entry with neither is kept byte for byte.
     static let accountErrorKeys = ["error", "errorAt", "priorErrorMark"]
@@ -249,41 +103,6 @@ enum SwitchEngine {
         for k in errors { j.removeValue(forKey: k) }
         if bridges { j["bridgeSessionIds"] = [String]() }
         return try JSONSerialization.data(withJSONObject: j, options: [.withoutEscapingSlashes])
-    }
-
-    /// One entry: written down, placed, checked, then its original parked. A check that fails after placing takes the
-    /// placed copy away again, so the session is never in both accounts.
-    private static func moveEntry(_ name: String, _ p: SwitchPlan, parked: URL, _ r: inout SwitchReceipt) throws {
-        let fm = FileManager.default
-        let src = (p.sourceDir as NSString).appendingPathComponent(name)
-        let dst = (p.targetDir as NSString).appendingPathComponent(name)
-        let original = try Data(contentsOf: URL(fileURLWithPath: src))
-        let data = try placed(original)
-        let park = parked.appendingPathComponent(name).path
-        r.steps.append(SwitchReceipt.Step(kind: .entry, path: dst, sha: sha(data), parked: park, original: src))
-        let i = r.steps.count - 1
-        try save(r)                                            // what it will do, before anything is written
-        do {
-            try writeNew(dst, data)
-        } catch {
-            r.steps.remove(at: i); try save(r); throw error   // nothing placed
-        }
-        do {
-            guard (try? Data(contentsOf: URL(fileURLWithPath: dst))) == data else { throw SwitchError.failed("the placed entry didn't read back the same") }
-            // the source checked unchanged, then parked (never deleted)
-            guard (try? Data(contentsOf: URL(fileURLWithPath: src))) == original else { throw SwitchError.failed("the original changed during the switch") }
-            try fm.moveItem(atPath: src, toPath: park)
-        } catch {
-            if (try? Data(contentsOf: URL(fileURLWithPath: dst))).map(sha) == sha(data), (try? fm.removeItem(atPath: dst)) != nil {
-                r.steps.remove(at: i)                          // the copy taken away: as if never placed
-            } else if fm.fileExists(atPath: dst) && fm.fileExists(atPath: src) {
-                r.problems.append("\(name) is in both accounts: its copy couldn't be taken away. Undo takes it away.")
-            }
-            try save(r)
-            throw error
-        }
-        r.steps[i].done = true
-        try save(r)
     }
 
     /// A new file, never over an existing one: written to a private temp file beside it, then linked into place.
@@ -300,269 +119,18 @@ enum SwitchEngine {
     // MARK: scheduled tasks
 
     static func tasks(in scopeDir: String) -> [[String: Any]] {
-        registry(scopeDir)?["scheduledTasks"] as? [[String: Any]] ?? []
-    }
-
-    private static func registry(_ scopeDir: String) -> [String: Any]? {
         let f = (scopeDir as NSString).appendingPathComponent("scheduled-tasks.json")
-        guard let d = FileManager.default.contents(atPath: f) else { return nil }
-        return try? JSONSerialization.jsonObject(with: d) as? [String: Any]
+        guard let d = FileManager.default.contents(atPath: f), let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] else { return [] }
+        return j["scheduledTasks"] as? [[String: Any]] ?? []
     }
 
-    /// The source's tasks join the target's (a task the target already has by its id stays the target's); the source
-    /// keeps none. Both files are backed up and both steps written down first; the source is emptied before the target
-    /// gets them, so a stop in between never leaves a task in both accounts (it would run twice).
-    private static func moveTasks(_ p: SwitchPlan, backups: URL, _ r: inout SwitchReceipt) throws {
-        let fm = FileManager.default
-        let srcFile = (p.sourceDir as NSString).appendingPathComponent("scheduled-tasks.json")
-        let dstFile = (p.targetDir as NSString).appendingPathComponent("scheduled-tasks.json")
-        var source = registry(p.sourceDir) ?? [:]
-        var target = registry(p.targetDir) ?? ["scheduledTasks": [[String: Any]]()]
-        let moving = source["scheduledTasks"] as? [[String: Any]] ?? []
-        var have = target["scheduledTasks"] as? [[String: Any]] ?? []
-        let ids = Set(have.compactMap { $0["id"] as? String })
-        have += moving.filter { ($0["id"] as? String).map { !ids.contains($0) } ?? true }
-        target["scheduledTasks"] = have
-        source["scheduledTasks"] = [[String: Any]]()
-        var writes: [(file: String, data: Data, step: Int)] = []
-        for (file, json, tag) in [(srcFile, source, "source"), (dstFile, target, "target")] {
-            let existed = fm.fileExists(atPath: file)
-            let backup = backups.appendingPathComponent("scheduled-tasks.\(tag).json").path
-            if existed { try? fm.removeItem(atPath: backup); try fm.copyItem(atPath: file, toPath: backup) }
-            let data = try JSONSerialization.data(withJSONObject: json, options: [.withoutEscapingSlashes])
-            r.steps.append(SwitchReceipt.Step(kind: .tasks, path: file, sha: sha(data), parked: existed ? backup : nil, existed: existed))
-            writes.append((file, data, r.steps.count - 1))
-        }
-        try save(r)                                            // both written down before either file changes
-        for w in writes {
-            try w.data.write(to: URL(fileURLWithPath: w.file), options: .atomic)
-            r.steps[w.step].done = true
-            try save(r)
-        }
-    }
+    // MARK: the old switches' receipts (read only)
 
-    // MARK: the Remote Control pointer
-
-    /// Claude Code's own empty pointer line, appended when a moved session's transcript last points at a Remote Control
-    /// copy of another account, so the old pointer can't hide the session on the new one. Only when nothing else is
-    /// writing that transcript (see `busy`); one O_APPEND write; written down with where it went, for Undo.
-    static func clearPointer(entryPath: String, _ p: SwitchPlan, _ r: inout SwitchReceipt, now: Date = Date()) {
-        guard let d = FileManager.default.contents(atPath: entryPath),
-              let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
-              let cli = j["cliSessionId"] as? String, !cli.isEmpty,
-              let transcript = transcriptPath(cli, codeDir: p.codeDir),
-              let last = lastPointer(transcript),
-              let bridge = last["bridgeSessionId"] as? String, !bridge.isEmpty,
-              (last["ownerAccountUuid"] as? String) != p.to.account else { return }
-        if let why = busy(transcript, cli: cli, now: now) {
-            r.problems.append("Session \(cli): \(why), so its Remote Control pointer is left as it is.")
-            try? save(r)
-            return
-        }
-        let fd = open(transcript, O_WRONLY | O_APPEND | O_NOFOLLOW)
-        guard fd >= 0 else { return }
-        defer { close(fd) }
-        var st = stat()
-        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { return }
-        let size = UInt64(st.st_size)
-        let pointer: [String: Any] = ["type": "bridge-session", "sessionId": cli, "bridgeSessionId": "", "lastSequenceNum": 0]
-        guard let line = try? JSONSerialization.data(withJSONObject: pointer, options: [.sortedKeys]) else { return }
-        // a transcript that doesn't end its last line gets one first, in the same write
-        let bytes = (endsWithNewline(transcript, size: size) ? Data() : Data("\n".utf8)) + line + Data("\n".utf8)
-        r.steps.append(SwitchReceipt.Step(kind: .pointer, path: transcript, sha: sha(bytes), parked: nil, original: nil,
-                                          offset: size, bytes: bytes.base64EncodedString(), dev: UInt64(st.st_dev), ino: UInt64(st.st_ino)))
-        let i = r.steps.count - 1
-        do { try save(r) } catch {                             // not written down: not written
-            r.steps.remove(at: i)
-            r.problems.append("Session \(cli): its Remote Control pointer is left as it is (the receipt couldn't be saved).")
-            return
-        }
-        let n = bytes.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
-        var after = stat()
-        guard n == bytes.count else {
-            r.problems.append("Session \(cli): its pointer line wasn't written whole.")
-            r.steps[i].offset = nil; try? save(r); return
-        }
-        // where it landed: right after what was there, unless someone else wrote meanwhile (Undo then leaves it)
-        if fstat(fd, &after) != 0 || UInt64(after.st_size) != size + UInt64(bytes.count) { r.steps[i].offset = nil }
-        r.steps[i].done = true
-        try? save(r)
-    }
-
-    /// Why a transcript may be being written, or nil: changed in the last 10 seconds, open in a process, or a Claude Code
-    /// process runs that session. A check that can't finish counts as busy.
-    ///
-    /// pgrep sees a Claude Code process only when the session id is on its command line (`--resume <id>`,
-    /// `--session-id <id>`); one resumed from its own picker, or with `--continue`, isn't seen. The transcript's age and
-    /// its open files are checked for those, and the line is one O_APPEND write either way.
-    static func busy(_ transcript: String, cli: String, now: Date = Date()) -> String? {
-        if let m = (try? FileManager.default.attributesOfItem(atPath: transcript))?[.modificationDate] as? Date,
-           now.timeIntervalSince(m) < 10 { return "its transcript changed seconds ago" }
-        // lsof -S 2: its own time limit for kernel calls (-b isn't used: it can't then find a file named by path)
-        switch probe("/usr/sbin/lsof", ["-S", "2", "-t", "--", transcript]) {
-        case .found: return "its transcript is open in another program"
-        case .unknown: return "it couldn't be checked whether its transcript is open"
-        case .none: break
-        }
-        switch probe("/usr/bin/pgrep", ["-f", "--", cli]) {
-        case .found: return "Claude Code runs it"
-        case .unknown: return "it couldn't be checked whether Claude Code runs it"
-        case .none: break
-        }
-        return nil
-    }
-
-    enum Probe { case found, none, unknown }
-
-    /// Whether a command finds something (exit 0), within `limit` seconds: past it, only that command (cl_audit's own
-    /// child) is stopped, and the answer is unknown.
-    static func probe(_ tool: String, _ args: [String], limit: TimeInterval = 5) -> Probe {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: tool)
-        p.arguments = args
-        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return .unknown }
-        let deadline = Date().addingTimeInterval(limit)
-        while p.isRunning && Date() < deadline { usleep(50_000) }
-        if p.isRunning {
-            p.terminate()
-            let grace = Date().addingTimeInterval(1)
-            while p.isRunning && Date() < grace { usleep(50_000) }
-            if p.isRunning { kill(p.processIdentifier, SIGKILL) }
-            p.waitUntilExit()
-            return .unknown
-        }
-        return p.terminationStatus == 0 ? .found : .none
-    }
-
-    private static func endsWithNewline(_ path: String, size: UInt64) -> Bool {
-        guard size > 0, let h = FileHandle(forReadingAtPath: path) else { return true }
-        defer { try? h.close() }
-        try? h.seek(toOffset: size - 1)
-        return h.readData(ofLength: 1) == Data("\n".utf8)
-    }
-
-    /// <Claude Code folder>/projects/<project>/<cli id>.jsonl
-    static func transcriptPath(_ cli: String, codeDir: String) -> String? {
-        guard cli.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) else { return nil }   // a file name, never a path
-        let projects = (expand(codeDir) as NSString).appendingPathComponent("projects")
-        for p in (try? FileManager.default.contentsOfDirectory(atPath: projects)) ?? [] {
-            let f = (projects as NSString).appendingPathComponent("\(p)/\(cli).jsonl")
-            if FileManager.default.fileExists(atPath: f) { return f }
-        }
-        return nil
-    }
-
-    /// The last Remote Control pointer line in a transcript (read from its end), or nil.
-    static func lastPointer(_ path: String) -> [String: Any]? {
-        guard let h = FileHandle(forReadingAtPath: path) else { return nil }
-        defer { try? h.close() }
-        let size = (try? h.seekToEnd()) ?? 0
-        let span: UInt64 = min(size, 4 << 20)
-        try? h.seek(toOffset: size - span)
-        let tail = h.readData(ofLength: Int(span))
-        for line in String(decoding: tail, as: UTF8.self).split(separator: "\n").reversed()
-        where line.contains("\"bridge-session\"") {
-            if let j = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any], j["type"] as? String == "bridge-session" { return j }
-        }
-        return nil
-    }
-
-    // MARK: Undo
-
-    /// Puts back what a switch did, from its receipt, also when it stopped half way: placed entries that are unchanged
-    /// go and their originals come back (an original whose copy can't be taken away stays parked, so the session is
-    /// never in both accounts); task files come back from their backups if unchanged since; a pointer line comes off if
-    /// it's still the transcript's last bytes. Then anything in parked/ the steps don't name goes back too. The window
-    /// must be closed.
-    @discardableResult
-    static func undo(_ id: String, windowClosed: () -> Bool) throws -> SwitchReceipt {
-        let lock = try Lock.take()
-        defer { lock.release() }
-        guard windowClosed() else { throw SwitchError.notReady("Quit the profile's Claude window first, then Undo.") }
-        guard var r = load(id) else { throw SwitchError.failed("No receipt for that switch.") }
-        guard r.undone == nil else { return r }
-        guard r.linked == nil else { throw SwitchError.notReady("That switch finished; the way back is a switch the other way.") }
-        let fm = FileManager.default
-        for step in r.steps.reversed() {
-            let name = (step.path as NSString).lastPathComponent
-            switch step.kind {
-            case .entry:
-                let now = (try? Data(contentsOf: URL(fileURLWithPath: step.path))).map(sha)
-                if now == step.sha {                                       // only what this switch placed, unchanged
-                    do { try fm.removeItem(atPath: step.path) }
-                    catch { r.problems.append("\(name) couldn't be taken away; its original stays parked"); continue }
-                } else if now != nil {
-                    r.problems.append("\(name) changed since; left as it is"); continue
-                }
-                guard let parked = step.parked, let original = step.original, fm.fileExists(atPath: parked) else { continue }
-                if !fm.fileExists(atPath: original) { try fm.moveItem(atPath: parked, toPath: original) }
-                else { r.problems.append("\(name) is back already") }
-            case .tasks:
-                let now = (try? Data(contentsOf: URL(fileURLWithPath: step.path))).map(sha)
-                let before = step.parked.flatMap { try? Data(contentsOf: URL(fileURLWithPath: $0)) }.map(sha)
-                if now == before || (now == nil && !step.existed) { continue }    // never written (a stop before it)
-                guard now == step.sha else { r.problems.append("\(name) changed since; left as it is"); continue }
-                if let backup = step.parked {
-                    _ = try fm.replaceItemAt(URL(fileURLWithPath: step.path), withItemAt: URL(fileURLWithPath: backup),
-                                             backupItemName: nil, options: [.usingNewMetadataOnly])
-                } else if !step.existed {
-                    try fm.removeItem(atPath: step.path)                   // a task file this switch made, unchanged
-                }
-            case .pointer:
-                if let why = takeBack(step) { r.problems.append("\(name): \(why)") }
-            }
-        }
-        // anything parked that the steps don't name (a stop between parking and saving): back where it came from
-        let parkedDir = root.appendingPathComponent("\(r.id)/parked").path
-        let named = Set(r.steps.compactMap(\.parked))
-        let source = scopeDir(r.dataDir, r.from)
-        for f in (try? fm.contentsOfDirectory(atPath: parkedDir)) ?? [] {
-            let p = (parkedDir as NSString).appendingPathComponent(f)
-            guard !named.contains(p), f.hasPrefix("local_"), f.hasSuffix(".json") else { continue }
-            let back = (source as NSString).appendingPathComponent(f)
-            if fm.fileExists(atPath: back) { r.problems.append("\(f) is back already") } else { try fm.moveItem(atPath: p, toPath: back) }
-        }
-        r.undone = Date()
-        try save(r)
-        return r
-    }
-
-    /// A pointer line off again: only if the transcript is the same file and still ends with exactly those bytes where
-    /// they were written. Why not, or nil.
-    private static func takeBack(_ step: SwitchReceipt.Step) -> String? {
-        guard step.done else { return nil }                                // never written
-        guard let off = step.offset, let b = step.bytes.flatMap({ Data(base64Encoded: $0) }) else { return "its pointer line stays (where it went is unknown)" }
-        let fd = open(step.path, O_RDWR | O_NOFOLLOW)
-        guard fd >= 0 else { return "its pointer line stays (the transcript can't be opened)" }
-        defer { close(fd) }
-        var st = stat()
-        guard fstat(fd, &st) == 0, UInt64(st.st_dev) == step.dev, UInt64(st.st_ino) == step.ino,
-              UInt64(st.st_size) == off + UInt64(b.count) else { return "written to since; its pointer line stays" }
-        var tail = Data(count: b.count)
-        let n = tail.withUnsafeMutableBytes { pread(fd, $0.baseAddress, b.count, off_t(off)) }
-        guard n == b.count, tail == b else { return "written to since; its pointer line stays" }
-        return ftruncate(fd, off_t(off)) == 0 ? nil : "its pointer line couldn't be taken off"
-    }
-
-    // MARK: receipts
-
-    /// "20261105-153012-a3f9-main": when, a short random part (two switches in one second never share a folder), whose.
+    /// "20261105-153012-a3f9-main": when, a short random part (two runs in one second never share a folder), whose. Restore
+    /// receipts are named the same way.
     static func receiptID(_ d: Date, _ profile: String) -> String {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyyMMdd-HHmmss"
         return "\(f.string(from: d))-\(UUID().uuidString.prefix(4).lowercased())-\(profile)"
-    }
-
-    /// A receipt as it is saved (receipt.json).
-    static func encoded(_ r: SwitchReceipt) throws -> Data {
-        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try enc.encode(r)
-    }
-
-    static func save(_ r: SwitchReceipt) throws {
-        let dir = root.appendingPathComponent(r.id)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try encoded(r).write(to: dir.appendingPathComponent("receipt.json"), options: .atomic)
     }
 
     static func load(_ id: String) -> SwitchReceipt? {
@@ -585,16 +153,9 @@ enum SwitchEngine {
     /// A profile's switches that moved something and were neither linked nor undone, newest first.
     static func unfinished(profile: String) -> [SwitchReceipt] { receipts(profile: profile).filter(\.unfinished) }
 
-    /// Claude Code signed in as the new account: the profile works on it, and the way back is a switch.
-    static func markLinked(_ id: String) {
-        guard var r = load(id) else { return }
-        r.linked = Date()
-        try? save(r)
-    }
-
     static func sha(_ d: Data) -> String { SHA256.hash(data: d).map { String(format: "%02x", $0) }.joined() }
 
-    // MARK: one switch at a time
+    // MARK: one writer at a time
 
     struct Lock {
         let fd: Int32
@@ -608,14 +169,14 @@ enum SwitchEngine {
         static func take() throws -> Lock {
             inProcess.lock()
             defer { inProcess.unlock() }
-            guard !held else { throw SwitchError.busy("Another switch is under way.") }
+            guard !held else { throw SwitchError.busy("Another restore, import or move is under way.") }
             try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let fd = open(root.appendingPathComponent(".lock").path, O_CREAT | O_RDWR, 0o600)
-            guard fd >= 0 else { throw SwitchError.busy("Couldn't take the switch lock.") }
-            guard lockf(fd, F_TLOCK, 0) == 0 else { close(fd); throw SwitchError.busy("Another switch is under way.") }
+            guard fd >= 0 else { throw SwitchError.busy("Couldn't take cl_audit's lock.") }
+            guard lockf(fd, F_TLOCK, 0) == 0 else { close(fd); throw SwitchError.busy("Another restore, import or move is under way.") }
             // claude-transplant 4.2.1 runs `/usr/bin/lockf -k -s -w -t 0 <its folder>/lock …` (a flock; -k keeps the file
             // between runs), or perl's flock on the same file, and makes the folder and the file when they're missing. cl_audit
-            // makes them too, so a claude-transplant that starts mid-switch finds the lock held, even on its first run.
+            // makes them too, so a claude-transplant that starts meanwhile finds the lock held, even on its first run.
             let ctDir = expand("~/Library/Application Support/claude-transplant")
             try? FileManager.default.createDirectory(atPath: ctDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
             let t = open((ctDir as NSString).appendingPathComponent("lock"), O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
@@ -636,11 +197,12 @@ enum SwitchEngine {
     }
 }
 
-/// A switch under way for one Claude window (by its data folder): from closing it until the profile is linked, the
-/// switch is undone, or it stops with nothing moved. Meanwhile no window opener starts that window (Launcher.openClaude:
-/// the Dock icon, the menu bar, the agent's rules and reopening after a Claude update), and a second switch of it is
-/// refused. It holds only while the cl_audit that wrote it runs: the same process id, still running cl_audit's program
-/// (a crashed cl_audit whose id another program got holds nothing). Stale marks go at cl_audit's start and on reading.
+/// A run that holds one Claude window (by its data folder) closed while it writes the window's files: a restore, an
+/// import's re-point, the default-profile move. Meanwhile no window opener starts that window (Launcher.openClaude: the
+/// Dock icon, the menu bar, the agent's rules and reopening after a Claude update), and a second run on it is refused. It
+/// holds only while the cl_audit that wrote it runs: the same process id, still running cl_audit's program (a crashed
+/// cl_audit whose id another program got holds nothing). Stale marks go at cl_audit's start and on reading. (`standby`
+/// names the run: "restore-…", "repoint-…", "default-…"; a switch of 26.11.12 and earlier put a standby account's id there.)
 enum SwitchMarker {
     struct Mark: Codable, Equatable { var pid: Int32; var exe: String; var profile: String; var standby: String; var started: Date }
 
@@ -675,8 +237,7 @@ enum SwitchMarker {
         }
     }
 
-    /// Marks the window for this switch; false when another switch of it (another profile or account, or another
-    /// cl_audit) holds it.
+    /// Marks the window for this run; false when another run on it (another profile or run, or another cl_audit) holds it.
     static func claim(_ window: String, profile: String, standby: String) -> Bool {
         if let m = current(window), m.pid != getpid() || m.profile != profile || m.standby != standby { return false }
         guard let exe = executable(of: getpid()) else { return false }
@@ -687,8 +248,8 @@ enum SwitchMarker {
     }
 
     /// Takes this cl_audit's mark off the window.
-    /// With `profile` and `standby`, only a mark that is exactly that one: a switch finishing never takes away a restore's
-    /// mark (nor the other way round), though both are this process's.
+    /// With `profile` and `standby`, only a mark that is exactly that one: one run finishing never takes away another's
+    /// mark, though both are this process's.
     static func release(_ window: String, profile: String? = nil, standby: String? = nil) {
         if let m = read(url(window)) {
             if m.pid != getpid(), live(m) { return }
@@ -697,49 +258,7 @@ enum SwitchMarker {
         try? FileManager.default.removeItem(at: url(window))
     }
 
-    /// The switch that keeps this account's window closed now, if any.
+    /// The run that keeps this account's window closed now, if any.
     static func blocking(_ account: Account) -> Mark? { current(Launcher.dataDirKey(of: account)) }
     static func blocks(_ account: Account) -> Bool { blocking(account) != nil }
-}
-
-extension FolderRules {
-    /// After a switch: the profile works on the standby account (its seat), which leaves standby; the account it was on
-    /// joins standby, with the folder that kept its own sign-in before (if any). Everything else stays.
-    static func completeSwitch(_ id: String, to standbyID: String, in accounts: [AccountEntry], now: Date = Date()) -> [AccountEntry]? {
-        guard let i = accounts.firstIndex(where: { $0.id == id }),
-              let j = accounts[i].standby.firstIndex(where: { $0.id == standbyID }),
-              var to = accounts[i].standby[j].seat else { return nil }
-        var out = accounts
-        let old = out[i].seat
-        let target = out[i].standby.remove(at: j)
-        to.linkedAt = now
-        to.was = old?.email
-        out[i].seat = to
-        if let old {
-            var back = old
-            back.linkedAt = now
-            out[i].standby.append(StandbyAccount(email: old.email ?? "", seat: back, configDir: out[i].keptFolder))
-        }
-        out[i].keptFolder = target.configDir
-        return out
-    }
-
-    /// After a switch, each account's saved numbers go with it: the profile's (read for the account it was on) become
-    /// that account's on standby, and the standby account's become the profile's. The agent's next read replaces them.
-    static func moveNumbers(_ before: AccountEntry, _ after: AccountEntry, folder: URL = Store.statusFolder) {
-        guard let from = before.seat, let to = after.seat,
-              let was = before.standby.first(where: { $0.seat?.same(to) == true }),
-              let now = after.standby.first(where: { $0.seat?.same(from) == true }) else { return }
-        let fm = FileManager.default
-        func url(_ id: String) -> URL { folder.appendingPathComponent("\(id).json") }
-        let profile = url(after.id)
-        let standbyNow = url(AccountEntry.standbyStatusID(after.id, now.id))
-        let standbyWas = url(AccountEntry.standbyStatusID(before.id, was.id))
-        try? fm.removeItem(at: standbyNow)
-        if fm.fileExists(atPath: profile.path) { try? fm.moveItem(at: profile, to: standbyNow) }
-        if fm.fileExists(atPath: standbyWas.path) { try? fm.moveItem(at: standbyWas, to: profile) }
-        for id in [after.id, AccountEntry.standbyStatusID(after.id, now.id)] {
-            DistributedNotificationCenter.default().postNotificationName(Store.statusChanged, object: id, userInfo: nil, deliverImmediately: true)
-        }
-    }
 }

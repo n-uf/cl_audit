@@ -1,6 +1,7 @@
-// SessionsBackup: a quick copy of a profile's sessions, on this Mac. One is made by every switch that moves the
-// sessions (SwitchEngine.run, right after the window is known closed and before anything moves) and one by Back up now
-// (Settings ▸ a profile ▸ Sessions); they are listed there, kept as General ▸ Backups says, and restored in a later build.
+// SessionsBackup: a quick copy of a profile's sessions, on this Mac. One is made by Back up now (Settings ▸ a profile ▸
+// Sessions) and by the default-profile move; up to 26.11.12 every switch that moved the sessions made one too (kind
+// beforeSwitch, with its receipt in records/receipt.json), and those stay listed and restorable. They are kept as
+// General ▸ Backups says.
 //
 // A backup is a folder <backups place>/<profile id>/<backup id>/ with a backup.json that says what is in it:
 //   window/<account>/<org>/…     the Claude window's Code-tab list: every claude-code-sessions/<account>/<org> folder
@@ -374,8 +375,8 @@ enum SessionsBackup {
 
     /// Makes a backup under `place` and returns what it holds. `window` false leaves the Code-tab list and the sidebar
     /// records out (the window is open: it rewrites its entries from memory). Throws, with nothing left behind, when it
-    /// can't be made whole. Takes no lock: the switch holds one (SwitchEngine.run), Back up now takes it (`manual`).
-    /// A plain backup (a switch's, Back up now, the default-profile move's) keeps no claude_desktop_config.json and keeps settings.json
+    /// can't be made whole. Takes no lock: Back up now takes it (`manual`), as does the default-profile move.
+    /// A plain backup (Back up now, the default-profile move's; a switch's from 26.11.12 and earlier) keeps no claude_desktop_config.json and keeps settings.json
     /// with every `env` value blanked (`envBlanked`), a hook entry or permission rule the key scan matches dropped, every other value it
     /// matches blanked too (`secretBlanked`; Setup.secretsBlanked), and leaves
     /// out a hook script, a unit holding one, or the plugin marketplaces that hold a key (`secretLeftOut`): those travel only in the
@@ -383,7 +384,7 @@ enum SessionsBackup {
     /// is made from (and taken away again), which keeps both whole for the image (a zip leaves them out).
     @discardableResult
     static func make(_ s: Source, id: String = newID(), kind: Kind, window: Bool = true, transcripts: Bool = true, setup: Bool = true,
-                     receipt: SwitchReceipt? = nil, place: URL, now: Date = Date(), forExport: Bool = false) throws -> Manifest {
+                     place: URL, now: Date = Date(), forExport: Bool = false) throws -> Manifest {
         guard validProfile(s.profile), validID(id) else { throw BackupError("the profile or backup name isn't a plain one") }
         if let why = placeProblem(place, for: [s]) { throw BackupError(why) }
         let started = Date()
@@ -525,18 +526,13 @@ enum SessionsBackup {
                                   path: configPath, bytes: Int64(data.count), part: "all but preferences.epitaxyPrefs"))
             }
         }
-        // cl_audit's records: the profile (ids only, no address), and the receipt of the switch this is for
+        // cl_audit's records: the profile (ids only, no address)
         if let e = s.entry {
             let enc = JSONEncoder(); enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
             if let data = try? enc.encode(ProfileRecord(e)) {
                 try put(data, "records/profile.json", in: partial, dirFor)
                 items.append(Item(role: .record, original: Store.configURL.path, path: "records/profile.json", bytes: Int64(data.count), part: "accounts[id=\(e.id)]"))
             }
-        }
-        if let r = receipt, let data = try? SwitchEngine.encoded(r) {
-            try put(data, "records/receipt.json", in: partial, dirFor)
-            items.append(Item(role: .record, original: SwitchEngine.root.appendingPathComponent("\(r.id)/receipt.json").path,
-                              path: "records/receipt.json", bytes: Int64(data.count)))
         }
 
         let m = Manifest(id: id, profile: s.profile, kind: kind, created: now, seconds: 0, accounts: g.accounts, counts: g.counts,

@@ -1,15 +1,11 @@
-// SwitchWaiting: "Claude Main: the switch is waiting for you". A switch that has reached a step only the operator can do
-// (Claude Code's sign-in in the browser, the Claude window's own sign-in, the Return in the sidebar session) is easy to
-// miss with the browser or the Claude window in front: the Switch page waits out of sight. So, once per step, and only
-// while the Switch page isn't in front (cl_audit's window isn't the key window, or another page is selected), one alert
-// says which step. Its buttons: Show switch (opens that switch's page) and, at Claude Code's sign-in, Cancel switch (the
-// runner's own cancel: the sessions go back). After linking there is nothing to cancel, so Show switch alone. A plain
-// click on the alert is Show switch too.
+// SwitchWaiting: "Claude Main: the switch is waiting for you". A switch waits for Claude Code's sign-in, finished in the
+// browser (SwitchRunner.swift), which is easy to miss with the browser in front: the Switch page waits out of sight. So,
+// once per switch, and only while the Switch page isn't in front (cl_audit's window isn't the key window, or another page
+// is selected), one alert says so. Its buttons: Show switch (opens that switch's page) and Cancel switch (stops waiting;
+// nothing changed). A plain click on the alert is Show switch too.
 //
 // Several switches can wait at once (one per profile): each has its own state and its own alert (the id carries the
-// switch's key). A step that is over in a moment never alerts: it must be seen on two looks in a row (or last 4 s); the
-// window's sign-in of a profile without a Claude window, and the Return step before the session is open (or after its
-// link missed), never do.
+// switch's key). A wait that is over in a moment never alerts: it must be seen on two looks in a row (or last 4 s).
 //
 // The settings app posts it itself (it holds the SwitchRunner, and it is cl_audit, so macOS lists the alert under cl_audit)
 // and answers its buttons (SwitchView.swift). It goes when the step moves on, the switch ends, or the page comes to the
@@ -38,50 +34,22 @@ enum SwitchWaiting {
     struct Waiting: Equatable {
         let step: Step
         let name: String            // its profile's name
-        let steps: Int              // how many steps the switch has
         let notify: Bool            // the profile's alerts are on
     }
 
-    /// The phases that wait for the operator.
-    static func waits(_ p: SwitchRunner.Phase) -> Bool {
-        switch p {
-        case .codeSignIn, .windowSignIn, .sidebar: return true
-        default: return false
-        }
-    }
+    /// The phase that waits for the operator: Claude Code's sign-in.
+    static func waits(_ p: SwitchRunner.Phase) -> Bool { p == .waiting }
 
-    /// Whether a waiting phase is worth an alert now. Claude Code's sign-in always. The window's sign-in only for a profile
-    /// with a Claude window (without one the switch is over at once). The Return step only once the session is there: not
-    /// while the window is still being opened, nor after the link missed (the page says what to do).
-    static func alertable(phase: SwitchRunner.Phase, hasWindow: Bool, linkSent: Bool, missed: Bool) -> Bool {
-        switch phase {
-        case .codeSignIn: return true
-        case .windowSignIn: return hasWindow
-        case .sidebar: return linkSent && !missed
-        default: return false
-        }
-    }
+    /// Cancel switch: only while the sign-in is waited for.
+    static func canCancel(_ p: SwitchRunner.Phase) -> Bool { p == .waiting }
 
-    /// Cancel switch is offered only while Claude Code's sign-in waits: after that the profile is linked.
-    static func canCancel(_ p: SwitchRunner.Phase) -> Bool { p == .codeSignIn }
+    static func category(_ p: SwitchRunner.Phase) -> String { SwitchAlert.waitingCategory }
 
-    static func category(_ p: SwitchRunner.Phase) -> String {
-        canCancel(p) ? SwitchAlert.waitingCategory : SwitchAlert.waitingLinkedCategory
-    }
-
-    /// The alert's words for a step ("Step 3 of 5"): never an address or any part of one, only the profile's name.
-    static func words(profile name: String, phase: SwitchRunner.Phase, steps: Int) -> (title: String, body: String)? {
-        let title = "Claude \(name.isEmpty ? "New profile" : name): the switch is waiting for you"
-        switch phase {
-        case .codeSignIn:
-            return (title, "Step 3 of \(steps): finish the sign-in in the browser. cl_audit checks the account before it goes on.")
-        case .windowSignIn:
-            return (title, "Step 4 of \(steps): finish the sign-in in the Claude window. cl_audit checks the account before it goes on.")
-        case .sidebar:
-            return (title, "Step 5 of \(steps): press Return in the new session in the Claude window. It puts the sidebar back as it was.")
-        default:
-            return nil
-        }
+    /// The alert's words: never an address or any part of one, only the profile's name.
+    static func words(profile name: String, phase: SwitchRunner.Phase) -> (title: String, body: String)? {
+        guard phase == .waiting else { return nil }
+        return ("Claude \(name.isEmpty ? "New profile" : name): the switch is waiting for you",
+                "Finish Claude Code's sign-in in Terminal and the browser. cl_audit checks the account when it's done.")
     }
 
     static func identifier(_ key: String) -> String { idPrefix + key }
@@ -286,7 +254,7 @@ final class SwitchWaitWatch {
             let plan = SwitchWaiting.next(states[key] ?? SwitchWaiting.State(), running: w?.step, front: front(key), now: now)
             if plan.state.isEmpty { states[key] = nil } else { states[key] = plan.state }
             if let old = plan.withdraw { SwitchWaiting.deliver(.remove(id: SwitchWaiting.identifier(old.key))) }
-            if let p = plan.post, let w, let words = SwitchWaiting.words(profile: w.name, phase: p.phase, steps: w.steps) {
+            if let p = plan.post, let w, let words = SwitchWaiting.words(profile: w.name, phase: p.phase) {
                 SwitchWaiting.deliver(.post(id: SwitchWaiting.identifier(p.key), title: words.title, body: words.body,
                                             category: SwitchWaiting.category(p.phase), key: p.key))
             }

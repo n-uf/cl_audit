@@ -277,44 +277,34 @@ final class SettingsModel: ObservableObject {
     @Published var switching: String?
     static let switchID = "__switch__"
 
-    /// The profile and standby account the Switch page is about. Once a switch it runs has linked the profile to that
-    /// account (it's no longer on standby), the page keeps showing it from the copy its runner took.
+    /// The profile and standby account the Switch page is about. Once its switch has reached that account (it's no longer
+    /// on standby), the page keeps showing it from the copy the runner took.
     var switchTarget: (entry: AccountEntry, standby: StandbyAccount)? {
         guard let k = switching, let p = SwitchOffer.parse(k), let e = accounts.first(where: { $0.id == p.profile }) else { return nil }
         if let s = e.standby.first(where: { $0.id == p.standby }) { return (e, s) }
-        if let snap = runners[k]?.targetSnapshot, snap.id == p.standby { return (e, snap) }
+        if let snap = runners[p.profile]?.targetSnapshot, snap.id == p.standby { return (e, snap) }
         return nil
     }
-    /// The switches started from the page, by "<profile>~<standby account>" (SwitchRunner.swift).
+    /// One switch per profile (SwitchRunner.swift): a profile's folder holds one sign-in at a time.
     private var runners: [String: SwitchRunner] = [:]
 
-    func runner(_ e: AccountEntry, _ s: StandbyAccount) -> SwitchRunner {
-        let k = AccountEntry.standbyStatusID(e.id, s.id)
-        if let r = runners[k] { return r }
-        let r = SwitchRunner(profile: e.id, standby: s.id, model: self)
-        runners[k] = r
+    func runner(of profile: String) -> SwitchRunner {
+        if let r = runners[profile] { return r }
+        let r = SwitchRunner(profile: profile, model: self)
+        runners[profile] = r
         return r
     }
 
     /// The switch of this profile to show beside its tile: one that's running, else the one on the Switch page.
     func switchRunner(of profile: String) -> SwitchRunner? {
-        if let r = runners.values.first(where: { $0.profile == profile && $0.isRunning }) { return r }
-        if let k = switching, SwitchOffer.parse(k)?.profile == profile, let r = runners[k] { return r }
+        guard let r = runners[profile] else { return nil }
+        if r.isRunning { return r }
+        if let k = switching, SwitchOffer.parse(k)?.profile == profile, selection == Self.switchID { return r }
         return nil
     }
 
-    /// A switch of this profile that stopped half way (from its receipts; looked at again at most every 10 s, and at
-    /// once after a switch moves on).
-    func unfinishedSwitch(of profile: String, now: Date = Date()) -> SwitchReceipt? {
-        if now.timeIntervalSince(unfinishedLook.at) > 10 {
-            unfinishedLook = (now, Dictionary(SwitchEngine.receipts().filter(\.unfinished).map { ($0.profile, $0) }, uniquingKeysWith: { a, _ in a }))
-        }
-        return unfinishedLook.byProfile[profile]
-    }
-    private var unfinishedLook: (at: Date, byProfile: [String: SwitchReceipt]) = (.distantPast, [:])
-    /// Bumped each time a switch changes phase: what shows a profile's backups looks again (a finished switch has made one).
+    /// Bumped when a restore moves on: what shows a profile's backups looks again.
     @Published private(set) var switchChanges = 0
-    func forgetUnfinished() { unfinishedLook.at = .distantPast; switchChanges += 1 }
 
     // MARK: the Restore page (SessionsRestore.swift, RestoreRunner.swift, RestorePage.swift)
 
@@ -428,23 +418,20 @@ final class SettingsModel: ObservableObject {
         selection = Self.importID
     }
 
-    /// Every running switch that waits for the operator and is worth an alert (SwitchWaiting.swift), in key order: where it
-    /// waits, its profile's name, how many steps it has, and whether the profile's alerts are on. The window's sign-in of a
-    /// profile without a Claude window, and the Return step before the session is open or after its link missed, are left out.
+    /// Every switch that waits for the sign-in (SwitchWaiting.swift), in key order: its key, its profile's name, and whether
+    /// the profile's alerts are on.
     var waitingSwitches: [SwitchWaiting.Waiting] {
         runners.values.compactMap { r -> SwitchWaiting.Waiting? in
             guard SwitchWaiting.waits(r.phase) else { return nil }
             let e = accounts.first { $0.id == r.profile }
-            guard SwitchWaiting.alertable(phase: r.phase, hasWindow: e?.claudeWindow ?? false,
-                                          linkSent: r.sidebarLinkSent, missed: r.sidebarMissed) else { return nil }
             return SwitchWaiting.Waiting(step: SwitchWaiting.Step(key: r.key, phase: r.phase), name: e?.name ?? "",
-                                         steps: r.stepCount, notify: e?.notify ?? false)
+                                         notify: e?.notify ?? false)
         }.sorted { $0.step.key < $1.step.key }
     }
 
-    /// The alert's Cancel switch: the runner's cancel, only while Claude Code's sign-in waits (nothing to cancel after).
+    /// The alert's Cancel switch: stops waiting for that profile's sign-in (nothing changed, nothing to put back).
     func cancelWaitingSwitch(_ key: String) {
-        if let r = runners[key], SwitchWaiting.canCancel(r.phase) { r.cancel() }
+        if let p = SwitchOffer.parse(key), let r = runners[p.profile], SwitchWaiting.canCancel(r.phase) { r.cancel() }
     }
 
     func showSwitch(_ key: String) {
@@ -456,34 +443,14 @@ final class SettingsModel: ObservableObject {
             else { selection = Self.dashboardID }
             return
         }
-        if let p = SwitchOffer.parse(key) {
+        if let p = SwitchOffer.parse(key), let r = runners[p.profile] {
             // one switch of a profile at a time: while one runs, its page is the one shown
-            if let r = runners.values.first(where: { $0.profile == p.profile && $0.isRunning }) { key = r.key }
-            // a switch that ended (done, or cancelled and put back) starts over when asked for again, unless it's in front
-            else if let r = runners[key], r.phase == .done || r.phase == .cancelled, !(selection == Self.switchID && switching == key) {
-                runners[key] = nil
-            }
+            if r.isRunning { key = r.key }
+            // one that ended starts over when another account is asked for, or the same one again from elsewhere
+            else if !(selection == Self.switchID && switching == key) { r.reset() }
         }
         switching = key
-        // a ready runner handed out here is an ordinary switch: an Undo this switch… that was abandoned leaves none of its
-        // banner, sixth step or preselected answer behind (showUndoSwitch sets them again after this)
-        // (a runner that failed or was cancelled forgets it too, or a later ordinary switch would show it and record it)
-        if let r = runners[key], !r.isRunning, r.phase != .done, r.undoes != nil {      // a done one on its page in front keeps its keys
-            r.undoes = nil
-            if r.phase == .ready, r.receipt == nil { r.moveSessions = nil }
-        }
         selection = switchTarget == nil ? Self.dashboardID : Self.switchID
-    }
-
-    /// "Undo this switch…": the Switch page the other way, which says it also puts back from the backup the switch made
-    /// (when it made one and moved the sessions), preselecting that the sessions follow.
-    func showUndoSwitch(_ done: SwitchReceipt, key: String) {
-        showSwitch(key)
-        guard let t = switchTarget else { return }
-        let r = runner(t.entry, t.standby)
-        guard !r.isRunning, r.receipt == nil, let b = done.backup else { return }
-        r.undoes = SwitchRunner.SwitchUndo(receipt: done.id, backup: b, place: done.backupPlace ?? BackupPrefs.placeURL.path)
-        r.moveSessions = true
     }
 
     /// Settings opened from inside the app: the Dashboard tile, unless a new account is being set up.
@@ -849,7 +816,7 @@ struct SettingsPage: View {
                 } else if model.selection == SettingsModel.defaultProfileID, let r = model.defaultProfile {
                     DefaultProfilePage(model: model, runner: r, width: w).padding(.horizontal, 16).padding(.vertical, 14)
                 } else if model.selection == SettingsModel.switchID, let t = model.switchTarget {
-                    SwitchPage(entry: t.entry, standby: t.standby, model: model, runner: model.runner(t.entry, t.standby), width: w)
+                    SwitchPage(entry: t.entry, standby: t.standby, model: model, runner: model.runner(of: t.entry.id), width: w)
                         .padding(.horizontal, 16).padding(.vertical, 14)
                 } else if model.selection == SettingsModel.restoreID, let t = model.restoreTarget {
                     RestorePage(entry: t.entry, key: t.key, model: model, runner: model.restoreRunner(t.key), width: w)

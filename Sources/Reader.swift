@@ -64,9 +64,9 @@ final class UsageReader {
         scheduleResetRead()
     }
 
-    /// Carry on from what was saved last, if it was read for the profile's account (after a switch: the new account's
-    /// numbers, which FolderRules.moveNumbers moved into this status file in SwitchRunner.linked(), before the profile
-    /// was saved). A saved status that names no account is taken only by a profile not linked to one.
+    /// Carry on from what was saved last, if it was read for the profile's account (after a switch the saved numbers are
+    /// the old account's, and `only(for:)` leaves them out). A saved status that names no account is taken only by a
+    /// profile not linked to one.
     private func adoptSaved() {
         guard let saved = Store.status(entry.id), entry.seat == nil || saved.readFor != nil,
               let s = Optional(saved.only(for: entry.seat?.email)), let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil else { return }
@@ -90,10 +90,8 @@ final class UsageReader {
             let readsNewAlready = want.configDir == account.configDir && (e.seat.map { $0.same(signIn.seen) } ?? false)
             account = want
             if !readsNewAlready {
-                // the profile works on another account, read from another folder (a switch): the old one's numbers,
-                // sign-in and marks go (no "is back" from the switch itself, and its numbers never saved over the new
-                // one's, which FolderRules.moveNumbers put in this status file before the profile was saved); the new
-                // one's carry on from those
+                // the profile works on another account (a switch): the old one's numbers, sign-in and marks go (no "is
+                // back" from the switch itself); the new one's are read afresh
                 startOver()
                 signIn = SignInWatch(); _ = signInChanged()
                 adoptSaved()

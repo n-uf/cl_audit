@@ -49,17 +49,14 @@ enum SwitchAlert {
     static let later = "later"
     static let stay = "stay"
     static let keyField = "switch"
-    /// "the switch is waiting for you" (SwitchWaiting.swift): Show switch (the `action` above) and Cancel switch, or, once the
-    /// profile is linked and there is nothing to cancel, Show switch alone.
+    /// "the switch is waiting for you" (SwitchWaiting.swift): Show switch (the `action` above) and Cancel switch.
     static let waitingCategory = "switchWaiting"
-    static let waitingLinkedCategory = "switchWaitingLinked"
     static let cancelSwitch = "cancelSwitch"
 
     /// A response that opens the Switch page: the Show/Switch button of any alert, or a plain click on "the switch is waiting
     /// for you" (the other alerts' plain click only brings cl_audit forward, as before).
     static func opensPage(action: String, category: String) -> Bool {
-        action == self.action
-            || (action == UNNotificationDefaultActionIdentifier && (category == waitingCategory || category == waitingLinkedCategory))
+        action == self.action || (action == UNNotificationDefaultActionIdentifier && category == waitingCategory)
     }
 
     /// A button that needs no window: Stay, Later, Cancel switch.
@@ -95,9 +92,6 @@ extension SwitchAlert {
          UNNotificationCategory(identifier: waitingCategory,
                                 actions: [UNNotificationAction(identifier: action, title: SwitchWaiting.showButton, options: [.foreground]),
                                           UNNotificationAction(identifier: cancelSwitch, title: SwitchWaiting.cancelButton, options: [])],
-                                intentIdentifiers: [], options: []),
-         UNNotificationCategory(identifier: waitingLinkedCategory,
-                                actions: [UNNotificationAction(identifier: action, title: SwitchWaiting.showButton, options: [.foreground])],
                                 intentIdentifiers: [], options: [])]
     }
 
@@ -153,10 +147,10 @@ struct BackOfferRow: View {
     }
 }
 
-/// Flush on the right of a profile's tile, only while its Switch page is open, and while a switch of it is unfinished
-/// even with the page closed: "Switch from / ultra-1" (unlit), mint "Switching ● / to ultra-2" while it runs,
-/// "Switched to / ultra-2" at Done; amber "Stopped half way / Undo it" for one that stopped; red "Stopped / step 3".
-/// Otherwise the tile stands alone. A click opens the Switch page.
+/// Flush on the right of a profile's tile, only while its Switch page is open, and while its switch waits for the sign-in
+/// even with the page closed: "Switch from / ultra-1" (unlit), mint "Switching ● / to ultra-2" while it waits,
+/// "Switched to / ultra-2" once there; amber "Signed in as / ultra-3" or "No sign-in / try again". Otherwise the tile
+/// stands alone. A click opens the Switch page.
 struct SwitchTileDisplay: View {
     let entry: AccountEntry
     @ObservedObject var model: SettingsModel
@@ -165,10 +159,6 @@ struct SwitchTileDisplay: View {
         let _ = model.tick
         if let r = model.switchRunner(of: entry.id) {
             RunnerTileDisplay(entry: entry, model: model, runner: r)
-        } else if let u = model.unfinishedSwitch(of: entry.id) {
-            TileDisplayGlass(l1: "Stopped half way", l2: "Undo it", tone: .amber) {
-                model.showSwitch(AccountEntry.standbyStatusID(u.profile, u.standby))
-            }
         } else if let rr = model.restoreRunner(of: entry.id) {
             RestoreTileDisplay(entry: entry, model: model, runner: rr)
         } else if let u = model.unfinishedRestore(of: entry.id) {
@@ -186,23 +176,21 @@ private struct RunnerTileDisplay: View {
     var body: some View {
         let open = model.selection == SettingsModel.switchID && model.switching == runner.key
         let to = runner.targetShort ?? "the other account"
-        let failed: Bool = { if case .failed = runner.phase { return true }; return false }()
         switch runner.phase {
-        case .closing, .moving, .codeSignIn, .windowSignIn, .sidebar:
+        case .waiting:
             TileDisplayGlass(l1: "Switching ●", l2: "to \(to)", tone: .mint, l1Lit: true) { model.showSwitch(runner.key) }
-        case .done where open:
+        case .reached where open:
             TileDisplayGlass(l1: "Switched to", l2: to, tone: .mint) { }
-        case .failed where runner.receipt?.unfinished == true:
-            TileDisplayGlass(l1: "Stopped half way", l2: "Undo it", tone: .amber) { model.showSwitch(runner.key) }
+        case .other(let e) where open:
+            TileDisplayGlass(l1: "Signed in as", l2: AccountNames.short(e), tone: .amber) { }
+        case .timedOut where open:
+            TileDisplayGlass(l1: "No sign-in", l2: "try again", tone: .amber) { }
+        case .failed where open:
+            TileDisplayGlass(l1: "Not started", l2: "nothing changed", tone: .warn) { }
+        case .ready where open:
+            TileDisplayGlass(l1: "Switch from", l2: AccountNames.short(entry.seat?.email ?? "its account"), tone: .normal, unlit: true) { }
         default:
-            // a switch that stopped half way (an earlier one too) shows before anything else, as on the page
-            if let u = model.unfinishedSwitch(of: entry.id) {
-                TileDisplayGlass(l1: "Stopped half way", l2: "Undo it", tone: .amber) { model.showSwitch(AccountEntry.standbyStatusID(u.profile, u.standby)) }
-            } else if open, failed {
-                TileDisplayGlass(l1: "Stopped", l2: runner.failedStep.map { "at step \($0)" } ?? "nothing moved", tone: .warn) { }
-            } else if open, runner.phase == .ready || runner.phase == .cancelled {
-                TileDisplayGlass(l1: "Switch from", l2: AccountNames.short(entry.seat?.email ?? "its account"), tone: .normal, unlit: true) { }
-            }
+            EmptyView()
         }
     }
 }

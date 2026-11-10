@@ -1,10 +1,11 @@
-// SwitchSidebar: the Code sidebar's arrangement, carried across a switch (SwitchEngine.swift moves the sessions).
+// SwitchSidebar: the Code sidebar's arrangement, put back after a restore writes sessions into another account's folder
+// (RestoreRunner.swift). Up to 26.11.12 a switch carried it across too; a switch now moves no session.
 //
-// The window keeps its sidebar per account and organisation, and claude.ai syncs it per account, so moved sessions
-// arrive on the new account ungrouped. Before moving, the switch notes from the window's mirror
+// The window keeps its sidebar per account and organisation, and claude.ai syncs it per account, so sessions written
+// into another account's folder arrive there ungrouped. cl_audit notes from the window's mirror
 // (claude_desktop_config.json; only its sidebar keys are read: the same file holds MCP settings, which may carry secrets)
-// the account's own groups in sidebar order, which of the moved sessions sit in each, in the group's order, and which
-// of them are pinned. Once the window is on the new account, cl_audit opens one new Code session there with a prompt
+// the account's own groups in sidebar order, which of the sessions sit in each, in the group's order, and which of them
+// are pinned. Once the window is on that account, cl_audit opens one new Code session there with a prompt
 // that rebuilds it with the app's own sidebar tools: the operator presses Return, and the session archives itself.
 // The link goes to that window's own process (WindowLink), never to whichever Claude window macOS would pick.
 //
@@ -176,25 +177,6 @@ struct SidebarPlan: Codable, Equatable {
               let q = prompt.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
         return URL(string: "claude://code/new?folder=\(f)&q=\(q)")
     }
-}
-
-extension SwitchPlan {
-    /// The arrangement of the sessions this switch moves: the sidebar ones (not archived), read before they move.
-    func sidebar() -> SidebarPlan {
-        var moving: [String] = [], pinned: [String] = []
-        for name in move {
-            let id = String(name.dropSuffix(".json"))
-            let d = (try? Data(contentsOf: URL(fileURLWithPath: (sourceDir as NSString).appendingPathComponent(name)))) ?? Data()
-            guard !SidebarPlan.flag("isArchived", in: d) else { continue }
-            moving.append(id)
-            if SidebarPlan.flag("isStarred", in: d) { pinned.append(id) }
-        }
-        return SidebarPlan.read(dataDir: dataDir, scope: "\(from.account)/\(from.organization ?? "")", moving: moving, pinned: pinned)
-    }
-}
-
-private extension String {
-    func dropSuffix(_ s: String) -> Substring { hasSuffix(s) ? dropLast(s.count) : Substring(self) }
 }
 
 /// A link sent to one Claude window: the "open location" Apple Event (kAEGetURL) addressed to that window's process,

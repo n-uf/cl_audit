@@ -51,6 +51,9 @@ struct SwitchOffer {
 }
 
 extension AccountEntry {
+    /// "<profile>~<standby id>": the Switch page for that account, as the menus, the alerts and the card name it.
+    static func switchKey(_ profile: String, _ standby: String) -> String { "\(profile)~\(standby)" }
+
     /// Its standby accounts with a kept sign-in, those with room (current numbers, nothing full) first, the least used
     /// first. Numbers count as current for three of the profile's read intervals, and at least 15 minutes.
     func switchOffers(status: (String) -> IconStatus? = Store.status, now: Date = Date()) -> [SwitchOffer] {
