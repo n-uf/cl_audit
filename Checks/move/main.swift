@@ -527,7 +527,8 @@ MainActor.assumeIsolated {
     // ---- the older readers: 26.11.9 reads `<= 3` and refuses 4 with its words; 1 to 3 are still read here (the setup and window suites
     // open version 1, 2 and 3 files); a reader without `move` would take the real ids for fingerprints, which its window-folder rule refuses
     let v4 = 4
-    check(!(v4 <= 3) && SessionsBackup.formatVersion == 4 && SessionsBackup.neededVersion([], move: true) == 4 && SessionsBackup.neededVersion([]) == 2,
+    // (5 is an export.json with a move's code checklist, the resume suite's; a backup.json and a move's part stay at 4)
+    check(!(v4 <= 3) && SessionsBackup.backupVersion == 4 && SessionsBackup.neededVersion([], move: true) == 4 && SessionsBackup.neededVersion([]) == 2,
           "format: a file with cl_audit's profiles or a move is version 4, which 26.11.9's guard (<= 3) refuses; everything else stays 2 or 3")
     check(!Fingerprint.isValid(sid(1)), "format: …and a move's real-id folder is never a fingerprint, so 26.11.9's own rule would refuse it too")
 
