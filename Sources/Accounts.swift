@@ -31,6 +31,23 @@ struct StandbyAccount: Codable, Equatable, Hashable, Identifiable {
 
     static func newID() -> String { String(UUID().uuidString.lowercased().filter(\.isHexDigit).prefix(8)) }
 
+    private enum CodingKeys: String, CodingKey { case id, email, seat, addedAt, plan, lastInUse, lastWeek, lastWeekResets }
+
+    /// Read with every date and the week kept in a sane range (AccountBook.sane): a hand-edited or crafted value is
+    /// dropped, never trusted (a date from far away would trap the words that say how long ago it was).
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(String.self, forKey: .id)
+        email = try c.decode(String.self, forKey: .email)
+        seat = try c.decodeIfPresent(Seat.self, forKey: .seat)
+        plan = try? c.decodeIfPresent(String.self, forKey: .plan)
+        let now = Date()
+        addedAt = AccountBook.sane((try? c.decodeIfPresent(Date.self, forKey: .addedAt)) ?? nil, now: now)
+        lastInUse = AccountBook.sane((try? c.decodeIfPresent(Date.self, forKey: .lastInUse)) ?? nil, now: now)
+        lastWeekResets = AccountBook.sane((try? c.decodeIfPresent(Date.self, forKey: .lastWeekResets)) ?? nil, now: now, ahead: 60 * 86400)
+        lastWeek = ((try? c.decodeIfPresent(Double.self, forKey: .lastWeek)) ?? nil).flatMap { $0.isFinite && $0 >= 0 && $0 <= 1000 ? $0 : nil }
+    }
+
     /// Known to be full: its week was full when it was last read, and that week hasn't started again yet.
     func knownFull(now: Date = Date()) -> Bool {
         guard let w = lastWeek, AtLimit.isFull(w) else { return false }
@@ -52,7 +69,9 @@ enum AccountBook {
 
     /// "just now", "12 min ago", "3 h ago", "yesterday", "4 days ago", "3 weeks ago".
     static func ago(_ d: Date, now: Date = Date()) -> String {
-        let s = max(0, now.timeIntervalSince(d))
+        // never a trap: a gap that isn't a number, or longer than ~300 years, is said as that much
+        let raw = now.timeIntervalSince(d)
+        let s = raw.isFinite ? min(max(0, raw), 1e10) : 0
         switch s {
         case ..<60: return "just now"
         case ..<3600: return "\(Int(s / 60)) min ago"
@@ -63,10 +82,12 @@ enum AccountBook {
         }
     }
 
-    /// "On standby · Ultra · last in use 3 days ago": a standby account's line. No usage: it isn't read.
-    static func standbyWords(_ s: StandbyAccount, now: Date = Date()) -> String {
-        (["On standby", s.plan.map(Account.planWords), s.lastInUse.map { "last in use " + ago($0, now: now) }]).compactMap { $0 }
-            .joined(separator: " · ")
+    /// A date read from the profiles file, or nil when it isn't one cl_audit could have written: not a number, before 2000,
+    /// or later than now plus `ahead` (a day, or a reset up to two months ahead).
+    static func sane(_ d: Date?, now: Date = Date(), ahead: TimeInterval = 86400) -> Date? {
+        guard let d, d.timeIntervalSinceReferenceDate.isFinite,
+              d >= Date(timeIntervalSince1970: 946_684_800), d <= now.addingTimeInterval(ahead) else { return nil }
+        return d
     }
 
     /// The standby accounts in the order a full limit offers them (cl_quick's rule): those not known to be full first, the
