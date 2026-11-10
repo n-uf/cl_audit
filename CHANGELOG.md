@@ -76,8 +76,9 @@ Nothing pending.
   profile's folder, with its sessions and settings, stays exactly as it is.
 - Claude Code's sign-in in Terminal now unsets `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` and the
   Bedrock, Vertex and Foundry switches first, so a key in your shell's settings can't sign the folder in another way.
-- Confirmed only from Claude Code's own program text, not by running it: the Keychain item of a folder other than
-  `~/.claude` is `Claude Code-credentials-` and the first 8 hex characters of the SHA-256 of its path.
+- Confirmed only from Claude Code 2.1.318's own program text, not by running it: the Keychain item of a folder other than
+  `~/.claude` is `Claude Code-credentials-` and the first 8 hex characters of the SHA-256 of its path (the path as
+  `CLAUDE_CONFIG_DIR` gives it).
 
 ## 26.11.14 — 2026-11-10
 
