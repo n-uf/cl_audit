@@ -39,7 +39,10 @@ final class ExportRunner: ObservableObject {
     @Published var profiles = false
     /// A move to another Mac: the real account ids and addresses stay (no fingerprints), so the new Mac puts the Code-tab entries and
     /// tasks back in each account's folder. Only ever the encrypted image: the zip choice is off while it is on.
-    @Published var move = false { didSet { if move { container = .image } } }
+    @Published var move = false { didSet { if move { container = .image }; if move != oldValue { refreshCode() } } }
+    /// A move's code checklist as read now (CodeChecklist.swift): the page warns from it before the export; the export reads it again.
+    @Published private(set) var code: CodeChecklist.File?
+    @Published private(set) var codeCounting = false
     @Published var container: Container = .zip
     @Published var password = ""
     @Published var again = ""
@@ -117,6 +120,32 @@ final class ExportRunner: ObservableObject {
             DispatchQueue.main.async {
                 guard let self, !current() else { return }
                 self.previews = out
+                self.refreshCode()
+            }
+        }
+    }
+
+    /// The session folders of what is exported (absolute) and how many sessions ran in each, from the preview.
+    var codeFolders: [String: Int] {
+        var out: [String: Int] = [:]
+        for pv in previews ?? [] { for p in pv.projects { if let c = p.cwd { out[c, default: 0] += p.sessions } } }
+        return out
+    }
+
+    /// A move: the code checklist read now with read-only git, off the main thread (nothing for an export that isn't a move).
+    func refreshCode() {
+        guard !frozen else { return }
+        guard move, previews != nil else { code = nil; codeCounting = false; return }
+        let folders = codeFolders
+        codeCounting = true
+        lock.lock(); let mine = generation; lock.unlock()
+        DispatchQueue.global(qos: .utility).async { [weak self] in
+            let f = CodeChecklist.gather(folders, git: CodeChecklist.gitPath())
+            DispatchQueue.main.async {
+                guard let self else { return }
+                self.lock.lock(); let same = self.generation == mine; self.lock.unlock()
+                guard same, self.move else { return }
+                self.code = f; self.codeCounting = false
             }
         }
     }
@@ -229,9 +258,12 @@ final class ExportRunner: ObservableObject {
         lock.lock(); stopFlag = false; lock.unlock()
         phase = .working("starting", 0); note = nil
         let profiles = list.map(\.profile)
+        let folders = plan.move ? codeFolders : [:]
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             var job = plan
             job.known = Identities.of(accounts: everyProfile)         // every profile's accounts, whichever are exported
+            // a move: the code checklist read again now (read-only git), into the encrypted image only
+            if job.move { job.checklist = CodeChecklist.encode(CodeChecklist.gather(folders, git: CodeChecklist.gitPath())) }
             let result = Result { try SessionsExport.run(job, cancel: { self?.stopped ?? true }, progress: { what, f in
                 DispatchQueue.main.async { if self?.isWorking == true { self?.phase = .working(what, f) } }
             }) }
@@ -255,9 +287,10 @@ final class ExportRunner: ObservableObject {
     func tryAgain() { phase = .preview; note = nil; refresh() }
 
     /// Renders only: the page as it looks at a step.
-    func preview(_ p: Phase, previews pv: [SessionsExport.Preview]) {
+    func preview(_ p: Phase, previews pv: [SessionsExport.Preview], code c: CodeChecklist.File? = nil) {
         frozen = true
         phase = p; previews = pv
+        if let c { code = c }
     }
 }
 
@@ -472,6 +505,27 @@ struct ExportPage: View {
 
     private func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
 
+    /// A move's Code row: the projects, and a warning for each one with work only on this Mac.
+    @ViewBuilder private var codeRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if let c = runner.code {
+                let warn = CodeChecklist.warnings(c)
+                let gits = c.projects.filter(\.git).count
+                value(c.projects.isEmpty ? "none: the sessions name no folder"
+                      : "\(n(c.projects.count, "project", "projects"))" + (gits > 0 ? ", \(gits) in git" : "") + (warn.isEmpty ? ": all pushed and committed" : ": a checklist goes in the image"))
+                ForEach(Array(warn.prefix(12).enumerated()), id: \.offset) { _, s in
+                    Text(s).font(.system(size: 11)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                }
+                if warn.count > 12 { Text("…and \(warn.count - 12) more.").font(.system(size: 10.5)).foregroundStyle(face.muted) }
+                if c.git != nil {
+                    Text("git isn't on this Mac, so only the folders are listed (no remote, branch or counts).").font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                value(runner.codeCounting || runner.previews == nil ? "reading…" : "–")
+            }
+        }
+    }
+
     private func value(_ s: String, color: Color? = nil) -> some View {
         Text(s).font(.system(size: 12.5)).foregroundStyle(color ?? face.soft).fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -528,6 +582,11 @@ struct ExportPage: View {
                         Button("Not a move") { runner.move = false }
                     } label: { MenuWell(text: runner.move ? "Move to another Mac" : "Not a move", fill: true) }
                     .faceMenuFill().disabled(runner.phase != .preview)
+                }
+            }
+            if runner.move {
+                SRow(label: "Code", info: "A move carries the sessions, not the code they ran in. For each project folder of the sessions, cl_audit reads with read-only git (never a fetch, nothing written): where it can be cloned from (any user name, password or token taken out of the address), the branch, the last commit, and how many commits aren't pushed and files aren't committed. That list goes into the encrypted disk image only, and the new Mac's Import page shows it with the commands to copy. Push and commit first: a clone won't have what is only on this Mac.", stacked: true) {
+                    codeRow
                 }
             }
             SRow(label: "Claude Code", stacked: true) {

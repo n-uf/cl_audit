@@ -97,6 +97,11 @@ final class ImportRunner: ObservableObject {
     /// What making them did (its receipt), for the page and the done page's steps.
     @Published private(set) var moved: SessionsMove.Receipt?
     @Published private(set) var moveNote: String?
+    /// The folders picked on this Mac for sessions whose folder isn't here (session id → folder): re-pointed right after the import.
+    @Published private(set) var picks: [String: String] = [:]
+    /// A move's code checklist (code.json): what to clone, and what the old Mac hadn't pushed or committed. Kept for the page after the
+    /// import starts; nil: none in the file.
+    @Published private(set) var checklist: CodeChecklist.File?
     private var frozen = false
     private let lock = NSLock()
     private var cancelFlag = false
@@ -159,6 +164,9 @@ final class ImportRunner: ObservableObject {
                 DispatchQueue.main.async {
                     guard let self, self.isCurrent(g) else { SessionsImport.discard(o.work); return }
                     self.opened = o; self.partIndex = idx
+                    self.checklist = o.checklist
+                    // a move's project memory belongs to the sessions it carries: its row starts on (Add them); every other file keeps it off
+                    if o.move { self.addMemory = true }
                     // cl_audit's own profiles in the file (a move): what an import would make here. Into stays the person's choice (the page
                     // only suggests the part's own profile); a file whose accounts are fingerprints starts with its profiles left out
                     if let f = o.app {
@@ -205,8 +213,12 @@ final class ImportRunner: ObservableObject {
     private func recount() {
         // (only for the profile Into shows: while a retarget to another one runs, its own recount comes when it lands)
         guard let s = staged, s.target == into, let model else { return }
-        let key = RestoreKey(profile: s.target, backup: s.id, place: s.stage.path, addMemory: addMemory, addSetup: addSetup, addConfig: addConfig, addTasks: addTasks)
+        let key = RestoreKey(profile: s.target, backup: s.id, place: s.stage.path, addMemory: addMemory, addSetup: addSetup, addConfig: addConfig, addTasks: addTasks,
+                             repoint: picks)
         let r = RestoreRunner(key: key, model: model)
+        r.onPick = { [weak self] session, folder in
+            if let folder { self?.picks[session] = folder } else { self?.picks.removeValue(forKey: session) }
+        }
         counting = r
         phase = .ready
         r.refresh()
@@ -373,7 +385,10 @@ final class ImportRunner: ObservableObject {
         guard canImport, let s = staged, let model else { return }
         do {
             let b = try SessionsImport.commit(s)
-            let key = RestoreKey(profile: b.profile, backup: b.id, place: b.place.path, addMemory: addMemory, addSetup: addSetup, addConfig: addConfig, addTasks: addTasks)
+            // (only the picks for sessions this import adds: the preview let go of the others)
+            let keep = counting?.picks ?? picks
+            let key = RestoreKey(profile: b.profile, backup: b.id, place: b.place.path, addMemory: addMemory, addSetup: addSetup, addConfig: addConfig, addTasks: addTasks,
+                                 repoint: keep)
             if let o = opened { SessionsImport.discard(o.work) }
             opened = nil; staged = nil; counting = nil
             phase = .running(key)
@@ -393,6 +408,7 @@ final class ImportRunner: ObservableObject {
         addSetup = false
         addConfig = false; addTasks = false
         movePlan = nil; makeProfiles = true; takeSettings = false; moved = nil; moveNote = nil; moveBusy = false
+        picks = [:]; checklist = nil
     }
 
     /// cl_audit is quitting: the password goes and what is being opened is told to stop. Nothing is removed here (a big tree on the
@@ -417,8 +433,9 @@ final class ImportRunner: ObservableObject {
 
     /// Renders only: the page as it looks at a step.
     func preview(_ p: Phase, file f: URL? = nil, opened o: SessionsImport.Opened? = nil, staged s: SessionsImport.Staged? = nil, counting c: RestoreRunner? = nil,
-                 moved m: SessionsMove.Receipt? = nil) {
+                 moved m: SessionsMove.Receipt? = nil, checklist cl: CodeChecklist.File? = nil) {
         if let m { moved = m }
+        if let cl { checklist = cl } else if let o, o.checklist != nil { checklist = o.checklist }
         frozen = true
         phase = p; file = f ?? file; opened = o ?? opened; staged = s ?? staged; counting = c ?? counting
     }
@@ -514,7 +531,7 @@ struct ImportHappens: View {
                     }
                 }
                 if !p.memoryFiles.isEmpty {
-                    SRow(label: "Memory files", info: "Files a project keeps in its memory folder, which Claude Code loads into every session of that project. From any import file they are left out unless you add them (what a file says about where it came from can be forged, so it earns no trust); a file already there is never replaced either way.", stacked: true) {
+                    SRow(label: "Memory files", info: "Files a project keeps in its memory folder, which Claude Code loads into every session of that project. A move's file starts with them added, since they belong to the sessions it carries; from any other import file they are left out unless you add them (what a file says about where it came from can be forged, so it earns no trust). A file already there is never replaced either way.", stacked: true) {
                         VStack(alignment: .leading, spacing: 6) {
                             value(addMemory ? "\(p.memoryFiles.count): added with the sessions" : "\(p.memoryFiles.count): left out")
                             if let memory {
@@ -530,9 +547,7 @@ struct ImportHappens: View {
                 }
                 SetupRow(entry: entry, runner: runner, imported: true, choose: setup)
                 McpRow(entry: entry, runner: runner, imported: true, choose: config)
-                SRow(label: "Folder not here", info: "Claude Code lists a session only where the folder it ran in exists. These are added anyway and show up once that folder is on this Mac.", stacked: true) {
-                    value(runner.foldersMissing == 0 ? "none" : undone ? "\(runner.foldersMissing): were added, and taken away again" : "\(runner.foldersMissing): added, shown once that folder exists")
-                }
+                FoldersRow(entry: entry, runner: runner, undone: undone)
                 if !p.inUse.isEmpty {
                     SRow(label: "In use", stacked: true) { value("\(n(p.inUse.count, "transcript", "transcripts")) a running Claude Code session holds: left alone, listed") }
                 }
@@ -583,6 +598,8 @@ struct ImportPage: View {
                 RestorePage(entry: e, key: key, model: model, runner: model.restoreRunner(key), width: width)
                 // a move: what is left to do on this Mac for each profile the import made (sign-ins, the Dock, the tasks)
                 if !runner.madeProfiles.isEmpty { MoveSteps(model: model, runner: runner, width: width) }
+                // a move: the code its sessions ran in, as a checklist (cl_audit never runs git here)
+                if let cl = runner.checklist { CodeCard(list: cl) }
             }
         } else {
             VStack(alignment: .leading, spacing: 12) {
@@ -591,7 +608,8 @@ struct ImportPage: View {
                 // (a move: its card; once its profiles are made, what is left to do for them, at once, not only after the sessions)
                 let steps: [AnyView] = runner.madeProfiles.isEmpty ? [] : [AnyView(MoveSteps(model: model, runner: runner, width: width))]
                 let first: [AnyView] = runner.movePlan != nil || runner.moved != nil ? [AnyView(fromCard), AnyView(moveCard)] + steps + [AnyView(happensCard)] : [AnyView(fromCard), AnyView(happensCard)]
-                SettingsColumns(width: width, groups: [first, [AnyView(staysCard), AnyView(sidebarCard), AnyView(footerCard)]])
+                let code: [AnyView] = runner.checklist.map { [AnyView(CodeCard(list: $0))] } ?? []
+                SettingsColumns(width: width, groups: [first, code + [AnyView(staysCard), AnyView(sidebarCard), AnyView(footerCard)]])
             }
             .task(id: entry.id) { runner.refresh() }
             .onDisappear { runner.leave() }

@@ -25,6 +25,9 @@ struct RestoreKey: Equatable {
     var addSetup = false                    // add Claude Code's setup (CLAUDE.md, skills, agents …) that is missing here (left out otherwise)
     var addConfig = false                   // add the window's MCP settings (claude_desktop_config.json) where there is none (left out otherwise)
     var addTasks = false                    // an import: add the file's scheduled tasks, paused (left out otherwise)
+    /// An import: the folders picked on this Mac for sessions whose folder isn't here (session id → folder); each is re-pointed there
+    /// right after the import, while the window is still closed (SessionsRepoint.swift).
+    var repoint: [String: String] = [:]
     var id: String { "\(profile)/\(backup)/\(resume ?? "")" }
 }
 
@@ -70,6 +73,34 @@ final class RestoreRunner: ObservableObject {
     @Published private(set) var keepFailed: String?
     /// An import: how many of the transcripts to add belong to a folder that isn't on this Mac.
     @Published private(set) var foldersMissing = 0
+    /// An import: the sessions it adds whose folder isn't on this Mac (each can be given a folder: Pick its folder on this Mac…).
+    @Published private(set) var folderSessions: [SessionsRepoint.Session] = []
+    /// The folders picked for them (session id → folder), re-pointed right after the import.
+    @Published private(set) var picks: [String: String] = [:]
+    /// What the re-point after the import did (its receipt), and why it couldn't when it couldn't.
+    @Published private(set) var repointed: SessionsRepoint.Receipt?
+    @Published private(set) var repointNote: String?
+    /// The Import page keeps its own picks (its preview runner is made again on each choice): told of each pick.
+    var onPick: ((String, String?) -> Void)?
+
+    /// Pick its folder on this Mac…: an Open panel for a folder; the pick is kept for the import (nothing is written now).
+    func pickFolder(_ session: String) {
+        guard phase == .ready else { return }
+        let p = NSOpenPanel()
+        p.canChooseDirectories = true; p.canChooseFiles = false; p.allowsMultipleSelection = false; p.canCreateDirectories = false
+        p.title = "Pick the session's folder on this Mac"; p.prompt = "Pick"
+        if let s = folderSessions.first(where: { $0.id == session }) {
+            p.message = "Where is \(tilde(s.folder)) on this Mac? The session is pointed at the folder you pick when it is imported."
+        }
+        guard p.runModal() == .OK, let url = p.url else { return }
+        setPick(session, url.path)
+    }
+
+    func setPick(_ session: String, _ folder: String?) {
+        guard phase == .ready else { return }
+        if let folder { picks[session] = folder } else { picks.removeValue(forKey: session) }
+        onPick?(session, folder)
+    }
     /// Close and import: the preview is counted again (the backup was just moved into place) and the restore starts at once.
     private var autoStart = false
     private var timer: Timer?
@@ -110,6 +141,7 @@ final class RestoreRunner: ObservableObject {
         self.key = key; self.model = model
         addSetup = key.addSetup
         addConfig = key.addConfig; addTasks = key.addTasks
+        picks = key.repoint
         manifest = SessionsBackup.load(profile: key.profile, id: key.backup, place: URL(fileURLWithPath: key.place))
         if let id = key.resume, let r = SessionsRestore.load(id) {
             receipt = r
@@ -195,9 +227,12 @@ final class RestoreRunner: ObservableObject {
                              words: why, switchKey: nil)
             }
             let folders = p.isImport && p.refusal == nil ? SessionsImport.foldersMissing(p, backup: b) : 0
+            let away = p.isImport && p.refusal == nil ? SessionsRepoint.staged(p, backup: b).filter { !$0.here } : []
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.plan = p; self.notYet = not; self.foldersMissing = folders
+                self.plan = p; self.notYet = not; self.foldersMissing = folders; self.folderSessions = away
+                // a pick for a session that no longer comes in is let go
+                self.picks = self.picks.filter { k, _ in away.contains { $0.id == k } }
                 if self.manifest == nil { self.manifest = p.manifest }
                 if self.autoStart {
                     self.autoStart = false
@@ -231,7 +266,8 @@ final class RestoreRunner: ObservableObject {
         stopLock.lock(); stopFlag = false; stopLock.unlock()
         progress = (receipt?.back ?? 0, (receipt?.back ?? 0) + p.count)
         reopenTimer?.invalidate(); reopenTimer = nil
-        guard p.windowNeeded else { write(); return }
+        // (a picked folder rewrites the session's Code-tab entry: the window closes for that too)
+        guard p.windowNeeded || !picks.isEmpty else { write(); return }
         // the window stays closed from here until the restore ends; one at a time
         guard claimWindow(w) else {
             note = "Another switch or restore of this Claude window is under way."; return
@@ -268,6 +304,7 @@ final class RestoreRunner: ObservableObject {
     private func write() {
         guard let e = entry else { return }
         let target = SessionsRestore.Target(e), b = backup, resume = resumeID, afterSwitch = key.afterSwitch, mark = markName, memory = key.addMemory, setup = addSetup, config = addConfig, tasks = addTasks
+        let picked = picks.sorted { $0.key < $1.key }.map { SessionsRepoint.Pick(session: $0.key, folder: $0.value) }
         phase = .writing
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result {
@@ -276,8 +313,19 @@ final class RestoreRunner: ObservableObject {
                                         progress: { d, t in DispatchQueue.main.async { self?.progress = (d, t) } },
                                         receiptWritten: { id in self?.onReceipt?(id) })
             }
+            // the picked folders, right after the import, while the window is still closed (its own receipt, linked to the import's:
+            // Undo this import takes it back first)
+            var moved: Result<SessionsRepoint.Receipt, Error>?
+            if case .success(let r) = result, r.finished != nil, !picked.isEmpty {
+                moved = Result { try SessionsRepoint.apply(target, picks: picked, restore: r.id, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) }) }
+            }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
+                switch moved {
+                case .success(let m)?: self.repointed = m; self.repointNote = m.problems.isEmpty ? nil : m.problems.prefix(3).joined(separator: " ")
+                case .failure(let err)?: self.repointNote = "The picked folders weren't applied: \(err). Pick them again under \(e.name)'s Sessions."
+                case nil: break
+                }
                 switch result {
                 case .success(let r):
                     self.receipt = r
@@ -353,7 +401,8 @@ final class RestoreRunner: ObservableObject {
         note = nil
         if let why = DefaultProfile.undoRefusal(receipt: r.id) { note = why; return }
         if let why = SessionsRestore.blocker(profile: key.profile, except: r.id) { note = why.words; return }
-        guard r.windowTouched else { runUndo(r.id); return }
+        // (a re-point after the import changed Code-tab entries: its Undo, which runs first, needs the window closed too)
+        guard r.windowTouched || SessionsRepoint.touchesWindow(restore: r.id) else { runUndo(r.id); return }
         if let why = SessionsRestore.markerBlocker(profile: key.profile, dataDir: SessionsRestore.Target(e).dataDir, own: markName) { note = why; return }
         guard claimWindow(w) else { note = "Another switch or restore of this Claude window is under way."; return }
         let apps = SwitchRunner.windowApps(e)
@@ -382,6 +431,7 @@ final class RestoreRunner: ObservableObject {
                 switch result {
                 case .success(let u):
                     self.receipt = u
+                    if let rp = self.repointed { self.repointed = SessionsRepoint.load(rp.id) ?? rp }
                     if u.undone == nil {
                         // some restored transcripts are held by a running session: left in place, the receipt stays open
                         self.note = "\(u.undoLeft) restored \(u.undoLeft == 1 ? "transcript is" : "transcripts are") held by a running Claude Code session, so \(u.undoLeft == 1 ? "it was" : "they were") left in place and this restore stays open. Undo again once the session has ended takes the rest."
@@ -474,8 +524,12 @@ final class RestoreRunner: ObservableObject {
 
     /// Renders only: the page as it looks at a step.
     func preview(_ p: Phase, plan pl: SessionsRestore.Plan? = nil, receipt r: SessionsRestore.Receipt? = nil, progress pr: (Int, Int) = (0, 0),
-                 notYet n: NotYet? = nil, note nt: String? = nil, sidebarOpened o: Bool = false, linkSent l: Bool = false) {
+                 notYet n: NotYet? = nil, note nt: String? = nil, sidebarOpened o: Bool = false, linkSent l: Bool = false,
+                 folders f: [SessionsRepoint.Session]? = nil, picks pk: [String: String]? = nil, repointed rp: SessionsRepoint.Receipt? = nil) {
         frozen = true
+        if let f { folderSessions = f; foldersMissing = f.count }
+        if let pk { picks = pk }
+        if let rp { repointed = rp }
         phase = p; plan = pl ?? plan; receipt = r; progress = pr; notYet = n; note = nt; sidebarOpened = o; sidebarLinkSent = l
         if manifest == nil { manifest = plan?.manifest }
     }

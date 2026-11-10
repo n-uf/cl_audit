@@ -33,6 +33,8 @@ struct SessionsCard: View {
     @State private var lastImport: SessionsRestore.Receipt?        // the last import that wasn't undone: Undo last import
     @State private var carriedImport = false                       // an import the default-profile move carried to the usual app
     @State private var exportWords = "Never exported. A file for another Mac or for keeping."
+    /// Imported sessions whose folder isn't on this Mac, and the last re-point (Pick its folder…, Undo).
+    @StateObject private var repoint = RepointRunner()
 
     private var name: String { entry.name.isEmpty ? "This profile" : entry.name }
     private var source: SessionsBackup.Source { SessionsBackup.Source(entry) }
@@ -60,6 +62,11 @@ struct SessionsCard: View {
             }
             SRow(label: "Import", info: "Puts an export's sessions into \(name): the file is checked and unpacked as a backup first, then restored from: the same rules as Restore. It only adds what is missing and never overwrites anything. An export of \(name), of another profile or of another Mac. Undo last import takes back exactly what it added.", stacked: true) {
                 importRow
+            }
+            if !repoint.sessions.isEmpty || repoint.last != nil {
+                SRow(label: "Folder not here", info: "Imported sessions whose folder isn't on this Mac: Claude Code lists a session only where its folder is, and the Code tab won't run it. Clone or copy the code first, then Pick its folder: the session's transcript moves under that folder's name, the folder paths in its lines and in its Code-tab entry are rewritten (nothing else), and a worktree that isn't here is dropped so it runs in the project folder. The window closes for a moment when an entry changes. Undo takes back exactly the last one.", stacked: true) {
+                    MissingFoldersRow(entry: entry, runner: repoint)
+                }
             }
         }
         .task(id: entry.id + prefs.place + "\(model.switchChanges)") { await load() }
@@ -236,6 +243,7 @@ struct SessionsCard: View {
             SessionsRestore.headers().contains { $0.profile == e.id && $0.importedFrom != nil && $0.finished != nil && $0.undone == nil && SessionsRestore.carriedOver($0) }
         }.value
         exportWords = ExportPrefs.words(profile: e.id)
+        repoint.load(e)
         let (list, tg, d) = await Task.detached(priority: .utility) { () -> ([Listed], [String: String], Retention) in
             SessionsImport.sweep(place: place)                 // unpacking and export folders a stopped run left (a day old)
             SessionsRestore.prune(profile: e.id)               // old receipts of finished restores
