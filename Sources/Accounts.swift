@@ -62,8 +62,8 @@ enum AccountBook {
     /// ~/.claude, those that use it through CLAUDE_CONFIG_DIR), sessions running now included; not the Claude app, which
     /// runs its own claude with its own sign-in. `email` as it should be shown (masked where the caller masks).
     static func switchWords(folder: String, email: String, isDefault: Bool) -> String {
-        (isDefault ? "Claude Code in Terminal and editors on \(folder)" : "Claude Code in Terminal and editors using \(folder)")
-            + " moves to \(email), sessions running now included; the Claude app keeps its own sign-in."
+        (isDefault ? "Terminal and editors on \(folder)" : "Terminal and editors using \(folder)")
+            + " move to \(email), sessions running now included; the Claude app keeps its own sign-in."
             + " Finish the sign-in in Terminal and the browser as that account."
     }
 

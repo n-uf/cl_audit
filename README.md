@@ -248,17 +248,17 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   sessions stay in the folder, each with the account it ran on (one started on ultra-1 isn't continued on ultra-2); the
   Claude window's own sign-in, sessions, sidebar and scheduled tasks stay as they are; the profile's name, Dock icon,
   look, folder and settings stay; the account it leaves stays on the profile as a standby account. Then the steps and
-  **Switch to ultra-2**.
+  **Switch to ultra-2**. Once it has ended the card is **What changed**, in the past tense: what is true now (reached:
+  ultra-2 in use, ultra-1 standing by; another account: what the folder signed in as; no sign-in: nothing changed).
 - **Switching** is signing in again on the same folder, as the other account, the way
   cl_quick does: Claude Code's own sign-in opens in Terminal for the profile's folder
   (`claude auth login --claudeai --email <address>`, with `CLAUDE_CONFIG_DIR` unset for `~/.claude` and set for any other
   folder, and a key or another provider the shell's settings name unset), finished in the browser. The browser's
   claude.ai account decides which account signs in, so cl_audit checks: it looks at the folder's `.claude.json` every
-  2 seconds, for up to 10 minutes, until its account changes. **Reached** ("Main works on ultra-2 · ultra-1 on
-  standby", with Switch back to ultra-1… and Back to Main's settings); **another account** ("Signed in as ultra-3 · not
+  2 seconds, for up to 10 minutes, until its account changes. **Reached** ("Now on ultra-2 · ultra-1 on standby",
+  with Switch back to ultra-1… and Back to Main's settings); **another account** ("Signed in as ultra-3 · not
   ultra-2": the profile works on ultra-3 now, ultra-1 stands by; Sign in as ultra-2 again, after switching the
-  browser's account, or Keep ultra-3); **timed out** ("No sign-in · 10 minutes passed · nothing changed", with Try
-  again). Signed out for a moment while you sign in is still waiting. **Cancel** stops waiting: nothing changed, so
+  browser's account, or Keep ultra-3); **timed out** ("No sign-in · nothing changed", with Try again). Signed out for a moment while you sign in is still waiting. **Cancel** stops waiting: nothing changed, so
   there is nothing to put back. Nothing moves: no session, sidebar, scheduled task or file, and the Claude window
   isn't closed or touched. cl_audit never sees a password or a token, and never copies, moves or reads a sign-in.
   Beside the profile's tile in Settings a display says the same in two lines ("Switching ● · to ultra-2" in mint while it
@@ -457,7 +457,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     standby at the same time. Its address is a pop-up: it ticks the account Claude Code in the folder is signed in to
     (red with a warning sign inside when it is another profile's account; a clock when the sign-in ran out; a
     long address is cut at its end), then **Sign in again…** (Claude Code's sign-in in Terminal with its address
-    filled in, watched like a switch: "Signing in again" until Claude Code's login ends well) and **Renew sign-in by
+    filled in, watched like a switch: "Signing in" until Claude Code's login ends well) and **Renew sign-in by
     itself** (opt-in, see the (i)). Whatever account signs in to the folder, from cl_audit or Terminal, is the one in
     use, by itself: the one before joins standby. If another profile works on that account, the line under Accounts
     names it, with **Open** it instead: one profile per account, and the profile's numbers wait until its folder is on

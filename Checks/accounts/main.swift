@@ -195,9 +195,9 @@ do {
     check(AccountBook.ago(now.addingTimeInterval(-30), now: now) == "just now" && AccountBook.ago(now.addingTimeInterval(-3 * 86400), now: now) == "3 days ago"
           && AccountBook.ago(now.addingTimeInterval(-30 * 86400), now: now) == "4 weeks ago", "how long ago, in words")
     check(AccountBook.switchWords(folder: "~/.claude", email: "u2", isDefault: true)
-          == "Claude Code in Terminal and editors on ~/.claude moves to u2, sessions running now included; the Claude app keeps its own sign-in. Finish the sign-in in Terminal and the browser as that account.",
-          "what a switch affects, for ~/.claude")
-    check(AccountBook.switchWords(folder: "~/.claude-work", email: "u2", isDefault: false).hasPrefix("Claude Code in Terminal and editors using ~/.claude-work moves to u2"),
+          == "Terminal and editors on ~/.claude move to u2, sessions running now included; the Claude app keeps its own sign-in. Finish the sign-in in Terminal and the browser as that account.",
+          "what a switch affects, for ~/.claude (under the row named Claude Code)")
+    check(AccountBook.switchWords(folder: "~/.claude-work", email: "u2", isDefault: false).hasPrefix("Terminal and editors using ~/.claude-work move to u2"),
           "…and for another folder")
     var e = profile("main", "~/.claude", u1, standby: [full, low]); e.id = "main"
     let lines = SwitchMenu.lines(e, now: now)

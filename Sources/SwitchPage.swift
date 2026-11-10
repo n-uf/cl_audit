@@ -242,9 +242,57 @@ struct SwitchPage: View {
         }
     }
 
-    private var switchChanges: some View {
+    @ViewBuilder private var switchChanges: some View {
+        switch runner.phase {
+        case .ready, .waiting: switchPlan
+        case .reached: switchDone
+        case .other(let e): switchOther(e)
+        case .timedOut, .failed: switchNothing
+        }
+    }
+
+    private var changesInfo: String { "A switch signs Claude Code in again on \(name)'s folder as the other account, in Terminal, finished in the browser. It moves nothing." }
+
+    /// Once it reached the account: what is true now, in the past tense.
+    private var switchDone: some View {
+        SCard(title: "What changed", info: changesInfo) {
+            SRow(label: "Claude Code", first: true, stacked: true) {
+                value("Terminal and editors on \(entry.configDir) work on \(to) now, sessions that were running included. The Claude app kept its own sign-in.")
+            }
+            SRow(label: "Sessions", stacked: true) {
+                value("They stayed in \(entry.configDir), each with the account it ran on: one started on \(from) isn't continued on \(to).")
+            }
+            if entry.claudeWindow {
+                SRow(label: "Claude window", stacked: true) {
+                    value("Its own sign-in, sessions, sidebar and scheduled tasks stayed as they were (\(entry.windowWords)).")
+                }
+            }
+            SRow(label: "Stayed", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
+            SRowLine(text: "\(from) stands by on \(name) now: no folder of its own, nothing read, switch back any time.")
+        }
+    }
+
+    /// Another account signed in: what the folder is on now; nothing else moved.
+    private func switchOther(_ e: String) -> some View {
+        SCard(title: "What changed", info: changesInfo) {
+            SRow(label: "Claude Code", first: true, stacked: true) {
+                value("Terminal and editors on \(entry.configDir) signed in as \(AccountNames.short(e)), not \(to). Sessions, the Claude window and \(name)'s settings stayed as they were.")
+            }
+        }
+    }
+
+    /// No sign-in: nothing changed.
+    private var switchNothing: some View {
+        SCard(title: "What changed", info: changesInfo) {
+            SRow(label: "Nothing", first: true, stacked: true) {
+                value("\(name) is still on \(from): Claude Code on \(entry.configDir), its sessions, the Claude window and \(name)'s settings are as they were.")
+            }
+        }
+    }
+
+    private var switchPlan: some View {
         let isDefault = Account(entry).isDefaultDir
-        return SCard(title: "What changes", info: "A switch signs Claude Code in again on \(name)'s folder as the other account, in Terminal, finished in the browser. It moves nothing.") {
+        return SCard(title: "What changes", info: changesInfo) {
             SRow(label: "Claude Code", first: true, stacked: true) {
                 value(AccountBook.switchWords(folder: entry.configDir, email: Privacy.masked(runner.goal?.wantedEmail ?? standby.email), isDefault: isDefault))
             }
