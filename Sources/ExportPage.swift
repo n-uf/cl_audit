@@ -43,6 +43,7 @@ final class ExportRunner: ObservableObject {
     /// A move's code checklist as read now (CodeChecklist.swift): the page warns from it before the export; the export reads it again.
     @Published private(set) var code: CodeChecklist.File?
     @Published private(set) var codeCounting = false
+    private var codeGeneration = 0
     @Published var container: Container = .zip
     @Published var password = ""
     @Published var again = ""
@@ -135,15 +136,21 @@ final class ExportRunner: ObservableObject {
     /// A move: the code checklist read now with read-only git, off the main thread (nothing for an export that isn't a move).
     func refreshCode() {
         guard !frozen else { return }
+        // (each call, and leaving the page, stops a reading under way)
+        lock.lock(); codeGeneration += 1; let mine = codeGeneration; lock.unlock()
         guard move, previews != nil else { code = nil; codeCounting = false; return }
         let folders = codeFolders
         codeCounting = true
-        lock.lock(); let mine = generation; lock.unlock()
         DispatchQueue.global(qos: .utility).async { [weak self] in
-            let f = CodeChecklist.gather(folders, git: CodeChecklist.gitPath())
+            // (stopped as soon as the page counts again, the move is turned off or the page is left)
+            let f = CodeChecklist.gather(folders, git: CodeChecklist.gitPath(), cancel: { [weak self] in
+                guard let self else { return true }
+                self.lock.lock(); defer { self.lock.unlock() }
+                return self.codeGeneration != mine
+            })
             DispatchQueue.main.async {
                 guard let self else { return }
-                self.lock.lock(); let same = self.generation == mine; self.lock.unlock()
+                self.lock.lock(); let same = self.codeGeneration == mine; self.lock.unlock()
                 guard same, self.move else { return }
                 self.code = f; self.codeCounting = false
             }
@@ -153,7 +160,7 @@ final class ExportRunner: ObservableObject {
     /// The page is left: nothing is counted for it any more (an export under way goes on).
     func leave() {
         password = ""; again = ""                       // no password stays in a runner that is kept for later
-        lock.lock(); generation += 1; lock.unlock()
+        lock.lock(); generation += 1; codeGeneration += 1; lock.unlock()
     }
 
     // MARK: numbers for the words
@@ -263,7 +270,11 @@ final class ExportRunner: ObservableObject {
             var job = plan
             job.known = Identities.of(accounts: everyProfile)         // every profile's accounts, whichever are exported
             // a move: the code checklist read again now (read-only git), into the encrypted image only
-            if job.move { job.checklist = CodeChecklist.encode(CodeChecklist.gather(folders, git: CodeChecklist.gitPath())) }
+            if job.move {
+                // (Stop stops the reading too)
+                let list = CodeChecklist.gather(folders, git: CodeChecklist.gitPath(), cancel: { self?.stopped ?? true })
+                job.checklist = CodeChecklist.encode(list)
+            }
             let result = Result { try SessionsExport.run(job, cancel: { self?.stopped ?? true }, progress: { what, f in
                 DispatchQueue.main.async { if self?.isWorking == true { self?.phase = .working(what, f) } }
             }) }
@@ -510,15 +521,13 @@ struct ExportPage: View {
         VStack(alignment: .leading, spacing: 4) {
             if let c = runner.code {
                 let warn = CodeChecklist.warnings(c)
-                let gits = c.projects.filter(\.git).count
-                value(c.projects.isEmpty ? "none: the sessions name no folder"
-                      : "\(n(c.projects.count, "project", "projects"))" + (gits > 0 ? ", \(gits) in git" : "") + (warn.isEmpty ? ": all pushed and committed" : ": a checklist goes in the image"))
+                value(CodeChecklist.summary(c))
                 ForEach(Array(warn.prefix(12).enumerated()), id: \.offset) { _, s in
                     Text(s).font(.system(size: 11)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if warn.count > 12 { Text("…and \(warn.count - 12) more.").font(.system(size: 10.5)).foregroundStyle(face.muted) }
                 if c.git != nil {
-                    Text("git isn't on this Mac, so only the folders are listed (no remote, branch or counts).").font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
+                    Text("Only the folders are listed: no remote, branch or counts. Check each one yourself before you move.").font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
                 }
             } else {
                 value(runner.codeCounting || runner.previews == nil ? "reading…" : "–")
