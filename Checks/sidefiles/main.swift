@@ -108,9 +108,9 @@ if role == "b" {
         check(kinds.tasks && kinds.plans && kinds.history && kinds.trust && !kinds.mcp && !kinds.rewind, "B: a move's import starts with every kind on, the MCP servers off")
 
         // this Mac's own files: a .claude.json with other projects, an account block and an entry already for same/app; a history.jsonl
-        let configB = #"{"numStartups": 2, "oauthAccount": {"accountUuid": "\#(acct)", "emailAddress": "\#(email)"}, "projects": {"\#(same)": {"allowedTools": ["Read"], "hasTrustDialogAccepted": false}, "/Users/other": {"hasTrustDialogAccepted": true}}, "theme": "dark"}"#
+        let configB = #"{"numStartups": 2, "oauthAccount": {"accountUuid": "\#(acct)", "emailAddress": "\#(email)"}, "projects": {"\#(same)": {"allowedTools": ["Read"], "hasTrustDialogAccepted": false}, "/srv/other-project": {"hasTrustDialogAccepted": true}}, "theme": "dark"}"#
         write(cc + "/.claude.json", configB)
-        let histB = hline("an earlier prompt here", "/Users/other", sid(200), ts: 1) + "\n"
+        let histB = hline("an earlier prompt here", "/srv/other-project", sid(200), ts: 1) + "\n"
         write(cc + "/history.jsonl", histB)
         try! fm.createDirectory(atPath: new, withIntermediateDirectories: true)
 
@@ -151,7 +151,7 @@ if role == "b" {
               "B: an entry already there for that folder wins, and that is said")
         check(projects?[code] == nil && projects?["/elsewhere"] == nil, "B: trust kept for a folder above the project (and another project) isn't carried")
         let value = r.steps.first { $0.kind == .trust }?.value ?? "?"
-        let anchor = #""/Users/other": {"hasTrustDialogAccepted": true}"#
+        let anchor = #""/srv/other-project": {"hasTrustDialogAccepted": true}"#
         check(cfg == configB.replacingOccurrences(of: anchor, with: anchor + #", "\#(new)": "# + value),
               "B: .claude.json is byte for byte as it was but the one key added after the last project (other projects, the account block, key order kept): \(cfg.prefix(300))")
         let unsplice = SideFiles.unspliced(Array(cfg.utf8), key: new, value: value)
