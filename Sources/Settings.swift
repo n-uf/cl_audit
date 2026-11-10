@@ -1370,6 +1370,8 @@ struct AccountSettings: View {
     @ObservedObject var model: SettingsModel
     var width: CGFloat = 1280
     @Environment(\.face) private var face
+    /// What the folders from before hold, counted off the main thread (Leftovers.swift).
+    @ObservedObject private var leftoverCounts = LeftoverCounts.shared
 
     /// `adding`, `picked`: Add account's address row open, and a standby account selected, from the start (renders only).
     init(entry: Binding<AccountEntry>, model: SettingsModel, width: CGFloat = 1280, adding: String? = nil, picked: String? = nil) {
@@ -1845,7 +1847,9 @@ struct AccountSettings: View {
     /// Trash… (asks first, says what is in it, names its Keychain item), or Show in Finder for one that holds sessions
     /// (never offered for the Trash); Keep it (cl_audit stops asking).
     @ViewBuilder var leftoverRows: some View {
-        let list: [Leftovers.Folder] = { _ = model.tick; return Leftovers.offered(entry, among: model.accounts) }()
+        let list: [Leftovers.Folder] = { _ = model.tick; return Leftovers.offered(entry, among: model.accounts, inside: { leftoverCounts.inside($0) }) }()
+        let paths = list.map(\.path)
+        let key = paths.map { "\($0)|\(LeftoverCounts.stamp($0).hashValue)" }.joined(separator: "\n")
         if !list.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
                 Text("Folders from before").font(.system(size: 9, weight: .semibold)).tracking(1.4).textCase(.uppercase)
@@ -1872,6 +1876,8 @@ struct AccountSettings: View {
                 }
             }
             .padding(.top, 4)
+            .onAppear { leftoverCounts.recount(paths) }
+            .task(id: key) { leftoverCounts.refresh(paths) }
         }
     }
 

@@ -163,3 +163,61 @@ enum Leftovers {
         return out
     }
 }
+
+/// What each folder from before holds, counted off the main thread: once each time the Accounts card appears, and again
+/// when the folder's or its projects folder's modification time changes (two lstat calls per folder on the card's tick;
+/// nothing else runs on the main thread). Move to Trash counts again at the click (Leftovers.trash).
+@MainActor final class LeftoverCounts: ObservableObject {
+    static let shared = LeftoverCounts()
+
+    /// The folder's and its projects folder's modification times (lstat: a link's own), -1 when not there.
+    struct Stamp: Equatable, Hashable {
+        var dir: Double
+        var projects: Double
+    }
+
+    nonisolated static func stamp(_ path: String) -> Stamp {
+        func m(_ p: String) -> Double {
+            var st = stat()
+            guard lstat(p, &st) == 0 else { return -1 }
+            return Double(st.st_mtimespec.tv_sec) + Double(st.st_mtimespec.tv_nsec) / 1e9
+        }
+        let dir = expand(path)
+        return Stamp(dir: m(dir), projects: m((dir as NSString).appendingPathComponent("projects")))
+    }
+
+    @Published private(set) var counts: [String: (stamp: Stamp, inside: Leftovers.Inside)] = [:]
+    private var running: Set<String> = []
+
+    /// What a folder holds, if counted since it last changed.
+    func inside(_ path: String) -> Leftovers.Inside? {
+        guard let c = counts[path], c.stamp == Self.stamp(path) else { return nil }
+        return c.inside
+    }
+
+    /// Counts the folders not counted since they last changed, each off the main thread.
+    func refresh(_ paths: [String]) {
+        for p in paths where inside(p) == nil && !running.contains(p) {
+            running.insert(p)
+            let s = Self.stamp(p)
+            Task.detached(priority: .utility) {
+                let i = Leftovers.Inside.of(p)
+                await MainActor.run {
+                    self.running.remove(p)
+                    self.counts[p] = (s, i)
+                }
+            }
+        }
+    }
+
+    /// The card appeared: count its folders again.
+    func recount(_ paths: [String]) {
+        for p in paths where !running.contains(p) { counts[p] = nil }
+        refresh(paths)
+    }
+
+    /// Renders and checks only: counts now, on this thread.
+    func countNow(_ paths: [String]) {
+        for p in paths { counts[p] = (Self.stamp(p), Leftovers.Inside.of(p)) }
+    }
+}

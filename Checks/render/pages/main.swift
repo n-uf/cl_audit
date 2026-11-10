@@ -272,6 +272,7 @@ MainActor.assumeIsolated {
     var withOld = main; withOld.leftoverFolders = ["~/.claude-ultra-2"]
     withOld.standby.append(StandbyAccount(email: "ultra-4@example.com", id: "k4"))      // remembered by its address only
     model.accounts = [withOld]
+    LeftoverCounts.shared.countNow(withOld.leftoverFolders)      // the card counts off the main thread; a picture can't wait
     for f in [Face.std, .silver] { for (wn, w) in oWidths {
         snapshot(framed(AccountSettings(entry: .constant(withOld), model: model, width: w), f, w), "o8-accounts-leftover-\(f.rawValue)-\(wn)", w + 32, 3200)
         snapshot(framed(AccountSettings(entry: .constant(withOld), model: model, width: w, adding: "ultra-5@example.com"), f, w), "o9-accounts-add-address-\(f.rawValue)-\(wn)", w + 32, 3200)
