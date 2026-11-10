@@ -319,13 +319,15 @@ enum ClaudeCLI {
     /// is set up for filled in. The person signs in in the browser; nothing here sees the password.
     /// `creating`: only for a brand-new folder the person just chose (New profile, first run, the default profile's offer),
     /// which is made (owner only) first. Any other sign-in needs its folder there: a folder the person deleted never comes back.
+    /// `marker`: a file the script makes when `claude auth login` ends well (exit 0), for a sign-in again on the account
+    /// already in use, where the folder's account doesn't change and so says nothing (SwitchRunner.swift).
     @discardableResult
-    static func openLogin(_ claude: String, account: Account, email: String?, creating: Bool = false) -> Bool {
+    static func openLogin(_ claude: String, account: Account, email: String?, marker: URL? = nil, creating: Bool = false) -> Bool {
         // never through a link
         guard FolderGuard.mayLaunch("login", account.configDir, creating: creating) else { return false }
         let file = loginScript(account.configDir)
         do {
-            try (loginLines(claude, account: account, email: email).joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
+            try (loginLines(claude, account: account, email: email, marker: marker).joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
         } catch { return false }
         return openTerminal(file)
@@ -375,16 +377,26 @@ enum ClaudeCLI {
     /// UNSET (also against one the login shell exports): set to ~/.claude, Claude Code takes it for a custom folder and
     /// writes ~/.claude/.claude.json and a Keychain item "Claude Code-credentials-<hash>" instead of the default folder's
     /// ~/.claude.json and "Claude Code-credentials" that cl_audit and the usual Claude app read. Any other folder sets it.
-    static func loginLines(_ claude: String, account: Account, email: String?) -> [String] {
+    /// A key or another provider from the login shell's own settings would sign it in some other way: those are unset
+    /// first (as cl_quick's sign-in does).
+    static func loginLines(_ claude: String, account: Account, email: String?, marker: URL? = nil) -> [String] {
         func q(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
         var lines = ["#!/bin/zsh -l", "clear"]
+        lines.append("unset " + providerVariables.joined(separator: " "))
         lines.append(account.isDefaultDir ? "unset CLAUDE_CONFIG_DIR" : "export CLAUDE_CONFIG_DIR=\(q(account.configDir))")
         lines.append("echo \(q("Signing in to Claude Code for \(tilde(account.configDir))…"))")
         var cmd = "\(q(claude)) auth login --claudeai"
         if let email { cmd += " --email \(q(email))" }
-        lines += [cmd, "echo", "echo 'Done. cl_audit picks up the new sign-in by itself within half a minute.'"]
+        lines.append(cmd)
+        // with a marker the script says when the login ended well (exit 0)
+        if let marker { lines += ["s=$?", "if [ $s -eq 0 ]; then : > \(q(marker.path)); fi"] }
+        lines += ["echo", "echo 'Done. cl_audit picks up the new sign-in by itself within half a minute.'"]
         return lines
     }
+
+    /// The variables that would make Claude Code use a key or another provider instead of the claude.ai sign-in.
+    static let providerVariables = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN",
+                                    "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"]
 
     /// The check's seam: opens a login script in Terminal (a check records the script and never opens one).
     nonisolated(unsafe) static var openTerminal: (URL) -> Bool = { Installer.run("/usr/bin/open", ["-a", "Terminal", $0.path]) == 0 }
