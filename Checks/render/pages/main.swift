@@ -387,8 +387,16 @@ MainActor.assumeIsolated {
     var goneEntry = main; goneEntry.configDir = "~/.claude-gone-render"
     try? fm.removeItem(atPath: expand(goneEntry.configDir))
     let goneWhy = ClaudeCLI.goneLine(goneEntry.configDir) ?? "?"
-    r.preview(.failed(goneWhy), goal: goal, target: k2)
+    r.preview(.failed(goneWhy), goal: goal, target: k2, failedAt: .notStarted)
     page(goneEntry, k2, "o15-switch-folder-gone")
+    // a switch that stopped: at the window's close (nothing moved), and at the move with sessions moved (Undo)
+    r.preview(.failed("Main's Claude window didn't close; it may be asking about work under way. Answer it, then try again. Nothing moved."),
+              goal: goal, target: k2, planned: swPlan, failedAt: .closing)
+    page(main, k2, "o16a-switch-failed-window")
+    var stoppedPart = moved; stoppedPart.finished = nil
+    r.preview(.failed("A session couldn't be placed; stopped. Undo puts back what moved."), goal: goal, target: k2, planned: swPlan,
+              receipt: stoppedPart, failedAt: .move)
+    page(main, k2, "o16b-switch-stopped-part-way")
     r.preview(.ready, goal: nil, target: k2)
     if ProcessInfo.processInfo.environment["ONEFOLDER_ONLY"] != nil { print("done"); exit(0) }
 

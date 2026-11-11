@@ -654,6 +654,29 @@ do {
     check(script.contains("[ -d \\\"$CLAUDE_CONFIG_DIR\\\" ] && [ ! -L \\\"$CLAUDE_CONFIG_DIR\\\" ]"), "the Terminal script checks the folder again itself before exec claude")
 }
 
+// ============ 6b. a switch that stops: the step that failed, the ones before done, the tile's words ============
+do {
+    func states(_ phase: SwitchRunner.Phase, _ at: SwitchRunner.FailedStep?, moves: Bool) -> [SwitchPage.StepState] {
+        (1...(moves ? 5 : 3)).map { SwitchPage.stepState($0, phase: phase, failedAt: at, moves: moves) }
+    }
+    var rc = SwitchReceipt(id: "r-fail", profile: "pf", standby: "s", dataDir: "/tmp/x", from: SeatID(u1), to: SeatID(u2), started: t0)
+    rc.steps = (0..<3).map { SwitchReceipt.Step(kind: .entry, path: "/x\($0)", sha: nil, parked: nil, original: nil, done: true) }
+    let f = SwitchRunner.Phase.failed("why")
+    check(states(f, .closing, moves: true) == [.failed, .pending, .pending, .pending, .pending] && SwitchRunner.failedWords(nil) == ("Not started", "nothing changed"),
+          "the window didn't close: step 1 failed, nothing else; the tile: Not started · nothing changed")
+    check(states(f, .backup, moves: true) == [.done, .failed, .pending, .pending, .pending], "the backup failed: step 1 done, step 2 failed")
+    check(states(f, .move, moves: true) == [.done, .failed, .pending, .pending, .pending]
+          && SwitchRunner.failedWords(rc) == ("Stopped part way", "3 moved · Undo puts them back"),
+          "the move stopped part way: step 2 failed; the tile: Stopped part way · 3 moved · Undo puts them back")
+    check(states(f, .signIn, moves: true) == [.done, .done, .failed, .pending, .pending], "the sign-in didn't open after the move: step 3 failed, 1 and 2 done")
+    check(states(f, .signIn, moves: false) == [.failed, .pending, .pending] && SwitchRunner.failedWords(nil).l2 == "nothing changed",
+          "the sign-in didn't open, nothing to move: its first step failed; nothing changed")
+    check(states(.other("x@example.com"), nil, moves: true) == [.done, .done, .done, .done, .failed], "the account check: another account: the last step failed")
+    check(states(f, .notStarted, moves: true).allSatisfy { $0 == .pending }, "refused before anything: no step marked failed")
+    var undone = rc; undone.undone = t0
+    check(SwitchRunner.failedWords(undone) == ("Not started", "nothing changed"), "a receipt already undone: nothing left changed")
+}
+
 // ============ 7. a copy of the profiles file before it's rewritten in a new shape ============
 do {
     Store.announce = {}                         // a throwaway home: no running cl_audit is told
