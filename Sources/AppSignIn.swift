@@ -1,17 +1,26 @@
-// AppSignIn: which claude.ai account the Claude app is signed in to, read the way claude-transplant 4.2.1 reads it
-// (transplant.js, signedIn()): the app's main*.log, newest file first and each from its end, after the app's launch.
+// AppSignIn: which claude.ai account the Claude app is signed in to. The app's settings file names the account; its log
+// gives the organisation and whether it signed out (adapted from claude-transplant 4.2.1, transplant.js, signedIn()).
 //
-// - "[LocalSessionManager] Initialization succeeded … accountId=<uuid>, orgId=<uuid>" names the account;
-// - "[account] Login-state transition … loggedOut: … → true" or "[LocalSessionManager] Account logged out" means signed out;
-// - another [LocalSessionManager] line about the account (Org changed, Cannot initialize sessions, loadSessions failed),
-//   a line before the launch, the file's last (maybe half-written) line or an id that isn't a UUID: unknown;
-// - the account named is cross-checked with the data folder's config.json lastKnownAccountUuid: another id there means
-//   unknown.
+// - The account: the data folder's config.json lastKnownAccountUuid. The app can switch accounts in place and back without
+//   a new "Initialization succeeded" line (seen in 26.11.14: init for A, then a reevaluate and init for B, then back to A
+//   with only "[oauth-v2] lookup" lines, config.json naming A), so the newest init line is not the account.
+// - The organisation: the newest line after the app's launch about that same account, any of
+//   "[LocalSessionManager] Initialization succeeded … accountId=X, orgId=Y", "[sessions-bridge] identity reevaluate: … → Y:X"
+//   or "[oauth-v2] lookup orgId=Y cacheKey=acct:X"; if none, the newest claude-code-sessions/<account>/<org> folder in the
+//   data folder (names only, at most `maxListed` entries, no link followed).
+// - Signed out: the newest login-state line after the launch and newer than config.json's modification time is
+//   "[LocalSessionManager] Account logged out" or a "[account] Login-state transition" whose loggedOut part ends true.
+//   Otherwise signed in to config.json's account.
+// - No config.json (or no valid id in it): the log's own account line, as before (`judge`): the newest
+//   "Initialization succeeded" after the launch names the account; a signed-out line means signed out; another
+//   [LocalSessionManager] line about the account, a line before the launch, the file's last (maybe half-written) line or
+//   an id that isn't a UUID: unknown.
 //
-// Only those lines are looked at, and only the ids, the time and the signed-out flag are kept: nothing else from the log
-// (it holds paths and session titles). The log is shared by every Claude window the app runs, so it is read only while
-// exactly one Claude app process runs (claude-transplant's rule); otherwise the data folder's config.json alone says the
-// account (no organisation then). No token is read: config.json's lastKnownAccountUuid is an id.
+// Only those lines are looked at, only lines up to `maxLine` bytes, with plain string tests (one anchored pattern for the
+// time), and only the ids, the time and the signed-out flag are kept: nothing else from the log (it holds paths and
+// session titles). The log is shared by every Claude window the app runs, so it is read only while exactly one Claude app
+// process runs (claude-transplant's rule); otherwise config.json says the account and the sessions folder the
+// organisation. No token is read: config.json's lastKnownAccountUuid is an id.
 //
 // Adapted from claude-transplant, Copyright (c) 2026 Vitaliy Hayda, under the MIT License:
 //   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
@@ -44,16 +53,25 @@ enum AppSignIn {
     /// The most read from the end of one log file.
     static let tailBytes = 4 << 20
 
-    /// The Claude app's account for one profile's window: from the log when this window is the only Claude app running,
-    /// else from its data folder's config.json. `launched`: the window's launch (nil: it isn't running).
+    /// The Claude app's account for one profile's window: config.json's account, with its organisation and the signed-out
+    /// state from the log when this window is the only Claude app running (else the organisation from the sessions folder).
+    /// Without config.json, the log's own account line. `launched`: the window's launch (nil: it isn't running).
     static func current(dataDir: String, launched: Date?, onlyApp: Bool, logs: URL = logsDir, now: Date = Date()) -> Login {
-        let config = lastKnown(dataDir: dataDir)
-        if onlyApp, let launched {
-            let l = fromLog(logs: logs, launched: launched, lastKnown: config, now: now)
-            if l.state != .unknown || l.source == "log" { return l }
+        guard let c = config(dataDir: dataDir) else {
+            if onlyApp, let launched {
+                let l = fromLog(logs: logs, launched: launched, lastKnown: nil, now: now)
+                if l.state != .unknown || l.source == "log" { return l }
+            }
+            return .unknown
         }
-        if let c = config { return Login(account: c, org: nil, state: .known, source: "config", at: nil) }
-        return .unknown
+        var l = Login(account: c.id, org: nil, state: .known, source: "config", at: nil)
+        if onlyApp, let launched {
+            let s = scan(logs: logs, launched: launched, account: c.id, configTime: c.modified, now: now)
+            if let out = s.loggedOut { return Login(account: nil, org: nil, state: .loggedOut, source: "log", at: out) }
+            if let o = s.org { l.org = o.org; l.source = "log"; l.at = o.at }
+        }
+        if l.org == nil { l.org = sessionsOrg(dataDir: dataDir, account: c.id) }
+        return l
     }
 
     /// `current(for:)` kept a few seconds per profile (the log grows all the time; a screen asks on every tick), and read
@@ -87,11 +105,39 @@ enum AppSignIn {
     }
 
     /// config.json's lastKnownAccountUuid (lower case), or nil. Only that key is kept.
-    static func lastKnown(dataDir: String) -> String? {
-        guard let d = boundedRead((expand(dataDir) as NSString).appendingPathComponent("config.json"), max: configBytes, fromEnd: false)?.data,
-              let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+    static func lastKnown(dataDir: String) -> String? { config(dataDir: dataDir)?.id }
+
+    /// config.json's lastKnownAccountUuid (lower case) and the file's modification time, or nil. Only that key is kept.
+    static func config(dataDir: String) -> (id: String, modified: Date)? {
+        guard let r = boundedRead((expand(dataDir) as NSString).appendingPathComponent("config.json"), max: configBytes, fromEnd: false),
+              let j = try? JSONSerialization.jsonObject(with: r.data) as? [String: Any],
               let id = j["lastKnownAccountUuid"] as? String, AccountDiscovery.isUUID(id) else { return nil }
-        return id.lowercased()
+        return (id.lowercased(), r.modified)
+    }
+
+    /// The most entries looked at in one sessions folder listing.
+    static let maxListed = 256
+
+    /// The newest claude-code-sessions/<account>/<org> folder in the data folder: its organisation (lower case), or nil.
+    /// Names and times only, at most `maxListed` entries; a link (the account's folder or an org's) is never followed.
+    static func sessionsOrg(dataDir: String, account: String) -> String? {
+        let dir = (expand(dataDir) as NSString).appendingPathComponent("claude-code-sessions/\(account)")
+        func isDir(_ p: String) -> Date? {
+            var st = stat()
+            guard lstat(p, &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR else { return nil }
+            return Date(timeIntervalSince1970: TimeInterval(st.st_mtimespec.tv_sec) + TimeInterval(st.st_mtimespec.tv_nsec) / 1e9)
+        }
+        guard isDir(dir) != nil, let d = opendir(dir) else { return nil }
+        defer { closedir(d) }
+        var best: (org: String, at: Date)?
+        var seen = 0
+        while seen < maxListed, let e = readdir(d) {
+            seen += 1
+            let name = withUnsafePointer(to: e.pointee.d_name) { $0.withMemoryRebound(to: CChar.self, capacity: 256) { String(cString: $0) } }
+            guard name.utf8.count == 36, AccountDiscovery.isUUID(name), let t = isDir((dir as NSString).appendingPathComponent(name)) else { continue }
+            if best.map({ t > $0.at }) ?? true { best = (name.lowercased(), t) }
+        }
+        return best?.org
     }
 
     /// The log files newest first: main.log, main1.log, main2.log … (claude-transplant's order).
@@ -128,7 +174,7 @@ enum AppSignIn {
     /// At most `max` bytes of a regular file, from its start or its end, never blocking: opened without following a link
     /// and non-blocking (a FIFO or a device named like the file returns at once), checked to be a regular file. `cut`: the
     /// file was longer. nil when it isn't there or isn't a regular file.
-    static func boundedRead(_ path: String, max: Int, fromEnd: Bool) -> (data: Data, cut: Bool)? {
+    static func boundedRead(_ path: String, max: Int, fromEnd: Bool) -> (data: Data, cut: Bool, modified: Date)? {
         let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
@@ -138,7 +184,8 @@ enum AppSignIn {
         var buf = Data(count: n)
         let got = buf.withUnsafeMutableBytes { pread(fd, $0.baseAddress, n, off_t(fromEnd ? size - n : 0)) }
         guard got == n else { return nil }
-        return (buf, n < size)
+        let modified = Date(timeIntervalSince1970: TimeInterval(st.st_mtimespec.tv_sec) + TimeInterval(st.st_mtimespec.tv_nsec) / 1e9)
+        return (buf, n < size, modified)
     }
 
     /// An account line is short (under 300 bytes): a longer one isn't looked at, so no line can keep the parsing busy.
@@ -166,6 +213,80 @@ enum AppSignIn {
         let rest = body[r.upperBound...]
         let value = rest[..<(rest.firstIndex { $0 == "," || $0 == ")" } ?? rest.endIndex)]
         return value.hasSuffix("\u{2192} true") || value.hasSuffix("-> true")
+    }
+
+    /// The value after `key` up to the next space, "," or ")" (plain string tests).
+    static func token(after key: String, in body: String) -> String? {
+        guard let r = body.range(of: key) else { return nil }
+        let rest = body[r.upperBound...]
+        let v = rest[..<(rest.firstIndex { $0 == " " || $0 == "," || $0 == ")" || $0 == "\t" } ?? rest.endIndex)]
+        return v.isEmpty ? nil : String(v)
+    }
+
+    /// One log line's (account, organisation), lower case, from any of the account lines: "[LocalSessionManager]
+    /// Initialization succeeded … accountId=X, orgId=Y", "[sessions-bridge] identity reevaluate: … → Y:X" or "[oauth-v2]
+    /// lookup orgId=Y cacheKey=acct:X". nil: not one, or an id that isn't a UUID.
+    static func accountOrg(_ body: String) -> (account: String, org: String)? {
+        var pair: (String, String)?
+        if body.hasPrefix("[LocalSessionManager] Initialization succeeded") {
+            if let a = token(after: "accountId=", in: body), let o = token(after: "orgId=", in: body) { pair = (a, o) }
+        } else if body.hasPrefix("[sessions-bridge] identity reevaluate") {
+            let arrow = body.range(of: "\u{2192} ", options: .backwards) ?? body.range(of: "-> ", options: .backwards)
+            if let r = arrow {
+                let rest = body[r.upperBound...]
+                let v = rest[..<(rest.firstIndex { $0 == " " || $0 == "," || $0 == ")" || $0 == "\t" } ?? rest.endIndex)]
+                let parts = v.split(separator: ":", omittingEmptySubsequences: false)
+                if parts.count == 2 { pair = (String(parts[1]), String(parts[0])) }
+            }
+        } else if body.hasPrefix("[oauth-v2] lookup") {
+            if let o = token(after: "orgId=", in: body), let a = token(after: "cacheKey=acct:", in: body) { pair = (a, o) }
+        }
+        guard let (a, o) = pair, AccountDiscovery.isUUID(a), AccountDiscovery.isUUID(o) else { return nil }
+        return (a.lowercased(), o.lowercased())
+    }
+
+    /// What the log says beside config.json's account: the organisation of the newest account line for `account` after the
+    /// launch, and the time of a signed-out line when the newest login-state line after the launch and after `configTime`
+    /// says signed out. Read newest file first, each from its end; it stops at the first such line from before the launch.
+    static func scan(logs: URL, launched: Date, account: String, configTime: Date, now: Date = Date()) -> (org: (org: String, at: Date)?, loggedOut: Date?) {
+        var s = Scan()
+        for f in logFiles(logs) where !s.done {
+            guard let lines = tail(f) else { continue }
+            scan(lines: lines, into: &s, launched: launched, account: account, configTime: configTime, now: now)
+        }
+        return (s.org, s.loggedOut)
+    }
+
+    /// What `scan` found so far, carried from one file to the next (older) one.
+    struct Scan {
+        var org: (org: String, at: Date)?
+        var loggedOut: Date?
+        var loginDecided = false
+        var done = false                // nothing older can change the answer (or a line from before the launch was reached)
+    }
+
+    /// One file's part of `scan`, from its end. The file's last element may be half-written: it is never read.
+    static func scan(lines: [Substring], into s: inout Scan, launched: Date, account: String, configTime: Date, now: Date = Date()) {
+        for i in stride(from: lines.count - 2, through: 0, by: -1) where !s.done {
+            guard lines[i].utf8.count <= maxLine else { continue }      // never a long line: account lines are short
+            let line = String(lines[i])
+            let login = line.contains("[account] Login-state transition") || line.contains("[LocalSessionManager] Account logged out")
+            let named = line.contains("[LocalSessionManager] Initialization succeeded") || line.contains("[sessions-bridge] identity reevaluate")
+                || line.contains("[oauth-v2] lookup")
+            guard login || named else { continue }
+            let ns = line as NSString
+            guard let m = lineRE.firstMatch(in: line, range: NSRange(location: 0, length: ns.length)) else { continue }
+            let stamp = ns.substring(with: m.range(at: 1)), body = ns.substring(with: m.range(at: 2))
+            guard let t = (stamp.contains(".") ? timeFormat : timeFormatShort).date(from: stamp), t <= now else { continue }
+            if t < launched { s.done = true; break }
+            if login, !s.loginDecided, body.contains("Account logged out") || body.contains("loggedOut: ") {
+                // the newest login-state line newer than config.json decides; one older than it (or none) leaves it signed in
+                s.loginDecided = true
+                if t > configTime, saysLoggedOut(body) { s.loggedOut = t; s.done = true; break }
+            }
+            if named, s.org == nil, let p = accountOrg(body), p.account == account { s.org = (p.org, t) }
+            if s.org != nil, s.loginDecided { s.done = true }
+        }
     }
 
     /// One file's lines judged from the end: the first account line found decides (nil: none in this file). The file's last

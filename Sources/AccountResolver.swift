@@ -5,8 +5,8 @@
 // quick chat's profile line) reads only that record, through AccountView, and never decides for itself.
 //
 // The rule:
-// - the active account is the Claude app's signed-in account (AppSignIn: its log after its launch, checked against its
-//   config.json), shown with the green lamp and "in use";
+// - the active account is the Claude app's signed-in account (AppSignIn: its config.json names it, its log after its
+//   launch gives the organisation and whether it signed out), shown with the green lamp and "in use";
 // - with the app signed out or not readable (or no Claude window), Claude Code's folder account is the active one, and for
 //   a profile with a window a muted line says why;
 // - the numbers are Claude Code's (they are read through its sign-in), and say whose when that isn't the active account

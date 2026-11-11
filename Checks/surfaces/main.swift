@@ -1,7 +1,9 @@
 // Surfaces checks for cl_audit: one answer about each profile's account (Sources/AccountResolver.swift), written once into its
 // status record, and every screen reading it alike: the menu bar, the Dock icon's menu and panel, the dashboard card, Settings ▸
-// Accounts and quick chat's profile line. Also the Claude app's account read from its log the way claude-transplant reads it
-// (Sources/AppSignIn.swift), a standby account's old numbers never shown, and no screen reading the sign-in files itself.
+// Accounts and quick chat's profile line. Also the Claude app's account (Sources/AppSignIn.swift): its config.json names the
+// account, its log gives the organisation and whether it signed out (an account switched in place and back included; the
+// log's own account line without config.json); a standby account's old numbers never shown, and no screen reading the
+// sign-in files itself.
 //
 // Runs only with HOME and CFFIXED_USER_HOME = .../Checks/.work/surfaces/home (Checks/run.sh sets and guards it). Fake data only:
 // example.com addresses, zero-pattern ids, made-up log lines and config.json files in the throwaway home. Nothing here opens
@@ -90,6 +92,104 @@ do {
           "the only Claude app running: its log says it, with the organisation")
 }
 
+// ============ 1b. the app switched accounts in place and back (26.11.14): config.json names the account ============
+// The sequence seen in 26.11.14, with fake ids: launched at "13:48" with an init for A (u1), at "15:03" a reevaluate and an
+// init for B (u2), later only oauth-v2 lookups for A, and config.json naming A written at "19:30".
+var appBack = AppSignIn.Login.unknown
+do {
+    let launched = t0, now = t0.addingTimeInterval(8 * 3600)
+    func at(_ m: Double) -> String { AppSignIn.timeFormat.string(from: launched.addingTimeInterval(m * 60)) }
+    let a = u1.account, oa = u1.organization!, b = u2.account, ob = u2.organization!
+    let story = [
+        "\(at(0.1)) [info] [LocalSessionManager] Initialization succeeded in 9ms, accountId=\(a), orgId=\(oa), sessions=2",
+        "\(at(75)) [info] [sessions-bridge] identity reevaluate: <none> \u{2192} \(ob):\(b)",
+        "\(at(75.1)) [info] [LocalSessionManager] Initialization succeeded in 7ms, accountId=\(b), orgId=\(ob), sessions=0",
+        "\(at(100)) [info] [oauth-v2] lookup orgId=\(oa) cacheKey=acct:\(a)",
+        "\(at(200)) [info] [oauth-v2] lookup orgId=\(oa) cacheKey=acct:\(a)"]
+    func home(_ name: String, log: [String], config: String?, configAt: Double = 342) -> (logs: URL, data: String) {
+        let logs = URL(fileURLWithPath: expand("~/Library/Logs/Claude-\(name)")), data = expand("~/Library/Application Support/Claude-\(name)")
+        put(logs.appendingPathComponent("main.log").path, log.joined(separator: "\n") + "\n")
+        try? fm.createDirectory(atPath: data, withIntermediateDirectories: true)
+        if let id = config {
+            put(data + "/config.json", #"{"lastKnownAccountUuid":"\#(id)"}"#)
+            try? fm.setAttributes([.modificationDate: launched.addingTimeInterval(configAt * 60)], ofItemAtPath: data + "/config.json")
+        }
+        return (logs, data)
+    }
+    func read(_ h: (logs: URL, data: String), onlyApp: Bool = true) -> AppSignIn.Login {
+        AppSignIn.current(dataDir: h.data, launched: launched, onlyApp: onlyApp, logs: h.logs, now: now)
+    }
+    let back = home("a2-back", log: story, config: a)
+    check(AppSignIn.fromLog(logs: back.logs, launched: launched, lastKnown: a, now: now).state == .unknown,
+          "the 26.11.14 reading of this sequence: the newest init (B) against config.json (A) gave unknown")
+    appBack = read(back)
+    check(appBack.account == a && appBack.org == oa && appBack.state == .known && appBack.source == "log",
+          "switched to B in place and back to A: the app is on A, with A's organisation from the newest oauth-v2 line")
+    // a "logged out" line older than config.json: still signed in; newer: signed out
+    let oldOut = home("a2-oldout", log: story + ["\(at(300)) [info] [LocalSessionManager] Account logged out"], config: a)
+    check(read(oldOut).state == .known && read(oldOut).account == a, "Account logged out older than config.json: still signed in to A")
+    let newOut = home("a2-newout", log: story + ["\(at(400)) [info] [LocalSessionManager] Account logged out"], config: a)
+    check(read(newOut).state == .loggedOut && read(newOut).account == nil, "Account logged out newer than config.json: signed out")
+    let newTrans = home("a2-newtrans", log: story + ["\(at(400)) [info] [account] Login-state transition (loggedOut: false \u{2192} true, loading: false)"], config: a)
+    check(read(newTrans).state == .loggedOut, "a login-state transition to signed out newer than config.json: signed out")
+    let oldTrans = home("a2-oldtrans", log: story + ["\(at(300)) [info] [account] Login-state transition (loggedOut: false \u{2192} true, loading: false)"], config: a)
+    check(read(oldTrans).state == .known, "a login-state transition to signed out older than config.json: still signed in")
+    let again = home("a2-again", log: story + ["\(at(400)) [info] [LocalSessionManager] Account logged out",
+                                               "\(at(410)) [info] [account] Login-state transition (loggedOut: true \u{2192} false, loading: false)"], config: a)
+    check(read(again).state == .known && read(again).account == a, "signed out, then a newer transition back to signed in: signed in to config.json's account")
+    let halfOut = home("a2-half", log: story, config: a)
+    put(halfOut.logs.appendingPathComponent("main.log").path, (story + ["\(at(400)) [info] [LocalSessionManager] Account logged out"]).joined(separator: "\n"))
+    check(read(halfOut).state == .known, "a signed-out line still being written (the file's last, no newline): not read yet")
+    // a newer file says signed out, an older one names the organisation: both read
+    let twoFiles = home("a2-two", log: ["\(at(400)) [info] [LocalSessionManager] Account logged out"], config: a)
+    put(twoFiles.logs.appendingPathComponent("main1.log").path, story.joined(separator: "\n") + "\n")
+    check(read(twoFiles).state == .loggedOut, "the signed-out line in the newest file decides")
+    let orgOlder = home("a2-orgolder", log: ["\(at(350)) [info] something else"], config: a)
+    put(orgOlder.logs.appendingPathComponent("main1.log").path, story.joined(separator: "\n") + "\n")
+    check(read(orgOlder).org == oa && read(orgOlder).state == .known, "the organisation from an older file when the newest says nothing")
+    // a line before the launch never counts
+    let before = home("a2-before", log: ["\(at(-10)) [info] [oauth-v2] lookup orgId=\(oa) cacheKey=acct:\(a)",
+                                         "\(at(-5)) [info] [LocalSessionManager] Account logged out"], config: a, configAt: -20)
+    check(read(before).state == .known && read(before).org == nil && read(before).source == "config",
+          "lines from before the launch (even newer than config.json): config.json's account, no organisation")
+    // no line about A: the newest claude-code-sessions/A/<org> folder (a link never followed or taken)
+    let noLine = home("a2-folder", log: Array(story[1...2]), config: a)
+    let sess = noLine.data + "/claude-code-sessions/\(a)"
+    for (n, m) in [(401, 10.0), (402, 20.0)] {
+        try? fm.createDirectory(atPath: "\(sess)/\(uuid(n))", withIntermediateDirectories: true)
+        try? fm.setAttributes([.modificationDate: launched.addingTimeInterval(m * 60)], ofItemAtPath: "\(sess)/\(uuid(n))")
+    }
+    try? fm.createDirectory(atPath: noLine.data + "/elsewhere", withIntermediateDirectories: true)
+    try? fm.createSymbolicLink(atPath: "\(sess)/\(uuid(403))", withDestinationPath: noLine.data + "/elsewhere")
+    put("\(sess)/\(uuid(404))", "a file, not a folder")
+    try? fm.createDirectory(atPath: "\(sess)/not-an-id", withIntermediateDirectories: true)
+    check(read(noLine).account == a && read(noLine).org == uuid(402) && read(noLine).state == .known,
+          "no organisation line for A in the log: the newest claude-code-sessions/A/<org> folder (links, files and other names left out)")
+    check(read(noLine, onlyApp: false).org == uuid(402) && read(noLine, onlyApp: false).source == "config", "another Claude app running too: config.json's account, the folder's organisation")
+    let linked = home("a2-linked", log: Array(story[1...2]), config: a)
+    try? fm.createDirectory(atPath: linked.data + "/claude-code-sessions", withIntermediateDirectories: true)
+    try? fm.createSymbolicLink(atPath: linked.data + "/claude-code-sessions/\(a)", withDestinationPath: sess)
+    check(read(linked).org == nil && read(linked).account == a, "the account's sessions folder is a link: not followed, no organisation")
+    // no config.json: the log's own account line decides, as before
+    let noConfig = home("a2-noconfig", log: story, config: nil)
+    check(read(noConfig).account == b && read(noConfig).org == ob && read(noConfig).state == .known, "no config.json: the log's newest init line decides, as before")
+    let noConfigOut = home("a2-noconfig-out", log: story + ["\(at(400)) [info] [LocalSessionManager] Account logged out"], config: nil)
+    check(read(noConfigOut).state == .loggedOut, "no config.json: a signed-out line, as before")
+    let badConfig = home("a2-badconfig", log: story, config: "nope")
+    check(read(badConfig).account == b, "config.json without a valid id: the log's own account line, as before")
+    check(read(noConfig, onlyApp: false) == .unknown, "no config.json and another Claude app running: unknown, as before")
+    // plain string parsing of the three account lines
+    check(AppSignIn.accountOrg("[sessions-bridge] identity reevaluate: \(oa):\(a) -> \(ob):\(b)").map { $0.account == b && $0.org == ob } == true
+          && AppSignIn.accountOrg("[sessions-bridge] identity reevaluate: \(ob):\(b) \u{2192} <none>") == nil
+          && AppSignIn.accountOrg("[oauth-v2] lookup orgId=\(oa) cacheKey=acct:nope") == nil
+          && AppSignIn.accountOrg("[oauth-v2] lookup orgId=\(oa) cacheKey=acct:\(a)").map { $0.account == a && $0.org == oa } == true,
+          "the account lines read by plain tests: the arrow's last target, ids that are UUIDs only")
+    let longOauth = "\(at(500)) [info] [oauth-v2] lookup " + String(repeating: "orgId=", count: 200_000)
+    let started = Date()
+    let crafted = home("a2-long", log: story + [longOauth], config: a)
+    check(read(crafted).org == oa && Date().timeIntervalSince(started) < 2, "a 1 MB crafted oauth-v2 line is skipped; the real line still decides")
+}
+
 // ============ 2. the resolver: one answer per case ============
 let appU2 = AppSignIn.Login(account: u2.account, org: u2.organization, state: .known, source: "log", at: t0)
 let appU1 = AppSignIn.Login(account: u1.account, org: u1.organization, state: .known, source: "log", at: t0)
@@ -127,7 +227,8 @@ do {
 do {
     let cases: [(String, AppSignIn.Login, Seat?, String?)] = [
         ("same", appU1, u1, u1.email), ("different", appU2, u1, u1.email), ("app signed out", appOut, u1, u1.email),
-        ("a standby's account in the app", appU2, u1, u1.email), ("another profile's account", .unknown, u3, u3.email)]
+        ("a standby's account in the app", appU2, u1, u1.email), ("another profile's account", .unknown, u3, u3.email),
+        ("the app switched to u2 in place and back", appBack, u1, u1.email)]
     let model = SettingsModel()
     model.accounts = [main, other]
     for (name, app, code, numbers) in cases {
@@ -149,6 +250,10 @@ do {
         check(QuickChatTarget(main).email == want.label, "\(name): quick chat agrees")
         check(Store.status(for: main)?.weekly == 40, "\(name): the record's own numbers show (they are the account the record names)")
         if name == "different" { check(want.label == u2.email && want.numbersOwner == u1.email, "different: u2 in use, the numbers u1's") }
+        if app == appBack {
+            check(want.label == u1.email && want.lit && want.line == nil && !(panel.activeNote ?? "").contains("can't be read"),
+                  "\(name): u1 in use from the app, no screen says the app can't be read")
+        }
         // no surface lists the active account on standby too; the in-use box's stored-seat line only under that seat
         let listed = main.listed(by: want)
         let activeOnStandby = listed.standby.contains { $0.seat?.account == app.account }
