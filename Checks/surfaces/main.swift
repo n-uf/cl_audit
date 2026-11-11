@@ -672,7 +672,7 @@ do {
     _ = Store.loadChecked()
     check(copies() == ["accounts.json.pre-m1"] && fm.contents(atPath: mPre) == legacy, "a second save and a load make no new copy, the copy unchanged")
     // the standby tidy-up: a list with two entries of one account
-    let dup = Data(#"{"accounts":[{"id":"td","name":"Td","label":"TD","configDir":"~/.claude-td","standby":[{"id":"a1","email":"x@example.com","seat":{"account":"00000000-0000-4000-8000-000000000901","organization":"00000000-0000-4000-8000-000000000902"}},{"id":"a2","email":"x@example.com","seat":{"account":"00000000-0000-4000-8000-000000000901","organization":"00000000-0000-4000-8000-000000000903"}}]}]}"#.utf8)
+    let dup = Data(#"{"accounts":[{"id":"td","name":"Td","label":"TD","configDir":"~/.claude-td","standby":[{"id":"a1","email":"x@example.com","seat":{"account":"\#(uuid(901))","organization":"\#(uuid(902))"}},{"id":"a2","email":"x@example.com","seat":{"account":"\#(uuid(901))","organization":"\#(uuid(903))"}}]}]}"#.utf8)
     try! dup.write(to: Store.configURL)
     Store.version = "t1"
     let tidied = Store.loadChecked()
