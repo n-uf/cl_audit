@@ -665,9 +665,9 @@ do {
     check(states(f, .closing, moves: true) == [.failed, .pending, .pending, .pending, .pending] && SwitchRunner.failedWords(nil) == ("Not started", "nothing changed"),
           "the window didn't close: step 1 failed, nothing else; the tile: Not started · nothing changed")
     check(states(f, .backup, moves: true) == [.done, .failed, .pending, .pending, .pending], "the backup failed: step 1 done, step 2 failed")
-    check(states(f, .move, moves: true) == [.done, .failed, .pending, .pending, .pending]
-          && SwitchRunner.failedWords(rc) == ("Stopped part way", "3 moved · Undo puts them back"),
-          "the move stopped part way: step 2 failed; the tile: Stopped part way · 3 moved · Undo puts them back")
+    check(states(f, .move, moves: true) == [.done, .failed, .pending, .pending, .pending], "the move stopped part way: step 2 failed")
+    check(SwitchRunner.failedWords(rc) == ("Stopped part way", "changed · Undo puts them back"),
+          "a receipt with something to undo but nothing countable left: 'changed', never 'nothing changed'")
     check(states(f, .signIn, moves: true) == [.done, .done, .failed, .pending, .pending], "the sign-in didn't open after the move: step 3 failed, 1 and 2 done")
     check(states(f, .signIn, moves: false) == [.failed, .pending, .pending] && SwitchRunner.failedWords(nil).l2 == "nothing changed",
           "the sign-in didn't open, nothing to move: its first step failed; nothing changed")
@@ -675,6 +675,62 @@ do {
     check(states(f, .notStarted, moves: true).allSatisfy { $0 == .pending }, "refused before anything: no step marked failed")
     var undone = rc; undone.undone = t0
     check(SwitchRunner.failedWords(undone) == ("Not started", "nothing changed"), "a receipt already undone: nothing left changed")
+
+    // through the runner's own fail sites, with real files
+    let wdF = expand("~/Library/Application Support/Claude-fail")
+    try? fm.removeItem(atPath: wdF)
+    let srcF = SwitchEngine.scopeDir(wdF, SeatID(u1)), dstF = SwitchEngine.scopeDir(wdF, SeatID(u2))
+    var ef = profile("ff", "~/.claude-ff", u1); ef.claudeWindow = true; ef.desktop = .separate; ef.desktopDataDir = wdF
+    ef.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "f2")]
+    try? fm.createDirectory(atPath: expand("~/.claude-ff"), withIntermediateDirectories: true)
+    try! Store.save([ef])
+    // no claude on this Mac (so a sign-in can't start); never the real one
+    let keepLocator = ClaudeLocator.current
+    ClaudeLocator.current = ClaudeLocator.Lookup(candidates: { [] }, npmPrefix: { nil }, shell: { nil }, appCopy: { nil })
+    defer { ClaudeLocator.current = keepLocator }
+    let mf = SettingsModel(); mf.accounts = [ef]
+    let rf = mf.runner(of: "ff")
+    func settle(_ done: () -> Bool) { let end = Date().addingTimeInterval(20); while !done() && Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) } }
+    func failedPhase() -> Bool { if case .failed = rf.phase { return true }; return false }
+
+    // a tasks-only stop inside the tasks' step: the old account emptied, the new one's file can't be written
+    put("\(srcF)/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"t1"},{"id":"t2"},{"id":"t3"}]}"#)
+    try? fm.createDirectory(atPath: dstF, withIntermediateDirectories: true)
+    try? fm.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dstF)
+    rf.start(ef.standby[0])
+    settle(failedPhase)
+    try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dstF)
+    check(failedPhase() && rf.failedStep == .move && rf.receipt?.unfinished == true
+          && SwitchRunner.failedWords(rf.receipt) == ("Stopped part way", "3 tasks moved · Undo puts them back"),
+          "a stop inside the tasks' step: the move step failed, the tile says 3 tasks moved, never 'nothing changed': \(rf.phase) \(SwitchRunner.failedWords(rf.receipt))")
+    if let r = rf.receipt { _ = try? SwitchEngine.undo(r.id, windowClosed: { true }) }
+    rf.reset()
+
+    // two sessions moved, then Claude Code's sign-in couldn't start (no claude here): the sign-in step failed, the tile
+    // and What changed give the receipt's own count
+    try? fm.removeItem(atPath: wdF)
+    put("\(srcF)/local_\(uuid(951)).json", #"{"sessionId":"local_a"}"#)
+    put("\(srcF)/local_\(uuid(952)).json", #"{"sessionId":"local_b"}"#)
+    rf.start(ef.standby[0])
+    settle(failedPhase)
+    check(rf.failedStep == .signIn && SwitchRunner.failedWords(rf.receipt) == ("Stopped part way", "2 sessions moved · Undo puts them back")
+          && SwitchRunner.movedWords(rf.receipt!) == "2 sessions",
+          "moved, then the sign-in didn't start: the sign-in step failed; 2 sessions moved: \(SwitchRunner.failedWords(rf.receipt))")
+    // the retry can't hold the window (another run has it): the sign-in it was retrying is the step marked
+    let winF = Launcher.dataDirKey(of: Account(ef))
+    check(SwitchMarker.claim(winF, profile: "other", standby: "x"), "another run holds the window")
+    rf.retry()
+    check(rf.failedStep == .signIn && SwitchPage.stepState(3, phase: rf.phase, failedAt: rf.failedStep, moves: true) == .failed,
+          "a retry that can't hold the window marks the sign-in, not step 1")
+    SwitchMarker.release(winF, profile: "other", standby: "x")
+    // a partial Undo: one placed session changed since stays; the tile counts only what's still moved
+    put("\(dstF)/local_\(uuid(951)).json", #"{"sessionId":"local_a","edited":true}"#)
+    rf.undo()
+    settle { failedPhase() && rf.receipt?.partlyUndone != nil }
+    check(rf.receipt?.partlyUndone != nil && SwitchRunner.failedWords(rf.receipt) == ("Stopped part way", "1 session moved · Undo puts them back"),
+          "after a partial Undo the tile counts only what's still moved: \(SwitchRunner.failedWords(rf.receipt))")
+    rf.reset()
+    try? fm.removeItem(atPath: wdF)
 }
 
 // ============ 7. a copy of the profiles file before it's rewritten in a new shape ============

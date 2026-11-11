@@ -393,10 +393,20 @@ MainActor.assumeIsolated {
     r.preview(.failed("Main's Claude window didn't close; it may be asking about work under way. Answer it, then try again. Nothing moved."),
               goal: goal, target: k2, planned: swPlan, failedAt: .closing)
     page(main, k2, "o16a-switch-failed-window")
+    // stopped part way: 12 of the sessions already placed under ultra-2 (real files), the rest not: the tile and What
+    // changed give that count, as the app does
     var stoppedPart = moved; stoppedPart.finished = nil
+    let dstR = SwitchEngine.scopeDir(wd, SeatID(u2))
+    stoppedPart.steps = (swPlan?.move ?? []).prefix(12).map { n in
+        let p = (dstR as NSString).appendingPathComponent(n)
+        try? fm.createDirectory(atPath: dstR, withIntermediateDirectories: true)
+        fm.createFile(atPath: p, contents: Data(#"{"isArchived":false}"#.utf8))
+        return SwitchReceipt.Step(kind: .entry, path: p, sha: nil, parked: nil, original: nil, done: true)
+    }
     r.preview(.failed("A session couldn't be placed; stopped. Undo puts back what moved."), goal: goal, target: k2, planned: swPlan,
               receipt: stoppedPart, failedAt: .move)
     page(main, k2, "o16b-switch-stopped-part-way")
+    stoppedPart.steps.forEach { try? fm.removeItem(atPath: $0.path) }
     r.preview(.ready, goal: nil, target: k2)
     if ProcessInfo.processInfo.environment["ONEFOLDER_ONLY"] != nil { print("done"); exit(0) }
 
