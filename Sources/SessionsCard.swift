@@ -54,6 +54,11 @@ struct SessionsCard: View {
                         HStack(spacing: 8) {
                             Button("Undo it") { undoSwitch(s) }
                                 .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize().disabled(windowOpen || working)
+                            // closes it as it stands: nothing moves, and the next switch is no longer held up
+                            Button("Leave it as it is") {
+                                if let words = try? SwitchEngine.leaveAsIs(s.id) { oldSwitch = nil; problem = words }
+                            }
+                            .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(working)
                             Button("Not now") { Self.dismissOldSwitch(s.id); oldSwitch = nil }
                                 .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                         }

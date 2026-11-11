@@ -755,6 +755,13 @@ do {
     if case .failed(let why) = run12.phase {
         check(why.contains("Undo it") && why.contains("sign in as ultra-2 to finish it"), "a switch that stopped half way: Undo it, or sign in to finish it: \(why)")
     } else { check(false, "an unfinished switch is said before a new one") }
+    // Leave it as it is: closed as it stands, nothing moved, and no longer holding up the next switch
+    let open12 = SwitchEngine.unfinished(profile: "r3")
+    let before12 = tree(wd)
+    let words12 = (try? SwitchEngine.leaveAsIs(open12.first?.id ?? "")) ?? ""
+    check(open12.count == 1 && SwitchEngine.unfinished(profile: "r3").isEmpty && tree(wd) == before12
+          && words12.hasPrefix("Left as it is: 2 Code-tab sessions stay under the account the switch went to"),
+          "Leave it as it is: the receipt closed, nothing moved, what stays where said: \(words12)")
 
     // SHOULD 7: the program is the executable's last path component, the path whole even with spaces
     check(SwitchEngine.isClaude(home + "/Library/Application Support/Claude/claude-code/2.1.318/claude --resume \(uuid(1220))")

@@ -109,7 +109,9 @@ struct SwitchReceipt: Codable, Equatable {
     var partlyUndone: Date?
 
     /// Something was moved, and the switch was neither linked nor undone: Undo still applies.
-    var unfinished: Bool { undone == nil && linked == nil && !steps.isEmpty }
+    var unfinished: Bool { undone == nil && linked == nil && leftAsIs == nil && !steps.isEmpty }
+    /// "Leave it as it is": the person closed it as it stands (Undo no longer applies; nothing is moved).
+    var leftAsIs: Date?
     var moved: Int { steps.filter { $0.kind == .entry && $0.done }.count }
 
     struct Step: Codable, Equatable {
@@ -857,6 +859,20 @@ enum SwitchEngine {
             linked.append(r.id)
         }
         return linked
+    }
+
+    /// "Leave it as it is" on a switch that stopped half way (or was only partly undone): nothing moves; the receipt is
+    /// closed, so it no longer holds up the next switch. What stays where, in words. The backup made before it is kept.
+    @discardableResult
+    static func leaveAsIs(_ id: String, now: Date = Date()) throws -> String {
+        let lock = try Lock.take()
+        defer { lock.release() }
+        guard var r = load(id), r.unfinished else { return "" }
+        r.leftAsIs = now
+        try save(r)
+        let moved = r.steps.filter { $0.kind == .entry && $0.done }.count
+        return "Left as it is: \(moved) Code-tab \(moved == 1 ? "session stays" : "sessions stay") under the account the switch went to, the rest under the one it came from"
+            + (r.backup != nil ? "; the backup made before it holds them all as they were." : ".")
     }
 
     static func markLinked(_ id: String, now: Date = Date()) {

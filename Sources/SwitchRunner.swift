@@ -125,7 +125,7 @@ final class SwitchRunner: ObservableObject {
             goal = g; receipt = u
             // never for good: Undo puts it back, and signing in as the account it went for finishes it (linkReached)
             let to = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { u.to.same($0) }?.email.map(AccountNames.short) ?? "its account"
-            phase = .failed("An earlier switch of \(e.name) stopped half way. Undo it (below, or on the Sessions card), or sign in as \(to) to finish it; then switch again.")
+            phase = .failed("An earlier switch of \(e.name) stopped half way. Undo it (below, or on the Sessions card), sign in as \(to) to finish it, or Leave it as it is (Sessions card); then switch again.")
             return
         }
         guard e.seat != nil, s.seat != nil else { begin(e, g); return }
