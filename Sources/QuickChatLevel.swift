@@ -64,8 +64,9 @@ struct QuickChatSwitchOffer: Equatable {
     var words: String
 
     static func best(_ e: AccountEntry) -> QuickChatSwitchOffer? {
-        let lines = SwitchMenu.lines(e)
-        return SwitchMenu.best(lines, backs: e.backOffers()).map { QuickChatSwitchOffer(key: $0.key, short: $0.short, words: $0.words) }
+        let listed = e.listed(by: AccountView.of(Store.status(for: e)))     // never the account in use on standby too
+        let lines = SwitchMenu.lines(listed)
+        return SwitchMenu.best(lines, backs: listed.backOffers()).map { QuickChatSwitchOffer(key: $0.key, short: $0.short, words: $0.words) }
     }
 }
 

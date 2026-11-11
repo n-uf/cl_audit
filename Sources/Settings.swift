@@ -1599,6 +1599,10 @@ struct AccountSettings: View {
     /// The profile's account as its record says it (AccountResolver): the in-use box and its lines show this.
     var view: AccountView { AccountView.of(status) }
 
+    /// The in-use box shows the stored account (the profile's seat), as its record says: its seat-specific notes and keys
+    /// belong there only then.
+    var seatShown: Bool { view.showsSeat(entry.seat) }
+
     /// Claude Code's folder on another profile's account in use, as the profile's record says it (AccountResolver), or
     /// nil. Any other account signed in to the folder isn't a problem to choose about: its numbers show, labelled.
     var seatMove: FolderRules.SeatMove? {
@@ -1647,7 +1651,7 @@ struct AccountSettings: View {
                 }
                 // the others, most room first (held still while one is selected); click one to select it, again to deselect
                 ForEach(standbyOrder) { s in standbyBox(s) }
-                if entry.standby.contains(where: Self.canSwitch), picked == nil {
+                if standbyOrder.contains(where: Self.canSwitch), picked == nil {
                     Text("Click a standby account to select it: its Switch account key opens the Switch page.")
                         .font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                 }
@@ -1734,7 +1738,8 @@ struct AccountSettings: View {
                 Button("Refresh now") { DistributedNotificationCenter.default().postNotificationName(Installer.refreshAllNote, object: entry.id, userInfo: nil, deliverImmediately: true) }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true))
             }
-            if !entry.standby.isEmpty { ownFolderLine }
+            // the line and key about the stored account's own kept folder: only under that account (AccountView.showsSeat)
+            if !entry.standby.isEmpty, seatShown { ownFolderLine }
         }
     }
 
@@ -1872,7 +1877,7 @@ struct AccountSettings: View {
 
     /// Most room first; while one is selected, the order it had then, so the boxes don't move under the pointer.
     private var standbyOrder: [StandbyAccount] {
-        let now = SwitchOffer.byRoom(entry)
+        let now = SwitchOffer.byRoom(entry.listed(by: view))    // never the account in use on standby too
         guard picked != nil, !heldOrder.isEmpty else { return now }
         let at = Dictionary(heldOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
         return now.enumerated().sorted { (at[$0.element.id] ?? Int.max, $0.offset) < (at[$1.element.id] ?? Int.max, $1.offset) }.map(\.element)

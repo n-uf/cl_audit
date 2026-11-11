@@ -52,19 +52,20 @@ enum AccountResolver {
                         names: [String: String], now: Date = Date()) -> ResolvedAccount {
         let codeLabel = loginEmail ?? code?.email ?? code.map { "account \($0.account.prefix(8))" }
         let owner = code.flatMap { c in accounts.first { $0.id != e.id && ($0.seat.map { c.same($0) } ?? false) } }
-        var r = ResolvedAccount(account: code?.account.lowercased(), email: loginEmail ?? code?.email, fromApp: false,
+        // without the app: Claude Code's folder account is the active one (its address from its record, else the numbers')
+        var r = ResolvedAccount(account: code?.account.lowercased(), email: code?.email ?? loginEmail, fromApp: false,
                                 numbersFor: codeLabel, differs: false, line: nil, lit: code != nil, clash: owner?.name, at: now)
         if e.claudeWindow, app.state == .known, let id = app.account?.lowercased() {
             let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { $0.account.lowercased() == id }
             r.account = id
-            r.email = mine?.email ?? (code?.account.lowercased() == id ? (loginEmail ?? code?.email) : nil) ?? names[id]
+            r.email = mine?.email ?? (code?.account.lowercased() == id ? (code?.email ?? loginEmail) : nil) ?? names[id]
             r.fromApp = true
             r.lit = true
-            // the numbers' own address decides when both are known (they may be read from the account in use's kept
-            // folder, Accounts.swift readingFolder, whatever the working folder is signed in to); else the folder's id
-            if let n = loginEmail?.lowercased(), let a = r.email?.lowercased() { r.differs = n != a }
-            else { r.differs = code.map { $0.account.lowercased() != id } ?? false }
         }
+        // in every case: the numbers' own address decides when both are known (they may be read from the account in use's
+        // kept folder, Accounts.swift readingFolder, whatever the working folder is signed in to); else the folder's id
+        if let n = loginEmail?.lowercased(), let a = r.email?.lowercased() { r.differs = n != a }
+        else if r.fromApp, let id = r.account { r.differs = code.map { $0.account.lowercased() != id } ?? false }
         if let o = owner {
             r.line = "Claude Code's folder is signed in to \(o.name)'s account: its numbers show on \(o.name)."
             r.lit = r.fromApp
@@ -84,12 +85,14 @@ struct AccountView: Equatable {
     var line: String?               // the one line of state
     var lit: Bool                   // the green lamp and "in use"
     var clash: String?              // another profile's name, when Claude Code's folder is on its account
+    /// The active account's id (lower case), from the record; nil for a record from before the resolver.
+    var account: String? = nil
 
     static func of(_ s: IconStatus?) -> AccountView {
         guard let s else { return AccountView(label: nil, numbersOwner: nil, line: nil, lit: false, clash: nil) }
         if let r = s.resolved {
             return AccountView(label: r.email ?? r.account.map { "account \($0.prefix(8))" }, numbersOwner: r.numbersFor,
-                               line: r.line, lit: r.lit, clash: r.clash)
+                               line: r.line, lit: r.lit, clash: r.clash, account: r.account)
         }
         // a record from before the resolver (or none written yet): the sign-in it was read for
         let who = s.loginEmail ?? s.expectedEmail
@@ -99,4 +102,30 @@ struct AccountView: Equatable {
     /// "ultra-1 · in use".
     var inUseLine: String? { label.map { "\(AccountNames.short($0)) · in use" } }
     var short: String? { label.map(AccountNames.short) }
+
+    /// This standby account is the one the record names active (by its id, else its address): it is in use, so no list
+    /// shows it on standby too.
+    func isActive(_ s: StandbyAccount) -> Bool {
+        if let a = account, let id = s.seat?.account.lowercased() { return id == a }
+        if let l = label?.lowercased(), l.contains("@") { return (s.seat?.email ?? s.email).lowercased() == l }
+        return false
+    }
+
+    /// The stored account in use (the profile's seat) is the one the record names active: the in-use box's notes and keys
+    /// about that seat (its own kept folder) belong under it; otherwise they'd sit under another address.
+    func showsSeat(_ seat: Seat?) -> Bool {
+        guard let seat else { return false }
+        if let a = account { return seat.account.lowercased() == a }
+        return label.map { $0.lowercased() == seat.email?.lowercased() } ?? true
+    }
+}
+
+extension AccountEntry {
+    /// The profile as every screen lists its accounts: its standby accounts without the one its record names active
+    /// (AccountView.isActive), so an account is never shown in use and on standby at once.
+    func listed(by v: AccountView) -> AccountEntry {
+        var e = self
+        e.standby.removeAll { v.isActive($0) }
+        return e
+    }
 }

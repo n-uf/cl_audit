@@ -478,8 +478,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the profile's other accounts (Accounts.swift): Switch account › with every standby account and its week; while a
         // limit is full, the best one with room also right under the full line; one that is back has its own Switch back
         // to … (SwitchBack.swift). Each opens cl_audit's Switch page with that account picked
-        let backs = entry.backOffers()
-        let lines = SwitchMenu.lines(entry)
+        let listed = entry.listed(by: view)                  // never the account in use on standby too
+        let backs = listed.backOffers()
+        let lines = SwitchMenu.lines(listed)
         // while a limit is full, both times first: "5-hour full · back at 15:28, in 1h 42m"
         if let full = AtLimit.blocker(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
                                       weekly: usage?.weekly, weeklyResets: usage?.weeklyResets) {

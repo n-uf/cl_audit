@@ -981,9 +981,10 @@ struct AccountCard: View {
             // only the account in use is lit; the profile's standby accounts sit in unlit trays under its limits, most
             // room first (read once per drawing). While a limit is full the one with the most room is selected already,
             // and its Switch account key opens the Switch page (SwitchView.swift)
-            let trays = row.entry.cardTrays()
+            let listed = row.entry.listed(by: row.view)       // never the account in use on standby too
+            let trays = listed.cardTrays()
             // a standby account that is back has its own row with Switch back (SwitchBack.swift), not a second offer
-            let backs = row.entry.backOffers()
+            let backs = listed.backOffers()
             CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits)
             if !trays.isEmpty {
                 StandbyTrays(limits: row.limits, trays: trays, best: row.entry.cardBest(trays, backs: backs),
