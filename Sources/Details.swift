@@ -163,12 +163,13 @@ struct DetailsView: View {
                 Button("Dashboard", action: actions.dashboard).buttonStyle(PillButtonStyle(tint: nil, compact: true))
                 if info.needsLogin { Button("Log in…", action: actions.logIn).buttonStyle(.pill(.red, compact: true)) }
                 Spacer(minLength: 4)
-                AgoButton(date: info.updated, source: info.source, refreshing: info.refreshing, action: actions.refresh)
-                    .layoutPriority(-1)
                 Button(action: actions.settings) { Image(systemName: "gearshape") }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Settings…")
             }
             .controlSize(.small)
+            // the age on a line of its own under the keys, so its long form ("Reading usage…", "Updated 1 min ago") fits
+            AgoButton(date: info.updated, source: info.source, refreshing: info.refreshing, action: actions.refresh)
+                .frame(maxWidth: .infinity, alignment: .trailing)
         }
         // the content's own width, the same 16 pt inset on every side: a row that's short of room gives way inside
         // it (above, "Updated…"), never pushing the whole panel's content sideways; wider while a limit is full, for
