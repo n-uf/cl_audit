@@ -240,7 +240,7 @@ struct StandbyLook: Equatable {
     static func of(email: String, hasFolder: Bool, linked: Bool, folderSeat: Seat?, clash: Clash?,
                    state: String?, hasNumbers: Bool, problem: String?,
                    attempt: SignInAttempt? = nil, startedAt: Date? = nil, signedInAt: Date? = nil,
-                   now: Date = Date()) -> StandbyLook {
+                   lastRead: Date? = nil, now: Date = Date()) -> StandbyLook {
         let me = Privacy.masked(email)
         if !hasFolder {
             return StandbyLook(line: "Limits unknown: no sign-in kept for it.", keys: [.signIn])
@@ -296,8 +296,13 @@ struct StandbyLook: Equatable {
         if state == "noLogin" {
             return StandbyLook(line: "Waiting for the sign-in: finish it in the browser, or sign in again.", keys: [.signInAgain])
         }
+        // its kept sign-in ran out: its numbers are old, so none are shown; when they were last read, if known
+        if state == "expired" {
+            let when = lastRead.map { "Last read \(TimeWords.when($0))." } ?? "Its kept sign-in ran out."
+            return StandbyLook(line: when + " Sign in again to read it.", lineTone: .muted, keys: [.signInAgain], dims: true)
+        }
         if !hasNumbers {
-            return StandbyLook(line: problem ?? "No numbers yet: cl_audit reads them within a few minutes, from the sign-in kept in its folder, and keeps that sign-in renewed.",
+            return StandbyLook(line: problem ?? "No numbers yet: cl_audit reads them within a few minutes, from the sign-in kept in its folder.",
                                lineTone: .muted, dims: true)
         }
         return StandbyLook(dims: true)

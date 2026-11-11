@@ -441,7 +441,13 @@ enum Store {
 
     /// A standby account's saved numbers, only if they're that account's.
     static func status(for e: AccountEntry, standby s: StandbyAccount) -> IconStatus? {
-        status(AccountEntry.standbyStatusID(e.id, s.id))?.only(for: s.seat?.email ?? s.email)
+        guard var st = status(AccountEntry.standbyStatusID(e.id, s.id))?.only(for: s.seat?.email ?? s.email) else { return nil }
+        let gone = s.configDir.map { !FileManager.default.fileExists(atPath: expand($0)) } ?? true
+        if st.state == "expired" || gone {
+            st.fiveHour = nil; st.weekly = nil; st.fiveHourResets = nil; st.weeklyResets = nil
+            st.scoped = nil; st.credits = nil
+        }
+        return st
     }
 
     static func writeStatus(_ id: String, _ s: IconStatus) -> Data? {
@@ -474,6 +480,8 @@ struct FolderChoice: Hashable {
     var path: String       // as stored, with ~
     var detail: String?    // e.g. the account e-mail
     var title: String { detail.map { "\(path)  ·  \(Privacy.masked($0))" } ?? path }
+    /// Its numbers are dropped (the state and when they were read stay) while its kept sign-in has run out or its kept
+    /// folder is gone: they'd be old numbers shown as current, on every screen that shows a standby account.
 }
 
 enum Detect {

@@ -1801,9 +1801,12 @@ struct AccountSettings: View {
         // when a sign-in was started in its folder: the script each one writes; for an account not linked yet, else when
         // it was added (nothing new is saved)
         let started = s.configDir.flatMap { StandbyLook.signInStarted(configDir: $0, addedAt: s.seat == nil ? s.addedAt : nil) }
-        let look = StandbyLook.of(email: s.email, hasFolder: s.configDir != nil, linked: s.seat != nil, folderSeat: facts?.seat,
+        // a kept folder that is gone counts as none kept: no numbers from it (they'd be old)
+        let hasFolder = s.configDir.map { FileManager.default.fileExists(atPath: expand($0)) } ?? false
+        let look = StandbyLook.of(email: s.email, hasFolder: hasFolder, linked: s.seat != nil, folderSeat: facts?.seat,
                                   clash: clash, state: st?.state, hasNumbers: hasNumbers, problem: st?.problem,
-                                  attempt: SignInAttempts.attempt(s.id), startedAt: started, signedInAt: read?.stamp)
+                                  attempt: SignInAttempts.attempt(s.id), startedAt: started, signedInAt: read?.stamp,
+                                  lastRead: st?.updatedAt)
         let why = look.line
         // unlit; clicked, its row lights and the Switch account key takes the place of "Standby" (an account not linked
         // yet can't be switched to: no key)
@@ -1846,9 +1849,6 @@ struct AccountSettings: View {
                 selectArea(s, canSwitch, selected) {
                     VStack(alignment: .leading, spacing: 8) {
                         limitsOrWhy(st, entry: entry.readerEntry(for: s) ?? entry, none: nil)
-                        // unlike the account in use (Renew sign-in, opt-in), a standby account's sign-in is always renewed
-                        BoxNote(text: "Its sign-in renews by itself, so its limits stay current.", size: 10.5)
-                            .lineLimit(1).minimumScaleFactor(0.9)
                     }
                 }
             }
