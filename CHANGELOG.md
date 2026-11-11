@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.14 — 2026-11-10
+
 - **Every screen now shows the same account.** In 26.11.13 the menu bar, the Dock panel, Settings and the dashboard card
   could each give a different answer at the same moment: the menu bar named the profile's stored account beside another
   account's numbers, the Dock panel showed blank bars with "Signed in to another account: choose in its settings", and
