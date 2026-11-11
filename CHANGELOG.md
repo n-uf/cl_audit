@@ -8,7 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **A deleted folder stays deleted.** Signing in (Log in…, a standby account's Sign in…, Sign in again, the switch's
+  sign-in) made a profile's or a standby account's Claude Code folder again when you had deleted it, and signed it in.
+  Now nothing starts and the screen says so in one line: "Its Claude Code folder is gone (~/.claude-…): nothing was
+  signed in." Only a new profile, and the first run, still make the folder you just chose.
 
 ## 26.11.16 — 2026-11-11
 
