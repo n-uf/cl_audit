@@ -114,9 +114,11 @@ enum Launcher {
     private static func openTerminal(_ account: Account, claude: String) {
         guard FolderGuard.mayLaunch("terminal", account.configDir) else { return }
         func q(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
-        let lines = ["#!/bin/zsh -l", "cd ~",
-                     account.isDefaultDir ? "unset CLAUDE_CONFIG_DIR" : "export CLAUDE_CONFIG_DIR=\(q(account.configDir))",
-                     "exec \(q(claude))"]
+        // the script runs when Terminal opens it (a stale one may stay in TMPDIR): it checks the folder again itself
+        let recheck = "[ -d \"$CLAUDE_CONFIG_DIR\" ] && [ ! -L \"$CLAUDE_CONFIG_DIR\" ] || { echo \(q("\(tilde(account.configDir)) isn't there any more; nothing started.")); exit 1; }"
+        let lines = ["#!/bin/zsh -l", "cd ~"]
+            + (account.isDefaultDir ? ["unset CLAUDE_CONFIG_DIR"] : ["export CLAUDE_CONFIG_DIR=\(q(account.configDir))", recheck])
+            + ["exec \(q(claude))"]
         let file = FileManager.default.temporaryDirectory
             .appendingPathComponent("usage-n-uf-claude-\(Account.sha8(account.configDir)).command")
         do {

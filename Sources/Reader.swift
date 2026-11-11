@@ -155,7 +155,9 @@ final class UsageReader {
             usage = local
         }
         if let u = usage, Self.resetPassed(u), !failing, Date().timeIntervalSince(lastAsked) >= 60 { nextFetch = .distantPast }
-        if Date() >= nextFetch { fetch() }
+        // the folder read (a standby account's kept folder, the account in use's, or the profile's own) isn't there any
+        // more: no read of its sign-in at all (FolderGuard), whatever was made while it existed
+        if Date() >= nextFetch, FolderGuard.folderReady(account.configDir) { fetch() }
         save()
     }
 
