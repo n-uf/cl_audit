@@ -362,6 +362,7 @@ do {
     var e = profile("mv", "~/.claude-mv", u1, standby: [StandbyAccount(email: u2.email!, seat: u2, id: "k2")])
     e.desktop = .separate; e.desktopDataDir = wdE
     let k2 = e.standby[0]
+    try! Store.save([e])                    // Undo checks the receipt's folders against the profile's own (SwitchEngine.undoPlaces)
     guard case .success(let p) = SwitchEngine.plan(e, standby: k2, dataDir: wdE, owned: [uuid(822)]) else { check(false, "plan"); exit(1) }
     check(p.move == [a, tk].sorted() && p.held == [h] && p.tasks == 1 && p.moves, "the plan: the free sessions move, the owned one is held, the task goes")
     check(fm.fileExists(atPath: "\(src)/\(a)") && !fm.fileExists(atPath: dst + "/" + a), "planning moves nothing")
@@ -619,6 +620,130 @@ do {
     let lock = Store.folder.appendingPathComponent("accounts.lock").path
     check(fm.fileExists(atPath: lock), "the profiles file's lock was taken")
     for d in ["~/.claude-n1", "~/.claude-n2"] { sign(d, nil) }
+}
+
+// ============ 12. review round 3: bounded reads, links inside the folders, Undo's places and window, linking, the program ============
+do {
+    // M2: a FIFO or a link to /dev/zero named like a .claude.json, a backup or a transcript returns at once, with nothing
+    mkfifo(expand("~/.claude.json.backup.fifo"), 0o600)
+    try? fm.createSymbolicLink(atPath: expand("~/.claude-zero"), withDestinationPath: "/dev/zero")
+    try? fm.createDirectory(atPath: expand("~/.claude-fifo/projects/-x"), withIntermediateDirectories: true)
+    mkfifo(expand("~/.claude-fifo/.claude.json"), 0o600)
+    mkfifo(expand("~/.claude-fifo/projects/-x/\(uuid(1201)).jsonl"), 0o600)
+    try? fm.createDirectory(atPath: expand("~/.claude-fifo/backups"), withIntermediateDirectories: true)
+    try? fm.createSymbolicLink(atPath: expand("~/.claude-fifo/backups/.claude.json.backup.1"), withDestinationPath: "/dev/zero")
+    let pf = profile("pf", "~/.claude-fifo", u1)
+    var t = Date()
+    let foundF = AccountList.find([pf])
+    check(Date().timeIntervalSince(t) < 3 && foundF.transcripts["pf"]?.isEmpty == true, "find: a FIFO .claude.json, backup and transcript and a /dev/zero link return at once")
+    t = Date()
+    _ = AccountList.names(now: Date().addingTimeInterval(3600))
+    check(Date().timeIntervalSince(t) < 3, "names: the same")
+    t = Date()
+    check(Account.signedInSeat(configDir: "~/.claude-fifo") == nil && AccountFacts.of(configDir: "~/.claude-fifo") == nil && Date().timeIntervalSince(t) < 1,
+          "signedInSeat and the folder's facts: a FIFO .claude.json is no sign-in, at once")
+    t = Date()
+    check(SwitchEngine.lastPointer(expand("~/.claude-fifo/projects/-x/\(uuid(1201)).jsonl")) == nil && SwitchEngine.lastPointer("/dev/zero") == nil
+          && Date().timeIntervalSince(t) < 1, "the pointer's read: a FIFO transcript and /dev/zero return at once")
+    // a .claude.json read follows a link to a real file (reads follow links), and a changed file is read again
+    sign("~/.claude-real12", u2)
+    try? fm.createSymbolicLink(atPath: expand("~/.claude-lnk12"), withDestinationPath: expand("~/.claude-real12"))
+    check(Account.signedInSeat(configDir: "~/.claude-lnk12")?.same(u2) == true, "a folder that is a link to a real one: read")
+    Thread.sleep(forTimeInterval: 0.02); sign("~/.claude-real12", u3)
+    check(Account.signedInSeat(configDir: "~/.claude-real12")?.same(u3) == true, "a .claude.json that changed is read again (the parse is kept by its stamp)")
+    for p in ["~/.claude.json.backup.fifo", "~/.claude-zero", "~/.claude-fifo", "~/.claude-real12", "~/.claude-lnk12"] { try? fm.removeItem(atPath: expand(p)) }
+
+    // the move's fixture: a profile with its own window folder, one session on ultra-1
+    let wd = expand("~/Library/Application Support/Claude-r3")
+    let src = SwitchEngine.scopeDir(wd, SeatID(u1)), dst = SwitchEngine.scopeDir(wd, SeatID(u2))
+    let s1 = "local_\(uuid(1211)).json", s2 = "local_\(uuid(1212)).json"
+    func fixture() {
+        try? fm.removeItem(atPath: wd)
+        put("\(src)/\(s1)", #"{"sessionId":"local_1"}"#); put("\(src)/\(s2)", #"{"sessionId":"local_2"}"#)
+    }
+    try? fm.createDirectory(atPath: expand("~/.claude-r3/projects"), withIntermediateDirectories: true)
+    var e = profile("r3", "~/.claude-r3", u1, standby: [StandbyAccount(email: u2.email!, seat: u2, id: "k2")])
+    e.desktop = .separate; e.desktopDataDir = wd
+    try! Store.save([e])
+    let place = URL(fileURLWithPath: home + "/bk12")
+
+    // SHOULD 3: a link as a scope folder, or as projects/<p>: refused, and the plan says why
+    fixture()
+    try? fm.createDirectory(atPath: home + "/elsewhere12", withIntermediateDirectories: true)
+    try? fm.createDirectory(atPath: "\(wd)/claude-code-sessions", withIntermediateDirectories: true)
+    try? fm.createSymbolicLink(atPath: "\(wd)/claude-code-sessions/\(u2.account)", withDestinationPath: home + "/elsewhere12")
+    if case .failure(let why) = SwitchEngine.plan(e, standby: e.standby[0], dataDir: wd, owned: []) {
+        check(why.description.contains("isn't a plain folder"), "the new account's scope folder a link: refused, said why")
+    } else { check(false, "a link as the scope folder is refused") }
+    check(((try? fm.contentsOfDirectory(atPath: home + "/elsewhere12")) ?? []).isEmpty, "nothing written through it")
+    try? fm.removeItem(atPath: "\(wd)/claude-code-sessions/\(u2.account)")
+    try? fm.createSymbolicLink(atPath: expand("~/.claude-r3/projects/-linked"), withDestinationPath: home + "/elsewhere12")
+    if case .failure(let why) = SwitchEngine.plan(e, standby: e.standby[0], dataDir: wd, owned: []) {
+        check(why.description.contains("projects/-linked"), "a project folder that is a link: refused, said why")
+    } else { check(false, "a link as projects/<p> is refused") }
+    try? fm.removeItem(atPath: expand("~/.claude-r3/projects/-linked"))
+
+    // SHOULD 6: a receipt whose step names a place outside the switch's folders: that step is skipped, said
+    fixture()
+    guard case .success(let p) = SwitchEngine.plan(e, standby: e.standby[0], dataDir: wd, owned: []) else { check(false, "plan r3"); exit(1) }
+    var r = try! SwitchEngine.run(p, windowClosed: { true }, backups: place)
+    let victim = home + "/victim12.json"
+    put(victim, #"{"sessionId":"local_1"}"#)
+    r.steps[0].path = victim
+    r.steps[0].sha = SwitchEngine.sha(Data(#"{"sessionId":"local_1"}"#.utf8))
+    r.steps[1].path = "\(dst)/../../../../../victim12.json"
+    try! SwitchEngine.save(r)
+    let crafted = try! SwitchEngine.undo(r.id, windowClosed: { true })
+    check(fm.fileExists(atPath: victim) && crafted.problems.filter { $0.contains("outside this switch's folders") }.count == 2,
+          "Undo: a crafted path outside the scope (or climbing out of it) is skipped and named: \(crafted.problems)")
+
+    // SHOULD 1: the window opening during Undo stops it before the next step
+    fixture()
+    guard case .success(let p2) = SwitchEngine.plan(e, standby: e.standby[0], dataDir: wd, owned: []) else { check(false, "plan r3b"); exit(1) }
+    let r2 = try! SwitchEngine.run(p2, windowClosed: { true }, backups: place)
+    var asked = 0
+    let opened = (try? SwitchEngine.undo(r2.id, windowClosed: { asked += 1; return asked <= 2 })) == nil
+    check(opened && SwitchEngine.load(r2.id)?.undone == nil && SwitchEngine.load(r2.id)?.problems.contains { $0.contains("opened during Undo") } == true,
+          "Undo stops when the window opens mid-run; not marked undone, said")
+    let window = Launcher.dataDirKey(of: Account(e))
+    check(SwitchMarker.claim(window, profile: "other", standby: "x") && (try? SwitchEngine.undoHolding(r2.id, account: Account(e), windowClosed: { true })) == nil,
+          "Undo holds the window like a switch: refused while another run holds it")
+    SwitchMarker.release(window, profile: "other", standby: "x")
+    let held = try? SwitchEngine.undoHolding(r2.id, account: Account(e), windowClosed: { true })
+    check(held?.undone != nil && SwitchMarker.current(window) == nil, "…and runs once it's free, letting the window go after")
+
+    // SHOULD 2: a receipt never linked while the folder reached the account: linked by the noting, and no longer blocking
+    fixture()
+    guard case .success(let p3) = SwitchEngine.plan(e, standby: e.standby[0], dataDir: wd, owned: []) else { check(false, "plan r3c"); exit(1) }
+    let r3 = try! SwitchEngine.run(p3, windowClosed: { true }, backups: place)
+    check(SwitchEngine.linkReached([e], signedIn: { _ in u1 }).isEmpty && SwitchEngine.unfinished(profile: "r3").map(\.id) == [r3.id], "still on ultra-1: not linked")
+    check(SwitchEngine.linkReached([e], signedIn: { _ in Seat(account: u2.account.uppercased(), organization: u2.organization, email: nil) }) == [r3.id]
+          && SwitchEngine.load(r3.id)?.linked != nil && SwitchEngine.unfinished(profile: "r3").isEmpty,
+          "the folder reached ultra-2 (seen by the agent, not the page): linked, nothing left unfinished")
+    var onU2 = e; onU2.seat = u2
+    fixture()
+    guard case .success(let p4) = SwitchEngine.plan(e, standby: e.standby[0], dataDir: wd, owned: []) else { check(false, "plan r3d"); exit(1) }
+    let r4 = try! SwitchEngine.run(p4, windowClosed: { true }, backups: place)
+    check(SwitchEngine.linkReached([onU2], signedIn: { _ in nil }) == [r4.id], "the profile's record on ultra-2: linked too")
+    // an unfinished one says what the person can do
+    fixture()
+    guard case .success(let p5) = SwitchEngine.plan(e, standby: e.standby[0], dataDir: wd, owned: []) else { check(false, "plan r3e"); exit(1) }
+    _ = try! SwitchEngine.run(p5, windowClosed: { true }, backups: place)
+    let m12 = SettingsModel(); m12.accounts = [e]
+    let run12 = m12.runner(of: "r3")
+    run12.start(e.standby[0])
+    if case .failed(let why) = run12.phase {
+        check(why.contains("Undo it") && why.contains("sign in as ultra-2 to finish it"), "a switch that stopped half way: Undo it, or sign in to finish it: \(why)")
+    } else { check(false, "an unfinished switch is said before a new one") }
+
+    // SHOULD 7: the program is the executable's last path component, the path whole even with spaces
+    check(SwitchEngine.isClaude("/Users/x/Library/Application Support/Claude/claude-code/2.1.318/claude --resume \(uuid(1220))")
+          && SwitchEngine.isClaude("claude") && SwitchEngine.isClaude("/opt/homebrew/bin/claude -p hi")
+          && !SwitchEngine.isClaude("/bin/zsh -c claude \(uuid(1220))") && !SwitchEngine.isClaude("/usr/bin/vim claude"),
+          "claude by its executable's last path component, spaces in the path included; not as another program's argument")
+    let ps = " 300 /Users/x/Library/Application Support/Claude/claude-code/2.1.318/claude --resume \(uuid(1221))\n"
+    check(SwitchEngine.owned(ps: ps, codeDir: "~/.claude-r3", alive: { _ in false }) == [uuid(1221)], "the Claude app's own claude, under a path with a space: its session is owned")
+    try? fm.removeItem(atPath: expand("~/.claude-r3"))
 }
 
 print("checks: \(passed) passed, \(failed) failed")
