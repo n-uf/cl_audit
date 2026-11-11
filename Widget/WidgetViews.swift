@@ -75,7 +75,7 @@ enum AgentFiles {
 
     static func load(now: Date = Date()) -> [WidgetProfile] {
         // the app's rule (IconStatus.current), kept here because the widget is built on its own: a limit whose reset has
-        // passed shows no percent, and an expired sign-in shows no numbers older than 15 minutes
+        // passed shows no percent, and an expired sign-in (or none) shows no numbers older than 15 minutes
         func passed(_ t: Double?) -> Bool { t.map { Date(timeIntervalSince1970: $0) <= now } ?? false }
         func fresh(_ t: Double?) -> Bool {
             guard let t else { return false }
@@ -95,7 +95,7 @@ enum AgentFiles {
                 p.plan = s.plan
                 p.updated = s.updatedAt.map { Date(timeIntervalSince1970: $0) }
                 p.noFive = s.noFiveHour ?? false
-                if s.state != "expired" || fresh(s.updatedAt) {
+                if (s.state != "expired" && s.state != "noLogin") || fresh(s.updatedAt) {
                     if !passed(s.fiveHourResets) {
                         p.five = s.fiveHour; p.fiveResets = s.fiveHourResets.map { Date(timeIntervalSince1970: $0) }
                     }

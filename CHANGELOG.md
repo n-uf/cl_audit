@@ -17,6 +17,8 @@ the notes before updating.
   icon's menu and panel, the card, Settings and quick chat show no bars, "login expired" and **Log in…**. The menus'
   "Renew login now" item is gone (Renew sign-in in the profile's settings still renews by itself); the card's
   **Sign in…** is now **Log in…** like everywhere else.
+- **Signed out shows no old numbers either.** With Claude Code signed out of a profile's folder, every screen shows no
+  bars, "no Claude Code login" and **Log in…**; the numbers come back with the next good read.
 
 ## 26.11.15 — 2026-11-10
 

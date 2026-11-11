@@ -290,14 +290,15 @@ struct IconStatus: Codable {
 
     /// What may be shown of the record now, the same rule wherever saved numbers are written, read or merged:
     /// - a limit whose reset time has passed has no percent and no reset (never a number "in 0 min");
-    /// - an expired sign-in shows numbers only while they're fresh (read in the last 15 minutes): no bars, never old numbers.
+    /// - an expired sign-in, or none (signed out), shows numbers only while they're fresh (read in the last 15 minutes):
+    ///   no bars, never old numbers; they come back with the next good read.
     /// When they were read (`updatedAt`) stays, for "last read" lines.
     func current(now: Date = Date()) -> IconStatus {
         var s = self
         if Freshness.passed(s.fiveHourResets, now: now) { s.fiveHour = nil; s.fiveHourResets = nil }
         if Freshness.passed(s.weeklyResets, now: now) { s.weekly = nil; s.weeklyResets = nil }
         s.scoped = s.scoped.map { $0.map { Freshness.passed($0.resets, now: now) ? ScopedLimit(name: $0.name, percent: nil, resets: nil) : $0 } }
-        if s.state == "expired", !Freshness.isFresh(s.updatedAt, now: now) {
+        if s.state == "expired" || s.state == "noLogin", !Freshness.isFresh(s.updatedAt, now: now) {
             s.fiveHour = nil; s.weekly = nil; s.fiveHourResets = nil; s.weeklyResets = nil
             s.scoped = nil; s.credits = nil
         }

@@ -465,6 +465,48 @@ do {
     e.updatedAt = now.addingTimeInterval(-16 * 60)
     check(e.current(now: now).fiveHour == nil && e.current(now: now).weekly == nil && e.current(now: now).updatedAt != nil,
           "expired, numbers 16 minutes old: none, when they were read kept")
+
+    // signed out (no sign-in at all) with saved numbers: none on any screen, the same as expired; a good read brings them back
+    var out = IconStatus(state: "noLogin"); out.expectedEmail = "stale-1@example.com"; out.weekly = 61; out.fiveHour = 22
+    out.weeklyResets = now.addingTimeInterval(2 * 86400); out.fiveHourResets = now.addingTimeInterval(3600)
+    out.updatedAt = now.addingTimeInterval(-3 * 3600); out.source = "Anthropic"; out.problem = FetchState.noLogin.menuText
+    _ = Store.writeStatus("stale", out)
+    try? fm.removeItem(atPath: expand(dir) + "/usage.json")
+    func noneSignedOut(_ what: String, keepsWhen: Bool) {
+        let rec = Store.status(for: p)
+        check(rec?.state == "noLogin" && rec?.weekly == nil && rec?.fiveHour == nil && (!keepsWhen || rec?.updatedAt != nil),
+              "\(what): the record as every screen reads it has no numbers\(keepsWhen ? ", when they were read kept" : "")")
+        let mb = MenuBarItems.Profile(entry: p, usage: Usage.of(rec), problem: rec?.problem, needsLogin: MenuBarItems.needsLogin(rec),
+                                      view: AccountView.of(rec))
+        let glyph = MenuBarItems.item(mb, now: now)
+        check(mb.usage == nil && glyph.week == nil && glyph.five == nil && mb.needsLogin, "\(what): the menu bar has no bars, and Log in…")
+        let row = AccountRow(entry: p, status: rec)
+        check(row.limits.allSatisfy { $0.p == nil } && row.needsLogin && row.subtitle == "no Claude Code login",
+              "\(what): the card and Settings' box: no bars, its state line, Log in…")
+        check(rec?.needsLogin == true && rec?.fiveHour == nil, "\(what): the Dock panel (from the same record): no numbers, Log in…")
+        let q = QuickChatTarget(p), ql2 = QuickChatLevel(Usage.of(rec), now: now)
+        check(q.loginWords == "no Claude Code login" && ql2.week == nil && ql2.fiveHour == nil, "\(what): quick chat's line says so, no level")
+    }
+    noneSignedOut("a signed-out record", keepsWhen: true)
+    UsageReader.testPoster = { _, _, _, _, _ in 0 }        // no alert leaves the check
+    Login.runSecurity = { _ in (44, Data()) }              // no sign-in (a fake answer, never the Keychain)
+    let outReader = UsageReader(p, defaults: UserDefaults(suiteName: "cl-audit-surfaces-out-\(getpid())")!)
+    outReader.tick()
+    RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+    check(outReader.state == .noLogin, "the reader sees no sign-in")
+    // (the reader adopts no numbers it may not show, so its own save has no read time either, as with expired)
+    noneSignedOut("after the reader's save", keepsWhen: false)
+    // a good read (Anthropic's answer handed to the reader): state ok, its numbers on every screen
+    let reply = Data(#"{"five_hour":{"utilization":7,"resets_at":"2099-01-01T00:00:00Z"},"seven_day":{"utilization":64,"resets_at":"2099-01-02T00:00:00Z"}}"#.utf8)
+    outReader.finish(data: reply, response: HTTPURLResponse(url: URL(string: "https://example.com")!, statusCode: 200, httpVersion: nil, headerFields: nil),
+                     error: nil, asked: Date(), gen: outReader.generation)
+    let back = Store.status(for: p)
+    check(outReader.state == .ok && back?.state == "ok" && back?.weekly == 64 && back?.fiveHour == 7,
+          "a good read: the numbers come back")
+    check(Usage.of(back)?.weekly == 64 && AccountRow(entry: p, status: back).weekly == 64 && !AccountRow(entry: p, status: back).needsLogin
+          && QuickChatTarget(p).loginWords == nil, "…on the menu bar, the card and quick chat alike, without Log in…")
+    outReader.stop()
+    UsageReader.testPoster = nil
     try? Store.save([])
     Store.removeStatus("stale")
 }
