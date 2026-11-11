@@ -238,24 +238,24 @@ MainActor.assumeIsolated {
     page(main, k2, "o10-switch-closing")
     r.preview(.moving, goal: goal, target: k2, planned: swPlan)
     page(main, k2, "o11-switch-moving")
-    r.preview(.waiting, goal: goal, target: k2, planned: swPlan, receipt: moved, note: SwitchRunner.heldWords(1))
+    r.preview(.waiting, goal: goal, target: k2, planned: swPlan, receipt: moved, note: SwitchRunner.heldWords(1), seen: u1)
     page(main, k2, "o2-switch-waiting")
     // the folder signed in to ultra-2: the profile follows it (FolderRules.noteAccounts), ultra-1 stands by
     sign("~/.claude", u2)
     let after = FolderRules.noteAccounts([main], signedIn: { $0 == "~/.claude" ? u2 : nil }, status: { _ in Store.status(for: main) })[0]
     model.accounts = [after]
     var linked = moved; linked.linked = Date()
-    r.preview(.reached, goal: goal, target: k2, planned: swPlan, receipt: linked)
+    r.preview(.reached, goal: goal, target: k2, planned: swPlan, receipt: linked, seen: u2)
     page(after, k2, "o3-switch-reached")
     // the browser was signed in as ultra-3: the profile is on ultra-3 now
     sign("~/.claude", u3)
     let onOther = FolderRules.noteAccounts([main], signedIn: { $0 == "~/.claude" ? u3 : nil }, status: { _ in Store.status(for: main) })[0]
     model.accounts = [onOther]
-    r.preview(.other(u3.email!), goal: goal, target: k2, planned: swPlan, receipt: moved)
+    r.preview(.other(u3.email!), goal: goal, target: k2, planned: swPlan, receipt: moved, seen: u3)
     page(onOther, k2, "o4-switch-other-account")
     sign("~/.claude", u1)
     model.accounts = [main]
-    r.preview(.timedOut, goal: goal, target: k2, planned: swPlan, receipt: moved)
+    r.preview(.timedOut, goal: goal, target: k2, planned: swPlan, receipt: moved, seen: u1)
     page(main, k2, "o5-switch-timed-out")
     var undone = moved; undone.undone = Date()
     r.preview(.undone, goal: goal, target: k2, planned: swPlan, receipt: undone)
@@ -283,13 +283,60 @@ MainActor.assumeIsolated {
     // then the app signed out: Claude Code's account, with the muted line
     let appOn2 = AppSignIn.Login(account: u2.account, org: u2.organization, state: .known, source: "log", at: Date())
     let appOut = AppSignIn.Login(account: nil, org: nil, state: .loggedOut, source: "log", at: Date())
+    let plainRecord = Store.status(for: main)
     for (tag, app) in [("o7c-card-app-other", appOn2), ("o7d-card-app-signed-out", appOut)] {
-        var row = AccountRow(entry: main, status: Store.status(for: main))
-        row.active = ActiveAccount.of(main, app: app, code: .some(u1), names: [u2.account: u2.email!])
+        // the record as the agent writes it (AccountResolver), then every surface from it
+        var rec = plainRecord ?? IconStatus(state: "ok")
+        rec.resolved = AccountResolver.resolve(main, among: [main], app: app, code: u1, loginEmail: u1.email, names: [u2.account: u2.email!])
+        _ = Store.writeStatus("main", rec)
+        let row = AccountRow(entry: main, status: Store.status(for: main))
         for f in [Face.std, .silver] { for (wn, w) in oWidths {
             snapshot(framed(AccountCard(row: row, actions: acts).frame(width: min(w, 460)), f, w), "\(tag)-\(f.rawValue)-\(wn)", w + 32, 900)
         } }
+        if tag == "o7c-card-app-other" {
+            // all surfaces side by side: the menu bar row, the Dock menu's top lines, the Dock panel, the card, Settings ▸
+            // Accounts, the Switch page's in-use box and quick chat's profile line
+            let u = Usage(fiveHour: nil, fiveHourResets: nil, weekly: rec.weekly, weeklyResets: rec.weeklyResets, fetchedAt: Date(), source: "test", noFiveHour: true)
+            let mp = MenuBarItems.Profile(entry: main, usage: u, view: AccountView.of(Store.status(for: main)))
+            let v = AccountView.of(Store.status(for: main))
+            let panel = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: rec.loginEmail, expected: nil, mismatch: false,
+                                    plan: rec.plan, fiveHour: nil, fiveHourResets: nil, weekly: rec.weekly, weeklyResets: rec.weeklyResets,
+                                    updated: Date(), source: nil, problem: nil, renewNote: nil, needsLogin: false, noFiveHour: true).taking(v)
+            let noop = DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})
+            for f in [Face.std, .silver] {
+                let side = HStack(alignment: .top, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Menu bar").font(.caption.bold())
+                        MenuBarRow(profile: mp, now: Date()).frame(width: 300)
+                        Text("Dock menu").font(.caption.bold())
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(SwitchMenu.dockTitle(name: main.name, v, plan: rec.plan)); if let l = v.line { Text(l).foregroundStyle(.secondary) }
+                        }.font(.system(size: 13)).frame(width: 300, alignment: .leading)
+                        Text("Quick chat").font(.caption.bold())
+                        Text("Claude \(main.name) · " + (QuickChatTarget(main).email ?? "no account")).font(.system(size: 12)).frame(width: 300, alignment: .leading)
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Dock panel").font(.caption.bold())
+                        DetailsView(info: panel, actions: noop).frame(width: 340)
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Card").font(.caption.bold())
+                        AccountCard(row: row, actions: acts).frame(width: 340)
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Settings ▸ Accounts").font(.caption.bold())
+                        AccountSettings(entry: .constant(main), model: model, width: 340).frame(width: 340, height: 700, alignment: .top).clipped()
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text("Switch page").font(.caption.bold())
+                        SwitchPage(entry: main, standby: k2, model: model, runner: r, width: 340).frame(width: 340, height: 700, alignment: .top).clipped()
+                    }
+                }.padding(16)
+                snapshot(framed(side, f, 1880), "o13-surfaces-app-other-\(f.rawValue)", 1912, 900)
+            }
+        }
     }
+    if let p = plainRecord { _ = Store.writeStatus("main", p) }
 
     // the Accounts card (the profile's settings page, cropped later): standby rows, a folder from before (~/.claude-ultra-2,
     // signed in, no profile's) offered to the Trash; then the accounts found on this Mac, one known by its id only

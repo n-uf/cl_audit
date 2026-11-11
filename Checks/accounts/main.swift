@@ -368,19 +368,80 @@ do {
 
     // the active account: the Claude app's, else Claude Code's (the operator's rule, 2026-11-10)
     let appU2 = AppSignIn.Login(account: u2.account, org: u2.organization, state: .known, source: "log", at: t0)
-    let act = ActiveAccount.of(p8u, app: appU2, code: .some(u1), names: [u2.account: u2.email!])
-    check(act.fromApp && act.label == u2.email && act.differs && act.usageNote?.hasPrefix("Usage: Claude Code on ") == true && act.fallbackNote == nil,
+    func res(_ e: AccountEntry, _ app: AppSignIn.Login, _ code: Seat?, among: [AccountEntry]? = nil, names: [String: String] = [:]) -> ResolvedAccount {
+        AccountResolver.resolve(e, among: among ?? [e], app: app, code: code, loginEmail: code?.email, names: names, now: t0)
+    }
+    let act = res(p8u, appU2, u1, names: [u2.account: u2.email!])
+    check(act.fromApp && act.email == u2.email && act.differs && act.numbersFor == u1.email && act.line?.hasPrefix("Usage: Claude Code on ") == true && act.lit,
           "the app on u2, Claude Code on u1: u2 is in use, the numbers say they are Claude Code's on u1")
-    let same = ActiveAccount.of(p8u, app: AppSignIn.Login(account: u1.account.uppercased(), org: nil, state: .known, source: "config", at: nil), code: .some(u1), names: [:])
-    check(same.label == u1.email && !same.differs && same.usageNote == nil, "the same account (any case): no note")
-    let out8 = ActiveAccount.of(p8u, app: AppSignIn.Login(account: nil, org: nil, state: .loggedOut, source: "log", at: t0), code: .some(u1), names: [:])
-    check(!out8.fromApp && out8.label == u1.email && out8.fallbackNote?.contains("signed out") == true, "the app signed out: Claude Code's account, and a muted line says so")
+    let same = res(p8u, AppSignIn.Login(account: u1.account.uppercased(), org: nil, state: .known, source: "config", at: nil), u1)
+    check(same.email == u1.email && !same.differs && same.line == nil, "the same account (any case): no line")
+    let out8 = res(p8u, AppSignIn.Login(account: nil, org: nil, state: .loggedOut, source: "log", at: t0), u1)
+    check(!out8.fromApp && out8.email == u1.email && out8.line?.contains("signed out") == true, "the app signed out: Claude Code's account, and a muted line says so")
     var noWin = p8u; noWin.claudeWindow = false
-    check(ActiveAccount.of(noWin, app: .unknown, code: .some(u1), names: [:]).fallbackNote == nil, "no Claude window: Claude Code's account, nothing to say")
+    check(res(noWin, .unknown, u1).line == nil && res(noWin, appU2, u1).fromApp == false, "no Claude window: Claude Code's account, nothing to say")
     var withU2 = p8u; withU2.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "s2")]
-    check(ActiveAccount.of(withU2, app: appU2, code: .some(u1), names: [:]).label == u2.email
-          && ActiveAccount.of(p8u, app: appU2, code: .some(u1), names: [:]).label == "account 00000000",
+    check(res(withU2, appU2, u1).email == u2.email && AccountView.of({ var s = IconStatus(state: "ok"); s.resolved = res(p8u, appU2, u1); return s }()).label == "account 00000000",
           "the app's account named from the profile's own accounts when no record names it, else by its id")
+
+    // ONE answer: one record per case, and every surface's view model reads the same account, owner of the numbers and line
+    var other8 = profile("other8", "~/.claude-other8", u3); other8.claudeWindow = false
+    let cases: [(String, AccountEntry, AppSignIn.Login, Seat?)] = [
+        ("same", p8u, AppSignIn.Login(account: u1.account, org: u1.organization, state: .known, source: "log", at: t0), u1),
+        ("different", withU2, appU2, u1),
+        ("app signed out", p8u, AppSignIn.Login(account: nil, org: nil, state: .loggedOut, source: "log", at: t0), u1),
+        ("a standby's account in the app", withU2, appU2, u1),
+        ("another profile's account in Claude Code", p8u, .unknown, u3)]
+    let model8 = SettingsModel()
+    for (name, e, app, code) in cases {
+        var rec = IconStatus(state: "ok"); rec.loginEmail = code?.email; rec.weekly = 40
+        rec.resolved = res(e, app, code, among: [e, other8], names: [u2.account: u2.email!])
+        _ = Store.writeStatus(e.id, rec)
+        let want = AccountView.of(Store.status(for: e))
+        model8.accounts = [e, other8]
+        let surfaces: [(String, AccountView)] = [
+            ("menu bar", MenuBarItems.Profile(entry: e, usage: nil, view: AccountView.of(Store.status(for: e))).view),
+            ("card", AccountRow(entry: e, status: Store.status(for: e)).view),
+            ("Settings", AccountSettings(entry: .constant(e), model: model8).view),
+            ("Switch page", SwitchPage(entry: e, standby: withU2.standby[0], model: model8, runner: model8.runner(of: e.id)).view)]
+        for (s, v) in surfaces { check(v == want, "\(name): \(s) agrees on the account, the numbers' owner and the line") }
+        let panel = DetailsInfo(name: "x", icon: NSImage(), login: nil, expected: nil, mismatch: false, plan: nil, fiveHour: nil, fiveHourResets: nil,
+                                weekly: nil, weeklyResets: nil, updated: nil, source: nil, problem: nil, renewNote: nil, needsLogin: false).taking(want)
+        check(panel.active == want.label && panel.activeNote == want.line && panel.activeLit == want.lit, "\(name): the Dock panel agrees")
+        check(SwitchMenu.dockTitle(name: "P", want, plan: nil) == (want.short.map { "Claude P · \($0) in use" } ?? "Claude P"), "\(name): the Dock menu agrees")
+        check(QuickChatTarget(e).email == want.label, "\(name): quick chat agrees")
+        if name == "another profile's account in Claude Code" {
+            check(want.clash == "Other8" && want.line?.contains("Other8") == true && !want.lit, "another profile's account: said, lamp off")
+        }
+        if name == "different" { check(want.label == u2.email && want.numbersOwner == u1.email, "different: in use u2, numbers u1's") }
+    }
+
+    // and no surface reads the sign-in files or compares seats itself: only the resolver and the agent's readers may
+    let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
+    let surfaceFiles = ["MenuBar.swift", "IconApp.swift", "Details.swift", "SwitchMenu.swift", "SwitchView.swift", "SwitchPage.swift",
+                        "QuickChat.swift", "QuickChatViews.swift", "QuickChatCard.swift", "QuickChatLevel.swift"]
+    let forbidden = [".claude.json", "config.json", "main.log", "Logs/Claude", "claudeJSON(", "signedInSeat(", "lastKnownAccountUuid",
+                     "expectedEmail(configDir", "FolderFactsCache", "inUseElsewhere", "AppSignIn.", "entry.seat", "e.seat?.", "profile.entry.seat"]
+    var reads: [String] = []
+    for f in surfaceFiles {
+        let lines = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? []
+        for (i, l) in lines.enumerated() where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") && !l.contains("Seat(account: \"sample\"") {
+            for p in forbidden where l.contains(p) { reads.append("\(f):\(i + 1) \(p)") }
+        }
+    }
+    // the card's and Settings ▸ Accounts' own parts of the bigger files
+    func section(_ f: String, from a: String, to b: String) -> [String] {
+        let t = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8)) ?? ""
+        guard let r1 = t.range(of: a), let r2 = t.range(of: b, range: r1.upperBound..<t.endIndex) else { return ["(\(f): section not found)"] }
+        return t[r1.lowerBound..<r2.lowerBound].components(separatedBy: "\n")
+    }
+    for (f, a, b) in [("Launcher.swift", "struct AccountCard", "\n}\n"), ("Settings.swift", "func inUseBox(", "    /// A sign-in again on the account in use")] {
+        for l in section(f, from: a, to: b) where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
+            for p in forbidden where l.contains(p) { reads.append("\(f) \(p): \(l.trimmingCharacters(in: .whitespaces).prefix(60))") }
+            if l.contains("section not found") { reads.append(l) }
+        }
+    }
+    check(reads.isEmpty, "no surface reads .claude.json, config.json, the app's log or a seat itself: \(reads)")
 
     // who owns a session now: `claude` processes' command lines and the folder's live registrations
     put(expand("~/.claude-p8/sessions/4242.json"), #"{"pid":4242,"sessionId":"\#(uuid(902))"}"#)
