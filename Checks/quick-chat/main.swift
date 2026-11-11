@@ -141,7 +141,9 @@ func run(_ mode: String, _ body: (QuickChatProcess, () -> [QuickChatEvent], () -
     try? FileManager.default.createDirectory(atPath: work, withIntermediateDirectories: true)
     try? "mode=\(mode)\nargs=\(argsFile)\n".write(toFile: (work as NSString).deletingLastPathComponent + "/stub.conf", atomically: true, encoding: .utf8)
     try? FileManager.default.removeItem(atPath: argsFile)
-    let p = QuickChatProcess(QuickChatCommand(claude: stub, configDir: "/Users/sample/.claude-work", isDefaultDir: false,
+    // the profile's Claude Code folder must be there (FolderGuard): a stand-in one beside the work folder
+    try? FileManager.default.createDirectory(atPath: work + "-config", withIntermediateDirectories: true)
+    let p = QuickChatProcess(QuickChatCommand(claude: stub, configDir: work + "-config", isDefaultDir: false,
                                               workFolder: work, model: "haiku"))
     var events: [QuickChatEvent] = []
     var exit: (Int32, String)?
@@ -170,7 +172,7 @@ run("ok") { p, events, exit in
     check("ok: the same process answered", p.isRunning && p.pid == pid && events().contains(.done(isError: false, text: "Answer 2", ms: 1200, session: "00000000-0000-4000-8000-000000000001")))
     let recorded = (try? String(contentsOfFile: argsFile, encoding: .utf8)) ?? ""
     check("ok: ran in the work folder", recorded.contains("PWD \(work)") || recorded.contains("PWD /private\(work)"), recorded)
-    check("ok: on the profile's folder", recorded.contains("ENV CLAUDE_CONFIG_DIR=/Users/sample/.claude-work"))
+    check("ok: on the profile's folder", recorded.contains("ENV CLAUDE_CONFIG_DIR=\(work)-config"))
     check("ok: traffic off", recorded.contains("ENV TRAFFIC=1"))
     check("ok: tools off", recorded.contains("ARG [--tools]\nARG []\n"))
     check("ok: no key passed on", recorded.contains("ENV KEY=<unset>") && recorded.contains("ENV TOKEN=<unset>"))
@@ -214,6 +216,13 @@ run("slow") { p, events, exit in
 let missing = QuickChatProcess(QuickChatCommand(claude: "/nonexistent/claude", configDir: "/x", isDefaultDir: false, workFolder: work, model: ""))
 check("a missing claude throws", (try? missing.start()) == nil)
 check("a missing claude can't be sent to", missing.send("hi") == false)
+
+// a Claude Code folder that isn't there: no claude is started for it, and the folder isn't made (FolderGuard)
+let goneDir = work + "-gone-config"
+try? FileManager.default.removeItem(atPath: goneDir)
+let noFolder = QuickChatProcess(QuickChatCommand(claude: stub, configDir: goneDir, isDefaultDir: false, workFolder: work, model: ""))
+check("a missing Claude Code folder: nothing starts", (try? noFolder.start()) == nil && !noFolder.isRunning)
+check("…and the folder isn't made", !FileManager.default.fileExists(atPath: goneDir))
 
 try? FileManager.default.removeItem(atPath: argsFile)
 print("quick chat checks: \(passed)/\(passed + failed) passed")
