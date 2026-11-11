@@ -2014,7 +2014,7 @@ struct AccountSettings: View {
 
     /// Login's (i): what it is, the pop-up, and Renew sign-in (now an item in the pop-up).
     var loginInfo: String {
-        "The claude.ai accounts this profile has. It works on one at a time, IN USE: the one Claude Code in its folder is signed in to. The others STANDBY: their limits show too, read from a sign-in kept for each in a small folder of its own, so you can see which has room. Add account lists the accounts found on this Mac (signed in in a Claude Code folder, or used by this profile's Claude window) and Sign in to another account…, which opens Claude Code's own sign-in in Terminal in a new folder. An account belongs to one profile. cl_audit's background agent reads each sign-in from the Keychain, read-only, the same way Claude Code does; no new Keychain permission, and no sign-in is ever copied. Removing a standby account leaves its folder as it is.\n\nRenew sign-in (in the account in use's pop-up): Claude Code's sign-in uses a short-lived access key, which Claude Code swaps for a fresh one whenever it runs. cl_audit only reads that key, so after a while without Claude Code it runs out and the usage stops updating. On: cl_audit then runs Claude Code once in the background (a one-line prompt, \"Reply with OK.\", on Haiku, nothing saved) so it swaps the key; at most every 30 min, using a sliver of this profile's usage. Off: the usage waits until you next use Claude Code. Standby accounts' sign-ins are always renewed this way, so their limits stay current."
+        "The claude.ai accounts this profile has. It works on one at a time, IN USE: the one Claude Code in its folder is signed in to. The others STANDBY: their limits show too, read from a sign-in kept for each in a small folder of its own, so you can see which has room. Add account lists the accounts found on this Mac (signed in in a Claude Code folder, or used by this profile's Claude window) and Sign in to another account…, which opens Claude Code's own sign-in in Terminal in a new folder. An account belongs to one profile. cl_audit's background agent reads each sign-in from the Keychain, read-only, the same way Claude Code does; no new Keychain permission, and no sign-in is ever copied. Removing a standby account leaves its folder as it is.\n\nRenew sign-in (in the account in use's pop-up): Claude Code's sign-in uses a short-lived access key, which Claude Code swaps for a fresh one whenever it runs. cl_audit only reads that key, so after a while without Claude Code it runs out and the usage stops updating. On: cl_audit then runs Claude Code once in the background (a one-line prompt, \"Reply with OK.\", on Haiku, nothing saved) so it swaps the key; at most every 30 min, using a sliver of this profile's usage. Off: the usage waits until you next use Claude Code. Standby accounts' sign-ins are not renewed; when one runs out, its box says when it was last read, with Sign in again."
             + (model.claudeKnownMissing ? " Needs Claude Code installed; it wasn't found." : "")
             + (status?.renewNote.map { "\nLast: \($0)" } ?? "")
     }
@@ -2037,7 +2037,12 @@ struct AccountSettings: View {
     /// own window: said once on the Accounts card, with the way to the default-profile offer. Gone once the offer is dismissed.
     @ViewBuilder var usualAppNote: some View {
         let usual = DefaultProfile.cachedSeat("~/.claude")        // drawn every few seconds: the record is read when it changed
-        if entry.desktop == .separate, entry.claudeWindow, !DefaultProfile.dismissed, let mine = entry.seat, mine.same(usual) {
+        // Claude Code's account as the profile's record says it, and only while it is the account shown in use: never a
+        // note about the stored account under another address
+        let v = view
+        let code = v.numbersOwner?.lowercased()
+        if entry.desktop == .separate, entry.claudeWindow, !DefaultProfile.dismissed, let code, code == usual?.email?.lowercased(),
+           code == v.label?.lowercased() {
             VStack(alignment: .leading, spacing: 5) {
                 Text("This account is also what the usual Claude app and the claude command in Terminal use (~/.claude), but \(entry.name.isEmpty ? "this profile" : entry.name) opens its own window, so Claude opened from the Dock shows other sessions.")
                     .font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)

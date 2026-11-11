@@ -817,7 +817,7 @@ struct NewAccountView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         case .unknown: sub("Signed in")
                         case .different:
-                            Text("Signed in to another account: in that window, Settings ▸ Log out, then sign in as \(Privacy.masked(signedIn ?? ""))")
+                            Text("The Claude window is signed in to another account: in that window, Settings ▸ Log out, then sign in as \(Privacy.masked(signedIn ?? ""))")
                                 .font(.system(size: 11.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
                         default:
                             HStack(spacing: 5) {
