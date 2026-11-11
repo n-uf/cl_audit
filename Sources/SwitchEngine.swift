@@ -107,6 +107,20 @@ struct SwitchReceipt: Codable, Equatable {
     /// partly undone, and still open for another Undo.
     var left: [String]?
     var partlyUndone: Date?
+    /// How many scheduled tasks the tasks' step moved (written down with the step; nil for older receipts).
+    var tasksMoved: Int?
+
+    /// What this switch still has moved now: its placed session entries still where it put them, unchanged, and its
+    /// scheduled tasks while the new account's task file is still as it wrote it. (Undo takes them back; after a partial
+    /// Undo, only what's left counts.)
+    func stillMoved() -> (sessions: Int, tasks: Int) {
+        let fm = FileManager.default
+        let sessions = steps.filter { $0.kind == .entry && $0.done && fm.fileExists(atPath: $0.path) }.count
+        // each task file still as this switch wrote it: the tasks are out of the old account (and, once the second is
+        // written, in the new one); a stop between the two leaves them in neither, which Undo puts back too
+        let asWritten = steps.contains { $0.kind == .tasks && $0.done && SafeRead.whole($0.path).map(SwitchEngine.sha) == $0.sha }
+        return (sessions, asWritten ? (tasksMoved ?? 1) : 0)
+    }
 
     /// Something was moved, and the switch was neither linked nor undone: Undo still applies.
     var unfinished: Bool { undone == nil && linked == nil && leftAsIs == nil && !steps.isEmpty }
@@ -500,6 +514,7 @@ enum SwitchEngine {
             r.steps.append(SwitchReceipt.Step(kind: .tasks, path: file, sha: sha(data), parked: existed ? backup : nil, existed: existed))
             writes.append((file, data, r.steps.count - 1))
         }
+        r.tasksMoved = movingIDs.count
         try save(r)                                            // both written down before either file changes
         for w in writes {
             try w.data.write(to: URL(fileURLWithPath: w.file), options: .atomic)

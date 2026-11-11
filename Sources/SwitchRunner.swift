@@ -74,8 +74,18 @@ final class SwitchRunner: ObservableObject {
     /// The tile's two lines for a switch that stopped: "nothing changed" only when nothing did; a switch that moved
     /// sessions before it stopped says how many, and that Undo puts them back.
     static func failedWords(_ r: SwitchReceipt?) -> (l1: String, l2: String) {
-        let n = (r?.unfinished == true) ? r!.moved : 0
-        return n > 0 ? ("Stopped part way", "\(n) moved · Undo puts them back") : ("Not started", "nothing changed")
+        // changed: the receipt still has something to undo (sessions, tasks, a pointer line)
+        guard let r, r.unfinished else { return ("Not started", "nothing changed") }
+        let w = movedWords(r)
+        return ("Stopped part way", (w.isEmpty ? "changed" : w + " moved") + " · Undo puts them back")
+    }
+
+    /// "41 sessions, 3 tasks": what a switch's receipt still has moved now (SwitchReceipt.stillMoved); "" when only a
+    /// pointer line or a placed copy is left.
+    static func movedWords(_ r: SwitchReceipt) -> String {
+        let m = r.stillMoved()
+        return [m.sessions > 0 ? "\(m.sessions) \(m.sessions == 1 ? "session" : "sessions")" : nil,
+                m.tasks > 0 ? "\(m.tasks) \(m.tasks == 1 ? "task" : "tasks")" : nil].compactMap { $0 }.joined(separator: ", ")
     }
 
     /// It stopped: where, and why.
