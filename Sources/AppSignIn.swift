@@ -88,7 +88,7 @@ enum AppSignIn {
 
     /// config.json's lastKnownAccountUuid (lower case), or nil. Only that key is kept.
     static func lastKnown(dataDir: String) -> String? {
-        guard let d = FileManager.default.contents(atPath: (expand(dataDir) as NSString).appendingPathComponent("config.json")),
+        guard let d = boundedRead((expand(dataDir) as NSString).appendingPathComponent("config.json"), max: configBytes, fromEnd: false)?.data,
               let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
               let id = j["lastKnownAccountUuid"] as? String, AccountDiscovery.isUUID(id) else { return nil }
         return id.lowercased()
@@ -116,19 +116,33 @@ enum AppSignIn {
 
     /// The end of one file as lines (at most `tailBytes`; a cut first line is dropped), or nil when it can't be read.
     private static func tail(_ f: URL) -> [Substring]? {
-        let fd = open(f.path, O_RDONLY | O_NOFOLLOW)
+        guard let r = boundedRead(f.path, max: tailBytes, fromEnd: true) else { return nil }
+        var lines = String(decoding: r.data, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false)
+        if r.cut, !lines.isEmpty { lines.removeFirst() }
+        return lines
+    }
+
+    /// The most read of config.json (it holds one id cl_audit wants; a bigger file isn't one the app wrote).
+    static let configBytes = 256 << 10
+
+    /// At most `max` bytes of a regular file, from its start or its end, never blocking: opened without following a link
+    /// and non-blocking (a FIFO or a device named like the file returns at once), checked to be a regular file. `cut`: the
+    /// file was longer. nil when it isn't there or isn't a regular file.
+    static func boundedRead(_ path: String, max: Int, fromEnd: Bool) -> (data: Data, cut: Bool)? {
+        let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
         var st = stat()
         guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { return nil }
-        let size = Int(st.st_size), n = min(size, tailBytes)
+        let size = Int(st.st_size), n = min(size, max)
         var buf = Data(count: n)
-        let got = buf.withUnsafeMutableBytes { pread(fd, $0.baseAddress, n, off_t(size - n)) }
+        let got = buf.withUnsafeMutableBytes { pread(fd, $0.baseAddress, n, off_t(fromEnd ? size - n : 0)) }
         guard got == n else { return nil }
-        var lines = String(decoding: buf, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false)
-        if n < size, !lines.isEmpty { lines.removeFirst() }
-        return lines
+        return (buf, n < size)
     }
+
+    /// An account line is short (under 300 bytes): a longer one isn't looked at, so no line can keep the parsing busy.
+    static let maxLine = 2048
 
     static let timeFormat: DateFormatter = {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.timeZone = .current
@@ -143,7 +157,16 @@ enum AppSignIn {
 
     private static let lineRE = try! NSRegularExpression(pattern: #"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(?:\.\d{1,3})?) \[\w+\] (.*)$"#)
     private static let initRE = try! NSRegularExpression(pattern: #"^\[LocalSessionManager\] Initialization succeeded\b.*?accountId=([^,\s]+), orgId=([^,\s]+)"#)
-    private static let loggedOutRE = try! NSRegularExpression(pattern: #"loggedOut: .*?(?:\x{2192}|->) true(?:,|\))|Account logged out"#)
+
+    /// "Account logged out", or a login-state change whose loggedOut part ends "→ true" / "-> true" (before its next "," or
+    /// ")"): signed out. Plain string tests, no pattern that could backtrack.
+    static func saysLoggedOut(_ body: String) -> Bool {
+        if body.contains("Account logged out") { return true }
+        guard let r = body.range(of: "loggedOut: ") else { return false }
+        let rest = body[r.upperBound...]
+        let value = rest[..<(rest.firstIndex { $0 == "," || $0 == ")" } ?? rest.endIndex)]
+        return value.hasSuffix("\u{2192} true") || value.hasSuffix("-> true")
+    }
 
     /// One file's lines judged from the end: the first account line found decides (nil: none in this file). The file's last
     /// element is what follows its last newline: a line there is still being written, so it says unknown.
@@ -152,6 +175,7 @@ enum AppSignIn {
             Login(account: nil, org: nil, state: state, source: at == nil ? "unknown" : "log", at: at)
         }
         for i in stride(from: lines.count - 1, through: 0, by: -1) {
+            guard lines[i].utf8.count <= maxLine else { continue }      // never a long line: account lines are short
             let line = String(lines[i])
             let local = line.contains("[LocalSessionManager]")
             let login = line.contains("[account] Login-state transition")
@@ -163,8 +187,7 @@ enum AppSignIn {
             let time = (stamp.contains(".") ? timeFormat : timeFormatShort).date(from: stamp)
             guard i != lines.count - 1, let t = time, t >= launched, t <= now else { return unknown() }
             if login || body.contains("Account logged out") {
-                let out = loggedOutRE.firstMatch(in: body, range: NSRange(location: 0, length: (body as NSString).length)) != nil
-                return unknown(out ? .loggedOut : .unknown, t)
+                return unknown(saysLoggedOut(body) ? .loggedOut : .unknown, t)
             }
             let b = body as NSString
             guard let im = initRE.firstMatch(in: body, range: NSRange(location: 0, length: b.length)) else { return unknown(.unknown, t) }
