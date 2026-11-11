@@ -8,6 +8,15 @@ the notes before updating.
 
 ## Unreleased
 
+- **One standby entry per account.** The Claude window can keep one account's sessions under several organisations
+  (folders left by earlier moves), and each became its own standby entry: one account showed up to four times, and
+  another profile's account in use could show too. Now each account is listed once, with the organisation its own sign-in
+  record names (else that of the folder it last used), and an account another profile works on is never on this
+  profile's list or offered to switch to. A list saved the old way is tidied once when cl_audit starts ("Standby list
+  tidied: one entry per account." on the Accounts card); nothing else in it changes.
+- **A copy before the profiles file changes shape.** When cl_audit rewrites its profiles file in a new shape (dropping
+  the old kept-folder fields, tidying the standby lists), it first keeps the file as it was beside it, as
+  `accounts.json.pre-<version>`, once per version and readable by you only. Ordinary saves make no copy.
 - **A profile is one Claude Code folder, and switching signs in again on it.** A profile's folder holds one signed-in
   account at a time, the one in use. Its other accounts are standby: remembered on the profile (address, plan, when they
   were last in use), signed out, with no folder or Keychain item of their own, so nothing reads them and they show no
