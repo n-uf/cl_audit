@@ -511,6 +511,38 @@ enum Store {
         return (try? JSONDecoder().decode(ConfigFile.self, from: data))?.accounts
     }
 
+    // MARK: a copy before a new shape
+
+    /// The version written into a pre-copy's name: the app's own, else "dev" (checks).
+    nonisolated(unsafe) static var version: String = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+
+    /// The file was written by an older shape: kept folders, standby folders or the old sessions setting still in it.
+    static func oldShape(_ data: Data) -> Bool {
+        guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let list = j["accounts"] as? [[String: Any]] else { return false }
+        return list.contains { a in
+            a["keptFolder"] != nil || a["sessionsFollow"] != nil
+                || ((a["standby"] as? [[String: Any]]) ?? []).contains { $0["configDir"] != nil }
+        }
+    }
+
+    /// Before the profiles file is rewritten in a new shape (the one-time migration of old fields, the standby tidy-up):
+    /// the file as it was, copied once per version to accounts.json.pre-<version> beside it, owner only, never over an
+    /// existing copy and never through a link (one there refuses the write). Under the profiles file's lock.
+    static func preCopy(_ old: Data) throws {
+        let name = "accounts.json.pre-\(version.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" })"
+        let path = folder.appendingPathComponent(name).path
+        var st = stat()
+        if lstat(path, &st) == 0 {
+            if (st.st_mode & S_IFMT) == S_IFLNK { throw CocoaError(.fileWriteNoPermission) }   // never through a link
+            return                                                                              // once per version
+        }
+        let fd = Darwin.open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { throw CocoaError(.fileWriteNoPermission) }
+        defer { Darwin.close(fd) }
+        let n = old.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
+        guard n == old.count else { throw CocoaError(.fileWriteUnknown) }
+    }
+
     /// The one way the profiles file is written: under a lock shared by every cl_audit process, the file read fresh,
     /// `change` applied to it, and saved, so no process writes an older copy over another one's change.
     @discardableResult
@@ -528,6 +560,8 @@ enum Store {
         let tidy = StandbyTidy.apply(before, recordOrgs: { AccountList.recordOrgs(before) })
         let after = change(tidy.accounts)
         guard after != before || !exists else { return after }
+        // a new shape (the old fields go, or the lists were tidied): the file as it was, copied first
+        if exists, let old = try? Data(contentsOf: configURL), tidy.changed || oldShape(old) { try preCopy(old) }
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         try enc.encode(ConfigFile(accounts: after)).write(to: configURL, options: .atomic)
