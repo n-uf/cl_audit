@@ -238,8 +238,7 @@ enum SwitchEngine {
         let uuid = try! NSRegularExpression(pattern: "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", options: [.caseInsensitive])
         for line in ps.split(separator: "\n") {
             let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1).map(String.init)
-            guard parts.count == 2, let program = parts[1].split(separator: " ").first,
-                  (String(program) as NSString).lastPathComponent.lowercased() == "claude" else { continue }
+            guard parts.count == 2, isClaude(parts[1]) else { continue }
             let cmd = parts[1]
             for m in uuid.matches(in: cmd, range: NSRange(cmd.startIndex..., in: cmd)) {
                 if let r = Range(m.range, in: cmd) { ids.insert(cmd[r].lowercased()) }
