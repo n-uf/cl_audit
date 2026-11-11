@@ -22,6 +22,13 @@ enum FolderGuard {
         return (try? FileManager.default.createDirectory(atPath: p, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])) != nil
     }
 
+    /// For reading only: the folder is there as a folder, a link to one included (a profile or kept folder may be a link
+    /// to the real one). Launching and creating keep refusing links (`folderReady`).
+    static func isFolder(_ configDir: String) -> Bool {
+        var isDir: ObjCBool = false
+        return FileManager.default.fileExists(atPath: (configDir as NSString).expandingTildeInPath, isDirectory: &isDir) && isDir.boolValue
+    }
+
     /// The check's seam: told of every launch the guard lets through ("renew", "logout", "login", …, and the folder); its
     /// answer decides whether the launch goes on (a check answers false: nothing starts).
     nonisolated(unsafe) static var launchSeam: ((_ what: String, _ configDir: String) -> Bool)?
