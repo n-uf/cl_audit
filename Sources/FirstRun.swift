@@ -135,7 +135,7 @@ extension SettingsModel {
         // always ~/.claude: the first profile is the default one, never a new folder
         let dir = FirstRun.signInFolder
         let probe = AccountEntry(id: "setup", name: "setup", label: "SETUP", configDir: dir)
-        guard ClaudeCLI.openLogin(claude, account: Account(probe), email: email.isEmpty ? nil : email) else {
+        guard ClaudeCLI.openLogin(claude, account: Account(probe), email: email.isEmpty ? nil : email, creating: true) else {
             firstRun.problem = "Terminal didn't open."; return
         }
         firstRun.signInDir = dir

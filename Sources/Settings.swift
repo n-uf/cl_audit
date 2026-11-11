@@ -256,6 +256,7 @@ final class SettingsModel: ObservableObject {
         if let owner = accounts.first(where: { $0.id != e.id && ($0.seat?.email ?? Account.expectedEmail(configDir: $0.configDir))?.lowercased() == email.lowercased() }) {
             return "That's the account of “\(owner.name)”. One profile per account."
         }
+        if let why = ClaudeCLI.goneLine(e.configDir) { return why }
         guard let claude = requireClaude() else { return noClaudeWhy }
         guard ClaudeCLI.openLogin(claude, account: Account(e), email: email) else { return "Terminal didn't open." }
         s.email = email; s.started = Date()
@@ -1776,6 +1777,8 @@ struct AccountSettings: View {
     /// The account in use, signed in once to a folder of its own (made now if it has none): Claude Code's sign-in there
     /// in Terminal, with its address filled in. Its numbers come from there once that's done (Reader.swift).
     func signInOwnFolder() {
+        // its kept folder deleted: never made again here (asked before the look for claude)
+        if let k = entry.keptFolder, !k.isEmpty, let why = ClaudeCLI.goneLine(k) { model.message = why; return }
         guard let email = entry.seat?.email ?? expected, let claude = model.requireClaude() else { return }
         var dir = entry.keptFolder ?? ""
         if dir.isEmpty {
@@ -1989,6 +1992,8 @@ struct AccountSettings: View {
 
     /// Sign in… on a standby account: its folder (made now if it has none) and Claude Code's sign-in there in Terminal.
     func signInStandby(_ s: StandbyAccount) {
+        // its kept folder deleted: never made again here (asked before the look for claude)
+        if let k = s.configDir, let why = ClaudeCLI.goneLine(k) { model.message = why; return }
         guard let i = entry.standby.firstIndex(where: { $0.id == s.id }), let claude = model.requireClaude() else { return }
         var dir = s.configDir
         if dir == nil {
@@ -2071,7 +2076,9 @@ struct AccountSettings: View {
     /// from (the account's own once it has one).
     func logInKey(email: String?) -> some View {
         Button("Log in…") {
-            if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry.readingEntry()), email: email) }
+            let reading = Account(entry.readingEntry())
+            if let why = ClaudeCLI.goneLine(reading.configDir) { model.message = why }
+            else if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: reading, email: email) }
         }
         .buttonStyle(.pill(.red, compact: true))
     }
@@ -2143,7 +2150,8 @@ struct AccountSettings: View {
             // accounts only: linking to the one signed in here is the Use this account key under the pop-up
             if let linked {
                 items.append(LoginItem(id: "back", title: line(linked, ["\(name)'s account", "log in…"]), enabled: canSignIn) {
-                    if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: linked) }
+                    if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why }
+                    else if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: linked) }
                 })
             }
         }

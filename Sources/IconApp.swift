@@ -563,12 +563,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func logIn() {
         // the folder the numbers are read from: the account's own once it has one
         let reading = Account(entry.readingEntry())
-        let email = reading.expectedEmail() ?? expectedEmail
-        // the look for claude can take a few seconds (login shell): off the main thread
-        DispatchQueue.global(qos: .userInitiated).async {
-            guard let claude = ClaudeCLI.find() else { ClaudeInstall.showAlert(); return }
-            ClaudeCLI.openLogin(claude, account: reading, email: email)
-        }
+        ClaudeCLI.logIn(reading, email: reading.expectedEmail() ?? expectedEmail)
     }
 }
 

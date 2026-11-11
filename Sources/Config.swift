@@ -317,10 +317,12 @@ enum ClaudeCLI {
 
     /// Opens Terminal on `claude auth login` for the account's settings folder, with the e-mail the folder
     /// is set up for filled in. The person signs in in the browser; nothing here sees the password.
+    /// `creating`: only for a brand-new folder the person just chose (New profile, first run, the default profile's offer),
+    /// which is made (owner only) first. Any other sign-in needs its folder there: a folder the person deleted never comes back.
     @discardableResult
-    static func openLogin(_ claude: String, account: Account, email: String?) -> Bool {
-        // a sign-in the person started: a new folder is made for it, but never through a link
-        guard FolderGuard.mayLaunch("login", account.configDir, creating: true) else { return false }
+    static func openLogin(_ claude: String, account: Account, email: String?, creating: Bool = false) -> Bool {
+        // never through a link
+        guard FolderGuard.mayLaunch("login", account.configDir, creating: creating) else { return false }
         let file = loginScript(account.configDir)
         do {
             try (loginLines(claude, account: account, email: email).joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
@@ -332,11 +334,37 @@ enum ClaudeCLI {
     /// Log in… in the agent's surfaces (the menu bar, quick chat): Claude Code's own sign-in in Terminal for the folder the
     /// profile's numbers are read from (the account's own once it has one), with the record's address filled in.
     static func logIn(profile e: AccountEntry) {
-        let reading = Account(e.readingEntry()), email = Store.status(e.id)?.expectedEmail
+        logIn(Account(e.readingEntry()), email: Store.status(e.id)?.expectedEmail)
+    }
+
+    /// Log in… in the agent's surfaces (the menu bar, the Dock icon's menu, the launcher): an alert when the folder is gone,
+    /// else Claude Code's sign-in in Terminal.
+    static func logIn(_ account: Account, email: String?) {
+        if let why = goneLine(account.configDir) { tellGone(why); return }
         DispatchQueue.global(qos: .userInitiated).async {           // the look for claude can take a few seconds
             guard let claude = find() else { DispatchQueue.main.async { ClaudeInstall.showAlert() }; return }
-            openLogin(claude, account: reading, email: email)
+            openLogin(claude, account: account, email: email)
         }
+    }
+
+    /// The one line a sign-in key shows when the folder isn't there as a folder (deleted, or a link): nothing is started
+    /// and nothing is made. nil when the sign-in may go on.
+    static func goneLine(_ configDir: String) -> String? {
+        FolderGuard.folderReady(configDir) ? nil : "Its Claude Code folder is gone (\(tilde(configDir))): nothing was signed in."
+    }
+
+    /// The check's seam: replaces the alert of the agent's surfaces (a check records the line).
+    nonisolated(unsafe) static var goneSeam: ((String) -> Void)?
+
+    /// The agent's surfaces have no line of their own: an alert, like the one for a missing Claude Code.
+    static func tellGone(_ line: String) {
+        if let seam = goneSeam { seam(line); return }
+        guard Thread.isMainThread else { DispatchQueue.main.async { tellGone(line) }; return }
+        NSApp.activate(ignoringOtherApps: true)
+        let a = NSAlert()
+        a.messageText = line
+        a.addButton(withTitle: "OK")
+        a.runModal()
     }
 
     /// The Terminal script of a login, line by line. The default folder (~/.claude) is signed in with CLAUDE_CONFIG_DIR

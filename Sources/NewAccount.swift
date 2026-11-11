@@ -738,7 +738,7 @@ struct NewAccountView: View {
             do { try NewAccountSetup.createOrConnect(&draft) } catch { addressProblem = error.localizedDescription; return }
         }
         guard let claude = model.requireClaude() else { addressProblem = model.noClaudeWhy; return }
-        guard ClaudeCLI.openLogin(claude, account: Account(draft.entry), email: e) else {
+        guard ClaudeCLI.openLogin(claude, account: Account(draft.entry), email: e, creating: true) else {
             addressProblem = "Terminal didn't open."; return
         }
         draft.seatAtAsk = Account.signedInSeat(configDir: draft.configDir)     // signing in again waits for another account
@@ -1023,7 +1023,7 @@ struct NewAccountView: View {
                 .help("Sign-in can be finished later from Settings")
             if signedIn == nil {
                 Button("Sign in to Claude Code…") {
-                    if let c = model.requireClaude() { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: draft.email.isEmpty ? nil : draft.email) }
+                    if let c = model.requireClaude() { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: draft.email.isEmpty ? nil : draft.email, creating: true) }
                 }
                     .buttonStyle(.pill(tint, compact: true))
             } else if draft.claudeWindow, !waiting,

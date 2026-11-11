@@ -522,7 +522,10 @@ final class QuickChat {
         model.openProfileSettings = { id in Installer.openSettings(account: id) }
         model.openSwitch = { key in Installer.openSwitch(key) }
         model.logIn = { [weak self] id in
-            if let e = self?.entries().first(where: { $0.id == id }) { ClaudeCLI.logIn(profile: e) }
+            guard let self, let e = self.entries().first(where: { $0.id == id }) else { return }
+            // its folder gone: the line between messages says so, and nothing starts
+            if let why = ClaudeCLI.goneLine(e.readingEntry().configDir) { self.model.note = why; return }
+            ClaudeCLI.logIn(profile: e)
         }
         model.limitFilled = { [weak self] in self?.refresh() }
         model.defaults = { [weak self] in self?.settings ?? .init() }

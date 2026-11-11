@@ -89,7 +89,7 @@ final class DefaultProfileRunner: ObservableObject {
         guard let claude = m.requireClaude() else { phase = .failed(m.noClaudeWhy); return }
         let email = old.seat?.email ?? Account.expectedEmail(configDir: old.configDir)
         let probe = AccountEntry(id: "default", name: "default", label: "DEFAULT", configDir: "~/.claude")
-        guard ClaudeCLI.openLogin(claude, account: Account(probe), email: email) else { phase = .failed("Terminal didn't open."); return }
+        guard ClaudeCLI.openLogin(claude, account: Account(probe), email: email, creating: true) else { phase = .failed("Terminal didn't open."); return }
         seatAtAsk = DefaultProfile.cachedSeat("~/.claude")
         signInStarted = Date()
         phase = .signingIn

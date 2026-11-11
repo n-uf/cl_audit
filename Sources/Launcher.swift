@@ -1093,11 +1093,7 @@ final class ManagerUI {
         logIn: { [weak self] r in
             self?.closePalette()
             // the folder the numbers are read from: the account's own once it has one
-            let account = Account(r.entry.readingEntry()), email = r.status?.expectedEmail
-            DispatchQueue.global(qos: .userInitiated).async {           // the look for claude can take a few seconds
-                if let claude = ClaudeCLI.find() { ClaudeCLI.openLogin(claude, account: account, email: email) }
-                else { ClaudeInstall.showAlert() }
-            }
+            ClaudeCLI.logIn(Account(r.entry.readingEntry()), email: r.status?.expectedEmail)
         },
         mainScreen: { [weak self] in self?.closePalette(); self?.showMain() },
         settings: { [weak self] in self?.showMain(page: .settings) },
