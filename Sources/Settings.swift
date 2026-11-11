@@ -227,7 +227,7 @@ final class SettingsModel: ObservableObject {
         for e in list {
             var s = Store.status(e.id) ?? IconStatus(state: "idle")
             var r = AccountResolver.resolve(e, among: list, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
-                                            loginEmail: s.loginEmail, names: AccountResolver.knownNames())
+                                            loginEmail: s.loginEmail, names: AccountList.names())
             if var old = s.resolved { old.at = r.at; if old == r { continue } }
             r.at = Date()
             s.resolved = r
@@ -1539,10 +1539,6 @@ struct AccountSettings: View {
     /// The profile's account as its record says it (AccountResolver): the in-use box and its lines show this.
     var view: AccountView { AccountView.of(status) }
 
-    /// The in-use box shows the stored account (the profile's seat), as its record says: its seat-specific notes and keys
-    /// belong there only then.
-    var seatShown: Bool { view.showsSeat(entry.seat) }
-
     /// Claude Code's folder on another profile's account in use, as the profile's record says it (AccountResolver):
     /// refused (FolderRules.noteAccounts), or nil.
     var elsewhere: (seat: Seat, owner: AccountEntry)? {
@@ -1595,11 +1591,10 @@ struct AccountSettings: View {
         } else if let l = linkedLately {
             rowLine(linkedWords(was: l.was, at: l.at))
         }
-        // the Claude app on another account than Claude Code: said plainly (no red, nothing to choose)
-        if windowElsewhere, let w = FolderRules.windowAccount(entry) {
-            rowLine(FolderRules.windowWords(entry, window: w, names: AccountList.names()))
-        }
+        // the Claude app on another account than Claude Code: the in-use box shows the app's account and says whose the
+        // numbers are ("Usage: Claude Code on b…"), no red, nothing to choose
     }
+
 
     // MARK: Accounts (Accounts.swift): the one in use, the standby ones found on this Mac (AccountList.swift)
 
@@ -1776,8 +1771,6 @@ struct AccountSettings: View {
     @State var picked: String?
     @State private var heldOrder: [String] = []
 
-    /// The profile's Claude window is signed in to another claude.ai account (only its id is known, never its address).
-    var windowElsewhere: Bool { _ = model.tick; return FolderRules.windowOnAnotherAccount(entry) }
 
     /// The account in use is also the one the usual Claude app is signed in to (~/.claude holds it), but this profile opens its
     /// own window: said once on the Accounts card, with the way to the default-profile offer. Gone once the offer is dismissed.

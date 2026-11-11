@@ -13,9 +13,8 @@
 //   ("Usage: Claude Code on b…@example.com");
 // - Claude Code's folder on another profile's account in use: that profile has those numbers (one profile per account);
 //   the line says so and the lamp is off.
-// - The numbers may be read from the account in use's kept folder (Accounts.swift readingFolder), whatever the working
-//   folder is signed in to: they are labelled with the address they were read for (`loginEmail`), and "differs" compares
-//   that address with the active account's, so the kept-folder reading and the resolver always agree.
+// - The numbers are labelled with the address they were read for (`loginEmail`), and "differs" compares that address with
+//   the active account's, so a read from just before a sign-in changed and the resolver always agree.
 
 import Foundation
 
@@ -33,19 +32,6 @@ struct ResolvedAccount: Codable, Equatable {
 }
 
 enum AccountResolver {
-    /// Addresses by account id, from Claude Code's records on this Mac (AccountDiscovery.knownFacts), kept a minute: to name
-    /// the Claude app's account, which its log names by id only.
-    private static var namesMemo: (at: Date, names: [String: String])?
-    private static let namesLock = NSLock()
-    static func knownNames(now: Date = Date()) -> [String: String] {
-        namesLock.lock(); defer { namesLock.unlock() }
-        if let m = namesMemo, now.timeIntervalSince(m.at) < 60 { return m.names }
-        var out: [String: String] = [:]
-        for (id, f) in AccountDiscovery.knownFacts() { if let e = f.seat.email { out[id.lowercased()] = e } }
-        namesMemo = (now, out)
-        return out
-    }
-
     /// The answer for one profile. `app`: the Claude app's sign-in (AppSignIn); `code`: Claude Code's folder account;
     /// `loginEmail`: the address the numbers were read for; `names`: addresses by account id (AccountList).
     static func resolve(_ e: AccountEntry, among accounts: [AccountEntry], app: AppSignIn.Login, code: Seat?, loginEmail: String?,
@@ -62,8 +48,7 @@ enum AccountResolver {
             r.fromApp = true
             r.lit = true
         }
-        // in every case: the numbers' own address decides when both are known (they may be read from the account in use's
-        // kept folder, Accounts.swift readingFolder, whatever the working folder is signed in to); else the folder's id
+        // in every case: the numbers' own address decides when both are known; else the folder's id
         if let n = loginEmail?.lowercased(), let a = r.email?.lowercased() { r.differs = n != a }
         else if r.fromApp, let id = r.account { r.differs = code.map { $0.account.lowercased() != id } ?? false }
         if let o = owner {
@@ -109,14 +94,6 @@ struct AccountView: Equatable {
         if let a = account, let id = s.seat?.account.lowercased() { return id == a }
         if let l = label?.lowercased(), l.contains("@") { return (s.seat?.email ?? s.email).lowercased() == l }
         return false
-    }
-
-    /// The stored account in use (the profile's seat) is the one the record names active: the in-use box's notes and keys
-    /// about that seat (its own kept folder) belong under it; otherwise they'd sit under another address.
-    func showsSeat(_ seat: Seat?) -> Bool {
-        guard let seat else { return false }
-        if let a = account { return seat.account.lowercased() == a }
-        return label.map { $0.lowercased() == seat.email?.lowercased() } ?? true
     }
 }
 

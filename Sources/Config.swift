@@ -549,9 +549,8 @@ enum Store {
     /// The profile's record as the agent wrote it: its numbers carry the account they were read for (resolved.numbersFor),
     /// so nothing here compares them with a stored account.
     /// Numbers read for another account than the one the record says they belong to (a switch, before the new read) are
-    /// dropped, as the standby path does (IconStatus.only): another account's numbers never show, not even for a moment.
-    /// Only when the sign-in's own address is known: numbers from the status line (usage.json) carry none, and the
-    /// folder's address can be another folder's (the kept one), so those are kept.
+    /// dropped: another account's numbers never show, not even for a moment. Only when the sign-in's own address is known:
+    /// numbers from the status line (usage.json) carry none, so those are kept.
     static func status(for e: AccountEntry) -> IconStatus? {
         guard let s = status(e.id) else { return nil }
         guard let owner = s.resolved?.numbersFor?.lowercased(), owner.contains("@"),

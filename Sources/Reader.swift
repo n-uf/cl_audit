@@ -146,9 +146,8 @@ final class UsageReader {
             usage = local
         }
         if let u = usage, Self.resetPassed(u), !failing, Date().timeIntervalSince(lastAsked) >= 60 { nextFetch = .distantPast }
-        // the folder read (a standby account's kept folder, the account in use's, or the profile's own) isn't there any
-        // more: no read of its sign-in at all, whatever was made while it existed. A link to a folder is read (only
-        // launching refuses links: FolderGuard.folderReady)
+        // the profile's folder isn't there any more: no read of its sign-in at all, whatever was made while it existed.
+        // A link to a folder is read (only launching refuses links: FolderGuard.folderReady)
         if Date() >= nextFetch, Account.isDefault(configDir: account.configDir) || FolderGuard.isFolder(account.configDir) { fetch() }
         save()
     }
@@ -678,23 +677,20 @@ final class UsageReader {
         // has none at all (no bars, "login expired", Log in…). The reader keeps its own copy, to read again at a reset
         status = status.current()
         // the one answer about the account (AccountResolver), written here once for every surface to read: the numbers
-        // stay, labelled with the account they were read for (no "otherAccount" state for the profile's own folder). A
-        // standby account's reader (id "<profile>~<standby>") has no answer of its own.
-        if !id.contains("~") {
-            let list = Store.loadChecked() ?? []
-            let me = list.first { $0.id == id } ?? entry
-            var r = AccountResolver.resolve(me, among: list, app: AppSignIn.cached(for: me),
-                                            code: Account.signedInSeat(configDir: me.configDir), loginEmail: loginEmail,
-                                            names: AccountResolver.knownNames())
-            if var last = lastResolved { last.at = r.at; if last == r { r.at = lastResolved!.at } }
-            lastResolved = r
-            status.resolved = r
-            if r.clash != nil {
-                // Claude Code's folder on another profile's account in use: those numbers are that profile's
-                status.fiveHour = nil; status.weekly = nil; status.fiveHourResets = nil; status.weeklyResets = nil
-                status.scoped = nil; status.credits = nil; status.noFiveHour = nil
-                status.problem = r.line
-            }
+        // stay, labelled with the account they were read for (no "otherAccount" state for the profile's own folder)
+        let list = Store.loadChecked() ?? []
+        let me = list.first { $0.id == id } ?? entry
+        var r = AccountResolver.resolve(me, among: list, app: AppSignIn.cached(for: me),
+                                        code: Account.signedInSeat(configDir: me.configDir), loginEmail: loginEmail,
+                                        names: AccountList.names())
+        if var last = lastResolved { last.at = r.at; if last == r { r.at = lastResolved!.at } }
+        lastResolved = r
+        status.resolved = r
+        if r.clash != nil {
+            // Claude Code's folder on another profile's account in use: those numbers are that profile's
+            status.fiveHour = nil; status.weekly = nil; status.fiveHourResets = nil; status.weeklyResets = nil
+            status.scoped = nil; status.credits = nil; status.noFiveHour = nil
+            status.problem = r.line
         }
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970; enc.outputFormatting = [.sortedKeys]
         if let data = try? enc.encode(status), data != lastStatus { lastStatus = Store.writeStatus(id, status) }

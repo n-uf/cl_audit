@@ -22,7 +22,7 @@ enum FolderGuard {
         return (try? FileManager.default.createDirectory(atPath: p, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])) != nil
     }
 
-    /// For reading only: the folder is there as a folder, a link to one included (a profile or kept folder may be a link
+    /// For reading only: the folder is there as a folder, a link to one included (a profile's folder may be a link
     /// to the real one). Launching and creating keep refusing links (`folderReady`).
     static func isFolder(_ configDir: String) -> Bool {
         var isDir: ObjCBool = false
