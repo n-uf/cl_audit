@@ -773,5 +773,70 @@ do {
     try? fm.removeItem(atPath: expand("~/.claude-r3"))
 }
 
+// ============ 13. B2: one standby entry per account (the shape seen after B's install) ============
+do {
+    // three accounts across nine (account, organisation) folders of Main's window: P under o1..o4, M under o5, o1, o2,
+    // S under o1, o4; S is Work's account in use (S / o3)
+    func id(_ n: Int) -> String { uuid(1300 + n) }
+    let P = id(1), M = id(2), S = id(3)
+    let o1 = id(11), o2 = id(12), o3 = id(13), o4 = id(14), o5 = id(15)
+    let wdB = expand("~/Library/Application Support/Claude-b2")
+    try? fm.removeItem(atPath: wdB)
+    let pairs: [(String, String, Double)] = [(P, o1, -40), (P, o2, -10), (P, o3, -30), (P, o4, -50), (M, o5, -5), (M, o1, -60),
+                                             (M, o2, -70), (S, o1, -20), (S, o4, -80)]
+    for (a, o, ago) in pairs {
+        let f = "\(wdB)/claude-code-sessions/\(a)/\(o)/local_\(id(Int(-ago))).json"
+        put(f, "{}")
+        try? fm.setAttributes([.modificationDate: t0.addingTimeInterval(ago * 3600)], ofItemAtPath: f)
+    }
+    // P's own record (a backup of Main's folder) names P under o4: that is its organisation, whatever folder is newest
+    put(expand("~/.claude-b2main/backups/.claude.json.backup.1"),
+        #"{"oauthAccount":{"accountUuid":"\#(P)","organizationUuid":"\#(o4)","emailAddress":"p@example.com"}}"#)
+    var mainB = profile("b2main", "~/.claude-b2main", u1); mainB.desktop = .separate; mainB.desktopDataDir = wdB
+    let workB = profile("b2work", "~/.claude-b2work", Seat(account: S, organization: o3, email: "s@example.com"))
+    let found = AccountList.find([mainB, workB])
+    let added = AccountList.adding(found, to: [mainB, workB], now: t0)
+    let sb = added[0].standby
+    check(sb.count == 2 && Set(sb.compactMap { $0.seat?.account }) == [P, M], "nine pairs of three accounts: two standby entries on Main (P and M): \(sb.map { $0.seat?.account ?? "-" })")
+    check(sb.first { $0.seat?.account == P }?.seat?.organization == o4, "P with its own record's organisation (o4), not its newest folder's")
+    check(sb.first { $0.seat?.account == M }?.seat?.organization == o5, "M (no record) with its newest-used folder's organisation (o5)")
+    check(!sb.contains { $0.seat?.account == S } && added[1].standby.isEmpty, "S, Work's account in use, nowhere on Main, whatever the organisation")
+    check(AccountList.adding(found, to: added, now: t0) == added, "found again: nothing added twice")
+    let m13 = SettingsModel(); m13.accounts = added
+    let page13 = SwitchPage(entry: added[0], standby: sb[0], model: m13, runner: m13.runner(of: "b2main"))
+    check(!page13.pickList.contains { $0.seat?.account == S } && !SwitchMenu.lines(added[0]).contains { $0.key.contains(S) },
+          "S is never a switch target on Main (the Switch page, Switch account ›)")
+
+    // the load-time tidy: Main's file with the nine entries (and a leftover folder) loads as two, saved once, said once
+    var nine = mainB
+    nine.standby = pairs.map { (a, o, ago) in
+        StandbyAccount(email: "", seat: Seat(account: a, organization: o, email: nil), id: "s\(Int(-ago))", lastInUse: t0.addingTimeInterval(ago * 3600))
+    }
+    nine.leftoverFolders = ["~/.claude-old-b2"]
+    let before13 = try! JSONEncoder().encode(ConfigFile(accounts: [nine, workB]))
+    try! before13.write(to: Store.configURL)
+    var writes = 0
+    Store.announce = { writes += 1 }
+    Store.version = "b2-test"
+    let pre = Store.folder.appendingPathComponent("accounts.json.pre-b2-test").path
+    try? fm.removeItem(atPath: pre)
+    let loaded = Store.loadChecked() ?? []
+    let mainL = loaded.first { $0.id == "b2main" }
+    check(mainL?.standby.count == 2 && Set(mainL?.standby.compactMap { $0.seat?.account } ?? []) == [P, M]
+          && mainL?.standby.first { $0.seat?.account == P }?.seat?.organization == o4,
+          "a file with the nine entries loads as two, P with its record's organisation: \(mainL?.standby.map { $0.seat?.organization ?? "-" } ?? [])")
+    check(mainL?.leftoverFolders == ["~/.claude-old-b2"] && mainL?.accountNote?.kind == .tidied && writes == 1,
+          "leftovers untouched, saved once, the note said: \(mainL?.accountNote?.words ?? "-") (\(writes) writes)")
+    check(mainL?.accountNote?.words == "Standby list tidied: one entry per account.", "the note in words")
+    _ = Store.loadChecked()
+    check(writes == 1, "a second load writes nothing")
+    let preData = fm.contents(atPath: pre)
+    let preMode = ((try? fm.attributesOfItem(atPath: pre))?[.posixPermissions] as? NSNumber)?.intValue
+    check(preData == before13 && preMode == 0o600, "the tidy kept the file as it was in accounts.json.pre-<version>, owner only")
+    Store.announce = {}
+    Store.version = "dev"
+    try? fm.removeItem(atPath: pre)
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

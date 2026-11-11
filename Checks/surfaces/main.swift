@@ -654,5 +654,49 @@ do {
     check(script.contains("[ -d \\\"$CLAUDE_CONFIG_DIR\\\" ] && [ ! -L \\\"$CLAUDE_CONFIG_DIR\\\" ]"), "the Terminal script checks the folder again itself before exec claude")
 }
 
+// ============ 7. a copy of the profiles file before it's rewritten in a new shape ============
+do {
+    Store.announce = {}                         // a throwaway home: no running cl_audit is told
+    let fmode: (String) -> Int? = { ((try? fm.attributesOfItem(atPath: $0))?[.posixPermissions] as? NSNumber)?.intValue }
+    func copies() -> [String] { ((try? fm.contentsOfDirectory(atPath: Store.folder.path)) ?? []).filter { $0.hasPrefix("accounts.json.pre-") }.sorted() }
+    copies().forEach { try? fm.removeItem(at: Store.folder.appendingPathComponent($0)) }
+    // the one-time migration: an older file (a kept folder) rewritten at the next change
+    let legacy = Data(#"{"accounts":[{"id":"mg","name":"Mg","label":"MG","configDir":"~/.claude-mg","keptFolder":"~/.claude-mg-kept"}]}"#.utf8)
+    try! legacy.write(to: Store.configURL)
+    Store.version = "m1"
+    Store.update("mg") { $0.name = "Mg2" }
+    let mPre = Store.folder.appendingPathComponent("accounts.json.pre-m1").path
+    check(copies() == ["accounts.json.pre-m1"] && fm.contents(atPath: mPre) == legacy && fmode(mPre) == 0o600,
+          "the migration keeps the old file once, as it was, owner only: \(copies())")
+    Store.update("mg") { $0.name = "Mg3" }
+    _ = Store.loadChecked()
+    check(copies() == ["accounts.json.pre-m1"] && fm.contents(atPath: mPre) == legacy, "a second save and a load make no new copy, the copy unchanged")
+    // the standby tidy-up: a list with two entries of one account
+    let dup = Data(#"{"accounts":[{"id":"td","name":"Td","label":"TD","configDir":"~/.claude-td","standby":[{"id":"a1","email":"x@example.com","seat":{"account":"00000000-0000-4000-8000-000000000901","organization":"00000000-0000-4000-8000-000000000902"}},{"id":"a2","email":"x@example.com","seat":{"account":"00000000-0000-4000-8000-000000000901","organization":"00000000-0000-4000-8000-000000000903"}}]}]}"#.utf8)
+    try! dup.write(to: Store.configURL)
+    Store.version = "t1"
+    let tidied = Store.loadChecked()
+    let tPre = Store.folder.appendingPathComponent("accounts.json.pre-t1").path
+    check(tidied?.first?.standby.count == 1 && copies() == ["accounts.json.pre-m1", "accounts.json.pre-t1"] && fm.contents(atPath: tPre) == dup && fmode(tPre) == 0o600,
+          "the tidy keeps the old file once, as it was, owner only: \(copies())")
+    _ = Store.loadChecked()
+    check(copies().count == 2, "a second load makes no new copy")
+    // an ordinary save in another version: no copy
+    Store.version = "o1"
+    Store.update("td") { $0.name = "Td2" }
+    check(copies().count == 2, "an ordinary save makes no copy")
+    // a link where the copy would go: refused, never written through
+    let lPre = Store.folder.appendingPathComponent("accounts.json.pre-l1").path
+    try? fm.createSymbolicLink(atPath: lPre, withDestinationPath: home + "/elsewhere-pre")
+    try! legacy.write(to: Store.configURL)
+    Store.version = "l1"
+    Store.update("mg") { $0.name = "Mg4" }
+    check(!fm.fileExists(atPath: home + "/elsewhere-pre") && fm.contents(atPath: Store.configURL.path) == legacy,
+          "a link as the copy's name: nothing written through it, and the file isn't rewritten")
+    try? fm.removeItem(atPath: lPre)
+    Store.version = "dev"
+    copies().forEach { try? fm.removeItem(at: Store.folder.appendingPathComponent($0)) }
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
