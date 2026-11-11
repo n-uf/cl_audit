@@ -8,7 +8,8 @@
 //   "[LocalSessionManager] Initialization succeeded … accountId=X, orgId=Y", "[sessions-bridge] identity reevaluate: … → Y:X"
 //   or "[oauth-v2] lookup orgId=Y cacheKey=acct:X"; if none, the newest claude-code-sessions/<account>/<org> folder in the
 //   data folder (names only, at most `maxListed` entries, no link followed).
-// - Signed out: the newest login-state line after the launch and newer than config.json's modification time is
+// - Signed out: the newest login-state line after the launch and newer than config.json's modification time (less
+//   `configSlack`, 2 s: the app writes both at about the same time, some stamps without milliseconds) is
 //   "[LocalSessionManager] Account logged out" or a "[account] Login-state transition" whose loggedOut part ends true.
 //   Otherwise signed in to config.json's account.
 // - No config.json (or no valid id in it): the log's own account line, as before (`judge`): the newest
@@ -140,7 +141,11 @@ enum AppSignIn {
         return best?.org
     }
 
-    /// The log files newest first: main.log, main1.log, main2.log … (claude-transplant's order).
+    /// The most log files read: the newest few are where the app's account lines are, and a folder of many files can't
+    /// keep a screen busy.
+    static let maxLogFiles = 5
+
+    /// The log files newest first: main.log, main1.log, main2.log … (claude-transplant's order), at most `maxLogFiles`.
     static func logFiles(_ logs: URL) -> [URL] {
         let names = ((try? FileManager.default.contentsOfDirectory(atPath: logs.path)) ?? []).filter { n in
             guard n.hasPrefix("main"), n.hasSuffix(".log") else { return false }
@@ -148,7 +153,7 @@ enum AppSignIn {
             return mid.isEmpty || (mid.first != "0" && mid.allSatisfy(\.isNumber))
         }
         return names.sorted { (Int($0.dropFirst(4).dropLast(4)) ?? 0) < (Int($1.dropFirst(4).dropLast(4)) ?? 0) }
-            .map { logs.appendingPathComponent($0) }
+            .prefix(maxLogFiles).map { logs.appendingPathComponent($0) }
     }
 
     /// The last account line after the launch, read from the end of each file (newest first).
@@ -257,6 +262,9 @@ enum AppSignIn {
         return (s.org, s.loggedOut)
     }
 
+    /// How much older than config.json a sign-out line may be and still count (the app writes both at about the same time).
+    static let configSlack: TimeInterval = 2
+
     /// What `scan` found so far, carried from one file to the next (older) one.
     struct Scan {
         var org: (org: String, at: Date)?
@@ -280,9 +288,11 @@ enum AppSignIn {
             guard let t = (stamp.contains(".") ? timeFormat : timeFormatShort).date(from: stamp), t <= now else { continue }
             if t < launched { s.done = true; break }
             if login, !s.loginDecided, body.contains("Account logged out") || body.contains("loggedOut: ") {
-                // the newest login-state line newer than config.json decides; one older than it (or none) leaves it signed in
+                // the newest login-state line newer than config.json decides; one older than it (or none) leaves it signed in.
+                // `configSlack`: a sign-out logged just before config.json is rewritten (or in the same second, a stamp
+                // without milliseconds) still counts.
                 s.loginDecided = true
-                if t > configTime, saysLoggedOut(body) { s.loggedOut = t; s.done = true; break }
+                if t > configTime.addingTimeInterval(-configSlack), saysLoggedOut(body) { s.loggedOut = t; s.done = true; break }
             }
             if named, s.org == nil, let p = accountOrg(body), p.account == account { s.org = (p.org, t) }
             if s.org != nil, s.loginDecided { s.done = true }

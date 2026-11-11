@@ -130,6 +130,15 @@ do {
     check(read(oldOut).state == .known && read(oldOut).account == a, "Account logged out older than config.json: still signed in to A")
     let newOut = home("a2-newout", log: story + ["\(at(400)) [info] [LocalSessionManager] Account logged out"], config: a)
     check(read(newOut).state == .loggedOut && read(newOut).account == nil, "Account logged out newer than config.json: signed out")
+    // the same second as config.json (a stamp without milliseconds, config.json written half a second later): signed out
+    let sameSecond = home("a2-samesec", log: story + ["\(AppSignIn.timeFormatShort.string(from: launched.addingTimeInterval(342 * 60))) [info] [LocalSessionManager] Account logged out"],
+                          config: a, configAt: 342 + 0.5 / 60)
+    check(read(sameSecond).state == .loggedOut, "Account logged out in the same second as config.json is written: signed out")
+    // at most the newest maxLogFiles files are read: an account line only in the seventh isn't
+    let many = home("a2-many", log: ["\(at(350)) [info] something else"], config: a)
+    for n in 1...6 { put(many.logs.appendingPathComponent("main\(n).log").path, n == 6 ? story.joined(separator: "\n") + "\n" : "\(at(350)) [info] nothing\n") }
+    check(AppSignIn.logFiles(many.logs).count == AppSignIn.maxLogFiles && read(many).org == nil && read(many).account == a,
+          "at most the newest 5 log files are read")
     let newTrans = home("a2-newtrans", log: story + ["\(at(400)) [info] [account] Login-state transition (loggedOut: false \u{2192} true, loading: false)"], config: a)
     check(read(newTrans).state == .loggedOut, "a login-state transition to signed out newer than config.json: signed out")
     let oldTrans = home("a2-oldtrans", log: story + ["\(at(300)) [info] [account] Login-state transition (loggedOut: false \u{2192} true, loading: false)"], config: a)
