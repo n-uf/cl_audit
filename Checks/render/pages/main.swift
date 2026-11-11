@@ -128,6 +128,67 @@ MainActor.assumeIsolated {
     }
     let widths: [(String, CGFloat)] = [("w460", 460), ("w340", 340)]
 
+    // a. the one account answer (AccountResolver): every surface from the same record, side by side, for "the Claude app and
+    // Claude Code on different accounts" and "the same account"; the Dock panel before its first read and after; a standby
+    // account whose kept sign-in ran out
+    let aWidths: [(String, CGFloat)] = [("w340", 340), ("w460", 460), ("w708", 708)]
+    let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
+    let noop = DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})
+    let plainRecord = Store.status("main")
+    for (tag, app) in [("a1-surfaces-different", AppSignIn.Login(account: u2.account, org: u2.organization, state: .known, source: "log", at: now)),
+                       ("a2-surfaces-same", AppSignIn.Login(account: u1.account, org: u1.organization, state: .known, source: "log", at: now))] {
+        var rec = plainRecord ?? IconStatus(state: "ok")
+        rec.resolved = AccountResolver.resolve(main, among: [main], app: app, code: u1, loginEmail: u1.email, names: [:])
+        _ = Store.writeStatus("main", rec)
+        let st = Store.status(for: main)
+        let v = AccountView.of(st)
+        let usage = Usage(fiveHour: st?.fiveHour, fiveHourResets: st?.fiveHourResets, weekly: st?.weekly, weeklyResets: st?.weeklyResets,
+                          fetchedAt: now, source: "test", noFiveHour: st?.noFiveHour == true)
+        let mp = MenuBarItems.Profile(entry: main, usage: usage, view: v)
+        let panel = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: st?.loginEmail, expected: nil, mismatch: false,
+                                plan: st?.plan, fiveHour: st?.fiveHour, fiveHourResets: st?.fiveHourResets, weekly: st?.weekly, weeklyResets: st?.weeklyResets,
+                                updated: now.addingTimeInterval(-60), source: nil, problem: nil, renewNote: nil, needsLogin: false).taking(v)
+        for f in [Face.std, .silver] { for (wn, w) in aWidths {
+            let col = VStack(alignment: .leading, spacing: 12) {
+                Text("Menu bar").font(.caption.bold())
+                MenuBarRow(profile: mp, now: now).frame(width: min(w, 320))
+                Text("Dock menu").font(.caption.bold())
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(SwitchMenu.dockTitle(name: main.name, v, plan: st?.plan)); if let l = v.line { Text(l).foregroundStyle(.secondary) }
+                }.font(.system(size: 13))
+                Text("Dock panel").font(.caption.bold())
+                DetailsView(info: panel, actions: noop).frame(width: min(w, 340))
+                Text("Card").font(.caption.bold())
+                AccountCard(row: AccountRow(entry: main, status: st), actions: acts).frame(width: min(w, 460))
+                Text("Quick chat").font(.caption.bold())
+                Text("\(main.name) · " + (QuickChatTarget(main).email ?? "no account")).font(.system(size: 12))
+                Text("Settings ▸ Accounts").font(.caption.bold())
+                AccountSettings(entry: .constant(main), model: model, width: w)
+            }
+            snapshot(framed(col, f, w), "\(tag)-\(f.rawValue)-\(wn)", w + 32, 4200)
+        } }
+    }
+    // the Dock panel before its first read, and after
+    for (tag, updated) in [("a3-panel-reading", Date?.none), ("a4-panel-updated", Date?.some(now.addingTimeInterval(-60)))] {
+        let info = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: u1.email, expected: nil, mismatch: false,
+                               plan: "Ultra", fiveHour: nil, fiveHourResets: nil, weekly: updated == nil ? nil : 42, weeklyResets: now.addingTimeInterval(3 * 86400),
+                               updated: updated, source: nil, problem: nil, renewNote: nil, needsLogin: false, noFiveHour: true)
+            .taking(AccountView(label: u1.email, numbersOwner: u1.email, line: nil, lit: true, clash: nil))
+        for f in [Face.std, .silver] { for (wn, w) in aWidths {
+            snapshot(framed(DetailsView(info: info, actions: noop).frame(width: min(w, 340)), f, w), "\(tag)-\(f.rawValue)-\(wn)", w + 32, 900)
+        } }
+    }
+    // a standby account whose kept sign-in ran out: no numbers, when they were last read
+    var expired = IconStatus(state: "expired"); expired.loginEmail = u2.email; expired.weekly = 97; expired.updatedAt = now.addingTimeInterval(-3 * 86400)
+    let keptStandby = Store.status("main~k2")
+    _ = Store.writeStatus("main~k2", expired)
+    try? fm.createDirectory(atPath: expand("~/.claude-ultra-2"), withIntermediateDirectories: true)
+    for f in [Face.std, .silver] { for (wn, w) in aWidths {
+        snapshot(framed(AccountSettings(entry: .constant(main), model: model, width: w), f, w), "a5-standby-expired-\(f.rawValue)-\(wn)", w + 32, 4200)
+    } }
+    if let k = keptStandby { _ = Store.writeStatus("main~k2", k) }
+    if let p = plainRecord { _ = Store.writeStatus("main", p) }
+
     // 1. Sessions card with 3 backups; 2. with none
     for f in [Face.std, .silver] { for (wn, w) in widths {
         snapshot(framed(SessionsCard(entry: main, model: model), f, w), "1-sessions-3-backups-\(f.rawValue)-\(wn)", w + 32)
