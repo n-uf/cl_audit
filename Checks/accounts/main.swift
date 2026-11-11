@@ -532,7 +532,8 @@ do {
 
     // the login script is written for its owner only
     opened = []
-    _ = ClaudeCLI.openLogin(home + "/fakebin/claude", account: Account(profile("ls", "~/.claude-ls", u1)), email: "ls@example.com")
+    // (New profile's sign-in: the only one that makes its folder)
+    _ = ClaudeCLI.openLogin(home + "/fakebin/claude", account: Account(profile("ls", "~/.claude-ls", u1)), email: "ls@example.com", creating: true)
     let script = ClaudeCLI.loginScript(expand("~/.claude-ls"))
     let mode = ((try? fm.attributesOfItem(atPath: script.path))?[.posixPermissions] as? NSNumber)?.intValue
     check(mode == 0o700 && opened.count == 1, "the login script is 0700 (\(String(mode ?? 0, radix: 8))) and only handed to the Terminal stand-in")
