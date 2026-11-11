@@ -18,7 +18,9 @@ struct QuickChatLevel: Equatable {
     /// When Claude Code last said the account is refusing (its rate_limit_event "rejected"), and until when.
     var refusedUntil: Date?
 
-    init(_ u: Usage?) {
+    /// A limit whose reset has passed comes without its percent (Usage.current).
+    init(_ u: Usage?, now: Date = Date()) {
+        let u = u?.current(now: now)
         week = u?.weekly; weekResets = u?.weeklyResets
         fiveHour = u?.fiveHour; fiveHourResets = u?.fiveHourResets
         noFiveHour = u?.noFiveHour ?? false
@@ -48,10 +50,19 @@ struct QuickChatLevel: Equatable {
         return nil
     }
 
-    /// The line's number: the week, or a full 5-hour limit in its place.
+    /// The line's number: the week, or a full 5-hour limit in its place. A week whose reset has passed has none.
     func shown(_ now: Date = Date()) -> (name: String, percent: Double?, resets: Date?) {
         if let f = full(now) { return (f.id == "5h" ? "5-hour" : "week", 100, f.resets) }
+        if Freshness.passed(weekResets, now: now) { return ("week", nil, nil) }
         return ("week", week, weekResets)
+    }
+
+    /// Without the limits whose reset has passed: the panel stays open across a reset, its old percent never shown.
+    func current(_ now: Date = Date()) -> QuickChatLevel {
+        var l = self
+        if Freshness.passed(l.weekResets, now: now) { l.week = nil; l.weekResets = nil }
+        if Freshness.passed(l.fiveHourResets, now: now) { l.fiveHour = nil; l.fiveHourResets = nil }
+        return l
     }
 
     static func color(_ p: Double?) -> Color { Color(nsColor: Painter.color(p, stale: false)) }

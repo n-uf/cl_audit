@@ -243,7 +243,8 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         let entry: AccountEntry
         let usage: Usage?
         var problem: String? = nil
-        var expired = false
+        /// The record says the sign-in needs the person (IconStatus.needsLogin): the menu's key is Log in….
+        var needsLogin = false
         /// The profile's account as its record says it (AccountResolver): the line under the name.
         var view = AccountView(label: nil, numbersOwner: nil, line: nil, lit: false, clash: nil)
     }
@@ -265,13 +266,13 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
     private var accessory = false
     private let profiles: () -> [Profile]
     private let refresh: (String) -> Void
-    private let renew: (String) -> Void
 
-    init(profiles: @escaping () -> [Profile], refresh: @escaping (String) -> Void, renew: @escaping (String) -> Void) {
+    init(profiles: @escaping () -> [Profile], refresh: @escaping (String) -> Void) {
         self.profiles = profiles
         self.refresh = refresh
-        self.renew = renew
     }
+
+    static func needsLogin(_ s: IconStatus?) -> Bool { s?.needsLogin ?? false }
 
     /// Adds, removes and redraws the icons as the profiles say (the agent calls this every 30 s and after a change).
     func update(now: Date = Date()) {
@@ -382,7 +383,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         add("Quick chat", #selector(quickChat(_:)))
         if p.entry.claudeWindow { add("Open Claude window", #selector(openClaude(_:))) }
         add("Refresh now", #selector(refreshNow(_:)))
-        if p.expired { add("Renew login now (uses a little usage)", #selector(renewLogin(_:))) }
+        if p.needsLogin { add("Log in…", #selector(logIn(_:))) }
         menu.addItem(.separator())
         add("Dashboard", #selector(dashboard(_:)))
         add("Profile settings…", #selector(settings(_:)))
@@ -398,7 +399,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
     /// The quick chat, on this profile (QuickChat.swift).
     @objc private func quickChat(_ sender: NSMenuItem) { QuickChat.shared.open(profile: sender.representedObject as? String) }
     @objc private func refreshNow(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { refresh(id) } }
-    @objc private func renewLogin(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { renew(id) } }
+    @objc private func logIn(_ sender: NSMenuItem) { if let e = entry(sender) { ClaudeCLI.logIn(profile: e) } }
     @objc private func dashboard(_ sender: NSMenuItem) { Installer.openDashboard() }
     @objc private func switchAccount(_ sender: NSMenuItem) { if let k = sender.representedObject as? String { Installer.openSwitch(k) } }
     @objc private func settings(_ sender: NSMenuItem) { if let id = sender.representedObject as? String { Installer.openSettings(account: id) } }

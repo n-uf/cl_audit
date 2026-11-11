@@ -172,7 +172,7 @@ struct AccountRow: Identifiable {
         guard let a = status?.loginEmail, let b = status?.expectedEmail else { return false }
         return a.lowercased() != b.lowercased()
     }
-    var needsLogin: Bool { mismatch || status?.state == "expired" || status?.state == "noLogin" }
+    var needsLogin: Bool { status?.needsLogin ?? false }
     var fiveHour: Double? { status?.fiveHour }
     var weekly: Double? { status?.weekly }
     /// How close the account is to any limit (the higher of the two).
@@ -997,10 +997,10 @@ struct AccountCard: View {
           }
             Spacer(minLength: 12)         // cards in a row share one height; the buttons stay at the bottom
             HStack(spacing: 7) {
-                // One main button: sign in when needed, otherwise bring the Claude window forward.
-                // (a profile without a Claude window has no window to bring forward; usage only has just the menu)
+                // One main button: Log in… when needed (the same key as every other surface), otherwise bring the Claude
+                // window forward. (a profile without a Claude window has no window to bring forward; usage only has just the menu)
                 if row.needsLogin {
-                    Button("Sign in…") { actions.logIn(row) }.buttonStyle(.pill(.red))
+                    Button("Log in…") { actions.logIn(row) }.buttonStyle(.pill(.red))
                 } else if row.entry.claudeWindow {
                     // on this card a lit LED means running: the key's LED lights only while the window is open
                     Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }

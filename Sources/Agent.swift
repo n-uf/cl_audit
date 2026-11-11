@@ -160,8 +160,6 @@ enum Agent {
         Installer.run("/bin/launchctl", ["kickstart", "-k", "gui/\(getuid())/\(bundleID)"], timeout: 10)
     }
 
-    /// Asks the agent to renew a profile's sign-in now (object: the profile id).
-    static let renewNote = Notification.Name("local.usage-n-uf.renew")
     /// Posted when the agent starts or ends something it shows on the dashboard (its mark's actions).
     static let actionsChangedNote = Notification.Name("local.usage-n-uf.agent-actions")
 
@@ -233,10 +231,6 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         observers.append(dn.addObserver(forName: Installer.refreshAllNote, object: nil, queue: .main) { [weak self] note in
             self?.refresh(note.object as? String)
         })
-        observers.append(dn.addObserver(forName: Agent.renewNote, object: nil, queue: .main) { [weak self] note in
-            guard let id = note.object as? String else { return }
-            (self?.readers[id] ?? self?.standbyReaders[id])?.renewLogin()
-        })
         // each profile's own menu bar icon, as its settings say (MenuBar.swift); the single item older versions had
         // carries over once
         MenuBarLegacy.carryOver()
@@ -244,16 +238,19 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return [] }
             return self.order.compactMap { id in
                 self.readers[id].map { r in
-                    MenuBarItems.Profile(entry: r.entry, usage: r.usage, problem: r.state.menuText, expired: r.state == .expired,
-                                         view: AccountView.of(Store.status(id)))
+                    // the numbers and the state as the record says them (the reader decided them as it saved): the reader's
+                    // own copy can hold numbers no screen may show (past a reset, an expired sign-in's old ones)
+                    let rec = Store.status(for: r.entry)
+                    return MenuBarItems.Profile(entry: r.entry, usage: Usage.of(rec), problem: rec?.problem ?? r.state.menuText,
+                                                needsLogin: MenuBarItems.needsLogin(rec), view: AccountView.of(Store.status(id)))
                 }
             }
-        }, refresh: { [weak self] id in self?.refresh(id) }, renew: { [weak self] id in self?.readers[id]?.renewLogin() })
+        }, refresh: { [weak self] id in self?.refresh(id) })
         // the quick chat (QuickChat.swift): its panel and its `claude`, on the profiles as they are now
         QuickChat.shared.start(entries: { [weak self] in
             guard let self else { return [] }
             return self.order.compactMap { self.readers[$0]?.entry }
-        }, usage: { [weak self] id in self?.readers[id]?.usage })
+        }, usage: { [weak self] id in (self?.readers[id]?.entry).flatMap { Usage.of(Store.status(for: $0)) } })
         // the Mac's accent colour changed: the icons in Accent are drawn again
         observers.append(NotificationCenter.default.addObserver(forName: NSColor.systemColorsDidChangeNotification, object: nil,
                                                                 queue: .main) { [weak self] _ in self?.menuBar?.update() })

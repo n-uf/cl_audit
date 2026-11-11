@@ -150,7 +150,12 @@ struct QCHeader: View {
                     Text(Privacy.masked(e)).font(.system(size: 12)).foregroundColor(QCColor.muted).lineLimit(1).truncationMode(.middle)
                 }
             }
-            if let l = model.level, l.week != nil || l.full() != nil { QCLevelView(level: l).padding(.leading, 4) }
+            if let t = model.target, let w = t.loginWords {
+                // the sign-in needs the person: no level, its state and the one key
+                Text(w).font(.system(size: 12)).foregroundColor(QCColor.accent).lineLimit(1).padding(.leading, 4)
+                Button("Log in…") { model.logIn(t.profileID) }.buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold)).foregroundColor(QCColor.text)
+            } else if let l = model.level, l.week != nil || l.full() != nil { QCLevelView(level: l).padding(.leading, 4) }
             Spacer(minLength: 8)
             QCIconButton(symbol: "square.and.pencil", help: "New chat") { model.newChat() }
             QCIconButton(symbol: "xmark", help: "Hide (Esc)") { model.hide() }
@@ -448,7 +453,7 @@ struct QCControls: View {
             QCChip(title: model.thinking == .off ? "Thinking off" : model.thinking.title, symbol: "lightbulb",
                    lit: model.thinking != .off, help: "Thinking") { pickThinking() }
             Spacer(minLength: 4)
-            if inBar, let t = model.target, let l = model.level, l.week != nil || l.full() != nil {
+            if inBar, let t = model.target, t.loginWords == nil, let l = model.level, l.week != nil || l.full() != nil {
                 HStack(spacing: 6) {
                     Text(t.name).font(.system(size: 12)).foregroundColor(QCColor.muted)
                     QCLevelView(level: l, long: false)

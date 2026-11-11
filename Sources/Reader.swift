@@ -3,7 +3,8 @@
 // The sign-in is kept in memory and the Keychain is read only when it's needed: at the start, when the kept sign-in
 // has expired or was refused (then at most every 10 minutes), or on Refresh now. Reads go through /usr/bin/security,
 // the way Claude Code reads it, so they don't prompt (Login.read in Model.swift). The usage comes from Anthropic's
-// usage endpoint, with the status line file as a fallback; the account check from its profile endpoint.
+// usage endpoint, with the status line file as a fallback while it is fresh (written in the last 15 minutes, no reset
+// passed); the account check from its profile endpoint.
 // What a reader sees is saved to status/<id>.json (no secrets) for the Dock icons and the cl_audit window.
 
 import AppKit
@@ -140,7 +141,7 @@ final class UsageReader {
     /// The profile was removed: a read or renewal still under way saves nothing.
     func stop() { stopped = true; resetRead?.cancel() }
 
-    /// Every 30 s: the status line file if it's newer, a fetch when it's due, and the saved status. A full limit whose
+    /// Every 30 s: the status line file if it's newer and fresh (UsageParser.fromStatusLine), a fetch when it's due, and the saved status. A full limit whose
     /// reset has passed is read again at once (then at most once a minute until Anthropic's numbers move on).
     func tick() {
         guard !stopped else { return }
@@ -683,6 +684,9 @@ final class UsageReader {
                                 source: usage?.source, problem: state.menuText, renewing: renewing,
                                 scoped: usage.map { $0.scoped.isEmpty ? nil : $0.scoped } ?? nil, credits: usage?.credits,
                                 noFiveHour: usage?.noFiveHour == true ? true : nil)
+        // decided here, for every surface: no percent past its limit's reset, and an expired sign-in with no fresh numbers
+        // has none at all (no bars, "login expired", Log in…). The reader keeps its own copy, to read again at a reset
+        status = status.current()
         // the one answer about the account (AccountResolver), written here once for every surface to read: the numbers
         // stay, labelled with the account they were read for (no "otherAccount" state for the profile's own folder). A
         // standby account's reader (id "<profile>~<standby>") has no answer of its own.

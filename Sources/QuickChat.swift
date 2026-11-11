@@ -116,12 +116,16 @@ struct QuickChatTarget: Equatable {
     var configDir: String
     var isDefaultDir: Bool
     var email: String?
+    /// The record says the sign-in needs the person ("login expired"): the line says so, with Log in….
+    var loginWords: String?
 
     init(_ e: AccountEntry) {
         let a = Account(e)
         profileID = e.id; name = e.name; configDir = a.configDir; isDefaultDir = a.isDefaultDir
-        // the profile's account as its record says it (AccountResolver), never its own read
-        email = AccountView.of(Store.status(for: e)).label
+        // the profile's account and its state as its record says them (AccountResolver), never its own read
+        let rec = Store.status(for: e)
+        email = AccountView.of(rec).label
+        loginWords = rec?.loginWords
     }
     var workFolder: String { QuickChatSettings.workFolder(profileID) }
 }
@@ -195,6 +199,8 @@ final class QuickChatModel: ObservableObject {
     var hide: () -> Void = {}
     var openProfileSettings: (String) -> Void = { _ in }
     var openSwitch: (String) -> Void = { _ in }
+    /// Log in… for a profile whose sign-in needs the person (by profile id).
+    var logIn: (String) -> Void = { _ in }
     var defaults: () -> QuickChatSettings = { .init() }
     /// A limit filled during the chat: the controller looks for an account to offer.
     var limitFilled: () -> Void = {}
@@ -289,7 +295,8 @@ final class QuickChatModel: ObservableObject {
         // Claude Code's own numbers after an answer are newer than the agent's last reading: keep the fuller of the two,
         // for the same profile on the same account only
         var l = level
-        if let mine = self.level, var theirs = l, before?.profileID == new?.profileID, before?.email == new?.email {
+        // a percent kept from before a limit's reset is never merged back in (QuickChatLevel.current)
+        if let mine = self.level?.current(), var theirs = l, before?.profileID == new?.profileID, before?.email == new?.email {
             func same(_ a: Date?, _ b: Date?) -> Bool {
                 guard let a, let b else { return true }
                 return abs(a.timeIntervalSince(b)) < 3600
@@ -514,6 +521,9 @@ final class QuickChat {
         model.hide = { [weak self] in self?.hide() }
         model.openProfileSettings = { id in Installer.openSettings(account: id) }
         model.openSwitch = { key in Installer.openSwitch(key) }
+        model.logIn = { [weak self] id in
+            if let e = self?.entries().first(where: { $0.id == id }) { ClaudeCLI.logIn(profile: e) }
+        }
         model.limitFilled = { [weak self] in self?.refresh() }
         model.defaults = { [weak self] in self?.settings ?? .init() }
         let dn = DistributedNotificationCenter.default()

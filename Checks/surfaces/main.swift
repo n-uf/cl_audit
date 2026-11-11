@@ -2,8 +2,8 @@
 // status record, and every screen reading it alike: the menu bar, the Dock icon's menu and panel, the dashboard card, Settings ▸
 // Accounts and quick chat's profile line. Also the Claude app's account (Sources/AppSignIn.swift): its config.json names the
 // account, its log gives the organisation and whether it signed out (an account switched in place and back included; the
-// log's own account line without config.json); a standby account's old numbers never shown, and no screen reading the
-// sign-in files itself.
+// log's own account line without config.json); a standby account's old numbers never shown; old numbers never shown at
+// all (a stale status line, a passed reset, an expired sign-in); and no screen reading the sign-in files itself.
 //
 // Runs only with HOME and CFFIXED_USER_HOME = .../Checks/.work/surfaces/home (Checks/run.sh sets and guards it). Fake data only:
 // example.com addresses, zero-pattern ids, made-up log lines and config.json files in the throwaway home. Nothing here opens
@@ -365,6 +365,108 @@ do {
           "a sign-in the person starts makes its new folder first (the seam then stops the launch here)")
     check(launches.contains("login ~/.claude-new-signin"), "…and only then would it launch")
     FolderGuard.launchSeam = nil
+}
+
+// ============ 7. old numbers are never shown: a stale status line, a passed reset, an expired sign-in ============
+do {
+    let now = Date()
+    let dir = "~/.claude-stale"
+    try? fm.createDirectory(atPath: expand(dir), withIntermediateDirectories: true)
+    var p = profile("stale", dir, Seat(account: uuid(41), organization: uuid(141), email: "stale-1@example.com"))
+    p.claudeWindow = false; p.autoRenew = false
+    try! Store.save([p])
+    func usageJSON(updated: Date, week: Double, weekResets: Date, five: Double = 100, fiveResets: Date) {
+        put(expand(dir) + "/usage.json", """
+            {"five_hour":{"used_percentage":\(five),"resets_at":\(Int(fiveResets.timeIntervalSince1970))},\
+            "seven_day":{"used_percentage":\(week),"resets_at":\(Int(weekResets.timeIntervalSince1970))},\
+            "updated_at":\(Int(updated.timeIntervalSince1970)),"source":"cli"}
+            """)
+    }
+    // the status line file as it was in 26.11.15: written 7 days ago, its week's reset since passed
+    let weekAgo = now.addingTimeInterval(-7 * 86400 - 43 * 60)
+    usageJSON(updated: weekAgo, week: 90, weekResets: now.addingTimeInterval(-60), fiveResets: weekAgo.addingTimeInterval(3600))
+    check(UsageParser.fromStatusLine(Account(p), now: now) == nil, "a 7-day-old status line is ignored as if it weren't there")
+    usageJSON(updated: now.addingTimeInterval(-16 * 60), week: 40, weekResets: now.addingTimeInterval(86400), fiveResets: now.addingTimeInterval(3600))
+    check(UsageParser.fromStatusLine(Account(p), now: now) == nil, "written 16 minutes ago: ignored")
+    usageJSON(updated: now.addingTimeInterval(-60), week: 40, weekResets: now.addingTimeInterval(86400), fiveResets: now.addingTimeInterval(-1))
+    check(UsageParser.fromStatusLine(Account(p), now: now) == nil, "fresh, but its 5-hour reset has passed: ignored")
+    usageJSON(updated: now.addingTimeInterval(3600), week: 40, weekResets: now.addingTimeInterval(86400), fiveResets: now.addingTimeInterval(7200))
+    check(UsageParser.fromStatusLine(Account(p), now: now) == nil, "dated an hour ahead: ignored")
+    usageJSON(updated: now.addingTimeInterval(-14 * 60), week: 40, weekResets: now.addingTimeInterval(86400), five: 12, fiveResets: now.addingTimeInterval(3600))
+    let fresh = UsageParser.fromStatusLine(Account(p), now: now)
+    check(fresh?.weekly == 40 && fresh?.fiveHour == 12 && fresh?.source == "Claude Code status line", "written 14 minutes ago, resets ahead: its numbers")
+
+    // the saved record of 26.11.15 (week 90% from the status line a week ago, the sign-in expired): no numbers on any screen
+    var old = IconStatus(state: "expired"); old.expectedEmail = "stale-1@example.com"; old.weekly = 90; old.fiveHour = 100
+    old.weeklyResets = now.addingTimeInterval(-60); old.fiveHourResets = weekAgo.addingTimeInterval(3600); old.updatedAt = weekAgo
+    old.source = "Claude Code status line"; old.problem = FetchState.expired.menuText
+    _ = Store.writeStatus("stale", old)
+    func noNumbersAnywhere(_ what: String) {
+        let rec = Store.status(for: p)
+        check(rec?.state == "expired" && rec?.weekly == nil && rec?.fiveHour == nil && rec?.weeklyResets == nil && rec?.fiveHourResets == nil,
+              "\(what): the record as every screen reads it has no numbers, state expired")
+        let mb = MenuBarItems.Profile(entry: p, usage: Usage.of(rec), problem: rec?.problem, needsLogin: MenuBarItems.needsLogin(rec),
+                                      view: AccountView.of(rec))
+        let glyph = MenuBarItems.item(mb, now: now)
+        check(mb.usage == nil && glyph.week == nil && glyph.five == nil && glyph.countdown == nil && mb.needsLogin,
+              "\(what): the menu bar has no bars, no countdown, and Log in…")
+        let row = AccountRow(entry: p, status: rec)
+        check(row.limits.allSatisfy { $0.p == nil } && row.full == nil && row.needsLogin && row.subtitle == "login expired",
+              "\(what): the card (and Settings' in-use box, which draws its limits) says login expired, no bars, Log in…")
+        let panel = DetailsInfo(name: p.name, icon: NSImage(), login: rec?.loginEmail, expected: rec?.expectedEmail, mismatch: false, plan: rec?.plan,
+                                fiveHour: rec?.fiveHour, fiveHourResets: rec?.fiveHourResets, weekly: rec?.weekly, weeklyResets: rec?.weeklyResets,
+                                updated: rec?.updatedAt, source: rec?.source, problem: rec?.problem, renewNote: nil, needsLogin: rec?.needsLogin ?? false)
+        check(panel.weekly == nil && panel.fiveHour == nil && panel.needsLogin, "\(what): the Dock panel has no numbers and Log in…")
+        let target = QuickChatTarget(p), level = QuickChatLevel(Usage.of(rec), now: now)
+        check(target.loginWords == "login expired" && level.week == nil && level.fiveHour == nil && level.full(now) == nil,
+              "\(what): quick chat's line says login expired, no level")
+    }
+    noNumbersAnywhere("the saved record")
+
+    // the agent's reader: the sign-in expired (a fake Keychain answer, never the Keychain), the old status line in the folder
+    usageJSON(updated: weekAgo, week: 90, weekResets: now.addingTimeInterval(-60), fiveResets: weekAgo.addingTimeInterval(3600))
+    Login.runSecurity = { _ in (0, Data(#"{"claudeAiOauth":{"accessToken":"fake-expired-sign-in","expiresAt":1000}}"#.utf8)) }
+    let reader = UsageReader(p, defaults: UserDefaults(suiteName: "cl-audit-surfaces-stale-\(getpid())")!)
+    reader.tick()
+    RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+    check(reader.state == .expired, "the reader sees the sign-in expired")
+    check(reader.usage == nil, "the reader took nothing from the 7-day-old status line nor the old record")
+    noNumbersAnywhere("after the reader's save")
+    // a fresh status line (Claude Code running, writing it now): its numbers show, even with the sign-in expired
+    usageJSON(updated: Date(), week: 53, weekResets: now.addingTimeInterval(3 * 86400), five: 100, fiveResets: now.addingTimeInterval(1800))
+    reader.tick()
+    let live = Store.status(for: p)
+    check(live?.weekly == 53 && live?.fiveHour == 100 && live?.source == "Claude Code status line", "a fresh status line still shows its numbers")
+    check(Usage.of(live)?.weekly == 53 && AccountRow(entry: p, status: live).weekly == 53, "…on the menu bar and the card alike")
+    reader.stop()
+    Login.runSecurity = { _ in (44, Data()) }
+
+    // a limit whose reset has passed never shows its percent, from Anthropic too, whatever the state
+    var a = IconStatus(state: "ok"); a.expectedEmail = "stale-1@example.com"; a.source = "Anthropic"; a.updatedAt = now.addingTimeInterval(-120)
+    a.fiveHour = 100; a.fiveHourResets = now.addingTimeInterval(-30); a.weekly = 53; a.weeklyResets = now.addingTimeInterval(86400)
+    a.scoped = [ScopedLimit(name: "Fable", percent: 77, resets: now.addingTimeInterval(-5))]
+    _ = Store.writeStatus("stale", a)
+    let shown = Store.status(for: p)
+    check(shown?.fiveHour == nil && shown?.fiveHourResets == nil && shown?.weekly == 53 && shown?.scoped?.first?.percent == nil,
+          "Anthropic's numbers: the 5-hour limit past its reset has no percent (no 100% \"in 0 min\"), the week stays, Fable past its reset none")
+    let mbA = MenuBarItems.item(MenuBarItems.Profile(entry: p, usage: Usage.of(shown), view: AccountView.of(shown)), now: now)
+    check(mbA.five == nil && mbA.week == 53 && mbA.countdown == nil, "the menu bar: no 5-hour percent, no countdown")
+    check(AccountRow(entry: p, status: shown).full == nil, "the card: nothing full")
+    var u = Usage(fiveHour: 100, fiveHourResets: now.addingTimeInterval(-30), weekly: 53, weeklyResets: now.addingTimeInterval(86400),
+                  fetchedAt: now, source: "Anthropic")
+    check(u.current(now: now).fiveHour == nil && u.current(now: now).weekly == 53, "a Usage past a reset drops that limit")
+    u.fiveHourResets = now.addingTimeInterval(60)
+    check(u.current(now: now).fiveHour == 100, "…and keeps one whose reset is ahead")
+    var ql = QuickChatLevel(nil); ql.week = 99; ql.weekResets = now.addingTimeInterval(-1)
+    check(ql.shown(now).percent == nil && ql.current(now).week == nil, "quick chat: a kept week past its reset is neither shown nor merged")
+    // an expired sign-in with numbers read a minute ago: still shown (fresh)
+    var e = a; e.state = "expired"; e.fiveHourResets = now.addingTimeInterval(600)
+    check(e.current(now: now).fiveHour == 100 && e.current(now: now).weekly == 53, "expired, numbers a minute old: they show")
+    e.updatedAt = now.addingTimeInterval(-16 * 60)
+    check(e.current(now: now).fiveHour == nil && e.current(now: now).weekly == nil && e.current(now: now).updatedAt != nil,
+          "expired, numbers 16 minutes old: none, when they were read kept")
+    try? Store.save([])
+    Store.removeStatus("stale")
 }
 
 // ============ 5. no screen reads the sign-in files or a seat itself ============

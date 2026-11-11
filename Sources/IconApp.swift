@@ -40,12 +40,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: what the agent saved
 
-    var usage: Usage? {
-        guard let s = status, let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil else { return nil }
-        return Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly, weeklyResets: s.weeklyResets,
-                     fetchedAt: at, source: s.source ?? "Anthropic", scoped: s.scoped ?? [], credits: s.credits,
-                     noFiveHour: s.noFiveHour == true)
-    }
+    var usage: Usage? { Usage.of(status) }
     var loginEmail: String? { status?.loginEmail }
     /// The profile's account as its record says it (AccountResolver): the Dock menu and panel show this.
     var view: AccountView { AccountView.of(status) }
@@ -539,7 +534,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             if claudeOpen { add("Quit Claude window", #selector(quitClaudeWindow)) }
         }
         add("Refresh now", #selector(refreshNow))
-        if expired { add(renewing ? "Renewing login…" : "Renew login now (uses a little usage)", #selector(renewLogin), enabled: !renewing) }
         m.addItem(.separator())
         add("Dashboard", #selector(showDashboard))
         add("Profile settings…", #selector(showSettings))
@@ -561,11 +555,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Asks the agent to open the quick chat on this profile (QuickChat.swift).
     @objc func quickChat() {
         DistributedNotificationCenter.default().postNotificationName(QuickChat.openNote, object: accountID, userInfo: nil,
-                                                                     deliverImmediately: true)
-    }
-    /// Asks the agent to renew this profile's sign-in through Claude Code now.
-    @objc func renewLogin() {
-        DistributedNotificationCenter.default().postNotificationName(Agent.renewNote, object: accountID, userInfo: nil,
                                                                      deliverImmediately: true)
     }
     @objc func showSettings() { Installer.openSettings(account: accountID) }

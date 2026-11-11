@@ -63,7 +63,7 @@ enum AgentFiles {
     private struct Status: Decodable {
         let fiveHour: Double?; let fiveHourResets: Double?; let weekly: Double?; let weeklyResets: Double?
         let updatedAt: Double?; let plan: String?; let scoped: [Scoped]?; let noFiveHour: Bool?
-        let loginEmail: String?; let expectedEmail: String?
+        let loginEmail: String?; let expectedEmail: String?; let state: String?
 
         /// Read for this account: numbers read for another (the one a profile was on before a switch) never show.
         func belongs(to email: String?) -> Bool {
@@ -71,9 +71,17 @@ enum AgentFiles {
             return got == want
         }
     }
-    private struct Scoped: Decodable { let name: String; let percent: Double? }
+    private struct Scoped: Decodable { let name: String; let percent: Double?; let resets: Double? }
 
-    static func load() -> [WidgetProfile] {
+    static func load(now: Date = Date()) -> [WidgetProfile] {
+        // the app's rule (IconStatus.current), kept here because the widget is built on its own: a limit whose reset has
+        // passed shows no percent, and an expired sign-in shows no numbers older than 15 minutes
+        func passed(_ t: Double?) -> Bool { t.map { Date(timeIntervalSince1970: $0) <= now } ?? false }
+        func fresh(_ t: Double?) -> Bool {
+            guard let t else { return false }
+            let age = now.timeIntervalSince(Date(timeIntervalSince1970: t))
+            return age <= 15 * 60 && age >= -60
+        }
         let dec = JSONDecoder()
         guard let data = try? Data(contentsOf: folder.appendingPathComponent("accounts.json")),
               let list = try? dec.decode(Accounts.self, from: data) else {
@@ -84,12 +92,18 @@ enum AgentFiles {
             var p = WidgetProfile(id: e.id, name: e.name, accent: e.accent ?? "orange")
             if let d = try? Data(contentsOf: folder.appendingPathComponent("status/\(e.id).json")),
                let s = try? dec.decode(Status.self, from: d), s.belongs(to: e.seat?.email) {
-                p.five = s.fiveHour; p.week = s.weekly; p.plan = s.plan
-                p.fiveResets = s.fiveHourResets.map { Date(timeIntervalSince1970: $0) }
-                p.weekResets = s.weeklyResets.map { Date(timeIntervalSince1970: $0) }
+                p.plan = s.plan
                 p.updated = s.updatedAt.map { Date(timeIntervalSince1970: $0) }
                 p.noFive = s.noFiveHour ?? false
-                if e.showFable ?? true { p.fable = s.scoped?.first(where: { $0.name == "Fable" })?.percent }
+                if s.state != "expired" || fresh(s.updatedAt) {
+                    if !passed(s.fiveHourResets) {
+                        p.five = s.fiveHour; p.fiveResets = s.fiveHourResets.map { Date(timeIntervalSince1970: $0) }
+                    }
+                    if !passed(s.weeklyResets) {
+                        p.week = s.weekly; p.weekResets = s.weeklyResets.map { Date(timeIntervalSince1970: $0) }
+                    }
+                    if e.showFable ?? true, let f = s.scoped?.first(where: { $0.name == "Fable" }), !passed(f.resets) { p.fable = f.percent }
+                }
             }
             return p
         }

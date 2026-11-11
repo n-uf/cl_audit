@@ -3,7 +3,7 @@
 // Numbers come from Anthropic's usage endpoint, called with the account's existing Claude Code
 // login, read-only from the Keychain. The login is never refreshed, written, logged or sent
 // anywhere else. If the login is expired the icon greys out until Claude Code renews it.
-// The status line file (<config dir>/usage.json) is used as a fallback when the call fails.
+// The status line file (<config dir>/usage.json) is used as a fallback when the call fails, only while it is fresh.
 
 import AppKit
 import CryptoKit
@@ -131,6 +131,44 @@ struct Usage {
     var scoped: [ScopedLimit] = []       // weekly limits of one model (Fable on Max, Ultra, premium seats), beside the two
     var credits: Credits? = nil          // usage credits (Credits.swift)
     var noFiveHour = false               // the plan has no 5-hour limit (Ultra): only the week counts
+
+    /// The numbers a saved record carries (the agent's status/<id>.json), for the screens that draw a Usage: nil when it
+    /// has none. The record is the one answer: the menu bar, the Dock icon and quick chat all take their numbers from it.
+    static func of(_ s: IconStatus?) -> Usage? {
+        guard let s, let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil else { return nil }
+        return Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly, weeklyResets: s.weeklyResets,
+                     fetchedAt: at, source: s.source ?? "Anthropic", scoped: s.scoped ?? [], credits: s.credits,
+                     noFiveHour: s.noFiveHour == true)
+    }
+
+    /// Without the limits whose reset time has passed (their percent and reset both): a percent from before a reset is
+    /// no one's now, so it is never shown as "in 0 min".
+    func current(now: Date = Date()) -> Usage {
+        var u = self
+        if Freshness.passed(u.fiveHourResets, now: now) { u.fiveHour = nil; u.fiveHourResets = nil }
+        if Freshness.passed(u.weeklyResets, now: now) { u.weekly = nil; u.weeklyResets = nil }
+        u.scoped = u.scoped.map { Freshness.passed($0.resets, now: now) ? ScopedLimit(name: $0.name, percent: nil, resets: nil) : $0 }
+        return u
+    }
+}
+
+/// When saved numbers still count. A week-old status line once showed as current while the sign-in had run out
+/// (26.11.15: week 90% "in 0 min", the real week 53%).
+enum Freshness {
+    /// Numbers written longer ago than this are old: a status line file is ignored, and an expired sign-in shows none.
+    static let window: TimeInterval = 15 * 60
+    /// A clock a little ahead of this Mac's.
+    static let skew: TimeInterval = 60
+
+    /// Written in the last 15 minutes (not in the future beyond a minute).
+    static func isFresh(_ at: Date?, now: Date = Date()) -> Bool {
+        guard let at else { return false }
+        let age = now.timeIntervalSince(at)
+        return age <= window && age >= -skew
+    }
+
+    /// A limit's reset time that has passed.
+    static func passed(_ resets: Date?, now: Date = Date()) -> Bool { resets.map { $0 <= now } ?? false }
 }
 
 /// A weekly limit of its own for one model: "Fable" may use up to a share of the week. Full, it holds back only that
@@ -159,7 +197,7 @@ enum FetchState: Equatable {
         switch self {
         case .idle, .ok: return nil
         case .noLogin: return "No Claude Code sign-in for this profile"
-        case .expired: return "Login expired: use Claude Code once to renew it"
+        case .expired: return "Login expired: Log in…, or use Claude Code once to renew it"
         case .denied: return Self.deniedWords
         case .unreadable: return Self.unreadableWords
         case .rateLimited: return "Usage service busy, retrying later"
@@ -327,14 +365,17 @@ enum UsageParser {
     }
 
     /// The file the status line script writes: {five_hour:{used_percentage,resets_at}, seven_day:{…}, updated_at}.
-    static func fromStatusLine(_ account: Account) -> Usage? {
+    /// Used only while it is fresh: written in the last 15 minutes (Freshness) and none of its limits' reset times passed.
+    /// Otherwise it is ignored as if it weren't there (Claude Code writes it only while it runs, so an old one is old numbers).
+    static func fromStatusLine(_ account: Account, now: Date = Date()) -> Usage? {
         let url = URL(fileURLWithPath: account.configDir).appendingPathComponent("usage.json")
         guard let data = try? Data(contentsOf: url),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let updated = date(j["updated_at"]) else { return nil }
+              let updated = date(j["updated_at"]), Freshness.isFresh(updated, now: now) else { return nil }
         var u = Usage(fetchedAt: updated, source: "Claude Code status line")
         if let w = j["five_hour"] as? [String: Any] { u.fiveHour = percent(w); u.fiveHourResets = date(w["resets_at"]) }
         if let w = j["seven_day"] as? [String: Any] { u.weekly = percent(w); u.weeklyResets = date(w["resets_at"]) }
+        guard !Freshness.passed(u.fiveHourResets, now: now), !Freshness.passed(u.weeklyResets, now: now) else { return nil }
         return (u.fiveHour == nil && u.weekly == nil) ? nil : u
     }
 }

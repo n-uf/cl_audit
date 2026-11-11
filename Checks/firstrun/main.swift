@@ -201,7 +201,7 @@ do {
     _ = ProfileDragPlan(count: 1, dragged: 0, offset: .zero, arrange: { $0.map { _ in .zero } })
     check(DockManager.plan([], accounts: [], prefs: DockPrefs.shared).count >= 0, "Dock plan for no profiles runs")
     check(!DockManager.planPins([], want: [:]).changed, "Dock pin plan for no profiles")
-    _ = MenuBarItems(profiles: { [] }, refresh: { _ in }, renew: { _ in }).update()
+    _ = MenuBarItems(profiles: { [] }, refresh: { _ in }).update()
     check(SettingsModel.merge(base: [], local: [], remote: []).isEmpty, "merge of nothing")
     check(Store.loadChecked() == nil && Store.load().isEmpty, "no accounts file: empty, not 'main'")
     m.startNew()                                   // New profile with zero profiles (no template to copy)

@@ -274,6 +274,35 @@ struct IconStatus: Codable {
         s.scoped = nil; s.credits = nil; s.plan = nil; s.updatedAt = nil
         return s
     }
+
+    /// The sign-in needs the person: another account than the folder names, run out, or none. Every surface then shows
+    /// one key, Log in… (the card's needsLogin, the Dock menu's and the menu bar's).
+    var needsLogin: Bool {
+        let mismatch = loginEmail.flatMap { a in expectedEmail.map { a.lowercased() != $0.lowercased() } } ?? false
+        return mismatch || state == "expired" || state == "noLogin"
+    }
+
+    /// The card's words for it, which quick chat's line says too: "login expired", or nil when the sign-in is fine.
+    var loginWords: String? {
+        guard needsLogin else { return nil }
+        return state == "expired" ? "login expired" : state == "noLogin" ? "no Claude Code login" : "login is a different account"
+    }
+
+    /// What may be shown of the record now, the same rule wherever saved numbers are written, read or merged:
+    /// - a limit whose reset time has passed has no percent and no reset (never a number "in 0 min");
+    /// - an expired sign-in shows numbers only while they're fresh (read in the last 15 minutes): no bars, never old numbers.
+    /// When they were read (`updatedAt`) stays, for "last read" lines.
+    func current(now: Date = Date()) -> IconStatus {
+        var s = self
+        if Freshness.passed(s.fiveHourResets, now: now) { s.fiveHour = nil; s.fiveHourResets = nil }
+        if Freshness.passed(s.weeklyResets, now: now) { s.weekly = nil; s.weeklyResets = nil }
+        s.scoped = s.scoped.map { $0.map { Freshness.passed($0.resets, now: now) ? ScopedLimit(name: $0.name, percent: nil, resets: nil) : $0 } }
+        if s.state == "expired", !Freshness.isFresh(s.updatedAt, now: now) {
+            s.fiveHour = nil; s.weekly = nil; s.fiveHourResets = nil; s.weeklyResets = nil
+            s.scoped = nil; s.credits = nil
+        }
+        return s
+    }
 }
 
 // MARK: - Renewing an expired login through Claude Code
@@ -297,6 +326,16 @@ enum ClaudeCLI {
             try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
         } catch { return false }
         return openTerminal(file)
+    }
+
+    /// Log in… in the agent's surfaces (the menu bar, quick chat): Claude Code's own sign-in in Terminal for the folder the
+    /// profile's numbers are read from (the account's own once it has one), with the record's address filled in.
+    static func logIn(profile e: AccountEntry) {
+        let reading = Account(e.readingEntry()), email = Store.status(e.id)?.expectedEmail
+        DispatchQueue.global(qos: .userInitiated).async {           // the look for claude can take a few seconds
+            guard let claude = find() else { DispatchQueue.main.async { ClaudeInstall.showAlert() }; return }
+            openLogin(claude, account: reading, email: email)
+        }
     }
 
     /// The Terminal script of a login, line by line. The default folder (~/.claude) is signed in with CLAUDE_CONFIG_DIR
@@ -433,10 +472,11 @@ enum Store {
         }
     }
 
+    /// A profile's (or a standby account's) record, as it may be shown now (IconStatus.current): every screen reads it here.
     static func status(_ id: String) -> IconStatus? {
         guard let data = try? Data(contentsOf: statusFolder.appendingPathComponent("\(id).json")) else { return nil }
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .secondsSince1970
-        return try? dec.decode(IconStatus.self, from: data)
+        return (try? dec.decode(IconStatus.self, from: data))?.current()
     }
 
     /// The profile's record as the agent wrote it: its numbers carry the account they were read for (resolved.numbersFor),
