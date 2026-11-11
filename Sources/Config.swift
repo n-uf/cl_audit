@@ -289,6 +289,8 @@ enum ClaudeCLI {
     /// is set up for filled in. The person signs in in the browser; nothing here sees the password.
     @discardableResult
     static func openLogin(_ claude: String, account: Account, email: String?) -> Bool {
+        // a sign-in the person started: a new folder is made for it, but never through a link
+        guard mayLaunch("login", account.configDir, creating: true) else { return false }
         let file = loginScript(account.configDir)
         do {
             try (loginLines(claude, account: account, email: email).joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
@@ -312,6 +314,36 @@ enum ClaudeCLI {
         return lines
     }
 
+    // MARK: the folder guard
+
+    /// Never a `claude` (or the Claude app with CLAUDE_CONFIG_DIR) for a folder that isn't there: Claude Code would make
+    /// it again, signed in, and a folder the person deleted would come back (2026-11-10: a deleted kept folder's sign-in
+    /// was renewed after the folder was gone). Every launcher asks this right before it starts anything: Renew sign-in,
+    /// logout, quick chat, Terminal, the Claude window, a sign-in. The default folder (~/.claude, used with
+    /// CLAUDE_CONFIG_DIR unset) is always allowed. `creating`: a sign-in the person started for a new folder, which makes
+    /// it (owner only) first; never through a link.
+    static func folderReady(_ configDir: String, creating: Bool = false) -> Bool {
+        if Account.isDefault(configDir: configDir) { return true }
+        let p = expand(configDir)
+        var st = stat()
+        if lstat(p, &st) == 0 { return (st.st_mode & S_IFMT) == S_IFDIR }
+        guard creating else { return false }
+        return (try? FileManager.default.createDirectory(atPath: p, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])) != nil
+    }
+
+    /// The check's seam: told of every launch the guard lets through ("renew", "logout", "login", …, and the folder).
+    nonisolated(unsafe) static var launchSeam: ((_ what: String, _ configDir: String) -> Bool)?
+
+    /// The guard, then the seam: true when the launch may go on (a check's seam answers false: nothing starts).
+    static func mayLaunch(_ what: String, _ configDir: String, creating: Bool = false) -> Bool {
+        guard folderReady(configDir, creating: creating) else {
+            agentLog.log("not starting \(what, privacy: .public): its Claude Code folder isn't there")
+            return false
+        }
+        if let seam = launchSeam { return seam(what, configDir) }
+        return true
+    }
+
     /// The check's seam: opens a login script in Terminal (a check records the script and never opens one).
     nonisolated(unsafe) static var openTerminal: (URL) -> Bool = { Installer.run("/usr/bin/open", ["-a", "Terminal", $0.path]) == 0 }
 
@@ -323,6 +355,7 @@ enum ClaudeCLI {
     @discardableResult
     static func logout(_ claude: String, configDir: String) -> Bool {
         if let seam = logoutSeam { return seam(claude, configDir) }
+        guard mayLaunch("logout", configDir) else { return false }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: claude)
         p.arguments = ["auth", "logout"]
@@ -350,6 +383,7 @@ enum ClaudeCLI {
 
     /// Runs `claude -p` for the account's settings folder (Haiku, nothing saved). Blocks; call off the main thread.
     static func renew(_ claude: String, account: Account) -> Bool {
+        guard mayLaunch("renew", account.configDir) else { return false }
         let p = Process()
         p.executableURL = URL(fileURLWithPath: claude)
         p.arguments = ["-p", "Reply with OK.", "--model", "haiku", "--no-session-persistence"]
@@ -440,6 +474,8 @@ enum Store {
     static func status(for e: AccountEntry) -> IconStatus? { status(e.id) }
 
     /// A standby account's saved numbers, only if they're that account's.
+    /// Its numbers are dropped (the state and when they were read stay) while its kept sign-in has run out or its kept
+    /// folder is gone: they'd be old numbers shown as current, on every screen that shows a standby account.
     static func status(for e: AccountEntry, standby s: StandbyAccount) -> IconStatus? {
         guard var st = status(AccountEntry.standbyStatusID(e.id, s.id))?.only(for: s.seat?.email ?? s.email) else { return nil }
         let gone = s.configDir.map { !FileManager.default.fileExists(atPath: expand($0)) } ?? true
@@ -480,8 +516,6 @@ struct FolderChoice: Hashable {
     var path: String       // as stored, with ~
     var detail: String?    // e.g. the account e-mail
     var title: String { detail.map { "\(path)  ·  \(Privacy.masked($0))" } ?? path }
-    /// Its numbers are dropped (the state and when they were read stay) while its kept sign-in has run out or its kept
-    /// folder is gone: they'd be old numbers shown as current, on every screen that shows a standby account.
 }
 
 enum Detect {

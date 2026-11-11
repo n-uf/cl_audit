@@ -186,6 +186,10 @@ final class QuickChatProcess {
 
     func start(environment base: [String: String] = ProcessInfo.processInfo.environment) throws {
         signal(SIGPIPE, SIG_IGN)
+        // the profile's Claude Code folder gone: no claude for it (it would make the folder again)
+        guard ClaudeCLI.mayLaunch("quick chat", command.isDefaultDir ? "~/.claude" : command.configDir) else {
+            throw CocoaError(.fileNoSuchFile)
+        }
         try FileManager.default.createDirectory(atPath: command.workFolder, withIntermediateDirectories: true)
         process.executableURL = URL(fileURLWithPath: command.claude)
         process.arguments = command.arguments

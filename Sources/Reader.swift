@@ -425,6 +425,11 @@ final class UsageReader {
     /// Claude Code and running it happen off the main thread.
     func renewLogin() {
         guard !renewing, !stopped else { return }
+        // its folder isn't there (deleted, or a link): never renewed, nothing started (Claude Code would make it again)
+        guard ClaudeCLI.folderReady(account.configDir) else {
+            renewNote = "Not renewed: its Claude Code folder isn't there"
+            save(); return
+        }
         // asked for too (Renew login now in the menus): never in a folder signed in to another account, whose sign-in
         // would be renewed in this profile's name; that one shows Use this account or log back in instead
         guard Self.renewsInItsFolder(entry.seat, account.configDir) else {
