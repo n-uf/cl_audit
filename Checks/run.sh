@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
 # The one entry point for cl_audit's check suites.
 #
-#   Checks/run.sh [signin|backup|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
+#   Checks/run.sh [signin|backup|surfaces|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
 #
 #   signin    the model, rules and page logic checks (sign-in, switch, backups, export and import, crimson faces ...)
+#   surfaces  the one account answer (AccountResolver) and every screen reading it alike; the Claude app's account from its log;
+#             no screen reading the sign-in files itself
 #   backup    the Sessions backup, restore, export and import checks (hostile zips, an encrypted image, a second volume)
 #   firstrun  the first-run page and the Claude lookup
 #   retention which transcripts Claude Code's clean-up deletes (window sessions, release markers, managed settings), Restore/Import's Would be deleted
@@ -22,7 +24,7 @@
 #   render  pictures of the pages (switch, backups, restore, export, import, setup row, first run) into Checks/.work/render
 #   quick-chat  the quick chat's own checks (Checks/quick-chat/run.sh, run here under the build lock)
 #   scan      the app's own SecretScan over every file in Checks/ (zero hits expected)
-#   all       signin, backup, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
+#   all       signin, backup, surfaces, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
 #
 #   --volume    backup: mount a small HFS+ disk image and run the cross-volume checks on it (it is unmounted again)
 #   --no-build  run the binaries built by the last run
@@ -46,15 +48,15 @@ LOCK=/private/tmp/cl_audit-build.lock
 suites=(); volume=0; build=1
 for a in "$@"; do
   case "$a" in
-    signin|backup|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
-    all) suites+=(signin backup firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
+    signin|backup|surfaces|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
+    all) suites+=(signin backup surfaces firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
     --volume) volume=1 ;;
     --no-build) build=0 ;;
-    -h|--help) sed -n '2,34p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,36p' "$0"; exit 0 ;;
     *) echo "unknown argument: $a" >&2; exit 64 ;;
   esac
 done
-[[ ${#suites[@]} -gt 0 ]] || suites=(signin backup firstrun retention setup window move render quick-chat scan)
+[[ ${#suites[@]} -gt 0 ]] || suites=(signin backup surfaces firstrun retention setup window move render quick-chat scan)
 
 # the app's sources without its own main.swift, plus the widget views the app compiles in
 srcs=()
@@ -93,8 +95,8 @@ fresh_home() {
 
 # The checks' preference suites land in the real ~/Library/Preferences whatever CFFIXED_USER_HOME says (cfprefsd writes them,
 # sometimes a moment after the run ends). Only these names are ever removed, and only when no run of ours is alive:
-#  - cl-audit-{signin,hide,switch,plan}-test-<pid>.plist, when that pid is dead (the suites' own domains, pid in the name);
-#  - <binary name>.plist for the binaries this script builds (cl_audit-checks-signin, -backup, -firstrun, -retention, -setup, -window, -move, -resume, -sidefiles, -render-pages,
+#  - cl-audit-{signin,hide,switch,plan,surfaces}-test-<pid>.plist, when that pid is dead (the suites' own domains, pid in the name);
+#  - <binary name>.plist for the binaries this script builds (cl_audit-checks-signin, -backup, -surfaces, -firstrun, -retention, -setup, -window, -move, -resume, -sidefiles, -render-pages,
 #    -render-firstrun, -scan): a process's name is its preference domain, and these names belong to no other program;
 #  - cl_audit-backwatch-test.plist and cl_audit-reader-switch-test.plist (named by the suites' own code, no pid), only when
 #    they were not there before this run.
@@ -108,7 +110,7 @@ clean_prefs() {   # clean_prefs BIN
   sleep 2
   local f p n had b alive=0
   pgrep -f "$WORK/[^ ]*/cl_audit-checks-" >/dev/null 2>&1 && alive=1
-  for f in "$HOME"/Library/Preferences/cl-audit-{signin,hide,switch,plan}-test-*.plist; do
+  for f in "$HOME"/Library/Preferences/cl-audit-{signin,hide,switch,plan,surfaces}-test-*.plist; do
     [[ -e "$f" ]] || continue
     p="${f##*-}"; p="${p%.plist}"
     [[ "$p" =~ ^[0-9]+$ ]] || continue
@@ -161,6 +163,12 @@ run_backup() {
     run_binary "$dir" "$dir/cl_audit-checks-backup" || status=$?
   fi
   return $status
+}
+
+run_surfaces() {
+  local dir="$WORK/surfaces"; mkdir -p "$dir"
+  compile "$dir/cl_audit-checks-surfaces" "$HERE/surfaces/main.swift" || return 1
+  run_binary "$dir" "$dir/cl_audit-checks-surfaces"
 }
 
 run_firstrun() {
