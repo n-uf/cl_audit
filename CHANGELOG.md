@@ -34,7 +34,8 @@ the notes before updating.
   session folders, Claude Code's records and their backups, and the transcripts. Each one no profile has goes on standby
   by itself, named "address · organisation" or, until it is seen signed in, "account" and its first 8 characters.
   **Forget…** takes one off for good. **Sign in with another account…** runs Claude Code's sign-in with no address for a
-  brand-new one. **Sign in again…** on the account in use is watched like a switch.
+  brand-new one. **Log in…** on the account in use (its box's key and its pop-up's item, the one key for a lost,
+  expired or signed-out sign-in) is watched like a switch.
 - **A full limit offers the standby account least used** by the week it left with, not known to be full (its week as last
   read when it left is kept for this and never shown), then the one most recently in use.
 - **Gone with the standby accounts' numbers:** their kept sign-ins and the renewal of them, "the other account is back"

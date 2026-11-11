@@ -1646,7 +1646,7 @@ struct AccountSettings: View {
         }
     }
 
-    /// A sign-in again on the account in use (its pop-up's Sign in again…): the same watch a switch has (SwitchRunner),
+    /// Log in… on the account in use (its box's key, its pop-up's item): the same watch a switch has (SwitchRunner),
     /// said here while it runs and when it ended.
     @ViewBuilder var signInAgainLine: some View {
         let r = model.runner(of: entry.id)
@@ -1654,11 +1654,11 @@ struct AccountSettings: View {
             switch r.phase {
             case .waiting:
                 HStack(spacing: 8) {
-                    BoxNote(text: "Signing in again: finish it in Terminal and the browser.", tone: .caution).lineLimit(1)
+                    BoxNote(text: "Logging in: finish it in Terminal and the browser.", tone: .caution).lineLimit(1)
                     Spacer(minLength: 6)
                     Button("Cancel") { r.cancel() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 }
-            case .reached: BoxNote(text: "Signed in again.", size: 10.5)
+            case .reached: BoxNote(text: "Logged in.", size: 10.5)
             case .timedOut: BoxNote(text: "No sign-in came in 10 minutes; nothing changed.", tone: .caution)
             case .other(let e): BoxNote(text: "Signed in as \(Privacy.masked(e)): that's the account in use now.", tone: .caution)
             case .failed(let why): BoxNote(text: why, tone: .danger)
@@ -1806,10 +1806,11 @@ struct AccountSettings: View {
         return "Signed in, but the sign-in isn't in a form cl_audit knows (Claude Code \(v)): Refresh now, or sign in again from Terminal."
     }
 
-    /// "Sign in again…": Claude Code's own sign-in in Terminal on the profile's folder, with the account in use's address
-    /// filled in, watched like a switch (SwitchRunner.signInAgain); with no account known, a plain sign-in.
+    /// "Log in…" (the one key for a lost, expired or signed-out sign-in, as everywhere): Claude Code's own sign-in in
+    /// Terminal on the profile's folder, with the account in use's address filled in, watched like a switch
+    /// (SwitchRunner.signInAgain); with no account known, a plain sign-in.
     func logInKey(email: String?) -> some View {
-        Button("Sign in again…") { signInAgain(email: email) }
+        Button("Log in…") { signInAgain(email: email) }
             .buttonStyle(.pill(.red, compact: true))
     }
 
@@ -1949,7 +1950,7 @@ struct AccountSettings: View {
         // without Claude Code the items that need it are greyed; this one, right above them, says why
         if !canSignIn { items.append(LoginItem(id: "install", title: ClaudeInstall.missingInstall) { model.showInstallHelp() }) }
         if move == nil {
-            items.append(LoginItem(id: "again", title: "Sign in again…", enabled: canSignIn) { signInAgain(email: linked ?? here) })
+            items.append(LoginItem(id: "again", title: "Log in…", enabled: canSignIn) { signInAgain(email: linked ?? here) })
         }
         items.append(LoginItem(id: "renew", title: "Renew sign-in by itself", enabled: canSignIn, kind: .toggle(entry.autoRenew)) {
             entry.autoRenew.toggle()

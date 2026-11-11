@@ -480,8 +480,9 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     Code's account can be shown (the Claude app signed out or unreadable), and an account in use is never listed on
     standby at the same time. Its address is a pop-up: it ticks the account Claude Code in the folder is signed in to
     (red with a warning sign inside when it is another profile's account; a clock when the sign-in ran out; a
-    long address is cut at its end), then **Sign in again…** (Claude Code's sign-in in Terminal with its address
-    filled in, watched like a switch: "Signing in" until Claude Code's login ends well) and **Renew sign-in by
+    long address is cut at its end), then **Log in…** (Claude Code's sign-in in Terminal with its address
+    filled in, watched like a switch: "Logging in" until Claude Code's login ends well; the same key under the box when
+    the sign-in ran out or the folder is signed out) and **Renew sign-in by
     itself** (opt-in, see the (i)). Whatever account signs in to the folder, from cl_audit or Terminal, is the one in
     use, by itself: the one before joins standby. If another profile works on that account, the line under Accounts
     names it, with **Open** it instead: one profile per account, and the profile's numbers wait until its folder is on
