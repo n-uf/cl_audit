@@ -685,15 +685,41 @@ do {
     Store.version = "o1"
     Store.update("td") { $0.name = "Td2" }
     check(copies().count == 2, "an ordinary save makes no copy")
-    // a link where the copy would go: refused, never written through
-    let lPre = Store.folder.appendingPathComponent("accounts.json.pre-l1").path
-    try? fm.createSymbolicLink(atPath: lPre, withDestinationPath: home + "/elsewhere-pre")
+    // a link where the copy would go: never written through, the edit goes ahead, the copy is kept under the next name
+    func pre(_ n: String) -> String { Store.folder.appendingPathComponent(n).path }
+    try? fm.createSymbolicLink(atPath: pre("accounts.json.pre-l1"), withDestinationPath: home + "/elsewhere-pre")
     try! legacy.write(to: Store.configURL)
     Store.version = "l1"
     Store.update("mg") { $0.name = "Mg4" }
-    check(!fm.fileExists(atPath: home + "/elsewhere-pre") && fm.contents(atPath: Store.configURL.path) == legacy,
-          "a link as the copy's name: nothing written through it, and the file isn't rewritten")
-    try? fm.removeItem(atPath: lPre)
+    check(!fm.fileExists(atPath: home + "/elsewhere-pre") && Store.loadRaw()?.first?.name == "Mg4"
+          && fm.contents(atPath: pre("accounts.json.pre-l1-2")) == legacy && fmode(pre("accounts.json.pre-l1-2")) == 0o600
+          && Store.loadRaw()?.first?.accountNote == nil,
+          "a link at the copy's name: nothing written through it, the edit goes ahead, the copy kept as …-2, no line")
+    // a cut-off copy from before (interrupted): never counted as done; the copy is made again under the next name
+    try! legacy.write(to: Store.configURL)
+    Store.version = "c1"
+    fm.createFile(atPath: pre("accounts.json.pre-c1"), contents: legacy.prefix(10), attributes: [.posixPermissions: 0o600])
+    Store.update("mg") { $0.name = "Mg5" }
+    check(fm.contents(atPath: pre("accounts.json.pre-c1")) == legacy.prefix(10) && fm.contents(atPath: pre("accounts.json.pre-c1-2")) == legacy,
+          "a cut-off copy is left as it is and the copy made again as …-2")
+    // a complete copy from before: nothing new
+    try! legacy.write(to: Store.configURL)
+    let beforeC = copies()
+    Store.update("mg") { $0.name = "Mg6" }
+    check(copies() == beforeC, "a complete copy for this version: nothing new is made")
+    // neither name usable: the edit still goes ahead, and the Accounts card says the copy couldn't be kept
+    try! legacy.write(to: Store.configURL)
+    Store.version = "f1"
+    // every name it may use is taken by a link (none is ever written through)
+    let fNames = ["accounts.json.pre-f1"] + (2...20).map { "accounts.json.pre-f1-\($0)" }
+    for n in fNames { try? fm.createSymbolicLink(atPath: pre(n), withDestinationPath: home + "/elsewhere-pre") }
+    Store.update("mg") { $0.name = "Mg7" }
+    let noted = Store.loadRaw()?.first
+    check(noted?.name == "Mg7", "the edit went ahead all the same")
+    check(!fm.fileExists(atPath: home + "/elsewhere-pre"), "never through the link")
+    check(noted?.accountNote?.kind == .noCopy && noted?.accountNote?.words.contains("couldn't be kept") == true,
+          "no copy could be kept: the line on the Accounts card says so: \(noted?.accountNote?.words ?? "-") (\(noted?.name ?? "-"))")
+    for n in fNames { try? fm.removeItem(atPath: pre(n)) }
     Store.version = "dev"
     copies().forEach { try? fm.removeItem(at: Store.folder.appendingPathComponent($0)) }
 }
