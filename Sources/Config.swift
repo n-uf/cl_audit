@@ -526,21 +526,41 @@ enum Store {
     }
 
     /// Before the profiles file is rewritten in a new shape (the one-time migration of old fields, the standby tidy-up):
-    /// the file as it was, copied once per version to accounts.json.pre-<version> beside it, owner only, never over an
-    /// existing copy and never through a link (one there refuses the write). Under the profiles file's lock.
-    static func preCopy(_ old: Data) throws {
-        let name = "accounts.json.pre-\(version.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" })"
-        let path = folder.appendingPathComponent(name).path
-        var st = stat()
-        if lstat(path, &st) == 0 {
-            if (st.st_mode & S_IFMT) == S_IFLNK { throw CocoaError(.fileWriteNoPermission) }   // never through a link
-            return                                                                              // once per version
+    /// the file as it was, kept as accounts.json.pre-<version> beside it, owner only, once per version. A copy counts as
+    /// done only when it's a plain file of the source's size. The name taken by anything else (a link, a cut-off copy,
+    /// another file) is never touched: the copy goes under the next name (…-2, …-3), and a failed write is tried once more
+    /// there. True when a complete copy is kept. Never blocks the write it comes before. Under the profiles file's lock.
+    @discardableResult
+    static func preCopy(_ old: Data) -> Bool {
+        let base = "accounts.json.pre-\(version.filter { $0.isLetter || $0.isNumber || $0 == "." || $0 == "-" })"
+        var tries = 0
+        for i in 1...20 {
+            let path = folder.appendingPathComponent(i == 1 ? base : "\(base)-\(i)").path
+            var st = stat()
+            if lstat(path, &st) == 0 {
+                if (st.st_mode & S_IFMT) == S_IFREG, Int(st.st_size) == old.count { return true }     // kept already
+                continue                                                                              // a link or a cut-off copy: left as it is
+            }
+            tries += 1
+            if writeCopy(old, to: path) { return true }
+            if tries >= 2 { return false }
         }
-        let fd = Darwin.open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-        guard fd >= 0 else { throw CocoaError(.fileWriteNoPermission) }
-        defer { Darwin.close(fd) }
-        let n = old.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
-        guard n == old.count else { throw CocoaError(.fileWriteUnknown) }
+        return false
+    }
+
+    /// The copy written to a private temporary name in the same folder (never through a link, owner only), flushed to disk,
+    /// then put in place only if `path` still doesn't exist (link: never over anything), and checked by its size.
+    private static func writeCopy(_ data: Data, to path: String) -> Bool {
+        let tmp = folder.appendingPathComponent(".accounts.json.pre-\(UUID().uuidString).tmp").path
+        let fd = Darwin.open(tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        guard fd >= 0 else { return false }
+        defer { unlink(tmp) }
+        let n = data.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
+        let synced = fsync(fd) == 0
+        Darwin.close(fd)
+        guard n == data.count, synced, link(tmp, path) == 0 else { return false }
+        var st = stat()
+        return lstat(path, &st) == 0 && (st.st_mode & S_IFMT) == S_IFREG && Int(st.st_size) == data.count
     }
 
     /// The one way the profiles file is written: under a lock shared by every cl_audit process, the file read fresh,
@@ -558,10 +578,13 @@ enum Store {
         guard let before = exists ? loadRaw() : [] else { throw CocoaError(.fileReadCorruptFile) }
         // the standby lists tidied before any change (one entry per account)
         let tidy = StandbyTidy.apply(before, recordOrgs: { AccountList.recordOrgs(before) })
-        let after = change(tidy.accounts)
+        var after = change(tidy.accounts)
         guard after != before || !exists else { return after }
-        // a new shape (the old fields go, or the lists were tidied): the file as it was, copied first
-        if exists, let old = try? Data(contentsOf: configURL), tidy.changed || oldShape(old) { try preCopy(old) }
+        // a new shape (the old fields go, or the lists were tidied): the file as it was, copied first. A copy that can't be
+        // kept never stops the write: each Accounts card then says so, once
+        if exists, let old = try? Data(contentsOf: configURL), tidy.changed || oldShape(old), !preCopy(old) {
+            for i in after.indices { after[i].accountNote = AccountNote(kind: .noCopy, email: "", profile: after[i].name, at: Date()) }
+        }
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
         try enc.encode(ConfigFile(accounts: after)).write(to: configURL, options: .atomic)

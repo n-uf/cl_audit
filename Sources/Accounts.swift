@@ -122,7 +122,9 @@ struct AccountNote: Codable, Equatable, Hashable {
     /// standby was another profile's account in use until now, and stands by there (one account, one standby list).
     /// tidied: the standby list held more than one entry for an account (one per organisation), or another profile's
     /// account in use; it was tidied to one entry per account (StandbyTidy), said once.
-    enum Kind: String, Codable { case came, left, standsBy, tidied }
+    /// noCopy: the profiles file was rewritten in a new shape, but its copy as it was (accounts.json.pre-<version>) couldn't
+    /// be kept (the write went ahead all the same).
+    enum Kind: String, Codable { case came, left, standsBy, tidied, noCopy }
     var kind: Kind
     var email: String              // the account; shown masked as Settings ▸ General ▸ Emails says
     var profile: String            // the other profile's name
@@ -137,6 +139,7 @@ struct AccountNote: Codable, Equatable, Hashable {
         case .left: return "\(a) left for \(profile): it signed in to \(profile)'s folder, so it's \(profile)'s account now."
         case .standsBy: return "\(a) stands by on \(profile) now: it was \(profile)'s account in use, and an account stands by on one profile only."
         case .tidied: return "Standby list tidied: one entry per account."
+        case .noCopy: return "The profiles file was updated, but its copy as it was before (accounts.json.pre-…) couldn't be kept."
         }
     }
 }
