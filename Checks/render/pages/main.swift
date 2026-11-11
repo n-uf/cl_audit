@@ -77,6 +77,7 @@ func fixPatch(_ m: SessionsBackup.Manifest, seconds: Double) {   // made-up dura
     if ProcessInfo.processInfo.environment["E2_ONLY"] != nil, !name.hasPrefix("8") { return }      // stage E2 (the setup row) renders only
     if ProcessInfo.processInfo.environment["E2B_ONLY"] != nil, !name.hasPrefix("9") { return }     // stage E2b (MCP settings, scheduled tasks) renders only
     if ProcessInfo.processInfo.environment["E2C_ONLY"] != nil, !name.hasPrefix("m") { return }     // stage E2c (a move to another Mac) renders only
+    if ProcessInfo.processInfo.environment["A_ONLY"] != nil, !["a1-", "a3-", "a4-"].contains(where: name.hasPrefix) { return }   // release A's a1, a3, a4 only
     _ = NSApplication.shared
     let host = NSHostingView(rootView: v)
     host.frame = NSRect(x: 0, y: 0, width: w, height: h)
