@@ -357,7 +357,9 @@ struct SwitchPage: View {
         SCard(title: "What changed", info: changesInfo) {
             if runner.canUndo {
                 SRow(label: "Sessions", first: true, stacked: true) {
-                    value("\(sessionWords(plan).prefix(1).uppercased() + sessionWords(plan).dropFirst()) moved to \(to); Claude Code on \(entry.configDir) is still on \(from). Try again, or Undo the move to put them back.")
+                    // what the receipt really has moved now (the same numbers as the tile), not the whole plan
+                    let w = runner.receipt.map(SwitchRunner.movedWords) ?? ""
+                    value((w.isEmpty ? "Part of the move" : w.prefix(1).uppercased() + w.dropFirst()) + " moved to \(to); Claude Code on \(entry.configDir) is still on \(from). Try again, or Undo the move to put them back.")
                 }
             } else {
                 SRow(label: "Nothing", first: true, stacked: true) {
