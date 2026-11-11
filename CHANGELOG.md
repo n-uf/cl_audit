@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.18 — 2026-11-11
+
 - **One standby entry per account.** The Claude window can keep one account's sessions under several organisations
   (folders left by earlier moves), and each became its own standby entry: one account showed up to four times, and
   another profile's account in use could show too. Now each account is listed once, with the organisation its own sign-in
