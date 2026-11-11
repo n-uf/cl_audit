@@ -185,28 +185,52 @@ enum AccountList {
 
     /// The profiles with every account found for them that no profile has yet, on standby (never one forgotten there).
     /// The address, plan and when it was last used come with it where known. Nothing else changes.
+    ///
+    /// One entry per account (its id), never one per account/organisation pair: the window's session folders can hold
+    /// one account under several organisations (folders a move left behind, not memberships). Its organisation is the one
+    /// its own oauthAccount record names (any .claude.json or backup read), else that of its newest-used
+    /// claude-code-sessions/<account>/<org> folder; other pairs of it are ignored. An account any profile has, in use or
+    /// on standby, in any organisation, is never added (one account, one profile); nor one forgotten here.
     static func adding(_ found: Found, to accounts: [AccountEntry], now: Date = Date()) -> [AccountEntry] {
         var out = accounts
-        func taken(_ s: Seat) -> Bool { out.contains { $0.has(s) } }
+        func taken(_ account: String) -> Bool { out.contains { $0.seats.contains { $0.account.lowercased() == account } } }
+        // the organisation each account's own record names
+        var recordOrg: [String: String] = [:]
+        for p in found.logins.pairs where recordOrg[p.account] == nil { recordOrg[p.account] = p.organization }
         for i in out.indices {
             let e = out[i]
-            var candidates: [(SeatID, Date?)] = (found.window[e.id] ?? [:]).sorted { $0.value > $1.value }
-                .map { ($0.key, $0.value == .distantPast ? nil : $0.value) }
-            candidates += (found.folder[e.id] ?? []).map { ($0, nil) }
-            // a transcript's account id with no organisation seen anywhere: by its id alone
-            let known = Set(candidates.map(\.0.account) + found.logins.pairs.map(\.account))
-            candidates += (found.transcripts[e.id] ?? []).subtracting(known).sorted().map { (SeatID(account: $0, organization: ""), nil) }
-            for (s, used) in candidates {
-                let email = found.logins.emails[s.account]
-                let seat = Seat(account: s.account, organization: s.organization.isEmpty ? nil : s.organization, email: email)
-                guard !taken(seat), !out[i].forgotten.contains(key(s)) else { continue }
-                // an account id alone is taken by a profile that has that account in any organisation
-                if s.organization.isEmpty, out.contains(where: { $0.seats.contains { $0.account.lowercased() == s.account } }) { continue }
-                // last in use: when this profile's window last wrote a session under it
-                out[i].standby.append(StandbyAccount(email: email ?? "", seat: seat, addedAt: now, plan: found.logins.plans[s.account],
+            let window = found.window[e.id] ?? [:]
+            for p in found.folder[e.id] ?? [] where recordOrg[p.account] == nil { recordOrg[p.account] = p.organization }
+            // the accounts, newest-used window ones first, then the folder's, then a transcript's id alone
+            var order: [String] = []
+            func add(_ a: String) { if !order.contains(a) { order.append(a) } }
+            window.sorted { $0.value > $1.value }.forEach { add($0.key.account) }
+            (found.folder[e.id] ?? []).forEach { add($0.account) }
+            (found.transcripts[e.id] ?? []).sorted().forEach { add($0) }
+            for a in order {
+                guard !taken(a), !out[i].forgotten.contains(where: { $0.hasPrefix(a + "/") }) else { continue }
+                // its organisation: its record's, else its newest-used session folder's; a transcript's id alone has none
+                let newest = window.filter { $0.key.account == a }.max { $0.value < $1.value }
+                let org = recordOrg[a] ?? newest?.key.organization
+                // last in use: when this profile's window last wrote a session under that pair
+                let used = org.flatMap { window[SeatID(account: a, organization: $0)] }.flatMap { $0 == .distantPast ? nil : $0 }
+                let email = found.logins.emails[a]
+                let seat = Seat(account: a, organization: org, email: email)
+                out[i].standby.append(StandbyAccount(email: email ?? "", seat: seat, addedAt: now, plan: found.logins.plans[a],
                                                      lastInUse: used.flatMap { AccountBook.sane($0, now: now) }))
             }
         }
+        return out
+    }
+
+    /// The organisation each account's own oauthAccount record names, from every .claude.json and backup `find` reads
+    /// for these profiles (bounded reads; used only when a standby list needs tidying).
+    static func recordOrgs(_ accounts: [AccountEntry], home: String = NSHomeDirectory()) -> [String: String] {
+        var l = Logins()
+        for p in homeFiles(home: home) { l.take(claudeJSON: p) }
+        for e in accounts { for p in folderFiles(e.configDir, home: home) { l.take(claudeJSON: p) } }
+        var out: [String: String] = [:]
+        for p in l.pairs where out[p.account] == nil { out[p.account] = p.organization }
         return out
     }
 
