@@ -611,7 +611,7 @@ do {
         guard let r1 = t.range(of: a), let r2 = t.range(of: b, range: r1.upperBound..<t.endIndex) else { return ["(\(f): section not found)"] }
         return t[r1.lowerBound..<r2.lowerBound].components(separatedBy: "\n")
     }
-    for (f, a, b) in [("Launcher.swift", "struct AccountCard", "\n}\n"), ("Settings.swift", "func inUseBox(", "    /// A sign-in again on the account in use")] {
+    for (f, a, b) in [("Launcher.swift", "struct AccountCard", "\n}\n"), ("Settings.swift", "func inUseBox(", "    /// Log in… on the account in use")] {
         for l in section(f, from: a, to: b) where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
             for p in forbidden where l.contains(p) { reads.append("\(f) \(p): \(l.trimmingCharacters(in: .whitespaces).prefix(60))") }
             if l.contains("section not found") { reads.append(l) }
