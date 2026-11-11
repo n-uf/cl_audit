@@ -279,6 +279,17 @@ MainActor.assumeIsolated {
                  "o7b-card-standby-full-\(f.rawValue)-\(wn)", w + 32, 900)
     } }
     status("main", u1.email!, week: 94, fable: 60, resetsIn: 7 * 3600)
+    // the Claude app signed in to ultra-2 while Claude Code is on ultra-1: ultra-2 is in use, the numbers say whose they are;
+    // then the app signed out: Claude Code's account, with the muted line
+    let appOn2 = AppSignIn.Login(account: u2.account, org: u2.organization, state: .known, source: "log", at: Date())
+    let appOut = AppSignIn.Login(account: nil, org: nil, state: .loggedOut, source: "log", at: Date())
+    for (tag, app) in [("o7c-card-app-other", appOn2), ("o7d-card-app-signed-out", appOut)] {
+        var row = AccountRow(entry: main, status: Store.status(for: main))
+        row.active = ActiveAccount.of(main, app: app, code: .some(u1), names: [u2.account: u2.email!])
+        for f in [Face.std, .silver] { for (wn, w) in oWidths {
+            snapshot(framed(AccountCard(row: row, actions: acts).frame(width: min(w, 460)), f, w), "\(tag)-\(f.rawValue)-\(wn)", w + 32, 900)
+        } }
+    }
 
     // the Accounts card (the profile's settings page, cropped later): standby rows, a folder from before (~/.claude-ultra-2,
     // signed in, no profile's) offered to the Trash; then the accounts found on this Mac, one known by its id only
