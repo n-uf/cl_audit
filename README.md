@@ -178,12 +178,15 @@ works: it refreshes, starts the agent first, or (paused) starts it now.
 Each profile has one **active account**, shown with a green lamp and "in use" on every screen: the menu bar icon's
 menu, the Dock icon's menu and its panel, the dashboard card, Settings ▸ the profile ▸ Accounts and the quick chat.
 
-- **The Claude app's signed-in account comes first.** cl_audit reads it the way claude-transplant does: the app's
-  `main*.log` in `~/Library/Logs/Claude`, newest first, after the app's launch ("[LocalSessionManager] Initialization
-  succeeded … accountId=…, orgId=…"; a "Login-state transition … loggedOut … true" or "Account logged out" line means
-  signed out), checked against `lastKnownAccountUuid` in its `config.json`. Only those lines are looked at and only
-  the ids are kept; the log is used only while one Claude app runs (several windows share it), else `config.json`
-  alone says it. This was worked out from the Claude app's own files, not by running it.
+- **The Claude app's signed-in account comes first.** The app's settings file names the account
+  (`lastKnownAccountUuid` in its `config.json`); its log gives the organisation and whether it signed out. The log is the
+  app's `main*.log` in `~/Library/Logs/Claude`, newest first, after the app's launch: the newest line about that account
+  ("Initialization succeeded", "identity reevaluate" or "oauth-v2 lookup") gives its organisation, else the newest of the
+  app's `claude-code-sessions/<account>/<organisation>` folders does; an "Account logged out" or "Login-state transition
+  … loggedOut … true" line newer than `config.json` means signed out. So an app that switched accounts and back shows the
+  account it is on. Without a `config.json`, the log's own account line says it, as claude-transplant reads it. Only
+  those lines are looked at and only the ids are kept; the log is used only while one Claude app runs (several windows
+  share it). This was worked out from the Claude app's own files, not by running it.
 - **Then Claude Code's.** With the app signed out or not readable (or a profile without a Claude window), the account
   Claude Code's folder is signed in to (its `.claude.json`) is the active one, and a muted line says why.
 - **The numbers say whose they are.** They come through Claude Code's sign-in (from the account in use's own kept

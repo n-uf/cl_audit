@@ -8,7 +8,11 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **The Claude app's account shows after it switched accounts in place.** When the app switched to another account and
+  back without restarting, Settings ▸ Accounts said "The Claude app is signed out or can't be read" while it was signed
+  in. Now the app's settings file names the account; its log gives the organisation (else its sessions folder does) and
+  whether it signed out (a sign-out newer than the settings file). Without a settings file, the log's own account line
+  says it, as before.
 
 ## 26.11.14 — 2026-11-10
 
