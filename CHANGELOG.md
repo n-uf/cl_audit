@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.16 — 2026-11-11
+
 - **Old numbers no longer show as current.** While a profile's Claude Code sign-in had expired, every screen could show
   week 90% "in 0 min" and "Updated 169 h 43 min ago · Claude Code status line": numbers the status line had written a
   week earlier, long past their reset (the real week was 53%). Now the status line's numbers are used only when they
