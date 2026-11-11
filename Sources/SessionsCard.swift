@@ -296,7 +296,7 @@ struct SessionsCard: View {
         working = true; problem = nil
         Task {
             let result = await Task.detached(priority: .utility) {
-                Result { try SwitchEngine.undo(r.id, windowClosed: { SwitchRunner.windowClosed(e) }) }
+                Result { try SwitchEngine.undoHolding(r.id, account: Account(e), windowClosed: { SwitchRunner.windowClosed(e) }) }
             }.value
             working = false
             switch result {

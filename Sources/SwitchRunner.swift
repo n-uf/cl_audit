@@ -200,7 +200,7 @@ final class SwitchRunner: ObservableObject {
         guard !isRunning, let r = receipt, r.linked == nil, r.undone == nil, let e = entry else { return }
         phase = .moving
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Result { try SwitchEngine.undo(r.id, windowClosed: { Self.windowClosed(e) }) }
+            let result = Result { try SwitchEngine.undoHolding(r.id, account: Account(e), windowClosed: { Self.windowClosed(e) }) }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 switch result {

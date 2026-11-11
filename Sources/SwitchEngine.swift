@@ -632,8 +632,17 @@ enum SwitchEngine {
         guard r.undone == nil else { return r }
         guard r.linked == nil else { throw SwitchError.notReady("That switch finished; the way back is a switch the other way.") }
         let fm = FileManager.default
+        // receipt.json is a file on disk: every path it names must be one of this switch's own places, or it's left alone
+        let places = undoPlaces(r)
         for step in r.steps.reversed() {
             let name = (step.path as NSString).lastPathComponent
+            // the window must stay closed for every step, as for the switch itself
+            guard windowClosed() else {
+                r.problems.append("The profile's Claude window opened during Undo; stopped. Undo again once it's closed.")
+                try? save(r)
+                throw SwitchError.windowOpen
+            }
+            if let why = places.outside(step) { r.problems.append("\(name): \(why); left as it is"); continue }
             switch step.kind {
             case .entry:
                 let now = (try? Data(contentsOf: URL(fileURLWithPath: step.path))).map(sha)
@@ -665,15 +674,95 @@ enum SwitchEngine {
         let parkedDir = root.appendingPathComponent("\(r.id)/parked").path
         let named = Set(r.steps.compactMap(\.parked))
         let source = scopeDir(r.dataDir, r.from)
-        for f in (try? fm.contentsOfDirectory(atPath: parkedDir)) ?? [] {
+        for f in (try? fm.contentsOfDirectory(atPath: parkedDir)) ?? [] where places.scopesOK {
             let p = (parkedDir as NSString).appendingPathComponent(f)
             guard !named.contains(p), f.hasPrefix("local_"), f.hasSuffix(".json") else { continue }
+            guard windowClosed() else { try? save(r); throw SwitchError.windowOpen }
             let back = (source as NSString).appendingPathComponent(f)
             if fm.fileExists(atPath: back) { r.problems.append("\(f) is back already") } else { try fm.moveItem(atPath: p, toPath: back) }
         }
         r.undone = Date()
         try save(r)
         return r
+    }
+
+    /// The places a switch's Undo may touch, from what cl_audit knows rather than from receipt.json alone: the two
+    /// accounts' scope folders in the profile's own window data folder (real ids, plain folders), this receipt's own folder
+    /// (parked/ and the task files' backups) and the profile's Claude Code `projects` (pointer lines).
+    struct UndoPlaces {
+        var from: String?, to: String?            // the scope folders, nil when they can't be trusted
+        var own: String                           // switches/<id>
+        var projects: String?
+        var scopesOK: Bool { from != nil && to != nil }
+
+        private static func child(_ path: String?, of dir: String?, depth: Int = 1) -> Bool {
+            guard let path, let dir else { return false }
+            let p = (path as NSString).standardizingPath, d = (dir as NSString).standardizingPath
+            guard p == path, p.hasPrefix(d + "/") else { return false }       // no "..", no "./", inside
+            let rest = p.dropFirst(d.count + 1).split(separator: "/", omittingEmptySubsequences: false)
+            guard rest.count == depth, !rest.contains(where: { $0.isEmpty || $0 == ".." || $0 == "." }) else { return false }
+            // nothing on the way is a link
+            var walk = d
+            for part in rest.dropLast() {
+                walk = (walk as NSString).appendingPathComponent(String(part))
+                var st = stat()
+                if lstat(walk, &st) == 0, (st.st_mode & S_IFMT) != S_IFDIR { return false }
+            }
+            return true
+        }
+
+        /// Why a step's paths aren't this switch's own, or nil.
+        func outside(_ s: SwitchReceipt.Step) -> String? {
+            let why = "the receipt names a place outside this switch's folders"
+            switch s.kind {
+            case .entry:
+                guard Self.child(s.path, of: to), s.original == nil || Self.child(s.original, of: from),
+                      s.parked == nil || Self.child(s.parked, of: (own as NSString).appendingPathComponent("parked")) else { return why }
+            case .tasks:
+                let file = (s.path as NSString).lastPathComponent
+                guard file == "scheduled-tasks.json", Self.child(s.path, of: to) || Self.child(s.path, of: from),
+                      s.parked == nil || Self.child(s.parked, of: own) else { return why }
+            case .pointer:
+                guard s.path.hasSuffix(".jsonl"), Self.child(s.path, of: projects, depth: 2) else { return why }
+            }
+            return nil
+        }
+    }
+
+    static func undoPlaces(_ r: SwitchReceipt) -> UndoPlaces {
+        let own = root.appendingPathComponent(r.id).path
+        let e = (Store.loadChecked() ?? Store.load()).first { $0.id == r.profile }
+        let projects = e.map { (expand($0.configDir) as NSString).appendingPathComponent("projects") }
+        // the receipt's data folder must be one the profile's window uses (its own, or the usual app's)
+        let dirs = [expand(FolderKey.standardDataDir), e.flatMap { Account($0).claudeUserDataDir }.map(expand)].compactMap { $0 }
+            .map { ($0 as NSString).standardizingPath }
+        let ids = [r.from.account, r.from.organization, r.to.account, r.to.organization].allSatisfy(AccountDiscovery.isUUID)
+        guard ids, dirs.contains((expand(r.dataDir) as NSString).standardizingPath) else {
+            return UndoPlaces(from: nil, to: nil, own: own, projects: projects)
+        }
+        var places = UndoPlaces(from: scopeDir(r.dataDir, r.from), to: scopeDir(r.dataDir, r.to), own: own, projects: projects)
+        // a scope folder (or a part above it) that is a link: none of it is touched
+        let sessions = (expand(r.dataDir) as NSString).appendingPathComponent("claude-code-sessions")
+        for s in [r.from, r.to] {
+            let a = (sessions as NSString).appendingPathComponent(s.account)
+            for p in [sessions, a, (a as NSString).appendingPathComponent(s.organization)] {
+                var st = stat()
+                if lstat(p, &st) == 0, (st.st_mode & S_IFMT) != S_IFDIR { places.from = nil; places.to = nil }
+            }
+        }
+        return places
+    }
+
+    /// Undo with the profile's window held closed meanwhile (SwitchMarker), as a switch holds it: no opener starts the
+    /// window during Undo, and another run on it is refused.
+    @discardableResult
+    static func undoHolding(_ id: String, account: Account, windowClosed: () -> Bool) throws -> SwitchReceipt {
+        let window = Launcher.dataDirKey(of: account), profile = load(id)?.profile ?? "", name = "undo-\(id)"
+        guard SwitchMarker.claim(window, profile: profile, standby: name) else {
+            throw SwitchError.busy("Another run on the profile's Claude window is under way (a restore, an import or a switch).")
+        }
+        defer { SwitchMarker.release(window, profile: profile, standby: name) }
+        return try undo(id, windowClosed: windowClosed)
     }
 
     /// A pointer line off again: only if the transcript is the same file and still ends with exactly those bytes where
