@@ -441,7 +441,13 @@ enum Store {
 
     /// The profile's record as the agent wrote it: its numbers carry the account they were read for (resolved.numbersFor),
     /// so nothing here compares them with a stored account.
-    static func status(for e: AccountEntry) -> IconStatus? { status(e.id) }
+    /// Numbers read for another account than the one the record says they belong to (a switch, before the new read) are
+    /// dropped, as the standby path does (IconStatus.only): another account's numbers never show, not even for a moment.
+    static func status(for e: AccountEntry) -> IconStatus? {
+        guard let s = status(e.id) else { return nil }
+        guard let owner = s.resolved?.numbersFor, owner.contains("@") else { return s }
+        return s.only(for: owner)
+    }
 
     /// A standby account's saved numbers, only if they're that account's.
     /// Its numbers are dropped (the state and when they were read stay) while its kept sign-in has run out or its kept
