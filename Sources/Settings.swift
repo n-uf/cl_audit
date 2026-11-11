@@ -1711,7 +1711,7 @@ struct AccountSettings: View {
         let ok = v.lit && move == nil && !mismatch && !["expired", "noLogin", "denied", "unreadable"].contains(status?.state)
         return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: ok ? .ok : .warn,
                           detail: ([plan] + [entry.standby.isEmpty ? nil : "\(entry.name.isEmpty ? "the profile" : entry.name) works on it"])
-                            .compactMap { $0 }.joined(separator: " · ")) {
+                            .compactMap { $0 }.joined(separator: " · "), inUse: true) {
             Menu {
                 ForEach(loginItems) { it in
                     switch it.kind {
