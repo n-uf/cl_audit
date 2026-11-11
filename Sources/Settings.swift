@@ -1601,14 +1601,10 @@ struct AccountSettings: View {
             rowLine("Signed in as \(Privacy.masked(move.seat.email ?? "another account")), the account of “\(move.owner.name)”. One profile per account: \(name)'s numbers wait until its folder is on one of its own.", color: face.danger)
         } else if mismatch {
             rowLine("The Keychain's sign-in is another account than the folder's .claude.json names.")
-        } else if status?.state == "expired" {
-            rowLine("The sign-in ran out: use Claude Code, log in again, or turn on Renew sign-in.")
         } else if status?.state == "denied" {
             rowLine(FetchState.deniedWords, color: face.caution)
         } else if status?.state == "unreadable" {
             rowLine(Self.unreadableWords(version: model.claudeVersion), color: face.caution)
-        } else if status?.state == "noLogin" {
-            rowLine(noSignInWords)
         } else if let l = linkedLately {
             rowLine(linkedWords(was: l.was, at: l.at))
         }
@@ -1650,7 +1646,9 @@ struct AccountSettings: View {
             } label: { AccountBoxTitle(text: Privacy.masked(shown), tint: tint, icon: icon) }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
         } content: {
-            limitsOrWhy(status, entry: entry, none: status?.state == "noLogin" ? noSignInWords : nil)
+            // signed out or expired: that one line, in the box only, with Log in… (never "no numbers yet")
+            limitsOrWhy(status, entry: entry, none: status?.state == "noLogin" ? noSignInWords
+                                                   : status?.state == "expired" ? "The sign-in ran out: Log in…, or turn on Renew sign-in." : nil)
             if let n = v.line, move == nil { BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true) }
             if let move {
                 // one key; signing back in to the profile's own account is in the pop-up, under this account
@@ -1803,7 +1801,8 @@ struct AccountSettings: View {
         // note about the stored account under another address
         let v = view
         let code = v.numbersOwner?.lowercased()
-        if entry.desktop == .separate, entry.claudeWindow, !DefaultProfile.dismissed, let code, code == usual?.email?.lowercased(),
+        if entry.desktop == .separate, entry.claudeWindow, !DefaultProfile.dismissed, !["noLogin", "expired"].contains(status?.state),
+           let code, code == usual?.email?.lowercased(),
            code == v.label?.lowercased() {
             VStack(alignment: .leading, spacing: 5) {
                 Text("This account is also what the usual Claude app and the claude command in Terminal use (~/.claude), but \(entry.name.isEmpty ? "this profile" : entry.name) opens its own window, so Claude opened from the Dock shows other sessions.")
