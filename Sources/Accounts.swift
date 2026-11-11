@@ -35,9 +35,9 @@ extension AccountEntry {
     var standbyStatusIDs: [String] { standby.map { Self.standbyStatusID(id, $0.id) } }
 
     /// The entry the agent reads a standby account's limits with: this profile with that account's folder and seat, and
-    /// nothing a profile does besides reading: no alerts, Dock icon, menu bar icon or window. Its sign-in isn't renewed by
-    /// itself (when it runs out, its box says when it was last read), and it is read only while its folder is signed in
-    /// to that account (the reader holds back numbers for any other). nil while no sign-in is kept for it, or while its seat isn't linked yet (a folder
+    /// nothing a profile does besides reading: no alerts, Dock icon, menu bar icon or window. Its sign-in is renewed while
+    /// its folder is there (when it runs out all the same, its box says when it was last read), and it is read only while
+    /// its folder is signed in to that account (the reader holds back numbers for any other). nil while no sign-in is kept for it, or while its seat isn't linked yet (a folder
     /// signed in to an account it can't be, the profile's own or another profile's, is never read).
     func readerEntry(for s: StandbyAccount) -> AccountEntry? {
         // a kept folder that isn't there (deleted) is never read: its reader would renew a sign-in for a folder the person
@@ -47,8 +47,9 @@ extension AccountEntry {
         r.id = Self.standbyStatusID(id, s.id)
         r.configDir = dir
         r.seat = s.seat
-        // never renewed by itself: when its kept sign-in runs out, its box says when it was last read, with Sign in again
-        r.notify = false; r.notifyBack = false; r.autoRenew = false
+        // renewed while its folder is there (FolderGuard stops any renew for a folder that isn't); when its kept sign-in runs
+        // out all the same, its box says when it was last read, with Sign in again
+        r.notify = false; r.notifyBack = false; r.autoRenew = true
         r.iconHidden = true; r.claudeWindow = false; r.menuBar = false
         r.standby = []
         r.keptFolder = nil                    // the profile's own account's folder: never this one's

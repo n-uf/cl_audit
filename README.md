@@ -557,7 +557,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     already linked (found as needing a sign-in, or signed in to another account since) shows the same states without
     **Cancel**: only an account with no seat yet can be taken off with it; Remove from the address menu does it for
     any. **Standby**: "No numbers yet: cl_audit reads them within a few minutes, from the sign-in kept in its folder."
-    until its limits show; once that kept sign-in runs out (it isn't renewed by itself), "Last read … Sign in again to
+    until its limits show; it is renewed while its folder is there, and once that kept sign-in runs out all the same, "Last read … Sign in again to
     read it." and no numbers.
 
   Whether the Claude window's sessions go with the account (the sessions, the sidebar's sections and groups, pins
