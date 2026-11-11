@@ -52,28 +52,26 @@ Nothing pending.
   tasks (with their skips and retries) move from the account in use to the one switched to, each checked, with a receipt;
   a session a running Claude Code owns stays where it is until a later switch. **Undo the move** puts them back until
   Claude Code is on the new account; a switch that stopped half way offers **Undo it** on the Sessions card, also for
-  switches of 26.11.13 and earlier. Claude Code's transcripts stay in the folder. The Claude app's own sign-in is yours:
+  switches of 26.11.14 and earlier. Claude Code's transcripts stay in the folder. The Claude app's own sign-in is yours:
   the page says to sign it in to the new account when you open it; cl_audit never signs anything in or out.
 - **The folder's account is the one in use, whoever signed it in, at once.** Sign in with `claude auth login` yourself, or
   from another app on the same folder, and within a second the profile works on that account and the one before stands
-  by (the agent does this too while cl_audit's window is closed); the numbers show at once, labelled with the account they
-  were read for, in the menu bar, the Dock menu and panel and on the card. "Signed in to another account: choose in its
-  settings" and **Use this account** are gone. One account belongs to one profile: another profile's account in use is
-  refused, as before; an account on another profile's standby list moves to this one, with a line on both profiles'
-  Accounts card.
-- **The Switch page shows the profile's one account answer** too (26.11.14's record), like every other screen.
+  by (the agent does this too while cl_audit's window is closed). One account belongs to one profile: another profile's
+  account in use is refused, as before; an account on another profile's standby list moves to this one, with a line on
+  both profiles' Accounts card.
+- **The Switch page shows the profile's one account answer** too (26.11.14's record), like every other screen. The Claude
+  app on another account than Claude Code is said in the in-use box ("Usage: Claude Code on b…"), as in 26.11.14.
 - **No Add account: a profile's accounts are found on this Mac**, as claude-transplant finds them: the Claude window's
   session folders, Claude Code's records and their backups, and the transcripts. Each one no profile has goes on standby
   by itself, named "address · organisation" or, until it is seen signed in, "account" and its first 8 characters.
   **Forget…** takes one off for good. **Sign in with another account…** runs Claude Code's sign-in with no address for a
   brand-new one. **Sign in again…** on the account in use is watched like a switch.
-- The Dock panel says **Reading usage…** before the first read, never a bare "Not yet".
 - **A full limit offers the standby account least used** by the week it left with, not known to be full (its week as last
   read when it left is kept for this and never shown), then the one most recently in use.
-- **Gone with the standby accounts' numbers:** "the other account is back" and its Switch back offer, and the standby
-  accounts' saved numbers (cleared by the clean-up). **Undo this switch** after a finished switch is gone: the way back is a
+- **Gone with the standby accounts' numbers:** their kept sign-ins and the renewal of them, "the other account is back"
+  and its Switch back offer, and the standby accounts' saved numbers (cleared by the clean-up). **Undo this switch** after a finished switch is gone: the way back is a
   switch the other way.
-- **The folders kept for standby sign-ins** (`~/.claude-<name>`, made by 26.11.13 and earlier for each standby account and for
+- **The folders kept for standby sign-ins** (`~/.claude-<name>`, made by 26.11.14 and earlier for each standby account and for
   the account in use) aren't used any more. Each one that is still there is listed under the profile's Accounts, **Folders
   from before**, with **Move to Trash…** (it asks first, says what is in it and names the folder's Keychain item, which
   cl_audit never touches: delete it in Keychain Access if you like) and **Keep it**. A folder that holds sessions is never

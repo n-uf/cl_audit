@@ -125,7 +125,7 @@ only software you trust. cl_audit's code is open to check: `Login.read` in `Sour
 
 **One sign-in per profile.** cl_audit reads only the sign-in of the account in use in each profile's folder. A
 profile's standby accounts have no sign-in kept anywhere: switching to one is Claude Code's own sign-in again, in
-Terminal and the browser. The Claude Code folders 26.11.13 and earlier made for standby accounts' sign-ins are listed
+Terminal and the browser. The Claude Code folders 26.11.14 and earlier made for standby accounts' sign-ins are listed
 with **Move to Trash…** (see [Profile settings](#profile-settings)); their Keychain items are named so you can delete them
 in Keychain Access, and cl_audit never touches them.
 
@@ -185,7 +185,8 @@ works: it refreshes, starts the agent first, or (paused) starts it now.
 ### Which account is in use
 
 Each profile has one **active account**, shown with a green lamp and "in use" on every screen: the menu bar icon's
-menu, the Dock icon's menu and its panel, the dashboard card, Settings ▸ the profile ▸ Accounts and the quick chat.
+menu, the Dock icon's menu and its panel, the dashboard card, Settings ▸ the profile ▸ Accounts, the Switch page and
+the quick chat.
 
 - **The Claude app's signed-in account comes first.** The app's settings file names the account
   (`lastKnownAccountUuid` in its `config.json`); its log gives the organisation and whether it signed out. The log is the
@@ -198,8 +199,8 @@ menu, the Dock icon's menu and its panel, the dashboard card, Settings ▸ the p
   share it). This was worked out from the Claude app's own files, not by running it.
 - **Then Claude Code's.** With the app signed out or not readable (or a profile without a Claude window), the account
   Claude Code's folder is signed in to (its `.claude.json`) is the active one, and a muted line says why.
-- **The numbers say whose they are.** They come through Claude Code's sign-in (from the account in use's own kept
-  folder when it has one). When that isn't the active account: "Usage: Claude Code on b…@example.com".
+- **The numbers say whose they are.** They come through Claude Code's sign-in in the profile's folder. When that isn't
+  the active account: "Usage: Claude Code on b…@example.com".
 - **Live:** the folders that hold `.claude.json` and `config.json`, and the app's logs, are watched; a sign-in changed
   in Terminal or the Claude app shows within a few seconds, without restarting anything.
 - **One answer:** cl_audit's background agent decides this once per profile (`Sources/AccountResolver.swift`) and writes
@@ -297,7 +298,7 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   Claude Code's sign-in in Terminal and the browser. cl_audit checks the account when it's done." with **Show switch**
   and **Cancel switch**; a plain click on it is Show switch too. It goes when the switch ends or the page comes to the
   front, never outlives cl_audit, and follows the profile's alerts. Like every alert it names no account.
-- **A switch that stopped half way** (now or in 26.11.13 and earlier): the Sessions card says how many of the window's
+- **A switch that stopped half way** (now or in 26.11.14 and earlier): the Sessions card says how many of the window's
   sessions sit under which account (they show while the window is signed in to it), with **Undo it** (the window
   closed). Switches' backups stay listed and restorable (Settings ▸ the profile ▸ Sessions); an unfinished switch's
   backup is never pruned.
@@ -495,7 +496,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     copied, and an account belongs to one profile. **Sign in with another account…** runs Claude Code's own sign-in on
     the profile's folder with no address filled in: the account that signs in becomes the one in use, and the one
     before goes on standby. New profile still starts with one account.
-  - **Folders from before.** Up to 26.11.13 cl_audit kept a standby account's sign-in, and the account in use's when it
+  - **Folders from before.** Up to 26.11.14 cl_audit kept a standby account's sign-in, and the account in use's when it
     had standby accounts, in a small Claude Code folder of its own (`~/.claude-ultra-2`). Those folders aren't used any
     more. Each one that is still there (a plain `~/.claude-<name>` folder directly in your home folder that no profile
     uses as its folder or Claude window folder) is listed under Accounts with **Move to Trash…** and **Keep it**. Move
@@ -785,8 +786,8 @@ another profile shares items from are never deleted, and Claude must be closed f
 
 A backup is a quick copy of a profile's sessions on this Mac, in `<backups folder>/<profile id>/<backup id>/` with a
 `backup.json` that says what is in it. One is made by **Back up now** in Settings ▸ the profile ▸ Sessions (and by the
-default-profile move). Up to 26.11.13 every switch that moved the sessions made one too ("Before switch to ultra-2");
-those stay listed and restorable. **Restore…** on a backup puts back what is missing, merged, and never overwrites anything (see
+default-profile move), and by every switch that moves the window's sessions, before anything moves ("Before switch to
+ultra-2"); those stay listed and restorable. **Restore…** on a backup puts back what is missing, merged, and never overwrites anything (see
 [Restoring a backup](#restoring-a-backup)).
 
 - **In it:** the window's Code-tab list (every `claude-code-sessions/<account>/<org>` folder, scheduled tasks
