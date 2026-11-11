@@ -512,14 +512,15 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     box then says "Its limits come from a sign-in kept for it, renewed by itself." Log in… and the Dock icon's log-in
     sign in the folder the numbers come from.
   - Before a switch leaves an account without a folder of its own, the Switch page asks first: "Keep ultra-1's limits
-    showing after the switch" with **Sign in ultra-1…** or **Skip**. Skipped, that account's limits show as last read
-    on standby, and the page says when its week started again ("cl_audit hasn't read it since").
-  - The **account in use**'s address is a pop-up: it ticks the account Claude Code in the folder is signed in to
-    (green; red with a warning sign inside when it isn't the profile's account; a clock when the sign-in ran out; a
-    long address is cut at its end), then, when it isn't the profile's, the profile's own account to log back in
-    to, and **Renew sign-in by itself** (opt-in, see the (i)). The box's address and lamp are the profile's **active
-    account** (see [Which account is in use](#which-account-is-in-use)); signed in to another account in Terminal, the
-    numbers still show, saying whose they are. If another profile has the account Claude Code's folder is signed in to,
+    showing after the switch" with **Sign in ultra-1…** or **Skip**. Skipped, that account's box on standby says when
+    it was last read, with **Sign in again**, and shows no numbers.
+  - The **account in use** box shows the profile's **active account** (see
+    [Which account is in use](#which-account-is-in-use)): its lamp is green while it is in use, grey when only Claude
+    Code's account can be shown (the Claude app signed out or unreadable), and a clock marks a sign-in that ran out; a
+    long address is cut at its end. Its address is a pop-up with the account Claude Code in the folder is signed in to,
+    ticked, and **Renew sign-in by itself** (opt-in, see the (i)). Signed in to another account in Terminal, the numbers
+    still show, saying whose they are, and that account is never listed on standby at the same time. The note and key
+    about the stored account's own kept folder show only while that account is the one in the box. If another profile has the account Claude Code's folder is signed in to,
     the line under Accounts names it, with **Open** it instead: one profile per account. Anything else needing a word gets one grey line. A
     **Claude window** row says when the profile's window is signed in to another account than its Claude Code
     (only the account id is known, from the window's `config.json`; the usual Claude app is checked too). For a
@@ -555,8 +556,9 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     of cl_audit it goes by the dates of the Terminal script each sign-in writes and of the folder's record. An account
     already linked (found as needing a sign-in, or signed in to another account since) shows the same states without
     **Cancel**: only an account with no seat yet can be taken off with it; Remove from the address menu does it for
-    any. **Standby**: "No numbers yet: cl_audit reads them within a few minutes, from the sign-in kept in its folder,
-    and keeps that sign-in renewed." until its limits show.
+    any. **Standby**: "No numbers yet: cl_audit reads them within a few minutes, from the sign-in kept in its folder."
+    until its limits show; once that kept sign-in runs out (it isn't renewed by itself), "Last read … Sign in again to
+    read it." and no numbers.
 
   Whether the Claude window's sessions go with the account (the sessions, the sidebar's sections and groups, pins
   and scheduled tasks) isn't a setting: the Switch page asks every time, with nothing chosen. As on every card, the

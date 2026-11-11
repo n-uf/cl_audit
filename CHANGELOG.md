@@ -21,7 +21,10 @@ the notes before updating.
   reads it; this was worked out from those files, not by running the Claude app.
 - **A sign-in changed in Terminal or the Claude app shows within seconds**, without restarting cl_audit.
 - **A standby account's old numbers aren't shown** once its kept sign-in has run out or its folder is gone: its box says
-  when they were last read, with **Sign in again**. The box no longer claims its sign-in renews by itself.
+  when they were last read, with **Sign in again**. A standby account's kept sign-in isn't renewed by itself any more.
+- **An account is never shown in use and on standby at once.** When the Claude app is on one of the profile's standby
+  accounts, that account shows in use, and the card's trays, Settings ▸ Accounts, the menus and quick chat leave it out of
+  the standby list; the in-use box's note about the stored account's own folder shows only under that account.
 - **A Claude Code folder you deleted stays deleted.** cl_audit never starts Claude Code (Renew sign-in, logout, quick chat,
   Terminal, the Claude window) for a folder that isn't there, and never reads a kept folder that is gone: before, Renew
   sign-in could run for a deleted standby folder, and Claude Code would make it again, signed in. A sign-in you start
