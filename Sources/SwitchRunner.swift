@@ -66,6 +66,20 @@ final class SwitchRunner: ObservableObject {
     @Published private(set) var planned: SwitchPlan?
     /// What the folder named at the switch's last look (the page's check line): the switch's own read, never the page's.
     @Published private(set) var seen: Seat?
+    /// Where it failed, for the page's steps: before anything (refused), the window's close, the backup, the move, or
+    /// Claude Code's sign-in. (The account check's own outcomes are the phases .other and .timedOut.)
+    enum FailedStep: Equatable { case notStarted, closing, backup, move, signIn }
+    @Published private(set) var failedStep: FailedStep?
+
+    /// The tile's two lines for a switch that stopped: "nothing changed" only when nothing did; a switch that moved
+    /// sessions before it stopped says how many, and that Undo puts them back.
+    static func failedWords(_ r: SwitchReceipt?) -> (l1: String, l2: String) {
+        let n = (r?.unfinished == true) ? r!.moved : 0
+        return n > 0 ? ("Stopped part way", "\(n) moved · Undo puts them back") : ("Not started", "nothing changed")
+    }
+
+    /// It stopped: where, and why.
+    private func fail(_ at: FailedStep, _ why: String) { failedStep = at; phase = .failed(why) }
     private weak var model: SettingsModel?
     private var timer: Timer?
     private var closeStarted = Date()
@@ -115,22 +129,22 @@ final class SwitchRunner: ObservableObject {
     /// without a sign-in): only the sign-in.
     func start(_ s: StandbyAccount) {
         guard !isRunning, let e = entry else { return }
-        targetSnapshot = s; receipt = nil; moveNote = nil; planned = nil
+        targetSnapshot = s; receipt = nil; moveNote = nil; planned = nil; failedStep = nil
         let g = Goal(standby: s.id, wantedSeat: s.seat, wantedEmail: s.email,
                      from: Account.signedInSeat(configDir: e.configDir) ?? e.seat, started: Date())
         // the profile's folder deleted: nothing closes, moves or signs in (a sign-in would make it again), said instead
-        if let why = ClaudeCLI.goneLine(e.configDir) { goal = g; phase = .failed(why); return }
+        if let why = ClaudeCLI.goneLine(e.configDir) { goal = g; fail(.notStarted, why); return }
         // a switch that stopped half way is put back first: never a second move on top of it
         if let u = SwitchEngine.unfinished(profile: profile).first {
             goal = g; receipt = u
             // never for good: Undo puts it back, and signing in as the account it went for finishes it (linkReached)
             let to = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { u.to.same($0) }?.email.map(AccountNames.short) ?? "its account"
-            phase = .failed("An earlier switch of \(e.name) stopped half way. Undo it (below, or on the Sessions card), sign in as \(to) to finish it, or Leave it as it is (Sessions card); then switch again.")
+            fail(.notStarted, "An earlier switch of \(e.name) stopped half way. Undo it (below, or on the Sessions card), sign in as \(to) to finish it, or Leave it as it is (Sessions card); then switch again.")
             return
         }
         guard e.seat != nil, s.seat != nil else { begin(e, g); return }
         switch SwitchEngine.plan(e, standby: s) {
-        case .failure(let why): goal = g; phase = .failed(why.description)
+        case .failure(let why): goal = g; fail(.notStarted, why.description)
         case .success(let p):
             planned = p
             if !p.held.isEmpty { moveNote = Self.heldWords(p.held.count) }
@@ -154,7 +168,7 @@ final class SwitchRunner: ObservableObject {
     private func closeAndMove(_ e: AccountEntry, _ g: Goal) {
         goal = g
         guard SwitchMarker.claim(windowKey(e), profile: profile, standby: markName) else {
-            phase = .failed("Another run on \(e.name)'s Claude window is under way (a restore, an import or a switch)."); return
+            fail(.closing, "Another run on \(e.name)'s Claude window is under way (a restore, an import or a switch)."); return
         }
         let apps = Self.windowApps(e)
         if apps.isEmpty { move(e, g); return }
@@ -167,7 +181,7 @@ final class SwitchRunner: ObservableObject {
             if Self.windowClosed(e) { t.invalidate(); self.move(e, g); return }
             if Date().timeIntervalSince(self.closeStarted) > 45 {
                 t.invalidate(); self.releaseWindow()
-                self.phase = .failed("\(e.name)'s Claude window didn't close; it may be asking about work under way. Answer it, then try again. Nothing moved.")
+                self.fail(.closing, "\(e.name)'s Claude window didn't close; it may be asking about work under way. Answer it, then try again. Nothing moved.")
             }
         }
     }
@@ -175,7 +189,7 @@ final class SwitchRunner: ObservableObject {
     /// The backup and the move, off the main thread (planned again now that the window is closed), then the sign-in.
     private func move(_ e: AccountEntry, _ g: Goal) {
         guard let s = targetSnapshot, case .success(let p) = SwitchEngine.plan(e, standby: s) else {
-            releaseWindow(); phase = .failed("The switch couldn't be planned again. Nothing moved."); return
+            releaseWindow(); fail(.move, "The switch couldn't be planned again. Nothing moved."); return
         }
         planned = p
         phase = .moving
@@ -193,7 +207,9 @@ final class SwitchRunner: ObservableObject {
                     // stopped half way: its receipt, for Undo; nothing moved: nothing to put back
                     self.receipt = SwitchEngine.unfinished(profile: self.profile).first
                     self.releaseWindow()
-                    self.phase = .failed("\(err)")
+                    // the backup, or (once it was made) the move itself
+                    let backup: Bool = { if case .backup = err as? SwitchError { return true }; return false }()
+                    self.fail(backup ? .backup : .move, "\(err)")
                 }
             }
         }
@@ -217,8 +233,8 @@ final class SwitchRunner: ObservableObject {
                     self.receipt = back
                     self.moveNote = back.problems.isEmpty ? nil : back.problems.joined(separator: " ")
                     // only partly: it stays open, and says what was left
-                    self.phase = back.undone != nil ? .undone : .failed(Self.partlyWords(back))
-                case .failure(let err): self.phase = .failed("\(err)")
+                    if back.undone != nil { self.phase = .undone } else { self.fail(.move, Self.partlyWords(back)) }
+                case .failure(let err): self.fail(.move, "\(err)")
                 }
             }
         }
@@ -230,7 +246,7 @@ final class SwitchRunner: ObservableObject {
     /// Sign in again on the account in use (its sign-in stopped working, or the folder is signed out): the same watch.
     func signInAgain() {
         guard !isRunning, let e = entry, let email = e.seat?.email ?? Account.expectedEmail(configDir: e.configDir) else { return }
-        targetSnapshot = nil; receipt = nil; moveNote = nil; planned = nil
+        targetSnapshot = nil; receipt = nil; moveNote = nil; planned = nil; failedStep = nil
         begin(e, Goal(standby: nil, wantedSeat: e.seat, wantedEmail: email,
                       from: Account.signedInSeat(configDir: e.configDir), started: Date()))
     }
@@ -242,7 +258,7 @@ final class SwitchRunner: ObservableObject {
         // the sessions moved already (Undo not used): only the sign-in again, the window kept closed meanwhile
         if canUndo, let e = entry {
             guard SwitchMarker.claim(windowKey(e), profile: profile, standby: markName) else {
-                phase = .failed("Another run on \(e.name)'s Claude window is under way."); return
+                fail(.closing, "Another run on \(e.name)'s Claude window is under way."); return
             }
             begin(e, Goal(standby: g.standby, wantedSeat: g.wantedSeat, wantedEmail: g.wantedEmail, from: g.from, started: Date()))
             return
@@ -253,10 +269,10 @@ final class SwitchRunner: ObservableObject {
     private func begin(_ e: AccountEntry, _ g: Goal) {
         clearMarker()
         // the profile's folder deleted: never made again by a sign-in (FolderGuard), said instead
-        if let why = ClaudeCLI.goneLine(e.configDir) { goal = g; releaseWindow(); phase = .failed(why); return }
-        guard let claude = model?.requireClaude() else { goal = g; releaseWindow(); phase = .failed(model?.noClaudeWhy ?? ClaudeInstall.missing + "."); return }
+        if let why = ClaudeCLI.goneLine(e.configDir) { goal = g; releaseWindow(); fail(.signIn, why); return }
+        guard let claude = model?.requireClaude() else { goal = g; releaseWindow(); fail(.signIn, model?.noClaudeWhy ?? ClaudeInstall.missing + "."); return }
         guard ClaudeCLI.openLogin(claude, account: Account(e), email: g.wantedEmail.isEmpty ? nil : g.wantedEmail, marker: g.again ? Self.marker(for: profile) : nil) else {
-            goal = g; releaseWindow(); phase = .failed("Terminal didn't open."); return
+            goal = g; releaseWindow(); fail(.signIn, "Terminal didn't open."); return
         }
         goal = g
         phase = .waiting
@@ -276,7 +292,7 @@ final class SwitchRunner: ObservableObject {
     }
 
     /// Back to the start, for another switch from the page.
-    func reset() { cancel(); guard phase != .moving else { return }; phase = .ready; goal = nil; moveNote = nil; planned = nil
+    func reset() { cancel(); guard phase != .moving else { return }; phase = .ready; goal = nil; moveNote = nil; planned = nil; failedStep = nil
         if !canUndo { receipt = nil } }
 
     /// One look at the folder: its file is read off the main thread, and what it said is judged here, on the main thread.
@@ -333,8 +349,8 @@ final class SwitchRunner: ObservableObject {
 
     /// Renders only: the page as it looks in a phase.
     func preview(_ p: Phase, goal g: Goal?, target: StandbyAccount? = nil, planned plan: SwitchPlan? = nil, receipt r: SwitchReceipt? = nil,
-                 note: String? = nil, seen s: Seat? = nil) {
+                 note: String? = nil, seen s: Seat? = nil, failedAt f: FailedStep? = nil) {
         phase = p; goal = g; targetSnapshot = target ?? targetSnapshot
-        planned = plan; receipt = r; moveNote = note; seen = s
+        planned = plan; receipt = r; moveNote = note; seen = s; failedStep = f
     }
 }

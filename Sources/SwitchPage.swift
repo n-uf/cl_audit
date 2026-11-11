@@ -396,13 +396,25 @@ struct SwitchPage: View {
 
     // MARK: the steps
 
-    private enum StepState { case pending, now, waiting, done, failed }
+    enum StepState { case pending, now, waiting, done, failed }
+
+    private func state(_ n: Int) -> StepState { Self.stepState(n, phase: runner.phase, failedAt: runner.failedStep, moves: moves) }
 
     /// The sign-in's three steps, after the window's close and the move when the switch moves sessions (steps 1 and 2).
-    private func state(_ n: Int) -> StepState {
+    /// A failure marks the step where it stopped (`failedAt`, from the runner), the ones before it done: the window that
+    /// didn't close is step 1; the backup or the move, step 2; Claude Code's sign-in, the first of its steps; refused before
+    /// anything started, no step at all (the line under them says why).
+    static func stepState(_ n: Int, phase: SwitchRunner.Phase, failedAt at: SwitchRunner.FailedStep?, moves: Bool) -> StepState {
         let k = moves ? 2 : 0                                  // the sign-in's steps start after the move's
-        let failedAt = runner.receipt != nil ? k + 1 : (moves && runner.phase != .ready ? 2 : 1)
-        switch runner.phase {
+        let failedAt: Int? = {
+            switch at {
+            case .notStarted: return nil
+            case .closing: return moves ? 1 : nil
+            case .backup, .move: return moves ? 2 : nil
+            case .signIn, nil: return k + 1
+            }
+        }()
+        switch phase {
         case .ready: return .pending
         case .closing: return n == 1 ? .now : .pending
         case .moving: return n == 1 ? .done : n == 2 ? .now : .pending
@@ -410,7 +422,9 @@ struct SwitchPage: View {
         case .reached: return .done
         case .other: return n < k + 3 ? .done : .failed
         case .timedOut: return n <= k + 1 ? .done : n == k + 2 ? .failed : .pending
-        case .failed: return n < failedAt ? .done : n == failedAt ? .failed : .pending
+        case .failed:
+            guard let f = failedAt else { return .pending }
+            return n < f ? .done : n == f ? .failed : .pending
         case .undone: return n <= k ? .done : .pending
         }
     }
