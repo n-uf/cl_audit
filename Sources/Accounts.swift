@@ -166,9 +166,7 @@ struct AccountFacts: Equatable {
     static func of(configDir: String) -> AccountFacts? { of(claudeJSON: Account.claudeJSON(configDir: configDir)) }
 
     static func of(claudeJSON path: String) -> AccountFacts? {
-        guard let data = FileManager.default.contents(atPath: path),
-              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let o = j["oauthAccount"] as? [String: Any] else { return nil }
+        guard let o = SafeRead.oauthAccount(path) else { return nil }        // bounded, non-blocking
         return of(oauthAccount: o)
     }
 

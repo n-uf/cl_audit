@@ -39,9 +39,8 @@ enum AccountList {
         var pairs: [SeatID] = []                 // every account/organisation pair seen in a block, in order
 
         mutating func take(claudeJSON path: String) {
-            guard let d = FileManager.default.contents(atPath: path),
-                  let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
-                  let o = j["oauthAccount"] as? [String: Any] else { return }
+            // bounded and non-blocking, parsed again only when the file changed (SafeRead)
+            guard let o = SafeRead.oauthAccount(path) else { return }
             take(oauthAccount: o)
         }
 
@@ -107,8 +106,7 @@ enum AccountList {
                     else { out.append((s, dates.max())) }
                     if readsEmail, logins.emails[s.account] == nil {
                         for f in files.prefix(50) {
-                            guard let d = fm.contents(atPath: (odir as NSString).appendingPathComponent(f)),
-                                  let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                            guard let j = SafeRead.jsonObject((odir as NSString).appendingPathComponent(f), max: SafeRead.recordMax),
                                   let e = j["emailAddress"] as? String, !e.isEmpty else { continue }
                             logins.emails[s.account] = e
                             break
@@ -136,8 +134,7 @@ enum AccountList {
         let re = try! NSRegularExpression(pattern: #""accountUuid"\s*:\s*"([0-9a-fA-F-]{36})""#)
         var out: Set<String> = []
         for (f, _) in files.sorted(by: { $0.1 > $1.1 }).prefix(cap) {
-            guard let h = FileHandle(forReadingAtPath: f) else { continue }
-            let head = h.readData(ofLength: 64 << 10); try? h.close()
+            guard let head = SafeRead.read(f, max: 64 << 10)?.data else { continue }   // a FIFO or device: skipped at once
             let s = String(decoding: head, as: UTF8.self)
             for m in re.matches(in: s, range: NSRange(s.startIndex..., in: s)) {
                 if let r = Range(m.range(at: 1), in: s), AccountDiscovery.isUUID(String(s[r])) { out.insert(s[r].lowercased()) }

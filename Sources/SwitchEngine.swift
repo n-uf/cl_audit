@@ -183,8 +183,7 @@ enum SwitchEngine {
     /// The scope's scheduled-tasks.json, or nil when it isn't there or can't be read as one.
     static func registry(_ scopeDir: String) -> [String: Any]? {
         let f = (scopeDir as NSString).appendingPathComponent("scheduled-tasks.json")
-        guard let d = FileManager.default.contents(atPath: f) else { return nil }
-        return try? JSONSerialization.jsonObject(with: d) as? [String: Any]
+        return SafeRead.jsonObject(f)                          // bounded, never blocking
     }
 
     /// Why the source's tasks can't move as they are, or nil (claude-transplant's taskSessions and taskFamilies checks): a
@@ -249,12 +248,26 @@ enum SwitchEngine {
         let dir = (expand(codeDir) as NSString).appendingPathComponent("sessions")
         for n in (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? [] where n.hasSuffix(".json") {
             guard let pid = pid_t(n.dropLast(5)), pid > 0, alive(pid),
-                  let d = FileManager.default.contents(atPath: (dir as NSString).appendingPathComponent(n)),
-                  let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+                  let j = SafeRead.jsonObject((dir as NSString).appendingPathComponent(n), max: SafeRead.recordMax),
                   (j["pid"] as? NSNumber)?.int32Value == pid, let s = j["sessionId"] as? String else { continue }
             ids.insert(s.lowercased())
         }
         return ids
+    }
+
+    /// Whether a command line's program is `claude`: its executable's last path component, the path taken whole even with
+    /// spaces in it (".../Application Support/Claude/claude-code/2.1.318/claude --resume …"), up to the first argument
+    /// that starts with "-". `/bin/zsh -c claude …` is zsh's, not claude's.
+    static func isClaude(_ command: String) -> Bool {
+        let words = command.split(separator: " ", omittingEmptySubsequences: false)
+        var path = ""
+        for (i, w) in words.enumerated() {
+            if i > 0 && w.hasPrefix("-") { break }
+            path = i == 0 ? String(w) : path + " " + w
+            if (path as NSString).lastPathComponent.lowercased() == "claude" { return i == 0 || path.hasPrefix("/") }
+            if i == 0 && !path.hasPrefix("/") { break }            // a bare program name has no spaces
+        }
+        return false
     }
 
     /// Whether a running Claude Code owns this entry: its own id (without "local_") or its Claude Code session's.
@@ -463,8 +476,7 @@ enum SwitchEngine {
     /// copy of another account, so the old pointer can't hide the session on the new one. Only when nothing else is
     /// writing that transcript (see `busy`); one O_APPEND write; written down with where it went, for Undo.
     static func clearPointer(entryPath: String, _ p: SwitchPlan, _ r: inout SwitchReceipt, now: Date = Date()) {
-        guard let d = FileManager.default.contents(atPath: entryPath),
-              let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any],
+        guard let j = SafeRead.jsonObject(entryPath, max: SafeRead.recordMax),
               let cli = j["cliSessionId"] as? String, !cli.isEmpty,
               let transcript = transcriptPath(cli, codeDir: p.codeDir),
               let last = lastPointer(transcript),
@@ -548,10 +560,8 @@ enum SwitchEngine {
     }
 
     private static func endsWithNewline(_ path: String, size: UInt64) -> Bool {
-        guard size > 0, let h = FileHandle(forReadingAtPath: path) else { return true }
-        defer { try? h.close() }
-        try? h.seek(toOffset: size - 1)
-        return h.readData(ofLength: 1) == Data("\n".utf8)
+        guard size > 0, let last = SafeRead.read(path, max: 1, fromEnd: true)?.data else { return true }
+        return last == Data("\n".utf8)
     }
 
     /// <Claude Code folder>/projects/<project>/<cli id>.jsonl
@@ -567,12 +577,8 @@ enum SwitchEngine {
 
     /// The last Remote Control pointer line in a transcript (read from its end), or nil.
     static func lastPointer(_ path: String) -> [String: Any]? {
-        guard let h = FileHandle(forReadingAtPath: path) else { return nil }
-        defer { try? h.close() }
-        let size = (try? h.seekToEnd()) ?? 0
-        let span: UInt64 = min(size, 4 << 20)
-        try? h.seek(toOffset: size - span)
-        let tail = h.readData(ofLength: Int(span))
+        // the last 4 MB of a regular file, never blocking: a FIFO or a device named like a transcript returns at once
+        guard let tail = SafeRead.read(path, max: 4 << 20, fromEnd: true)?.data else { return nil }
         for line in String(decoding: tail, as: UTF8.self).split(separator: "\n").reversed()
         where line.contains("\"bridge-session\"") {
             if let j = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any], j["type"] as? String == "bridge-session" { return j }

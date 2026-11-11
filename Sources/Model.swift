@@ -79,26 +79,23 @@ struct Account {
 
     /// The seat Claude Code says the folder is signed in to now (its .claude.json), or nil when it isn't.
     static func signedInSeat(configDir: String) -> Seat? {
-        guard let data = FileManager.default.contents(atPath: claudeJSON(configDir: configDir)),
-              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let oauth = j["oauthAccount"] as? [String: Any],
+        guard let oauth = oauthAccount(configDir: configDir),
               let account = oauth["accountUuid"] as? String, !account.isEmpty else { return nil }
         return Seat(account: account, organization: oauth["organizationUuid"] as? String, email: oauth["emailAddress"] as? String)
     }
 
+    /// The folder's .claude.json oauthAccount block: bounded, never blocking (a FIFO or a link to /dev/zero returns at
+    /// once), parsed again only when the file changed (SafeRead).
+    static func oauthAccount(configDir: String) -> [String: Any]? { SafeRead.oauthAccount(claudeJSON(configDir: configDir)) }
+
     static func expectedEmail(configDir: String) -> String? {
-        guard let data = FileManager.default.contents(atPath: claudeJSON(configDir: configDir)),
-              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let oauth = j["oauthAccount"] as? [String: Any] else { return nil }
-        return oauth["emailAddress"] as? String
+        oauthAccount(configDir: configDir)?["emailAddress"] as? String
     }
 
     /// Claude's own name for the folder's plan ("Ultra"), as Claude Code recorded it (oauthAccount.planDisplayName in
     /// .claude.json), or nil. The sign-in's subscriptionType can be coarser: an Ultra account's says "max".
     static func planName(configDir: String) -> String? {
-        guard let data = FileManager.default.contents(atPath: claudeJSON(configDir: configDir)),
-              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let oauth = j["oauthAccount"] as? [String: Any],
+        guard let oauth = oauthAccount(configDir: configDir),
               let name = oauth["planDisplayName"] as? String, !name.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         return name
     }
@@ -108,9 +105,7 @@ struct Account {
 
     /// The claude.ai account id Claude Code recorded for the folder (to compare with the desktop app's).
     static func expectedAccountUuid(configDir: String) -> String? {
-        guard let data = FileManager.default.contents(atPath: claudeJSON(configDir: configDir)),
-              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let oauth = j["oauthAccount"] as? [String: Any] else { return nil }
+        guard let oauth = oauthAccount(configDir: configDir) else { return nil }
         return oauth["accountUuid"] as? String
     }
 
