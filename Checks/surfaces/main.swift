@@ -389,7 +389,11 @@ do {
     usageJSON(updated: now.addingTimeInterval(-16 * 60), week: 40, weekResets: now.addingTimeInterval(86400), fiveResets: now.addingTimeInterval(3600))
     check(UsageParser.fromStatusLine(Account(p), now: now) == nil, "written 16 minutes ago: ignored")
     usageJSON(updated: now.addingTimeInterval(-60), week: 40, weekResets: now.addingTimeInterval(86400), fiveResets: now.addingTimeInterval(-1))
-    check(UsageParser.fromStatusLine(Account(p), now: now) == nil, "fresh, but its 5-hour reset has passed: ignored")
+    let halfPast = UsageParser.fromStatusLine(Account(p), now: now)
+    check(halfPast?.weekly == 40 && halfPast?.fiveHour == nil && halfPast?.fiveHourResets == nil,
+          "fresh, its 5-hour reset just passed: the week still shows, the 5-hour percent doesn't")
+    usageJSON(updated: now.addingTimeInterval(-60), week: 40, weekResets: now.addingTimeInterval(-1), fiveResets: now.addingTimeInterval(-1))
+    check(UsageParser.fromStatusLine(Account(p), now: now) == nil, "fresh, both resets passed: nothing left, ignored")
     usageJSON(updated: now.addingTimeInterval(3600), week: 40, weekResets: now.addingTimeInterval(86400), fiveResets: now.addingTimeInterval(7200))
     check(UsageParser.fromStatusLine(Account(p), now: now) == nil, "dated an hour ahead: ignored")
     usageJSON(updated: now.addingTimeInterval(-14 * 60), week: 40, weekResets: now.addingTimeInterval(86400), five: 12, fiveResets: now.addingTimeInterval(3600))

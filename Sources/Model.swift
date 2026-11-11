@@ -365,8 +365,9 @@ enum UsageParser {
     }
 
     /// The file the status line script writes: {five_hour:{used_percentage,resets_at}, seven_day:{…}, updated_at}.
-    /// Used only while it is fresh: written in the last 15 minutes (Freshness) and none of its limits' reset times passed.
-    /// Otherwise it is ignored as if it weren't there (Claude Code writes it only while it runs, so an old one is old numbers).
+    /// Used only while it is fresh: written in the last 15 minutes (Freshness); otherwise it is ignored as if it weren't
+    /// there (Claude Code writes it only while it runs, so an old one is old numbers). A limit whose reset has passed is
+    /// left out (the week stays when the 5-hour reset just passed); nil when no limit is left.
     static func fromStatusLine(_ account: Account, now: Date = Date()) -> Usage? {
         let url = URL(fileURLWithPath: account.configDir).appendingPathComponent("usage.json")
         guard let data = try? Data(contentsOf: url),
@@ -375,7 +376,7 @@ enum UsageParser {
         var u = Usage(fetchedAt: updated, source: "Claude Code status line")
         if let w = j["five_hour"] as? [String: Any] { u.fiveHour = percent(w); u.fiveHourResets = date(w["resets_at"]) }
         if let w = j["seven_day"] as? [String: Any] { u.weekly = percent(w); u.weeklyResets = date(w["resets_at"]) }
-        guard !Freshness.passed(u.fiveHourResets, now: now), !Freshness.passed(u.weeklyResets, now: now) else { return nil }
+        u = u.current(now: now)
         return (u.fiveHour == nil && u.weekly == nil) ? nil : u
     }
 }

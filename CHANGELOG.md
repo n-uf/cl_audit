@@ -11,8 +11,8 @@ the notes before updating.
 - **Old numbers no longer show as current.** While a profile's Claude Code sign-in had expired, every screen could show
   week 90% "in 0 min" and "Updated 169 h 43 min ago · Claude Code status line": numbers the status line had written a
   week earlier, long past their reset (the real week was 53%). Now the status line's numbers are used only when they
-  were written in the last 15 minutes and none of their limits has reset since. A limit whose reset time has passed never
-  shows its old percent, wherever cl_audit shows saved numbers (also numbers from Anthropic, and the widget).
+  were written in the last 15 minutes. A limit whose reset time has passed never shows its old percent, wherever
+  cl_audit shows saved numbers (also numbers from Anthropic, and the widget); the other limit still shows.
 - **An expired sign-in says so, with one key.** With the sign-in expired and no fresh numbers, the menu bar, the Dock
   icon's menu and panel, the card, Settings and quick chat show no bars, "login expired" and **Log in…**. The menus'
   "Renew login now" item is gone (Renew sign-in in the profile's settings still renews by itself); the card's
