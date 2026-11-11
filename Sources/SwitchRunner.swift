@@ -138,6 +138,13 @@ final class SwitchRunner: ObservableObject {
         }
     }
 
+    /// An Undo that left some things as they were: what, and that Undo can be tried again.
+    static func partlyWords(_ r: SwitchReceipt) -> String {
+        let left = r.left ?? []
+        let shown = left.prefix(3).joined(separator: ", ") + (left.count > 3 ? " and \(left.count - 3) more" : "")
+        return "Partly undone: \(shown) \(left.count == 1 ? "was" : "were") left as \(left.count == 1 ? "it was" : "they were"). The rest is back; Undo again once that's sorted."
+    }
+
     static func heldWords(_ n: Int) -> String {
         "\(n) \(n == 1 ? "session stays" : "sessions stay") with the account in use: Claude Code is running \(n == 1 ? "it" : "them") now. A later switch moves \(n == 1 ? "it" : "them") once \(n == 1 ? "it's" : "they're") closed."
     }
@@ -209,7 +216,8 @@ final class SwitchRunner: ObservableObject {
                 case .success(let back):
                     self.receipt = back
                     self.moveNote = back.problems.isEmpty ? nil : back.problems.joined(separator: " ")
-                    self.phase = .undone
+                    // only partly: it stays open, and says what was left
+                    self.phase = back.undone != nil ? .undone : .failed(Self.partlyWords(back))
                 case .failure(let err): self.phase = .failed("\(err)")
                 }
             }

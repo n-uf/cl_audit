@@ -9,10 +9,22 @@
 import Foundation
 
 enum SafeRead {
-    /// The cap for a whole .claude.json-type file: a larger one isn't read at all (as if it weren't there).
+    /// The cap for a whole JSON file of Claude's (a backup's record, scheduled-tasks.json, the window's config): a larger one
+    /// isn't read at all.
     static let jsonMax = 32 << 20
-    /// The cap for a small record (a session's registration, an agent session's record, a session entry).
+    /// The cap for a .claude.json (Claude Code keeps its projects' history in it, so a real one can be large): larger than
+    /// this it isn't read, and the screens say "too large to read" (`tooLarge`), never "signed out".
+    static let claudeJSONMax = 256 << 20
+    /// The cap for a small record (a session's registration, an agent session's record, usage.json).
     static let recordMax = 1 << 20
+    /// The cap for one of the window's session entries (it carries the account's connector list).
+    static let entryMax = 8 << 20
+
+    /// The file is a regular file larger than `max` (by its size alone; nothing is read).
+    static func tooLarge(_ path: String, max: Int) -> Bool {
+        var st = stat()
+        return stat(path, &st) == 0 && (st.st_mode & S_IFMT) == S_IFREG && Int(st.st_size) > max
+    }
 
     struct Read {
         var data: Data
@@ -23,13 +35,14 @@ enum SafeRead {
 
     /// Up to `max` bytes of a regular file, from its start (or its end), opened non-blocking. nil when it isn't there,
     /// isn't a regular file (a FIFO, a device, a folder) or can't be read.
-    static func read(_ path: String, max: Int, fromEnd: Bool = false) -> Read? {
+    static func read(_ path: String, max: Int, fromEnd: Bool = false, whole: Bool = false) -> Read? {
         let fd = open(path, O_RDONLY | O_NONBLOCK)
         guard fd >= 0 else { return nil }
         defer { close(fd) }
         var st = stat()
         guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { return nil }
         let size = Int(st.st_size), n = min(size, max)
+        if whole && size > max { return nil }                 // never half of one: and never read just to throw it away
         var buf = Data(count: n)
         let got = n == 0 ? 0 : buf.withUnsafeMutableBytes { pread(fd, $0.baseAddress, n, off_t(fromEnd ? size - n : 0)) }
         guard got == n else { return nil }
@@ -39,7 +52,7 @@ enum SafeRead {
 
     /// A whole file of at most `max` bytes: nil when it's larger (never half of one), or not a regular file.
     static func whole(_ path: String, max: Int = jsonMax) -> Data? {
-        guard let r = read(path, max: max), r.data.count == r.size else { return nil }
+        guard let r = read(path, max: max, whole: true), r.data.count == r.size else { return nil }
         return r.data
     }
 
@@ -57,7 +70,7 @@ enum SafeRead {
         lock.lock()
         if let c = memo[path], c.stamp == key { lock.unlock(); return c.block }
         lock.unlock()
-        let block = jsonObject(path)?["oauthAccount"] as? [String: Any]
+        let block = jsonObject(path, max: claudeJSONMax)?["oauthAccount"] as? [String: Any]
         lock.lock(); memo[path] = (key, block); if memo.count > 256 { memo.removeAll() }; lock.unlock()
         return block
     }

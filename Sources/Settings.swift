@@ -227,7 +227,8 @@ final class SettingsModel: ObservableObject {
         for e in list {
             var s = Store.status(e.id) ?? IconStatus(state: "idle")
             var r = AccountResolver.resolve(e, among: list, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
-                                            loginEmail: s.loginEmail, names: AccountList.names())
+                                            loginEmail: s.loginEmail, names: AccountList.names(),
+                                            recordTooLarge: Account.recordTooLarge(configDir: e.configDir))
             if var old = s.resolved { old.at = r.at; if old == r { continue } }
             r.at = Date()
             s.resolved = r
@@ -242,7 +243,8 @@ final class SettingsModel: ObservableObject {
         guard let e = accounts.first(where: { $0.id == id }) else { return }
         var s = Store.status(id) ?? IconStatus(state: "idle")
         var r = AccountResolver.resolve(e, among: accounts, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
-                                        loginEmail: s.loginEmail, names: AccountList.names())
+                                        loginEmail: s.loginEmail, names: AccountList.names(),
+                                        recordTooLarge: Account.recordTooLarge(configDir: e.configDir))
         r.at = Date()
         s.resolved = r
         _ = Store.writeStatus(id, s)
@@ -1629,7 +1631,7 @@ struct AccountSettings: View {
             mismatch ? (signedIn ?? "another account", red, "exclamationmark.triangle.fill")
             : move != nil ? (move?.seat.email ?? "another account", red, "exclamationmark.triangle.fill")
             : status?.state == "expired" ? (signedIn ?? expected ?? "expired", face.caution, "clock.badge.exclamationmark")
-            : (v.label ?? "not signed in yet", nil, nil)
+            : (v.label ?? (v.recordTooLarge ? "account not known (record too large)" : "not signed in yet"), nil, nil)
         let plan = (status?.plan).map(Account.planWords)
         let ok = v.lit && move == nil && !mismatch && !["expired", "noLogin", "denied", "unreadable"].contains(status?.state)
         return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: ok ? .ok : .warn,

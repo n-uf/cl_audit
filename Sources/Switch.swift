@@ -84,14 +84,14 @@ struct SidebarCounts: Equatable {
         // an entry can be large (it carries the account's connector list): only its "isArchived" is looked for
         let archived = [Data(#""isArchived":true"#.utf8), Data(#""isArchived" : true"#.utf8), Data(#""isArchived": true"#.utf8)]
         for f in entries(root, org) {
-            let d = (try? Data(contentsOf: URL(fileURLWithPath: (odir as NSString).appendingPathComponent(f)))) ?? Data()
+            // bounded, never blocking (SafeRead): a FIFO named like an entry can't hold up the Switch page
+            let d = SafeRead.whole((odir as NSString).appendingPathComponent(f), max: SafeRead.entryMax) ?? Data()
             if archived.contains(where: { d.range(of: $0) != nil }) { c.archived += 1 } else { c.sessions += 1 }
         }
         let scope = "\(account)/\(org)"
         c.sections = prefs.sections[scope] ?? 0
         c.groups = prefs.groups[scope] ?? 0
-        if let data = fm.contents(atPath: (odir as NSString).appendingPathComponent("scheduled-tasks.json")),
-           let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        if let j = SafeRead.jsonObject((odir as NSString).appendingPathComponent("scheduled-tasks.json")) {
             c.tasks = (j["scheduledTasks"] as? [Any])?.count ?? 0
         }
         return c
@@ -105,8 +105,7 @@ struct SidebarCounts: Equatable {
     /// The sidebar's mirror: per account/organisation, how many sections it shows and how many groups it has.
     private static func sidebarPrefs(dataDir: String) -> (scopes: Set<String>, sections: [String: Int], groups: [String: Int]) {
         let path = (dataDir as NSString).appendingPathComponent("claude_desktop_config.json")
-        guard let data = FileManager.default.contents(atPath: path),
-              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+        guard let j = SafeRead.jsonObject(path),
               let e = (j["preferences"] as? [String: Any])?["epitaxyPrefs"] as? [String: Any] else { return ([], [:], [:]) }
         var sections: [String: Int] = [:], groups: [String: Int] = [:]
         for (scope, v) in (e["dframe-code-sections"] as? [String: Any]) ?? [:] {

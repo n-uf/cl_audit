@@ -88,6 +88,10 @@ struct Account {
     /// once), parsed again only when the file changed (SafeRead).
     static func oauthAccount(configDir: String) -> [String: Any]? { SafeRead.oauthAccount(claudeJSON(configDir: configDir)) }
 
+    /// The folder's .claude.json is too large to read (SafeRead.claudeJSONMax): its account isn't known, which the screens
+    /// say as such, never as "signed out".
+    static func recordTooLarge(configDir: String) -> Bool { SafeRead.tooLarge(claudeJSON(configDir: configDir), max: SafeRead.claudeJSONMax) }
+
     static func expectedEmail(configDir: String) -> String? {
         oauthAccount(configDir: configDir)?["emailAddress"] as? String
     }
@@ -365,7 +369,8 @@ enum UsageParser {
     /// left out (the week stays when the 5-hour reset just passed); nil when no limit is left.
     static func fromStatusLine(_ account: Account, now: Date = Date()) -> Usage? {
         let url = URL(fileURLWithPath: account.configDir).appendingPathComponent("usage.json")
-        guard let data = try? Data(contentsOf: url),
+        // bounded and never blocking (a FIFO named usage.json returns at once): this runs on the agent's main-thread tick
+        guard let data = SafeRead.whole(url.path, max: SafeRead.recordMax),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let updated = date(j["updated_at"]), Freshness.isFresh(updated, now: now) else { return nil }
         var u = Usage(fetchedAt: updated, source: "Claude Code status line")

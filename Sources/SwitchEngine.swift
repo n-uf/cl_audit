@@ -103,6 +103,10 @@ struct SwitchReceipt: Codable, Equatable {
     var undoes: String?
     /// The entries a running Claude Code owned, left where they were ("local_<id>.json").
     var held: [String]?
+    /// Undo ran but left these as they were (outside the switch's places, changed since, or couldn't be taken away): only
+    /// partly undone, and still open for another Undo.
+    var left: [String]?
+    var partlyUndone: Date?
 
     /// Something was moved, and the switch was neither linked nor undone: Undo still applies.
     var unfinished: Bool { undone == nil && linked == nil && !steps.isEmpty }
@@ -306,7 +310,8 @@ enum SwitchEngine {
         let taskIDs = Set(tasks(in: p.sourceDir).compactMap { $0["id"] as? String })
         for n in names {
             let id = String(n.dropFirst("local_".count).dropLast(".json".count))
-            let data = fm.contents(atPath: (p.sourceDir as NSString).appendingPathComponent(n)) ?? Data()
+            // bounded, never blocking: a FIFO or a device named like an entry isn't one (it is held, below: never moved)
+            guard let data = SafeRead.whole((p.sourceDir as NSString).appendingPathComponent(n), max: SafeRead.entryMax) else { p.held.append(n); continue }
             if fm.fileExists(atPath: (p.targetDir as NSString).appendingPathComponent(n)) { p.already.append(n); continue }
             if fm.fileExists(atPath: (p.targetDir as NSString).appendingPathComponent("deleted_\(id)")) { p.deleted.append(n); continue }
             // a session a running Claude Code owns, or one of tasks that can't move: held where it is
@@ -430,7 +435,9 @@ enum SwitchEngine {
         let fm = FileManager.default
         let src = (p.sourceDir as NSString).appendingPathComponent(name)
         let dst = (p.targetDir as NSString).appendingPathComponent(name)
-        let original = try Data(contentsOf: URL(fileURLWithPath: src))
+        // bounded and never blocking, like every read of the window's files (SafeRead)
+        func readEntry(_ path: String) -> Data? { SafeRead.whole(path, max: SafeRead.entryMax) }
+        guard let original = readEntry(src) else { throw SwitchError.failed("\(name) can't be read as a session entry") }
         let data = try placed(original)
         let park = parked.appendingPathComponent(name).path
         r.steps.append(SwitchReceipt.Step(kind: .entry, path: dst, sha: sha(data), parked: park, original: src))
@@ -442,12 +449,12 @@ enum SwitchEngine {
             r.steps.remove(at: i); try save(r); throw error   // nothing placed
         }
         do {
-            guard (try? Data(contentsOf: URL(fileURLWithPath: dst))) == data else { throw SwitchError.failed("the placed entry didn't read back the same") }
+            guard readEntry(dst) == data else { throw SwitchError.failed("the placed entry didn't read back the same") }
             // the source checked unchanged, then parked (never deleted)
-            guard (try? Data(contentsOf: URL(fileURLWithPath: src))) == original else { throw SwitchError.failed("the original changed during the switch") }
+            guard readEntry(src) == original else { throw SwitchError.failed("the original changed during the switch") }
             try fm.moveItem(atPath: src, toPath: park)
         } catch {
-            if (try? Data(contentsOf: URL(fileURLWithPath: dst))).map(sha) == sha(data), (try? fm.removeItem(atPath: dst)) != nil {
+            if readEntry(dst).map(sha) == sha(data), (try? fm.removeItem(atPath: dst)) != nil {
                 r.steps.remove(at: i)                          // the copy taken away: as if never placed
             } else if fm.fileExists(atPath: dst) && fm.fileExists(atPath: src) {
                 r.problems.append("\(name) is in both accounts: its copy couldn't be taken away. Undo takes it away.")
@@ -633,6 +640,9 @@ enum SwitchEngine {
         let fm = FileManager.default
         // receipt.json is a file on disk: every path it names must be one of this switch's own places, or it's left alone
         let places = undoPlaces(r)
+        // what is left as it was (outside the switch's places, changed since, or couldn't be taken away): then the
+        // receipt is only partly undone and stays open, so Undo can be tried again
+        var left: [String] = []
         for step in r.steps.reversed() {
             let name = (step.path as NSString).lastPathComponent
             // the window must stay closed for every step, as for the switch itself
@@ -641,15 +651,15 @@ enum SwitchEngine {
                 try? save(r)
                 throw SwitchError.windowOpen
             }
-            if let why = places.outside(step) { r.problems.append("\(name): \(why); left as it is"); continue }
+            if let why = places.outside(step) { r.problems.append("\(name): \(why); left as it is"); left.append(name); continue }
             switch step.kind {
             case .entry:
                 let now = (try? Data(contentsOf: URL(fileURLWithPath: step.path))).map(sha)
                 if now == step.sha {                                       // only what this switch placed, unchanged
                     do { try fm.removeItem(atPath: step.path) }
-                    catch { r.problems.append("\(name) couldn't be taken away; its original stays parked"); continue }
+                    catch { r.problems.append("\(name) couldn't be taken away; its original stays parked"); left.append(name); continue }
                 } else if now != nil {
-                    r.problems.append("\(name) changed since; left as it is"); continue
+                    r.problems.append("\(name) changed since; left as it is"); left.append(name); continue
                 }
                 guard let parked = step.parked, let original = step.original, fm.fileExists(atPath: parked) else { continue }
                 if !fm.fileExists(atPath: original) { try fm.moveItem(atPath: parked, toPath: original) }
@@ -658,7 +668,7 @@ enum SwitchEngine {
                 let now = (try? Data(contentsOf: URL(fileURLWithPath: step.path))).map(sha)
                 let before = step.parked.flatMap { try? Data(contentsOf: URL(fileURLWithPath: $0)) }.map(sha)
                 if now == before || (now == nil && !step.existed) { continue }    // never written (a stop before it)
-                guard now == step.sha else { r.problems.append("\(name) changed since; left as it is"); continue }
+                guard now == step.sha else { r.problems.append("\(name) changed since; left as it is"); left.append(name); continue }
                 if let backup = step.parked {
                     _ = try fm.replaceItemAt(URL(fileURLWithPath: step.path), withItemAt: URL(fileURLWithPath: backup),
                                              backupItemName: nil, options: [.usingNewMetadataOnly])
@@ -680,7 +690,11 @@ enum SwitchEngine {
             let back = (source as NSString).appendingPathComponent(f)
             if fm.fileExists(atPath: back) { r.problems.append("\(f) is back already") } else { try fm.moveItem(atPath: p, toPath: back) }
         }
-        r.undone = Date()
+        if left.isEmpty {
+            r.undone = Date(); r.left = nil; r.partlyUndone = nil
+        } else {
+            r.left = left; r.partlyUndone = Date()           // not undone: it stays open (unfinished) for another Undo
+        }
         try save(r)
         return r
     }

@@ -682,7 +682,7 @@ final class UsageReader {
         let me = list.first { $0.id == id } ?? entry
         var r = AccountResolver.resolve(me, among: list, app: AppSignIn.cached(for: me),
                                         code: Account.signedInSeat(configDir: me.configDir), loginEmail: loginEmail,
-                                        names: AccountList.names())
+                                        names: AccountList.names(), recordTooLarge: Account.recordTooLarge(configDir: me.configDir))
         if var last = lastResolved { last.at = r.at; if last == r { r.at = lastResolved!.at } }
         lastResolved = r
         status.resolved = r

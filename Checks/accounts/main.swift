@@ -645,6 +645,23 @@ do {
     t = Date()
     check(SwitchEngine.lastPointer(expand("~/.claude-fifo/projects/-x/\(uuid(1201)).jsonl")) == nil && SwitchEngine.lastPointer("/dev/zero") == nil
           && Date().timeIntervalSince(t) < 1, "the pointer's read: a FIFO transcript and /dev/zero return at once")
+    // review r2: a FIFO named usage.json (read on the agent's main-thread tick) returns at once
+    mkfifo(expand("~/.claude-fifo/usage.json"), 0o600)
+    t = Date()
+    check(UsageParser.fromStatusLine(Account(pf)) == nil && Date().timeIntervalSince(t) < 1, "a FIFO usage.json returns at once, no numbers")
+    // a .claude.json larger than the cap: not read, and said as too large, never as signed out
+    try? fm.createDirectory(atPath: expand("~/.claude-huge12"), withIntermediateDirectories: true)
+    fm.createFile(atPath: expand("~/.claude-huge12/.claude.json"), contents: nil)
+    if let h = FileHandle(forWritingAtPath: expand("~/.claude-huge12/.claude.json")) { try? h.truncate(atOffset: UInt64(SafeRead.claudeJSONMax + 1)); try? h.close() }
+    t = Date()
+    let hugeSeat = Account.signedInSeat(configDir: "~/.claude-huge12")
+    check(hugeSeat == nil && Account.recordTooLarge(configDir: "~/.claude-huge12") && Date().timeIntervalSince(t) < 1, "a .claude.json over 256 MB isn't read (at once)")
+    let hp = profile("hp", "~/.claude-huge12", u1)
+    let hr = AccountResolver.resolve(hp, among: [hp], app: .unknown, code: nil, loginEmail: nil, names: [:], recordTooLarge: true, now: t0)
+    var hst = IconStatus(state: "ok"); hst.resolved = hr
+    check(hr.line?.contains("too large to read") == true && AccountView.of(hst).recordTooLarge && !(hr.line ?? "").contains("signed out"),
+          "said as too large to read, never as signed out: \(hr.line ?? "-")")
+    try? fm.removeItem(atPath: expand("~/.claude-huge12"))
     // a .claude.json read follows a link to a real file (reads follow links), and a changed file is read again
     sign("~/.claude-real12", u2)
     try? fm.createSymbolicLink(atPath: expand("~/.claude-lnk12"), withDestinationPath: expand("~/.claude-real12"))
@@ -696,6 +713,9 @@ do {
     let crafted = try! SwitchEngine.undo(r.id, windowClosed: { true })
     check(fm.fileExists(atPath: victim) && crafted.problems.filter { $0.contains("outside this switch's folders") }.count == 2,
           "Undo: a crafted path outside the scope (or climbing out of it) is skipped and named: \(crafted.problems)")
+    check(crafted.undone == nil && crafted.partlyUndone != nil && crafted.left?.count == 2 && SwitchEngine.unfinished(profile: "r3").contains { $0.id == r.id },
+          "…so it is only partly undone, names what was left, and stays open for another Undo")
+    try? fm.removeItem(at: SwitchEngine.root.appendingPathComponent(r.id))      // out of the way of the cases below
 
     // SHOULD 1: the window opening during Undo stops it before the next step
     fixture()

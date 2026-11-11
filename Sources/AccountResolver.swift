@@ -29,13 +29,16 @@ struct ResolvedAccount: Codable, Equatable {
     var lit: Bool                   // the green lamp: an account is in use and its numbers may show
     var clash: String?              // another profile's name: Claude Code's folder is on its account in use
     var at: Date
+    /// Claude Code's .claude.json is too large to read: its account isn't known (said so, never "signed out").
+    var recordTooLarge: Bool? = nil
 }
 
 enum AccountResolver {
     /// The answer for one profile. `app`: the Claude app's sign-in (AppSignIn); `code`: Claude Code's folder account;
     /// `loginEmail`: the address the numbers were read for; `names`: addresses by account id (AccountList).
+    /// `recordTooLarge`: Claude Code's .claude.json is there but too large to read (Account.recordTooLarge).
     static func resolve(_ e: AccountEntry, among accounts: [AccountEntry], app: AppSignIn.Login, code: Seat?, loginEmail: String?,
-                        names: [String: String], now: Date = Date()) -> ResolvedAccount {
+                        names: [String: String], recordTooLarge: Bool = false, now: Date = Date()) -> ResolvedAccount {
         let codeLabel = loginEmail ?? code?.email ?? code.map { "account \($0.account.prefix(8))" }
         let owner = code.flatMap { c in accounts.first { $0.id != e.id && ($0.seat.map { c.same($0) } ?? false) } }
         // without the app: Claude Code's folder account is the active one (its address from its record, else the numbers')
@@ -59,6 +62,11 @@ enum AccountResolver {
         } else if e.claudeWindow, !r.fromApp {
             r.line = "Claude app signed out or unreadable: Claude Code's account shows."
         }
+        // its record too large to read: not known, and said so (never as signed out)
+        if code == nil, recordTooLarge {
+            r.recordTooLarge = true
+            r.line = "Claude Code's .claude.json is too large to read: its account isn't known here."
+        }
         return r
     }
 }
@@ -72,12 +80,14 @@ struct AccountView: Equatable {
     var clash: String?              // another profile's name, when Claude Code's folder is on its account
     /// The active account's id (lower case), from the record; nil for a record from before the resolver.
     var account: String? = nil
+    /// The account isn't known because Claude Code's record is too large to read (never shown as "not signed in").
+    var recordTooLarge = false
 
     static func of(_ s: IconStatus?) -> AccountView {
         guard let s else { return AccountView(label: nil, numbersOwner: nil, line: nil, lit: false, clash: nil) }
         if let r = s.resolved {
             return AccountView(label: r.email ?? r.account.map { "account \($0.prefix(8))" }, numbersOwner: r.numbersFor,
-                               line: r.line, lit: r.lit, clash: r.clash, account: r.account)
+                               line: r.line, lit: r.lit, clash: r.clash, account: r.account, recordTooLarge: r.recordTooLarge == true)
         }
         // a record from before the resolver (or none written yet): the sign-in it was read for
         let who = s.loginEmail ?? s.expectedEmail
