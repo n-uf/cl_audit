@@ -240,6 +240,7 @@ final class SettingsModel: ObservableObject {
     /// any other change; the agent does the same while this window is closed.
     func noteAccounts() {
         guard Self.followsDock, !isFirstRun, !needsApply, problem == nil else { return }   // not under the first-run page
+        SwitchEngine.linkReached(accounts, signedIn: { FolderFactsCache.facts($0)?.seat })
         let noted = FolderRules.noteAccounts(accounts)
         if noted != accounts { accounts = noted }
     }

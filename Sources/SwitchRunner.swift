@@ -123,7 +123,9 @@ final class SwitchRunner: ObservableObject {
         // a switch that stopped half way is put back first: never a second move on top of it
         if let u = SwitchEngine.unfinished(profile: profile).first {
             goal = g; receipt = u
-            phase = .failed("An earlier switch of \(e.name) stopped half way: Undo it first.")
+            // never for good: Undo puts it back, and signing in as the account it went for finishes it (linkReached)
+            let to = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { u.to.same($0) }?.email.map(AccountNames.short) ?? "its account"
+            phase = .failed("An earlier switch of \(e.name) stopped half way. Undo it (below, or on the Sessions card), or sign in as \(to) to finish it; then switch again.")
             return
         }
         guard e.seat != nil, s.seat != nil else { begin(e, g); return }

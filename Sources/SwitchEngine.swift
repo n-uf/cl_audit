@@ -824,6 +824,28 @@ enum SwitchEngine {
     }
 
     /// Claude Code signed in as the new account: the profile works on it, and the way back is a switch.
+    /// Every unfinished switch whose profile reached the account it went for, by the profile's record or by what its
+    /// folder's .claude.json names, is linked, also when the Switch page didn't see it (cl_audit quit during the sign-in,
+    /// or the person signed in by hand): its sessions are where they belong, Undo no longer applies, and it no longer
+    /// holds up the next switch. Called with the profiles' noting (FolderRules.noteAccounts). The ids linked.
+    @discardableResult
+    static func linkReached(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = Account.signedInSeat, now: Date = Date()) -> [String] {
+        let open = receipts().filter(\.unfinished)
+        guard !open.isEmpty else { return [] }
+        func reached(_ want: SeatID, _ s: Seat?) -> Bool {
+            guard let s else { return false }
+            return s.account.lowercased() == want.account.lowercased() && (s.organization ?? "").lowercased() == want.organization.lowercased()
+        }
+        var linked: [String] = []
+        for r in open {
+            guard let e = accounts.first(where: { $0.id == r.profile }),
+                  reached(r.to, e.seat) || reached(r.to, signedIn(e.configDir)) else { continue }
+            markLinked(r.id, now: now)
+            linked.append(r.id)
+        }
+        return linked
+    }
+
     static func markLinked(_ id: String, now: Date = Date()) {
         guard var r = load(id), r.linked == nil, r.undone == nil else { return }
         r.linked = now

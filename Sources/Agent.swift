@@ -331,7 +331,10 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     /// window is closed, so a sign-in made in Terminal, or by another app on the same folder, shows at once. Written only
     /// when something changed, under the profiles file's lock (Store.edit reads it fresh); every cl_audit takes it in.
     func noteAccounts() {
-        guard let list = Store.loadChecked(), FolderRules.noteAccounts(list) != list else { return }
+        guard let list = Store.loadChecked() else { return }
+        // a switch whose profile reached its account is linked, whoever saw the sign-in (SwitchEngine.linkReached)
+        SwitchEngine.linkReached(list, signedIn: { FolderFactsCache.facts($0)?.seat })
+        guard FolderRules.noteAccounts(list) != list else { return }
         do { _ = try Store.edit { FolderRules.noteAccounts($0) } }
         catch { agentLog.error("agent: the account a folder is signed in to couldn't be noted: \(String(describing: error), privacy: .public)") }
     }
