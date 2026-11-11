@@ -224,8 +224,12 @@ do {
     // a read from just before the folder's sign-in changed: the app signed out, the folder already on a free account, the
     // numbers still u1's: labelled with the address they were read for
     let late = res(main, appOut, code: Seat(account: uuid(9), organization: uuid(109), email: "free@example.com"), numbers: u1.email)
-    check(!late.fromApp && late.email == "free@example.com" && late.differs && late.numbersFor == u1.email
-          && late.line?.hasPrefix("Usage: Claude Code on ") == true, "no app: Claude Code's folder account in use, an older read's numbers say whose they are")
+    var lateRec = IconStatus(state: "ok"); lateRec.loginEmail = u1.email; lateRec.weekly = 94; lateRec.resolved = late
+    check(!late.fromApp && late.email == "free@example.com" && !late.differs && late.numbersFor == "free@example.com",
+          "no app: Claude Code's folder account in use, and the numbers to show are its own")
+    _ = Store.writeStatus("late", lateRec)
+    check(Store.status(for: profile("late", "~/.claude-late", nil))?.weekly == nil,
+          "an older read's numbers (ultra-1's) never show once the folder is on another account: none until its own read")
     check(res(main, AppSignIn.Login(account: u1.account.uppercased(), org: nil, state: .known, source: "config", at: nil), code: u1, numbers: u1.email).line == nil,
           "the same account in any case: no line")
     check(AccountView.of({ var s = IconStatus(state: "ok"); s.resolved = res(main, AppSignIn.Login(account: uuid(77), org: nil, state: .known, source: "log", at: t0), code: u1, numbers: u1.email); return s }()).label == "account 00000000",
@@ -321,8 +325,8 @@ do {
         ("Settings", AccountSettings(entry: .constant(after), model: m).view),
         ("Switch page", page.view)]
     for (s, v) in views { check(v == want && v.label == u2.email, "after a switch: \(s) names ultra-2") }
-    check(want.numbersOwner == u1.email && want.line?.hasPrefix("Usage: Claude Code on ") == true,
-          "until the new read, the numbers still there say they are ultra-1's")
+    check(want.numbersOwner == u2.email && want.line == nil && Store.status(for: after)?.weekly == nil,
+          "after a switch ultra-1's numbers never show: none until a read for ultra-2 succeeds")
     let listed = after.listed(by: want)
     check(!listed.standby.contains { $0.seat?.same(u2) == true } && listed.standby.filter { $0.seat?.same(u1) == true }.count == 1,
           "the old account is on standby once, the new one never: \(listed.standby.map(\.email))")

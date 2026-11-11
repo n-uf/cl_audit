@@ -39,7 +39,11 @@ enum AccountResolver {
     /// `recordTooLarge`: Claude Code's .claude.json is there but too large to read (Account.recordTooLarge).
     static func resolve(_ e: AccountEntry, among accounts: [AccountEntry], app: AppSignIn.Login, code: Seat?, loginEmail: String?,
                         names: [String: String], recordTooLarge: Bool = false, now: Date = Date()) -> ResolvedAccount {
-        let codeLabel = loginEmail ?? code?.email ?? code.map { "account \($0.account.prefix(8))" }
+        // whose the numbers are: the address they were read for, unless Claude Code's folder has since signed in to another
+        // account (a switch, a log-in): then they belong to the folder's account, and the old read's numbers are dropped
+        // (Store.status) until a read for it succeeds; never the old account's numbers under the new one
+        let stale = loginEmail.map { l in code?.email.map { $0.lowercased() != l.lowercased() } ?? false } ?? false
+        let codeLabel = (stale ? code?.email : loginEmail) ?? code?.email ?? code.map { "account \($0.account.prefix(8))" }
         let owner = code.flatMap { c in accounts.first { $0.id != e.id && ($0.seat.map { c.same($0) } ?? false) } }
         // without the app: Claude Code's folder account is the active one (its address from its record, else the numbers')
         var r = ResolvedAccount(account: code?.account.lowercased(), email: code?.email ?? loginEmail, fromApp: false,
@@ -52,7 +56,7 @@ enum AccountResolver {
             r.lit = true
         }
         // in every case: the numbers' own address decides when both are known; else the folder's id
-        if let n = loginEmail?.lowercased(), let a = r.email?.lowercased() { r.differs = n != a }
+        if let n = (stale ? code?.email : loginEmail)?.lowercased(), let a = r.email?.lowercased() { r.differs = n != a }
         else if r.fromApp, let id = r.account { r.differs = code.map { $0.account.lowercased() != id } ?? false }
         if let o = owner {
             r.line = "Claude Code's folder is signed in to \(o.name)'s account: its numbers show on \(o.name)."
