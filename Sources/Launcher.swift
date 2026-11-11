@@ -208,7 +208,8 @@ struct AccountRow: Identifiable {
         if status?.state == "noLogin" { return "no Claude Code login" }
         if status?.state == "denied" { return "signed in, can't read it yet" }
         if status?.state == "unreadable" { return "signed in, can't read this kind" }
-        return status?.loginEmail ?? status?.expectedEmail ?? entry.configDir
+        // the account in use as the profile's record says it (AccountResolver): the palette rows show this
+        return view.label ?? status?.expectedEmail ?? entry.configDir
     }
 }
 
@@ -481,7 +482,7 @@ enum StripState: Equatable {
         case let .noAnswer(ago, names, tip):
             return ("Updated", "· \(ago) · " + (names.count == 1 ? "\(names[0]): no answer" : "\(names.count) profiles: no answer"), .amber, tip)
         case let .updated(ago, tip):
-            return (ago == nil ? "Not updated yet" : "Updated", ago.map { "· \($0)" }, .normal, tip)
+            return (ago == nil ? "Reading usage…" : "Updated", ago.map { "· \($0)" }, .normal, tip)
         }
     }
 }
