@@ -41,8 +41,8 @@ extension AccountEntry {
     /// signed in to an account it can't be, the profile's own or another profile's, is never read).
     func readerEntry(for s: StandbyAccount) -> AccountEntry? {
         // a kept folder that isn't there (deleted, or a link) is never read: its reader would renew a sign-in for a folder
-        // the person removed, and Claude Code would make it again (ClaudeCLI.folderReady)
-        guard let dir = s.configDir, !dir.isEmpty, s.seat != nil, ClaudeCLI.folderReady(dir) else { return nil }
+        // the person removed, and Claude Code would make it again (FolderGuard)
+        guard let dir = s.configDir, !dir.isEmpty, s.seat != nil, FolderGuard.folderReady(dir) else { return nil }
         var r = self
         r.id = Self.standbyStatusID(id, s.id)
         r.configDir = dir

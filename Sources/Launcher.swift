@@ -76,7 +76,7 @@ enum Launcher {
         }
         guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: claudeBundleID) else { return }
         // its Claude Code folder gone: not started with it (the app's own claude would make it again)
-        guard ClaudeCLI.mayLaunch("window", account.configDir) else { return }
+        guard FolderGuard.mayLaunch("window", account.configDir) else { return }
         let cfg = NSWorkspace.OpenConfiguration()
         cfg.activates = activate
         cfg.createsNewApplicationInstance = !running.isEmpty || account.claudeUserDataDir != nil
@@ -112,7 +112,7 @@ enum Launcher {
     }
 
     private static func openTerminal(_ account: Account, claude: String) {
-        guard ClaudeCLI.mayLaunch("terminal", account.configDir) else { return }
+        guard FolderGuard.mayLaunch("terminal", account.configDir) else { return }
         func q(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
         let lines = ["#!/bin/zsh -l", "cd ~",
                      account.isDefaultDir ? "unset CLAUDE_CONFIG_DIR" : "export CLAUDE_CONFIG_DIR=\(q(account.configDir))",

@@ -10,5 +10,5 @@ out="$repo/build/checks/quick-chat"
 mkdir -p "$out"
 chmod +x "$here/stub-claude"
 swiftc -swift-version 5 -target arm64-apple-macos13.0 -o "$out/checks" \
-  "$repo/Sources/QuickChatEngine.swift" "$repo/Sources/QuickChatMarkdown.swift" "$here/main.swift"
+  "$repo/Sources/QuickChatEngine.swift" "$repo/Sources/QuickChatMarkdown.swift" "$repo/Sources/FolderGuard.swift" "$here/main.swift"
 QC_STUB_PATH="$here/stub-claude" QC_WORK="$out/work" "$out/checks"

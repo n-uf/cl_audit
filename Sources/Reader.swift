@@ -426,7 +426,7 @@ final class UsageReader {
     func renewLogin() {
         guard !renewing, !stopped else { return }
         // its folder isn't there (deleted, or a link): never renewed, nothing started (Claude Code would make it again)
-        guard ClaudeCLI.folderReady(account.configDir) else {
+        guard FolderGuard.folderReady(account.configDir) else {
             renewNote = "Not renewed: its Claude Code folder isn't there"
             save(); return
         }

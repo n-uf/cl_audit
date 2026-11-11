@@ -147,7 +147,7 @@ do {
 do {
     Login.runSecurity = { _ in (44, Data()) }                 // never the Keychain: "no such item"
     var launches: [String] = []
-    ClaudeCLI.launchSeam = { what, dir in launches.append("\(what) \(dir)"); return false }
+    FolderGuard.launchSeam = { what, dir in launches.append("\(what) \(dir)"); return false }
     let gone = "~/.claude-gone-kept"
     try? fm.removeItem(atPath: expand(gone))
     var p = profile("pk", "~/.claude-pk", u1); p.claudeWindow = false; p.autoRenew = true
@@ -173,12 +173,12 @@ do {
     check(ClaudeCLI.renew("/usr/bin/false", account: Account(r)) == false && !fm.fileExists(atPath: expand(gone)), "Renew sign-in refuses a missing folder")
     check(ClaudeCLI.logout("/usr/bin/false", configDir: gone) == false && !fm.fileExists(atPath: expand(gone)), "so does logout")
     try? fm.createSymbolicLink(atPath: expand("~/.claude-linked-kept"), withDestinationPath: expand("~/.claude-pk"))
-    check(!ClaudeCLI.folderReady("~/.claude-linked-kept") && !ClaudeCLI.folderReady("~/.claude-linked-kept", creating: true), "a link is never used, nor made into a folder")
-    check(ClaudeCLI.folderReady("~/.claude") && ClaudeCLI.folderReady("~/.claude-pk"), "the default folder, and a folder that is there, are fine")
-    check(ClaudeCLI.mayLaunch("login", "~/.claude-new-signin", creating: true) == false && fm.fileExists(atPath: expand("~/.claude-new-signin")),
+    check(!FolderGuard.folderReady("~/.claude-linked-kept") && !FolderGuard.folderReady("~/.claude-linked-kept", creating: true), "a link is never used, nor made into a folder")
+    check(FolderGuard.folderReady("~/.claude") && FolderGuard.folderReady("~/.claude-pk"), "the default folder, and a folder that is there, are fine")
+    check(FolderGuard.mayLaunch("login", "~/.claude-new-signin", creating: true) == false && fm.fileExists(atPath: expand("~/.claude-new-signin")),
           "a sign-in the person starts makes its new folder first (the seam then stops the launch here)")
     check(launches.contains("login ~/.claude-new-signin"), "…and only then would it launch")
-    ClaudeCLI.launchSeam = nil
+    FolderGuard.launchSeam = nil
 }
 
 // ============ 5. no screen reads the sign-in files or a seat itself ============
