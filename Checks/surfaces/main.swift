@@ -178,6 +178,13 @@ do {
           "the card shows ultra-2 with no numbers until the new read")
     mid.loginEmail = u2.email; mid.weekly = 12; _ = Store.writeStatus("main", mid)
     check(Store.status(for: main)?.weekly == 12, "the new read: ultra-2's own numbers show")
+    // the status line's numbers (no sign-in address) read from the account in use's kept folder, whose address the record
+    // has as the numbers' owner while the working folder names another: they show
+    var line = IconStatus(state: "ok"); line.loginEmail = nil; line.expectedEmail = "free@example.com"; line.weekly = 33; line.updatedAt = t0
+    line.source = "Claude Code status line"
+    line.resolved = res(main, appU1, code: u1, numbers: u1.email)
+    _ = Store.writeStatus("main", line)
+    check(Store.status(for: main)?.weekly == 33 && Store.status(for: main)?.updatedAt == t0, "status-line numbers from a kept folder show (no address to tell them apart by)")
 }
 
 // ============ 4. a standby account's old numbers are never shown ============
@@ -210,8 +217,13 @@ do {
     try? fm.createDirectory(atPath: expand("~/.claude-pk"), withIntermediateDirectories: true)
     p.standby = [StandbyAccount(email: u2.email!, seat: u2, configDir: gone, id: "kg")]
     check(p.readerEntry(for: p.standby[0]) == nil, "a kept folder that isn't there has no reader")
-    check(p.readerEntry(for: StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-pk", id: "y"))?.autoRenew == false,
-          "a standby account's kept sign-in is never renewed by itself")
+    check(p.readerEntry(for: StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-pk", id: "y"))?.autoRenew == true,
+          "a standby account's kept sign-in is renewed while its folder is there (the absent one below never is)")
+    // a kept folder that is a link to a real folder: read (only launching refuses links)
+    try? fm.createSymbolicLink(atPath: expand("~/.claude-pk-link"), withDestinationPath: expand("~/.claude-pk"))
+    check(p.readerEntry(for: StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-pk-link", id: "l")) != nil
+          && FolderGuard.isFolder("~/.claude-pk-link") && !FolderGuard.folderReady("~/.claude-pk-link"),
+          "a symlinked kept folder is read, never launched into")
     try! Store.save([p])
     // the agent: its readers made, ticked, the renew timer's work asked for
     let agent = AgentDelegate()
