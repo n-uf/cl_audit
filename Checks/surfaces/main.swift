@@ -421,6 +421,7 @@ do {
                                 fiveHour: rec?.fiveHour, fiveHourResets: rec?.fiveHourResets, weekly: rec?.weekly, weeklyResets: rec?.weeklyResets,
                                 updated: rec?.updatedAt, source: rec?.source, problem: rec?.problem, renewNote: nil, needsLogin: rec?.needsLogin ?? false)
         check(panel.weekly == nil && panel.fiveHour == nil && panel.needsLogin, "\(what): the Dock panel has no numbers and Log in…")
+        check(DetailsInfo.noNumbersWords(rec) == "Login expired", "\(what): the Dock panel's age line says Login expired, never Reading usage…")
         let target = QuickChatTarget(p), level = QuickChatLevel(Usage.of(rec), now: now)
         check(target.loginWords == "login expired" && level.week == nil && level.fiveHour == nil && level.full(now) == nil,
               "\(what): quick chat's line says login expired, no level")
@@ -441,6 +442,7 @@ do {
     reader.tick()
     let live = Store.status(for: p)
     check(live?.weekly == 53 && live?.fiveHour == 100 && live?.source == "Claude Code status line", "a fresh status line still shows its numbers")
+    check(DetailsInfo.noNumbersWords(live) == nil, "…and the Dock panel's age line is its age, not Login expired")
     check(Usage.of(live)?.weekly == 53 && AccountRow(entry: p, status: live).weekly == 53, "…on the menu bar and the card alike")
     reader.stop()
     Login.runSecurity = { _ in (44, Data()) }
@@ -487,7 +489,8 @@ do {
         let row = AccountRow(entry: p, status: rec)
         check(row.limits.allSatisfy { $0.p == nil } && row.needsLogin && row.subtitle == "no Claude Code login",
               "\(what): the card and Settings' box: no bars, its state line, Log in…")
-        check(rec?.needsLogin == true && rec?.fiveHour == nil, "\(what): the Dock panel (from the same record): no numbers, Log in…")
+        check(rec?.needsLogin == true && rec?.fiveHour == nil && DetailsInfo.noNumbersWords(rec) == "Signed out",
+              "\(what): the Dock panel (from the same record): no numbers, Log in…, its age line says Signed out")
         let q = QuickChatTarget(p), ql2 = QuickChatLevel(Usage.of(rec), now: now)
         check(q.loginWords == "no Claude Code login" && ql2.week == nil && ql2.fiveHour == nil, "\(what): quick chat's line says so, no level")
     }

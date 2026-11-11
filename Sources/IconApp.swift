@@ -363,7 +363,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             accent: entry.accentNSColor,
             refreshing: refreshing,
             scoped: entry.showFable ? usage?.scoped ?? [] : [], credits: usage?.credits,
-            noFiveHour: status?.noFiveHour == true)
+            noFiveHour: status?.noFiveHour == true,
+            noNumbers: DetailsInfo.noNumbersWords(status))
         return info.taking(view)
     }
 

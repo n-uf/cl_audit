@@ -27,6 +27,14 @@ struct DetailsInfo {
     var scoped: [ScopedLimit] = []
     var credits: Credits? = nil
     var noFiveHour = false              // the plan has no 5-hour limit (Ultra): no 5-hour row
+    /// Why there are no numbers when the sign-in is the reason ("Login expired", "Signed out"): the age line says it.
+    var noNumbers: String? = nil
+
+    /// The age line's words for a record without numbers whose sign-in is the reason, else nil.
+    static func noNumbersWords(_ s: IconStatus?) -> String? {
+        guard let s, s.fiveHour == nil, s.weekly == nil else { return nil }
+        return s.state == "expired" ? "Login expired" : s.state == "noLogin" ? "Signed out" : nil
+    }
     /// The active account (AccountResolver, from the profile's record): green lamp and "in use"; nil: the sign-in line.
     var active: String? = nil
     var activeLit = true
@@ -58,6 +66,8 @@ struct AgoButton: View {
     let date: Date?
     var source: String? = nil
     var refreshing = false
+    /// No numbers because of the sign-in ("Login expired"): said instead of "Reading usage…", which would never end.
+    var noNumbers: String? = nil
     let action: () -> Void
     @State private var hover = false
 
@@ -65,8 +75,8 @@ struct AgoButton: View {
         let ago = date.map { DetailsFormat.ago($0) }
         ViewThatFits(in: .horizontal) {
             // never a bare "Not yet": before the first read, what is happening
-            label(refreshing ? "Updating…" : ago.map { "Updated \($0)" } ?? "Reading usage…")
-            label(refreshing ? "Updating…" : ago ?? "Reading…")
+            label(refreshing ? "Updating…" : ago.map { "Updated \($0)" } ?? noNumbers ?? "Reading usage…")
+            label(refreshing ? "Updating…" : ago ?? noNumbers ?? "Reading…")
             Color.clear.frame(width: 0, height: 0)
         }
     }
@@ -168,7 +178,7 @@ struct DetailsView: View {
             }
             .controlSize(.small)
             // the age on a line of its own under the keys, so its long form ("Reading usage…", "Updated 1 min ago") fits
-            AgoButton(date: info.updated, source: info.source, refreshing: info.refreshing, action: actions.refresh)
+            AgoButton(date: info.updated, source: info.source, refreshing: info.refreshing, noNumbers: info.noNumbers, action: actions.refresh)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
         // the content's own width, the same 16 pt inset on every side: a row that's short of room gives way inside
