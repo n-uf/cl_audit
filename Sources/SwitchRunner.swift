@@ -268,7 +268,7 @@ final class SwitchRunner: ObservableObject {
         // the sessions moved already (Undo not used): only the sign-in again, the window kept closed meanwhile
         if canUndo, let e = entry {
             guard SwitchMarker.claim(windowKey(e), profile: profile, standby: markName) else {
-                fail(.closing, "Another run on \(e.name)'s Claude window is under way."); return
+                fail(.signIn, "Another run on \(e.name)'s Claude window is under way."); return     // the sign-in it was retrying
             }
             begin(e, Goal(standby: g.standby, wantedSeat: g.wantedSeat, wantedEmail: g.wantedEmail, from: g.from, started: Date()))
             return
