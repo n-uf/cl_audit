@@ -244,8 +244,10 @@ final class SwitchRunner: ObservableObject {
     /// Claude Code's own sign-in for the profile's folder, with the account's address filled in.
     func signInCode() {
         guard let e = entry, let s = target else { return }
-        if let why = ClaudeCLI.goneLine(e.configDir) { note = why; return }
         phase = .codeSignIn
+        // its folder gone or a link: nothing starts, and the switch waits here with the line and Cancel (also after the
+        // move, which calls this by itself: never stuck at "moving…")
+        if let why = ClaudeCLI.goneLine(e.configDir) { note = why; return }
         if let claude = model?.claudeNow() { ClaudeCLI.openLogin(claude, account: Account(e), email: s.email) }
         else { note = ClaudeInstall.missing + ". Install it (\(ClaudeInstall.command)), then sign in again." }
         started = Date()

@@ -393,6 +393,21 @@ do {
     RunLoop.main.run(until: Date().addingTimeInterval(0.3))
     check(alerts == [String](repeating: "Its Claude Code folder is gone (~/.claude-gone-profile): nothing was signed in.", count: 2) && !fm.fileExists(atPath: expand(goneProfile)),
           "the menus' and the launcher's Log in… on a deleted profile folder: the alert says so, nothing made: \(alerts)")
+    // the switch's own sign-in (also called by itself after the move): it waits at the sign-in step with the line and
+    // Cancel, never stuck at "moving…"
+    var sw = gp; sw.standby = [StandbyAccount(email: u1.email!, seat: u1, configDir: nil, id: "gs")]
+    sm.accounts = [sw]
+    let runner = SwitchRunner(profile: "gp", standby: "gs", model: sm)
+    runner.signInCode()
+    check(runner.phase == .codeSignIn && runner.isRunning && runner.note == "Its Claude Code folder is gone (~/.claude-gone-profile): nothing was signed in."
+          && !fm.fileExists(atPath: expand(goneProfile)), "the switch's sign-in on a deleted folder: at the sign-in step (Cancel there), the line, nothing made: \(runner.phase) \(runner.note ?? "-")")
+    // a link says so instead of "gone"
+    let linkLine = "Its Claude Code folder (~/.claude-linked-kept) isn't a plain folder (a link?): nothing was signed in."
+    check(ClaudeCLI.goneLine("~/.claude-linked-kept") == linkLine && ClaudeCLI.goneLine("~/.claude-pk") == nil, "a link: 'isn't a plain folder'; a folder: no line")
+    var lp = p; lp.standby = [StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-linked-kept", id: "kl")]
+    sm.message = ""
+    AccountSettings(entry: Binding(get: { lp }, set: { lp = $0 }), model: sm).signInStandby(lp.standby[0])
+    check(sm.message == linkLine, "Sign in… on a standby whose kept folder is a link: that line: \(sm.message)")
     check(launches.isEmpty && terminals.isEmpty, "no claude and no Terminal for any of them: \(launches) \(terminals)")
     // a brand-new folder the person just chose (New profile, first run): still made, owner only, and launched
     let fresh = "~/.claude-new-profile"
