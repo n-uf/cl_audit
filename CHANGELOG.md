@@ -8,7 +8,11 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **The copy of the profiles file is always kept whole, and never stops settings from saving.** Before cl_audit changes the
+  shape of its profiles file, it keeps a copy of the file as it was (`accounts.json.pre-<version>`, readable by you only).
+  That copy is now written in full before it counts. If something already sits under its name, such as a link or a copy
+  cut off part way, the copy goes under another name (`…-2`). Your settings save either way, and the Accounts card says so
+  in one line only if no copy could be kept at all.
 
 ## 26.11.18 — 2026-11-11
 
