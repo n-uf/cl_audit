@@ -364,6 +364,55 @@ do {
     check(FolderGuard.mayLaunch("login", "~/.claude-new-signin", creating: true) == false && fm.fileExists(atPath: expand("~/.claude-new-signin")),
           "a sign-in the person starts makes its new folder first (the seam then stops the launch here)")
     check(launches.contains("login ~/.claude-new-signin"), "…and only then would it launch")
+
+    // no sign-in makes a deleted folder again: Sign in… on a standby, the account in use's own folder, Log in… (A4)
+    var terminals: [String] = [], alerts: [String] = []
+    ClaudeCLI.openTerminal = { terminals.append($0.path); return true }
+    ClaudeCLI.goneSeam = { alerts.append($0) }
+    launches.removeAll()
+    let goneLine = "Its Claude Code folder is gone (~/.claude-gone-kept): nothing was signed in."
+    check(ClaudeCLI.openLogin("/usr/bin/false", account: Account(r), email: u2.email) == false && !fm.fileExists(atPath: expand(gone)),
+          "a sign-in for a deleted folder doesn't start and doesn't make it")
+    let sm = SettingsModel()
+    var pe = p; pe.keptFolder = gone
+    let page = AccountSettings(entry: Binding(get: { pe }, set: { pe = $0 }), model: sm)
+    page.signInStandby(pe.standby[0])
+    check(!fm.fileExists(atPath: expand(gone)) && sm.message == goneLine, "Sign in… on a standby whose kept folder was deleted: the line shows, nothing made: \(sm.message)")
+    sm.message = ""
+    page.signInOwnFolder()
+    check(!fm.fileExists(atPath: expand(gone)) && sm.message == goneLine, "Sign in… for the account in use's deleted folder: the same")
+    let goneProfile = "~/.claude-gone-profile"
+    try? fm.removeItem(atPath: expand(goneProfile))
+    var gp = profile("gp", goneProfile, u3); gp.claudeWindow = false
+    sm.accounts = [gp]
+    sm.askSwitch("gp", email: "ultra-9@example.com")
+    check(sm.beginSwitch() == "Its Claude Code folder is gone (~/.claude-gone-profile): nothing was signed in." && !fm.fileExists(atPath: expand(goneProfile)),
+          "Settings' sign-in on a profile whose folder was deleted: the line, nothing made")
+    ClaudeCLI.logIn(profile: gp)
+    ClaudeCLI.logIn(Account(gp), email: nil)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+    check(alerts == [String](repeating: "Its Claude Code folder is gone (~/.claude-gone-profile): nothing was signed in.", count: 2) && !fm.fileExists(atPath: expand(goneProfile)),
+          "the menus' and the launcher's Log in… on a deleted profile folder: the alert says so, nothing made: \(alerts)")
+    check(launches.isEmpty && terminals.isEmpty, "no claude and no Terminal for any of them: \(launches) \(terminals)")
+    // a brand-new folder the person just chose (New profile, first run): still made, owner only, and launched
+    let fresh = "~/.claude-new-profile"
+    try? fm.removeItem(atPath: expand(fresh))
+    FolderGuard.launchSeam = { what, dir in launches.append("\(what) \(dir)"); return true }
+    let freshAccount = Account(profile("np", fresh, nil))
+    let made = ClaudeCLI.openLogin("/usr/bin/false", account: freshAccount, email: "ultra-8@example.com", creating: true)
+    let mode = ((try? fm.attributesOfItem(atPath: expand(fresh)))?[.posixPermissions] as? NSNumber)?.intValue
+    check(made && mode == 0o700 && launches == ["login \(freshAccount.configDir)"] && terminals.count == 1, "New profile's sign-in makes its folder (owner only) and launches: \(launches) \(String(mode ?? -1, radix: 8))")
+    terminals.forEach { try? fm.removeItem(atPath: $0) }
+    ClaudeCLI.goneSeam = nil
+    // only the new-folder sign-ins may make a folder
+    var creators: [String] = []
+    let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
+    for f in (try? fm.contentsOfDirectory(atPath: src.path)) ?? [] where f.hasSuffix(".swift") {
+        let t = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8)) ?? ""
+        for l in t.components(separatedBy: "\n") where l.contains("openLogin(") && l.contains("creating: true") { creators.append(f) }
+    }
+    check(Set(creators) == ["NewAccount.swift", "FirstRun.swift", "DefaultProfileRunner.swift"] && creators.count == 4,
+          "only New profile, first run and the default profile's offer sign in with creating: \(creators)")
     FolderGuard.launchSeam = nil
 }
 
