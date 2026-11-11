@@ -8,7 +8,27 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Every screen now shows the same account.** In 26.11.13 the menu bar, the Dock panel, Settings and the dashboard card
+  could each give a different answer at the same moment: the menu bar named the profile's stored account beside another
+  account's numbers, the Dock panel showed blank bars with "Signed in to another account: choose in its settings", and
+  Settings showed the signed-in account in red with **Use this account**. Now cl_audit's agent decides the profile's
+  account once and every screen shows that answer (the menu bar, the Dock icon's menu and panel, the card, Settings ▸
+  Accounts, quick chat). "Signed in to another account: choose in its settings" and **Use this account** are gone.
+- **The Claude app's signed-in account is the active one**, with the green lamp and "in use"; with the app signed out or
+  not readable, Claude Code's account is, and a muted line says so. When Claude Code is on another account than the app,
+  the numbers still show and say whose they are ("Usage: Claude Code on b…@example.com"). The app's account is read from
+  its log (only its account lines, after its launch) and checked against its `config.json`, the way claude-transplant
+  reads it; this was worked out from those files, not by running the Claude app.
+- **A sign-in changed in Terminal or the Claude app shows within seconds**, without restarting cl_audit.
+- **A standby account's old numbers aren't shown** once its kept sign-in has run out or its folder is gone: its box says
+  when they were last read, with **Sign in again**. The box no longer claims its sign-in renews by itself.
+- **A Claude Code folder you deleted stays deleted.** cl_audit never starts Claude Code (Renew sign-in, logout, quick chat,
+  Terminal, the Claude window) for a folder that isn't there, and never reads a kept folder that is gone: before, Renew
+  sign-in could run for a deleted standby folder, and Claude Code would make it again, signed in. A sign-in you start
+  yourself still makes its new folder first.
+- The Dock panel says **Reading usage…** before the first read, then "Updated 1 min ago"; never a bare "Not yet".
+- Credits: the Claude app's account reading adapts claude-transplant 4.2.1 (MIT, © 2026 Vitaliy Hayda); its notice is in
+  `Sources/AppSignIn.swift` and the README.
 
 ## 26.11.13 — 2026-11-10
 

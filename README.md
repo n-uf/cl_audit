@@ -173,6 +173,27 @@ works: it refreshes, starts the agent first, or (paused) starts it now.
 - Under the limits: **Sign in…** when needed, otherwise **Open/Show window** (with a Claude window), then
   **Terminal**, and "⋯" (Refresh now, Profile settings…); a usage only profile has just "⋯".
 
+### Which account is in use
+
+Each profile has one **active account**, shown with a green lamp and "in use" on every screen: the menu bar icon's
+menu, the Dock icon's menu and its panel, the dashboard card, Settings ▸ the profile ▸ Accounts and the quick chat.
+
+- **The Claude app's signed-in account comes first.** cl_audit reads it the way claude-transplant does: the app's
+  `main*.log` in `~/Library/Logs/Claude`, newest first, after the app's launch ("[LocalSessionManager] Initialization
+  succeeded … accountId=…, orgId=…"; a "Login-state transition … loggedOut … true" or "Account logged out" line means
+  signed out), checked against `lastKnownAccountUuid` in its `config.json`. Only those lines are looked at and only
+  the ids are kept; the log is used only while one Claude app runs (several windows share it), else `config.json`
+  alone says it. This was worked out from the Claude app's own files, not by running it.
+- **Then Claude Code's.** With the app signed out or not readable (or a profile without a Claude window), the account
+  Claude Code's folder is signed in to (its `.claude.json`) is the active one, and a muted line says why.
+- **The numbers say whose they are.** They come through Claude Code's sign-in (from the account in use's own kept
+  folder when it has one). When that isn't the active account: "Usage: Claude Code on b…@example.com".
+- **Live:** the folders that hold `.claude.json` and `config.json`, and the app's logs, are watched; a sign-in changed
+  in Terminal or the Claude app shows within a few seconds, without restarting anything.
+- **One answer:** cl_audit's background agent decides this once per profile (`Sources/AccountResolver.swift`) and writes
+  it into the profile's status record; every screen shows that record and decides nothing itself, so they never
+  disagree. While the agent isn't running, the settings window fills the record with the same rule.
+
 ### When a limit is full
 
 At 100% the percentage stops being useful; what matters is when the profile works again. While a limit is full,
@@ -473,10 +494,13 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   address, the plan and organisation ("Ultra · Personal"), and every limit its plan has as bars, drawn like the
   dashboard's (Ultra: week and Fable; Max: 5-hour, week and Fable; Pro: 5-hour and week; usage credits while it
   spends them). A standby account's limits come from a sign-in kept for it in a small Claude Code folder of its own
-  (say `~/.claude-ultra-2`), read like the profile's own, so you can see which account has room. Its sign-in always
-  renews by itself (the box says so), unlike the account in use's opt-in **Renew sign-in by itself**, and only while
-  that folder is signed in to the account cl_audit linked: one signed in to another account, or not linked yet, is
-  neither read nor renewed. Only the account in use is lit ("Main works on it"); the standby accounts are unlit,
+  (say `~/.claude-ultra-2`), read like the profile's own, so you can see which account has room, but only while
+  that folder is signed in to the account cl_audit linked: one signed in to another account, or not linked yet, isn't
+  read. When that kept sign-in has run out, or its folder is gone, its old numbers aren't shown anywhere (not in its
+  box, the card's trays or the menus): the box says when they were last read, with **Sign in again**. A folder that
+  isn't there is never read, and cl_audit never starts Claude Code for it (not Renew sign-in, logout, quick chat,
+  Terminal or the Claude window), so a folder you deleted isn't made again; a sign-in you start makes its new folder
+  first, and never goes through a link. Only the account in use is lit ("Main works on it"); the standby accounts are unlit,
   most room first. Click one below its address to select it: its row lights in mint, and a **Switch account** key
   takes the place of STANDBY and opens the Switch page (click again to deselect). The order holds still while one is
   selected.
@@ -493,10 +517,10 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   - The **account in use**'s address is a pop-up: it ticks the account Claude Code in the folder is signed in to
     (green; red with a warning sign inside when it isn't the profile's account; a clock when the sign-in ran out; a
     long address is cut at its end), then, when it isn't the profile's, the profile's own account to log back in
-    to, and **Renew sign-in by itself** (opt-in, see the (i)). Signed in to another account outside cl_audit
-    (Terminal), **Use this account** shows in the box, and the profile shows no numbers until you choose, since
-    they would be the other account's. If another profile has that account, the line under Accounts names it,
-    with **Open** it instead: one profile per account. Anything else needing a word gets one grey line. A
+    to, and **Renew sign-in by itself** (opt-in, see the (i)). The box's address and lamp are the profile's **active
+    account** (see [Which account is in use](#which-account-is-in-use)); signed in to another account in Terminal, the
+    numbers still show, saying whose they are. If another profile has the account Claude Code's folder is signed in to,
+    the line under Accounts names it, with **Open** it instead: one profile per account. Anything else needing a word gets one grey line. A
     **Claude window** row says when the profile's window is signed in to another account than its Claude Code
     (only the account id is known, from the window's `config.json`; the usual Claude app is checked too). For a
     week after linking, the line under Accounts says when, which account it was and what stays with it, and that
@@ -1542,6 +1566,20 @@ A version can't signal a breaking change, so read the notes before updating.
 
 [PolyForm Perimeter 1.0.1](LICENSE): source-available. You may use, change and share it, but not to
 build a product that competes with cl_audit.
+
+### Credits
+
+How cl_audit reads the Claude app's account (`Sources/AppSignIn.swift`) is adapted from
+[claude-transplant](https://github.com/vitaliyhayda/claude-transplant) 4.2.1, Copyright (c) 2026 Vitaliy Hayda, under the
+MIT License: "Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to
+whom the Software is furnished to do so, subject to the following conditions: The above copyright notice and this
+permission notice shall be included in all copies or substantial portions of the Software. THE SOFTWARE IS PROVIDED "AS
+IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE." The notice is in that file too.
 
 ---
 
