@@ -47,6 +47,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                      noFiveHour: s.noFiveHour == true)
     }
     var loginEmail: String? { status?.loginEmail }
+    /// The profile's account as its record says it (AccountResolver): the Dock menu and panel show this.
+    var view: AccountView { AccountView.of(status) }
     var plan: String? { status?.plan }
     var expired: Bool { status?.state == "expired" }
     var noLogin: Bool { status?.state == "noLogin" }
@@ -367,7 +369,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             refreshing: refreshing,
             scoped: entry.showFable ? usage?.scoped ?? [] : [], credits: usage?.credits,
             noFiveHour: status?.noFiveHour == true)
-        return info
+        return info.taking(view)
     }
 
     func detailsActions() -> DetailsActions {
@@ -467,10 +469,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return short
         }
         let m = NSMenu(); m.autoenablesItems = false
-        // the account in use, with a lit lamp: "Claude Main · ultra-1 in use" (SwitchMenu.swift)
-        let top = info(SwitchMenu.dockTitle(name: account.name, entry, plan: plan.map(Account.planWords)))
-        if SwitchMenu.inUseShort(entry) != nil { top.image = SwitchMenu.lamp() }
+        // the active account and the one line of state, from the profile's record (AccountResolver)
+        let top = info(SwitchMenu.dockTitle(name: account.name, view, plan: plan.map(Account.planWords)))
+        if view.lit, SwitchMenu.inUseShort(view) != nil { top.image = SwitchMenu.lamp() }
         m.addItem(top)
+        if let n = view.line { m.addItem(info(n)) }
         m.addItem(.separator())
         // the profile's other accounts (Accounts.swift): Switch account › with every standby account and its week; while a
         // limit is full, the best one with room also right under the full line; one that is back has its own Switch back
@@ -523,7 +526,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         func add(_ title: String, _ action: Selector, enabled: Bool = true) {
             let i = NSMenuItem(title: title, action: action, keyEquivalent: ""); i.target = self; i.isEnabled = enabled; m.addItem(i)
         }
-        let switches = SwitchMenu.group(entry, backs: backs, lines: lines, inUseUsed: usage?.weekly ?? usage?.fiveHour,
+        let switches = SwitchMenu.group(view, backs: backs, lines: lines, inUseUsed: usage?.weekly ?? usage?.fiveHour,
                                         inUseWeek: usage?.weekly != nil, target: self, action: #selector(switchAccount(_:)))
         if !switches.isEmpty {
             switches.forEach(m.addItem)

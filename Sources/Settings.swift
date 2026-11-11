@@ -200,6 +200,7 @@ final class SettingsModel: ObservableObject {
             self.followSwitch()
             self.followFirstRun()
             self.watchClaude()
+            if Self.followsDock { self.resolveWithoutAgent() }
         }
         if Self.followsDock { detectClaude(force: true) }
         // after the change, not inside it: an animated note started while the window is redrawing for the
@@ -216,6 +217,22 @@ final class SettingsModel: ObservableObject {
 
     /// Off in offscreen renders, which must never save.
     static var followsDock = true
+
+    /// The agent writes each profile's account answer (AccountResolver) into its record. While it isn't running, this
+    /// window fills it with the same function, so the screens still have one answer; never a different rule.
+    func resolveWithoutAgent() {
+        guard !isFirstRun, !Agent.isAlive(Agent.readMark()) else { return }
+        let list = accounts
+        for e in list {
+            var s = Store.status(e.id) ?? IconStatus(state: "idle")
+            var r = AccountResolver.resolve(e, among: list, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
+                                            loginEmail: s.loginEmail, names: AccountResolver.knownNames())
+            if var old = s.resolved { old.at = r.at; if old == r { continue } }
+            r.at = Date()
+            s.resolved = r
+            _ = Store.writeStatus(e.id, s)
+        }
+    }
 
     /// Profiles not linked to a Claude account seat yet get the one their folder is signed in to (one profile per
     /// seat: see FolderRules.linkSeats). Saved like any other change; only cl_audit does this.
@@ -1446,7 +1463,8 @@ struct AccountSettings: View {
     @Environment(\.face) private var face
 
     var status: IconStatus? { _ = model.tick; return Store.status(for: entry) }
-    var expected: String? { Account.expectedEmail(configDir: entry.configDir) }
+    /// What the folder's .claude.json names, as the profile's record has it (the agent's reader wrote it).
+    var expected: String? { status?.expectedEmail }
     var mismatch: Bool {
         guard let a = status?.loginEmail, let b = expected else { return false }
         return a.lowercased() != b.lowercased()
@@ -1578,8 +1596,15 @@ struct AccountSettings: View {
         }
     }
 
-    /// The folder is signed in to another account than the one the profile is linked to (or nil).
-    var seatMove: FolderRules.SeatMove? { _ = model.tick; return FolderRules.seatMove(entry, among: model.accounts) }
+    /// The profile's account as its record says it (AccountResolver): the in-use box and its lines show this.
+    var view: AccountView { AccountView.of(status) }
+
+    /// Claude Code's folder on another profile's account in use, as the profile's record says it (AccountResolver), or
+    /// nil. Any other account signed in to the folder isn't a problem to choose about: its numbers show, labelled.
+    var seatMove: FolderRules.SeatMove? {
+        guard let name = view.clash, let owner = model.accounts.first(where: { $0.name == name && $0.id != entry.id }) else { return nil }
+        return FolderRules.SeatMove(to: Seat(account: "", organization: nil, email: view.numbersOwner), owner: owner)
+    }
 
     /// Account: one row for everything about this folder's sign-in, first in the card (as on New profile). Its value is
     /// the pop-up, drawn like the Folder one; only when something needs a choice, the keys for it sit under the pop-up
@@ -1638,8 +1663,6 @@ struct AccountSettings: View {
                     color: switchProblem == nil ? nil : face.danger)
         } else if let move, let owner = move.owner {
             rowLine("\(Privacy.masked(move.to.email ?? "That account")) is the account of “\(owner.name)”. One profile per account.", color: face.danger)
-        } else if let move {
-            rowLine("Signed in as \(Privacy.masked(move.to.email ?? "another account")); \(name) is linked to \(old). Numbers wait until you choose.")
         } else if mismatch {
             rowLine("The Keychain's sign-in is another account than the folder's .claude.json names.")
         } else if status?.state == "expired" {
@@ -1673,16 +1696,17 @@ struct AccountSettings: View {
     func inUseBox(_ move: FolderRules.SeatMove?) -> some View {
         let signedIn = status?.loginEmail
         let red = face.danger
+        // the active account and the one line of state, from the profile's record (AccountResolver)
+        let v = view
         let (shown, tint, icon): (String, Color?, String?) =
             mismatch ? (signedIn ?? "another account", red, "exclamationmark.triangle.fill")
             : move != nil ? (move?.to.email ?? "another account", red, "exclamationmark.triangle.fill")
             : status?.state == "expired" ? (signedIn ?? expected ?? "expired", face.caution, "clock.badge.exclamationmark")
-            : (signedIn ?? expected ?? "not signed in yet", nil, nil)
-        let facts = FolderFactsCache.facts(entry.configDir)
-        let plan = (status?.plan).map(Account.planWords) ?? facts?.plan
-        let ok = move == nil && !mismatch && !["expired", "noLogin", "denied", "unreadable"].contains(status?.state)
+            : (v.label ?? "not signed in yet", nil, nil)
+        let plan = (status?.plan).map(Account.planWords)
+        let ok = v.lit && move == nil && !mismatch && !["expired", "noLogin", "denied", "unreadable"].contains(status?.state)
         return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: ok ? .ok : .warn,
-                          detail: ([plan, facts?.org] + [entry.standby.isEmpty ? nil : "\(entry.name.isEmpty ? "the profile" : entry.name) works on it"])
+                          detail: ([plan] + [entry.standby.isEmpty ? nil : "\(entry.name.isEmpty ? "the profile" : entry.name) works on it"])
                             .compactMap { $0 }.joined(separator: " · ")) {
             Menu {
                 ForEach(loginItems) { it in
@@ -1699,13 +1723,10 @@ struct AccountSettings: View {
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
         } content: {
             limitsOrWhy(status, entry: entry, none: status?.state == "noLogin" ? noSignInWords : nil)
-            if let move {
+            if let n = v.line, move == nil { BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true) }
+            if let move, let owner = move.owner {
                 // one key; logging back in to the profile's own account is in the pop-up, under this account
-                if let owner = move.owner {
-                    Button("Open \(owner.name)") { model.selection = owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
-                } else {
-                    Button("Use this account") { model.relink(entry.id) }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
-                }
+                Button("Open \(owner.name)") { model.selection = owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
             } else if mismatch || status?.state == "noLogin" || status?.state == "expired" {
                 logInKey(email: expected)
             } else if status?.state == "denied" || status?.state == "unreadable" {
@@ -2097,7 +2118,7 @@ struct AccountSettings: View {
     var loginItems: [LoginItem] {
         let name = entry.name.isEmpty ? "this profile" : entry.name
         let move = seatMove
-        let here = Account.signedInSeat(configDir: entry.configDir)?.email ?? status?.loginEmail ?? expected
+        let here = view.numbersOwner ?? status?.loginEmail ?? expected
         let plan = status?.plan.map(Account.planWords)
         let linked = entry.seat?.email
         let canSignIn = !model.claudeKnownMissing

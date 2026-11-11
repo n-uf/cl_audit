@@ -244,6 +244,8 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         let usage: Usage?
         var problem: String? = nil
         var expired = false
+        /// The profile's account as its record says it (AccountResolver): the line under the name.
+        var view = AccountView(label: nil, numbersOwner: nil, line: nil, lit: false, clash: nil)
     }
 
     private var items: [String: NSStatusItem] = [:]      // by profile id
@@ -367,7 +369,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         let lines = SwitchMenu.lines(p.entry, now: now)
         let isFull = p.usage.flatMap { AtLimit.blocker(fiveHour: $0.fiveHour, fiveHourResets: $0.fiveHourResets, weekly: $0.weekly,
                                                        weeklyResets: $0.weeklyResets, now: now) } != nil
-        var switches = SwitchMenu.group(p.entry, backs: backs, lines: lines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
+        var switches = SwitchMenu.group(p.view, backs: backs, lines: lines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
                                         inUseWeek: p.usage?.weekly != nil, target: self, action: #selector(switchAccount(_:)))
         if isFull, let best = SwitchMenu.best(lines, backs: backs) {
             switches.insert(SwitchMenu.bestItem(best, target: self, action: #selector(switchAccount(_:))), at: 0)
@@ -433,13 +435,16 @@ struct MenuBarRow: View {
                         .font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(nsColor: Painter.crimson)).lineLimit(1)
                 }
             }
-            // the account in use, with a lit lamp (SwitchMenu.swift)
-            if let inUse = SwitchMenu.inUseLine(profile.entry) {
+            // the active account and the one line of state, from the profile's record (AccountResolver)
+            if let inUse = profile.view.inUseLine {
                 HStack(spacing: 6) {
-                    Circle().fill(Color(nsColor: .systemGreen)).frame(width: 7, height: 7)
-                        .shadow(color: Color(nsColor: .systemGreen).opacity(0.7), radius: 2.5)
+                    Circle().fill(Color(nsColor: profile.view.lit ? .systemGreen : .tertiaryLabelColor)).frame(width: 7, height: 7)
+                        .shadow(color: Color(nsColor: .systemGreen).opacity(profile.view.lit ? 0.7 : 0), radius: 2.5)
                     Text(inUse).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
+            }
+            if let n = profile.view.line {
+                Text(n).font(.system(size: 10.5)).foregroundStyle(.tertiary).lineLimit(2)
             }
             if u == nil {
                 Text("No numbers yet").font(.system(size: 11)).foregroundStyle(.secondary)

@@ -259,6 +259,8 @@ struct IconStatus: Codable {
     var scoped: [ScopedLimit]? = nil   // a model's own weekly limit (Fable)
     var credits: Credits? = nil        // usage credits
     var noFiveHour: Bool? = nil        // the plan has no 5-hour limit (Ultra): its 5-hour row is left out
+    /// The one answer about the profile's account (AccountResolver), written by the agent: every surface shows this.
+    var resolved: ResolvedAccount? = nil
 
     /// The account these numbers were read for: the sign-in's address, else the one its folder names.
     var readFor: String? { (loginEmail ?? expectedEmail).map { $0.lowercased() } }
@@ -433,8 +435,9 @@ enum Store {
         return try? dec.decode(IconStatus.self, from: data)
     }
 
-    /// A profile's saved numbers, only if they're its account's (IconStatus.only).
-    static func status(for e: AccountEntry) -> IconStatus? { status(e.id)?.only(for: e.seat?.email) }
+    /// The profile's record as the agent wrote it: its numbers carry the account they were read for (resolved.numbersFor),
+    /// so nothing here compares them with a stored account.
+    static func status(for e: AccountEntry) -> IconStatus? { status(e.id) }
 
     /// A standby account's saved numbers, only if they're that account's.
     static func status(for e: AccountEntry, standby s: StandbyAccount) -> IconStatus? {

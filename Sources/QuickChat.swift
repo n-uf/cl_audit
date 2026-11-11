@@ -120,7 +120,8 @@ struct QuickChatTarget: Equatable {
     init(_ e: AccountEntry) {
         let a = Account(e)
         profileID = e.id; name = e.name; configDir = a.configDir; isDefaultDir = a.isDefaultDir
-        email = e.seat?.email ?? Account.expectedEmail(configDir: a.configDir)
+        // the profile's account as its record says it (AccountResolver), never its own read
+        email = AccountView.of(Store.status(for: e)).label
     }
     var workFolder: String { QuickChatSettings.workFolder(profileID) }
 }

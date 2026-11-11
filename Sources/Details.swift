@@ -27,6 +27,20 @@ struct DetailsInfo {
     var scoped: [ScopedLimit] = []
     var credits: Credits? = nil
     var noFiveHour = false              // the plan has no 5-hour limit (Ultra): no 5-hour row
+    /// The active account (AccountResolver, from the profile's record): green lamp and "in use"; nil: the sign-in line.
+    var active: String? = nil
+    var activeLit = true
+    /// "Usage: Claude Code on b…" when the numbers are another account's, or why Claude Code's account is shown.
+    var activeNote: String? = nil
+}
+
+extension DetailsInfo {
+    /// The panel's account line from the profile's record (AccountResolver): the active account, its lamp, the one line.
+    func taking(_ v: AccountView) -> DetailsInfo {
+        var out = self
+        out.active = v.label; out.activeLit = v.lit; out.activeNote = v.line
+        return out
+    }
 }
 
 struct DetailsActions {
@@ -50,8 +64,9 @@ struct AgoButton: View {
     var body: some View {
         let ago = date.map { DetailsFormat.ago($0) }
         ViewThatFits(in: .horizontal) {
-            label(refreshing ? "Updating…" : ago.map { "Updated \($0)" } ?? "Not updated yet")
-            label(refreshing ? "Updating…" : ago ?? "Not yet")
+            // never a bare "Not yet": before the first read, what is happening
+            label(refreshing ? "Updating…" : ago.map { "Updated \($0)" } ?? "Reading usage…")
+            label(refreshing ? "Updating…" : ago ?? "Reading…")
             Color.clear.frame(width: 0, height: 0)
         }
     }
@@ -101,8 +116,19 @@ struct DetailsView: View {
                         Circle().fill(Color(nsColor: info.accent)).frame(width: 8, height: 8)
                         Text("Claude \(info.name)").font(.system(size: 15, weight: .semibold))
                     }
-                    Text(info.login ?? "No Claude Code login").font(.caption).foregroundStyle(.secondary)
-                        .hidesEmail(info.login != nil)
+                    if let a = info.active {
+                        HStack(spacing: 5) {
+                            Circle().fill(Color(nsColor: info.activeLit ? .systemGreen : .tertiaryLabelColor)).frame(width: 6, height: 6)
+                                .shadow(color: Color(nsColor: .systemGreen).opacity(info.activeLit ? 0.7 : 0), radius: 2)
+                            Text("\(a) · in use").font(.caption).foregroundStyle(.secondary).lineLimit(1).hidesEmail(true)
+                        }
+                    } else {
+                        Text(info.login ?? "No Claude Code login").font(.caption).foregroundStyle(.secondary)
+                            .hidesEmail(info.login != nil)
+                    }
+                    if let n = info.activeNote {
+                        Text(n).font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+                    }
                     if let plan = info.plan {
                         Text(Account.planWords(plan) + " plan").font(.caption2.weight(.medium))
                             .padding(.horizontal, 6).padding(.vertical, 1)

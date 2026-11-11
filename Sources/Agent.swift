@@ -200,6 +200,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     private var cleanupTimer: Timer?
     /// Every few seconds: a profile waiting for a sign-in looks at its folder's record (Reader.watchSignIn).
     private var signInTimer: Timer?
+    private var signInWatch: SignInFiles?
     private var menuBar: MenuBarItems?                  // the profiles' menu bar icons (MenuBar.swift)
     /// Some profile has its icon in the menu bar (the quick chat leaves the accessory role alone then).
     var hasMenuBarIcons: Bool { !(menuBar?.shown.isEmpty ?? true) }
@@ -243,7 +244,8 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return [] }
             return self.order.compactMap { id in
                 self.readers[id].map { r in
-                    MenuBarItems.Profile(entry: r.entry, usage: r.usage, problem: r.state.menuText, expired: r.state == .expired)
+                    MenuBarItems.Profile(entry: r.entry, usage: r.usage, problem: r.state.menuText, expired: r.state == .expired,
+                                         view: AccountView.of(Store.status(id)))
                 }
             }
         }, refresh: { [weak self] id in self?.refresh(id) }, renew: { [weak self] id in self?.readers[id]?.renewLogin() })
@@ -268,9 +270,16 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         signInTimer?.invalidate()
         signInTimer = Timer.scheduledTimer(withTimeInterval: 3, repeats: true) { [weak self] _ in
             guard let self else { return }
-            self.readers.values.forEach { $0.watchSignIn() }
+            self.readers.values.forEach { $0.watchSignIn(); $0.save() }      // save: the account answer (AccountResolver) kept current
             self.standbyReaders.values.forEach { $0.watchSignIn() }
         }
+        // the folders' .claude.json, the windows' config.json and the Claude app's logs watched: a sign-in changed in
+        // Terminal or the Claude app is followed within a second, not at the next look (SignInFiles)
+        signInWatch = SignInFiles(onChange: { [weak self] in
+            guard let self else { return }
+            self.readers.values.forEach { $0.watchSignIn(); $0.save() }
+        })
+        signInWatch?.watch(Store.load())
         // once the readers run: what older versions left behind (per-profile login items), then the clean-up
         DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
             guard let self else { return }
@@ -291,6 +300,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     /// saved status and alert marks go.
     func reload() {
         guard let list = Store.loadChecked() else { return }
+        signInWatch?.watch(list)
         let ids = Set(list.map(\.id))
         for id in readers.keys where !ids.contains(id) {
             readers[id]?.stop()

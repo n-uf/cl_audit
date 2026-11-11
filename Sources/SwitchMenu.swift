@@ -22,15 +22,15 @@ enum SwitchMenu {
         var canSwitch = true
     }
 
-    /// The account the profile works on, short ("ultra-1"); nil while the profile isn't linked to one.
-    static func inUseShort(_ e: AccountEntry) -> String? { e.seat?.email.map(AccountNames.short) }
+    /// The account in use, short ("ultra-1"), as the profile's record says it (AccountView); nil while none is known.
+    static func inUseShort(_ v: AccountView) -> String? { v.short }
 
     /// "ultra-1 · in use": under the profile's name in the menu bar icon's menu.
-    static func inUseLine(_ e: AccountEntry) -> String? { inUseShort(e).map { "\($0) · in use" } }
+    static func inUseLine(_ v: AccountView) -> String? { v.inUseLine }
 
     /// The Dock menu's top line: "Claude Main · ultra-1 in use"; the usual "Claude Main" + plan while no account is known.
-    static func dockTitle(name: String, _ e: AccountEntry, plan: String?) -> String {
-        if let s = inUseShort(e) { return "Claude \(name) · \(s) in use" }
+    static func dockTitle(name: String, _ v: AccountView, plan: String?) -> String {
+        if let s = inUseShort(v) { return "Claude \(name) · \(s) in use" }
         return "Claude \(name)" + (plan.map { " · \($0)" } ?? "")
     }
 
@@ -69,11 +69,11 @@ enum SwitchMenu {
     }
 
     /// "Switch account ›": the account in use ticked, then every standby account. Nil for a profile with one account.
-    static func submenuItem(_ e: AccountEntry, lines: [Line], inUseUsed: Double?, inUseWeek: Bool,
+    static func submenuItem(_ v: AccountView, lines: [Line], inUseUsed: Double?, inUseWeek: Bool,
                             target: AnyObject, action: Selector) -> NSMenuItem? {
         guard !lines.isEmpty else { return nil }
         let sub = NSMenu(title: "Switch account"); sub.autoenablesItems = false
-        if let s = inUseShort(e) {
+        if let s = inUseShort(v) {
             let i = NSMenuItem(title: "\(s)  in use" + (inUseUsed == nil ? "" : " · " + weekWords(inUseUsed, week: inUseWeek)),
                                action: nil, keyEquivalent: "")
             i.state = .on; i.isEnabled = false
@@ -98,14 +98,14 @@ enum SwitchMenu {
 
     /// The group both menus carry besides the full-limit item: "Switch back to ultra-1…" for each account that is back, then
     /// Switch account ›. Empty for a profile with one account that isn't back.
-    static func group(_ e: AccountEntry, backs: [BackOffer], lines: [Line], inUseUsed: Double?, inUseWeek: Bool,
+    static func group(_ v: AccountView, backs: [BackOffer], lines: [Line], inUseUsed: Double?, inUseWeek: Bool,
                       target: AnyObject, action: Selector) -> [NSMenuItem] {
         var out: [NSMenuItem] = backs.map { b in
             let i = NSMenuItem(title: b.title, action: action, keyEquivalent: "")
             i.target = target; i.representedObject = b.key; i.toolTip = b.words
             return i
         }
-        if let sub = submenuItem(e, lines: lines, inUseUsed: inUseUsed, inUseWeek: inUseWeek, target: target, action: action) {
+        if let sub = submenuItem(v, lines: lines, inUseUsed: inUseUsed, inUseWeek: inUseWeek, target: target, action: action) {
             out.append(sub)
         }
         return out

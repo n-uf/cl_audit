@@ -157,6 +157,8 @@ struct AccountRow: Identifiable {
     var id: String { entry.id }
     var account: Account { Account(entry) }
 
+    /// The profile's account as its record says it (AccountResolver): the card's line under the name, with its lamp.
+    var view: AccountView { AccountView.of(status) }
     var stale: Bool {
         guard let u = status?.updatedAt else { return true }
         return Date().timeIntervalSince(u) > 3600
@@ -196,7 +198,7 @@ struct AccountRow: Identifiable {
 
     var subtitle: String {
         if mismatch { return "login is a different account" }
-        if status?.state == "otherAccount" { return "signed in to another account" }
+        if view.clash != nil { return view.line ?? "another profile's account" }
         if status?.state == "expired" { return "login expired" }
         if status?.state == "noLogin" { return "no Claude Code login" }
         if status?.state == "denied" { return "signed in, can't read it yet" }
@@ -946,9 +948,22 @@ struct AccountCard: View {
                         Text("Claude \(row.entry.name)").font(.system(size: 14.5, weight: .semibold)).foregroundStyle(face.text)
                         if row.entry.desktop == .separate, row.entry.claudeWindow { OwnWindowMark() }
                     }
-                    Text(row.subtitle).font(.system(size: 12)).lineLimit(1)
-                        .foregroundStyle(row.needsLogin ? face.danger : face.muted)
-                        .hidesEmail(row.subtitle.contains("@"))
+                    if let label = row.view.label, !row.needsLogin {
+                        // the active account and the one line of state, from the profile's record (AccountResolver)
+                        HStack(spacing: 5) {
+                            Circle().fill(row.view.lit ? FaceTheme.ledOn : face.muted.opacity(0.4)).frame(width: 6, height: 6)
+                            Text("\(label) · in use").font(.system(size: 12)).lineLimit(1).foregroundStyle(face.muted)
+                                .hidesEmail(label.contains("@"))
+                        }
+                        if let n = row.view.line {
+                            Text(n).font(.system(size: 10.5)).foregroundStyle(face.muted.opacity(0.8)).lineLimit(2)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                    } else {
+                        Text(row.subtitle).font(.system(size: 12)).lineLimit(1)
+                            .foregroundStyle(row.needsLogin ? face.danger : face.muted)
+                            .hidesEmail(row.subtitle.contains("@"))
+                    }
                 }
                 Spacer(minLength: 0)
                 if let plan = row.status?.plan {

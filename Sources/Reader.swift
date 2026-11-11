@@ -192,9 +192,11 @@ final class UsageReader {
 
     // MARK: another account signed in
 
-    /// The folder is signed in to another account than the one the profile is linked to: its numbers would be that
-    /// account's shown as this profile's, so they're held back (and no alerts go out) until the profile is linked to
-    /// it ("Use this account") or signed back in.
+    /// The last answer the resolver gave (its time kept while nothing else changed, so the record isn't rewritten).
+    private var lastResolved: ResolvedAccount?
+
+    /// The folder read is signed in to another account than the one the profile is linked to: its numbers show, labelled
+    /// with that account (AccountResolver), but no alerts go out about them in this profile's name and no renewal runs.
     private var onOtherAccount: Bool {
         guard let linked = entry.seat, let seen = signIn.seen else { return false }
         return !seen.same(linked)
@@ -673,11 +675,24 @@ final class UsageReader {
                                 source: usage?.source, problem: state.menuText, renewing: renewing,
                                 scoped: usage.map { $0.scoped.isEmpty ? nil : $0.scoped } ?? nil, credits: usage?.credits,
                                 noFiveHour: usage?.noFiveHour == true ? true : nil)
-        if onOtherAccount {
-            // another account's numbers aren't shown as this profile's: none until it's linked or signed back in
-            status.fiveHour = nil; status.weekly = nil; status.fiveHourResets = nil; status.weeklyResets = nil
-            status.scoped = nil; status.credits = nil; status.noFiveHour = nil
-            status.state = "otherAccount"; status.problem = "Signed in to another account: choose in its settings"
+        // the one answer about the account (AccountResolver), written here once for every surface to read: the numbers
+        // stay, labelled with the account they were read for (no "otherAccount" state for the profile's own folder). A
+        // standby account's reader (id "<profile>~<standby>") has no answer of its own.
+        if !id.contains("~") {
+            let list = Store.loadChecked() ?? []
+            let me = list.first { $0.id == id } ?? entry
+            var r = AccountResolver.resolve(me, among: list, app: AppSignIn.cached(for: me),
+                                            code: Account.signedInSeat(configDir: me.configDir), loginEmail: loginEmail,
+                                            names: AccountResolver.knownNames())
+            if var last = lastResolved { last.at = r.at; if last == r { r.at = lastResolved!.at } }
+            lastResolved = r
+            status.resolved = r
+            if r.clash != nil {
+                // Claude Code's folder on another profile's account in use: those numbers are that profile's
+                status.fiveHour = nil; status.weekly = nil; status.fiveHourResets = nil; status.weeklyResets = nil
+                status.scoped = nil; status.credits = nil; status.noFiveHour = nil
+                status.problem = r.line
+            }
         }
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970; enc.outputFormatting = [.sortedKeys]
         if let data = try? enc.encode(status), data != lastStatus { lastStatus = Store.writeStatus(id, status) }
