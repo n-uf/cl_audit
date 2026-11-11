@@ -366,6 +366,22 @@ do {
     check(FolderRules.windowWords(p8u, window: u2.account, names: [u2.account: u2.email!]).hasSuffix("Usage shown is Claude Code's.")
           && FolderRules.windowWords(p8u, window: uuid(55), names: [:]).contains("account 00000000"), "said plainly, by address or the id's first 8")
 
+    // the active account: the Claude app's, else Claude Code's (the operator's rule, 2026-11-10)
+    let appU2 = AppSignIn.Login(account: u2.account, org: u2.organization, state: .known, source: "log", at: t0)
+    let act = ActiveAccount.of(p8u, app: appU2, code: .some(u1), names: [u2.account: u2.email!])
+    check(act.fromApp && act.label == u2.email && act.differs && act.usageNote?.hasPrefix("Usage: Claude Code on ") == true && act.fallbackNote == nil,
+          "the app on u2, Claude Code on u1: u2 is in use, the numbers say they are Claude Code's on u1")
+    let same = ActiveAccount.of(p8u, app: AppSignIn.Login(account: u1.account.uppercased(), org: nil, state: .known, source: "config", at: nil), code: .some(u1), names: [:])
+    check(same.label == u1.email && !same.differs && same.usageNote == nil, "the same account (any case): no note")
+    let out8 = ActiveAccount.of(p8u, app: AppSignIn.Login(account: nil, org: nil, state: .loggedOut, source: "log", at: t0), code: .some(u1), names: [:])
+    check(!out8.fromApp && out8.label == u1.email && out8.fallbackNote?.contains("signed out") == true, "the app signed out: Claude Code's account, and a muted line says so")
+    var noWin = p8u; noWin.claudeWindow = false
+    check(ActiveAccount.of(noWin, app: .unknown, code: .some(u1), names: [:]).fallbackNote == nil, "no Claude window: Claude Code's account, nothing to say")
+    var withU2 = p8u; withU2.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "s2")]
+    check(ActiveAccount.of(withU2, app: appU2, code: .some(u1), names: [:]).label == u2.email
+          && ActiveAccount.of(p8u, app: appU2, code: .some(u1), names: [:]).label == "account 00000000",
+          "the app's account named from the profile's own accounts when no record names it, else by its id")
+
     // who owns a session now: `claude` processes' command lines and the folder's live registrations
     put(expand("~/.claude-p8/sessions/4242.json"), #"{"pid":4242,"sessionId":"\#(uuid(902))"}"#)
     put(expand("~/.claude-p8/sessions/4343.json"), #"{"pid":4343,"sessionId":"\#(uuid(903))"}"#)
