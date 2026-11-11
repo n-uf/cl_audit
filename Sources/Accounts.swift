@@ -120,7 +120,9 @@ enum AccountBook {
 struct AccountNote: Codable, Equatable, Hashable {
     /// came / left: an account signed in to another profile's folder. standsBy: an account this profile remembered on
     /// standby was another profile's account in use until now, and stands by there (one account, one standby list).
-    enum Kind: String, Codable { case came, left, standsBy }
+    /// tidied: the standby list held more than one entry for an account (one per organisation), or another profile's
+    /// account in use; it was tidied to one entry per account (StandbyTidy), said once.
+    enum Kind: String, Codable { case came, left, standsBy, tidied }
     var kind: Kind
     var email: String              // the account; shown masked as Settings ▸ General ▸ Emails says
     var profile: String            // the other profile's name
@@ -134,7 +136,49 @@ struct AccountNote: Codable, Equatable, Hashable {
         case .came: return "\(a) came from \(profile)'s standby accounts: it signed in to this profile's folder."
         case .left: return "\(a) left for \(profile): it signed in to \(profile)'s folder, so it's \(profile)'s account now."
         case .standsBy: return "\(a) stands by on \(profile) now: it was \(profile)'s account in use, and an account stands by on one profile only."
+        case .tidied: return "Standby list tidied: one entry per account."
         }
+    }
+}
+
+/// The standby lists as they must be: one entry per account (by its id; an entry known only by its address, by that),
+/// never the profile's own account in use nor another profile's. Applied when the profiles file is read: an older list
+/// (one entry per account and organisation, from 26.11.17's discovery) is tidied once, saved once, and said once.
+enum StandbyTidy {
+    /// `recordOrgs`: the organisation each account's own record names (asked only when two entries of one account meet).
+    static func apply(_ list: [AccountEntry], recordOrgs: () -> [String: String] = { [:] }, now: Date = Date())
+        -> (accounts: [AccountEntry], changed: Bool) {
+        var out = list
+        let inUse = out.map { $0.seat?.account.lowercased() }
+        var orgs: [String: String]?
+        var changed = false
+        for i in out.indices {
+            let others = Set(inUse.enumerated().filter { $0.offset != i }.compactMap(\.element))
+            var kept: [StandbyAccount] = []
+            var at: [String: Int] = [:]
+            for s in out[i].standby {
+                let account = s.seat?.account.lowercased()
+                if let a = account, others.contains(a) || a == inUse[i] { continue }          // in use somewhere: not standby
+                let key = account ?? "@" + s.email.lowercased()
+                guard let k = at[key] else { at[key] = kept.count; kept.append(s); continue }
+                // a second entry of the same account: one stays, with the newest last use and its record's organisation
+                var one = kept[k]
+                if orgs == nil { orgs = recordOrgs() }
+                let want = account.flatMap { orgs?[$0] }
+                let newer = (s.lastInUse ?? .distantPast) > (one.lastInUse ?? .distantPast)
+                if s.seat?.organization?.lowercased() == want, one.seat?.organization?.lowercased() != want || newer { one.seat = s.seat }
+                else if want == nil, newer { one.seat = s.seat }
+                if newer { one.lastInUse = s.lastInUse; one.lastWeek = s.lastWeek; one.lastWeekResets = s.lastWeekResets; one.plan = s.plan ?? one.plan }
+                if one.email.isEmpty { one.email = s.email }
+                kept[k] = one
+            }
+            if kept != out[i].standby {
+                out[i].standby = kept
+                out[i].accountNote = AccountNote(kind: .tidied, email: "", profile: out[i].name, at: now)
+                changed = true
+            }
+        }
+        return (out, changed)
     }
 }
 

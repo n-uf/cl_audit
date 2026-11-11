@@ -490,6 +490,23 @@ enum Store {
     /// The profiles, or nil when the file is missing or can't be read (so a reader never takes a bad read for
     /// "every profile was removed").
     static func loadChecked() -> [AccountEntry]? {
+        guard let raw = loadRaw() else { return nil }
+        // the standby lists tidied (one entry per account): saved once, the first time a list needs it (StandbyTidy)
+        let t = StandbyTidy.apply(raw, recordOrgs: { AccountList.recordOrgs(raw) })
+        guard t.changed else { return raw }
+        tidyLock.lock(); let busy = tidying; tidying = true; tidyLock.unlock()
+        if !busy {
+            _ = try? edit { $0 }                               // edit tidies what it reads, and saves it (with its pre-copy)
+            tidyLock.lock(); tidying = false; tidyLock.unlock()
+        }
+        return t.accounts
+    }
+
+    nonisolated(unsafe) private static var tidying = false
+    private static let tidyLock = NSLock()
+
+    /// The profiles exactly as the file has them (nothing tidied), or nil when it can't be read.
+    static func loadRaw() -> [AccountEntry]? {
         guard let data = try? Data(contentsOf: configURL) else { return nil }
         return (try? JSONDecoder().decode(ConfigFile.self, from: data))?.accounts
     }
@@ -506,8 +523,10 @@ enum Store {
         }
         defer { if fd >= 0 { flock(fd, LOCK_UN); Darwin.close(fd) } }
         // a file that's there but can't be read is never written over (that would lose every profile in it)
-        guard let before = exists ? loadChecked() : [] else { throw CocoaError(.fileReadCorruptFile) }
-        let after = change(before)
+        guard let before = exists ? loadRaw() : [] else { throw CocoaError(.fileReadCorruptFile) }
+        // the standby lists tidied before any change (one entry per account)
+        let tidy = StandbyTidy.apply(before, recordOrgs: { AccountList.recordOrgs(before) })
+        let after = change(tidy.accounts)
         guard after != before || !exists else { return after }
         let enc = JSONEncoder()
         enc.outputFormatting = [.prettyPrinted, .sortedKeys]
