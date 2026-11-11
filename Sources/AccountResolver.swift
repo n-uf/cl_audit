@@ -59,8 +59,9 @@ enum AccountResolver {
             r.lit = r.fromApp
         } else if r.differs, let c = codeLabel {
             r.line = "Usage: Claude Code on " + Privacy.masked(c)
-        } else if e.claudeWindow, !r.fromApp {
-            r.line = "Claude app signed out or unreadable: Claude Code's account shows."
+        } else if e.claudeWindow, !r.fromApp, code != nil {
+            // short enough for the card at 340; only when Claude Code has an account to show
+            r.line = "Claude app signed out: Claude Code's account shows."
         }
         // its record too large to read: not known, and said so (never as signed out)
         if code == nil, recordTooLarge {
