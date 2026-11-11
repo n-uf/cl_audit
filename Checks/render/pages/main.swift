@@ -242,21 +242,29 @@ MainActor.assumeIsolated {
     r.preview(.waiting, goal: goal, target: k2, planned: swPlan, receipt: moved, note: SwitchRunner.heldWords(1), seen: u1)
     page(main, k2, "o2-switch-waiting")
     // the folder signed in to ultra-2: the profile follows it (FolderRules.noteAccounts), ultra-1 stands by
-    sign("~/.claude", u2)
+    // (each ends as the app's runner does: noteAccounts, then the record answered again, resolveNow; the window's Claude
+    // app signed in to the same account, as the page asks; o3b: the app still on ultra-1)
+    func appOn(_ s: Seat) { try! JSONSerialization.data(withJSONObject: ["lastKnownAccountUuid": s.account]).write(to: URL(fileURLWithPath: "\(wd)/config.json")) }
+    sign("~/.claude", u2); appOn(u2)
     let after = FolderRules.noteAccounts([main], signedIn: { $0 == "~/.claude" ? u2 : nil }, status: { _ in Store.status(for: main) })[0]
     model.accounts = [after]
     model.resolveNow("main")             // as the runner's end does: the record names ultra-2 at once
     var linked = moved; linked.linked = Date()
     r.preview(.reached, goal: goal, target: k2, planned: swPlan, receipt: linked, seen: u2)
     page(after, k2, "o3-switch-reached")
+    // the Claude app not signed in to ultra-2 yet: it is still on ultra-1, which is then the account in use (A's rule),
+    // its numbers say they are Claude Code's on ultra-2, and ultra-1 isn't shown as "before" too
+    appOn(u1)
+    model.resolveNow("main")
+    page(after, k2, "o3b-switch-reached-app-still-on-ultra-1")
     // the browser was signed in as ultra-3: the profile is on ultra-3 now
-    sign("~/.claude", u3)
+    sign("~/.claude", u3); appOn(u3)
     let onOther = FolderRules.noteAccounts([main], signedIn: { $0 == "~/.claude" ? u3 : nil }, status: { _ in Store.status(for: main) })[0]
     model.accounts = [onOther]
     model.resolveNow("main")
     r.preview(.other(u3.email!), goal: goal, target: k2, planned: swPlan, receipt: moved, seen: u3)
     page(onOther, k2, "o4-switch-other-account")
-    sign("~/.claude", u1)
+    sign("~/.claude", u1); appOn(u1)
     model.accounts = [main]
     model.resolveNow("main")
     r.preview(.timedOut, goal: goal, target: k2, planned: swPlan, receipt: moved, seen: u1)

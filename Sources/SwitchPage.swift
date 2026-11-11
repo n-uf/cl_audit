@@ -155,7 +155,9 @@ struct SwitchPage: View {
             VStack(alignment: .leading, spacing: 12) {
                 labelled("Now") { inUseBox }
                 if runner.phase == .reached, !again, let was = cameFrom {
-                    labelled("Before") { standbyBox(was, selected: false) }
+                    // never the account in use on standby too: the Claude app may still be on it (not signed in to the
+                    // new account yet), and then it's in use, not "before"
+                    if !view.isActive(was) { labelled("Before") { standbyBox(was, selected: false) } }
                 } else if !again, !(runner.phase == .reached) {
                     let list = pickList
                     labelled(runner.phase == .ready ? "To" : runner.phase == .waiting ? "Next" : "Wanted") {
