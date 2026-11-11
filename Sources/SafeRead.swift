@@ -14,7 +14,7 @@ enum SafeRead {
     static let jsonMax = 32 << 20
     /// The cap for a .claude.json (Claude Code keeps its projects' history in it, so a real one can be large): larger than
     /// this it isn't read, and the screens say "too large to read" (`tooLarge`), never "signed out".
-    static let claudeJSONMax = 256 << 20
+    static let claudeJSONMax = 64 << 20
     /// The cap for a small record (a session's registration, an agent session's record, usage.json).
     static let recordMax = 1 << 20
     /// The cap for one of the window's session entries (it carries the account's connector list).

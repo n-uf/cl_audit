@@ -655,7 +655,7 @@ do {
     if let h = FileHandle(forWritingAtPath: expand("~/.claude-huge12/.claude.json")) { try? h.truncate(atOffset: UInt64(SafeRead.claudeJSONMax + 1)); try? h.close() }
     t = Date()
     let hugeSeat = Account.signedInSeat(configDir: "~/.claude-huge12")
-    check(hugeSeat == nil && Account.recordTooLarge(configDir: "~/.claude-huge12") && Date().timeIntervalSince(t) < 1, "a .claude.json over 256 MB isn't read (at once)")
+    check(hugeSeat == nil && Account.recordTooLarge(configDir: "~/.claude-huge12") && Date().timeIntervalSince(t) < 1, "a .claude.json over the cap (64 MB) isn't read (at once)")
     let hp = profile("hp", "~/.claude-huge12", u1)
     let hr = AccountResolver.resolve(hp, among: [hp], app: .unknown, code: nil, loginEmail: nil, names: [:], recordTooLarge: true, now: t0)
     var hst = IconStatus(state: "ok"); hst.resolved = hr
