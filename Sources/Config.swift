@@ -348,10 +348,10 @@ enum ClaudeCLI {
         return openTerminal(file)
     }
 
-    /// Log in… in the agent's surfaces (the menu bar, quick chat): Claude Code's own sign-in in Terminal for the folder the
-    /// profile's numbers are read from (the account's own once it has one), with the record's address filled in.
+    /// Log in… in the agent's surfaces (the menu bar, quick chat): Claude Code's own sign-in in Terminal for the profile's
+    /// one folder, with the record's address filled in.
     static func logIn(profile e: AccountEntry) {
-        logIn(Account(e.readingEntry()), email: Store.status(e.id)?.expectedEmail)
+        logIn(Account(e), email: Store.status(e.id)?.expectedEmail)
     }
 
     /// Log in… in the agent's surfaces (the menu bar, the Dock icon's menu, the launcher): an alert when the folder is gone,
