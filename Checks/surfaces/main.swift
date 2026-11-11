@@ -1,9 +1,9 @@
 // Surfaces checks for cl_audit: one answer about each profile's account (Sources/AccountResolver.swift), written once into its
 // status record, and every screen reading it alike: the menu bar, the Dock icon's menu and panel, the dashboard card, Settings ▸
-// Accounts and quick chat's profile line. Also the Claude app's account (Sources/AppSignIn.swift): its config.json names the
-// account, its log gives the organisation and whether it signed out (an account switched in place and back included; the
-// log's own account line without config.json); a standby account's old numbers never shown; old numbers never shown at
-// all (a stale status line, a passed reset, an expired sign-in); and no screen reading the sign-in files itself.
+// Accounts, the Switch page and quick chat's profile line. Also the Claude app's account (Sources/AppSignIn.swift): its
+// config.json names the account, its log gives the organisation and whether it signed out (an account switched in place and
+// back included; the log's own account line without config.json); old numbers never shown (a stale status line, a passed
+// reset, an expired sign-in); a deleted folder never made again (FolderGuard), and no screen reading the sign-in files itself.
 //
 // Runs only with HOME and CFFIXED_USER_HOME = .../Checks/.work/surfaces/home (Checks/run.sh sets and guards it). Fake data only:
 // example.com addresses, zero-pattern ids, made-up log lines and config.json files in the throwaway home. Nothing here opens
@@ -204,7 +204,7 @@ let appU2 = AppSignIn.Login(account: u2.account, org: u2.organization, state: .k
 let appU1 = AppSignIn.Login(account: u1.account, org: u1.organization, state: .known, source: "log", at: t0)
 let appOut = AppSignIn.Login(account: nil, org: nil, state: .loggedOut, source: "log", at: t0)
 var main = profile("main", "~/.claude-main", u1)
-main.standby = [StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-main-u2", id: "k2")]
+main.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "k2")]
 var other = profile("other", "~/.claude-other", u3); other.claudeWindow = false
 func res(_ e: AccountEntry, _ app: AppSignIn.Login, code: Seat?, numbers: String?, among: [AccountEntry]? = nil) -> ResolvedAccount {
     AccountResolver.resolve(e, among: among ?? [e, other], app: app, code: code, loginEmail: numbers, names: [:], now: t0)
@@ -221,13 +221,13 @@ do {
     check(res(noWin, appU2, code: u1, numbers: u1.email).line == nil && !res(noWin, appU2, code: u1, numbers: u1.email).fromApp, "no Claude window: Claude Code's account, nothing to say")
     let clash = res(main, .unknown, code: u3, numbers: u3.email)
     check(clash.clash == "Other" && clash.line?.contains("Other") == true && !clash.lit, "Claude Code's folder on another profile's account in use: said, lamp off")
-    // the kept folder (Accounts.swift readingFolder): the working folder on u3, the numbers read from u1's kept folder, the app on u1
-    let kept = res(main, appU1, code: Seat(account: uuid(9), organization: uuid(109), email: "free@example.com"), numbers: u1.email)
-    check(kept.email == u1.email && !kept.differs && kept.line == nil, "numbers from the account in use's kept folder agree with the app's account: no line")
-    // the app signed out, the working folder on another account, the numbers from u1's kept folder: labelled all the same
-    let keptNoApp = res(main, appOut, code: Seat(account: uuid(9), organization: uuid(109), email: "free@example.com"), numbers: u1.email)
-    check(!keptNoApp.fromApp && keptNoApp.email == "free@example.com" && keptNoApp.differs && keptNoApp.numbersFor == u1.email
-          && keptNoApp.line?.hasPrefix("Usage: Claude Code on ") == true, "no app: Claude Code's folder account in use, the kept folder's numbers say whose they are")
+    // a read from just before the folder's sign-in changed: the app signed out, the folder already on a free account, the
+    // numbers still u1's: labelled with the address they were read for
+    let late = res(main, appOut, code: Seat(account: uuid(9), organization: uuid(109), email: "free@example.com"), numbers: u1.email)
+    check(!late.fromApp && late.email == "free@example.com" && late.differs && late.numbersFor == u1.email
+          && late.line?.hasPrefix("Usage: Claude Code on ") == true, "no app: Claude Code's folder account in use, an older read's numbers say whose they are")
+    check(res(main, AppSignIn.Login(account: u1.account.uppercased(), org: nil, state: .known, source: "config", at: nil), code: u1, numbers: u1.email).line == nil,
+          "the same account in any case: no line")
     check(AccountView.of({ var s = IconStatus(state: "ok"); s.resolved = res(main, AppSignIn.Login(account: uuid(77), org: nil, state: .known, source: "log", at: t0), code: u1, numbers: u1.email); return s }()).label == "account 00000000",
           "an app account no record names: by its id's first 8")
 }
@@ -250,7 +250,8 @@ do {
             ("card", AccountRow(entry: main, status: Store.status(for: main)).view),
             ("palette row", { let row = AccountRow(entry: main, status: Store.status(for: main))
                               var v = row.view; v.label = row.needsLogin || row.view.clash != nil ? v.label : row.subtitle; return v }()),
-            ("Settings", AccountSettings(entry: .constant(main), model: model).view)]
+            ("Settings", AccountSettings(entry: .constant(main), model: model).view),
+            ("Switch page", SwitchPage(entry: main, standby: main.standby[0], model: model, runner: model.runner(of: main.id)).view)]
         for (s, v) in views { check(v == want, "\(name): \(s) agrees on the account, the numbers' owner and the line") }
         let panel = DetailsInfo(name: "x", icon: NSImage(), login: nil, expected: nil, mismatch: false, plan: nil, fiveHour: nil, fiveHourResets: nil,
                                 weekly: nil, weeklyResets: nil, updated: nil, source: nil, problem: nil, renewNote: nil, needsLogin: false).taking(want)
@@ -263,20 +264,17 @@ do {
             check(want.label == u1.email && want.lit && want.line == nil && !(panel.activeNote ?? "").contains("can't be read"),
                   "\(name): u1 in use from the app, no screen says the app can't be read")
         }
-        // no surface lists the active account on standby too; the in-use box's stored-seat line only under that seat
+        // no surface lists the active account on standby too
         let listed = main.listed(by: want)
         let activeOnStandby = listed.standby.contains { $0.seat?.account == app.account }
-        let menuKeys = SwitchMenu.lines(listed).map(\.key) + listed.backOffers().map(\.key)
+        let menuKeys = SwitchMenu.lines(listed).map(\.key)
         let trayKeys = listed.cardTrays().map(\.id)
-        let k2 = AccountEntry.standbyStatusID("main", "k2")
-        let settingsView = AccountSettings(entry: .constant(main), model: model)
+        let k2 = AccountEntry.switchKey("main", "k2")
         if app.account == u2.account {
             check(!activeOnStandby && !menuKeys.contains(k2) && !trayKeys.contains(k2) && QuickChatSwitchOffer.best(main)?.key != k2,
                   "\(name): u2 (in use) is on no standby list: Settings, card trays, Dock and menu bar menus, Switch account ›, quick chat")
-            check(!settingsView.seatShown, "\(name): the in-use box shows u2, so its note about u1's own folder is left out")
         } else {
-            check(listed.standby.map(\.id) == main.standby.map(\.id), "\(name): the standby list is as it was")
-            if app.account == u1.account { check(settingsView.seatShown, "\(name): the in-use box shows the stored account: its own notes stay") }
+            check(listed.standby.map(\.id) == main.standby.map(\.id) && menuKeys.contains(k2), "\(name): the standby list is as it was")
         }
     }
     // a record from before the resolver: the sign-in it was read for
@@ -292,74 +290,47 @@ do {
           "the card shows ultra-2 with no numbers until the new read")
     mid.loginEmail = u2.email; mid.weekly = 12; _ = Store.writeStatus("main", mid)
     check(Store.status(for: main)?.weekly == 12, "the new read: ultra-2's own numbers show")
-    // the status line's numbers (no sign-in address) read from the account in use's kept folder, whose address the record
-    // has as the numbers' owner while the working folder names another: they show
+    // the status line's numbers (no sign-in address): nothing to tell them apart by, so they show
     var line = IconStatus(state: "ok"); line.loginEmail = nil; line.expectedEmail = "free@example.com"; line.weekly = 33; line.updatedAt = t0
     line.source = "Claude Code status line"
     line.resolved = res(main, appU1, code: u1, numbers: u1.email)
     _ = Store.writeStatus("main", line)
-    check(Store.status(for: main)?.weekly == 33 && Store.status(for: main)?.updatedAt == t0, "status-line numbers from a kept folder show (no address to tell them apart by)")
+    check(Store.status(for: main)?.weekly == 33 && Store.status(for: main)?.updatedAt == t0, "status-line numbers show (no address to tell them apart by)")
 }
 
-// ============ 4. a standby account's old numbers are never shown ============
-do {
-    var st = IconStatus(state: "expired"); st.loginEmail = u2.email; st.weekly = 97; st.updatedAt = t0
-    _ = Store.writeStatus(AccountEntry.standbyStatusID("main", "k2"), st)
-    try? fm.createDirectory(atPath: expand("~/.claude-main-u2"), withIntermediateDirectories: true)
-    let shown = Store.status(for: main, standby: main.standby[0])
-    check(shown?.weekly == nil && shown?.updatedAt == t0 && shown?.state == "expired", "its kept sign-in ran out: no numbers, when they were read kept")
-    st.state = "ok"; _ = Store.writeStatus(AccountEntry.standbyStatusID("main", "k2"), st)
-    check(Store.status(for: main, standby: main.standby[0])?.weekly == 97, "a live kept sign-in: its numbers")
-    try? fm.removeItem(atPath: expand("~/.claude-main-u2"))
-    check(Store.status(for: main, standby: main.standby[0])?.weekly == nil, "its kept folder gone: no numbers")
-    let look = StandbyLook.of(email: u2.email!, hasFolder: true, linked: true, folderSeat: u2, clash: nil, state: "expired", hasNumbers: true,
-                              problem: nil, lastRead: t0, now: t0.addingTimeInterval(3600))
-    check(look.line?.hasPrefix("Last read ") == true && look.keys == [.signInAgain], "an expired standby says when it was last read, with Sign in again")
-    let live = StandbyLook.of(email: u2.email!, hasFolder: true, linked: true, folderSeat: u2, clash: nil, state: "ok", hasNumbers: false, problem: nil)
-    check(live.line?.contains("renew") == false, "no promise that its sign-in renews by itself")
-}
-
-// ============ 6. a deleted kept folder is never made again: no claude for a folder that isn't there ============
+// ============ 4. a deleted folder is never made again: no claude for a folder that isn't there ============
 do {
     var keychainAsks: [String] = []
     Login.runSecurity = { keychainAsks.append($0.joined(separator: " ")); return (44, Data()) }   // never the Keychain: "no such item"
     var launches: [String] = []
     FolderGuard.launchSeam = { what, dir in launches.append("\(what) \(dir)"); return false }
-    let gone = "~/.claude-gone-kept"
+    let gone = "~/.claude-gone"
     try? fm.removeItem(atPath: expand(gone))
-    var p = profile("pk", "~/.claude-pk", u1); p.claudeWindow = false; p.autoRenew = true
+    var p = profile("pk", gone, u1); p.claudeWindow = false; p.autoRenew = true
     try? fm.createDirectory(atPath: expand("~/.claude-pk"), withIntermediateDirectories: true)
-    p.standby = [StandbyAccount(email: u2.email!, seat: u2, configDir: gone, id: "kg")]
-    check(p.readerEntry(for: p.standby[0]) == nil, "a kept folder that isn't there has no reader")
-    check(p.readerEntry(for: StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-pk", id: "y"))?.autoRenew == true,
-          "a standby account's kept sign-in is renewed while its folder is there (the absent one below never is)")
-    // a kept folder that is a link to a real folder: read (only launching refuses links)
+    // a profile's folder that is a link to a real folder: read, never launched into
     try? fm.createSymbolicLink(atPath: expand("~/.claude-pk-link"), withDestinationPath: expand("~/.claude-pk"))
-    check(p.readerEntry(for: StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-pk-link", id: "l")) != nil
-          && FolderGuard.isFolder("~/.claude-pk-link") && !FolderGuard.folderReady("~/.claude-pk-link"),
-          "a symlinked kept folder is read, never launched into")
+    check(FolderGuard.isFolder("~/.claude-pk-link") && !FolderGuard.folderReady("~/.claude-pk-link"), "a symlinked folder is read, never launched into")
     try! Store.save([p])
     // the agent: its readers made, ticked, the renew timer's work asked for
     let agent = AgentDelegate()
     agent.reload()
     agent.tick()
     RunLoop.main.run(until: Date().addingTimeInterval(1.5))
-    // a reader for the missing folder all the same (as an older build made it), asked to renew
-    var r = p.readerEntry(for: StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-pk", id: "x")) ?? p
-    r.configDir = gone; r.autoRenew = true
-    let reader = UsageReader(r, defaults: UserDefaults(suiteName: "cl-audit-surfaces-test-\(getpid())")!)
+    // a reader for the missing folder, asked to renew
+    let reader = UsageReader(p, defaults: UserDefaults(suiteName: "cl-audit-surfaces-test-\(getpid())")!)
     reader.renewLogin()
     reader.tick()
     RunLoop.main.run(until: Date().addingTimeInterval(1.0))
     reader.stop()
-    check(!fm.fileExists(atPath: expand(gone)), "the deleted kept folder is still gone after the agent's tick and a renew")
+    check(!fm.fileExists(atPath: expand(gone)), "the deleted folder is still gone after the agent's tick and a renew")
     check(!launches.contains { $0.hasSuffix(gone) }, "no claude was started for it: \(launches)")
-    let goneItems = Account(r).keychainServices
+    let goneItems = Account(p).keychainServices
     check(!keychainAsks.contains { a in goneItems.contains { a.contains($0) } }, "and its sign-in was never read (no Keychain ask for its item)")
-    check(ClaudeCLI.renew("/usr/bin/false", account: Account(r)) == false && !fm.fileExists(atPath: expand(gone)), "Renew sign-in refuses a missing folder")
+    check(ClaudeCLI.renew("/usr/bin/false", account: Account(p)) == false && !fm.fileExists(atPath: expand(gone)), "Renew sign-in refuses a missing folder")
     check(ClaudeCLI.logout("/usr/bin/false", configDir: gone) == false && !fm.fileExists(atPath: expand(gone)), "so does logout")
-    try? fm.createSymbolicLink(atPath: expand("~/.claude-linked-kept"), withDestinationPath: expand("~/.claude-pk"))
-    check(!FolderGuard.folderReady("~/.claude-linked-kept") && !FolderGuard.folderReady("~/.claude-linked-kept", creating: true), "a link is never used, nor made into a folder")
+    try? fm.createSymbolicLink(atPath: expand("~/.claude-linked"), withDestinationPath: expand("~/.claude-pk"))
+    check(!FolderGuard.folderReady("~/.claude-linked") && !FolderGuard.folderReady("~/.claude-linked", creating: true), "a link is never used, nor made into a folder")
     check(FolderGuard.folderReady("~/.claude") && FolderGuard.folderReady("~/.claude-pk"), "the default folder, and a folder that is there, are fine")
     check(FolderGuard.mayLaunch("login", "~/.claude-new-signin", creating: true) == false && fm.fileExists(atPath: expand("~/.claude-new-signin")),
           "a sign-in the person starts makes its new folder first (the seam then stops the launch here)")
@@ -431,7 +402,7 @@ do {
     FolderGuard.launchSeam = nil
 }
 
-// ============ 7. old numbers are never shown: a stale status line, a passed reset, an expired sign-in ============
+// ============ 5. old numbers are never shown: a stale status line, a passed reset, an expired sign-in ============
 do {
     let now = Date()
     let dir = "~/.claude-stale"
@@ -591,12 +562,13 @@ do {
     Store.removeStatus("stale")
 }
 
-// ============ 5. no screen reads the sign-in files or a seat itself ============
+// ============ 6. no screen reads the sign-in files or a seat itself ============
 do {
     let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
-    let surfaceFiles = ["MenuBar.swift", "IconApp.swift", "Details.swift", "SwitchMenu.swift", "QuickChat.swift", "QuickChatViews.swift", "QuickChatCard.swift"]
+    let surfaceFiles = ["MenuBar.swift", "IconApp.swift", "Details.swift", "SwitchMenu.swift", "SwitchView.swift", "SwitchPage.swift",
+                        "QuickChat.swift", "QuickChatViews.swift", "QuickChatCard.swift", "QuickChatLevel.swift"]
     let forbidden = [".claude.json", "config.json", "main.log", "Logs/Claude", "claudeJSON(", "signedInSeat(", "lastKnownAccountUuid",
-                     "expectedEmail(configDir", "FolderFactsCache", "seatMove(", "AppSignIn.", "entry.seat", "e.seat?.", "profile.entry.seat"]
+                     "expectedEmail(configDir", "FolderFactsCache", "inUseElsewhere", "AppSignIn.", "entry.seat", "e.seat?.", "profile.entry.seat"]
     var reads: [String] = []
     for f in surfaceFiles {
         let lines = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? ["(missing \(f))"]
@@ -609,7 +581,7 @@ do {
         guard let r1 = t.range(of: a), let r2 = t.range(of: b, range: r1.upperBound..<t.endIndex) else { return ["(\(f): section not found)"] }
         return t[r1.lowerBound..<r2.lowerBound].components(separatedBy: "\n")
     }
-    for (f, a, b) in [("Launcher.swift", "struct AccountCard", "\n}\n"), ("Settings.swift", "func inUseBox(", "    /// With more than one account, the one in use")] {
+    for (f, a, b) in [("Launcher.swift", "struct AccountCard", "\n}\n"), ("Settings.swift", "func inUseBox(", "    /// A sign-in again on the account in use")] {
         for l in section(f, from: a, to: b) where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
             for p in forbidden where l.contains(p) { reads.append("\(f) \(p): \(l.trimmingCharacters(in: .whitespaces).prefix(60))") }
             if l.contains("section not found") { reads.append(l) }

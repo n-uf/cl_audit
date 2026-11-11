@@ -345,7 +345,7 @@ MainActor.assumeIsolated {
     model.accounts = [withOld]
     LeftoverCounts.shared.countNow(withOld.leftoverFolders)      // the card counts off the main thread; a picture can't wait
     var found = main
-    found.standby.append(StandbyAccount(email: "", seat: Seat(account: "7c1e9a40-0000-4000-8000-000000000071", organization: nil, email: nil), id: "k7"))
+    found.standby.append(StandbyAccount(email: "", seat: Seat(account: "00000000-0000-4000-8000-000000000071", organization: nil, email: nil), id: "k7"))
     for f in [Face.std, .silver] { for (wn, w) in oWidths {
         snapshot(framed(AccountSettings(entry: .constant(withOld), model: model, width: w), f, w), "o8-accounts-leftover-\(f.rawValue)-\(wn)", w + 32, 3200)
         snapshot(framed(AccountSettings(entry: .constant(found), model: model, width: w), f, w), "o9-accounts-found-\(f.rawValue)-\(wn)", w + 32, 3200)
