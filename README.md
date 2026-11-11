@@ -400,7 +400,8 @@ cl_audit stays in the Dock as a launcher:
 | Press and hold | The details panel next to a short Dock menu (on by default, per profile) |
 | Right-click | The menu: numbers, reset times, the sign-in, and actions (Switch account › with each of the profile's other accounts and their weeks (and, while a limit is full, Switch to … for the best one), Quick chat, Open or Show Claude window, Quit Claude window, Refresh now, Dashboard, Profile settings…, and Quit and keep Claude window when the window follows the Dock icon) |
 
-A Dock icon draws what the agent saved for its profile, and asks the agent for Refresh now and Renew login.
+A Dock icon draws what the agent saved for its profile, and asks the agent for Refresh now. With the sign-in expired or
+signed out, its one key is Log in… (Claude Code's own sign-in in Terminal).
 
 Press and hold has no event of its own: the Dock asks the app for its menu on both right-click and
 press-and-hold, and the icon checks which mouse button is down at that moment.

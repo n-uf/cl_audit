@@ -47,7 +47,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var plan: String? { status?.plan }
     var expired: Bool { status?.state == "expired" }
     var noLogin: Bool { status?.state == "noLogin" }
-    var renewing: Bool { status?.renewing == true }
     var refreshing: Bool {
         guard let t = refreshAsked else { return false }
         return Date().timeIntervalSince(t) < 15 && (status?.updatedAt ?? .distantPast) < t

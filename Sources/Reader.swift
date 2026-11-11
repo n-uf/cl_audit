@@ -434,8 +434,8 @@ final class UsageReader {
             renewNote = "Not renewed: its Claude Code folder isn't there"
             save(); return
         }
-        // asked for too (Renew login now in the menus): never in a folder signed in to another account, whose sign-in
-        // would be renewed in this profile's name; that one shows Use this account or log back in instead
+        // never in a folder signed in to another account, whose sign-in would be renewed in this profile's name; that one
+        // shows Log in… instead
         guard Self.renewsInItsFolder(entry.seat, account.configDir) else {
             renewNote = "Not renewed: this folder is signed in to another account"
             save(); return
