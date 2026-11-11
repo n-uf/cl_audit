@@ -2197,6 +2197,7 @@ struct AccountSettings: View {
             updated: s?.updatedAt, source: nil, problem: nil, renewNote: nil,
             needsLogin: false,
             design: entry.panelDesign, accent: entry.accentNSColor, noFiveHour: s?.noFiveHour == true)
+            .taking(AccountView.of(s))
     }
 
     /// A folder picked in Finder, used only if no other account has it and it's a Claude Code folder (or empty).

@@ -61,9 +61,7 @@ Nothing pending.
   settings" and **Use this account** are gone. One account belongs to one profile: another profile's account in use is
   refused, as before; an account on another profile's standby list moves to this one, with a line on both profiles'
   Accounts card.
-- **The Claude app's account is read the way claude-transplant reads it**: its log's account lines after the app's launch,
-  cross-checked with its config.json (nothing else from the log is kept). When it differs from Claude Code's, the Accounts
-  card says so plainly: "The Claude app uses a…; Claude Code uses b…. Usage shown is Claude Code's."
+- **The Switch page shows the profile's one account answer** too (26.11.14's record), like every other screen.
 - **No Add account: a profile's accounts are found on this Mac**, as claude-transplant finds them: the Claude window's
   session folders, Claude Code's records and their backups, and the transcripts. Each one no profile has goes on standby
   by itself, named "address · organisation" or, until it is seen signed in, "account" and its first 8 characters.

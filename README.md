@@ -287,8 +287,9 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   app's `main*.log`, newest first, after the app's launch ("[LocalSessionManager] Initialization succeeded …
   accountId=…, orgId=…"; a "Login-state transition … loggedOut … true" or "Account logged out" line means signed out),
   cross-checked with its `config.json` `lastKnownAccountUuid`; only those lines are looked at and nothing else from the
-  log is kept. When it differs from Claude Code's, the Accounts card says so plainly ("The Claude app uses a…; Claude
-  Code uses b…. Usage shown is Claude Code's."). One account belongs to one profile: an account
+  log is kept. That account is the profile's active one, and every screen, the Switch page included, shows the one
+  answer the agent records for the profile: see [Which account is in use](#which-account-is-in-use). One account
+  belongs to one profile: an account
   another profile works on is refused (the card says whose, and the profile's numbers wait until its folder is on one of
   its own); an account on another profile's standby list moves to this one, said on both profiles' Accounts card.
 - **A switch waiting for you.** While Claude Code's sign-in waits in the browser, the Switch page is easy to lose behind

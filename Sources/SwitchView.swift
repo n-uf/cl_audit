@@ -155,7 +155,7 @@ private struct RunnerTileDisplay: View {
         case .failed where open:
             TileDisplayGlass(l1: "Not started", l2: "nothing changed", tone: .warn) { }
         case .ready where open:
-            TileDisplayGlass(l1: "Switch from", l2: AccountNames.short(entry.seat?.email ?? "its account"), tone: .normal, unlit: true) { }
+            TileDisplayGlass(l1: "Switch from", l2: AccountNames.short(AccountView.of(Store.status(for: entry)).numbersOwner ?? "its account"), tone: .normal, unlit: true) { }
         default:
             EmptyView()
         }

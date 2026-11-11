@@ -64,6 +64,8 @@ final class SwitchRunner: ObservableObject {
     @Published private(set) var moveNote: String?
     /// The plan before it ran: how many sessions and tasks move (the page's steps say it).
     @Published private(set) var planned: SwitchPlan?
+    /// What the folder named at the switch's last look (the page's check line): the switch's own read, never the page's.
+    @Published private(set) var seen: Seat?
     private weak var model: SettingsModel?
     private var timer: Timer?
     private var closeStarted = Date()
@@ -274,6 +276,7 @@ final class SwitchRunner: ObservableObject {
             let done = FileManager.default.fileExists(atPath: marker.path)
             DispatchQueue.main.async {
                 guard let self, self.phase == .waiting, self.goal == g else { return }
+                if self.seen != now { self.seen = now }
                 if let o = Self.judge(g, now: now, markerDone: done) { self.end(o) }
             }
         }
@@ -316,8 +319,8 @@ final class SwitchRunner: ObservableObject {
 
     /// Renders only: the page as it looks in a phase.
     func preview(_ p: Phase, goal g: Goal?, target: StandbyAccount? = nil, planned plan: SwitchPlan? = nil, receipt r: SwitchReceipt? = nil,
-                 note: String? = nil) {
+                 note: String? = nil, seen s: Seat? = nil) {
         phase = p; goal = g; targetSnapshot = target ?? targetSnapshot
-        planned = plan; receipt = r; moveNote = note
+        planned = plan; receipt = r; moveNote = note; seen = s
     }
 }

@@ -30,12 +30,14 @@ struct SwitchPage: View {
     private var to: String { AccountNames.short(runner.goal.map { $0.wantedEmail.isEmpty ? standby.label : $0.wantedEmail } ?? standby.label) }
     /// The account it came from, short: the one in use when it began.
     private var from: String {
-        AccountNames.short(runner.goal?.from?.email ?? entry.seat?.email ?? Account.expectedEmail(configDir: entry.configDir) ?? "its account")
+        AccountNames.short(runner.goal?.from?.email ?? view.numbersOwner ?? "its account")
     }
     /// What the folder is signed in to now (its .claude.json, read again only when it changed).
-    private var seen: Seat? { _ = model.tick; return FolderFactsCache.facts(entry.configDir)?.seat }
+    private var seen: Seat? { runner.seen }
+    /// The profile's account as its record says it (AccountResolver).
+    var view: AccountView { _ = model.tick; return AccountView.of(Store.status(for: entry)) }
     /// The account landed on is another profile's account in use: the profile didn't follow it.
-    private var clash: (seat: Seat, owner: AccountEntry)? { _ = model.tick; return FolderRules.inUseElsewhere(entry, among: model.accounts) }
+    private var clash: (seat: Seat?, owner: String)? { view.clash.map { (nil, $0) } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -70,7 +72,7 @@ struct SwitchPage: View {
             if again { return Top(text: "Signed in again", dim: "· \(to)", tone: .ok) }
             return Top(text: "Now on \(to)", dim: "· \(from) on standby", tone: .ok)
         case .other(let e):
-            if let c = clash { return Top(text: "Signed in as \(AccountNames.short(e))", dim: "· \(c.owner.name)'s account", tone: .warn) }
+            if let c = clash { return Top(text: "Signed in as \(AccountNames.short(e))", dim: "· \(c.owner)'s account", tone: .warn) }
             return Top(text: "Signed in as \(AccountNames.short(e))", dim: "· not \(to)", tone: .amber)
         case .timedOut:
             if runner.canUndo { return Top(text: "No sign-in", dim: "· sessions on \(to)", tone: .amber) }
@@ -186,14 +188,16 @@ struct SwitchPage: View {
     }
 
     private var inUseBox: some View {
+        // the active account and the one line of state, from the profile's record (AccountResolver)
         let st = Store.status(for: entry)
-        let f = FolderFactsCache.facts(entry.configDir)
-        let detail = [st?.plan.map(Account.planWords) ?? f?.plan, f?.org].compactMap { $0 }.joined(separator: " · ")
+        let v = AccountView.of(st)
+        let detail = st?.plan.map(Account.planWords) ?? ""
         let row = AccountRow(entry: entry, status: st)
-        return AccountBox(lamp: FaceTheme.ledOn, badge: "In use", badgeTone: .ok, detail: detail) {
-            Text(Privacy.masked(entry.seat?.email ?? "its account")).font(.system(size: 13, weight: .semibold))
+        return AccountBox(lamp: v.lit ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: v.lit ? .ok : .warn, detail: detail) {
+            Text(Privacy.masked(v.label ?? "its account")).font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
         } content: {
+            if let n = v.line { BoxText(text: n, role: .note) }
             if row.limits.contains(where: { $0.p != nil }) {
                 CardLimits(limits: row.limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits, fullBox: false)
             } else {
@@ -276,8 +280,8 @@ struct SwitchPage: View {
     /// owns are counted when it starts.
     private var plan: SwitchPlan? {
         if let p = runner.planned { return p }
-        guard runner.phase == .ready, !again, case .success(let p)? = (entry.seat != nil && standby.seat != nil)
-                ? SwitchEngine.plan(entry, standby: standby, owned: []) : nil else { return nil }
+        guard runner.phase == .ready, !again, standby.seat != nil,
+              case .success(let p) = SwitchEngine.plan(entry, standby: standby, owned: []) else { return nil }
         return p
     }
     private var moves: Bool { plan?.moves == true || runner.receipt != nil }
@@ -447,7 +451,7 @@ struct SwitchPage: View {
             return entry.claudeWindow ? "Open \(name)'s Claude window and sign it in to \(to): cl_audit doesn't sign the app in or out." : nil
         case .other(let e):
             if let c = clash {
-                return "\(Privacy.masked(e)) is \(c.owner.name)'s account, so \(name) doesn't take it: its numbers wait until you sign in as \(to) (or another of \(name)'s accounts)."
+                return "\(Privacy.masked(e)) is \(c.owner)'s account, so \(name) doesn't take it: its numbers wait until you sign in as \(to) (or another of \(name)'s accounts)."
             }
             return "\(name) works on \(AccountNames.short(e)) now, and \(from) is on standby. To get \(to), switch the browser's claude.ai account first, then sign in again."
         case .timedOut:
