@@ -737,11 +737,11 @@ do {
     } else { check(false, "an unfinished switch is said before a new one") }
 
     // SHOULD 7: the program is the executable's last path component, the path whole even with spaces
-    check(SwitchEngine.isClaude("/Users/x/Library/Application Support/Claude/claude-code/2.1.318/claude --resume \(uuid(1220))")
+    check(SwitchEngine.isClaude(home + "/Library/Application Support/Claude/claude-code/2.1.318/claude --resume \(uuid(1220))")
           && SwitchEngine.isClaude("claude") && SwitchEngine.isClaude("/opt/homebrew/bin/claude -p hi")
           && !SwitchEngine.isClaude("/bin/zsh -c claude \(uuid(1220))") && !SwitchEngine.isClaude("/usr/bin/vim claude"),
           "claude by its executable's last path component, spaces in the path included; not as another program's argument")
-    let ps = " 300 /Users/x/Library/Application Support/Claude/claude-code/2.1.318/claude --resume \(uuid(1221))\n"
+    let ps = " 300 " + home + "/Library/Application Support/Claude/claude-code/2.1.318/claude --resume \(uuid(1221))\n"
     check(SwitchEngine.owned(ps: ps, codeDir: "~/.claude-r3", alive: { _ in false }) == [uuid(1221)], "the Claude app's own claude, under a path with a space: its session is owned")
     try? fm.removeItem(atPath: expand("~/.claude-r3"))
 }
