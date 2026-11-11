@@ -118,6 +118,8 @@ final class SwitchRunner: ObservableObject {
         targetSnapshot = s; receipt = nil; moveNote = nil; planned = nil
         let g = Goal(standby: s.id, wantedSeat: s.seat, wantedEmail: s.email,
                      from: Account.signedInSeat(configDir: e.configDir) ?? e.seat, started: Date())
+        // the profile's folder deleted: nothing closes, moves or signs in (a sign-in would make it again), said instead
+        if let why = ClaudeCLI.goneLine(e.configDir) { goal = g; phase = .failed(why); return }
         // a switch that stopped half way is put back first: never a second move on top of it
         if let u = SwitchEngine.unfinished(profile: profile).first {
             goal = g; receipt = u
@@ -240,6 +242,8 @@ final class SwitchRunner: ObservableObject {
 
     private func begin(_ e: AccountEntry, _ g: Goal) {
         clearMarker()
+        // the profile's folder deleted: never made again by a sign-in (FolderGuard), said instead
+        if let why = ClaudeCLI.goneLine(e.configDir) { goal = g; releaseWindow(); phase = .failed(why); return }
         guard let claude = model?.requireClaude() else { goal = g; releaseWindow(); phase = .failed(model?.noClaudeWhy ?? ClaudeInstall.missing + "."); return }
         guard ClaudeCLI.openLogin(claude, account: Account(e), email: g.wantedEmail.isEmpty ? nil : g.wantedEmail, marker: g.again ? Self.marker(for: profile) : nil) else {
             goal = g; releaseWindow(); phase = .failed("Terminal didn't open."); return

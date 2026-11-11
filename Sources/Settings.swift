@@ -1738,7 +1738,9 @@ struct AccountSettings: View {
 
     private var newAccountKey: some View {
         Button("Sign in with another account…") {
-            if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: nil) }
+            // a folder that is gone is never made again: nothing starts, the line says so (A4)
+            if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why }
+            else if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: nil) }
         }
         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
         .help("Claude Code's sign-in in Terminal on \(entry.configDir), no address filled in. The account that signs in becomes the one \(entry.name.isEmpty ? "this profile" : entry.name) works on; the one before goes on standby.")

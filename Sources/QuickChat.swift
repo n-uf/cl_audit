@@ -524,7 +524,7 @@ final class QuickChat {
         model.logIn = { [weak self] id in
             guard let self, let e = self.entries().first(where: { $0.id == id }) else { return }
             // its folder gone: the line between messages says so, and nothing starts
-            if let why = ClaudeCLI.goneLine(e.readingEntry().configDir) { self.model.note = why; return }
+            if let why = ClaudeCLI.goneLine(e.configDir) { self.model.note = why; return }
             ClaudeCLI.logIn(profile: e)
         }
         model.limitFilled = { [weak self] in self?.refresh() }

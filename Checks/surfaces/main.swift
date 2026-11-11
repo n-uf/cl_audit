@@ -333,52 +333,41 @@ do {
     check(!FolderGuard.folderReady("~/.claude-linked") && !FolderGuard.folderReady("~/.claude-linked", creating: true), "a link is never used, nor made into a folder")
     check(FolderGuard.folderReady("~/.claude") && FolderGuard.folderReady("~/.claude-pk"), "the default folder, and a folder that is there, are fine")
     check(FolderGuard.mayLaunch("login", "~/.claude-new-signin", creating: true) == false && fm.fileExists(atPath: expand("~/.claude-new-signin")),
-          "a sign-in the person starts makes its new folder first (the seam then stops the launch here)")
+          "New profile's sign-in makes its brand-new folder first (the seam then stops the launch here)")
     check(launches.contains("login ~/.claude-new-signin"), "…and only then would it launch")
 
-    // no sign-in makes a deleted folder again: Sign in… on a standby, the account in use's own folder, Log in… (A4)
+    // no sign-in makes a deleted folder again (A4, on B's sign-in paths): nothing launched, no Terminal, the line or alert
     var terminals: [String] = [], alerts: [String] = []
     ClaudeCLI.openTerminal = { terminals.append($0.path); return true }
     ClaudeCLI.goneSeam = { alerts.append($0) }
     launches.removeAll()
-    let goneLine = "Its Claude Code folder is gone (~/.claude-gone-kept): nothing was signed in."
-    check(ClaudeCLI.openLogin("/usr/bin/false", account: Account(r), email: u2.email) == false && !fm.fileExists(atPath: expand(gone)),
+    let goneLine = "Its Claude Code folder is gone (~/.claude-gone): nothing was signed in."
+    check(ClaudeCLI.openLogin("/usr/bin/false", account: Account(p), email: u1.email) == false && !fm.fileExists(atPath: expand(gone)),
           "a sign-in for a deleted folder doesn't start and doesn't make it")
-    let sm = SettingsModel()
-    var pe = p; pe.keptFolder = gone
-    let page = AccountSettings(entry: Binding(get: { pe }, set: { pe = $0 }), model: sm)
-    page.signInStandby(pe.standby[0])
-    check(!fm.fileExists(atPath: expand(gone)) && sm.message == goneLine, "Sign in… on a standby whose kept folder was deleted: the line shows, nothing made: \(sm.message)")
-    sm.message = ""
-    page.signInOwnFolder()
-    check(!fm.fileExists(atPath: expand(gone)) && sm.message == goneLine, "Sign in… for the account in use's deleted folder: the same")
-    let goneProfile = "~/.claude-gone-profile"
-    try? fm.removeItem(atPath: expand(goneProfile))
-    var gp = profile("gp", goneProfile, u3); gp.claudeWindow = false
-    sm.accounts = [gp]
-    sm.askSwitch("gp", email: "ultra-9@example.com")
-    check(sm.beginSwitch() == "Its Claude Code folder is gone (~/.claude-gone-profile): nothing was signed in." && !fm.fileExists(atPath: expand(goneProfile)),
-          "Settings' sign-in on a profile whose folder was deleted: the line, nothing made")
-    ClaudeCLI.logIn(profile: gp)
-    ClaudeCLI.logIn(Account(gp), email: nil)
+    ClaudeCLI.logIn(profile: p)
+    ClaudeCLI.logIn(Account(p), email: nil)
     RunLoop.main.run(until: Date().addingTimeInterval(0.3))
-    check(alerts == [String](repeating: "Its Claude Code folder is gone (~/.claude-gone-profile): nothing was signed in.", count: 2) && !fm.fileExists(atPath: expand(goneProfile)),
-          "the menus' and the launcher's Log in… on a deleted profile folder: the alert says so, nothing made: \(alerts)")
-    // the switch's own sign-in (also called by itself after the move): it waits at the sign-in step with the line and
-    // Cancel, never stuck at "moving…"
-    var sw = gp; sw.standby = [StandbyAccount(email: u1.email!, seat: u1, configDir: nil, id: "gs")]
-    sm.accounts = [sw]
-    let runner = SwitchRunner(profile: "gp", standby: "gs", model: sm)
-    runner.signInCode()
-    check(runner.phase == .codeSignIn && runner.isRunning && runner.note == "Its Claude Code folder is gone (~/.claude-gone-profile): nothing was signed in."
-          && !fm.fileExists(atPath: expand(goneProfile)), "the switch's sign-in on a deleted folder: at the sign-in step (Cancel there), the line, nothing made: \(runner.phase) \(runner.note ?? "-")")
+    check(alerts == [goneLine, goneLine] && !fm.fileExists(atPath: expand(gone)),
+          "the menus', the Dock menu's and the launcher's Log in… on a deleted folder: the alert says so, nothing made: \(alerts)")
+    let sm = SettingsModel()
+    var withStandby = p; withStandby.standby = [StandbyAccount(email: u2.email!, seat: nil, id: "g2")]
+    var noSeat = withStandby; noSeat.seat = nil
+    sm.accounts = [withStandby]
+    AccountSettings(entry: .constant(noSeat), model: sm).signInAgain(email: u1.email)
+    check(sm.message == goneLine && !fm.fileExists(atPath: expand(gone)), "Settings' sign-in on a deleted folder: the line, nothing made: \(sm.message)")
+    // the switch (to a standby account, and Sign in again): nothing closes, moves or signs in; the line, with Back
+    let gr = sm.runner(of: withStandby.id)
+    gr.start(withStandby.standby[0])
+    check(gr.phase == .failed(goneLine) && !fm.fileExists(atPath: expand(gone)), "a switch on a deleted folder: the line, nothing made: \(gr.phase)")
+    gr.reset(); gr.signInAgain()
+    check(gr.phase == .failed(goneLine) && !fm.fileExists(atPath: expand(gone)), "Sign in again on a deleted folder: the same")
     // a link says so instead of "gone"
-    let linkLine = "Its Claude Code folder (~/.claude-linked-kept) isn't a plain folder (a link?): nothing was signed in."
-    check(ClaudeCLI.goneLine("~/.claude-linked-kept") == linkLine && ClaudeCLI.goneLine("~/.claude-pk") == nil, "a link: 'isn't a plain folder'; a folder: no line")
-    var lp = p; lp.standby = [StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-linked-kept", id: "kl")]
-    sm.message = ""
-    AccountSettings(entry: Binding(get: { lp }, set: { lp = $0 }), model: sm).signInStandby(lp.standby[0])
-    check(sm.message == linkLine, "Sign in… on a standby whose kept folder is a link: that line: \(sm.message)")
+    let linkLine = "Its Claude Code folder (~/.claude-linked) isn't a plain folder (a link?): nothing was signed in."
+    check(ClaudeCLI.goneLine("~/.claude-linked") == linkLine && ClaudeCLI.goneLine("~/.claude-pk") == nil, "a link: 'isn't a plain folder'; a folder: no line")
+    var lp = p; lp.configDir = "~/.claude-linked"
+    sm.accounts = [lp]
+    sm.runner(of: lp.id).signInAgain()
+    check(sm.runner(of: lp.id).phase == .failed(linkLine), "Sign in again on a folder that is a link: that line")
     check(launches.isEmpty && terminals.isEmpty, "no claude and no Terminal for any of them: \(launches) \(terminals)")
     // a brand-new folder the person just chose (New profile, first run): still made, owner only, and launched
     let fresh = "~/.claude-new-profile"
