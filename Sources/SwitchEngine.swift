@@ -295,6 +295,8 @@ enum SwitchEngine {
         let dir = dataDir ?? (e.desktop == .standard ? expand(FolderKey.standardDataDir) : Account(e).claudeUserDataDir ?? "")
         guard !dir.isEmpty else { return .failure(.notReady("The profile's Claude window has no folder.")) }
         var p = SwitchPlan(profile: e.id, standby: s.id, dataDir: expand(dir), codeDir: Account(e).configDir, from: from, to: to, entry: e)
+        // nothing is written through a link inside the folders: refused, and said why
+        if let why = linkProblem(p) { return .failure(.notReady(why)) }
         let fm = FileManager.default
         let names = ((try? fm.contentsOfDirectory(atPath: p.sourceDir)) ?? []).filter { $0.hasPrefix("local_") && $0.hasSuffix(".json") }.sorted()
         guard !names.isEmpty || fm.fileExists(atPath: (p.sourceDir as NSString).appendingPathComponent("scheduled-tasks.json")) else { return .success(p) }
@@ -317,6 +319,32 @@ enum SwitchEngine {
         return .success(p)
     }
 
+    /// Why a switch would write through a link, or nil: below the window's data folder, `claude-code-sessions` and both
+    /// accounts' two levels (created, moved into, written); below the Claude Code folder, `projects` and each project folder
+    /// (a transcript's pointer line is appended there). A part that isn't there yet is fine (it's made as a folder).
+    static func linkProblem(_ p: SwitchPlan) -> String? {
+        let projects = (expand(p.codeDir) as NSString).appendingPathComponent("projects")
+        func isLink(_ path: String) -> Bool {
+            var st = stat()
+            guard lstat(path, &st) == 0 else { return false }
+            let kind = st.st_mode & S_IFMT
+            // a project folder's neighbours may be plain files (.DS_Store); only a link there is refused
+            return path.hasPrefix(projects + "/") ? kind == S_IFLNK : kind != S_IFDIR
+        }
+        let sessions = (p.dataDir as NSString).appendingPathComponent("claude-code-sessions")
+        var parts = [sessions]
+        for s in [SeatID(p.from), SeatID(p.to)] {
+            let a = (sessions as NSString).appendingPathComponent(s.account)
+            parts += [a, (a as NSString).appendingPathComponent(s.organization)]
+        }
+        parts.append(projects)
+        if !isLink(projects) {
+            for n in (try? FileManager.default.contentsOfDirectory(atPath: projects)) ?? [] { parts.append((projects as NSString).appendingPathComponent(n)) }
+        }
+        guard let bad = parts.first(where: isLink) else { return nil }
+        return "\(tilde(bad)) isn't a plain folder (a link or a file): cl_audit never writes through one, so nothing is moved."
+    }
+
     // MARK: running it
 
     /// Moves what the plan says. `windowClosed` is asked first and before every step: the window must stay closed. If
@@ -331,6 +359,8 @@ enum SwitchEngine {
         let lock = try Lock.take()
         defer { lock.release() }
         guard windowClosed() else { throw SwitchError.notReady("The profile's Claude window is open; nothing moved.") }
+        // looked at again under the lock: a link put in since the plan is refused all the same
+        if let why = linkProblem(p) { throw SwitchError.notReady(why) }
         var r = SwitchReceipt(id: receiptID(now, p.profile), profile: p.profile, standby: p.standby, dataDir: p.dataDir,
                               from: SeatID(p.from), to: SeatID(p.to), started: now)
         r.held = p.held.isEmpty ? nil : p.held
