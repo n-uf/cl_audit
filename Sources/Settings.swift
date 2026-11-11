@@ -1649,7 +1649,10 @@ struct AccountSettings: View {
             // signed out or expired: that one line, in the box only, with Log in… (never "no numbers yet")
             limitsOrWhy(status, entry: entry, none: status?.state == "noLogin" ? noSignInWords
                                                    : status?.state == "expired" ? "The sign-in ran out: Log in…, or turn on Renew sign-in." : nil)
-            if let n = v.line, move == nil { BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true) }
+            // signed out or expired: that line alone says it (no "Claude Code's account shows" beside it)
+            if let n = v.line, move == nil, !["noLogin", "expired"].contains(status?.state) {
+                BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true)
+            }
             if let move {
                 // one key; signing back in to the profile's own account is in the pop-up, under this account
                 Button("Open \(move.owner.name)") { model.selection = move.owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))

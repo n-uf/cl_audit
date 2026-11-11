@@ -49,7 +49,17 @@ struct SwitchPage: View {
         }
     }
 
+    /// After a switch: Claude Code is on the account wanted, but the Claude app (the record's account in use, A's rule) is
+    /// still on another one until it's signed in there. Then the page says both, never only "Now on …".
+    private var appBehind: Bool {
+        guard runner.phase == .reached, !again, let a = view.label?.lowercased(),
+              let w = runner.goal?.wantedEmail.lowercased(), !w.isEmpty else { return false }
+        return a != w && view.numbersOwner?.lowercased() == w
+    }
+    private var appShort: String { AccountNames.short(view.label ?? "another account") }
+
     private var title: String {
+        if appBehind { return "Switched Claude Code of \(name) to \(to)" }
         if again { return runner.phase == .reached ? "Logged Claude \(name) in" : "Log Claude \(name) in" }
         switch runner.phase {
         case .closing, .moving, .waiting: return "Switching Claude \(name) to \(to)"
@@ -72,6 +82,7 @@ struct SwitchPage: View {
             return Top(text: again ? "Signing in" : "Switching", dim: "· waiting · until \(until.formatted(date: .omitted, time: .shortened))", tone: .mint)
         case .reached:
             if again { return Top(text: "Logged in", dim: "· \(to)", tone: .ok) }
+            if appBehind { return Top(text: "Claude Code on \(to)", dim: "· the Claude app still on \(appShort)", tone: .amber) }
             return Top(text: "Now on \(to)", dim: "· \(from) on standby", tone: .ok)
         case .other(let e):
             if let c = clash { return Top(text: "Signed in as \(AccountNames.short(e))", dim: "· \(c.owner)'s account", tone: .warn) }
@@ -312,13 +323,17 @@ struct SwitchPage: View {
                       ? "\(sessionWords(plan).prefix(1).uppercased() + sessionWords(plan).dropFirst()) moved to \(to), with a backup made first. Claude Code's transcripts stayed in \(entry.configDir)."
                       : "Nothing moved: none of the Claude window's sessions were on \(from).")
             }
-            if entry.claudeWindow {
+            if appBehind {
+                SRow(label: "Claude window", stacked: true) {
+                    value("Claude Code is on \(to). The Claude app is still on \(appShort): sign it in to \(to) there to finish (\(entry.windowWords)). Until then \(appShort) is the account in use.")
+                }
+            } else if entry.claudeWindow {
                 SRow(label: "Claude window", stacked: true) {
                     value("Open it and sign it in to \(to) yourself (\(entry.windowWords)): its sessions show on that account.")
                 }
             }
             SRow(label: "Stayed", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
-            SRowLine(text: "\(from) stands by on \(name) now: nothing read, switch back any time.")
+            if !appBehind { SRowLine(text: "\(from) stands by on \(name) now: nothing read, switch back any time.") }
             if let n = runner.moveNote { SRowLine(text: n) }
         }
     }
