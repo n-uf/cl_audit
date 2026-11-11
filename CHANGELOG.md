@@ -28,7 +28,7 @@ the notes before updating.
   by (the agent does this too while cl_audit's window is closed). One account belongs to one profile: another profile's
   account in use is refused, as before; an account on another profile's standby list moves to this one, with a line on
   both profiles' Accounts card.
-- **The Switch page shows the profile's one account answer** too (26.11.14's record), like every other screen. The Claude
+- **The Switch page shows the profile's one account answer** too, as in 26.11.14, like every other screen. The Claude
   app on another account than Claude Code is said in the in-use box ("Usage: Claude Code on b…"), as in 26.11.14.
 - **No Add account: a profile's accounts are found on this Mac**, as claude-transplant finds them: the Claude window's
   session folders, Claude Code's records and their backups, and the transcripts. Each one no profile has goes on standby
@@ -39,7 +39,7 @@ the notes before updating.
 - **A full limit offers the standby account least used** by the week it left with, not known to be full (its week as last
   read when it left is kept for this and never shown), then the one most recently in use.
 - **Gone with the standby accounts' numbers:** their kept sign-ins and the renewal of them, "the other account is back"
-  and its Switch back offer, and the standby accounts' saved numbers (cleared by the clean-up). **Undo this switch** after a finished switch is gone: the way back is a
+  and its Switch back offer, and the standby accounts' saved numbers (removed when cl_audit next cleans up). **Undo this switch** after a finished switch is gone: the way back is a
   switch the other way.
 - **The folders kept for standby sign-ins** (`~/.claude-<name>`, made by 26.11.16 and earlier for each standby account and for
   the account in use) aren't used any more. Each one that is still there is listed under the profile's Accounts, **Folders

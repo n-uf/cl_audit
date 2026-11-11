@@ -245,6 +245,7 @@ MainActor.assumeIsolated {
     sign("~/.claude", u2)
     let after = FolderRules.noteAccounts([main], signedIn: { $0 == "~/.claude" ? u2 : nil }, status: { _ in Store.status(for: main) })[0]
     model.accounts = [after]
+    model.resolveNow("main")             // as the runner's end does: the record names ultra-2 at once
     var linked = moved; linked.linked = Date()
     r.preview(.reached, goal: goal, target: k2, planned: swPlan, receipt: linked, seen: u2)
     page(after, k2, "o3-switch-reached")
@@ -252,10 +253,12 @@ MainActor.assumeIsolated {
     sign("~/.claude", u3)
     let onOther = FolderRules.noteAccounts([main], signedIn: { $0 == "~/.claude" ? u3 : nil }, status: { _ in Store.status(for: main) })[0]
     model.accounts = [onOther]
+    model.resolveNow("main")
     r.preview(.other(u3.email!), goal: goal, target: k2, planned: swPlan, receipt: moved, seen: u3)
     page(onOther, k2, "o4-switch-other-account")
     sign("~/.claude", u1)
     model.accounts = [main]
+    model.resolveNow("main")
     r.preview(.timedOut, goal: goal, target: k2, planned: swPlan, receipt: moved, seen: u1)
     page(main, k2, "o5-switch-timed-out")
     var undone = moved; undone.undone = Date()
@@ -361,6 +364,24 @@ MainActor.assumeIsolated {
         snapshot(framed(AccountSettings(entry: .constant(withWork), model: model, width: w), f, w), "o8f-accounts-leftover-sessions-\(f.rawValue)-\(wn)", w + 32, 3200)
     } }
     model.accounts = [main]
+    // the account in use signed out, then expired: no bars, Log in… the one key
+    let keepRecord = Store.status("main")
+    for (tag, state) in [("o14a-accounts-signed-out", "noLogin"), ("o14b-accounts-expired", "expired")] {
+        var st = IconStatus(state: state); st.loginEmail = state == "expired" ? u1.email : nil; st.expectedEmail = u1.email
+        st.resolved = AccountResolver.resolve(main, among: [main], app: .unknown, code: u1, loginEmail: st.loginEmail, names: [:])
+        _ = Store.writeStatus("main", st)
+        for f in [Face.std, .silver] { for (wn, w) in oWidths {
+            snapshot(framed(AccountSettings(entry: .constant(main), model: model, width: w), f, w), "\(tag)-\(f.rawValue)-\(wn)", w + 32, 2400)
+        } }
+    }
+    if let k = keepRecord { _ = Store.writeStatus("main", k) }
+    // a sign-in on a profile whose Claude Code folder was deleted: the line, nothing started
+    var goneEntry = main; goneEntry.configDir = "~/.claude-gone-render"
+    try? fm.removeItem(atPath: expand(goneEntry.configDir))
+    let goneWhy = ClaudeCLI.goneLine(goneEntry.configDir) ?? "?"
+    r.preview(.failed(goneWhy), goal: goal, target: k2)
+    page(goneEntry, k2, "o15-switch-folder-gone")
+    r.preview(.ready, goal: nil, target: k2)
     if ProcessInfo.processInfo.environment["ONEFOLDER_ONLY"] != nil { print("done"); exit(0) }
 
     // ================================================================ stage B2: the Restore page, Undo this switch

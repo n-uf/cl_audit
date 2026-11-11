@@ -43,7 +43,9 @@ struct SwitchPage: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
             if let t = topLine { topBar(t) }
-            SettingsColumns(width: width, groups: [[AnyView(accountsCard)], [AnyView(changesCard), AnyView(stepsCard)]])
+            // once undone, no steps: ticked steps would read as if the move had happened
+            SettingsColumns(width: width, groups: [[AnyView(accountsCard)],
+                                                   runner.phase == .undone ? [AnyView(changesCard)] : [AnyView(changesCard), AnyView(stepsCard)]])
         }
     }
 
@@ -173,9 +175,11 @@ struct SwitchPage: View {
 
     /// Before it starts, every standby account, the one a full limit offers first on top; once it runs, only the one it
     /// switches to.
-    private var pickList: [StandbyAccount] {
+    /// Never the account in use (the record's): the same list as every other screen's (`listed(by:)`).
+    var pickList: [StandbyAccount] {
         guard runner.phase == .ready else { return [standby] }
-        let all = AccountBook.offerOrder(entry.standby)
+        let all = AccountBook.offerOrder(entry.listed(by: view).standby)
+        if view.isActive(standby) { return all }
         return all.contains { $0.id == standby.id } ? all : [standby] + all
     }
 
@@ -396,7 +400,7 @@ struct SwitchPage: View {
 
     private var stepsCard: some View {
         let k = moves ? 2 : 0
-        return SCard(title: "Steps", info: "When the switch moves sessions: the profile's Claude window closes, a backup is made, the sessions and scheduled tasks move (with a receipt, for Undo). Then Claude Code's own sign-in, and a check of the account it signed in. cl_audit never sees a password or a token and doesn't touch the Keychain.") {
+        return SCard(title: "Steps", info: "When the switch moves sessions: the profile's Claude window closes, a backup is made, the sessions and scheduled tasks move (with a receipt, for Undo). Then Claude Code's own sign-in, and a check of the account it signed in. cl_audit never sees a password or a token. cl_audit itself never reads or writes Keychain items during a switch; Claude Code's own sign-in updates its own item.") {
             ClaudeMissingLine(model: model)
             VStack(alignment: .leading, spacing: 0) {
                 if moves {
@@ -444,8 +448,8 @@ struct SwitchPage: View {
             return runner.receipt == nil ? "Making the backup, then moving the sessions. The window stays closed." : "Putting the sessions back."
         case .waiting:
             if again { return "Nothing else changes: \(name) stays on \(from). cl_audit waits for Claude Code's sign-in to end. Back keeps waiting." }
-            if runner.receipt != nil { return "The sessions are under \(to) now; Claude Code stays on \(from) until the folder names another account. Back keeps waiting." }
-            return "Nothing has changed yet: \(name) stays on \(from) until the folder names another account. Back keeps waiting."
+            if runner.receipt != nil { return "The sessions are under \(to) now; Claude Code stays on \(from) until Claude Code is signed in as another account. Back keeps waiting." }
+            return "Nothing has changed yet: \(name) stays on \(from) until Claude Code is signed in as another account. Back keeps waiting."
         case .reached:
             if again { return "Claude Code's sign-in on \(entry.configDir) works again." }
             return entry.claudeWindow ? "Open \(name)'s Claude window and sign it in to \(to): cl_audit doesn't sign the app in or out." : nil

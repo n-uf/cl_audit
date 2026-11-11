@@ -315,7 +315,7 @@ final class SwitchRunner: ObservableObject {
         if o == .reached, let r = receipt { SwitchEngine.markLinked(r.id); receipt = SwitchEngine.load(r.id) ?? r }
         releaseWindow()
         // the account now in the folder is the one the profile works on, at once (the agent would within seconds too)
-        if o != .timedOut { model?.noteAccounts() }
+        if o != .timedOut { model?.noteAccounts(); model?.resolveNow(profile) }
         switch o {
         case .reached: phase = .reached
         case .other(let s): phase = .other(s.email ?? "another account")

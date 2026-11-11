@@ -57,7 +57,7 @@ enum AccountResolver {
         } else if r.differs, let c = codeLabel {
             r.line = "Usage: Claude Code on " + Privacy.masked(c)
         } else if e.claudeWindow, !r.fromApp {
-            r.line = "The Claude app is signed out or can't be read: Claude Code's account is shown."
+            r.line = "Claude app signed out or unreadable: Claude Code's account shows."
         }
         return r
     }

@@ -235,6 +235,24 @@ final class SettingsModel: ObservableObject {
         }
     }
 
+    /// Right after a switch (or a log-in) ended on an account: the profile's record is answered again now, by the same
+    /// function, so no screen shows the account it left in use for the seconds until the agent's next read (and the agent
+    /// is asked to read it now). Another account's numbers then wait for that read (Store.status).
+    func resolveNow(_ id: String) {
+        guard let e = accounts.first(where: { $0.id == id }) else { return }
+        var s = Store.status(id) ?? IconStatus(state: "idle")
+        var r = AccountResolver.resolve(e, among: accounts, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
+                                        loginEmail: s.loginEmail, names: AccountList.names())
+        r.at = Date()
+        s.resolved = r
+        _ = Store.writeStatus(id, s)
+        tick += 1
+        // never from a check or a render: they must not reach a running cl_audit
+        if Self.followsDock {
+            DistributedNotificationCenter.default().postNotificationName(Installer.refreshAllNote, object: id, userInfo: nil, deliverImmediately: true)
+        }
+    }
+
     /// Each profile works on the account its folder is signed in to: when that changes, the profile follows by itself
     /// and the account before joins its standby accounts (FolderRules.noteAccounts; one profile per account). Saved like
     /// any other change; the agent does the same while this window is closed.
@@ -1765,7 +1783,7 @@ struct AccountSettings: View {
 
     /// Login's (i): what it is, the pop-up, and Renew sign-in (now an item in the pop-up).
     var loginInfo: String {
-        "The claude.ai accounts this profile has. Its Claude Code folder holds one sign-in at a time: IN USE is the account signed in there, and the only one whose limits cl_audit reads. The others are STANDBY: signed out, with no folder of their own, so they show no limits, only when they were last in use. They are found on this Mac by themselves, the way claude-transplant finds them: the Claude window's sessions folders, Claude Code's records and their backups, and the transcripts; Forget… takes one off. Switching to one (the Switch page) moves the Claude window's Code sessions and scheduled tasks to it inside this profile's folder, with a backup first and Undo, then signs Claude Code in again on the same folder as that account; the account it leaves goes on standby. Whatever account signs in to the folder, even from Terminal, is the one in use: cl_audit follows it at once. An account belongs to one profile. cl_audit's background agent reads the sign-in from the Keychain, read-only, the same way Claude Code does; no new Keychain permission, and no sign-in is ever copied.\n\nRenew sign-in (in the account in use's pop-up): Claude Code's sign-in uses a short-lived access key, which Claude Code swaps for a fresh one whenever it runs. cl_audit only reads that key, so after a while without Claude Code it runs out and the usage stops updating. On: cl_audit then runs Claude Code once in the background (a one-line prompt, \"Reply with OK.\", on Haiku, nothing saved) so it swaps the key; at most every 30 min, using a sliver of this profile's usage. Off: the usage waits until you next use Claude Code."
+        "The claude.ai accounts this profile has. Its Claude Code folder holds one sign-in at a time: IN USE is the account signed in there, and the only one whose limits cl_audit reads. The others are STANDBY: signed out, with no folder of their own, so they show no limits, only when they were last in use. They are found on this Mac by themselves, the way claude-transplant finds them: the Claude window's sessions folders, Claude Code's records and their backups, and the transcripts; Forget… takes one off. Switching to one (the Switch page) moves the Claude window's Code sessions and scheduled tasks to it inside this profile's folder, with a backup first and Undo, then signs Claude Code in again on the same folder as that account; the account it leaves goes on standby. Whatever account signs in to the folder, even from Terminal, is the one in use: cl_audit follows it at once. An account belongs to one profile. cl_audit's background agent reads the sign-in from the Keychain, read-only, the same way Claude Code does; no new Keychain permission, and no sign-in is ever copied. cl_audit itself never reads or writes Keychain items during a switch; Claude Code's own sign-in updates its own item.\n\nRenew sign-in (in the account in use's pop-up): Claude Code's sign-in uses a short-lived access key, which Claude Code swaps for a fresh one whenever it runs. cl_audit only reads that key, so after a while without Claude Code it runs out and the usage stops updating. On: cl_audit then runs Claude Code once in the background (a one-line prompt, \"Reply with OK.\", on Haiku, nothing saved) so it swaps the key; at most every 30 min, using a sliver of this profile's usage. Off: the usage waits until you next use Claude Code."
             + (model.claudeKnownMissing ? " Needs Claude Code installed; it wasn't found." : "")
             + (status?.renewNote.map { "\nLast: \($0)" } ?? "")
     }
@@ -1797,7 +1815,7 @@ struct AccountSettings: View {
     /// What "no sign-in" says: the folder has none (its standby accounts are kept).
     var noSignInWords: String {
         entry.standby.isEmpty ? "No Claude Code sign-in in this folder yet."
-                              : "Signed out: no Claude Code sign-in in this folder. Its standby accounts are kept."
+                              : "Signed out: no Claude Code sign-in in this folder. Its standby accounts are remembered."
     }
 
     /// The sign-in is there but isn't in a form cl_audit knows: with Claude Code's version when it's known.

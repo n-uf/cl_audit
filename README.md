@@ -476,8 +476,9 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   address to select it: its row lights in mint, and a **Switch account** key takes the place of STANDBY and opens the
   Switch page (click again to deselect). The order holds still while one is selected.
   - The **account in use** box shows the profile's **active account** (see
-    [Which account is in use](#which-account-is-in-use)): its lamp is green while it is in use, grey when only Claude
-    Code's account can be shown (the Claude app signed out or unreadable), and an account in use is never listed on
+    [Which account is in use](#which-account-is-in-use)): its lamp is green while it is in use, also when only Claude
+    Code's account can be shown (the Claude app signed out or unreadable: a muted line says so), off when Claude Code's
+    folder is on another profile's account, and an account in use is never listed on
     standby at the same time. Its address is a pop-up: it ticks the account Claude Code in the folder is signed in to
     (red with a warning sign inside when it is another profile's account; a clock when the sign-in ran out; a
     long address is cut at its end), then **Log in…** (Claude Code's sign-in in Terminal with its address
@@ -488,7 +489,8 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     names it, with **Open** it instead: one profile per account, and the profile's numbers wait until its folder is on
     one of its own. An account that came from another profile's standby list (or left for another profile) says so in
     one line with **OK**. When the profile's Claude window is signed in to another account than its Claude Code (read
-    from the app's log and `config.json`), a grey line says which each uses: a switch leaves the window's own sign-in to
+    from the app's log and `config.json`), the box shows the app's account and says whose the numbers are ("Usage: Claude
+    Code on b…@example.com"): a switch leaves the window's own sign-in to
     you. For a week after a switch, the line under Accounts says when, which account it was and what stays with it.
     See [Moving a profile to another account](#moving-a-profile-to-another-account).
   - A **standby** account's address is a pop-up with **Switch to it…** and **Forget…** (asks first; it takes the account
@@ -554,7 +556,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
   they run out.
 - **Claude window** (run by the agent, whether or not cl_audit is open):
   - **Claude window:** on ("its own window", or "the usual Claude app"), a Claude window signed
-    in to the profile's account; off ("none"), none, and nothing opens one. Its folder and sign-in are kept, so
+    in to the profile's account; off ("none"), none, and nothing opens one. The window's data folder and its sign-in are kept, so
     turning it back on needs no new sign-in. One plain line under the switch says which window it is ("Opens as the
     usual Claude app, the one you get from the Dock or Applications." or "Opens as its own window, from this profile's
     Dock icon or menu. Opening Claude directly shows a different window, with other sessions."), the (i) names the data

@@ -261,7 +261,7 @@ do {
         check(Store.status(for: main)?.weekly == 40, "\(name): the record's own numbers show (they are the account the record names)")
         if name == "different" { check(want.label == u2.email && want.numbersOwner == u1.email, "different: u2 in use, the numbers u1's") }
         if app == appBack {
-            check(want.label == u1.email && want.lit && want.line == nil && !(panel.activeNote ?? "").contains("can't be read"),
+            check(want.label == u1.email && want.lit && want.line == nil && !(panel.activeNote ?? "").contains("unreadable"),
                   "\(name): u1 in use from the app, no screen says the app can't be read")
         }
         // no surface lists the active account on standby too
@@ -296,6 +296,47 @@ do {
     line.resolved = res(main, appU1, code: u1, numbers: u1.email)
     _ = Store.writeStatus("main", line)
     check(Store.status(for: main)?.weekly == 33 && Store.status(for: main)?.updatedAt == t0, "status-line numbers show (no address to tell them apart by)")
+}
+
+// ============ 3b. after a switch, every surface names the new account; the old one is only standby; TO never lists the account in use ============
+do {
+    let u4 = seat(4, "ultra-4@example.com")
+    var sw = profile("sw", "~/.claude-sw", u1); sw.claudeWindow = false
+    sw.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "w2"), StandbyAccount(email: u4.email!, seat: u4, id: "w4")]
+    // the record as it was before the switch (ultra-1 in use), then the folder signed in to ultra-2
+    var rec = IconStatus(state: "ok"); rec.loginEmail = u1.email; rec.weekly = 40; rec.updatedAt = t0
+    rec.resolved = AccountResolver.resolve(sw, among: [sw], app: .unknown, code: u1, loginEmail: u1.email, names: [:], now: t0)
+    _ = Store.writeStatus("sw", rec)
+    put(expand("~/.claude-sw/.claude.json"), #"{"oauthAccount":{"accountUuid":"\#(u2.account)","organizationUuid":"\#(u2.organization!)","emailAddress":"\#(u2.email!)"}}"#)
+    let after = FolderRules.noteAccounts([sw], signedIn: { _ in u2 }, status: { _ in nil }, now: t0)[0]
+    let m = SettingsModel()
+    m.accounts = [after]
+    m.resolveNow("sw")                                      // as the Switch page's end does: the record answered again at once
+    let want = AccountView.of(Store.status(for: after))
+    check(after.seat?.same(u2) == true && want.label == u2.email, "after the switch the record names ultra-2: \(want.label ?? "-")")
+    let page = SwitchPage(entry: after, standby: after.standby[0], model: m, runner: m.runner(of: "sw"))
+    let views: [(String, AccountView)] = [
+        ("menu bar", MenuBarItems.Profile(entry: after, usage: nil, view: AccountView.of(Store.status("sw"))).view),
+        ("card", AccountRow(entry: after, status: Store.status(for: after)).view),
+        ("Settings", AccountSettings(entry: .constant(after), model: m).view),
+        ("Switch page", page.view)]
+    for (s, v) in views { check(v == want && v.label == u2.email, "after a switch: \(s) names ultra-2") }
+    check(want.numbersOwner == u1.email && want.line?.hasPrefix("Usage: Claude Code on ") == true,
+          "until the new read, the numbers still there say they are ultra-1's")
+    let listed = after.listed(by: want)
+    check(!listed.standby.contains { $0.seat?.same(u2) == true } && listed.standby.filter { $0.seat?.same(u1) == true }.count == 1,
+          "the old account is on standby once, the new one never: \(listed.standby.map(\.email))")
+    check(!page.pickList.contains { $0.seat?.same(u2) == true }, "the Switch page's TO never lists the account in use")
+    // the Claude app on a standby account (ultra-4) while Claude Code is on ultra-2: ultra-4 is in use, so not in TO
+    var rec4 = Store.status("sw") ?? rec
+    var withWin = after; withWin.claudeWindow = true
+    rec4.resolved = AccountResolver.resolve(withWin, among: [withWin], app: AppSignIn.Login(account: u4.account, org: u4.organization, state: .known, source: "log", at: t0),
+                                            code: u2, loginEmail: u2.email, names: [:], now: t0)
+    _ = Store.writeStatus("sw", rec4)
+    m.accounts = [withWin]
+    let page4 = SwitchPage(entry: withWin, standby: withWin.standby[0], model: m, runner: m.runner(of: "sw"))
+    check(page4.view.label == u4.email && !page4.pickList.contains { $0.seat?.same(u4) == true } && page4.pickList.contains { $0.seat?.same(u1) == true },
+          "the app on ultra-4: in use, so not offered as TO; ultra-1 is: \(page4.pickList.map(\.email))")
 }
 
 // ============ 4. a deleted folder is never made again: no claude for a folder that isn't there ============
