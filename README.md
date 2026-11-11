@@ -125,7 +125,7 @@ only software you trust. cl_audit's code is open to check: `Login.read` in `Sour
 
 **One sign-in per profile.** cl_audit reads only the sign-in of the account in use in each profile's folder. A
 profile's standby accounts have no sign-in kept anywhere: switching to one is Claude Code's own sign-in again, in
-Terminal and the browser. The Claude Code folders 26.11.14 and earlier made for standby accounts' sign-ins are listed
+Terminal and the browser. The Claude Code folders 26.11.16 and earlier made for standby accounts' sign-ins are listed
 with **Move to Trash…** (see [Profile settings](#profile-settings)); their Keychain items are named so you can delete them
 in Keychain Access, and cl_audit never touches them.
 
@@ -298,7 +298,7 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   Claude Code's sign-in in Terminal and the browser. cl_audit checks the account when it's done." with **Show switch**
   and **Cancel switch**; a plain click on it is Show switch too. It goes when the switch ends or the page comes to the
   front, never outlives cl_audit, and follows the profile's alerts. Like every alert it names no account.
-- **A switch that stopped half way** (now or in 26.11.14 and earlier): the Sessions card says how many of the window's
+- **A switch that stopped half way** (now or in 26.11.16 and earlier): the Sessions card says how many of the window's
   sessions sit under which account (they show while the window is signed in to it), with **Undo it** (the window
   closed). Switches' backups stay listed and restorable (Settings ▸ the profile ▸ Sessions); an unfinished switch's
   backup is never pruned.
@@ -496,7 +496,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     copied, and an account belongs to one profile. **Sign in with another account…** runs Claude Code's own sign-in on
     the profile's folder with no address filled in: the account that signs in becomes the one in use, and the one
     before goes on standby. New profile still starts with one account.
-  - **Folders from before.** Up to 26.11.14 cl_audit kept a standby account's sign-in, and the account in use's when it
+  - **Folders from before.** Up to 26.11.16 cl_audit kept a standby account's sign-in, and the account in use's when it
     had standby accounts, in a small Claude Code folder of its own (`~/.claude-ultra-2`). Those folders aren't used any
     more. Each one that is still there (a plain `~/.claude-<name>` folder directly in your home folder that no profile
     uses as its folder or Claude window folder) is listed under Accounts with **Move to Trash…** and **Keep it**. Move

@@ -8,7 +8,56 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **A profile is one Claude Code folder, and switching signs in again on it.** A profile's folder holds one signed-in
+  account at a time, the one in use. Its other accounts are standby: remembered on the profile (address, plan, when they
+  were last in use), signed out, with no folder or Keychain item of their own, so nothing reads them and they show no
+  usage (on the Accounts card, the dashboard's trays, the menus and the alert). **Switch to ultra-2** opens Claude Code's
+  own sign-in in Terminal for the profile's folder with that address filled in, as cl_quick does; cl_audit watches the
+  folder for up to 10 minutes and says whether it reached ultra-2, signed in as another account (the browser's), or timed
+  out. The Switch page says first what that affects: Claude Code in Terminal and editors on that folder, running
+  sessions included.
+- **The switch moves the Claude window's sessions inside the one folder, the way claude-transplant does.** Before the
+  sign-in, the profile's Claude window closes (its own quit), a backup is made, and its Code-tab sessions and scheduled
+  tasks (with their skips and retries) move from the account in use to the one switched to, each checked, with a receipt;
+  a session a running Claude Code owns stays where it is until a later switch. **Undo the move** puts them back until
+  Claude Code is on the new account; a switch that stopped half way offers **Undo it** on the Sessions card, also for
+  switches of 26.11.16 and earlier. Claude Code's transcripts stay in the folder. The Claude app's own sign-in is yours:
+  the page says to sign it in to the new account when you open it; cl_audit never signs anything in or out.
+- **The folder's account is the one in use, whoever signed it in, at once.** Sign in with `claude auth login` yourself, or
+  from another app on the same folder, and within a second the profile works on that account and the one before stands
+  by (the agent does this too while cl_audit's window is closed). One account belongs to one profile: another profile's
+  account in use is refused, as before; an account on another profile's standby list moves to this one, with a line on
+  both profiles' Accounts card.
+- **The Switch page shows the profile's one account answer** too (26.11.14's record), like every other screen. The Claude
+  app on another account than Claude Code is said in the in-use box ("Usage: Claude Code on b…"), as in 26.11.14.
+- **No Add account: a profile's accounts are found on this Mac**, as claude-transplant finds them: the Claude window's
+  session folders, Claude Code's records and their backups, and the transcripts. Each one no profile has goes on standby
+  by itself, named "address · organisation" or, until it is seen signed in, "account" and its first 8 characters.
+  **Forget…** takes one off for good. **Sign in with another account…** runs Claude Code's sign-in with no address for a
+  brand-new one. **Sign in again…** on the account in use is watched like a switch.
+- **A full limit offers the standby account least used** by the week it left with, not known to be full (its week as last
+  read when it left is kept for this and never shown), then the one most recently in use.
+- **Gone with the standby accounts' numbers:** their kept sign-ins and the renewal of them, "the other account is back"
+  and its Switch back offer, and the standby accounts' saved numbers (cleared by the clean-up). **Undo this switch** after a finished switch is gone: the way back is a
+  switch the other way.
+- **The folders kept for standby sign-ins** (`~/.claude-<name>`, made by 26.11.16 and earlier for each standby account and for
+  the account in use) aren't used any more. Each one that is still there is listed under the profile's Accounts, **Folders
+  from before**, with **Move to Trash…** (it asks first, says what is in it and names the folder's Keychain item, which
+  cl_audit never touches: delete it in Keychain Access if you like) and **Keep it**. A folder that holds sessions is never
+  offered for the Trash (Show in Finder instead). Nothing is deleted by itself. Your profiles file is read as it
+  was: the standby accounts stay, without their folders.
+- **A switch that stopped half way** says on the profile's Sessions card how many sessions sit under which account, with
+  **Undo it**; its backup is kept from pruning meanwhile. Restore doesn't wait for it. Switches' backups stay listed and
+  restorable.
+- Credits: the account finding, the Claude app's account and the session move adapt claude-transplant 4.2.1
+  (MIT, © 2026 Vitaliy Hayda); its notice is in the source files that adapt it and in the README.
+- The default-profile move's **Keep as a standby account** remembers the old profile's account signed out; the old
+  profile's folder, with its sessions and settings, stays exactly as it is.
+- Claude Code's sign-in in Terminal now unsets `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` and the
+  Bedrock, Vertex and Foundry switches first, so a key in your shell's settings can't sign the folder in another way.
+- Confirmed only from Claude Code 2.1.318's own program text, not by running it: the Keychain item of a folder other than
+  `~/.claude` is `Claude Code-credentials-` and the first 8 hex characters of the SHA-256 of its path (the path as
+  `CLAUDE_CONFIG_DIR` gives it).
 
 ## 26.11.17 — 2026-11-11
 
@@ -39,56 +88,6 @@ Nothing pending.
   in. Now the app's settings file names the account; its log gives the organisation (else its sessions folder does) and
   whether it signed out (a sign-out newer than the settings file). Without a settings file, the log's own account line
   says it, as before.
-- **A profile is one Claude Code folder, and switching signs in again on it.** A profile's folder holds one signed-in
-  account at a time, the one in use. Its other accounts are standby: remembered on the profile (address, plan, when they
-  were last in use), signed out, with no folder or Keychain item of their own, so nothing reads them and they show no
-  usage (on the Accounts card, the dashboard's trays, the menus and the alert). **Switch to ultra-2** opens Claude Code's
-  own sign-in in Terminal for the profile's folder with that address filled in, as cl_quick does; cl_audit watches the
-  folder for up to 10 minutes and says whether it reached ultra-2, signed in as another account (the browser's), or timed
-  out. The Switch page says first what that affects: Claude Code in Terminal and editors on that folder, running
-  sessions included.
-- **The switch moves the Claude window's sessions inside the one folder, the way claude-transplant does.** Before the
-  sign-in, the profile's Claude window closes (its own quit), a backup is made, and its Code-tab sessions and scheduled
-  tasks (with their skips and retries) move from the account in use to the one switched to, each checked, with a receipt;
-  a session a running Claude Code owns stays where it is until a later switch. **Undo the move** puts them back until
-  Claude Code is on the new account; a switch that stopped half way offers **Undo it** on the Sessions card, also for
-  switches of 26.11.14 and earlier. Claude Code's transcripts stay in the folder. The Claude app's own sign-in is yours:
-  the page says to sign it in to the new account when you open it; cl_audit never signs anything in or out.
-- **The folder's account is the one in use, whoever signed it in, at once.** Sign in with `claude auth login` yourself, or
-  from another app on the same folder, and within a second the profile works on that account and the one before stands
-  by (the agent does this too while cl_audit's window is closed). One account belongs to one profile: another profile's
-  account in use is refused, as before; an account on another profile's standby list moves to this one, with a line on
-  both profiles' Accounts card.
-- **The Switch page shows the profile's one account answer** too (26.11.14's record), like every other screen. The Claude
-  app on another account than Claude Code is said in the in-use box ("Usage: Claude Code on b…"), as in 26.11.14.
-- **No Add account: a profile's accounts are found on this Mac**, as claude-transplant finds them: the Claude window's
-  session folders, Claude Code's records and their backups, and the transcripts. Each one no profile has goes on standby
-  by itself, named "address · organisation" or, until it is seen signed in, "account" and its first 8 characters.
-  **Forget…** takes one off for good. **Sign in with another account…** runs Claude Code's sign-in with no address for a
-  brand-new one. **Sign in again…** on the account in use is watched like a switch.
-- **A full limit offers the standby account least used** by the week it left with, not known to be full (its week as last
-  read when it left is kept for this and never shown), then the one most recently in use.
-- **Gone with the standby accounts' numbers:** their kept sign-ins and the renewal of them, "the other account is back"
-  and its Switch back offer, and the standby accounts' saved numbers (cleared by the clean-up). **Undo this switch** after a finished switch is gone: the way back is a
-  switch the other way.
-- **The folders kept for standby sign-ins** (`~/.claude-<name>`, made by 26.11.14 and earlier for each standby account and for
-  the account in use) aren't used any more. Each one that is still there is listed under the profile's Accounts, **Folders
-  from before**, with **Move to Trash…** (it asks first, says what is in it and names the folder's Keychain item, which
-  cl_audit never touches: delete it in Keychain Access if you like) and **Keep it**. A folder that holds sessions is never
-  offered for the Trash (Show in Finder instead). Nothing is deleted by itself. Your profiles file is read as it
-  was: the standby accounts stay, without their folders.
-- **A switch that stopped half way** says on the profile's Sessions card how many sessions sit under which account, with
-  **Undo it**; its backup is kept from pruning meanwhile. Restore doesn't wait for it. Switches' backups stay listed and
-  restorable.
-- Credits: the account finding, the Claude app's account and the session move adapt claude-transplant 4.2.1
-  (MIT, © 2026 Vitaliy Hayda); its notice is in the source files that adapt it and in the README.
-- The default-profile move's **Keep as a standby account** remembers the old profile's account signed out; the old
-  profile's folder, with its sessions and settings, stays exactly as it is.
-- Claude Code's sign-in in Terminal now unsets `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `CLAUDE_CODE_OAUTH_TOKEN` and the
-  Bedrock, Vertex and Foundry switches first, so a key in your shell's settings can't sign the folder in another way.
-- Confirmed only from Claude Code 2.1.318's own program text, not by running it: the Keychain item of a folder other than
-  `~/.claude` is `Claude Code-credentials-` and the first 8 hex characters of the SHA-256 of its path (the path as
-  `CLAUDE_CONFIG_DIR` gives it).
 
 ## 26.11.14 — 2026-11-10
 
