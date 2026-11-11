@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.20 — 2026-11-11
+
 - **A switch that stops shows where.** The Switch page marks the step that actually failed (the window that didn't
   close, the backup or the move, Claude Code's sign-in), with the steps before it done; before, it marked the step after
   it. The tile beside the profile says "Stopped part way · 3 moved · Undo puts them back" when sessions had already moved,
