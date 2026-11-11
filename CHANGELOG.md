@@ -8,7 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **README: matches the one-folder switch.** The full-limit alert offers another account without a figure (standby
+  accounts show no usage); a switch moves the Claude window's Code-tab sessions and scheduled tasks inside the folder,
+  and you sign the Claude app in yourself; on a new Mac you sign in with Accounts ▸ Sign in with another account….
 
 ## 26.11.19 — 2026-11-11
 

@@ -490,8 +490,8 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     one of its own. An account that came from another profile's standby list (or left for another profile) says so in
     one line with **OK**. When the profile's Claude window is signed in to another account than its Claude Code (read
     from the app's log and `config.json`), the box shows the app's account and says whose the numbers are ("Usage: Claude
-    Code on b…@example.com"): a switch leaves the window's own sign-in to
-    you. For a week after a switch, the line under Accounts says when, which account it was and what stays with it.
+    Code on b…@example.com"). A switch moves the window's Code-tab sessions and scheduled tasks inside the profile's
+    folder (a backup first, with Undo); the Claude app's own sign-in is yours to change. For a week after a switch, the line under Accounts says when, which account it was and what stays with it.
     See [Moving a profile to another account](#moving-a-profile-to-another-account).
   - A **standby** account's address is a pop-up with **Switch to it…** and **Forget…** (asks first; it takes the account
     off the profile for good, and nothing on this Mac changes).
@@ -546,8 +546,9 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     added from cl_audit Work 2026-10-30") until it is undone.
 - **Alerts:** how often the agent reads the usage, and a notification from cl_audit when a limit
   reaches a set level (once per limit and reset). When a limit is full, a notification says when it's back
-  ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"), and, when another of the profile's accounts has
-  room, how much ("The other account has 92% of its week left") with **Switch account…** and **Later** (see
+  ("Claude Work: 5-hour limit full · Back at 15:28, in 1h 42m"), and, when the profile has another account on standby,
+  offers it ("You can switch to its other account…"; with several, the one that had the most of its week left when it
+  was last in use, with no figure, since standby accounts show no usage) with **Switch account…** and **Later** (see
   [When a limit is full](#when-a-limit-is-full)). **Notify when back** (on by default) sends one
   more when a full limit resets ("Claude Work is back · The 5-hour limit reset at 15:28"); while the other limit
   is still full, it waits for that one. Fable's weekly limit alerts the same way ("Claude Main: Fable weekly limit
@@ -1139,8 +1140,8 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
    sessions' own folders are read; cl_audit never copies the file itself, and a backup cl_audit makes never holds any of this.
 2. Type a password twice (not stored anywhere: lose it and the file can't be opened), then **Export** and choose where.
    Close the profiles' Claude windows first, or their Code-tab lists are left out (the page tells you per profile). Your
-   Keys found choice stays as you set it. Sign-ins don't travel. On the new Mac you sign in again to each account (Add
-   account).
+   Keys found choice stays as you set it. Sign-ins don't travel. On the new Mac you sign in again to each account
+   (Accounts ▸ Sign in with another account…).
 3. Copy the `.dmg` to the new Mac (a disk, AirDrop, a shared folder).
 
 **On the new Mac**
@@ -1375,8 +1376,9 @@ For example to a new plan, whose weekly limit starts at zero. Claude Code's side
 is listed under Claude Code ▸ Accounts (found by itself, or **Sign in with another account…**), use **Switch to it…** (or
 Switch account in the menus; it moves the window's sessions too), or sign Claude Code in yourself (step 5 below): either way the profile works on the account its folder is signed in to, by itself,
 and the old one stays as a standby account. A profile keeps everything (name, look, Dock icon, Claude window,
-settings). The steps below are for when the Claude window should move too: a switch leaves the window's own sign-in
-and its sessions alone. Two sign-ins move then, Claude Code's and the Claude window's, and **Claude Code's is the one
+settings). A switch moves the window's Code-tab sessions and scheduled tasks inside the profile's folder (a backup
+first, with Undo); you sign the Claude app in to the new account yourself, in its own sign-in window. The steps below
+are for doing it all by hand instead. Two sign-ins move then, Claude Code's and the Claude window's, and **Claude Code's is the one
 cl_audit reads the usage from**: signing in only the Claude app leaves the numbers on the old account.
 
 1. **Back up**, if the window's Code sessions should come along (step 3): `~/.claude` and
