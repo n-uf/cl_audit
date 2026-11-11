@@ -58,6 +58,30 @@ do {
     put(logs.appendingPathComponent("main01.log").path, "\(at(30)) [info] [LocalSessionManager] Account logged out\n")
     check(AppSignIn.logFiles(logs).map(\.lastPathComponent) == ["main.log", "main1.log"], "the log files newest first, only main.log and mainN.log")
     check(AppSignIn.fromLog(logs: logs, launched: launched, lastKnown: nil, now: launched.addingTimeInterval(3600)).account == u2.account, "read from the end, newest file first")
+    // a crafted 1 MB line (an account line's start, then a long run that would make a pattern backtrack): skipped at once
+    let longLine = "\(at(8)) [info] [account] Login-state transition (" + String(repeating: "loggedOut: ", count: 95_000) + ")"
+    let longInit = "\(at(8)) [info] [LocalSessionManager] Initialization succeeded " + String(repeating: "accountId=", count: 100_000)
+    let started = Date()
+    let crafted = judge([ok, longLine, longInit, ""])
+    check(Date().timeIntervalSince(started) < 1 && crafted?.account == u2.account, "1 MB crafted lines are skipped at once; the real line still decides")
+    check(AppSignIn.saysLoggedOut("[account] Login-state transition (loggedOut: false → true, loading: false)")
+          && !AppSignIn.saysLoggedOut("[account] Login-state transition (loggedOut: true -> false)")
+          && !AppSignIn.saysLoggedOut("[account] Login-state transition (loggedOut: false, ready: true)"), "signed out read by plain tests")
+    // a FIFO named main.log, and a FIFO or a huge file named config.json: nothing blocks, nothing big is read
+    let fifoLogs = URL(fileURLWithPath: expand("~/Library/Logs/Claude-fifo"))
+    try? fm.createDirectory(at: fifoLogs, withIntermediateDirectories: true)
+    mkfifo(fifoLogs.appendingPathComponent("main.log").path, 0o600)
+    let f0 = Date()
+    let fromFifo = AppSignIn.fromLog(logs: fifoLogs, launched: launched, lastKnown: nil, now: launched.addingTimeInterval(3600))
+    check(Date().timeIntervalSince(f0) < 1 && fromFifo.state == .unknown, "a FIFO named main.log returns at once")
+    let fifoData = expand("~/Library/Application Support/Claude-fifo")
+    try? fm.createDirectory(atPath: fifoData, withIntermediateDirectories: true)
+    mkfifo(fifoData + "/config.json", 0o600)
+    let f1 = Date()
+    check(AppSignIn.lastKnown(dataDir: fifoData) == nil && Date().timeIntervalSince(f1) < 1, "a FIFO named config.json returns at once")
+    let bigData = expand("~/Library/Application Support/Claude-big")
+    put(bigData + "/config.json", #"{"lastKnownAccountUuid":"\#(u2.account)","pad":""# + String(repeating: "x", count: AppSignIn.configBytes) + #""}"#)
+    check(AppSignIn.lastKnown(dataDir: bigData) == nil, "a config.json bigger than 256 KB isn't read whole (and isn't taken)")
     let wd = expand("~/Library/Application Support/Claude-check")
     put("\(wd)/config.json", #"{"lastKnownAccountUuid":"\#(u2.account.uppercased())","oauth:tokenCache":"never-read"}"#)
     check(AppSignIn.lastKnown(dataDir: wd) == u2.account, "config.json: only lastKnownAccountUuid")
@@ -91,6 +115,10 @@ do {
     // the kept folder (Accounts.swift readingFolder): the working folder on u3, the numbers read from u1's kept folder, the app on u1
     let kept = res(main, appU1, code: Seat(account: uuid(9), organization: uuid(109), email: "free@example.com"), numbers: u1.email)
     check(kept.email == u1.email && !kept.differs && kept.line == nil, "numbers from the account in use's kept folder agree with the app's account: no line")
+    // the app signed out, the working folder on another account, the numbers from u1's kept folder: labelled all the same
+    let keptNoApp = res(main, appOut, code: Seat(account: uuid(9), organization: uuid(109), email: "free@example.com"), numbers: u1.email)
+    check(!keptNoApp.fromApp && keptNoApp.email == "free@example.com" && keptNoApp.differs && keptNoApp.numbersFor == u1.email
+          && keptNoApp.line?.hasPrefix("Usage: Claude Code on ") == true, "no app: Claude Code's folder account in use, the kept folder's numbers say whose they are")
     check(AccountView.of({ var s = IconStatus(state: "ok"); s.resolved = res(main, AppSignIn.Login(account: uuid(77), org: nil, state: .known, source: "log", at: t0), code: u1, numbers: u1.email); return s }()).label == "account 00000000",
           "an app account no record names: by its id's first 8")
 }
@@ -110,6 +138,8 @@ do {
         let views: [(String, AccountView)] = [
             ("menu bar", MenuBarItems.Profile(entry: main, usage: nil, view: AccountView.of(Store.status("main"))).view),
             ("card", AccountRow(entry: main, status: Store.status(for: main)).view),
+            ("palette row", { let row = AccountRow(entry: main, status: Store.status(for: main))
+                              var v = row.view; v.label = row.needsLogin || row.view.clash != nil ? v.label : row.subtitle; return v }()),
             ("Settings", AccountSettings(entry: .constant(main), model: model).view)]
         for (s, v) in views { check(v == want, "\(name): \(s) agrees on the account, the numbers' owner and the line") }
         let panel = DetailsInfo(name: "x", icon: NSImage(), login: nil, expected: nil, mismatch: false, plan: nil, fiveHour: nil, fiveHourResets: nil,
@@ -117,12 +147,37 @@ do {
         check(panel.active == want.label && panel.activeNote == want.line && panel.activeLit == want.lit, "\(name): the Dock panel agrees")
         check(SwitchMenu.dockTitle(name: "P", want, plan: nil) == (want.short.map { "Claude P · \($0) in use" } ?? "Claude P"), "\(name): the Dock menu agrees")
         check(QuickChatTarget(main).email == want.label, "\(name): quick chat agrees")
-        check(Store.status(for: main)?.weekly == (want.clash == nil ? 40 : 40), "\(name): the record's numbers are never dropped by a screen")
+        check(Store.status(for: main)?.weekly == 40, "\(name): the record's own numbers show (they are the account the record names)")
         if name == "different" { check(want.label == u2.email && want.numbersOwner == u1.email, "different: u2 in use, the numbers u1's") }
+        // no surface lists the active account on standby too; the in-use box's stored-seat line only under that seat
+        let listed = main.listed(by: want)
+        let activeOnStandby = listed.standby.contains { $0.seat?.account == app.account }
+        let menuKeys = SwitchMenu.lines(listed).map(\.key) + listed.backOffers().map(\.key)
+        let trayKeys = listed.cardTrays().map(\.id)
+        let k2 = AccountEntry.standbyStatusID("main", "k2")
+        let settingsView = AccountSettings(entry: .constant(main), model: model)
+        if app.account == u2.account {
+            check(!activeOnStandby && !menuKeys.contains(k2) && !trayKeys.contains(k2) && QuickChatSwitchOffer.best(main)?.key != k2,
+                  "\(name): u2 (in use) is on no standby list: Settings, card trays, Dock and menu bar menus, Switch account ›, quick chat")
+            check(!settingsView.seatShown, "\(name): the in-use box shows u2, so its note about u1's own folder is left out")
+        } else {
+            check(listed.standby.map(\.id) == main.standby.map(\.id), "\(name): the standby list is as it was")
+            if app.account == u1.account { check(settingsView.seatShown, "\(name): the in-use box shows the stored account: its own notes stay") }
+        }
     }
     // a record from before the resolver: the sign-in it was read for
     var old = IconStatus(state: "ok"); old.loginEmail = u1.email
     check(AccountView.of(old).label == u1.email && AccountView.of(old).line == nil, "an older record: its sign-in, no line")
+    // a switch: the record already names ultra-2 as the numbers' owner, the store still holds ultra-1's numbers
+    var mid = IconStatus(state: "ok"); mid.loginEmail = u1.email; mid.weekly = 88; mid.updatedAt = t0; mid.plan = "Ultra"
+    mid.resolved = res(main, appU2, code: u2, numbers: u2.email)
+    _ = Store.writeStatus("main", mid)
+    let shownMid = Store.status(for: main)
+    check(shownMid?.weekly == nil && shownMid?.updatedAt == nil, "after a switch, ultra-1's numbers never show under ultra-2, not even for a moment")
+    check(AccountRow(entry: main, status: shownMid).limits.allSatisfy { $0.p == nil } && AccountView.of(shownMid).label == u2.email,
+          "the card shows ultra-2 with no numbers until the new read")
+    mid.loginEmail = u2.email; mid.weekly = 12; _ = Store.writeStatus("main", mid)
+    check(Store.status(for: main)?.weekly == 12, "the new read: ultra-2's own numbers show")
 }
 
 // ============ 4. a standby account's old numbers are never shown ============
@@ -145,7 +200,8 @@ do {
 
 // ============ 6. a deleted kept folder is never made again: no claude for a folder that isn't there ============
 do {
-    Login.runSecurity = { _ in (44, Data()) }                 // never the Keychain: "no such item"
+    var keychainAsks: [String] = []
+    Login.runSecurity = { keychainAsks.append($0.joined(separator: " ")); return (44, Data()) }   // never the Keychain: "no such item"
     var launches: [String] = []
     FolderGuard.launchSeam = { what, dir in launches.append("\(what) \(dir)"); return false }
     let gone = "~/.claude-gone-kept"
@@ -154,6 +210,8 @@ do {
     try? fm.createDirectory(atPath: expand("~/.claude-pk"), withIntermediateDirectories: true)
     p.standby = [StandbyAccount(email: u2.email!, seat: u2, configDir: gone, id: "kg")]
     check(p.readerEntry(for: p.standby[0]) == nil, "a kept folder that isn't there has no reader")
+    check(p.readerEntry(for: StandbyAccount(email: u2.email!, seat: u2, configDir: "~/.claude-pk", id: "y"))?.autoRenew == false,
+          "a standby account's kept sign-in is never renewed by itself")
     try! Store.save([p])
     // the agent: its readers made, ticked, the renew timer's work asked for
     let agent = AgentDelegate()
@@ -170,6 +228,8 @@ do {
     reader.stop()
     check(!fm.fileExists(atPath: expand(gone)), "the deleted kept folder is still gone after the agent's tick and a renew")
     check(!launches.contains { $0.hasSuffix(gone) }, "no claude was started for it: \(launches)")
+    let goneItems = Account(r).keychainServices
+    check(!keychainAsks.contains { a in goneItems.contains { a.contains($0) } }, "and its sign-in was never read (no Keychain ask for its item)")
     check(ClaudeCLI.renew("/usr/bin/false", account: Account(r)) == false && !fm.fileExists(atPath: expand(gone)), "Renew sign-in refuses a missing folder")
     check(ClaudeCLI.logout("/usr/bin/false", configDir: gone) == false && !fm.fileExists(atPath: expand(gone)), "so does logout")
     try? fm.createSymbolicLink(atPath: expand("~/.claude-linked-kept"), withDestinationPath: expand("~/.claude-pk"))
@@ -206,6 +266,36 @@ do {
         }
     }
     check(reads.isEmpty, "no screen reads .claude.json, config.json, the app's log or a seat itself: \(reads)")
+
+    // every launcher of `claude` (or of the Claude app with CLAUDE_CONFIG_DIR) asks FolderGuard before it starts anything
+    func body(_ f: String, from a: String, until b: String) -> String {
+        let t = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8)) ?? ""
+        guard let r1 = t.range(of: a), let r2 = t.range(of: b, range: r1.upperBound..<t.endIndex) else { return "" }
+        return String(t[r1.lowerBound..<r2.upperBound])
+    }
+    let launchers: [(String, String, String, String)] = [
+        ("Config.swift", "static func openLogin(", "openTerminal(file)", "login"),
+        ("Config.swift", "static func logout(", "p.run()", "logout"),
+        ("Config.swift", "static func renew(", "p.run()", "renew"),
+        ("Launcher.swift", "static func openClaude(", "openApplication(", "the Claude window"),
+        ("Launcher.swift", "private static func openTerminal(", "Installer.run(", "Terminal"),
+        ("QuickChatEngine.swift", "func start(environment", "process.run()", "quick chat")]
+    for (f, a, launch, what) in launchers {
+        let b = body(f, from: a, until: launch)
+        check(!b.isEmpty && b.contains("FolderGuard.mayLaunch("), "\(what): FolderGuard is asked before it launches")
+    }
+    // and nothing else in the app starts `claude` with a profile's folder
+    var launchSites: [String] = []
+    for f in (try? fm.contentsOfDirectory(atPath: src.path)) ?? [] where f.hasSuffix(".swift") {
+        let t = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8)) ?? ""
+        for (i, l) in t.components(separatedBy: "\n").enumerated() where l.contains("env[\"CLAUDE_CONFIG_DIR\"] = ") && !l.contains("= nil") {
+            launchSites.append("\(f):\(i + 1)")
+        }
+    }
+    check(launchSites.allSatisfy { s in ["Config.swift", "Launcher.swift", "QuickChatEngine.swift"].contains { s.hasPrefix($0) } },
+          "every place that hands a folder to claude is one of the guarded launchers: \(launchSites)")
+    let script = body("Launcher.swift", from: "private static func openTerminal(", until: "exec \\(q(claude))")
+    check(script.contains("[ -d \\\"$CLAUDE_CONFIG_DIR\\\" ] && [ ! -L \\\"$CLAUDE_CONFIG_DIR\\\" ]"), "the Terminal script checks the folder again itself before exec claude")
 }
 
 print("checks: \(passed) passed, \(failed) failed")
