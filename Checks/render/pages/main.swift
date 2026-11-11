@@ -147,7 +147,8 @@ MainActor.assumeIsolated {
     let aWidths: [(String, CGFloat)] = [("w340", 340), ("w460", 460), ("w708", 708)]
     let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
     let noop = DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})
-    let plainRecord = Store.status("main")
+    // the record as it is before each run of record cases (taken again before the one-folder cards below), put back after
+    var plainRecord = Store.status("main")
     for (tag, app) in [("a1-surfaces-different", AppSignIn.Login(account: u2.account, org: u2.organization, state: .known, source: "log", at: now)),
                        ("a2-surfaces-same", AppSignIn.Login(account: u1.account, org: u1.organization, state: .known, source: "log", at: now))] {
         var rec = plainRecord ?? IconStatus(state: "ok")
@@ -267,8 +268,7 @@ MainActor.assumeIsolated {
     if swPlan?.moves != true { print("note: the render world has no window sessions to move; o1–o5 show no move") }
 
     // the dashboard card: the account in use's limits, the standby accounts in unlit trays (no levels); then its week full,
-    // the one offered first selected
-    let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
+    // the one offered first selected (the card's actions: `acts`, as for the a-renders)
     for f in [Face.std, .silver] { for (wn, w) in oWidths {
         snapshot(framed(AccountCard(row: AccountRow(entry: main, status: Store.status(for: main)), actions: acts).frame(width: min(w, 460)), f, w),
                  "o7a-card-standby-\(f.rawValue)-\(wn)", w + 32, 900)
@@ -283,7 +283,7 @@ MainActor.assumeIsolated {
     // then the app signed out: Claude Code's account, with the muted line
     let appOn2 = AppSignIn.Login(account: u2.account, org: u2.organization, state: .known, source: "log", at: Date())
     let appOut = AppSignIn.Login(account: nil, org: nil, state: .loggedOut, source: "log", at: Date())
-    let plainRecord = Store.status(for: main)
+    plainRecord = Store.status(for: main)
     for (tag, app) in [("o7c-card-app-other", appOn2), ("o7d-card-app-signed-out", appOut)] {
         // the record as the agent writes it (AccountResolver), then every surface from it
         var rec = plainRecord ?? IconStatus(state: "ok")
