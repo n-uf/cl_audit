@@ -13,7 +13,7 @@ the notes before updating.
   week earlier, long past their reset (the real week was 53%). Now the status line's numbers are used only when they
   were written in the last 15 minutes. A limit whose reset time has passed never shows its old percent, wherever
   cl_audit shows saved numbers (also numbers from Anthropic, and the widget); the other limit still shows.
-- **An expired sign-in says so, with one key.** With the sign-in expired and no fresh numbers, the menu bar, the Dock
+- **An expired sign-in says so, with one key.** With the sign-in expired, even a moment ago, the menu bar, the Dock
   icon's menu and panel, the card, Settings and quick chat show no bars, "login expired" and **Log in…**. The menus'
   "Renew login now" item is gone (with Renew sign-in turned on in the profile's settings, it still renews by itself); the card's
   **Sign in…** is now **Log in…** like everywhere else.

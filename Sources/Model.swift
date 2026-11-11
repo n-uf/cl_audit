@@ -155,7 +155,7 @@ struct Usage {
 /// When saved numbers still count. A week-old status line once showed as current while the sign-in had run out
 /// (26.11.15: week 90% "in 0 min", the real week 53%).
 enum Freshness {
-    /// Numbers written longer ago than this are old: a status line file is ignored, and an expired sign-in shows none.
+    /// A status line file written longer ago than this is old numbers, and is ignored.
     static let window: TimeInterval = 15 * 60
     /// A clock a little ahead of this Mac's.
     static let skew: TimeInterval = 60

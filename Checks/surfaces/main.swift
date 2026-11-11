@@ -437,14 +437,20 @@ do {
     check(reader.state == .expired, "the reader sees the sign-in expired")
     check(reader.usage == nil, "the reader took nothing from the 7-day-old status line nor the old record")
     noNumbersAnywhere("after the reader's save")
-    // a fresh status line (Claude Code running, writing it now): its numbers show, even with the sign-in expired
+    // a fresh status line (written now) while the sign-in is expired: still no numbers on any screen (hub decision: an
+    // expired or absent sign-in shows none, however new); they come back only with a good read
     usageJSON(updated: Date(), week: 53, weekResets: now.addingTimeInterval(3 * 86400), five: 100, fiveResets: now.addingTimeInterval(1800))
     reader.tick()
-    let live = Store.status(for: p)
-    check(live?.weekly == 53 && live?.fiveHour == 100 && live?.source == "Claude Code status line", "a fresh status line still shows its numbers")
-    check(DetailsInfo.noNumbersWords(live) == nil, "…and the Dock panel's age line is its age, not Login expired")
-    check(Usage.of(live)?.weekly == 53 && AccountRow(entry: p, status: live).weekly == 53, "…on the menu bar and the card alike")
+    check(reader.usage?.weekly == 53, "the reader took the fresh status line")
+    noNumbersAnywhere("a fresh status line with the sign-in expired")
     reader.stop()
+    // a fresh status line with a good sign-in: its numbers show (the record's state ok)
+    var live = IconStatus(state: "ok"); live.expectedEmail = "stale-1@example.com"; live.weekly = 53; live.weeklyResets = now.addingTimeInterval(86400)
+    live.updatedAt = now.addingTimeInterval(-60); live.source = "Claude Code status line"
+    _ = Store.writeStatus("stale", live)
+    let liveShown = Store.status(for: p)
+    check(liveShown?.weekly == 53 && DetailsInfo.noNumbersWords(liveShown) == nil, "a fresh status line still shows its numbers, and the panel its age")
+    check(Usage.of(liveShown)?.weekly == 53 && AccountRow(entry: p, status: liveShown).weekly == 53, "…on the menu bar and the card alike")
     Login.runSecurity = { _ in (44, Data()) }
 
     // a limit whose reset has passed never shows its percent, from Anthropic too, whatever the state
@@ -465,12 +471,15 @@ do {
     check(u.current(now: now).fiveHour == 100, "…and keeps one whose reset is ahead")
     var ql = QuickChatLevel(nil); ql.week = 99; ql.weekResets = now.addingTimeInterval(-1)
     check(ql.shown(now).percent == nil && ql.current(now).week == nil, "quick chat: a kept week past its reset is neither shown nor merged")
-    // an expired sign-in with numbers read a minute ago: still shown (fresh)
-    var e = a; e.state = "expired"; e.fiveHourResets = now.addingTimeInterval(600)
-    check(e.current(now: now).fiveHour == 100 && e.current(now: now).weekly == 53, "expired, numbers a minute old: they show")
-    e.updatedAt = now.addingTimeInterval(-16 * 60)
-    check(e.current(now: now).fiveHour == nil && e.current(now: now).weekly == nil && e.current(now: now).updatedAt != nil,
-          "expired, numbers 16 minutes old: none, when they were read kept")
+    // numbers read a minute ago, then the sign-in lost: none, expired or signed out alike, when they were read kept
+    var e = a; e.state = "expired"; e.fiveHourResets = now.addingTimeInterval(600); e.updatedAt = now.addingTimeInterval(-60)
+    check(e.current(now: now).fiveHour == nil && e.current(now: now).weekly == nil && e.current(now: now).updatedAt == e.updatedAt,
+          "expired, numbers a minute old: none, when they were read kept")
+    e.state = "noLogin"
+    check(e.current(now: now).fiveHour == nil && e.current(now: now).weekly == nil && e.current(now: now).updatedAt == e.updatedAt,
+          "signed out, numbers a minute old: none, when they were read kept")
+    e.state = "ok"
+    check(e.current(now: now).fiveHour == 100 && e.current(now: now).weekly == 53, "the same numbers with a good read (ok): shown")
 
     // signed out (no sign-in at all) with saved numbers: none on any screen, the same as expired; a good read brings them back
     var out = IconStatus(state: "noLogin"); out.expectedEmail = "stale-1@example.com"; out.weekly = 61; out.fiveHour = 22
