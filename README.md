@@ -714,7 +714,20 @@ at the bottom.
 - New profiles start with an existing profile's click and panel settings. **Cancel** undoes only what
   the page created: an existing folder is never deleted or signed out.
 
+### Experimental: switching, import, export, restore and the default profile
+
+Switching a profile's account, importing, restoring a backup, exporting or moving to another Mac, and making the default
+profile are **experimental**: they are still unstable and can lose data, so use them for testing only, never on anything
+you can't afford to lose. Each of their pages starts with an **"Experimental: may lose data"** panel. Before one of them
+runs, cl_audit asks for your consent every time: a sheet that says what can go wrong, with a box to tick ("I understand
+the risk and use this feature at my own risk"); **Cancel** is the default, and nothing runs until you tick the box and
+**Continue**. Each accepted run adds one line to `consent.log` in cl_audit's own folder (the date, the feature and
+cl_audit's version: no address or account). cl_audit comes as is: the **No Liability** clause of its
+[license](#license) (PolyForm Perimeter 1.0.1) applies.
+
 ### The default profile
+
+*Experimental: see [above](#experimental-switching-import-export-restore-and-the-default-profile).*
 
 The default profile is the one on `~/.claude` with the usual Claude app: what Claude shows when it is opened from the
 Dock or Applications, and what `claude` uses in Terminal. First run makes it (above). A Mac set up the old way (26.11.4
@@ -853,6 +866,8 @@ ultra-2"); those stay listed and restorable. **Restore…** on a backup puts bac
 
 ### Restoring a backup
 
+*Experimental: see [Experimental](#experimental-switching-import-export-restore-and-the-default-profile).*
+
 **Restore…** on a backup in Settings ▸ the profile ▸ Sessions opens the **Restore page**, a sibling of the Switch page
 with the same keys and the same line at the top. It starts as a **preview** ("Preview · nothing written yet ·
 nothing is ever overwritten"); nothing is written until **Close and restore N** is pressed. The backup can be any in
@@ -987,6 +1002,8 @@ never writes:
 
 ### Exporting a profile's sessions
 
+*Experimental: see [Experimental](#experimental-switching-import-export-restore-and-the-default-profile).*
+
 **Export…** (Settings ▸ the profile ▸ Sessions) makes the profile's sessions one file, for another Mac or for keeping. It
 is a backup in a file: the same format, so Import restores it by the same rules. The **Export page** is a sibling of the
 Restore page and starts as a preview ("Preview · nothing written yet"):
@@ -1117,6 +1134,8 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
 
 ### Moving to another Mac
 
+*Experimental: see [Experimental](#experimental-switching-import-export-restore-and-the-default-profile).*
+
 **Can I move everything to another Mac?** Yes, everything but the sign-ins. In short:
 
 **On the old Mac**
@@ -1224,6 +1243,8 @@ took. Export the profiles as they are now, not from a backup: backups keep neith
 values (backups made by 26.11.8 still hold them).
 
 ### Importing an export
+
+*Experimental: see [Experimental](#experimental-switching-import-export-restore-and-the-default-profile).*
 
 **Import…** (Settings ▸ the profile ▸ Sessions) opens the **Import page**: **Choose…** (an Open panel for a `.zip` or
 `.dmg`; an image asks for its password), then **Into** (the profile; a file of several profiles also asks which one). It
@@ -1371,6 +1392,8 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
   file only after a day. A folder that still holds a mount is never removed or entered.
 
 ### Moving a profile to another account
+
+*Experimental: see [Experimental](#experimental-switching-import-export-restore-and-the-default-profile).*
 
 For example to a new plan, whose weekly limit starts at zero. Claude Code's side is a **switch**: once the account
 is listed under Claude Code ▸ Accounts (found by itself, or **Sign in with another account…**), use **Switch to it…** (or
