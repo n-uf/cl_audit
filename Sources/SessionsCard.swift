@@ -45,14 +45,16 @@ struct SessionsCard: View {
     private var windowOpen: Bool { _ = model.tick; return !SwitchRunner.windowClosed(entry) }
     private var switching: Bool { _ = model.tick; return SwitchMarker.blocks(Account(entry)) }
 
-    /// A switch that stopped half way, to offer Undo it and Leave it as it is: never while this profile's switch is still
+    /// A switch that stopped half way, to offer Undo it and Leave it as it is: never while that switch itself is still
     /// running (the window closing, the move, the sign-in waited for): its receipt is open then, but nothing has stopped.
+    /// A sign-in again running meanwhile moves nothing: the stopped switch and its Undo stay.
     private var stoppedSwitch: SwitchReceipt? {
         _ = model.tick; _ = runnerPhase
-        return Self.showsStopped(oldSwitch, running: model.runner(of: entry.id).isRunning)
+        let r = model.runner(of: entry.id)
+        return Self.showsStopped(oldSwitch, running: r.isRunning, again: r.goal?.again == true)
     }
     @State private var runnerPhase: SwitchRunner.Phase?
-    static func showsStopped(_ s: SwitchReceipt?, running: Bool) -> SwitchReceipt? { running ? nil : s }
+    static func showsStopped(_ s: SwitchReceipt?, running: Bool, again: Bool) -> SwitchReceipt? { running && !again ? nil : s }
 
     var body: some View {
         SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. A switch of account moves the window's Code-tab list and scheduled tasks to the new account, inside this profile's folder; the transcripts stay where they are. Backups are quick copies on this Mac, made by each switch that moves sessions and by Back up now; Restore… puts back what is missing, merged, and never overwrites anything. Chats and Projects on claude.ai belong to each account and aren't here.") {
