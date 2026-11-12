@@ -100,6 +100,337 @@ func saveReceipt(_ r: SwitchReceipt) {
     print(name)
 }
 
+// ==================================================================== the switch atlas (ATLAS_SWITCH=1)
+// Every state of a switch from the account in use to a standby one, on every surface, drawn by the app's own views: each
+// state is set up through the app's own paths (the profile's record answered by AccountResolver through resolveNow, the
+// runner's phases, the engine's real plan, move, receipt and Undo, FolderRules' noting and linkReached), then each surface
+// is drawn from it as the app builds it. Files atlas-<row>-<column>-std.png (Std only); Checks/render/atlas.py composes them
+// into one page. Sample data only: profile Main on ann@ (the Claude app and Claude Code), ben@ on standby; Work on cat@.
+
+/// A menu as the app builds it (its NSMenuItems), drawn as its words: separators as lines, a submenu's items indented
+/// under it (the ticked one with ✓), disabled items grey, the lit lamp as a green dot. The menu itself (an NSMenu) can't be
+/// drawn off screen.
+struct AtlasMenu: View {
+    struct Row { var text: String; var sep = false; var on = true; var indent = false; var bold = false; var lamp = false; var tick = false }
+    let rows: [Row]
+    init(_ items: [NSMenuItem]) {
+        var out: [Row] = []
+        for i in items {
+            if i.isSeparatorItem { out.append(Row(text: "", sep: true)); continue }
+            out.append(Row(text: i.title + (i.submenu == nil ? "" : "  ›"), on: i.isEnabled, bold: i.attributedTitle != nil, lamp: i.image != nil))
+            for s in i.submenu?.items ?? [] {
+                out.append(s.isSeparatorItem ? Row(text: "", sep: true)
+                           : Row(text: s.title, on: s.isEnabled, indent: true, tick: s.state == .on))
+            }
+        }
+        rows = out
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, r in
+                if r.sep { Rectangle().fill(Color(white: 0.32)).frame(height: 1).padding(.vertical, 3) }
+                else {
+                    HStack(spacing: 5) {
+                        if r.indent { Text(r.tick ? "✓" : " ").frame(width: 22, alignment: .trailing) }
+                        if r.lamp { Circle().fill(Color.green).frame(width: 8, height: 8) }
+                        Text(r.text).font(.system(size: 13, weight: r.bold ? .semibold : .regular))
+                            .foregroundStyle(r.bold ? Color(red: 0.92, green: 0.27, blue: 0.36) : r.on ? Color.white : Color(white: 0.55))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .padding(10).frame(width: 340, alignment: .leading)
+        .background(Color(white: 0.19)).clipShape(RoundedRectangle(cornerRadius: 9))
+    }
+}
+
+@MainActor func atlasSwitch() {
+    // never a real `claude`: nothing here may open Terminal or sign in (the runner's start is only reached for a gone folder)
+    ClaudeLocator.current = ClaudeLocator.Lookup(candidates: { [] }, npmPrefix: { nil }, shell: { nil }, appCopy: { nil })
+    func aseat(_ n: Int, _ email: String) -> Seat { Seat(account: uuid(n), organization: uuid(n + 40), email: email) }
+    let ann = aseat(11, "ann@example.com"), ben = aseat(12, "ben@example.com"), cat = aseat(13, "cat@example.com"), dan = aseat(14, "dan@example.com")
+    let codeA = "~/.claude-ann", codeW = "~/.claude-cat"
+    let wdTilde = "~/Library/Application Support/Claude-atlas"
+    let wdA = expand(wdTilde)
+    let backups = URL(fileURLWithPath: home + "/atlas-backups")
+    /// A new file each time (a new inode), so no memo keyed by size, time and inode keeps the account before.
+    func signNew(_ dir: String, _ s: Seat) { try? fm.removeItem(atPath: expand(dir) + "/.claude.json"); sign(dir, s) }
+    func appOn(_ s: Seat) {
+        let f = "\(wdA)/config.json"
+        try? fm.removeItem(atPath: f)
+        try! JSONSerialization.data(withJSONObject: ["lastKnownAccountUuid": s.account]).write(to: URL(fileURLWithPath: f))
+    }
+    let benStandby = StandbyAccount(email: ben.email!, seat: ben, id: "kb", plan: "Ultra", lastInUse: Date().addingTimeInterval(-3 * 86400),
+                                    lastWeek: 12, lastWeekResets: Date().addingTimeInterval(4 * 86400))
+    var main0 = AccountEntry(id: "main", name: "Main", label: "MAIN", configDir: codeA); main0.seat = ann
+    main0.desktop = .separate; main0.desktopDataDir = wdTilde; main0.standby = [benStandby]
+    var work0 = AccountEntry(id: "work", name: "Work", label: "WORK", configDir: codeW); work0.seat = cat; work0.claudeWindow = false
+    try! Store.save([main0, work0])
+    let model = SettingsModel()
+    model.accounts = [main0, work0]
+    let r = model.runner(of: "main")
+    let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
+    let noop = DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})
+    let dummy = NSObject(), act = Selector(("atlasNoop:"))
+    let face = FaceTheme.of(.std)
+    func framed(_ v: some View, _ w: CGFloat) -> some View {
+        v.environment(\.settingsColumnWidth, w).frame(width: w, alignment: .leading).padding(16).background(Color(white: 0.1))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)    // drawn from the top; trim.py crops the rest
+            .environment(\.face, face).environment(\.colorScheme, .dark)
+    }
+    /// The agent's read: the numbers of the account Claude Code is on, then the record answered again (resolveNow).
+    func read(_ email: String, week: Double, resetsIn: Double = 2 * 86400) {
+        status("main", email, week: week, fable: 40, resetsIn: resetsIn)
+        model.resolveNow("main")
+    }
+    /// What the folder is signed in to now, read as the app reads it.
+    let signedIn: (String) -> Seat? = { Account.signedInSeat(configDir: $0) }
+    /// As the runner's end does for an account reached or another one: the move linked when the folder is on the account it
+    /// went to (linkReached), the profiles follow their folders (FolderRules.noteAccounts), the record answered again.
+    func noteFolder() {
+        SwitchEngine.linkReached(model.accounts, signedIn: signedIn)
+        model.accounts = FolderRules.noteAccounts(model.accounts, signedIn: signedIn)
+        try? Store.save(model.accounts)
+        model.resolveNow("main")
+    }
+    /// Before every row: Main on ann (the Claude app and Claude Code), ben on standby, 6 Code-tab sessions and 2 scheduled
+    /// tasks in the window's folder under ann, no switch made yet, ann's week at 40%.
+    func base() {
+        r.reset()
+        for p in [wdA, expand(codeA), expand(codeW), backups.path, SwitchEngine.root.path] { try? fm.removeItem(atPath: p) }
+        let src = SwitchEngine.scopeDir(wdA, SeatID(ann))
+        try! fm.createDirectory(atPath: src, withIntermediateDirectories: true)
+        for i in 0..<6 { fm.createFile(atPath: "\(src)/local_\(uuid(80 + i)).json", contents: Data(#"{"isArchived":false}"#.utf8)) }
+        fm.createFile(atPath: "\(src)/scheduled-tasks.json", contents: Data(#"{"scheduledTasks":[{"id":"t1"},{"id":"t2"}]}"#.utf8))
+        signNew(codeA, ann); signNew(codeW, cat); appOn(ann)
+        model.accounts = [main0, work0]
+        try! Store.save([main0, work0])
+        r.reset()
+        r.preview(.ready, goal: nil, target: benStandby)
+        read(ann.email!, week: 40)
+    }
+    let goal = SwitchRunner.Goal(standby: "kb", wantedSeat: ben, wantedEmail: ben.email!, from: ann, started: Date().addingTimeInterval(-75))
+    func plan() -> SwitchPlan? {
+        if case .success(let p) = SwitchEngine.plan(model.accounts[0], standby: benStandby, owned: []) { return p }
+        print("atlas: no plan"); return nil
+    }
+    /// The engine's real move (a backup first, then the sessions and tasks), with the window "closed" for `closedFor` asks
+    /// (nil: all of them): the receipt it leaves.
+    func move(closedFor: Int? = nil) -> SwitchReceipt? {
+        guard let p = plan() else { return nil }
+        var asked = 0
+        do { try SwitchEngine.run(p, windowClosed: { asked += 1; return closedFor.map { asked <= $0 } ?? true }, backups: backups) }
+        catch { print("atlas: the move stopped: \(error)") }
+        return SwitchEngine.receipts(profile: "main").first
+    }
+
+    // ---- the surfaces, each as the app builds it from the state as it stands
+    func draw(_ row: String, page: Bool, alert: (title: String, body: String, buttons: [String])? = nil) {
+        let now = Date()
+        let e = model.accounts[0]
+        // the menu bar icon's menu (MenuBarItems: the agent's Profile, then menuNeedsUpdate's items)
+        let rec = Store.status(for: e)
+        let p = MenuBarItems.Profile(entry: e, usage: Usage.of(rec), problem: rec?.problem, needsLogin: MenuBarItems.needsLogin(rec),
+                                     view: AccountView.of(Store.status(e.id)))
+        var mb: [NSMenuItem] = []
+        func info(_ s: String) -> NSMenuItem { let i = NSMenuItem(title: s, action: nil, keyEquivalent: ""); i.isEnabled = false; return i }
+        func item(_ s: String) -> NSMenuItem { let i = NSMenuItem(title: s, action: act, keyEquivalent: ""); i.target = dummy; return i }
+        if let u = p.usage { mb.append(info("Updated \(DetailsFormat.ago(u.fetchedAt)) · \(u.source)")) }
+        if let why = p.problem { mb.append(info(why)) }
+        mb.append(.separator())
+        let mbLines = SwitchMenu.lines(p.entry.listed(by: p.view), now: now)
+        let mbFull = p.usage.flatMap { AtLimit.blocker(fiveHour: $0.fiveHour, fiveHourResets: $0.fiveHourResets, weekly: $0.weekly,
+                                                       weeklyResets: $0.weeklyResets, now: now) } != nil
+        var mbSwitches = SwitchMenu.group(p.view, lines: mbLines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
+                                          inUseWeek: p.usage?.weekly != nil, target: dummy, action: act)
+        if mbFull, let best = SwitchMenu.best(mbLines) { mbSwitches.insert(SwitchMenu.bestItem(best, target: dummy, action: act), at: 0) }
+        if !mbSwitches.isEmpty { mb += mbSwitches; mb.append(.separator()) }
+        mb.append(item("Quick chat"))
+        if e.claudeWindow { mb.append(item("Open Claude window")) }
+        mb.append(item("Refresh now"))
+        if p.needsLogin { mb.append(item("Log in…")) }
+        mb += [.separator(), item("Dashboard"), item("Profile settings…"), .separator(), item("Hide from the menu bar")]
+        let menuBar = VStack(alignment: .leading, spacing: 6) {
+            MenuBarRow(profile: p, now: now).frame(width: 340).background(Color(white: 0.19)).clipShape(RoundedRectangle(cornerRadius: 9))
+            AtlasMenu(mb)
+        }
+        snapshot(framed(menuBar, 460), "atlas-\(row)-menubar-std", 492, 1400)
+
+        // the Dock icon (its tile), its menu (applicationDockMenu's items) and its usage panel (detailsInfo), all from the
+        // Dock app's own copy of the record: Store.status(for:)
+        let st = Store.status(for: e)
+        let usage = Usage.of(st), view = AccountView.of(st)
+        let expired = st?.state == "expired", noLogin = st?.state == "noLogin"
+        let expected = st?.expectedEmail ?? Account(e).expectedEmail()
+        let mismatch: Bool = { guard let a = st?.loginEmail, let b = expected else { return false }; return a.lowercased() != b.lowercased() }()
+        let tile = TileModel(label: e.label, fiveHour: usage?.fiveHour, weekly: usage?.weekly, stale: expired || noLogin, style: e.style,
+                             warn: mismatch, tint: e.color, frame: e.frame,
+                             countdown: AtLimit.tileCountdown(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
+                                                              weekly: usage?.weekly, weeklyResets: usage?.weeklyResets))
+        var dm: [NSMenuItem] = []
+        let top = info(SwitchMenu.dockTitle(name: e.name, view, plan: st?.plan.map(Account.planWords)))
+        if view.lit, SwitchMenu.inUseShort(view) != nil { top.image = SwitchMenu.lamp() }
+        dm.append(top)
+        if let n = view.line { dm.append(info(n)) }
+        dm.append(.separator())
+        let dLines = SwitchMenu.lines(e.listed(by: view))
+        if let full = AtLimit.blocker(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets, weekly: usage?.weekly, weeklyResets: usage?.weeklyResets) {
+            let i = info("\(full.title) · \(full.both())")
+            i.attributedTitle = NSAttributedString(string: i.title)
+            dm.append(i)
+            if let best = SwitchMenu.best(dLines) { dm.append(SwitchMenu.bestItem(best, target: dummy, action: act)) }
+        }
+        func line(_ title: String, _ v: Double?, _ at: Date?) { dm.append(info("\(title): \(Painter.pct(v))" + (at.map { " · resets \(AppDelegate.when($0))" } ?? ""))) }
+        if usage?.noFiveHour != true { line("5-hour limit", usage?.fiveHour, usage?.fiveHourResets) }
+        line("Weekly limit", usage?.weekly, usage?.weeklyResets)
+        for s in e.showFable ? usage?.scoped ?? [] : [] {
+            if AtLimit.isFull(s.percent), let at = s.resets { dm.append(info("\(s.name) weekly limit: full · \(TimeWords.back(at))")) }
+            else { line("\(s.name) weekly limit", s.percent, s.resets) }
+        }
+        if let usage { dm.append(info("Updated \(AppDelegate.ago(usage.fetchedAt)) · \(usage.source)")) }
+        if let why = st?.problem { dm.append(info(why)) }
+        if let note = st?.renewNote { dm.append(info(note)) }
+        if Privacy.shared.show || st?.loginEmail == nil { dm.append(info("Login: \(st?.loginEmail ?? "checking…")")) }
+        if mismatch, let want = expected {
+            dm.append(info(Privacy.shared.show ? "⚠︎ This folder is set up for \(want)" : "⚠︎ This folder is set up for a different account"))
+        }
+        if mismatch || noLogin || expired { dm.append(item("Log in…")) }
+        dm.append(.separator())
+        let dSwitches = SwitchMenu.group(view, lines: dLines, inUseUsed: usage?.weekly ?? usage?.fiveHour, inUseWeek: usage?.weekly != nil,
+                                         target: dummy, action: act)
+        if !dSwitches.isEmpty { dm += dSwitches; dm.append(.separator()) }
+        dm.append(item("Quick chat"))
+        if e.claudeWindow { dm.append(item("Open Claude window")) }
+        dm += [item("Refresh now"), .separator(), item("Dashboard"), item("Profile settings…")]
+        let panel = DetailsInfo(name: e.name, icon: Painter.image(tile, pixels: 128), login: st?.loginEmail, expected: expected, mismatch: mismatch,
+                                plan: st?.plan, fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets, weekly: usage?.weekly,
+                                weeklyResets: usage?.weeklyResets, updated: usage?.fetchedAt, source: usage?.source, problem: st?.problem,
+                                renewNote: st?.renewNote, needsLogin: mismatch || noLogin || expired,
+                                scoped: e.showFable ? usage?.scoped ?? [] : [], credits: usage?.credits,
+                                noFiveHour: st?.noFiveHour == true, noNumbers: DetailsInfo.noNumbersWords(st)).taking(view)
+        let dock = VStack(alignment: .leading, spacing: 10) {
+            Image(nsImage: Painter.image(tile, pixels: 128)).resizable().frame(width: 96, height: 96)
+            AtlasMenu(dm)
+            DetailsView(info: panel, actions: noop).fixedSize()       // the panel at its own size, as it opens by the Dock
+        }
+        snapshot(framed(dock, 520), "atlas-\(row)-dock-std", 552, 2000)
+
+        // the dashboard card at its own height; Settings ▸ the profile from the top through its Sessions card (Profile,
+        // Claude Code with the accounts, Sessions with a stopped switch's Undo and Leave it as it is)
+        snapshot(framed(AccountCard(row: AccountRow(entry: e, status: Store.status(for: e)), actions: acts).frame(width: 460)
+                            .fixedSize(horizontal: false, vertical: true), 460),
+                 "atlas-\(row)-card-std", 492, 1000)
+        snapshot(framed(AccountSettings(entry: .constant(e), model: model, width: 460).frame(height: 1180, alignment: .top).clipped(), 460),
+                 "atlas-\(row)-settings-std", 492, 1300)
+        if page {
+            let target = e.standby.first { $0.id == "kb" } ?? benStandby
+            snapshot(framed(SwitchPage(entry: e, standby: target, model: model, runner: r, width: 708), 708), "atlas-\(row)-switch-std", 740, 2400)
+        }
+        if let a = alert {
+            let note = VStack(alignment: .leading, spacing: 5) {
+                Text("cl_audit").font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(white: 0.6))
+                Text(a.title).font(.system(size: 13, weight: .semibold)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
+                Text(a.body).font(.system(size: 13)).foregroundStyle(.white).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    ForEach(a.buttons, id: \.self) { b in
+                        Text(b).font(.system(size: 12, weight: .medium)).foregroundStyle(.white).padding(.horizontal, 12).padding(.vertical, 5)
+                            .background(Color(white: 0.32)).clipShape(RoundedRectangle(cornerRadius: 6))
+                    }
+                }.padding(.top, 4)
+            }
+            .padding(14).frame(width: 360, alignment: .leading).background(Color(white: 0.22)).clipShape(RoundedRectangle(cornerRadius: 14))
+            snapshot(framed(note, 460), "atlas-\(row)-alert-std", 492, 500)
+        }
+    }
+
+    // 01 before: ann in use (the Claude app and Claude Code), ben on standby
+    base()
+    draw("01", page: false)
+    // 02 ann's week full: the agent's full-limit alert (Reader.checkThresholds' words), ben offered first everywhere
+    read(ann.email!, week: 100, resetsIn: 7 * 3600)
+    if let st = Store.status(for: model.accounts[0]), let resets = st.weeklyResets {
+        let e = model.accounts[0]
+        let back = "Back \(UsageReader.backWords(resets)), in \(TimeWords.countdown(resets))"
+        let offer = e.bestOffer()
+        let body = SwitchWords.alertLine(offer, accounts: e.standby.count).map { "\(back). \($0)" } ?? back
+        draw("02", page: true, alert: ("Claude \(e.name): weekly limit full", body, offer == nil ? [] : [SwitchWords.button]))
+    }
+    // 03 the Switch page open: now ann, to ben (the week back to where it was, so the row shows the page, not the limit)
+    read(ann.email!, week: 40)
+    r.preview(.ready, goal: nil, target: benStandby)
+    draw("03", page: true)
+    // 04 switching: a the window closing, b the move, c the sign-in waited for (the move made for real: its receipt)
+    let p4 = plan()
+    r.preview(.closing, goal: goal, target: benStandby, planned: p4)
+    draw("04a", page: true)
+    r.preview(.moving, goal: goal, target: benStandby, planned: p4)
+    draw("04b", page: true)
+    let moved = move()
+    r.preview(.waiting, goal: goal, target: benStandby, planned: p4, receipt: moved, seen: ann)
+    let w = SwitchWaiting.words(profile: model.accounts[0].name, phase: .waiting)
+    draw("04c", page: true, alert: w.map { ($0.title, $0.body, [SwitchWaiting.showButton, SwitchWaiting.cancelButton]) })
+    // 05 done: Claude Code signed in as ben, the Claude app still on ann (after the agent's next read: ben's numbers)
+    signNew(codeA, ben)
+    noteFolder()
+    read(ben.email!, week: 12, resetsIn: 4 * 86400)
+    r.preview(.reached, goal: goal, target: benStandby, planned: p4, receipt: moved.flatMap { SwitchEngine.load($0.id) }, seen: ben)
+    draw("05", page: true)
+    // 06 the Claude app signed in to ben too: ben in use, ann on standby
+    appOn(ben)
+    model.resolveNow("main")
+    draw("06", page: true)
+    // 07 the sign-in landed on another account (dan, no profile's): the profile follows the folder
+    base()
+    let p7 = plan()
+    let moved7 = move()
+    signNew(codeA, dan)
+    noteFolder()
+    read(dan.email!, week: 55, resetsIn: 5 * 86400)
+    r.preview(.other(dan.email!), goal: goal, target: benStandby, planned: p7, receipt: moved7.flatMap { SwitchEngine.load($0.id) }, seen: dan)
+    draw("07", page: true)
+    // 08 timed out: the sessions moved, no sign-in in 10 minutes (the folder still on ann)
+    base()
+    let p8 = plan()
+    let moved8 = move()
+    let late = SwitchRunner.Goal(standby: "kb", wantedSeat: ben, wantedEmail: ben.email!, from: ann, started: Date().addingTimeInterval(-11 * 60))
+    r.preview(.timedOut, goal: late, target: benStandby, planned: p8, receipt: moved8, seen: ann)
+    draw("08", page: true)
+    // 09 stopped part way: the window opened during the move after two sessions (the engine stops; its receipt is open)
+    base()
+    let p9 = plan()
+    let stopped = move(closedFor: 4)
+    r.preview(.failed(SwitchError.windowOpen.description), goal: goal, target: benStandby, planned: p9, receipt: stopped, failedAt: .move)
+    draw("09", page: true)
+    // 10 partly undone: one moved session changed since, so Undo leaves it (the runner's words for it), the rest back;
+    // the Sessions card offers Undo again and Leave it as it is
+    if let s = stopped, let placed = s.steps.first(where: { $0.kind == .entry && $0.done }) {
+        fm.createFile(atPath: placed.path, contents: Data(#"{"isArchived":false,"title":"changed"}"#.utf8))
+        do {
+            let back = try SwitchEngine.undo(s.id, windowClosed: { true })
+            r.preview(back.undone != nil ? .undone : .failed(SwitchRunner.partlyWords(back)), goal: goal, target: benStandby, planned: p9,
+                      receipt: back, failedAt: .move)
+        } catch { print("atlas: undo: \(error)") }
+    } else { print("atlas: row 9 left no moved session") }
+    draw("10", page: true)
+    // 11 the folder gone: the runner's own start refuses before anything
+    base()
+    try? fm.removeItem(atPath: expand(codeA))
+    r.reset()
+    if ClaudeCLI.goneLine(codeA) != nil { r.start(benStandby) } else { print("atlas: the folder isn't gone; start not called") }
+    draw("11", page: true)
+    // 12 cancelled before starting: Cancel while the window was asked to close (the runner's own cancel), nothing moved
+    base()
+    r.preview(.closing, goal: goal, target: benStandby, planned: plan())
+    r.cancel()
+    draw("12", page: true)
+}
+
+if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
+    MainActor.assumeIsolated { atlasSwitch() }
+    print("done"); exit(0)
+}
+
 MainActor.assumeIsolated {
     // (named "Main": the app puts "Claude " before a profile's name itself)
     var main = AccountEntry(id: "main", name: "Main", label: "MAIN", configDir: "~/.claude"); main.seat = u1
