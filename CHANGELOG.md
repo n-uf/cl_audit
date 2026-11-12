@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.22 — 2026-11-11
+
 - Account switching, import, export and Move to another Mac now carry an Experimental warning: they can lose data, so use them for testing only.
 - Before account switching, import, restore, export or making the default profile runs, cl_audit now asks you to confirm the risk of data loss.
 
