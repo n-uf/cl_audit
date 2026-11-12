@@ -8,7 +8,13 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Settings ▸ Accounts after a switch lists every account once.** While the Claude app is still on the account a switch
+  left, that account stays IN USE (with no numbers), and the account Claude Code switched to gets a row of its own with
+  the numbers ("Usage: Claude Code on …") and "Claude Code is on it; sign the Claude app in to finish". The other
+  accounts stay on standby. The "was …, now on standby" note no longer names the account in use. While a switch runs, or
+  when one is refused before anything (its folder gone), the card says so in one line, in the Switch page's words. The
+  Sessions card no longer says a switch "stopped" (with Undo it and Leave it as it is) while it is only waiting for the
+  sign-in.
 
 ## 26.11.20 — 2026-11-11
 
