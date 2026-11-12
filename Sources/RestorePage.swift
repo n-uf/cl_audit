@@ -23,6 +23,9 @@ struct RestorePage: View {
     @State private var showChanged = false
     @State private var showHeld = false
     @Environment(\.face) private var face
+    /// A restore (or import) waiting for consent (Experimental.swift): it starts only from the sheet's Continue.
+    @State private var consent: ConsentRequest?
+    private var flow: String { imp ? "Import" : "Restoring a backup" }
 
     private var name: String { entry.name.isEmpty ? "this profile" : entry.name }
     private var inUse: String { AccountNames.short(entry.seat?.email ?? "its account") }
@@ -37,12 +40,13 @@ struct RestorePage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            ExperimentalPanel(flow: imp ? "Import" : "Restoring a backup")
+            ExperimentalPanel(flow: flow)
             Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
             topBar(topLine)
             SettingsColumns(width: width, groups: [[AnyView(happensCard), AnyView(staysCard), AnyView(sidebarCard)],
                                                   [runner.notYet != nil && runner.phase == .ready ? AnyView(firstCard) : AnyView(stepsCard)]])
         }
+        .experimentalConsent($consent)
         .task(id: key.id) { runner.refresh() }
     }
 
@@ -127,7 +131,7 @@ struct RestorePage: View {
         case .stopped:
             Button(imp ? "Undo this import" : "Undo this restore") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
             // also with nothing left to write: a restore stopped after its last file is only marked finished
-            Button("Finish \(imp ? "importing" : "restoring")\(count > 0 ? " \(count)" : "")") { runner.start() }
+            Button("Finish \(imp ? "importing" : "restoring")\(count > 0 ? " \(count)" : "")") { consent = ConsentRequest(flow: flow) { runner.start() } }
                 .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(plan == nil || runner.notYet != nil)
         case .undone:
             Button("Back to \(name)'s settings") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
@@ -409,7 +413,7 @@ struct RestorePage: View {
         let ok = plan != nil && plan?.refusal == nil && count > 0 && runner.notYet == nil
         let needsWindow = plan.map { _ in runner.closesWindow } ?? true
         let verb = imp ? "import" : "restore"
-        return Button(plan == nil ? "Counting…" : count == 0 && plan?.refusal == nil ? "Nothing to \(verb)" : needsWindow ? "Close and \(verb) \(count)" : "\(verb.capitalized) \(count)") { runner.start() }
+        return Button(plan == nil ? "Counting…" : count == 0 && plan?.refusal == nil ? "Nothing to \(verb)" : needsWindow ? "Close and \(verb) \(count)" : "\(verb.capitalized) \(count)") { consent = ConsentRequest(flow: flow) { runner.start() } }
             .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(!ok)
     }
 

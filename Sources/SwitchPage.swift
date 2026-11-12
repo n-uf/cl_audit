@@ -22,6 +22,8 @@ struct SwitchPage: View {
     @ObservedObject var runner: SwitchRunner
     var width: CGFloat = 980
     @Environment(\.face) private var face
+    /// A switch (or its retry) waiting for consent (Experimental.swift): it starts only from the sheet's Continue.
+    @State private var consent: ConsentRequest?
 
     private var name: String { entry.name.isEmpty ? "this profile" : entry.name }
     /// A sign-in again on the account in use (no standby account picked).
@@ -48,6 +50,7 @@ struct SwitchPage: View {
             SettingsColumns(width: width, groups: [[AnyView(accountsCard)],
                                                    runner.phase == .undone ? [AnyView(changesCard)] : [AnyView(changesCard), AnyView(stepsCard)]])
         }
+        .experimentalConsent($consent)
     }
 
     /// After a switch: Claude Code is on the account wanted, but the Claude app (the record's account in use, A's rule) is
@@ -148,13 +151,15 @@ struct SwitchPage: View {
             }
             Button("Back to \(name)'s settings") { leave() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
         case .other(let e):
-            Button(again ? "Log in…" : "Sign in as \(to) again") { runner.retry() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            Button(again ? "Log in…" : "Sign in as \(to) again") { if again { runner.retry() } else { consent = ConsentRequest(flow: "Account switching") { runner.retry() } } }
+                .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
             if runner.canUndo { undoKey }
             if clash == nil, !runner.canUndo {
                 Button("Keep \(AccountNames.short(e))") { leave() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
             }
         case .timedOut, .failed:
-            Button("Try again") { runner.retry() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            Button("Try again") { if again { runner.retry() } else { consent = ConsentRequest(flow: "Account switching") { runner.retry() } } }
+                .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
             if runner.canUndo { undoKey }
             Button("Back to \(name)'s settings") { leave() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
         case .closing:
@@ -532,7 +537,7 @@ struct SwitchPage: View {
             Spacer(minLength: 6)
             switch runner.phase {
             case .ready:
-                Button("Switch to \(to)") { runner.start(standby) }
+                Button("Switch to \(to)") { consent = ConsentRequest(flow: "Account switching") { runner.start(standby) } }
                     .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
                     .disabled(standby.seat == nil && standby.email.isEmpty)
             case .waiting:

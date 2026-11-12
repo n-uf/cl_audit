@@ -601,6 +601,8 @@ struct ImportPage: View {
     @ObservedObject var runner: ImportRunner
     var width: CGFloat = 980
     @Environment(\.face) private var face
+    /// An import (or a move's profiles) waiting for consent (Experimental.swift): it starts only from the sheet's Continue.
+    @State private var consent: ConsentRequest?
 
     private var target: AccountEntry { runner.intoEntry ?? entry }
     private var name: String { target.name.isEmpty ? "this profile" : target.name }
@@ -626,6 +628,7 @@ struct ImportPage: View {
                 let code: [AnyView] = runner.checklist.map { [AnyView(CodeCard(list: $0))] } ?? []
                 SettingsColumns(width: width, groups: [first, code + [AnyView(staysCard), AnyView(sidebarCard), AnyView(footerCard)]])
             }
+            .experimentalConsent($consent)
             .task(id: entry.id) { runner.refresh() }
             .onDisappear { runner.leave() }
         }
@@ -757,7 +760,7 @@ struct ImportPage: View {
                     }
                 }
                 if let key = MoveWords.key(p, take: runner.takeSettings, create: runner.makeProfiles) {
-                    Button(key) { runner.applyMove() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
+                    Button(key) { consent = ConsentRequest(flow: "Import") { runner.applyMove() } }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize(horizontal: false, vertical: true).padding(.top, 6)
                         .disabled(runner.moveBusy)
                     line("Do this first. Then the page offers the part's own profile for Into, and Close and import puts its sessions there.")
                 }
@@ -861,7 +864,7 @@ struct ImportPage: View {
             }
             // Cancel and the key on one line when they fit; else the key above Cancel (neither is ever cut off)
             let cancel = Button("Cancel") { model.selection = entry.id }.buttonStyle(.plain).foregroundStyle(face.muted)
-            let key = Button(importLabel) { runner.commit() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(!runner.canImport).fixedSize()
+            let key = Button(importLabel) { consent = ConsentRequest(flow: "Import") { runner.commit() } }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(!runner.canImport).fixedSize()
             // the small line "and 12 Code-tab entries" belongs to the key: right under it, on the key's trailing edge beside Cancel,
             // directly under it when the key sits above Cancel
             let also = importAlso.map { Text($0).font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize() }

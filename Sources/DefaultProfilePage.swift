@@ -83,6 +83,8 @@ struct DefaultProfilePage: View {
     /// An import made earlier into the old window's data was carried over by this move (said only then).
     @State private var carried = false
     @Environment(\.face) private var face
+    /// Making the default profile waiting for consent (Experimental.swift): it starts only from the sheet's Continue.
+    @State private var consent: ConsentRequest?
 
     private func loadCarried() async {
         let dir = Account(s.old).claudeUserDataDir ?? "", since = runner.record?.started ?? Date()
@@ -106,6 +108,7 @@ struct DefaultProfilePage: View {
             SettingsColumns(width: width, groups: [[AnyView(whyCard), AnyView(movesCard), AnyView(settingsCard)],
                                                   [AnyView(stepsCard), AnyView(resultCard)]])
         }
+        .experimentalConsent($consent)
         .task { if counts == nil { await loadPreview() }; await loadCarried() }
     }
 
@@ -164,7 +167,7 @@ struct DefaultProfilePage: View {
     @ViewBuilder private var topKeys: some View {
         switch runner.phase {
         case .ready, .failed:
-            Button("Make the default profile") { runner.start() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            Button("Make the default profile") { consent = ConsentRequest(flow: "Making the default profile") { runner.start() } }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
                 .disabled(preview == nil && counts == nil)
             Button("Not now") { DefaultProfile.dismissed = true; model.selection = model.homeSelection }
                 .buttonStyle(PillButtonStyle(tint: nil, compact: true))

@@ -503,6 +503,8 @@ struct ExportPage: View {
     var width: CGFloat = 980
     @State private var showProjects = false
     @Environment(\.face) private var face
+    /// An export (or Move to another Mac) waiting for consent (Experimental.swift): it starts only from the sheet's Continue.
+    @State private var consent: ConsentRequest?
 
     private var name: String { entry.name.isEmpty ? "this profile" : entry.name }
     private var pv: SessionsExport.Preview? { runner.total }
@@ -514,6 +516,7 @@ struct ExportPage: View {
             topBar
             SettingsColumns(width: width, groups: [[AnyView(whatCard), AnyView(keysCard)], [AnyView(previewCard), AnyView(fileCard)]])
         }
+        .experimentalConsent($consent)
         .task(id: entry.id) { if runner.previews == nil, runner.phase == .preview { runner.refresh() } }
         .onDisappear { runner.leave() }
     }
@@ -828,7 +831,7 @@ struct ExportPage: View {
         case .working: Text("exporting…").font(.system(size: 12)).foregroundStyle(face.caution)
         case .done: EmptyView()
         case .failed: Button("Try again") { runner.tryAgain() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-        case .preview: Button(exportLabel) { runner.start() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(!runner.canExport).fixedSize()
+        case .preview: Button(exportLabel) { consent = ConsentRequest(flow: "Export and Move to another Mac", plural: true) { runner.start() } }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(!runner.canExport).fixedSize()
         }
     }
 
