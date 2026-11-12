@@ -100,6 +100,7 @@ struct DefaultProfilePage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            ExperimentalPanel(flow: "Making the default profile")
             Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
             topBar
             SettingsColumns(width: width, groups: [[AnyView(whyCard), AnyView(movesCard), AnyView(settingsCard)],

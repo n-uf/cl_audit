@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- Account switching, import, export and Move to another Mac now carry an Experimental warning: they can lose data, so use them for testing only.
 
 ## 26.11.21 — 2026-11-11
 

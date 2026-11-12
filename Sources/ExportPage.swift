@@ -509,6 +509,7 @@ struct ExportPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            ExperimentalPanel(flow: "Export and Move to another Mac", plural: true)
             Text(runner.move ? "Move to another Mac" : runner.source == .all ? "Export all profiles' sessions" : "Export \(name)'s sessions").font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
             topBar
             SettingsColumns(width: width, groups: [[AnyView(whatCard), AnyView(keysCard)], [AnyView(previewCard), AnyView(fileCard)]])

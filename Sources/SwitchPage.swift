@@ -41,6 +41,7 @@ struct SwitchPage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            ExperimentalPanel(flow: "Account switching")
             Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
             if let t = topLine { topBar(t) }
             // once undone, no steps: ticked steps would read as if the move had happened

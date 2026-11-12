@@ -37,6 +37,7 @@ struct RestorePage: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
+            ExperimentalPanel(flow: imp ? "Import" : "Restoring a backup")
             Text(title).font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
             topBar(topLine)
             SettingsColumns(width: width, groups: [[AnyView(happensCard), AnyView(staysCard), AnyView(sidebarCard)],

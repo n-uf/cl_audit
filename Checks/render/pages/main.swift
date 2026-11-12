@@ -87,6 +87,11 @@ func saveReceipt(_ r: SwitchReceipt) {
     if ProcessInfo.processInfo.environment["E2B_ONLY"] != nil, !name.hasPrefix("9") { return }     // stage E2b (MCP settings, scheduled tasks) renders only
     if ProcessInfo.processInfo.environment["E2C_ONLY"] != nil, !name.hasPrefix("m") { return }     // stage E2c (a move to another Mac) renders only
     if ProcessInfo.processInfo.environment["A_ONLY"] != nil, !["a1-", "a3-", "a4-"].contains(where: name.hasPrefix) { return }   // release A's a1, a3, a4 only
+    // the Experimental panel (B6): one case per page that carries it, Std at 460 and 708
+    if ProcessInfo.processInfo.environment["EXPERIMENTAL_ONLY"] != nil,
+       !(["o1-switch-ready-", "8a-export-setup-zip-", "ma-export-move-", "8c-import-setup-left-out-", "8d-import-setup-added-open-",
+          "8e-restore-setup-", "xdp-default-profile-"].contains(where: name.hasPrefix)
+         && (name.hasSuffix("-std-w460") || name.hasSuffix("-std-w708"))) { return }
     _ = NSApplication.shared
     let host = NSHostingView(rootView: v)
     host.frame = NSRect(x: 0, y: 0, width: w, height: h)
@@ -471,6 +476,15 @@ MainActor.assumeIsolated {
             .environment(\.face, face).environment(\.colorScheme, face.light ? .light : .dark)
     }
     let widths: [(String, CGFloat)] = [("w460", 460), ("w340", 340)]
+
+    // the default-profile page (its Experimental panel first): Main's own window as the one that becomes the usual app's
+    if ProcessInfo.processInfo.environment["EXPERIMENTAL_ONLY"] != nil {
+        let dpr = DefaultProfileRunner(situation: DefaultProfile.Situation(kind: .windowOnly, old: main, target: nil), model: model)
+        for w in [CGFloat(460), 708] {
+            snapshot(framed(DefaultProfilePage(model: model, runner: dpr, width: w, counts: DefaultProfile.Preview(), importCarried: false), .std, w),
+                     "xdp-default-profile-std-w\(Int(w))", w + 32, 3000)
+        }
+    }
 
     // a. the one account answer (AccountResolver): every surface from the same record, side by side, for "the Claude app and
     // Claude Code on different accounts" and "the same account"; the Dock panel before its first read and after; a standby

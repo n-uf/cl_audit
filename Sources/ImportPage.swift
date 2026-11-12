@@ -608,6 +608,7 @@ struct ImportPage: View {
     var body: some View {
         if case .running(let key) = runner.phase, let e = runner.intoEntry {
             VStack(alignment: .leading, spacing: 12) {
+                // (its Experimental panel is the restore page's own, first: "Import …")
                 RestorePage(entry: e, key: key, model: model, runner: model.restoreRunner(key), width: width)
                 // a move: what is left to do on this Mac for each profile the import made (sign-ins, the Dock, the tasks)
                 if !runner.madeProfiles.isEmpty { MoveSteps(model: model, runner: runner, width: width) }
@@ -616,6 +617,7 @@ struct ImportPage: View {
             }
         } else {
             VStack(alignment: .leading, spacing: 12) {
+                ExperimentalPanel(flow: "Import")
                 Text(runner.opened?.move == true ? "Move from another Mac" : "Import into \(name)").font(.system(size: 17, weight: .semibold)).foregroundStyle(face.text)
                 topBar
                 // (a move: its card; once its profiles are made, what is left to do for them, at once, not only after the sessions)

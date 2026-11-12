@@ -2,7 +2,8 @@
 //
 //   - the account in use, with a lit (green) lamp under the profile's name: "ultra-1 · in use" (the Dock menu's top line:
 //     "Claude Main · ultra-1 in use")
-//   - Switch account ›: a submenu with the account in use ticked ("in use · week 94%") and every standby account, in the
+//   - Switch account ›: a submenu that opens with "Experimental: may lose data" (disabled) and a line, then the account in
+//     use ticked ("in use · week 94%") and every standby account, in the
 //     order a full limit offers them, each with when it was last in use ("3 days ago"; a standby account isn't read, so
 //     it has no week); picking one opens the Switch page with it picked
 //   - while a limit is full, the one offered first also on the top level: "Switch to ultra-3…"
@@ -65,6 +66,11 @@ enum SwitchMenu {
                             target: AnyObject, action: Selector) -> NSMenuItem? {
         guard !lines.isEmpty else { return nil }
         let sub = NSMenu(title: "Switch account"); sub.autoenablesItems = false
+        // first, always: switching is experimental (Experimental.swift)
+        let warn = NSMenuItem(title: ExperimentalPanel.title, action: nil, keyEquivalent: "")
+        warn.isEnabled = false
+        sub.addItem(warn)
+        sub.addItem(.separator())
         if let s = inUseShort(v) {
             let i = NSMenuItem(title: "\(s)  in use" + (inUseUsed == nil ? "" : " · " + weekWords(inUseUsed, week: inUseWeek)),
                                action: nil, keyEquivalent: "")
