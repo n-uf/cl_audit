@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.21 — 2026-11-11
+
 - **Settings ▸ Accounts after a switch lists every account once.** While the Claude app is still on the account a switch
   left, that account stays IN USE (with no numbers), and the account Claude Code switched to gets a row of its own with
   the numbers ("Usage: Claude Code on …") and "Claude Code is on it; sign the Claude app in to finish". The other
