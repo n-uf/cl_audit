@@ -868,8 +868,65 @@ do {
           && SwitchPage.settingsStrip(.failed("x"), again: false, canUndo: true, failedAt: .move, started: started) == nil,
           "no line once it ended, for a sign-in again, or for a stop the Sessions card offers Undo for")
     let open = SwitchReceipt(id: "r", profile: "atl", standby: "kb", dataDir: "/x", from: SeatID(ann), to: SeatID(ben), started: t0)
-    check(SessionsCard.showsStopped(open, running: true) == nil && SessionsCard.showsStopped(open, running: false)?.id == "r",
+    check(SessionsCard.showsStopped(open, running: true, again: false) == nil && SessionsCard.showsStopped(open, running: false, again: false)?.id == "r",
           "04c: a switch still running is never \"A switch stopped\" (no Undo it / Leave it as it is); once it stopped, it is")
+    check(SessionsCard.showsStopped(open, running: true, again: true)?.id == "r",
+          "a sign-in again running (it moves nothing): the stopped switch and its Undo stay")
+
+    // the IN USE box's title: always the active account while Claude Code is on another, even expired or another address
+    func title(_ v: AccountView, _ state: String, mismatch: Bool = false) -> String {
+        AccountSettings.inUseTitle(v, state: state, loginEmail: ben.email, expected: ann.email, mismatch: mismatch, moveEmail: nil).text
+    }
+    check(title(r5.v, "expired") == ann.email && title(r5.v, "ok", mismatch: true) == ann.email && title(r5.v, "ok") == ann.email,
+          "05: the IN USE title is ann (the app's) whether Claude Code's sign-in is fine, expired or another address")
+    let t1 = AccountSettings.inUseTitle(r1.v, state: "expired", loginEmail: ann.email, expected: ann.email, mismatch: false, moveEmail: nil)
+    check(t1.text == ann.email && t1.tone == .caution, "one account, expired: its address in caution, as before")
+    // the plan under the IN USE box: the active account's, never Claude Code's
+    var m5 = r5.e; m5.standby = m5.standby.map { var s = $0; if s.email == ann.email { s.plan = "Max" }; return s }
+    check(m5.activePlan(r5.v, recordPlan: "Ultra") == "Max" && r1.e.activePlan(r1.v, recordPlan: "Ultra") == "Ultra",
+          "05: the plan under ann is ann's (Max), Claude Code's (Ultra) under its own row")
+
+    // the target of Claude Code's row: this profile's current switch only
+    let kb = m0.standby[0]
+    var older = SwitchReceipt(id: "o", profile: "atl", standby: "kc", dataDir: "/x", from: SeatID(ann), to: SeatID(cat), started: t0.addingTimeInterval(-86400))
+    older.steps = [SwitchReceipt.Step(kind: .entry, path: "/x/a", sha: nil, parked: nil, original: nil, done: true)]
+    var newer = SwitchReceipt(id: "n", profile: "atl", standby: "kb", dataDir: "/x", from: SeatID(ann), to: SeatID(ben), started: t0)
+    newer.steps = older.steps
+    let withCat = [kb, StandbyAccount(email: cat.email!, seat: cat, id: "kc")]
+    var linkedNew = newer; linkedNew.linked = t0
+    let newestOf = { (rs: [SwitchReceipt]) in rs.sorted { $0.started > $1.started }.first }
+    check(AccountSettings.switchTarget(goal: nil, newest: newestOf([older, linkedNew]), standby: withCat) == nil,
+          "after a restart, the newest switch linked and an older one still open: no target (never the older one's cat)")
+    check(AccountSettings.switchTarget(goal: nil, newest: newestOf([older, newer]), standby: withCat) == ben.email,
+          "after a restart, the newest switch still open: its account, ben")
+    let addressOnly = [StandbyAccount(email: ben.email!, id: "kb")]
+    check(AccountSettings.switchTarget(goal: nil, newest: newer, standby: addressOnly) == ben.email,
+          "a standby account remembered by its address only: found by the switch's standby entry")
+    let goalBen = SwitchRunner.Goal(standby: "kb", wantedSeat: ben, wantedEmail: ben.email!, from: ann, started: t0)
+    let goalAgain = SwitchRunner.Goal(standby: nil, wantedSeat: ann, wantedEmail: ann.email!, from: ann, started: t0)
+    check(AccountSettings.switchTarget(goal: goalBen, newest: older, standby: withCat) == ben.email
+          && AccountSettings.switchTarget(goal: goalAgain, newest: newer, standby: withCat) == nil,
+          "the runner's switch decides while it has one; a sign-in again has no target")
+    // a sign-in by hand as dan, no switch: Claude Code's row says only that it is on it
+    check(AccountView.codeRowWords(code: dan.email!, target: AccountSettings.switchTarget(goal: nil, newest: nil, standby: withCat)) == "Claude Code is on it.",
+          "no switch at all (a sign-in by hand): \"Claude Code is on it.\", no \"finish\"")
+
+    // the Claude app signed out: Claude Code's account is the active one; no own row, nothing twice
+    let noted7 = FolderRules.noteAccounts([m0, w0], signedIn: { $0 == m0.configDir ? dan : nil }, status: { _ in nil }, now: t0)
+    var recOut = IconStatus(state: "ok"); recOut.loginEmail = dan.email
+    recOut.resolved = AccountResolver.resolve(noted7[0], among: noted7, app: appOut, code: dan, loginEmail: dan.email, names: [:], now: t0)
+    let vOut = AccountView.of(recOut)
+    check(vOut.label == dan.email && vOut.codeRow == nil && Set(standby(noted7[0], vOut)) == [ann.email!, ben.email!],
+          "the app signed out: dan in use with the numbers, ann and ben on standby: \(standby(noted7[0], vOut))")
+
+    // Claude Code's account known by its id only ("account <8>", no address): its row, and never on standby too
+    let noMail = Seat(account: uuid(15), organization: uuid(55), email: nil)
+    var m8 = m0; m8.seat = noMail; m8.standby = [kb, StandbyAccount(email: "", seat: noMail, id: "kx"), StandbyAccount(email: ann.email!, seat: ann, id: "ka")]
+    var rec8 = IconStatus(state: "ok")
+    rec8.resolved = AccountResolver.resolve(m8, among: [m8, w0], app: app(ann), code: noMail, loginEmail: nil, names: [:], now: t0)
+    let v8 = AccountView.of(rec8)
+    check(v8.codeRow?.hasPrefix("account ") == true && standby(m8, v8) == [ben.email!] && !v8.mayCallStandby("", id: noMail.account),
+          "Claude Code on an account known by its id only: its own row (\(v8.codeRow ?? "-")), not on standby too: \(standby(m8, v8))")
 
     // 11: the folder gone: the runner's own start refuses; Settings says it in the strip's words
     let keepLocator = ClaudeLocator.current
