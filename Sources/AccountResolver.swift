@@ -119,6 +119,16 @@ struct AccountView: Equatable {
     /// account's, or when Claude Code's folder is on another profile's account (that profile has them).
     var codeRow: String? { differs && clash == nil ? numbersOwner : nil }
 
+    /// The last line of Claude Code's own row. On the account a switch went for: only the Claude app's sign-in is left. On
+    /// another account (the browser signed in as someone else): the switch didn't finish, and how to finish or take it back.
+    static func codeRowWords(code: String, target: String?) -> String {
+        guard let t = target, !t.isEmpty, t.lowercased() != code.lowercased() else {
+            return "Claude Code is on it; sign the Claude app in to finish."
+        }
+        let c = AccountNames.short(code), w = AccountNames.short(t)
+        return "Claude Code signed in as \(c), not \(w): the switch didn't finish. Sign Claude Code in as \(w) from the Switch page, or Undo it."
+    }
+
     /// A note may call this address "on standby" only when no box shows it as the active account or as Claude Code's.
     func mayCallStandby(_ email: String) -> Bool {
         let e = email.lowercased()

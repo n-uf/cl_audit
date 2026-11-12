@@ -842,6 +842,13 @@ do {
           "07: ann in use, dan's own row with the numbers, ben on standby: \(r7.v.codeRow ?? "-") / \(standby(r7.e, r7.v))")
     check(!r7.v.mayCallStandby(ann.email!) && !r7.v.mayCallStandby(dan.email!) && r7.v.mayCallStandby(ben.email!),
           "07: a note calls only ben on standby")
+    // the line of Claude Code's row: on the account the switch went for, only the app's sign-in is left; on another, the
+    // switch didn't finish
+    check(AccountView.codeRowWords(code: r5.v.codeRow!, target: ben.email) == "Claude Code is on it; sign the Claude app in to finish.",
+          "05: ben's row: sign the Claude app in to finish")
+    let w7 = AccountView.codeRowWords(code: r7.v.codeRow!, target: ben.email)
+    check(w7 == "Claude Code signed in as dan, not ben: the switch didn't finish. Sign Claude Code in as ben from the Switch page, or Undo it."
+          && !w7.contains("sign the Claude app in"), "07: dan's row says the switch didn't finish, never \"sign the Claude app in to finish\": \(w7)")
     // the account in use on the app and Claude Code alike: no own row for Claude Code, the numbers in the IN USE box
     let r1 = after(ann, appOn: ann)
     check(r1.v.codeRow == nil && standby(r1.e, r1.v) == [ben.email!], "01: one IN USE box with the numbers, ben on standby")

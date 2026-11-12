@@ -1732,8 +1732,16 @@ struct AccountSettings: View {
         } content: {
             limitsOrWhy(status, entry: entry, none: nil)
             if let n = view.line { BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true) }
-            BoxNote(text: "Claude Code is on it; sign the Claude app in to finish.", size: 10.5).fixedSize(horizontal: false, vertical: true)
+            BoxNote(text: AccountView.codeRowWords(code: code, target: switchTarget), size: 10.5).fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// The account the profile's last switch went for: the runner's goal while it has one, else (after a restart) the open
+    /// switch's receipt, by the profile's standby list. nil when there is none (or it was a sign-in again).
+    private var switchTarget: String? {
+        if let g = model.runner(of: entry.id).goal { return g.standby == nil ? nil : g.wantedEmail }
+        guard let u = SwitchEngine.unfinished(profile: entry.id).first else { return nil }
+        return entry.standby.first { s in s.seat.map { u.to.same($0) } ?? false }?.email
     }
 
     /// The part of a standby box a click selects (again: deselects).
