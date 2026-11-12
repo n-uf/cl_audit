@@ -1754,7 +1754,7 @@ struct AccountSettings: View {
     func codeBox(_ code: String) -> some View {
         let r = model.runner(of: entry.id)
         let goal = [SwitchRunner.Phase.ready, .undone].contains(r.phase) ? nil : r.goal
-        let target = Self.switchTarget(goal: goal, newest: newestSwitch, standby: entry.standby)
+        let target = Self.switchTarget(goal: goal, newest: newestSwitch, standby: entry.standby, code: code, codeAccount: view.codeAccount)
         return AccountBox(lamp: nil, badge: "Claude Code", detail: (status?.plan).map(Account.planWords)) {
             AccountBoxTitle(text: Privacy.masked(code))
         } content: {
@@ -1776,12 +1776,17 @@ struct AccountSettings: View {
     @State private var newestSwitch: SwitchReceipt?
 
     /// The account the profile's current switch went for: the runner's goal while it has one going or just ended (nil for a
-    /// sign-in again), else (after a restart) the profile's newest switch while it is still open (not linked, left as it is
-    /// or undone), by the standby entry it names, else by its account. nil with no current switch: an older open switch
-    /// never names it, and a sign-in by hand has none.
-    static func switchTarget(goal: SwitchRunner.Goal?, newest: SwitchReceipt?, standby: [StandbyAccount]) -> String? {
+    /// sign-in again); else (after a restart) the profile's newest switch: when it went to Claude Code's account (`code`,
+    /// id `codeAccount`), linked or still open, that account (the finish line: only the Claude app is left); when it is
+    /// still open and went to another, that one, by the standby entry it names, else by its account ("didn't finish").
+    /// nil otherwise: an older switch never names it, a closed one to another account neither, and a sign-in by hand has
+    /// none.
+    static func switchTarget(goal: SwitchRunner.Goal?, newest: SwitchReceipt?, standby: [StandbyAccount],
+                             code: String?, codeAccount: String?) -> String? {
         if let g = goal { return g.standby == nil || g.wantedEmail.isEmpty ? nil : g.wantedEmail }
-        guard let r = newest, r.unfinished else { return nil }
+        guard let r = newest, r.undone == nil, r.leftAsIs == nil else { return nil }
+        if let c = code, let id = codeAccount, r.to.account.lowercased() == id, r.linked != nil || r.unfinished { return c }
+        guard r.unfinished else { return nil }
         let s = standby.first { $0.id == r.standby } ?? standby.first { s in s.seat.map { r.to.same($0) } ?? false }
         return s.map { $0.seat?.email ?? $0.email }
     }

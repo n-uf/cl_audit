@@ -895,21 +895,31 @@ do {
     let withCat = [kb, StandbyAccount(email: cat.email!, seat: cat, id: "kc")]
     var linkedNew = newer; linkedNew.linked = t0
     let newestOf = { (rs: [SwitchReceipt]) in rs.sorted { $0.started > $1.started }.first }
-    check(AccountSettings.switchTarget(goal: nil, newest: newestOf([older, linkedNew]), standby: withCat) == nil,
-          "after a restart, the newest switch linked and an older one still open: no target (never the older one's cat)")
-    check(AccountSettings.switchTarget(goal: nil, newest: newestOf([older, newer]), standby: withCat) == ben.email,
-          "after a restart, the newest switch still open: its account, ben")
+    /// The row's words after a restart (no runner goal), Claude Code on `code`.
+    func words(_ newest: SwitchReceipt?, _ standby: [StandbyAccount], code: Seat, goal: SwitchRunner.Goal? = nil) -> String {
+        AccountView.codeRowWords(code: code.email!, target: AccountSettings.switchTarget(goal: goal, newest: newest, standby: standby,
+                                                                                       code: code.email, codeAccount: code.account.lowercased()))
+    }
+    let finish = "Claude Code is on it; sign the Claude app in to finish.", onIt = "Claude Code is on it."
+    let notBen = "Claude Code signed in as dan, not ben: the switch didn't finish. Sign Claude Code in as ben from the Switch page, or Undo it."
+    // 05 after a restart: the switch reached ben (its receipt linked), the app still on ann: the finish line
+    let annOnly = [StandbyAccount(email: ann.email!, seat: ann, id: "ka")]
+    check(words(linkedNew, annOnly, code: ben) == finish, "05 after a restart, the receipt linked: ben's row keeps the finish line: \(words(linkedNew, annOnly, code: ben))")
+    check(words(newestOf([older, linkedNew]), withCat, code: dan) == onIt,
+          "the newest switch linked to ben, an older one still open, Claude Code on dan by hand: never the older one's cat, no finish: \(words(newestOf([older, linkedNew]), withCat, code: dan))")
+    // 07 after a restart: the switch to ben still open, Claude Code on dan
+    check(words(newestOf([older, newer]), withCat, code: dan) == notBen, "07 after a restart: the newest switch still open to ben: didn't finish")
     let addressOnly = [StandbyAccount(email: ben.email!, id: "kb")]
-    check(AccountSettings.switchTarget(goal: nil, newest: newer, standby: addressOnly) == ben.email,
-          "a standby account remembered by its address only: found by the switch's standby entry")
+    check(words(newer, addressOnly, code: dan) == notBen, "a standby account remembered by its address only: found by the switch's standby entry")
+    var undoneNew = newer; undoneNew.undone = t0
+    check(words(undoneNew, withCat, code: dan) == onIt, "a switch undone names nothing")
     let goalBen = SwitchRunner.Goal(standby: "kb", wantedSeat: ben, wantedEmail: ben.email!, from: ann, started: t0)
     let goalAgain = SwitchRunner.Goal(standby: nil, wantedSeat: ann, wantedEmail: ann.email!, from: ann, started: t0)
-    check(AccountSettings.switchTarget(goal: goalBen, newest: older, standby: withCat) == ben.email
-          && AccountSettings.switchTarget(goal: goalAgain, newest: newer, standby: withCat) == nil,
+    check(words(older, withCat, code: dan, goal: goalBen) == notBen && words(older, withCat, code: ben, goal: goalBen) == finish
+          && words(newer, withCat, code: dan, goal: goalAgain) == onIt,
           "the runner's switch decides while it has one; a sign-in again has no target")
     // a sign-in by hand as dan, no switch: Claude Code's row says only that it is on it
-    check(AccountView.codeRowWords(code: dan.email!, target: AccountSettings.switchTarget(goal: nil, newest: nil, standby: withCat)) == "Claude Code is on it.",
-          "no switch at all (a sign-in by hand): \"Claude Code is on it.\", no \"finish\"")
+    check(words(nil, withCat, code: dan) == onIt, "no switch at all (a sign-in by hand): \"Claude Code is on it.\", no \"finish\"")
 
     // the Claude app signed out: Claude Code's account is the active one; no own row, nothing twice
     let noted7 = FolderRules.noteAccounts([m0, w0], signedIn: { $0 == m0.configDir ? dan : nil }, status: { _ in nil }, now: t0)
