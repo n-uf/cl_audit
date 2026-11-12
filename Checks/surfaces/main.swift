@@ -803,5 +803,83 @@ do {
     copies().forEach { try? fm.removeItem(at: Store.folder.appendingPathComponent($0)) }
 }
 
+// ============ 6d. Settings ▸ Accounts after a switch (B5): every account once, no note against the boxes, whose numbers ============
+// The atlas's fixture (Checks/render/pages/main.swift, ATLAS_SWITCH): Main on ann (the Claude app and Claude Code), ben on
+// standby, Work on cat; dan is no profile's. Each state through the app's own steps: the folder noted (FolderRules), the
+// record answered (AccountResolver), then what Settings ▸ Accounts lists from it.
+do {
+    let ann = Seat(account: uuid(11), organization: uuid(51), email: "ann@example.com"), ben = Seat(account: uuid(12), organization: uuid(52), email: "ben@example.com")
+    let cat = Seat(account: uuid(13), organization: uuid(53), email: "cat@example.com"), dan = Seat(account: uuid(14), organization: uuid(54), email: "dan@example.com")
+    var m0 = profile("atl", "~/.claude-atl-ann", ann)
+    m0.standby = [StandbyAccount(email: ben.email!, seat: ben, id: "kb", plan: "Ultra", lastInUse: t0.addingTimeInterval(-3 * 86400))]
+    var w0 = profile("atw", "~/.claude-atl-cat", cat); w0.claudeWindow = false
+    func app(_ s: Seat) -> AppSignIn.Login { AppSignIn.Login(account: s.account, org: s.organization, state: .known, source: "log", at: t0) }
+    /// The folder signed in to `s`: the profiles follow it, then the record answered with the app on `appOn` and the numbers
+    /// read for Claude Code's account.
+    func after(_ s: Seat, appOn: Seat) -> (e: AccountEntry, v: AccountView) {
+        let noted = FolderRules.noteAccounts([m0, w0], signedIn: { $0 == m0.configDir ? s : ($0 == w0.configDir ? cat : nil) }, status: { _ in nil }, now: t0)
+        var rec = IconStatus(state: "ok"); rec.loginEmail = s.email; rec.weekly = 12
+        rec.resolved = AccountResolver.resolve(noted[0], among: noted, app: app(appOn), code: s, loginEmail: s.email, names: [:], now: t0)
+        return (noted[0], AccountView.of(rec))
+    }
+    func standby(_ e: AccountEntry, _ v: AccountView) -> [String] { e.standbyRows(by: v).map(\.email) }
+    let was = { (e: AccountEntry) in e.seat?.was ?? "-" }
+
+    // 05: Claude Code on ben, the app still on ann
+    let r5 = after(ben, appOn: ann)
+    check(r5.v.label == ann.email && r5.v.codeRow == ben.email && standby(r5.e, r5.v).isEmpty,
+          "05: ann in the IN USE box, ben in a row of its own (Claude Code's, with the numbers), no standby row: \(r5.v.label ?? "-") / \(r5.v.codeRow ?? "-") / \(standby(r5.e, r5.v))")
+    check(was(r5.e) == ann.email && !r5.v.mayCallStandby(was(r5.e)), "05: no \"was ann, now on standby\" while ann is the active account")
+    check(r5.v.numbersOwner == ben.email && r5.v.line?.hasPrefix("Usage: Claude Code on ") == true, "05: the numbers are ben's, said under ben's row")
+    // 06: the app signed in to ben too
+    let r6 = after(ben, appOn: ben)
+    check(r6.v.label == ben.email && r6.v.codeRow == nil && standby(r6.e, r6.v) == [ann.email!],
+          "06: ben in use with the numbers, ann on standby, nothing twice: \(standby(r6.e, r6.v))")
+    check(r6.v.mayCallStandby(was(r6.e)), "06: the note may say ann is on standby (she is)")
+    // 07: the sign-in landed on dan, the app still on ann
+    let r7 = after(dan, appOn: ann)
+    check(r7.v.label == ann.email && r7.v.codeRow == dan.email && standby(r7.e, r7.v) == [ben.email!],
+          "07: ann in use, dan's own row with the numbers, ben on standby: \(r7.v.codeRow ?? "-") / \(standby(r7.e, r7.v))")
+    check(!r7.v.mayCallStandby(ann.email!) && !r7.v.mayCallStandby(dan.email!) && r7.v.mayCallStandby(ben.email!),
+          "07: a note calls only ben on standby")
+    // the account in use on the app and Claude Code alike: no own row for Claude Code, the numbers in the IN USE box
+    let r1 = after(ann, appOn: ann)
+    check(r1.v.codeRow == nil && standby(r1.e, r1.v) == [ben.email!], "01: one IN USE box with the numbers, ben on standby")
+
+    // 04a–04c: one line in the Switch page's strip words while it runs; the Sessions card never says "stopped" then
+    let started = t0
+    for (p, words) in [(SwitchRunner.Phase.closing, "Switching · closing the window"), (.moving, "Switching · moving sessions")] {
+        let s = SwitchPage.settingsStrip(p, again: false, canUndo: false, failedAt: nil, started: started)
+        check(s.map { "\($0.text) \($0.dim ?? "")" } == words, "\(p): Settings says \(words)")
+    }
+    let w = SwitchPage.settingsStrip(.waiting, again: false, canUndo: true, failedAt: nil, started: started)
+    check(w?.text == "Switching" && w?.dim?.hasPrefix("· waiting · until ") == true
+          && w.map { "\($0.text) \($0.dim ?? "")" } == SwitchPage.strip(.waiting, again: false, canUndo: true, started: started).map { "\($0.text) \($0.dim ?? "")" },
+          "04c: Settings says the strip's own words: \(w?.text ?? "-") \(w?.dim ?? "-")")
+    check(SwitchPage.settingsStrip(.reached, again: false, canUndo: false, failedAt: nil, started: started) == nil
+          && SwitchPage.settingsStrip(.waiting, again: true, canUndo: false, failedAt: nil, started: started) == nil
+          && SwitchPage.settingsStrip(.failed("x"), again: false, canUndo: true, failedAt: .move, started: started) == nil,
+          "no line once it ended, for a sign-in again, or for a stop the Sessions card offers Undo for")
+    let open = SwitchReceipt(id: "r", profile: "atl", standby: "kb", dataDir: "/x", from: SeatID(ann), to: SeatID(ben), started: t0)
+    check(SessionsCard.showsStopped(open, running: true) == nil && SessionsCard.showsStopped(open, running: false)?.id == "r",
+          "04c: a switch still running is never \"A switch stopped\" (no Undo it / Leave it as it is); once it stopped, it is")
+
+    // 11: the folder gone: the runner's own start refuses; Settings says it in the strip's words
+    let keepLocator = ClaudeLocator.current
+    ClaudeLocator.current = ClaudeLocator.Lookup(candidates: { [] }, npmPrefix: { nil }, shell: { nil }, appCopy: { nil })
+    defer { ClaudeLocator.current = keepLocator }
+    try? fm.removeItem(atPath: expand(m0.configDir))
+    try! Store.save([m0, w0])
+    let ma = SettingsModel(); ma.accounts = [m0, w0]
+    let ra = ma.runner(of: "atl")
+    if ClaudeCLI.goneLine(m0.configDir) != nil { ra.start(m0.standby[0]) }
+    let s11 = SwitchPage.settingsStrip(ra.phase, again: ra.goal?.again == true, canUndo: ra.canUndo, failedAt: ra.failedStep, started: ra.goal?.started)
+    check(ra.failedStep == .notStarted && s11.map { "\($0.text) \($0.dim ?? "")" } == "Not started · nothing changed",
+          "11: the folder gone: refused before anything, Settings says \"Not started · nothing changed\": \(ra.phase)")
+    let r11 = after(ann, appOn: ann)
+    check(r11.v.label == ann.email && standby(r11.e, r11.v) == [ben.email!], "11: the rows stay as they are")
+    ra.reset()
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
