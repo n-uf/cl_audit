@@ -45,9 +45,18 @@ struct SessionsCard: View {
     private var windowOpen: Bool { _ = model.tick; return !SwitchRunner.windowClosed(entry) }
     private var switching: Bool { _ = model.tick; return SwitchMarker.blocks(Account(entry)) }
 
+    /// A switch that stopped half way, to offer Undo it and Leave it as it is: never while this profile's switch is still
+    /// running (the window closing, the move, the sign-in waited for): its receipt is open then, but nothing has stopped.
+    private var stoppedSwitch: SwitchReceipt? {
+        _ = model.tick; _ = runnerPhase
+        return Self.showsStopped(oldSwitch, running: model.runner(of: entry.id).isRunning)
+    }
+    @State private var runnerPhase: SwitchRunner.Phase?
+    static func showsStopped(_ s: SwitchReceipt?, running: Bool) -> SwitchReceipt? { running ? nil : s }
+
     var body: some View {
         SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. A switch of account moves the window's Code-tab list and scheduled tasks to the new account, inside this profile's folder; the transcripts stay where they are. Backups are quick copies on this Mac, made by each switch that moves sessions and by Back up now; Restore… puts back what is missing, merged, and never overwrites anything. Chats and Projects on claude.ai belong to each account and aren't here.") {
-            if let s = oldSwitch {
+            if let s = stoppedSwitch {
                 SRow(label: "A switch stopped", first: true, stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {
                         note(Self.oldSwitchWords(s, for: entry))
@@ -66,7 +75,7 @@ struct SessionsCard: View {
                     }
                 }
             }
-            SRow(label: "Kept here", info: "What \(name) has on this Mac now: " + Retention.keptHereInfo, first: oldSwitch == nil, stacked: true) {
+            SRow(label: "Kept here", info: "What \(name) has on this Mac now: " + Retention.keptHereInfo, first: stoppedSwitch == nil, stacked: true) {
                 text(keptWords)
             }
             SRow(label: "Keep for", info: Retention.keepForInfo(file: tilde(CodeCleanup.file(entry.configDir))), stacked: true) {
@@ -92,6 +101,13 @@ struct SessionsCard: View {
             }
         }
         .task(id: entry.id + prefs.place + "\(model.switchChanges)") { await load() }
+        // the profile's switch ends (or starts): the stopped-switch row follows it, and the receipts are looked at again
+        .onReceive(model.runner(of: entry.id).$phase.removeDuplicates()) { p in
+            guard runnerPhase != p else { return }
+            let first = runnerPhase == nil
+            runnerPhase = p
+            if !first { Task { await load() } }
+        }
         .alert("Delete this backup?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("Delete", role: .destructive) { if let l = deleting { delete(l) } }
             Button("Keep it", role: .cancel) {}
