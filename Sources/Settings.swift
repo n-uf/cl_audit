@@ -1573,17 +1573,22 @@ struct AccountSettings: View {
     @ViewBuilder func accountRows(stacked: Bool) -> some View {
         let name = entry.name.isEmpty ? "This profile" : entry.name
         let move = elsewhere
+        // "was X, now on standby": only while X is on standby in the boxes too (never the active account or Claude Code's)
         let linkedLately: (was: String, at: Date)? = entry.seat.flatMap { s in
-            guard let was = s.was, let at = s.linkedAt, Date().timeIntervalSince(at) < 7 * 86400 else { return nil }
+            guard let was = s.was, let at = s.linkedAt, Date().timeIntervalSince(at) < 7 * 86400, view.mayCallStandby(was) else { return nil }
             return (was, at)
         }
         // Accounts: the boxes need the card's width, so the row is always stacked (label above)
         SRow(label: "Accounts", info: loginInfo, first: true, stacked: true) {
             VStack(alignment: .leading, spacing: 8) {
                 ClaudeMissingLine(model: model)          // every sign-in key below needs Claude Code: say so when it isn't there
+                // a switch of this profile running, or refused before anything: one line, the Switch page's strip words
+                SwitchStripLine(runner: model.runner(of: entry.id))
                 if let n = entry.accountNote { accountNoteRow(n) }
                 inUseBox(move)
                     .alignmentGuide(.rowLine) { d in d[VerticalAlignment.top] }
+                // Claude Code's account while the Claude app is still on another (right after a switch): its own row
+                if move == nil, let code = view.codeRow { codeBox(code) }
                 // the others, the one a full limit offers first on top (held still while one is selected); click one to
                 // select it, again to deselect
                 ForEach(standbyOrder) { s in standbyBox(s) }
@@ -1646,12 +1651,18 @@ struct AccountSettings: View {
             } label: { AccountBoxTitle(text: Privacy.masked(shown), tint: tint, icon: icon) }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
         } content: {
-            // signed out or expired: that one line, in the box only, with Log in… (never "no numbers yet")
-            limitsOrWhy(status, entry: entry, none: status?.state == "noLogin" ? noSignInWords
-                                                   : status?.state == "expired" ? "The sign-in ran out: Log in…, or turn on Renew sign-in." : nil)
-            // signed out or expired: that line alone says it (no "Claude Code's account shows" beside it)
-            if let n = v.line, move == nil, !["noLogin", "expired"].contains(status?.state) {
-                BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true)
+            if move == nil, let code = v.codeRow {
+                // the numbers are Claude Code's, on another account: they sit under its own row (codeBox), not here
+                BoxNote(text: "The Claude app is on it; Claude Code is on \(Privacy.masked(code)), below.", size: 10.5)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                // signed out or expired: that one line, in the box only, with Log in… (never "no numbers yet")
+                limitsOrWhy(status, entry: entry, none: status?.state == "noLogin" ? noSignInWords
+                                                       : status?.state == "expired" ? "The sign-in ran out: Log in…, or turn on Renew sign-in." : nil)
+                // signed out or expired: that line alone says it (no "Claude Code's account shows" beside it)
+                if let n = v.line, move == nil, !["noLogin", "expired"].contains(status?.state) {
+                    BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true)
+                }
             }
             if let move {
                 // one key; signing back in to the profile's own account is in the pop-up, under this account
@@ -1712,6 +1723,19 @@ struct AccountSettings: View {
         }
     }
 
+    /// Claude Code's account while the Claude app is still on another one (AccountView.codeRow): its address, its plan, the
+    /// numbers (they are its, read through Claude Code's sign-in) and what's left to do. Unlit: the active account is the
+    /// app's (the in-use box above).
+    func codeBox(_ code: String) -> some View {
+        AccountBox(lamp: nil, badge: "Claude Code", detail: (status?.plan).map(Account.planWords)) {
+            AccountBoxTitle(text: Privacy.masked(code))
+        } content: {
+            limitsOrWhy(status, entry: entry, none: nil)
+            if let n = view.line { BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true) }
+            BoxNote(text: "Claude Code is on it; sign the Claude app in to finish.", size: 10.5).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
     /// The part of a standby box a click selects (again: deselects).
     private func selectArea<V: View>(_ s: StandbyAccount, _ selected: Bool, @ViewBuilder _ v: () -> V) -> some View {
         v().frame(maxWidth: .infinity, alignment: .leading)
@@ -1726,7 +1750,7 @@ struct AccountSettings: View {
     /// In the order a full limit offers them (AccountBook.offerOrder); while one is selected, the order it had then, so the
     /// boxes don't move under the pointer.
     private var standbyOrder: [StandbyAccount] {
-        let now = AccountBook.offerOrder(entry.listed(by: view).standby)    // never the account in use on standby too
+        let now = AccountBook.offerOrder(entry.standbyRows(by: view))    // never the account in use, nor Claude Code's, on standby too
         guard picked != nil, !heldOrder.isEmpty else { return now }
         let at = Dictionary(heldOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { a, _ in a })
         return now.enumerated().sorted { (at[$0.element.id] ?? Int.max, $0.offset) < (at[$1.element.id] ?? Int.max, $1.offset) }.map(\.element)

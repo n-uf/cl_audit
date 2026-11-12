@@ -111,6 +111,19 @@ struct BoxNote: View {
     }
 }
 
+/// Settings ▸ Accounts' one line about a switch of the profile (SwitchPage.settingsStrip): while it runs, or when it was
+/// refused before anything, in the Switch page's strip words. Nothing otherwise; the account rows stay as they are.
+struct SwitchStripLine: View {
+    @ObservedObject var runner: SwitchRunner
+
+    var body: some View {
+        if let s = SwitchPage.settingsStrip(runner.phase, again: runner.goal?.again == true, canUndo: runner.canUndo,
+                                            failedAt: runner.failedStep, started: runner.goal?.started) {
+            DisplayWindow(text: s.text, dim: s.dim, tone: s.tone, height: 22, size: 10)
+        }
+    }
+}
+
 /// The address at the top of an account box, as a pop-up: the address, then ⌃⌄. Shortened at the end ("…") rather
 /// than widening the card.
 struct AccountBoxTitle: View {

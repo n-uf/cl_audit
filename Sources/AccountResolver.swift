@@ -87,12 +87,15 @@ struct AccountView: Equatable {
     var account: String? = nil
     /// The account isn't known because Claude Code's record is too large to read (never shown as "not signed in").
     var recordTooLarge = false
+    /// The numbers aren't the active account's: they are Claude Code's, on `numbersOwner`.
+    var differs = false
 
     static func of(_ s: IconStatus?) -> AccountView {
         guard let s else { return AccountView(label: nil, numbersOwner: nil, line: nil, lit: false, clash: nil) }
         if let r = s.resolved {
             return AccountView(label: r.email ?? r.account.map { "account \($0.prefix(8))" }, numbersOwner: r.numbersFor,
-                               line: r.line, lit: r.lit, clash: r.clash, account: r.account, recordTooLarge: r.recordTooLarge == true)
+                               line: r.line, lit: r.lit, clash: r.clash, account: r.account, recordTooLarge: r.recordTooLarge == true,
+                               differs: r.differs)
         }
         // a record from before the resolver (or none written yet): the sign-in it was read for
         let who = s.loginEmail ?? s.expectedEmail
@@ -110,6 +113,17 @@ struct AccountView: Equatable {
         if let l = label?.lowercased(), l.contains("@") { return (s.seat?.email ?? s.email).lowercased() == l }
         return false
     }
+
+    /// Claude Code's account when it isn't the active one (the Claude app is still on another, e.g. right after a switch):
+    /// Settings ▸ Accounts gives it a row of its own, with the numbers (they are its). nil when the numbers are the active
+    /// account's, or when Claude Code's folder is on another profile's account (that profile has them).
+    var codeRow: String? { differs && clash == nil ? numbersOwner : nil }
+
+    /// A note may call this address "on standby" only when no box shows it as the active account or as Claude Code's.
+    func mayCallStandby(_ email: String) -> Bool {
+        let e = email.lowercased()
+        return e != label?.lowercased() && e != codeRow?.lowercased()
+    }
 }
 
 extension AccountEntry {
@@ -119,5 +133,12 @@ extension AccountEntry {
         var e = self
         e.standby.removeAll { v.isActive($0) }
         return e
+    }
+
+    /// Settings ▸ Accounts' standby rows: every account but the active one and Claude Code's while it has its own row
+    /// (AccountView.codeRow), so each account of the profile is listed once.
+    func standbyRows(by v: AccountView) -> [StandbyAccount] {
+        let code = v.codeRow?.lowercased()
+        return listed(by: v).standby.filter { s in code.map { (s.seat?.email ?? s.email).lowercased() != $0 } ?? true }
     }
 }

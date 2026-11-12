@@ -73,13 +73,43 @@ struct SwitchPage: View {
 
     private struct Top { var text: String; var dim: String?; var tone: DisplayWindow.Tone }
 
+    /// The strip's words for a switch running or stopped (waiting, closing, moving, failed); nil for the other phases, whose
+    /// words need the page's accounts. Settings ▸ Accounts says the same words (`settingsStrip`).
+    static func strip(_ phase: SwitchRunner.Phase, again: Bool, canUndo: Bool, started: Date?) -> (text: String, dim: String?, tone: DisplayWindow.Tone)? {
+        switch phase {
+        case .waiting:
+            let until = (started ?? Date()).addingTimeInterval(SwitchRunner.giveUp)
+            // short words: the display never gets wider than the page (it is one line)
+            return (again ? "Signing in" : "Switching", "· waiting · until \(until.formatted(date: .omitted, time: .shortened))", .mint)
+        case .failed:
+            if canUndo { return ("Stopped", "· Undo puts it back", .warn) }
+            return ("Not started", "· nothing changed", .warn)
+        case .closing: return ("Switching", "· closing the window", .mint)
+        case .moving: return ("Switching", "· moving sessions", .mint)
+        default: return nil
+        }
+    }
+
+    /// The one line Settings ▸ Accounts shows about a switch of the profile (B5): while it runs (closing, moving, the
+    /// sign-in waited for), and when it was refused before anything (a gone folder); in the Switch page's strip words. Its
+    /// rows stay as they are meanwhile. nil otherwise (and for a sign-in again, which its in-use box says itself).
+    static func settingsStrip(_ phase: SwitchRunner.Phase, again: Bool, canUndo: Bool, failedAt: SwitchRunner.FailedStep?,
+                              started: Date?) -> (text: String, dim: String?, tone: DisplayWindow.Tone)? {
+        guard !again else { return nil }
+        switch phase {
+        case .closing, .moving, .waiting: return strip(phase, again: false, canUndo: canUndo, started: started)
+        case .failed where failedAt == .notStarted && !canUndo: return strip(phase, again: false, canUndo: false, started: started)
+        default: return nil
+        }
+    }
+
     private var topLine: Top? {
+        if let s = Self.strip(runner.phase, again: again, canUndo: runner.canUndo, started: runner.goal?.started) {
+            return Top(text: s.text, dim: s.dim, tone: s.tone)
+        }
         switch runner.phase {
         case .ready: return nil
-        case .waiting:
-            let until = (runner.goal?.started ?? Date()).addingTimeInterval(SwitchRunner.giveUp)
-            // short words: the display never gets wider than the page (it is one line)
-            return Top(text: again ? "Signing in" : "Switching", dim: "· waiting · until \(until.formatted(date: .omitted, time: .shortened))", tone: .mint)
+        case .waiting, .closing, .moving, .failed: return nil       // said by `strip` above
         case .reached:
             if again { return Top(text: "Logged in", dim: "· \(to)", tone: .ok) }
             if appBehind { return Top(text: "Claude Code on \(to)", dim: "· the Claude app still on \(appShort)", tone: .amber) }
@@ -90,11 +120,6 @@ struct SwitchPage: View {
         case .timedOut:
             if runner.canUndo { return Top(text: "No sign-in", dim: "· sessions on \(to)", tone: .amber) }
             return Top(text: "No sign-in", dim: "· nothing changed", tone: .amber)
-        case .failed:
-            if runner.canUndo { return Top(text: "Stopped", dim: "· Undo puts it back", tone: .warn) }
-            return Top(text: "Not started", dim: "· nothing changed", tone: .warn)
-        case .closing: return Top(text: "Switching", dim: "· closing the window", tone: .mint)
-        case .moving: return Top(text: "Switching", dim: "· moving sessions", tone: .mint)
         case .undone: return Top(text: "Undone", dim: "· still on \(from)", tone: .ok)
         }
     }
