@@ -955,5 +955,81 @@ do {
     ra.reset()
 }
 
+// ============ 6e. consent before a risky run (B6): Cancel runs and writes nothing; Continue, ticked, logs one line and starts ============
+do {
+    let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
+    let log = ConsentLog.url
+    try? fm.removeItem(at: log)
+    func lines() -> [String] { ((try? String(contentsOf: log, encoding: .utf8)) ?? "").split(separator: "\n").map(String.init) }
+
+    // each flow's final button only makes a request (the page's sheet runs it from Continue), and the page shows the sheet
+    let finals: [(String, String, [String])] = [
+        ("Account switching", "SwitchPage.swift", ["runner.start(standby)", "runner.retry()"]),
+        ("Import", "ImportPage.swift", ["runner.commit()", "runner.applyMove()"]),
+        ("Restoring a backup / Import", "RestorePage.swift", ["runner.start()"]),
+        ("Export and Move to another Mac", "ExportPage.swift", ["runner.start()"]),
+        ("Making the default profile", "DefaultProfilePage.swift", ["runner.start()"])]
+    for (flow, f, calls) in finals {
+        let t = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8)) ?? ""
+        // (a sign-in again's retry moves nothing: it stays outside the sheet, on the same line as the switch's request)
+        let bare = t.components(separatedBy: "\n").filter { l in
+            !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") && calls.contains { l.contains($0) } && !l.contains("ConsentRequest(")
+        }
+        let uses = t.components(separatedBy: "\n").filter { l in calls.contains { l.contains($0) } }.count
+        check(uses > 0 && bare.isEmpty && t.contains(".experimentalConsent($consent)"),
+              "\(flow): every final button goes through the consent sheet (\(uses) found): \(bare.map { $0.trimmingCharacters(in: .whitespaces).prefix(70) })")
+    }
+
+    // per flow: Cancel (the request dropped) runs nothing and logs nothing; Continue unticked neither; ticked, one line, then the run
+    for (flow, plural) in [("Account switching", false), ("Import", false), ("Restoring a backup", false), ("Export and Move to another Mac", true), ("Making the default profile", false)] {
+        var ran = 0
+        var r: ConsentRequest? = ConsentRequest(flow: flow, plural: plural) { ran += 1 }
+        r = nil                                                    // Cancel: the sheet drops it
+        check(r == nil && ran == 0 && lines().isEmpty, "\(flow): Cancel starts nothing and writes nothing")
+        let q = ConsentRequest(flow: flow, plural: plural) { ran += 1 }
+        check(!q.proceed(understood: false) && ran == 0 && lines().isEmpty, "\(flow): Continue without the box ticked starts nothing")
+        check(q.proceed(understood: true) && ran == 1 && lines().last?.contains("\t\(flow)\t\(Store.version)\taccepted") == true,
+              "\(flow): Continue, ticked: one line, then its start: \(lines().last ?? "-")")
+        try? fm.removeItem(at: log)
+    }
+    // the words: "is"/"are" kept right, the licence named, the box off by default
+    check(ExperimentalConsent.paragraphs("Export and Move to another Mac", plural: true)[0].hasPrefix("Export and Move to another Mac are experimental. They are still unstable")
+          && ExperimentalConsent.paragraphs("Import")[0].hasPrefix("Import is experimental. It is still unstable")
+          && ExperimentalConsent.paragraphs("Import")[2].contains("PolyForm Perimeter License 1.0.1, No Liability"),
+          "the sheet's words, singular and plural")
+
+    // the switch, for real: Cancel leaves no receipt and the runner where it was; Continue reaches the runner's own start
+    let goneDir = "~/.claude-consent-gone"
+    try? fm.removeItem(atPath: expand(goneDir))
+    var cp = profile("cns", goneDir, Seat(account: uuid(21), organization: uuid(61), email: "eve@example.com"))
+    cp.standby = [StandbyAccount(email: "fay@example.com", seat: Seat(account: uuid(22), organization: uuid(62), email: "fay@example.com"), id: "kf")]
+    try! Store.save([cp])
+    let keepLocator = ClaudeLocator.current
+    ClaudeLocator.current = ClaudeLocator.Lookup(candidates: { [] }, npmPrefix: { nil }, shell: { nil }, appCopy: { nil })
+    defer { ClaudeLocator.current = keepLocator }
+    let mc = SettingsModel(); mc.accounts = [cp]
+    let rc = mc.runner(of: "cns")
+    var pending: ConsentRequest? = ConsentRequest(flow: "Account switching") { rc.start(cp.standby[0]) }
+    pending = nil
+    check(rc.phase == .ready && rc.goal == nil && SwitchEngine.receipts(profile: "cns").isEmpty && lines().isEmpty,
+          "the switch, Cancel: nothing started, no receipt, no line")
+    pending = ConsentRequest(flow: "Account switching") { rc.start(cp.standby[0]) }
+    pending?.proceed(understood: true)
+    check(rc.failedStep == .notStarted && rc.goal?.standby == "kf" && lines().count == 1,
+          "the switch, Continue: the runner's own start ran (refused here: the folder is gone): \(rc.phase)")
+    // consent.log: owner-only, one plain line, no address, id or path; never written through a link
+    var st = stat()
+    check(stat(log.path, &st) == 0 && st.st_mode & 0o777 == 0o600 && !(lines().first ?? "@").contains("@") && !(lines().first ?? "/").contains("/"),
+          "consent.log is 0600 and its line has no address or path: \(lines().first ?? "-")")
+    try? fm.removeItem(at: log)
+    let elsewhere = home + "/consent-elsewhere"
+    fm.createFile(atPath: elsewhere, contents: Data("kept\n".utf8))
+    try? fm.createSymbolicLink(atPath: log.path, withDestinationPath: elsewhere)
+    ConsentLog.accepted("Import")
+    check((try? String(contentsOfFile: elsewhere, encoding: .utf8)) == "kept\n", "consent.log a link: never written through")
+    try? fm.removeItem(at: log); try? fm.removeItem(atPath: elsewhere)
+    rc.reset()
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

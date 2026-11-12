@@ -90,7 +90,7 @@ func saveReceipt(_ r: SwitchReceipt) {
     // the Experimental panel (B6): one case per page that carries it, Std at 460 and 708
     if ProcessInfo.processInfo.environment["EXPERIMENTAL_ONLY"] != nil,
        !(["o1-switch-ready-", "8a-export-setup-zip-", "ma-export-move-", "8c-import-setup-left-out-", "8d-import-setup-added-open-",
-          "8e-restore-setup-", "xdp-default-profile-"].contains(where: name.hasPrefix)
+          "8e-restore-setup-", "xdp-default-profile-", "xcs-consent-"].contains(where: name.hasPrefix)
          && (name.hasSuffix("-std-w460") || name.hasSuffix("-std-w708"))) { return }
     _ = NSApplication.shared
     let host = NSHostingView(rootView: v)
@@ -484,6 +484,11 @@ MainActor.assumeIsolated {
             snapshot(framed(DefaultProfilePage(model: model, runner: dpr, width: w, counts: DefaultProfile.Preview(), importCarried: false), .std, w),
                      "xdp-default-profile-std-w\(Int(w))", w + 32, 3000)
         }
+        // the consent sheet before a risky run: the box off (Continue dimmed), then ticked
+        for (tag, on) in [("unticked", false), ("ticked", true)] { for w in [CGFloat(460), 708] {
+            snapshot(framed(ExperimentalConsent(flow: "Account switching", onCancel: {}, onContinue: {}, understood: on).frame(width: w), .std, w),
+                     "xcs-consent-\(tag)-std-w\(Int(w))", w + 32, 900)
+        } }
     }
 
     // a. the one account answer (AccountResolver): every surface from the same record, side by side, for "the Claude app and
