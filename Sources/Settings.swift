@@ -1575,7 +1575,9 @@ struct AccountSettings: View {
         let move = elsewhere
         // "was X, now on standby": only while X is on standby in the boxes too (never the active account or Claude Code's)
         let linkedLately: (was: String, at: Date)? = entry.seat.flatMap { s in
-            guard let was = s.was, let at = s.linkedAt, Date().timeIntervalSince(at) < 7 * 86400, view.mayCallStandby(was) else { return nil }
+            guard let was = s.was, let at = s.linkedAt, Date().timeIntervalSince(at) < 7 * 86400,
+                  view.mayCallStandby(was, id: entry.standby.first { ($0.seat?.email ?? $0.email).lowercased() == was.lowercased() }?.seat?.account)
+            else { return nil }
             return (was, at)
         }
         // Accounts: the boxes need the card's width, so the row is always stacked (label above)
@@ -1624,17 +1626,18 @@ struct AccountSettings: View {
     /// to, ticked; logging back in to the profile's own; Renew sign-in), its plan, IN USE, its limits as bars, and the one
     /// key a problem needs.
     func inUseBox(_ move: (seat: Seat, owner: AccountEntry)?) -> some View {
-        let signedIn = status?.loginEmail
-        let red = face.danger
         // the active account and the one line of state, from the profile's record (AccountResolver)
         let v = view
-        let (shown, tint, icon): (String, Color?, String?) =
-            mismatch ? (signedIn ?? "another account", red, "exclamationmark.triangle.fill")
-            : move != nil ? (move?.seat.email ?? "another account", red, "exclamationmark.triangle.fill")
-            : status?.state == "expired" ? (signedIn ?? expected ?? "expired", face.caution, "clock.badge.exclamationmark")
-            : (v.label ?? (v.recordTooLarge ? "account not known (record too large)" : "not signed in yet"), nil, nil)
-        let plan = (status?.plan).map(Account.planWords)
-        let ok = v.lit && move == nil && !mismatch && !["expired", "noLogin", "denied", "unreadable"].contains(status?.state)
+        // Claude Code on another account than the Claude app: this box is the app's account, whatever Claude Code's sign-in
+        // says (expired, another address); that is said, with its key, on Claude Code's own row (codeBox)
+        let split = move == nil && v.codeRow != nil
+        let title = Self.inUseTitle(v, state: status?.state, loginEmail: status?.loginEmail, expected: expected, mismatch: mismatch,
+                                    moveEmail: move.map { $0.seat.email ?? "another account" })
+        let (tint, icon): (Color?, String?) = title.tone == .danger ? (face.danger, "exclamationmark.triangle.fill")
+            : title.tone == .caution ? (face.caution, "clock.badge.exclamationmark") : (nil, nil)
+        let shown = title.text
+        let plan = entry.activePlan(v, recordPlan: status?.plan).map(Account.planWords)
+        let ok = split ? v.lit : v.lit && move == nil && !mismatch && !["expired", "noLogin", "denied", "unreadable"].contains(status?.state)
         return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: ok ? .ok : .warn,
                           detail: [plan].compactMap { $0 }.joined(separator: " · "), inUse: true) {
             Menu {
@@ -1651,7 +1654,7 @@ struct AccountSettings: View {
             } label: { AccountBoxTitle(text: Privacy.masked(shown), tint: tint, icon: icon) }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
         } content: {
-            if move == nil, let code = v.codeRow {
+            if split, let code = v.codeRow {
                 // the numbers are Claude Code's, on another account: they sit under its own row (codeBox), not here
                 BoxNote(text: "The Claude app is on it; Claude Code is on \(Privacy.masked(code)), below.", size: 10.5)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1667,15 +1670,37 @@ struct AccountSettings: View {
             if let move {
                 // one key; signing back in to the profile's own account is in the pop-up, under this account
                 Button("Open \(move.owner.name)") { model.selection = move.owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
-            } else if mismatch || status?.state == "noLogin" || status?.state == "expired" {
-                logInKey(email: expected)
-            } else if status?.state == "denied" || status?.state == "unreadable" {
-                // the sign-in is there: not Log in…, but a fresh read (Refresh now), after allowing cl_audit Agent
-                Button("Refresh now") { DistributedNotificationCenter.default().postNotificationName(Installer.refreshAllNote, object: entry.id, userInfo: nil, deliverImmediately: true) }
-                    .buttonStyle(PillButtonStyle(tint: nil, compact: true))
+            } else if !split {
+                signInKeys
             }
             signInAgainLine
         }
+    }
+
+    /// The one key Claude Code's sign-in needs, under the box of the account it is on: Log in… (another address, signed
+    /// out, expired), or Refresh now (the Keychain's read denied, or not readable).
+    @ViewBuilder var signInKeys: some View {
+        if mismatch || status?.state == "noLogin" || status?.state == "expired" {
+            logInKey(email: expected)
+        } else if status?.state == "denied" || status?.state == "unreadable" {
+            // the sign-in is there: not Log in…, but a fresh read (Refresh now), after allowing cl_audit Agent
+            Button("Refresh now") { DistributedNotificationCenter.default().postNotificationName(Installer.refreshAllNote, object: entry.id, userInfo: nil, deliverImmediately: true) }
+                .buttonStyle(PillButtonStyle(tint: nil, compact: true))
+        }
+    }
+
+    enum TitleTone { case plain, danger, caution }
+    /// The IN USE box's title. While Claude Code is on another account than the Claude app (AccountView.codeRow), always the
+    /// active account: Claude Code's address, expired or not, is its own row's. Otherwise as before: another profile's
+    /// account, another address than the folder's, an expired sign-in, else the active account.
+    static func inUseTitle(_ v: AccountView, state: String?, loginEmail: String?, expected: String?, mismatch: Bool,
+                           moveEmail: String?) -> (text: String, tone: TitleTone) {
+        let active = v.label ?? (v.recordTooLarge ? "account not known (record too large)" : "not signed in yet")
+        if moveEmail == nil, v.codeRow != nil { return (active, .plain) }
+        if mismatch { return (loginEmail ?? "another account", .danger) }
+        if let m = moveEmail { return (m, .danger) }
+        if state == "expired" { return (loginEmail ?? expected ?? "expired", .caution) }
+        return (active, .plain)
     }
 
     /// Log in… on the account in use (its box's key, its pop-up's item): the same watch a switch has (SwitchRunner),
@@ -1727,21 +1752,38 @@ struct AccountSettings: View {
     /// numbers (they are its, read through Claude Code's sign-in) and what's left to do. Unlit: the active account is the
     /// app's (the in-use box above).
     func codeBox(_ code: String) -> some View {
-        AccountBox(lamp: nil, badge: "Claude Code", detail: (status?.plan).map(Account.planWords)) {
+        let r = model.runner(of: entry.id)
+        let goal = [SwitchRunner.Phase.ready, .undone].contains(r.phase) ? nil : r.goal
+        let target = Self.switchTarget(goal: goal, newest: newestSwitch, standby: entry.standby)
+        return AccountBox(lamp: nil, badge: "Claude Code", detail: (status?.plan).map(Account.planWords)) {
             AccountBoxTitle(text: Privacy.masked(code))
         } content: {
-            limitsOrWhy(status, entry: entry, none: nil)
-            if let n = view.line { BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true) }
-            BoxNote(text: AccountView.codeRowWords(code: code, target: switchTarget), size: 10.5).fixedSize(horizontal: false, vertical: true)
+            // its sign-in signed out or expired: that one line (A3), with its key; else the numbers (they are its)
+            limitsOrWhy(status, entry: entry, none: status?.state == "noLogin" ? noSignInWords
+                                                   : status?.state == "expired" ? "The sign-in ran out: Log in…, or turn on Renew sign-in." : nil)
+            if let n = view.line, !["noLogin", "expired"].contains(status?.state) {
+                BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true)
+            }
+            BoxNote(text: AccountView.codeRowWords(code: code, target: target), size: 10.5).fixedSize(horizontal: false, vertical: true)
+            signInKeys
+        }
+        // the profile's newest switch, read off the main thread (as the Sessions card reads them), again as things change
+        .task(id: "\(entry.id) \(model.tick) \(model.switchChanges)") {
+            let id = entry.id
+            newestSwitch = await Task.detached(priority: .utility) { SwitchEngine.receipts(profile: id).first }.value
         }
     }
+    @State private var newestSwitch: SwitchReceipt?
 
-    /// The account the profile's last switch went for: the runner's goal while it has one, else (after a restart) the open
-    /// switch's receipt, by the profile's standby list. nil when there is none (or it was a sign-in again).
-    private var switchTarget: String? {
-        if let g = model.runner(of: entry.id).goal { return g.standby == nil ? nil : g.wantedEmail }
-        guard let u = SwitchEngine.unfinished(profile: entry.id).first else { return nil }
-        return entry.standby.first { s in s.seat.map { u.to.same($0) } ?? false }?.email
+    /// The account the profile's current switch went for: the runner's goal while it has one going or just ended (nil for a
+    /// sign-in again), else (after a restart) the profile's newest switch while it is still open (not linked, left as it is
+    /// or undone), by the standby entry it names, else by its account. nil with no current switch: an older open switch
+    /// never names it, and a sign-in by hand has none.
+    static func switchTarget(goal: SwitchRunner.Goal?, newest: SwitchReceipt?, standby: [StandbyAccount]) -> String? {
+        if let g = goal { return g.standby == nil || g.wantedEmail.isEmpty ? nil : g.wantedEmail }
+        guard let r = newest, r.unfinished else { return nil }
+        let s = standby.first { $0.id == r.standby } ?? standby.first { s in s.seat.map { r.to.same($0) } ?? false }
+        return s.map { $0.seat?.email ?? $0.email }
     }
 
     /// The part of a standby box a click selects (again: deselects).
