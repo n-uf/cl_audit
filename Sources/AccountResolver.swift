@@ -31,6 +31,8 @@ struct ResolvedAccount: Codable, Equatable {
     var at: Date
     /// Claude Code's .claude.json is too large to read: its account isn't known (said so, never "signed out").
     var recordTooLarge: Bool? = nil
+    /// Claude Code's folder account's id (lower case), where known: the lists match its own row by it before its address.
+    var codeAccount: String? = nil
 }
 
 enum AccountResolver {
@@ -47,7 +49,8 @@ enum AccountResolver {
         let owner = code.flatMap { c in accounts.first { $0.id != e.id && ($0.seat.map { c.same($0) } ?? false) } }
         // without the app: Claude Code's folder account is the active one (its address from its record, else the numbers')
         var r = ResolvedAccount(account: code?.account.lowercased(), email: code?.email ?? loginEmail, fromApp: false,
-                                numbersFor: codeLabel, differs: false, line: nil, lit: code != nil, clash: owner?.name, at: now)
+                                numbersFor: codeLabel, differs: false, line: nil, lit: code != nil, clash: owner?.name, at: now,
+                                codeAccount: code?.account.lowercased())
         if e.claudeWindow, app.state == .known, let id = app.account?.lowercased() {
             let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { $0.account.lowercased() == id }
             r.account = id
@@ -89,13 +92,15 @@ struct AccountView: Equatable {
     var recordTooLarge = false
     /// The numbers aren't the active account's: they are Claude Code's, on `numbersOwner`.
     var differs = false
+    /// Claude Code's folder account's id (lower case), where the record has it.
+    var codeAccount: String? = nil
 
     static func of(_ s: IconStatus?) -> AccountView {
         guard let s else { return AccountView(label: nil, numbersOwner: nil, line: nil, lit: false, clash: nil) }
         if let r = s.resolved {
             return AccountView(label: r.email ?? r.account.map { "account \($0.prefix(8))" }, numbersOwner: r.numbersFor,
                                line: r.line, lit: r.lit, clash: r.clash, account: r.account, recordTooLarge: r.recordTooLarge == true,
-                               differs: r.differs)
+                               differs: r.differs, codeAccount: r.codeAccount)
         }
         // a record from before the resolver (or none written yet): the sign-in it was read for
         let who = s.loginEmail ?? s.expectedEmail
@@ -119,18 +124,29 @@ struct AccountView: Equatable {
     /// account's, or when Claude Code's folder is on another profile's account (that profile has them).
     var codeRow: String? { differs && clash == nil ? numbersOwner : nil }
 
-    /// The last line of Claude Code's own row. On the account a switch went for: only the Claude app's sign-in is left. On
-    /// another account (the browser signed in as someone else): the switch didn't finish, and how to finish or take it back.
+    /// Claude Code's own row is this account: by its id first (a row named "account <8>" has no address), else its address.
+    func isCodeRow(id: String?, email: String?) -> Bool {
+        guard codeRow != nil else { return false }
+        if let c = codeAccount, let i = id?.lowercased() { return c == i }
+        guard let e = email?.lowercased(), !e.isEmpty else { return false }
+        return e == codeRow?.lowercased()
+    }
+
+    /// The last line of Claude Code's own row. On the account the profile's current switch went for: only the Claude app's
+    /// sign-in is left. On another account (the browser signed in as someone else): the switch didn't finish, and how to
+    /// finish or take it back. With no switch going (a sign-in by hand): only that Claude Code is on it.
     static func codeRowWords(code: String, target: String?) -> String {
-        guard let t = target, !t.isEmpty, t.lowercased() != code.lowercased() else {
-            return "Claude Code is on it; sign the Claude app in to finish."
-        }
+        guard let t = target, !t.isEmpty else { return "Claude Code is on it." }
+        guard t.lowercased() != code.lowercased() else { return "Claude Code is on it; sign the Claude app in to finish." }
         let c = AccountNames.short(code), w = AccountNames.short(t)
         return "Claude Code signed in as \(c), not \(w): the switch didn't finish. Sign Claude Code in as \(w) from the Switch page, or Undo it."
     }
 
-    /// A note may call this address "on standby" only when no box shows it as the active account or as Claude Code's.
-    func mayCallStandby(_ email: String) -> Bool {
+    /// A note may call this account "on standby" only when no box shows it as the active account or as Claude Code's (by
+    /// its id first, then its address).
+    func mayCallStandby(_ email: String, id: String? = nil) -> Bool {
+        if let i = id?.lowercased(), let a = account, i == a { return false }
+        if isCodeRow(id: id, email: email) { return false }
         let e = email.lowercased()
         return e != label?.lowercased() && e != codeRow?.lowercased()
     }
@@ -148,7 +164,14 @@ extension AccountEntry {
     /// Settings ▸ Accounts' standby rows: every account but the active one and Claude Code's while it has its own row
     /// (AccountView.codeRow), so each account of the profile is listed once.
     func standbyRows(by v: AccountView) -> [StandbyAccount] {
-        let code = v.codeRow?.lowercased()
-        return listed(by: v).standby.filter { s in code.map { (s.seat?.email ?? s.email).lowercased() != $0 } ?? true }
+        listed(by: v).standby.filter { !v.isCodeRow(id: $0.seat?.account, email: $0.seat?.email ?? $0.email) }
+    }
+
+    /// The plan to show under the active account in Settings ▸ Accounts: the record's (the numbers' account) when they are
+    /// its own; else, while Claude Code is on another account, the plan the profile remembers for the active one (nil when
+    /// none), never Claude Code's.
+    func activePlan(_ v: AccountView, recordPlan: String?) -> String? {
+        guard v.codeRow != nil else { return recordPlan }
+        return standby.first { v.isActive($0) }?.plan
     }
 }
