@@ -8,7 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- **Fewer absolute promises, in the app and the README.** Restore's and import's "What happens" now say they are built
+  not to overwrite, delete or move anything that is there, and the README no longer says that nothing is ever
+  overwritten or that Undo takes back exactly everything: these features are experimental.
 
 ## 26.11.23 — 2026-11-13
 

@@ -177,7 +177,7 @@ struct RestorePage: View {
         let r = runner.receipt
         let changed = r?.changed ?? plan?.changed ?? []
         let held = r?.inUse ?? plan?.inUse ?? []
-        return SCard(title: "What happens", info: "Counted from the backup against what is there now, by session id across every account folder of the window's Code-tab list (and transcripts by their path under \(entry.configDir)/projects). Restore merges: it only writes what is missing, and nothing that is there is ever overwritten, deleted or moved.") {
+        return SCard(title: "What happens", info: "Counted from the backup against what is there now, by session id across every account folder of the window's Code-tab list (and transcripts by their path under \(entry.configDir)/projects). Restore merges: it only writes what is missing, and it is built not to overwrite, delete or move anything that is there.") {
             if let why = plan?.refusal {
                 SRow(label: "Refused", first: true, stacked: true) { Text(why).font(.system(size: 12.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true) }
             } else if let p = plan {

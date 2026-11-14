@@ -748,8 +748,8 @@ the menu bar icon open the usual app; Opens from and With Dock icon stay as set)
   a backup is made of the profile's window data and of the usual app's own, the profile's `desktop` becomes the usual
   app (saved), and the profile's whole Code-tab list and sidebar arrangement move from its data folder
   (`~/Library/Application Support/Claude-<profile>`) into the usual app's (`~/Library/Application Support/Claude`):
-  every entry, not only an import's, by the restore engine, merging and never overwriting. An entry the usual app
-  already has by id stays exactly as it is and is listed; one missing is written into the account folder the profile
+  every entry, not only an import's, by the restore engine, merging, built not to overwrite. An entry the usual app
+  already has by id is meant to stay as it is and is listed; one missing is written into the account folder the profile
   works on, without its old account's error keys and Remote Control ids. A helper session then arranges the sidebar
   groups.
 - **A profile on another folder** (`~/.claude-account` with its own window): step one signs Claude Code into
@@ -760,11 +760,11 @@ the menu bar icon open the usual app; Opens from and With Dock icon stay as set)
   be deleted**, by the Sessions card's rule and `~/.claude`'s settings; the row isn't there when none would be), and the
   restore's own page says the same with its **Keep for 90 days** key. Last, the old profile's account can stay as a
   standby account of the default profile (remembered, signed out; only when it is another Claude account): its folder
-  with its sessions, settings and sign-in stays exactly as it is and is never offered for the Trash; or the
+  with its sessions, settings and sign-in is meant to stay as it is and isn't offered for the Trash; or the
   old profile is removed with the usual remove flow (which signs its folder out of Claude Code).
 - **Nothing is deleted** from the old window's folder: it stays as the backup's source and for Undo.
-- **Undo this move** (on the page, or **Undo this restore** on the move's restore page) takes back exactly what was
-  added, only files unchanged since, and puts the profile's window kind back (and removes a `~/.claude` profile the
+- **Undo this move** (on the page, or **Undo this restore** on the move's restore page) is meant to take back what was
+  added (it may not bring everything back), only files unchanged since, and puts the profile's window kind back (and removes a `~/.claude` profile the
   move made). Cancel works while waiting for the sign-in and while the windows close; a stopped move keeps what is back
   (Finish or Undo). If cl_audit quits while the files are being written, the card on Settings ▸ General sends you to
   that restore's page (Finish or Undo); **Put it back** is offered only when no file was written.
@@ -804,7 +804,7 @@ another profile shares items from are never deleted, and Claude must be closed f
 A backup is a quick copy of a profile's sessions on this Mac, in `<backups folder>/<profile id>/<backup id>/` with a
 `backup.json` that says what is in it. One is made by **Back up now** in Settings ▸ the profile ▸ Sessions (and by the
 default-profile move), and by every switch that moves the window's sessions, before anything moves ("Before switch to
-ultra-2"); those stay listed and restorable. **Restore…** on a backup puts back what is missing, merged, and never overwrites anything (see
+ultra-2"); those stay listed and restorable. **Restore…** on a backup puts back what is missing, merged, and is built not to overwrite anything (see
 [Restoring a backup](#restoring-a-backup)).
 
 - **In it:** the window's Code-tab list (every `claude-code-sessions/<account>/<org>` folder, scheduled tasks
@@ -870,7 +870,7 @@ ultra-2"); those stay listed and restorable. **Restore…** on a backup puts bac
 
 **Restore…** on a backup in Settings ▸ the profile ▸ Sessions opens the **Restore page**, a sibling of the Switch page
 with the same keys and the same line at the top. It starts as a **preview** ("Preview · nothing written yet ·
-nothing is ever overwritten"); nothing is written until **Close and restore N** is pressed. The backup can be any in
+built not to overwrite"); nothing is written until **Close and restore N** is pressed. The backup can be any in
 General ▸ Backups, or one an old switch's or a restore's receipt names in a folder General ▸ Backups no longer points at: the
 Sessions list shows those too, with where they are ("in ~/Old/backups"), and Restore, Show in Finder and Delete… use
 that place.
@@ -884,17 +884,17 @@ the window's Code-tab list, and transcripts by their path under the Claude Code 
 - **Missing, restored:** written back. Entries go into the folder of the account the profile works on now, never into
   the folder of an account it no longer uses; an entry that was on another account in the backup is written without
   that account's error keys and Remote Control ids. A task file comes back only when the account in use's
-  own is missing; one that is there is never replaced, even when it is empty. A transcript comes back as a clone of the
+  own is missing; one that is there is left as it is, even when it is empty. A transcript comes back as a clone of the
   backup's file (a real copy from another volume), with the backup's modification time.
 - **Made after it:** sessions made later stay. **Deleted since:** an entry the window deleted since (its own
   `deleted_` marker) stays deleted.
 - **Changed since:** there, and different: what is there stays, and the copy in the backup is only listed
-  (**Show the list**: sessions by a short id, never a title, transcripts by path). Never overwritten.
+  (**Show the list**: sessions by a short id, never a title, transcripts by path). It is built not to overwrite them.
 - **In use:** transcripts of a Claude Code session that runs: left alone and listed. A session is seen only by its id on
   a process's command line (`--resume <id>`, `--session-id <id>`: one `ps`). A session resumed from its own picker, or
   with `--continue`, is not named there, so **a missing transcript of such a session is not seen as held** and is
   written back (the write only ever creates a file that isn't there; if the session writes the same name first, the
-  restore leaves it as it is). A transcript that is already there is never written to either way; one changed in the
+  restore leaves it as it is). A transcript that is already there is built not to be written to either way; one changed in the
   last two minutes is only listed as in use. If `ps` can't be read, no missing transcript is written and the page says so.
 - **Would be deleted:** only the restored transcripts Claude Code's own clean-up would delete again (the rule is the
   Sessions card's, decided per transcript from the backup's own bytes and its release marker; a marker already in the
@@ -922,7 +922,7 @@ window comes back); 2 what is listed comes back, merged by the rules above; 3 th
 arranged. The page then reads **Restored · 86 back · nothing overwritten · 3 listed** with **Undo this restore** and
 **Back to Main's settings**.
 
-- **Nothing is overwritten, ever.** Files are made with an exclusive create (a clone that fails when the name is taken,
+- **Built not to overwrite.** Files are made with an exclusive create (a clone that fails when the name is taken,
   or a temp file linked into place), never over a name that exists, never through a link. The backup is read through
   directory descriptors without following a link; **a backup holding anything that isn't a plain file with one link
   refuses the whole restore** (as does a file named like a sign-in, a path that isn't a plain relative one, a file its
@@ -939,11 +939,12 @@ arranged. The page then reads **Restored · 86 back · nothing overwritten · 3 
   finishing the restore counts it as back. **Stop, keep what's back** stops after the file being written. A restore that
   stopped (Stop, the window opened, the Mac stopped) shows on the profile's tile as "Restore stopped · Finish or
   undo" and opens on a page with **Finish restoring** (continues the same receipt; also when nothing is left to write,
-  when it is only marked finished) and **Undo this restore**, which takes back exactly what it put back and only files
+  when it is only marked finished) and **Undo this restore**, which is meant to take back what it put back (it may not
+  bring everything back) and only files
   unchanged since (a restored transcript Claude Code has written to since stays, and it says so), and the folders it
   made, if empty. Undo closes the profile's window itself when window files are among them (the click is the
   consent; the same Cancel while it closes, the same rules as a restore), and stops, keeping what it took back, if the
-  window opens meanwhile. A file that has landed is never deleted by name afterwards, except by Undo's check: if what
+  window opens meanwhile. A file that has landed isn't deleted by name afterwards, except by Undo's check: if what
   is there isn't the backup's file (a running session may have appended to it), the restore leaves it and says so.
   Temp files of a restore (`.restore-<the first 20 characters of the receipt id>-….tmp`, in the window's folder) are swept
   at the end, at Undo and whenever finishing starts (also with the window open: only those names are touched), and a
@@ -1223,8 +1224,8 @@ under a lock folder, read from the end per project, never sorted) and `.claude.j
 file renamed over it), which `.claude.json` fields mean trust (`hasTrustDialogAccepted`, `allowedTools`), and how Rewind finds
 its copies (by the names in the session's own lines, a file in the session's folder by a relative path, one outside it by its
 full path, each with its folder's real path), how a plan is named (the name the session's own lines give it) and where a session's
-task list is kept (`tasks/<session id>/` in its Claude Code folder). Undo this import takes back exactly what was written (a
-history line or a trust entry changed since stays, and Undo says so). A prompt already in `history.jsonl` is never added twice, and
+task list is kept (`tasks/<session id>/` in its Claude Code folder). Undo this import is meant to take back what was written; it may not bring everything back (a
+history line or a trust entry changed since stays, and Undo says so). A prompt already in `history.jsonl` isn't added twice, and
 trust is never added for the top of the disk, `/Users` or your home folder.
 
 **Where the side files are kept, and for how long.** The import keeps them with the imported backup, in a private folder beside
@@ -1248,7 +1249,7 @@ values (backups made by 26.11.8 still hold them).
 
 **Import…** (Settings ▸ the profile ▸ Sessions) opens the **Import page**: **Choose…** (an Open panel for a `.zip` or
 `.dmg`; an image asks for its password), then **Into** (the profile; a file of several profiles also asks which one). It
-reads the file, and shows a preview ("Preview · nothing written yet · nothing is ever overwritten") that says how it was made
+reads the file, and shows a preview ("Preview · nothing written yet · built not to overwrite") that says how it was made
 ("made on another Mac"). **The file is unpacked as a backup of the target first, then restored from: the same rules as Restore**
 (kind "Imported from cl_audit Work 2026-10-30", listed with the other backups, Restore… on it works).
 
@@ -1297,8 +1298,8 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
   works on now, never a fingerprint's, without the old account's error keys and Remote Control ids, and the sidebar's groups and pins follow them through the fingerprint (one Return in a helper session). **Close and
   import 210 sessions** then runs the Restore page's steps (window closes, files added with a receipt kept as it goes, window
   opens), with the page reading "Importing ●" and "Imported · 210 added · nothing overwritten".
-- **Undo last import,** under the profile's Sessions, opens that import's page, where **Undo this import** takes back exactly what
-  it added (B2's Undo this restore on the import's receipt: only files unchanged since, only folders it made, if empty).
+- **Undo last import,** under the profile's Sessions, opens that import's page, where **Undo this import** is meant to take back what
+  it added, though it may not bring everything back (B2's Undo this restore on the import's receipt: only files unchanged since, only folders it made, if empty).
 - **The file is hostile input.** The whole import is refused, with nothing written into any profile and nothing left unpacked, on:
   a file that is not a zip or an encrypted `.dmg`; **a zip** whose central directory is damaged, in several parts, with an
   encrypted entry, a compression an export doesn't use, a name that is absolute, has `..`, a backslash, a NUL or an empty part, more
@@ -1349,7 +1350,7 @@ reads the file, and shows a preview ("Preview · nothing written yet · nothing 
   file are **left out by default**: whenever the file holds any, the preview has a row "Memory files N: left out" (or "N:
   added" once you pick **Add them**) with **Leave them out / Add them** and the list. Where a file says it came from (this
   Mac's install id, this profile's id) is only what it says, and a forged file says the same, so it earns no trust; "made on
-  this Mac / another Mac" is information on the File row only. A file already there is never replaced either way.
+  this Mac / another Mac" is information on the File row only. A file already there is built not to be replaced either way.
 - **Claude Code setup** (CLAUDE.md, skills, agents, commands, output styles, keybindings, settings.json, the scripts it points to
   and the plugin list) in a file is **left out by default**, like memory files, and so it is on **Restore** from a backup (a skill
   that is missing now was most likely deleted on purpose; putting it back unasked would surprise). The row lists each unit as

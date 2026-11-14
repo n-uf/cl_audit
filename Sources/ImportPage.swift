@@ -501,7 +501,7 @@ struct ImportHappens: View {
     var body: some View {
         let r = runner.receipt
         let p = runner.plan
-        SCard(title: undone ? "What the import had added" : "What happens", info: "Counted from the file against what is there now, by session id across every account folder of the window's Code-tab list (and transcripts by their path under \(entry.configDir)/projects). Import merges: it only adds what is missing, and nothing that is there is ever overwritten, deleted or moved. Sessions that a scheduled task ran come only with their task.") {
+        SCard(title: undone ? "What the import had added" : "What happens", info: "Counted from the file against what is there now, by session id across every account folder of the window's Code-tab list (and transcripts by their path under \(entry.configDir)/projects). Import merges: it only adds what is missing, and it is built not to overwrite, delete or move anything that is there. Sessions that a scheduled task ran come only with their task.") {
             if let why = p?.refusal {
                 SRow(label: "Refused", first: true, stacked: true) { Text(why).font(.system(size: 12.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true) }
             } else if let p {
