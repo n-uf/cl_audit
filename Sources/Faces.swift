@@ -6,6 +6,7 @@
 // Views read the chosen face from the environment (`\.face`). The Dock icons and their panels keep their own look.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 enum Face: String, CaseIterable, Identifiable {
@@ -887,13 +888,15 @@ struct LEDRadio: View {
 extension FaceTheme {
     /// A usage level's colour for text: Painter's, a little darker on the light Silver plate.
     func levelColor(_ p: Double?) -> Color {
-        let ns = Painter.color(p, stale: false)
-        guard active && light else { return Color(nsColor: ns) }
-        if ns == Painter.crimson { return levelCrimson }
-        if ns == Painter.red { return levelRed }
-        if ns == Painter.amber { return levelAmber }
-        if ns == Painter.green { return levelGreen }
-        return Color(nsColor: ns)
+        guard active && light else { return Color(nsColor: Painter.color(p, stale: false)) }
+        // the level (ProfileCore's Level) in this face's own colours
+        switch Level.of(p) {
+        case .crimson: return levelCrimson
+        case .red: return levelRed
+        case .amber: return levelAmber
+        case .green: return levelGreen
+        case .none: return Color(nsColor: Painter.color(p, stale: false))
+        }
     }
 
     /// An unlit meter segment or an empty bar: sunk into the plate (outside the window: the panels' own grey).

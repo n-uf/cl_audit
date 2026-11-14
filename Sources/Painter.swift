@@ -1,5 +1,6 @@
 import AppKit
 import CryptoKit
+import ProfileCore
 import Security
 import ServiceManagement
 import UserNotifications
@@ -153,10 +154,15 @@ enum Painter {
     static let orange = NSColor(srgbRed: 0xd9/255, green: 0x77/255, blue: 0x57/255, alpha: 1)
     static let faint = NSColor(srgbRed: 0x9c/255, green: 0xa3/255, blue: 0xaf/255, alpha: 1)
 
+    /// A limit's colour: its level (ProfileCore's Level: crimson from the 95 the person reads), in the panels' colours.
     static func color(_ p: Double?, stale: Bool) -> NSColor {
-        guard let p, !stale else { return grey }
-        // crimson from the number the person reads (94.5 shows as 95, like AtLimit.isFull's 100); the others as before
-        return p.rounded() >= 95 ? crimson : p >= 80 ? red : p >= 50 ? amber : green
+        switch Level.of(p, stale: stale) {
+        case .none: return grey
+        case .green: return green
+        case .amber: return amber
+        case .red: return red
+        case .crimson: return crimson
+        }
     }
 
     static func pct(_ p: Double?) -> String { p.map { "\(Int($0.rounded()))%" } ?? "–" }

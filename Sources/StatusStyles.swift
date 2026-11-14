@@ -3,6 +3,7 @@
 // gets its own colour from its own level. Same 64×64, y-down space as the other styles.
 
 import AppKit
+import ProfileCore
 
 extension Painter {
     // Deeper level colours, so white text on them stays readable.
@@ -13,9 +14,15 @@ extension Painter {
     static let deepCrimson = NSColor(displayP3Red: 0xd6/255, green: 0x30/255, blue: 0x4f/255, alpha: 1)
     static let deepGrey = TileColor.hex(0x52525b)
 
+    /// A limit's level (ProfileCore's Level) in the deeper colours.
     static func level(_ p: Double?, stale: Bool) -> NSColor {
-        guard let p, !stale else { return deepGrey }
-        return p.rounded() >= 95 ? deepCrimson : p >= 80 ? deepRed : p >= 50 ? deepAmber : deepGreen
+        switch Level.of(p, stale: stale) {
+        case .none: return deepGrey
+        case .green: return deepGreen
+        case .amber: return deepAmber
+        case .red: return deepRed
+        case .crimson: return deepCrimson
+        }
     }
 
     static var tileRect: NSRect { NSRect(x: 2, y: 2, width: 60, height: 60) }
