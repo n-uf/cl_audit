@@ -11,6 +11,7 @@
 // or renamed in the last minute is left alone.
 
 import AppKit
+import ProfileCore
 
 /// The clean-up, for General settings: when it last ran, and the last run that removed something.
 struct CleanupRecord: Codable {

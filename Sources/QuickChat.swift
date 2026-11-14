@@ -10,6 +10,7 @@
 // usage-n-uf/quick-chat/settings.json. Nothing in macOS preferences.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 // MARK: - Settings

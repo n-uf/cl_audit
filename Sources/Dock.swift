@@ -6,6 +6,7 @@
 // change so it can be restored.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 import os
 

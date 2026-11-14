@@ -8,6 +8,7 @@
 // you typed waits and goes once it's done.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 struct QuickChatLevel: Equatable {

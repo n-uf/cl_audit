@@ -3,6 +3,7 @@
 // (plain Front panel, build.sh); the chosen icon is set while the app runs.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 enum AppIconStyle: String, CaseIterable, Identifiable {

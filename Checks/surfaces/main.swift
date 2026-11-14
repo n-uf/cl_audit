@@ -10,6 +10,7 @@
 // an app, the Dock or Terminal, and nothing touches the Keychain.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 setbuf(stdout, nil)

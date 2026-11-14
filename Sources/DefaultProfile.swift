@@ -22,6 +22,7 @@
 // (the record kept here names what to put back).
 
 import Foundation
+import ProfileCore
 
 enum DefaultProfile {
     enum Kind: String, Codable { case windowOnly, otherFolder }

@@ -21,6 +21,7 @@
 // ending well (the script leaves a marker, ClaudeCLI.openLogin) says it's done.
 
 import AppKit
+import ProfileCore
 
 final class SwitchRunner: ObservableObject {
     enum Phase: Equatable {

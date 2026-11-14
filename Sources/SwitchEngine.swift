@@ -44,6 +44,7 @@
 
 import CryptoKit
 import Foundation
+import ProfileCore
 
 /// What a switch would do, read without changing anything.
 struct SwitchPlan: Equatable {
@@ -67,16 +68,7 @@ struct SwitchPlan: Equatable {
     var moves: Bool { !move.isEmpty || tasks > 0 }
 }
 
-/// An account and organisation by their ids only: what a receipt keeps.
-struct SeatID: Codable, Equatable, Hashable {
-    var account: String
-    var organization: String
-
-    init(_ s: Seat) { account = s.account; organization = s.organization ?? "" }
-    init(account: String, organization: String) { self.account = account; self.organization = organization }
-
-    func same(_ s: Seat?) -> Bool { s.map { $0.account == account && ($0.organization ?? "") == organization } ?? false }
-}
+// (SeatID, an account and organisation by their ids only, is ProfileCore's: Core/Identity.swift)
 
 /// The record of one switch, in cl_audit's folder (switches/<id>/receipt.json), saved before and after every step.
 struct SwitchReceipt: Codable, Equatable {
@@ -862,10 +854,7 @@ enum SwitchEngine {
     static func linkReached(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = Account.signedInSeat, now: Date = Date()) -> [String] {
         let open = receipts().filter(\.unfinished)
         guard !open.isEmpty else { return [] }
-        func reached(_ want: SeatID, _ s: Seat?) -> Bool {
-            guard let s else { return false }
-            return s.account.lowercased() == want.account.lowercased() && (s.organization ?? "").lowercased() == want.organization.lowercased()
-        }
+        func reached(_ want: SeatID, _ s: Seat?) -> Bool { want.same(s) }      // (the one comparison: AccountID)
         var linked: [String] = []
         for r in open {
             guard let e = accounts.first(where: { $0.id == r.profile }),

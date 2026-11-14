@@ -29,6 +29,7 @@
 //   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import Foundation
+import ProfileCore
 
 enum AccountList {
     /// What the oauthAccount blocks and agent sessions say, by id (claude-transplant's emails, orgs and pairs).

@@ -5,6 +5,7 @@
 // --- first run ---
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 var passed = 0, failed = 0

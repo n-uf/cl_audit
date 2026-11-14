@@ -6,6 +6,7 @@
 
 import AppKit
 import Combine
+import ProfileCore
 import SwiftUI
 
 // MARK: - Opening Claude for an account

@@ -3,6 +3,7 @@
 // one closes on Escape, on a click elsewhere, or on a second click. Designs: PanelDesigns.swift.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 struct DetailsInfo {

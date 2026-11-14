@@ -4,6 +4,7 @@
 
 import AppKit
 import Combine
+import ProfileCore
 import SwiftUI
 
 final class SettingsModel: ObservableObject {
@@ -1791,7 +1792,7 @@ struct AccountSettings: View {
                              code: String?, codeAccount: String?) -> String? {
         if let g = goal { return g.standby == nil || g.wantedEmail.isEmpty ? nil : g.wantedEmail }
         guard let r = newest, r.undone == nil, r.leftAsIs == nil else { return nil }
-        if let c = code, let id = codeAccount, r.to.account.lowercased() == id, r.linked != nil || r.unfinished { return c }
+        if let c = code, let id = codeAccount, AccountID.same(r.to.account, id), r.linked != nil || r.unfinished { return c }
         guard r.unfinished else { return nil }
         let s = standby.first { $0.id == r.standby } ?? standby.first { s in s.seat.map { r.to.same($0) } ?? false }
         return s.map { $0.seat?.email ?? $0.email }

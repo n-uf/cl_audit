@@ -7,6 +7,7 @@
 // Steps: quit the desktop app → create or connect the folder → sign in (Claude Code, then the Claude window) → add the Dock icon.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 /// Items that can be shared from ~/.claude by linking them into a new folder.

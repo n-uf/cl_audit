@@ -31,6 +31,7 @@
 
 import CryptoKit
 import Foundation
+import ProfileCore
 
 struct RestoreError: Error, CustomStringConvertible {
     let description: String

@@ -7,6 +7,7 @@
 // default-profile move uses it).
 
 import Foundation
+import ProfileCore
 
 /// A standby account the profile could switch to. A standby account isn't read, so it has no limits: only what is
 /// remembered of it (its plan, when it was last in use). Its kept week only orders the offers; it is never shown.

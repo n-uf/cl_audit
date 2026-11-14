@@ -32,6 +32,7 @@
 // only when whole, never over an existing one.
 
 import Foundation
+import ProfileCore
 
 struct BackupError: Error, CustomStringConvertible {
     let description: String

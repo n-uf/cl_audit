@@ -13,6 +13,7 @@
 // you, or a warning; red = something failed. Only the account in use is lit.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 struct SwitchPage: View {

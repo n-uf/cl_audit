@@ -1,4 +1,5 @@
 import AppKit
+import ProfileCore
 import ServiceManagement
 import UserNotifications
 

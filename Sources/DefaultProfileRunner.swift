@@ -14,6 +14,7 @@
 
 import AppKit
 import Combine
+import ProfileCore
 
 final class DefaultProfileRunner: ObservableObject {
     enum Phase: Equatable {

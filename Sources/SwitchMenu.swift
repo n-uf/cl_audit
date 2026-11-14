@@ -11,6 +11,7 @@
 // Names are short names (AccountNames.short), which follow Settings ▸ General ▸ Emails.
 
 import AppKit
+import ProfileCore
 
 enum SwitchMenu {
     /// One standby account in a menu.
@@ -21,6 +22,8 @@ enum SwitchMenu {
         /// Not known to be full: it may be offered while a limit is full.
         let room: Bool
         var canSwitch = true
+        /// The one a full limit offers first (AccountBook.best, the one rule the card and the alert use too).
+        var offered = false
     }
 
     /// The account in use, short ("ultra-1"), as the profile's record says it (AccountView); nil while none is known.
@@ -44,15 +47,18 @@ enum SwitchMenu {
     /// Every standby account, in the order a full limit offers them (the card's and the Switch page's, SwitchOffer), each with
     /// when it was last in use.
     static func lines(_ e: AccountEntry, now: Date = Date()) -> [Line] {
-        e.switchOffers(now: now).map { o in
+        let offers = e.switchOffers(now: now)
+        let best = AccountBook.best(offers.map(\.standby), now: now)
+        return offers.map { o in
             let full = o.knownFull(now: now)          // orders and picks the offer only; never shown
             let words = o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? ""
-            return Line(key: o.key, short: o.short, words: words, room: !full, canSwitch: o.standby.seat != nil || !o.standby.email.isEmpty)
+            return Line(key: o.key, short: o.short, words: words, room: !full, canSwitch: o.standby.seat != nil || !o.standby.email.isEmpty,
+                        offered: o.standby.id == best?.id)
         }
     }
 
-    /// The one to offer while a limit is full: the first standby account not known to be full.
-    static func best(_ lines: [Line]) -> Line? { lines.first { $0.room && $0.canSwitch } }
+    /// The one to offer while a limit is full: AccountBook.best's (an account remembered by its address only is never it).
+    static func best(_ lines: [Line]) -> Line? { lines.first { $0.offered } }
 
     /// "Switch to ultra-3…": on the top level, only while a limit is full.
     static func bestItem(_ l: Line, target: AnyObject, action: Selector) -> NSMenuItem {

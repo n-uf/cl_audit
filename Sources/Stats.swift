@@ -4,6 +4,7 @@
 // they change, so after the first scan (a few seconds) updates are quick.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 struct Reply {

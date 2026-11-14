@@ -12,6 +12,7 @@
 // script that is never run (the script that would run it is only written).
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 var passed = 0, failed = 0

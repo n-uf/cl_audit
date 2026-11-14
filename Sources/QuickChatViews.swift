@@ -4,6 +4,7 @@
 // code blocks have Copy, and each answer says which model gave it.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 /// Claude's dark colours.

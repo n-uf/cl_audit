@@ -3,6 +3,7 @@
 // itself comes in a later build, so its key is off and one grey line says so.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 import UserNotifications
 
@@ -214,9 +215,9 @@ extension AccountEntry {
         switchOffers(now: now).map { CardTray(offer: $0) }
     }
 
-    /// The one preselected while a limit is full: the first that can be switched to and isn't known to be full.
+    /// The one preselected while a limit is full: the one rule's (AccountBook.best).
     func cardBest(_ trays: [CardTray], now: Date = Date()) -> String? {
-        trays.first { t in t.offer.standby.seat != nil && !t.offer.standby.knownFull(now: now) }?.id
+        AccountBook.best(trays.map(\.offer.standby), now: now).flatMap { b in trays.first { $0.offer.standby.id == b.id }?.id }
     }
 }
 

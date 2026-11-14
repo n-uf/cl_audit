@@ -17,6 +17,7 @@
 //   the active account's, so a read from just before a sign-in changed and the resolver always agree.
 
 import Foundation
+import ProfileCore
 
 /// What the resolver decided, as written into the profile's status record.
 struct ResolvedAccount: Codable, Equatable {
@@ -63,19 +64,20 @@ enum AccountResolver {
         let codeLabel = (stale ? code?.email : loginEmail) ?? code?.email ?? code.map { "account \($0.account.prefix(8))" }
         let owner = code.flatMap { c in accounts.first { $0.id != e.id && ($0.seat.map { c.same($0) } ?? false) } }
         // without the app: Claude Code's folder account is the active one (its address from its record, else the numbers')
-        var r = ResolvedAccount(account: code?.account.lowercased(), email: code?.email ?? loginEmail, fromApp: false,
+        // (ids as AccountID keeps them: one normal form, one comparison)
+        var r = ResolvedAccount(account: code.map { AccountID.normal($0.account) }, email: code?.email ?? loginEmail, fromApp: false,
                                 numbersFor: loginEmail, differs: false, line: nil, lit: code != nil, clash: owner?.name, at: now,
-                                codeAccount: code?.account.lowercased(), codeName: codeLabel, readStale: stale ? true : nil)
-        if e.claudeWindow, app.state == .known, let id = app.account?.lowercased() {
-            let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { $0.account.lowercased() == id }
+                                codeAccount: code.map { AccountID.normal($0.account) }, codeName: codeLabel, readStale: stale ? true : nil)
+        if e.claudeWindow, app.state == .known, let id = app.account.map(AccountID.normal) {
+            let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { AccountID.same($0.account, id) }
             r.account = id
-            r.email = mine?.email ?? (code?.account.lowercased() == id ? (code?.email ?? loginEmail) : nil) ?? names[id]
+            r.email = mine?.email ?? (AccountID.same(code?.account, id) ? (code?.email ?? loginEmail) : nil) ?? names[id]
             r.fromApp = true
             r.lit = true
         }
         // in every case: the numbers' own address decides when both are known; else the folder's id
         if let n = (stale ? code?.email : loginEmail)?.lowercased(), let a = r.email?.lowercased() { r.differs = n != a }
-        else if r.fromApp, let id = r.account { r.differs = code.map { $0.account.lowercased() != id } ?? false }
+        else if r.fromApp, let id = r.account { r.differs = code.map { !AccountID.same($0.account, id) } ?? false }
         if let o = owner {
             r.line = "Claude Code's folder is signed in to \(o.name)'s account: its numbers show on \(o.name)."
             r.lit = r.fromApp
@@ -94,8 +96,8 @@ enum AccountResolver {
         // rule as Settings' Claude Code row, AccountSettings.switchTarget), and the app is still on the account it left
         // (a switch linked more than a day ago waits no more: then it's a split by hand)
         if r.fromApp, r.differs, r.clash == nil, let n = newestSwitch, let id = r.account,
-           AccountSettings.switchTarget(goal: nil, newest: n, standby: [], code: codeLabel, codeAccount: code?.account.lowercased()) != nil,
-           n.from.account.lowercased() == id, n.linked.map({ now.timeIntervalSince($0) <= 24 * 3600 }) ?? true {
+           AccountSettings.switchTarget(goal: nil, newest: n, standby: [], code: codeLabel, codeAccount: code.map { AccountID.normal($0.account) }) != nil,
+           AccountID.same(n.from.account, id), n.linked.map({ now.timeIntervalSince($0) <= 24 * 3600 }) ?? true {
             r.switchWaits = true
         }
         return r
@@ -195,7 +197,7 @@ struct AccountView: Equatable {
     /// This standby account is the one the record names active (by its id, else its address): it is in use, so no list
     /// shows it on standby too.
     func isActive(_ s: StandbyAccount) -> Bool {
-        if let a = account, let id = s.seat?.account.lowercased() { return id == a }
+        if let a = account, let seat = s.seat { return AccountID.same(seat.account, a) }
         if let l = label?.lowercased(), l.contains("@") { return (s.seat?.email ?? s.email).lowercased() == l }
         return false
     }
@@ -208,7 +210,7 @@ struct AccountView: Equatable {
     /// Claude Code's own row is this account: by its id first (a row named "account <8>" has no address), else its address.
     func isCodeRow(id: String?, email: String?) -> Bool {
         guard codeRow != nil else { return false }
-        if let c = codeAccount, let i = id?.lowercased() { return c == i }
+        if let c = codeAccount, let i = id { return AccountID.same(c, i) }
         guard let e = email?.lowercased(), !e.isEmpty else { return false }
         return e == codeRow?.lowercased()
     }

@@ -36,6 +36,7 @@
 //     ACL or extended attribute: step 3 refused them, and the image copy-out never takes them), so a clone carries none.
 
 import Foundation
+import ProfileCore
 import zlib
 
 // MARK: - reading a zip's central directory

@@ -16,6 +16,7 @@
 
 import AppKit
 import Foundation
+import ProfileCore
 
 setbuf(stdout, nil)
 let role = ProcessInfo.processInfo.environment["MOVE_ROLE"] ?? "a"

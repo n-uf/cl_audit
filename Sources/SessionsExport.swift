@@ -35,6 +35,7 @@
 
 import CryptoKit
 import Foundation
+import ProfileCore
 
 struct ArchiveError: Error, CustomStringConvertible {
     let description: String

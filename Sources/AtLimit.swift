@@ -5,46 +5,28 @@
 // reset time has passed no longer counts: the agent reads that profile again at the reset (Reader.swift).
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
-/// Short, fixed times (24-hour, English weekday and month names), the same everywhere.
-enum TimeWords {
-    /// "11:38" today, "Thu 09:00" within 6 days either way, "11 Nov" further this year, "12 Jan 2027" another year.
-    static func when(_ d: Date, now: Date = Date()) -> String {
-        let cal = Calendar.current
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        let days = abs(cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: now)).day ?? 0)
-        f.dateFormat = days == 0 ? "HH:mm"
-            : (1...6).contains(days) ? "EEE HH:mm"
-            : cal.component(.year, from: d) == cal.component(.year, from: now) ? "d MMM" : "d MMM yyyy"
-        return f.string(from: d)
-    }
+// (TimeWords, FullLimit and AtLimit's rules are ProfileCore's: Core/TimeWords.swift, Core/Limits.swift. cl_audit's words for
+// them and the Dock icon's countdown face are here.)
 
-    /// When a limit is back: "back at 15:28" today, else "back Thu 09:00", "back 11 Nov", "back 12 Jan 2027".
-    static func back(_ d: Date, now: Date = Date()) -> String {
-        Calendar.current.isDate(d, inSameDayAs: now) ? "back at \(when(d, now: now))" : "back \(when(d, now: now))"
-    }
+extension FullLimit {
+    /// "5-hour full", or "Week full · 5-hour too".
+    var title: String { "\(name) full" + (other.map { " · \($0) too" } ?? "") }
+    /// The Dock icon's line under the time: "5H FULL", "WK FULL".
+    var tileFooter: String { id == "5h" ? "5H FULL" : "WK FULL" }
+    /// The alert's and Dock menu's name for it: "5-hour limit", "weekly limit".
+    var limitName: String { id == "5h" ? "5-hour limit" : "weekly limit" }
+}
 
-    /// Whole minutes left, rounded up (30 s left is "1m"; the reset itself is 0).
-    static func minutesLeft(_ d: Date, now: Date = Date()) -> Int { max(0, Int((d.timeIntervalSince(now) / 60).rounded(.up))) }
-
-    /// The countdown without "in": "19m", "1h 42m", "19h 14m", "2d 19h", "16 days". Its form changes as the reset
-    /// gets closer.
-    static func countdown(_ d: Date, now: Date = Date()) -> String {
-        let m = minutesLeft(d, now: now)
-        if m < 60 { return "\(m)m" }
-        if m < 24 * 60 { return "\(m / 60)h \(m % 60)m" }
-        if m < 8 * 24 * 60 { return "\(m / 1440)d \(m % 1440 / 60)h" }
-        return "\(m / 1440) days"
-    }
-
+extension TimeWords {
     /// The countdown on the Dock icon, where one short value fits: ("19", "m"), ("1", "h42"), ("19", "h"), ("Thu", ""),
     /// ("16", "d"), ("Jan", "") — the first part large, the second small after it.
-    static func tile(_ d: Date, now: Date = Date()) -> (String, String) {
+    static func tile(_ d: Date, now: Date = Date(), calendar: Calendar = .current) -> (String, String) {
         let m = minutesLeft(d, now: now)
-        let cal = Calendar.current
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX")
+        let cal = calendar
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = cal; f.timeZone = cal.timeZone
         if m < 60 { return ("\(m)", "m") }
         if m < 10 * 60 { return ("\(m / 60)", String(format: "h%02d", m % 60)) }
         if m < 24 * 60 { return ("\(m / 60)", "h") }
@@ -55,54 +37,15 @@ enum TimeWords {
     }
 }
 
-/// The full limit that holds a profile back: of the full ones, the one that resets last (an unknown reset counts as
-/// last). `others` names any other full limit ("5-hour too").
-struct FullLimit: Equatable {
-    let id: String              // "5h" or "wk"
-    let name: String            // "5-hour" or "Week"
-    let resets: Date?
-    let other: String?          // the other full limit's name, when both are full
-
-    /// "5-hour full", or "Week full · 5-hour too".
-    var title: String { "\(name) full" + (other.map { " · \($0) too" } ?? "") }
-    /// The Dock icon's line under the time: "5H FULL", "WK FULL".
-    var tileFooter: String { id == "5h" ? "5H FULL" : "WK FULL" }
-    /// The alert's and Dock menu's name for it: "5-hour limit", "weekly limit".
-    var limitName: String { id == "5h" ? "5-hour limit" : "weekly limit" }
-
-    /// "in 1h 42m", or nil when the reset time isn't known.
-    func countdown(_ now: Date = Date()) -> String? { resets.map { "in " + TimeWords.countdown($0, now: now) } }
-    /// "back at 15:28", or "reset time unknown".
-    func back(_ now: Date = Date()) -> String { resets.map { TimeWords.back($0, now: now) } ?? "reset time unknown" }
-    /// Both times in one line: "back at 15:28, in 1h 42m", or "reset time unknown".
-    func both(_ now: Date = Date()) -> String { resets.map { "\(TimeWords.back($0, now: now)), in \(TimeWords.countdown($0, now: now))" } ?? "reset time unknown" }
+/// What the Dock icon shows while a limit is full: the time large ("1" + "h42"), which limit under it.
+struct TileCountdown: Equatable {
+    var big: String
+    var small: String
+    var footer: String
 }
 
-enum AtLimit {
-    /// 100% as the cards show it (rounded).
-    static func isFull(_ p: Double?) -> Bool { p.map { $0.rounded() >= 100 } ?? false }
-
-    /// Full and not yet reset.
-    static func holding(_ p: Double?, _ resets: Date?, now: Date = Date()) -> Bool {
-        isFull(p) && (resets.map { $0 > now } ?? true)
-    }
-
-    /// The full limit that holds the profile back, or nil when nothing is full.
-    static func blocker(fiveHour: Double?, fiveHourResets: Date?, weekly: Double?, weeklyResets: Date?,
-                        now: Date = Date()) -> FullLimit? {
-        let five = holding(fiveHour, fiveHourResets, now: now), week = holding(weekly, weeklyResets, now: now)
-        switch (five, week) {
-        case (false, false): return nil
-        case (true, false): return FullLimit(id: "5h", name: "5-hour", resets: fiveHourResets, other: nil)
-        case (false, true): return FullLimit(id: "wk", name: "Week", resets: weeklyResets, other: nil)
-        case (true, true):
-            // the one that resets last; unknown counts as last, and the week wins a tie
-            let fiveLater = (fiveHourResets ?? .distantFuture) > (weeklyResets ?? .distantFuture)
-            return fiveLater ? FullLimit(id: "5h", name: "5-hour", resets: fiveHourResets, other: "Week")
-                             : FullLimit(id: "wk", name: "Week", resets: weeklyResets, other: "5-hour")
-        }
-    }
-
+extension AtLimit {
+    /// The full limit among the panels' rows.
     static func blocker(_ limits: [Limit], now: Date = Date()) -> FullLimit? {
         let five = limits.first { $0.id == "5h" }, week = limits.first { $0.id == "wk" }
         return blocker(fiveHour: five?.p, fiveHourResets: five?.resets, weekly: week?.p, weeklyResets: week?.resets, now: now)
@@ -116,13 +59,6 @@ enum AtLimit {
         let (big, small) = b.resets.map { TimeWords.tile($0, now: now) } ?? ("—", "")
         return TileCountdown(big: big, small: small, footer: b.tileFooter)
     }
-}
-
-/// What the Dock icon shows while a limit is full: the time large ("1" + "h42"), which limit under it.
-struct TileCountdown: Equatable {
-    var big: String
-    var small: String
-    var footer: String
 }
 
 // MARK: - The card's layout while a limit is full

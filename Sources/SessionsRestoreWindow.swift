@@ -17,6 +17,7 @@
 // - every write is the restore engine's: create-only, never through a link, journaled, so Undo takes back exactly what was added.
 
 import Foundation
+import ProfileCore
 
 extension SessionsRestore {
     struct ConfigPlan: Equatable {

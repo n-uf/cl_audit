@@ -28,6 +28,7 @@
 // Each is said on the page.
 
 import Foundation
+import ProfileCore
 
 enum SessionsMove {
     static let fileName = "cl_audit.json"

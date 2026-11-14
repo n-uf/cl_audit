@@ -13,6 +13,7 @@
 // and takes the implicit "main" out of the list in the same save, which removes its icon app.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 // MARK: - Logic (no views: the checks drive it)

@@ -8,6 +8,7 @@
 // Claude window stops it; launchd starts it at login and again after a crash.
 
 import AppKit
+import ProfileCore
 import ServiceManagement
 import UserNotifications
 import os

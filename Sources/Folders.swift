@@ -3,6 +3,7 @@
 // running (setting up an account wants them closed).
 
 import AppKit
+import ProfileCore
 
 // MARK: - Comparing folders
 

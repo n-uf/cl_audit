@@ -7,6 +7,7 @@
 // colour or the profile's colour, with its label if asked; while a limit holds it back, the countdown or just red.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 enum MenuBarStyle: String, CaseIterable, Identifiable, Codable {

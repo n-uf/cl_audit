@@ -1,4 +1,5 @@
 import AppKit
+import ProfileCore
 import SwiftUI
 // Stage B1 renders: Settings ▸ a profile ▸ Sessions card, General ▸ Backups; the one-folder model's Switch page in each
 // state, the dashboard card with standby accounts and the Accounts card (ONEFOLDER_ONLY=1: those alone); then the later

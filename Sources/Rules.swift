@@ -17,6 +17,7 @@
 // never restarts the Dock; only a pin or unpin does, once, through DockWriter.
 
 import AppKit
+import ProfileCore
 
 /// Something the agent is doing for a profile, for the dashboard's switches.
 struct AgentAction: Codable, Equatable {

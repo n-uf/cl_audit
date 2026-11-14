@@ -8,6 +8,7 @@
 // What a reader sees is saved to status/<id>.json (no secrets) for the Dock icons and the cl_audit window.
 
 import AppKit
+import ProfileCore
 import UserNotifications
 
 final class UsageReader {

@@ -9,6 +9,7 @@
 
 import AppKit
 import CryptoKit
+import ProfileCore
 
 /// What a plain click on the Dock icon does. Double-click or ⌥-click always shows the full details.
 enum ClickAction: String, Codable, CaseIterable, Identifiable {

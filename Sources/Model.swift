@@ -7,6 +7,7 @@
 
 import AppKit
 import CryptoKit
+import ProfileCore
 import Security
 import ServiceManagement
 import UserNotifications
@@ -21,18 +22,7 @@ func tilde(_ path: String) -> String {
 
 // MARK: - Account
 
-/// A Claude account seat: an account in an organisation. Usage limits belong to it, so a personal plan and a team
-/// seat on the same email are two seats. Every set-up profile is linked to exactly one, and no two profiles share one.
-struct Seat: Codable, Equatable, Hashable {
-    var account: String            // Claude's accountUuid
-    var organization: String?      // its organizationUuid (nil when Claude recorded none)
-    var email: String?             // shown only; checks compare the ids
-    var linkedAt: Date?
-    var was: String?               // the email of the seat it replaced, when the profile was linked to another account
-
-    /// The same seat (the ids; not the email or when it was linked).
-    func same(_ o: Seat?) -> Bool { o.map { account == $0.account && organization == $0.organization } ?? false }
-}
+// (Seat and its one comparison are ProfileCore's: Core/Identity.swift)
 
 struct Account {
     let label: String
@@ -120,17 +110,9 @@ struct Account {
 
 // MARK: - Usage data
 
-struct Usage {
-    var fiveHour: Double?
-    var fiveHourResets: Date?
-    var weekly: Double?
-    var weeklyResets: Date?
-    var fetchedAt: Date
-    var source: String
-    var scoped: [ScopedLimit] = []       // weekly limits of one model (Fable on Max, Ultra, premium seats), beside the two
-    var credits: Credits? = nil          // usage credits (Credits.swift)
-    var noFiveHour = false               // the plan has no 5-hour limit (Ultra): only the week counts
+// (Usage, Freshness, ScopedLimit, AtLimit and Credits are ProfileCore's: Core/Limits.swift)
 
+extension Usage {
     /// The numbers a saved record carries (the agent's status/<id>.json), for the screens that draw a Usage: nil when it
     /// has none. The record is the one answer: the menu bar, the Dock icon and quick chat all take their numbers from it.
     static func of(_ s: IconStatus?) -> Usage? {
@@ -139,46 +121,10 @@ struct Usage {
                      fetchedAt: at, source: s.source ?? "Anthropic", scoped: s.scoped ?? [], credits: s.credits,
                      noFiveHour: s.noFiveHour == true)
     }
-
-    /// Without the limits whose reset time has passed (their percent and reset both): a percent from before a reset is
-    /// no one's now, so it is never shown as "in 0 min".
-    func current(now: Date = Date()) -> Usage {
-        var u = self
-        if Freshness.passed(u.fiveHourResets, now: now) { u.fiveHour = nil; u.fiveHourResets = nil }
-        if Freshness.passed(u.weeklyResets, now: now) { u.weekly = nil; u.weeklyResets = nil }
-        u.scoped = u.scoped.map { Freshness.passed($0.resets, now: now) ? ScopedLimit(name: $0.name, percent: nil, resets: nil) : $0 }
-        return u
-    }
 }
 
-/// When saved numbers still count. A week-old status line once showed as current while the sign-in had run out
-/// (26.11.15: week 90% "in 0 min", the real week 53%).
-enum Freshness {
-    /// A status line file written longer ago than this is old numbers, and is ignored.
-    static let window: TimeInterval = 15 * 60
-    /// A clock a little ahead of this Mac's.
-    static let skew: TimeInterval = 60
-
-    /// Written in the last 15 minutes (not in the future beyond a minute).
-    static func isFresh(_ at: Date?, now: Date = Date()) -> Bool {
-        guard let at else { return false }
-        let age = now.timeIntervalSince(at)
-        return age <= window && age >= -skew
-    }
-
-    /// A limit's reset time that has passed.
-    static func passed(_ resets: Date?, now: Date = Date()) -> Bool { resets.map { $0 <= now } ?? false }
-}
-
-/// A weekly limit of its own for one model: "Fable" may use up to a share of the week. Full, it holds back only that
-/// model; the profile can still work with the others, so it never takes the full-limit box or the countdown face.
-struct ScopedLimit: Codable, Equatable {
-    var name: String                     // "Fable"
-    var percent: Double?
-    var resets: Date?
-
-    /// Alert marks and the limit row's id: "mfable".
-    var key: String { "m" + name.lowercased().filter { $0.isLetter || $0.isNumber } }
+extension ScopedLimit {
+    /// Its row in the panels.
     var limit: Limit {
         Limit(id: key, title: "\(name) · week", name: name, p: percent, resets: resets, window: 7 * 86400)
     }
@@ -205,16 +151,8 @@ enum FetchState: Equatable {
     }
 }
 
-enum Login {
-    case token(String, expiresAt: Date?, plan: String?)
-    /// No Keychain item for the folder (`security` said "not found" for every account name tried).
-    case notFound
-    /// The read was refused or timed out (a locked Keychain, "Don't Allow", a prompt nobody answered).
-    case denied
-    /// An item is there and was read, but its text isn't a sign-in in a form cl_audit knows (not JSON, or JSON without
-    /// claudeAiOauth.accessToken). Nothing of its content is kept or shown: only that it was there.
-    case unreadable
-
+// (Login's cases and Login.parse are ProfileCore's: Core/Parsing.swift. Reading the Keychain item stays here.)
+extension Login {
     /// Reads the login with Apple's `security` tool, the same way Claude Code reads it. Claude Code
     /// stores the item through that tool, so the item already trusts it: no prompt, and no new
     /// Keychain permission for this app. (Reading it through the Keychain API needs "Always Allow",
@@ -236,17 +174,6 @@ enum Login {
         return .notFound
     }
 
-    /// What `security -w` printed for an item that was read: the token, or `.unreadable`. Never logs or keeps the text.
-    static func parse(_ out: Data) -> Login {
-        guard let data = decode(out),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let oauth = json["claudeAiOauth"] as? [String: Any],
-              let token = oauth["accessToken"] as? String, !token.isEmpty
-        else { return .unreadable }
-        let expires = (oauth["expiresAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) }
-        return .token(token, expiresAt: expires, plan: oauth["subscriptionType"] as? String)
-    }
-
     /// The check's seam: what runs `security` (arguments in, exit status and output out).
     nonisolated(unsafe) static var runSecurity: ([String]) -> (Int32, Data) = { security($0) }
 
@@ -266,103 +193,10 @@ enum Login {
         p.waitQuietly()
         return (p.terminationStatus, data)
     }
-
-    /// `security -w` prints the stored text, or hex when it isn't plain text.
-    private static func decode(_ raw: Data) -> Data? {
-        guard let text = String(data: raw, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !text.isEmpty else { return nil }
-        if text.hasPrefix("{") { return Data(text.utf8) }
-        guard text.count % 2 == 0, text.allSatisfy(\.isHexDigit) else { return nil }
-        var bytes = [UInt8]()
-        var i = text.startIndex
-        while i < text.endIndex {
-            let j = text.index(i, offsetBy: 2)
-            guard let b = UInt8(text[i..<j], radix: 16) else { return nil }
-            bytes.append(b)
-            i = j
-        }
-        return Data(bytes)
-    }
 }
 
-enum UsageParser {
-    static func date(_ v: Any?) -> Date? {
-        if let n = v as? NSNumber {
-            let x = n.doubleValue
-            return Date(timeIntervalSince1970: x > 1e12 ? x / 1000 : x)
-        }
-        guard let s = v as? String else { return nil }
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let d = f.date(from: s) { return d }
-        f.formatOptions = [.withInternetDateTime]
-        return f.date(from: s)
-    }
-
-    static func percent(_ w: [String: Any]) -> Double? {
-        for key in ["utilization", "used_percentage", "percent"] {
-            if let n = w[key] as? NSNumber { return n.doubleValue }
-        }
-        return nil
-    }
-
-    /// Accepts {five_hour:{utilization,resets_at}, seven_day:{…}} and a {limits:[{type,percent,resets_at}]} variant.
-    static func fromAPI(_ data: Data) -> Usage? {
-        guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
-        var u = Usage(fetchedAt: Date(), source: "Anthropic")
-        if let w = j["five_hour"] as? [String: Any] { u.fiveHour = percent(w); u.fiveHourResets = date(w["resets_at"]) }
-        if let w = j["seven_day"] as? [String: Any] { u.weekly = percent(w); u.weeklyResets = date(w["resets_at"]) }
-        if u.fiveHour == nil, u.weekly == nil, let limits = j["limits"] as? [[String: Any]] {
-            for w in limits {
-                let kind = ((w["type"] ?? w["name"] ?? w["window"]) as? String ?? "").lowercased()
-                if kind.contains("five") || kind.contains("5h") || kind.contains("session") {
-                    u.fiveHour = percent(w); u.fiveHourResets = date(w["resets_at"])
-                } else if kind.contains("seven") || kind.contains("week") {
-                    u.weekly = percent(w); u.weeklyResets = date(w["resets_at"])
-                }
-            }
-        }
-        guard u.fiveHour != nil || u.weekly != nil else { return nil }
-        u.scoped = scoped(j)
-        u.credits = Credits.parse(j)
-        u.noFiveHour = noFiveHour(j)
-        return u
-    }
-
-    /// The plan has no 5-hour limit at all (Ultra): no five_hour window and no "session" kind in limits[]. A plan
-    /// that has one but no session open (Max) still lists the session limit, so it isn't taken for this.
-    static func noFiveHour(_ j: [String: Any]) -> Bool {
-        guard j["five_hour"] as? [String: Any] == nil, let limits = j["limits"] as? [[String: Any]], !limits.isEmpty
-        else { return false }
-        return !limits.contains { ($0["kind"] as? String) == "session" || ($0["group"] as? String) == "session" }
-    }
-
-    /// The model limits in limits[]: {kind: "weekly_scoped", percent, resets_at, scope: {model: {display_name}}}.
-    static func scoped(_ j: [String: Any]) -> [ScopedLimit] {
-        guard let limits = j["limits"] as? [[String: Any]] else { return [] }
-        return limits.compactMap { w in
-            guard (w["kind"] as? String) == "weekly_scoped",
-                  let model = (w["scope"] as? [String: Any])?["model"] as? [String: Any],
-                  let name = (model["display_name"] as? String) ?? (model["id"] as? String), !name.isEmpty
-            else { return nil }
-            return ScopedLimit(name: name, percent: percent(w), resets: date(w["resets_at"]))
-        }
-    }
-
-    /// First e-mail address anywhere in the profile reply (it sits under account.email_address / email).
-    static func email(_ data: Data) -> String? {
-        func find(_ v: Any) -> String? {
-            if let d = v as? [String: Any] {
-                for (k, x) in d where k.lowercased().contains("email") { if let s = x as? String, s.contains("@") { return s } }
-                for (_, x) in d { if let s = find(x) { return s } }
-            } else if let a = v as? [Any] {
-                for x in a { if let s = find(x) { return s } }
-            }
-            return nil
-        }
-        return (try? JSONSerialization.jsonObject(with: data)).flatMap(find)
-    }
-
+// (UsageParser's replies are ProfileCore's: Core/Parsing.swift. The status line file is read here.)
+extension UsageParser {
     /// The file the status line script writes: {five_hour:{used_percentage,resets_at}, seven_day:{…}, updated_at}.
     /// Used only while it is fresh: written in the last 15 minutes (Freshness); otherwise it is ignored as if it weren't
     /// there (Claude Code writes it only while it runs, so an old one is old numbers). A limit whose reset has passed is

@@ -35,6 +35,7 @@
 //   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 import AppKit
+import ProfileCore
 
 enum AppSignIn {
     enum State: String, Equatable { case known, loggedOut, unknown }

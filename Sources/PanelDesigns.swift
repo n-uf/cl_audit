@@ -2,6 +2,7 @@
 // Bars, rings and segments are drawn by the app so they keep their colour while it isn't in front.
 
 import AppKit
+import ProfileCore
 import SwiftUI
 
 enum PanelDesign: String, Codable, CaseIterable, Identifiable {
