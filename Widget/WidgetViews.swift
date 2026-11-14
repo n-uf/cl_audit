@@ -70,7 +70,7 @@ enum AgentFiles {
         let fiveHour: Double?; let fiveHourResets: Double?; let weekly: Double?; let weeklyResets: Double?
         let updatedAt: Double?; let plan: String?; let scoped: [Scoped]?; let noFiveHour: Bool?
         let loginEmail: String?; let expectedEmail: String?; let state: String?
-        let resolved: Resolved?; let numbersOwner: String?
+        let resolved: Resolved?; let numbersOwner: String?; let ownerUnconfirmed: Bool?
 
         /// Read for this account: numbers read for another (the one a profile was on before a switch) never show.
         func belongs(to email: String?) -> Bool {
@@ -121,8 +121,9 @@ enum AgentFiles {
                 }
                 // old numbers are only last known (the app's Store.lastKnown: the read interval, 5 minutes at least, plus a
                 // minute): a limit they read as full is left out, never full or counting down
+                // (and numbers whose account couldn't be confirmed are never full either)
                 let lastKnown = TimeInterval(max(e.pollMinutes ?? 5, 5) * 60 + 60)
-                if let at = p.updated, now.timeIntervalSince(at) > lastKnown {
+                if s.ownerUnconfirmed == true || p.updated.map({ now.timeIntervalSince($0) > lastKnown }) == true {
                     func full(_ v: Double?) -> Bool { v.map { $0.rounded() >= 100 } ?? false }
                     if full(p.five) { p.five = nil; p.fiveResets = nil }
                     if full(p.week) { p.week = nil; p.weekResets = nil }

@@ -26,6 +26,16 @@ final class UsageReader {
     private var numbersKey: String?              // short hash of the token the numbers were read with
     /// A reading whose token's account isn't known yet: held (not shown, not alerted) until it is (profileFound).
     private(set) var heldReading: (usage: Usage, key: String)?
+    /// How many readings in a row were held for the token being held: at the second, the numbers show as "account not
+    /// confirmed" (never full, no alert) rather than stay hidden or frozen.
+    private var heldReads = 0
+    /// The numbers shown are a reading whose account couldn't be confirmed (its lookup keeps failing).
+    private(set) var unconfirmed = false
+    /// Tokens whose account was confirmed (short hash → address): the same token keeps its owner through a lookup outage.
+    private var ownerByKey: [String: String] = [:]
+    /// The profile lookup's retry, with backoff while it fails.
+    private var lookupFails = 0
+    private var nextLookup = Date.distantPast
     private var renewNote: String?
     private var renewing = false
     private var cachedLogin: Login?
@@ -130,7 +140,7 @@ final class UsageReader {
         guard want.configDir != account.configDir else { return false }
         account = want
         loginEmail = nil; profileFor = nil; nextFetch = .distantPast; cachedLogin = nil
-        numbersOwner = nil; numbersKey = nil; heldReading = nil
+        numbersOwner = nil; numbersKey = nil; heldReading = nil; heldReads = 0; unconfirmed = false
         generation += 1
         signInChangedAt = now
         signIn = SignInWatch(); _ = signInChanged()
@@ -222,7 +232,7 @@ final class UsageReader {
         cachedLogin = nil; forceLoginRead = true; loginRejected = false
         loginEmail = nil; profileFor = nil; plan = nil; renewNote = nil
         usage = nil; state = .idle; backoff = 0
-        numbersOwner = nil; numbersKey = nil; heldReading = nil
+        numbersOwner = nil; numbersKey = nil; heldReading = nil; heldReads = 0; unconfirmed = false
         signInChangedAt = now; signInRetries = 0
         generation += 1                           // replies under way are the old account's
         resetRead?.cancel(); resetRead = nil
@@ -286,7 +296,8 @@ final class UsageReader {
         self.plan = plan
         if let expiresAt, expiresAt < Date() { inFlight = false; state = .expired; save(); maybeRenew(); return }
         let key = Account.sha8(token)
-        if profileFor != key { lookUpEmail(token, gen: gen) }
+        // the token's account: looked up once per token (a confirmed one keeps its owner), again with backoff while it fails
+        if profileFor != key, ownerByKey[key] == nil, Date() >= nextLookup { lookUpEmail(token, gen: gen) }
         let asked = Date()
         URLSession.shared.dataTask(with: Self.request("usage", token: token)) { [weak self] data, resp, err in
             DispatchQueue.main.async { self?.finish(data: data, response: resp as? HTTPURLResponse, error: err, asked: asked, gen: gen, key: key) }
@@ -356,7 +367,7 @@ final class UsageReader {
             DispatchQueue.main.async {
                 guard let self, gen == self.generation else { return }      // another folder or account since
                 if let at = self.signInChangedAt, asked < at { return }    // the old account's sign-in
-                if let email { self.profileFound(email, key: key) }
+                if let email { self.profileFound(email, key: key) } else { self.lookupFailed() }
                 self.save()
             }
         }.resume()
@@ -364,15 +375,25 @@ final class UsageReader {
 
     /// The account of the token `key` came back: it is the sign-in's address, and the owner of the numbers read with that
     /// token. A reading held for it (read before its owner was known) is taken now, with its alerts.
+    /// Once the account is back, the numbers shown as "account not confirmed" are its own, and the usual rules (alerts
+    /// included) apply to them.
     func profileFound(_ email: String, key: String) {
         loginEmail = email; profileFor = key; checkNewSignIn(email)
+        ownerByKey[key] = email; lookupFails = 0; nextLookup = .distantPast
         if let h = heldReading, h.key == key {
-            heldReading = nil
+            heldReading = nil; heldReads = 0
             numbersKey = key; numbersOwner = email
             apply(h.usage)
         } else if numbersKey == key {
             numbersOwner = email                         // the numbers read with this token: its account's
+            if unconfirmed, let u = usage { unconfirmed = false; apply(u) }
         }
+    }
+
+    /// The token's account couldn't be looked up: tried again later, a little later each time (1, 2, 4… minutes, at most 30).
+    func lookupFailed(now: Date = Date()) {
+        lookupFails += 1
+        nextLookup = now.addingTimeInterval(min(60 * pow(2, Double(lookupFails - 1)), 1800))
     }
 
     func finish(data: Data?, response: HTTPURLResponse?, error: Error?, asked: Date = Date(), gen: Int, key: String? = nil) {
@@ -390,11 +411,27 @@ final class UsageReader {
             // Read with a token whose account isn't known yet (its lookup still under way): unowned, so held, neither shown
             // nor alerted, until the lookup comes back (profileFound); the numbers before it, whose owner is known, stay
             // meanwhile (a renewed token of the same account doesn't blank them)
-            if let key, profileFor != key { heldReading = (u, key); state = .ok; return }
-            heldReading = nil
-            numbersKey = key
-            numbersOwner = key != nil ? loginEmail : nil
-            apply(u)
+            // A token whose account was confirmed before keeps it (a lookup outage never blanks or freezes it). A new
+            // token's reading is held; at the second reading still without an owner (its lookup keeps failing) the
+            // numbers show as "account not confirmed": as read, with their age, but never full, alerted or offering a switch
+            if let key, let known = profileFor == key ? loginEmail : ownerByKey[key] {
+                heldReading = nil; heldReads = 0; unconfirmed = false
+                numbersKey = key; numbersOwner = known
+                apply(u)
+            } else if let key {
+                // (a token already shown as not confirmed stays shown so, read after read)
+                if !(unconfirmed && numbersKey == key) {
+                    heldReads = heldReading?.key == key ? heldReads + 1 : 1
+                    guard heldReads >= 2 else { heldReading = (u, key); state = .ok; return }
+                }
+                heldReading = nil
+                numbersKey = key; numbersOwner = nil; unconfirmed = true
+                apply(u)
+            } else {
+                heldReading = nil
+                numbersKey = nil; numbersOwner = nil; unconfirmed = false
+                apply(u)
+            }
         case 401, 403:
             state = .expired
             loginRejected = true
@@ -418,8 +455,9 @@ final class UsageReader {
         usage = u; state = .ok; backoff = 0
         // another account's numbers: no alerts about them; nor Claude Code's while the Claude app is on another account
         // (the split, SplitUsage): they aren't the profile's, so no full, back or level alert and no switch offer
+        // (and none for numbers whose account couldn't be confirmed)
         let r = answer()
-        if !onOtherAccount, !(r.fromApp && r.differs && r.clash == nil) {
+        if !onOtherAccount, !unconfirmed, !(r.fromApp && r.differs && r.clash == nil) {
             noteBack(u)
             checkThresholds(u)
             noteCredits(u, before: before, now: now)
@@ -712,6 +750,7 @@ final class UsageReader {
         // has none at all (no bars, "login expired", Log in…). The reader keeps its own copy, to read again at a reset
         status = status.current()
         status.numbersOwner = numbersOwner
+        status.ownerUnconfirmed = unconfirmed ? true : nil
         // the one answer about the account (AccountResolver), written here once for every surface to read: the numbers
         // stay, labelled with the account they were read for (no "otherAccount" state for the profile's own folder)
         var r = answer()

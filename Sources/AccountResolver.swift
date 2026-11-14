@@ -92,9 +92,10 @@ enum AccountResolver {
         }
         // the split as a switch waiting for the Claude app: the newest switch went to Claude Code's account (the same
         // rule as Settings' Claude Code row, AccountSettings.switchTarget), and the app is still on the account it left
+        // (a switch linked more than a day ago waits no more: then it's a split by hand)
         if r.fromApp, r.differs, r.clash == nil, let n = newestSwitch, let id = r.account,
            AccountSettings.switchTarget(goal: nil, newest: n, standby: [], code: codeLabel, codeAccount: code?.account.lowercased()) != nil,
-           n.from.account.lowercased() == id {
+           n.from.account.lowercased() == id, n.linked.map({ now.timeIntervalSince($0) <= 24 * 3600 }) ?? true {
             r.switchWaits = true
         }
         return r
@@ -114,7 +115,9 @@ struct SplitUsage: Equatable {
     var switched = false
 
     static func of(_ s: IconStatus?) -> SplitUsage? {
-        guard let r = s?.resolved, r.fromApp, r.differs, r.clash == nil, let code = r.codeName ?? r.numbersFor else { return nil }
+        // (numbers whose account couldn't be confirmed decide nothing: whose they are isn't known)
+        guard let r = s?.resolved, r.fromApp, r.differs, r.clash == nil, s?.ownerUnconfirmed != true,
+              let code = r.codeName ?? r.numbersFor else { return nil }
         return SplitUsage(app: r.email ?? r.account.map { "account \($0.prefix(8))" } ?? "the Claude app's account", code: code,
                           switched: r.switchWaits == true)
     }

@@ -1149,6 +1149,10 @@ do {
         check(s?.switched == false && s?.key == "Log Claude Code in to \(Privacy.masked(pat.email!))" && s?.loginEmail == pat.email,
               "the switch \(what): a split by hand, the B8 line and key")
     }
+    var dayOld = linkedToMo; dayOld.linked = now.addingTimeInterval(-25 * 3600)
+    let dayOldSplit = splitWith(app: appPat, newest: dayOld)
+    check(dayOldSplit?.switched == false && dayOldSplit?.key == "Log Claude Code in to \(Privacy.masked(pat.email!))",
+          "a switch linked 25 hours ago waits no more: a split by hand, the B8 line and key")
     let older = splitWith(app: appPat, newest: nil)
     check(older?.switched == false && older?.key != nil, "no switch at all: a split by hand")
     var toOther = toMo; toOther.to = SeatID(zed)
@@ -1239,6 +1243,36 @@ do {
     check(mixed?.resolved?.numbersFor == mo.email && mixed?.resolved?.readStale == true && Store.status(for: same)?.weekly == nil,
           "…its owner known: numbersFor mo (the reading's), the folder on pat: stale, no numbers shown: \(mixed?.resolved?.numbersFor ?? "-")")
     hr.stop()
+
+    // a lookup outage: a token whose account was confirmed keeps it (its numbers stay current); a new token's reading is
+    // held, then, its lookup still failing, shown as "account not confirmed" (as read, never full, no alert); its owner
+    // back, the usual rules
+    signIn(same.configDir, mo)
+    Store.removeStatus("spm"); posts.removeAll()
+    func week(_ p: Int) -> Data { Data(#"{"seven_day":{"utilization":\#(p),"resets_at":"2099-01-02T00:00:00Z"}}"#.utf8) }
+    let lr = UsageReader(same, defaults: UserDefaults(suiteName: "cl-audit-surfaces-lookup-\(getpid())")!)
+    lr.profileFound(mo.email!, key: "c1")
+    lr.finish(data: week(50), response: ok200, error: nil, asked: Date(), gen: lr.generation, key: "c1")
+    lr.lookupFailed()
+    lr.finish(data: week(60), response: ok200, error: nil, asked: Date(), gen: lr.generation, key: "c1")
+    check(Store.status(for: same)?.weekly == 60 && lr.heldReading == nil && !lr.unconfirmed && Store.status("spm")?.resolved?.numbersFor == mo.email,
+          "the lookup failing with a known token: its numbers stay current, still mo's")
+    lr.finish(data: week(100), response: ok200, error: nil, asked: Date(), gen: lr.generation, key: "c2"); lr.lookupFailed()
+    check(lr.heldReading?.key == "c2" && Store.status(for: same)?.weekly == 60, "a new token: its first reading held, the last owned numbers stay")
+    lr.finish(data: week(100), response: ok200, error: nil, asked: Date(), gen: lr.generation, key: "c2"); lr.lookupFailed()
+    RunLoop.main.run(until: Date().addingTimeInterval(0.6))
+    let un = Store.status("spm"), unHead = Store.status(for: same)
+    check(lr.unconfirmed && un?.ownerUnconfirmed == true && un?.weekly == 100 && unHead?.weekly == nil
+          && AccountView.of(unHead).line == Store.unconfirmedWords && AccountRow(entry: same, status: unHead).full == nil && posts.isEmpty,
+          "its second reading still without an owner: \"account not confirmed\", never full, no alert: \(posts)")
+    lr.finish(data: week(70), response: ok200, error: nil, asked: Date(), gen: lr.generation, key: "c2")
+    check(Store.status(for: same)?.weekly == 70 && AccountView.of(Store.status(for: same)).line == Store.unconfirmedWords
+          && Store.status(for: same)?.updatedAt != nil, "…not full: the percent shows, with its age and the line")
+    lr.profileFound(mo.email!, key: "c2"); lr.save()
+    let back2 = Store.status("spm")
+    check(!lr.unconfirmed && back2?.ownerUnconfirmed == nil && back2?.resolved?.numbersFor == mo.email && Store.status(for: same)?.weekly == 70
+          && AccountView.of(Store.status(for: same)).line == nil, "its owner back (mo): the usual rules")
+    lr.stop()
     UsageReader.testPoster = nil
     try? Store.save([])
     Store.removeStatus("spl"); Store.removeStatus("spm")

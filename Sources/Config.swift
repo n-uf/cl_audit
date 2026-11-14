@@ -279,6 +279,9 @@ struct IconStatus: Codable {
     /// The account these numbers were read for, from that very reading (the token's own profile, looked up for the token
     /// the numbers were read with); nil when the reading doesn't say (the status line file) or before it's known.
     var numbersOwner: String? = nil
+    /// The numbers' account couldn't be confirmed (the token's lookup keeps failing): shown as read, with their age, but
+    /// never full, alerted, offering a switch or deciding the split (Store.status(for:)).
+    var ownerUnconfirmed: Bool? = nil
 
     /// The reading's own account, for answering the record again (Settings) and for checking the record's label:
     /// `numbersOwner`, else the sign-in's own address (the token's profile; a record from before `numbersOwner`, or the
@@ -676,9 +679,18 @@ enum Store {
             out.dropNumbers(); out.plan = nil          // (the plan is Claude Code's account's too)
             out.resolved?.line = split.line
         }
+        // the numbers' account couldn't be confirmed: as read, with their age, but never full (no panel, countdown, red
+        // or offer), and said so
+        if s.ownerUnconfirmed == true {
+            out.dropFull()
+            out.resolved?.line = Self.unconfirmedWords
+        }
         if let at = out.updatedAt, now.timeIntervalSince(at) > Self.lastKnown(e) { out.dropFull() }
         return out
     }
+
+    /// The line for numbers whose account couldn't be confirmed.
+    static let unconfirmedWords = "Usage: account not confirmed"
 
     /// How old numbers may be and still say a limit is full: the profile's read interval, plus a minute for the read itself.
     static func lastKnown(_ e: AccountEntry) -> TimeInterval { TimeInterval(max(e.pollMinutes, 5) * 60 + 60) }
