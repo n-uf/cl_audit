@@ -39,6 +39,10 @@ struct ResolvedAccount: Codable, Equatable {
     /// The folder has signed in to another account since the numbers were read: they are that reading's, not Claude
     /// Code's now, and no surface shows them (Store.status(for:)) until a read for the new account.
     var readStale: Bool? = nil
+    /// The split is a switch waiting for the Claude app: the profile's newest switch went to Claude Code's account, it is
+    /// still open or linked (not undone, not left as it is), and the app is still on the account it left. Then the line
+    /// asks for the app's sign-in and there is no key to log Claude Code back in (SplitUsage.switched).
+    var switchWaits: Bool? = nil
 }
 
 enum AccountResolver {
@@ -46,8 +50,11 @@ enum AccountResolver {
     /// `loginEmail`: the account the numbers were read for, from that very reading (the token's own profile), or nil when
     /// the reading doesn't say (the status line file); `names`: addresses by account id (AccountList).
     /// `recordTooLarge`: Claude Code's .claude.json is there but too large to read (Account.recordTooLarge).
+    /// `newestSwitch`: the profile's newest switch receipt (SwitchEngine.receipts), for a split that is a switch waiting
+    /// for the Claude app (`switchWaits`).
     static func resolve(_ e: AccountEntry, among accounts: [AccountEntry], app: AppSignIn.Login, code: Seat?, loginEmail: String?,
-                        names: [String: String], recordTooLarge: Bool = false, now: Date = Date()) -> ResolvedAccount {
+                        names: [String: String], recordTooLarge: Bool = false, newestSwitch: SwitchReceipt? = nil,
+                        now: Date = Date()) -> ResolvedAccount {
         // whose the numbers are: only ever the account the reading itself was for (never .claude.json, never a cached
         // answer). When Claude Code's folder has since signed in to another account (a switch, a log-in), the reading is
         // stale: its numbers are dropped (Store.status) until a read for the folder's account, and the folder's account is
@@ -83,6 +90,13 @@ enum AccountResolver {
             r.recordTooLarge = true
             r.line = "Claude Code's .claude.json is too large to read: its account isn't known here."
         }
+        // the split as a switch waiting for the Claude app: the newest switch went to Claude Code's account (the same
+        // rule as Settings' Claude Code row, AccountSettings.switchTarget), and the app is still on the account it left
+        if r.fromApp, r.differs, r.clash == nil, let n = newestSwitch, let id = r.account,
+           AccountSettings.switchTarget(goal: nil, newest: n, standby: [], code: codeLabel, codeAccount: code?.account.lowercased()) != nil,
+           n.from.account.lowercased() == id {
+            r.switchWaits = true
+        }
         return r
     }
 }
@@ -95,18 +109,27 @@ enum AccountResolver {
 struct SplitUsage: Equatable {
     let app: String                 // the account in use: the Claude app's
     let code: String                // Claude Code's
+    /// A switch to Claude Code's account waiting for the Claude app (ResolvedAccount.switchWaits): the app is the one left to
+    /// sign in, so there is no key to log Claude Code back in. Otherwise a split by hand.
+    var switched = false
 
     static func of(_ s: IconStatus?) -> SplitUsage? {
         guard let r = s?.resolved, r.fromApp, r.differs, r.clash == nil, let code = r.codeName ?? r.numbersFor else { return nil }
-        return SplitUsage(app: r.email ?? r.account.map { "account \($0.prefix(8))" } ?? "the Claude app's account", code: code)
+        return SplitUsage(app: r.email ?? r.account.map { "account \($0.prefix(8))" } ?? "the Claude app's account", code: code,
+                          switched: r.switchWaits == true)
     }
 
-    /// "No usage for P@… yet: Claude Code here is signed in to M@…"
-    var line: String { "No usage for \(Privacy.masked(app)) yet: Claude Code here is signed in to \(Privacy.masked(code))" }
+    /// "No usage for P@… yet: Claude Code here is signed in to M@…"; a switch waiting for the app: "Switched to M@…: sign
+    /// the Claude app in to M@… to finish"
+    var line: String {
+        switched ? "Switched to \(Privacy.masked(code)): sign the Claude app in to \(Privacy.masked(code)) to finish"
+                 : "No usage for \(Privacy.masked(app)) yet: Claude Code here is signed in to \(Privacy.masked(code))"
+    }
     /// The key: the existing Log in (Claude Code's own sign-in in Terminal, with the app's address filled in). Not a switch.
-    var key: String { "Log Claude Code in to \(Privacy.masked(app))" }
-    /// The address the login fills in (none for an account known by its id only).
-    var loginEmail: String? { app.contains("@") ? app : nil }
+    /// None while a switch waits for the app.
+    var key: String? { switched ? nil : "Log Claude Code in to \(Privacy.masked(app))" }
+    /// The address the login fills in (none for an account known by its id only, or while a switch waits for the app).
+    var loginEmail: String? { !switched && app.contains("@") ? app : nil }
 
     /// "Claude Code in Terminal: M@… · Week 100%, back Sun 13:00": Claude Code's own numbers, from the record as read, or nil
     /// when it has none.

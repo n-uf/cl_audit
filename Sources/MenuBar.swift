@@ -385,7 +385,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         add("Refresh now", #selector(refreshNow(_:)))
         if p.needsLogin { add("Log in…", #selector(logIn(_:))) }
         // the split: Claude Code's own sign-in, to the Claude app's account (the same Log in, its address filled in)
-        else if let s = p.split { add(s.key + "…", #selector(logIn(_:))) }
+        else if let k = p.split?.key { add(k + "…", #selector(logIn(_:))) }
         menu.addItem(.separator())
         add("Dashboard", #selector(dashboard(_:)))
         add("Profile settings…", #selector(settings(_:)))

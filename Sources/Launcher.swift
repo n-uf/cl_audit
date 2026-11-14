@@ -998,7 +998,9 @@ struct AccountCard: View {
                 // numbers only as one labelled line, since `claude` in Terminal still uses them
                 VStack(alignment: .leading, spacing: 8) {
                     Text(split.line).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                    Button(split.key) { actions.logIn(row) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    if let key = split.key {           // (none while a switch waits for the app's sign-in)
+                        Button(key) { actions.logIn(row) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    }
                     if let code = split.codeLine(row.codeStatus) {
                         Text(code).font(.system(size: 10.5)).foregroundStyle(face.muted.opacity(0.8)).fixedSize(horizontal: false, vertical: true)
                     }

@@ -492,6 +492,19 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
         }
         snapshot(framed(bar, w), "split-menubar-std-w\(Int(w))", w + 32, 600)
     }
+    // the split as a switch waiting for the Claude app: the newest switch went from pat to mo (linked), the app still on
+    // pat: the switched line, no key
+    var moved = SwitchReceipt(id: SwitchEngine.receiptID(now, "main"), profile: "main", standby: "km", dataDir: "/x",
+                              from: SeatID(pat), to: SeatID(mo), started: now.addingTimeInterval(-600))
+    moved.steps = [SwitchReceipt.Step(kind: .entry, path: "/x/a", sha: nil, parked: nil, original: nil, done: true)]
+    moved.linked = now.addingTimeInterval(-300)
+    rec.resolved = AccountResolver.resolve(e, among: [e], app: AppSignIn.cached(for: e), code: mo, loginEmail: mo.email, names: [:],
+                                           newestSwitch: moved, now: now)
+    _ = Store.writeStatus("main", rec)
+    let swHead = Store.status(for: e)
+    print("switched:", SplitUsage.of(swHead)?.switched == true ? "yes" : "NO")
+    snapshot(framed(AccountCard(row: AccountRow(entry: e, status: swHead, codeStatus: Store.status(for: e, headline: false)), actions: acts)
+                        .frame(width: 460).fixedSize(horizontal: false, vertical: true), 460), "split-card-switched-std-w460", 492, 1000)
 }
 
 if ProcessInfo.processInfo.environment["SPLIT_ONLY"] != nil {

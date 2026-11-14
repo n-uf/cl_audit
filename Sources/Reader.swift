@@ -718,7 +718,8 @@ final class UsageReader {
         let me = list.first { $0.id == id } ?? entry
         return AccountResolver.resolve(me, among: list, app: AppSignIn.cached(for: me),
                                        code: Account.signedInSeat(configDir: me.configDir), loginEmail: numbersOwner,
-                                       names: AccountList.names(), recordTooLarge: Account.recordTooLarge(configDir: me.configDir))
+                                       names: AccountList.names(), recordTooLarge: Account.recordTooLarge(configDir: me.configDir),
+                                       newestSwitch: SwitchEngine.receipts(profile: me.id).first)
     }
 
     static func when(_ d: Date) -> String { TimeWords.when(d) }

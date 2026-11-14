@@ -228,7 +228,8 @@ final class SettingsModel: ObservableObject {
             var s = Store.status(e.id) ?? IconStatus(state: "idle")
             var r = AccountResolver.resolve(e, among: list, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
                                             loginEmail: s.readingOwner, names: AccountList.names(),
-                                            recordTooLarge: Account.recordTooLarge(configDir: e.configDir))
+                                            recordTooLarge: Account.recordTooLarge(configDir: e.configDir),
+                                            newestSwitch: SwitchEngine.receipts(profile: e.id).first)
             if var old = s.resolved { old.at = r.at; if old == r { continue } }
             r.at = Date()
             s.resolved = r
@@ -244,7 +245,8 @@ final class SettingsModel: ObservableObject {
         var s = Store.status(id) ?? IconStatus(state: "idle")
         var r = AccountResolver.resolve(e, among: accounts, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
                                         loginEmail: s.readingOwner, names: AccountList.names(),
-                                        recordTooLarge: Account.recordTooLarge(configDir: e.configDir))
+                                        recordTooLarge: Account.recordTooLarge(configDir: e.configDir),
+                                        newestSwitch: SwitchEngine.receipts(profile: e.id).first)
         r.at = Date()
         s.resolved = r
         _ = Store.writeStatus(id, s)

@@ -1096,6 +1096,43 @@ do {
     check(cfg.contains("logIn(Account(e), email: SplitUsage.of(s)?.loginEmail ?? s?.expectedEmail)"),
           "the menus' Log in takes the split's address (the same ClaudeCLI.logIn, creating: false)")
 
+    // the split as a switch waiting for the Claude app (the hub's ruling): the newest switch went from pat to mo (Claude
+    // Code's account now), it is linked or still open, and the app is still on pat: the switched line, no key
+    var toMo = SwitchReceipt(id: SwitchEngine.receiptID(now, "spl"), profile: "spl", standby: "km", dataDir: "/x", from: SeatID(pat), to: SeatID(mo), started: now)
+    toMo.steps = [SwitchReceipt.Step(kind: .entry, path: "/x/a", sha: nil, parked: nil, original: nil, done: true)]
+    var linkedToMo = toMo; linkedToMo.linked = now
+    func splitWith(app: AppSignIn.Login, newest: SwitchReceipt?) -> SplitUsage? {
+        var s = record(app: app, code: mo, reading: mo.email, weekly: 100)
+        s.resolved = AccountResolver.resolve(e, among: [e], app: app, code: mo, loginEmail: mo.email, names: [:], newestSwitch: newest, now: now)
+        _ = Store.writeStatus("spl", s)
+        return SplitUsage.of(Store.status(for: e))
+    }
+    let switchedLine = "Switched to \(Privacy.masked(mo.email!)): sign the Claude app in to \(Privacy.masked(mo.email!)) to finish"
+    for (what, r) in [("linked (Claude Code reached mo)", linkedToMo), ("still open", toMo)] {
+        let s = splitWith(app: appPat, newest: r)
+        check(s?.switched == true && s?.line == switchedLine && s?.key == nil && s?.loginEmail == nil
+              && Store.status(for: e)?.weekly == nil && AccountView.of(Store.status(for: e)).line == switchedLine
+              && s?.codeLine(Store.status(for: e, headline: false), now: now)?.contains("Week 100%") == true,
+              "a switch to mo waiting for the app (\(what)): the switched line, no key, no numbers for pat, mo's on the secondary line: \(s?.line ?? "-")")
+    }
+    let zed = Seat(account: uuid(33), organization: uuid(73), email: "zed@example.com")
+    let appZed = AppSignIn.Login(account: zed.account, org: zed.organization, state: .known, source: "log", at: now)
+    let third = splitWith(app: appZed, newest: linkedToMo)
+    check(third?.switched == false && third?.key?.hasPrefix("Log Claude Code in to ") == true && third?.line.hasPrefix("No usage for ") == true,
+          "the app on a third account (not the one the switch left): a split by hand, the B8 line and key")
+    var undone = toMo; undone.undone = now
+    var leftAsIs = toMo; leftAsIs.leftAsIs = now
+    for (what, r) in [("undone", undone), ("left as it is", leftAsIs)] {
+        let s = splitWith(app: appPat, newest: r)
+        check(s?.switched == false && s?.key == "Log Claude Code in to \(Privacy.masked(pat.email!))" && s?.loginEmail == pat.email,
+              "the switch \(what): a split by hand, the B8 line and key")
+    }
+    let older = splitWith(app: appPat, newest: nil)
+    check(older?.switched == false && older?.key != nil, "no switch at all: a split by hand")
+    var toOther = toMo; toOther.to = SeatID(zed)
+    check(splitWith(app: appPat, newest: toOther)?.switched == false, "the newest switch went to another account than Claude Code's: by hand")
+    _ = Store.writeStatus("spl", record(app: appPat, code: mo, reading: mo.email, weekly: 100))
+
     // numbersFor comes from the reading itself: a .claude.json naming another account changes whose they are not
     let staleCode = AccountResolver.resolve(e, among: [e], app: appPat, code: pat, loginEmail: mo.email, names: [:], now: now)
     check(staleCode.numbersFor == mo.email && staleCode.readStale == true && staleCode.codeName == pat.email,
