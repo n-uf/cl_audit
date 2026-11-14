@@ -279,7 +279,8 @@ full · 5-hour too"), how long until it's back, large ("in 1h 42m"), and when, u
   stops waiting; moved sessions stay where they went until Undo. cl_audit never sees a password or a token, and never
   copies, moves or reads a sign-in; the Claude app's sign-in is yours to change.
   Beside the profile's tile in Settings a display says the same in two lines ("Switching ● · to ultra-2" in mint while it
-  waits; "Switched to · ultra-2"; "Signed in as · ultra-3"). One switch of a profile at a time.
+  waits; "Switched to · ultra-2"; "Signed in as · ultra-3"). One switch of a profile at a time, and none while a restore or an import of the
+  profile, or the move to the default profile, stopped half way: the Switch page says which and where to finish or undo it.
 - **The folder's account is the one in use, whoever signed it in.** Run `claude auth login` yourself in Terminal, or
   sign in from another app on the same folder: within a second (cl_audit watches the folders that hold `.claude.json`
   and the window's `config.json`) the profile works on that account and the one before stands by (the agent notices it

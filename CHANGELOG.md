@@ -13,6 +13,7 @@ Nothing pending.
 ## 26.11.29 — 2026-11-14
 
 - When the Claude app and Claude Code in Terminal are on different accounts, cl_audit now says it can't read the app account's usage and which account Terminal is on, with "Log Claude Code in Terminal in to …" to fix it.
+- A switch no longer starts while a restore or an import of the same profile, or the move to the default profile, stopped half way; it says which one and where to finish or undo it.
 
 ## 26.11.28 — 2026-11-14
 
