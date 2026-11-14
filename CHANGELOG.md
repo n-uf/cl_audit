@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.28 — 2026-11-14
+
 - A switch no longer drops a scheduled task when the new account already has a different task with the same id: it leaves all the scheduled tasks, and their sessions, with the old account and says why.
 
 ## 26.11.27 — 2026-11-14
