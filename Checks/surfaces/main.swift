@@ -35,6 +35,15 @@ func profile(_ id: String, _ dir: String, _ s: Seat?) -> AccountEntry {
     return e
 }
 _ = NSApplication.shared
+/// The Dock icon's preview (Settings.swift's `preview`, which the Dock's tiles and Settings' tile draw) for a record that has no
+/// numbers (signed out, expired, split): the blank tile, never the samples (23 % and 41 %) it draws where there is no record.
+func previewShowsNone(_ p: AccountEntry, _ rec: IconStatus?) -> Bool {
+    let blank = Painter.image(TileModel(label: p.label.isEmpty ? "?" : p.label, fiveHour: nil, weekly: nil, stale: false, style: p.style,
+                                        warn: false, tint: p.color, frame: p.frame), pixels: 128).tiffRepresentation
+    let sample = preview(p, status: nil).tiffRepresentation
+    return blank != nil && sample != blank && preview(p, status: rec).tiffRepresentation == blank
+        && preview(p, status: rec, sample: false).tiffRepresentation == blank
+}
 
 // ============ 1. the Claude app's account: its log after the launch, checked against config.json ============
 do {
@@ -491,6 +500,7 @@ do {
         let row = AccountRow(entry: p, status: rec)
         check(row.limits.allSatisfy { $0.p == nil } && row.full == nil && row.needsLogin && row.subtitle == "login expired",
               "\(what): the card (and Settings' in-use box, which draws its limits) says login expired, no bars, Log in…")
+        check(previewShowsNone(p, rec), "\(what): the Dock icon's preview draws no numbers, never the samples")
         let panel = DetailsInfo(name: p.name, icon: NSImage(), login: rec?.loginEmail, expected: rec?.expectedEmail, mismatch: false, plan: rec?.plan,
                                 fiveHour: rec?.fiveHour, fiveHourResets: rec?.fiveHourResets, weekly: rec?.weekly, weeklyResets: rec?.weeklyResets,
                                 updated: rec?.updatedAt, source: rec?.source, problem: rec?.problem, renewNote: nil, needsLogin: rec?.needsLogin ?? false)
@@ -572,6 +582,7 @@ do {
         let row = AccountRow(entry: p, status: rec)
         check(row.limits.allSatisfy { $0.p == nil } && row.needsLogin && row.subtitle == "no Claude Code login",
               "\(what): the card and Settings' box: no bars, its state line, Log in…")
+        check(previewShowsNone(p, rec), "\(what): the Dock icon's preview draws no numbers, never the samples")
         check(rec?.needsLogin == true && rec?.fiveHour == nil && DetailsInfo.noNumbersWords(rec) == "Signed out",
               "\(what): the Dock panel (from the same record): no numbers, Log in…, its age line says Signed out")
         let q = QuickChatTarget(p), ql2 = QuickChatLevel(Usage.of(rec), now: now)
@@ -595,6 +606,8 @@ do {
           "a good read: the numbers come back")
     check(Usage.of(back)?.weekly == 64 && AccountRow(entry: p, status: back).weekly == 64 && !AccountRow(entry: p, status: back).needsLogin
           && QuickChatTarget(p).loginWords == nil, "…on the menu bar, the card and quick chat alike, without Log in…")
+    check(preview(p, status: back, sample: false).tiffRepresentation != preview(p, status: Store.status(for: p).map { var s = $0; s.dropNumbers(); return s }, sample: false).tiffRepresentation,
+          "…and in the Dock icon's preview: the record's own numbers (7 % and 64 %), not a blank tile")
     outReader.stop()
     UsageReader.testPoster = nil
     try? Store.save([])
@@ -604,10 +617,15 @@ do {
 // ============ 6. no screen reads the sign-in files or a seat itself ============
 do {
     let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
+    let widgetSrc = src.deletingLastPathComponent().appendingPathComponent("Widget")
+    // (the Dock's own file too: its tiles are drawn from the record, like the icon app's)
     let surfaceFiles = ["MenuBar.swift", "IconApp.swift", "Details.swift", "SwitchMenu.swift", "SwitchView.swift", "SwitchPage.swift",
-                        "QuickChat.swift", "QuickChatViews.swift", "QuickChatCard.swift", "QuickChatLevel.swift"]
-    let forbidden = [".claude.json", "config.json", "main.log", "Logs/Claude", "claudeJSON(", "signedInSeat(", "lastKnownAccountUuid",
-                     "expectedEmail(configDir", "FolderFactsCache", "inUseElsewhere", "AppSignIn.", "entry.seat", "e.seat?.", "profile.entry.seat"]
+                        "QuickChat.swift", "QuickChatViews.swift", "QuickChatCard.swift", "QuickChatLevel.swift", "Dock.swift"]
+    // the sign-in files, and the folder's address read from .claude.json (`Account.expectedEmail(configDir:)` and the `expectedEmail()`
+    // that calls it): a screen takes the expected address from the status record (`status.expectedEmail`)
+    let fileReads = [".claude.json", "config.json", "main.log", "Logs/Claude", "claudeJSON(", "signedInSeat(", "lastKnownAccountUuid",
+                     "expectedEmail(", "FolderFactsCache", "inUseElsewhere", "AppSignIn."]
+    let forbidden = fileReads + ["entry.seat", "e.seat?.", "profile.entry.seat"]
     var reads: [String] = []
     for f in surfaceFiles {
         let lines = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? ["(missing \(f))"]
@@ -620,10 +638,23 @@ do {
         guard let r1 = t.range(of: a), let r2 = t.range(of: b, range: r1.upperBound..<t.endIndex) else { return ["(\(f): section not found)"] }
         return t[r1.lowerBound..<r2.lowerBound].components(separatedBy: "\n")
     }
-    for (f, a, b) in [("Launcher.swift", "struct AccountCard", "\n}\n"), ("Settings.swift", "func inUseBox(", "    /// Log in… on the account in use")] {
+    // the parts of bigger files that draw a profile: the card and the palette's row (Launcher.swift), Settings' IN USE box and
+    // its Dock icon preview (Settings.swift)
+    for (f, a, b) in [("Launcher.swift", "struct AccountCard", "\n}\n"), ("Launcher.swift", "struct AccountRow: Identifiable", "\n}\n"),
+                      ("Settings.swift", "func inUseBox(", "    /// Log in… on the account in use"),
+                      ("Settings.swift", "func preview(_ e: AccountEntry", "/// Settings is a page of the one cl_audit window")] {
         for l in section(f, from: a, to: b) where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
             for p in forbidden where l.contains(p) { reads.append("\(f) \(p): \(l.trimmingCharacters(in: .whitespaces).prefix(60))") }
             if l.contains("section not found") { reads.append(l) }
+        }
+    }
+    // the widget: built on its own, and it may read the profiles file for its profiles and their seats (its decoder, until it
+    // takes the record's answer), but never the sign-in files or the folder's address itself
+    for f in ["WidgetViews.swift"] {
+        let lines = (try? String(contentsOf: widgetSrc.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? ["(missing Widget/\(f))"]
+        for (i, l) in lines.enumerated() where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
+            for p in fileReads where l.contains(p) { reads.append("Widget/\(f):\(i + 1) \(p)") }
+            if l.hasPrefix("(missing") { reads.append(l) }
         }
     }
     check(reads.isEmpty, "no screen reads .claude.json, config.json, the app's log or a seat itself: \(reads)")
@@ -1074,6 +1105,7 @@ do {
           "the card and its tile: no limits, no full panel, no countdown, no red Log in")
     check(Usage.of(head) == nil && QuickChatLevel(Usage.of(head), now: now).week == nil,
           "the menu bar strip, the Dock icon and quick chat: no numbers for pat (neutral)")
+    check(previewShowsNone(e, head), "the split: the Dock icon's preview (Settings' tile, the Dock's tile) draws no numbers, never the samples")
     check(row.split?.key == "Log Claude Code in to \(Privacy.masked(pat.email!))" && split?.loginEmail == pat.email,
           "the key: Log Claude Code in to pat, with pat's address filled in")
     let line = row.split?.codeLine(row.codeStatus, now: now) ?? "-"

@@ -512,6 +512,74 @@ if ProcessInfo.processInfo.environment["SPLIT_ONLY"] != nil {
     print("done"); exit(0)
 }
 
+// ==================================================================== the Dock icon's preview (DOCKPREVIEW_ONLY=1, ProfileCore step 0)
+// The preview Settings' tile and the Dock's tile draw (`preview(_:status:)`), from each record as the app keeps it: a good read, a
+// signed-out, an expired and a split profile (no numbers, not the samples 23 % and 41 %), a login on another account (the warning
+// dot), and no record at all (the Dock: none; Settings' tile: the samples). Std, 340 and 460. Files dockpreview-std-w<width>.png.
+@MainActor func dockPreviewRenders() {
+    let now = Date()
+    func entry(_ id: String, _ label: String) -> AccountEntry {
+        var e = AccountEntry(id: id, name: id, label: label, configDir: "~/.claude-\(id)"); e.desktop = .separate
+        e.desktopDataDir = "~/Library/Application Support/Claude-\(id)"; return e
+    }
+    func record(_ state: String, _ who: Seat, week: Double?, five: Double?) -> IconStatus {
+        var r = IconStatus(state: state); r.loginEmail = state == "noLogin" ? nil : who.email; r.expectedEmail = who.email
+        r.weekly = week; r.fiveHour = five; r.updatedAt = now.addingTimeInterval(-60); r.source = "Anthropic"
+        r.weeklyResets = now.addingTimeInterval(2 * 86400); r.fiveHourResets = now.addingTimeInterval(3600); r.plan = "Max"
+        return r
+    }
+    let pat = Seat(account: uuid(41), organization: uuid(81), email: "pat@example.com")
+    let mo = Seat(account: uuid(42), organization: uuid(82), email: "mo@example.com")
+    let okE = entry("dok", "OK"), outE = entry("dout", "OUT"), expE = entry("dexp", "EXP"), splE = entry("dspl", "SPL"),
+        mixE = entry("dmix", "MIX"), noneE = entry("dnone", "NEW")
+    _ = Store.writeStatus(okE.id, record("ok", pat, week: 64, five: 12))
+    _ = Store.writeStatus(outE.id, record("noLogin", pat, week: 61, five: 22))      // numbers saved, then signed out
+    _ = Store.writeStatus(expE.id, record("expired", pat, week: 90, five: 100))
+    var mix = record("ok", pat, week: 35, five: 20); mix.loginEmail = mo.email       // Claude Code on another account than the folder names
+    _ = Store.writeStatus(mixE.id, mix)
+    sign(splE.configDir, mo)
+    try? fm.createDirectory(atPath: expand(splE.desktopDataDir), withIntermediateDirectories: true)
+    try! JSONSerialization.data(withJSONObject: ["lastKnownAccountUuid": pat.account]).write(to: URL(fileURLWithPath: expand(splE.desktopDataDir) + "/config.json"))
+    var spl = record("ok", mo, week: 100, five: nil); spl.numbersOwner = mo.email; spl.noFiveHour = true
+    spl.resolved = AccountResolver.resolve(splE, among: [splE], app: AppSignIn.cached(for: splE), code: mo, loginEmail: mo.email, names: [:], now: now)
+    _ = Store.writeStatus(splE.id, spl)
+    print("split:", SplitUsage.of(Store.status(for: splE)) != nil ? "yes" : "NO (the app's account wasn't read)")
+    let face = FaceTheme.of(.std)
+    func tile(_ e: AccountEntry, _ what: String, sample: Bool = false, note: String? = nil) -> some View {
+        VStack(spacing: 4) {
+            Image(nsImage: preview(e, status: Store.status(for: e), sample: sample)).resizable().frame(width: 96, height: 96)
+            Text(what).font(.system(size: 11, weight: .semibold)).foregroundColor(.white)
+            Text(note ?? " ").font(.system(size: 10)).foregroundColor(Color(white: 0.65)).multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+        }.frame(width: 96)
+    }
+    for w in [CGFloat(340), 460] {
+        let all = VStack(alignment: .leading, spacing: 14) {
+            Text("The Dock icon's preview, from each profile's record").font(.system(size: 12, weight: .semibold)).foregroundColor(.white)
+            HStack(alignment: .top, spacing: 10) {
+                tile(okE, "Good read", note: "12 % and 64 %")
+                tile(outE, "Signed out", note: "saved numbers dropped")
+                tile(expE, "Expired", note: "saved numbers dropped")
+            }
+            HStack(alignment: .top, spacing: 10) {
+                tile(splE, "Split", note: "app on pat@, Claude Code on mo@")
+                tile(mixE, "Other account", note: "the warning dot")
+                tile(noneE, "No record", note: "Dock: none")
+            }
+            HStack(alignment: .top, spacing: 10) {
+                tile(noneE, "No record", sample: true, note: "Settings' tile: samples")
+            }
+        }
+        snapshot(VStack { all }.frame(width: w, alignment: .leading).padding(16).background(Color(white: 0.1))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .environment(\.face, face).environment(\.colorScheme, .dark), "dockpreview-std-w\(Int(w))", w + 32, 640)
+    }
+}
+
+if ProcessInfo.processInfo.environment["DOCKPREVIEW_ONLY"] != nil {
+    MainActor.assumeIsolated { dockPreviewRenders() }
+    print("done"); exit(0)
+}
+
 MainActor.assumeIsolated {
     // (named "Main": the app puts "Claude " before a profile's name itself)
     var main = AccountEntry(id: "main", name: "Main", label: "MAIN", configDir: "~/.claude"); main.seat = u1
