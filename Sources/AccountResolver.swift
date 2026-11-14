@@ -126,10 +126,20 @@ struct SplitUsage: Equatable {
                  : "No usage for \(Privacy.masked(app)) yet: Claude Code here is signed in to \(Privacy.masked(code))"
     }
     /// The key: the existing Log in (Claude Code's own sign-in in Terminal, with the app's address filled in). Not a switch.
-    /// None while a switch waits for the app.
-    var key: String? { switched ? nil : "Log Claude Code in to \(Privacy.masked(app))" }
-    /// The address the login fills in (none for an account known by its id only, or while a switch waits for the app).
+    /// None while a switch waits for the app, and none when the app's account is known by its id only: the key only ever
+    /// names and fills in the app's own address (never Claude Code's), so then `hint` says what to do instead.
+    var key: String? { loginEmail.map { "Log Claude Code in to \(Privacy.masked($0))" } }
+    /// The address the login fills in: the app's own, when it is known (not while a switch waits for the app).
     var loginEmail: String? { !switched && app.contains("@") ? app : nil }
+    /// In place of the key when the app's address isn't known.
+    var hint: String? { !switched && loginEmail == nil ? "Sign Claude Code in to the Claude app's account" : nil }
+
+    /// The address a Log in fills in: in the split only the app's own (nil: none filled in, never Claude Code's), else the
+    /// usual one (`usual`: the folder's expected address).
+    static func loginAddress(_ s: IconStatus?, usual: String?) -> String? {
+        if let split = of(s) { return split.loginEmail }
+        return usual
+    }
 
     /// "Claude Code in Terminal: M@… · Week 100%, back Sun 13:00": Claude Code's own numbers, from the record as read, or nil
     /// when it has none.

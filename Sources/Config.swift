@@ -373,8 +373,9 @@ enum ClaudeCLI {
     /// one folder, with the record's address filled in.
     static func logIn(profile e: AccountEntry) {
         let s = Store.status(e.id)
-        // the Claude app on another account than Claude Code (SplitUsage): Claude Code logs in to the app's account
-        logIn(Account(e), email: SplitUsage.of(s)?.loginEmail ?? s?.expectedEmail)
+        // the Claude app on another account than Claude Code (SplitUsage): Claude Code logs in to the app's account, and
+        // only ever with the app's own address (none when it isn't known, never Claude Code's)
+        logIn(Account(e), email: SplitUsage.loginAddress(s, usual: s?.expectedEmail))
     }
 
     /// Log in… in the agent's surfaces (the menu bar, the Dock icon's menu, the launcher): an alert when the folder is gone,

@@ -1000,6 +1000,8 @@ struct AccountCard: View {
                     Text(split.line).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                     if let key = split.key {           // (none while a switch waits for the app's sign-in)
                         Button(key) { actions.logIn(row) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    } else if let hint = split.hint {  // the app's address isn't known: no key that could fill in another
+                        Text(hint).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
                     }
                     if let code = split.codeLine(row.codeStatus) {
                         Text(code).font(.system(size: 10.5)).foregroundStyle(face.muted.opacity(0.8)).fixedSize(horizontal: false, vertical: true)
@@ -1112,7 +1114,7 @@ final class ManagerUI {
             self?.closePalette()
             // the profile's one folder; a folder that is gone is said, never made again (ClaudeCLI.logIn)
             // (in the split, the Claude app's account: Claude Code logs in to it, and the numbers line up)
-            ClaudeCLI.logIn(Account(r.entry), email: r.split?.loginEmail ?? r.status?.expectedEmail)
+            ClaudeCLI.logIn(Account(r.entry), email: SplitUsage.loginAddress(r.status, usual: r.status?.expectedEmail))
         },
         mainScreen: { [weak self] in self?.closePalette(); self?.showMain() },
         settings: { [weak self] in self?.showMain(page: .settings) },

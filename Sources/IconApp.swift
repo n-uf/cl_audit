@@ -568,7 +568,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the profile's one folder; a folder that is gone is said, never made again (ClaudeCLI.logIn)
         let reading = Account(entry)
         // the split (SplitUsage): Claude Code logs in to the Claude app's account
-        ClaudeCLI.logIn(reading, email: SplitUsage.of(status)?.loginEmail ?? reading.expectedEmail() ?? expectedEmail)
+        ClaudeCLI.logIn(reading, email: SplitUsage.loginAddress(status, usual: reading.expectedEmail() ?? expectedEmail))
     }
 }
 
