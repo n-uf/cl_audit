@@ -158,7 +158,7 @@ final class SwitchRunner: ObservableObject {
         case .failure(let why): goal = g; fail(.notStarted, why.description)
         case .success(let p):
             planned = p
-            if !p.held.isEmpty { moveNote = Self.heldWords(p.held.count) }
+            moveNote = Self.stayWords(p)
             if p.moves { closeAndMove(e, g) } else { begin(e, g) }
         }
     }
@@ -168,6 +168,16 @@ final class SwitchRunner: ObservableObject {
         let left = r.left ?? []
         let shown = left.prefix(3).joined(separator: ", ") + (left.count > 3 ? " and \(left.count - 3) more" : "")
         return "Partly undone: \(shown) \(left.count == 1 ? "was" : "were") left as \(left.count == 1 ? "it was" : "they were"). The rest is back; Undo again once that's sorted."
+    }
+
+    /// What stays where it is, and why: the sessions a running Claude Code owns, and the scheduled tasks (with their
+    /// sessions) that can't move because of how the new account's own tasks differ. nil when nothing stays.
+    static func stayWords(_ p: SwitchPlan) -> String? {
+        var parts: [String] = []
+        let owned = p.held.count - p.taskHeld.count
+        if owned > 0 { parts.append(heldWords(owned)) }
+        if let why = p.taskStay { parts.append("The scheduled tasks stay with the account in use, and so do their sessions: \(why).") }
+        return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 
     static func heldWords(_ n: Int) -> String {
@@ -211,7 +221,7 @@ final class SwitchRunner: ObservableObject {
                 switch result {
                 case .success(let r):
                     self.receipt = r
-                    let notes = (r.held?.isEmpty == false ? [Self.heldWords(r.held!.count)] : []) + r.problems
+                    let notes = (Self.stayWords(p).map { [$0] } ?? []) + r.problems
                     self.moveNote = notes.isEmpty ? nil : notes.joined(separator: " ")
                     self.begin(e, g)
                 case .failure(let err):

@@ -59,6 +59,8 @@ struct SwitchPlan: Equatable {
     var deleted: [String] = []          // the target deleted a session with that id: left where they are
     var held: [String] = []             // a running Claude Code owns it: left where it is, for a later switch
     var tasks = 0                       // scheduled tasks to move
+    var taskStay: String? = nil         // why the scheduled tasks stay (taskProblem): then `tasks` is 0 and neither file is touched
+    var taskHeld: [String] = []         // the sessions of those tasks, held too (a subset of `held`)
     var backupTranscripts = true        // the backup (SessionsBackup.swift) takes Claude Code's transcripts too
     var entry: AccountEntry? = nil      // cl_audit's record of the profile, for the backup
 
@@ -200,7 +202,7 @@ enum SwitchEngine {
 
     /// Why the source's tasks can't move as they are, or nil (claude-transplant's taskSessions and taskFamilies checks): a
     /// registry that can't be read, a task without an id or an id twice, or a target that has one of their ids already with
-    /// other state.
+    /// other settings (the task's own entry) or other state.
     static func taskProblem(source: String, target: String) -> String? {
         let fm = FileManager.default
         let file = (source as NSString).appendingPathComponent("scheduled-tasks.json")
@@ -213,6 +215,13 @@ enum SwitchEngine {
         guard Set(ids).count == ids.count else { return "two scheduled tasks share an id" }
         if fm.fileExists(atPath: (target as NSString).appendingPathComponent("scheduled-tasks.json")) {
             guard let dst = registry(target) else { return "the new account's scheduled-tasks.json can't be read" }
+            // a task the target has under the same id must be the same task, whole: otherwise the move would drop the
+            // source's (the target's copy stays), and it would survive only in the backup
+            let have = tasks(in: target)
+            for task in list {
+                guard let id = task["id"] as? String, let mine = have.first(where: { $0["id"] as? String == id }) else { continue }
+                guard NSDictionary(dictionary: task).isEqual(to: mine) else { return "the new account has a task with the same id and other settings" }
+            }
             for key in taskStateKeys {
                 let s = src[key] as? [String: Any] ?? [:], t = dst[key] as? [String: Any] ?? [:]
                 for id in ids where t[id] != nil {
@@ -324,10 +333,12 @@ enum SwitchEngine {
             if fm.fileExists(atPath: (p.targetDir as NSString).appendingPathComponent("deleted_\(id)")) { p.deleted.append(n); continue }
             // a session a running Claude Code owns, or one of tasks that can't move: held where it is
             let task = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["scheduledTaskId"] as? String
-            if ownedBy(live, entry: data, name: n) || (taskBlock != nil && task.map(taskIDs.contains) == true) { p.held.append(n); continue }
+            let taskHeld = taskBlock != nil && task.map(taskIDs.contains) == true
+            if ownedBy(live, entry: data, name: n) || taskHeld { p.held.append(n); if taskHeld { p.taskHeld.append(n) }; continue }
             p.move.append(n)
         }
         p.tasks = taskBlock == nil ? taskIDs.count : 0
+        p.taskStay = taskBlock
         return .success(p)
     }
 
@@ -474,7 +485,8 @@ enum SwitchEngine {
         try save(r)
     }
 
-    /// The source's tasks join the target's (a task the target already has by its id stays the target's), with their state
+    /// The source's tasks join the target's (a task the target already has by its id, identical to it by taskProblem's
+    /// rule, stays the target's: a different one never gets here, the tasks stay), with their state
     /// (recordedSkips, runRetries); the source keeps none. Both files are backed up and both steps written down first; the
     /// source is emptied before the target gets them, so a stop in between never leaves a task in both accounts (it would
     /// run twice).
