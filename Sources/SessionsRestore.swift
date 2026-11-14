@@ -71,7 +71,7 @@ enum SessionsRestore {
         /// The folder a move's entry (or task file) from account folder `from` goes to: its own, when that account is the profile's;
         /// else the account in use's, as for any import.
         func folder(for from: SeatID, move: Bool) -> SeatID? {
-            if move, seats.contains(where: { $0.account.lowercased() == from.account.lowercased() && $0.organization.lowercased() == from.organization.lowercased() }) { return from }
+            if move, seats.contains(where: { $0.sameIgnoringCase(from) }) { return from }
             return inUse
         }
     }

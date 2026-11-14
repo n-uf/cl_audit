@@ -854,7 +854,7 @@ enum SwitchEngine {
     static func linkReached(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = Account.signedInSeat, now: Date = Date()) -> [String] {
         let open = receipts().filter(\.unfinished)
         guard !open.isEmpty else { return [] }
-        func reached(_ want: SeatID, _ s: Seat?) -> Bool { want.same(s) }      // (the one comparison: AccountID)
+        func reached(_ want: SeatID, _ s: Seat?) -> Bool { want.sameIgnoringCase(s) }      // (case doesn't count here, as before)
         var linked: [String] = []
         for r in open {
             guard let e = accounts.first(where: { $0.id == r.profile }),

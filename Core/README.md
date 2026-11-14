@@ -28,7 +28,7 @@ in step 1.
 - **Identity without an id.** cl_quick knows the account from the running claude process (`initialize.account`: address
   and organisation, no account id) and treats a folder's `.claude.json` as a guess. `AccountIdentity` matches by ids when
   both sides have one, else by address and organisation, and carries `source` (`verified` / `guessed`). cl_audit still
-  compares seats by id (`Seat.same`).
+  compares seats by id (`Seat.same`), exactly.
 - **Full in two modes.** cl_quick acts on a full limit only from fresh numbers (under 5 minutes) and shows an older, dated
   full grey as "last known" until its reset. `AtLimit.full(_:resets:readAt:mode:)` has both (`.acts(freshFor:)`,
   `.display`). cl_audit's screens keep `holding`/`blocker` (full while the reset is ahead or unknown), with old numbers
@@ -42,5 +42,10 @@ in step 1.
 - **Shared as they are.** The level (green, amber from 50, red from 80, crimson from 95), `TimeWords.countdown` ("19m",
   "1h 42m", "2d 19h", "16 days"), "back at 15:28" / "back Thu 09:00", and `AccountBook.ago` ("12 min ago", "3 h ago",
   "yesterday").
+- **Open question: one seat comparison.** `Seat.same` and `SeatID.same` compare the ids exactly (case counts; for
+  `Seat`, no organisation is not an empty one), while cl_audit's id reads (`AccountResolver`, a switch reaching its
+  account, a move's folders) ignore case. Proposal for a later step: one normalised rule (`AccountID`: case doesn't
+  count, nil organisation = "") for every comparison. It would make `Seat("ABC", nil)` and `Seat("abc", "")` one seat,
+  an accounts-identity change, so it waits for its own step and checks.
 - **Later steps.** Reading usage (the two input scales, partial answers, refusals and how they lift, which windows hold
   back the account) isn't in the core yet.

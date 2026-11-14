@@ -20,19 +20,24 @@ func uuid(_ n: Int) -> String { "00000000-0000-4000-8000-" + String(format: "%01
 let t0 = Date(timeIntervalSince1970: 1_800_000_000)
 var gmt = Calendar(identifier: .gregorian); gmt.timeZone = TimeZone(identifier: "GMT")!
 
-// ============ 1. identity: one comparison ============
+// ============ 1. identity: the seat comparisons ============
 do {
     let a = Seat(account: uuid(1), organization: uuid(51), email: "ann@example.com")
-    check(a.same(Seat(account: uuid(1).uppercased(), organization: uuid(51).uppercased())), "the same seat whatever the case of its ids")
+    check(a.same(Seat(account: uuid(1), organization: uuid(51), email: "other@example.com")), "the same seat: the ids, not the address")
+    check(!a.same(Seat(account: uuid(1).uppercased(), organization: uuid(51))), "Seat.same is exact: another case is another seat (as before)")
     check(!a.same(Seat(account: uuid(1), organization: uuid(52))), "another organisation: another seat")
     check(!a.same(nil) && !a.same(Seat(account: uuid(2), organization: uuid(51))), "nil or another account: not the same")
     let noOrg = Seat(account: uuid(3))
-    check(noOrg.same(Seat(account: uuid(3), organization: "")) && !noOrg.same(Seat(account: uuid(3), organization: uuid(53))),
-          "no organisation recorded is the same as an empty one, never another")
+    check(!noOrg.same(Seat(account: uuid(3), organization: "")) && noOrg.same(Seat(account: uuid(3))),
+          "Seat.same: no organisation (nil) isn't an empty one (as before)")
     let id = SeatID(a)
-    check(id.same(a) && id.same(Seat(account: uuid(1).uppercased(), organization: uuid(51))) && SeatID(noOrg).organization == "",
-          "a receipt's SeatID compares the same way")
-    check(AccountID.same("ABC", "abc") && !AccountID.same(nil, "abc") && AccountID.normal("AbC") == "abc", "AccountID: one normal form")
+    check(id.same(a) && !id.same(Seat(account: uuid(1).uppercased(), organization: uuid(51))) && SeatID(noOrg).organization == ""
+          && SeatID(noOrg).same(noOrg) && SeatID(noOrg).same(Seat(account: uuid(3), organization: "")),
+          "SeatID.same: exact ids, no organisation is \"\" (as before)")
+    check(id.sameIgnoringCase(Seat(account: uuid(1).uppercased(), organization: uuid(51).uppercased())) && !id.sameIgnoringCase(Seat(account: uuid(1), organization: uuid(52))),
+          "SeatID.sameIgnoringCase: a switch reaching its account, whatever the case (as before)")
+    check(AccountID.same("ABC", "abc") && !AccountID.same(nil, "abc") && AccountID.normal("AbC") == "abc"
+          && AccountID.sameOrganization(nil, "") && !AccountID.sameOrganization(nil, "x"), "AccountID: the loose comparison")
     // identity: by the ids when both have one, else by address and organisation (a running process says no id)
     let fromFile = AccountIdentity(a)
     let fromProcess = AccountIdentity(account: nil, email: "ANN@example.com", organization: uuid(51), source: .verified)

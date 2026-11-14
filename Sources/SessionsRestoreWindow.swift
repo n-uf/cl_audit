@@ -281,7 +281,7 @@ extension SessionsRestore {
         if move, imported {
             return planMoveTasks(&p, &tp, t, keep: keep, all: all, sourceOf: sourceOf, prompts: promptPieces, windowData: windowData, now: nowWindow, scope: scope)
         }
-        if nowWindow.hasTasks.contains(where: { $0.account.lowercased() == scope.account.lowercased() && $0.organization.lowercased() == scope.organization.lowercased() }) {
+        if nowWindow.hasTasks.contains(where: { $0.sameIgnoringCase(scope) }) {
             tp.status = .here
             let path = (SwitchEngine.scopeDir(t.dataDir, scope) as NSString).appendingPathComponent("scheduled-tasks.json")
             let mine = Set(Setup.readCapped(path, limit: 64 << 20).map { taskList($0).compactMap { $0["id"] as? String } } ?? [])
@@ -339,7 +339,7 @@ extension SessionsRestore {
         let names = Dictionary(all.map { ($0.id, $0.name) }, uniquingKeysWith: { a, _ in a })
         for dest in order {
             guard let g = groups[dest] else { continue }
-            if nowWindow.hasTasks.contains(where: { $0.account.lowercased() == dest.account.lowercased() && $0.organization.lowercased() == dest.organization.lowercased() }) {
+            if nowWindow.hasTasks.contains(where: { $0.sameIgnoringCase(dest) }) {
                 here += 1
                 let path = (SwitchEngine.scopeDir(t.dataDir, dest) as NSString).appendingPathComponent("scheduled-tasks.json")
                 let mine = Set(Setup.readCapped(path, limit: 64 << 20).map { taskList($0).compactMap { $0["id"] as? String } } ?? [])

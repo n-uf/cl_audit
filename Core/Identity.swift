@@ -19,13 +19,12 @@ public struct Seat: Codable, Equatable, Hashable {
         self.account = account; self.organization = organization; self.email = email; self.linkedAt = linkedAt; self.was = was
     }
 
-    /// The same seat (the ids; not the email or when it was linked): AccountID.same.
-    public func same(_ o: Seat?) -> Bool {
-        o.map { AccountID.same(account, $0.account) && AccountID.sameOrganization(organization, $0.organization) } ?? false
-    }
+    /// The same seat (the ids; not the email or when it was linked), exactly as written: case counts, and no organisation
+    /// (nil) is not an empty one. AccountID's looser comparison is a proposal for a later step (Core/README.md).
+    public func same(_ o: Seat?) -> Bool { o.map { account == $0.account && organization == $0.organization } ?? false }
 }
 
-/// An account and organisation by their ids only: what a receipt keeps.
+/// An account and organisation by their ids only, as a record of a switch keeps them (no organisation is "").
 public struct SeatID: Codable, Equatable, Hashable {
     public var account: String
     public var organization: String
@@ -33,9 +32,17 @@ public struct SeatID: Codable, Equatable, Hashable {
     public init(_ s: Seat) { account = s.account; organization = s.organization ?? "" }
     public init(account: String, organization: String) { self.account = account; self.organization = organization }
 
-    /// The same seat as `s` (AccountID.same).
-    public func same(_ s: Seat?) -> Bool {
+    /// The same seat as `s`, exactly as written (case counts); a seat with no organisation matches "".
+    public func same(_ s: Seat?) -> Bool { s.map { $0.account == account && ($0.organization ?? "") == organization } ?? false }
+
+    /// The same seat as `s` whatever the case of the ids (AccountID): how a switch tells it reached its account.
+    public func sameIgnoringCase(_ s: Seat?) -> Bool {
         s.map { AccountID.same(account, $0.account) && AccountID.sameOrganization(organization, $0.organization) } ?? false
+    }
+
+    /// The same seat as another SeatID whatever the case of the ids.
+    public func sameIgnoringCase(_ o: SeatID) -> Bool {
+        AccountID.same(account, o.account) && AccountID.sameOrganization(organization, o.organization)
     }
 }
 
@@ -69,8 +76,10 @@ public struct AccountIdentity: Equatable, Hashable {
     }
 }
 
-/// The one way account and organisation ids are compared: case doesn't count (Claude writes them in lower case, a hand-
-/// edited file or another tool may not), and an organisation that isn't recorded (nil) is the same as an empty one.
+/// Account and organisation ids compared loosely: case doesn't count (Claude writes them in lower case, a hand-edited file
+/// or another tool may not), and an organisation that isn't recorded (nil) is the same as an empty one. Used where the
+/// app already compared that way (an id read from a process or a record, a switch reaching its account); Seat.same and
+/// SeatID.same stay exact for now (Core/README.md, open questions).
 public enum AccountID {
     /// An id as it is compared and used as a key.
     public static func normal(_ id: String) -> String { id.lowercased() }
