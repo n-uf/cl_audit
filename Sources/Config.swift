@@ -276,6 +276,14 @@ struct IconStatus: Codable {
     var noFiveHour: Bool? = nil        // the plan has no 5-hour limit (Ultra): its 5-hour row is left out
     /// The one answer about the profile's account (AccountResolver), written by the agent: every surface shows this.
     var resolved: ResolvedAccount? = nil
+    /// The account these numbers were read for, from that very reading (the token's own profile, looked up for the token
+    /// the numbers were read with); nil when the reading doesn't say (the status line file) or before it's known.
+    var numbersOwner: String? = nil
+
+    /// The reading's own account, for answering the record again (Settings) and for checking the record's label:
+    /// `numbersOwner`, else the sign-in's own address (the token's profile; a record from before `numbersOwner`, or the
+    /// status line's numbers, which name none).
+    var readingOwner: String? { numbersOwner ?? loginEmail }
 
     /// The account these numbers were read for: the sign-in's address, else the one its folder names.
     var readFor: String? { (loginEmail ?? expectedEmail).map { $0.lowercased() } }
@@ -288,6 +296,19 @@ struct IconStatus: Codable {
         s.fiveHour = nil; s.weekly = nil; s.fiveHourResets = nil; s.weeklyResets = nil
         s.scoped = nil; s.credits = nil; s.plan = nil; s.updatedAt = nil
         return s
+    }
+
+    /// No numbers at all (the state, the problem and the account answer stay).
+    mutating func dropNumbers() {
+        fiveHour = nil; weekly = nil; fiveHourResets = nil; weeklyResets = nil
+        scoped = nil; credits = nil
+    }
+
+    /// Last known numbers: any limit they read as full is left out (never "full", a countdown or an offer from old numbers).
+    mutating func dropFull() {
+        if AtLimit.isFull(fiveHour) { fiveHour = nil; fiveHourResets = nil }
+        if AtLimit.isFull(weekly) { weekly = nil; weeklyResets = nil }
+        scoped = scoped.map { $0.map { AtLimit.isFull($0.percent) ? ScopedLimit(name: $0.name, percent: nil, resets: nil) : $0 } }
     }
 
     /// The sign-in needs the person: another account than the folder names, run out, or none. Every surface then shows
@@ -351,7 +372,9 @@ enum ClaudeCLI {
     /// Log in… in the agent's surfaces (the menu bar, quick chat): Claude Code's own sign-in in Terminal for the profile's
     /// one folder, with the record's address filled in.
     static func logIn(profile e: AccountEntry) {
-        logIn(Account(e), email: Store.status(e.id)?.expectedEmail)
+        let s = Store.status(e.id)
+        // the Claude app on another account than Claude Code (SplitUsage): Claude Code logs in to the app's account
+        logIn(Account(e), email: SplitUsage.of(s)?.loginEmail ?? s?.expectedEmail)
     }
 
     /// Log in… in the agent's surfaces (the menu bar, the Dock icon's menu, the launcher): an alert when the folder is gone,
@@ -627,15 +650,37 @@ enum Store {
     /// Numbers read for another account than the one the record says they belong to (a switch, before the new read) are
     /// dropped: another account's numbers never show, not even for a moment. Only when the sign-in's own address is known:
     /// numbers from the status line (usage.json) carry none, so those are kept.
-    static func status(for e: AccountEntry) -> IconStatus? {
+    ///
+    /// Then (B8), what the profile's headline surfaces may show: the card, the Dock icon and its panel, the menu bar, the
+    /// tile, quick chat. In the split (the Claude app on one account, Claude Code on another: SplitUsage) Claude Code's
+    /// numbers are not the profile's: none show here, and the record's one line says so (the raw record, Store.status(id),
+    /// keeps them for the card's labelled secondary line and Settings' Claude Code row). And numbers older than the
+    /// profile's read interval (5 minutes by default) plus a minute are only last known: a limit they read as full is left
+    /// out, so they never show "full", a countdown or a switch offer.
+    /// `headline` false: Claude Code's own numbers in the split, for the card's labelled line and Settings' Claude Code row
+    /// (the other rules still apply).
+    static func status(for e: AccountEntry, now: Date = Date(), headline: Bool = true) -> IconStatus? {
         guard let s = status(e.id) else { return nil }
-        guard let owner = s.resolved?.numbersFor?.lowercased(), owner.contains("@"),
-              let read = s.loginEmail?.lowercased(), read != owner else { return s }
         var out = s
-        out.fiveHour = nil; out.weekly = nil; out.fiveHourResets = nil; out.weeklyResets = nil
-        out.scoped = nil; out.credits = nil; out.plan = nil; out.updatedAt = nil
+        // the reading is the folder's account no more (it signed in to another since), or the record's label for the
+        // numbers isn't the account they were read for (a record answered from something else than the reading): neither
+        // shows, until a read for the folder's account
+        var mislabelled = false
+        if let owner = s.resolved?.numbersFor?.lowercased(), owner.contains("@"),
+           let read = s.readingOwner?.lowercased(), read != owner { mislabelled = true }
+        if s.resolved?.readStale == true || mislabelled {
+            out.dropNumbers(); out.plan = nil; out.updatedAt = nil
+        }
+        if headline, let split = SplitUsage.of(s) {
+            out.dropNumbers(); out.plan = nil          // (the plan is Claude Code's account's too)
+            out.resolved?.line = split.line
+        }
+        if let at = out.updatedAt, now.timeIntervalSince(at) > Self.lastKnown(e) { out.dropFull() }
         return out
     }
+
+    /// How old numbers may be and still say a limit is full: the profile's read interval, plus a minute for the read itself.
+    static func lastKnown(_ e: AccountEntry) -> TimeInterval { TimeInterval(max(e.pollMinutes, 5) * 60 + 60) }
 
     static func writeStatus(_ id: String, _ s: IconStatus) -> Data? {
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970; enc.outputFormatting = [.sortedKeys]

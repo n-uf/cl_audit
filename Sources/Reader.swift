@@ -20,6 +20,10 @@ final class UsageReader {
     private var plan: String?
     private var loginEmail: String?
     private var profileFor: String?              // short hash of the token the e-mail was looked up for
+    /// The account the numbers in `usage` were read for, from that very reading: the profile looked up for the token
+    /// they were read with (`numbersKey`); nil while it isn't known, and for the status line file (which names none).
+    private var numbersOwner: String?
+    private var numbersKey: String?              // short hash of the token the numbers were read with
     private var renewNote: String?
     private var renewing = false
     private var cachedLogin: Login?
@@ -74,6 +78,7 @@ final class UsageReader {
                       weeklyResets: s.weeklyResets, fetchedAt: at, source: s.source ?? "Anthropic",
                       scoped: s.scoped ?? [], credits: s.credits, noFiveHour: s.noFiveHour ?? false)
         loginEmail = s.loginEmail
+        numbersOwner = s.readingOwner                    // the saved numbers' own reading
         plan = s.plan
         renewNote = s.renewNote
     }
@@ -123,6 +128,7 @@ final class UsageReader {
         guard want.configDir != account.configDir else { return false }
         account = want
         loginEmail = nil; profileFor = nil; nextFetch = .distantPast; cachedLogin = nil
+        numbersOwner = nil; numbersKey = nil
         generation += 1
         signInChangedAt = now
         signIn = SignInWatch(); _ = signInChanged()
@@ -144,6 +150,7 @@ final class UsageReader {
             local.noFiveHour = usage?.noFiveHour ?? false
             if local.noFiveHour { local.fiveHour = nil; local.fiveHourResets = nil }
             usage = local
+            numbersOwner = nil; numbersKey = nil          // the status line names no account: whose these are isn't known
         }
         if let u = usage, Self.resetPassed(u), !failing, Date().timeIntervalSince(lastAsked) >= 60 { nextFetch = .distantPast }
         // the profile's folder isn't there any more: no read of its sign-in at all, whatever was made while it existed.
@@ -213,6 +220,7 @@ final class UsageReader {
         cachedLogin = nil; forceLoginRead = true; loginRejected = false
         loginEmail = nil; profileFor = nil; plan = nil; renewNote = nil
         usage = nil; state = .idle; backoff = 0
+        numbersOwner = nil; numbersKey = nil
         signInChangedAt = now; signInRetries = 0
         generation += 1                           // replies under way are the old account's
         resetRead?.cancel(); resetRead = nil
@@ -275,10 +283,11 @@ final class UsageReader {
         }
         self.plan = plan
         if let expiresAt, expiresAt < Date() { inFlight = false; state = .expired; save(); maybeRenew(); return }
-        if profileFor != Account.sha8(token) { lookUpEmail(token, gen: gen) }
+        let key = Account.sha8(token)
+        if profileFor != key { lookUpEmail(token, gen: gen) }
         let asked = Date()
         URLSession.shared.dataTask(with: Self.request("usage", token: token)) { [weak self] data, resp, err in
-            DispatchQueue.main.async { self?.finish(data: data, response: resp as? HTTPURLResponse, error: err, asked: asked, gen: gen) }
+            DispatchQueue.main.async { self?.finish(data: data, response: resp as? HTTPURLResponse, error: err, asked: asked, gen: gen, key: key) }
         }.resume()
     }
 
@@ -345,13 +354,16 @@ final class UsageReader {
             DispatchQueue.main.async {
                 guard let self, gen == self.generation else { return }      // another folder or account since
                 if let at = self.signInChangedAt, asked < at { return }    // the old account's sign-in
-                if let email { self.loginEmail = email; self.profileFor = key; self.checkNewSignIn(email) }
+                if let email {
+                    self.loginEmail = email; self.profileFor = key; self.checkNewSignIn(email)
+                    if self.numbersKey == key { self.numbersOwner = email }      // the numbers read with this token: its account's
+                }
                 self.save()
             }
         }.resume()
     }
 
-    func finish(data: Data?, response: HTTPURLResponse?, error: Error?, asked: Date = Date(), gen: Int) {
+    func finish(data: Data?, response: HTTPURLResponse?, error: Error?, asked: Date = Date(), gen: Int, key: String? = nil) {
         inFlight = false
         guard !stopped else { return }
         // asked for a folder or account it no longer reads, or with the old account's sign-in: not this account's numbers
@@ -362,6 +374,10 @@ final class UsageReader {
         switch response?.statusCode ?? 0 {
         case 200:
             guard let data, let u = UsageParser.fromAPI(data) else { state = .failed("unexpected reply"); return }
+            // whose these numbers are: the account of the token they were read with, once its profile is known (else when
+            // the lookup for that token comes back); never the folder's .claude.json
+            numbersKey = key
+            numbersOwner = key != nil && profileFor == key ? loginEmail : nil
             apply(u)
         case 401, 403:
             state = .expired
@@ -384,7 +400,10 @@ final class UsageReader {
         // the status line file has no credits: keep the last ones Anthropic gave
         u.credits = Credits.carry(u.credits, from: before, now: now) ?? (u.source == "Anthropic" ? nil : before)
         usage = u; state = .ok; backoff = 0
-        if !onOtherAccount {                     // another account's numbers: no alerts about them
+        // another account's numbers: no alerts about them; nor Claude Code's while the Claude app is on another account
+        // (the split, SplitUsage): they aren't the profile's, so no full, back or level alert and no switch offer
+        let r = answer()
+        if !onOtherAccount, !(r.fromApp && r.differs && r.clash == nil) {
             noteBack(u)
             checkThresholds(u)
             noteCredits(u, before: before, now: now)
@@ -676,13 +695,10 @@ final class UsageReader {
         // decided here, for every surface: no percent past its limit's reset, and an expired sign-in with no fresh numbers
         // has none at all (no bars, "login expired", Log in…). The reader keeps its own copy, to read again at a reset
         status = status.current()
+        status.numbersOwner = numbersOwner
         // the one answer about the account (AccountResolver), written here once for every surface to read: the numbers
         // stay, labelled with the account they were read for (no "otherAccount" state for the profile's own folder)
-        let list = Store.loadChecked() ?? []
-        let me = list.first { $0.id == id } ?? entry
-        var r = AccountResolver.resolve(me, among: list, app: AppSignIn.cached(for: me),
-                                        code: Account.signedInSeat(configDir: me.configDir), loginEmail: loginEmail,
-                                        names: AccountList.names(), recordTooLarge: Account.recordTooLarge(configDir: me.configDir))
+        var r = answer()
         if var last = lastResolved { last.at = r.at; if last == r { r.at = lastResolved!.at } }
         lastResolved = r
         status.resolved = r
@@ -694,6 +710,15 @@ final class UsageReader {
         }
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970; enc.outputFormatting = [.sortedKeys]
         if let data = try? enc.encode(status), data != lastStatus { lastStatus = Store.writeStatus(id, status) }
+    }
+
+    /// The account answer for what this reader sees now (AccountResolver), with the numbers' own reading as their account.
+    private func answer() -> ResolvedAccount {
+        let list = Store.loadChecked() ?? []
+        let me = list.first { $0.id == id } ?? entry
+        return AccountResolver.resolve(me, among: list, app: AppSignIn.cached(for: me),
+                                       code: Account.signedInSeat(configDir: me.configDir), loginEmail: numbersOwner,
+                                       names: AccountList.names(), recordTooLarge: Account.recordTooLarge(configDir: me.configDir))
     }
 
     static func when(_ d: Date) -> String { TimeWords.when(d) }

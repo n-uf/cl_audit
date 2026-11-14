@@ -33,24 +33,32 @@ struct ResolvedAccount: Codable, Equatable {
     var recordTooLarge: Bool? = nil
     /// Claude Code's folder account's id (lower case), where known: the lists match its own row by it before its address.
     var codeAccount: String? = nil
+    /// Claude Code's account as its rows and lines name it: the folder's address (else the numbers', else "account <8>").
+    /// `numbersFor` is only ever the reading's own account; this one is for naming.
+    var codeName: String? = nil
+    /// The folder has signed in to another account since the numbers were read: they are that reading's, not Claude
+    /// Code's now, and no surface shows them (Store.status(for:)) until a read for the new account.
+    var readStale: Bool? = nil
 }
 
 enum AccountResolver {
     /// The answer for one profile. `app`: the Claude app's sign-in (AppSignIn); `code`: Claude Code's folder account;
-    /// `loginEmail`: the address the numbers were read for; `names`: addresses by account id (AccountList).
+    /// `loginEmail`: the account the numbers were read for, from that very reading (the token's own profile), or nil when
+    /// the reading doesn't say (the status line file); `names`: addresses by account id (AccountList).
     /// `recordTooLarge`: Claude Code's .claude.json is there but too large to read (Account.recordTooLarge).
     static func resolve(_ e: AccountEntry, among accounts: [AccountEntry], app: AppSignIn.Login, code: Seat?, loginEmail: String?,
                         names: [String: String], recordTooLarge: Bool = false, now: Date = Date()) -> ResolvedAccount {
-        // whose the numbers are: the address they were read for, unless Claude Code's folder has since signed in to another
-        // account (a switch, a log-in): then they belong to the folder's account, and the old read's numbers are dropped
-        // (Store.status) until a read for it succeeds; never the old account's numbers under the new one
+        // whose the numbers are: only ever the account the reading itself was for (never .claude.json, never a cached
+        // answer). When Claude Code's folder has since signed in to another account (a switch, a log-in), the reading is
+        // stale: its numbers are dropped (Store.status) until a read for the folder's account, and the folder's account is
+        // the one Claude Code is on (for the rows and lines)
         let stale = loginEmail.map { l in code?.email.map { $0.lowercased() != l.lowercased() } ?? false } ?? false
         let codeLabel = (stale ? code?.email : loginEmail) ?? code?.email ?? code.map { "account \($0.account.prefix(8))" }
         let owner = code.flatMap { c in accounts.first { $0.id != e.id && ($0.seat.map { c.same($0) } ?? false) } }
         // without the app: Claude Code's folder account is the active one (its address from its record, else the numbers')
         var r = ResolvedAccount(account: code?.account.lowercased(), email: code?.email ?? loginEmail, fromApp: false,
-                                numbersFor: codeLabel, differs: false, line: nil, lit: code != nil, clash: owner?.name, at: now,
-                                codeAccount: code?.account.lowercased())
+                                numbersFor: loginEmail, differs: false, line: nil, lit: code != nil, clash: owner?.name, at: now,
+                                codeAccount: code?.account.lowercased(), codeName: codeLabel, readStale: stale ? true : nil)
         if e.claudeWindow, app.state == .known, let id = app.account?.lowercased() {
             let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { $0.account.lowercased() == id }
             r.account = id
@@ -79,10 +87,47 @@ enum AccountResolver {
     }
 }
 
+/// The split: the Claude app (the account in use) on one account, Claude Code, whose sign-in reads the numbers, on another.
+/// Then nothing headline shows Claude Code's numbers as the profile's (Store.status(for:) drops them: no bars, nothing full
+/// or red, no countdown, no alert, no switch offer); every surface says the line instead, with one key to log Claude Code
+/// in to the app's account. Claude Code's numbers stay only as one labelled secondary line (the card) and in its own row
+/// in Settings ▸ Accounts.
+struct SplitUsage: Equatable {
+    let app: String                 // the account in use: the Claude app's
+    let code: String                // Claude Code's
+
+    static func of(_ s: IconStatus?) -> SplitUsage? {
+        guard let r = s?.resolved, r.fromApp, r.differs, r.clash == nil, let code = r.codeName ?? r.numbersFor else { return nil }
+        return SplitUsage(app: r.email ?? r.account.map { "account \($0.prefix(8))" } ?? "the Claude app's account", code: code)
+    }
+
+    /// "No usage for P@… yet: Claude Code here is signed in to M@…"
+    var line: String { "No usage for \(Privacy.masked(app)) yet: Claude Code here is signed in to \(Privacy.masked(code))" }
+    /// The key: the existing Log in (Claude Code's own sign-in in Terminal, with the app's address filled in). Not a switch.
+    var key: String { "Log Claude Code in to \(Privacy.masked(app))" }
+    /// The address the login fills in (none for an account known by its id only).
+    var loginEmail: String? { app.contains("@") ? app : nil }
+
+    /// "Claude Code in Terminal: M@… · Week 100%, back Sun 13:00": Claude Code's own numbers, from the record as read, or nil
+    /// when it has none.
+    func codeLine(_ raw: IconStatus?, now: Date = Date()) -> String? {
+        guard let raw else { return nil }
+        func part(_ name: String, _ p: Double?, _ resets: Date?) -> String? {
+            guard let p else { return nil }
+            let full = AtLimit.isFull(p)
+            return "\(name) \(Int(p.rounded()))%" + (full ? resets.map { ", " + TimeWords.back($0, now: now) } ?? "" : "")
+        }
+        let parts = [raw.noFiveHour == true ? nil : part("5-hour", raw.fiveHour, raw.fiveHourResets), part("Week", raw.weekly, raw.weeklyResets)]
+            .compactMap { $0 }
+        guard !parts.isEmpty else { return nil }
+        return "Claude Code in Terminal: \(Privacy.masked(code)) · " + parts.joined(separator: " · ")
+    }
+}
+
 /// What every surface shows of a profile's account, from its status record only (never a file, a log or a seat).
 struct AccountView: Equatable {
     var label: String?              // the active account: its address, or "account <8>"; nil: none known
-    var numbersOwner: String?       // whose the numbers are
+    var numbersOwner: String?       // Claude Code's account, whose numbers they are (or will be, after a switch's first read)
     var line: String?               // the one line of state
     var lit: Bool                   // the green lamp and "in use"
     var clash: String?              // another profile's name, when Claude Code's folder is on its account
@@ -98,7 +143,7 @@ struct AccountView: Equatable {
     static func of(_ s: IconStatus?) -> AccountView {
         guard let s else { return AccountView(label: nil, numbersOwner: nil, line: nil, lit: false, clash: nil) }
         if let r = s.resolved {
-            return AccountView(label: r.email ?? r.account.map { "account \($0.prefix(8))" }, numbersOwner: r.numbersFor,
+            return AccountView(label: r.email ?? r.account.map { "account \($0.prefix(8))" }, numbersOwner: r.codeName ?? r.numbersFor,
                                line: r.line, lit: r.lit, clash: r.clash, account: r.account, recordTooLarge: r.recordTooLarge == true,
                                differs: r.differs, codeAccount: r.codeAccount)
         }
