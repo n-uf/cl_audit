@@ -3,7 +3,6 @@
 // the period and the profiles the dashboard shows. Projects are folder names, never full paths.
 
 import AppKit
-import ProfileCore
 import UniformTypeIdentifiers
 
 enum UsageExport {

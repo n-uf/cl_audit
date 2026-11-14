@@ -12,7 +12,6 @@
 // restored from: the same rules as Restore, the same receipt, the same Undo.
 
 import AppKit
-import ProfileCore
 import SwiftUI
 import UniformTypeIdentifiers
 

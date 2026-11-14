@@ -1,7 +1,6 @@
 // The dashboard's "Usage history": when you use Claude (heatmap), tokens per day, and where they go.
 
 import Charts
-import ProfileCore
 import SwiftUI
 
 enum StatsFormat {

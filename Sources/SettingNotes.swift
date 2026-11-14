@@ -1,7 +1,6 @@
 // "What this does now": after a change to a setting that has no picture of its own, a short plain-language
 // note says what the new value does. It floats over the bottom of the settings page, so nothing moves.
 
-import ProfileCore
 import SwiftUI
 
 struct SettingNote: Identifiable, Equatable {

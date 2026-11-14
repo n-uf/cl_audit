@@ -5,7 +5,6 @@
 // The default ~/.claude and the standard Claude window are never deleted.
 
 import AppKit
-import ProfileCore
 import SwiftUI
 
 enum AccountRemoval {

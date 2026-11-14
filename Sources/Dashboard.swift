@@ -2,7 +2,6 @@
 // the history period (the dashboard's 24 h / 7 d / 30 d switch is the same setting), and which history
 // charts to show, and the Dock (Dock.swift). Edited on Settings ▸ Dashboard.
 
-import ProfileCore
 import SwiftUI
 import UserNotifications
 
