@@ -386,7 +386,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         return Date().timeIntervalSince(usage.fetchedAt) > limit
     }
 
-    var expectedEmail: String? { status?.expectedEmail ?? account.expectedEmail() }
+    /// The address the folder names, as the record has it (the agent's reader wrote it): the icon never reads .claude.json.
+    var expectedEmail: String? { status?.expectedEmail }
 
     /// The login in the Keychain belongs to a different account than this folder is set up for.
     var mismatch: Bool {
@@ -568,7 +569,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // the profile's one folder; a folder that is gone is said, never made again (ClaudeCLI.logIn)
         let reading = Account(entry)
         // the split (SplitUsage): Claude Code logs in to the Claude app's account
-        ClaudeCLI.logIn(reading, email: SplitUsage.loginAddress(status, usual: reading.expectedEmail() ?? expectedEmail))
+        ClaudeCLI.logIn(reading, email: SplitUsage.loginAddress(status, usual: expectedEmail))
     }
 }
 
