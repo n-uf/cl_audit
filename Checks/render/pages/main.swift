@@ -436,6 +436,69 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
     print("done"); exit(0)
 }
 
+// ==================================================================== the split (SPLIT_ONLY=1, B8)
+// The Claude app on pat@, Claude Code on mo@ with mo's week full: the Main card, the Dock icon with its panel and the menu
+// bar strip with its row, drawn from the records as the app keeps them (the headline one, and Claude Code's own for its
+// labelled line). Std, 340, 460 and 708. Files split-<surface>-std-w<width>.png.
+@MainActor func splitRenders() {
+    let pat = Seat(account: uuid(31), organization: uuid(71), email: "pat@example.com")
+    let mo = Seat(account: uuid(32), organization: uuid(72), email: "mo@example.com")
+    var e = AccountEntry(id: "main", name: "Main", label: "MAIN", configDir: "~/.claude-split"); e.seat = mo
+    e.desktop = .separate; e.desktopDataDir = "~/Library/Application Support/Claude-split"
+    e.standby = [StandbyAccount(email: pat.email!, seat: pat, id: "kp", plan: "Max", lastInUse: Date().addingTimeInterval(-86400))]
+    sign(e.configDir, mo)
+    try? fm.createDirectory(atPath: expand(e.desktopDataDir), withIntermediateDirectories: true)
+    try! JSONSerialization.data(withJSONObject: ["lastKnownAccountUuid": pat.account]).write(to: URL(fileURLWithPath: expand(e.desktopDataDir) + "/config.json"))
+    try! Store.save([e])
+    let now = Date()
+    var rec = IconStatus(state: "ok"); rec.loginEmail = mo.email; rec.numbersOwner = mo.email; rec.expectedEmail = mo.email
+    rec.weekly = 100; rec.weeklyResets = now.addingTimeInterval(41 * 3600); rec.noFiveHour = true; rec.plan = "Ultra"; rec.updatedAt = now
+    rec.source = "Anthropic"
+    rec.resolved = AccountResolver.resolve(e, among: [e], app: AppSignIn.cached(for: e), code: mo, loginEmail: mo.email, names: [:], now: now)
+    _ = Store.writeStatus("main", rec)
+    let head = Store.status(for: e), own = Store.status(for: e, headline: false)
+    print("split:", SplitUsage.of(head) != nil ? "yes" : "NO (the app's account wasn't read)")
+    let face = FaceTheme.of(.std)
+    func framed(_ v: some View, _ w: CGFloat) -> some View {
+        v.environment(\.settingsColumnWidth, w).frame(width: w, alignment: .leading).padding(16).background(Color(white: 0.1))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .environment(\.face, face).environment(\.colorScheme, .dark)
+    }
+    let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
+    let usage = Usage.of(head), view = AccountView.of(head)
+    let tile = TileModel(label: e.label, fiveHour: usage?.fiveHour, weekly: usage?.weekly, stale: false, style: e.style, warn: false,
+                         tint: e.color, frame: e.frame,
+                         countdown: AtLimit.tileCountdown(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
+                                                          weekly: usage?.weekly, weeklyResets: usage?.weeklyResets))
+    var panel = DetailsInfo(name: e.name, icon: Painter.image(tile, pixels: 128), login: head?.loginEmail, expected: head?.expectedEmail,
+                            mismatch: false, plan: head?.plan, fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
+                            weekly: usage?.weekly, weeklyResets: usage?.weeklyResets, updated: head?.updatedAt, source: usage?.source,
+                            problem: head?.problem, renewNote: nil, needsLogin: false, noFiveHour: head?.noFiveHour == true,
+                            noNumbers: DetailsInfo.noNumbersWords(head)).taking(view)
+    panel.splitKey = SplitUsage.of(head)?.key
+    let profileItem = MenuBarItems.Profile(entry: e, usage: usage, problem: head?.problem, needsLogin: false, view: view, split: SplitUsage.of(head))
+    let glyph = MenuBarGlyph(look: e.menuBarLook, item: MenuBarItems.item(profileItem, now: now)).image(dark: true)
+    for w in [CGFloat(340), 460, 708] {
+        snapshot(framed(AccountCard(row: AccountRow(entry: e, status: head, codeStatus: own), actions: acts).frame(width: min(w, 460))
+                            .fixedSize(horizontal: false, vertical: true), w), "split-card-std-w\(Int(w))", w + 32, 1000)
+        let dock = VStack(alignment: .leading, spacing: 10) {
+            Image(nsImage: Painter.image(tile, pixels: 128)).resizable().frame(width: 96, height: 96)
+            DetailsView(info: panel, actions: DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})).fixedSize()
+        }
+        snapshot(framed(dock, w), "split-dock-std-w\(Int(w))", w + 32, 1400)
+        let bar = VStack(alignment: .leading, spacing: 10) {
+            Image(nsImage: glyph).padding(6).background(Color(white: 0.25)).clipShape(RoundedRectangle(cornerRadius: 5))
+            MenuBarRow(profile: profileItem, now: now).frame(width: min(w, 320))
+        }
+        snapshot(framed(bar, w), "split-menubar-std-w\(Int(w))", w + 32, 600)
+    }
+}
+
+if ProcessInfo.processInfo.environment["SPLIT_ONLY"] != nil {
+    MainActor.assumeIsolated { splitRenders() }
+    print("done"); exit(0)
+}
+
 MainActor.assumeIsolated {
     // (named "Main": the app puts "Claude " before a profile's name itself)
     var main = AccountEntry(id: "main", name: "Main", label: "MAIN", configDir: "~/.claude"); main.seat = u1

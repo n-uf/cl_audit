@@ -225,8 +225,10 @@ do {
     // numbers still u1's: labelled with the address they were read for
     let late = res(main, appOut, code: Seat(account: uuid(9), organization: uuid(109), email: "free@example.com"), numbers: u1.email)
     var lateRec = IconStatus(state: "ok"); lateRec.loginEmail = u1.email; lateRec.weekly = 94; lateRec.resolved = late
-    check(!late.fromApp && late.email == "free@example.com" && !late.differs && late.numbersFor == "free@example.com",
-          "no app: Claude Code's folder account in use, and the numbers to show are its own")
+    // (B8: numbersFor is only ever the reading's own account: u1's here, and the reading is stale, so they show nowhere)
+    check(!late.fromApp && late.email == "free@example.com" && !late.differs && late.numbersFor == u1.email && late.readStale == true
+          && late.codeName == "free@example.com",
+          "no app: Claude Code's folder account in use; the numbers stay the reading's (u1's), marked stale")
     _ = Store.writeStatus("late", lateRec)
     check(Store.status(for: profile("late", "~/.claude-late", nil))?.weekly == nil,
           "an older read's numbers (ultra-1's) never show once the folder is on another account: none until its own read")
@@ -250,7 +252,7 @@ do {
         _ = Store.writeStatus("main", rec)
         let want = AccountView.of(Store.status(for: main))
         let views: [(String, AccountView)] = [
-            ("menu bar", MenuBarItems.Profile(entry: main, usage: nil, view: AccountView.of(Store.status("main"))).view),
+            ("menu bar", MenuBarItems.Profile(entry: main, usage: nil, view: AccountView.of(Store.status(for: main))).view),
             ("card", AccountRow(entry: main, status: Store.status(for: main)).view),
             ("palette row", { let row = AccountRow(entry: main, status: Store.status(for: main))
                               var v = row.view; v.label = row.needsLogin || row.view.clash != nil ? v.label : row.subtitle; return v }()),
@@ -262,7 +264,10 @@ do {
         check(panel.active == want.label && panel.activeNote == want.line && panel.activeLit == want.lit, "\(name): the Dock panel agrees")
         check(SwitchMenu.dockTitle(name: "P", want, plan: nil) == (want.short.map { "Claude P · \($0) in use" } ?? "Claude P"), "\(name): the Dock menu agrees")
         check(QuickChatTarget(main).email == want.label, "\(name): quick chat agrees")
-        check(Store.status(for: main)?.weekly == 40, "\(name): the record's own numbers show (they are the account the record names)")
+        // (B8: in the split, the Claude app on another account than Claude Code, they are not the profile's: none show)
+        let splitHere = SplitUsage.of(Store.status("main")) != nil
+        check(Store.status(for: main)?.weekly == (splitHere ? nil : 40),
+              "\(name): the record's own numbers show, except in the split (the app on another account): \(splitHere)")
         if name == "different" { check(want.label == u2.email && want.numbersOwner == u1.email, "different: u2 in use, the numbers u1's") }
         if app == appBack {
             check(want.label == u1.email && want.lit && want.line == nil && !(panel.activeNote ?? "").contains("unreadable"),
@@ -1029,6 +1034,110 @@ do {
     check((try? String(contentsOfFile: elsewhere, encoding: .utf8)) == "kept\n", "consent.log a link: never written through")
     try? fm.removeItem(at: log); try? fm.removeItem(atPath: elsewhere)
     rc.reset()
+}
+
+// ============ 6f. the split (B8): the Claude app on P, Claude Code on M: M's numbers are never the profile's ============
+do {
+    let pat = Seat(account: uuid(31), organization: uuid(71), email: "pat@example.com")
+    let mo = Seat(account: uuid(32), organization: uuid(72), email: "mo@example.com")
+    let wdS = "~/Library/Application Support/Claude-split"
+    var e = profile("spl", "~/.claude-spl", mo)
+    e.desktop = .separate; e.desktopDataDir = wdS; e.claudeWindow = true
+    e.standby = [StandbyAccount(email: pat.email!, seat: pat, id: "kp", plan: "Max")]
+    func signIn(_ dir: String, _ s: Seat) {
+        try? fm.removeItem(atPath: expand(dir) + "/.claude.json")
+        put(expand(dir) + "/.claude.json", #"{"oauthAccount":{"accountUuid":"\#(s.account)","organizationUuid":"\#(s.organization!)","emailAddress":"\#(s.email!)"}}"#)
+    }
+    signIn(e.configDir, mo)
+    try? fm.removeItem(atPath: expand(wdS) + "/config.json")
+    put(expand(wdS) + "/config.json", #"{"lastKnownAccountUuid":"\#(pat.account)"}"#)
+    try! Store.save([e])
+    let now = Date()
+    let appPat = AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)
+    func record(app: AppSignIn.Login, code: Seat?, reading: String?, weekly: Double, age: TimeInterval = 0) -> IconStatus {
+        var s = IconStatus(state: "ok"); s.loginEmail = reading; s.numbersOwner = reading; s.weekly = weekly
+        s.weeklyResets = now.addingTimeInterval(2 * 86400); s.noFiveHour = true; s.plan = "Ultra"; s.updatedAt = now.addingTimeInterval(-age)
+        s.resolved = AccountResolver.resolve(e, among: [e], app: app, code: code, loginEmail: reading, names: [:], now: now)
+        return s
+    }
+    _ = Store.writeStatus("spl", record(app: appPat, code: mo, reading: mo.email, weekly: 100))
+    let head = Store.status(for: e), own = Store.status(for: e, headline: false)
+    let split = SplitUsage.of(head)
+    check(split?.app == pat.email && split?.code == mo.email, "the split: the app on pat, Claude Code on mo")
+    // the headline record: no numbers, no plan, the line instead; nothing full, red or counting down
+    check(head?.weekly == nil && head?.fiveHour == nil && head?.plan == nil && AccountView.of(head).label == pat.email
+          && AccountView.of(head).line == "No usage for \(Privacy.masked(pat.email!)) yet: Claude Code here is signed in to \(Privacy.masked(mo.email!))",
+          "the profile's record has no numbers for pat, and its line says so: \(AccountView.of(head).line ?? "-")")
+    let row = AccountRow(entry: e, status: head, codeStatus: own)
+    check(row.full == nil && row.limits.allSatisfy { $0.p == nil } && !row.needsLogin
+          && AtLimit.tileCountdown(fiveHour: row.fiveHour, fiveHourResets: head?.fiveHourResets, weekly: row.weekly, weeklyResets: head?.weeklyResets) == nil,
+          "the card and its tile: no limits, no full panel, no countdown, no red Log in")
+    check(Usage.of(head) == nil && QuickChatLevel(Usage.of(head), now: now).week == nil,
+          "the menu bar strip, the Dock icon and quick chat: no numbers for pat (neutral)")
+    check(row.split?.key == "Log Claude Code in to \(Privacy.masked(pat.email!))" && split?.loginEmail == pat.email,
+          "the key: Log Claude Code in to pat, with pat's address filled in")
+    let line = row.split?.codeLine(row.codeStatus, now: now) ?? "-"
+    check(line.hasPrefix("Claude Code in Terminal: \(Privacy.masked(mo.email!)) · Week 100%, back ") && !line.contains("5-hour"),
+          "mo's numbers: one labelled secondary line: \(line)")
+    check(own?.weekly == 100 && AccountView.of(own).line?.hasPrefix("Usage: Claude Code on ") == true && AccountView.of(head).codeRow == mo.email,
+          "Settings: mo's numbers in mo's own row (labelled), never in the IN USE box")
+    // the key starts the existing login: Claude Code's own sign-in on the profile's folder, pat's address filled in, the
+    // folder never made (creating: false), no consent sheet (nothing moves)
+    var launches: [String] = [], scripts: [String] = []
+    FolderGuard.launchSeam = { what, dir in launches.append("\(what) \(dir)"); return true }
+    let keepTerminal = ClaudeCLI.openTerminal
+    ClaudeCLI.openTerminal = { u in scripts.append((try? String(contentsOf: u, encoding: .utf8)) ?? ""); return true }
+    let started = ClaudeCLI.openLogin("/usr/bin/false", account: Account(e), email: SplitUsage.of(Store.status("spl"))?.loginEmail)
+    check(started && launches == ["login \(Account(e).configDir)"] && scripts.first?.contains(pat.email!) == true && scripts.first?.contains(mo.email!) == false,
+          "the key's login: launched once on the folder, pat's address in it: \(launches)")
+    ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = nil
+    let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
+    let cfg = (try? String(contentsOf: src.appendingPathComponent("Config.swift"), encoding: .utf8)) ?? ""
+    check(cfg.contains("logIn(Account(e), email: SplitUsage.of(s)?.loginEmail ?? s?.expectedEmail)"),
+          "the menus' Log in takes the split's address (the same ClaudeCLI.logIn, creating: false)")
+
+    // numbersFor comes from the reading itself: a .claude.json naming another account changes whose they are not
+    let staleCode = AccountResolver.resolve(e, among: [e], app: appPat, code: pat, loginEmail: mo.email, names: [:], now: now)
+    check(staleCode.numbersFor == mo.email && staleCode.readStale == true && staleCode.codeName == pat.email,
+          "the folder names pat, the reading was mo's: numbersFor stays mo (the reading's), and the reading is stale: \(staleCode.numbersFor ?? "-")")
+    var staleRec = record(app: appPat, code: pat, reading: mo.email, weekly: 40); staleRec.resolved = staleCode
+    _ = Store.writeStatus("spl", staleRec)
+    check(Store.status(for: e)?.weekly == nil && Store.status(for: e, headline: false)?.weekly == nil,
+          "a stale reading's numbers show nowhere until a read for the folder's account")
+    // the reader: numbers whose reading doesn't name its account (no profile looked up for its token) carry none
+    signIn(e.configDir, mo)
+    var posts: [String] = []
+    UsageReader.testPoster = { _, title, _, _, _ in posts.append(title); return 0 }
+    let reply = Data(#"{"seven_day":{"utilization":100,"resets_at":"2099-01-02T00:00:00Z"}}"#.utf8)
+    let ok200 = HTTPURLResponse(url: URL(string: "https://example.com")!, statusCode: 200, httpVersion: nil, headerFields: nil)
+    let sr = UsageReader(e, defaults: UserDefaults(suiteName: "cl-audit-surfaces-split-\(getpid())")!)
+    sr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: sr.generation)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+    let saved = Store.status("spl")
+    check(saved?.weekly == 100 && saved?.resolved?.numbersFor == nil && saved?.numbersOwner == nil,
+          "the reader: numbers with no account from their reading say none (never .claude.json's mo): \(saved?.resolved?.numbersFor ?? "nil")")
+    check(posts.isEmpty && SplitUsage.of(saved) != nil && Store.status(for: e)?.weekly == nil,
+          "the split: no full or back alert, no switch offer, and no numbers for the profile: \(posts)")
+    sr.stop()
+    // the same read with the app on mo (no split): the full alert goes out (the check above isn't empty by accident)
+    var same = profile("spm", "~/.claude-spm", mo); same.claudeWindow = false
+    signIn(same.configDir, mo)
+    try! Store.save([e, same])
+    let mr = UsageReader(same, defaults: UserDefaults(suiteName: "cl-audit-surfaces-same-\(getpid())")!)
+    mr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: mr.generation)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+    check(posts.contains { $0.contains("full") }, "Claude Code's account in use (no split): its full limit alerts as before: \(posts)")
+    mr.stop()
+    UsageReader.testPoster = nil
+
+    // old numbers are only last known: never full, never a countdown or an offer
+    _ = Store.writeStatus("spm", record(app: .unknown, code: mo, reading: mo.email, weekly: 100, age: 20 * 60))
+    let old = Store.status(for: same)
+    check(old?.weekly == nil && AccountRow(entry: same, status: old).full == nil, "numbers 20 minutes old: a full limit is left out (last known, never full)")
+    _ = Store.writeStatus("spm", record(app: .unknown, code: mo, reading: mo.email, weekly: 100, age: 60))
+    check(Store.status(for: same)?.weekly == 100 && AccountRow(entry: same, status: Store.status(for: same)).full != nil, "a minute old: full, as read")
+    try? Store.save([])
+    Store.removeStatus("spl"); Store.removeStatus("spm")
 }
 
 print("checks: \(passed) passed, \(failed) failed")
