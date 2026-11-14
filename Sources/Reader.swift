@@ -24,6 +24,8 @@ final class UsageReader {
     /// they were read with (`numbersKey`); nil while it isn't known, and for the status line file (which names none).
     private var numbersOwner: String?
     private var numbersKey: String?              // short hash of the token the numbers were read with
+    /// A reading whose token's account isn't known yet: held (not shown, not alerted) until it is (profileFound).
+    private(set) var heldReading: (usage: Usage, key: String)?
     private var renewNote: String?
     private var renewing = false
     private var cachedLogin: Login?
@@ -128,7 +130,7 @@ final class UsageReader {
         guard want.configDir != account.configDir else { return false }
         account = want
         loginEmail = nil; profileFor = nil; nextFetch = .distantPast; cachedLogin = nil
-        numbersOwner = nil; numbersKey = nil
+        numbersOwner = nil; numbersKey = nil; heldReading = nil
         generation += 1
         signInChangedAt = now
         signIn = SignInWatch(); _ = signInChanged()
@@ -220,7 +222,7 @@ final class UsageReader {
         cachedLogin = nil; forceLoginRead = true; loginRejected = false
         loginEmail = nil; profileFor = nil; plan = nil; renewNote = nil
         usage = nil; state = .idle; backoff = 0
-        numbersOwner = nil; numbersKey = nil
+        numbersOwner = nil; numbersKey = nil; heldReading = nil
         signInChangedAt = now; signInRetries = 0
         generation += 1                           // replies under way are the old account's
         resetRead?.cancel(); resetRead = nil
@@ -354,13 +356,23 @@ final class UsageReader {
             DispatchQueue.main.async {
                 guard let self, gen == self.generation else { return }      // another folder or account since
                 if let at = self.signInChangedAt, asked < at { return }    // the old account's sign-in
-                if let email {
-                    self.loginEmail = email; self.profileFor = key; self.checkNewSignIn(email)
-                    if self.numbersKey == key { self.numbersOwner = email }      // the numbers read with this token: its account's
-                }
+                if let email { self.profileFound(email, key: key) }
                 self.save()
             }
         }.resume()
+    }
+
+    /// The account of the token `key` came back: it is the sign-in's address, and the owner of the numbers read with that
+    /// token. A reading held for it (read before its owner was known) is taken now, with its alerts.
+    func profileFound(_ email: String, key: String) {
+        loginEmail = email; profileFor = key; checkNewSignIn(email)
+        if let h = heldReading, h.key == key {
+            heldReading = nil
+            numbersKey = key; numbersOwner = email
+            apply(h.usage)
+        } else if numbersKey == key {
+            numbersOwner = email                         // the numbers read with this token: its account's
+        }
     }
 
     func finish(data: Data?, response: HTTPURLResponse?, error: Error?, asked: Date = Date(), gen: Int, key: String? = nil) {
@@ -374,10 +386,14 @@ final class UsageReader {
         switch response?.statusCode ?? 0 {
         case 200:
             guard let data, let u = UsageParser.fromAPI(data) else { state = .failed("unexpected reply"); return }
-            // whose these numbers are: the account of the token they were read with, once its profile is known (else when
-            // the lookup for that token comes back); never the folder's .claude.json
+            // whose these numbers are: the account of the token they were read with; never the folder's .claude.json.
+            // Read with a token whose account isn't known yet (its lookup still under way): unowned, so held, neither shown
+            // nor alerted, until the lookup comes back (profileFound); the numbers before it, whose owner is known, stay
+            // meanwhile (a renewed token of the same account doesn't blank them)
+            if let key, profileFor != key { heldReading = (u, key); state = .ok; return }
+            heldReading = nil
             numbersKey = key
-            numbersOwner = key != nil && profileFor == key ? loginEmail : nil
+            numbersOwner = key != nil ? loginEmail : nil
             apply(u)
         case 401, 403:
             state = .expired
