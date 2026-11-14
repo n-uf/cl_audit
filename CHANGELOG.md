@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.23 — 2026-11-13
+
 - **README: the Experimental features.** A short section says that switching, import, export, restore and making the
   default profile can lose data and are for testing only, how the warning panel and the consent sheet work, what
   `consent.log` keeps, and that the license's No Liability clause applies; each of those sections points to it.
