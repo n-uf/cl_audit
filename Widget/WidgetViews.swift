@@ -1,12 +1,14 @@
 // What the cl_audit widget draws, shared by the widget (Widget.swift, a sandboxed extension) and cl_audit itself (the
-// Widget card in Settings ▸ General shows the real widget as its preview). Self-contained: no WidgetKit here and nothing
-// from Sources/, so both programs build it. Names start with W (or Widget) so they don't meet cl_audit's own.
+// Widget card in Settings ▸ General shows the real widget as its preview). No WidgetKit here and nothing from Sources/:
+// only ProfileCore's rules (Core/), so both programs build it. Names start with W (or Widget) so they don't meet
+// cl_audit's own.
 //
 // The look is kept in usage-n-uf/widget.json, which cl_audit writes and the widget reads (its sandbox may read that
 // folder only): the plate (System, Std, Black, Silver) and how the limits are drawn (Glow, Rings, Numbers, Segments,
 // Pace). One layout fits every size: one or two profiles get large limits with their reset times, centred in the
 // widget; more profiles get a row each. Fable's limit shows where the profile's settings say so.
 
+import ProfileCore
 import SwiftUI
 import os
 
@@ -30,14 +32,9 @@ struct WidgetProfile: Identifiable {
     /// The plan as words: Claude's own name as it is ("Ultra"), the sign-in's lower-case one capitalised ("Max").
     var planWords: String? { plan.map { $0 == $0.lowercased() ? $0.capitalized : $0 } }
 
-    /// The full limit that holds the profile back now (the later reset when both are), or nil.
+    /// The full limit that holds the profile back now (the later reset when both are), or nil: ProfileCore's AtLimit.
     func full(now: Date) -> (name: String, resets: Date?)? {
-        func holding(_ p: Double?, _ r: Date?) -> Bool { (p.map { $0.rounded() >= 100 } ?? false) && (r.map { $0 > now } ?? true) }
-        let f = holding(five, fiveResets), w = holding(week, weekResets)
-        if f && w { return (fiveResets ?? .distantFuture) > (weekResets ?? .distantFuture) ? ("5-hour", fiveResets) : ("Week", weekResets) }
-        if f { return ("5-hour", fiveResets) }
-        if w { return ("Week", weekResets) }
-        return nil
+        AtLimit.blocker(fiveHour: five, fiveHourResets: fiveResets, weekly: week, weeklyResets: weekResets, now: now).map { ($0.name, $0.resets) }
     }
 
     /// For picking the few with the least room: a full one first (the longest wait), then the fullest.
@@ -93,9 +90,9 @@ enum AgentFiles {
 
     /// `dir`: cl_audit's folder (a check passes its own throwaway one).
     static func load(from dir: URL = folder, now: Date = Date()) -> [WidgetProfile] {
-        // the app's rule (IconStatus.current), kept here because the widget is built on its own: a limit whose reset has
-        // passed shows no percent, and an expired sign-in (or none) shows no numbers at all
-        func passed(_ t: Double?) -> Bool { t.map { Date(timeIntervalSince1970: $0) <= now } ?? false }
+        // the app's rule (IconStatus.current; ProfileCore's Freshness): a limit whose reset has passed shows no percent, and
+        // an expired sign-in (or none) shows no numbers at all
+        func passed(_ t: Double?) -> Bool { Freshness.passed(t.map { Date(timeIntervalSince1970: $0) }, now: now) }
         let dec = JSONDecoder()
         guard let data = try? Data(contentsOf: dir.appendingPathComponent("accounts.json")),
               let list = try? dec.decode(Accounts.self, from: data) else {
@@ -124,10 +121,9 @@ enum AgentFiles {
                 // (and numbers whose account couldn't be confirmed are never full either)
                 let lastKnown = TimeInterval(max(e.pollMinutes ?? 5, 5) * 60 + 60)
                 if s.ownerUnconfirmed == true || p.updated.map({ now.timeIntervalSince($0) > lastKnown }) == true {
-                    func full(_ v: Double?) -> Bool { v.map { $0.rounded() >= 100 } ?? false }
-                    if full(p.five) { p.five = nil; p.fiveResets = nil }
-                    if full(p.week) { p.week = nil; p.weekResets = nil }
-                    if full(p.fable) { p.fable = nil }
+                    if AtLimit.isFull(p.five) { p.five = nil; p.fiveResets = nil }
+                    if AtLimit.isFull(p.week) { p.week = nil; p.weekResets = nil }
+                    if AtLimit.isFull(p.fable) { p.fable = nil }
                 }
             }
             return p
@@ -222,9 +218,15 @@ enum WKit {
     /// 95 % and up (Painter.crimson in the app, which the widget extension doesn't compile): Display P3, so it shows as #eb445b.
     static let crimson = Color(.displayP3, red: 0xeb / 255, green: 0x44 / 255, blue: 0x5b / 255)
 
+    /// A limit's level (ProfileCore's Level) in the widget's colours; nil without a number.
     static func level(_ p: Double?) -> Color? {
-        guard let p else { return nil }
-        return p.rounded() >= 95 ? crimson : p >= 80 ? red : p >= 50 ? amber : green
+        switch Level.of(p) {
+        case .none: return nil
+        case .green: return green
+        case .amber: return amber
+        case .red: return red
+        case .crimson: return crimson
+        }
     }
 
     /// One of the twelve segments of a segments bar (0 = first): the last is crimson, as it only lights from 95.8 %.
