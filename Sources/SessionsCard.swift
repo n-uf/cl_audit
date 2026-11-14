@@ -57,7 +57,7 @@ struct SessionsCard: View {
     static func showsStopped(_ s: SwitchReceipt?, running: Bool, again: Bool) -> SwitchReceipt? { running && !again ? nil : s }
 
     var body: some View {
-        SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. A switch of account moves the window's Code-tab list and scheduled tasks to the new account, inside this profile's folder; the transcripts stay where they are. Backups are quick copies on this Mac, made by each switch that moves sessions and by Back up now; Restore… puts back what is missing, merged, and never overwrites anything. Chats and Projects on claude.ai belong to each account and aren't here.") {
+        SCard(title: "Sessions", info: "\(name)'s sessions: Claude Code's transcripts (claude --resume) and the Claude window's Code-tab list. A switch of account moves the window's Code-tab list and scheduled tasks to the new account, inside this profile's folder; the transcripts stay where they are. Backups are quick copies on this Mac, made by each switch that moves sessions and by Back up now; Restore… puts back what is missing, merged, and is built not to overwrite anything. Chats and Projects on claude.ai belong to each account and aren't here.") {
             if let s = stoppedSwitch {
                 SRow(label: "A switch stopped", first: true, stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {
@@ -93,7 +93,7 @@ struct SessionsCard: View {
             SRow(label: "Export", info: "\(name)'s sessions as one file, for another Mac or for keeping: a zip (Finder opens it), or an encrypted disk image when it keeps transcripts that hold keys. Made from a fresh copy or from a backup, with accounts as fingerprints only (never an address, an id or a sign-in). The same format as a backup, so Import restores it by the same rules.", stacked: true) {
                 exportRow
             }
-            SRow(label: "Import", info: "Puts an export's sessions into \(name): the file is checked and unpacked as a backup first, then restored from: the same rules as Restore. It only adds what is missing and never overwrites anything. An export of \(name), of another profile or of another Mac. Undo last import takes back exactly what it added.", stacked: true) {
+            SRow(label: "Import", info: "Puts an export's sessions into \(name): the file is checked and unpacked as a backup first, then restored from: the same rules as Restore. It only adds what is missing and is built not to overwrite anything. An export of \(name), of another profile or of another Mac. Undo last import is meant to take back what it added; it may not bring everything back.", stacked: true) {
                 importRow
             }
             if !repoint.sessions.isEmpty || repoint.last != nil {
@@ -180,7 +180,7 @@ struct SessionsCard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 Button("Import…") { model.showImport(entry.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-                    .help("Choose an export (a .zip or .dmg) and preview what it would add. Nothing is written until you press Close and import, and nothing is ever overwritten")
+                    .help("Choose an export (a .zip or .dmg) and preview what it would add. Nothing is written until you press Close and import, and it is built not to overwrite anything")
                 text("From an export of this profile, another profile or another Mac.")
             }
             if lastImport == nil, carriedImport {
@@ -191,7 +191,7 @@ struct SessionsCard: View {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Button("Undo last import") { model.showRestore(RestoreKey(profile: entry.id, backup: l.backup, place: l.backupPlace, resume: l.id)) }
                         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-                        .help("Opens the import's page, where Undo this import takes back exactly what it added")
+                        .help("Opens the import's page, where Undo this import is meant to take back what it added")
                     text(SessionsBackup.tight("Last import \(SessionsBackup.dateWords(l.started)): ") + ((ImportWords.counts(sessions: l.sessionsAdded, entries: l.entriesAdded) ?? "nothing") + " added") + (l.importedFrom.map { " from \(($0 as NSString).deletingPathExtension)" } ?? ""))
                 }
             }
@@ -231,7 +231,7 @@ struct SessionsCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             Button("Restore…") { model.showRestore(RestoreKey(profile: entry.id, backup: m.id, place: placeOf(l).path)) }
                 .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-                .help("Preview what a restore would do. Nothing is written until you press Close and restore, and nothing is ever overwritten")
+                .help("Preview what a restore would do. Nothing is written until you press Close and restore, and it is built not to overwrite anything")
             Menu {
                 Button("Show in Finder") { reveal(l) }
                 Divider()

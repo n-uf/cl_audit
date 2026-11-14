@@ -91,7 +91,7 @@ func saveReceipt(_ r: SwitchReceipt) {
     if ProcessInfo.processInfo.environment["EXPERIMENTAL_ONLY"] != nil,
        !(["o1-switch-ready-", "8a-export-setup-zip-", "ma-export-move-", "8c-import-setup-left-out-", "8d-import-setup-added-open-",
           "8e-restore-setup-", "xdp-default-profile-", "xcs-consent-"].contains(where: name.hasPrefix)
-         && (name.hasSuffix("-std-w460") || name.hasSuffix("-std-w708"))) { return }
+         && (name.hasSuffix("-std-w460") || name.hasSuffix("-std-w708") || name.hasPrefix("xdp-") && name.hasSuffix("-std-w340"))) { return }
     _ = NSApplication.shared
     let host = NSHostingView(rootView: v)
     host.frame = NSRect(x: 0, y: 0, width: w, height: h)
@@ -480,7 +480,7 @@ MainActor.assumeIsolated {
     // the default-profile page (its Experimental panel first): Main's own window as the one that becomes the usual app's
     if ProcessInfo.processInfo.environment["EXPERIMENTAL_ONLY"] != nil {
         let dpr = DefaultProfileRunner(situation: DefaultProfile.Situation(kind: .windowOnly, old: main, target: nil), model: model)
-        for w in [CGFloat(460), 708] {
+        for w in [CGFloat(340), 460, 708] {          // (340: its strip's short form fits)
             snapshot(framed(DefaultProfilePage(model: model, runner: dpr, width: w, counts: DefaultProfile.Preview(), importCarried: false), .std, w),
                      "xdp-default-profile-std-w\(Int(w))", w + 32, 3000)
         }

@@ -518,7 +518,7 @@ struct ImportHappens: View {
                     // (a zero part is left out; both zero says so once)
                     value(ImportWords.counts(sessions: p.backTranscripts, entries: p.backEntries).map { "\($0) with the same content (or longer here): skipped" } ?? "none")
                 }
-                SRow(label: "Grown on both sides", info: "There, and different from the file's copy: both grew on, or the file's is longer than the one here. \(name)'s copy stays, as it is; the file's copy is only listed (never overwritten, never completed).", stacked: true) {
+                SRow(label: "Grown on both sides", info: "There, and different from the file's copy: both grew on, or the file's is longer than the one here. \(name)'s copy stays, as it is; the file's copy is only listed (built not to overwrite or complete it).", stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {
                         value(differ.isEmpty ? "none" : "\(differ.count): \(name)'s copy stays, listed")
                         if !differ.isEmpty { listKey("Show the list", "Hide the list", $showDiffer); if showDiffer { names(differ) } }
@@ -650,7 +650,7 @@ struct ImportPage: View {
         case .ready:
             if runner.plan?.refusal != nil { return ("Refused", "· nothing written", .warn) }
             if runner.notYet != nil { return ("Not yet", "· one thing first · nothing written", .amber) }
-            return ("Preview", "· nothing written yet · nothing is ever overwritten", .normal)
+            return ("Preview", "· nothing written yet · built not to overwrite", .normal)
         case .running: return ("Importing ●", nil, .mint)
         }
     }
@@ -720,7 +720,7 @@ struct ImportPage: View {
     }
 
     private var moveCard: some View {
-        SCard(title: "cl_audit's profiles", info: "The file holds cl_audit's own record of its profiles (name, look, Dock place, accounts and the one in use) and its General and backup settings. Import makes the profiles that aren't here and never changes one that is. A profile counts as already here when it has one of the file's accounts (or, for a file with no accounts, the same name). A made profile works in folders of its own, whatever the file says. It is made with its accounts, looks and settings, but not signed in: after the import, sign in to each account (Accounts ▸ Sign in with another account…). No Dock icon yet: you put it in the Dock after the import. Nothing runs. Your settings stay unless you take the file's; a backups folder that isn't on this Mac is never taken. Take back the profiles it made undoes exactly what was made.") {
+        SCard(title: "cl_audit's profiles", info: "The file holds cl_audit's own record of its profiles (name, look, Dock place, accounts and the one in use) and its General and backup settings. Import makes the profiles that aren't here and is built not to change one that is. A profile counts as already here when it has one of the file's accounts (or, for a file with no accounts, the same name). A made profile works in folders of its own, whatever the file says. It is made with its accounts, looks and settings, but not signed in: after the import, sign in to each account (Accounts ▸ Sign in with another account…). No Dock icon yet: you put it in the Dock after the import. Nothing runs. Your settings stay unless you take the file's; a backups folder that isn't on this Mac is never taken. Take back the profiles it made is meant to undo what was made.") {
             if runner.opened?.move == true {
                 SRowLine(text: "A move from another Mac: the file keeps the real accounts, so the entries and tasks go back under them.")
             }
@@ -796,7 +796,7 @@ struct ImportPage: View {
 
     private var staysCard: some View {
         let inUse = AccountNames.short(target.seat?.email ?? "its account")
-        return SCard(title: "Stays as it is", info: "Import only adds what is missing. The account, the sign-ins and claude.ai are not part of it; a file that is here (MCP settings, settings.json, a task file) is never replaced or merged into.") {
+        return SCard(title: "Stays as it is", info: "Import only adds what is missing. The account, the sign-ins and claude.ai are not part of it; a file that is here (MCP settings, settings.json, a task file) is built not to be replaced or merged into.") {
             if runner.opened?.move == true {
                 SRow(label: "Account", first: true) { rowValue("\(name) keeps the accounts it has; the import doesn't change them") }
                 SRow(label: "Sign-ins") { rowValue("Never travel: sign in again on this Mac") }
@@ -835,7 +835,7 @@ struct ImportPage: View {
     }
 
     private var footerCard: some View {
-        SCard(title: runner.notYet != nil ? "First" : "Steps", info: "Import closes only the target profile's Claude window (about half a minute) when entries come in, adds what is missing with a receipt kept as it goes (Stop, keep what's back), opens the window again and arranges the sidebar with one Return, as Restore does. Undo last import, under the profile's Sessions, takes back exactly what it added.") {
+        SCard(title: runner.notYet != nil ? "First" : "Steps", info: "Import closes only the target profile's Claude window (about half a minute) when entries come in, adds what is missing with a receipt kept as it goes (Stop, keep what's back), opens the window again and arranges the sidebar with one Return, as Restore does. Undo last import, under the profile's Sessions, is meant to take back what it added; it may not bring everything back.") {
             if let nyt = runner.notYet {
                 HStack(alignment: .top, spacing: 10) {
                     ZStack {

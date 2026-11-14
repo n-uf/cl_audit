@@ -56,7 +56,7 @@ struct DefaultProfileCard: View {
     /// or undo them (never "Put it back": the window kind stays with the files).
     private func unfinished(_ r: DefaultProfile.Record) -> some View {
         let rc = DefaultProfile.restoreFor(r).flatMap { $0.undone == nil ? SessionsRestore.load($0.id) : nil }
-        return SCard(title: "The move stopped", info: "The move to the default profile stopped: cl_audit stopped part way through it. Its restore keeps a receipt of every file it wrote, so it can be finished or undone exactly; the profile's window kind goes back only with an Undo.") {
+        return SCard(title: "The move stopped", info: "The move to the default profile stopped: cl_audit stopped part way through it. Its restore keeps a receipt of every file it wrote, so it can be finished or undone, though Undo may not bring everything back; the profile's window kind goes back only with an Undo.") {
             VStack(alignment: .leading, spacing: 8) {
                 if let rc {
                     Text("\(rc.back) \(rc.back == 1 ? "file is" : "files are") already in the usual app's data. Open the restore to finish the move or undo it.")
@@ -135,7 +135,7 @@ struct DefaultProfilePage: View {
 
     private var topLine: Top {
         switch runner.phase {
-        case .ready: return Top(text: "Offer", dim: "· nothing changed yet · nothing is ever overwritten", tone: .normal)
+        case .ready: return Top(text: "Offer", dim: "· nothing changed yet · built not to overwrite", tone: .normal)
         case .signingIn: return Top(text: "Signing in ●", dim: "· step 1 of \(stepCount) · Claude Code in Terminal", tone: .mint)
         case .closing: return Top(text: "Moving ●", dim: "· step \(kind == .windowOnly ? 1 : 2) of \(stepCount) · the windows close", tone: .mint)
         case .backingUp: return Top(text: "Moving ●", dim: "· step \(kind == .windowOnly ? 1 : 2) of \(stepCount) · the backups", tone: .mint)
@@ -208,7 +208,7 @@ struct DefaultProfilePage: View {
 
     private var movesCard: some View {
         let p = counts ?? preview
-        return SCard(title: "What moves", info: "Counted from \(name)'s own window folder against the usual app's data now, by session id. Every Code-tab entry and the sidebar arrangement move, not only an import's. An entry the usual app has already stays exactly as it is, and is listed.") {
+        return SCard(title: "What moves", info: "Counted from \(name)'s own window folder against the usual app's data now, by session id. Every Code-tab entry and the sidebar arrangement move, not only an import's. An entry the usual app has already is meant to stay as it is, and is listed.") {
             if let p {
                 SRow(label: "Sessions list", first: true, stacked: true) {
                     value("\(n(p.entries, "entry", "entries")) in \(name)'s window\(p.tasks > 0 ? " · \(n(p.tasks, "scheduled task", "scheduled tasks"))" : "")\(p.groups > 0 ? " · \(n(p.groups, "sidebar group", "sidebar groups"))" : "")")
@@ -275,7 +275,7 @@ struct DefaultProfilePage: View {
     private var stepsCard: some View {
         let st = states()
         let list = DefaultProfile.steps(s)
-        return SCard(title: "Steps", info: "Cancel works until the first file is written; a stopped move keeps what is back (Finish or Undo on the restore's page). Undo this move takes back exactly what it added and puts the window kind back.") {
+        return SCard(title: "Steps", info: "Cancel works until the first file is written; a stopped move keeps what is back (Finish or Undo on the restore's page). Undo this move is meant to take back what it added and put the window kind back; it may not bring everything back.") {
             VStack(alignment: .leading, spacing: 9) {
                 ForEach(Array(list.enumerated()), id: \.offset) { i, text in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -344,7 +344,7 @@ struct DefaultProfilePage: View {
                     HStack(spacing: 8) {
                         Button("Keep \(name) as a standby account") { runner.keepOldAsStandby() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
                     }
-                    SRowLine(text: "Its account is remembered on the default profile, signed out: switching to it signs it in on the default profile's folder. Its own folder stays exactly as it is, with its sessions and settings.")
+                    SRowLine(text: "Its account is remembered on the default profile, signed out: switching to it signs it in on the default profile's folder. Its own folder is meant to stay as it is, with its sessions and settings.")
                 }
                 HStack(spacing: 8) {
                     Button("Remove \(name)…") { runner.removeOld() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()

@@ -174,7 +174,7 @@ struct McpRow: View {
     var body: some View {
         let t = RowText(face: face)
         if let cp = runner.plan?.config, cp.present || cp.leftOutAtSource != nil {
-            SRow(label: "MCP settings", info: "The Claude window's claude_desktop_config.json in the \(imported ? "file" : "backup"), without its sidebar part: its MCP servers and the window's other settings. MCP servers run commands on their own, so they are left out unless you add them. Adding writes the whole file only where \(name) has no claude_desktop_config.json yet: one that is here stays as it is, byte for byte, and nothing is merged into it. Undo takes back exactly what was added.", stacked: true) {
+            SRow(label: "MCP settings", info: "The Claude window's claude_desktop_config.json in the \(imported ? "file" : "backup"), without its sidebar part: its MCP servers and the window's other settings. MCP servers run commands on their own, so they are left out unless you add them. Adding writes the whole file only where \(name) has no claude_desktop_config.json yet: one that is here stays as it is, byte for byte, and nothing is merged into it. Undo is meant to take back what was added; it may not bring everything back.", stacked: true) {
                 VStack(alignment: .leading, spacing: 6) {
                     let undone = runner.phase == .undone
                     if let r = runner.receipt, undone || runner.phase == .done || runner.phase == .sidebar {
@@ -221,7 +221,7 @@ struct TasksRow: View {
         if let tp = runner.plan?.taskPlan, tp.present {
             let imported = tp.imported
             SRow(label: "Scheduled tasks", info: imported
-                 ? "The file's scheduled tasks, each with its prompt. Left out unless you add them; added, they come into the folder of the account \(name) works on now, only when that folder has no task file (one that is here stays), and every one paused, so nothing runs twice. A task comes only with its prompt. The sessions a task ran come in with it. Undo takes back exactly what was added."
+                 ? "The file's scheduled tasks, each with its prompt. Left out unless you add them; added, they come into the folder of the account \(name) works on now, only when that folder has no task file (one that is here stays), and every one paused, so nothing runs twice. A task comes only with its prompt. The sessions a task ran come in with it. Undo is meant to take back what was added; it may not bring everything back."
                  : "The account in use's task file comes back only when none is here, as it was in the backup (its own tasks, not paused), with the prompts that are missing.", stacked: true) {
                 VStack(alignment: .leading, spacing: 6) {
                     let undone = runner.phase == .undone

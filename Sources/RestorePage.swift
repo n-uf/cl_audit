@@ -79,7 +79,7 @@ struct RestorePage: View {
         case .ready:
             if let why = plan?.refusal { _ = why; return Top(text: "Refused", dim: "· nothing written", tone: .warn) }
             if runner.notYet != nil { return Top(text: "Not yet", dim: "· one thing first · nothing written", tone: .amber) }
-            return Top(text: "Preview", dim: "· nothing written yet · nothing is ever overwritten", tone: .normal)
+            return Top(text: "Preview", dim: "· nothing written yet · built not to overwrite", tone: .normal)
         case .closing:
             return runner.undoing ? Top(text: "Undoing ●", dim: "· the window closes", tone: .mint) : Top(text: imp ? "Importing ●" : "Restoring ●", dim: "· step 1 of 3 · the window closes", tone: .mint)
         case .undoing: return Top(text: "Undoing ●", dim: "· taking back what it put back", tone: .mint)
@@ -195,7 +195,7 @@ struct RestorePage: View {
                 }
                 SRow(label: "Changed since", stacked: true) {
                     VStack(alignment: .leading, spacing: 6) {
-                        value(changed.isEmpty ? "none" : "\(changed.count): this copy kept, listed (never overwritten)")
+                        value(changed.isEmpty ? "none" : "\(changed.count): this copy kept, listed (kept, not overwritten)")
                         if !changed.isEmpty { listKey("Show the list", "Hide the list", $showChanged); if showChanged { names(changed) } }
                     }
                 }
@@ -260,7 +260,7 @@ struct RestorePage: View {
     // MARK: Stays as it is, Sidebar
 
     private var staysCard: some View {
-        SCard(title: "Stays as it is", info: "Restore only adds what is missing. The account, the sign-ins and claude.ai are not part of it; a file that is here (MCP settings, settings.json, a task file) is never replaced or merged into.") {
+        SCard(title: "Stays as it is", info: "Restore only adds what is missing. The account, the sign-ins and claude.ai are not part of it; a file that is here (MCP settings, settings.json, a task file) is built not to be replaced or merged into.") {
             SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): a switch changes that") }
             SRow(label: "Sign-ins") { rowValue(imp ? "Never in an export, never written" : "Never in a backup, never written") }
             SRow(label: "MCP") { rowValue(imp ? "Yours stay; the file's are added only if none is here and you pick Add them"
@@ -324,7 +324,7 @@ struct RestorePage: View {
         let forPicks = !undoneNow && !(plan?.windowNeeded ?? true) && runner.windowForPicks
         let verb = imp ? "added" : "put back"
         let grown = runner.receipt?.changedCount ?? 0
-        return SCard(title: "Steps", info: "What \(imp ? "importing" : "restoring") does, in order. A receipt in cl_audit's folder keeps what was \(verb) as it goes: if the Mac stops, cl_audit offers to finish it, and Undo this \(imp ? "import" : "restore") takes back exactly that.") {
+        return SCard(title: "Steps", info: "What \(imp ? "importing" : "restoring") does, in order. A receipt in cl_audit's folder keeps what was \(verb) as it goes: if the Mac stops, cl_audit offers to finish it, and Undo this \(imp ? "import" : "restore") is meant to take that back; it may not bring everything back.") {
             VStack(alignment: .leading, spacing: 0) {
                 step(1, needsWindow ? (state(1) == .done ? "\(w) closed" : "\(w) closes") : "The window stays as it is",
                      forPicks ? "Only that window, for about half a minute (a picked folder changes the session's Code-tab entry)."
@@ -353,8 +353,8 @@ struct RestorePage: View {
     private var footnote: String {
         switch runner.phase {
         case .ready: return "It keeps a receipt as it goes: if the Mac stops, the next start of cl_audit offers to finish it first."
-        case .done, .sidebar: return imp ? "Undo this import takes back exactly what it added; Undo last import, under \(name)'s Sessions, does the same later."
-                                          : "Undo this restore takes back exactly what it put back."
+        case .done, .sidebar: return imp ? "Undo this import is meant to take back what it added; it may not bring everything back. Undo last import, under \(name)'s Sessions, does the same later."
+                                          : "Undo this restore is meant to take back what it put back; it may not bring everything back."
         default: return ""
         }
     }
