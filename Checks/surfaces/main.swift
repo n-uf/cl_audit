@@ -1091,19 +1091,41 @@ do {
     check(started && launches == ["login \(Account(e).configDir)"] && scripts.first?.contains(pat.email!) == true && scripts.first?.contains(mo.email!) == false,
           "the key's login: launched once on the folder, pat's address in it: \(launches)")
     ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = nil
-    let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
-    let cfg = (try? String(contentsOf: src.appendingPathComponent("Config.swift"), encoding: .utf8)) ?? ""
-    check(cfg.contains("logIn(Account(e), email: SplitUsage.of(s)?.loginEmail ?? s?.expectedEmail)"),
-          "the menus' Log in takes the split's address (the same ClaudeCLI.logIn, creating: false)")
+    // the menus' and quick chat's Log in, wired for real (ClaudeCLI.logIn(profile:): its claude found, the guard asked, the
+    // script made; nothing runs): pat's address, never mo's; with the app's account known by its id only, no address at all
+    let keepLocator = ClaudeLocator.current
+    ClaudeLocator.current = ClaudeLocator.Lookup(candidates: { ["/usr/bin/false"] }, npmPrefix: { nil }, shell: { nil }, appCopy: { nil })
+    launches.removeAll(); scripts.removeAll()
+    FolderGuard.launchSeam = { what, dir in launches.append("\(what) \(dir)"); return true }
+    ClaudeCLI.openTerminal = { u in scripts.append((try? String(contentsOf: u, encoding: .utf8)) ?? ""); return true }
+    ClaudeCLI.logIn(profile: e)
+    RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+    check(launches == ["login \(Account(e).configDir)"] && scripts.count == 1 && scripts[0].contains(pat.email!) && !scripts[0].contains(mo.email!),
+          "Log in from the menus in the split: launched once through the guard, pat's address filled in, never mo's: \(launches)")
+    let anon = AppSignIn.Login(account: uuid(34), org: uuid(74), state: .known, source: "log", at: now)
+    var anonRec = record(app: anon, code: mo, reading: mo.email, weekly: 100)
+    anonRec.resolved = AccountResolver.resolve(e, among: [e], app: anon, code: mo, loginEmail: mo.email, names: [:], now: now)
+    _ = Store.writeStatus("spl", anonRec)
+    let anonSplit = SplitUsage.of(Store.status(for: e))
+    check(anonSplit != nil && anonSplit?.key == nil && anonSplit?.hint == "Sign Claude Code in to the Claude app's account"
+          && SplitUsage.loginAddress(Store.status("spl"), usual: mo.email) == nil,
+          "the app's account known by its id only: no key, the hint, and no address (never mo's): \(anonSplit?.app ?? "-")")
+    launches.removeAll(); scripts.removeAll()
+    ClaudeCLI.logIn(profile: e)
+    RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+    check(launches.count == 1 && scripts.count == 1 && !scripts[0].contains(mo.email!) && !scripts[0].contains("--email"),
+          "…and a Log in then fills in no address at all")
+    ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = nil; ClaudeLocator.current = keepLocator
+    _ = Store.writeStatus("spl", record(app: appPat, code: mo, reading: mo.email, weekly: 100))
 
     // the split as a switch waiting for the Claude app (the hub's ruling): the newest switch went from pat to mo (Claude
     // Code's account now), it is linked or still open, and the app is still on pat: the switched line, no key
     var toMo = SwitchReceipt(id: SwitchEngine.receiptID(now, "spl"), profile: "spl", standby: "km", dataDir: "/x", from: SeatID(pat), to: SeatID(mo), started: now)
     toMo.steps = [SwitchReceipt.Step(kind: .entry, path: "/x/a", sha: nil, parked: nil, original: nil, done: true)]
     var linkedToMo = toMo; linkedToMo.linked = now
-    func splitWith(app: AppSignIn.Login, newest: SwitchReceipt?) -> SplitUsage? {
+    func splitWith(app: AppSignIn.Login, newest: SwitchReceipt?, names: [String: String] = [:]) -> SplitUsage? {
         var s = record(app: app, code: mo, reading: mo.email, weekly: 100)
-        s.resolved = AccountResolver.resolve(e, among: [e], app: app, code: mo, loginEmail: mo.email, names: [:], newestSwitch: newest, now: now)
+        s.resolved = AccountResolver.resolve(e, among: [e], app: app, code: mo, loginEmail: mo.email, names: names, newestSwitch: newest, now: now)
         _ = Store.writeStatus("spl", s)
         return SplitUsage.of(Store.status(for: e))
     }
@@ -1117,7 +1139,7 @@ do {
     }
     let zed = Seat(account: uuid(33), organization: uuid(73), email: "zed@example.com")
     let appZed = AppSignIn.Login(account: zed.account, org: zed.organization, state: .known, source: "log", at: now)
-    let third = splitWith(app: appZed, newest: linkedToMo)
+    let third = splitWith(app: appZed, newest: linkedToMo, names: [zed.account.lowercased(): zed.email!])
     check(third?.switched == false && third?.key?.hasPrefix("Log Claude Code in to ") == true && third?.line.hasPrefix("No usage for ") == true,
           "the app on a third account (not the one the switch left): a split by hand, the B8 line and key")
     var undone = toMo; undone.undone = now
@@ -1173,6 +1195,51 @@ do {
     check(old?.weekly == nil && AccountRow(entry: same, status: old).full == nil, "numbers 20 minutes old: a full limit is left out (last known, never full)")
     _ = Store.writeStatus("spm", record(app: .unknown, code: mo, reading: mo.email, weekly: 100, age: 60))
     check(Store.status(for: same)?.weekly == 100 && AccountRow(entry: same, status: Store.status(for: same)).full != nil, "a minute old: full, as read")
+
+    // the widget (its own copy of the rules, over the same records): the split shows nothing for the profile, a fresh full
+    // limit shows, an old one doesn't
+    _ = Store.writeStatus("spl", record(app: appPat, code: mo, reading: mo.email, weekly: 100))
+    _ = Store.writeStatus("spm", record(app: .unknown, code: mo, reading: mo.email, weekly: 100, age: 60))
+    var w = AgentFiles.load(from: Store.folder, now: now)
+    check(w.first { $0.id == "spl" }.map { $0.week == nil && $0.five == nil && $0.plan == nil && $0.full(now: now) == nil } == true,
+          "the widget in the split: no numbers, no plan, nothing full for the profile")
+    check(w.first { $0.id == "spm" }?.week == 100 && w.first { $0.id == "spm" }?.full(now: now) != nil, "the widget without the split: the full week, as read")
+    _ = Store.writeStatus("spm", record(app: .unknown, code: mo, reading: mo.email, weekly: 100, age: 20 * 60))
+    w = AgentFiles.load(from: Store.folder, now: now)
+    check(w.first { $0.id == "spm" }.map { $0.week == nil && $0.full(now: now) == nil } == true, "the widget: 20-minute-old numbers never full")
+
+    // the owner arrives later: numbers read with a token whose account isn't known yet are held (none shown, no alert);
+    // when its account comes back they are taken, with their alerts (spm: no split, Claude Code's account in use)
+    Store.removeStatus("spm")
+    try! Store.save([same])          // (spm alone: spl's seat is mo too, which would make mo another profile's account)
+    posts.removeAll()
+    UsageReader.testPoster = { _, title, _, _, _ in posts.append(title); return 0 }
+    let hr = UsageReader(same, defaults: UserDefaults(suiteName: "cl-audit-surfaces-held-\(getpid())")!)
+    hr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: hr.generation, key: "k1")
+    RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+    check(hr.heldReading?.key == "k1" && Store.status("spm")?.weekly == nil && posts.isEmpty,
+          "a reading whose owner isn't known yet: held, no numbers anywhere, no alert")
+    hr.profileFound(mo.email!, key: "k1"); hr.save()       // (as the lookup's return does; no tick: nothing is read here)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+    check(hr.heldReading == nil && Store.status("spm")?.weekly == 100 && Store.status("spm")?.resolved?.numbersFor == mo.email
+          && posts.contains { $0.contains("full") }, "its owner known (mo): the numbers, labelled mo, and the full alert then: \(posts)")
+    // a renewed token of the same account: the numbers don't blank while its owner is looked up again
+    let half = Data(#"{"seven_day":{"utilization":50,"resets_at":"2099-01-02T00:00:00Z"}}"#.utf8)
+    hr.finish(data: half, response: ok200, error: nil, asked: Date(), gen: hr.generation, key: "k2")
+    check(Store.status(for: same)?.weekly == 100 && hr.heldReading?.key == "k2", "a token refresh: the last owned numbers stay (no flapping) until its owner is known")
+    hr.profileFound(mo.email!, key: "k2"); hr.save()
+    check(Store.status(for: same)?.weekly == 50 && Store.status("spm")?.resolved?.numbersFor == mo.email, "…then the new reading's, the same account")
+    // the token on mo, the folder's .claude.json naming pat: never decided from the folder; once the reading's owner is
+    // known (mo), the folder has left it: stale, shown nowhere
+    signIn(same.configDir, pat)
+    hr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: hr.generation, key: "k3")
+    check(Store.status(for: same)?.weekly != 100, "token mo, folder pat, owner not yet known: the new reading isn't shown")
+    hr.profileFound(mo.email!, key: "k3"); hr.save()
+    let mixed = Store.status("spm")
+    check(mixed?.resolved?.numbersFor == mo.email && mixed?.resolved?.readStale == true && Store.status(for: same)?.weekly == nil,
+          "…its owner known: numbersFor mo (the reading's), the folder on pat: stale, no numbers shown: \(mixed?.resolved?.numbersFor ?? "-")")
+    hr.stop()
+    UsageReader.testPoster = nil
     try? Store.save([])
     Store.removeStatus("spl"); Store.removeStatus("spm")
 }
