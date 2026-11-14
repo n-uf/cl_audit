@@ -7,15 +7,22 @@ its own repository and cl_quick compiles it from source too.
 
 | File | What it holds |
 | --- | --- |
-| `Identity.swift` | `Seat`, `SeatID` and the one id comparison (`AccountID`: case doesn't count, no organisation = empty); `AccountIdentity` for an account known by address and organisation only, with where it came from (`verified` by the running process, or `guessed` from a file) |
+| `Identity.swift` | `Seat` and `SeatID` with their exact `same` (as cl_audit has always compared them), `SeatID.sameIgnoringCase` where cl_audit already ignored case, the loose comparison `AccountID` (case doesn't count, no organisation = empty); `AccountIdentity` for an account known by address and organisation only, with where it came from (`verified` by the running process, or `guessed` from a file) |
 | `Standby.swift` | `StandbyAccount`, `AccountBook` (`ago`, `sane`, `offerOrder` and the picks `best` and `mostRecent`), `AccountNote`, `StandbyTidy` over any `StandbyHolder` |
-| `Limits.swift` | `Usage`, `Freshness` (thresholds are parameters), `ScopedLimit`, `FullLimit`, `AtLimit` (`isFull`, `holding`, `blocker`, and `full` in two modes), `Credits` |
-| `TimeWords.swift` | `TimeWords` (`when`, `back`, `countdown`, with a calendar parameter) and `Level`, the one colour level |
-| `Parsing.swift` | `Login.parse` (a sign-in item's text) and `UsageParser` (Anthropic's usage and profile replies) |
+| `Limits.swift` | `Usage`, `Freshness` (thresholds are parameters), `ScopedLimit`, `FullLimit` (data only: which limit, its reset, the other full one), `AtLimit` (`isFull`, `holding`, `blocker`, and `full` in two modes), `Credits` |
+| `TimeWords.swift` | `TimeWords` (`when`, `back`, `countdown`, with a calendar parameter; always written in the Gregorian calendar, only the time zone is the caller's) and `Level`, the one colour level |
+| `Parsing.swift` | `Login.parse` (a sign-in item's text) and `UsageParser` (Anthropic's usage and profile replies; the caller names the source) |
 
-What stays in each app: its screens, colours and words (cl_audit's `FullLimit.title`, the Dock icon's countdown face
-`TileCountdown`/`TimeWords.tile`, `Credits.line`, `AccountBook.switchWords`, `AccountNote.words`), reading files and the
-Keychain, and its own records.
+What stays in each app: its screens, colours and words (cl_audit's names and times for a full limit, `FullLimit.id`/
+`name`/`other`/`countdown`/`back`/`both`, in `Widget/WidgetViews.swift` so the widget shares them, and `title`; the Dock
+icon's countdown face `TileCountdown`/`TimeWords.tile`; `Credits.line`; `AccountBook.switchWords`; `AccountNote.words`;
+the usage source's name), reading files and the Keychain, and its own records.
+
+Keys that are data, not wording, stay here: `ScopedLimit.key` ("mfable") is kept in saved alert marks, so it must not
+change with an app's words.
+
+Default clocks: every `now` is a parameter; where it defaults to `Date()` (and `StandbyAccount.init`'s `addedAt`, and
+its decoder when no clock is in `userInfo[StandbyAccount.now]`), a caller that needs a fixed time passes one.
 
 The rule for an account remembered by its address only (no seat yet): it is listed and can be picked by hand, but no
 pick (`best`, `mostRecent`) ever names it: whether it has room isn't known, and switching to it moves nothing.
