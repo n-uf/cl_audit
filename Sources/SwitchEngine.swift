@@ -215,6 +215,8 @@ enum SwitchEngine {
         guard Set(ids).count == ids.count else { return "two scheduled tasks share an id" }
         if fm.fileExists(atPath: (target as NSString).appendingPathComponent("scheduled-tasks.json")) {
             guard let dst = registry(target) else { return "the new account's scheduled-tasks.json can't be read" }
+            // a list with an element that isn't a task would read as no tasks at all, and be overwritten by the move
+            if let raw = dst["scheduledTasks"], !(raw is [[String: Any]]) { return "the new account's scheduled-tasks.json isn't a task list" }
             // a task the target has under the same id must be the same task, whole: otherwise the move would drop the
             // source's (the target's copy stays), and it would survive only in the backup
             let have = tasks(in: target)
@@ -338,7 +340,7 @@ enum SwitchEngine {
             p.move.append(n)
         }
         p.tasks = taskBlock == nil ? taskIDs.count : 0
-        p.taskStay = taskBlock
+        p.taskStay = taskIDs.isEmpty ? nil : taskBlock       // nothing to say about tasks the source hasn't
         return .success(p)
     }
 
