@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.26 — 2026-11-13
+
 - The Dock icon's preview (in Settings and in the Dock) and the usage panel's preview in Settings no longer show sample numbers (23 %, 41 % and 58 %) for a profile that is signed out, expired, on another account than Claude Code or has no usage record yet: they show none, like the icon itself.
 
 ## 26.11.25 — 2026-11-13
