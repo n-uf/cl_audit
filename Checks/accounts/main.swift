@@ -404,6 +404,48 @@ do {
           "said as a state collision")
     put("\(wdE)/claude-code-sessions/\(uuid(70))/\(uuid(71))/scheduled-tasks.json", "{ not json")
     check(SwitchEngine.taskProblem(source: "\(wdE)/claude-code-sessions/\(uuid(70))/\(uuid(71))", target: dst) == "its scheduled-tasks.json can't be read", "an unreadable registry stops the tasks")
+    // a target with the same task id and another entry (same state): never dropped: both files stay as they are, and so do
+    // the task's sessions; the rest of the switch goes on
+    let tA = seat(951, "task-a@example.com"), tB = seat(952, "task-b@example.com"), tC = seat(953, "task-c@example.com"), tD = seat(954, "task-d@example.com")
+    func taskSwitch(_ id: String, from a: Seat, to b: Seat, srcTask: String, dstTask: String) -> (e: AccountEntry, wd: String, src: String, dst: String) {
+        let wd = home + "/wd-\(id)"
+        let src = SwitchEngine.scopeDir(wd, SeatID(a)), dst = SwitchEngine.scopeDir(wd, SeatID(b))
+        put("\(src)/local_\(uuid(961)).json", #"{"sessionId":"local_free"}"#)
+        put("\(src)/local_\(uuid(962)).json", #"{"sessionId":"local_t","scheduledTaskId":"t1"}"#)
+        put("\(src)/scheduled-tasks.json", #"{"scheduledTasks":[\#(srcTask)],"recordedSkips":{"t1":{"n":1}}}"#)
+        put("\(dst)/scheduled-tasks.json", #"{"scheduledTasks":[\#(dstTask)],"recordedSkips":{"t1":{"n":1}}}"#)
+        var e = profile(id, "~/.claude-\(id)", a, standby: [StandbyAccount(email: b.email!, seat: b, id: "kb")])
+        e.desktop = .separate; e.desktopDataDir = wd
+        return (e, wd, src, dst)
+    }
+    func bytes(_ path: String) -> Data? { fm.contents(atPath: path) }
+    let clash = taskSwitch("tc1", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"0 9 * * *"}"#, dstTask: #"{"id":"t1","cron":"0 10 * * *"}"#)
+    check(SwitchEngine.taskProblem(source: clash.src, target: clash.dst) == "the new account has a task with the same id and other settings",
+          "the same id with another entry: said as other settings")
+    guard case .success(let pc) = SwitchEngine.plan(clash.e, standby: clash.e.standby[0], dataDir: clash.wd, owned: []) else { check(false, "plan clash"); exit(1) }
+    check(pc.tasks == 0 && pc.held == ["local_\(uuid(962)).json"] && pc.taskHeld == pc.held && pc.move == ["local_\(uuid(961)).json"] && pc.taskStay?.contains("other settings") == true,
+          "the plan: no task moves, the task's session is held, the free one moves, the reason is kept")
+    check(SwitchRunner.stayWords(pc)?.contains("scheduled tasks stay") == true && SwitchRunner.stayWords(pc)?.contains("Claude Code is running") == false,
+          "the user is told why the tasks stay (not that Claude Code runs the session)")
+    let srcBefore = bytes(clash.src + "/scheduled-tasks.json"), dstBefore = bytes(clash.dst + "/scheduled-tasks.json")
+    let rc = try! SwitchEngine.run(pc, windowClosed: { true }, backups: URL(fileURLWithPath: home + "/bk-tc1"))
+    check(bytes(clash.src + "/scheduled-tasks.json") == srcBefore && bytes(clash.dst + "/scheduled-tasks.json") == dstBefore && srcBefore != nil && dstBefore != nil,
+          "the blocked switch leaves both scheduled-tasks.json byte for byte")
+    check(rc.tasksMoved == nil && !rc.steps.contains { $0.kind == .tasks }, "…and wrote no task step")
+    check(fm.fileExists(atPath: "\(clash.src)/local_\(uuid(962)).json") && !fm.fileExists(atPath: "\(clash.dst)/local_\(uuid(962)).json")
+          && fm.fileExists(atPath: "\(clash.dst)/local_\(uuid(961)).json"), "the task's session stays where it is, the free one moved")
+    SwitchEngine.markLinked(rc.id)
+    // the same entry and state: the task moves, the target keeps its one copy
+    let same = taskSwitch("tc2", from: tC, to: tD, srcTask: #"{"id":"t1","cron":"0 9 * * *"}"#, dstTask: #"{"id":"t1","cron":"0 9 * * *"}"#)
+    check(SwitchEngine.taskProblem(source: same.src, target: same.dst) == nil, "the same id, the same entry and state: no blocker")
+    guard case .success(let ps) = SwitchEngine.plan(same.e, standby: same.e.standby[0], dataDir: same.wd, owned: []) else { check(false, "plan same"); exit(1) }
+    check(ps.tasks == 1 && ps.taskStay == nil && ps.held.isEmpty && ps.move.count == 2, "the plan: the task and both sessions go")
+    let rs = try! SwitchEngine.run(ps, windowClosed: { true }, backups: URL(fileURLWithPath: home + "/bk-tc2"))
+    let sd = (try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: same.dst + "/scheduled-tasks.json")))) as? [String: Any]
+    let ss = (try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: same.src + "/scheduled-tasks.json")))) as? [String: Any]
+    check((sd?["scheduledTasks"] as? [[String: Any]])?.compactMap { $0["id"] as? String } == ["t1"] && (ss?["scheduledTasks"] as? [Any])?.isEmpty == true,
+          "the identical task: the source emptied, the target has one copy")
+    SwitchEngine.markLinked(rs.id)
     // nothing to move: only the sign-in (no receipt, no backup)
     let empty = expand("~/Library/Application Support/Claude-empty8")
     guard case .success(let p4) = SwitchEngine.plan(e, standby: k2, dataDir: empty, owned: []) else { check(false, "plan 4"); exit(1) }
