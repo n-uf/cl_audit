@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-- When the Claude app and Claude Code in Terminal are on different accounts, the card now says cl_audit can't read the app account's usage and which account Terminal is on, instead of "No usage yet".
+- When the Claude app and Claude Code in Terminal are on different accounts, cl_audit now says it can't read the app account's usage and which account Terminal is on, with "Log Claude Code in Terminal in to …" to fix it.
 
 ## 26.11.28 — 2026-11-14
 

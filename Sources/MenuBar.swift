@@ -386,7 +386,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         add("Refresh now", #selector(refreshNow(_:)))
         if p.needsLogin { add("Log in…", #selector(logIn(_:))) }
         // the split: Claude Code's own sign-in, to the Claude app's account (the same Log in, its address filled in)
-        else if let k = p.split?.key { add(k + "…", #selector(logIn(_:))) }
+        else if let k = p.split?.key { add(k, #selector(logIn(_:))) }       // (the key carries its "…")
         menu.addItem(.separator())
         add("Dashboard", #selector(dashboard(_:)))
         add("Profile settings…", #selector(settings(_:)))
@@ -418,6 +418,10 @@ struct MenuBarRow: View {
     let profile: MenuBarItems.Profile
     let now: Date
 
+    /// The row's one line of state: in the split its short form ("Can't read P's usage" over "Terminal: M": the row is about
+    /// 300 pt of text, two lines), else the record's line.
+    static func lineWords(_ p: MenuBarItems.Profile) -> String? { p.split?.shortLine ?? p.view.line }
+
     private var limits: [Limit] {
         let u = profile.usage
         return (u?.noFiveHour == true ? []
@@ -448,7 +452,7 @@ struct MenuBarRow: View {
                     Text(inUse).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
-            if let n = profile.view.line {
+            if let n = Self.lineWords(profile) {
                 Text(n).font(.system(size: 10.5)).foregroundStyle(.tertiary).lineLimit(2)
             }
             if u == nil {

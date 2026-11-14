@@ -1136,16 +1136,25 @@ do {
           "the menu bar strip, the Dock icon and quick chat: no numbers for pat (neutral)")
     check(previewShowsNone(e, head) && panelShowsNone(e, head),
           "the split: the Dock icon's preview (Settings' tile, the Dock's tile) and Settings' panel preview have no numbers, never the samples")
-    check(row.split?.key == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!))" && split?.loginEmail == pat.email,
+    check(row.split?.key == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!))…" && split?.loginEmail == pat.email,
           "the key: Log Claude Code in Terminal in to pat, with pat's address filled in")
     check(split?.numbersHint == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!)) to see its numbers."
           && split?.shortLine == "Can't read \(Privacy.masked(pat.email!))'s usage\nTerminal: \(Privacy.masked(mo.email!))",
           "the line under it and the short form: \(split?.numbersHint ?? "-") / \(split?.shortLine ?? "-")")
-    check(split?.shortKey == "Log in to \(Privacy.masked(pat.email!)) in Terminal"
-          && DetailsInfo(name: "x", icon: NSImage(), login: nil, expected: nil, mismatch: false, plan: nil, fiveHour: nil, fiveHourResets: nil,
-                         weekly: nil, weeklyResets: nil, updated: nil, source: nil, problem: nil, renewNote: nil, needsLogin: false,
-                         noFiveHour: false, noNumbers: nil).takingSplit(split).activeNote == split?.shortLine,
+    let panelInfo = DetailsInfo(name: "x", icon: NSImage(), login: nil, expected: nil, mismatch: false, plan: nil, fiveHour: nil, fiveHourResets: nil,
+                                weekly: nil, weeklyResets: nil, updated: nil, source: nil, problem: nil, renewNote: nil, needsLogin: false,
+                                noFiveHour: false, noNumbers: nil).takingSplit(split)
+    check(split?.shortKey == "Log in to \(Privacy.masked(pat.email!)) in Terminal…"
+          && panelInfo.activeNote == split?.shortLine && panelInfo.splitKey == split?.shortKey,
           "the Dock panel takes the short line and the short key: \(split?.shortKey ?? "-")")
+    // the menu bar row's line: the short form in the split, the record's line otherwise (MenuBarRow.lineWords)
+    let barProfile = MenuBarItems.Profile(entry: e, usage: Usage.of(head), problem: head?.problem, needsLogin: false, view: AccountView.of(head), split: split)
+    check(MenuBarRow.lineWords(barProfile) == split?.shortLine
+          && MenuBarRow.lineWords(MenuBarItems.Profile(entry: e, usage: nil, problem: nil, needsLogin: false, view: AccountView.of(head), split: nil)) == AccountView.of(head).line,
+          "the menu bar row says the short split line, and the record's line outside the split")
+    // every key and menu item reads its label once, with its ellipsis (the menus no longer add one)
+    check(split?.key?.hasSuffix("…") == true && split?.key?.hasSuffix("……") == false && split?.shortKey?.hasSuffix("…") == true,
+          "the keys carry their ellipsis once")
     // no split surface says "No usage" or "yet" (the lines, the key, the hint, the short form), whether the addresses show or
     // are masked (Privacy.mask: the setting itself is the operator's, never touched here) and with the app's account by id
     for (what, app, code) in [("shown", pat.email!, mo.email!), ("masked", Privacy.mask(pat.email!), Privacy.mask(mo.email!)),
@@ -1226,12 +1235,12 @@ do {
     var leftAsIs = toMo; leftAsIs.leftAsIs = now
     for (what, r) in [("undone", undone), ("left as it is", leftAsIs)] {
         let s = splitWith(app: appPat, newest: r)
-        check(s?.switched == false && s?.key == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!))" && s?.loginEmail == pat.email,
+        check(s?.switched == false && s?.key == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!))…" && s?.loginEmail == pat.email,
               "the switch \(what): a split by hand, the B8 line and key")
     }
     var dayOld = linkedToMo; dayOld.linked = now.addingTimeInterval(-25 * 3600)
     let dayOldSplit = splitWith(app: appPat, newest: dayOld)
-    check(dayOldSplit?.switched == false && dayOldSplit?.key == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!))",
+    check(dayOldSplit?.switched == false && dayOldSplit?.key == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!))…",
           "a switch linked 25 hours ago waits no more: a split by hand, the B8 line and key")
     let older = splitWith(app: appPat, newest: nil)
     check(older?.switched == false && older?.key != nil, "no switch at all: a split by hand")

@@ -144,9 +144,9 @@ struct SplitUsage: Equatable {
     /// The key: the existing Log in (Claude Code's own sign-in in Terminal, with the app's address filled in). Not a switch.
     /// None while a switch waits for the app, and none when the app's account is known by its id only: the key only ever
     /// names and fills in the app's own address (never Claude Code's), so then `hint` says what to do instead.
-    var key: String? { loginEmail.map { "Log Claude Code in Terminal in to \(Privacy.masked($0))" } }
+    var key: String? { loginEmail.map { "Log Claude Code in Terminal in to \(Privacy.masked($0))…" } }
     /// The key where space is short (the Dock panel's fixed width): "Log in to P@… in Terminal", as long as the old key.
-    var shortKey: String? { loginEmail.map { "Log in to \(Privacy.masked($0)) in Terminal" } }
+    var shortKey: String? { loginEmail.map { "Log in to \(Privacy.masked($0)) in Terminal…" } }
     /// The address the login fills in: the app's own, when it is known (not while a switch waits for the app).
     var loginEmail: String? { !switched && app.contains("@") ? app : nil }
     /// In place of the key when the app's address isn't known.

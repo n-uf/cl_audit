@@ -518,7 +518,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             login.target = self; m.addItem(login)
         } else if let k = SplitUsage.of(status)?.key {
             // the split: Claude Code's own sign-in, to the Claude app's account (the same Log in, its address filled in)
-            let login = NSMenuItem(title: k + "…", action: #selector(logIn), keyEquivalent: "")
+            let login = NSMenuItem(title: k, action: #selector(logIn), keyEquivalent: "")
             login.target = self; m.addItem(login)
         }
         m.addItem(.separator())
