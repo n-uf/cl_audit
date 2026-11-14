@@ -153,6 +153,8 @@ final class SwitchRunner: ObservableObject {
             fail(.notStarted, "An earlier switch of \(e.name) stopped half way. Undo it (below, or on the Sessions card), sign in as \(to) to finish it, or Leave it as it is (Sessions card); then switch again.")
             return
         }
+        // a restore or import that stopped half way, or the move to the default profile: said, which and where (Unfinished.swift)
+        if let why = Unfinished.blocker(profile: profile, for: .switching) { goal = g; fail(.notStarted, why); return }
         guard e.seat != nil, s.seat != nil else { begin(e, g); return }
         switch SwitchEngine.plan(e, standby: s) {
         case .failure(let why): goal = g; fail(.notStarted, why.description)

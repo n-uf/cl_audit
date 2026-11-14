@@ -912,5 +912,99 @@ do {
     try? fm.removeItem(atPath: pre)
 }
 
+// ============ 14. a flow sees the others' unfinished work on the same profile (Unfinished.blocker) ============
+do {
+    let wd14 = expand("~/Library/Application Support/Claude-xf")
+    let src14 = SwitchEngine.scopeDir(wd14, SeatID(u1))
+    let k14 = StandbyAccount(email: u2.email!, seat: u2, id: "k2")
+    try? fm.createDirectory(atPath: expand("~/.claude-xf/projects"), withIntermediateDirectories: true)
+    sign("~/.claude-xf", u1)
+    var e = profile("xf", "~/.claude-xf", u1, standby: [k14])
+    e.desktop = .separate; e.desktopDataDir = wd14
+    try! Store.save([e])
+    let place14 = URL(fileURLWithPath: home + "/bk14")
+    /// Nothing unfinished anywhere, a window folder with one session on the account in use.
+    func fresh14() {
+        for dir in [SwitchEngine.root, SessionsRestore.root, DefaultProfile.folder] { try? fm.removeItem(at: dir) }
+        DefaultProfile.forgetCache()
+        try? fm.removeItem(atPath: wd14)
+        put("\(src14)/local_\(uuid(1401)).json", #"{"sessionId":"local_1"}"#)
+    }
+    /// A restore (or an import) that wrote one file and stopped: receipt and journal, as the engine leaves them.
+    @discardableResult func stoppedRestore(_ profile: String, imported: Bool = false, when: Date = t0, finished: Date? = nil) -> SessionsRestore.Receipt {
+        var r = SessionsRestore.Receipt(id: SessionsRestore.receiptID(when, profile), profile: profile, dataDir: wd14, codeDir: expand("~/.claude-xf"),
+                                        backup: "b14", backupPlace: place14.path, started: when)
+        if imported { r.importedFrom = "export.zip" }
+        r.finished = finished
+        try! SessionsRestore.save(r)
+        put(SessionsRestore.root.appendingPathComponent("\(r.id)/journal.jsonl").path, #"{"op":"intent","kind":"file","path":"/x14","bytes":1}"# + "\n")
+        return SessionsRestore.load(r.id)!
+    }
+    func move14(_ profile: String, old: String? = nil, finished: Date? = nil) {
+        DefaultProfile.save(DefaultProfile.Record(id: "mv14", kind: .otherFolder, profile: profile, oldProfile: old, created: true, backup: "b14",
+                                                  backupPlace: place14.path, started: t0, finished: finished))
+    }
+    /// The Switch page's runner starts a switch to ultra-2: the words it stopped with, nil when it went on (and then it is let go).
+    func startedWith() -> String? {
+        let m = SettingsModel(); m.accounts = [e]
+        let r = m.runner(of: "xf")
+        r.start(e.standby[0])
+        if case .failed(let why) = r.phase { return why }
+        let end = Date().addingTimeInterval(8)
+        func busy() -> Bool { switch r.phase { case .closing, .moving: return true; default: return false } }
+        while busy(), Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
+        r.reset()
+        return nil
+    }
+
+    // a switch that stopped half way never holds a restore, an import or a re-point back (an old one can't be finished or undone)
+    fresh14()
+    guard case .success(let p) = SwitchEngine.plan(e, standby: e.standby[0], dataDir: wd14, owned: []) else { check(false, "plan xf"); exit(1) }
+    let sw = try! SwitchEngine.run(p, windowClosed: { true }, backups: place14)
+    check(SwitchEngine.unfinished(profile: "xf").map(\.id) == [sw.id] && SessionsRestore.blocker(profile: "xf") == nil
+          && Unfinished.blocker(profile: "xf", for: .restoring) == nil, "a switch stopped half way: no restore, import or re-point waits for it")
+    check(Unfinished.blocker(profile: "xf", for: .switching) == nil, "…and the switch's own start check leaves its own receipt to the switch page's words")
+
+    // a restore that stopped half way: a restore says what it always said; a switch is now refused, saying which and where
+    fresh14()
+    let rs = stoppedRestore("xf")
+    let own = SessionsRestore.blocker(profile: "xf")
+    check(own == "A restore of this profile stopped half way on \(SessionsBackup.dateWords(t0)). Finish it or undo it first.", "restore on restore: the words are as they were: \(own ?? "-")")
+    check(SessionsRestore.blocker(profile: "xf", except: rs.id) == nil, "…and finishing or undoing it is the restore itself: allowed")
+    check(SessionsRestore.blocker(profile: "other") == nil && Unfinished.blocker(profile: "other", for: .switching) == nil, "another profile's unfinished restore blocks nothing here")
+    var why = startedWith()
+    check(why?.contains("A restore of this profile stopped half way on") == true && why?.contains("Finish it or undo it first") == true && why?.contains("Restore stopped") == true,
+          "a switch while a restore of the profile stopped half way: refused, which one and where: \(why ?? "it went on")")
+    check(SwitchEngine.unfinished(profile: "xf").isEmpty && (try? SwitchEngine.run(p, windowClosed: { true }, backups: place14)) == nil,
+          "…also under the engine's lock (the page's check may be old by then), nothing moved")
+    check(tree(src14).contains("local_\(uuid(1401)).json"), "…the session is still where it was")
+    // an import says "import"
+    fresh14(); stoppedRestore("xf", imported: true)
+    why = startedWith()
+    check(why?.hasPrefix("An import of this profile stopped half way on") == true, "a stopped import is named an import: \(why ?? "it went on")")
+    // finished or undone: no longer in the way
+    fresh14(); stoppedRestore("xf", finished: t0)
+    check(startedWith()?.contains("stopped half way") != true, "a finished restore doesn't hold a switch back")
+
+    // a move to the default profile that stopped: on either profile it names, a switch is refused; it holds no restore back by itself
+    fresh14(); move14("xf")
+    why = startedWith()
+    check(why?.contains("default profile") == true && why?.contains("stopped half way") == true && why?.contains("The move stopped") == true,
+          "a switch while this profile's move to the default profile is open: refused, said where: \(why ?? "it went on")")
+    check(SessionsRestore.blocker(profile: "xf") == nil, "…the move's own restore is not held back by its record")
+    fresh14(); move14("newdefault", old: "xf")
+    check(startedWith()?.contains("default profile") == true, "the profile the move came from is refused too")
+    fresh14(); move14("xf", finished: t0)
+    check(startedWith()?.contains("stopped half way") != true, "a finished move doesn't hold a switch back")
+    fresh14(); move14("elsewhere", old: "else2")
+    check(startedWith()?.contains("stopped half way") != true, "a move of other profiles doesn't")
+
+    // the switch's own unfinished receipt: still the switch page's own words
+    fresh14()
+    let sw2 = try! SwitchEngine.run(p, windowClosed: { true }, backups: place14)
+    check(startedWith()?.contains("sign in as ultra-2 to finish it") == true && SwitchEngine.unfinished(profile: "xf").map(\.id) == [sw2.id], "an earlier switch of the profile: its own words, as before")
+    fresh14()
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

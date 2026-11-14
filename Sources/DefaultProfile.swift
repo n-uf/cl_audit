@@ -189,8 +189,8 @@ enum DefaultProfile {
     /// A move that is open: it changed the profile (or wrote files) and wasn't finished or undone, e.g. cl_audit quit part
     /// way. The card sends the user to that restore's Finish or Undo when files were written, and offers "Put it back" only
     /// when none were.
-    static func unfinished() -> Record? {
-        for var r in all().reversed() where r.open {
+    static func unfinished(involving profile: String? = nil) -> Record? {
+        for var r in all().reversed() where r.open && (profile == nil || r.profile == profile || r.oldProfile == profile) {
             // its restore was finished from the Restore page (after a restart, say): the move is done, the record catches up
             if let rc = restoreFor(r), rc.finished != nil, rc.undone == nil {
                 r.receipt = rc.id; r.finished = rc.finished; save(r)

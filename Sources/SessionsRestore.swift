@@ -905,10 +905,7 @@ enum SessionsRestore {
     /// 26.11.13 and earlier that stopped half way no longer blocks: nothing can finish or undo it now, and the Sessions
     /// card says what it left where.)
     static func blocker(profile: String, except id: String? = nil) -> String? {
-        if let r = unfinished(profile: profile).first(where: { $0.id != id }) {
-            return "A restore of this profile stopped half way on \(SessionsBackup.dateWords(r.started)). Finish it or undo it first."
-        }
-        return nil
+        Unfinished.blocker(profile: profile, except: id, for: .restoring)
     }
 
     /// Another restore (or an import's re-point, the default-profile move) that holds this Claude window closed right now

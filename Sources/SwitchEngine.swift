@@ -384,7 +384,9 @@ enum SwitchEngine {
         let lock = try Lock.take()
         defer { lock.release() }
         guard windowClosed() else { throw SwitchError.notReady("The profile's Claude window is open; nothing moved.") }
-        // looked at again under the lock: a link put in since the plan is refused all the same
+        // looked at again under the lock, like a restore does: one that stopped half way since the page asked still holds it back
+        if let why = Unfinished.blocker(profile: p.profile, for: .switching) { throw SwitchError.notReady(why) }
+        // a link put in since the plan is refused all the same
         if let why = linkProblem(p) { throw SwitchError.notReady(why) }
         var r = SwitchReceipt(id: receiptID(now, p.profile), profile: p.profile, standby: p.standby, dataDir: p.dataDir,
                               from: SeatID(p.from), to: SeatID(p.to), started: now)
