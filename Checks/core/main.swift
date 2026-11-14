@@ -24,7 +24,7 @@ var gmt = Calendar(identifier: .gregorian); gmt.timeZone = TimeZone(identifier: 
 do {
     let a = Seat(account: uuid(1), organization: uuid(51), email: "ann@example.com")
     check(a.same(Seat(account: uuid(1), organization: uuid(51), email: "other@example.com")), "the same seat: the ids, not the address")
-    let hex = Seat(account: "00000000-0000-4000-8000-00000000abcd", organization: uuid(51))      // (uuid(n) has no letters to change case)
+    let hex = Seat(account: "00000000-0000-4000-8000-0000000000ab", organization: uuid(51))      // (uuid(n) has no letters to change case)
     check(!hex.same(Seat(account: hex.account.uppercased(), organization: uuid(51))) && hex.same(Seat(account: hex.account, organization: uuid(51))),
           "Seat.same is exact: another case is another seat (as before)")
     check(!a.same(Seat(account: uuid(1), organization: uuid(52))), "another organisation: another seat")
