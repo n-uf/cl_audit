@@ -26,7 +26,7 @@ extension TimeWords {
     static func tile(_ d: Date, now: Date = Date(), calendar: Calendar = .current) -> (String, String) {
         let m = minutesLeft(d, now: now)
         let cal = calendar
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = cal; f.timeZone = cal.timeZone
+        let f = TimeWords.formatter(timeZone: cal.timeZone)
         if m < 60 { return ("\(m)", "m") }
         if m < 10 * 60 { return ("\(m / 60)", String(format: "h%02d", m % 60)) }
         if m < 24 * 60 { return ("\(m / 60)", "h") }

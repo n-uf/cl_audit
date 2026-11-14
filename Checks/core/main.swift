@@ -142,6 +142,17 @@ do {
     let nextMonth = gmt.date(from: DateComponents(year: 2026, month: 12, day: 24, hour: 9))!
     check(TimeWords.when(nextMonth, now: now, calendar: gmt) == "24 Dec", "further this year: the date")
     check(TimeWords.when(gmt.date(from: DateComponents(year: 2027, month: 1, day: 12))!, now: now, calendar: gmt) == "12 Jan 2027", "another year")
+    // another system calendar: the words stay Gregorian (en_US_POSIX gave Gregorian before); only the time zone is the caller's
+    for id in [Calendar.Identifier.buddhist, .japanese, .islamicUmmAlQura] {
+        var other = Calendar(identifier: id); other.timeZone = TimeZone(identifier: "GMT")!
+        let next = gmt.date(from: DateComponents(year: 2027, month: 1, day: 12))!
+        // (whether the year is written follows the caller's calendar, as before: 12 Jan 2027 is still 1448 in the Hijri one)
+        let words = TimeWords.when(next, now: now, calendar: other)
+        check((words == "12 Jan 2027" || (id == .islamicUmmAlQura && words == "12 Jan")) && TimeWords.when(nextMonth, now: now, calendar: other) == "24 Dec"
+              && TimeWords.when(today, now: now, calendar: other) == "15:28", "a \(id) calendar: Gregorian words (\(words))")
+    }
+    var tokyo = gmt; tokyo.timeZone = TimeZone(identifier: "Asia/Tokyo")!
+    check(TimeWords.when(today, now: now, calendar: tokyo) == "Sat 00:28", "the time zone is the caller's: \(TimeWords.when(today, now: now, calendar: tokyo))")
     check(TimeWords.countdown(now.addingTimeInterval(30), now: now) == "1m" && TimeWords.countdown(now.addingTimeInterval(102 * 60), now: now) == "1h 42m"
           && TimeWords.countdown(now.addingTimeInterval(3 * 86400 + 3600), now: now) == "3d 1h" && TimeWords.countdown(now.addingTimeInterval(16 * 86400), now: now) == "16 days",
           "the countdown's forms")

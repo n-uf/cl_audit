@@ -8,8 +8,7 @@ public enum TimeWords {
     /// "11:38" today, "Thu 09:00" within 6 days either way, "11 Nov" further this year, "12 Jan 2027" another year.
     public static func when(_ d: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
         let cal = calendar
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = cal; f.timeZone = cal.timeZone
+        let f = TimeWords.formatter(timeZone: cal.timeZone)
         let days = abs(cal.dateComponents([.day], from: cal.startOfDay(for: d), to: cal.startOfDay(for: now)).day ?? 0)
         f.dateFormat = days == 0 ? "HH:mm"
             : (1...6).contains(days) ? "EEE HH:mm"
@@ -20,6 +19,15 @@ public enum TimeWords {
     /// When a limit is back: "back at 15:28" today, else "back Thu 09:00", "back 11 Nov", "back 12 Jan 2027".
     public static func back(_ d: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
         calendar.isDate(d, inSameDayAs: now) ? "back at \(when(d, now: now, calendar: calendar))" : "back \(when(d, now: now, calendar: calendar))"
+    }
+
+    /// The formatter for these words: English names and the Gregorian calendar whatever the Mac's calendar is (a
+    /// Buddhist, Japanese or Hijri system calendar would otherwise write "12 Jan 2570"); only the time zone comes from
+    /// the caller's calendar.
+    public static func formatter(timeZone: TimeZone) -> DateFormatter {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.timeZone = timeZone
+        return f
     }
 
     /// Whole minutes left, rounded up (30 s left is "1m"; the reset itself is 0).
