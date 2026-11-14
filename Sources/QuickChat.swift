@@ -173,6 +173,8 @@ final class QuickChatModel: ObservableObject {
     /// A problem shown in the bar, before the chat has a message (Claude Code missing, no profile).
     @Published var barProblem: QuickChatProblem?
     @Published var target: QuickChatTarget?
+    /// The chat's profile is in the split (SplitUsage): Claude Code's live limits are its account's, not the profile's.
+    var inSplit: Bool { target.flatMap { SplitUsage.of(Store.status($0.profileID)) } != nil }
     @Published var choice: QuickChatModelChoice = .haiku
     @Published var thinking: QuickChatThinking = .off
     /// The full name each choice answered with last ("Haiku 5.5"), for its key.
@@ -381,6 +383,8 @@ final class QuickChatModel: ObservableObject {
                 turns[i].problem = .refused(text: text.isEmpty ? error : text)
             }
         case .limit(let type, let used, let status, let resets):
+            // the split (SplitUsage): these are Claude Code's account's limits, not the profile's: no level from them
+            guard !inSplit else { break }
             var l = level ?? QuickChatLevel(nil)
             l.apply(type: type, used: used, status: status, resets: resets)
             level = l
@@ -393,13 +397,14 @@ final class QuickChatModel: ObservableObject {
             if isError || turns[i].problem != nil {
                 turns[i].phase = .failed
                 if turns[i].problem == nil { turns[i].problem = .refused(text: text.isEmpty ? "Claude Code couldn't answer." : text) }
-                // a full limit Claude Code found before cl_audit's numbers did: the account line says so too
-                if turns[i].problem == .limitFull, level?.full() == nil {
+                // a full limit Claude Code found before cl_audit's numbers did: the account line says so too. Not in the
+                // split (SplitUsage): it's Claude Code's account's limit, so the answer says it, but no level or offer
+                if turns[i].problem == .limitFull, level?.full() == nil, !inSplit {
                     var l = level ?? QuickChatLevel(nil)
                     l.refusedUntil = l.refusedUntil ?? Date().addingTimeInterval(3600)
                     level = l
                 }
-                if turns[i].problem == .limitFull { limitFilled() }
+                if turns[i].problem == .limitFull, !inSplit { limitFilled() }
             } else {
                 if turns[i].answer.isEmpty { turns[i].answer = text }
                 turns[i].phase = .done
