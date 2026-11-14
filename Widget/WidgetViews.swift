@@ -58,39 +58,59 @@ enum AgentFiles {
     }
 
     private struct Accounts: Decodable { let accounts: [Entry] }
-    private struct Entry: Decodable { let id: String; let name: String; let accent: String?; let showFable: Bool?; let seat: SeatEmail? }
+    private struct Entry: Decodable {
+        let id: String; let name: String; let accent: String?; let showFable: Bool?; let seat: SeatEmail?; let pollMinutes: Int?
+    }
     private struct SeatEmail: Decodable { let email: String? }
+    /// The record's account answer (the app's ResolvedAccount), the fields the widget's rules need.
+    private struct Resolved: Decodable {
+        let fromApp: Bool?; let differs: Bool?; let clash: String?; let readStale: Bool?; let numbersFor: String?
+    }
     private struct Status: Decodable {
         let fiveHour: Double?; let fiveHourResets: Double?; let weekly: Double?; let weeklyResets: Double?
         let updatedAt: Double?; let plan: String?; let scoped: [Scoped]?; let noFiveHour: Bool?
         let loginEmail: String?; let expectedEmail: String?; let state: String?
+        let resolved: Resolved?; let numbersOwner: String?
 
         /// Read for this account: numbers read for another (the one a profile was on before a switch) never show.
         func belongs(to email: String?) -> Bool {
             guard let want = email?.lowercased(), !want.isEmpty, let got = (loginEmail ?? expectedEmail)?.lowercased(), !got.isEmpty else { return true }
             return got == want
         }
+
+        /// The app's headline rule (Store.status(for:)), kept here because the widget is built on its own: no numbers in
+        /// the split (the Claude app on another account than Claude Code, whose numbers these are), for a stale reading,
+        /// or under a label that isn't the reading's own account.
+        var shown: Bool {
+            guard let r = resolved else { return true }
+            if r.fromApp == true && r.differs == true && r.clash == nil { return false }
+            if r.readStale == true { return false }
+            if let owner = r.numbersFor?.lowercased(), owner.contains("@"), let read = (numbersOwner ?? loginEmail)?.lowercased(), read != owner { return false }
+            return true
+        }
     }
     private struct Scoped: Decodable { let name: String; let percent: Double?; let resets: Double? }
 
-    static func load(now: Date = Date()) -> [WidgetProfile] {
+    /// `dir`: cl_audit's folder (a check passes its own throwaway one).
+    static func load(from dir: URL = folder, now: Date = Date()) -> [WidgetProfile] {
         // the app's rule (IconStatus.current), kept here because the widget is built on its own: a limit whose reset has
         // passed shows no percent, and an expired sign-in (or none) shows no numbers at all
         func passed(_ t: Double?) -> Bool { t.map { Date(timeIntervalSince1970: $0) <= now } ?? false }
         let dec = JSONDecoder()
-        guard let data = try? Data(contentsOf: folder.appendingPathComponent("accounts.json")),
+        guard let data = try? Data(contentsOf: dir.appendingPathComponent("accounts.json")),
               let list = try? dec.decode(Accounts.self, from: data) else {
             wlog.error("widget: can't read the profiles file")
             return []
         }
         let profiles = list.accounts.map { e -> WidgetProfile in
             var p = WidgetProfile(id: e.id, name: e.name, accent: e.accent ?? "orange")
-            if let d = try? Data(contentsOf: folder.appendingPathComponent("status/\(e.id).json")),
+            if let d = try? Data(contentsOf: dir.appendingPathComponent("status/\(e.id).json")),
                let s = try? dec.decode(Status.self, from: d), s.belongs(to: e.seat?.email) {
-                p.plan = s.plan
                 p.updated = s.updatedAt.map { Date(timeIntervalSince1970: $0) }
                 p.noFive = s.noFiveHour ?? false
-                if s.state != "expired" && s.state != "noLogin" {
+                // (the split's, a stale reading's or a mislabelled reading's numbers and plan aren't the profile's)
+                if s.shown { p.plan = s.plan }
+                if s.shown, s.state != "expired" && s.state != "noLogin" {
                     if !passed(s.fiveHourResets) {
                         p.five = s.fiveHour; p.fiveResets = s.fiveHourResets.map { Date(timeIntervalSince1970: $0) }
                     }
@@ -98,6 +118,15 @@ enum AgentFiles {
                         p.week = s.weekly; p.weekResets = s.weeklyResets.map { Date(timeIntervalSince1970: $0) }
                     }
                     if e.showFable ?? true, let f = s.scoped?.first(where: { $0.name == "Fable" }), !passed(f.resets) { p.fable = f.percent }
+                }
+                // old numbers are only last known (the app's Store.lastKnown: the read interval, 5 minutes at least, plus a
+                // minute): a limit they read as full is left out, never full or counting down
+                let lastKnown = TimeInterval(max(e.pollMinutes ?? 5, 5) * 60 + 60)
+                if let at = p.updated, now.timeIntervalSince(at) > lastKnown {
+                    func full(_ v: Double?) -> Bool { v.map { $0.rounded() >= 100 } ?? false }
+                    if full(p.five) { p.five = nil; p.fiveResets = nil }
+                    if full(p.week) { p.week = nil; p.weekResets = nil }
+                    if full(p.fable) { p.fable = nil }
                 }
             }
             return p
