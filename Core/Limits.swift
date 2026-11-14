@@ -65,32 +65,29 @@ public struct ScopedLimit: Codable, Equatable {
 
     public init(name: String, percent: Double?, resets: Date?) { self.name = name; self.percent = percent; self.resets = resets }
 
-    /// Alert marks and the limit row's id: "mfable".
+    /// A stable key for the limit, kept in saved marks (so not wording): "mfable".
     public var key: String { "m" + name.lowercased().filter { $0.isLetter || $0.isNumber } }
 }
 
 // MARK: - Full limits
 
 /// The full limit that holds a profile back: of the full ones, the one that resets last (an unknown reset counts as
-/// last). `others` names any other full limit ("5-hour too").
+/// last). `alsoFull` is the other limit, when both are full. Data only: each app names the limits and words the times.
 public struct FullLimit: Equatable {
-    public let id: String              // "5h" or "wk"
-    public let name: String            // "5-hour" or "Week"
+    /// Which of the plan's two limits.
+    public enum Kind: Equatable { case fiveHour, week }
+    public let kind: Kind
     public let resets: Date?
-    public let other: String?          // the other full limit's name, when both are full
+    public let alsoFull: Kind?
 
-    public init(id: String, name: String, resets: Date?, other: String?) { self.id = id; self.name = name; self.resets = resets; self.other = other }
+    public init(kind: Kind, resets: Date?, alsoFull: Kind? = nil) { self.kind = kind; self.resets = resets; self.alsoFull = alsoFull }
 
-    /// "in 1h 42m", or nil when the reset time isn't known.
-    public func countdown(_ now: Date = Date()) -> String? { resets.map { "in " + TimeWords.countdown($0, now: now) } }
-    /// "back at 15:28", or "reset time unknown".
-    public func back(_ now: Date = Date()) -> String { resets.map { TimeWords.back($0, now: now) } ?? "reset time unknown" }
-    /// Both times in one line: "back at 15:28, in 1h 42m", or "reset time unknown".
-    public func both(_ now: Date = Date()) -> String { resets.map { "\(TimeWords.back($0, now: now)), in \(TimeWords.countdown($0, now: now))" } ?? "reset time unknown" }
+    /// Whole minutes until the reset (rounded up), or nil when the reset time isn't known.
+    public func minutesLeft(_ now: Date = Date()) -> Int? { resets.map { TimeWords.minutesLeft($0, now: now) } }
 }
 
 public enum AtLimit {
-    /// 100% as the cards show it (rounded).
+    /// 100% as a person reads it (rounded).
     public static func isFull(_ p: Double?) -> Bool { p.map { $0.rounded() >= 100 } ?? false }
 
     /// Full and not yet reset.
@@ -104,13 +101,13 @@ public enum AtLimit {
         let five = holding(fiveHour, fiveHourResets, now: now), week = holding(weekly, weeklyResets, now: now)
         switch (five, week) {
         case (false, false): return nil
-        case (true, false): return FullLimit(id: "5h", name: "5-hour", resets: fiveHourResets, other: nil)
-        case (false, true): return FullLimit(id: "wk", name: "Week", resets: weeklyResets, other: nil)
+        case (true, false): return FullLimit(kind: .fiveHour, resets: fiveHourResets)
+        case (false, true): return FullLimit(kind: .week, resets: weeklyResets)
         case (true, true):
             // the one that resets last; unknown counts as last, and the week wins a tie
             let fiveLater = (fiveHourResets ?? .distantFuture) > (weeklyResets ?? .distantFuture)
-            return fiveLater ? FullLimit(id: "5h", name: "5-hour", resets: fiveHourResets, other: "Week")
-                             : FullLimit(id: "wk", name: "Week", resets: weeklyResets, other: "5-hour")
+            return fiveLater ? FullLimit(kind: .fiveHour, resets: fiveHourResets, alsoFull: .week)
+                             : FullLimit(kind: .week, resets: weeklyResets, alsoFull: .fiveHour)
         }
     }
 

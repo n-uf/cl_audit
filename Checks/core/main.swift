@@ -105,13 +105,14 @@ do {
     check(AtLimit.isFull(99.5) && !AtLimit.isFull(99.4) && !AtLimit.isFull(nil), "full: 100 as the cards round it")
     check(AtLimit.holding(100, nil, now: now) && !AtLimit.holding(100, now, now: now), "holding: full and not reset (an unknown reset holds)")
     let later = now.addingTimeInterval(7200), sooner = now.addingTimeInterval(600)
-    check(AtLimit.blocker(fiveHour: 100, fiveHourResets: sooner, weekly: 100, weeklyResets: later, now: now) == FullLimit(id: "wk", name: "Week", resets: later, other: "5-hour"),
+    check(AtLimit.blocker(fiveHour: 100, fiveHourResets: sooner, weekly: 100, weeklyResets: later, now: now) == FullLimit(kind: .week, resets: later, alsoFull: .fiveHour),
           "both full: the one that resets last holds it back")
-    check(AtLimit.blocker(fiveHour: 100, fiveHourResets: later, weekly: 100, weeklyResets: later, now: now)?.id == "wk", "a tie: the week")
+    check(AtLimit.blocker(fiveHour: 100, fiveHourResets: later, weekly: 100, weeklyResets: later, now: now)?.kind == .week, "a tie: the week")
+    check(AtLimit.blocker(fiveHour: 100, fiveHourResets: nil, weekly: 100, weeklyResets: later, now: now) == FullLimit(kind: .fiveHour, resets: nil, alsoFull: .week),
+          "an unknown reset counts as last")
     check(AtLimit.blocker(fiveHour: 40, fiveHourResets: nil, weekly: 99, weeklyResets: nil, now: now) == nil, "nothing full: no blocker")
-    let f = FullLimit(id: "5h", name: "5-hour", resets: now.addingTimeInterval(102 * 60), other: nil)
-    check(f.countdown(now) == "in 1h 42m" && FullLimit(id: "wk", name: "Week", resets: nil, other: nil).back(now) == "reset time unknown",
-          "the full limit's times")
+    check(FullLimit(kind: .fiveHour, resets: now.addingTimeInterval(102 * 60)).minutesLeft(now) == 102 && FullLimit(kind: .week, resets: nil).minutesLeft(now) == nil,
+          "the full limit's minutes left (the words are each app's)")
     // full in two modes: acts (fresh numbers only) and display (dated, the reset still ahead, however old)
     let ahead = now.addingTimeInterval(3600)
     check(AtLimit.full(100, resets: ahead, readAt: now.addingTimeInterval(-120), mode: .acts(freshFor: 300), now: now)
@@ -179,15 +180,15 @@ do {
     let reply = #"{"five_hour":{"utilization":7,"resets_at":"2099-01-01T00:00:00.000Z"},"seven_day":{"utilization":64,"resets_at":1800000000},"#
         + #""limits":[{"kind":"weekly_scoped","percent":40,"resets_at":"2099-01-02T00:00:00Z","scope":{"model":{"display_name":"Fable"}}},{"kind":"session"}],"#
         + #""spend":{"enabled":true,"used":{"amount_minor":420,"currency":"USD","exponent":2},"limit":{"amount_minor":5000}}}"#
-    let u = UsageParser.fromAPI(Data(reply.utf8), now: t0)
+    let u = UsageParser.fromAPI(Data(reply.utf8), now: t0, source: "test source")
     check(u?.fiveHour == 7 && u?.weekly == 64 && u?.weeklyResets == Date(timeIntervalSince1970: 1_800_000_000) && u?.fetchedAt == t0
-          && u?.source == "Anthropic" && u?.noFiveHour == false, "the usage reply: both limits, a numeric reset")
+          && u?.source == "test source" && u?.noFiveHour == false, "the usage reply: both limits, a numeric reset, the caller's source name")
     check(u?.scoped == [ScopedLimit(name: "Fable", percent: 40, resets: UsageParser.date("2099-01-02T00:00:00Z"))], "a model's own weekly limit")
     check(u?.credits?.used == 4.2 && u?.credits?.cap == 50 && u?.credits?.enabled == true, "usage credits (spend)")
     let ultra = #"{"limits":[{"type":"seven_day","percent":12,"resets_at":"2099-01-01T00:00:00Z","kind":"weekly"}]}"#
-    let v = UsageParser.fromAPI(Data(ultra.utf8))
+    let v = UsageParser.fromAPI(Data(ultra.utf8), source: "test source")
     check(v?.weekly == 12 && v?.fiveHour == nil && v?.noFiveHour == true, "the limits[] variant, a plan with no 5-hour limit (Ultra)")
-    check(UsageParser.fromAPI(Data("{}".utf8)) == nil && UsageParser.fromAPI(Data("nope".utf8)) == nil, "no limit or not JSON: nothing")
+    check(UsageParser.fromAPI(Data("{}".utf8), source: "t") == nil && UsageParser.fromAPI(Data("nope".utf8), source: "t") == nil, "no limit or not JSON: nothing")
     check(UsageParser.date(1_800_000_000_000 as NSNumber) == Date(timeIntervalSince1970: 1_800_000_000) && UsageParser.date("2099-01-01T00:00:00.5Z") != nil,
           "dates: milliseconds, seconds, ISO with a fraction")
     check(UsageParser.percent(["used_percentage": 33]) == 33 && UsageParser.percent([:]) == nil, "the percent under its several names")
@@ -213,6 +214,12 @@ do {
                         "FileManager", "contentsOf:", "static var ", "nonisolated(unsafe)"] where code.contains(bad) {
                 found.append("\(f):\(i + 1) \(bad)")
             }
+            // an app's words for a full limit and its source stay in the app (the data stays here)
+            for bad in ["reset time unknown", "\"in \"", "\"5-hour\"", "\"Week\"", "\"Anthropic\""] where code.contains(bad) {
+                found.append("\(f):\(i + 1) \(bad)")
+            }
+            // nor do comments name an app's screens or files
+            for bad in ["▸", "receipt", "Dock", "Settings"] where l.contains(bad) { found.append("\(f):\(i + 1) \(bad) (comment)") }
         }
     }
     check(files.count >= 5 && found.isEmpty, "Core/ (\(files.count) files): Foundation only, no app paths, files, wording or global state: \(found)")

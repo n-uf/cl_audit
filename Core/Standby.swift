@@ -100,8 +100,8 @@ public enum AccountBook {
         }.map(\.element)
     }
 
-    /// The one rule for the standby account offered while a limit is full (the card's preselected tray, the menus' "Switch
-    /// to …", the alert's offer): the first in `offerOrder` that has a seat and isn't known to be full, or nil.
+    /// The one rule for the standby account offered while a limit is full (wherever an app offers one: preselected, in a
+    /// menu, in an alert): the first in `offerOrder` that has a seat and isn't known to be full, or nil.
     /// An account remembered by its address only (no seat yet) is never the one offered: whether it has room isn't known,
     /// and switching to it moves nothing (only a sign-in), so it is listed, and picked by hand, but never offered first.
     public static func best(_ list: [StandbyAccount], now: Date = Date()) -> StandbyAccount? {
@@ -126,7 +126,7 @@ public struct AccountNote: Codable, Equatable, Hashable {
     /// noCopy: the app's own record of its profiles was rewritten, but the copy it keeps first couldn't be kept.
     public enum Kind: String, Codable { case came, left, standsBy, tidied, noCopy }
     public var kind: Kind
-    public var email: String              // the account; shown masked as Settings ▸ General ▸ Emails says
+    public var email: String              // the account (an app may show it masked)
     public var profile: String            // the other profile's name
     public var at: Date
 

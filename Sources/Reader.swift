@@ -407,7 +407,7 @@ final class UsageReader {
         if let error { state = .failed(error.localizedDescription); return }
         switch response?.statusCode ?? 0 {
         case 200:
-            guard let data, let u = UsageParser.fromAPI(data) else { state = .failed("unexpected reply"); return }
+            guard let data, let u = UsageParser.fromAPI(data, source: "Anthropic") else { state = .failed("unexpected reply"); return }
             // whose these numbers are: the account of the token they were read with; never the folder's .claude.json.
             // Read with a token whose account isn't known yet (its lookup still under way): unowned, so held, neither shown
             // nor alerted, until the lookup comes back (profileFound); the numbers before it, whose owner is known, stay

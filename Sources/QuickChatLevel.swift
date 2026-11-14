@@ -47,7 +47,7 @@ struct QuickChatLevel: Equatable {
         // Claude Code refused though the numbers we have aren't at 100% yet
         if let until = refusedUntil, until > now {
             let five = !noFiveHour && (fiveHour ?? 0) >= (week ?? 0)
-            return FullLimit(id: five ? "5h" : "wk", name: five ? "5-hour" : "Week", resets: until, other: nil)
+            return FullLimit(kind: five ? .fiveHour : .week, resets: until)
         }
         return nil
     }

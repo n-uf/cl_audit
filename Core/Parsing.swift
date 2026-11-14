@@ -65,7 +65,7 @@ public enum UsageParser {
 
     /// Accepts {five_hour:{utilization,resets_at}, seven_day:{…}} and a {limits:[{type,percent,resets_at}]} variant.
     /// `now`: when it was read; `source`: how an app names where the numbers came from.
-    public static func fromAPI(_ data: Data, now: Date = Date(), source: String = "Anthropic") -> Usage? {
+    public static func fromAPI(_ data: Data, now: Date = Date(), source: String) -> Usage? {
         guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         var u = Usage(fetchedAt: now, source: source)
         if let w = j["five_hour"] as? [String: Any] { u.fiveHour = percent(w); u.fiveHourResets = date(w["resets_at"]) }

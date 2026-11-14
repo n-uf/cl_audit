@@ -14,6 +14,25 @@ import os
 
 private let wlog = Logger(subsystem: "local.usage-n-uf", category: "widget")
 
+// MARK: cl_audit's words for a full limit (ProfileCore's FullLimit is data only); here so the widget and the app share them
+
+extension FullLimit {
+    /// A limit's name: "5-hour", "Week".
+    static func name(_ k: Kind) -> String { k == .fiveHour ? "5-hour" : "Week" }
+    /// The id of its row in the panels (Limit.id): "5h", "wk".
+    var id: String { kind == .fiveHour ? "5h" : "wk" }
+    /// "5-hour" or "Week".
+    var name: String { Self.name(kind) }
+    /// The other full limit's name, when both are full.
+    var other: String? { alsoFull.map(Self.name) }
+    /// "in 1h 42m", or nil when the reset time isn't known.
+    func countdown(_ now: Date = Date()) -> String? { resets.map { "in " + TimeWords.countdown($0, now: now) } }
+    /// "back at 15:28", or "reset time unknown".
+    func back(_ now: Date = Date()) -> String { resets.map { TimeWords.back($0, now: now) } ?? "reset time unknown" }
+    /// Both times in one line: "back at 15:28, in 1h 42m", or "reset time unknown".
+    func both(_ now: Date = Date()) -> String { resets.map { "\(TimeWords.back($0, now: now)), in \(TimeWords.countdown($0, now: now))" } ?? "reset time unknown" }
+}
+
 // MARK: what it reads
 
 struct WidgetProfile: Identifiable {
