@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.27 — 2026-11-14
+
 - The menus' "Switch to …" now offers first only a standby account cl_audit can recognise by its account, like the switch card and the alerts already did; a standby known only by its address is still listed and can be picked by hand.
 - Under the hood, the rules for accounts, limits and times live in one shared module that the app, the widget and the checks all use; nothing else looks different.
 
