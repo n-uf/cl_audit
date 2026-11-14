@@ -36,20 +36,27 @@ func profile(_ id: String, _ dir: String, _ s: Seat?) -> AccountEntry {
 }
 _ = NSApplication.shared
 /// The Dock icon's preview (Settings.swift's `preview`, which the Dock's tiles and Settings' tile draw) for a record that has no
-/// numbers (signed out, expired, split): the blank tile, never the samples (23 % and 41 %) it draws where there is no record.
+/// numbers (signed out, expired, split) or none at all (an existing profile whose record is missing): the blank tile, never the
+/// samples (23 % and 41 %), which only a profile that doesn't exist yet (`sample: true`, no record) draws.
+func blankTile(_ p: AccountEntry) -> Data? {
+    Painter.image(TileModel(label: p.label.isEmpty ? "?" : p.label, fiveHour: nil, weekly: nil, stale: false, style: p.style,
+                            warn: false, tint: p.color, frame: p.frame), pixels: 128).tiffRepresentation
+}
 func previewShowsNone(_ p: AccountEntry, _ rec: IconStatus?) -> Bool {
-    let blank = Painter.image(TileModel(label: p.label.isEmpty ? "?" : p.label, fiveHour: nil, weekly: nil, stale: false, style: p.style,
-                                        warn: false, tint: p.color, frame: p.frame), pixels: 128).tiffRepresentation
-    let sample = preview(p, status: nil).tiffRepresentation
+    let blank = blankTile(p)
+    let sample = preview(p, status: nil, sample: true).tiffRepresentation
     return blank != nil && sample != blank && preview(p, status: rec).tiffRepresentation == blank
         && preview(p, status: rec, sample: false).tiffRepresentation == blank
+        && preview(p, status: nil).tiffRepresentation == blank                  // an existing profile without a record: blank too
 }
 
 /// Settings' panel preview (`samplePanel`) for a record that has no numbers: no limit, no full panel, never the samples (23 % and 58 %).
 func panelShowsNone(_ p: AccountEntry, _ rec: IconStatus?) -> Bool {
-    let info = samplePanel(p, status: rec)
-    return info.fiveHour == nil && info.weekly == nil && info.fiveHourResets == nil && info.weeklyResets == nil
-        && info.limits.allSatisfy { $0.p == nil && $0.resets == nil } && info.full == nil
+    func none(_ info: DetailsInfo) -> Bool {
+        info.fiveHour == nil && info.weekly == nil && info.fiveHourResets == nil && info.weeklyResets == nil
+            && info.limits.allSatisfy { $0.p == nil && $0.resets == nil } && info.full == nil
+    }
+    return none(samplePanel(p, status: rec)) && none(samplePanel(p, status: nil))      // (a missing record: none either)
 }
 
 // ============ 1. the Claude app's account: its log after the launch, checked against config.json ============
@@ -615,12 +622,22 @@ do {
           && QuickChatTarget(p).loginWords == nil, "…on the menu bar, the card and quick chat alike, without Log in…")
     check(preview(p, status: back, sample: false).tiffRepresentation != preview(p, status: Store.status(for: p).map { var s = $0; s.dropNumbers(); return s }, sample: false).tiffRepresentation,
           "…and in the Dock icon's preview: the record's own numbers (7 % and 64 %), not a blank tile")
-    let goodPanel = samplePanel(p, status: back), samplePanelNow = samplePanel(p, status: nil)
+    let goodPanel = samplePanel(p, status: back), samplePanelNow = samplePanel(p, status: nil, sample: true)
     check(goodPanel.fiveHour == 7 && goodPanel.weekly == 64 && samplePanelNow.fiveHour == 23 && samplePanelNow.weekly == 58
           && samplePanelNow.fiveHourResets != nil && samplePanelNow.weeklyResets != nil,
-          "…and in Settings' panel preview: the record's own numbers; with no record at all (a new profile) the samples, 23 % and 58 %")
+          "…and in Settings' panel preview: the record's own numbers; a profile that doesn't exist yet (no record, sample on) the samples, 23 % and 58 %")
+    check(samplePanel(p, status: back, sample: true).fiveHour == 7, "…a record is never replaced by the samples, even with sample on")
     outReader.stop()
     UsageReader.testPoster = nil
+    // an existing profile whose record is gone (missing or unreadable): no numbers in Settings' list tile, its panel preview and
+    // the Dock's tile (DockManager.tileImage, which reads the saved profiles); a new profile's tile shows the samples
+    try? Store.save([p])
+    Store.removeStatus("stale")
+    check(Store.status(for: p) == nil && previewShowsNone(p, nil) && panelShowsNone(p, nil),
+          "an existing profile without a record: no numbers in the list tile, the panel preview or the preview's default")
+    check(DockManager.tileImage(Installer.appURL(p)).tiffRepresentation == blankTile(p),
+          "…and the Dock's tile (DockManager.tileImage) of a profile without a record is blank: no sample numbers")
+    check(preview(p, status: nil, sample: true).tiffRepresentation != blankTile(p), "a new profile's tile (no record, sample on) shows the samples")
     try? Store.save([])
     Store.removeStatus("stale")
 }

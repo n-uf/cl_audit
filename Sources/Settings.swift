@@ -2290,8 +2290,8 @@ struct AccountSettings: View {
         return nil
     }
 
-    /// The panel preview: this account's record's numbers (none for a profile that is signed out, expired or in the split),
-    /// samples only where there is no record at all (a new profile).
+    /// The panel preview: this account's record's numbers (none for a profile that is signed out, expired, in the split or
+    /// without a record). This page is of a saved profile, so never the samples.
     var sampleInfo: DetailsInfo { samplePanel(entry, status: status) }
 
     /// A folder picked in Finder, used only if no other account has it and it's a Claude Code folder (or empty).
@@ -2523,12 +2523,11 @@ struct NoneSwatch: View {
     }
 }
 
-/// The icon as the Dock would show it, with the account's latest numbers or sample ones.
 /// The account's Dock icon from its record (Store.status(for:)), as its tile draws it: only the record's numbers, none for a
-/// profile that is signed out, expired or in the split (the record has none then). Samples (23 % and 41 %) only where there is
-/// no record at all and `sample` is on; a record, whatever it says, is never filled in with them. The expected address is
-/// the record's, never read from the folder.
-func preview(_ e: AccountEntry, status: IconStatus?, style: IconStyle? = nil, tick: Int = 0, sample: Bool = true) -> NSImage {
+/// profile that is signed out, expired, in the split or without a record (missing, unreadable). Samples (23 % and 41 %) only
+/// for a profile that doesn't exist yet (the new-profile flow: `sample` on, no record); an existing profile is never filled in
+/// with them. The expected address is the record's, never read from the folder.
+func preview(_ e: AccountEntry, status: IconStatus?, style: IconStyle? = nil, tick: Int = 0, sample: Bool = false) -> NSImage {
     let expected = status?.expectedEmail
     let warn = status?.loginEmail.map { $0.lowercased() != expected?.lowercased() } ?? false
     let sampled = status == nil && sample
@@ -2540,11 +2539,11 @@ func preview(_ e: AccountEntry, status: IconStatus?, style: IconStyle? = nil, ti
 }
 
 /// The details panel as Settings previews it, from the profile's record (Store.status(for:)): only the record's numbers, the
-/// same rule as `preview`. The samples (5-hour 23 %, week 58 %) only where there is no record at all.
-func samplePanel(_ entry: AccountEntry, status s: IconStatus?, now: Date = Date()) -> DetailsInfo {
-    let sampled = s == nil
+/// same rule as `preview`. The samples (5-hour 23 %, week 58 %) only for a profile that doesn't exist yet (`sample` on, no record).
+func samplePanel(_ entry: AccountEntry, status s: IconStatus?, sample: Bool = false, now: Date = Date()) -> DetailsInfo {
+    let sampled = s == nil && sample
     return DetailsInfo(
-        name: entry.name.isEmpty ? "profile" : entry.name, icon: preview(entry, status: s),
+        name: entry.name.isEmpty ? "profile" : entry.name, icon: preview(entry, status: s, sample: sample),
         login: s?.loginEmail, expected: s?.expectedEmail, mismatch: false, plan: s?.plan,
         fiveHour: s?.fiveHour ?? (sampled ? 23 : nil), fiveHourResets: s?.fiveHourResets ?? (sampled ? now.addingTimeInterval(3 * 3600 + 20 * 60) : nil),
         weekly: s?.weekly ?? (sampled ? 58 : nil), weeklyResets: s?.weeklyResets ?? (sampled ? now.addingTimeInterval(2 * 86400 + 5 * 3600) : nil),
