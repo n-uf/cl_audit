@@ -999,7 +999,8 @@ struct AccountCard: View {
                 // numbers only as one labelled line, since `claude` in Terminal still uses them
                 VStack(alignment: .leading, spacing: 8) {
                     Text(split.line).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                    if let key = split.key {           // (none while a switch waits for the app's sign-in)
+                    // (the short key: the long one is wider than the card at 340 and pushed it out of its column)
+                    if let key = split.shortKey {      // (none while a switch waits for the app's sign-in)
                         Button(key) { actions.logIn(row) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                     } else if let hint = split.hint {  // the app's address isn't known: no key that could fill in another
                         Text(hint).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
