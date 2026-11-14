@@ -446,6 +446,37 @@ do {
     check((sd?["scheduledTasks"] as? [[String: Any]])?.compactMap { $0["id"] as? String } == ["t1"] && (ss?["scheduledTasks"] as? [Any])?.isEmpty == true,
           "the identical task: the source emptied, the target has one copy")
     SwitchEngine.markLinked(rs.id)
+    // blocked runs: both files byte for byte, every task's session held, nothing of the tasks written
+    func blocked(_ c: (e: AccountEntry, wd: String, src: String, dst: String), _ tag: String, held: [String], problem: String) {
+        check(SwitchEngine.taskProblem(source: c.src, target: c.dst) == problem, "\(tag): said as \"\(problem)\"")
+        guard case .success(let pb) = SwitchEngine.plan(c.e, standby: c.e.standby[0], dataDir: c.wd, owned: []) else { check(false, "plan \(tag)"); exit(1) }
+        check(pb.tasks == 0 && pb.held.sorted() == held.sorted() && pb.move == ["local_\(uuid(961)).json"], "\(tag): no task moves, all their sessions are held, the free one moves")
+        let before = (bytes(c.src + "/scheduled-tasks.json"), bytes(c.dst + "/scheduled-tasks.json"))
+        let rb = try! SwitchEngine.run(pb, windowClosed: { true }, backups: URL(fileURLWithPath: home + "/bk-\(tag)"))
+        check(before.0 != nil && before.1 != nil && bytes(c.src + "/scheduled-tasks.json") == before.0 && bytes(c.dst + "/scheduled-tasks.json") == before.1
+              && rb.tasksMoved == nil && !rb.steps.contains { $0.kind == .tasks }, "\(tag): both scheduled-tasks.json byte for byte, no task step")
+        SwitchEngine.markLinked(rb.id)
+    }
+    // the target's list has an element that isn't a task: no clash can be seen, so the tasks stay (its own are never overwritten)
+    let odd = taskSwitch("tc3", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"0 9 * * *"}"#, dstTask: #"{"id":"t1","cron":"0 10 * * *"},null"#)
+    blocked(odd, "tc3", held: ["local_\(uuid(962)).json"], problem: "the new account's scheduled-tasks.json isn't a task list")
+    // several tasks, one of them clashes: none moves, all their sessions are held
+    let many = taskSwitch("tc4", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"a"},{"id":"t2","cron":"b"},{"id":"t3","cron":"c"}"#, dstTask: #"{"id":"t2","cron":"b"},{"id":"t3","cron":"other"}"#)
+    put("\(many.src)/local_\(uuid(963)).json", #"{"sessionId":"local_t2","scheduledTaskId":"t2"}"#)
+    blocked(many, "tc4", held: ["local_\(uuid(962)).json", "local_\(uuid(963)).json"], problem: "the new account has a task with the same id and other settings")
+    // another entry and other state: blocked too
+    let both = taskSwitch("tc5", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"0 9 * * *"}"#, dstTask: #"{"id":"t1","cron":"0 10 * * *"}"#)
+    put("\(both.dst)/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"t1","cron":"0 10 * * *"}],"recordedSkips":{"t1":{"n":9}}}"#)
+    blocked(both, "tc5", held: ["local_\(uuid(962)).json"], problem: "the new account has a task with the same id and other settings")
+    // what the user reads: the old account by name, and the way out
+    let words = SwitchRunner.stayWords(pc) ?? ""
+    check(words.contains("stay with task-a") && words.contains("Remove one of the two, then switch again."), "the words name the old account and say what to do: \(words)")
+    // a source with no task says nothing about tasks, whatever the target's file is
+    let none = taskSwitch("tc6", from: tA, to: tB, srcTask: "", dstTask: "")
+    put("\(none.src)/scheduled-tasks.json", #"{"scheduledTasks":[]}"#)
+    put("\(none.dst)/scheduled-tasks.json", "{ not json")
+    guard case .success(let pn) = SwitchEngine.plan(none.e, standby: none.e.standby[0], dataDir: none.wd, owned: []) else { check(false, "plan none"); exit(1) }
+    check(pn.taskStay == nil && SwitchRunner.stayWords(pn) == nil && pn.tasks == 0, "no task on the old account: no word about tasks")
     // nothing to move: only the sign-in (no receipt, no backup)
     let empty = expand("~/Library/Application Support/Claude-empty8")
     guard case .success(let p4) = SwitchEngine.plan(e, standby: k2, dataDir: empty, owned: []) else { check(false, "plan 4"); exit(1) }

@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-- A switch no longer drops a scheduled task when the new account already has a different task with the same id: it leaves both where they are (and the task's sessions with them) and says why.
+- A switch no longer drops a scheduled task when the new account already has a different task with the same id: it leaves all the scheduled tasks, and their sessions, with the old account and says why.
 
 ## 26.11.27 — 2026-11-14
 
