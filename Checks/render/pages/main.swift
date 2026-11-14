@@ -572,6 +572,21 @@ if ProcessInfo.processInfo.environment["SPLIT_ONLY"] != nil {
         snapshot(VStack { all }.frame(width: w, alignment: .leading).padding(16).background(Color(white: 0.1))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                     .environment(\.face, face).environment(\.colorScheme, .dark), "dockpreview-std-w\(Int(w))", w + 32, 640)
+        // Settings' panel preview (samplePanel): the limits it draws, from the same records; the samples only with no record
+        func panel(_ e: AccountEntry, _ what: String) -> some View {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(what).font(.system(size: 11, weight: .semibold)).foregroundColor(.white)
+                LimitsView(limits: samplePanel(e, status: Store.status(for: e)).limits, design: .glow, large: false)
+            }
+        }
+        let panels = VStack(alignment: .leading, spacing: 14) {
+            Text("Settings' panel preview, from each profile's record").font(.system(size: 12, weight: .semibold)).foregroundColor(.white)
+            panel(okE, "Good read"); panel(outE, "Signed out"); panel(expE, "Expired"); panel(splE, "Split")
+            panel(noneE, "No record: the samples")
+        }
+        snapshot(VStack { panels }.frame(width: w, alignment: .leading).padding(16).background(Color(white: 0.1))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .environment(\.face, face).environment(\.colorScheme, .dark), "dockpreview-panel-std-w\(Int(w))", w + 32, 900)
     }
 }
 

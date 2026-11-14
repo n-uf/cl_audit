@@ -45,6 +45,13 @@ func previewShowsNone(_ p: AccountEntry, _ rec: IconStatus?) -> Bool {
         && preview(p, status: rec, sample: false).tiffRepresentation == blank
 }
 
+/// Settings' panel preview (`samplePanel`) for a record that has no numbers: no limit, no full panel, never the samples (23 % and 58 %).
+func panelShowsNone(_ p: AccountEntry, _ rec: IconStatus?) -> Bool {
+    let info = samplePanel(p, status: rec)
+    return info.fiveHour == nil && info.weekly == nil && info.fiveHourResets == nil && info.weeklyResets == nil
+        && info.limits.allSatisfy { $0.p == nil && $0.resets == nil } && info.full == nil
+}
+
 // ============ 1. the Claude app's account: its log after the launch, checked against config.json ============
 do {
     let launched = t0
@@ -500,7 +507,7 @@ do {
         let row = AccountRow(entry: p, status: rec)
         check(row.limits.allSatisfy { $0.p == nil } && row.full == nil && row.needsLogin && row.subtitle == "login expired",
               "\(what): the card (and Settings' in-use box, which draws its limits) says login expired, no bars, Log in…")
-        check(previewShowsNone(p, rec), "\(what): the Dock icon's preview draws no numbers, never the samples")
+        check(previewShowsNone(p, rec) && panelShowsNone(p, rec), "\(what): the Dock icon's preview and Settings' panel preview have no numbers, never the samples")
         let panel = DetailsInfo(name: p.name, icon: NSImage(), login: rec?.loginEmail, expected: rec?.expectedEmail, mismatch: false, plan: rec?.plan,
                                 fiveHour: rec?.fiveHour, fiveHourResets: rec?.fiveHourResets, weekly: rec?.weekly, weeklyResets: rec?.weeklyResets,
                                 updated: rec?.updatedAt, source: rec?.source, problem: rec?.problem, renewNote: nil, needsLogin: rec?.needsLogin ?? false)
@@ -582,7 +589,7 @@ do {
         let row = AccountRow(entry: p, status: rec)
         check(row.limits.allSatisfy { $0.p == nil } && row.needsLogin && row.subtitle == "no Claude Code login",
               "\(what): the card and Settings' box: no bars, its state line, Log in…")
-        check(previewShowsNone(p, rec), "\(what): the Dock icon's preview draws no numbers, never the samples")
+        check(previewShowsNone(p, rec) && panelShowsNone(p, rec), "\(what): the Dock icon's preview and Settings' panel preview have no numbers, never the samples")
         check(rec?.needsLogin == true && rec?.fiveHour == nil && DetailsInfo.noNumbersWords(rec) == "Signed out",
               "\(what): the Dock panel (from the same record): no numbers, Log in…, its age line says Signed out")
         let q = QuickChatTarget(p), ql2 = QuickChatLevel(Usage.of(rec), now: now)
@@ -608,6 +615,10 @@ do {
           && QuickChatTarget(p).loginWords == nil, "…on the menu bar, the card and quick chat alike, without Log in…")
     check(preview(p, status: back, sample: false).tiffRepresentation != preview(p, status: Store.status(for: p).map { var s = $0; s.dropNumbers(); return s }, sample: false).tiffRepresentation,
           "…and in the Dock icon's preview: the record's own numbers (7 % and 64 %), not a blank tile")
+    let goodPanel = samplePanel(p, status: back), samplePanelNow = samplePanel(p, status: nil)
+    check(goodPanel.fiveHour == 7 && goodPanel.weekly == 64 && samplePanelNow.fiveHour == 23 && samplePanelNow.weekly == 58
+          && samplePanelNow.fiveHourResets != nil && samplePanelNow.weeklyResets != nil,
+          "…and in Settings' panel preview: the record's own numbers; with no record at all (a new profile) the samples, 23 % and 58 %")
     outReader.stop()
     UsageReader.testPoster = nil
     try? Store.save([])
@@ -1105,7 +1116,8 @@ do {
           "the card and its tile: no limits, no full panel, no countdown, no red Log in")
     check(Usage.of(head) == nil && QuickChatLevel(Usage.of(head), now: now).week == nil,
           "the menu bar strip, the Dock icon and quick chat: no numbers for pat (neutral)")
-    check(previewShowsNone(e, head), "the split: the Dock icon's preview (Settings' tile, the Dock's tile) draws no numbers, never the samples")
+    check(previewShowsNone(e, head) && panelShowsNone(e, head),
+          "the split: the Dock icon's preview (Settings' tile, the Dock's tile) and Settings' panel preview have no numbers, never the samples")
     check(row.split?.key == "Log Claude Code in to \(Privacy.masked(pat.email!))" && split?.loginEmail == pat.email,
           "the key: Log Claude Code in to pat, with pat's address filled in")
     let line = row.split?.codeLine(row.codeStatus, now: now) ?? "-"

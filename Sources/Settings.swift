@@ -2290,19 +2290,9 @@ struct AccountSettings: View {
         return nil
     }
 
-    /// The panel preview: this account's latest numbers when known, otherwise samples.
-    var sampleInfo: DetailsInfo {
-        let s = status
-        return DetailsInfo(
-            name: entry.name.isEmpty ? "profile" : entry.name, icon: preview(entry, status: s),
-            login: s?.loginEmail, expected: expected, mismatch: false, plan: s?.plan,
-            fiveHour: s?.fiveHour ?? 23, fiveHourResets: s?.fiveHourResets ?? Date().addingTimeInterval(3 * 3600 + 20 * 60),
-            weekly: s?.weekly ?? 58, weeklyResets: s?.weeklyResets ?? Date().addingTimeInterval(2 * 86400 + 5 * 3600),
-            updated: s?.updatedAt, source: nil, problem: nil, renewNote: nil,
-            needsLogin: false,
-            design: entry.panelDesign, accent: entry.accentNSColor, noFiveHour: s?.noFiveHour == true)
-            .taking(AccountView.of(s))
-    }
+    /// The panel preview: this account's record's numbers (none for a profile that is signed out, expired or in the split),
+    /// samples only where there is no record at all (a new profile).
+    var sampleInfo: DetailsInfo { samplePanel(entry, status: status) }
 
     /// A folder picked in Finder, used only if no other account has it and it's a Claude Code folder (or empty).
     func useFolder(_ path: String?) {
@@ -2547,6 +2537,21 @@ func preview(_ e: AccountEntry, status: IconStatus?, style: IconStyle? = nil, ti
                       stale: false, style: style ?? e.style, warn: warn && expected != nil, tint: e.color,
                       frame: e.frame)
     return Painter.image(m, pixels: 128)
+}
+
+/// The details panel as Settings previews it, from the profile's record (Store.status(for:)): only the record's numbers, the
+/// same rule as `preview`. The samples (5-hour 23 %, week 58 %) only where there is no record at all.
+func samplePanel(_ entry: AccountEntry, status s: IconStatus?, now: Date = Date()) -> DetailsInfo {
+    let sampled = s == nil
+    return DetailsInfo(
+        name: entry.name.isEmpty ? "profile" : entry.name, icon: preview(entry, status: s),
+        login: s?.loginEmail, expected: s?.expectedEmail, mismatch: false, plan: s?.plan,
+        fiveHour: s?.fiveHour ?? (sampled ? 23 : nil), fiveHourResets: s?.fiveHourResets ?? (sampled ? now.addingTimeInterval(3 * 3600 + 20 * 60) : nil),
+        weekly: s?.weekly ?? (sampled ? 58 : nil), weeklyResets: s?.weeklyResets ?? (sampled ? now.addingTimeInterval(2 * 86400 + 5 * 3600) : nil),
+        updated: s?.updatedAt, source: nil, problem: nil, renewNote: nil,
+        needsLogin: false,
+        design: entry.panelDesign, accent: entry.accentNSColor, noFiveHour: s?.noFiveHour == true)
+        .taking(AccountView.of(s))
 }
 
 /// Settings is a page of the one cl_audit window, not a window of its own.
