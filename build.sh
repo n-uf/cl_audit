@@ -18,9 +18,16 @@ version="$(tr -d '[:space:]' < "$here/VERSION")"
 build="$(git -C "$here" rev-list --count HEAD 2>/dev/null || echo 1)"
 
 rm -rf "$out"; mkdir -p "$out"
+# ProfileCore (Core/): cl_audit's rules, Foundation only, built first into a small static library that the app, the
+# widget and the checks import. Built as an app extension may use it, so the widget can link it too.
+echo "compiling ProfileCore…"
+swiftc -O -swift-version 5 -parse-as-library -module-name ProfileCore -application-extension -target arm64-apple-macos13.0 \
+  -emit-module -emit-module-path "$out/ProfileCore.swiftmodule" -emit-library -static -o "$out/libProfileCore.a" \
+  "$here"/Core/*.swift
 echo "compiling…"
 swiftc -O -swift-version 5 -target arm64-apple-macos13.0 \
   -o "$out/UsageDock" "$here"/Sources/*.swift "$here/Widget/WidgetViews.swift" \
+  -I "$out" -L "$out" -lProfileCore \
   -framework AppKit -framework SwiftUI -framework Charts -framework Security -framework ServiceManagement -framework UserNotifications \
   -framework WidgetKit
 
@@ -106,6 +113,7 @@ mkdir -p "$wx/Contents/MacOS"
 echo "compiling the widget…"
 swiftc -O -swift-version 5 -target arm64-apple-macos14.0 -application-extension -parse-as-library \
   -o "$wx/Contents/MacOS/cl_audit-widget" "$here/Widget/Widget.swift" "$here/Widget/WidgetViews.swift" \
+  -I "$out" -L "$out" -lProfileCore \
   -framework WidgetKit -framework SwiftUI -Xlinker -e -Xlinker _NSExtensionMain
 cat > "$wx/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

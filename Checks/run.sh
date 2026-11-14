@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # The one entry point for cl_audit's check suites.
 #
-#   Checks/run.sh [signin|backup|surfaces|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
+#   Checks/run.sh [core|signin|backup|surfaces|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
 #
+#   core      ProfileCore's rules (Core/), compiled against the library only: ids, standby, limits, times, levels, parsing
 #   signin    the model, rules and page logic checks (sign-in, switch, backups, export and import, crimson faces ...)
 #   surfaces  the one account answer (AccountResolver) and every screen reading it alike; the Claude app's account from its log;
 #             no screen reading the sign-in files itself
@@ -27,7 +28,7 @@
 #   render  pictures of the pages (switch, backups, restore, export, import, setup row, first run) into Checks/.work/render
 #   quick-chat  the quick chat's own checks (Checks/quick-chat/run.sh, run here under the build lock)
 #   scan      the app's own SecretScan over every file in Checks/ (zero hits expected)
-#   all       signin, backup, surfaces, accounts, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
+#   all       core, signin, backup, surfaces, accounts, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
 #
 #   --volume    backup: mount a small HFS+ disk image and run the cross-volume checks on it (it is unmounted again)
 #   --no-build  run the binaries built by the last run
@@ -51,15 +52,15 @@ LOCK=/private/tmp/cl_audit-build.lock
 suites=(); volume=0; build=1
 for a in "$@"; do
   case "$a" in
-    signin|backup|surfaces|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
-    all) suites+=(signin backup surfaces accounts firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
+    core|signin|backup|surfaces|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
+    all) suites+=(core signin backup surfaces accounts firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
     --volume) volume=1 ;;
     --no-build) build=0 ;;
-    -h|--help) sed -n '2,39p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,40p' "$0"; exit 0 ;;
     *) echo "unknown argument: $a" >&2; exit 64 ;;
   esac
 done
-[[ ${#suites[@]} -gt 0 ]] || suites=(signin backup surfaces accounts firstrun retention setup window move render quick-chat scan)
+[[ ${#suites[@]} -gt 0 ]] || suites=(core signin backup surfaces accounts firstrun retention setup window move render quick-chat scan)
 
 # the app's sources without its own main.swift, plus the widget views the app compiles in
 srcs=()
@@ -68,13 +69,27 @@ srcs+=("$APP/Widget/WidgetViews.swift")
 frameworks=(-framework AppKit -framework SwiftUI -framework Charts -framework Security -framework ServiceManagement
             -framework UserNotifications -framework WidgetKit)
 
+# ProfileCore (Core/), built once per run like build.sh does, but with testing on: a suite may `@testable import ProfileCore`
+CORE="$WORK/core-module"
+core_lib=(-I "$CORE" -L "$CORE" -lProfileCore)
+build_core() {
+  [[ $build -eq 1 ]] || { [[ -f "$CORE/libProfileCore.a" ]] || { echo "no ProfileCore at $CORE (run without --no-build)" >&2; return 1; }; return 0; }
+  rm -rf "$CORE"; mkdir -p "$CORE"
+  /usr/bin/lockf -k "$LOCK" swiftc -Onone -enable-testing -swift-version 5 -parse-as-library -module-name ProfileCore \
+    -application-extension -target arm64-apple-macos13.0 \
+    -emit-module -emit-module-path "$CORE/ProfileCore.swiftmodule" -emit-library -static -o "$CORE/libProfileCore.a" \
+    "$APP"/Core/*.swift 2>&1 | grep -E "error" || true
+  [[ -f "$CORE/libProfileCore.a" ]] || { echo "compile failed: ProfileCore" >&2; return 1; }
+}
+build_core || exit 1
+
 # compile BIN MAIN...: through the build lock; a failed compile must not leave the last binary to run
 compile() {
   local bin="$1"; shift
   [[ $build -eq 1 ]] || { [[ -x "$bin" ]] || { echo "no binary at $bin (run without --no-build)" >&2; return 1; }; return 0; }
   rm -f "$bin"
   /usr/bin/lockf -k "$LOCK" swiftc -Onone -swift-version 5 -target arm64-apple-macos14.0 \
-    -o "$bin" -D STAGE3 "${srcs[@]}" "$@" "${frameworks[@]}" 2>&1 | grep -E "error" || true
+    -o "$bin" -D STAGE3 "${srcs[@]}" "$@" "${core_lib[@]}" "${frameworks[@]}" 2>&1 | grep -E "error" || true
   [[ -x "$bin" ]] || { echo "compile failed: $bin" >&2; return 1; }
 }
 
@@ -136,6 +151,19 @@ run_binary() {  # run_binary SUITE-DIR BIN [args...]: in the throwaway home, wit
   HOME="$dir/home" CFFIXED_USER_HOME="$dir/home" "$bin" "$@" || status=$?
   clean_prefs "$bin"
   return $status
+}
+
+# the core suite: compiled against ProfileCore ONLY (no app sources, no AppKit or SwiftUI): the rules need nothing else
+run_core() {
+  local dir="$WORK/core"; mkdir -p "$dir"
+  local bin="$dir/cl_audit-checks-core"
+  if [[ $build -eq 1 ]]; then
+    rm -f "$bin"
+    /usr/bin/lockf -k "$LOCK" swiftc -Onone -swift-version 5 -target arm64-apple-macos13.0 \
+      -o "$bin" "$HERE/core/main.swift" "${core_lib[@]}" 2>&1 | grep -E "error" || true
+  fi
+  [[ -x "$bin" ]] || { echo "compile failed: $bin" >&2; return 1; }
+  run_binary "$dir" "$bin"
 }
 
 run_signin() {
