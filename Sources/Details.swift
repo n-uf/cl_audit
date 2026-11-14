@@ -41,7 +41,7 @@ struct DetailsInfo {
     var activeLit = true
     /// "Usage: Claude Code on b…" when the numbers are another account's, or why Claude Code's account is shown.
     var activeNote: String? = nil
-    /// The split (SplitUsage): its key, "Log Claude Code in to P@…", in place of Log in….
+    /// The split (SplitUsage): its key, "Log Claude Code in Terminal in to P@…", in place of Log in….
     var splitKey: String? = nil
 }
 

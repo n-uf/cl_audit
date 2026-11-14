@@ -994,7 +994,7 @@ struct AccountCard: View {
             let listed = row.entry.listed(by: row.view)       // never the account in use on standby too
             let trays = listed.cardTrays()
             if let split = row.split {
-                // the Claude app on another account than Claude Code: no numbers for it (none read yet), never red or full;
+                // the Claude app on another account than Claude Code: no numbers for it (cl_audit can't read them), never red or full;
                 // the one key logs Claude Code in to the app's account (the usual Log in, not a switch); Claude Code's own
                 // numbers only as one labelled line, since `claude` in Terminal still uses them
                 VStack(alignment: .leading, spacing: 8) {

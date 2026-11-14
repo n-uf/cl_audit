@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- When the Claude app and Claude Code in Terminal are on different accounts, the card now says cl_audit can't read the app account's usage and which account Terminal is on, instead of "No usage yet".
 
 ## 26.11.28 — 2026-11-14
 

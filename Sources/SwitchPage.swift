@@ -250,7 +250,8 @@ struct SwitchPage: View {
             if row.limits.contains(where: { $0.p != nil }) {
                 CardLimits(limits: row.limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits, fullBox: false)
             } else {
-                BoxText(text: "No numbers yet: the agent reads them within a few minutes.", role: .note)
+                // (in the split the line above says why: here, what gives the numbers)
+                BoxText(text: SplitUsage.of(st)?.numbersHint ?? "No numbers yet: the agent reads them within a few minutes.", role: .note)
             }
         }
     }

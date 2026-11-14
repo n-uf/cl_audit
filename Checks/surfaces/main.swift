@@ -1126,7 +1126,7 @@ do {
     check(split?.app == pat.email && split?.code == mo.email, "the split: the app on pat, Claude Code on mo")
     // the headline record: no numbers, no plan, the line instead; nothing full, red or counting down
     check(head?.weekly == nil && head?.fiveHour == nil && head?.plan == nil && AccountView.of(head).label == pat.email
-          && AccountView.of(head).line == "No usage for \(Privacy.masked(pat.email!)) yet: Claude Code here is signed in to \(Privacy.masked(mo.email!))",
+          && AccountView.of(head).line == "cl_audit can't read \(Privacy.masked(pat.email!))'s usage: Claude Code in Terminal is signed in to \(Privacy.masked(mo.email!)).",
           "the profile's record has no numbers for pat, and its line says so: \(AccountView.of(head).line ?? "-")")
     let row = AccountRow(entry: e, status: head, codeStatus: own)
     check(row.full == nil && row.limits.allSatisfy { $0.p == nil } && !row.needsLogin
@@ -1136,8 +1136,20 @@ do {
           "the menu bar strip, the Dock icon and quick chat: no numbers for pat (neutral)")
     check(previewShowsNone(e, head) && panelShowsNone(e, head),
           "the split: the Dock icon's preview (Settings' tile, the Dock's tile) and Settings' panel preview have no numbers, never the samples")
-    check(row.split?.key == "Log Claude Code in to \(Privacy.masked(pat.email!))" && split?.loginEmail == pat.email,
-          "the key: Log Claude Code in to pat, with pat's address filled in")
+    check(row.split?.key == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!))" && split?.loginEmail == pat.email,
+          "the key: Log Claude Code in Terminal in to pat, with pat's address filled in")
+    check(split?.numbersHint == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!)) to see its numbers."
+          && split?.shortLine == "Can't read \(Privacy.masked(pat.email!))'s usage\nTerminal: \(Privacy.masked(mo.email!))",
+          "the line under it and the short form: \(split?.numbersHint ?? "-") / \(split?.shortLine ?? "-")")
+    // no split surface says "No usage" or "yet" (the lines, the key, the hint, the short form), whether the addresses show or
+    // are masked (Privacy.mask: the setting itself is the operator's, never touched here) and with the app's account by id
+    for (what, app, code) in [("shown", pat.email!, mo.email!), ("masked", Privacy.mask(pat.email!), Privacy.mask(mo.email!)),
+                              ("by id", "account \(pat.account.prefix(8))", mo.email!)] {
+        let s = SplitUsage(app: app, code: code)
+        let said = [s.line, s.shortLine, s.numbersHint ?? "", s.key ?? "", s.hint ?? "", AccountView.of(head).line ?? ""]
+        check(said.allSatisfy { !$0.contains("No usage") && !$0.contains(" yet") && !$0.contains("No numbers") },
+              "no split surface says No usage, No numbers or yet (addresses \(what)): \(said)")
+    }
     let line = row.split?.codeLine(row.codeStatus, now: now) ?? "-"
     check(line.hasPrefix("Claude Code in Terminal: \(Privacy.masked(mo.email!)) · Week 100%, back ") && !line.contains("5-hour"),
           "mo's numbers: one labelled secondary line: \(line)")
@@ -1169,7 +1181,8 @@ do {
     anonRec.resolved = AccountResolver.resolve(e, among: [e], app: anon, code: mo, loginEmail: mo.email, names: [:], now: now)
     _ = Store.writeStatus("spl", anonRec)
     let anonSplit = SplitUsage.of(Store.status(for: e))
-    check(anonSplit != nil && anonSplit?.key == nil && anonSplit?.hint == "Sign Claude Code in to the Claude app's account"
+    check(anonSplit != nil && anonSplit?.key == nil && anonSplit?.hint == "Log Claude Code in Terminal in to the Claude app's account"
+          && anonSplit?.numbersHint == "Log Claude Code in Terminal in to the Claude app's account to see its numbers."
           && SplitUsage.loginAddress(Store.status("spl"), usual: mo.email) == nil,
           "the app's account known by its id only: no key, the hint, and no address (never mo's): \(anonSplit?.app ?? "-")")
     launches.removeAll(); scripts.removeAll()
@@ -1202,18 +1215,18 @@ do {
     let zed = Seat(account: uuid(33), organization: uuid(73), email: "zed@example.com")
     let appZed = AppSignIn.Login(account: zed.account, org: zed.organization, state: .known, source: "log", at: now)
     let third = splitWith(app: appZed, newest: linkedToMo, names: [zed.account.lowercased(): zed.email!])
-    check(third?.switched == false && third?.key?.hasPrefix("Log Claude Code in to ") == true && third?.line.hasPrefix("No usage for ") == true,
+    check(third?.switched == false && third?.key?.hasPrefix("Log Claude Code in Terminal in to ") == true && third?.line.hasPrefix("cl_audit can't read ") == true,
           "the app on a third account (not the one the switch left): a split by hand, the B8 line and key")
     var undone = toMo; undone.undone = now
     var leftAsIs = toMo; leftAsIs.leftAsIs = now
     for (what, r) in [("undone", undone), ("left as it is", leftAsIs)] {
         let s = splitWith(app: appPat, newest: r)
-        check(s?.switched == false && s?.key == "Log Claude Code in to \(Privacy.masked(pat.email!))" && s?.loginEmail == pat.email,
+        check(s?.switched == false && s?.key == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!))" && s?.loginEmail == pat.email,
               "the switch \(what): a split by hand, the B8 line and key")
     }
     var dayOld = linkedToMo; dayOld.linked = now.addingTimeInterval(-25 * 3600)
     let dayOldSplit = splitWith(app: appPat, newest: dayOld)
-    check(dayOldSplit?.switched == false && dayOldSplit?.key == "Log Claude Code in to \(Privacy.masked(pat.email!))",
+    check(dayOldSplit?.switched == false && dayOldSplit?.key == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!))",
           "a switch linked 25 hours ago waits no more: a split by hand, the B8 line and key")
     let older = splitWith(app: appPat, newest: nil)
     check(older?.switched == false && older?.key != nil, "no switch at all: a split by hand")

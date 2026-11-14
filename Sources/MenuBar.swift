@@ -452,7 +452,8 @@ struct MenuBarRow: View {
                 Text(n).font(.system(size: 10.5)).foregroundStyle(.tertiary).lineLimit(2)
             }
             if u == nil {
-                Text("No numbers yet").font(.system(size: 11)).foregroundStyle(.secondary)
+                // (the split says what gives the numbers: its line is above, never "yet")
+                Text(profile.split?.numbersHint ?? "No numbers yet").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             ForEach(u == nil ? [] : limits) { l in
                 HStack(spacing: 8) {

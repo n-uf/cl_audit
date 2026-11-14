@@ -124,20 +124,31 @@ struct SplitUsage: Equatable {
                           switched: r.switchWaits == true)
     }
 
-    /// "No usage for P@… yet: Claude Code here is signed in to M@…"; a switch waiting for the app: "Switched to M@…: sign
-    /// the Claude app in to M@… to finish"
+    /// "cl_audit can't read P@…'s usage: Claude Code in Terminal is signed in to M@…" (Claude Code inside the Claude app runs
+    /// on the app's own sign-in, so the app's account is the one in use; only Terminal's login, the one cl_audit reads with,
+    /// is on M); a switch waiting for the app: "Switched to M@…: sign the Claude app in to M@… to finish"
     var line: String {
         switched ? "Switched to \(Privacy.masked(code)): sign the Claude app in to \(Privacy.masked(code)) to finish"
-                 : "No usage for \(Privacy.masked(app)) yet: Claude Code here is signed in to \(Privacy.masked(code))"
+                 : "cl_audit can't read \(Privacy.masked(app))'s usage: Claude Code in Terminal is signed in to \(Privacy.masked(code))."
+    }
+    /// The short form where space is short: "Can't read P@…'s usage" over "Terminal: M@…" (a switch waiting for the app has
+    /// no short form: its line is already short).
+    var shortLine: String {
+        switched ? line : "Can't read \(Privacy.masked(app))'s usage\nTerminal: \(Privacy.masked(code))"
+    }
+    /// Under the line, in place of "No numbers yet": what gives the numbers. Nil while a switch waits for the app (nothing
+    /// to log in to then).
+    var numbersHint: String? {
+        switched ? nil : "Log Claude Code in Terminal in to \(loginEmail.map { Privacy.masked($0) } ?? "the Claude app's account") to see its numbers."
     }
     /// The key: the existing Log in (Claude Code's own sign-in in Terminal, with the app's address filled in). Not a switch.
     /// None while a switch waits for the app, and none when the app's account is known by its id only: the key only ever
     /// names and fills in the app's own address (never Claude Code's), so then `hint` says what to do instead.
-    var key: String? { loginEmail.map { "Log Claude Code in to \(Privacy.masked($0))" } }
+    var key: String? { loginEmail.map { "Log Claude Code in Terminal in to \(Privacy.masked($0))" } }
     /// The address the login fills in: the app's own, when it is known (not while a switch waits for the app).
     var loginEmail: String? { !switched && app.contains("@") ? app : nil }
     /// In place of the key when the app's address isn't known.
-    var hint: String? { !switched && loginEmail == nil ? "Sign Claude Code in to the Claude app's account" : nil }
+    var hint: String? { !switched && loginEmail == nil ? "Log Claude Code in Terminal in to the Claude app's account" : nil }
 
     /// The address a Log in fills in: in the split only the app's own (nil: none filled in, never Claude Code's), else the
     /// usual one (`usual`: the folder's expected address).
