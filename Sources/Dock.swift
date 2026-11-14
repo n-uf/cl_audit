@@ -138,7 +138,7 @@ enum DockManager {
     /// the app's icon.
     static func tileImage(_ url: URL) -> NSImage {
         if let e = Store.load().first(where: { key(Installer.appURL($0)) == key(url) }) {
-            return preview(e, status: Store.status(for: e))
+            return preview(e, status: Store.status(for: e), sample: false)       // the Dock never shows invented numbers
         }
         return icon(url)
     }

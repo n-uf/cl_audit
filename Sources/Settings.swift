@@ -2534,12 +2534,16 @@ struct NoneSwatch: View {
 }
 
 /// The icon as the Dock would show it, with the account's latest numbers or sample ones.
-/// The account's Dock icon; without a status it shows sample usage (23 % and 41 %), or none when `sample` is off.
+/// The account's Dock icon from its record (Store.status(for:)), as its tile draws it: only the record's numbers, none for a
+/// profile that is signed out, expired or in the split (the record has none then). Samples (23 % and 41 %) only where there is
+/// no record at all and `sample` is on; a record, whatever it says, is never filled in with them. The expected address is
+/// the record's, never read from the folder.
 func preview(_ e: AccountEntry, status: IconStatus?, style: IconStyle? = nil, tick: Int = 0, sample: Bool = true) -> NSImage {
-    let expected = Account.expectedEmail(configDir: e.configDir)
+    let expected = status?.expectedEmail
     let warn = status?.loginEmail.map { $0.lowercased() != expected?.lowercased() } ?? false
+    let sampled = status == nil && sample
     let m = TileModel(label: e.label.isEmpty ? "?" : e.label,
-                      fiveHour: status?.fiveHour ?? (sample ? 23 : nil), weekly: status?.weekly ?? (sample ? 41 : nil),
+                      fiveHour: status?.fiveHour ?? (sampled ? 23 : nil), weekly: status?.weekly ?? (sampled ? 41 : nil),
                       stale: false, style: style ?? e.style, warn: warn && expected != nil, tint: e.color,
                       frame: e.frame)
     return Painter.image(m, pixels: 128)

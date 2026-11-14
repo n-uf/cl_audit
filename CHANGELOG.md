@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- The Dock icon's preview (in Settings and in the Dock) no longer shows sample numbers (23 % and 41 %) for a profile that is signed out, expired or on another account than Claude Code: it shows none, like the icon itself.
 
 ## 26.11.25 — 2026-11-13
 
