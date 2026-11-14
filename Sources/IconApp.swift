@@ -364,7 +364,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             scoped: entry.showFable ? usage?.scoped ?? [] : [], credits: usage?.credits,
             noFiveHour: status?.noFiveHour == true,
             noNumbers: DetailsInfo.noNumbersWords(status))
-        return info.taking(view)
+        var out = info.taking(view)
+        out.splitKey = SplitUsage.of(status)?.key        // the split: its key, in place of Log in…
+        return out
     }
 
     func detailsActions() -> DetailsActions {
@@ -513,6 +515,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if mismatch || noLogin || expired {
             let login = NSMenuItem(title: "Log in…", action: #selector(logIn), keyEquivalent: "")
             login.target = self; m.addItem(login)
+        } else if let s = SplitUsage.of(status) {
+            // the split: Claude Code's own sign-in, to the Claude app's account (the same Log in, its address filled in)
+            let login = NSMenuItem(title: s.key + "…", action: #selector(logIn), keyEquivalent: "")
+            login.target = self; m.addItem(login)
         }
         m.addItem(.separator())
 
@@ -561,7 +567,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func logIn() {
         // the profile's one folder; a folder that is gone is said, never made again (ClaudeCLI.logIn)
         let reading = Account(entry)
-        ClaudeCLI.logIn(reading, email: reading.expectedEmail() ?? expectedEmail)
+        // the split (SplitUsage): Claude Code logs in to the Claude app's account
+        ClaudeCLI.logIn(reading, email: SplitUsage.of(status)?.loginEmail ?? reading.expectedEmail() ?? expectedEmail)
     }
 }
 

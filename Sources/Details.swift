@@ -40,6 +40,8 @@ struct DetailsInfo {
     var activeLit = true
     /// "Usage: Claude Code on b…" when the numbers are another account's, or why Claude Code's account is shown.
     var activeNote: String? = nil
+    /// The split (SplitUsage): its key, "Log Claude Code in to P@…", in place of Log in….
+    var splitKey: String? = nil
 }
 
 extension DetailsInfo {
@@ -167,6 +169,11 @@ struct DetailsView: View {
                 .font(.caption)
             }
 
+            // the split (SplitUsage): Claude Code's own sign-in to the Claude app's account, on its own row (a long address);
+            // neutral, not a problem
+            if !info.needsLogin, let k = info.splitKey {
+                Button(k, action: actions.logIn).buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+            }
             HStack(spacing: 8) {
                 Button("Claude", action: actions.openClaude).buttonStyle(.pill(Color(nsColor: info.accent), compact: true))
                     .keyboardShortcut(.defaultAction).help("Open Claude for this profile")

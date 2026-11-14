@@ -239,8 +239,9 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
                     // the numbers and the state as the record says them (the reader decided them as it saved): the reader's
                     // own copy can hold numbers no screen may show (past a reset, an expired sign-in's old ones)
                     let rec = Store.status(for: r.entry)
+                    // (the headline record: in the split its line says no usage for the app's account yet, SplitUsage)
                     return MenuBarItems.Profile(entry: r.entry, usage: Usage.of(rec), problem: rec?.problem ?? r.state.menuText,
-                                                needsLogin: MenuBarItems.needsLogin(rec), view: AccountView.of(Store.status(id)))
+                                                needsLogin: MenuBarItems.needsLogin(rec), view: AccountView.of(rec), split: SplitUsage.of(rec))
                 }
             }
         }, refresh: { [weak self] id in self?.refresh(id) })

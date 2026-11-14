@@ -227,7 +227,7 @@ final class SettingsModel: ObservableObject {
         for e in list {
             var s = Store.status(e.id) ?? IconStatus(state: "idle")
             var r = AccountResolver.resolve(e, among: list, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
-                                            loginEmail: s.loginEmail, names: AccountList.names(),
+                                            loginEmail: s.readingOwner, names: AccountList.names(),
                                             recordTooLarge: Account.recordTooLarge(configDir: e.configDir))
             if var old = s.resolved { old.at = r.at; if old == r { continue } }
             r.at = Date()
@@ -243,7 +243,7 @@ final class SettingsModel: ObservableObject {
         guard let e = accounts.first(where: { $0.id == id }) else { return }
         var s = Store.status(id) ?? IconStatus(state: "idle")
         var r = AccountResolver.resolve(e, among: accounts, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
-                                        loginEmail: s.loginEmail, names: AccountList.names(),
+                                        loginEmail: s.readingOwner, names: AccountList.names(),
                                         recordTooLarge: Account.recordTooLarge(configDir: e.configDir))
         r.at = Date()
         s.resolved = r
@@ -1424,6 +1424,8 @@ struct AccountSettings: View {
     }
 
     var status: IconStatus? { _ = model.tick; return Store.status(for: entry) }
+    /// Claude Code's own record (its numbers even in the split, SplitUsage): for its own row only, never the IN USE box.
+    var codeStatus: IconStatus? { _ = model.tick; return Store.status(for: entry, headline: false) }
     /// What the folder's .claude.json names, as the profile's record has it (the agent's reader wrote it).
     var expected: String? { status?.expectedEmail }
     var mismatch: Bool {
@@ -1755,13 +1757,15 @@ struct AccountSettings: View {
         let r = model.runner(of: entry.id)
         let goal = [SwitchRunner.Phase.ready, .undone].contains(r.phase) ? nil : r.goal
         let target = Self.switchTarget(goal: goal, newest: newestSwitch, standby: entry.standby, code: code, codeAccount: view.codeAccount)
-        return AccountBox(lamp: nil, badge: "Claude Code", detail: (status?.plan).map(Account.planWords)) {
+        // Claude Code's own record: in the split the profile's headline record has no numbers (SplitUsage), its row has them
+        let own = codeStatus
+        return AccountBox(lamp: nil, badge: "Claude Code", detail: (own?.plan).map(Account.planWords)) {
             AccountBoxTitle(text: Privacy.masked(code))
         } content: {
             // its sign-in signed out or expired: that one line (A3), with its key; else the numbers (they are its)
-            limitsOrWhy(status, entry: entry, none: status?.state == "noLogin" ? noSignInWords
-                                                   : status?.state == "expired" ? "The sign-in ran out: Log in…, or turn on Renew sign-in." : nil)
-            if let n = view.line, !["noLogin", "expired"].contains(status?.state) {
+            limitsOrWhy(own, entry: entry, none: own?.state == "noLogin" ? noSignInWords
+                                                : own?.state == "expired" ? "The sign-in ran out: Log in…, or turn on Renew sign-in." : nil)
+            if let n = AccountView.of(own).line, !["noLogin", "expired"].contains(own?.state) {
                 BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true)
             }
             BoxNote(text: AccountView.codeRowWords(code: code, target: target), size: 10.5).fixedSize(horizontal: false, vertical: true)

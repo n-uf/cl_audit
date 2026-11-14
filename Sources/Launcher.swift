@@ -162,6 +162,10 @@ struct AccountRow: Identifiable {
     var followStarting = false
     /// The profile's account as its record says it (AccountResolver): the card's line under the name, with its lamp.
     var view: AccountView { AccountView.of(status) }
+    /// Claude Code's own numbers in the split (Store.status(for:headline: false)): one labelled secondary line.
+    var codeStatus: IconStatus? = nil
+    /// The Claude app on one account, Claude Code on another (SplitUsage): no numbers for the profile, the line and its key.
+    var split: SplitUsage? { SplitUsage.of(status) }
     var id: String { entry.id }
     var account: Account { Account(entry) }
 
@@ -268,6 +272,7 @@ final class LauncherModel: ObservableObject {
         let doing = Agent.isAlive(agent) ? agent?.actions ?? [:] : [:]
         rows = entries.map {
             var r = AccountRow(entry: $0, status: Store.status(for: $0), activity: acts[Account($0).configDir] ?? .init(), usageIcon: UsageIconState.of($0))
+            if r.split != nil { r.codeStatus = Store.status(for: $0, headline: false) }      // Claude Code's own numbers, labelled
             settle(&r, now, doing[$0.id])
             return r
         }
@@ -962,7 +967,7 @@ struct AccountCard: View {
                             Text("\(label) · in use").font(.system(size: 12)).lineLimit(1).foregroundStyle(face.muted)
                                 .hidesEmail(label.contains("@"))
                         }
-                        if let n = row.view.line {
+                        if let n = row.view.line, row.split == nil {          // (the split says its line once, with its key, below)
                             Text(n).font(.system(size: 10.5)).foregroundStyle(face.muted.opacity(0.8)).lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -987,7 +992,20 @@ struct AccountCard: View {
             // full that one is selected already, and its Switch account key opens the Switch page (SwitchView.swift)
             let listed = row.entry.listed(by: row.view)       // never the account in use on standby too
             let trays = listed.cardTrays()
-            CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits)
+            if let split = row.split {
+                // the Claude app on another account than Claude Code: no numbers for it (none read yet), never red or full;
+                // the one key logs Claude Code in to the app's account (the usual Log in, not a switch); Claude Code's own
+                // numbers only as one labelled line, since `claude` in Terminal still uses them
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(split.line).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
+                    Button(split.key) { actions.logIn(row) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    if let code = split.codeLine(row.codeStatus) {
+                        Text(code).font(.system(size: 10.5)).foregroundStyle(face.muted.opacity(0.8)).fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            } else {
+                CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits)
+            }
             if !trays.isEmpty {
                 StandbyTrays(limits: row.limits, trays: trays, best: row.entry.cardBest(trays),
                              open: actions.switchAccount, picked: pickedForRender)
@@ -1091,7 +1109,8 @@ final class ManagerUI {
         logIn: { [weak self] r in
             self?.closePalette()
             // the profile's one folder; a folder that is gone is said, never made again (ClaudeCLI.logIn)
-            ClaudeCLI.logIn(Account(r.entry), email: r.status?.expectedEmail)
+            // (in the split, the Claude app's account: Claude Code logs in to it, and the numbers line up)
+            ClaudeCLI.logIn(Account(r.entry), email: r.split?.loginEmail ?? r.status?.expectedEmail)
         },
         mainScreen: { [weak self] in self?.closePalette(); self?.showMain() },
         settings: { [weak self] in self?.showMain(page: .settings) },

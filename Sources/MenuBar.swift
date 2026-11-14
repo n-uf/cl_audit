@@ -247,6 +247,8 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         var needsLogin = false
         /// The profile's account as its record says it (AccountResolver): the line under the name.
         var view = AccountView(label: nil, numbersOwner: nil, line: nil, lit: false, clash: nil)
+        /// The Claude app on another account than Claude Code (SplitUsage): no numbers, its line, and its key.
+        var split: SplitUsage? = nil
     }
 
     private var items: [String: NSStatusItem] = [:]      // by profile id
@@ -382,6 +384,8 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         if p.entry.claudeWindow { add("Open Claude window", #selector(openClaude(_:))) }
         add("Refresh now", #selector(refreshNow(_:)))
         if p.needsLogin { add("Log in…", #selector(logIn(_:))) }
+        // the split: Claude Code's own sign-in, to the Claude app's account (the same Log in, its address filled in)
+        else if let s = p.split { add(s.key + "…", #selector(logIn(_:))) }
         menu.addItem(.separator())
         add("Dashboard", #selector(dashboard(_:)))
         add("Profile settings…", #selector(settings(_:)))
