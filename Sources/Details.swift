@@ -41,7 +41,7 @@ struct DetailsInfo {
     var activeLit = true
     /// "Usage: Claude Code on b…" when the numbers are another account's, or why Claude Code's account is shown.
     var activeNote: String? = nil
-    /// The split (SplitUsage): its key, "Log Claude Code in Terminal in to P@…", in place of Log in….
+    /// The split (SplitUsage): its short key, "Log in to P@… in Terminal" (the panel's width is fixed), in place of Log in….
     var splitKey: String? = nil
 }
 
@@ -50,6 +50,13 @@ extension DetailsInfo {
     func taking(_ v: AccountView) -> DetailsInfo {
         var out = self
         out.active = v.label; out.activeLit = v.lit; out.activeNote = v.line
+        return out
+    }
+    /// The split (SplitUsage) in the panel's fixed width: the short line and the short key, in place of the long ones.
+    func takingSplit(_ s: SplitUsage?) -> DetailsInfo {
+        guard let s else { return self }
+        var out = self
+        out.activeNote = s.shortLine; out.splitKey = s.shortKey
         return out
     }
 }

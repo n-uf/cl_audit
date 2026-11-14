@@ -471,12 +471,11 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
                          tint: e.color, frame: e.frame,
                          countdown: AtLimit.tileCountdown(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
                                                           weekly: usage?.weekly, weeklyResets: usage?.weeklyResets))
-    var panel = DetailsInfo(name: e.name, icon: Painter.image(tile, pixels: 128), login: head?.loginEmail, expected: head?.expectedEmail,
+    let panel = DetailsInfo(name: e.name, icon: Painter.image(tile, pixels: 128), login: head?.loginEmail, expected: head?.expectedEmail,
                             mismatch: false, plan: head?.plan, fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
                             weekly: usage?.weekly, weeklyResets: usage?.weeklyResets, updated: head?.updatedAt, source: usage?.source,
                             problem: head?.problem, renewNote: nil, needsLogin: false, noFiveHour: head?.noFiveHour == true,
-                            noNumbers: DetailsInfo.noNumbersWords(head)).taking(view)
-    panel.splitKey = SplitUsage.of(head)?.key
+                            noNumbers: DetailsInfo.noNumbersWords(head)).taking(view).takingSplit(SplitUsage.of(head))
     let profileItem = MenuBarItems.Profile(entry: e, usage: usage, problem: head?.problem, needsLogin: false, view: view, split: SplitUsage.of(head))
     let glyph = MenuBarGlyph(look: e.menuBarLook, item: MenuBarItems.item(profileItem, now: now)).image(dark: true)
     for w in [CGFloat(340), 460, 708] {

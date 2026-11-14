@@ -365,9 +365,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             scoped: entry.showFable ? usage?.scoped ?? [] : [], credits: usage?.credits,
             noFiveHour: status?.noFiveHour == true,
             noNumbers: DetailsInfo.noNumbersWords(status))
-        var out = info.taking(view)
-        out.splitKey = SplitUsage.of(status)?.key        // the split: its key, in place of Log in…
-        return out
+        // the split: its short line and short key (the panel's width is fixed), in place of Log in…
+        return info.taking(view).takingSplit(SplitUsage.of(status))
     }
 
     func detailsActions() -> DetailsActions {

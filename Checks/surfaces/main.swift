@@ -1141,12 +1141,17 @@ do {
     check(split?.numbersHint == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!)) to see its numbers."
           && split?.shortLine == "Can't read \(Privacy.masked(pat.email!))'s usage\nTerminal: \(Privacy.masked(mo.email!))",
           "the line under it and the short form: \(split?.numbersHint ?? "-") / \(split?.shortLine ?? "-")")
+    check(split?.shortKey == "Log in to \(Privacy.masked(pat.email!)) in Terminal"
+          && DetailsInfo(name: "x", icon: NSImage(), login: nil, expected: nil, mismatch: false, plan: nil, fiveHour: nil, fiveHourResets: nil,
+                         weekly: nil, weeklyResets: nil, updated: nil, source: nil, problem: nil, renewNote: nil, needsLogin: false,
+                         noFiveHour: false, noNumbers: nil).takingSplit(split).activeNote == split?.shortLine,
+          "the Dock panel takes the short line and the short key: \(split?.shortKey ?? "-")")
     // no split surface says "No usage" or "yet" (the lines, the key, the hint, the short form), whether the addresses show or
     // are masked (Privacy.mask: the setting itself is the operator's, never touched here) and with the app's account by id
     for (what, app, code) in [("shown", pat.email!, mo.email!), ("masked", Privacy.mask(pat.email!), Privacy.mask(mo.email!)),
                               ("by id", "account \(pat.account.prefix(8))", mo.email!)] {
         let s = SplitUsage(app: app, code: code)
-        let said = [s.line, s.shortLine, s.numbersHint ?? "", s.key ?? "", s.hint ?? "", AccountView.of(head).line ?? ""]
+        let said = [s.line, s.shortLine, s.numbersHint ?? "", s.key ?? "", s.shortKey ?? "", s.hint ?? "", AccountView.of(head).line ?? ""]
         check(said.allSatisfy { !$0.contains("No usage") && !$0.contains(" yet") && !$0.contains("No numbers") },
               "no split surface says No usage, No numbers or yet (addresses \(what)): \(said)")
     }
