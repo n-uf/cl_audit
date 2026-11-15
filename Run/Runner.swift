@@ -46,17 +46,22 @@ public struct Program: Equatable {
     /// `.infinity`: until the output closes).
     public var drain: TimeInterval
     /// Runs in a process group of its own, with every other descriptor of the caller closed (Group.swift): stopped as a group
-    /// (SIGTERM to all of it, SIGKILL to all of it after the grace), and whatever of the group is left when it ends is killed,
-    /// so nothing it started (a filter, a pager, a helper) outlives it or keeps its output open. Opt-in; false: one process.
+    /// (SIGTERM to all of it, SIGKILL to all of it after the grace), and whatever of the group is left when it ends is killed
+    /// (unless `killGroupOnEnd` is false), so nothing it started (a filter, a pager, a helper) outlives it or keeps its output
+    /// open. Opt-in; false: one process.
     public var ownGroup: Bool
+    /// With `ownGroup`: whatever of the group is left when the program ends by itself is killed too (true), or left to run on
+    /// (false: only a timeout or a stop ends the group; what it left running on a normal end, an updater say, finishes its work).
+    public var killGroupOnEnd: Bool
 
     public init(_ executable: String, _ arguments: [String] = [], environment: [String: String]? = nil, folder: Folder = .temporary,
                 input: Data? = nil, timeout: TimeInterval, grace: TimeInterval = 5, killAfterGrace: Bool = true,
-                keepOutput: Bool = false, keepErrors: Bool = false, outputCap: Int = 1 << 20, drain: TimeInterval = 1, ownGroup: Bool = false) {
+                keepOutput: Bool = false, keepErrors: Bool = false, outputCap: Int = 1 << 20, drain: TimeInterval = 1, ownGroup: Bool = false,
+                killGroupOnEnd: Bool = true) {
         self.executable = executable; self.arguments = arguments; self.environment = environment; self.folder = folder
         self.input = input; self.timeout = timeout; self.grace = grace; self.killAfterGrace = killAfterGrace
         self.keepOutput = keepOutput; self.keepErrors = keepErrors; self.outputCap = outputCap; self.drain = drain
-        self.ownGroup = ownGroup
+        self.ownGroup = ownGroup; self.killGroupOnEnd = killGroupOnEnd
     }
 
     /// The working folder as a URL (nil: the caller's own).

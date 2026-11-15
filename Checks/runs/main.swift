@@ -257,6 +257,15 @@ do {
     let left = kill(p4, 0) == 0
     kill(-p4, SIGKILL)
     check(r4! == nil && t4 < 2 && left && gone(p4), "group: killAfterGrace false: asked to end only, left running after the grace (then cleaned up here)")
+    // killGroupOnEnd false: a normal end leaves what it started running (an updater, say); a timeout still ends the group
+    let r5 = Runner.run(Program("/bin/sh", ["-c", "sleep 20 >/dev/null 2>&1 & echo $!"], timeout: 10, keepOutput: true, ownGroup: true, killGroupOnEnd: false))
+    let kept = pid_t(text(r5?.output ?? Data()).trimmingCharacters(in: .whitespacesAndNewlines)) ?? -1
+    let stillThere = kept > 0 && kill(kept, 0) == 0
+    if kept > 0 { kill(kept, SIGKILL) }
+    check(r5?.ok == true && stillThere, "group: killGroupOnEnd false: a normal end leaves what it started running (pid \(kept))")
+    var p6: pid_t = -1
+    let r6 = Runner.run(Program("/bin/sh", ["-c", "sleep 20 & sleep 20"], timeout: 0.5, grace: 0.5, ownGroup: true, killGroupOnEnd: false), started: { p6 = $0 })
+    check(r6 == nil && gone(p6) && groupGone(p6), "group: killGroupOnEnd false: a timeout still ends the whole group")
 }
 
 // ============ 5. lint: Run/ stays Foundation only, starts processes only here, never logs ============

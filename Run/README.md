@@ -49,4 +49,6 @@ Who runs through it:
   else. A leader left to end by itself (`killAfterGrace` false, or stuck in the kernel) is dealt with the same way when it does
   end, off the caller's thread, holding no thread meanwhile. It relies on nothing else in the process reaping its children (no
   `waitpid(-1)`, SIGCHLD not ignored); a leader found already reaped is taken as gone, its status unknown, and nothing is sent to
-  its group. Only `Runner.run` has it; `RunningProgram` doesn't.
+  its group. `killGroupOnEnd` false: the group is ended only by a timeout or a stop; what the program leaves running when it
+  ends by itself (an updater, say) is left to finish. A child that starts a session or group of its own is never reached either
+  way. Only `Runner.run` has it; `RunningProgram` doesn't.

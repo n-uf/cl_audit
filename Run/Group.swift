@@ -2,8 +2,9 @@
 // its input, output and errors set up as the program asks and every other descriptor of the caller closed, so nothing of the
 // caller's leaks into it. It is stopped as a group: SIGTERM to all of it, then SIGKILL to all of it after the grace. When the
 // leader ends, whatever of its group is still running is killed before the leader is reaped (while it is unreaped its pid, the
-// group's id, can't be given to anyone else, so the kill never reaches a stranger). A program that left something behind holding
-// its output (a filter, a pager, a helper) never keeps the caller waiting or outlives the run. Same rules as Runner.run
+// group's id, can't be given to anyone else, so the kill never reaches a stranger), unless it ended by itself and
+// `killGroupOnEnd` is false (then only a timeout or a stop ends the group). A program that left something behind holding its
+// output (a filter, a pager, a helper) then never keeps the caller waiting or outlives the run. Same rules as Runner.run
 // otherwise: the timeout, the grace, the poll, the drain, the caps, `Ran` as it ended. A leader left to end by itself
 // (`killAfterGrace` false, or stuck in the kernel) is dealt with the same way when it does end, off the caller's thread, with no
 // thread held meanwhile (a process source).
@@ -83,14 +84,14 @@ extension Runner {
             usleep(Date().timeIntervalSince(begun) < 0.5 ? 5_000 : 20_000)
         }
         var status: Int32??
-        if ended(pid) { status = finish(pid) }
+        if ended(pid) { status = finish(pid, killGroup: p.killGroupOnEnd) }          // ended by itself
         else {
             status = stopGroup(pid, grace: p.grace, kill: p.killAfterGrace)
             if !stoppedByPoll { return nil }                                          // its time ran out
             if status == nil { return Ran(status: -1, complete: outR < 0, stopped: true) }   // left to end by itself
         }
-        // (SIGKILL has been sent to what was left of the group: what it printed closes; a program that left the group itself is
-        // waited for the drain at most)
+        // (SIGKILL has been sent to what was left of the group, unless it ended by itself with `killGroupOnEnd` false: what it
+        // printed closes; anything still holding it is waited for the drain at most)
         if outR >= 0 || errR >= 0 {
             if p.drain.isInfinite { read.wait() } else { _ = read.wait(timeout: .now() + p.drain) }
         }
@@ -113,11 +114,12 @@ extension Runner {
     }
     static func ended(_ pid: pid_t) -> Bool { leader(pid) != .running }
 
-    /// The leader has ended: whatever of its group is left is killed, then the leader is reaped. Its raw wait status; nil when it
-    /// was already gone (then nothing is sent: its pid may be someone else's).
-    static func finish(_ pid: pid_t) -> Int32? {
+    /// The leader has ended: whatever of its group is left is killed (unless `killGroup` is false: a normal end that leaves it
+    /// running), then the leader is reaped. Its raw wait status; nil when it was already gone (then nothing is sent: its pid may
+    /// be someone else's).
+    static func finish(_ pid: pid_t, killGroup: Bool = true) -> Int32? {
         guard leader(pid) == .ended else { return nil }
-        kill(-pid, SIGKILL)
+        if killGroup { kill(-pid, SIGKILL) }
         var status: Int32 = 0
         while waitpid(pid, &status, 0) < 0 {
             if errno != EINTR { return nil }
