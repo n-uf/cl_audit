@@ -301,7 +301,7 @@ enum SessionsMove {
         Known(key: BackupPrefs.daysKey, label: "Days of backups kept", store: .backups, kind: .int(0...3650), def: "\(BackupPrefs.defaultDays)"),
     ]
 
-    private static func store(_ w: Where) -> PrefStore { w == .general ? prefs : BackupPrefs.store }
+    private static func prefStore(_ w: Where) -> PrefStore { w == .general ? prefs : BackupPrefs.store }
 
     /// A value as the file writes it ("true", "segments", "3", "~/Backups"), or nil when it can't be this setting's.
     static func normalized(_ k: Known, _ v: Any) -> String? {
@@ -321,7 +321,7 @@ enum SessionsMove {
 
     /// The setting as it is on this Mac, written like the file writes it.
     static func current(_ k: Known) -> String {
-        guard let v = store(k.store).object(forKey: k.key) else { return k.def }
+        guard let v = prefStore(k.store).object(forKey: k.key) else { return k.def }
         if case .bool = k.kind, !isBool(v), let n = v as? NSNumber { return n.boolValue ? "true" : "false" }      // (a plain 0/1 number)
         return normalized(k, v) ?? k.def
     }
@@ -620,7 +620,7 @@ enum SessionsMove {
                 guard let k = known.first(where: { $0.key == d.key }) else { continue }
                 // a backups place is looked at again now, not only when the page was counted (a folder can go, or become a link)
                 if case .place = k.kind, let why = placeProblem(d.file) { r.problems.append("The backups folder \(d.file) wasn't taken: \(why)."); continue }
-                let s = store(k.store)
+                let s = prefStore(k.store)
                 let before = s.object(forKey: k.key) == nil ? nil : current(k)
                 r.settings.append(SettingStep(key: k.key, store: k.store, before: before, after: d.file))
                 try? store.save(r)
@@ -633,7 +633,7 @@ enum SessionsMove {
     }
 
     private static func write(_ k: Known, _ raw: String?) {
-        store(k.store).set(raw.map { typed(k, $0) }, forKey: k.key)
+        prefStore(k.store).set(raw.map { typed(k, $0) }, forKey: k.key)
     }
 
     /// A raw value as it is stored and as the file writes it: a Bool, a number or a string.
