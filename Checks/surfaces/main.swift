@@ -1997,10 +1997,29 @@ do {
 
     // the Claude app's config.json and main.log (AppSignIn)
     put(data + "/config.json", #"{"lastKnownAccountUuid":"\#(u1.account.uppercased())","oauth:tokenCache":"x"}"#)
-    let c = AppSignIn.config(dataDir: data)
-    check(c?.id == u1.account && c?.keepsSignIn == true, "config.json: the account (lower case) and that it keeps a sign-in (the key's name only)")
+    check(AppSignIn.config(dataDir: data)?.id == u1.account && AppSignIn.storedSignIn(dataDir: data) == .account(u1.account),
+          "config.json: the account (lower case), and a sign-in kept (the token cache key's name only)")
     put(data + "/config.json", #"{"lastKnownAccountUuid":"\#(u1.account)"}"#)
-    check(AppSignIn.config(dataDir: data)?.keepsSignIn == false, "…no token cache key: no sign-in kept")
+    check(AppSignIn.storedSignIn(dataDir: data) == .none, "…no token cache key: no sign-in kept")
+    put(data + "/config.json", #"{"lastKnownAccountUuid":"not-an-id","oauth:tokenCache":"x"}"#)
+    check(AppSignIn.storedSignIn(dataDir: data) == .unknown && AppSignIn.config(dataDir: data) == nil, "…an id that isn't one: can't be told (New account says unknown, not signed out)")
+    put(data + "/config.json", #"{"oauth:tokenCache":"x","pad":""# + String(repeating: "x", count: AppSignIn.configBytes) + #"","lastKnownAccountUuid":"\#(u1.account)"}"#)
+    check(AppSignIn.storedSignIn(dataDir: data) == .unknown, "…larger than its cap: can't be told")
+    try? fm.removeItem(atPath: data + "/config.json")
+    check(AppSignIn.storedSignIn(dataDir: data) == .none, "…no config.json: no sign-in kept")
+
+    // the export's leak check takes every id-named name in the sessions folder (more than the lister, never less), and a record
+    // too large to read is noted, so the export refuses
+    put(cs + "/\(uuid(31))/.keep", "")
+    var known = Identities()
+    known.add(windowDir: data)
+    check(known.ids.isSuperset(of: [a, o, o2, uuid(31)].map { $0.lowercased() }),
+          "the leak check's ids: an account folder with no organisation and a linked organisation folder included")
+    put(dir + "/huge/.claude.json", "{}")
+    if let h = FileHandle(forWritingAtPath: dir + "/huge/.claude.json") { try? h.truncate(atOffset: UInt64(ClaudeFiles.recordMax + 1)); try? h.close() }
+    known.add(claudeJSON: dir + "/huge/.claude.json")
+    check(known.unread == [dir + "/huge/.claude.json"], "a record too large to read: noted for the export to refuse, not skipped")
+    try? fm.removeItem(atPath: dir + "/huge")
     let logs = URL(fileURLWithPath: dir + "/logs")
     put(logs.path + "/main.log", "2026-11-15 10:00:00.123 [info] [stealth-update] Triggering stealth update\n2026-11-15 10:00:05.000 [info] other\n")
     check(AppSignIn.lastStealthUpdate(logs: logs) == AppSignIn.timeFormatShort.date(from: "2026-11-15 10:00:00"), "main.log: the last stealth update, to the second")
