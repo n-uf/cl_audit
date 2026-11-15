@@ -953,10 +953,20 @@ struct AccountCard: View {
                 .buttonStyle(.plain)
                 .help("Open Claude \(row.entry.name)")
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
+                    // the name on one line; OWN WINDOW beside it, or under it when the card is too narrow (the plan badge
+                    // has a fixed width)
+                    let name = HStack(spacing: 6) {
                         Circle().fill(row.accent).frame(width: 8, height: 8)
                         Text("Claude \(row.entry.name)").font(.system(size: 14.5, weight: .semibold)).foregroundStyle(face.text)
-                        if row.entry.desktop == .separate, row.entry.claudeWindow { OwnWindowMark() }
+                            .lineLimit(1).truncationMode(.tail)
+                    }
+                    if row.entry.desktop == .separate, row.entry.claudeWindow {
+                        ViewThatFits(in: .horizontal) {
+                            HStack(spacing: 6) { name.fixedSize(); OwnWindowMark() }
+                            VStack(alignment: .leading, spacing: 3) { name; OwnWindowMark().padding(.leading, 14) }
+                        }
+                    } else {
+                        name
                     }
                     if let label = row.view.label ?? row.status?.expectedEmail {
                         // the account in use, one line on every card (no "· in use": the lamp says it); signed out or
