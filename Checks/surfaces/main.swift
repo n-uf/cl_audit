@@ -2146,6 +2146,32 @@ do {
     let clashShow = ProfileShow.load(e, now: now)
     check(clashShow.keyWords(short: false) == "Sign in…" && clashShow.loginAddress == u2.email,
           "the menu bar's and the Dock menu's key in a clash: Sign in…, to the app's u2")
+    // Settings ▸ Accounts' Sign in in a clash on a profile with no seat (the app not deciding): no address of its own is
+    // known, so the plain sign-in with none filled in, never the folder's (Other's u3). Wired for real up to the script
+    // (its claude found, the guard asked, nothing runs)
+    var noSeat = e; noSeat.seat = nil
+    _ = Store.writeStatus(e.id, rec(login: u3.email, code: u3))
+    try? fm.createDirectory(atPath: expand(e.configDir), withIntermediateDirectories: true)
+    let settingsAddress = ProfileShow.load(noSeat, now: now).loginAddress
+    var launched: [String] = [], scripts: [String] = []
+    let keepLocator = ClaudeLocator.current, keepTerminal = ClaudeCLI.openTerminal
+    ClaudeLocator.current = ClaudeLocator.Lookup(candidates: { ["/usr/bin/false"] }, npmPrefix: { nil }, shell: { nil }, appCopy: { nil })
+    FolderGuard.launchSeam = { what, dir in launched.append("\(what) \(dir)"); return true }
+    ClaudeCLI.openTerminal = { u in scripts.append((try? String(contentsOf: u, encoding: .utf8)) ?? ""); return true }
+    let clashModel = SettingsModel(); clashModel.accounts = [noSeat, other]
+    AccountSettings(entry: .constant(noSeat), model: clashModel).signInAgain(email: settingsAddress)
+    check(settingsAddress == nil && launched == ["login \(Account(noSeat).configDir)"] && scripts.count == 1
+          && !scripts[0].contains(u3.email!) && !scripts[0].contains("--email") && clashModel.runner(of: e.id).goal == nil,
+          "Settings' Sign in in a clash, no seat: the plain sign-in, no address, never Other's u3: \(launched)")
+    ClaudeLocator.current = keepLocator; ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = nil
+    // …and with an address (the app's u2) the runner signs in to that one, not the seat's u1 nor the folder's u3 (on a
+    // folder that isn't there: the goal is set, nothing runs)
+    var gone = e; gone.configDir = "~/.claude-card-gone"; gone.id = "cardgone"
+    let goneModel = SettingsModel(); goneModel.accounts = [gone]
+    goneModel.runner(of: gone.id).signInAgain(email: u2.email)
+    let goal = goneModel.runner(of: gone.id).goal
+    check(goal?.wantedEmail == u2.email && goal?.wantedSeat == nil && goneModel.runner(of: gone.id).phase != .ready,
+          "the runner's Sign in again takes the address it is given (u2), never the seat's or the folder's")
 
     // unconfirmed: as read, never full, said so
     var unsure = rec(week: 100, weekIn: 3 * 3600); unsure.ownerUnconfirmed = true

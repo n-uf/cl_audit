@@ -272,17 +272,21 @@ final class SwitchRunner: ObservableObject {
     var canUndo: Bool { receipt.map { $0.unfinished } ?? false }
 
     /// Sign in again on the account in use (its sign-in stopped working, or the folder is signed out): the same watch.
-    func signInAgain() {
-        guard !isRunning, let e = entry, let email = e.seat?.email ?? Account.expectedEmail(configDir: e.configDir) else { return }
+    /// `email`: the address to sign in to (the caller's, ProfileShow.loginAddress: in a clash the profile's own account,
+    /// never the folder's); nil: the profile's seat, else the folder's.
+    func signInAgain(email given: String? = nil) {
+        guard !isRunning, let e = entry, let email = given ?? e.seat?.email ?? Account.expectedEmail(configDir: e.configDir) else { return }
         targetSnapshot = nil; receipt = nil; moveNote = nil; planned = nil; failedStep = nil
-        begin(e, Goal(standby: nil, wantedSeat: e.seat, wantedEmail: email,
+        // (the seat is the one to reach only when it is that address: another address is watched by its address)
+        let seat = e.seat.flatMap { s in s.email.map { $0.lowercased() == email.lowercased() } == true ? s : nil }
+        begin(e, Goal(standby: nil, wantedSeat: given == nil ? e.seat : seat, wantedEmail: email,
                       from: Account.signedInSeat(configDir: e.configDir), started: Date()))
     }
 
     /// The same account again (after another account signed in, or nothing did in time).
     func retry() {
         guard let g = goal, !isRunning else { return }
-        if g.standby == nil { signInAgain(); return }
+        if g.standby == nil { signInAgain(email: g.wantedEmail); return }
         // the sessions moved already (Undo not used): only the sign-in again, the window kept closed meanwhile
         if canUndo, let e = entry {
             guard SwitchMarker.claim(windowKey(e), profile: profile, standby: markName) else {

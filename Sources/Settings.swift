@@ -1957,11 +1957,13 @@ struct AccountSettings: View {
             .buttonStyle(FaceKeyStyle(tint: .red))
     }
 
+    /// `email`: the address to sign in to, as given (the in-use box's: ProfileShow.loginAddress, in a clash the profile's own
+    /// account, never the folder's); nil: the plain sign-in with no address filled in, as the card's.
     func signInAgain(email: String?) {
-        if entry.seat?.email != nil || expected != nil { model.runner(of: entry.id).signInAgain(); return }
         // a folder that is gone is never made again: nothing starts, the line says so (A4)
         if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why; return }
-        if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: email) }
+        if let email { model.runner(of: entry.id).signInAgain(email: email); return }
+        if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: nil) }
     }
 
     /// The folders an earlier cl_audit made for this profile's accounts (Leftovers.swift), each still there: Move to
