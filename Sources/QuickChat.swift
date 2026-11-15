@@ -119,14 +119,25 @@ struct QuickChatTarget: Equatable {
     var email: String?
     /// The record says the sign-in needs the person ("sign-in expired"): the line says so, with Sign in….
     var loginWords: String?
+    /// Claude Code's own numbers after an answer may count as the profile's: ProfileCore's Headline says the record's are
+    /// (signed in, not the split, not a reading the sign-in moved on from), their account is confirmed, and the folder
+    /// isn't on another profile's account in use (a clash: they are that profile's). Otherwise they are Claude Code's
+    /// account's, or no one's here: no level, no full, no offer from them.
+    var liveCounts: Bool
+    /// The split (Headline.split): Claude Code is on another account than the profile's in use, so a refusal Claude Code
+    /// meets is its account's, never the profile's limit.
+    var split: Bool
 
-    init(_ e: AccountEntry) {
+    init(_ e: AccountEntry, now: Date = Date()) {
         let a = Account(e)
         profileID = e.id; name = e.name; configDir = a.configDir; isDefaultDir = a.isDefaultDir
         // the profile's account and its state as its record says them (AccountResolver), never its own read
-        let rec = Store.status(for: e)
+        let rec = Store.status(for: e, now: now)
         email = AccountView.of(rec).label
         loginWords = rec?.loginWords
+        let raw = Store.status(e.id), h = raw?.headline(now: now, ages: Store.ages(e))
+        liveCounts = (h.map { $0.numbers() && !$0.unconfirmed } ?? false) && raw?.resolved?.clash == nil
+        split = h?.split != nil
     }
     var workFolder: String { QuickChatSettings.workFolder(profileID) }
 }
@@ -174,8 +185,10 @@ final class QuickChatModel: ObservableObject {
     /// A problem shown in the bar, before the chat has a message (Claude Code missing, no profile).
     @Published var barProblem: QuickChatProblem?
     @Published var target: QuickChatTarget?
-    /// The chat's profile is in the split (SplitUsage): Claude Code's live limits are its account's, not the profile's.
-    var inSplit: Bool { target.flatMap { Store.status($0.profileID) }.map { Headline.split($0.owner) != nil } ?? false }
+    /// Claude Code's live limits after an answer count as the profile's (QuickChatTarget.liveCounts, the Headline's word).
+    var liveCounts: Bool { target?.liveCounts ?? false }
+    /// The chat's profile is in the split (QuickChatTarget.split).
+    var inSplit: Bool { target?.split ?? false }
     @Published var choice: QuickChatModelChoice = .haiku
     @Published var thinking: QuickChatThinking = .off
     /// The full name each choice answered with last ("Haiku 5.5"), for its key.
@@ -295,24 +308,19 @@ final class QuickChatModel: ObservableObject {
     func update(target new: QuickChatTarget?, level: QuickChatLevel?, offer best: () -> QuickChatSwitchOffer?) {
         let before = target
         if new != target { target = new }
-        // Claude Code's own numbers after an answer are newer than the agent's last reading: keep the fuller of the two,
-        // for the same profile on the same account only
-        var l = level
-        // a percent kept from before a limit's reset is never merged back in (QuickChatLevel.current)
-        if let mine = self.level?.current(), var theirs = l, before?.profileID == new?.profileID, before?.email == new?.email {
-            func same(_ a: Date?, _ b: Date?) -> Bool {
-                guard let a, let b else { return true }
-                return abs(a.timeIntervalSince(b)) < 3600
-            }
-            if let w = mine.week, w > (theirs.week ?? -1), same(mine.weekResets, theirs.weekResets) { theirs.week = w }
-            if let f = mine.fiveHour, f > (theirs.fiveHour ?? -1), same(mine.fiveHourResets, theirs.fiveHourResets) { theirs.fiveHour = f }
-            if let r = mine.refusedUntil, r > Date() { theirs.refusedUntil = r }
-            l = theirs
-        }
+        // Claude Code's own numbers after an answer are newer than the agent's last reading: kept where fuller, for the
+        // same profile on the same account, and only while the record's numbers are the profile's (QuickChatLevel.kept)
+        let counts = new?.liveCounts ?? false
+        let l = QuickChatLevel.kept(record: level, shown: self.level,
+                                    sameAccount: before?.profileID == new?.profileID && before?.email == new?.email,
+                                    counts: counts, refusals: !(new?.split ?? false))
         if l != self.level { self.level = l }
         else if drawnBlocked != blocked { objectWillChange.send() }     // a full limit reset: drawn again
         drawnBlocked = blocked
-        let offer = l?.full() == nil ? nil : best()
+        // the offer only from numbers that count: the record's own full limit, or live ones that count. A refusal alone,
+        // before the record knows whose numbers these are, holds the bar but offers nothing (the offer could name the
+        // account in use)
+        let offer = l?.full() == nil || !(counts || level?.full() != nil) ? nil : best()
         if offer != self.offer { self.offer = offer }
         guard let wait = switchWait else { return }
         if Date().timeIntervalSince(wait.since) > 600 { switchWait = nil; return }
@@ -384,8 +392,9 @@ final class QuickChatModel: ObservableObject {
                 turns[i].problem = .refused(text: text.isEmpty ? error : text)
             }
         case .limit(let type, let used, let status, let resets):
-            // the split (SplitUsage): these are Claude Code's account's limits, not the profile's: no level from them
-            guard !inSplit else { break }
+            // not the profile's (the split, a reading the sign-in moved on from, an account not confirmed: the Headline's
+            // word, QuickChatTarget.liveCounts): Claude Code's account's limits, no level from them
+            guard liveCounts else { break }
             var l = level ?? QuickChatLevel(nil)
             l.apply(type: type, used: used, status: status, resets: resets)
             level = l
@@ -398,8 +407,10 @@ final class QuickChatModel: ObservableObject {
             if isError || turns[i].problem != nil {
                 turns[i].phase = .failed
                 if turns[i].problem == nil { turns[i].problem = .refused(text: text.isEmpty ? "Claude Code couldn't answer." : text) }
-                // a full limit Claude Code found before cl_audit's numbers did: the account line says so too. Not in the
-                // split (SplitUsage): it's Claude Code's account's limit, so the answer says it, but no level or offer
+                // a full limit Claude Code found before cl_audit's numbers did: the account line says so too, and the bar
+                // holds what you type (the refusal is the chat's own sign-in's, whatever the record says yet). Not in the
+                // split (SplitUsage): it's Claude Code's account's limit, so the answer says it, but no level or offer.
+                // The offer itself waits for numbers that count (update)
                 if turns[i].problem == .limitFull, level?.full() == nil, !inSplit {
                     var l = level ?? QuickChatLevel(nil)
                     l.refusedUntil = l.refusedUntil ?? Date().addingTimeInterval(3600)
@@ -593,7 +604,7 @@ final class QuickChat {
         let list = entries()
         let wanted = profile ?? (model.isWindow ? model.target?.profileID : nil) ?? settings.profile
         let pick = list.first { $0.id == wanted } ?? list.first
-        let target = pick.map(QuickChatTarget.init)
+        let target = pick.map { QuickChatTarget($0) }
         // another profile: a new chat, with nothing of the last one's account line; the same one is brought up to date
         // by refresh, which also sees a switch made while the chat was hidden
         if let t = model.target, let n = target, t.profileID != n.profileID { model.newChat(); model.forgetAccount(); model.target = n }

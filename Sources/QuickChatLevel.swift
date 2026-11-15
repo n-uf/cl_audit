@@ -1,11 +1,13 @@
 // QuickChatLevel: the quick chat's account line and its offer when a limit is full (QuickChat.swift).
 //
-// The numbers come from the agent's own reading of the profile (Reader.swift), and after each answer from what Claude
-// Code itself reports (its rate_limit_event), which is newer. The colours are the levels' everywhere in cl_audit
-// (Painter.color: green, amber from 50%, red from 80%, crimson from 95%). A full limit is AtLimit's: the one that holds
-// the profile back. While one is, the bar says so before you send and offers the profile's standby account offered first
-// (not known to be full, the least used by its last week) through the switch (SwitchMenu.best → the Switch page); what
-// you typed waits and goes once it's done.
+// The numbers come from the agent's own reading of the profile (Reader.swift) as ProfileCore's Headline lets the profile's
+// headline show them (Store.status(for:): never the split's, a stale reading's, or an old full limit), and after each
+// answer from what Claude Code itself reports (its rate_limit_event), which is newer, only while the Headline says the
+// record's numbers are the profile's (QuickChatTarget.liveCounts, `kept`). The colours are ProfileCore's one Level
+// everywhere in cl_audit (Painter.color: green, amber from 50%, red from 80%, crimson from 95%). A full limit is AtLimit's:
+// the one that holds the profile back. While one is, the bar says so before you send and offers the one offer every place
+// makes (AccountEntry.fullOffer: not known to be full, the least used by its last week, never the account in use) through
+// the switch (the Switch page); what you typed waits and goes once it's done.
 
 import AppKit
 import ProfileCore
@@ -67,19 +69,43 @@ struct QuickChatLevel: Equatable {
         return l
     }
 
+    /// The account line after a new look at the record: `record` is the agent's reading as the Headline lets it show
+    /// (Store.status(for:)); `shown` is what the line has now, with what Claude Code itself said after an answer, which is
+    /// newer. Those are kept where fuller, for the same window (resets within an hour), only for the same profile on the
+    /// same account (`sameAccount`) and only while they count as the profile's (`counts`, QuickChatTarget.liveCounts).
+    /// Otherwise the record's level alone: numbers the record doesn't show for the profile never come back from the chat.
+    /// A refusal Claude Code met (refusedUntil) is the chat's own sign-in's: it stays for the same account while
+    /// `refusals` (not the split), whether or not the numbers count yet. A percent from before a limit's reset is never
+    /// kept (current).
+    static func kept(record: QuickChatLevel?, shown: QuickChatLevel?, sameAccount: Bool, counts: Bool, refusals: Bool,
+                     now: Date = Date()) -> QuickChatLevel? {
+        guard sameAccount, counts || refusals, let mine = shown?.current(now), var theirs = record else { return record }
+        func same(_ a: Date?, _ b: Date?) -> Bool {
+            guard let a, let b else { return true }
+            return abs(a.timeIntervalSince(b)) < 3600
+        }
+        if counts {
+            if let w = mine.week, w > (theirs.week ?? -1), same(mine.weekResets, theirs.weekResets) { theirs.week = w }
+            if let f = mine.fiveHour, f > (theirs.fiveHour ?? -1), same(mine.fiveHourResets, theirs.fiveHourResets) { theirs.fiveHour = f }
+        }
+        if let r = mine.refusedUntil, r > now { theirs.refusedUntil = r }
+        return theirs
+    }
+
     static func color(_ p: Double?) -> Color { Color(nsColor: Painter.color(p, stale: false)) }
 }
 
-/// The standby account a full limit offers (SwitchMenu.best: not known to be full, the least used first), for the Switch
-/// page. `words`: when it was last in use, or empty.
+/// The standby account a full limit offers (AccountEntry.fullOffer, the alert's too: not known to be full, the least
+/// used first, never the account in use), for the Switch page. `words`: when it was last in use, or empty.
 struct QuickChatSwitchOffer: Equatable {
     var key: String
     var short: String
     var words: String
 
-    static func best(_ e: AccountEntry) -> QuickChatSwitchOffer? {
-        let listed = e.listed(by: AccountView.of(Store.status(for: e)))     // never the account in use on standby too
-        return SwitchMenu.best(SwitchMenu.lines(listed)).map { QuickChatSwitchOffer(key: $0.key, short: $0.short, words: $0.words) }
+    static func best(_ e: AccountEntry, now: Date = Date()) -> QuickChatSwitchOffer? {
+        e.fullOffer(now: now).map { o in
+            QuickChatSwitchOffer(key: o.key, short: o.short, words: o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? "")
+        }
     }
 }
 
