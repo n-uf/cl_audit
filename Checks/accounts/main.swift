@@ -465,8 +465,9 @@ do {
     let r = try! SwitchEngine.run(p, windowClosed: { true }, backups: place)
     check(r.held == [h] && r.backup != nil && SessionsBackup.load(profile: "mv", id: r.backup!, place: place)?.kind == .beforeSwitch(r.id), "a backup first, naming the receipt; the held one noted")
     check(p.odd == [.unknownName] && r.leftInPlace == 1 && fm.fileExists(atPath: "\(src)/local_oddname.json") && !fm.fileExists(atPath: "\(dst)/local_oddname.json")
-          && SwitchRunner.stayWords(p)?.contains("Left with \(AccountNames.short(u1.email!)): 1 file named like a Code-tab session that isn't one (a file not named by an id).") == true,
-          "the odd name: left in place, counted in the receipt, said in the plan and done line (\(String(describing: r.leftInPlace)))")
+          && SwitchRunner.leftBehind(p) == "Left with \(AccountNames.short(u1.email!)): 1 file named like a Code-tab session that isn't one (a file not named by an id)."
+          && SwitchRunner.stayWords(p)?.contains("Left with") == false,
+          "the odd name: left in place, counted in the receipt, said in the runner's leftNote, apart from its other note (\(String(describing: r.leftInPlace)))")
     let moved = (try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: dst + "/" + a)))) as? [String: Any]
     check(moved != nil && moved?["error"] == nil && (moved?["bridgeSessionIds"] as? [Any])?.isEmpty == true && moved?["sessionId"] as? String == "local_a",
           "moved without the old account's error keys and Remote Control ids, same id")
@@ -1454,6 +1455,7 @@ do {
     check(SwitchRunner.leftWords([.link], old: "ann") == "Left with ann: 1 file named like a Code-tab session that isn't one (a link).", "one left in place")
     check(SwitchRunner.leftWords([.unknownName, .unknownName], old: "ann") == "Left with ann: 2 files named like a Code-tab session that aren't one (2 files not named by an id).", "two of a kind")
     check(SwitchRunner.leftWords([], old: "ann") == nil, "none left: no line")
+    check(SwitchRunner.leftWords([.link], old: "ann", before: true) == "Will stay with ann: 1 file named like a Code-tab session that isn't one (a link).", "before Switch: the future tense")
 
     // sorted: one moves, one is the target's already, one the target deleted, one a running Claude Code owns (by its cli id)
     let sorted = SessionTransfer.sort(s, owned: ["cli-4"])

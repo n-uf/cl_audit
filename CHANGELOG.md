@@ -8,7 +8,8 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- The Switch page now says "Will stay with ann: …" before you press Switch (it said "Left with ann: …" then), and keeps "Left with ann: …" for after a switch.
+- When Claude Code's folder is signed in to another profile's account and the profile's own account is also on its standby list, the menu bar menu, the Dock icon's menu and the Switch page now list it once, as the account in use, not on standby too.
 
 ## 26.11.46 — 2026-11-15
 

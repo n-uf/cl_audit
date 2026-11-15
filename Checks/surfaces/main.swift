@@ -2326,6 +2326,18 @@ MainActor.assumeIsolated {
           && noSeatShow.named.inUseLine == nil && !naming(noSeatDock.menu).contains { $0.contains(u3Short) }
           && !titles(menuBarMenu(noSeatShow)).contains { $0.contains(u3Short) },
           "a clash with no seat: the panel draws no account line (never its sign-in's u3), the menus name none")
+    // one account, one row: the profile's own account (u1, ticked in a clash) is also remembered on its standby list; no
+    // menu and no Switch page lists it on standby too (the lists took the record's account, the folder's u3, not the ticked one)
+    var both = e; both.standby.append(StandbyAccount(email: u1.email!, seat: u1, id: "k1"))
+    _ = Store.writeStatus("acc", rec(login: u3.email, code: u3))
+    let bothShow = ProfileShow.load(both, now: now), bothDock = dockOf(both, bothShow), bothBar = menuBarMenu(bothShow)
+    let u2Short = AccountNames.short(u2.email!)
+    func rowsOf(_ m: NSMenu, _ short: String) -> Int { titles(m).filter { $0.hasPrefix(short) && !$0.hasPrefix("Claude") }.count }
+    check(rowsOf(bothDock.menu, u1Short) == 1 && rowsOf(bothBar, u1Short) == 1 && rowsOf(bothDock.menu, u2Short) == 1 && rowsOf(bothBar, u2Short) == 1
+          && !titles(bothDock.menu).contains(u1Short + "…") && !titles(bothBar).contains(u1Short + "…"),
+          "a clash, the own account also on the standby list: ticked once in the Dock menu and the menu bar, never on standby too (u2 once)")
+    let bothPage = surfaces(rec(login: u3.email, code: u3), both).page
+    check(bothPage.pickList.map(\.id) == ["k2"], "…and not on the Switch page's TO list: \(bothPage.pickList.map(\.id))")
     // a record from before the id: by its name (the first profile so called)
     var byName = rec(login: u3.email, code: u3); byName.resolved?.clashID = nil
     let oldClash = surfaces(byName)
@@ -2407,22 +2419,26 @@ MainActor.assumeIsolated {
     try? Store.save([])
 }
 
-// ============ 14. the Switch page: what a switch leaves behind, said before Switch is pressed ============
+// ============ 14. the Switch page: what a switch leaves behind, said before Switch is pressed ("Will stay with") and after ("Left with") ============
 do {
     var p = SwitchPlan(profile: "sw", standby: "k2", dataDir: "/x", codeDir: "/y", from: u1, to: u2)
     p.odd = [.unknownName, .link]
-    let words = "Left with \(AccountNames.short(u1.email!)): 2 files named like a Code-tab session that aren't one (a link, a file not named by an id)."
-    check(SwitchPage.leftBefore(p, started: false) == words, "before Switch: the plan's files left behind, in the runner's words: \(SwitchPage.leftBefore(p, started: false) ?? "nil")")
+    let rest = "2 files named like a Code-tab session that aren't one (a link, a file not named by an id)."
+    let will = "Will stay with \(AccountNames.short(u1.email!)): " + rest, left = "Left with \(AccountNames.short(u1.email!)): " + rest
+    check(SwitchPage.leftBefore(p, started: false) == will, "before Switch: the plan's files that will stay, in the future tense: \(SwitchPage.leftBefore(p, started: false) ?? "nil")")
     var none = p; none.odd = []
     check(SwitchPage.leftBefore(p, started: true) == nil && SwitchPage.leftBefore(nil, started: false) == nil
-          && SwitchPage.leftBefore(none, started: false) == nil, "once started the runner's note says it; no plan or none left: no line")
-    // after a switch that moved nothing: the note without them (alone: no note); after a move, as it is
-    let note = SwitchRunner.stayWords(p)
-    check(note == words && SwitchPage.noteShown(note, plan: p, movedNothing: true) == nil && SwitchPage.noteShown(note, plan: p, movedNothing: false) == note,
+          && SwitchPage.leftBefore(none, started: false) == nil, "once started the runner's leftNote says it; no plan or none left: no line")
+    // the runner keeps them apart from the rest of its note: "Left with …" in the past tense, never in stayWords
+    check(SwitchRunner.leftBehind(p) == left && SwitchRunner.stayWords(p) == nil && SwitchRunner.leftBehind(none) == nil,
+          "the runner's leftNote is the past tense, apart from its other note: \(SwitchRunner.leftBehind(p) ?? "nil")")
+    // after a switch that moved nothing: no left-behind line (a flag, not a string match); after a move, as it is
+    check(SwitchPage.leftShown(left, movedNothing: true) == nil && SwitchPage.leftShown(left, movedNothing: false) == left && SwitchPage.leftShown(nil, movedNothing: false) == nil,
           "a failed switch that moved nothing: the left-behind line hidden; a switch that moved: shown")
     var held = p; held.held = ["s1"]
-    check(SwitchPage.noteShown(SwitchRunner.stayWords(held), plan: held, movedNothing: true) == SwitchRunner.heldWords(1),
-          "…the rest of the note stays (a session a running Claude Code holds)")
+    check(SwitchRunner.stayWords(held) == SwitchRunner.heldWords(1) && SwitchPage.noteLine(SwitchRunner.stayWords(held), SwitchPage.leftShown(left, movedNothing: true)) == SwitchRunner.heldWords(1)
+          && SwitchPage.noteLine(SwitchRunner.stayWords(held), left) == SwitchRunner.heldWords(1) + " " + left && SwitchPage.noteLine(nil, nil) == nil,
+          "…the rest of the note stays (a session a running Claude Code holds), then the left-behind line when something moved")
 }
 
 print("checks: \(passed) passed, \(failed) failed")

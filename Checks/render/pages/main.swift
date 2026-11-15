@@ -256,10 +256,10 @@ struct AtlasMenu: View {
         if let u = p.usage { mb.append(info("Updated \(DetailsFormat.ago(u.fetchedAt)) · \(u.source)")) }
         if let why = p.problem { mb.append(info(why)) }
         mb.append(.separator())
-        let mbLines = SwitchMenu.lines(p.entry.listed(by: p.view), now: now)
+        let mbLines = SwitchMenu.lines(p.show.listedEntry, now: now)
         let mbFull = p.usage.flatMap { AtLimit.blocker(fiveHour: $0.fiveHour, fiveHourResets: $0.fiveHourResets, weekly: $0.weekly,
                                                        weeklyResets: $0.weeklyResets, now: now) } != nil
-        var mbSwitches = SwitchMenu.group(p.view, lines: mbLines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
+        var mbSwitches = SwitchMenu.group(p.show.named, lines: mbLines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
                                           inUseWeek: p.usage?.weekly != nil, target: dummy, action: act)
         if mbFull, let best = SwitchMenu.best(mbLines) { mbSwitches.insert(SwitchMenu.bestItem(best, target: dummy, action: act), at: 0) }
         if !mbSwitches.isEmpty { mb += mbSwitches; mb.append(.separator()) }
@@ -729,6 +729,8 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
     let appPat = AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)
     let appAnon = AppSignIn.Login(account: uuid(96), org: uuid(196), state: .known, source: "log", at: now)
     var renamed = work; renamed.name = "Office"
+    // the profile's own account (ann, ticked in a clash) also remembered on its standby list: one row in the menus, not two
+    var ownStandby = e; ownStandby.standby.append(StandbyAccount(email: ann.email!, seat: ann, id: "ka"))
     let cases: [(String, AccountEntry, IconStatus?, [AccountEntry])] = [
         ("fresh", e, rec("ok", week: 64, five: 12, age: 60), [e, work, s]),
         ("old40", e, rec("ok", week: 64, five: 12, age: 40 * 60), [e, work, s]),
@@ -736,6 +738,7 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
         ("expired", e, rec("expired", week: 64, five: 12, age: 60), [e, work, s]),
         ("clash", e, rec("ok", week: 64, five: 12, age: 60, login: cat.email, code: cat), [e, work, s]),
         ("clash-renamed", e, rec("ok", week: 64, five: 12, age: 60, login: cat.email, code: cat), [e, renamed, s]),
+        ("clash-own-standby", ownStandby, rec("ok", week: 64, five: 12, age: 60, login: cat.email, code: cat), [ownStandby, work, s]),
         ("split", s, splitRec(appPat), [e, work, s]), ("split-anon", s, splitRec(appAnon), [e, work, s]),
         ("norecord", e, nil, [e, work, s])]
     let face = FaceTheme.of(.std)
@@ -772,14 +775,18 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
         // the menu bar row and the Dock icon's menu, as the agent and the Dock app build them from the same value
         let show = ProfileShow.load(p, now: now)
         let dockApp = AppDelegate(); dockApp.entry = p; dockApp.show = show
+        let barProfile = MenuBarItems.Profile(show: show, problem: show.record?.problem)
+        let barMenu = NSMenu(title: p.id); MenuBarItems(profiles: { [barProfile] }, refresh: { _ in }).menuNeedsUpdate(barMenu)
         let menus = VStack(alignment: .leading, spacing: 8) {
             Text("Menu bar row").font(.caption.bold()).foregroundColor(.white)
-            MenuBarRow(profile: MenuBarItems.Profile(show: show, problem: show.record?.problem), now: now)
+            MenuBarRow(profile: barProfile, now: now)
                 .background(Color(white: 0.19)).clipShape(RoundedRectangle(cornerRadius: 9))
+            Text("Menu bar menu").font(.caption.bold()).foregroundColor(.white)
+            AtlasMenu(Array(barMenu.items.dropFirst().prefix(5)))
             Text("Dock menu").font(.caption.bold()).foregroundColor(.white)
             AtlasMenu(Array(dockApp.profileMenu().items.prefix(6)))
         }
-        snapshot(framed(menus, 460), "show3c-\(name)-menus-std", 492, 600)
+        snapshot(framed(menus, 460), "show3c-\(name)-menus-std", 492, 900)
     }
 }
 
@@ -931,16 +938,23 @@ MainActor.assumeIsolated {
     let goal = SwitchRunner.Goal(standby: "k2", wantedSeat: u2, wantedEmail: u2.email!, from: u1, started: Date().addingTimeInterval(-75))
     r.preview(.ready, goal: nil, target: k2)
     page(main, k2, "o1-switch-ready")
-    // files in ultra-1's folder named like a Code-tab session that aren't one: said before Switch is pressed, and not said
-    // after a switch that stopped before the move (LEFT_ONLY=1: these alone)
+    // files in ultra-1's folder named like a Code-tab session that aren't one: "Will stay with …" before Switch is pressed,
+    // "Left with …" after a switch that moved, and not said after a switch that stopped before the move (LEFT_ONLY=1: these alone)
     let oddNames = ["local_draft.json", "local_copy-2.json"]
     oddNames.forEach { fm.createFile(atPath: "\(odir)/\($0)", contents: Data("{}".utf8)) }
     page(main, k2, "ol1-switch-ready-left")
     let leftPlan: SwitchPlan? = { if case .success(let p) = SwitchEngine.plan(main, standby: k2, owned: []) { return p }; return nil }()
     print("left in place:", leftPlan?.odd.count ?? -1)
     r.preview(.failed("Main's Claude window didn't close; it may be asking about work under way. Answer it, then try again. Nothing moved."),
-              goal: goal, target: k2, planned: leftPlan, note: leftPlan.flatMap(SwitchRunner.stayWords), failedAt: .closing)
+              goal: goal, target: k2, planned: leftPlan, note: leftPlan.flatMap(SwitchRunner.stayWords), left: leftPlan.flatMap(SwitchRunner.leftBehind),
+              failedAt: .closing)
     page(main, k2, "ol2-switch-failed-left")
+    // after a switch that moved: its note says what was left (the receipt exists, so the page shows it)
+    var leftMoved = SwitchReceipt(id: SwitchEngine.receiptID(Date(), "main"), profile: "main", standby: "k2", dataDir: wd, from: SeatID(u1), to: SeatID(u2), started: Date())
+    leftMoved.steps = (leftPlan?.move ?? []).map { SwitchReceipt.Step(kind: .entry, path: $0, sha: nil, parked: nil, original: nil, done: true) }
+    r.preview(.waiting, goal: goal, target: k2, planned: leftPlan, receipt: leftMoved, note: leftPlan.flatMap(SwitchRunner.stayWords),
+              left: leftPlan.flatMap(SwitchRunner.leftBehind), seen: u1)
+    page(main, k2, "ol3-switch-moved-left")
     r.preview(.ready, goal: nil, target: k2)
     oddNames.forEach { try? fm.removeItem(atPath: "\(odir)/\($0)") }
     if ProcessInfo.processInfo.environment["LEFT_ONLY"] != nil { print("done"); exit(0) }
