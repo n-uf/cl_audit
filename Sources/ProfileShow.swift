@@ -60,7 +60,7 @@ struct ProfileShow {
     func keyWords(short: Bool) -> String? {
         switch display.key {
         case .none: return nil
-        case .logIn: return "Log in…"
+        case .logIn: return "Sign in…"
         case .logInCode: return short ? splitWords?.shortKey : splitWords?.key
         }
     }

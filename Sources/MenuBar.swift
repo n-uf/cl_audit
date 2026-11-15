@@ -383,8 +383,8 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         add("Quick chat", #selector(quickChat(_:)))
         if p.entry.claudeWindow { add("Open Claude window", #selector(openClaude(_:))) }
         add("Refresh now", #selector(refreshNow(_:)))
-        // the one key: Log in…, or in the split Claude Code's own sign-in to the Claude app's account (the same Log in, its
-        // address filled in; the key carries its "…")
+        // the one key: Sign in…, or in the split Claude Code's own sign-in to the Claude app's account (the same Sign in,
+        // its address filled in; the key carries its "…")
         if let k = p.show.keyWords(short: false) { add(k, #selector(logIn(_:))) }
         menu.addItem(.separator())
         add("Dashboard", #selector(dashboard(_:)))

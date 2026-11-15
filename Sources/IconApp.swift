@@ -495,12 +495,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let usage { m.addItem(info("Updated \(Self.ago(usage.fetchedAt)) · \(usage.source)")) }
         if let why = problem { m.addItem(info(why)) }
         if let note = status?.renewNote { m.addItem(info(note)) }
-        if Privacy.shared.show || loginEmail == nil { m.addItem(info("Login: \(loginEmail ?? "checking…")")) }
+        if Privacy.shared.show || loginEmail == nil { m.addItem(info("Sign-in: \(loginEmail ?? "checking…")")) }
         if d.otherAccount, let want = expectedEmail {
             m.addItem(info(Privacy.shared.show ? "⚠︎ This folder is set up for \(want)" : "⚠︎ This folder is set up for a different account"))
         }
-        // the one key: Log in…, or in the split Claude Code's own sign-in to the Claude app's account (the same Log in, its
-        // address filled in)
+        // the one key: Sign in…, or in the split Claude Code's own sign-in to the Claude app's account (the same Sign in,
+        // its address filled in)
         if let k = show?.keyWords(short: false) {
             let login = NSMenuItem(title: k, action: #selector(logIn), keyEquivalent: "")
             login.target = self; m.addItem(login)
