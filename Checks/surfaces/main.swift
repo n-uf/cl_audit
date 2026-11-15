@@ -2407,5 +2407,23 @@ MainActor.assumeIsolated {
     try? Store.save([])
 }
 
+// ============ 14. the Switch page: what a switch leaves behind, said before Switch is pressed ============
+do {
+    var p = SwitchPlan(profile: "sw", standby: "k2", dataDir: "/x", codeDir: "/y", from: u1, to: u2)
+    p.odd = [.unknownName, .link]
+    let words = "Left with \(AccountNames.short(u1.email!)): 2 files named like a Code-tab session that aren't one (a link, a file not named by an id)."
+    check(SwitchPage.leftBefore(p, started: false) == words, "before Switch: the plan's files left behind, in the runner's words: \(SwitchPage.leftBefore(p, started: false) ?? "nil")")
+    var none = p; none.odd = []
+    check(SwitchPage.leftBefore(p, started: true) == nil && SwitchPage.leftBefore(nil, started: false) == nil
+          && SwitchPage.leftBefore(none, started: false) == nil, "once started the runner's note says it; no plan or none left: no line")
+    // after a switch that moved nothing: the note without them (alone: no note); after a move, as it is
+    let note = SwitchRunner.stayWords(p)
+    check(note == words && SwitchPage.noteShown(note, plan: p, movedNothing: true) == nil && SwitchPage.noteShown(note, plan: p, movedNothing: false) == note,
+          "a failed switch that moved nothing: the left-behind line hidden; a switch that moved: shown")
+    var held = p; held.held = ["s1"]
+    check(SwitchPage.noteShown(SwitchRunner.stayWords(held), plan: held, movedNothing: true) == SwitchRunner.heldWords(1),
+          "…the rest of the note stays (a session a running Claude Code holds)")
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

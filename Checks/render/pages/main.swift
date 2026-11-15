@@ -94,6 +94,7 @@ func cardRow(_ e: AccountEntry, now: Date = Date()) -> AccountRow { AccountRow(e
 
 @MainActor func snapshot(_ v: some View, _ name: String, _ w: CGFloat, _ h: CGFloat = 3600) {
     if ProcessInfo.processInfo.environment["ONEFOLDER_ONLY"] != nil, !name.hasPrefix("o") { return }  // the one-folder renders only
+    if ProcessInfo.processInfo.environment["LEFT_ONLY"] != nil, !name.hasPrefix("ol") { return }    // the left-behind line only
     if ProcessInfo.processInfo.environment["B2_ONLY"] != nil, !name.hasPrefix("6") { return }      // stage B2 renders only
     if ProcessInfo.processInfo.environment["E_ONLY"] != nil, !name.hasPrefix("7") { return }       // stage E renders only
     if ProcessInfo.processInfo.environment["E2_ONLY"] != nil, !name.hasPrefix("8") { return }      // stage E2 (the setup row) renders only
@@ -930,6 +931,19 @@ MainActor.assumeIsolated {
     let goal = SwitchRunner.Goal(standby: "k2", wantedSeat: u2, wantedEmail: u2.email!, from: u1, started: Date().addingTimeInterval(-75))
     r.preview(.ready, goal: nil, target: k2)
     page(main, k2, "o1-switch-ready")
+    // files in ultra-1's folder named like a Code-tab session that aren't one: said before Switch is pressed, and not said
+    // after a switch that stopped before the move (LEFT_ONLY=1: these alone)
+    let oddNames = ["local_draft.json", "local_copy-2.json"]
+    oddNames.forEach { fm.createFile(atPath: "\(odir)/\($0)", contents: Data("{}".utf8)) }
+    page(main, k2, "ol1-switch-ready-left")
+    let leftPlan: SwitchPlan? = { if case .success(let p) = SwitchEngine.plan(main, standby: k2, owned: []) { return p }; return nil }()
+    print("left in place:", leftPlan?.odd.count ?? -1)
+    r.preview(.failed("Main's Claude window didn't close; it may be asking about work under way. Answer it, then try again. Nothing moved."),
+              goal: goal, target: k2, planned: leftPlan, note: leftPlan.flatMap(SwitchRunner.stayWords), failedAt: .closing)
+    page(main, k2, "ol2-switch-failed-left")
+    r.preview(.ready, goal: nil, target: k2)
+    oddNames.forEach { try? fm.removeItem(atPath: "\(odir)/\($0)") }
+    if ProcessInfo.processInfo.environment["LEFT_ONLY"] != nil { print("done"); exit(0) }
     // the move: what it plans (the window's sessions under ultra-1), then the receipt it leaves (for Undo)
     let swPlan: SwitchPlan? = { if case .success(let p) = SwitchEngine.plan(main, standby: k2, owned: []) { return p }; return nil }()
     var moved = SwitchReceipt(id: SwitchEngine.receiptID(Date(), "main"), profile: "main", standby: "k2", dataDir: wd, from: SeatID(u1), to: SeatID(u2), started: Date())
