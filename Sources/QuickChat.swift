@@ -116,7 +116,11 @@ struct QuickChatTarget: Equatable {
     var name: String
     var configDir: String
     var isDefaultDir: Bool
+    /// The folder's account, the one Claude Code's process runs on (in a clash the other profile's): the process's key, the
+    /// kept level's account test and the switch wait go by it, never the header's name.
     var email: String?
+    /// The account the header names: as the menus name it (in a clash the profile's own, never the folder's).
+    var shownEmail: String?
     /// The record says the sign-in needs the person ("sign-in expired"): the line says so, with Sign in….
     var loginWords: String?
     /// Claude Code's own numbers after an answer may count as the profile's: ProfileCore's Headline says the record's are
@@ -128,14 +132,20 @@ struct QuickChatTarget: Equatable {
     /// meets is its account's, never the profile's limit.
     var split: Bool
 
+    /// What the `claude` process runs with: it is kept while this is the same, and replaced when it changes (the folder's
+    /// account is in it, so a process on another account's sign-in is never kept).
+    func processKey(claude path: String, model: String, effort: String?) -> String {
+        [path, configDir, email ?? "", model, effort ?? ""].joined(separator: "|")
+    }
+
     init(_ e: AccountEntry, now: Date = Date()) {
         let a = Account(e)
         profileID = e.id; name = e.name; configDir = a.configDir; isDefaultDir = a.isDefaultDir
         // the profile's account and its state as its record says them (AccountResolver), never its own read
         let rec = Store.status(for: e, now: now)
         let raw = Store.status(e.id), h = raw?.headline(now: now, ages: Store.ages(e))
-        // (as the menus name it: in a clash the profile's own account, never the folder's, the other profile's)
-        email = ProfileShow.of(e, raw: raw, now: now).inUseLabel
+        email = AccountView.of(rec).label
+        shownEmail = ProfileShow.of(e, raw: raw, now: now).inUseLabel
         loginWords = rec?.loginWords
         liveCounts = (h.map { $0.numbers() && !$0.unconfirmed } ?? false) && raw?.resolved?.clash == nil
         split = h?.split != nil
@@ -345,7 +355,7 @@ final class QuickChatModel: ObservableObject {
                                        workFolder: target.workFolder, model: self.choice.flag, effort: self.thinking.effort,
                                        resume: self.session)
             // the same `claude` while nothing it runs with changed; a new one goes on with the session
-            let key = [path, target.configDir, target.email ?? "", cmd.model, cmd.effort ?? ""].joined(separator: "|")
+            let key = target.processKey(claude: path, model: cmd.model, effort: cmd.effort)
             if self.process?.isRunning != true || key != self.processKey {
                 self.closeProcess()
                 let p = QuickChatProcess(cmd)
