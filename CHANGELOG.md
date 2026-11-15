@@ -8,7 +8,9 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- An export now carries only the Claude app's real session entries and its scheduled-tasks.json from the window's account folders. A file named like an entry that isn't one stays out, and the Export page says so ("1 file left out: named like a Code-tab entry, but not a Code-tab session."). Before, any `local_` file went in, and a `local_….json` was counted as a session, though no import or restore ever put it back.
+- A backup's line now says when it holds files the window doesn't keep itself ("84 sessions · 2 other files · …"). The backup still copies them, but never counts them as sessions, also in a backup made by an earlier version.
+- Import counts a file's sessions by the same rule as Restore, so its count is what a restore can put back.
 
 ## 26.11.42 — 2026-11-15
 
