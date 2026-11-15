@@ -356,7 +356,7 @@ struct DefaultProfilePage: View {
                     Button("Remove \(name)…") { runner.removeOld() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 }
                 SRowLine(text: runner.canKeepOldAsStandby ? "Removing signs its folder out of Claude Code, and asks about deleting it. After either choice this move can't be undone."
-                         : "It is the same Claude account as the default profile's, so it can't stand by. Removing signs its folder out of Claude Code, and asks about deleting it. After that this move can't be undone.")
+                         : "The default profile already has this account, so it can't stand by. Removing signs its folder out of Claude Code, and asks about deleting it. After that this move can't be undone.")
             }
         }
     }
