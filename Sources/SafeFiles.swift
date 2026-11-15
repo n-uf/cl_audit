@@ -9,9 +9,10 @@ import Foundation
 
 enum SafeFiles {
     /// A plain file read whole under a cap, never through a link and never blocking: nil when it isn't there, is a link, isn't a
-    /// regular file, is larger than `max` or can't be read whole.
-    static func readPlain(_ path: String, max: Int) -> Data? {
-        let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
+    /// regular file, is larger than `max` or can't be read whole. `followsLink`: a link named by `path` itself is followed (the
+    /// file it reaches must still be a regular one), for a file another program keeps that may be a link to the real one.
+    static func readPlain(_ path: String, max: Int, followsLink: Bool = false) -> Data? {
+        let fd = open(path, O_RDONLY | O_NONBLOCK | (followsLink ? 0 : O_NOFOLLOW))
         guard fd >= 0 else { return nil }
         defer { close(fd) }
         var st = stat()
