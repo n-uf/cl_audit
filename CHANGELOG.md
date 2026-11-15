@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.36 — 2026-11-15
+
 - When cl_audit can't read which programs are running (another user's `claude`, as with `sudo claude`, included), it now says it couldn't check whether Claude Code is using a session, instead of treating it as not running.
 
 ## 26.11.35 — 2026-11-15
