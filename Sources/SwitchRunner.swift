@@ -12,7 +12,8 @@
 //
 // Before the sign-in, a switch to a standby account moves the profile's Claude window sessions and scheduled tasks to
 // that account, inside the profile's folder, the way claude-transplant does (SwitchEngine.swift): the window closes (its
-// own quit, only that window) and stays closed until the sign-in ends; a backup is made first; the receipt keeps Undo
+// own quit, only that window, ClaudeWindow.swift's WindowHold) and stays closed until the switch is settled (the account
+// reached, Undo, or Leave it as it is; then it opens again, SwitchEngine.settled); a backup is made first; the receipt keeps Undo
 // possible until Claude Code is on the new account (reached: the receipt is linked). Sessions a running Claude Code owns
 // are held where they are. With nothing to move (or a standby account whose ids aren't known yet), only the sign-in runs.
 // Claude Code's transcripts stay in the folder; the Claude window's own sign-in is the person's to change: cl_audit never
@@ -66,6 +67,10 @@ final class SwitchRunner: ObservableObject {
     /// What the old account keeps because it isn't a session entry ("Left with ann: …", leftWords), apart from moveNote so a
     /// page can leave it out when nothing moved: the switch stopped before the move, so nothing was left behind.
     @Published private(set) var leftNote: String?
+    /// Where the profile's Claude window stands once the switch let go of it: closed until the switch is settled (moved
+    /// sessions not linked yet: windowStaysClosed), open again (windowOpenAgain), or watched after a Cancel (windowLateClose).
+    /// nil: nothing to say (it wasn't closed by this switch).
+    @Published private(set) var windowNote: String?
     /// The plan before it ran: how many sessions and tasks move (the page's steps say it).
     @Published private(set) var planned: SwitchPlan?
     /// What the folder named at the switch's last look (the page's check line): the switch's own read, never the page's.
@@ -96,7 +101,8 @@ final class SwitchRunner: ObservableObject {
     private func fail(_ at: FailedStep, _ why: String) { failedStep = at; phase = .failed(why) }
     private weak var model: SettingsModel?
     private var timer: Timer?
-    private var closeStarted = Date()
+    /// This switch's hold on the profile's Claude window (ClaudeWindow.swift): its mark, its close, and reopening it.
+    private var hold: WindowHold?
     private let reads = DispatchQueue(label: "cl_audit.switch-reads", qos: .utility)
 
     init(profile: String, model: SettingsModel) {
@@ -107,7 +113,16 @@ final class SwitchRunner: ObservableObject {
 
     /// The window mark's name for this switch (SwitchMarker): the window stays closed from the move until the sign-in ends.
     private var markName: String { "switch-" + (goal?.standby ?? "again") }
-    private func windowKey(_ e: AccountEntry) -> String { Launcher.dataDirKey(of: Account(e)) }
+
+    /// The page's words for the window (windowNote).
+    static func windowStaysClosed(_ to: String) -> String {
+        "The Claude window stays closed until you Undo the move, sign in as \(to), or pick Leave it as it is on the Sessions card."
+    }
+    static let windowStaysPrefix = "The Claude window stays closed"
+    static let windowOpenAgain = "The Claude window is open again."
+    /// The window this switch asked to quit stalled (it was asking about work under way): if it closed by that answer since,
+    /// the next try counts it as closed by this switch, so it opens again once the switch is settled.
+    private var quitAsked = false
 
     /// The Switch page's key for the account it went for ("<profile>~<standby id>").
     var key: String { AccountEntry.switchKey(profile, goal?.standby ?? targetSnapshot?.id ?? "") }
@@ -142,17 +157,15 @@ final class SwitchRunner: ObservableObject {
     /// without a sign-in): only the sign-in.
     func start(_ s: StandbyAccount) {
         guard !isRunning, let e = entry else { return }
-        targetSnapshot = s; receipt = nil; moveNote = nil; leftNote = nil; planned = nil; failedStep = nil
+        targetSnapshot = s; receipt = nil; moveNote = nil; leftNote = nil; windowNote = nil; planned = nil; failedStep = nil
         let g = Goal(standby: s.id, wantedSeat: s.seat, wantedEmail: s.email,
                      from: Account.signedInSeat(configDir: e.configDir) ?? e.seat, started: Date())
         // the profile's folder deleted: nothing closes, moves or signs in (a sign-in would make it again), said instead
         if let why = ClaudeCLI.goneLine(e.configDir) { goal = g; fail(.notStarted, why); return }
         // a switch that stopped half way is put back first: never a second move on top of it
         if let u = SwitchEngine.unfinished(profile: profile).first {
-            goal = g; receipt = u
-            // never for good: Undo puts it back, and signing in as the account it went for finishes it (linkReached)
-            let to = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { u.to.same($0) }?.email.map(AccountNames.short) ?? "its account"
-            fail(.notStarted, "An earlier switch of \(e.name) stopped half way. Undo it (below, or on the Sessions card), sign in as \(to) to finish it, or Leave it as it is (Sessions card); then switch again.")
+            goal = g
+            showStopped(u, e)
             return
         }
         // a restore or import that stopped half way, or the move to the default profile: said, which and where (Flows.swift)
@@ -217,37 +230,40 @@ final class SwitchRunner: ObservableObject {
     }
 
     /// The window closes (its own quit, which may ask about work under way; only this profile's window, by its data
-    /// folder), and stays closed until the sign-in ends: no window opener starts it meanwhile (SwitchMarker).
+    /// folder), and stays closed until the sign-in ends: no window opener starts it meanwhile (SwitchMarker, WindowHold).
     private func closeAndMove(_ e: AccountEntry, _ g: Goal) {
         goal = g
-        guard SwitchMarker.claim(windowKey(e), profile: profile, standby: markName) else {
+        let h = WindowHold(e, profile: profile, run: markName)
+        guard h.claim() else {
             fail(.closing, "Another run on \(e.name)'s Claude window is under way (a restore, an import or a switch)."); return
         }
-        let apps = Self.windowApps(e)
-        if apps.isEmpty { move(e, g); return }
+        hold = h
+        // (closed by its own answer since an earlier try asked it to quit: still this switch's to open again)
+        if h.isClosed { h.close(askedBefore: quitAsked, closed: {}, stalled: {}); quitAsked = false; move(e, g); return }
         phase = .closing
-        apps.forEach { $0.terminate() }
-        closeStarted = Date()
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] t in
-            guard let self, self.phase == .closing, let e = self.entry else { t.invalidate(); return }
-            if Self.windowClosed(e) { t.invalidate(); self.move(e, g); return }
-            if Date().timeIntervalSince(self.closeStarted) > 45 {
-                t.invalidate(); self.releaseWindow()
-                self.fail(.closing, "\(e.name)'s Claude window didn't close; it may be asking about work under way. Answer it, then try again. Nothing moved.")
-            }
-        }
+        h.close(closed: { [weak self] in
+            guard let self, self.phase == .closing else { return }
+            guard let e = self.entry else { self.hold?.release(); self.hold = nil; self.phase = .ready; return }   // the profile went meanwhile: never reopened
+            self.quitAsked = false
+            self.move(e, g)
+        }, stalled: { [weak self] in
+            guard let self else { return }
+            self.hold = nil                                    // the mark is gone; the window is still open
+            self.quitAsked = true
+            self.fail(.closing, "\(e.name)'s Claude window didn't close; it may be asking about work under way. Answer it, then try again. Nothing moved.")
+        })
     }
 
     /// The backup and the move, off the main thread (planned again now that the window is closed), then the sign-in.
     private func move(_ e: AccountEntry, _ g: Goal) {
         guard let s = targetSnapshot, case .success(let p) = SwitchEngine.plan(e, standby: s) else {
-            releaseWindow(); fail(.move, "The switch couldn't be planned again. Nothing moved."); return
+            windowDone(); fail(.move, "The switch couldn't be planned again. Nothing moved."); return
         }
         planned = p
         phase = .moving
+        let closedIt = hold?.closedByUs == true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Result { try SwitchEngine.run(p, windowClosed: { Self.windowClosed(e) }) }
+            let result = Result { try SwitchEngine.run(p, windowClosed: { Self.windowClosed(e) }, closedWindow: closedIt) }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 switch result {
@@ -260,7 +276,7 @@ final class SwitchRunner: ObservableObject {
                 case .failure(let err):
                     // stopped half way: its receipt, for Undo; nothing moved: nothing to put back
                     self.receipt = SwitchEngine.unfinished(profile: self.profile).first
-                    self.releaseWindow()
+                    self.windowDone()
                     // the backup, or (once it was made) the move itself
                     let backup: Bool = { if case .backup = err as? SwitchError { return true }; return false }()
                     self.fail(backup ? .backup : .move, "\(err)")
@@ -269,9 +285,21 @@ final class SwitchRunner: ObservableObject {
         }
     }
 
-    private func releaseWindow() {
-        guard let e = entry else { return }
-        SwitchMarker.release(windowKey(e), profile: profile, standby: markName)
+    /// The switch lets go of the window: its mark goes. While sessions it moved aren't linked yet (unsettled: Undo, Same
+    /// account again or Leave it as it is to come) the window stays closed, and the page says so; once settled, the window it
+    /// closed opens again (a receipt's own settle, SwitchEngine.settled, opens it for a move; with nothing moved, the hold).
+    private func windowDone() {
+        let h = hold ?? entry.map { WindowHold($0, profile: profile, run: markName) }
+        hold = nil
+        guard let h else { return }
+        if let r = receipt, r.closedWindow == true || h.closedByUs {
+            h.release()
+            if r.unfinished { windowNote = Self.windowStaysClosed(targetShort ?? "the account it went for") }
+            else if entry?.claudeWindow == true { windowNote = Self.windowOpenAgain }       // settled: opened by its settle
+            return
+        }
+        if receipt == nil, h.closedByUs, entry?.claudeWindow == true { windowNote = Self.windowOpenAgain }
+        h.finish()                                             // nothing moved: the window it closed opens again
     }
 
     /// Undo: the move put back from its receipt (the window must be closed), before Claude Code is on the new account.
@@ -288,7 +316,10 @@ final class SwitchRunner: ObservableObject {
                     self.moveNote = back.problems.isEmpty ? nil : back.problems.joined(separator: " ")
                     self.leftNote = nil
                     // only partly: it stays open, and says what was left
-                    if back.undone != nil { self.phase = .undone } else { self.fail(.move, Self.partlyWords(back)) }
+                    if back.undone != nil {
+                        self.phase = .undone
+                        self.windowSettled(back)                   // (undone: its settle opens the window it closed)
+                    } else { self.fail(.move, Self.partlyWords(back)) }
                 case .failure(let err): self.fail(.move, "\(err)")
                 }
             }
@@ -303,7 +334,7 @@ final class SwitchRunner: ObservableObject {
     /// never the folder's); nil: the profile's seat, else the folder's.
     func signInAgain(email given: String? = nil) {
         guard !isRunning, let e = entry, let email = given ?? e.seat?.email ?? Account.expectedEmail(configDir: e.configDir) else { return }
-        targetSnapshot = nil; receipt = nil; moveNote = nil; leftNote = nil; planned = nil; failedStep = nil
+        targetSnapshot = nil; receipt = nil; moveNote = nil; leftNote = nil; windowNote = nil; planned = nil; failedStep = nil
         // (the seat is the one to reach only when it is that address: another address is watched by its address)
         let seat = e.seat.flatMap { s in s.email.map { $0.lowercased() == email.lowercased() } == true ? s : nil }
         begin(e, Goal(standby: nil, wantedSeat: given == nil ? e.seat : seat, wantedEmail: email,
@@ -316,9 +347,11 @@ final class SwitchRunner: ObservableObject {
         if g.standby == nil { signInAgain(email: g.wantedEmail); return }
         // the sessions moved already (Undo not used): only the sign-in again, the window kept closed meanwhile
         if canUndo, let e = entry {
-            guard SwitchMarker.claim(windowKey(e), profile: profile, standby: markName) else {
+            let h = WindowHold(e, profile: profile, run: markName)
+            guard h.claim() else {
                 fail(.signIn, "Another run on \(e.name)'s Claude window is under way."); return     // the sign-in it was retrying
             }
+            hold = h; windowNote = nil
             begin(e, Goal(standby: g.standby, wantedSeat: g.wantedSeat, wantedEmail: g.wantedEmail, from: g.from, started: Date()))
             return
         }
@@ -328,10 +361,10 @@ final class SwitchRunner: ObservableObject {
     private func begin(_ e: AccountEntry, _ g: Goal) {
         clearMarker()
         // the profile's folder deleted: never made again by a sign-in (FolderGuard), said instead
-        if let why = ClaudeCLI.goneLine(e.configDir) { goal = g; releaseWindow(); fail(.signIn, why); return }
-        guard let claude = model?.requireClaude() else { goal = g; releaseWindow(); fail(.signIn, model?.noClaudeWhy ?? ClaudeInstall.missing + "."); return }
+        if let why = ClaudeCLI.goneLine(e.configDir) { goal = g; windowDone(); fail(.signIn, why); return }
+        guard let claude = model?.requireClaude() else { goal = g; windowDone(); fail(.signIn, model?.noClaudeWhy ?? ClaudeInstall.missing + "."); return }
         guard ClaudeCLI.openLogin(claude, account: Account(e), email: g.wantedEmail.isEmpty ? nil : g.wantedEmail, marker: g.again ? Self.marker(for: profile) : nil) else {
-            goal = g; releaseWindow(); fail(.signIn, "Terminal didn't open."); return
+            goal = g; windowDone(); fail(.signIn, "Terminal didn't open."); return
         }
         goal = g
         phase = .waiting
@@ -340,19 +373,53 @@ final class SwitchRunner: ObservableObject {
     }
 
     /// Stops waiting: nothing changed, so there is nothing to put back.
-    /// While the window closes: it stays open (asked to quit already, it may still close by its own answer later).
-    /// While the sign-in is waited for after a move: the moved sessions stay where they went, and Undo puts them back.
+    /// While the window closes: nothing moved; it was asked to quit already, so if it closes by its own answer within a
+    /// minute it is opened again (WindowHold.cancelClosing).
+    /// While the sign-in is waited for after a move: the moved sessions stay where they went, and Undo puts them back; the
+    /// window stays closed until then (windowDone).
     func cancel() {
         guard phase != .moving else { return }               // the move finishes or stops by itself
         timer?.invalidate(); timer = nil
         clearMarker()
-        releaseWindow()
+        if phase == .closing, let h = hold {
+            hold = nil
+            if h.cancelClosing(busy: { [weak self] in self?.isRunning ?? true }, watched: { [weak self] in
+                if self?.windowNote == Self.windowLateClose { self?.windowNote = nil }
+            }) { windowNote = Self.windowLateClose }
+        } else {
+            windowDone()
+        }
         if phase == .waiting || phase == .closing { phase = .ready }
     }
 
+    /// A switch this page shows was settled (undone, left as it is): the window it closed is opened by the receipt's settle
+    /// (SwitchEngine.settled); the page says so instead of "stays closed".
+    func windowSettled(_ r: SwitchReceipt) {
+        guard r.closedWindow == true else { if windowNote?.hasPrefix(Self.windowStaysPrefix) == true { windowNote = nil }; return }
+        windowNote = entry?.claudeWindow == true ? Self.windowOpenAgain : nil
+    }
+
+    static let windowLateClose = "The Claude window was already asked to quit: if it closes, cl_audit opens it again."
+
     /// Back to the start, for another switch from the page.
     func reset() { cancel(); guard phase != .moving else { return }; phase = .ready; goal = nil; moveNote = nil; leftNote = nil; planned = nil; failedStep = nil
-        if !canUndo { receipt = nil } }
+        quitAsked = false
+        if windowNote != Self.windowLateClose { windowNote = nil }          // (a Cancel's late-close watch still says its line)
+        if !canUndo { receipt = nil }
+        // a switch of this profile that moved sessions, closed the window and isn't settled holds the window closed: the page
+        // shows it at once (its Undo, and why the window stays closed), as Switch would; a click on the window comes here
+        if let e = entry, let u = SwitchEngine.unfinished(profile: profile).first, u.closedWindow == true { showStopped(u, e) }
+    }
+
+    /// An earlier switch of this profile that stopped half way: shown as the page's own stop (its Undo below), with the
+    /// window's line when it closed the window.
+    private func showStopped(_ u: SwitchReceipt, _ e: AccountEntry) {
+        receipt = u
+        // never for good: Undo puts it back, and signing in as the account it went for finishes it (linkReached)
+        let to = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { u.to.same($0) }?.email.map(AccountNames.short) ?? "its account"
+        fail(.notStarted, "An earlier switch of \(e.name) stopped half way. Undo it (below, or on the Sessions card), sign in as \(to) to finish it, or Leave it as it is (Sessions card); then switch again.")
+        if u.closedWindow == true { windowNote = Self.windowStaysClosed(to) }
+    }
 
     /// One look at the folder: its file is read off the main thread, and what it said is judged here, on the main thread.
     func look() {
@@ -396,7 +463,7 @@ final class SwitchRunner: ObservableObject {
         clearMarker()
         // Claude Code on the account the sessions went to: the move is linked (the way back is a switch the other way)
         if o == .reached, let r = receipt { SwitchEngine.markLinked(r.id); receipt = SwitchEngine.store.load(r.id) ?? r }
-        releaseWindow()
+        windowDone()                                          // (linked: its settle opens the window it closed, after this turn)
         // the account now in the folder is the one the profile works on, at once (the agent would within seconds too)
         if o != .timedOut { model?.noteAccounts(); model?.resolveNow(profile) }
         switch o {

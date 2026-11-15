@@ -186,8 +186,11 @@ struct SwitchPage: View {
                 Button("Keep \(AccountNames.short(e))") { leave() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
             }
         case .timedOut, .failed:
-            Button("Try again") { if again { runner.retry() } else { consent = ConsentRequest(flow: "Account switching") { runner.retry() } } }
-                .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            // (an earlier switch that stopped half way: Undo and Leave it as it is are what moves it on, not another try)
+            if !(runner.failedStep == .notStarted && runner.canUndo) {
+                Button("Try again") { if again { runner.retry() } else { consent = ConsentRequest(flow: "Account switching") { runner.retry() } } }
+                    .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            }
             if runner.canUndo { undoKey }
             Button("‹ Back") { leave() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Back to \(name)'s settings")
         case .closing:
@@ -424,12 +427,13 @@ struct SwitchPage: View {
                 }
             } else if entry.claudeWindow {
                 SRow(label: "Claude window", stacked: true) {
-                    value("Open it and sign it in to \(to) yourself (\(entry.windowWords)): its sessions show on that account.")
+                    value("Sign it in to \(to) yourself there (\(entry.windowWords)): its sessions show on that account.")
                 }
             }
             SRow(label: "Stayed", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
             if !appBehind { SRowLine(text: "\(from) stands by on \(name) now: nothing read, switch back any time.") }
             if let n = Self.noteLine(runner.moveNote, runner.leftNote) { SRowLine(text: n) }
+            if let w = runner.windowNote { SRowLine(text: w) }
         }
     }
 
@@ -444,6 +448,7 @@ struct SwitchPage: View {
                     value("\(sessionWords(plan).prefix(1).uppercased() + sessionWords(plan).dropFirst()) moved to \(to) already. Sign in as \(to) again, or Undo the move to put them back under \(from).")
                 }
             }
+            if let w = runner.windowNote { SRowLine(text: w) }
         }
     }
 
@@ -467,6 +472,7 @@ struct SwitchPage: View {
             if let n = Self.noteLine(runner.moveNote, Self.leftShown(runner.leftNote, movedNothing: runner.receipt == nil && runner.phase != .undone)) {
                 SRowLine(text: n)
             }
+            if let w = runner.windowNote { SRowLine(text: w) }
         }
     }
 
@@ -484,7 +490,7 @@ struct SwitchPage: View {
             }
             if entry.claudeWindow {
                 SRow(label: "Claude window", stacked: true) {
-                    value(moves ? "It closes for the move (\(entry.windowWords)). Sign it in to \(to) yourself when you open it again: cl_audit never signs it in or out."
+                    value(moves ? "It closes for the move (\(entry.windowWords)) and opens again when the switch is done. Sign it in to \(to) yourself there: cl_audit never signs it in or out."
                                 : "Its own sign-in stays as it is (\(entry.windowWords)): sign it in to \(to) yourself if you like.")
                 }
             }
@@ -492,6 +498,7 @@ struct SwitchPage: View {
             SRowLine(text: Self.staysLine(from: from, name: name, moveBack: movesBack,
                                           owner: backNote == nil ? view.clash : backNote?.owner))
             if let n = Self.noteLine(runner.moveNote, Self.leftInPlan(left: runner.leftNote, moved: runner.receipt != nil, plan: plan)) { SRowLine(text: n) }
+            if let w = runner.windowNote { SRowLine(text: w) }               // (a Cancel's late-close watch, said here too)
         }
     }
 
