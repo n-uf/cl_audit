@@ -823,6 +823,93 @@ MainActor.assumeIsolated {
         try? fm.removeItem(atPath: dataO); try? fm.removeItem(atPath: codeO)
     }
 
+    // ---- the window's own folders (backlog/, waiting-input/): a backup takes their plain files (apart, the format as it was); a restore puts each back only where none is
+    do {
+        let dataF = w + "/Claude-wf", codeF = w + "/.claude-wf"          // not "-f": the import (zip) section's target("f") leaves its own there
+        let scopeF = "\(dataF)/claude-code-sessions/\(sid(1))/\(sid(2))"
+        let backlog = #"{"version":1,"items":[{"id":"b1","text":"later"}]}"#
+        write("\(scopeF)/local_\(sid(30)).json", #"{"sessionId":"local_\#(sid(30))","cliSessionId":"\#(sid(130))","isArchived":false}"#)
+        write("\(scopeF)/backlog/tasks.json", backlog)
+        write("\(scopeF)/waiting-input/w1.json", "{}")
+        write("\(scopeF)/waiting-input/deeper/x.json", "{}")                                 // one level only
+        write(w + "/elsewhere-f.json", "{}")
+        symlink(w + "/elsewhere-f.json", "\(scopeF)/waiting-input/link.json")                 // a link: never taken
+        write("\(codeF)/CLAUDE.md", "# rules\n")
+        let bF = try! SessionsBackup.make(SessionsBackup.Source(profile: "f", dataDir: dataF, codeDir: codeF), kind: .manual, place: place)
+        let folderPaths = (bF.windowExtra ?? []).map(\.path).sorted()
+        let bFdir = SessionsBackup.folder(profile: "f", place: place).appendingPathComponent(bF.id).path
+        check(bF.version == 2 && folderPaths == ["window-extra/\(sid(1))/\(sid(2))/backlog/tasks.json", "window-extra/\(sid(1))/\(sid(2))/waiting-input/w1.json"]
+              && !bF.items.contains { $0.path.hasPrefix("window-extra/") } && read(bFdir + "/window-extra/\(sid(1))/\(sid(2))/backlog/tasks.json") == backlog
+              && SessionsBackup.otherFiles(bF) == 0 && SessionsBackup.summary(bF).hasPrefix("1 session · backlog · waiting input · "),
+              "backup: the backlog and the waiting input's plain files, one level, never a link, apart from the items; the format as it was: \(folderPaths) version \(bF.version) other \(SessionsBackup.otherFiles(bF)) summary \(SessionsBackup.summary(bF)) items \(bF.items.map { "\($0.role):\($0.path)" }) backlogRead \(read(bFdir + "/window-extra/\(sid(1))/\(sid(2))/backlog/tasks.json") == backlog)")
+        // a reader that doesn't know them (26.11.43's Manifest: no windowExtra key) decodes the same file and sees the rest only
+        struct OlderItem: Decodable { var path: String }
+        struct OlderManifest: Decodable { var version: Int; var items: [OlderItem] }
+        let older = try? JSONDecoder().decode(OlderManifest.self, from: fm.contents(atPath: bFdir + "/backup.json")!)
+        check(older?.version == 2 && older?.items.allSatisfy { !$0.path.hasPrefix("window-extra/") } == true,
+              "backup: an older reader decodes it (the extra key ignored) and finds only what it knows: older version \(older?.version as Any) decoded \(older != nil)")
+        // restore: missing here, put back (only those), Undo takes them back
+        let tF = SessionsRestore.Target(profile: "f", dataDir: dataF, codeDir: codeF, inUse: seatA)
+        let bkF = SessionsRestore.Backup(profile: "f", id: bF.id, place: place)
+        try? fm.removeItem(atPath: scopeF + "/backlog"); try? fm.removeItem(atPath: scopeF + "/waiting-input/w1.json")
+        let pf = SessionsRestore.plan(tF, bkF)
+        check(pf.refusal == nil && pf.folderFiles.map(\.leaf).sorted() == ["tasks.json", "w1.json"] && pf.entries.isEmpty && pf.windowNeeded
+              && SessionsRestore.folderFilesWords(pf) == "the Code-tab backlog and 1 waiting-input file",
+              "restore: the two missing files of the window's folders come back: \(pf.refusal ?? "ok") \(pf.folderFiles.map(\.leaf))")
+        let rf = try! SessionsRestore.run(tF, bkF, windowClosed: { true })
+        check(read(scopeF + "/backlog/tasks.json") == backlog && fm.fileExists(atPath: scopeF + "/waiting-input/w1.json"), "restore: put back as they were")
+        _ = try! SessionsRestore.undo(rf.id, windowClosed: { true })
+        check(!fm.fileExists(atPath: scopeF + "/backlog") && !fm.fileExists(atPath: scopeF + "/waiting-input/w1.json") && fm.fileExists(atPath: scopeF + "/waiting-input/deeper/x.json"),
+              "restore: Undo takes them back, and the folder it made")
+        // one that is there stays as it is, whatever it holds
+        write("\(scopeF)/backlog/tasks.json", #"{"version":1,"items":[]}"#)
+        let pf2 = SessionsRestore.plan(tF, bkF)
+        check(pf2.folderFiles.map(\.leaf) == ["w1.json"] && pf2.folderFilesThere == 1 && SessionsRestore.folderFilesWords(pf2) == "1 waiting-input file"
+              && !pf2.notes.contains { $0.contains("backlog") },                 // (counted, as entries back where they were are: no note)
+              "restore: a backlog that is here is left as it is; only the missing file comes: \(pf2.folderFiles.map(\.leaf))")
+        try? fm.removeItem(atPath: scopeF + "/waiting-input/w1.json"); write("\(scopeF)/waiting-input/w1.json", "{}")
+        try? fm.removeItem(atPath: scopeF + "/backlog")
+        let pf3 = SessionsRestore.plan(tF, bkF)
+        check(SessionsRestore.folderFilesWords(pf3) == "the Code-tab backlog", "restore page: the backlog alone, by its name")
+        // another account's files go back only into that account's own folder: with another account in use, and that one not the
+        // profile's, they stay in the backup, said (a switch never moves them)
+        let pf5 = SessionsRestore.plan(SessionsRestore.Target(profile: "f", dataDir: dataF, codeDir: codeF, inUse: SeatID(account: sid(3), organization: sid(4))), bkF)
+        check(pf5.folderFiles.isEmpty && pf5.notes.contains { $0.hasPrefix("2 files of the window's backlog or waiting input belong to an account this profile doesn't use, or whose folder isn't here") },
+              "restore: another account's backlog never lands in the account in use's folder: \(pf5.notes)")
+        // …and with that account one of the profile's, whose folder is here: into its own folder
+        let pf6 = SessionsRestore.plan(SessionsRestore.Target(profile: "f", dataDir: dataF, codeDir: codeF, inUse: SeatID(account: sid(3), organization: sid(4)), seats: [seatA]), bkF)
+        check(pf6.folderFiles.map(\.dest) == ["claude-code-sessions/\(sid(1))/\(sid(2))/backlog/tasks.json"],
+              "restore: a backlog of one of the profile's accounts goes back into that account's own folder: \(pf6.folderFiles.map(\.dest))")
+        // a backlog that is a file, a waiting input that is a dangling link: left as they are, nothing planned through them
+        write(scopeF + "/backlog", "not a folder")
+        try? fm.removeItem(atPath: scopeF + "/waiting-input"); symlink(w + "/nowhere-f", scopeF + "/waiting-input")
+        let pf4 = SessionsRestore.plan(tF, bkF)
+        check(pf4.refusal == nil && pf4.folderFiles.isEmpty && pf4.folderFilesThere == 0
+              && pf4.notes.contains("The window's backlog folder is a link or a file here: its files stay in the backup.")
+              && pf4.notes.contains("The window's waiting-input folder is a link or a file here: its files stay in the backup."),
+              "restore: a folder that is a file or a link: its files are left, nothing written through it: \(pf4.folderFiles.map(\.dest))")
+        try? fm.removeItem(atPath: scopeF + "/backlog"); try? fm.removeItem(atPath: scopeF + "/waiting-input")
+        // a backup.json whose windowExtra names another folder, or a path outside window-extra: refused whole
+        let mPath = SessionsBackup.folder(profile: "f", place: place).appendingPathComponent(bF.id).appendingPathComponent("backup.json").path
+        let orig = fm.contents(atPath: mPath)!
+        func doctored(_ change: (inout [String: Any]) -> Void) -> String? {
+            var j = json(orig)!; change(&j)
+            try! JSONSerialization.data(withJSONObject: j).write(to: URL(fileURLWithPath: mPath))
+            defer { try! orig.write(to: URL(fileURLWithPath: mPath)) }
+            return SessionsRestore.plan(tF, bkF).refusal
+        }
+        func extraPaths(_ f: @escaping (String) -> String) -> (inout [String: Any]) -> Void {
+            { j in j["windowExtra"] = (j["windowExtra"] as! [[String: Any]]).map { var it = $0; it["path"] = f(it["path"] as! String); return it } }
+        }
+        let other = doctored(extraPaths { $0.replacingOccurrences(of: "/waiting-input/", with: "/elsewhere/") })
+        let outside = doctored(extraPaths { $0.replacingOccurrences(of: "window-extra/", with: "window/") })
+        let signIn = doctored(extraPaths { $0.replacingOccurrences(of: "/w1.json", with: "/credentials.json") })
+        let asImport = doctored { $0["kind"] = ["type": "imported", "file": "x.zip"] }
+        check([other, outside, signIn, asImport].allSatisfy { $0?.contains("a place it doesn't keep them") == true },
+              "restore: windowExtra naming another folder, a path outside window-extra, a sign-in name, or in an imported backup refuses the whole backup: \([other, outside, signIn, asImport].map { $0 ?? "nil" })")
+        try? fm.removeItem(atPath: dataF); try? fm.removeItem(atPath: codeF)
+    }
+
     // ---- the older rules refuse version 3: 26.11.7 reads `version == 1`, 26.11.8 `<= 2`; and a reader without the config role can't decode it
     let v3 = oi.parts[0].manifest.version
     check(v3 == 3 && !(v3 == 1) && !(v3 <= 2), "format: this build writes 3, which 26.11.7's guard (== 1) and 26.11.8's (<= 2) refuse")
