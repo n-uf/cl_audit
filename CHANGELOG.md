@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- The sentences that name a shortened key now use its new name: Import's "Undo import", the Code card's "Pick folder…", and the default-profile page's "‹ Back" (it read "Back to the settings").
 
 ## 26.11.34 — 2026-11-15
 

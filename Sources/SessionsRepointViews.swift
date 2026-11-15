@@ -81,7 +81,7 @@ struct CodeCard: View {
     @Environment(\.face) private var face
 
     var body: some View {
-        SCard(title: "Code", info: "A move carries the sessions, not the code they ran in. On the old Mac, cl_audit read each project with read-only git: where to clone it from (any user name, password or token taken out of the address), the branch and latest commit, and how many commits weren't pushed and files weren't committed there. It travels only in the encrypted disk image. cl_audit never runs git on this Mac: the commands are here for you to copy. Clone first or after: once a folder is here, point its sessions at it (Pick its folder on this Mac…).") {
+        SCard(title: "Code", info: "A move carries the sessions, not the code they ran in. On the old Mac, cl_audit read each project with read-only git: where to clone it from (any user name, password or token taken out of the address), the branch and latest commit, and how many commits weren't pushed and files weren't committed there. It travels only in the encrypted disk image. cl_audit never runs git on this Mac: the commands are here for you to copy. Clone first or after: once a folder is here, point its sessions at it (Pick folder…).") {
             if list.projects.isEmpty {
                 SRow(label: "Projects", first: true, stacked: true) { value("none: the sessions named no folder") }
             }

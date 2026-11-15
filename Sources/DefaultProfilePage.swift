@@ -185,9 +185,11 @@ struct DefaultProfilePage: View {
             if let k = runner.inner?.key { Button("Show the restore") { model.showRestore(k) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)) }
         case .done:
             if runner.undoRefused == nil { Button("Undo this move") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)) }
-            Button("Back to the settings") { model.selection = runner.targetID ?? model.homeSelection }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            Button("‹ Back") { model.selection = runner.targetID ?? model.homeSelection }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+                .help("Back to the settings")
         case .undone:
-            Button("Back to the settings") { model.selection = model.homeSelection }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            Button("‹ Back") { model.selection = model.homeSelection }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+                .help("Back to the settings")
         }
     }
 
