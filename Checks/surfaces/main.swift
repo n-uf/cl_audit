@@ -387,6 +387,92 @@ do {
           "the app on ultra-4: in use, so not offered as TO; ultra-1 is: \(page4.pickList.map(\.email))")
 }
 
+// ============ 3c. one writer: the cl_audit window never writes a record; the agent rewrites it when asked and at every read ============
+do {
+    let keepAnnounce = Store.announce, keepAnnounceStatus = Store.announceStatus
+    Store.announce = {}; Store.announceStatus = { _ in }       // a throwaway home: no running cl_audit is told
+    defer { Store.announce = keepAnnounce; Store.announceStatus = keepAnnounceStatus }
+    Login.runSecurity = { _ in (44, Data()) }                   // no sign-in (a fake answer, never the Keychain)
+    var posts: [String] = []
+    UsageReader.testPoster = { _, title, _, _, _ in posts.append(title); return 0 }
+    defer { UsageReader.testPoster = nil }
+    let folder = Store.statusFolder
+    func snapshot() -> [String: Data] {
+        let names = (try? fm.contentsOfDirectory(atPath: folder.path)) ?? []
+        return Dictionary(uniqueKeysWithValues: names.map { ($0, (try? Data(contentsOf: folder.appendingPathComponent($0))) ?? Data()) })
+    }
+    func stamp(_ id: String) -> Store.FileStamp? { Store.FileStamp.of(folder.appendingPathComponent("\(id).json")) }
+    func bytes(_ id: String) -> Data? { try? Data(contentsOf: folder.appendingPathComponent("\(id).json")) }
+    // a profile on ultra-1 whose folder signed in to ultra-2 (a switch ended); its record, the agent's, still names ultra-1
+    var ow = profile("ow", "~/.claude-ow", u1); ow.claudeWindow = false
+    ow.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "o2")]
+    var old = IconStatus(state: "ok"); old.loginEmail = u1.email; old.weekly = 40; old.updatedAt = Date()
+    old.resolved = AccountResolver.resolve(ow, among: [ow], app: .unknown, code: u1, loginEmail: u1.email, names: [:], now: t0)
+    _ = Store.writeStatus("ow", old)
+    let oldBytes = bytes("ow")
+    put(expand("~/.claude-ow/.claude.json"), #"{"oauthAccount":{"accountUuid":"\#(u2.account)","organizationUuid":"\#(u2.organization!)","emailAddress":"\#(u2.email!)"}}"#)
+    let after = FolderRules.noteAccounts([ow], signedIn: { _ in u2 }, status: { _ in nil }, now: t0)[0]
+    var fresh = profile("ow2", "~/.claude-ow2", u3); fresh.claudeWindow = false       // a profile with no record yet
+    try! Store.save([after, fresh])
+    let before = snapshot(), beforeStamp = stamp("ow")
+    let m = SettingsModel()
+    m.accounts = [after, fresh]
+    m.resolveNow("ow")                                          // as the Switch page's end does
+    m.resolveWithoutAgent()                                     // as the window does every 3 s while the agent isn't running
+    check(snapshot() == before && stamp("ow") == beforeStamp && bytes("ow2") == nil,
+          "Settings' refresh (resolveNow, resolveWithoutAgent) writes nothing to status/: \(snapshot().keys.sorted())")
+    check(Store.isHeld("ow") && AccountView.of(Store.status(for: after)).label == u2.email,
+          "while it waits for the agent, the window shows its own answer from memory: ultra-2 in use")
+    check(Store.isHeld("ow2") && Store.status("ow2")?.resolved != nil, "with the agent away, its answer for a profile with no record is held too")
+    check(StatusCodec.decode(bytes("ow") ?? Data())?.resolved == old.resolved && Store.status("ow")?.loginEmail == u1.email,
+          "the record on disk stays the agent's, whole (no lossy re-save of what the window was shown)")
+    // the agent's reader: its first save lands its own record, and the window's answer is let go (the record wins)
+    let reader = UsageReader(after, defaults: UserDefaults(suiteName: "cl-audit-surfaces-onewriter-\(getpid())")!)
+    reader.save()
+    let agentBytes = bytes("ow")
+    check(agentBytes != nil && agentBytes != oldBytes && !Store.isHeld("ow") && Store.status("ow")?.resolved?.email == u2.email,
+          "the agent's new record lands: the held answer goes, the record names ultra-2")
+    // a wrong record (an older cl_audit window's write): a plain tick leaves it, the reader's state didn't change...
+    _ = Store.writeStatus("ow", old)
+    reader.save()
+    check(bytes("ow") == oldBytes, "a save with nothing changed writes nothing (no write on every tick)")
+    // ...but a refresh request rewrites the record at once, even with its state unchanged
+    reader.refreshNow()
+    check(bytes("ow") == agentBytes, "the agent rewrites its record on a refresh request even when its state is unchanged: the wrong one is gone")
+    // and the next read replaces a wrong record, whatever the read found
+    _ = Store.writeStatus("ow", old)
+    let reply = Data(#"{"seven_day":{"utilization":30,"resets_at":"2099-01-02T00:00:00Z"}}"#.utf8)
+    let ok200 = HTTPURLResponse(url: URL(string: "https://example.com")!, statusCode: 200, httpVersion: nil, headerFields: nil)
+    reader.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: reader.generation)
+    let replaced = Store.status("ow")
+    let replacedWeek: Double? = replaced?.weekly
+    check(bytes("ow") != oldBytes && replacedWeek == 30 && replaced?.resolved?.email == u2.email,
+          "a wrong record is replaced on the agent's next read: \(String(describing: replacedWeek))")
+    reader.stop()
+    RunLoop.main.run(until: Date().addingTimeInterval(0.5))    // the refresh's sign-in read (no sign-in) ends, dropped
+    check(posts.isEmpty, "no alert from these reads: \(posts)")
+    // a record from before the resolver (an old Dock icon's file) still decodes, with or without a held answer over it
+    put(folder.appendingPathComponent("oldrec.json").path, #"{"loginEmail":"ultra-1@example.com","state":"ok","updatedAt":1800000000,"weekly":12}"#)
+    check(Store.status("oldrec")?.weekly == 12 && Store.status("oldrec")?.resolved == nil, "an old record decodes as before")
+    let answer = AccountResolver.resolve(ow, among: [ow], app: .unknown, code: u1, loginEmail: u1.email, names: [:], now: t0)
+    Store.hold("oldrec", answer)
+    check(Store.status("oldrec")?.weekly == 12 && Store.status("oldrec")?.resolved == answer, "a held answer over an old record: its numbers kept, the answer shown")
+    var rewritten = StatusCodec.decode(bytes("oldrec") ?? Data()) ?? IconStatus(state: "ok"); rewritten.weekly = 13
+    _ = Store.writeStatus("oldrec", rewritten)
+    check(!Store.isHeld("oldrec") && Store.status("oldrec")?.weekly == 13 && Store.status("oldrec")?.resolved == nil,
+          "the agent's write of it wins over the held answer")
+    // no one but the agent's reader writes a record
+    let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
+    var writers: [String] = []
+    for f in ((try? fm.contentsOfDirectory(atPath: src.path)) ?? []).sorted() where f.hasSuffix(".swift") {
+        let lines = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? []
+        for (i, l) in lines.enumerated() where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") && l.contains("Store.writeStatus(") {
+            writers.append("\(f):\(i + 1)")
+        }
+    }
+    check(writers.count == 1 && writers[0].hasPrefix("Reader.swift:"), "Store.writeStatus is called by the agent's reader alone: \(writers)")
+}
+
 // ============ 4. a deleted folder is never made again: no claude for a folder that isn't there ============
 do {
     var keychainAsks: [String] = []
