@@ -1312,5 +1312,114 @@ do {
     try? fm.removeItem(atPath: dir)
 }
 
+// ============ 17. TaskRegistry: the task file's one owner (the twin rule, the same bytes, compare-and-swap) ============
+do {
+    let dir = home + "/tasks-registry"
+    try? fm.removeItem(atPath: dir)
+    let src = dir + "/src", dst = dir + "/dst"
+    try? fm.createDirectory(atPath: src, withIntermediateDirectories: true)
+    try? fm.createDirectory(atPath: dst, withIntermediateDirectories: true)
+    let a: [String: Any] = ["id": "nightly-digest", "cronExpression": "0 3 * * *", "displayName": "Nightly / digest", "enabled": true]
+    let b: [String: Any] = ["id": "weekly-report", "cronExpression": "0 9 * * 1", "enabled": true]
+    let c: [String: Any] = ["id": "kept-here", "cronExpression": "*/10 * * * *", "enabled": false]
+    let srcJSON: [String: Any] = ["scheduledTasks": [a, b], "recordedSkips": ["nightly-digest": 2, "other": 1], "runRetries": ["weekly-report": 1]]
+    let dstJSON: [String: Any] = ["scheduledTasks": [c, a], "recordedSkips": ["nightly-digest": 2]]
+    let srcBytes = try! JSONSerialization.data(withJSONObject: srcJSON), dstBytes = try! JSONSerialization.data(withJSONObject: dstJSON)
+    fm.createFile(atPath: TaskRegistry.path(src), contents: srcBytes)
+    fm.createFile(atPath: TaskRegistry.path(dst), contents: dstBytes)
+
+    // the twin rule, as the switch said it (SwitchEngine.taskProblem forwards to it)
+    check(TaskRegistry.twinProblem(source: src, target: dst) == nil && SwitchEngine.taskProblem(source: src, target: dst) == nil,
+          "the same task under the same id, with the same state: no twin problem")
+    var other = dstJSON; other["scheduledTasks"] = [c, ["id": "nightly-digest", "cronExpression": "0 4 * * *", "enabled": true]]
+    try? fm.createDirectory(atPath: dir + "/twin", withIntermediateDirectories: true)
+    fm.createFile(atPath: TaskRegistry.path(dir + "/twin"), contents: try! JSONSerialization.data(withJSONObject: other))
+    check(TaskRegistry.twinProblem(source: src, target: dir + "/twin") == "the new account has a task with the same id and other settings",
+          "a differing twin is refused")
+
+    // the joined files: the very bytes the switch wrote before TaskRegistry (its algorithm, kept here as it was)
+    func before(_ source: [String: Any], _ target: [String: Any]) -> (Data, Data, Int) {
+        var source = source, target = target
+        let moving = source["scheduledTasks"] as? [[String: Any]] ?? []
+        let movingIDs = moving.compactMap { $0["id"] as? String }
+        var have = target["scheduledTasks"] as? [[String: Any]] ?? []
+        let ids = Set(have.compactMap { $0["id"] as? String })
+        have += moving.filter { ($0["id"] as? String).map { !ids.contains($0) } ?? true }
+        target["scheduledTasks"] = have
+        source["scheduledTasks"] = [[String: Any]]()
+        for key in ["recordedSkips", "runRetries"] {
+            guard var s = source[key] as? [String: Any] else { continue }
+            var t = target[key] as? [String: Any] ?? [:]
+            for id in movingIDs { if let v = s.removeValue(forKey: id) { t[id] = v } }
+            source[key] = s; target[key] = t
+        }
+        return (try! JSONSerialization.data(withJSONObject: source, options: [.withoutEscapingSlashes]),
+                try! JSONSerialization.data(withJSONObject: target, options: [.withoutEscapingSlashes]), movingIDs.count)
+    }
+    let old = before(srcJSON, dstJSON)
+    let j = TaskRegistry.joined(source: srcJSON, target: dstJSON)
+    check((try? TaskRegistry.encode(j.source)) == old.0 && (try? TaskRegistry.encode(j.target)) == old.1 && j.moved.count == old.2,
+          "the joined files are byte for byte what the switch wrote before (slashes unescaped, state with its tasks)")
+    let none = before(srcJSON, ["scheduledTasks": [[String: Any]]()])
+    let jn = TaskRegistry.joined(source: srcJSON, target: ["scheduledTasks": [[String: Any]]()])
+    check((try? TaskRegistry.encode(jn.target)) == none.1, "…and into an account with no task file")
+    let base = Data(#"{"scheduledTasks":[],"version":2}"#.utf8)
+    let pausedOld = try! JSONSerialization.data(withJSONObject: ["scheduledTasks": [a, b].map { t -> [String: Any] in var t = t; t["enabled"] = false; return t },
+                                                                 "version": 2], options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    check(TaskRegistry.paused(base: base, tasks: [a, b]) == pausedOld && SessionsRestore.pausedTasks(base: base, tasks: [a, b]) == pausedOld,
+          "restore's paused file: the same bytes as before")
+    check(TaskRegistry.taskList(srcBytes).count == 2 && SessionsRestore.taskList(srcBytes).count == 2 && TaskRegistry.ids(in: dst) == ["kept-here", "nightly-digest"]
+          && TaskRegistry.tasks(in: src).count == 2 && SwitchEngine.tasks(in: src).count == 2, "reading: the list, the ids, the tasks")
+
+    // compare-and-swap: written only while the file is exactly as it was read
+    let next = try! TaskRegistry.encode(j.target)
+    check(TaskRegistry.swap(next, at: TaskRegistry.path(dst), expected: srcBytes) == .changed && fm.contents(atPath: TaskRegistry.path(dst)) == dstBytes,
+          "a file that isn't as it was read: .changed, nothing written")
+    check(TaskRegistry.swap(next, at: TaskRegistry.path(dst), expected: dstBytes) == .written && fm.contents(atPath: TaskRegistry.path(dst)) == next,
+          "as it was read: written")
+    let mode = ((try? fm.attributesOfItem(atPath: TaskRegistry.path(dst)))?[.posixPermissions] as? NSNumber)?.intValue
+    check(mode == 0o644, "written over: the file's own mode kept (\(String(mode ?? 0, radix: 8)))")
+    let tight = dir + "/tight"
+    try? fm.createDirectory(atPath: tight, withIntermediateDirectories: true)
+    fm.createFile(atPath: TaskRegistry.path(tight), contents: dstBytes, attributes: [.posixPermissions: 0o600])
+    let tightOK = TaskRegistry.swap(next, at: TaskRegistry.path(tight), expected: dstBytes) == .written
+    let tightMode = ((try? fm.attributesOfItem(atPath: TaskRegistry.path(tight)))?[.posixPermissions] as? NSNumber)?.intValue
+    check(tightOK && tightMode == 0o600, "a 0600 task file stays 0600 (\(String(tightMode ?? 0, radix: 8)))")
+    // a temp an earlier stop left beside the file is swept
+    fm.createFile(atPath: tight + "/" + TaskRegistry.tempPrefix + "stale.tmp", contents: Data("x".utf8))
+    fm.createFile(atPath: tight + "/local_keep.json", contents: Data("{}".utf8))
+    TaskRegistry.sweep(tight)
+    check(!fm.fileExists(atPath: tight + "/" + TaskRegistry.tempPrefix + "stale.tmp") && fm.fileExists(atPath: tight + "/local_keep.json")
+          && TaskRegistry.exists(tight), "sweep: a leftover temp goes, nothing else")
+    let fresh = dir + "/fresh"
+    try? fm.createDirectory(atPath: fresh, withIntermediateDirectories: true)
+    check(TaskRegistry.swap(next, at: TaskRegistry.path(fresh), expected: dstBytes) == .changed && !TaskRegistry.exists(fresh),
+          "none there, but one was expected: .changed, nothing made")
+    check(TaskRegistry.swap(next, at: TaskRegistry.path(fresh), expected: nil) == .written && fm.contents(atPath: TaskRegistry.path(fresh)) == next,
+          "none there and none expected: made")
+    check(TaskRegistry.swap(next, at: TaskRegistry.path(fresh), expected: nil) == .changed, "made since (one there, none expected): .changed")
+    // never through a link, and nothing else than a plain file is swapped
+    let linkDir = dir + "/link"
+    try? fm.createDirectory(atPath: linkDir, withIntermediateDirectories: true)
+    fm.createFile(atPath: dir + "/elsewhere.json", contents: dstBytes)
+    symlink(dir + "/elsewhere.json", TaskRegistry.path(linkDir))
+    if case .failed = TaskRegistry.swap(next, at: TaskRegistry.path(linkDir), expected: dstBytes) {
+        check(fm.contents(atPath: dir + "/elsewhere.json") == dstBytes, "a link at the name: refused, the file it points to untouched")
+    } else { check(false, "a link at the name: refused") }
+    let fifoDir = dir + "/fifo"
+    try? fm.createDirectory(atPath: fifoDir, withIntermediateDirectories: true)
+    mkfifo(TaskRegistry.path(fifoDir), 0o600)
+    let t1 = Date()
+    if case .failed = TaskRegistry.swap(next, at: TaskRegistry.path(fifoDir), expected: nil) { check(Date().timeIntervalSince(t1) < 2, "a FIFO at the name: refused at once") }
+    else { check(false, "a FIFO at the name: refused") }
+    // taken away only while unchanged
+    check(TaskRegistry.remove(at: TaskRegistry.path(fresh), expected: dstBytes) == .changed && TaskRegistry.exists(fresh), "remove: not as expected, kept")
+    check(TaskRegistry.remove(at: TaskRegistry.path(fresh), expected: next) == .written && !TaskRegistry.exists(fresh), "remove: as expected, gone")
+    // no temp file is left behind
+    let leftovers = ((try? fm.subpathsOfDirectory(atPath: dir)) ?? []).filter { $0.hasSuffix(".tmp") }
+    check(leftovers.isEmpty, "no temp file left: \(leftovers)")
+    try? fm.removeItem(atPath: dir)
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
