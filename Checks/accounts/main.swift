@@ -1642,6 +1642,23 @@ do {
     let early = profile("early", "~/.claude-o20early", nil)
     check(FolderRules.seatTaken(fresh, among: [early, fresh], signedIn: { $0 == early.configDir ? h1 : ($0 == fresh.configDir ? upper(h1) : nil) })?.id == "early",
           "seatTaken: an earlier profile not linked yet signed in to it, ids in another case: taken")
+    // the default-profile move: the old profile's account is kept as a standby account only when the default profile hasn't
+    // it (the one owner rule, or its id in another organisation: StandbyTidy keeps one entry per id)
+    let h2Org = Seat(account: h2.account, organization: "00000000-0000-4000-8000-0000000000c2", email: h2.email)
+    let def = profile("def", "~/.claude-o20def", h2, standby: [StandbyAccount(email: "HEX-1@example.com", id: "d1")])
+    check(!DefaultProfileRunner.mayKeep(h1, on: def) && !DefaultProfileRunner.mayKeep(upper(h2), on: def) && !DefaultProfileRunner.mayKeep(h2Org, on: def)
+          && DefaultProfileRunner.mayKeep(hexSeat(3, "hex-3@example.com"), on: def),
+          "canKeepOldAsStandby: not one the default has on standby by its address, nor its account in use (any case, or its id in another organisation); a free one: yes")
+    // …and its standby merge, as StandbyTidy keeps the list: by id in any organisation, else by address, never the account in use
+    let e3 = hexSeat(3, "hex-3@example.com")
+    let def2 = profile("def2", "~/.claude-o20def2", h2, standby: [StandbyAccount(email: h1.email!, seat: h1, id: "e1")])
+    let oldList = [StandbyAccount(email: h1.email!, seat: otherOrg, id: "q1"), StandbyAccount(email: h2.email!, seat: h2Org, id: "q2"),
+                   StandbyAccount(email: "HEX-1@example.com", id: "q3"), StandbyAccount(email: e3.email!, seat: e3, id: "q4"),
+                   StandbyAccount(email: e3.email!, seat: upper(e3), id: "q5")]
+    let merged = DefaultProfileRunner.merged(oldList, into: def2)
+    var after = def2; after.standby = merged
+    check(merged.map(\.id) == ["e1", "q4"] && !StandbyTidy.apply([after], now: t0).changed,
+          "the standby merge: h1 in another organisation, the account in use in another, h1 by its address and hex-3 twice (any case) go in once; the next tidy changes nothing")
 }
 
 print("checks: \(passed) passed, \(failed) failed")

@@ -374,6 +374,12 @@ MainActor.assumeIsolated {
     var sameID = homeE; sameID.name = "Laptop"; sameID.seat = Seat(account: sid(92), organization: sid(93), email: "l@example.com"); sameID.configDir = "~/.claude-laptop"; sameID.desktopDataDir = "~/Library/Application Support/Claude-laptop"
     let byID = SessionsMove.plan(mine, accounts: [sameID])
     check(byID.create.first { $0.name == "Home" }?.id != "home" && byID.create.count == 2, "recognise: an id that is taken here gets another one")
+    // one of its accounts remembered here on standby by its address only (the one owner rule): here, in the plan as in apply
+    var byAddr = sameID; byAddr.standby = [StandbyAccount(email: a2.uppercased(), id: "ad")]
+    let byAddress = SessionsMove.plan(mine, accounts: [byAddr])
+    check(byAddress.here.first?.name == "Work" && byAddress.here.first?.here == "Laptop" && byAddress.create.map(\.name) == ["Home"]
+          && !byAddress.create.contains { m in m.entry.seats.contains { byAddr.has($0) } },
+          "recognise: an account standing by here by its address only: the profile is here (the plan agrees with apply's clash)")
     var usesFolder = sameID; usesFolder.configDir = "~/.claude-work"; usesFolder.desktop = .standard; usesFolder.desktopDataDir = ""
     let byFolder = SessionsMove.plan(mine, accounts: [usesFolder])
     check(byFolder.create.first { $0.name == "Work" }?.entry.configDir == "~/.claude-work-2",

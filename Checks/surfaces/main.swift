@@ -2572,6 +2572,14 @@ do {
     var fromOther = toH2; fromOther.from = SeatID(otherID)
     check(AccountResolver.resolve(sw, among: [sw], app: appH1, code: h2, loginEmail: h2.email, names: [:], newestSwitch: fromOther, now: t0).switchWaits == nil,
           "…from another id with the app's address: not that switch")
+    // stale and differs with empty addresses: the plain comparison, as before (two empty ones never make a reading stale)
+    let empty = Seat(account: h2.account, organization: h2.organization, email: "")
+    let bothEmpty = AccountResolver.resolve(me, among: [me], app: .unknown, code: empty, loginEmail: "", names: [:], now: t0)
+    check(bothEmpty.readStale == nil && !bothEmpty.differs, "an empty reading address and an empty folder address: not stale, no split")
+    let oneEmpty = AccountResolver.resolve(me, among: [me], app: .unknown, code: empty, loginEmail: h2.email, names: [:], now: t0)
+    check(oneEmpty.readStale == true, "one address empty, the other not: stale, as before")
+    check(AccountResolver.sameAddress("", "") && !AccountResolver.sameAddress("", "x@example.com") && AccountResolver.sameAddress("X@example.com", "x@example.com"),
+          "sameAddress: empty ones by the plain comparison, else the address-only rule")
     // the lists' helpers: the record names ids and addresses, no organisation
     let v = AccountView(label: h1.email, numbersOwner: h2.email, line: nil, lit: true, clash: nil, account: h1.account, differs: true, codeAccount: h2.account)
     check(v.isActive(StandbyAccount(email: "", seat: upper(h1), id: "a")) && v.isActive(StandbyAccount(email: "HEX-1@example.com", id: "b"))
