@@ -137,21 +137,6 @@ struct SplitUsage: Equatable {
         if let split = of(s) { return split.loginEmail }
         return usual
     }
-
-    /// "Claude Code in Terminal: M@… · Week 100%, back Sun 13:00": Claude Code's own numbers, from the record as read, or nil
-    /// when it has none.
-    func codeLine(_ raw: IconStatus?, now: Date = Date()) -> String? {
-        guard let raw else { return nil }
-        func part(_ name: String, _ p: Double?, _ resets: Date?) -> String? {
-            guard let p else { return nil }
-            let full = AtLimit.isFull(p)
-            return "\(name) \(Int(p.rounded()))%" + (full ? resets.map { ", " + TimeWords.back($0, now: now) } ?? "" : "")
-        }
-        let parts = [raw.noFiveHour == true ? nil : part("5-hour", raw.fiveHour, raw.fiveHourResets), part("Week", raw.weekly, raw.weeklyResets)]
-            .compactMap { $0 }
-        guard !parts.isEmpty else { return nil }
-        return "Claude Code in Terminal: \(Privacy.masked(code)) · " + parts.joined(separator: " · ")
-    }
 }
 
 /// What every surface shows of a profile's account, from its status record only (never a file, a log or a seat).

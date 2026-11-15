@@ -423,7 +423,7 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
     let profileItem = MenuBarItems.Profile(show: show, problem: head?.problem)
     let glyph = MenuBarGlyph(look: e.menuBarLook, item: MenuBarItems.item(profileItem, now: now)).image(dark: true)
     for w in [CGFloat(340), 460, 708] {
-        snapshot(framed(AccountCard(row: AccountRow(entry: e, status: head, codeStatus: own), actions: acts).frame(width: min(w, 460))
+        snapshot(framed(AccountCard(row: AccountRow(entry: e, status: head), actions: acts).frame(width: min(w, 460))
                             .fixedSize(horizontal: false, vertical: true), w), "split-card-std-w\(Int(w))", w + 32, 1000)
         let dock = VStack(alignment: .leading, spacing: 10) {
             Image(nsImage: Painter.image(tile, pixels: 128)).resizable().frame(width: 96, height: 96)
@@ -447,7 +447,7 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
     _ = Store.writeStatus("main", rec)
     let swHead = Store.status(for: e)
     print("switched:", SplitUsage.of(swHead)?.switched == true ? "yes" : "NO")
-    snapshot(framed(AccountCard(row: AccountRow(entry: e, status: swHead, codeStatus: Store.status(for: e, headline: false)), actions: acts)
+    snapshot(framed(AccountCard(row: AccountRow(entry: e, status: swHead), actions: acts)
                         .frame(width: 460).fixedSize(horizontal: false, vertical: true), 460), "split-card-switched-std-w460", 492, 1000)
 }
 

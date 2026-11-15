@@ -1185,7 +1185,7 @@ do {
     check(head?.weekly == nil && head?.fiveHour == nil && head?.plan == nil && AccountView.of(head).label == pat.email
           && AccountView.of(head).line == "cl_audit can't read \(Privacy.masked(pat.email!))'s usage: Claude Code in Terminal is signed in to \(Privacy.masked(mo.email!)).",
           "the profile's record has no numbers for pat, and its line says so: \(AccountView.of(head).line ?? "-")")
-    let row = AccountRow(entry: e, status: head, codeStatus: own)
+    let row = AccountRow(entry: e, status: head)
     check(row.full == nil && row.limits.allSatisfy { $0.p == nil } && !row.needsLogin
           && AtLimit.tileCountdown(fiveHour: row.fiveHour, fiveHourResets: head?.fiveHourResets, weekly: row.weekly, weeklyResets: head?.weeklyResets) == nil,
           "the card and its tile: no limits, no full panel, no countdown, no red Sign in")
@@ -1227,9 +1227,6 @@ do {
         check(said.allSatisfy { !$0.contains("No usage") && !$0.contains(" yet") && !$0.contains("No numbers") },
               "no split surface says No usage, No numbers or yet (addresses \(what)): \(said)")
     }
-    let line = row.split?.codeLine(row.codeStatus, now: now) ?? "-"
-    check(line.hasPrefix("Claude Code in Terminal: \(Privacy.masked(mo.email!)) · Week 100%, back ") && !line.contains("5-hour"),
-          "mo's numbers: one labelled secondary line: \(line)")
     check(own?.weekly == 100 && AccountView.of(own).line?.hasPrefix("Usage: Claude Code on ") == true && AccountView.of(head).codeRow == mo.email,
           "Settings: mo's numbers in mo's own row (labelled), never in the IN USE box")
     // the key starts the existing login: Claude Code's own sign-in on the profile's folder, pat's address filled in, the
@@ -1287,8 +1284,8 @@ do {
         let s = splitWith(app: appPat, newest: r)
         check(s?.switched == true && s?.line == switchedLine && s?.key == nil && s?.loginEmail == nil
               && Store.status(for: e)?.weekly == nil && AccountView.of(Store.status(for: e)).line == switchedLine
-              && s?.codeLine(Store.status(for: e, headline: false), now: now)?.contains("Week 100%") == true,
-              "a switch to mo waiting for the app (\(what)): the switched line, no key, no numbers for pat, mo's on the secondary line: \(s?.line ?? "-")")
+              && Store.status(for: e, headline: false)?.weekly == 100,
+              "a switch to mo waiting for the app (\(what)): the switched line, no key, no numbers for pat, mo's in its own record: \(s?.line ?? "-")")
     }
     let zed = Seat(account: uuid(33), organization: uuid(73), email: "zed@example.com")
     let appZed = AppSignIn.Login(account: zed.account, org: zed.organization, state: .known, source: "log", at: now)

@@ -163,8 +163,6 @@ struct AccountRow: Identifiable {
     var followStarting = false
     /// The profile's account as its record says it (AccountResolver): the card's line under the name, with its lamp.
     var view: AccountView { AccountView.of(status) }
-    /// Claude Code's own numbers in the split (Store.status(for:headline: false)): one labelled secondary line.
-    var codeStatus: IconStatus? = nil
     /// The Claude app on one account, Claude Code on another (SplitUsage): no numbers for the profile, the line and its key.
     var split: SplitUsage? { SplitUsage.of(status) }
     var id: String { entry.id }
@@ -273,7 +271,6 @@ final class LauncherModel: ObservableObject {
         let doing = Agent.isAlive(agent) ? agent?.actions ?? [:] : [:]
         rows = entries.map {
             var r = AccountRow(entry: $0, status: Store.status(for: $0), activity: acts[Account($0).configDir] ?? .init(), usageIcon: UsageIconState.of($0))
-            if r.split != nil { r.codeStatus = Store.status(for: $0, headline: false) }      // Claude Code's own numbers, labelled
             settle(&r, now, doing[$0.id])
             return r
         }
