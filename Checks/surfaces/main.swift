@@ -309,8 +309,8 @@ do {
               "\(name): the Dock panel agrees (as drawn: \(panel.accountLine?.text ?? "no account line"))")
         check(SwitchMenu.dockTitle(name: "P", mainShow.named, plan: nil) == (named.map { "Claude P · \(AccountNames.short($0))" } ?? "Claude P")
               && mainShow.named.inUseLine == named.map(AccountNames.short), "\(name): the Dock menu and the menu bar row agree")
-        check(QuickChatTarget(main).email == want.label && QuickChatTarget(main).shownEmail == named,
-              "\(name): quick chat agrees (the process runs on the folder's account; its header names the profile's own, as the menus)")
+        check(QuickChatTarget(main).email == want.numbersOwner && QuickChatTarget(main).shownEmail == named,
+              "\(name): quick chat agrees (the process runs on the folder's account, even when the app decided the one in use; its header names the profile's own, as the menus)")
         // (B8: in the split, the Claude app on another account than Claude Code, they are not the profile's: none show)
         check(Store.status(for: main)?.weekly == (splitHere ? nil : 40),
               "\(name): the record's own numbers show, except in the split (the app on another account): \(splitHere)")
@@ -2143,6 +2143,36 @@ do {
     let backChat = QuickChatTarget(e, now: now)
     check(backChat.email == u1.email && backChat.shownEmail == u1.email && backChat.processKey(claude: "/c", model: "m", effort: nil) != clashKey,
           "moved back to the profile's own account: quick chat's process key changes, so the open process is replaced")
+    // the same when the Claude app decided the account in use: the app on the profile's own u1, the folder on Other's u3.
+    // The process runs on the folder's u3 (its key, the kept level's account, the switch wait), the header and the note
+    // after a switch name u1; moving the folder back to u1 changes the key. The split (the app on u2, the folder on u1):
+    // the process on u1, the header u2; Claude Code signing in to u2 changes the key
+    var win = e; win.claudeWindow = true
+    func appRec(_ app: AppSignIn.Login, code: Seat) -> IconStatus {
+        var s = rec(week: nil, five: nil, login: code.email, code: code)
+        s.resolved = AccountResolver.resolve(win, among: [win, other], app: app, code: code, loginEmail: code.email, names: [:], now: now)
+        return s
+    }
+    _ = Store.writeStatus(e.id, appRec(appU1, code: u3))
+    let qcAppClash = QuickChatTarget(win, now: now)
+    let qcAppClashKey = qcAppClash.processKey(claude: "/c", model: "m", effort: nil)
+    check(Store.status(e.id)?.resolved?.fromApp == true && Store.status(e.id)?.resolved?.clash == "Other"
+          && qcAppClash.email == u3.email && qcAppClash.shownEmail == u1.email && qcAppClash.clash && qcAppClash.switchedTo == u1.email,
+          "an app-decided clash: quick chat's process on the folder's u3, its header and switch note on the app's u1: \(qcAppClash.email ?? "-") / \(qcAppClash.shownEmail ?? "-")")
+    _ = Store.writeStatus(e.id, appRec(appU1, code: u1))
+    let appBackChat = QuickChatTarget(win, now: now)
+    check(appBackChat.email == u1.email && appBackChat.shownEmail == u1.email && !appBackChat.clash
+          && appBackChat.processKey(claude: "/c", model: "m", effort: nil) != qcAppClashKey && appBackChat.email != qcAppClash.email,
+          "an app-decided clash moved back to u1: the process key changes (the old process on u3 isn't kept, nor its refusals) and the switch wait sees the move")
+    _ = Store.writeStatus(e.id, appRec(appU2, code: u1))
+    let splitChat = QuickChatTarget(win, now: now)
+    let splitKey = splitChat.processKey(claude: "/c", model: "m", effort: nil)
+    check(splitChat.split && splitChat.email == u1.email && splitChat.shownEmail == u2.email && splitChat.switchedTo == u1.email,
+          "the split: quick chat's process on Claude Code's own u1, its header on the app's u2: \(splitChat.email ?? "-") / \(splitChat.shownEmail ?? "-")")
+    _ = Store.writeStatus(e.id, appRec(appU2, code: u2))
+    let splitDone = QuickChatTarget(win, now: now)
+    check(!splitDone.split && splitDone.email == u2.email && splitDone.processKey(claude: "/c", model: "m", effort: nil) != splitKey,
+          "the split ended, Claude Code signed in to the app's u2: the process key changes")
     _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
     // Settings ▸ Accounts' Sign in… keys: the in-use box's on the profile's own account (u1), Claude Code's own row's on its
     // own (the folder's u3)
