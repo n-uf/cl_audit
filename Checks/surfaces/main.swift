@@ -2368,8 +2368,25 @@ MainActor.assumeIsolated {
     let ownOffer = onlyOwn.fullOffer(view: AccountView.of(Store.status(for: onlyOwn, now: now)), now: now)
     check(ownOffer?.key == backKey && ownOffer?.standby.seat != nil && SwitchOffer.moveBackWords == "move Claude Code back here",
           "fullOffer in a clash: the own account offered once, switchable")
+    // the move-back's words: quick chat's line and key say Claude Code moves back to the own account (the menus' decision,
+    // ProfileShow.ownStandbyID), the Switch page says cat stays with its own profile and never calls it a standby account
+    let ownQC = QuickChatSwitchOffer.best(onlyOwn, now: now)
+    check(ownQC?.own == true && ownQC?.lineWords(name: "Acc") == "Acc can move Claude Code back to its own account, \(u1Short)."
+          && ownQC?.keyTitle == "Move Claude Code back…" && SwitchOffer.moveBackTitle(u1Short) == "Move Claude Code back to \(u1Short)…",
+          "quick chat in a clash, the own account offered: it says Claude Code moves back: \(ownQC?.lineWords(name: "Acc") ?? "none")")
+    let stays = SwitchPage.staysLine(from: "cat", name: "Acc", moveBack: true, owner: "Work")
+    let staysNoOwner = SwitchPage.staysLine(from: "cat", name: "Acc", moveBack: true, owner: nil)
+    let staysNormal = SwitchPage.staysLine(from: "ann", name: "Acc", moveBack: false, owner: "Work")
+    check(stays == "cat stays with Work: nothing read here." && staysNoOwner == "cat stays with the profile it belongs to: nothing read here."
+          && !stays.contains("standby") && !staysNoOwner.contains("standby") && !stays.contains("Acc")
+          && staysNormal == "ann stays on Acc as a standby account: nothing read, switch back any time.",
+          "the Switch page's move-back line: cat stays with its own profile (never Acc's standby); a normal switch unchanged: \(stays)")
     // outside a clash nothing changes: the active account is off the standby list, ticked with its week, no move words
     _ = Store.writeStatus("acc", rec())
+    let calmQC = QuickChatSwitchOffer.best(both, now: now)
+    check(calmQC?.own == false && calmQC?.keyTitle == "Switch account…" && calmQC?.lineWords(name: "Acc").hasPrefix("Acc can switch to its other account, ") == true
+          && !(calmQC?.lineWords(name: "Acc").contains("move Claude Code") ?? true),
+          "quick chat, no clash: the usual switch words: \(calmQC?.lineWords(name: "Acc") ?? "none")")
     let calmShow = ProfileShow.load(both, now: now), calmDock = dockOf(both, calmShow), calmBar = menuBarMenu(calmShow)
     check(calmShow.ownStandbyID == nil && ownRow(calmDock.menu) == nil && ownRow(calmBar) == nil
           && rowsOf(calmDock.menu, u1Short) == 1 && rowsOf(calmBar, u1Short) == 1 && !titles(calmDock.menu).contains(u1Short + "…")

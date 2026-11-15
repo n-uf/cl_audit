@@ -106,12 +106,27 @@ struct QuickChatSwitchOffer: Equatable {
     var key: String
     var short: String
     var words: String
+    /// The profile's own account in a clash (ProfileShow.ownStandbyID, as the menus decide it): choosing it moves Claude Code
+    /// back to it, so the words say that, never "switch to its other account".
+    var own = false
 
     static func best(_ e: AccountEntry, now: Date = Date()) -> QuickChatSwitchOffer? {
-        e.fullOffer(now: now).map { o in
-            QuickChatSwitchOffer(key: o.key, short: o.short, words: o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? "")
+        let ownID = ProfileShow.load(e, now: now).ownStandbyID
+        return e.fullOffer(now: now).map { o in
+            QuickChatSwitchOffer(key: o.key, short: o.short, words: o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? "",
+                                 own: o.standby.id == ownID)
         }
     }
+
+    /// The line under a full limit: "Main can switch to its other account, ultra-3 (last in use 3 days ago)." In a clash move-back:
+    /// "Main can move Claude Code back to its own account, ann (…)."
+    func lineWords(name: String) -> String {
+        (own ? "\(name) can move Claude Code back to its own account, \(short)" : "\(name) can switch to its other account, \(short)")
+            + (words.isEmpty ? "." : " (last in use \(words)).")
+    }
+
+    /// The key's title: Switch account…, or in a clash move-back Move Claude Code back….
+    var keyTitle: String { own ? "Move Claude Code back…" : "Switch account…" }
 }
 
 /// The level in the account line and the bar: a thin meter in the level's colour, then the number.

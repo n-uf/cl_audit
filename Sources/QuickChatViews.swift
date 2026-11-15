@@ -412,7 +412,7 @@ struct QCProblemView: View {
         case .noProfile: return "Set one up in cl_audit."
         case .limitFull:
             guard let o = model.offer, let name = model.target?.name else { return "" }
-            return "\(name) can switch to its other account, \(o.short)" + (o.words.isEmpty ? "." : " (last in use \(o.words)).")
+            return o.lineWords(name: name)
                 + (model.field.isEmpty ? "" : " What you typed goes once the switch is done.")
         }
     }
@@ -435,7 +435,7 @@ struct QCProblemView: View {
         case .noProfile:
             QCButton(title: "Open cl_audit") { Installer.openDashboard() }
         case .limitFull:
-            if model.offer != nil { QCButton(title: "Switch account…") { model.switchAccount() } }
+            if let o = model.offer { QCButton(title: o.keyTitle) { model.switchAccount() } }
         }
     }
 

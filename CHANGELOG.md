@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- When Claude Code's folder is signed in to another profile's account and you move it back to the profile's own account, the Switch page now says the other account stays with the profile it belongs to (it said it stays on this profile as a standby account), and the quick chat's full-limit line and key say "move Claude Code back" instead of "switch".
 
 ## 26.11.47 — 2026-11-15
 
