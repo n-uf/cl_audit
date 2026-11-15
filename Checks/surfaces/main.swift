@@ -2180,8 +2180,13 @@ do {
     let keys = AccountSettings(entry: .constant(e), model: keysModel)
     check(keys.inUseKeyAddress == u1.email && keys.codeKeyAddress == u3.email,
           "Settings' Sign in… keys in a clash: the in-use box's on u1, Claude Code's own row's on its own account u3: \(keys.inUseKeyAddress ?? "-") / \(keys.codeKeyAddress ?? "-")")
-    check(SwitchPage.inUseDetail(plan: "max", clash: true) == "" && SwitchPage.inUseDetail(plan: "max", clash: false) == Account.planWords("max"),
-          "the Switch page's in-use box: its plan outside a clash, none in a clash")
+    // the plan beside the account in use: one rule (ProfileShow.plan), none in a clash, the record's outside one
+    let clashPlanShow = clashNone.row.show
+    check(clashPlanShow.record?.plan == "Max" && clashPlanShow.plan == nil && clashPanel.plan == nil
+          && SwitchPage.inUseDetail(plan: clashPlanShow.plan) == "" && SwitchPage.inUseDetail(plan: "max") == Account.planWords("max"),
+          "a clash: no plan beside the account (the record's Max is Other's account's) in the Dock panel and the Switch page's in-use box")
+    check(fresh.row.show.plan == "Max" && DetailsInfo.of(fresh.row.show, name: e.name, icon: NSImage(), problem: nil).plan == "Max",
+          "outside a clash: the record's plan, in the Dock panel too")
     // a clash whose sign-in is also expired: the panel's age line agrees with the card's notice (the clash), in its long and short form
     let clashExpired = card(rec("expired", week: nil, five: nil, login: u3.email, code: u3), nil, "clash, expired")
     let clashExpiredPanel = DetailsInfo.of(clashExpired.row.show, name: e.name, icon: NSImage(), problem: nil)
@@ -2387,6 +2392,11 @@ MainActor.assumeIsolated {
           && noSeatShow.named.inUseLine == nil && !naming(noSeatDock.menu).contains { $0.contains(u3Short) }
           && !titles(menuBarMenu(noSeatShow)).contains { $0.contains(u3Short) },
           "a clash with no seat: the panel draws no account line (never its sign-in's u3), the menus name none")
+    // …nor the other account's plan: the Dock menu's title is the profile's name alone (it read "Claude Acc · Max"), the
+    // Dock panel (as the Dock icon builds it) and the card have none
+    check(noSeatDock.menu.items.first?.title == "Claude Acc" && noSeatDock.panel.plan == nil && clashDock.panel.plan == nil
+          && cardRow(noSeat, now: now).show.plan == nil,
+          "a clash: no plan in the Dock menu's title, the Dock panel or the card: \(noSeatDock.menu.items.first?.title ?? "-")")
     // one account, one row: the profile's own account (u1, ticked in a clash) is also remembered on its standby list. It is
     // that one row everywhere: ticked, saying what choosing it does, still switchable (the way to move Claude Code back);
     // never a second row on standby
@@ -2468,10 +2478,9 @@ MainActor.assumeIsolated {
           && SwitchPage.readyTitle(name: "Acc", to: "ben", moveBack: false) == "Switch Claude Acc to ben"
           && SwitchPage.goTitle(to: "ben", moveBack: false) == "Switch to ben",
           "the Switch page's title and key: a clash move-back says Move back; a normal switch is unchanged")
-    check(AccountCard.tickedTitle(label: "ann", plan: "max", clash: true) == "ann"
-          && AccountCard.tickedTitle(label: "ann", plan: "max", clash: false) == "ann  " + Account.planWords("max")
-          && AccountCard.tickedTitle(label: "ann", plan: nil, clash: false) == "ann",
-          "the card's ticked account: its plan outside a clash, none in a clash (the record's plan is the other account's)")
+    check(AccountCard.tickedTitle(label: "ann", plan: "max") == "ann  " + Account.planWords("max")
+          && AccountCard.tickedTitle(label: "ann", plan: nil) == "ann",
+          "the card's ticked account: its address and the plan it is given (ProfileShow.plan, none in a clash)")
     check(SwitchPage.phaseTitle(.ready, name: "Acc", to: "ann", moveBack: true) == "Move Claude Code back to ann"
           && SwitchPage.phaseTitle(.failed("x"), name: "Acc", to: "ann", moveBack: true) == "Switch Claude Acc to ann"
           && SwitchPage.phaseTitle(.timedOut, name: "Acc", to: "ann", moveBack: true) == "Switch Claude Acc to ann"

@@ -63,7 +63,7 @@ extension DetailsInfo {
         let u = s.usage, d = s.display, e = s.entry
         var info = DetailsInfo(
             name: name, icon: icon, login: s.record?.loginEmail, expected: s.record?.expectedEmail, mismatch: d.otherAccount,
-            plan: s.record?.plan, fiveHour: u?.fiveHour, fiveHourResets: u?.fiveHourResets, weekly: u?.weekly,
+            plan: s.plan, fiveHour: u?.fiveHour, fiveHourResets: u?.fiveHourResets, weekly: u?.weekly,
             weeklyResets: u?.weeklyResets, updated: d.readAt, source: u?.source, problem: problem, renewNote: s.record?.renewNote,
             needsLogin: d.needsLogin, design: e.panelDesign, accent: e.accentNSColor, refreshing: refreshing,
             scoped: e.showFable ? u?.scoped ?? [] : [], credits: u?.credits, noFiveHour: s.record?.noFiveHour == true,

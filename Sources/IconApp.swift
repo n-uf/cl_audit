@@ -51,7 +51,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var view: AccountView { show?.view ?? AccountView.of(nil) }
     /// The same, naming the account in use as every surface does (ProfileShow.named): the menu's title and tick.
     var named: AccountView { show?.named ?? AccountView.of(nil) }
-    var plan: String? { status?.plan }
+    /// The plan beside the account in use (ProfileShow.plan: none in a clash).
+    var plan: String? { show?.plan }
     var refreshing: Bool {
         guard let t = refreshAsked else { return false }
         return Date().timeIntervalSince(t) < 15 && (status?.updatedAt ?? .distantPast) < t

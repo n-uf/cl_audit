@@ -273,13 +273,13 @@ struct SwitchPage: View {
         }
     }
 
-    /// The in-use box's plan: none in a clash (the record's plan is the folder account's, the other profile's).
-    static func inUseDetail(plan: String?, clash: Bool) -> String { clash ? "" : plan.map(Account.planWords) ?? "" }
+    /// The in-use box's plan (ProfileShow.plan: none in a clash).
+    static func inUseDetail(plan: String?) -> String { plan.map(Account.planWords) ?? "" }
 
     private var inUseBox: some View {
         // the account in use, its lamp, the one line and the numbers: the profile's one value, as the card draws it
         let row = inUseRow
-        let detail = Self.inUseDetail(plan: row.status?.plan, clash: row.display.clash != nil)
+        let detail = Self.inUseDetail(plan: row.show.plan)
         let limits = row.limits
         return AccountBox(lamp: row.lit ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: row.lit ? .ok : .warn, detail: detail) {
             Text(Privacy.masked(row.show.inUseLabel ?? (row.show.inUseUnknown ? nil : row.status?.expectedEmail) ?? "its account")).font(.system(size: 13, weight: .semibold))

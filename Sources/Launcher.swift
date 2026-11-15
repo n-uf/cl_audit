@@ -1001,7 +1001,7 @@ struct AccountCard: View {
                 }
                 Spacer(minLength: 0)
                 // the plan over the last refresh, one fixed size on every card
-                PlanBadge(plan: row.status?.plan, updated: row.status?.updatedAt,
+                PlanBadge(plan: row.show.plan, updated: row.status?.updatedAt,
                           tone: notice?.tone == .amber ? .amber : (notice?.tone == .red || row.full != nil) ? .warn : .normal)
                     .frame(maxHeight: .infinity, alignment: .top)
             }
@@ -1076,10 +1076,9 @@ struct AccountCard: View {
         return "Sign Claude Code in Terminal in to \(Privacy.masked(a))"
     }
 
-    /// The ticked account's row: its address and plan. In a clash the plan the record has is the folder account's, the other
-    /// profile's: none.
-    static func tickedTitle(label: String, plan: String?, clash: Bool) -> String {
-        label + (clash ? "" : plan.map { "  " + Account.planWords($0) } ?? "")
+    /// The ticked account's row: its address and plan (ProfileShow.plan: none in a clash).
+    static func tickedTitle(label: String, plan: String?) -> String {
+        label + (plan.map { "  " + Account.planWords($0) } ?? "")
     }
 
     /// Switch account: the account in use ticked with its plan, the standby accounts by address only (they're never read,
@@ -1097,7 +1096,7 @@ struct AccountCard: View {
                     }
                 } else {
                     Toggle(isOn: .constant(true)) {
-                        Text(Self.tickedTitle(label: Privacy.masked(label), plan: row.status?.plan, clash: row.display.clash != nil))
+                        Text(Self.tickedTitle(label: Privacy.masked(label), plan: row.show.plan))
                     }
                 }
             }

@@ -90,6 +90,11 @@ struct ProfileShow {
         return view.label
     }
 
+    /// The plan every surface shows beside the account in use (the card's badge and its ticked row, the Switch page's
+    /// in-use box, the Dock panel and the Dock menu's title): the record's, none in a clash (read through the folder's
+    /// sign-in, it is the other profile's account's plan, even when the app decided the account in use).
+    var plan: String? { display.clash != nil ? nil : record?.plan }
+
     /// In a clash, no account of the profile's own is known (no seat, the app not deciding): the surfaces name none, and
     /// never fall back to the sign-in's address (the other profile's).
     var inUseUnknown: Bool { display.clash != nil && inUseLabel == nil }
