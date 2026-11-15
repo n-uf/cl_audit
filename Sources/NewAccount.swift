@@ -1106,35 +1106,6 @@ struct NewAccountView: View {
     }
 }
 
-/// A label next to its control (fixed label width), or above it when stacked; never a window apart.
-struct FormRow<Content: View>: View {
-    let label: String
-    var width: CGFloat = 76
-    var stacked = false
-    var info: String? = nil
-    @ViewBuilder let content: Content
-    @Environment(\.face) private var face
-
-    var body: some View {
-        let title = HStack(spacing: 5) {
-            Text(label).font(.system(size: 12.5)).foregroundStyle(face.soft)
-            if let info { InfoDot(text: info) }
-        }
-        if stacked {
-            VStack(alignment: .leading, spacing: 5) { title; content }.padding(.vertical, 4)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            HStack(alignment: .center, spacing: 10) {
-                title.frame(width: width, alignment: .leading)
-                content
-                Spacer(minLength: 0)
-            }
-            .frame(minHeight: 30)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-}
-
 /// A pill switch whose options can be disabled (shown struck through).
 struct Segments<Value: Hashable>: View {
     let options: [Value]

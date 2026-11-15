@@ -232,7 +232,6 @@ enum DefaultProfile {
         /// otherFolder: of those transcripts, the ones Claude Code's clean-up would delete again where they land (Retention.swift)
         var tally = Retention.Tally()
         var retention = Retention()         // what the clean-up does in ~/.claude (the folder they land in)
-        var hasWindowData: Bool { entries > 0 || tasks > 0 }
     }
 
     static func entryNames(_ dataDir: String) -> [String: [String]] {

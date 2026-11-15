@@ -1736,7 +1736,7 @@ struct AccountSettings: View {
     /// out, expired), or Refresh now (the Keychain's read denied, or not readable).
     @ViewBuilder var signInKeys: some View {
         if mismatch || status?.state == "noLogin" || status?.state == "expired" {
-            logInKey(email: expected)
+            logInKey(email: show.loginAddress)
         } else if status?.state == "denied" || status?.state == "unreadable" {
             // the sign-in is there: not Log in…, but a fresh read (Refresh now), after allowing cl_audit Agent
             Button("Refresh now") { DistributedNotificationCenter.default().postNotificationName(Installer.refreshAllNote, object: entry.id, userInfo: nil, deliverImmediately: true) }
