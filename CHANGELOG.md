@@ -28,10 +28,10 @@ Nothing pending.
 - When Claude Code's folder is signed in to another profile's account, Sign in… now signs Terminal in to the profile's own account (the Claude app's, when it decided which account is in use) instead of the other profile's, on the dashboard card and in Settings. The menu bar menu, the Dock icon's menu and its panel now offer the same Sign in… there too.
 - The Switch page's account in use now has the same green lamp as the card, the menu bar and Settings: off while the sign-in can't be read, has run out, is gone, or is on another account than the folder's or on another profile's.
 - In Settings ▸ Accounts, the lamp of the account in use now also goes off when Claude Code's folder is on another profile's account and that profile has since been renamed or removed. "Open" now opens that profile by its id, so it never opens another profile with the same name.
-- On the dashboard card, the Switch page and the Dock icon's usage panel, when Claude Code's folder is signed in to another profile's account, the account line now names the profile's own account instead of the other profile's.
+- When Claude Code's folder is signed in to another profile's account, the dashboard card, the Switch page, the Dock icon's usage panel and menu, and the menu bar menu now name the profile's own account instead of the other profile's, or none when the profile has none of its own.
 - In Settings ▸ Accounts, when the Claude app's account is known only by its id and Claude Code is on another account, the account in use no longer offers a Sign in… key that fills in no address; its line says what to do, as on the card. Sign in… in the address menu then opens the sign-in with no address, instead of filling in Claude Code's own.
-- The usage panel preview in Settings now shows what the Dock icon's panel shows: the lamp, the line, Sign in… when the sign-in needs it, and grey bars for old usage.
-- The bars in the Dock icon's usage panel now turn grey when the usage is old (three missed reads, 30 minutes at the usual setting), as in the menu bar.
+- The usage panel looks in Settings (a profile's Dock icon ▸ Usage panel) now draw the profile's bars and numbers as its Dock icon's panel has them, grey when the usage is old.
+- The bars and percentages in the Dock icon's usage panel now turn grey when the usage is old (three missed reads, 30 minutes at the usual setting), as the menu bar's bars do.
 - When the Claude app and Claude Code are on different accounts, the Dock icon's usage panel now says when the usage was last read instead of "Reading usage…".
 
 ## 26.11.40 — 2026-11-15
