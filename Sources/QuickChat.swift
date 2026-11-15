@@ -117,7 +117,7 @@ struct QuickChatTarget: Equatable {
     var configDir: String
     var isDefaultDir: Bool
     var email: String?
-    /// The record says the sign-in needs the person ("login expired"): the line says so, with Log in….
+    /// The record says the sign-in needs the person ("sign-in expired"): the line says so, with Sign in….
     var loginWords: String?
 
     init(_ e: AccountEntry) {
@@ -202,7 +202,7 @@ final class QuickChatModel: ObservableObject {
     var hide: () -> Void = {}
     var openProfileSettings: (String) -> Void = { _ in }
     var openSwitch: (String) -> Void = { _ in }
-    /// Log in… for a profile whose sign-in needs the person (by profile id).
+    /// Sign in… for a profile whose sign-in needs the person (by profile id).
     var logIn: (String) -> Void = { _ in }
     var defaults: () -> QuickChatSettings = { .init() }
     /// A limit filled during the chat: the controller looks for an account to offer.

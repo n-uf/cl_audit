@@ -154,7 +154,7 @@ struct QCHeader: View {
             if let t = model.target, let w = t.loginWords {
                 // the sign-in needs the person: no level, its state and the one key
                 Text(w).font(.system(size: 12)).foregroundColor(QCColor.accent).lineLimit(1).padding(.leading, 4)
-                Button("Log in…") { model.logIn(t.profileID) }.buttonStyle(.plain)
+                Button("Sign in…") { model.logIn(t.profileID) }.buttonStyle(.plain)
                     .font(.system(size: 12, weight: .semibold)).foregroundColor(QCColor.text)
             } else if let l = model.level, l.week != nil || l.full() != nil { QCLevelView(level: l).padding(.leading, 4) }
             Spacer(minLength: 8)
