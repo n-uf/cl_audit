@@ -608,7 +608,8 @@ MainActor.assumeIsolated {
     plantA()
 
     // ---- doctored images
-    func doctored(_ name: String, zip: Bool = false, edit: (inout SessionsBackup.Manifest, inout ExportManifest, URL) throws -> Void) -> String {
+    /// A copy of the image, edited and made again: the file, or why it couldn't be made.
+    func doctoredFile(_ name: String, zip: Bool = false, edit: (inout SessionsBackup.Manifest, inout ExportManifest, URL) throws -> Void) -> (file: URL?, why: String) {
         let work = w + "/doctor-\(name)"
         try? fm.removeItem(atPath: work); try! fm.createDirectory(atPath: work, withIntermediateDirectories: true)
         _ = Tool.run("/usr/bin/ditto", [oi.tree.path, work + "/" + oi.tree.lastPathComponent])
@@ -624,7 +625,7 @@ MainActor.assumeIsolated {
             ex.parts[0].bytes = m.bytes; ex.bytes = m.bytes
             if zip { ex.container = "zip" }
             try enc.encode(ex).write(to: root.appendingPathComponent("export.json"))
-        } catch { return "doctoring failed: \(error)" }
+        } catch { return (nil, "doctoring failed: \(error)") }
         let file = URL(fileURLWithPath: out + "/\(name).\(zip ? "zip" : "dmg")")
         try? fm.removeItem(at: file)
         // a volume name per image and per process: two hdiutil creates with one name at once (another suite, another worktree) fail with
@@ -637,7 +638,13 @@ MainActor.assumeIsolated {
             if r?.status == 0 { break }
             try? fm.removeItem(at: file)
         }
-        guard r?.status == 0 else { return "file not made (status \(r.map { String($0.status) } ?? "none")): \(r?.err ?? "") \(r?.out ?? "")" }
+        guard r?.status == 0 else { return (nil, "file not made (status \(r.map { String($0.status) } ?? "none")): \(r?.err ?? "") \(r?.out ?? "")") }
+        return (file, "")
+    }
+    /// A doctored image opened by the import: "OPENED", or why it was refused.
+    func doctored(_ name: String, zip: Bool = false, edit: (inout SessionsBackup.Manifest, inout ExportManifest, URL) throws -> Void) -> String {
+        let made = doctoredFile(name, zip: zip, edit: edit)
+        guard let file = made.file else { return made.why }
         do { let x = try SessionsImport.open(file, password: zip ? nil : pw, place: place); SessionsImport.discard(x.work); return "OPENED" } catch { return "\(error)" }
     }
     func setConfig(_ m: inout SessionsBackup.Manifest, _ p: URL, _ data: Data) throws {
@@ -645,6 +652,47 @@ MainActor.assumeIsolated {
         if let i = m.items.firstIndex(where: { $0.role == .config }) { m.items[i].bytes = Int64(data.count) }
     }
     check(doctored("w-ok") { _, _, _ in } == "OPENED", "(an untouched copy of the image opens)")
+    // the window's own folders (backlog/, waiting-input/) stay in this Mac's backups: an export naming them is refused whole
+    let extraNamed = doctored("w-window-extra") { m, _, _ in
+        m.windowExtra = [SessionsBackup.Item(role: .window, original: "x", path: "window-extra/\(sid(1))/\(sid(2))/backlog/tasks.json", bytes: 2)]
+    }
+    check(extraNamed.contains("names window files an export doesn't carry"), "hostile (image): a backup.json naming the window's backlog or waiting input is refused whole: \(extraNamed.prefix(90))")
+
+    // ---- an older build's export (26.11.42 and earlier): a window file named like an entry but not one, run by a task this import
+    // leaves out, with its transcript, and counted as a session. This build's import counts the entries alone, and the odd file never
+    // holds a transcript back (only a real entry of a task left out does)
+    do {
+        let made = doctoredFile("w-older-odd") { m, _, p in
+            guard let e = m.items.first(where: { $0.role == .window && ($0.path as NSString).lastPathComponent.hasPrefix("local_") }),
+                  let t = m.items.first(where: { $0.role == .transcript && $0.path.hasSuffix(".jsonl") }) else { throw CocoaError(.fileNoSuchFile) }
+            let ec = e.path.split(separator: "/").map(String.init), tc = t.path.split(separator: "/").map(String.init)
+            let odd = "window/\(ec[1])/\(ec[2])/local_notanid.json"
+            let oddBody = #"{"sessionId":"local_notanid","cliSessionId":"\#(sid(140))","scheduledTaskId":"nightly-digest"}"#
+            let tr = "transcripts/\(tc[1])/\(sid(140)).jsonl"
+            let trBody = #"{"type":"user","cwd":"/w/project","text":"odd"}"# + "\n"
+            write(p.path + "/" + odd, oddBody); write(p.path + "/" + tr, trBody)
+            m.items.append(SessionsBackup.Item(role: .window, original: odd, path: odd, bytes: Int64(oddBody.utf8.count)))
+            m.items.append(SessionsBackup.Item(role: .transcript, original: tr, path: tr, bytes: Int64(trBody.utf8.count)))
+            m.counts.sessions += 1; m.counts.transcripts += 1                   // as an older build counted them
+        }
+        if let file = made.file, let o = try? SessionsImport.open(file, password: pw, place: place) {
+            let (tX, _, _) = target("x")
+            do {
+                let st = try SessionsImport.materialize(o, part: o.parts[0], target: "x")
+                let mX = SessionsBackup.load(profile: "x", id: st.id, place: st.stage)
+                let entries = mX?.items.filter { $0.role == .window && ClaudeFiles.isEntryName(($0.path as NSString).lastPathComponent) }.count ?? -1
+                check(mX?.counts.sessions == entries && entries == 2 && mX?.items.contains { $0.path.hasSuffix("/local_notanid.json") } == true,
+                      "import (older file): the sessions counted by the entries alone (\(mX?.counts.sessions ?? -1), not the file's own claim of 3); the odd file kept as it came")
+                let pX = SessionsRestore.plan(tX, st.backup)
+                let leaves = pX.transcripts.map(\.leaf)
+                let written = pX.entries + pX.tasks + pX.configPieces + pX.folderFiles
+                check(pX.refusal == nil && leaves.contains("\(sid(140)).jsonl") && !leaves.contains("\(sid(111)).jsonl") && pX.taskSessions.count == 1
+                      && mX?.items.contains { $0.path.hasSuffix("/\(sid(111)).jsonl") } == true && !written.contains { $0.leaf == "local_notanid.json" },
+                      "restore (older file): only a real entry of a task left out holds its transcript back; the odd file holds nothing and is never written: \(leaves)")
+            } catch { check(false, "import (older file): staged: \(error)") }
+            SessionsImport.discard(o.work)
+        } else { check(false, "import (older file): made and opens: \(made.why.prefix(90))") }
+    }
     let huge = doctored("w-huge-config") { m, _, p in try setConfig(&m, p, Data(("{\"pad\":\"" + String(repeating: "a", count: (8 << 20) + 16) + "\"}").utf8)) }
     check(huge.contains("over 8 MB"), "hostile (image): a claude_desktop_config.json over 8 MB is refused whole, never read: \(huge.prefix(90))")
     let notJSON = doctored("w-config-not-json") { m, _, p in try setConfig(&m, p, Data("not json at all".utf8)) }
@@ -837,7 +885,19 @@ MainActor.assumeIsolated {
         write(w + "/elsewhere-f.json", "{}")
         symlink(w + "/elsewhere-f.json", "\(scopeF)/waiting-input/link.json")                 // a link: never taken
         write("\(codeF)/CLAUDE.md", "# rules\n")
-        let bF = try! SessionsBackup.make(SessionsBackup.Source(profile: "f", dataDir: dataF, codeDir: codeF), kind: .manual, place: place)
+        let srcF = SessionsBackup.Source(profile: "f", dataDir: dataF, codeDir: codeF)
+        let bF = try! SessionsBackup.make(srcF, kind: .manual, place: place)
+        // an export of that profile carries none of it, and its own import opens it (the guard never refuses a real export)
+        let zipF = URL(fileURLWithPath: out + "/F.zip")
+        do {
+            _ = try SessionsExport.run(SessionsExport.Job(parts: [SessionsExport.Part(profile: "f", name: "F", source: srcF, emails: [])], keys: .leaveOut,
+                                                          destination: zipF, rootName: "f-export", place: place))
+            let o = try SessionsImport.open(zipF, password: nil, place: place)
+            let mo = o.parts[0].manifest
+            check(mo.windowExtra == nil && !mo.items.contains { $0.path.contains("backlog") || $0.path.contains("waiting-input") },
+                  "export: a profile with a backlog and waiting input exports without them, and its own import opens the file")
+            SessionsImport.discard(o.work)
+        } catch { check(false, "export of a profile with a backlog: made and opens: \(error)") }
         let folderPaths = (bF.windowExtra ?? []).map(\.path).sorted()
         let bFdir = SessionsBackup.folder(profile: "f", place: place).appendingPathComponent(bF.id).path
         check(bF.version == 2 && folderPaths == ["window-extra/\(sid(1))/\(sid(2))/backlog/tasks.json", "window-extra/\(sid(1))/\(sid(2))/waiting-input/w1.json"]
@@ -891,6 +951,40 @@ MainActor.assumeIsolated {
               && pf4.notes.contains("The window's waiting-input folder is a link or a file here: its files stay in the backup."),
               "restore: a folder that is a file or a link: its files are left, nothing written through it: \(pf4.folderFiles.map(\.dest))")
         try? fm.removeItem(atPath: scopeF + "/backlog"); try? fm.removeItem(atPath: scopeF + "/waiting-input")
+        // a folder made a link after the plan (the first window check of the run comes after it): that file is left, said, and the
+        // run goes on (never a stop that leaves a restore half way); nothing is written through the link
+        let away = w + "/away-f"
+        try? fm.removeItem(atPath: away); try! fm.createDirectory(atPath: away, withIntermediateDirectories: true)
+        var swapped = false
+        let rs = try? SessionsRestore.run(tF, bkF, windowClosed: {
+            if !swapped { swapped = true; symlink(away, scopeF + "/backlog") }
+            return true
+        })
+        check(swapped && rs?.problems.contains("backlog/tasks.json: its folder is a link or can't be made; left as it is.") == true
+              && fm.fileExists(atPath: scopeF + "/waiting-input/w1.json") && ((try? fm.contentsOfDirectory(atPath: away)) ?? ["?"]).isEmpty,
+              "restore: a folder made a link mid-run: its file left and said, the rest written, nothing through the link: \(rs?.problems ?? ["no receipt"])")
+        if let rs { _ = try? SessionsRestore.undo(rs.id, windowClosed: { true }) }
+        try? fm.removeItem(atPath: scopeF + "/backlog"); try? fm.removeItem(atPath: scopeF + "/waiting-input")
+        // over 64 MB: a backup never takes one (counted as left out), and a restore refuses a backup that holds one
+        func sparse(_ path: String, _ size: UInt64) {
+            try? fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+            fm.createFile(atPath: path, contents: nil)
+            if let h = FileHandle(forWritingAtPath: path) { try? h.truncate(atOffset: size); try? h.close() }
+        }
+        let bSmall = try! SessionsBackup.make(srcF, kind: .manual, place: place)        // the baseline: the same folders without it
+        sparse(scopeF + "/waiting-input/big.json", (64 << 20) + 1)
+        write(scopeF + "/waiting-input/small.json", "{}")
+        let bBig = try! SessionsBackup.make(srcF, kind: .manual, place: place)
+        let bigPaths = (bBig.windowExtra ?? []).map { ($0.path as NSString).lastPathComponent }
+        check(bigPaths.contains("small.json") && !bigPaths.contains("big.json") && bBig.leftOut == bSmall.leftOut + 1,
+              "backup: a file over 64 MB in the waiting input is never taken, counted as left out; the small one beside it is: \(bigPaths) \(bSmall.leftOut)→\(bBig.leftOut)")
+        try? fm.removeItem(atPath: scopeF + "/waiting-input/big.json"); try? fm.removeItem(atPath: scopeF + "/waiting-input/small.json")
+        let inBackup = bFdir + "/window-extra/\(sid(1))/\(sid(2))/waiting-input/w1.json"
+        let keepW1 = fm.contents(atPath: inBackup)!
+        try? fm.removeItem(atPath: inBackup); sparse(inBackup, (64 << 20) + 1)
+        let tooBig = SessionsRestore.plan(tF, bkF).refusal
+        try? fm.removeItem(atPath: inBackup); try! keepW1.write(to: URL(fileURLWithPath: inBackup))
+        check(tooBig?.contains("over 64 MB") == true, "restore: a backup holding one over 64 MB is refused whole, never read: \(tooBig ?? "nil")")
         // a backup.json whose windowExtra names another folder, or a path outside window-extra: refused whole
         let mPath = SessionsBackup.folder(profile: "f", place: place).appendingPathComponent(bF.id).appendingPathComponent("backup.json").path
         let orig = fm.contents(atPath: mPath)!
