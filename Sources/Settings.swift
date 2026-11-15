@@ -866,6 +866,7 @@ struct SettingsPage: View {
                     DefaultProfilePage(model: model, runner: r, width: w).padding(.horizontal, 16).padding(.vertical, 14)
                 } else if model.selection == SettingsModel.switchID, let t = model.switchTarget {
                     SwitchPage(entry: t.entry, standby: t.standby, model: model, runner: model.runner(of: t.entry.id), width: w)
+                        .id(model.switching)        // one page per pick: nothing of another pick's state carries over
                         .padding(.horizontal, 16).padding(.vertical, 14)
                 } else if model.selection == SettingsModel.restoreID, let t = model.restoreTarget {
                     RestorePage(entry: t.entry, key: t.key, model: model, runner: model.restoreRunner(t.key), width: w)

@@ -70,7 +70,7 @@ enum SwitchMenu {
 
     /// "Switch to ultra-3…": on the top level, only while a limit is full.
     static func bestItem(_ l: Line, target: AnyObject, action: Selector) -> NSMenuItem {
-        let i = NSMenuItem(title: l.own ? SwitchOffer.moveBackTitle(l.short) :"Switch to \(l.short)…", action: action, keyEquivalent: "")
+        let i = NSMenuItem(title: l.own ? SwitchOffer.moveBackTitle(l.short) : "Switch to \(l.short)…", action: action, keyEquivalent: "")
         i.target = target; i.representedObject = l.key
         return i
     }

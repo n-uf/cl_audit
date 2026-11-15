@@ -2381,6 +2381,32 @@ MainActor.assumeIsolated {
           && !stays.contains("standby") && !staysNoOwner.contains("standby") && !stays.contains("Acc")
           && staysNormal == "ann stays on Acc as a standby account: nothing read, switch back any time.",
           "the Switch page's move-back line: cat stays with its own profile (never Acc's standby); a normal switch unchanged: \(stays)")
+    // the clash wording is reachable through the model: with no live numbers in a clash (liveCounts false) an offer comes only
+    // from the record's own full level, and then it is the move-back one
+    let qcModel = QuickChatModel()
+    var clashTarget = QuickChatTarget(onlyOwn, now: now); clashTarget.liveCounts = false; clashTarget.split = false
+    var fullLevel = QuickChatLevel(nil); fullLevel.week = 100; fullLevel.weekResets = now.addingTimeInterval(86400)
+    qcModel.update(target: clashTarget, level: QuickChatLevel(nil), offer: { QuickChatSwitchOffer.best(onlyOwn, now: now) })
+    check(qcModel.offer == nil, "a clash, no live numbers, the record's level not full: no offer")
+    qcModel.update(target: clashTarget, level: fullLevel, offer: { QuickChatSwitchOffer.best(onlyOwn, now: now) })
+    check(qcModel.blocked && qcModel.offer?.own == true && qcModel.offer?.key == backKey && qcModel.offer?.keyTitle == "Move Claude Code back…"
+          && qcModel.offer?.lineWords(name: "Acc").contains("move Claude Code back to its own account") == true,
+          "a clash, the record's own full level: the model offers the move-back (words reached through update): \(qcModel.offer?.lineWords(name: "Acc") ?? "none")")
+    // the Switch page's remembered move-back is used only for its own switch, while one is under way or ended: not after a
+    // Cancel (ready again), another pick, or another profile's page
+    let started = SwitchPage.ClashBack(key: backKey, owner: "Work")
+    check(SwitchPage.backNote(started, key: backKey, phase: .waiting) == started && SwitchPage.backNote(started, key: backKey, phase: .reached) == started
+          && SwitchPage.backNote(started, key: backKey, phase: .ready) == nil,
+          "a move-back's note: kept while the switch runs or ended, gone after a Cancel (ready again)")
+    check(SwitchPage.backNote(started, key: AccountEntry.switchKey("acc", "k2"), phase: .waiting) == nil
+          && SwitchPage.backNote(started, key: AccountEntry.switchKey("other", "k1"), phase: .reached) == nil
+          && SwitchPage.backNote(nil, key: backKey, phase: .waiting) == nil,
+          "a move-back's note: never for another pick or another profile's page (then a normal switch says its usual words)")
+    check(SwitchPage.readyTitle(name: "Acc", to: "ann", moveBack: true) == "Move Claude Code back to ann"
+          && SwitchPage.goTitle(to: "ann", moveBack: true) == "Move back to ann"
+          && SwitchPage.readyTitle(name: "Acc", to: "ben", moveBack: false) == "Switch Claude Acc to ben"
+          && SwitchPage.goTitle(to: "ben", moveBack: false) == "Switch to ben",
+          "the Switch page's title and key: a clash move-back says Move back; a normal switch is unchanged")
     // outside a clash nothing changes: the active account is off the standby list, ticked with its week, no move words
     _ = Store.writeStatus("acc", rec())
     let calmQC = QuickChatSwitchOffer.best(both, now: now)

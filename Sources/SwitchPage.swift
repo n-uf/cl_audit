@@ -26,9 +26,27 @@ struct SwitchPage: View {
     /// A switch (or its retry) waiting for consent (Experimental.swift): it starts only from the sheet's Continue.
     @State private var consent: ConsentRequest?
     /// A clash move-back as it was when the switch started, and whose account the folder was signed in to: once Claude Code is
-    /// back on the profile's own account the clash is gone, and the page still says what the move was.
+    /// back on the profile's own account the clash is gone, and the page still says what the move was. Used only for the
+    /// switch it was made for (`backNote`).
     @State private var startedBack: ClashBack?
-    struct ClashBack { var owner: String? }
+    struct ClashBack: Equatable { var key: String; var owner: String? }
+
+    /// The remembered move-back, only while it is this pick's (the switch key) and a switch is under way or ended: after a
+    /// Cancel (ready again), another pick or another profile's page it says nothing.
+    static func backNote(_ started: ClashBack?, key: String, phase: SwitchRunner.Phase) -> ClashBack? {
+        guard let started, started.key == key, phase != .ready else { return nil }
+        return started
+    }
+    private var backNote: ClashBack? { Self.backNote(startedBack, key: AccountEntry.switchKey(entry.id, standby.id), phase: runner.phase) }
+    /// A clash move-back: the pick is the profile's own account in a clash (ProfileShow.ownStandbyID, as the menus decide it),
+    /// or the one remembered from the switch that is running or ended.
+    private var movesBack: Bool { backNote != nil || standby.id == show.ownStandbyID }
+
+    /// The page's title before anything starts, and the key's: a clash move-back says it moves Claude Code back.
+    static func readyTitle(name: String, to: String, moveBack: Bool) -> String {
+        moveBack ? "Move Claude Code back to \(to)" : "Switch Claude \(name) to \(to)"
+    }
+    static func goTitle(to: String, moveBack: Bool) -> String { moveBack ? "Move back to \(to)" : "Switch to \(to)" }
 
     private var name: String { entry.name.isEmpty ? "this profile" : entry.name }
     /// A sign-in again on the account in use (no standby account picked).
@@ -78,7 +96,7 @@ struct SwitchPage: View {
         case .closing, .moving, .waiting: return "Switching Claude \(name) to \(to)"
         case .reached: return "Switched Claude \(name) to \(to)"
         case .other(let e): return "Claude \(name) signed in as \(AccountNames.short(e))"
-        default: return "Switch Claude \(name) to \(to)"
+        default: return Self.readyTitle(name: name, to: to, moveBack: movesBack)
         }
     }
 
@@ -471,14 +489,16 @@ struct SwitchPage: View {
                 }
             }
             SRow(label: "Stays", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
-            SRowLine(text: Self.staysLine(from: from, name: name, moveBack: startedBack != nil || standby.id == show.ownStandbyID,
-                                          owner: startedBack == nil ? view.clash : startedBack?.owner))
+            SRowLine(text: Self.staysLine(from: from, name: name, moveBack: movesBack,
+                                          owner: backNote == nil ? view.clash : backNote?.owner))
             if let n = Self.noteLine(runner.moveNote, Self.leftInPlan(left: runner.leftNote, moved: runner.receipt != nil, plan: plan)) { SRowLine(text: n) }
         }
     }
 
     /// As the switch starts: a clash move-back is remembered (`startedBack`).
-    private func noteBack() { startedBack = standby.id == show.ownStandbyID ? ClashBack(owner: view.clash) : nil }
+    private func noteBack() {
+        startedBack = standby.id == show.ownStandbyID ? ClashBack(key: AccountEntry.switchKey(entry.id, standby.id), owner: view.clash) : nil
+    }
 
     /// What happens to the account Claude Code leaves. A normal switch: it stays on the profile as a standby account. A clash
     /// move-back (the account is another profile's, `owner`): it stays with that profile, never the profile's standby.
@@ -597,7 +617,7 @@ struct SwitchPage: View {
             Spacer(minLength: 6)
             switch runner.phase {
             case .ready:
-                Button("Switch to \(to)") { consent = ConsentRequest(flow: "Account switching") { noteBack(); runner.start(standby) } }
+                Button(Self.goTitle(to: to, moveBack: movesBack)) { consent = ConsentRequest(flow: "Account switching") { noteBack(); runner.start(standby) } }
                     .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
                     .disabled(standby.seat == nil && standby.email.isEmpty)
             case .waiting:
