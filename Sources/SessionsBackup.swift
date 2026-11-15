@@ -434,7 +434,7 @@ enum SessionsBackup {
         var dropScripts = false
         if !forExport, let sf = g.files.first(where: { $0.role == .setup && $0.rel == "setup/settings.json" }) {
             // (env values blanked, then every other string value the Export page's key scan matches)
-            if let d = Setup.readCapped(sf.src, limit: Setup.maxSettingsBytes), let blank = Setup.secretsBlanked(d) {
+            if let d = SafeFiles.readPlain(sf.src, max: Setup.maxSettingsBytes), let blank = Setup.secretsBlanked(d) {
                 try put(blank.data, "setup/settings.json", in: partial, dirFor)
                 items.append(Item(role: .setup, original: sf.original, path: sf.rel, bytes: Int64(blank.data.count), sha: SwitchEngine.sha(blank.data), exec: false))
                 envBlanked = true
@@ -639,7 +639,7 @@ enum SessionsBackup {
         if (st.st_mode & S_IFMT) == S_IFLNK { return .leftOut("it is a link") }
         guard (st.st_mode & S_IFMT) == S_IFREG else { return .leftOut("it isn't a plain file") }
         guard st.st_size <= maxConfigBytes else { return .leftOut("it is over 8 MB") }
-        guard let d = Setup.readCapped(path, limit: maxConfigBytes) else { return .leftOut("it can't be read") }
+        guard let d = SafeFiles.readPlain(path, max: maxConfigBytes) else { return .leftOut("it can't be read") }
         guard let j = withoutSidebar(d) else { return .leftOut("it isn't a JSON object") }
         if j.isEmpty { return .none }
         guard let out = try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return .leftOut("it can't be read") }

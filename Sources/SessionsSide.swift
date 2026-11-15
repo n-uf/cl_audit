@@ -163,8 +163,6 @@ enum SideFiles {
         return FolderKey.canonical(codeDir) == std ? NSHomeDirectory() + "/.claude.json" : inside
     }
 
-    static func readCapped(_ path: String, limit: Int) -> Data? { SafeFiles.readPlain(path, max: limit) }
-
     /// The plain files directly in a folder (never through a link), with their sizes.
     static func plainFiles(_ dir: String) -> [(name: String, bytes: Int64)]? {
         let fd = open(dir, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
@@ -353,7 +351,7 @@ enum SideFiles {
                     let names = list.filter { validTaskName($0.name) }
                     if names.count > maxTaskFiles { leftOut("The task list of \(label) has over \(maxTaskFiles) files; only the first \(maxTaskFiles) were taken.") }
                     for f in names.prefix(maxTaskFiles) {
-                        guard f.bytes <= Int64(maxTaskFile), let d = readCapped(tdir + "/" + f.name, limit: maxTaskFile) else { leftOut("A task file of \(label) is over 1 MB; it was left out."); continue }
+                        guard f.bytes <= Int64(maxTaskFile), let d = SafeFiles.readPlain(tdir + "/" + f.name, max: maxTaskFile) else { leftOut("A task file of \(label) is over 1 MB; it was left out."); continue }
                         if hit("the task list of \(label)", SecretScan.scan(d)) { continue }
                         if let it = put(f.name, d) { s.tasks.append(it); pv.taskBytes += it.bytes }
                     }
@@ -366,7 +364,7 @@ enum SideFiles {
                 var st = stat()
                 if lstat(p, &st) == 0 {
                     if (st.st_mode & S_IFMT) != S_IFREG || st.st_size > maxPlan { leftOut("The plan of \(label) is over 4 MB or isn't a plain file; it was left out.") }
-                    else if let d = readCapped(p, limit: maxPlan), !hit("the plan of \(label)", SecretScan.scan(d)), let it = put(slug, d) {
+                    else if let d = SafeFiles.readPlain(p, max: maxPlan), !hit("the plan of \(label)", SecretScan.scan(d)), let it = put(slug, d) {
                         // (two sessions of one plan: counted once)
                         s.plan = it
                         if !part.sessions.contains(where: { $0.plan?.name == slug }) { pv.plans += 1; pv.planBytes += it.bytes }
@@ -394,7 +392,7 @@ enum SideFiles {
                         let p = (codeDir as NSString).appendingPathComponent("paste-cache/\(h).txt")
                         var st = stat()
                         guard lstat(p, &st) == 0 else { continue }
-                        guard (st.st_mode & S_IFMT) == S_IFREG, st.st_size <= maxPaste, let d = readCapped(p, limit: maxPaste) else { leftOut("A pasted text over 8 MB was left out."); continue }
+                        guard (st.st_mode & S_IFMT) == S_IFREG, st.st_size <= maxPaste, let d = SafeFiles.readPlain(p, max: maxPaste) else { leftOut("A pasted text over 8 MB was left out."); continue }
                         guard pasteHash(d) == h else { leftOut("A pasted text whose name isn't the hash of its text was left out."); continue }
                         if hit("a pasted text in the prompt history of \(label)", SecretScan.scan(d)) { continue }
                         guard pasteTotal + Int64(d.count) <= maxPastes else { leftOut("Pasted texts over \(SessionsBackup.sizeWords(maxPastes)) were left out."); break }
@@ -493,7 +491,7 @@ enum SideFiles {
         var st = stat()
         guard lstat(path, &st) == 0 else { return .failure(ConfigProblem("Claude Code's settings file for this profile isn't there, so no folder's trust is carried.")) }
         guard (st.st_mode & S_IFMT) == S_IFREG else { return .failure(ConfigProblem("Claude Code's settings file for this profile is a link or isn't a plain file, so it isn't read.")) }
-        guard st.st_size <= maxConfig, let d = readCapped(path, limit: maxConfig) else { return .failure(ConfigProblem("Claude Code's settings file for this profile is over \(SessionsBackup.sizeWords(Int64(maxConfig))), so it isn't read.")) }
+        guard st.st_size <= maxConfig, let d = SafeFiles.readPlain(path, max: maxConfig) else { return .failure(ConfigProblem("Claude Code's settings file for this profile is over \(SessionsBackup.sizeWords(Int64(maxConfig))), so it isn't read.")) }
         guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return .failure(ConfigProblem("Claude Code's settings file for this profile can't be read, so no trust is carried.")) }
         return .success((j["projects"] as? [String: Any]) ?? [:])
     }
@@ -662,7 +660,7 @@ enum SideFiles {
         var out: [String: String] = [:]
         guard let walk = FileManager.default.enumerator(atPath: windowDir) else { return out }
         for case let rel as String in walk where (rel as NSString).lastPathComponent.hasPrefix("local_") && rel.hasSuffix(".json") {
-            guard let d = readCapped((windowDir as NSString).appendingPathComponent(rel), limit: SessionsRepoint.maxEntry), let f = SessionsRepoint.entryFacts(d), let t = f.title else { continue }
+            guard let d = SafeFiles.readPlain((windowDir as NSString).appendingPathComponent(rel), max: SessionsRepoint.maxEntry), let f = SessionsRepoint.entryFacts(d), let t = f.title else { continue }
             out[f.cli] = t
         }
         return out
@@ -671,7 +669,7 @@ enum SideFiles {
     /// The side files kept with an imported backup, read back (untrusted, like the image): nil when it has none.
     static func stashed(_ b: SessionsRestore.Backup) -> Part? {
         let dir = b.dir.appendingPathComponent(dirName).path
-        guard let d = readCapped((dir as NSString).appendingPathComponent(fileName), limit: maxManifest),
+        guard let d = SafeFiles.readPlain((dir as NSString).appendingPathComponent(fileName), max: maxManifest),
               let raw = try? JSONDecoder().decode(File.self, from: d), raw.parts.count == 1 else { return nil }
         // (the stash names its files "side/<n>"; read with the image's rules under the name "stash")
         var f = raw

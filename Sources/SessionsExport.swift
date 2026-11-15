@@ -755,7 +755,7 @@ enum SessionsExport {
         guard let b = part.backup, let m = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) else { return c }
         if m.items.contains(where: { $0.role == .config }) {
             c.present = true
-            c.servers = Setup.readCapped(b.dir.appendingPathComponent(SessionsBackup.configPath).path, limit: SessionsBackup.maxConfigBytes).map { SessionsBackup.mcpServers($0).map(\.name) } ?? []
+            c.servers = SafeFiles.readPlain(b.dir.appendingPathComponent(SessionsBackup.configPath).path, max: SessionsBackup.maxConfigBytes).map { SessionsBackup.mcpServers($0).map(\.name) } ?? []
         } else { c.leftOut = m.configLeftOut; c.fromBackup = true }
         return c
     }
@@ -832,7 +832,7 @@ enum SessionsExport {
         let files = m.items.filter { $0.role == .setup && $0.path.hasPrefix("setup/") }.map { (rel: String($0.path.dropFirst(6)), exec: $0.exec ?? false) }
         var out = Setup.heldUnits(known: nil, files: files)
         if files.contains(where: { $0.rel == "settings.json" }) {
-            out.formUnion(Setup.hookUnits(rels: files.map(\.rel), settings: Setup.readCapped(dir.appendingPathComponent("setup/settings.json").path, limit: 8 << 20)) ?? [])
+            out.formUnion(Setup.hookUnits(rels: files.map(\.rel), settings: SafeFiles.readPlain(dir.appendingPathComponent("setup/settings.json").path, max: 8 << 20)) ?? [])
         }
         return out
     }
@@ -842,7 +842,7 @@ enum SessionsExport {
         let (files, found, held, known) = setupFiles(of: part)
         var kinds: [Setup.Unit: Set<Secret>] = [:]
         var seen = Set<Setup.Unit>()
-        func data(_ rel: String) -> Data? { files.first { $0.rel == rel }.flatMap { Setup.readCapped($0.src, limit: 8 << 20) } }
+        func data(_ rel: String) -> Data? { files.first { $0.rel == rel }.flatMap { SafeFiles.readPlain($0.src, max: 8 << 20) } }
         sp.hookUnits = held
         sp.hooksUnknown = !known
         // a plain backup's settings.json has its env values blanked: an export from it carries the blank ones (said on the page)
@@ -980,7 +980,7 @@ enum SessionsExport {
         // how many of the tasks have their prompt in the file (one without it can't be imported)
         var ids = Set<String>()
         for f in list where f.role == .window && (f.rel as NSString).lastPathComponent == "scheduled-tasks.json" {
-            if let d = Setup.readCapped(f.src, limit: 64 << 20) { ids.formUnion(SessionsRestore.taskList(d).compactMap { $0["id"] as? String }) }
+            if let d = SafeFiles.readPlain(f.src, max: 64 << 20) { ids.formUnion(SessionsRestore.taskList(d).compactMap { $0["id"] as? String }) }
         }
         pv.tasksWithPrompt = ids.intersection(sp.taskPromptIDs).count
         return pv
@@ -1617,7 +1617,7 @@ enum SessionsExport {
             if !includes.isEmpty {
                 let candidates = landed.union(includes.flatMap { $0.1.map { String($0.path.dropFirst(6)) } })
                 let reached = Setup.includeClosure(carried: candidates) { rel in
-                    Setup.readCapped(b.dir.appendingPathComponent("setup/" + rel).path, limit: 4 << 20)
+                    SafeFiles.readPlain(b.dir.appendingPathComponent("setup/" + rel).path, max: 4 << 20)
                 }
                 for (u, list) in includes {
                     if cancel() { throw ArchiveError("Stopped.") }

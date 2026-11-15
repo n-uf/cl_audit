@@ -165,7 +165,7 @@ extension SessionsRestore {
         var st = stat()
         if lstat(here, &st) == 0 {
             cp.status = .here
-            let mine = Set(Setup.readCapped(here, limit: SessionsBackup.maxConfigBytes).map { SessionsBackup.mcpServers($0).map(\.name) } ?? [])
+            let mine = Set(SafeFiles.readPlain(here, max: SessionsBackup.maxConfigBytes).map { SessionsBackup.mcpServers($0).map(\.name) } ?? [])
             let lacking = servers.map(\.name).filter { !mine.contains($0) }
             cp.lacking = Array(lacking.prefix(listCap)); cp.moreLacking = max(0, lacking.count - listCap)
             return
@@ -284,7 +284,7 @@ extension SessionsRestore {
         if nowWindow.hasTasks.contains(where: { $0.sameIgnoringCase(scope) }) {
             tp.status = .here
             let path = (SwitchEngine.scopeDir(t.dataDir, scope) as NSString).appendingPathComponent("scheduled-tasks.json")
-            let mine = Set(Setup.readCapped(path, limit: 64 << 20).map { taskList($0).compactMap { $0["id"] as? String } } ?? [])
+            let mine = Set(SafeFiles.readPlain(path, max: 64 << 20).map { taskList($0).compactMap { $0["id"] as? String } } ?? [])
             let lacking = all.filter { !mine.contains($0.id) }.map(\.name)
             tp.lacking = Array(lacking.prefix(listCap)); tp.moreLacking = max(0, lacking.count - listCap)
             return []
@@ -342,7 +342,7 @@ extension SessionsRestore {
             if nowWindow.hasTasks.contains(where: { $0.sameIgnoringCase(dest) }) {
                 here += 1
                 let path = (SwitchEngine.scopeDir(t.dataDir, dest) as NSString).appendingPathComponent("scheduled-tasks.json")
-                let mine = Set(Setup.readCapped(path, limit: 64 << 20).map { taskList($0).compactMap { $0["id"] as? String } } ?? [])
+                let mine = Set(SafeFiles.readPlain(path, max: 64 << 20).map { taskList($0).compactMap { $0["id"] as? String } } ?? [])
                 for task in g.tasks {
                     guard let id = task["id"] as? String else { continue }
                     if !mine.contains(id) { lacking.append(names[id] ?? id) }

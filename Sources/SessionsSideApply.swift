@@ -564,7 +564,7 @@ extension SideFiles {
             guard let f = folder else {
                 var w = Waiting(session: s.id, title: s.title, from: SessionsRepoint.projectFolder(of: s.cwd), historyLines: s.historyLines, trust: trusts, mcp: kinds.mcp,
                                 why: "its folder isn't on this Mac yet")
-                if hasHistory, let h = s.history, let d = readCapped(stashPath(b, h), limit: Int(maxHistoryBytes)), SwitchEngine.sha(d) == h.sha {
+                if hasHistory, let h = s.history, let d = SafeFiles.readPlain(stashPath(b, h), max: Int(maxHistoryBytes)), SwitchEngine.sha(d) == h.sha {
                     let name = "waiting-\(s.id).jsonl"
                     try writeSaved(d, id: r.id, name: name)
                     w.history = name
@@ -573,7 +573,7 @@ extension SideFiles {
                 try store.save(r)
                 continue
             }
-            if hasHistory, let h = s.history, let d = readCapped(stashPath(b, h), limit: Int(maxHistoryBytes)), SwitchEngine.sha(d) == h.sha {
+            if hasHistory, let h = s.history, let d = SafeFiles.readPlain(stashPath(b, h), max: Int(maxHistoryBytes)), SwitchEngine.sha(d) == h.sha {
                 let got = historyLines(d, session: s.id, project: projectMap(f))
                 if got.dropped > 0 { r.problems.append("\(label): \(got.dropped) prompt history \(got.dropped == 1 ? "line wasn't one of its own, or couldn't be read, and was" : "lines weren't its own, or couldn't be read, and were") left out.") }
                 lines += got.lines.map { (s.id, $0) }
@@ -727,7 +727,7 @@ extension SideFiles {
             var done: [String] = []
             for w in r.waiting where w.pick == nil {
                 guard let f = picked[w.session] else { continue }
-                if let h = w.history, let d = readCapped(savedDir(r.id).appendingPathComponent(h).path, limit: Int(maxHistoryBytes)) {
+                if let h = w.history, let d = SafeFiles.readPlain(savedDir(r.id).appendingPathComponent(h).path, max: Int(maxHistoryBytes)) {
                     lines += historyLines(d, session: w.session, project: projectMap((w.from, f.to))).lines.map { (w.session, $0) }
                 }
                 for tr in w.trust {
@@ -808,7 +808,7 @@ extension SideFiles {
             case .dir:
                 if s.done { rmdir(s.path) }
             case .lines:
-                guard let name = s.saved, let d = readCapped(savedDir(r.id).appendingPathComponent(name).path, limit: Int(maxHistoryBytes) + (1 << 20)) else {
+                guard let name = s.saved, let d = SafeFiles.readPlain(savedDir(r.id).appendingPathComponent(name).path, max: Int(maxHistoryBytes) + (1 << 20)) else {
                     // (its copy went when the import could no longer be undone: the lines stay, and that is said)
                     if s.done { r.left.append("\(s.count) prompt history \(s.count == 1 ? "line" : "lines") added stay: cl_audit no longer keeps the copy it would take them out by.") }
                     continue
