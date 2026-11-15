@@ -42,7 +42,8 @@ enum AccountResolver {
         // (ids as AccountID keeps them: one normal form, one comparison)
         var r = ResolvedAccount(account: code.map { AccountID.normal($0.account) }, email: code?.email ?? loginEmail, fromApp: false,
                                 numbersFor: loginEmail, differs: false, line: nil, lit: code != nil, clash: owner?.name, at: now,
-                                codeAccount: code.map { AccountID.normal($0.account) }, codeName: codeLabel, readStale: stale ? true : nil)
+                                codeAccount: code.map { AccountID.normal($0.account) }, codeName: codeLabel, readStale: stale ? true : nil,
+                                clashID: owner?.id)
         if e.claudeWindow, app.state == .known, let id = app.account.map(AccountID.normal) {
             let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { AccountID.same($0.account, id) }
             r.account = id

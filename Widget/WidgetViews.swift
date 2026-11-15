@@ -91,12 +91,12 @@ enum AgentFiles {
             var p = WidgetProfile(id: e.id, name: e.name, accent: e.accent ?? "orange")
             // the record through the app's own codec and ProfileCore's Headline, as the menu bar and the Dock icon read it
             // (Store.status(for:)): no numbers past a reset or for a sign-in that is expired or gone, none in the split or for
-            // another reading than the label's, and none full when old (the app's Store.lastKnown: the read interval, 5
-            // minutes at least, plus a minute) or when their account couldn't be confirmed. Numbers read for another account
-            // than the profile's (the one it was on before a switch) never show.
+            // another reading than the label's, and none full when old (the app's thresholds, StatusAges: the read
+            // interval, 5 minutes at least, plus a minute) or when their account couldn't be confirmed. Numbers read for
+            // another account than the profile's (the one it was on before a switch) never show.
             if let d = try? Data(contentsOf: dir.appendingPathComponent("status/\(e.id).json")),
                let raw = StatusCodec.decode(d)?.current(now: now), !raw.readForAnother(than: e.seat?.email) {
-                let ages = Headline.Ages(freshFor: TimeInterval(max(e.pollMinutes ?? 5, 5) * 60 + 60))
+                let ages = StatusAges.of(pollMinutes: e.pollMinutes ?? 5)
                 let s = raw.shown(raw.headline(now: now, ages: ages), now: now)
                 p.updated = raw.updatedAt
                 p.noFive = s.noFiveHour ?? false

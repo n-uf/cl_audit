@@ -71,10 +71,10 @@ struct IconStatus: Codable {
 
     /// The sign-in needs the person: another account than the folder names, run out, or none. Every surface then shows
     /// one key, Log in… (the card's needsLogin, the Dock menu's and the menu bar's).
-    var needsLogin: Bool {
-        let mismatch = loginEmail.flatMap { a in expectedEmail.map { a.lowercased() != $0.lowercased() } } ?? false
-        return mismatch || state == "expired" || state == "noLogin"
-    }
+    var needsLogin: Bool { mismatch || state == "expired" || state == "noLogin" }
+
+    /// The sign-in is on another account than the folder names (both addresses known, any case).
+    var mismatch: Bool { loginEmail.flatMap { a in expectedEmail.map { a.lowercased() != $0.lowercased() } } ?? false }
 
     /// Signed in: not expired and not signed out (an expired sign-in, or none, shows no numbers at all).
     var signedIn: Bool { state != "expired" && state != "noLogin" }
@@ -158,6 +158,8 @@ struct ResolvedAccount: Codable, Equatable {
     /// still open or linked (not undone, not left as it is), and the app is still on the account it left. Then the line
     /// asks for the app's sign-in and there is no key to log Claude Code back in (SplitUsage.switched).
     var switchWaits: Bool? = nil
+    /// The id of the profile `clash` names (names needn't be unique: this one says which); nil in a record from before it.
+    var clashID: String? = nil
 
     /// Whose the numbers are (ProfileCore's Headline.Owner): the app's account in use, when the app decided it; Claude
     /// Code's account (its name, else the numbers'); the label `numbersFor` when it is an address; `reading`: the
@@ -171,6 +173,21 @@ struct ResolvedAccount: Codable, Equatable {
                               signIn: (codeName ?? numbersFor).map { identity(codeAccount, $0) }, reading: reading, label: label,
                               differs: differs, elsewhere: clash != nil, switchWaits: switchWaits == true,
                               readStale: readStale == true, unconfirmed: unconfirmed)
+    }
+}
+
+/// cl_audit's thresholds for how old a profile's numbers are (Core/README.md), the one formula the app (Store.ages) and the
+/// widget use, from the profile's read interval in minutes.
+enum StatusAges {
+    /// How old numbers may be and still act (a full limit is full): the read interval, 5 minutes at least, plus a minute for
+    /// the read itself (6 minutes by default).
+    static func freshFor(pollMinutes: Int) -> TimeInterval { TimeInterval(max(pollMinutes, 5) * 60 + 60) }
+    /// Older than this, numbers are drawn grey: three missed reads, 30 minutes at least (the Dock icon's rule, now everyone's).
+    static func greyAfter(pollMinutes: Int) -> TimeInterval { max(TimeInterval(max(pollMinutes, 1) * 60 * 3), 30 * 60) }
+    /// The headline's and the display's thresholds: never hidden by age; a last-known full limit is left out.
+    static func of(pollMinutes: Int) -> Headline.Ages {
+        Headline.Ages(freshFor: freshFor(pollMinutes: pollMinutes), hiddenAfter: nil, datedFullStays: false,
+                      greyAfter: greyAfter(pollMinutes: pollMinutes))
     }
 }
 

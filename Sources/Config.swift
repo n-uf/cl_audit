@@ -545,7 +545,11 @@ enum Store {
     /// `headline` false: Claude Code's own numbers in the split, for the card's labelled line and Settings' Claude Code row
     /// (the other rules still apply).
     static func status(for e: AccountEntry, now: Date = Date(), headline: Bool = true) -> IconStatus? {
-        guard let s = status(e.id) else { return nil }
+        status(e.id).map { shown($0, for: e, now: now, headline: headline) }
+    }
+
+    /// `status(for:)` over a record already read (`status(_:)`): what the profile's headline surfaces may show of it.
+    static func shown(_ s: IconStatus, for e: AccountEntry, now: Date = Date(), headline: Bool = true) -> IconStatus {
         // ProfileCore's Headline decides: a reading that is the folder's account no more, or whose label isn't the account
         // it was read for, shows nowhere (nor when, nor the plan); the split's numbers and plan are Claude Code's account's;
         // numbers whose account couldn't be confirmed, or older than the profile's read interval, are never full
@@ -561,12 +565,10 @@ enum Store {
     /// The line for numbers whose account couldn't be confirmed.
     static let unconfirmedWords = "Usage: account not confirmed"
 
-    /// How old numbers may be and still say a limit is full: the profile's read interval, plus a minute for the read itself.
-    static func lastKnown(_ e: AccountEntry) -> TimeInterval { TimeInterval(max(e.pollMinutes, 5) * 60 + 60) }
-
-    /// cl_audit's thresholds for the headline (Core/README.md): fresh for `lastKnown` (6 minutes at the default read
-    /// interval); never hidden by age here (a screen greys old numbers itself); a last-known full limit is left out.
-    static func ages(_ e: AccountEntry) -> Headline.Ages { Headline.Ages(freshFor: lastKnown(e), hiddenAfter: nil, datedFullStays: false) }
+    /// cl_audit's thresholds for the headline and the display (StatusAges, Core/README.md): fresh for the read interval
+    /// plus a minute (6 minutes by default), grey after three missed reads (30 minutes at least), never hidden by age; a
+    /// last-known full limit is left out.
+    static func ages(_ e: AccountEntry) -> Headline.Ages { StatusAges.of(pollMinutes: e.pollMinutes) }
 
     static func writeStatus(_ id: String, _ s: IconStatus) -> Data? {
         guard let data = StatusCodec.encode(s) else { return nil }
