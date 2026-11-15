@@ -8,12 +8,11 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- An account switch now opens the profile's Claude window again once the switch is settled: when Claude Code reaches the account, after Undo or Leave it as it is, or when the switch stopped before moving anything. While moved sessions wait for that, the window stays closed (the Dock icon, the menu bar and the card open that switch's page instead) and the Switch page says so. Before, the switch never opened the window it had closed.
 
 ## 26.11.50 — 2026-11-15
 
 - Every "whose account is this" check now follows New profile's one owner rule. A profile not linked yet whose folder is signed in to an account another profile remembers on standby by its address only now gets the "signed in to the same Claude account as …" line in Settings (before, only one with its ids counted), and moving to the default profile no longer offers to keep the old profile as a standby account the default profile already has that way. Account ids written in another case (a hand-edited file) now count as the same account everywhere; two seats with the same address in different organisations stay two accounts.
-- An account switch now opens the profile's Claude window again once the switch is settled: when Claude Code reaches the account, after Undo or Leave it as it is, or when the switch stopped before moving anything. While moved sessions wait for that, the window stays closed (the Dock icon, the menu bar and the card open that switch's page instead) and the Switch page says so. Before, the switch never opened the window it had closed.
 
 ## 26.11.49 — 2026-11-15
 
