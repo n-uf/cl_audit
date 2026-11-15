@@ -74,6 +74,14 @@ struct ProfileShow {
         display.none == .expired ? "Sign-in expired" : display.none == .signedOut ? "Signed out" : nil
     }
 
+    /// The account in use as the card and the Switch page name it: the record's (AccountView.label, else the folder's
+    /// address); in a clash the app didn't decide, the profile's own account (its seat; nil when it has none), never the
+    /// record's label there, which is the folder's account, the other profile's.
+    var inUseLabel: String? {
+        if display.clash != nil, record?.resolved?.fromApp != true { return entry.seat?.email }
+        return view.label ?? record?.expectedEmail
+    }
+
     /// The address a Sign in fills in: in the split only the app's own (nil: none filled in, never Claude Code's); in a
     /// clash the profile's own account in use (the app's, when the app decided it, else the profile's seat), never the
     /// folder's, which is the other profile's; else the folder's. Every Sign in takes it here (the menus, quick chat, the
