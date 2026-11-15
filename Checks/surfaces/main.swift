@@ -2338,6 +2338,11 @@ MainActor.assumeIsolated {
           "a clash, the own account also on the standby list: ticked once in the Dock menu and the menu bar, never on standby too (u2 once)")
     let bothPage = surfaces(rec(login: u3.email, code: u3), both).page
     check(bothPage.pickList.map(\.id) == ["k2"], "…and not on the Switch page's TO list: \(bothPage.pickList.map(\.id))")
+    // …but an account picked on purpose is always on the list, first and selected (the button names it): never a list with
+    // nothing selected
+    let ownPicked = SwitchPage(entry: both, standby: both.standby[1], model: model, runner: model.runner(of: both.id))
+    check(ownPicked.pickList.map(\.id) == ["k1", "k2"] && ownPicked.pickList.first?.id == ownPicked.standby.id,
+          "the profile's own account picked in a clash: first in the TO list and selected: \(ownPicked.pickList.map(\.id))")
     // a record from before the id: by its name (the first profile so called)
     var byName = rec(login: u3.email, code: u3); byName.resolved?.clashID = nil
     let oldClash = surfaces(byName)
@@ -2435,6 +2440,21 @@ do {
     // after a switch that moved nothing: no left-behind line (a flag, not a string match); after a move, as it is
     check(SwitchPage.leftShown(left, movedNothing: true) == nil && SwitchPage.leftShown(left, movedNothing: false) == left && SwitchPage.leftShown(nil, movedNothing: false) == nil,
           "a failed switch that moved nothing: the left-behind line hidden; a switch that moved: shown")
+    // the plan card's line: "Will stay with" until something moved (a receipt), also while closing and after a Cancel back
+    // to Ready (during Closing, and while waiting when the plan moved nothing); "Left with" once it moved
+    let rr = SwitchRunner(profile: "sw", model: SettingsModel())
+    func cardLeft() -> String? { SwitchPage.leftInPlan(left: rr.leftNote, moved: rr.receipt != nil, plan: rr.planned) }
+    rr.preview(.closing, goal: nil, planned: p, left: SwitchRunner.leftBehind(p))
+    check(cardLeft() == will, "closing: the card still says Will stay with: \(cardLeft() ?? "nil")")
+    rr.cancel()
+    check(rr.phase == .ready && cardLeft() == will, "Cancel during Closing: back at Ready, Will stay with (nothing moved)")
+    rr.preview(.waiting, goal: nil, planned: p, left: SwitchRunner.leftBehind(p))
+    rr.cancel()
+    check(rr.phase == .ready && cardLeft() == will, "Cancel while waiting, the plan moved nothing: Will stay with")
+    var receipt = SwitchReceipt(id: SwitchEngine.receiptID(Date(), "sw"), profile: "sw", standby: "k2", dataDir: "/x", from: SeatID(u1), to: SeatID(u2), started: Date())
+    receipt.steps = []
+    rr.preview(.waiting, goal: nil, planned: p, receipt: receipt, left: SwitchRunner.leftBehind(p))
+    check(cardLeft() == left, "after a move: Left with: \(cardLeft() ?? "nil")")
     var held = p; held.held = ["s1"]
     check(SwitchRunner.stayWords(held) == SwitchRunner.heldWords(1) && SwitchPage.noteLine(SwitchRunner.stayWords(held), SwitchPage.leftShown(left, movedNothing: true)) == SwitchRunner.heldWords(1)
           && SwitchPage.noteLine(SwitchRunner.stayWords(held), left) == SwitchRunner.heldWords(1) + " " + left && SwitchPage.noteLine(nil, nil) == nil,

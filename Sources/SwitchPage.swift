@@ -230,7 +230,7 @@ struct SwitchPage: View {
         guard runner.phase == .ready else { return [standby] }
         let s = show
         let all = AccountBook.offerOrder(s.listedEntry.standby)
-        if s.view.isActive(standby) || s.named.isActive(standby) { return all }
+        if s.view.isActive(standby) { return all }
         return all.contains { $0.id == standby.id } ? all : [standby] + all
     }
 
@@ -353,6 +353,12 @@ struct SwitchPage: View {
     /// (nothing moved, so nothing was left behind).
     static func leftShown(_ left: String?, movedNothing: Bool) -> String? { movedNothing ? nil : left }
 
+    /// The left-behind line on the plan card: "Left with …" (the runner's leftNote) only once something moved (a receipt);
+    /// until then, also while it closes or moves, and after a Cancel back to Ready, "Will stay with …" from the plan.
+    static func leftInPlan(left: String?, moved: Bool, plan: SwitchPlan?) -> String? {
+        moved ? left : leftBefore(plan, started: false)
+    }
+
     /// The one note line: what the move said (moveNote), then what stayed (the runner's leftNote, or before Switch leftBefore); nil when none.
     static func noteLine(_ note: String?, _ left: String?) -> String? {
         let parts = [note, left].compactMap { $0 }
@@ -451,7 +457,7 @@ struct SwitchPage: View {
             }
             SRow(label: "Stays", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
             SRowLine(text: "\(from) stays on \(name) as a standby account: nothing read, switch back any time.")
-            if let n = Self.noteLine(runner.moveNote, runner.leftNote ?? Self.leftBefore(plan, started: runner.phase != .ready)) { SRowLine(text: n) }
+            if let n = Self.noteLine(runner.moveNote, Self.leftInPlan(left: runner.leftNote, moved: runner.receipt != nil, plan: plan)) { SRowLine(text: n) }
         }
     }
 
