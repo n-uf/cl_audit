@@ -2362,12 +2362,12 @@ MainActor.assumeIsolated {
     check(cardRow(both, now: now).show.ownStandbyID == "k1" && cardRow(both, now: now).show.named.label == u1.email
           && cardRow(both, now: now).entry.listed(by: cardRow(both, now: now).view).standby.filter { $0.id != cardRow(both, now: now).show.ownStandbyID }.map(\.id) == ["k2"],
           "the card's Switch account menu: u1 ticked once (the own id k1), ben on standby")
-    // the full-limit offer: the own account offered once, switchable, with the move words; another account without them
+    // the full-limit offer: the own account is offered once and stays switchable (it is the profile's way back); the move
+    // words are one string for every surface
     var onlyOwn = e; onlyOwn.standby = [k1]
     let ownOffer = onlyOwn.fullOffer(view: AccountView.of(Store.status(for: onlyOwn, now: now)), now: now)
-    check(ownOffer?.key == backKey && ownOffer?.movesBack == true && ownOffer?.standby.seat != nil && SwitchOffer.moveBackWords == "move Claude Code back here"
-          && e.fullOffer(view: AccountView.of(Store.status(for: e, now: now)), now: now)?.movesBack == false,
-          "fullOffer in a clash: the own account offered once, switchable, moving Claude Code back; another account plain")
+    check(ownOffer?.key == backKey && ownOffer?.standby.seat != nil && SwitchOffer.moveBackWords == "move Claude Code back here",
+          "fullOffer in a clash: the own account offered once, switchable")
     // outside a clash nothing changes: the active account is off the standby list, ticked with its week, no move words
     _ = Store.writeStatus("acc", rec())
     let calmShow = ProfileShow.load(both, now: now), calmDock = dockOf(both, calmShow), calmBar = menuBarMenu(calmShow)
