@@ -731,8 +731,13 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
     var renamed = work; renamed.name = "Office"
     // the profile's own account (ann, ticked in a clash) also remembered on its standby list: one row in the menus, not two
     var ownStandby = e; ownStandby.standby.append(StandbyAccount(email: ann.email!, seat: ann, id: "ka"))
+    // a record whose resolver worked out no account: the folder's own address stands in for the account in use (the Switch
+    // page's in-use box), outside a clash
+    var oldRecord = rec("ok", week: 64, five: 12, age: 60); oldRecord.resolved?.email = nil; oldRecord.resolved?.account = nil
     let cases: [(String, AccountEntry, IconStatus?, [AccountEntry])] = [
         ("fresh", e, rec("ok", week: 64, five: 12, age: 60), [e, work, s]),
+        ("oldrecord", e, oldRecord, [e, work, s]),
+        ("clash-none", e, rec("ok", week: nil, five: nil, age: 60, login: cat.email, code: cat), [e, work, s]),
         ("old40", e, rec("ok", week: 64, five: 12, age: 40 * 60), [e, work, s]),
         ("denied", e, rec("denied", week: 64, five: 12, age: 60), [e, work, s]),
         ("expired", e, rec("expired", week: 64, five: 12, age: 60), [e, work, s]),

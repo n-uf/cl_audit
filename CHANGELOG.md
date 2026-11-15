@@ -13,6 +13,7 @@ Nothing pending.
 ## 26.11.51 — 2026-11-15
 
 - An account switch now opens the profile's Claude window again once the switch is settled: when Claude Code reaches the account, after Undo or Leave it as it is, or when the switch stopped before moving anything. While moved sessions wait for that, the window stays closed (the Dock icon, the menu bar and the card open that switch's page instead) and the Switch page says so. Before, the switch never opened the window it had closed.
+- When Claude Code's folder is signed in to another profile's account: the Dock icon's panel now says "No usage: Terminal is on ann's account" in place of "Reading usage…" (no numbers are on their way), quick chat names the profile's own account (it named the other profile's), and the card's Switch account menu shows no plan beside the ticked account (it showed the other account's). The Switch page's title for a move back stays "Move Claude Code back to …" only before it starts (after a failure, a time-out or an undo it has the usual title), and for an old record with no account worked out it names the folder's address again (it said "its account").
 
 ## 26.11.50 — 2026-11-15
 

@@ -133,9 +133,10 @@ struct QuickChatTarget: Equatable {
         profileID = e.id; name = e.name; configDir = a.configDir; isDefaultDir = a.isDefaultDir
         // the profile's account and its state as its record says them (AccountResolver), never its own read
         let rec = Store.status(for: e, now: now)
-        email = AccountView.of(rec).label
-        loginWords = rec?.loginWords
         let raw = Store.status(e.id), h = raw?.headline(now: now, ages: Store.ages(e))
+        // (as the menus name it: in a clash the profile's own account, never the folder's, the other profile's)
+        email = ProfileShow.of(e, raw: raw, now: now).inUseLabel
+        loginWords = rec?.loginWords
         liveCounts = (h.map { $0.numbers() && !$0.unconfirmed } ?? false) && raw?.resolved?.clash == nil
         split = h?.split != nil
     }

@@ -1076,6 +1076,12 @@ struct AccountCard: View {
         return "Sign Claude Code in Terminal in to \(Privacy.masked(a))"
     }
 
+    /// The ticked account's row: its address and plan. In a clash the plan the record has is the folder account's, the other
+    /// profile's: none.
+    static func tickedTitle(label: String, plan: String?, clash: Bool) -> String {
+        label + (clash ? "" : plan.map { "  " + Account.planWords($0) } ?? "")
+    }
+
     /// Switch account: the account in use ticked with its plan, the standby accounts by address only (they're never read,
     /// so nothing about their usage), then Sign in to another account…. An account opens the Switch page with it picked.
     private var switchMenu: some View {
@@ -1091,7 +1097,7 @@ struct AccountCard: View {
                     }
                 } else {
                     Toggle(isOn: .constant(true)) {
-                        Text(Privacy.masked(label) + (row.status?.plan.map { "  " + Account.planWords($0) } ?? ""))
+                        Text(Self.tickedTitle(label: Privacy.masked(label), plan: row.status?.plan, clash: row.display.clash != nil))
                     }
                 }
             }

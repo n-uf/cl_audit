@@ -309,7 +309,7 @@ do {
               "\(name): the Dock panel agrees (as drawn: \(panel.accountLine?.text ?? "no account line"))")
         check(SwitchMenu.dockTitle(name: "P", mainShow.named, plan: nil) == (named.map { "Claude P · \(AccountNames.short($0))" } ?? "Claude P")
               && mainShow.named.inUseLine == named.map(AccountNames.short), "\(name): the Dock menu and the menu bar row agree")
-        check(QuickChatTarget(main).email == want.label, "\(name): quick chat agrees")
+        check(QuickChatTarget(main).email == named, "\(name): quick chat agrees (in a clash too: the profile's own account, as the menus)")
         // (B8: in the split, the Claude app on another account than Claude Code, they are not the profile's: none show)
         check(Store.status(for: main)?.weekly == (splitHere ? nil : 40),
               "\(name): the record's own numbers show, except in the split (the app on another account): \(splitHere)")
@@ -2126,6 +2126,13 @@ do {
           && clash.notice?.key == .signIn && clash.row.display.key == .logIn && clash.notice?.line == ownLine
           && clash.row.show.loginAddress == u1.email && clash.row.status?.expectedEmail == u3.email && !clash.row.lit,
           "Claude Code on Other's account (by id): red, Sign in… as Card's own u1 (never Other's u3), the lamp off: \(clash.notice?.line ?? "-")")
+    // a clash has no numbers (the Reader drops a clash record's): the Dock panel's age line says there are none, never
+    // "Reading usage…" (they aren't on their way); quick chat names the profile's own account (u1), never the folder's (u3)
+    let clashNone = card(rec(week: nil, five: nil, login: u3.email, code: u3), nil, "clash, no numbers")
+    let clashPanel = DetailsInfo.of(clashNone.row.show, name: e.name, icon: NSImage(), problem: nil)
+    check(clashNone.row.show.display.usage == nil && clashPanel.noNumbers == "No usage: Terminal is on Other's account",
+          "a clash with no numbers: the Dock panel's age line says no usage here and whose account, never Reading usage…: \(clashPanel.noNumbers ?? "-")")
+    check(QuickChatTarget(e, now: now).email == u1.email, "a clash: quick chat names the profile's own account (u1), never the folder's (u3)")
     var byName = rec(login: u3.email, code: u3); byName.resolved?.clashID = nil
     let oldClash = card(byName, nil, "clash by old name")
     check(oldClash.row.display.clash == ProfileDisplay.Clash(id: nil, name: "Other") && oldClash.notice?.heading == "Terminal is signed in to Other's account"
@@ -2406,6 +2413,17 @@ MainActor.assumeIsolated {
           && SwitchPage.readyTitle(name: "Acc", to: "ben", moveBack: false) == "Switch Claude Acc to ben"
           && SwitchPage.goTitle(to: "ben", moveBack: false) == "Switch to ben",
           "the Switch page's title and key: a clash move-back says Move back; a normal switch is unchanged")
+    check(AccountCard.tickedTitle(label: "ann", plan: "max", clash: true) == "ann"
+          && AccountCard.tickedTitle(label: "ann", plan: "max", clash: false) == "ann  " + Account.planWords("max")
+          && AccountCard.tickedTitle(label: "ann", plan: nil, clash: false) == "ann",
+          "the card's ticked account: its plan outside a clash, none in a clash (the record's plan is the other account's)")
+    check(SwitchPage.phaseTitle(.ready, name: "Acc", to: "ann", moveBack: true) == "Move Claude Code back to ann"
+          && SwitchPage.phaseTitle(.failed("x"), name: "Acc", to: "ann", moveBack: true) == "Switch Claude Acc to ann"
+          && SwitchPage.phaseTitle(.timedOut, name: "Acc", to: "ann", moveBack: true) == "Switch Claude Acc to ann"
+          && SwitchPage.phaseTitle(.undone, name: "Acc", to: "ann", moveBack: true) == "Switch Claude Acc to ann"
+          && SwitchPage.phaseTitle(.reached, name: "Acc", to: "ann", moveBack: true) == "Switched Claude Acc to ann"
+          && SwitchPage.phaseTitle(.waiting, name: "Acc", to: "ann", moveBack: true) == "Switching Claude Acc to ann",
+          "the Switch page's title: only the ready one says Move Claude Code back; a failed, timed-out or undone move keeps the usual title")
     // outside a clash nothing changes: the active account is off the standby list, ticked with its week, no move words
     _ = Store.writeStatus("acc", rec())
     let calmQC = QuickChatSwitchOffer.best(both, now: now)

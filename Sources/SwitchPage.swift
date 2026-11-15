@@ -92,11 +92,18 @@ struct SwitchPage: View {
     private var title: String {
         if appBehind { return "Switched Claude Code of \(name) to \(to)" }
         if again { return runner.phase == .reached ? "Signed Claude \(name) in" : "Sign Claude \(name) in" }
-        switch runner.phase {
+        return Self.phaseTitle(runner.phase, name: name, to: to, moveBack: movesBack)
+    }
+
+    /// The title for a switch's phase (a sign-in again and a Claude app left behind have their own, above).
+    static func phaseTitle(_ phase: SwitchRunner.Phase, name: String, to: String, moveBack: Bool) -> String {
+        switch phase {
         case .closing, .moving, .waiting: return "Switching Claude \(name) to \(to)"
         case .reached: return "Switched Claude \(name) to \(to)"
         case .other(let e): return "Claude \(name) signed in as \(AccountNames.short(e))"
-        default: return Self.readyTitle(name: name, to: to, moveBack: movesBack)
+        case .ready: return readyTitle(name: name, to: to, moveBack: moveBack)
+        // (stopped or put back: the usual title; only the ready one says a clash move-back)
+        case .timedOut, .failed, .undone: return readyTitle(name: name, to: to, moveBack: false)
         }
     }
 
@@ -272,7 +279,7 @@ struct SwitchPage: View {
         let detail = row.status?.plan.map(Account.planWords) ?? ""
         let limits = row.limits
         return AccountBox(lamp: row.lit ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: row.lit ? .ok : .warn, detail: detail) {
-            Text(Privacy.masked(row.show.inUseLabel ?? "its account")).font(.system(size: 13, weight: .semibold))
+            Text(Privacy.masked(row.show.inUseLabel ?? (row.show.inUseUnknown ? nil : row.status?.expectedEmail) ?? "its account")).font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
         } content: {
             if let n = row.line { BoxText(text: n, role: .note) }
