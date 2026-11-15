@@ -401,7 +401,8 @@ enum SwitchEngine {
     /// (recordedSkips, runRetries); the source keeps none. Both files are backed up and both steps written down first; the
     /// source is emptied before the target gets them, so a stop in between never leaves a task in both accounts (it would
     /// run twice). Each file is written through TaskRegistry's compare-and-swap: only while it is still as it was read here;
-    /// a target changed meanwhile puts the source back as it was and stops the switch there (the tasks stay where they were).
+    /// a target that changed meanwhile or can't be written puts the source back as it was and stops the switch there: the
+    /// tasks stay where they were, and their steps leave the receipt (nothing of them to undo).
     private static func moveTasks(_ p: SwitchPlan, backups: URL, _ r: inout SwitchReceipt) throws {
         let fm = FileManager.default
         let srcFile = TaskRegistry.path(p.sourceDir), dstFile = TaskRegistry.path(p.targetDir)
@@ -432,14 +433,21 @@ enum SwitchEngine {
         for (k, w) in writes.enumerated() {
             let wrote = TaskRegistry.swap(w.data, at: w.file, expected: w.expected)
             guard wrote == .written else {
-                // this file's write was refused: nothing of it to undo (written down so)
-                r.steps[w.step].refused = true
                 // the target couldn't take them: the source back as it was read (only while it is as written here), so the
                 // tasks are never in neither account
-                if k > 0, let first = writes.first, let was = first.expected,
-                   TaskRegistry.swap(was, at: first.file, expected: first.data) == .written {
-                    r.steps[first.step].done = false
-                    r.steps[first.step].refused = true
+                let putBack = k == 0 || (writes.first.flatMap { first in
+                    first.expected.map { TaskRegistry.swap($0, at: first.file, expected: first.data) == .written } } ?? false)
+                if putBack {
+                    // nothing of the tasks changed: written down as refused first (a later save that fails still leaves
+                    // Undo nothing to do with them), then their steps and backups go (a switch that moved nothing else then
+                    // has nothing to undo, and doesn't hold back the next switch)
+                    for w in writes { r.steps[w.step].refused = true }
+                    try? store.save(r)
+                    for w in writes { if let b = r.steps[w.step].parked { try? FileManager.default.removeItem(atPath: b) } }
+                    r.steps.removeSubrange(writes[0].step...)
+                    r.tasksMoved = nil
+                } else {
+                    r.steps[w.step].refused = true                     // this file's write was refused: nothing of it to undo
                 }
                 try? store.save(r)
                 if case .failed(let why) = wrote { throw SwitchError.failed(why) }

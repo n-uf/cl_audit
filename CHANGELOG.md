@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- A switch that can't write the new account's scheduled-tasks.json now leaves the tasks in the old account as they were and says nothing changed, instead of leaving a stopped switch open for an Undo with nothing to do (which also held back the profile's next switch).
 
 ## 26.11.38 — 2026-11-15
 
