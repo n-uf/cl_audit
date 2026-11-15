@@ -83,13 +83,29 @@ enum AppSignIn {
     /// config.json's lastKnownAccountUuid (lower case), or nil. Only that key is kept.
     static func lastKnown(dataDir: String) -> String? { config(dataDir: dataDir)?.id }
 
-    /// config.json's lastKnownAccountUuid (lower case), the file's modification time and whether it keeps a sign-in (an
-    /// "oauth:tokenCache…" key: only its name is looked at, never its value), or nil. Only that is kept.
-    static func config(dataDir: String) -> (id: String, modified: Date, keepsSignIn: Bool)? {
-        guard let r = boundedRead(((dataDir as NSString).expandingTildeInPath as NSString).appendingPathComponent("config.json"), max: configBytes, fromEnd: false),
+    /// config.json's lastKnownAccountUuid (lower case) and the file's modification time, or nil. Only that key is kept.
+    static func config(dataDir: String) -> (id: String, modified: Date)? {
+        guard let r = boundedRead(configPath(dataDir), max: configBytes, fromEnd: false),
               let j = try? JSONSerialization.jsonObject(with: r.data) as? [String: Any],
               let id = j["lastKnownAccountUuid"] as? String, ClaudeFiles.isUUID(id) else { return nil }
-        return (id.lowercased(), r.modified, j.keys.contains { $0.hasPrefix("oauth:tokenCache") })
+        return (id.lowercased(), r.modified)
+    }
+
+    /// Whether the window keeps a sign-in and for which account (New account's check): `.none` when config.json isn't there,
+    /// isn't JSON, has no "oauth:tokenCache…" key (only its name is looked at, never its value) or no lastKnownAccountUuid;
+    /// `.unknown` when it can't be told (larger than `configBytes`, or an id that isn't one); else the account, lower case.
+    enum StoredSignIn: Equatable { case none, unknown, account(String) }
+
+    static func storedSignIn(dataDir: String) -> StoredSignIn {
+        guard let r = boundedRead(configPath(dataDir), max: configBytes, fromEnd: false) else { return .none }
+        if r.cut { return .unknown }
+        guard let j = try? JSONSerialization.jsonObject(with: r.data) as? [String: Any], j.keys.contains(where: { $0.hasPrefix("oauth:tokenCache") }),
+              let id = j["lastKnownAccountUuid"] as? String else { return .none }
+        return ClaudeFiles.isUUID(id) ? .account(id.lowercased()) : .unknown
+    }
+
+    private static func configPath(_ dataDir: String) -> String {
+        ((dataDir as NSString).expandingTildeInPath as NSString).appendingPathComponent("config.json")
     }
 
     /// When the Claude app last logged that it quits for an update ("[stealth-update] Triggering stealth update"), from the
