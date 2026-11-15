@@ -1436,17 +1436,18 @@ struct AccountSettings: View {
         return a.lowercased() != b.lowercased()
     }
 
-    /// Layout A: each part is one card, its switch first, one title per card. Left: Profile, Claude Code, Sessions (its
-    /// backups, SessionsCard.swift), Claude window, Alerts; middle: the Dock icon (when it runs, a click, the usage panel, its look, a preview); right: the menu bar
+    /// Layout A: each part is one card, its switch first, one title per card. Left: Profile, Claude Code, Claude window,
+    /// Alerts, Sessions (its backups, SessionsCard.swift); middle: the Dock icon (when it runs, a click, the usage panel, its look, a preview); right: the menu bar
     /// icon. A part that's off folds its card to the switch row. Two columns: the left cards with the menu bar under
     /// them, the Dock icon beside; one column: everything in that order. What the profile is doing now is in the main
     /// display at the top.
     var body: some View {
+        // the left column: Profile, Claude Code, Claude window, Alerts, then Sessions (operator, 2026-11-15)
         SettingsColumns(width: width, groups: [
-            [AnyView(accountCard), AnyView(codeCard), AnyView(SessionsCard(entry: entry, model: model)), AnyView(windowCard), AnyView(updatesCard)],
+            [AnyView(accountCard), AnyView(codeCard), AnyView(windowCard), AnyView(updatesCard), AnyView(SessionsCard(entry: entry, model: model))],
             [AnyView(dockIconCard)],
             [AnyView(MenuBarCard(entry: $entry))]],
-            two: [[AnyView(accountCard), AnyView(codeCard), AnyView(SessionsCard(entry: entry, model: model)), AnyView(windowCard), AnyView(updatesCard), AnyView(MenuBarCard(entry: $entry))],
+            two: [[AnyView(accountCard), AnyView(codeCard), AnyView(windowCard), AnyView(updatesCard), AnyView(SessionsCard(entry: entry, model: model)), AnyView(MenuBarCard(entry: $entry))],
                   [AnyView(dockIconCard)]])
     }
 
