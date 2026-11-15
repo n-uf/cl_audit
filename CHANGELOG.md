@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.37 — 2026-11-15
+
 - Only the background agent saves a profile's usage now. After a switch, the cl_audit window shows its own answer and asks the agent to read again, instead of saving it over the agent's. Refresh now always saves the agent's fresh reading, so a wrong or stale number can no longer stick on a Dock icon or the widget until the usage changes. While the agent isn't running, the Dock icons and the menu bar keep their last saved usage until it starts again, because the window no longer saves for them.
 - Undoing a re-point now stops when cl_audit can't check whether Claude Code is using the sessions, instead of going ahead; the Export page counts every session as in use while it can't tell.
 
