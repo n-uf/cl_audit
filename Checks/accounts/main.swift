@@ -383,17 +383,58 @@ do {
     let term = Processes.Entry(pid: 9006, uid: getuid(), ruid: getuid(), name: "claude", launch: Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: nil))
     check(Processes.codeRun(tab) == ClaudeRun(id: 9005, kind: .codeTab, folder: "/x/.claude-w") && Processes.codeRun(term) == ClaudeRun(id: 9006, kind: .terminal, folder: "~/.claude"),
           "new account: the app's claude is a Code tab's, a terminal's by name is a terminal's; the folder, or ~/.claude")
-    // KERN_PROCARGS2: an empty first argument isn't taken for the path's padding, and the environment isn't read as arguments
-    var raw = [UInt8](repeating: 0, count: 4)
-    withUnsafeBytes(of: Int32(3)) { b in for k in 0..<4 { raw[k] = b[k] } }
-    raw += Array("/x/claude".utf8) + [UInt8](repeating: 0, count: 7)          // 9 bytes, NUL, padding to 16
-    raw += [0] + Array("-p".utf8) + [0] + [0]                                   // "", "-p", ""
-    raw += Array("CLAUDE_CONFIG_DIR=/c".utf8) + [0] + Array("A=1".utf8) + [0, 0]
-    let parsed = Processes.parse(raw, size: raw.count)
-    check(parsed == Processes.Launch(exe: "/x/claude", args: ["", "-p", ""], configDir: "/c"), "argv by argc exactly, an empty first one too: \(String(describing: parsed))")
-    check(Processes.parse(Array(raw.prefix(22)), size: 22) == nil, "arguments cut short: not read")
-    // this Mac's own table reads (it is only read, never signalled): "can't tell" mustn't be the answer every time
-    let real = Processes.table()
+    // KERN_PROCARGS2 as the kernel lays it out: argc, the path, NULs to 8 bytes from the path's start, argv, the environment
+    func procargs(_ exe: String, _ args: [String], _ env: [String]) -> [UInt8] {
+        var raw = [UInt8](repeating: 0, count: 4)
+        withUnsafeBytes(of: Int32(args.count)) { b in for k in 0..<4 { raw[k] = b[k] } }
+        let path = Array(exe.utf8)
+        raw += path + [UInt8](repeating: 0, count: (path.count + 1 + 7) / 8 * 8 - path.count)
+        for s in args + env { raw += Array(s.utf8) + [0] }
+        return raw + [0]
+    }
+    let env = ["CLAUDE_CONFIG_DIR=/c", "A=1"]
+    let raw = procargs("/x/claude", ["claude", "", "-p"], env)
+    check(Processes.parse(raw, size: raw.count) == Processes.Launch(exe: "/x/claude", args: ["claude", "", "-p"], configDir: "/c"),
+          "argv by argc exactly, empty ones included; the environment isn't read as arguments")
+    let emptyFirst = procargs("/x/claude", ["", "-p"], env), spaceFirst = procargs("/x/claude", [" --resume", uuid(906)], env)
+    check(Processes.parse(emptyFirst, size: emptyFirst.count) == nil && Processes.parse(spaceFirst, size: spaceFirst.count) == nil
+          && Processes.parse(Array(raw.prefix(24)), size: 24) == nil,
+          "an empty or space-led first argument, or arguments cut short: not read (so hidden, never taken for not Claude)")
+    // the padding rule on real processes: stand-ins (copies of /bin/sleep, never Claude) started at path lengths 7, 8, 15 and
+    // 16 ("./" and a name, in their folder), then one with an empty argv[0]; each read back, then killed by its pid
+    let standDir = home + "/standin"
+    try? fm.createDirectory(atPath: standDir, withIntermediateDirectories: true)
+    func spawn(_ path: String, _ argv: [String]) -> pid_t? {
+        var fa: posix_spawn_file_actions_t? = nil
+        posix_spawn_file_actions_init(&fa)
+        defer { posix_spawn_file_actions_destroy(&fa) }
+        posix_spawn_file_actions_addchdir_np(&fa, standDir)
+        let cargv = argv.map { strdup($0) } + [nil], cenv = ["CLAUDE_CONFIG_DIR=/x/standin", "A=1"].map { strdup($0) } + [nil]
+        defer { cargv.forEach { free($0) }; cenv.forEach { free($0) } }
+        var pid: pid_t = 0
+        return posix_spawn(&pid, path, &fa, nil, cargv, cenv) == 0 ? pid : nil
+    }
+    func end(_ pid: pid_t) { kill(pid, SIGKILL); var st: Int32 = 0; waitpid(pid, &st, 0) }
+    var standins: [String] = []
+    for n in [5, 6, 13, 14] {
+        let name = String(repeating: "s", count: n)
+        try? fm.removeItem(atPath: standDir + "/" + name)
+        try? fm.copyItem(atPath: "/bin/sleep", toPath: standDir + "/" + name)
+        guard let pid = spawn("./" + name, ["standin", "30"]) else { standins.append("\(n + 2): not started"); continue }
+        let got = Processes.launch(of: pid)
+        end(pid)
+        if got != Processes.Launch(exe: "./" + name, args: ["standin", "30"], configDir: "/x/standin") { standins.append("\(n + 2): \(String(describing: got))") }
+    }
+    check(standins.isEmpty, "a started stand-in reads back exactly at path lengths 7, 8, 15 and 16: \(standins)")
+    if let pid = spawn("./sssss", ["", "30"]) {
+        let got = Processes.launch(of: pid), entry = Processes.table()?.first { $0.pid == pid }
+        end(pid)
+        check(got == nil && entry?.hidden == true, "a stand-in with an empty argv[0]: not read, and hidden (\(String(describing: got)))")
+    } else { check(false, "the stand-in with an empty argv[0] started") }
+    // this Mac's own table reads (it is only read, never signalled): "can't tell" mustn't be the answer every time (a process
+    // caught mid-start may be hidden for a moment: up to 3 reads)
+    var real = Processes.table()
+    for _ in 0..<2 where real?.contains(where: \.hidden) != false { real = Processes.table() }
     check(real != nil && Processes.commandLines(real) != nil && real?.contains { $0.pid == getpid() && $0.launch != nil } == true,
           "the real table reads, cl_audit's own process with its arguments; hidden: \(real?.filter(\.hidden).map(\.name) ?? [])")
 }

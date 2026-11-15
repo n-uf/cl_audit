@@ -42,6 +42,13 @@ enum Processes {
         var hidden = false
     }
 
+    /// `table()`, read once more when something in it was hidden (a process caught mid-start or mid-exit), before the answer
+    /// is "can't tell".
+    static func settledTable() -> [Entry]? {
+        let t = table()
+        return t?.contains(where: \.hidden) == true ? table() : t
+    }
+
     /// Every process the kernel lists, cl_audit itself included, except those that ended meanwhile or are ended and waiting to
     /// be reaped (they run nothing); nil when the list can't be read or may have been cut short.
     static func table() -> [Entry]? {
@@ -112,8 +119,9 @@ enum Processes {
         return (parse(buf, size: size), false)
     }
 
-    /// KERN_PROCARGS2's bytes: argc, the executable path, NULs up to the next 8 bytes from its start (more when the layout is
-    /// another), exactly argc arguments (an empty one included, the first too), then the environment up to an empty entry.
+    /// KERN_PROCARGS2's bytes: argc, the executable path, NULs up to the next 8 bytes counted from the path's start (the accounts
+    /// suite proves it on started stand-ins; NUL by NUL when the layout is another), exactly argc arguments (empty ones included),
+    /// then the environment up to an empty entry. nil when cut short, or when the first argument is empty or starts with a space.
     static func parse(_ buf: [UInt8], size: Int) -> Launch? {
         guard size > MemoryLayout<Int32>.size, size <= buf.count else { return nil }
         let argc = Int(buf.withUnsafeBytes { $0.load(as: Int32.self) })
@@ -144,6 +152,9 @@ enum Processes {
             i += 1
         }
         guard args.count == argc else { return nil }                // cut short: not read
+        // an empty or space-led program can't be told from a misread layout (an empty argv[0] can't be told from padding): not
+        // read, so the process is hidden rather than taken for "not Claude"
+        if let first = args.first, first.isEmpty || first.hasPrefix(" ") { return nil }
         return Launch(exe: exe, args: args, configDir: configDir)
     }
 
@@ -209,13 +220,14 @@ enum Processes {
     /// another user's that looks like Claude Code, which may be on this folder, as `sudo claude` is). The Claude app itself isn't
     /// Claude Code; the Claude Code it starts is.
     static func codeRuns(codeDir: String, table given: [Entry]?? = nil) -> Bool? {
-        guard let all = given ?? table() else { return nil }
+        guard let all = given ?? settledTable() else { return nil }
         let me = getpid(), uid = getuid()
         let want = FolderKey.canonical(codeDir)
         let std = FolderKey.canonical(NSHomeDirectory() + "/.claude")
         var unknown = false
         for e in all where e.pid != me {
-            guard e.uid == uid else { if e.hidden { unknown = true }; continue }
+            if e.hidden { unknown = true; continue }
+            guard e.uid == uid else { continue }
             switch isCode(name: e.name, exe: e.launch?.exe, args: e.launch?.args ?? [], configDir: e.launch?.configDir, want: want, std: std) {
             case true?: return true
             case nil: unknown = true
@@ -251,7 +263,7 @@ enum Processes {
     /// Claude Code can't be (`Entry.hidden`): a session it holds would look free. `given`: a table the caller read (the checks
     /// pass their own); nil reads one now.
     static func commandLines(_ given: [Entry]?? = nil) -> [String]? {
-        guard let all = given ?? table(), !all.contains(where: \.hidden) else { return nil }
+        guard let all = given ?? settledTable(), !all.contains(where: \.hidden) else { return nil }
         return all.compactMap { $0.launch.map { $0.args.joined(separator: " ") } }
     }
 
