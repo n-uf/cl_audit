@@ -42,6 +42,12 @@ enum Launcher {
             if activate { Installer.openSwitch(AccountEntry.switchKey(m.profile, m.standby)) }
             return
         }
+        // a switch moved its sessions and closed the window, and isn't settled yet (Undo, the sign-in, Leave it as it is): the
+        // Claude app must not run on sessions that aren't linked; asked for by a click, cl_audit shows that switch's page
+        if let r = SwitchEngine.keepsClosed(account) {
+            if activate { Installer.openSwitch(AccountEntry.switchKey(r.profile, r.standby)) }
+            return
+        }
         let running = Processes.claudeApps()
         if let app = running.first(where: { isWindow(of: account, $0) }) {
             app.unhide()

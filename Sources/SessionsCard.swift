@@ -70,8 +70,11 @@ struct SessionsCard: View {
                                 if let words = try? SwitchEngine.leaveAsIs(s.id) { oldSwitch = nil; problem = words }
                             }
                             .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(working)
-                            Button("Not now") { Self.dismissOldSwitch(s.id); oldSwitch = nil }
-                                .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                            // (one that keeps the window closed stays in view: the window waits for it)
+                            if s.closedWindow != true {
+                                Button("Not now") { Self.dismissOldSwitch(s.id); oldSwitch = nil }
+                                    .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                            }
                         }
                         if windowOpen { note("Quit \(name)'s Claude window first: Undo puts its sessions back while it's closed.") }
                     }
@@ -309,7 +312,11 @@ struct SessionsCard: View {
         let to = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { r.to.same($0) }?.email.map(AccountNames.short) ?? "the other account"
         let n = r.moved
         if r.partlyUndone != nil, r.left?.isEmpty == false { return SwitchRunner.partlyWords(r) }
-        return "A switch on \(SessionsBackup.dateWords(r.started)) moved \(n) of the Claude window's \(n == 1 ? "sessions" : "sessions") to \(to) and stopped before Claude Code signed in as \(to): \(n == 1 ? "it shows" : "they show") only while the window is signed in to \(to). "
+        // a switch that closed the window keeps it closed until it is settled: the Claude app must not run on sessions that aren't linked
+        let shows = r.closedWindow == true
+            ? "the Claude window stays closed until you Undo it or Leave it as it is (or Claude Code signs in as \(to)). "
+            : "\(n == 1 ? "it shows" : "they show") only while the window is signed in to \(to). "
+        return "A switch on \(SessionsBackup.dateWords(r.started)) moved \(n) of the Claude window's \(n == 1 ? "sessions" : "sessions") to \(to) and stopped before Claude Code signed in as \(to): " + shows
             + "Undo it puts \(n == 1 ? "it" : "them") back under the account in use"
             + (r.backup != nil ? "; the backup made before it (in the list below) holds them as they were too." : ".")
     }
