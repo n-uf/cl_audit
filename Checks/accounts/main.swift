@@ -1537,7 +1537,38 @@ do {
           "signed in to another profile's standby account: a red line that says so: \(standbyLine?.text ?? "none")")
     check(inUseLine?.state == .bad && inUseLine?.text.hasSuffix(", the Claude account of “Main”: one profile per account") == true && freeLine?.state == .ok,
           "another profile's account in use: red as before; a free one: fine")
+    // Finish links the folder's account only when no other profile has it, in use or standing by (by its ids, or
+    // remembered by its address)
+    let installs = SettingsModel.applyInstalls
+    SettingsModel.applyInstalls = false
+    func finished(_ s: Seat, _ name: String) -> AccountEntry? {
+        var f = d; f.name = name
+        sign(f.configDir, nil); sign(f.configDir, s)
+        let m = SettingsModel(); m.accounts = list; m.draft = f
+        m.finishNew()
+        return m.accounts.first { $0.id == f.id }
+    }
+    let fStandby = finished(u2, "Draft A"), fByAddress = finished(u3, "Draft B"), fFree = finished(u5, "Draft C")
+    check(fStandby != nil && fStandby?.seat == nil && fByAddress != nil && fByAddress?.seat == nil && fFree?.seat.map { $0.same(u5) } == true,
+          "Finish: another profile's standby account (by its ids, or remembered by its address) isn't linked; a free one is")
+    SettingsModel.applyInstalls = installs
     try? fm.removeItem(atPath: expand(d.configDir))
+    // an address typed against the profiles' folders, as the address check always did: an unlinked profile's folder signed
+    // in to it, a linked account with no address recorded (a move's import) and a record with no account id, each by the
+    // address its folder's .claude.json names
+    let unlinked = profile("unlinked", "~/.claude-nunlinked", nil)
+    let noEmail = profile("noemail", "~/.claude-nnoemail", Seat(account: u5.account, organization: u5.organization, email: nil))
+    let idless = profile("idless", "~/.claude-nidless", nil)
+    sign(unlinked.configDir, seat(6, "ultra-6@example.com"))
+    sign(noEmail.configDir, u5)
+    put(expand(idless.configDir) + "/.claude.json", #"{"oauthAccount":{"emailAddress":"ultra-7@example.com"}}"#)
+    let folders = [unlinked, noEmail, idless]
+    check(NewAccountSetup.addressProblem("ULTRA-6@example.com", among: folders) == "That's the account of “Unlinked”. One profile per account."
+          && NewAccountSetup.addressProblem(u5.email!, among: folders) == "That's the account of “Noemail”. One profile per account."
+          && NewAccountSetup.addressProblem("ultra-7@example.com", among: folders) == "That's the account of “Idless”. One profile per account.",
+          "an address typed: an unlinked profile's signed-in folder, a linked account with no address, a record with no id: refused as before")
+    check(NewAccountSetup.addressProblem("ultra-8@example.com", among: folders) == nil, "…another address: allowed")
+    for f in folders { try? fm.removeItem(atPath: expand(f.configDir)) }
     // the folder and window rules are unchanged
     check(FolderRules.configOwner("~/.claude-nwork/inside", among: list)?.id == "work" && FolderRules.configOwner("~/.claude-nwork", among: list, except: "work") == nil
           && FolderRules.configOwner("~/.claude-nother", among: list) == nil, "configOwner: a folder inside another profile's, except itself, a free one")
