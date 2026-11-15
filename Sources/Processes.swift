@@ -8,14 +8,14 @@
 // user's `claude`, as with `sudo claude`, included), the answer is nil, and the callers then refuse rather than guess. Of a process's environment only CLAUDE_CONFIG_DIR is kept; the rest is compared as bytes and wiped. Only `lsof`
 // (which program has a file open) is still a tool, run through `run`.
 //
-// Running. `run` and `output` start a program in the temporary folder with no input, wait at most its time limit, then ask it to
-// end (SIGTERM) and, after a grace, kill it (SIGKILL); a run never blocks much past its limit. `claudeEnvironment` is what a
-// `claude` run gets here: ClaudeAuth's rule (AuthFolder.providerVariables: no key, token, other provider, base URL or extra
-// headers) and no CLAUDE_CONFIG_DIR. ClaudeAuth's own sign-in, renew and sign-out runs keep its runner (Auth/Runs.swift, which
-// takes no output); this file never signals a process it didn't start.
+// Running. `run` and `output` go through Runs (Run/), the one runner ClaudeAuth uses too: a program in the temporary folder with
+// no input, waited for at most its time limit, then asked to end (SIGTERM) and, after a grace, killed (SIGKILL); a run never
+// blocks much past its limit. `claudeEnvironment` is what a `claude` run gets here: Runs' ProviderEnvironment (no key, token,
+// other provider, base URL or extra headers) and no CLAUDE_CONFIG_DIR. This file never signals a process it didn't start.
 
 import AppKit
 import ClaudeAuth
+import Runs
 
 enum Processes {
     // MARK: the kernel's table
@@ -340,70 +340,24 @@ enum Processes {
 
     // MARK: running a program
 
-    /// The environment a `claude` run gets here: `base` without ClaudeAuth's provider variables (a key, a token, another
-    /// provider, a base URL, extra headers) and without CLAUDE_CONFIG_DIR.
+    /// The environment a `claude` run gets here: `base` without the provider variables (a key, a token, another provider, a
+    /// base URL, extra headers) and without CLAUDE_CONFIG_DIR (Runs' ProviderEnvironment, ClaudeAuth's too).
     static func claudeEnvironment(_ base: [String: String] = ProcessInfo.processInfo.environment) -> [String: String] {
-        var env = base
-        for k in AuthFolder.providerVariables + ["CLAUDE_CONFIG_DIR"] { env[k] = nil }
-        return env
+        Runs.ProviderEnvironment.cleaned(base)
     }
 
     /// Runs a program and returns its exit status; nil when it couldn't start or ran out of time. Blocks: call off the main thread.
     @discardableResult
     static func run(_ exe: String, _ args: [String], environment: [String: String]? = nil, timeout: TimeInterval, grace: TimeInterval) -> Int32? {
-        start(exe, args, environment: environment, timeout: timeout, grace: grace, output: false)?.status
+        Runs.Runner.run(Runs.Program(exe, args, environment: environment, timeout: timeout, grace: grace))?.status
     }
 
     /// What a program printed (trimmed), or nil when it couldn't start, failed or ran out of time. Blocks: call off the main thread.
+    /// (Runs' Runner: in the temporary folder, no input, errors dropped, up to 1 MB of output read while it runs and for a second
+    /// after it ended at most, a program it started may hold the output open; past `timeout` SIGTERM, then SIGKILL after `grace`.)
     static func output(_ exe: String, _ args: [String], environment: [String: String]? = nil, timeout: TimeInterval, grace: TimeInterval) -> String? {
-        guard let r = start(exe, args, environment: environment, timeout: timeout, grace: grace, output: true), r.status == 0 else { return nil }
-        return String(data: r.out, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// The one runner: in the temporary folder, no input, errors dropped, what it prints kept (up to 1 MB) when `output`. Past
-    /// `timeout` it is asked to end (SIGTERM), then killed (SIGKILL) if it hasn't within `grace`, and nil is returned. What it
-    /// printed is read until a second after it ended at most (a program it started may hold the output open).
-    private static func start(_ exe: String, _ args: [String], environment: [String: String]?, timeout: TimeInterval, grace: TimeInterval,
-                              output: Bool) -> (status: Int32, out: Data)? {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: exe)
-        p.arguments = args
-        if let environment { p.environment = environment }
-        p.currentDirectoryURL = FileManager.default.temporaryDirectory
-        p.standardInput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        let pipe = output ? Pipe() : nil
-        p.standardOutput = pipe ?? FileHandle.nullDevice
-        final class Box: @unchecked Sendable { var data = Data(); let lock = NSLock() }
-        let box = Box(), read = DispatchGroup()
-        guard (try? p.run()) != nil else { return nil }
-        if let pipe {
-            read.enter()
-            DispatchQueue.global(qos: .utility).async {
-                let h = pipe.fileHandleForReading
-                while true {
-                    let d = h.availableData
-                    if d.isEmpty { break }
-                    box.lock.lock(); if box.data.count < 1 << 20 { box.data.append(d) }; box.lock.unlock()
-                }
-                read.leave()
-            }
-        }
-        let deadline = Date().addingTimeInterval(timeout)
-        while p.isRunning && Date() < deadline { usleep(20_000) }
-        if p.isRunning {
-            p.terminate()
-            let until = Date().addingTimeInterval(grace)
-            while p.isRunning && Date() < until { usleep(20_000) }
-            if p.isRunning { kill(p.processIdentifier, SIGKILL) }
-            let reaped = Date().addingTimeInterval(1)
-            while p.isRunning && Date() < reaped { usleep(5_000) }
-            return nil
-        }
-        // it ended, so all it wrote is in the pipe: read for at most a second more (a program it started may hold the pipe
-        // open for good), then what was read is its output
-        if pipe != nil { _ = read.wait(timeout: .now() + 1) }
-        box.lock.lock(); let out = box.data; box.lock.unlock()
-        return (p.terminationStatus, out)
+        guard let r = Runs.Runner.run(Runs.Program(exe, args, environment: environment, timeout: timeout, grace: grace, keepOutput: true)),
+              r.status == 0 else { return nil }
+        return String(data: r.output, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
