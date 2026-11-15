@@ -1073,11 +1073,20 @@ struct AccountCard: View {
     /// Switch account: the account in use ticked with its plan, the standby accounts by address only (they're never read,
     /// so nothing about their usage), then Sign in to another account…. An account opens the Switch page with it picked.
     private var switchMenu: some View {
-        let standby = row.entry.listed(by: row.view).cardTrays().map(\.offer.standby)
+        // (a clash: the profile's own account is on its standby list too: the one ticked row, still the way to move Claude
+        // Code back, never a second one on standby)
+        let own = row.show.ownStandbyID
+        let standby = row.entry.listed(by: row.view).cardTrays().map(\.offer.standby).filter { $0.id != own }
         return Menu {
-            if let label = row.view.label {
-                Toggle(isOn: .constant(true)) {
-                    Text(Privacy.masked(label) + (row.status?.plan.map { "  " + Account.planWords($0) } ?? ""))
+            if let label = row.show.named.label {
+                if let own {
+                    Toggle(isOn: Binding(get: { true }, set: { _ in actions.switchAccount(AccountEntry.switchKey(row.entry.id, own)) })) {
+                        Text(SwitchMenu.backTitle(Privacy.masked(label)))
+                    }
+                } else {
+                    Toggle(isOn: .constant(true)) {
+                        Text(Privacy.masked(label) + (row.status?.plan.map { "  " + Account.planWords($0) } ?? ""))
+                    }
                 }
             }
             if !standby.isEmpty {
@@ -1097,7 +1106,7 @@ struct AccountCard: View {
             }
         }
         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
-        .help(standby.isEmpty ? "Sign in to another account for \(row.entry.name)" : "Switch \(row.entry.name) to another account")
+        .help(standby.isEmpty && own == nil ? "Sign in to another account for \(row.entry.name)" : "Switch \(row.entry.name) to another account")
     }
 
     /// The rest for this profile: what steps out of the row (the window, Terminal) first.

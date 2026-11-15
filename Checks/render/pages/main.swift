@@ -256,7 +256,7 @@ struct AtlasMenu: View {
         if let u = p.usage { mb.append(info("Updated \(DetailsFormat.ago(u.fetchedAt)) · \(u.source)")) }
         if let why = p.problem { mb.append(info(why)) }
         mb.append(.separator())
-        let mbLines = SwitchMenu.lines(p.show.listedEntry, now: now)
+        let mbLines = SwitchMenu.lines(p.entry.listed(by: p.view), now: now, own: p.show.ownStandbyID)
         let mbFull = p.usage.flatMap { AtLimit.blocker(fiveHour: $0.fiveHour, fiveHourResets: $0.fiveHourResets, weekly: $0.weekly,
                                                        weeklyResets: $0.weeklyResets, now: now) } != nil
         var mbSwitches = SwitchMenu.group(p.show.named, lines: mbLines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
@@ -784,7 +784,7 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
             Text("Menu bar menu").font(.caption.bold()).foregroundColor(.white)
             AtlasMenu(Array(barMenu.items.dropFirst().prefix(5)))
             Text("Dock menu").font(.caption.bold()).foregroundColor(.white)
-            AtlasMenu(Array(dockApp.profileMenu().items.prefix(6)))
+            AtlasMenu({ let items = dockApp.profileMenu().items; return Array(items.prefix(2)) + items.filter { $0.submenu != nil } }())
         }
         snapshot(framed(menus, 460), "show3c-\(name)-menus-std", 492, 900)
     }

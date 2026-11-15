@@ -14,6 +14,13 @@ import ProfileCore
 struct SwitchOffer {
     let profile: String
     let standby: StandbyAccount
+    /// The profile's own account (its seat) while Claude Code's folder is on another account (a clash: the Claude app is on
+    /// it, so the menus tick it): switching to it moves Claude Code back. Set by fullOffer; the menus and the Switch page
+    /// know it from ProfileShow.ownStandbyID.
+    var movesBack = false
+
+    /// How every surface says that switching to the profile's own account moves Claude Code back to it.
+    static let moveBackWords = "move Claude Code back here"
 
     /// "<profile>~<standby>": names the page, the alert's action and the menu items.
     var key: String { AccountEntry.switchKey(profile, standby.id) }
@@ -55,7 +62,11 @@ extension AccountEntry {
     /// only is never it; no numbers are read for it. `view`: the account answer when the caller has a newer one than the
     /// saved record (the agent's reader, before it saves).
     func fullOffer(view: AccountView? = nil, now: Date = Date()) -> SwitchOffer? {
-        listed(by: view ?? AccountView.of(Store.status(for: self, now: now))).bestOffer(now: now)
+        var offer = listed(by: view ?? AccountView.of(Store.status(for: self, now: now))).bestOffer(now: now)
+        // the profile's own account on its standby list while the folder is on another's (a clash): offered once, as the way
+        // back (it stays switchable; the menus tick it, once)
+        if let own = seat, offer.map({ own.same($0.standby.seat) }) == true { offer?.movesBack = true }
+        return offer
     }
 }
 

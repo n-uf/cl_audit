@@ -228,9 +228,8 @@ struct SwitchPage: View {
     /// Never the account in use (the record's): the same list as every other screen's (`listed(by:)`).
     var pickList: [StandbyAccount] {
         guard runner.phase == .ready else { return [standby] }
-        let s = show
-        let all = AccountBook.offerOrder(s.listedEntry.standby)
-        if s.view.isActive(standby) { return all }
+        let all = AccountBook.offerOrder(entry.listed(by: view).standby)
+        if view.isActive(standby) { return all }
         return all.contains { $0.id == standby.id } ? all : [standby] + all
     }
 
@@ -280,12 +279,14 @@ struct SwitchPage: View {
     /// A standby account: its address, plan and when it was last in use. No limits: it isn't read.
     private func standbyBox(_ s: StandbyAccount, selected: Bool) -> some View {
         let pickable = runner.phase == .ready && !selected && s.seat != nil
+        // a clash: the profile's own account (the Claude app is on it) is in this list once, as the way back for Claude Code
+        let back = s.id == show.ownStandbyID
         func box(_ lit: String?) -> some View {
-            AccountBox(lamp: nil, badge: "Standby", detail: s.plan.map(Account.planWords),
+            AccountBox(lamp: nil, badge: back ? "Move back" : "Standby", detail: s.plan.map(Account.planWords),
                        unlit: !selected, selected: selected, litBadge: lit) {
                 BoxText(text: Privacy.masked(s.label), role: selected ? .title : .softTitle)
             } content: {
-                BoxText(text: (s.lastInUse.map { "Last in use " + AccountBook.ago($0) } ?? "Not in use on \(name) yet") + ".", role: .note)
+                BoxText(text: Self.boxWords(s, back: back, name: name, moveCount: selected && plan?.moves == true ? sessionWords(plan) : nil), role: .note)
             }
         }
         // the lit badge while it's going: "Switching to" when the address fits beside it in the box's own width, else the
@@ -303,6 +304,16 @@ struct SwitchPage: View {
             guard pickable else { return }
             model.showSwitch(AccountEntry.switchKey(entry.id, s.id))
         }
+    }
+
+    /// A standby box's line: when it was last in use; the profile's own account in a clash (the way back): what choosing it
+    /// does ("Move Claude Code back here (41 Code-tab sessions)"), with the count once it is the one picked.
+    static func boxWords(_ s: StandbyAccount, back: Bool, name: String, moveCount: String?, now: Date = Date()) -> String {
+        if back {
+            let words = SwitchOffer.moveBackWords
+            return words.prefix(1).uppercased() + words.dropFirst() + (moveCount.map { " (\($0))" } ?? "") + "."
+        }
+        return (s.lastInUse.map { "Last in use " + AccountBook.ago($0, now: now) } ?? "Not in use on \(name) yet") + "."
     }
 
     // MARK: what changes, and what doesn't

@@ -24,6 +24,8 @@ enum SwitchMenu {
         var canSwitch = true
         /// The one a full limit offers first (AccountBook.best, the one rule the card and the alert use too).
         var offered = false
+        /// The profile's own account in a clash (ProfileShow.ownStandbyID): the menu's ticked row, not a standby one.
+        var own = false
     }
 
     /// The account in use, short ("ultra-1"), as the profile's record says it (AccountView); nil while none is known.
@@ -47,23 +49,28 @@ enum SwitchMenu {
 
     /// Every standby account, in the order a full limit offers them (the card's and the Switch page's, SwitchOffer), each with
     /// when it was last in use.
-    static func lines(_ e: AccountEntry, now: Date = Date()) -> [Line] {
+    /// `own`: the standby id of the profile's own account in a clash, flagged so the submenu ticks it once (still switchable)
+    /// and leaves it out of the standby rows.
+    static func lines(_ e: AccountEntry, now: Date = Date(), own: String? = nil) -> [Line] {
         let offers = e.switchOffers(now: now)
         let best = AccountBook.best(offers.map(\.standby), now: now)
         return offers.map { o in
             let full = o.knownFull(now: now)          // orders and picks the offer only; never shown
             let words = o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? ""
             return Line(key: o.key, short: o.short, words: words, room: !full, canSwitch: o.standby.seat != nil || !o.standby.email.isEmpty,
-                        offered: o.standby.id == best?.id)
+                        offered: o.standby.id == best?.id, own: o.standby.id == own)
         }
     }
+
+    /// The own account's ticked row: "ann · move Claude Code back here".
+    static func backTitle(_ short: String) -> String { "\(short) · \(SwitchOffer.moveBackWords)" }
 
     /// The one to offer while a limit is full: AccountBook.best's (an account remembered by its address only is never it).
     static func best(_ lines: [Line]) -> Line? { lines.first { $0.offered } }
 
     /// "Switch to ultra-3…": on the top level, only while a limit is full.
     static func bestItem(_ l: Line, target: AnyObject, action: Selector) -> NSMenuItem {
-        let i = NSMenuItem(title: "Switch to \(l.short)…", action: action, keyEquivalent: "")
+        let i = NSMenuItem(title: l.own ? "Move Claude Code back to \(l.short)…" : "Switch to \(l.short)…", action: action, keyEquivalent: "")
         i.target = target; i.representedObject = l.key
         return i
     }
@@ -80,12 +87,15 @@ enum SwitchMenu {
         sub.addItem(.separator())
         if let s = inUseShort(v) {
             // the account in use: the menu's own checkmark, enabled so it doesn't read as broken; choosing it does nothing
-            let i = NSMenuItem(title: s + (inUseUsed == nil ? "" : " · " + weekWords(inUseUsed, week: inUseWeek)),
-                               action: nil, keyEquivalent: "")
+            // (a clash: the profile's own account is on its standby list too: this one row, ticked, says what choosing it does)
+            let back = lines.first { $0.own }
+            let i = NSMenuItem(title: back != nil ? backTitle(s) : s + (inUseUsed == nil ? "" : " · " + weekWords(inUseUsed, week: inUseWeek)),
+                               action: back?.canSwitch == true ? action : nil, keyEquivalent: "")
             i.state = .on; i.isEnabled = true
+            if let back, back.canSwitch { i.target = target; i.representedObject = back.key }
             sub.addItem(i)
         }
-        for l in lines {
+        for l in lines where !l.own || inUseShort(v) == nil {
             // standby accounts plain, by address only
             let i = NSMenuItem(title: "\(l.short)…", action: l.canSwitch ? action : nil, keyEquivalent: "")
             i.target = target; i.representedObject = l.key; i.isEnabled = l.canSwitch

@@ -2326,23 +2326,56 @@ MainActor.assumeIsolated {
           && noSeatShow.named.inUseLine == nil && !naming(noSeatDock.menu).contains { $0.contains(u3Short) }
           && !titles(menuBarMenu(noSeatShow)).contains { $0.contains(u3Short) },
           "a clash with no seat: the panel draws no account line (never its sign-in's u3), the menus name none")
-    // one account, one row: the profile's own account (u1, ticked in a clash) is also remembered on its standby list; no
-    // menu and no Switch page lists it on standby too (the lists took the record's account, the folder's u3, not the ticked one)
+    // one account, one row: the profile's own account (u1, ticked in a clash) is also remembered on its standby list. It is
+    // that one row everywhere: ticked, saying what choosing it does, still switchable (the way to move Claude Code back);
+    // never a second row on standby
     var both = e; both.standby.append(StandbyAccount(email: u1.email!, seat: u1, id: "k1"))
     _ = Store.writeStatus("acc", rec(login: u3.email, code: u3))
     let bothShow = ProfileShow.load(both, now: now), bothDock = dockOf(both, bothShow), bothBar = menuBarMenu(bothShow)
     let u2Short = AccountNames.short(u2.email!)
+    let backTitle = "\(u1Short) · move Claude Code back here", backKey = AccountEntry.switchKey("acc", "k1")
+    func allItems(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(allItems) ?? []) } }
     func rowsOf(_ m: NSMenu, _ short: String) -> Int { titles(m).filter { $0.hasPrefix(short) && !$0.hasPrefix("Claude") }.count }
+    func ownRow(_ m: NSMenu) -> NSMenuItem? { allItems(m).first { $0.title == backTitle } }
+    check(bothShow.ownStandbyID == "k1" && bothShow.named.label == u1.email, "a clash: the own account is the ticked one and the standby id k1 (ProfileShow.ownStandbyID)")
     check(rowsOf(bothDock.menu, u1Short) == 1 && rowsOf(bothBar, u1Short) == 1 && rowsOf(bothDock.menu, u2Short) == 1 && rowsOf(bothBar, u2Short) == 1
           && !titles(bothDock.menu).contains(u1Short + "…") && !titles(bothBar).contains(u1Short + "…"),
-          "a clash, the own account also on the standby list: ticked once in the Dock menu and the menu bar, never on standby too (u2 once)")
+          "a clash, the own account also on the standby list: one row in the Dock menu and the menu bar menu, never on standby too (u2 once)")
+    for (what, m) in [("Dock", bothDock.menu), ("menu bar", bothBar)] {
+        let row = ownRow(m)
+        check(row?.state == .on && row?.isEnabled == true && row?.action != nil && row?.representedObject as? String == backKey,
+              "\(what) menu: the own account's row is ticked, says it moves Claude Code back, and switches to k1 (\(row?.title ?? "none"))")
+    }
     let bothPage = surfaces(rec(login: u3.email, code: u3), both).page
-    check(bothPage.pickList.map(\.id) == ["k2"], "…and not on the Switch page's TO list: \(bothPage.pickList.map(\.id))")
-    // …but an account picked on purpose is always on the list, first and selected (the button names it): never a list with
-    // nothing selected
+    check(bothPage.pickList.map(\.id).filter { $0 == "k1" }.count == 1 && Set(bothPage.pickList.map(\.id)) == ["k1", "k2"],
+          "the Switch page's TO list: the own account once, with ben: \(bothPage.pickList.map(\.id))")
+    // …picked on purpose (the button names it): in the list, once, and selected
     let ownPicked = SwitchPage(entry: both, standby: both.standby[1], model: model, runner: model.runner(of: both.id))
-    check(ownPicked.pickList.map(\.id) == ["k1", "k2"] && ownPicked.pickList.first?.id == ownPicked.standby.id,
-          "the profile's own account picked in a clash: first in the TO list and selected: \(ownPicked.pickList.map(\.id))")
+    check(ownPicked.pickList.filter { $0.id == ownPicked.standby.id }.count == 1 && ownPicked.standby.id == "k1",
+          "the own account picked in a clash: in the TO list once and selected: \(ownPicked.pickList.map(\.id))")
+    let k1 = both.standby[1], k2 = both.standby[0]
+    check(SwitchPage.boxWords(k1, back: true, name: "Acc", moveCount: nil, now: now) == "Move Claude Code back here."
+          && SwitchPage.boxWords(k1, back: true, name: "Acc", moveCount: "41 Code-tab sessions", now: now) == "Move Claude Code back here (41 Code-tab sessions)."
+          && SwitchPage.boxWords(k2, back: false, name: "Acc", moveCount: "41 Code-tab sessions", now: now) == "Last in use yesterday.",
+          "the TO box's words: the own account says it moves Claude Code back (count once picked); another says its last use")
+    // the card's menu takes the same rule from the profile's value (Launcher.switchMenu: ticks `named`, the own id, no second row)
+    check(cardRow(both, now: now).show.ownStandbyID == "k1" && cardRow(both, now: now).show.named.label == u1.email
+          && cardRow(both, now: now).entry.listed(by: cardRow(both, now: now).view).standby.filter { $0.id != cardRow(both, now: now).show.ownStandbyID }.map(\.id) == ["k2"],
+          "the card's Switch account menu: u1 ticked once (the own id k1), ben on standby")
+    // the full-limit offer: the own account offered once, switchable, with the move words; another account without them
+    var onlyOwn = e; onlyOwn.standby = [k1]
+    let ownOffer = onlyOwn.fullOffer(view: AccountView.of(Store.status(for: onlyOwn, now: now)), now: now)
+    check(ownOffer?.key == backKey && ownOffer?.movesBack == true && ownOffer?.standby.seat != nil && SwitchOffer.moveBackWords == "move Claude Code back here"
+          && e.fullOffer(view: AccountView.of(Store.status(for: e, now: now)), now: now)?.movesBack == false,
+          "fullOffer in a clash: the own account offered once, switchable, moving Claude Code back; another account plain")
+    // outside a clash nothing changes: the active account is off the standby list, ticked with its week, no move words
+    _ = Store.writeStatus("acc", rec())
+    let calmShow = ProfileShow.load(both, now: now), calmDock = dockOf(both, calmShow), calmBar = menuBarMenu(calmShow)
+    check(calmShow.ownStandbyID == nil && ownRow(calmDock.menu) == nil && ownRow(calmBar) == nil
+          && rowsOf(calmDock.menu, u1Short) == 1 && rowsOf(calmBar, u1Short) == 1 && !titles(calmDock.menu).contains(u1Short + "…")
+          && titles(calmBar).contains { $0.hasPrefix(u1Short + " · week") } && !titles(calmBar).contains { $0.contains("move Claude Code") },
+          "no clash: the active account ticked once with its week, off the standby list, no move words")
+    _ = Store.writeStatus("acc", rec(login: u3.email, code: u3))
     // a record from before the id: by its name (the first profile so called)
     var byName = rec(login: u3.email, code: u3); byName.resolved?.clashID = nil
     let oldClash = surfaces(byName)
