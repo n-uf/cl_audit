@@ -136,6 +136,7 @@ struct SwitchReceipt: StoredReceipt, Equatable {
         var dev: UInt64? = nil          // pointer: the transcript's identity
         var ino: UInt64? = nil
         var done = false                // written down before acting, marked done after
+        var refused: Bool? = nil        // tasks: the write was refused (the file had changed) or put back: nothing to undo
     }
 }
 
@@ -189,54 +190,12 @@ enum SwitchEngine {
 
     // MARK: scheduled tasks
 
-    static func tasks(in scopeDir: String) -> [[String: Any]] {
-        registry(scopeDir)?["scheduledTasks"] as? [[String: Any]] ?? []
-    }
+    // (the task file's one owner is TaskRegistry: reading, the twin rule, the joined files and the compare-and-swap writes)
 
-    /// A task's state kept beside the list, by task id (claude-transplant's TASK_STATE_KEYS): it goes with the task.
-    static let taskStateKeys = ["recordedSkips", "runRetries"]
+    static func tasks(in scopeDir: String) -> [[String: Any]] { TaskRegistry.tasks(in: scopeDir) }
 
-    /// The scope's scheduled-tasks.json, or nil when it isn't there or can't be read as one.
-    static func registry(_ scopeDir: String) -> [String: Any]? {
-        let f = (scopeDir as NSString).appendingPathComponent("scheduled-tasks.json")
-        return SafeRead.jsonObject(f)                          // bounded, never blocking
-    }
-
-    /// Why the source's tasks can't move as they are, or nil (claude-transplant's taskSessions and taskFamilies checks): a
-    /// registry that can't be read, a task without an id or an id twice, or a target that has one of their ids already with
-    /// other settings (the task's own entry) or other state.
-    static func taskProblem(source: String, target: String) -> String? {
-        let fm = FileManager.default
-        let file = (source as NSString).appendingPathComponent("scheduled-tasks.json")
-        guard fm.fileExists(atPath: file) else { return nil }
-        guard let src = registry(source) else { return "its scheduled-tasks.json can't be read" }
-        if let raw = src["scheduledTasks"], !(raw is [[String: Any]]) { return "its scheduled-tasks.json isn't a task list" }
-        let list = tasks(in: source)
-        let ids = list.compactMap { $0["id"] as? String }
-        guard ids.count == list.count, !ids.contains(where: \.isEmpty) else { return "a scheduled task has no id" }
-        guard Set(ids).count == ids.count else { return "two scheduled tasks share an id" }
-        if fm.fileExists(atPath: (target as NSString).appendingPathComponent("scheduled-tasks.json")) {
-            guard let dst = registry(target) else { return "the new account's scheduled-tasks.json can't be read" }
-            // a list with an element that isn't a task would read as no tasks at all, and be overwritten by the move
-            if let raw = dst["scheduledTasks"], !(raw is [[String: Any]]) { return "the new account's scheduled-tasks.json isn't a task list" }
-            // a task the target has under the same id must be the same task, whole: otherwise the move would drop the
-            // source's (the target's copy stays), and it would survive only in the backup
-            let have = tasks(in: target)
-            for task in list {
-                guard let id = task["id"] as? String, let mine = have.first(where: { $0["id"] as? String == id }) else { continue }
-                guard NSDictionary(dictionary: task).isEqual(to: mine) else { return "the new account has a task with the same id and other settings" }
-            }
-            for key in taskStateKeys {
-                let s = src[key] as? [String: Any] ?? [:], t = dst[key] as? [String: Any] ?? [:]
-                for id in ids where t[id] != nil {
-                    guard let a = s[id], NSDictionary(dictionary: ["v": a]).isEqual(to: ["v": t[id]!]) else {
-                        return "the new account has a task with the same id and other state"
-                    }
-                }
-            }
-        }
-        return nil
-    }
+    /// Why the source's tasks can't move as they are, or nil (TaskRegistry.twinProblem: a differing twin is refused).
+    static func taskProblem(source: String, target: String) -> String? { TaskRegistry.twinProblem(source: source, target: target) }
 
     // MARK: who owns a session now (claude-transplant's workers: Processes.sessionsOwned)
 
@@ -441,39 +400,51 @@ enum SwitchEngine {
     /// rule, stays the target's: a different one never gets here, the tasks stay), with their state
     /// (recordedSkips, runRetries); the source keeps none. Both files are backed up and both steps written down first; the
     /// source is emptied before the target gets them, so a stop in between never leaves a task in both accounts (it would
-    /// run twice).
+    /// run twice). Each file is written through TaskRegistry's compare-and-swap: only while it is still as it was read here;
+    /// a target changed meanwhile puts the source back as it was and stops the switch there (the tasks stay where they were).
     private static func moveTasks(_ p: SwitchPlan, backups: URL, _ r: inout SwitchReceipt) throws {
         let fm = FileManager.default
-        let srcFile = (p.sourceDir as NSString).appendingPathComponent("scheduled-tasks.json")
-        let dstFile = (p.targetDir as NSString).appendingPathComponent("scheduled-tasks.json")
-        var source = registry(p.sourceDir) ?? [:]
-        var target = registry(p.targetDir) ?? ["scheduledTasks": [[String: Any]]()]
-        let moving = source["scheduledTasks"] as? [[String: Any]] ?? []
-        let movingIDs = moving.compactMap { $0["id"] as? String }
-        var have = target["scheduledTasks"] as? [[String: Any]] ?? []
-        let ids = Set(have.compactMap { $0["id"] as? String })
-        have += moving.filter { ($0["id"] as? String).map { !ids.contains($0) } ?? true }
-        target["scheduledTasks"] = have
-        source["scheduledTasks"] = [[String: Any]]()
-        for key in taskStateKeys {
-            guard var s = source[key] as? [String: Any] else { continue }
-            var t = target[key] as? [String: Any] ?? [:]
-            for id in movingIDs { if let v = s.removeValue(forKey: id) { t[id] = v } }
-            source[key] = s; target[key] = t
+        let srcFile = TaskRegistry.path(p.sourceDir), dstFile = TaskRegistry.path(p.targetDir)
+        TaskRegistry.sweep(p.sourceDir); TaskRegistry.sweep(p.targetDir)          // a temp an earlier stop left
+        // the two files as they are now: what each write must still find
+        guard case .success(let srcBytes) = TaskRegistry.current(srcFile), case .success(let dstBytes) = TaskRegistry.current(dstFile) else {
+            throw SwitchError.failed("a scheduled-tasks.json isn't a plain file")
         }
-        var writes: [(file: String, data: Data, step: Int)] = []
-        for (file, json, tag) in [(srcFile, source, "source"), (dstFile, target, "target")] {
-            let existed = fm.fileExists(atPath: file)
+        func object(_ d: Data?) -> [String: Any]? { d.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } }
+        let joined = TaskRegistry.joined(source: object(srcBytes) ?? [:], target: object(dstBytes) ?? ["scheduledTasks": [[String: Any]]()])
+        var writes: [(file: String, data: Data, expected: Data?, step: Int)] = []
+        for (file, json, was, tag) in [(srcFile, joined.source, srcBytes, "source"), (dstFile, joined.target, dstBytes, "target")] {
+            let existed = was != nil
             let backup = backups.appendingPathComponent("scheduled-tasks.\(tag).json").path
-            if existed { try? fm.removeItem(atPath: backup); try fm.copyItem(atPath: file, toPath: backup) }
-            let data = try JSONSerialization.data(withJSONObject: json, options: [.withoutEscapingSlashes])
+            // the backup is the very bytes read (never a copy made later, which a link swapped in meanwhile could redirect)
+            if let was {
+                try? fm.removeItem(atPath: backup)
+                guard CreateOnly.write(was, as: backup, temp: backup + ".tmp", sync: true) == .created else {
+                    throw SwitchError.failed("couldn't back up scheduled-tasks.json")
+                }
+            }
+            let data = try TaskRegistry.encode(json)
             r.steps.append(SwitchReceipt.Step(kind: .tasks, path: file, sha: sha(data), parked: existed ? backup : nil, existed: existed))
-            writes.append((file, data, r.steps.count - 1))
+            writes.append((file, data, was, r.steps.count - 1))
         }
-        r.tasksMoved = movingIDs.count
+        r.tasksMoved = joined.moved.count
         try store.save(r)                                            // both written down before either file changes
-        for w in writes {
-            try w.data.write(to: URL(fileURLWithPath: w.file), options: .atomic)
+        for (k, w) in writes.enumerated() {
+            let wrote = TaskRegistry.swap(w.data, at: w.file, expected: w.expected)
+            guard wrote == .written else {
+                // this file's write was refused: nothing of it to undo (written down so)
+                r.steps[w.step].refused = true
+                // the target couldn't take them: the source back as it was read (only while it is as written here), so the
+                // tasks are never in neither account
+                if k > 0, let first = writes.first, let was = first.expected,
+                   TaskRegistry.swap(was, at: first.file, expected: first.data) == .written {
+                    r.steps[first.step].done = false
+                    r.steps[first.step].refused = true
+                }
+                try? store.save(r)
+                if case .failed(let why) = wrote { throw SwitchError.failed(why) }
+                throw SwitchError.failed("scheduled-tasks.json changed during the switch; the tasks stay where they were")
+            }
             r.steps[w.step].done = true
             try store.save(r)
         }
@@ -616,15 +587,31 @@ enum SwitchEngine {
                 if !fm.fileExists(atPath: original) { try fm.moveItem(atPath: parked, toPath: original) }
                 else { r.problems.append("\(name) is back already") }
             case .tasks:
-                let now = (try? Data(contentsOf: URL(fileURLWithPath: step.path))).map(sha)
-                let before = step.parked.flatMap { try? Data(contentsOf: URL(fileURLWithPath: $0)) }.map(sha)
+                // (through TaskRegistry: put back, or taken away, only while the file is still exactly as this switch wrote it)
+                guard case .success(let nowBytes) = TaskRegistry.current(step.path) else {
+                    r.problems.append("\(name) changed since; left as it is"); left.append(name); continue
+                }
+                let now = nowBytes.map(sha)
+                // (the backup read as a plain file: never through a link)
+                let backupBytes = step.parked.flatMap { SafeFiles.readPlain($0, max: TaskRegistry.max) }
+                let before = backupBytes.map(sha)
                 if now == before || (now == nil && !step.existed) { continue }    // never written (a stop before it)
-                guard now == step.sha else { r.problems.append("\(name) changed since; left as it is"); left.append(name); continue }
+                // a write the switch refused (the file had changed) or put back has nothing to undo, whatever the file holds
+                // now; any other step not marked done (a crash) is undone only while it still holds this switch's bytes
+                if step.refused == true, !step.done, now != step.sha { continue }
+                guard now == step.sha, let nowBytes else { r.problems.append("\(name) changed since; left as it is"); left.append(name); continue }
+                let done: TaskRegistry.Swap
                 if let backup = step.parked {
-                    _ = try fm.replaceItemAt(URL(fileURLWithPath: step.path), withItemAt: URL(fileURLWithPath: backup),
-                                             backupItemName: nil, options: [.usingNewMetadataOnly])
+                    guard let backupBytes else { throw SwitchError.failed("the backup of \(name) is gone") }
+                    done = TaskRegistry.swap(backupBytes, at: step.path, expected: nowBytes)
+                    if done == .written { try? fm.removeItem(atPath: backup) }   // put back (as a move of the backup did)
                 } else if !step.existed {
-                    try fm.removeItem(atPath: step.path)                   // a task file this switch made, unchanged
+                    done = TaskRegistry.remove(at: step.path, expected: nowBytes) // a task file this switch made, unchanged
+                } else { continue }
+                switch done {
+                case .written: break
+                case .changed: r.problems.append("\(name) changed since; left as it is"); left.append(name)
+                case .failed(let why): throw SwitchError.failed(why)
                 }
             case .pointer:
                 if let why = takeBack(step) { r.problems.append("\(name): \(why)") }
