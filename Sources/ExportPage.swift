@@ -210,7 +210,7 @@ final class ExportRunner: ObservableObject {
         var t = SessionsExport.Preview(profile: "all", name: "All profiles")
         for x in p {
             t.sessions += x.sessions; t.transcriptBytes += x.transcriptBytes; t.entries += x.entries; t.tasks += x.tasks; t.windowBytes += x.windowBytes
-            t.keyedSessions += x.keyedSessions; t.keyedBytes += x.keyedBytes; t.keyedFiles += x.keyedFiles; t.inUse += x.inUse; t.connections += x.connections; t.unreadable += x.unreadable; t.markersOrphan += x.markersOrphan; t.markersKeyed += x.markersKeyed
+            t.keyedSessions += x.keyedSessions; t.keyedBytes += x.keyedBytes; t.keyedFiles += x.keyedFiles; t.inUse += x.inUse; t.connections += x.connections; t.unreadable += x.unreadable; t.notEntries += x.notEntries; t.markersOrphan += x.markersOrphan; t.markersKeyed += x.markersKeyed
             t.windowLeftOut = t.windowLeftOut || x.windowLeftOut
             for (k, v) in x.keyKinds { t.keyKinds[k, default: 0] += v }
             t.setup.add(x.setup)
@@ -459,6 +459,14 @@ enum ExportWords {
         return head + ". An import adds them only if you pick Add them, and they come paused."
     }
 
+    /// The window files named like a Code-tab entry that aren't one (a name that isn't an id, a .json.tmp left mid-write …):
+    /// left out, said.
+    static func notEntriesNote(_ pv: SessionsExport.Preview?) -> String? {
+        guard let p = pv, !p.windowLeftOut, p.notEntries > 0 else { return nil }
+        let one = p.notEntries == 1
+        return "\(n(p.notEntries, "file", "files")) left out: named like a Code-tab entry, but not \(one ? "a Code-tab session" : "Code-tab sessions")."
+    }
+
     /// The "cl_audit's profiles" row: each exported profile's record (name, look, Dock place, accounts) and cl_audit's General and backup
     /// settings. They name addresses and accounts, so only the encrypted disk image carries them.
     static func profilesWords(count: Int, names: [String], on: Bool, image: Bool) -> (value: String, note: String?) {
@@ -663,6 +671,9 @@ struct ExportPage: View {
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     if let t = ExportWords.tasksNote(pv) {
+                        Text(t).font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if let t = ExportWords.notEntriesNote(pv) {
                         Text(t).font(.system(size: 10.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }

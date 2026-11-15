@@ -694,6 +694,7 @@ enum SessionsExport {
         var keyedFiles = 0                  // lone files with keys (a window entry, a project's other files)
         var connections = 0                 // entries holding connection settings (a zip leaves them out)
         var unreadable = 0                  // entries a zip leaves out because they aren't UTF-8 JSON objects it can read
+        var notEntries = 0                  // window files named like an entry (local_…) that aren't one (ClaudeFiles): left out
         var markersOrphan = 0               // retention markers with no transcript beside them: left out
         var markersKeyed = 0                // retention markers of a session that holds keys: left out with it unless keys are kept
         /// The retention markers an export with this choice leaves out.
@@ -886,7 +887,7 @@ enum SessionsExport {
     static func preview(_ part: Part, now: Date = Date(), cancel: () -> Bool = { false }, progress: ((Int64) -> Void)? = nil) -> Preview? {
         var pv = Preview(profile: part.profile, name: part.name)
         let (list, counts) = files(of: part)
-        pv.entries = counts.sessions; pv.tasks = counts.tasks
+        pv.tasks = counts.tasks                 // (the entries are counted per file below: an older backup's own count took odd names)
         pv.windowLeftOut = part.windowOpen && part.source != nil
         // (read-only: when it can't be checked which sessions run, every session of a live source counts as in use, never as idle)
         let held: Set<String>? = part.source != nil ? SessionsRestore.runningSessions() : []
@@ -898,10 +899,13 @@ enum SessionsExport {
         for f in list {
             if cancel() { return nil }
             if f.role == .window {
-                pv.windowBytes += f.bytes
                 let leaf = (f.rel as NSString).lastPathComponent
+                // named like an entry but not one (ClaudeFiles' one rule): never exported, counted and said
+                if leaf.hasPrefix("local_"), !ClaudeFiles.isEntryName(leaf) { pv.notEntries += 1; continue }
+                if ClaudeFiles.isEntryName(leaf) { pv.entries += 1 }
+                pv.windowBytes += f.bytes
                 // an entry as a zip will hold it: without its two fields (counted), and not at all when it can't be read (counted apart)
-                if leaf.hasPrefix("local_"), f.bytes < 64 << 20, let d = FileManager.default.contents(atPath: f.src) {
+                if ClaudeFiles.isEntryName(leaf), f.bytes < 64 << 20, let d = FileManager.default.contents(atPath: f.src) {
                     guard let w = EntryConnections.without(d) else { pv.unreadable += 1; continue }
                     if w.held > 0 { pv.connections += 1 }
                     progress?(Int64(d.count))
@@ -911,7 +915,7 @@ enum SessionsExport {
                 if leaf == "scheduled-tasks.json", f.bytes < 64 << 20, let d = FileManager.default.contents(atPath: f.src), EntryConnections.top([UInt8](d)) == nil {
                     pv.unreadable += 1; continue                            // a task file a zip can't read is left out too
                 }
-                if leaf.hasPrefix("local_") || leaf == "scheduled-tasks.json" {
+                if ClaudeFiles.isEntryName(leaf) || leaf == "scheduled-tasks.json" {
                     guard let kinds = SecretScan.scan(path: f.src, cancel: cancel, progress: progress) else { if cancel() { return nil }; continue }
                     if !kinds.isEmpty { pv.keyedFiles += 1; pv.keyedBytes += f.bytes }
                 }
@@ -1007,6 +1011,7 @@ enum SessionsExport {
         var cut = 0                         // transcripts copied up to their last full line
         var connectionsLeftOut = 0          // Code-tab entries whose connection settings a zip leaves out
         var unreadableLeftOut = 0           // Code-tab entries a zip leaves out because it can't tell what they hold
+        var notEntriesLeftOut = 0           // window files named like an entry that aren't one (ClaudeFiles): never exported
         var markersLeftOut = 0              // retention markers whose transcript isn't in the file (missing, or left out for keys)
         var setupUnits: [Setup.Unit] = []   // Claude Code's setup that is in the file
         var setupKeysLeftOut = 0            // setup units left out for the keys in them
@@ -1054,6 +1059,7 @@ enum SessionsExport {
         var cut: Int { parts.reduce(0) { $0 + $1.cut } }
         var connectionsLeftOut: Int { parts.reduce(0) { $0 + $1.connectionsLeftOut } }
         var unreadableLeftOut: Int { parts.reduce(0) { $0 + $1.unreadableLeftOut } }
+        var notEntriesLeftOut: Int { parts.reduce(0) { $0 + $1.notEntriesLeftOut } }
         var markersLeftOut: Int { parts.reduce(0) { $0 + $1.markersLeftOut } }
         var setupUnits: [Setup.Unit] { parts.flatMap(\.setupUnits) }
         var setupKeysLeftOut: Int { parts.reduce(0) { $0 + $1.setupKeysLeftOut } }
@@ -1384,11 +1390,15 @@ enum SessionsExport {
             if cancel() { throw ArchiveError("Stopped.") }
             let name = c[3]
             if name.hasPrefix("deleted_") || SessionsBackup.isSignIn(name) { continue }
-            guard name.hasPrefix("local_") || name == "scheduled-tasks.json" else { continue }
+            // the entries by ClaudeFiles' one rule, and the task file; a name like an entry that isn't one is left out, counted
+            guard ClaudeFiles.isEntryName(name) || name == "scheduled-tasks.json" else {
+                if name.hasPrefix("local_") { po.notEntriesLeftOut += 1; leftOut += 1 }
+                continue
+            }
             guard let f = reader.file(c), let raw = SessionsRestore.read(f.fd, size: f.st.st_size) else { leftOut += 1; continue }
             close(f.fd)
             var body = raw
-            if zip, name.hasPrefix("local_") {
+            if zip, ClaudeFiles.isEntryName(name) {
                 // a zip leaves out an entry's connection settings (the encrypted image keeps them); the keys are looked for in what stays
                 if let r = EntryConnections.without(raw) {
                     body = r.data
@@ -1411,7 +1421,7 @@ enum SessionsExport {
             items.append(SessionsBackup.Item(role: .window, original: rel, path: rel, bytes: Int64(data.count)))
             cloned += 1
             if seen.insert(SeatID(account: fa, organization: fo)).inserted { seatsOut.append(SeatID(account: fa, organization: fo)) }
-            if name.hasPrefix("local_"), name.hasSuffix(".json") {
+            if ClaudeFiles.isEntryName(name) {
                 po.entries += 1; counts.sessions += 1
                 if !SidebarPlan.flag("isArchived", in: raw) { counts.sidebar += 1 }
             } else if name == "scheduled-tasks.json", let j = try? JSONSerialization.jsonObject(with: raw) as? [String: Any] {
