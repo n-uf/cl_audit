@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-- The sentences that name a shortened key now use its new name: Import's "Undo import", the Code card's "Pick folder…", and the default-profile page's "‹ Back" (it read "Back to the settings").
+- Wording: the sentences that name a shortened key now use its new name (Import's "Undo import", the Code card's "Pick folder…", the default-profile page's "‹ Back"), and Show emails' hover text and the README say what Off really does: addresses left out of the dashboard's account lines, the launcher and the panels, masked like y•••@example.com in menus and sentences, blurred in Settings.
 
 ## 26.11.34 — 2026-11-15
 

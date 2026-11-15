@@ -416,8 +416,9 @@ Code; cl_audit adds a short system prompt of its own (answer briefly, no tools).
 Settings is a page of the same window as the dashboard (switch at the top, or ⌘,). The profiles run along
 the top, with **General** first and **New profile** last. Changes are saved as you make them and the
 icons follow at once; a profile's name or icon label is saved when you press Return or click elsewhere (Esc puts it back),
-because that renames its Dock icon app; the top strip says when it's done. **Show emails** (General settings) off leaves email addresses out of the launcher, dashboard,
-panels and Dock menus, and blurs them in Settings (hover one to see it), for screen sharing.
+because that renames its Dock icon app; the top strip says when it's done. **Show emails** (General settings) off leaves email addresses out of the launcher, the dashboard's
+account lines and the panels, masks them like y•••@example.com in menus and sentences, and blurs them in Settings (hover one
+to see it), for screen sharing.
 
 **Profile order:** drag a profile's tile left or right along the top (General stays first, ＋ last), or its card on
 the dashboard (by the card itself, not one of its keys); the others move aside and a lit socket shows where it lands. It's saved when you let go ("Saved · order"); VoiceOver has Move left and
