@@ -131,7 +131,7 @@ struct SwitchTileDisplay: View {
             RestoreTileDisplay(entry: entry, model: model, runner: rr)
         } else if let u = model.unfinishedRestore(of: entry.id) {
             // a restore that stopped half way (also one cl_audit stopped in): its page finishes it or undoes it
-            TileDisplayGlass(l1: "Restore stopped", l2: "Finish or undo", tone: .amber) { model.showRestore(finishing: u) }
+            TileDisplayGlass(l1: u.importedFrom != nil ? "Import stopped" : "Restore stopped", l2: "Finish or undo", tone: .amber) { model.showRestore(finishing: u) }
         }
     }
 }

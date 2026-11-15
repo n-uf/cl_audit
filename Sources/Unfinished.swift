@@ -30,7 +30,7 @@ enum Unfinished {
     static func blocker(profile: String, except id: String? = nil, for flow: Flow) -> String? {
         if flow == .switching, let m = DefaultProfile.unfinished(involving: profile) {
             return "The move to the default profile stopped half way on \(SessionsBackup.dateWords(m.started)). "
-                + "Finish it or undo it first: open the card “The move stopped” on the default profile's page."
+                + "Finish it or undo it first, in Settings ▸ General: its card “The move stopped” has the button."
         }
         guard let r = SessionsRestore.unfinished(profile: profile).first(where: { $0.id != id }) else { return nil }
         let date = SessionsBackup.dateWords(r.started)
@@ -40,7 +40,7 @@ enum Unfinished {
         case .switching:
             let imp = r.importedFrom != nil
             return "\(imp ? "An import" : "A restore") of this profile stopped half way on \(date). "
-                + "Finish it or undo it first: the profile's tile says “\(imp ? "Import" : "Restore") stopped” and opens its page."
+                + "Finish it or undo it first: once you leave the Switch page, the profile's tile in Settings opens its page."
         }
     }
 }

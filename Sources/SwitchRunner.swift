@@ -154,7 +154,8 @@ final class SwitchRunner: ObservableObject {
             return
         }
         // a restore or import that stopped half way, or the move to the default profile: said, which and where (Unfinished.swift)
-        if let why = Unfinished.blocker(profile: profile, for: .switching) { goal = g; fail(.notStarted, why); return }
+        // (one that is still running holds cl_audit's lock: then it is said to be under way, not stopped)
+        if let why = Unfinished.blocker(profile: profile, for: .switching) { goal = g; fail(.notStarted, SessionsRestore.busy() ?? why); return }
         guard e.seat != nil, s.seat != nil else { begin(e, g); return }
         switch SwitchEngine.plan(e, standby: s) {
         case .failure(let why): goal = g; fail(.notStarted, why.description)
