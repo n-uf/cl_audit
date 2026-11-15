@@ -309,7 +309,8 @@ do {
               "\(name): the Dock panel agrees (as drawn: \(panel.accountLine?.text ?? "no account line"))")
         check(SwitchMenu.dockTitle(name: "P", mainShow.named, plan: nil) == (named.map { "Claude P · \(AccountNames.short($0))" } ?? "Claude P")
               && mainShow.named.inUseLine == named.map(AccountNames.short), "\(name): the Dock menu and the menu bar row agree")
-        check(QuickChatTarget(main).email == named, "\(name): quick chat agrees (in a clash too: the profile's own account, as the menus)")
+        check(QuickChatTarget(main).email == want.label && QuickChatTarget(main).shownEmail == named,
+              "\(name): quick chat agrees (the process runs on the folder's account; its header names the profile's own, as the menus)")
         // (B8: in the split, the Claude app on another account than Claude Code, they are not the profile's: none show)
         check(Store.status(for: main)?.weekly == (splitHere ? nil : 40),
               "\(name): the record's own numbers show, except in the split (the app on another account): \(splitHere)")
@@ -2132,7 +2133,31 @@ do {
     let clashPanel = DetailsInfo.of(clashNone.row.show, name: e.name, icon: NSImage(), problem: nil)
     check(clashNone.row.show.display.usage == nil && clashPanel.noNumbers == "No usage: Terminal is on Other's account",
           "a clash with no numbers: the Dock panel's age line says no usage here and whose account, never Reading usage…: \(clashPanel.noNumbers ?? "-")")
-    check(QuickChatTarget(e, now: now).email == u1.email, "a clash: quick chat names the profile's own account (u1), never the folder's (u3)")
+    // (the header: the profile's own u1; the `claude` process, the kept level's account and the switch wait: the folder's u3,
+    // so moving back, which changes it, replaces the process: the key differs)
+    let clashChat = QuickChatTarget(e, now: now)
+    let clashKey = clashChat.processKey(claude: "/c", model: "m", effort: nil)
+    check(clashChat.shownEmail == u1.email && clashChat.email == u3.email,
+          "a clash: quick chat's header names the profile's own account (u1), its process the folder's (u3): \(clashChat.shownEmail ?? "-") / \(clashChat.email ?? "-")")
+    _ = Store.writeStatus(e.id, rec())
+    let backChat = QuickChatTarget(e, now: now)
+    check(backChat.email == u1.email && backChat.shownEmail == u1.email && backChat.processKey(claude: "/c", model: "m", effort: nil) != clashKey,
+          "moved back to the profile's own account: quick chat's process key changes, so the open process is replaced")
+    _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
+    // Settings ▸ Accounts' Sign in… keys: the in-use box's on the profile's own account (u1), Claude Code's own row's on its
+    // own (the folder's u3)
+    let keysModel = SettingsModel(); keysModel.accounts = [e, other]
+    let keys = AccountSettings(entry: .constant(e), model: keysModel)
+    check(keys.inUseKeyAddress == u1.email && keys.codeKeyAddress == u3.email,
+          "Settings' Sign in… keys in a clash: the in-use box's on u1, Claude Code's own row's on its own account u3: \(keys.inUseKeyAddress ?? "-") / \(keys.codeKeyAddress ?? "-")")
+    check(SwitchPage.inUseDetail(plan: "max", clash: true) == "" && SwitchPage.inUseDetail(plan: "max", clash: false) == Account.planWords("max"),
+          "the Switch page's in-use box: its plan outside a clash, none in a clash")
+    // a clash whose sign-in is also expired: the panel's age line agrees with the card's notice (the clash), in its long and short form
+    let clashExpired = card(rec("expired", week: nil, five: nil, login: u3.email, code: u3), nil, "clash, expired")
+    let clashExpiredPanel = DetailsInfo.of(clashExpired.row.show, name: e.name, icon: NSImage(), problem: nil)
+    check(clashExpired.notice?.heading == "Terminal is signed in to Other's account"
+          && clashExpiredPanel.noNumbers == "No usage: Terminal is on Other's account" && clashExpiredPanel.noNumbersShort == "No usage here",
+          "a clash with the sign-in expired: the panel's age line says the clash like the card, not Sign-in expired: \(clashExpiredPanel.noNumbers ?? "-")")
     var byName = rec(login: u3.email, code: u3); byName.resolved?.clashID = nil
     let oldClash = card(byName, nil, "clash by old name")
     check(oldClash.row.display.clash == ProfileDisplay.Clash(id: nil, name: "Other") && oldClash.notice?.heading == "Terminal is signed in to Other's account"

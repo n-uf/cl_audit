@@ -729,6 +729,9 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
     let appPat = AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)
     let appAnon = AppSignIn.Login(account: uuid(96), org: uuid(196), state: .known, source: "log", at: now)
     var renamed = work; renamed.name = "Office"
+    var longWork = work; longWork.name = "Marketing Campaigns Team"
+    var longClash = rec("ok", week: nil, five: nil, age: 60, login: cat.email, code: cat)
+    longClash.resolved = AccountResolver.resolve(e, among: [e, longWork], app: .unknown, code: cat, loginEmail: cat.email, names: [:], now: now)
     // the profile's own account (ann, ticked in a clash) also remembered on its standby list: one row in the menus, not two
     var ownStandby = e; ownStandby.standby.append(StandbyAccount(email: ann.email!, seat: ann, id: "ka"))
     // a record whose resolver worked out no account: the folder's own address stands in for the account in use (the Switch
@@ -738,6 +741,8 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
         ("fresh", e, rec("ok", week: 64, five: 12, age: 60), [e, work, s]),
         ("oldrecord", e, oldRecord, [e, work, s]),
         ("clash-none", e, rec("ok", week: nil, five: nil, age: 60, login: cat.email, code: cat), [e, work, s]),
+        // the other profile with a long name: the words don't fit the panel, the short form does
+        ("clash-none-long", e, longClash, [e, longWork, s]),
         ("old40", e, rec("ok", week: 64, five: 12, age: 40 * 60), [e, work, s]),
         ("denied", e, rec("denied", week: 64, five: 12, age: 60), [e, work, s]),
         ("expired", e, rec("expired", week: 64, five: 12, age: 60), [e, work, s]),
