@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.30 — 2026-11-14
+
 - A switch no longer starts while a restore or an import of the same profile, or the move to the default profile, stopped half way; it says which one and where to finish or undo it.
 
 ## 26.11.29 — 2026-11-14
