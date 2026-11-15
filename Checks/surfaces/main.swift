@@ -302,11 +302,13 @@ do {
         // the Dock panel from the one value (each case here is signed in and readable: the lamp is the record's)
         let panel = DetailsInfo.of(ProfileShow.load(main), name: "x", icon: NSImage(), problem: nil)
         let splitHere = ProfileShow.load(main).display.split != nil
-        // (in a clash the app didn't decide, the panel names the profile's own account, never the folder's: step 3c)
-        let panelLabel = want.clash != nil && Store.status("main")?.resolved?.fromApp != true ? main.seat?.email : want.label
-        check(panel.active == panelLabel && (panel.activeNote == want.line || splitHere) && panel.activeLit == want.lit,
-              "\(name): the Dock panel agrees")
-        check(SwitchMenu.dockTitle(name: "P", want, plan: nil) == (want.short.map { "Claude P · \($0)" } ?? "Claude P"), "\(name): the Dock menu agrees")
+        // (in a clash the app didn't decide, every surface names the profile's own account, never the folder's: step 3c)
+        let named = want.clash != nil && Store.status("main")?.resolved?.fromApp != true ? main.seat?.email : want.label
+        let mainShow = ProfileShow.load(main)
+        check(panel.accountLine?.text == named && (panel.activeNote == want.line || splitHere) && panel.activeLit == want.lit,
+              "\(name): the Dock panel agrees (as drawn: \(panel.accountLine?.text ?? "no account line"))")
+        check(SwitchMenu.dockTitle(name: "P", mainShow.named, plan: nil) == (named.map { "Claude P · \(AccountNames.short($0))" } ?? "Claude P")
+              && mainShow.named.inUseLine == named.map(AccountNames.short), "\(name): the Dock menu and the menu bar row agree")
         check(QuickChatTarget(main).email == want.label, "\(name): quick chat agrees")
         // (B8: in the split, the Claude app on another account than Claude Code, they are not the profile's: none show)
         check(Store.status(for: main)?.weekly == (splitHere ? nil : 40),
@@ -2305,11 +2307,25 @@ MainActor.assumeIsolated {
           && UsageNotice.of(clash.settings.inUseRow)?.key == .signIn && clash.settings.popUpSignInAddress == u1.email,
           "a clash: Open Other by its id (not the first profile called Other), unlit, Sign in… to the profile's own u1")
     // the account line: the profile's own account (its seat, u1), never the folder's (Other's u3), on the card and the page
+    let clashShow = ProfileShow.load(e, now: now), clashDock = dockOf(e, clashShow)
+    let u1Short = AccountNames.short(u1.email!), u3Short = AccountNames.short(u3.email!)
+    /// A menu's titles that name an account as the profile's (the Dock menu's "Sign-in: …" line says what Terminal is
+    /// signed in to, as the card's heading does: it is that account's by design).
+    func naming(_ m: NSMenu) -> [String] { titles(m).filter { !$0.hasPrefix("Sign-in: ") } }
     check(cardRow(e, now: now).show.inUseLabel == u1.email && clash.page.inUseRow.show.inUseLabel == u1.email && clash.settings.view.label == u3.email
-          && clash.panel.active == u1.email && clash.preview.active == u1.email,
-          "a clash the app didn't decide: the card's, the Switch page's and the Dock panel's account line name u1, not the folder's u3")
+          && clash.panel.accountLine?.text == u1.email && clashShow.named.inUseLine == u1Short
+          && clashDock.menu.items.first?.title == "Claude Acc · \(u1Short)" && !naming(clashDock.menu).contains { $0.contains(u3Short) }
+          && !titles(menuBarMenu(clashShow)).contains { $0.contains(u3Short) },
+          "a clash the app didn't decide: the card, the Switch page, the Dock panel (as drawn), the Dock menu and the menu bar name u1, never the folder's u3")
+    check(clash.settings.inUseKeys.signIn && clash.settings.inUseKeys.open?.id == "other", "a clash: Settings' red box has Sign in… and Open Other")
+    // …with no seat: no account named anywhere (the card says the line instead), never the sign-in's u3
     var noSeat = e; noSeat.seat = nil
-    check(ProfileShow.load(noSeat, now: now).inUseLabel == nil, "…with no seat: no account named (the card says the line instead), never u3")
+    let noSeatShow = ProfileShow.load(noSeat, now: now), noSeatPanel = DetailsInfo.of(noSeatShow, name: "x", icon: NSImage(), problem: nil)
+    let noSeatDock = dockOf(noSeat, noSeatShow)
+    check(noSeatShow.inUseLabel == nil && noSeatShow.inUseUnknown && noSeatPanel.login == u3.email && noSeatPanel.accountLine == nil
+          && noSeatShow.named.inUseLine == nil && !naming(noSeatDock.menu).contains { $0.contains(u3Short) }
+          && !titles(menuBarMenu(noSeatShow)).contains { $0.contains(u3Short) },
+          "a clash with no seat: the panel draws no account line (never its sign-in's u3), the menus name none")
     // a record from before the id: by its name (the first profile so called)
     var byName = rec(login: u3.email, code: u3); byName.resolved?.clashID = nil
     let oldClash = surfaces(byName)
@@ -2369,6 +2385,24 @@ MainActor.assumeIsolated {
     let anon = surfaces(splitRec(AppSignIn.Login(account: uuid(83), org: uuid(183), state: .known, source: "log", at: now)), s)
     check(UsageNotice.of(anon.settings.inUseRow)?.key == UsageNotice.Key.none && anon.settings.popUpSignInAddress == nil && same(anon.preview, anon.panel),
           "the split with the app's account by id only: no Sign in… in Settings' box, the pop-up's plain sign-in (never mo's)")
+    // Settings' red box's keys as the view draws them (inUseKeys): the value's key, Open only on a clash; none, no row
+    // (the views read the saved record when asked: each record is written again before its view is asked)
+    let anonKeys = anon.settings.inUseKeys
+    let byHandKeys = surfaces(splitRec(AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)), s).settings.inUseKeys
+    check(!anonKeys.signIn && anonKeys.open == nil && byHandKeys.signIn && byHandKeys.open == nil,
+          "Settings' red box: the split by id only has no key and no Open (no empty row); by hand, Sign in…")
+    model.accounts = [e, twin, other]; try! Store.save([e, twin, other])
+    check(!surfaces(rec()).settings.inUseKeys.signIn && surfaces(rec("expired")).settings.inUseKeys.signIn
+          && !surfaces(rec("denied", week: nil, five: nil)).settings.inUseKeys.signIn,
+          "Settings' box keys by state: none when fresh, Sign in… when expired, none (amber, Refresh now) when it can't be read")
+    model.accounts = [e, twin]
+    let gone = surfaces(rec(login: u3.email, code: u3))
+    check(gone.settings.inUseKeys.signIn && gone.settings.inUseKeys.open == nil, "a clash whose profile was removed: Sign in…, no Open")
+    // a standby box says when it was last in use, never numbers (even with a last week remembered)
+    var remembered = e.standby[0]; remembered.lastWeek = 77; remembered.lastWeekResets = now.addingTimeInterval(86400)
+    let words = surfaces(rec()).settings.standbyWords(remembered, name: "Acc")
+    check(words == "Last in use on Acc " + AccountBook.ago(remembered.lastInUse!) && !words.contains("%") && !words.contains("77"),
+          "Settings' standby box: its last use only, never numbers: \(words)")
     Store.removeStatus("acc"); Store.removeStatus("asp")
     try? Store.save([])
 }

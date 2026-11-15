@@ -80,6 +80,15 @@ func saveReceipt(_ r: SwitchReceipt) {
     try! enc.encode(r).write(to: dir.appendingPathComponent("receipt.json"))
 }
 
+extension DetailsInfo {
+    /// A hand-built panel's account line from an account view (the a-renders draw panels from their own records).
+    func with(_ v: AccountView) -> DetailsInfo {
+        var out = self
+        out.active = v.label; out.activeLit = v.lit; out.activeNote = v.line
+        return out
+    }
+}
+
 /// The dashboard card's row of a profile, as the dashboard builds it (LauncherModel.reload): the one value of its saved record.
 func cardRow(_ e: AccountEntry, now: Date = Date()) -> AccountRow { AccountRow(entry: e, show: ProfileShow.load(e, now: now)) }
 
@@ -751,11 +760,25 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
                 DetailsView(info: panel, actions: noop).fixedSize()
             }
             VStack(alignment: .leading, spacing: 6) {
+                // only what Settings ▸ the Dock icon ▸ Usage panel draws of it: the limits as each look shows them, and
+                // the credits (Settings.swift, SLooks over sampleInfo)
                 Text("Settings' preview").font(.caption.bold()).foregroundColor(.white)
-                DetailsView(info: preview, actions: noop).fixedSize()
+                CardLimits(limits: preview.limits, design: p.panelDesign, credits: preview.credits)
+                    .padding(12).frame(width: 300).faceWindow(radius: 5)
             }
         }
         snapshot(framed(panels, 760), "show3c-\(name)-panel-std", 792, 700)
+        // the menu bar row and the Dock icon's menu, as the agent and the Dock app build them from the same value
+        let show = ProfileShow.load(p, now: now)
+        let dockApp = AppDelegate(); dockApp.entry = p; dockApp.show = show
+        let menus = VStack(alignment: .leading, spacing: 8) {
+            Text("Menu bar row").font(.caption.bold()).foregroundColor(.white)
+            MenuBarRow(profile: MenuBarItems.Profile(show: show, problem: show.record?.problem), now: now)
+                .background(Color(white: 0.19)).clipShape(RoundedRectangle(cornerRadius: 9))
+            Text("Dock menu").font(.caption.bold()).foregroundColor(.white)
+            AtlasMenu(Array(dockApp.profileMenu().items.prefix(6)))
+        }
+        snapshot(framed(menus, 460), "show3c-\(name)-menus-std", 492, 600)
     }
 }
 
@@ -837,7 +860,7 @@ MainActor.assumeIsolated {
         let mp = MenuBarItems.Profile(show: ProfileShow.load(main, now: now))
         let panel = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: st?.loginEmail, expected: nil, mismatch: false,
                                 plan: st?.plan, fiveHour: st?.fiveHour, fiveHourResets: st?.fiveHourResets, weekly: st?.weekly, weeklyResets: st?.weeklyResets,
-                                updated: now.addingTimeInterval(-60), source: nil, problem: nil, renewNote: nil, needsLogin: false).taking(v)
+                                updated: now.addingTimeInterval(-60), source: nil, problem: nil, renewNote: nil, needsLogin: false).with(v)
         for f in [Face.std, .silver] { for (wn, w) in aWidths {
             let col = VStack(alignment: .leading, spacing: 12) {
                 Text("Menu bar").font(.caption.bold())
@@ -863,7 +886,7 @@ MainActor.assumeIsolated {
         let info = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: u1.email, expected: nil, mismatch: false,
                                plan: "Ultra", fiveHour: nil, fiveHourResets: nil, weekly: updated == nil ? nil : 42, weeklyResets: now.addingTimeInterval(3 * 86400),
                                updated: updated, source: nil, problem: nil, renewNote: nil, needsLogin: false, noFiveHour: true)
-            .taking(AccountView(label: u1.email, numbersOwner: u1.email, line: nil, lit: true, clash: nil))
+            .with(AccountView(label: u1.email, numbersOwner: u1.email, line: nil, lit: true, clash: nil))
         for f in [Face.std, .silver] { for (wn, w) in aWidths {
             snapshot(framed(DetailsView(info: info, actions: noop).frame(width: min(w, 340)), f, w), "\(tag)-\(f.rawValue)-\(wn)", w + 32, 900)
         } }
@@ -987,7 +1010,7 @@ MainActor.assumeIsolated {
             let v = AccountView.of(Store.status(for: main))
             let panel = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: rec.loginEmail, expected: nil, mismatch: false,
                                     plan: rec.plan, fiveHour: nil, fiveHourResets: nil, weekly: rec.weekly, weeklyResets: rec.weeklyResets,
-                                    updated: Date(), source: nil, problem: nil, renewNote: nil, needsLogin: false, noFiveHour: true).taking(v)
+                                    updated: Date(), source: nil, problem: nil, renewNote: nil, needsLogin: false, noFiveHour: true).with(v)
             let noop = DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})
             for f in [Face.std, .silver] {
                 let side = HStack(alignment: .top, spacing: 16) {
