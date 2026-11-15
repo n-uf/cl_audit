@@ -2180,6 +2180,19 @@ do {
     let splitDone = QuickChatTarget(win, now: now)
     check(!splitDone.split && splitDone.email == u2.email && splitDone.processKey(claude: "/c", model: "m", effort: nil) != splitKey,
           "the split ended, Claude Code signed in to the app's u2: the process key changes")
+    // the key goes by the folder account's id where the record has it: the address written in another case, or none on
+    // file, is the same account between readings (no new process, the kept level and the switch wait unchanged)
+    func chatKey(_ code: Seat, login: String?) -> (key: String, email: String?) {
+        _ = Store.writeStatus(e.id, rec(login: login, code: code))
+        let t = QuickChatTarget(e, now: now)
+        return (t.processKey(claude: "/c", model: "m", effort: nil), t.email)
+    }
+    let asIs = chatKey(u1, login: u1.email)
+    let upper = chatKey(Seat(account: u1.account, organization: u1.organization, email: u1.email!.uppercased()), login: u1.email!.uppercased())
+    let noAddress = chatKey(Seat(account: u1.account, organization: u1.organization, email: nil), login: nil)
+    check(upper.email != asIs.email && noAddress.email != asIs.email && upper.key == asIs.key && noAddress.key == asIs.key
+          && asIs.key != chatKey(u2, login: u2.email).key,
+          "quick chat's process key by the folder account's id: the same for its address in capitals and with no address (\(noAddress.email ?? "-")), another for u2")
     _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
     // Settings ▸ Accounts' Sign in… keys: the in-use box's on the profile's own account (u1), Claude Code's own row's on its
     // own (the folder's u3)

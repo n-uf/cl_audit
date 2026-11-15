@@ -119,8 +119,12 @@ struct QuickChatTarget: Equatable {
     /// The folder's account, the one Claude Code's process runs on: Claude Code's own sign-in there (the record's codeName,
     /// AccountView.numbersOwner), even when the Claude app decided the account in use (in a clash the other profile's, in
     /// the split Claude Code's). The process's key, the kept level's account test and the switch wait go by it, never the
-    /// header's name.
+    /// header's name (they compare `accountKey`).
     var email: String?
+    /// The folder's account as the process key, the kept level's account test and the switch wait compare it: its id
+    /// (the record's codeAccount) where the record has one, else `email` in lower case. So an address written in another
+    /// case, or a folder with no address on file, never looks like a move between readings.
+    var accountKey: String?
     /// The account the header names: as the menus name it (in a clash the profile's own, never the folder's).
     var shownEmail: String?
     /// The record says the sign-in needs the person ("sign-in expired"): the line says so, with Sign in….
@@ -143,7 +147,7 @@ struct QuickChatTarget: Equatable {
     /// What the `claude` process runs with: it is kept while this is the same, and replaced when it changes (the folder's
     /// account is in it, so a process on another account's sign-in is never kept).
     func processKey(claude path: String, model: String, effort: String?) -> String {
-        [path, configDir, email ?? "", model, effort ?? ""].joined(separator: "|")
+        [path, configDir, accountKey ?? "", model, effort ?? ""].joined(separator: "|")
     }
 
     init(_ e: AccountEntry, now: Date = Date()) {
@@ -153,6 +157,7 @@ struct QuickChatTarget: Equatable {
         let rec = Store.status(for: e, now: now)
         let raw = Store.status(e.id), h = raw?.headline(now: now, ages: Store.ages(e))
         email = AccountView.of(rec).numbersOwner
+        accountKey = rec?.resolved?.codeAccount.map(AccountID.normal) ?? email?.lowercased()
         shownEmail = ProfileShow.of(e, raw: raw, now: now).inUseLabel
         loginWords = rec?.loginWords
         clash = raw?.resolved?.clash != nil
@@ -316,7 +321,7 @@ final class QuickChatModel: ObservableObject {
     func switchAccount() {
         guard let offer else { return }
         let typed = !field.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        switchWait = typed ? (target?.email, Date()) : nil
+        switchWait = typed ? (target?.accountKey, Date()) : nil
         openSwitch(offer.key)
     }
 
@@ -335,7 +340,7 @@ final class QuickChatModel: ObservableObject {
         // same profile on the same account, and only while the record's numbers are the profile's (QuickChatLevel.kept)
         let counts = new?.liveCounts ?? false
         let l = QuickChatLevel.kept(record: level, shown: self.level,
-                                    sameAccount: before?.profileID == new?.profileID && before?.email == new?.email,
+                                    sameAccount: before?.profileID == new?.profileID && before?.accountKey == new?.accountKey,
                                     counts: counts, refusals: !((new?.split ?? false) || (new?.clash ?? false)))
         if l != self.level { self.level = l }
         else if drawnBlocked != blocked { objectWillChange.send() }     // a full limit reset: drawn again
@@ -347,7 +352,7 @@ final class QuickChatModel: ObservableObject {
         if offer != self.offer { self.offer = offer }
         guard let wait = switchWait else { return }
         if Date().timeIntervalSince(wait.since) > 600 { switchWait = nil; return }
-        guard !blocked, !busy, let t = target, t.email != wait.from else { return }
+        guard !blocked, !busy, let t = target, t.accountKey != wait.from else { return }
         switchWait = nil
         let who = t.switchedTo.map(AccountNames.short) ?? "another account"
         note = "\(t.name) switched to \(who). Sending what you typed."
