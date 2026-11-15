@@ -371,7 +371,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         // then Switch account › with every standby account. Each opens cl_audit's Switch page with that account picked
         let listed = p.entry.listed(by: p.view)              // never the account in use on standby too
         let lines = SwitchMenu.lines(listed, now: now)
-        var switches = SwitchMenu.group(p.view, lines: lines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
+        var switches = SwitchMenu.group(p.show.named, lines: lines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
                                         inUseWeek: p.usage?.weekly != nil, target: self, action: #selector(switchAccount(_:)))
         if p.display.full(now: now) != nil, let best = SwitchMenu.best(lines) {
             switches.insert(SwitchMenu.bestItem(best, target: self, action: #selector(switchAccount(_:))), at: 0)
@@ -443,7 +443,7 @@ struct MenuBarRow: View {
                 }
             }
             // the active account, its lamp (ProfileDisplay's) and the one line of state
-            if let inUse = profile.view.inUseLine {
+            if let inUse = profile.show.named.inUseLine {          // (a clash: the profile's own account, never the folder's)
                 HStack(spacing: 6) {
                     Circle().fill(Color(nsColor: lit ? .systemGreen : .tertiaryLabelColor)).frame(width: 7, height: 7)
                         .shadow(color: Color(nsColor: .systemGreen).opacity(lit ? 0.7 : 0), radius: 2.5)

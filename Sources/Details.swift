@@ -35,6 +35,9 @@ struct DetailsInfo {
 
     /// The active account (AccountResolver, from the profile's record): green lamp and "in use"; nil: the sign-in line.
     var active: String? = nil
+    /// No account in use of the profile's own is known (a clash with no seat, the app not deciding): no account line, and
+    /// never the sign-in's address, which is the other profile's.
+    var activeUnknown = false
     var activeLit = true
     /// "Usage: Claude Code on b…" when the numbers are another account's, or why Claude Code's account is shown.
     var activeNote: String? = nil
@@ -43,12 +46,12 @@ struct DetailsInfo {
 }
 
 extension DetailsInfo {
-    /// The panel's account line from the profile's record (AccountResolver): the active account, its lamp, the one line.
-    /// (Settings' panel preview; the Dock icon's panel draws the profile's one value, `of(_:)`.)
-    func taking(_ v: AccountView) -> DetailsInfo {
-        var out = self
-        out.active = v.label; out.activeLit = v.lit; out.activeNote = v.line
-        return out
+    /// The account line's address as the panel draws it: the account in use (with its lamp); else the sign-in's, or "No
+    /// Claude Code sign-in" (`lamp` false); nil: no account line (a clash with no account of its own).
+    var accountLine: (text: String, lamp: Bool)? {
+        if let a = active { return (a, true) }
+        if activeUnknown { return nil }
+        return (login ?? "No Claude Code sign-in", false)
     }
 
     /// The Dock icon's panel for a profile, all from its one value (ProfileShow): the numbers and their grey, the lamp, the
@@ -63,8 +66,9 @@ extension DetailsInfo {
             needsLogin: d.needsLogin, design: e.panelDesign, accent: e.accentNSColor, refreshing: refreshing,
             scoped: e.showFable ? u?.scoped ?? [] : [], credits: u?.credits, noFiveHour: s.record?.noFiveHour == true,
             noNumbers: s.noNumbersWords, stale: d.tier == .stale)
-        // (in a clash the app didn't decide, the profile's own account, as on the card: never the folder's, the other profile's)
-        info.active = s.display.clash != nil ? s.inUseLabel : s.view.label
+        // (in a clash the app didn't decide, the profile's own account, as on the card: never the folder's, the other profile's;
+        // none of its own known: no address at all)
+        info.active = s.inUseLabel; info.activeUnknown = s.inUseUnknown
         info.activeLit = d.lamp; info.activeNote = s.lineWords(short: true)
         if case .logInCode = d.key { info.splitKey = s.keyWords(short: true) }
         return info
@@ -146,16 +150,20 @@ struct DetailsView: View {
                         Circle().fill(Color(nsColor: info.accent)).frame(width: 8, height: 8)
                         Text("Claude \(info.name)").font(.system(size: 15, weight: .semibold))
                     }
-                    if let a = info.active {
-                        HStack(spacing: 5) {
-                            Circle().fill(Color(nsColor: info.activeLit ? .systemGreen : .tertiaryLabelColor)).frame(width: 6, height: 6)
-                                .shadow(color: Color(nsColor: .systemGreen).opacity(info.activeLit ? 0.7 : 0), radius: 2)
-                            // no label: the address with its lamp says it's in use
-                            Text(a).font(.caption).foregroundStyle(.secondary).lineLimit(1).hidesEmail(true)
+                    // (accountLine: the account in use with its lamp; else the sign-in's line; none in a clash with no
+                    // account of the profile's own)
+                    if let line = info.accountLine {
+                        if line.lamp {
+                            HStack(spacing: 5) {
+                                Circle().fill(Color(nsColor: info.activeLit ? .systemGreen : .tertiaryLabelColor)).frame(width: 6, height: 6)
+                                    .shadow(color: Color(nsColor: .systemGreen).opacity(info.activeLit ? 0.7 : 0), radius: 2)
+                                // no label: the address with its lamp says it's in use
+                                Text(line.text).font(.caption).foregroundStyle(.secondary).lineLimit(1).hidesEmail(true)
+                            }
+                        } else {
+                            Text(line.text).font(.caption).foregroundStyle(.secondary)
+                                .hidesEmail(info.login != nil)
                         }
-                    } else {
-                        Text(info.login ?? "No Claude Code sign-in").font(.caption).foregroundStyle(.secondary)
-                            .hidesEmail(info.login != nil)
                     }
                     if let n = info.activeNote {
                         Text(n).font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)

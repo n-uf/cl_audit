@@ -973,7 +973,7 @@ struct AccountCard: View {
                     } else {
                         name
                     }
-                    if let label = row.show.inUseLabel {
+                    if let label = row.show.inUseLabel ?? (row.show.inUseUnknown ? nil : row.status?.expectedEmail) {
                         // the account in use, one line on every card (no "· in use": the lamp says it); signed out or
                         // expired: lamp and address red, and the why in the limits' place (UsageNotice)
                         let out = notice?.signedOut == true

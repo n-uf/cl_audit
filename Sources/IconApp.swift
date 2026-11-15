@@ -49,6 +49,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var loginEmail: String? { status?.loginEmail }
     /// The profile's account names as its record says them (AccountResolver): the Dock menu and panel show this.
     var view: AccountView { show?.view ?? AccountView.of(nil) }
+    /// The same, naming the account in use as every surface does (ProfileShow.named): the menu's title and tick.
+    var named: AccountView { show?.named ?? AccountView.of(nil) }
     var plan: String? { status?.plan }
     var refreshing: Bool {
         guard let t = refreshAsked else { return false }
@@ -455,8 +457,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let d = display
         let m = NSMenu(); m.autoenablesItems = false
         // the active account, its lamp and the one line of state
-        let top = info(SwitchMenu.dockTitle(name: account.name, view, plan: plan.map(Account.planWords)))
-        if d.lamp, SwitchMenu.inUseShort(view) != nil { top.image = SwitchMenu.lamp() }
+        let top = info(SwitchMenu.dockTitle(name: account.name, named, plan: plan.map(Account.planWords)))
+        if d.lamp, SwitchMenu.inUseShort(named) != nil { top.image = SwitchMenu.lamp() }
         m.addItem(top)
         if let n = show?.lineWords(short: false) { m.addItem(info(n)) }
         m.addItem(.separator())
@@ -511,7 +513,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         func add(_ title: String, _ action: Selector, enabled: Bool = true) {
             let i = NSMenuItem(title: title, action: action, keyEquivalent: ""); i.target = self; i.isEnabled = enabled; m.addItem(i)
         }
-        let switches = SwitchMenu.group(view, lines: lines, inUseUsed: usage?.weekly ?? usage?.fiveHour,
+        let switches = SwitchMenu.group(named, lines: lines, inUseUsed: usage?.weekly ?? usage?.fiveHour,
                                         inUseWeek: usage?.weekly != nil, target: self, action: #selector(switchAccount(_:)))
         if !switches.isEmpty {
             switches.forEach(m.addItem)

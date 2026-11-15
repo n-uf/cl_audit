@@ -74,13 +74,21 @@ struct ProfileShow {
         display.none == .expired ? "Sign-in expired" : display.none == .signedOut ? "Signed out" : nil
     }
 
-    /// The account in use as the card and the Switch page name it: the record's (AccountView.label, else the folder's
-    /// address); in a clash the app didn't decide, the profile's own account (its seat; nil when it has none), never the
-    /// record's label there, which is the folder's account, the other profile's.
+    /// The account in use as every surface names it (the card, the Switch page, the Dock panel and menu, the menu bar row):
+    /// the record's (AccountView.label); in a clash the app didn't decide, the profile's own account (its seat; nil when it
+    /// has none), never the record's label there, which is the folder's account, the other profile's.
     var inUseLabel: String? {
         if display.clash != nil, record?.resolved?.fromApp != true { return entry.seat?.email }
-        return view.label ?? record?.expectedEmail
+        return view.label
     }
+
+    /// In a clash, no account of the profile's own is known (no seat, the app not deciding): the surfaces name none, and
+    /// never fall back to the sign-in's address (the other profile's).
+    var inUseUnknown: Bool { display.clash != nil && inUseLabel == nil }
+
+    /// The account view with the account in use as the surfaces name it (inUseLabel), for the menus' titles and ticks.
+    /// (The standby lists keep `view`: which standby account is the active one is the record's matter.)
+    var named: AccountView { var v = view; v.label = inUseLabel; return v }
 
     /// The address a Sign in fills in: in the split only the app's own (nil: none filled in, never Claude Code's); in a
     /// clash the profile's own account in use (the app's, when the app decided it, else the profile's seat), never the
