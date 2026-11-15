@@ -846,7 +846,7 @@ do {
         ("Config.swift", "static func openLogin(", ".startSignIn(", "login"),
         ("Launcher.swift", "static func openClaude(", "openApplication(", "the Claude window"),
         ("Launcher.swift", "private static func openTerminal(", "Installer.run(", "Terminal"),
-        ("QuickChatEngine.swift", "func start(environment", "process.run()", "quick chat")]
+        ("QuickChatEngine.swift", "func start(environment", "r.start(", "quick chat")]          // (its claude: Runs' RunningProgram)
     for (f, a, launch, what) in launchers {
         let b = body(f, from: a, until: launch)
         check(!b.isEmpty && b.contains("FolderGuard.mayLaunch("), "\(what): FolderGuard is asked before it launches")

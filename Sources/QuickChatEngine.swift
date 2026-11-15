@@ -8,6 +8,7 @@
 // Everything here but `QuickChatProcess` is a plain function of its input, for the checks (Checks/quick-chat).
 
 import Foundation
+import Runs
 
 // MARK: - What Claude Code prints
 
@@ -164,110 +165,74 @@ struct QuickChatCommand: Equatable {
 
 // MARK: - The process
 
-/// One `claude` for one chat: started once, sent each message, read line by line. Its events and its end come on the
-/// main thread. A `claude` that dies never takes the agent with it: writes to a closed pipe fail quietly (SIGPIPE is
-/// ignored) and its end is reported with the last of what it wrote to stderr.
+/// One `claude` for one chat: started once, sent each message, read line by line (Runs' RunningProgram). Its events and
+/// its end come on the main thread. A `claude` that dies never takes the agent with it: writes to a closed pipe fail
+/// quietly (SIGPIPE is ignored) and its end is reported with the last of what it wrote to stderr.
 final class QuickChatProcess {
     let command: QuickChatCommand
     var onEvent: (QuickChatEvent) -> Void = { _ in }
     /// Its exit status and the end of its stderr.
     var onExit: (Int32, String) -> Void = { _, _ in }
 
-    private let process = Process()
-    private let input = Pipe(), output = Pipe(), errors = Pipe()
+    private var running: RunningProgram?
     private let lock = NSLock()
     private var errTail = Data()
-    private var stopping = false
 
     init(_ command: QuickChatCommand) { self.command = command }
 
-    var isRunning: Bool { process.isRunning }
-    var pid: Int32 { process.processIdentifier }
+    var isRunning: Bool { running?.isRunning ?? false }
+    var pid: Int32 { running?.pid ?? 0 }
 
     func start(environment base: [String: String] = ProcessInfo.processInfo.environment) throws {
-        signal(SIGPIPE, SIG_IGN)
         // the profile's Claude Code folder gone: no claude for it (it would make the folder again)
         guard FolderGuard.mayLaunch("quick chat", command.isDefaultDir ? "~/.claude" : command.configDir) else {
             throw CocoaError(.fileNoSuchFile)
         }
         try FileManager.default.createDirectory(atPath: command.workFolder, withIntermediateDirectories: true)
-        process.executableURL = URL(fileURLWithPath: command.claude)
-        process.arguments = command.arguments
-        process.environment = command.environment(base)
-        process.currentDirectoryURL = URL(fileURLWithPath: command.workFolder)
-        process.standardInput = input
-        process.standardOutput = output
-        process.standardError = errors
-        try process.run()
-        let out = output.fileHandleForReading, err = errors.fileHandleForReading
-        // stdout: whole lines, parsed off the main thread, delivered on it; at its end, the process's exit. Read with
-        // read(2), which reports a failed read as an error rather than raising
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            var buffer = Data()
-            while let chunk = Self.read(out) {
-                buffer.append(chunk)
-                while let nl = buffer.firstIndex(of: 0x0A) {
-                    let line = buffer[buffer.startIndex..<nl]
-                    buffer.removeSubrange(buffer.startIndex...nl)
-                    let e = QuickChatParse.event(Data(line))
+        let r = RunningProgram(Program(command.claude, command.arguments, environment: command.environment(base),
+                                       folder: .at(command.workFolder), timeout: .infinity))
+        // stdout: whole lines, parsed off the main thread, delivered on it; at its end, the process's exit
+        var buffer = Data()
+        r.onOutput = { [weak self] chunk in
+            guard let chunk else {
+                if !buffer.isEmpty {
+                    let e = QuickChatParse.event(buffer)
                     if e != .ignored { DispatchQueue.main.async { self?.onEvent(e) } }
                 }
+                return
             }
-            if !buffer.isEmpty {
-                let e = QuickChatParse.event(buffer)
+            buffer.append(chunk)
+            while let nl = buffer.firstIndex(of: 0x0A) {
+                let line = buffer[buffer.startIndex..<nl]
+                buffer.removeSubrange(buffer.startIndex...nl)
+                let e = QuickChatParse.event(Data(line))
                 if e != .ignored { DispatchQueue.main.async { self?.onEvent(e) } }
             }
+        }
+        // stderr: only its last 4 KB is kept, for "what happened"
+        r.onErrors = { [weak self] chunk in
             guard let self else { return }
-            self.process.waitUntilExit()
-            usleep(50_000)      // the last of stderr
-            let status = self.process.terminationStatus
+            self.lock.lock()
+            self.errTail.append(chunk)
+            if self.errTail.count > 4096 { self.errTail = self.errTail.suffix(4096) }
+            self.lock.unlock()
+        }
+        r.onExit = { [weak self] status, _ in
+            guard let self else { return }
             let tail = self.stderrTail()
             DispatchQueue.main.async { self.onExit(status, tail) }
         }
-        // stderr: only its last 4 KB is kept, for "what happened"
-        DispatchQueue.global(qos: .utility).async { [weak self] in
-            while let chunk = Self.read(err) {
-                guard let self else { return }
-                self.lock.lock()
-                self.errTail.append(chunk)
-                if self.errTail.count > 4096 { self.errTail = self.errTail.suffix(4096) }
-                self.lock.unlock()
-            }
-        }
-    }
-
-    /// What's there to read, as soon as some is; nil at the end or on an error.
-    private static func read(_ h: FileHandle) -> Data? {
-        var buf = [UInt8](repeating: 0, count: 65536)
-        while true {
-            let n = Darwin.read(h.fileDescriptor, &buf, buf.count)
-            if n > 0 { return Data(buf[0..<n]) }
-            if n < 0, errno == EINTR { continue }
-            return nil
-        }
+        running = r
+        try r.start(outputQoS: .userInitiated)
     }
 
     /// Sends one message. False when the process is gone (the pipe is closed).
     @discardableResult
-    func send(_ text: String) -> Bool {
-        lock.lock(); let closed = stopping; lock.unlock()
-        guard !closed, process.isRunning else { return false }
-        do { try input.fileHandleForWriting.write(contentsOf: QuickChatParse.userLine(text)); return true }
-        catch { return false }
-    }
+    func send(_ text: String) -> Bool { running?.write(QuickChatParse.userLine(text)) ?? false }
 
-    /// Ends it: closes its input, then asks it to stop, then stops it.
-    func stop() {
-        lock.lock(); let already = stopping; stopping = true; lock.unlock()
-        guard !already, process.isRunning else { return }
-        try? input.fileHandleForWriting.close()
-        process.terminate()
-        // the fallback holds the process itself: the chat lets go of this object right after Stop
-        let p = process
-        DispatchQueue.global().asyncAfter(deadline: .now() + 1.5) {
-            if p.isRunning { kill(p.processIdentifier, SIGKILL) }
-        }
-    }
+    /// Ends it: closes its input, then asks it to stop, then stops it (SIGKILL after 1.5 s; the fallback holds the process
+    /// itself: the chat lets go of this object right after Stop).
+    func stop() { running?.stop(grace: 1.5) }
 
     /// The end of what it wrote to stderr: its last few non-empty lines, at most 400 characters.
     func stderrTail() -> String {
