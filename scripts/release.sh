@@ -73,22 +73,23 @@ if [ $push = 1 ]; then
 
   # The ready-built app for direct download. The file name never changes, so
   # https://github.com/n-uf/cl_audit/releases/latest/download/cl_audit.zip always gets the newest.
-  ./build.sh --no-install >/dev/null
-  mkdir -p dist && rm -f dist/cl_audit.zip dist/cl_audit.dmg
-  ditto -c -k --keepParent build/cl_audit.app dist/cl_audit.zip
-
-  # The same app as a disk image (releases/latest/download/cl_audit.dmg): the app and an Applications shortcut to drag
-  # it onto. The app inside must be the zip's app, checked by its code directory hash.
   stage="$(mktemp -d)"
   # whatever fails from here on, no image stays mounted and no temp folder stays behind
   trap 'hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"' EXIT
-  ditto build/cl_audit.app "$stage/cl_audit.app"
+  # One build at a time on this Mac: the build lock installs and checks take too, held from the build until the app is
+  # copied out of build/, so the zip and the disk image always hold the app this build made (never another's).
+  /usr/bin/lockf -k /private/tmp/cl_audit-build.lock bash -c './build.sh --no-install >/dev/null && ditto build/cl_audit.app "$1/cl_audit.app"' _ "$stage"
+  mkdir -p dist && rm -f dist/cl_audit.zip dist/cl_audit.dmg
+  ditto -c -k --keepParent "$stage/cl_audit.app" dist/cl_audit.zip
+
+  # The same app as a disk image (releases/latest/download/cl_audit.dmg): the app and an Applications shortcut to drag
+  # it onto. The app inside must be the zip's app, checked by its code directory hash.
   ln -s /Applications "$stage/Applications"
   hdiutil create -quiet -volname "cl_audit $next" -srcfolder "$stage" -fs HFS+ -format UDZO -imagekey zlib-level=9 dist/cl_audit.dmg
   hdiutil verify -quiet dist/cl_audit.dmg
   mkdir "$stage/mnt"
   hdiutil attach -quiet -nobrowse -readonly -noautoopen -mountpoint "$stage/mnt" dist/cl_audit.dmg
-  zip_cd="$(codesign -dvvv build/cl_audit.app 2>&1 | grep '^CDHash=' || true)"
+  zip_cd="$(codesign -dvvv "$stage/cl_audit.app" 2>&1 | grep '^CDHash=' || true)"
   dmg_cd="$(codesign -dvvv "$stage/mnt/cl_audit.app" 2>&1 | grep '^CDHash=' || true)"
   # the same hash says the same signature; this says the files on the image still match it
   codesign --verify --deep --strict "$stage/mnt/cl_audit.app" || { echo "the disk image's app fails its signature check" >&2; exit 1; }
