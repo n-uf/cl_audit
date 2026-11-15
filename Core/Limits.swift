@@ -29,9 +29,9 @@ public struct Usage {
     /// no one's now, so it is never shown as "in 0 min".
     public func current(now: Date = Date()) -> Usage {
         var u = self
-        if Freshness.passed(u.fiveHourResets, now: now) { u.fiveHour = nil; u.fiveHourResets = nil }
-        if Freshness.passed(u.weeklyResets, now: now) { u.weekly = nil; u.weeklyResets = nil }
-        u.scoped = u.scoped.map { Freshness.passed($0.resets, now: now) ? ScopedLimit(name: $0.name, percent: nil, resets: nil) : $0 }
+        (u.fiveHour, u.fiveHourResets) = Freshness.current(u.fiveHour, resets: u.fiveHourResets, now: now)
+        (u.weekly, u.weeklyResets) = Freshness.current(u.weekly, resets: u.weeklyResets, now: now)
+        u.scoped = u.scoped.map { $0.current(now: now) }
         return u
     }
 }
@@ -54,6 +54,12 @@ public enum Freshness {
 
     /// A limit's reset time that has passed.
     public static func passed(_ resets: Date?, now: Date = Date()) -> Bool { resets.map { $0 <= now } ?? false }
+
+    /// One limit as it may be shown now, the one "reset passed" rule: once its reset time has passed it has no percent and
+    /// no reset (a percent from before a reset is no one's now, never a number "in 0 min"); else as read.
+    public static func current(_ percent: Double?, resets: Date?, now: Date = Date()) -> (percent: Double?, resets: Date?) {
+        passed(resets, now: now) ? (nil, nil) : (percent, resets)
+    }
 }
 
 /// A weekly limit of its own for one model: "Fable" may use up to a share of the week. Full, it holds back only that
@@ -67,6 +73,12 @@ public struct ScopedLimit: Codable, Equatable {
 
     /// A stable key for the limit, kept in saved marks (so not wording): "mfable".
     public var key: String { "m" + name.lowercased().filter { $0.isLetter || $0.isNumber } }
+
+    /// As it may be shown now (Freshness.current): past its reset it keeps its name only.
+    public func current(now: Date = Date()) -> ScopedLimit {
+        let c = Freshness.current(percent, resets: resets, now: now)
+        return ScopedLimit(name: name, percent: c.percent, resets: c.resets)
+    }
 }
 
 // MARK: - Full limits
