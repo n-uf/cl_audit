@@ -87,7 +87,14 @@ in step 1, nor in step 2 beyond the widget now following the headline exactly.
   is the address-only rule for a reading known by its address. `Seat("ABC", nil)` and `Seat("abc", "")` are one account
   now; no saved data changes. `Seat.same` and `SeatID.same` stay exact for what isn't an owner check: change detection
   (a profile's seat changed, the sign-in changed since asked) and a switch's receipts and keys. The found accounts
-  (`AccountList.adding`) and `StandbyTidy` stay one entry per account id in any organisation, on purpose.
+  (`AccountList.adding`) and `StandbyTidy` stay one entry per account id in any organisation, on purpose (`StandbyTidy.key`;
+  the default-profile move's standby merge compares by it too, so the next tidy changes nothing). `Headline` keeps
+  `matches`, deliberately: the two differ only for an identity known by its address only (no id, nil organisation)
+  against one with an organisation. `sameAccount` lets the address decide (a typed address, a standby entry remembered
+  by its address, is that seat's account); `matches` also asks the organisation, so nil against a seat's organisation is
+  another account. cl_audit's headline identities carry no organisation (the record names none), so for cl_audit the two
+  agree; cl_quick's process identity has one, and there `matches` keeps an address-only label or reading apart from
+  numbers of another organisation, which the headline must never show as the profile's.
 - **Reading usage (step 5).** `ReaderMachine` is cl_audit's reader as it was (`Sources/Reader.swift` is now its driver:
   the timers, the Keychain read through ClaudeAuth, the endpoints, the status line file, the alerts and the record). The
   rules where cl_quick differs are `ReadingRules`, cl_audit's set `clAudit`, cl_quick's `clQuick`:
