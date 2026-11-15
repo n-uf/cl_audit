@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.46 — 2026-11-15
+
 - The Export page's result now repeats the line about files named like a Code-tab entry that were left out, not only the preview.
 - When renewing a sign-in or signing out runs out of time, cl_audit now also stops the programs Claude Code started for it (a hook, an MCP server, a shell tool), not only Claude Code itself. When it ends normally, whatever it leaves running (its updater, say) is left alone, as before.
 
