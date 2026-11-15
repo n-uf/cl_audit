@@ -7,7 +7,8 @@
 //
 // The rules (the headline's, Headline.swift, plus):
 // - the tiers: fresh numbers act; older than `Ages.freshFor` they are last known (a full limit may not act); older than
-//   `Ages.greyAfter` (when given, else at once) they are drawn grey. No read time counts as fresh;
+//   `Ages.greyAfter` (when given, else at once) they are drawn grey. A `greyAfter` below `freshFor` counts as `freshFor`
+//   (grey as soon as last known, never while fresh). No read time counts as fresh;
 // - full: only numbers that act have a full limit (AtLimit.blocker over what may show);
 // - the lamp (the account in use, and nothing in the way): lit for a known account in use, unless its sign-in needs the
 //   person or can't be read, or the sign-in is on another profile's account; in the split the lamp is the account in
@@ -100,6 +101,10 @@ public struct ProfileDisplay: Equatable {
         self.key = key; self.line = line; self.clash = clash; self.split = split; self.sign = sign; self.otherAccount = otherAccount
     }
 
+    /// The full limit that holds the profile back at `now`, the moment it is drawn: `full` until its reset passes (a value
+    /// made a little earlier never counts down past the reset).
+    public func full(now: Date) -> FullLimit? { full.flatMap { Freshness.passed($0.resets, now: now) ? nil : $0 } }
+
     /// Drawn grey: old numbers, or none at all.
     public var grey: Bool { tier == .stale || usage == nil }
     /// A limit's colour level, grey for old numbers.
@@ -138,7 +143,8 @@ public struct ProfileDisplay: Equatable {
         case .fresh, .undated: tier = .fresh
         case .hidden: tier = .stale
         case .lastKnown:
-            let old = readAt.map { now.timeIntervalSince($0) > (ages.greyAfter ?? ages.freshFor) } ?? false
+            // (greyAfter clamped to freshFor: below it, grey as soon as last known)
+            let old = readAt.map { now.timeIntervalSince($0) > max(ages.greyAfter ?? ages.freshFor, ages.freshFor) } ?? false
             tier = old ? .stale : .lastKnown
         }
         let full = answer.acts ? usage.flatMap { u in

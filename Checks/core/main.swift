@@ -356,6 +356,11 @@ do {
           "31 minutes (cl_audit's): grey, the numbers kept, their level none")
     let q10 = make(read(100, age: 10 * 60), ages: quick)
     check(q10.tier == .stale && q10.usage?.weekly == 100 && q10.full == nil, "10 minutes (cl_quick's): grey at once, a dated full kept but never acting")
+    let low = Headline.Ages(freshFor: 6 * 60, greyAfter: 60)
+    check(make(read(40, age: 3 * 60), ages: low).tier == .fresh && make(read(40, age: 7 * 60), ages: low).tier == .stale,
+          "a greyAfter below freshFor counts as freshFor: never grey while fresh, grey once last known")
+    check(own.full(now: now) == own.full && own.full(now: ahead) == nil && own.full(now: ahead.addingTimeInterval(-1)) != nil,
+          "full(now:): the full limit until its reset passes, drawn later")
     let qOld = make(read(40, age: 2 * 3600), ages: quick)
     check(qOld.usage == nil && qOld.none == .hidden && qOld.tier == .stale && qOld.grey, "two hours (cl_quick's): hidden")
 
