@@ -243,14 +243,14 @@ public struct ReaderMachine: Equatable {
     /// out about them in this profile's name and no renewal runs.
     public var onOtherAccount: Bool { belongs(.seat(seen)) == .other }
 
-    /// The one "is it another account" rule: what a clue names, against the profile's account (the linked seat, compared
-    /// exactly by `Seat.same`), or against an expected address (any case).
+    /// The one "is it another account" rule: what a clue names, against the profile's account (the linked seat, by the one
+    /// owner rule, `Seat.sameAccount`: the ids in any case), or against an expected address (any case).
     public func belongs(_ clue: Clue, expected: String? = nil) -> Belongs {
         switch clue {
         case .seat(let s):
             guard let linked else { return .notLinked }
             guard let s else { return .unknown }
-            return s.same(linked) ? .same : .other
+            return s.sameAccount(linked) ? .same : .other
         case .address(let a):
             guard let expected else { return .notLinked }
             guard let a else { return .unknown }
