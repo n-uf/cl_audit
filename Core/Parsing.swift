@@ -77,7 +77,7 @@ public enum UsageParser {
                 let kind = ((w["type"] ?? w["name"] ?? w["window"]) as? String ?? "").lowercased()
                 if kind.contains("five") || kind.contains("5h") || kind.contains("session") {
                     u.fiveHour = percent(w); u.fiveHourResets = date(w["resets_at"])
-                } else if week == .sevenDayOnly ? kind == "seven_day" : kind.contains("seven") || kind.contains("week") {
+                } else if week == .sevenDayOnly ? (kind == "seven_day") : (kind.contains("seven") || kind.contains("week")) {
                     u.weekly = percent(w); u.weeklyResets = date(w["resets_at"])
                 }
             }

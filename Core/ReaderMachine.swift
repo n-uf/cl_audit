@@ -364,9 +364,11 @@ public struct ReaderMachine: Equatable {
         case let .numbers(u, now):
             return take(u, now: now)
         case let .renewRefused(note):
+            guard !stopped else { return [] }
             renewNote = note
             return [.save]
         case let .renewStarted(note):
+            guard !stopped else { return [] }
             renewing = true; renewNote = note
             return [.save]
         case let .renewEnded(note, gen):
