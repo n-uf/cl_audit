@@ -1059,6 +1059,12 @@ do {
         let dst = Store.folder.appendingPathComponent(k)
         try? fm.removeItem(at: dst)
         try! fm.copyItem(at: fixtures.appendingPathComponent(k), to: dst)
+        // every copy 0644 to begin with, so a mode after the save is the store's own doing
+        for rel in (fm.enumerator(atPath: dst.path)?.allObjects as? [String]) ?? [] {
+            var isDir: ObjCBool = false
+            let p = dst.appendingPathComponent(rel).path
+            if fm.fileExists(atPath: p, isDirectory: &isDir), !isDir.boolValue { chmod(p, 0o644) }
+        }
     }
     DefaultProfile.forgetCache()
     func bytes(_ u: URL) -> Data? { fm.contents(atPath: u.path) }
@@ -1071,6 +1077,7 @@ do {
             let u = store.url(id), old = bytes(u)
             guard let r = store.load(id) else { check(false, "\(what) \(id): reads"); continue }
             check(r.id == id && (try? store.encoded(r)) == old, "\(what) \(id): encoded as 26.11.29 encoded it")
+            check(mode(u) == 0o644, "\(what) \(id): 0644 before the save")
             try? store.save(r)
             check(bytes(u) == old && old != nil, "\(what) \(id): saved again byte for byte")
             if let want { check(mode(u) == want, "\(what) \(id): mode \(String(want, radix: 8)) (\(String(mode(u), radix: 8)))") }
@@ -1157,6 +1164,59 @@ do {
     // cl_audit's lock keeps its paths: switches/.lock and claude-transplant's lock
     check(Flows.lock.path == SwitchEngine.root.appendingPathComponent(".lock").path
           && Flows.lock.other == expand("~/Library/Application Support/claude-transplant/lock"), "cl_audit's lock: the same two files as before")
+    // another process (claude-transplant takes its lock with /usr/bin/lockf, a flock) can't take the other lock while it is held
+    if let held2 = try? lock.take() {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/lockf")
+        p.arguments = ["-t", "0", dir + "/other/lock", "/usr/bin/true"]
+        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+        try? p.run(); p.waitUntilExit()
+        held2.release()
+        check(p.terminationStatus != 0, "lock: another process's lockf on the other lock is refused while it is held (\(p.terminationStatus))")
+    } else { check(false, "lock: taken for the second-process check") }
+    // a lock file that can't be opened (a folder stands there): .unopenable, and the other tool's: .otherUnopenable
+    try? fm.createDirectory(atPath: dir + "/bad/.lock", withIntermediateDirectories: true)
+    var bad: FlowLock.Busy?
+    do { try FlowLock(path: dir + "/bad/.lock").take().release() } catch let b as FlowLock.Busy { bad = b } catch {}
+    try? fm.createDirectory(atPath: dir + "/bad/other", withIntermediateDirectories: true)
+    var badOther: FlowLock.Busy?
+    do { try FlowLock(path: dir + "/bad/own", other: dir + "/bad/other").take().release() } catch let b as FlowLock.Busy { badOther = b } catch {}
+    check(bad == .unopenable && badOther == .otherUnopenable, "lock: a lock file that can't be opened is said so (\(String(describing: bad)), \(String(describing: badOther)))")
+    if let again = try? FlowLock(path: dir + "/bad/own").take() { again.release(); check(true, "lock: its own lock let go after the other one failed") }
+    else { check(false, "lock: its own lock let go after the other one failed") }
+
+    // the journal: a last line cut short (a crash mid-write) or broken is skipped; the lines before it are read
+    struct Ev: Codable, Equatable { var op: String; var path: String }
+    let jurl = URL(fileURLWithPath: dir + "/journal.jsonl")
+    if let j = Journal<Ev>(jurl) { j.add(Ev(op: "intent", path: "/a"), sync: true); j.add(Ev(op: "done", path: "/a"), sync: false) }
+    if let h = FileHandle(forWritingAtPath: jurl.path) { h.seekToEndOfFile(); h.write(Data(#"{"op":"intent","pa"#.utf8)); h.closeFile() }
+    check(Journal<Ev>.events(jurl) == [Ev(op: "intent", path: "/a"), Ev(op: "done", path: "/a")], "journal: a truncated last line is skipped")
+    if let h = FileHandle(forWritingAtPath: jurl.path) { h.seekToEndOfFile(); h.write(Data("\n\u{0}garbage\n".utf8)); h.closeFile() }
+    check(Journal<Ev>.events(jurl)?.count == 2, "journal: a broken line is skipped")
+    check(Journal<Ev>.events(URL(fileURLWithPath: dir + "/none.jsonl")) == nil, "journal: none there: nil")
+    symlink(jurl.path, dir + "/jlink.jsonl")
+    check(Journal<Ev>(URL(fileURLWithPath: dir + "/jlink.jsonl")) == nil, "journal: never opened through a link")
+
+    // bounded reads: a link or a FIFO is refused at once, by readPlain and by a store's capped load
+    struct T: StoredReceipt { var id: String; var started: Date }
+    let rs = ReceiptStore<T>(root: URL(fileURLWithPath: dir + "/r"), layout: .folders(file: "receipt.json"), readCap: 1 << 20,
+                             validID: SessionsRestore.validReceiptID, idMustMatch: true)
+    let good = "20270101-000000-aaaa-x", linked = "20270101-000000-bbbb-x", fifo = "20270101-000000-cccc-x"
+    try? rs.save(T(id: good, started: t0))
+    try? fm.createDirectory(at: rs.folder(linked), withIntermediateDirectories: true)
+    try? fm.createDirectory(at: rs.folder(fifo), withIntermediateDirectories: true)
+    symlink(rs.url(good).path, rs.url(linked).path)
+    mkfifo(rs.url(fifo).path, 0o600)
+    let t1 = Date()
+    check(rs.load(good)?.id == good && rs.load(linked) == nil && rs.load(fifo) == nil, "store: a capped load refuses a link and a FIFO")
+    check(SafeFiles.readPlain(rs.url(good).path, max: 1 << 20) != nil && SafeFiles.readPlain(rs.url(linked).path, max: 1 << 20) == nil
+          && SafeFiles.readPlain(rs.url(fifo).path, max: 1 << 20) == nil && SafeFiles.readPlain(rs.url(good).path, max: 2) == nil
+          && Date().timeIntervalSince(t1) < 2, "readPlain: a link, a FIFO and a file over the cap are refused, at once")
+    // a "../" id is no receipt id: never read, whatever is there
+    try? fm.createDirectory(atPath: dir + "/elsewhere/\(good)", withIntermediateDirectories: true)
+    try? fm.copyItem(atPath: rs.url(good).path, toPath: dir + "/elsewhere/\(good)/receipt.json")
+    check(rs.load("../elsewhere/\(good)") == nil && SessionsRestore.store.load("../restores/x") == nil && SessionsRepoint.store.load("../x") == nil
+          && SideFiles.store.load("..") == nil && SessionsMove.store.load("../moves") == nil, "store: a \"../\" id is refused")
     try? fm.removeItem(atPath: dir)
 }
 
