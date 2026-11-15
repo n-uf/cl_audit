@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.45 — 2026-11-15
+
 - Backups now take the Claude window's Code-tab backlog and waiting input (the plain files in each account folder's `backlog` and `waiting-input` folders), and Restore (also the move to the default profile) puts each file back only where none is, and only into its own account's folder; one of an account whose folder isn't there stays in the backup, and the page says so. They are kept apart in the backup (`window-extra/`, listed on their own), so the backup format stays as it was: 26.11.43 and earlier still restore such a backup, everything but those two folders. Exports still leave them out.
 
 ## 26.11.44 — 2026-11-15
