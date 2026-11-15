@@ -25,6 +25,10 @@ struct SwitchPage: View {
     @Environment(\.face) private var face
     /// A switch (or its retry) waiting for consent (Experimental.swift): it starts only from the sheet's Continue.
     @State private var consent: ConsentRequest?
+    /// A clash move-back as it was when the switch started, and whose account the folder was signed in to: once Claude Code is
+    /// back on the profile's own account the clash is gone, and the page still says what the move was.
+    @State private var startedBack: ClashBack?
+    struct ClashBack { var owner: String? }
 
     private var name: String { entry.name.isEmpty ? "this profile" : entry.name }
     /// A sign-in again on the account in use (no standby account picked).
@@ -467,9 +471,20 @@ struct SwitchPage: View {
                 }
             }
             SRow(label: "Stays", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
-            SRowLine(text: "\(from) stays on \(name) as a standby account: nothing read, switch back any time.")
+            SRowLine(text: Self.staysLine(from: from, name: name, moveBack: startedBack != nil || standby.id == show.ownStandbyID,
+                                          owner: startedBack == nil ? view.clash : startedBack?.owner))
             if let n = Self.noteLine(runner.moveNote, Self.leftInPlan(left: runner.leftNote, moved: runner.receipt != nil, plan: plan)) { SRowLine(text: n) }
         }
+    }
+
+    /// As the switch starts: a clash move-back is remembered (`startedBack`).
+    private func noteBack() { startedBack = standby.id == show.ownStandbyID ? ClashBack(owner: view.clash) : nil }
+
+    /// What happens to the account Claude Code leaves. A normal switch: it stays on the profile as a standby account. A clash
+    /// move-back (the account is another profile's, `owner`): it stays with that profile, never the profile's standby.
+    static func staysLine(from: String, name: String, moveBack: Bool, owner: String?) -> String {
+        if moveBack { return "\(from) stays with \(owner ?? "the profile it belongs to"): nothing read here." }
+        return "\(from) stays on \(name) as a standby account: nothing read, switch back any time."
     }
 
     // MARK: the steps
@@ -582,7 +597,7 @@ struct SwitchPage: View {
             Spacer(minLength: 6)
             switch runner.phase {
             case .ready:
-                Button("Switch to \(to)") { consent = ConsentRequest(flow: "Account switching") { runner.start(standby) } }
+                Button("Switch to \(to)") { consent = ConsentRequest(flow: "Account switching") { noteBack(); runner.start(standby) } }
                     .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
                     .disabled(standby.seat == nil && standby.email.isEmpty)
             case .waiting:

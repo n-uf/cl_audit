@@ -756,6 +756,11 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
                  "show3c-\(name)-settings-std", 492, 800)
         snapshot(framed(SwitchPage(entry: p, standby: p.standby[0], model: model, runner: model.runner(of: p.id), width: 460)
                             .frame(height: 560, alignment: .top).clipped(), 460), "show3c-\(name)-switch-std", 492, 600)
+        // the clash move-back: the page with the profile's own account picked (its "What changes" says where cat stays)
+        if let own = p.standby.first(where: { $0.id == "ka" }) {
+            snapshot(framed(SwitchPage(entry: p, standby: own, model: model, runner: model.runner(of: p.id), width: 460)
+                                .frame(height: 1500, alignment: .top).clipped(), 460), "show3c-\(name)-switch-back-std", 492, 1540)
+        }
         let preview = samplePanel(p, status: Store.status(for: p), now: now)
         let panel = DetailsInfo.of(ProfileShow.load(p, now: now), name: preview.name, icon: preview.icon, problem: Store.status(for: p)?.problem)
         let panels = HStack(alignment: .top, spacing: 16) {
