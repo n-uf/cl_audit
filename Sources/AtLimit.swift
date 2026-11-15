@@ -171,7 +171,14 @@ struct FullLimitsView: View {
         .frame(width: m.box)
         .frame(maxHeight: .infinity)
         .background(DisplayGlass(radius: 8))
+        .preference(key: FullBoxWidth.self, value: m.box)     // the card's Switch account key, under it, takes its width
     }
+}
+
+/// The full box's width, for the key the card puts right under it (172 wide, 128 narrow).
+struct FullBoxWidth: PreferenceKey {
+    static var defaultValue: CGFloat? = nil
+    static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) { value = nextValue() ?? value }
 }
 
 /// The card's limits: today's design, or, while a limit is full, the rows and the box. Redrawn every 15 s, so the

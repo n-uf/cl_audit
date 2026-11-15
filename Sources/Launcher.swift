@@ -375,6 +375,7 @@ struct LauncherActions {
     var profileSettings: (AccountRow) -> Void = { _ in }
     var moveProfile: ([String]) -> Void = { _ in }         // a card dropped: the profiles in this order (saved)
     var switchAccount: (String) -> Void = { _ in }         // the Switch page for "<profile>~<standby account>" (Switch.swift)
+    var newAccount: (AccountRow) -> Void = { _ in }        // Claude Code's sign-in on the profile's folder, no address filled in
 }
 
 /// Starts the cl_audit agent from the cl_audit window: when the window opens, and whenever the agent's mark has been
@@ -940,10 +941,9 @@ struct CardGrid: Layout {
 struct AccountCard: View {
     let row: AccountRow
     let actions: LauncherActions
-    /// Renders only: the standby tray clicked at the start.
-    var pickedForRender: String? = nil
     @ObservedObject private var prefs = DashboardPrefs.shared
     @Environment(\.face) private var face
+    @State private var fullBox: CGFloat? = nil          // the full box's width (FullBoxWidth), for Switch account under it
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -961,14 +961,17 @@ struct AccountCard: View {
                         Text("Claude \(row.entry.name)").font(.system(size: 14.5, weight: .semibold)).foregroundStyle(face.text)
                         if row.entry.desktop == .separate, row.entry.claudeWindow { OwnWindowMark() }
                     }
-                    if let label = row.view.label, !row.needsLogin {
-                        // the active account and the one line of state, from the profile's record (AccountResolver)
+                    if let label = row.view.label ?? row.status?.expectedEmail {
+                        // the account in use, one line on every card (no "· in use": the lamp says it); signed out or
+                        // expired: lamp and address red, and the why in the limits' place (UsageNotice)
+                        let out = notice?.signedOut == true
                         HStack(spacing: 5) {
-                            Circle().fill(row.view.lit ? FaceTheme.ledOn : face.muted.opacity(0.4)).frame(width: 6, height: 6)
-                            Text("\(label) · in use").font(.system(size: 12)).lineLimit(1).foregroundStyle(face.muted)
+                            Circle().fill(out ? face.danger : row.view.lit ? FaceTheme.ledOn : face.muted.opacity(0.4)).frame(width: 6, height: 6)
+                            Text(label).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
+                                .foregroundStyle(out ? face.danger : face.muted)
                                 .hidesEmail(label.contains("@"))
                         }
-                        if let n = row.view.line, row.split == nil {          // (the split says its line once, with its key, below)
+                        if let n = row.view.line, notice == nil {          // (a notice says it once, in the limits' place)
                             Text(n).font(.system(size: 10.5)).foregroundStyle(face.muted.opacity(0.8)).lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -979,61 +982,49 @@ struct AccountCard: View {
                     }
                 }
                 Spacer(minLength: 0)
-                if let plan = row.status?.plan {
-                    DisplayWindow(text: plan).frame(maxHeight: .infinity, alignment: .top)
-                }
+                // the plan over the last refresh, one fixed size on every card
+                PlanBadge(plan: row.status?.plan, updated: row.status?.updatedAt,
+                          tone: notice?.tone == .amber ? .amber : (notice?.tone == .red || row.full != nil) ? .warn : .normal)
+                    .frame(maxHeight: .infinity, alignment: .top)
             }
             .fixedSize(horizontal: false, vertical: true)     // a shorter card in the row grows below, not here
             // Its Claude window and its Dock icon, as switches (or the button that fixes a problem).
             ProfileControls(row: row, actions: actions)
             // one style for every card on the dashboard (Settings ▸ General); each profile's panel design is for its panels
             // while a limit is full: the limits on the left and one box with when it's back (AtLimit.swift)
-            // only the account in use is lit; the profile's standby accounts sit in unlit trays under its limits, one line
-            // each (no levels: a standby account isn't read), the one a full limit offers first on top. While a limit is
-            // full that one is selected already, and its Switch account key opens the Switch page (SwitchView.swift)
-            let listed = row.entry.listed(by: row.view)       // never the account in use on standby too
-            let trays = listed.cardTrays()
-            if let split = row.split {
-                // the Claude app on another account than Claude Code: no numbers for it (cl_audit can't read them), never red or full;
-                // the one key logs Claude Code in to the app's account (the usual Log in, not a switch); Claude Code's own
-                // numbers only as one labelled line, since `claude` in Terminal still uses them
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(split.line).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                    // (the short key: the long one is wider than the card at 340 and pushed it out of its column)
-                    if let key = split.shortKey {      // (none while a switch waits for the app's sign-in)
-                        Button(key) { actions.logIn(row) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-                    } else if let hint = split.hint {  // the app's address isn't known: no key that could fill in another
-                        Text(hint).font(.system(size: 12)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                    }
-                    if let code = split.codeLine(row.codeStatus) {
-                        Text(code).font(.system(size: 10.5)).foregroundStyle(face.muted.opacity(0.8)).fixedSize(horizontal: false, vertical: true)
-                    }
+            // only the account in use is read, so only it has numbers; standby accounts never show on the card. In every
+            // state without numbers the notice takes the limits' place, exactly as tall as the limits (the hidden limits
+            // hold the space), so the keys row stays level with every card's
+            if let notice {
+                ZStack(alignment: .topLeading) {
+                    CardLimits(limits: row.limits, design: prefs.cardStyle).hidden()
+                    UsageNoticeView(notice: notice)
                 }
             } else {
                 CardLimits(limits: row.limits, design: prefs.cardStyle, credits: row.status?.credits)
-            }
-            if !trays.isEmpty {
-                StandbyTrays(limits: row.limits, trays: trays, best: row.entry.cardBest(trays),
-                             open: actions.switchAccount, picked: pickedForRender)
+                    .onPreferenceChange(FullBoxWidth.self) { fullBox = $0 }
             }
           }
             Spacer(minLength: 12)         // cards in a row share one height; the buttons stay at the bottom
             HStack(spacing: 7) {
-                // One main button: Log in… when needed (the same key as every other surface), otherwise bring the Claude
-                // window forward. (a profile without a Claude window has no window to bring forward; usage only has just the menu)
-                if row.needsLogin {
-                    Button("Log in…") { actions.logIn(row) }.buttonStyle(.pill(.red))
-                } else if row.entry.claudeWindow {
+                // the first key fixes what the notice says: Sign in… (red face key; the same sign-in as every surface)
+                // or Refresh now. A profile without a Claude window has no window key; usage only has just the menu
+                if notice?.key == .signIn {
+                    Button("Sign in…") { actions.logIn(row) }.buttonStyle(FaceKeyStyle(tint: .red))
+                        .help(signInHelp)
+                } else if notice?.key == .refresh {
+                    Button("Refresh now") { actions.refreshAll() }.buttonStyle(.pill)
+                }
+                if windowInRow {
                     // on this card a lit LED means running: the key's LED lights only while the window is open
                     Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }
                         .buttonStyle(.pill(row.accent, lit: row.activity.desktopOpen))
                 }
-                if !row.entry.usageOnly { Button("Terminal") { actions.terminal(row) }.buttonStyle(.pill) }
+                if terminalInRow { Button("Terminal") { actions.terminal(row) }.buttonStyle(.pill) }
                 moreMenu
-                Spacer()
-                if let u = row.status?.updatedAt {
-                    Text(DetailsFormat.ago(u)).font(.system(size: 11.5)).foregroundStyle(face.muted).lineLimit(1).fixedSize()
-                }
+                Spacer(minLength: 0)
+                // a limit full: Switch account, right under the full box and as wide as it
+                if showsSwitch { switchMenu }
             }
             .controlSize(.small)
         }
@@ -1042,9 +1033,71 @@ struct AccountCard: View {
         .background(RaisedShape(finish: face.module, radius: face.moduleRadius))
     }
 
-    /// The rest for this profile.
+    /// What the card says in place of its numbers, or nil while it has them (CardParts.swift).
+    private var notice: UsageNotice? { UsageNotice.of(row) }
+    /// A limit full, with the numbers read: the Switch account key under the full box.
+    private var showsSwitch: Bool { notice == nil && row.full != nil }
+    /// Signed out or expired: no window key in the row (it waits in ⋯ with Terminal).
+    private var windowInRow: Bool { row.entry.claudeWindow && notice?.signedOut != true }
+    /// Terminal in the row only while the card is as usual or a switch waits; otherwise (a notice with its key, or the
+    /// Switch account key) it steps into ⋯ so the row stays one line at 340 pt.
+    private var terminalInRow: Bool {
+        !row.entry.usageOnly && !showsSwitch && (notice == nil || notice?.key == UsageNotice.Key.none)
+    }
+    /// Terminal in ⋯, saying whose sign-in it opens on.
+    private var terminalWords: String {
+        if notice?.signedOut == true { return "Terminal (asks to sign in first)" }
+        if let s = row.split, !s.switched { return "Terminal (signed in as \(Privacy.masked(s.code)))" }
+        if let other = row.view.clash { return "Terminal (on \(other)'s account)" }
+        return "Terminal"
+    }
+    private var signInHelp: String {
+        guard let a = SplitUsage.loginAddress(row.status, usual: row.status?.expectedEmail), a.contains("@") else {
+            return "Sign Claude Code in Terminal in on \(row.entry.name)'s folder"
+        }
+        return "Sign Claude Code in Terminal in to \(Privacy.masked(a))"
+    }
+
+    /// Switch account: the account in use ticked with its plan, the standby accounts by address only (they're never read,
+    /// so nothing about their usage), then Sign in to another account…. An account opens the Switch page with it picked.
+    private var switchMenu: some View {
+        let standby = row.entry.listed(by: row.view).cardTrays().map(\.offer.standby)
+        return Menu {
+            if let label = row.view.label {
+                Toggle(isOn: .constant(true)) {
+                    Text(Privacy.masked(label) + (row.status?.plan.map { "  " + Account.planWords($0) } ?? ""))
+                }
+            }
+            if !standby.isEmpty {
+                Divider()
+                ForEach(standby, id: \.id) { s in
+                    Button(Privacy.masked(s.label)) { actions.switchAccount(AccountEntry.switchKey(row.entry.id, s.id)) }
+                }
+            }
+            Divider()
+            Button("Sign in to another account…") { actions.newAccount(row) }
+        } label: {
+            FaceKeyLabel(tint: .orange, width: fullBox) {
+                HStack(spacing: 6) {
+                    Text("Switch account")
+                    Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .bold))
+                }
+            }
+        }
+        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+        .help(standby.isEmpty ? "Sign in to another account for \(row.entry.name)" : "Switch \(row.entry.name) to another account")
+    }
+
+    /// The rest for this profile: what steps out of the row (the window, Terminal) first.
     private var moreMenu: some View {
         Menu {
+            if row.entry.claudeWindow && !windowInRow {
+                Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }
+            }
+            if !row.entry.usageOnly && !terminalInRow {
+                Button(terminalWords) { actions.terminal(row) }
+            }
+            if (row.entry.claudeWindow && !windowInRow) || (!row.entry.usageOnly && !terminalInRow) { Divider() }
             Button("Refresh now") { actions.refreshAll() }
             Divider()
             Button("Profile settings…") { actions.profileSettings(row) }
@@ -1154,7 +1207,12 @@ final class ManagerUI {
         moveProfile: { [weak self] ids in                       // the tile bar's own save; not saved: the cards go back
             if self?.settings.setOrder(ids) == false { withAnimation { self?.model.reload() } }
         },
-        switchAccount: { [weak self] key in self?.showSwitch(key) })
+        switchAccount: { [weak self] key in self?.showSwitch(key) },
+        newAccount: { [weak self] r in
+            self?.closePalette()
+            // as Settings ▸ Accounts' Sign in with another account…: the profile's one folder, no address filled in
+            ClaudeCLI.logIn(Account(r.entry), email: nil)
+        })
 
     var paletteShown: Bool { palette?.isVisible == true }
     var dashboardShown: Bool { mainWindow?.isVisible == true && mainWindow?.isMiniaturized == false }

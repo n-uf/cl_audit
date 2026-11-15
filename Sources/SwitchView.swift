@@ -203,93 +203,17 @@ struct TileDisplayGlass: View {
     }
 }
 
-/// One standby account on the dashboard card: its offer (Switch.swift). No limits: a standby account isn't read.
+/// One standby account in the card's Switch account menu: its offer (Switch.swift). Never its usage: a standby account
+/// isn't read.
 struct CardTray: Identifiable {
     let offer: SwitchOffer
     var id: String { offer.key }
 }
 
 extension AccountEntry {
-    /// The standby accounts the card shows, as trays, in the order a full limit offers them (AccountBook.offerOrder).
+    /// The standby accounts the card's Switch account menu lists, in the order a full limit offers them (AccountBook.offerOrder).
     func cardTrays(now: Date = Date()) -> [CardTray] {
         switchOffers(now: now).map { CardTray(offer: $0) }
-    }
-
-    /// The one preselected while a limit is full: the one rule's (AccountBook.best).
-    func cardBest(_ trays: [CardTray], now: Date = Date()) -> String? {
-        AccountBook.best(trays.map(\.offer.standby), now: now).flatMap { b in trays.first { $0.offer.standby.id == b.id }?.id }
-    }
-}
-
-/// Which tray on the card is selected. While a limit is full the one offered first is selected already, and a click
-/// picks another instead (never deselects). With room left nothing is selected: a click selects, a second click on the
-/// same tray deselects, as in Settings.
-enum TrayPick {
-    static func selected(picked: String?, full: Bool, best: String?, keys: [String]) -> String? {
-        if let p = picked, keys.contains(p) { return p }
-        return full ? best.flatMap { keys.contains($0) ? $0 : nil } : nil
-    }
-
-    /// The pick after a click on `key`, given what is selected now.
-    static func tapped(_ key: String, selected: String?, full: Bool) -> String? {
-        full ? key : (selected == key ? nil : key)
-    }
-}
-
-/// A profile's standby accounts on its dashboard card: unlit trays under the limits, one line each (its plan and when it
-/// was last in use; no levels: it isn't read). Only the account in use is lit. The selected tray lights mint across the
-/// card (the lit bar), and its Standby display becomes the lit Switch account key, which opens the Switch page with that
-/// account picked.
-struct StandbyTrays: View {
-    let limits: [Limit]                 // the account in use's: whether one is full
-    let trays: [CardTray]
-    let best: String?                   // preselected while a limit is full
-    let open: (String) -> Void
-    @State private var picked: String?
-    @Environment(\.face) private var face
-
-    /// `picked`: the tray clicked at the start (renders only).
-    init(limits: [Limit], trays: [CardTray], best: String?, open: @escaping (String) -> Void, picked: String? = nil) {
-        self.limits = limits; self.trays = trays; self.best = best; self.open = open
-        _picked = State(initialValue: picked)
-    }
-
-    var body: some View {
-        TimelineView(.periodic(from: .now, by: 15)) { ctx in
-            let full = AtLimit.blocker(limits, now: ctx.date) != nil
-            let sel = TrayPick.selected(picked: picked, full: full, best: best, keys: trays.filter { $0.offer.standby.seat != nil }.map(\.id))
-            VStack(spacing: 9) {
-                ForEach(trays) { t in tray(t, selected: sel == t.id, full: full, selection: sel, now: ctx.date) }
-            }
-            // a pick belongs to the state it was made in: a full limit that resets starts over
-            .onChange(of: full) { _ in picked = nil }
-        }
-    }
-
-    private func tray(_ t: CardTray, selected: Bool, full: Bool, selection: String?, now: Date) -> some View {
-        let key = t.offer.key
-        // any standby account can be switched to: one remembered by its address only is found by it once it signs in
-        let can = true
-        let help = selected ? (full ? "Click another account to pick it instead" : "Click to deselect")
-                            : "Click to select, then Switch account"
-        // a click on the address or the line selects; the lit key (and the Standby display) stay outside the click area, so
-        // the key never selects or deselects, as in Settings
-        return AccountBox(lamp: nil, badge: "Standby", detail: nil, unlit: !selected, dimsContent: true,
-                          selected: selected, litBadge: "Switch account", litAction: { open(key) }, compact: true) {
-            Text(Privacy.masked(t.offer.standby.label)).font(.system(size: 12.5, weight: .semibold))
-                .foregroundStyle(selected ? (face.light ? Face.std.theme.text : face.text) : face.soft)
-                .lineLimit(1).truncationMode(.tail).hidesEmail()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture { if can { picked = TrayPick.tapped(key, selected: selection, full: full) } }
-                .help(help)
-        } content: {
-            BoxNote(text: t.offer.lineWords(now: now), size: 11).lineLimit(1).truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .contentShape(Rectangle())
-                .onTapGesture { if can { picked = TrayPick.tapped(key, selected: selection, full: full) } }
-                .help(help)
-        }
     }
 }
 
