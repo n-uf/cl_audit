@@ -30,7 +30,7 @@ COLUMNS = [('menubar', 'Menu bar menu'), ('dock', 'Dock icon, menu and panel'), 
 # each state: its row id, its name, what every surface should show (account in use, whose numbers, which keys), the rules
 ROWS = [
     ('01', 'Before', 'ann in use (the Claude app and Claude Code on ann); ann\'s numbers (week 40%); ben on standby, '
-           '"last in use 3 days ago", no numbers. Keys: Switch account › ben…; no Log in…', 'A, B2'),
+           '"last in use 3 days ago", no numbers. Keys: Switch account › ben…; no Sign in…', 'A, B2'),
     ('02', 'ann\'s week full', 'ann in use, ann\'s week full with when it\'s back; ben offered first everywhere: "Switch to '
            'ben…" in both menus, ben picked in the card\'s tray, the alert\'s Switch account… button; the Switch page with ben '
            'picked', 'A, B'),
@@ -66,7 +66,7 @@ ROWS = [
 ]
 
 RULES = [('A', 'one record every surface reads (AccountResolver); the account in use is the Claude app\'s'),
-         ('A3', 'no numbers when expired or signed out; Log in… the one key'),
+         ('A3', 'no numbers when expired or signed out; Sign in… the one key'),
          ('B', 'the switch moves the window\'s Code-tab sessions and tasks; the app is signed in by the person'),
          ('B2', 'one standby entry per account; the account in use never on standby too'),
          ('B4', 'the step that failed, and what is still moved'),

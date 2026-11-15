@@ -1730,7 +1730,7 @@ struct AccountSettings: View {
         return (active, .plain)
     }
 
-    /// Log in… on the account in use (its box's key, its pop-up's item): the same watch a switch has (SwitchRunner),
+    /// Sign in… on the account in use (its box's key, its pop-up's item): the same watch a switch has (SwitchRunner),
     /// said here while it runs and when it ended.
     @ViewBuilder var signInAgainLine: some View {
         let r = model.runner(of: entry.id)

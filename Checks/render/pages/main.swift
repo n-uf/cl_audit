@@ -888,7 +888,7 @@ MainActor.assumeIsolated {
         snapshot(framed(AccountSettings(entry: .constant(withWork), model: model, width: w), f, w), "o8f-accounts-leftover-sessions-\(f.rawValue)-\(wn)", w + 32, 3200)
     } }
     model.accounts = [main]
-    // the account in use signed out, then expired: no bars, Log in… the one key
+    // the account in use signed out, then expired: no bars, Sign in… the one key
     let keepRecord = Store.status("main")
     for (tag, state) in [("o14a-accounts-signed-out", "noLogin"), ("o14b-accounts-expired", "expired")] {
         var st = IconStatus(state: state); st.loginEmail = state == "expired" ? u1.email : nil; st.expectedEmail = u1.email

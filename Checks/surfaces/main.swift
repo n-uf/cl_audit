@@ -437,7 +437,7 @@ do {
     ClaudeCLI.logIn(Account(p), email: nil)
     RunLoop.main.run(until: Date().addingTimeInterval(0.3))
     check(alerts == [goneLine, goneLine] && !fm.fileExists(atPath: expand(gone)),
-          "the menus', the Dock menu's and the launcher's Log in… on a deleted folder: the alert says so, nothing made: \(alerts)")
+          "the menus', the Dock menu's and the launcher's Sign in… on a deleted folder: the alert says so, nothing made: \(alerts)")
     let sm = SettingsModel()
     var withStandby = p; withStandby.standby = [StandbyAccount(email: u2.email!, seat: nil, id: "g2")]
     var noSeat = withStandby; noSeat.seat = nil
@@ -526,18 +526,18 @@ do {
         let mb = MenuBarItems.Profile(show: show, problem: rec?.problem)
         let glyph = MenuBarItems.item(mb, now: now)
         check(mb.usage == nil && glyph.week == nil && glyph.five == nil && glyph.countdown == nil && show.needsLogin
-              && show.keyWords(short: false) == "Log in…" && !show.display.lamp && show.display.grey,
-              "\(what): the menu bar has no bars, no countdown, Log in…, the lamp off")
+              && show.keyWords(short: false) == "Sign in…" && !show.display.lamp && show.display.grey,
+              "\(what): the menu bar has no bars, no countdown, Sign in…, the lamp off")
         let row = AccountRow(entry: p, status: rec)
-        check(row.limits.allSatisfy { $0.p == nil } && row.full == nil && row.needsLogin && row.subtitle == "login expired",
-              "\(what): the card (and Settings' in-use box, which draws its limits) says login expired, no bars, Log in…")
+        check(row.limits.allSatisfy { $0.p == nil } && row.full == nil && row.needsLogin && row.subtitle == "sign-in expired",
+              "\(what): the card (and Settings' in-use box, which draws its limits) says sign-in expired, no bars, Sign in…")
         check(previewShowsNone(p, rec) && panelShowsNone(p, rec), "\(what): the Dock icon's preview and Settings' panel preview have no numbers, never the samples")
         let panel = DetailsInfo.of(show, name: p.name, icon: NSImage(), problem: rec?.problem)
-        check(panel.weekly == nil && panel.fiveHour == nil && panel.needsLogin && !panel.activeLit, "\(what): the Dock panel has no numbers, Log in…, the lamp off")
-        check(panel.noNumbers == "Login expired", "\(what): the Dock panel's age line says Login expired, never Reading usage…")
+        check(panel.weekly == nil && panel.fiveHour == nil && panel.needsLogin && !panel.activeLit, "\(what): the Dock panel has no numbers, Sign in…, the lamp off")
+        check(panel.noNumbers == "Sign-in expired", "\(what): the Dock panel's age line says Sign-in expired, never Reading usage…")
         let target = QuickChatTarget(p), level = QuickChatLevel(Usage.of(rec), now: now)
-        check(target.loginWords == "login expired" && level.week == nil && level.fiveHour == nil && level.full(now) == nil,
-              "\(what): quick chat's line says login expired, no level")
+        check(target.loginWords == "sign-in expired" && level.week == nil && level.fiveHour == nil && level.full(now) == nil,
+              "\(what): quick chat's line says sign-in expired, no level")
     }
     noNumbersAnywhere("the saved record")
 
@@ -608,15 +608,15 @@ do {
         let mb = MenuBarItems.Profile(show: show, problem: rec?.problem)
         let glyph = MenuBarItems.item(mb, now: now)
         check(mb.usage == nil && glyph.week == nil && glyph.five == nil && show.needsLogin && !show.display.lamp,
-              "\(what): the menu bar has no bars, Log in…, the lamp off")
+              "\(what): the menu bar has no bars, Sign in…, the lamp off")
         let row = AccountRow(entry: p, status: rec)
-        check(row.limits.allSatisfy { $0.p == nil } && row.needsLogin && row.subtitle == "no Claude Code login",
-              "\(what): the card and Settings' box: no bars, its state line, Log in…")
+        check(row.limits.allSatisfy { $0.p == nil } && row.needsLogin && row.subtitle == "no Claude Code sign-in",
+              "\(what): the card and Settings' box: no bars, its state line, Sign in…")
         check(previewShowsNone(p, rec) && panelShowsNone(p, rec), "\(what): the Dock icon's preview and Settings' panel preview have no numbers, never the samples")
         check(rec?.needsLogin == true && rec?.fiveHour == nil && show.noNumbersWords == "Signed out",
-              "\(what): the Dock panel (from the same record): no numbers, Log in…, its age line says Signed out")
+              "\(what): the Dock panel (from the same record): no numbers, Sign in…, its age line says Signed out")
         let q = QuickChatTarget(p), ql2 = QuickChatLevel(Usage.of(rec), now: now)
-        check(q.loginWords == "no Claude Code login" && ql2.week == nil && ql2.fiveHour == nil, "\(what): quick chat's line says so, no level")
+        check(q.loginWords == "no Claude Code sign-in" && ql2.week == nil && ql2.fiveHour == nil, "\(what): quick chat's line says so, no level")
     }
     noneSignedOut("a signed-out record", keepsWhen: true)
     UsageReader.testPoster = { _, _, _, _, _ in 0 }        // no alert leaves the check
@@ -635,7 +635,7 @@ do {
     check(outReader.state == .ok && back?.state == "ok" && back?.weekly == 64 && back?.fiveHour == 7,
           "a good read: the numbers come back")
     check(Usage.of(back)?.weekly == 64 && AccountRow(entry: p, status: back).weekly == 64 && !AccountRow(entry: p, status: back).needsLogin
-          && QuickChatTarget(p).loginWords == nil, "…on the menu bar, the card and quick chat alike, without Log in…")
+          && QuickChatTarget(p).loginWords == nil, "…on the menu bar, the card and quick chat alike, without Sign in…")
     check(preview(p, status: back, sample: false).tiffRepresentation != preview(p, status: Store.status(for: p).map { var s = $0; s.dropNumbers(); return s }, sample: false).tiffRepresentation,
           "…and in the Dock icon's preview: the record's own numbers (7 % and 64 %), not a blank tile")
     let goodPanel = samplePanel(p, status: back), samplePanelNow = samplePanel(p, status: nil, sample: true)
@@ -685,7 +685,7 @@ do {
     // the parts of bigger files that draw a profile: the card and the palette's row (Launcher.swift), Settings' IN USE box and
     // its Dock icon preview (Settings.swift)
     for (f, a, b) in [("Launcher.swift", "struct AccountCard", "\n}\n"), ("Launcher.swift", "struct AccountRow: Identifiable", "\n}\n"),
-                      ("Settings.swift", "func inUseBox(", "    /// Log in… on the account in use"),
+                      ("Settings.swift", "func inUseBox(", "    /// Sign in… on the account in use"),
                       ("Settings.swift", "func preview(_ e: AccountEntry", "/// Settings is a page of the one cl_audit window")] {
         for l in section(f, from: a, to: b) where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
             for p in forbidden where l.contains(p) { reads.append("\(f) \(p): \(l.trimmingCharacters(in: .whitespaces).prefix(60))") }
@@ -738,6 +738,42 @@ do {
           "every place that hands a folder to claude is one of the guarded launchers: \(launchSites)")
     let script = body("Launcher.swift", from: "private static func openTerminal(", until: "exec \\(q(claude))")
     check(script.contains("[ -d \\\"$CLAUDE_CONFIG_DIR\\\" ] && [ ! -L \\\"$CLAUDE_CONFIG_DIR\\\" ]"), "the Terminal script checks the folder again itself before exec claude")
+
+    // the words are "sign in / sign-in / signed in / sign out" everywhere (the operator's ruling): no string literal in Sources,
+    // Widget or Core says "log in", "login", "logging in", "log out" or "logout" (nor "logged in" / "logged out" as a sign-in),
+    // except what isn't ours to word: macOS's own "At login" and "Login Items", `claude auth login`, /login and /logout, the
+    // Claude app's log lines we parse, our own log lines, the launch names ("login", "logout") and test sample text
+    let wordsRe = try! NSRegularExpression(pattern: #"(?i)\blog(?:ged|ging)?[ -](?:in|out)\b|\blogin\b|\blogout\b"#)
+    let wordsExempt = ["at login", "login items", "login item", "login shell", "login session", "auth login", "/login", "/logout",
+                       "login-state transition", "account logged out", "loggedout", "usage-n-uf-login", "-login-page-"]
+    func loginWording(inLiteral s: String) -> Bool {
+        let t = s.lowercased()
+        if t == "login" || t == "logout" { return false }          // launch names (FolderGuard's seam), never shown
+        if wordsExempt.contains(where: { t.contains($0) }) { return false }
+        return wordsRe.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
+    }
+    // the rule itself: old words are caught, the new ones and the exemptions are not
+    check(["Log in…", "Logged in.", "login expired", "Log out", "when you log in", "Logging in: finish it"].allSatisfy(loginWording(inLiteral:))
+          && ["Sign in…", "Signed in.", "sign-in expired", "Sign out", "At login: always there", "Login Items & Extensions", "claude auth login",
+              "Not logged in · Please run /login", "login", "noLogin", "loginEmail", "[account] Login-state transition", "Account logged out"]
+              .allSatisfy { !loginWording(inLiteral: $0) },
+          "the log-in wording rule catches the old words and lets the new words and the exemptions through")
+    var oldWords: [String] = [], scanned = 0
+    let literalRe = try! NSRegularExpression(pattern: #""((?:[^"\\]|\\.)*)""#)
+    for dir in [src, widgetSrc, src.deletingLastPathComponent().appendingPathComponent("Core")] {
+        for f in ((try? fm.subpathsOfDirectory(atPath: dir.path)) ?? []).sorted() where f.hasSuffix(".swift") {
+            guard let text = try? String(contentsOf: dir.appendingPathComponent(f), encoding: .utf8) else { oldWords.append("(unreadable \(f))"); continue }
+            for (i, l) in text.components(separatedBy: "\n").enumerated() where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
+                let ns = l as NSString
+                for m in literalRe.matches(in: l, range: NSRange(location: 0, length: ns.length)) {
+                    scanned += 1
+                    let lit = ns.substring(with: m.range(at: 1))
+                    if loginWording(inLiteral: lit) { oldWords.append("\(dir.lastPathComponent)/\(f):\(i + 1) \(lit.prefix(60))") }
+                }
+            }
+        }
+    }
+    check(scanned > 1000 && oldWords.isEmpty, "no visible log in / login / logged in / log out is left in Sources, Widget or Core (\(scanned) literals read): \(oldWords)")
 }
 
 // ============ 6b. a switch that stops: the step that failed, the ones before done, the tile's words ============
@@ -1152,25 +1188,25 @@ do {
     let row = AccountRow(entry: e, status: head, codeStatus: own)
     check(row.full == nil && row.limits.allSatisfy { $0.p == nil } && !row.needsLogin
           && AtLimit.tileCountdown(fiveHour: row.fiveHour, fiveHourResets: head?.fiveHourResets, weekly: row.weekly, weeklyResets: head?.weeklyResets) == nil,
-          "the card and its tile: no limits, no full panel, no countdown, no red Log in")
+          "the card and its tile: no limits, no full panel, no countdown, no red Sign in")
     check(Usage.of(head) == nil && QuickChatLevel(Usage.of(head), now: now).week == nil,
           "the menu bar strip, the Dock icon and quick chat: no numbers for pat (neutral)")
     check(previewShowsNone(e, head) && panelShowsNone(e, head),
           "the split: the Dock icon's preview (Settings' tile, the Dock's tile) and Settings' panel preview have no numbers, never the samples")
-    check(row.split?.key == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!))…" && split?.loginEmail == pat.email,
-          "the key: Log Claude Code in Terminal in to pat, with pat's address filled in")
-    check(split?.numbersHint == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!)) to see its numbers."
+    check(row.split?.key == "Sign Claude Code in Terminal in to \(Privacy.masked(pat.email!))…" && split?.loginEmail == pat.email,
+          "the key: Sign Claude Code in Terminal in to pat, with pat's address filled in")
+    check(split?.numbersHint == "Sign Claude Code in Terminal in to \(Privacy.masked(pat.email!)) to see its numbers."
           && split?.shortLine == "Can't read \(Privacy.masked(pat.email!))'s usage\nTerminal: \(Privacy.masked(mo.email!))",
           "the line under it and the short form: \(split?.numbersHint ?? "-") / \(split?.shortLine ?? "-")")
     let splitShow = ProfileShow.load(e, now: now)
     let panelInfo = DetailsInfo.of(splitShow, name: "x", icon: NSImage(), problem: nil)
-    check(split?.shortKey == "Log in to \(Privacy.masked(pat.email!)) in Terminal…"
+    check(split?.shortKey == "Sign in to \(Privacy.masked(pat.email!)) in Terminal…"
           && panelInfo.activeNote == split?.shortLine && panelInfo.splitKey == split?.shortKey && panelInfo.activeLit && !panelInfo.needsLogin,
           "the Dock panel takes the short line and the short key, the lamp lit (pat is in use): \(split?.shortKey ?? "-")")
     check(splitShow.display.none == .split && splitShow.display.lamp && splitShow.display.full == nil && splitShow.display.grey
           && splitShow.display.key == .logInCode(to: pat.email!) && splitShow.keyWords(short: false) == split?.key
           && splitShow.loginAddress == pat.email && splitShow.numbersHint == split?.numbersHint,
-          "the value in the split: no numbers (the split), nothing full, grey, lit, the key to pat, pat's address for Log in")
+          "the value in the split: no numbers (the split), nothing full, grey, lit, the key to pat, pat's address for Sign in")
     // the menu bar row's line: the short form in the split, the record's line otherwise (MenuBarRow.lineWords)
     let barProfile = MenuBarItems.Profile(show: splitShow, problem: head?.problem)
     var notSplit = record(app: appPat, code: mo, reading: mo.email, weekly: 40)
@@ -1206,7 +1242,7 @@ do {
     check(started && launches == ["login \(Account(e).configDir)"] && scripts.first?.contains(pat.email!) == true && scripts.first?.contains(mo.email!) == false,
           "the key's login: launched once on the folder, pat's address in it: \(launches)")
     ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = nil
-    // the menus' and quick chat's Log in, wired for real (ClaudeCLI.logIn(profile:): its claude found, the guard asked, the
+    // the menus' and quick chat's Sign in, wired for real (ClaudeCLI.logIn(profile:): its claude found, the guard asked, the
     // script made; nothing runs): pat's address, never mo's; with the app's account known by its id only, no address at all
     let keepLocator = ClaudeLocator.current
     ClaudeLocator.current = ClaudeLocator.Lookup(candidates: { ["/usr/bin/false"] }, npmPrefix: { nil }, shell: { nil }, appCopy: { nil })
@@ -1216,21 +1252,21 @@ do {
     ClaudeCLI.logIn(profile: e)
     RunLoop.main.run(until: Date().addingTimeInterval(1.0))
     check(launches == ["login \(Account(e).configDir)"] && scripts.count == 1 && scripts[0].contains(pat.email!) && !scripts[0].contains(mo.email!),
-          "Log in from the menus in the split: launched once through the guard, pat's address filled in, never mo's: \(launches)")
+          "Sign in from the menus in the split: launched once through the guard, pat's address filled in, never mo's: \(launches)")
     let anon = AppSignIn.Login(account: uuid(34), org: uuid(74), state: .known, source: "log", at: now)
     var anonRec = record(app: anon, code: mo, reading: mo.email, weekly: 100)
     anonRec.resolved = AccountResolver.resolve(e, among: [e], app: anon, code: mo, loginEmail: mo.email, names: [:], now: now)
     _ = Store.writeStatus("spl", anonRec)
     let anonSplit = SplitUsage.of(Store.status(for: e))
-    check(anonSplit != nil && anonSplit?.key == nil && anonSplit?.hint == "Log Claude Code in Terminal in to the Claude app's account"
-          && anonSplit?.numbersHint == "Log Claude Code in Terminal in to the Claude app's account to see its numbers."
+    check(anonSplit != nil && anonSplit?.key == nil && anonSplit?.hint == "Sign Claude Code in Terminal in to the Claude app's account"
+          && anonSplit?.numbersHint == "Sign Claude Code in Terminal in to the Claude app's account to see its numbers."
           && SplitUsage.loginAddress(Store.status("spl"), usual: mo.email) == nil,
           "the app's account known by its id only: no key, the hint, and no address (never mo's): \(anonSplit?.app ?? "-")")
     launches.removeAll(); scripts.removeAll()
     ClaudeCLI.logIn(profile: e)
     RunLoop.main.run(until: Date().addingTimeInterval(1.0))
     check(launches.count == 1 && scripts.count == 1 && !scripts[0].contains(mo.email!) && !scripts[0].contains("--email"),
-          "…and a Log in then fills in no address at all")
+          "…and a Sign in then fills in no address at all")
     ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = nil; ClaudeLocator.current = keepLocator
     _ = Store.writeStatus("spl", record(app: appPat, code: mo, reading: mo.email, weekly: 100))
 
@@ -1257,18 +1293,18 @@ do {
     let zed = Seat(account: uuid(33), organization: uuid(73), email: "zed@example.com")
     let appZed = AppSignIn.Login(account: zed.account, org: zed.organization, state: .known, source: "log", at: now)
     let third = splitWith(app: appZed, newest: linkedToMo, names: [zed.account.lowercased(): zed.email!])
-    check(third?.switched == false && third?.key?.hasPrefix("Log Claude Code in Terminal in to ") == true && third?.line.hasPrefix("cl_audit can't read ") == true,
+    check(third?.switched == false && third?.key?.hasPrefix("Sign Claude Code in Terminal in to ") == true && third?.line.hasPrefix("cl_audit can't read ") == true,
           "the app on a third account (not the one the switch left): a split by hand, the B8 line and key")
     var undone = toMo; undone.undone = now
     var leftAsIs = toMo; leftAsIs.leftAsIs = now
     for (what, r) in [("undone", undone), ("left as it is", leftAsIs)] {
         let s = splitWith(app: appPat, newest: r)
-        check(s?.switched == false && s?.key == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!))…" && s?.loginEmail == pat.email,
+        check(s?.switched == false && s?.key == "Sign Claude Code in Terminal in to \(Privacy.masked(pat.email!))…" && s?.loginEmail == pat.email,
               "the switch \(what): a split by hand, the B8 line and key")
     }
     var dayOld = linkedToMo; dayOld.linked = now.addingTimeInterval(-25 * 3600)
     let dayOldSplit = splitWith(app: appPat, newest: dayOld)
-    check(dayOldSplit?.switched == false && dayOldSplit?.key == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!))…",
+    check(dayOldSplit?.switched == false && dayOldSplit?.key == "Sign Claude Code in Terminal in to\(Privacy.masked(pat.email!))…",
           "a switch linked 25 hours ago waits no more: a split by hand, the B8 line and key")
     let older = splitWith(app: appPat, newest: nil)
     check(older?.switched == false && older?.key != nil, "no switch at all: a split by hand")
