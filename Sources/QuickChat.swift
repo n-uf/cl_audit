@@ -209,6 +209,9 @@ final class QuickChatModel: ObservableObject {
     var liveCounts: Bool { target?.liveCounts ?? false }
     /// The chat's profile is in the split (QuickChatTarget.split).
     var inSplit: Bool { target?.split ?? false }
+    /// The chat's profile is in a clash (QuickChatTarget.clash): like the split, Claude Code's limits and refusals are the
+    /// folder's account's, the other profile's, never the header's account's.
+    var inClash: Bool { target?.clash ?? false }
     @Published var choice: QuickChatModelChoice = .haiku
     @Published var thinking: QuickChatThinking = .off
     /// The full name each choice answered with last ("Haiku 5.5"), for its key.
@@ -333,7 +336,7 @@ final class QuickChatModel: ObservableObject {
         let counts = new?.liveCounts ?? false
         let l = QuickChatLevel.kept(record: level, shown: self.level,
                                     sameAccount: before?.profileID == new?.profileID && before?.email == new?.email,
-                                    counts: counts, refusals: !(new?.split ?? false))
+                                    counts: counts, refusals: !((new?.split ?? false) || (new?.clash ?? false)))
         if l != self.level { self.level = l }
         else if drawnBlocked != blocked { objectWillChange.send() }     // a full limit reset: drawn again
         drawnBlocked = blocked
@@ -385,7 +388,8 @@ final class QuickChatModel: ObservableObject {
         }
     }
 
-    private func handle(_ e: QuickChatEvent) {
+    /// One event from Claude Code, for the last turn (internal, not private: the checks feed it).
+    func handle(_ e: QuickChatEvent) {
         guard let i = turns.indices.last else { return }
         switch e {
         case .started(let s, let model):
@@ -412,9 +416,10 @@ final class QuickChatModel: ObservableObject {
                 turns[i].problem = .refused(text: text.isEmpty ? error : text)
             }
         case .limit(let type, let used, let status, let resets):
-            // the split: Claude Code's account's limits, nothing from them. Otherwise whether it refuses, and until when,
-            // is the chat's own sign-in's; its percents only while they count as the profile's (QuickChatTarget.liveCounts)
-            guard !inSplit else { break }
+            // the split or a clash: Claude Code's account's limits (in a clash the other profile's), nothing from them.
+            // Otherwise whether it refuses, and until when, is the chat's own sign-in's; its percents only while they count
+            // as the profile's (QuickChatTarget.liveCounts)
+            guard !inSplit, !inClash else { break }
             var l = level ?? QuickChatLevel(nil)
             l.apply(type: type, used: used, status: status, resets: resets, counts: liveCounts)
             level = l
@@ -429,14 +434,14 @@ final class QuickChatModel: ObservableObject {
                 if turns[i].problem == nil { turns[i].problem = .refused(text: text.isEmpty ? "Claude Code couldn't answer." : text) }
                 // a full limit Claude Code found before cl_audit's numbers did: the account line says so too, and the bar
                 // holds what you type (the refusal is the chat's own sign-in's, whatever the record says yet). Not in the
-                // split (SplitUsage): it's Claude Code's account's limit, so the answer says it, but no level or offer.
-                // The offer itself waits for numbers that count (update)
-                if turns[i].problem == .limitFull, level?.full() == nil, !inSplit {
+                // split (SplitUsage) nor a clash: it's Claude Code's account's limit, so the answer says it, but no level or
+                // offer. The offer itself waits for numbers that count (update)
+                if turns[i].problem == .limitFull, level?.full() == nil, !inSplit, !inClash {
                     var l = level ?? QuickChatLevel(nil)
                     l.refusedUntil = l.refusedUntil ?? Date().addingTimeInterval(3600)
                     level = l
                 }
-                if turns[i].problem == .limitFull, !inSplit { limitFilled() }
+                if turns[i].problem == .limitFull, !inSplit, !inClash { limitFilled() }
             } else {
                 if turns[i].answer.isEmpty { turns[i].answer = text }
                 turns[i].phase = .done
