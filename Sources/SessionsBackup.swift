@@ -283,28 +283,26 @@ enum SessionsBackup {
             }
         }
         if window, !s.dataDir.isEmpty {
-            let root = (s.dataDir as NSString).appendingPathComponent("claude-code-sessions")
             var seen = Set<SeatID>()
-            for account in names(root) where mode((root as NSString).appendingPathComponent(account))?.kind == S_IFDIR {
-                let adir = (root as NSString).appendingPathComponent(account)
-                for org in names(adir) where mode((adir as NSString).appendingPathComponent(org))?.kind == S_IFDIR {
-                    let odir = (adir as NSString).appendingPathComponent(org)
-                    seen.insert(SeatID(account: account, organization: org))
-                    for name in names(odir) {
-                        let path = (odir as NSString).appendingPathComponent(name)
-                        guard let m = mode(path), m.kind == S_IFREG else { continue }
-                        if skipped(name) || m.links > 1 { g.leftOut += 1; continue }       // (a hard link: never taken, nor counted)
-                        g.files.append(Planned(role: .window, src: path, rel: "window/\(account)/\(org)/\(name)", original: path, bytes: m.size))
-                        g.bytes += m.size
-                        if name.hasPrefix("local_") && name.hasSuffix(".json") {
-                            g.counts.sessions += 1
-                            let d = (try? Data(contentsOf: URL(fileURLWithPath: path))) ?? Data()
-                            if !SidebarPlan.flag("isArchived", in: d) { g.counts.sidebar += 1 }
-                        } else if name == "scheduled-tasks.json",
-                                  let d = FileManager.default.contents(atPath: path),
-                                  let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
-                            g.counts.tasks += (j["scheduledTasks"] as? [Any])?.count ?? 0
-                        }
+            // the account/organisation folders by ClaudeFiles' one lister (real folders named like ids, never a link); every
+            // plain file in each is taken, the sessions counted by its entry rule
+            for scope in ClaudeFiles.sessionScopes(dataDir: s.dataDir) {
+                let (account, org, odir) = (scope.account, scope.organization, scope.path)
+                seen.insert(SeatID(account: account, organization: org))
+                for name in names(odir) {
+                    let path = (odir as NSString).appendingPathComponent(name)
+                    guard let m = mode(path), m.kind == S_IFREG else { continue }
+                    if skipped(name) || m.links > 1 { g.leftOut += 1; continue }       // (a hard link: never taken, nor counted)
+                    g.files.append(Planned(role: .window, src: path, rel: "window/\(account)/\(org)/\(name)", original: path, bytes: m.size))
+                    g.bytes += m.size
+                    if ClaudeFiles.isEntryName(name) {
+                        g.counts.sessions += 1
+                        let d = (try? Data(contentsOf: URL(fileURLWithPath: path))) ?? Data()
+                        if !SidebarPlan.flag("isArchived", in: d) { g.counts.sidebar += 1 }
+                    } else if name == "scheduled-tasks.json",
+                              let d = FileManager.default.contents(atPath: path),
+                              let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
+                        g.counts.tasks += (j["scheduledTasks"] as? [Any])?.count ?? 0
                     }
                 }
             }
