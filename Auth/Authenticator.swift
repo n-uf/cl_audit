@@ -94,11 +94,14 @@ public struct Authenticator {
         guard tools.mayLaunch("login", folder) else { return .folderNotReady }
         let lines = SignInScript.lines(claude: claude, folder: folder, email: email, marker: marker, removesItself: removesItself,
                                        shown: shown, done: done, failed: failed)
-        // owner only from the start (it holds the address); a script left from before is replaced
-        let fm = FileManager.default
-        try? fm.removeItem(at: script)
-        guard fm.createFile(atPath: script.path, contents: Data((lines.joined(separator: "\n") + "\n").utf8),
-                            attributes: [.posixPermissions: 0o700]) else { return .failed }
+        // owner only from the start (it holds the address): made new, 0700, never through a link; one left from before
+        // is removed first (removeItem doesn't follow a link at the end)
+        try? FileManager.default.removeItem(at: script)
+        let fd = open(script.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o700)
+        guard fd >= 0 else { return .failed }
+        let h = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
+        guard fchmod(fd, 0o700) == 0, (try? h.write(contentsOf: Data((lines.joined(separator: "\n") + "\n").utf8))) != nil,
+              (try? h.close()) != nil else { return .failed }
         return tools.openTerminal(script) ? .done : .failed
     }
 
@@ -108,7 +111,8 @@ public struct Authenticator {
     /// in its name. Blocks up to 2 minutes: off the main thread.
     public func renew(claude: String, expecting: SignedInAccount? = nil) -> Outcome {
         guard tools.mayLaunch("renew", folder) else { return .folderNotReady }
-        if let expecting { guard let now = record(), now.matches(expecting) else { return .otherAccount } }
+        // the same seat, not the address alone (a personal plan and a team seat can share one)
+        if let expecting { guard let now = record(), now.match(expecting) == .seat else { return .otherAccount } }
         return tools.run(AuthRun.renewCommand(claude, folder, base: tools.environment())) == 0 ? .done : .failed
     }
 

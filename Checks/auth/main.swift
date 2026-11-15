@@ -291,6 +291,8 @@ do {
     check(Authenticator(folder, tools: noRecord).renew(claude: claude, expecting: ann) == .otherAccount && ran.count == 2,
           "a record naming nobody (signed out, unreadable, too large): not renewed for the account expected")
     check(Authenticator(folder, tools: noRecord).renew(claude: claude) == .done && ran.count == 3, "...while renew with no account expected runs")
+    check(auth.renew(claude: claude, expecting: SignedInAccount(email: "ann@example.com", origin: .record)) == .otherAccount && ran.count == 3,
+          "an account expected by its address alone: not renewed (the seat on that address may be another)")
     exit = 1
     check(auth.renew(claude: claude) == .failed, "a run that ends badly: failed")
     exit = nil
