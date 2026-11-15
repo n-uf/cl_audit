@@ -13,6 +13,7 @@
 
 import CryptoKit
 import Foundation
+import Runs
 
 /// One Claude Code folder, as `claude` is pointed at it: the default one (~/.claude, run with CLAUDE_CONFIG_DIR unset) or
 /// any other (run with CLAUDE_CONFIG_DIR set to `path`).
@@ -83,18 +84,15 @@ public struct AuthFolder: Equatable, Hashable {
     // MARK: running claude on it
 
     /// The variables that would make Claude Code use a key, a token or another provider instead of the folder's claude.ai
-    /// sign-in: never passed on to a `claude` run here.
-    /// A base URL or extra headers from the shell would send the folder's sign-in to another host: never passed on either.
-    public static let providerVariables = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN",
-                                           "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY",
-                                           "ANTHROPIC_BASE_URL", "ANTHROPIC_CUSTOM_HEADERS"]
+    /// sign-in, or send it to another host (a base URL, extra headers): never passed on to a `claude` run here (Runs'
+    /// ProviderEnvironment, the one list).
+    public static var providerVariables: [String] { ProviderEnvironment.variables }
 
     /// The environment a `claude` run on this folder gets: `base` without the provider variables and without any
     /// CLAUDE_CONFIG_DIR it had, then CLAUDE_CONFIG_DIR set to this folder unless it is the default one; the usual
     /// install places first on PATH.
     public func environment(_ base: [String: String]) -> [String: String] {
-        var env = base
-        for k in Self.providerVariables + ["CLAUDE_CONFIG_DIR"] { env[k] = nil }
+        var env = ProviderEnvironment.cleaned(base)
         if !isDefault { env["CLAUDE_CONFIG_DIR"] = path }
         // never an empty entry (the current folder)
         let rest = (base["PATH"] ?? "").split(separator: ":").joined(separator: ":")

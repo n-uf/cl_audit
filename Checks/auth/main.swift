@@ -396,7 +396,9 @@ do {
     for f in files {
         let s = (try? String(contentsOf: auth.appendingPathComponent(f), encoding: .utf8)) ?? ""
         let imports = s.split(separator: "\n").filter { $0.hasPrefix("import ") }.map { String($0.dropFirst(7)) }
-        check(Set(imports).isSubset(of: ["Foundation", "CryptoKit", "ProfileCore"]), "\(f): imports only Foundation, CryptoKit, ProfileCore: \(imports)")
+        check(Set(imports).isSubset(of: ["Foundation", "CryptoKit", "ProfileCore", "Runs"]),
+              "\(f): imports only Foundation, CryptoKit, ProfileCore and Runs (the one runner): \(imports)")
+        check(!s.contains("Process()"), "\(f): starts no process of its own (Runs' Runner does)")
         for bad in ["print(", "NSLog", "Logger(", "os_log", "debugPrint", "dump("] { check(!s.contains(bad), "\(f): never logs or prints (\(bad))") }
         for bad in ["add-generic-password", "delete-generic-password", "SecItemAdd", "SecItemUpdate", "SecItemDelete", "UserDefaults"] {
             check(!s.contains(bad), "\(f): never writes the Keychain or keeps anything (\(bad))")

@@ -4,6 +4,7 @@
 
 import Foundation
 import ProfileCore
+import Runs
 
 /// The tools an authenticator works with. `system` is the real Mac's.
 public struct AuthTools {
@@ -32,14 +33,8 @@ public struct AuthTools {
 
     public static var system: AuthTools {
         AuthTools(security: KeychainSignIn.system, run: AuthRun.system,
-                  openTerminal: { url in
-                      let p = Process()
-                      p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-                      p.arguments = ["-a", "Terminal", url.path]
-                      guard (try? p.run()) != nil else { return false }
-                      AuthRun.waitQuietly(p)
-                      return p.terminationStatus == 0
-                  },
+                  // `open` hands the script to Terminal and returns: a minute is plenty
+                  openTerminal: { url in Runs.Runner.run(Program("/usr/bin/open", ["-a", "Terminal", url.path], timeout: 60))?.ok ?? false },
                   mayLaunch: { _, folder in folder.isReady },
                   readRecord: { RecordFile.oauthAccount($0) },
                   environment: { ProcessInfo.processInfo.environment },

@@ -4,6 +4,7 @@
 // folder is there (never made here). Nothing here sees a password or a token.
 
 import Foundation
+import Runs
 
 /// One `claude` run, as the runner gets it (the checks record it and run nothing).
 public struct ClaudeCommand: Equatable {
@@ -34,36 +35,17 @@ public enum AuthRun {
         ClaudeCommand(executable: claude, arguments: signOutArguments, environment: folder.environment(base), timeout: 120)
     }
 
-    /// The real runner: in the temporary folder, no input, output dropped; stopped after the command's timeout.
+    /// The real runner (Runs' Runner): in the temporary folder, no input, output dropped; past the command's timeout asked
+    /// to end, then killed after 5 seconds.
     public static func system(_ c: ClaudeCommand) -> Int32? {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: c.executable)
-        p.arguments = c.arguments
-        p.environment = c.environment
-        p.currentDirectoryURL = FileManager.default.temporaryDirectory
-        p.standardInput = FileHandle.nullDevice
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }
-        let deadline = Date().addingTimeInterval(c.timeout)
-        while p.isRunning && Date() < deadline { usleep(100_000) }
-        if p.isRunning { stop(p); return nil }
-        return p.terminationStatus
+        Runs.Runner.run(Program(c.executable, c.arguments, environment: c.environment, timeout: c.timeout, grace: 5))?.status
     }
 
-    /// Waits for a process to end without running the run loop (`waitUntilExit` runs it, and on the main thread that can
-    /// redraw a SwiftUI window in the middle of an update).
-    static func waitQuietly(_ p: Process) { while p.isRunning { usleep(5_000) } }
+    /// Waits for a process to end without running the run loop (Runs' Runner.waitQuietly).
+    static func waitQuietly(_ p: Process) { Runs.Runner.waitQuietly(p) }
 
-    /// Stops a process that ran out of time: asked to end, then, if it hasn't within `grace` seconds, killed; waited for
-    /// (never left running, never a thread held for good).
-    static func stop(_ p: Process, grace: TimeInterval = 5) {
-        p.terminate()
-        let until = Date().addingTimeInterval(grace)
-        while p.isRunning && Date() < until { usleep(5_000) }
-        if p.isRunning { kill(p.processIdentifier, SIGKILL) }
-        waitQuietly(p)
-    }
+    /// Stops a process that ran out of time (Runs' Runner.stop: SIGTERM, `grace` seconds, SIGKILL, waited for).
+    static func stop(_ p: Process, grace: TimeInterval = 5) { Runs.Runner.stop(p, grace: grace) }
 }
 
 /// The Terminal script of a sign-in: Claude Code's own `claude auth login` for the folder, with an address filled in.

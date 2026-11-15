@@ -7,6 +7,7 @@
 
 import Foundation
 import ProfileCore
+import Runs
 
 public enum KeychainSignIn {
     /// What runs `security`: arguments in, exit status and output out. The checks pass a fake (no real Keychain).
@@ -37,20 +38,11 @@ public enum KeychainSignIn {
     public static func system(_ args: [String]) -> (status: Int32, output: Data) { run(args, timeout: 30) }
 
     /// `executable`: the checks run a stand-in (the timeout with /bin/sleep); the app, `security` only.
+    /// Through Runs' Runner (its output read while it runs, kept in memory only): stopped by the timeout, ended by a signal,
+    /// or a text not read whole (never a cut-short sign-in taken for one), it is refused (-1) whatever it printed.
     static func run(_ args: [String], timeout: TimeInterval, executable: String = "/usr/bin/security") -> (status: Int32, output: Data) {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: executable)
-        p.arguments = args
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = FileHandle.nullDevice
-        p.standardInput = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return (-1, Data()) }
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + timeout) { if p.isRunning { AuthRun.stop(p) } }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        AuthRun.waitQuietly(p)
-        // stopped by the timeout: refused, whatever it printed
-        if p.terminationReason == .uncaughtSignal { return (-1, Data()) }
-        return (p.terminationStatus, data)
+        guard let r = Runner.run(Program(executable, args, timeout: timeout, grace: 5, keepOutput: true, outputCap: 4 << 20, drain: 10)),
+              !r.signaled, r.complete else { return (-1, Data()) }
+        return (r.status, r.output)
     }
 }
