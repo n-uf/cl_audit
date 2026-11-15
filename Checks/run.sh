@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # The one entry point for cl_audit's check suites.
 #
-#   Checks/run.sh [core|auth|signin|backup|surfaces|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
+#   Checks/run.sh [core|runs|auth|signin|backup|surfaces|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
 #
 #   core      ProfileCore's rules (Core/), compiled against the library only: ids, standby, limits, times, levels, parsing
+#   runs      Runs (Run/), compiled against it only: timeouts, SIGTERM then SIGKILL after the grace, output read while running, caps, the environment
 #   auth      ClaudeAuth (Auth/), compiled against it and ProfileCore only, with a fake Keychain tool, claude and Terminal: the folder's
 #             item names, the one answer (verified or guessed), the Keychain read, the watch, sign-in, renew, sign-out and their guards
 #   signin    the model, rules and page logic checks (sign-in, switch, backups, export and import, crimson faces ...)
@@ -30,7 +31,7 @@
 #   render  pictures of the pages (switch, backups, restore, export, import, setup row, first run) into Checks/.work/render
 #   quick-chat  the quick chat's own checks (Checks/quick-chat/run.sh, run here under the build lock)
 #   scan      the app's own SecretScan over every file in Checks/ (zero hits expected)
-#   all       core, auth, signin, backup, surfaces, accounts, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
+#   all       core, runs, auth, signin, backup, surfaces, accounts, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
 #
 #   --volume    backup: mount a small HFS+ disk image and run the cross-volume checks on it (it is unmounted again)
 #   --no-build  run the binaries built by the last run
@@ -54,15 +55,15 @@ LOCK=/private/tmp/cl_audit-build.lock
 suites=(); volume=0; build=1
 for a in "$@"; do
   case "$a" in
-    core|auth|signin|backup|surfaces|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
-    all) suites+=(core auth signin backup surfaces accounts firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
+    core|runs|auth|signin|backup|surfaces|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
+    all) suites+=(core runs auth signin backup surfaces accounts firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
     --volume) volume=1 ;;
     --no-build) build=0 ;;
-    -h|--help) sed -n '2,45p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,46p' "$0"; exit 0 ;;
     *) echo "unknown argument: $a" >&2; exit 64 ;;
   esac
 done
-[[ ${#suites[@]} -gt 0 ]] || suites=(core auth signin backup surfaces accounts firstrun retention setup window move render quick-chat scan)
+[[ ${#suites[@]} -gt 0 ]] || suites=(core runs auth signin backup surfaces accounts firstrun retention setup window move render quick-chat scan)
 
 # the app's sources without its own main.swift, plus the widget views the app compiles in
 srcs=()
@@ -85,14 +86,28 @@ build_core() {
 }
 build_core || exit 1
 
+# Runs (Run/), the one runner, built the same way (testing on); ClaudeAuth and the app's suites link it
+RUNS="$WORK/runs-module"
+runs_lib=(-I "$RUNS" -L "$RUNS" -lRuns)
+build_runs() {
+  [[ $build -eq 1 ]] || { [[ -f "$RUNS/libRuns.a" ]] || { echo "no Runs at $RUNS (run without --no-build)" >&2; return 1; }; return 0; }
+  rm -rf "$RUNS"; mkdir -p "$RUNS"
+  /usr/bin/lockf -k "$LOCK" swiftc -Onone -enable-testing -swift-version 5 -parse-as-library -module-name Runs \
+    -target arm64-apple-macos13.0 \
+    -emit-module -emit-module-path "$RUNS/Runs.swiftmodule" -emit-library -static -o "$RUNS/libRuns.a" \
+    "$APP"/Run/*.swift 2>&1 | grep -E "error" || true
+  [[ -f "$RUNS/libRuns.a" ]] || { echo "compile failed: Runs" >&2; return 1; }
+}
+build_runs || exit 1
+
 # ClaudeAuth (Auth/), built after ProfileCore the same way (testing on: the auth suite may `@testable import ClaudeAuth`)
 AUTH="$WORK/auth-module"
-auth_lib=(-I "$AUTH" -L "$AUTH" -lClaudeAuth)
+auth_lib=(-I "$AUTH" -L "$AUTH" -lClaudeAuth "${runs_lib[@]}")
 build_auth() {
   [[ $build -eq 1 ]] || { [[ -f "$AUTH/libClaudeAuth.a" ]] || { echo "no ClaudeAuth at $AUTH (run without --no-build)" >&2; return 1; }; return 0; }
   rm -rf "$AUTH"; mkdir -p "$AUTH"
   /usr/bin/lockf -k "$LOCK" swiftc -Onone -enable-testing -swift-version 5 -parse-as-library -module-name ClaudeAuth \
-    -target arm64-apple-macos13.0 -I "$CORE" \
+    -target arm64-apple-macos13.0 -I "$CORE" -I "$RUNS" \
     -emit-module -emit-module-path "$AUTH/ClaudeAuth.swiftmodule" -emit-library -static -o "$AUTH/libClaudeAuth.a" \
     "$APP"/Auth/*.swift 2>&1 | grep -E "error" || true
   [[ -f "$AUTH/libClaudeAuth.a" ]] || { echo "compile failed: ClaudeAuth" >&2; return 1; }
@@ -177,6 +192,19 @@ run_core() {
     rm -f "$bin"
     /usr/bin/lockf -k "$LOCK" swiftc -Onone -swift-version 5 -target arm64-apple-macos13.0 \
       -o "$bin" "$HERE/core/main.swift" "${core_lib[@]}" 2>&1 | grep -E "error" || true
+  fi
+  [[ -x "$bin" ]] || { echo "compile failed: $bin" >&2; return 1; }
+  run_binary "$dir" "$bin"
+}
+
+# the runs suite: compiled against Runs ONLY (Foundation): its programs are harmless stand-ins (sh, sleep, true, false)
+run_runs() {
+  local dir="$WORK/runs"; mkdir -p "$dir"
+  local bin="$dir/cl_audit-checks-runs"
+  if [[ $build -eq 1 ]]; then
+    rm -f "$bin"
+    /usr/bin/lockf -k "$LOCK" swiftc -Onone -swift-version 5 -target arm64-apple-macos13.0 \
+      -o "$bin" "$HERE/runs/main.swift" "${runs_lib[@]}" 2>&1 | grep -E "error" || true
   fi
   [[ -x "$bin" ]] || { echo "compile failed: $bin" >&2; return 1; }
   run_binary "$dir" "$bin"
