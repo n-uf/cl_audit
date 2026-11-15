@@ -1581,21 +1581,21 @@ MainActor.assumeIsolated {
         let s = show(rec(state))
         let dk = dockOf(e, s)
         check(s.display.usage?.weekly == 40 && !s.display.lamp && s.display.key == nil && !dk.panel.activeLit && !lamp(dk.menu)
-              && !titles(dk.menu).contains("Log in…") && !titles(menuBarMenu(s)).contains("Log in…"),
-              "a sign-in \(words): the numbers as read, the lamp off on the menu bar row, the Dock panel and its menu, no Log in")
+              && !titles(dk.menu).contains("Sign in…") && !titles(menuBarMenu(s)).contains("Sign in…"),
+              "a sign-in \(words): the numbers as read, the lamp off on the menu bar row, the Dock panel and its menu, no Sign in")
     }
     for state in ["expired", "noLogin"] {
         let s = show(rec(state))
         let dk = dockOf(e, s)
         check(s.display.usage == nil && !s.display.lamp && s.display.needsLogin && dk.face.stale && !dk.panel.activeLit && !lamp(dk.menu)
-              && titles(dk.menu).contains("Log in…") && titles(menuBarMenu(s)).contains("Log in…") && dk.face.countdown == nil,
-              "\(state): no numbers, grey, the lamp off, Log in… in both menus")
+              && titles(dk.menu).contains("Sign in…") && titles(menuBarMenu(s)).contains("Sign in…") && dk.face.countdown == nil,
+              "\(state): no numbers, grey, the lamp off, Sign in… in both menus")
     }
     let mixed = show(rec(login: u3.email, code: u1))
     let mixedDock = dockOf(e, mixed)
     check(mixed.display.otherAccount && mixed.display.needsLogin && !mixed.display.lamp && mixedDock.face.warn && mixedDock.panel.mismatch
-          && !lamp(mixedDock.menu) && titles(mixedDock.menu).contains("Log in…"),
-          "the sign-in on another account than the folder's: the warning, Log in…, the lamp off")
+          && !lamp(mixedDock.menu) && titles(mixedDock.menu).contains("Sign in…"),
+          "the sign-in on another account than the folder's: the warning, Sign in…, the lamp off")
 
     // another profile's account: the clash names that profile by its id (names needn't be unique), the lamp off
     let clash = show(rec(login: u3.email, code: u3))
