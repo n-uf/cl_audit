@@ -182,8 +182,8 @@ struct AccountView: Equatable {
         return AccountView(label: who, numbersOwner: who, line: nil, lit: who != nil, clash: nil)
     }
 
-    /// "ultra-1 · in use".
-    var inUseLine: String? { label.map { "\(AccountNames.short($0)) · in use" } }
+    /// "ultra-1": the account in use with no label (showing it, with its lamp, says it's in use).
+    var inUseLine: String? { short }
     var short: String? { label.map(AccountNames.short) }
 
     /// This standby account is the one the record names active (by its id, else its address): it is in use, so no list

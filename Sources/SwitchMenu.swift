@@ -29,12 +29,13 @@ enum SwitchMenu {
     /// The account in use, short ("ultra-1"), as the profile's record says it (AccountView); nil while none is known.
     static func inUseShort(_ v: AccountView) -> String? { v.short }
 
-    /// "ultra-1 · in use": under the profile's name in the menu bar icon's menu.
+    /// "ultra-1": under the profile's name in the menu bar icon's menu (no "in use": showing it says so).
     static func inUseLine(_ v: AccountView) -> String? { v.inUseLine }
 
-    /// The Dock menu's top line: "Claude Main · ultra-1 in use"; the usual "Claude Main" + plan while no account is known.
+    /// The Dock menu's top line: "Claude Main · ultra-1" (its lamp says it's in use); the usual "Claude Main" + plan while
+    /// no account is known.
     static func dockTitle(name: String, _ v: AccountView, plan: String?) -> String {
-        if let s = inUseShort(v) { return "Claude \(name) · \(s) in use" }
+        if let s = inUseShort(v) { return "Claude \(name) · \(s)" }
         return "Claude \(name)" + (plan.map { " · \($0)" } ?? "")
     }
 
@@ -78,13 +79,15 @@ enum SwitchMenu {
         sub.addItem(warn)
         sub.addItem(.separator())
         if let s = inUseShort(v) {
-            let i = NSMenuItem(title: "\(s)  in use" + (inUseUsed == nil ? "" : " · " + weekWords(inUseUsed, week: inUseWeek)),
+            // the account in use: the menu's own checkmark, enabled so it doesn't read as broken; choosing it does nothing
+            let i = NSMenuItem(title: s + (inUseUsed == nil ? "" : " · " + weekWords(inUseUsed, week: inUseWeek)),
                                action: nil, keyEquivalent: "")
-            i.state = .on; i.isEnabled = false
+            i.state = .on; i.isEnabled = true
             sub.addItem(i)
         }
         for l in lines {
-            let i = NSMenuItem(title: "\(l.short)…" + (l.words.isEmpty ? "" : "  \(l.words)"), action: l.canSwitch ? action : nil, keyEquivalent: "")
+            // standby accounts plain, by address only
+            let i = NSMenuItem(title: "\(l.short)…", action: l.canSwitch ? action : nil, keyEquivalent: "")
             i.target = target; i.representedObject = l.key; i.isEnabled = l.canSwitch
             sub.addItem(i)
         }

@@ -301,7 +301,7 @@ do {
         let panel = DetailsInfo.of(ProfileShow.load(main), name: "x", icon: NSImage(), problem: nil)
         check(panel.active == want.label && (panel.activeNote == want.line || SplitUsage.of(Store.status("main")) != nil) && panel.activeLit == want.lit,
               "\(name): the Dock panel agrees")
-        check(SwitchMenu.dockTitle(name: "P", want, plan: nil) == (want.short.map { "Claude P · \($0) in use" } ?? "Claude P"), "\(name): the Dock menu agrees")
+        check(SwitchMenu.dockTitle(name: "P", want, plan: nil) == (want.short.map { "Claude P · \($0)" } ?? "Claude P"), "\(name): the Dock menu agrees")
         check(QuickChatTarget(main).email == want.label, "\(name): quick chat agrees")
         // (B8: in the split, the Claude app on another account than Claude Code, they are not the profile's: none show)
         let splitHere = SplitUsage.of(Store.status("main")) != nil
