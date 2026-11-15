@@ -87,8 +87,18 @@ struct ProfileShow {
     var inUseUnknown: Bool { display.clash != nil && inUseLabel == nil }
 
     /// The account view with the account in use as the surfaces name it (inUseLabel), for the menus' titles and ticks.
-    /// (The standby lists keep `view`: which standby account is the active one is the record's matter.)
-    var named: AccountView { var v = view; v.label = inUseLabel; return v }
+    /// Its id follows the label (in a clash the profile's own seat's, none without a seat), so `isActive` finds the ticked
+    /// account among the standby ones: the lists take this too (`listedEntry`), one row for an account.
+    var named: AccountView {
+        var v = view
+        if inUseLabel != view.label { v.account = inUseLabel == nil ? nil : entry.seat?.account }
+        v.label = inUseLabel
+        return v
+    }
+
+    /// The profile as its menus and the Switch page list its accounts: the standby accounts without the one the record
+    /// names active and without the one ticked (`named`: in a clash the profile's own), so an account is one row.
+    var listedEntry: AccountEntry { entry.listed(by: view).listed(by: named) }
 
     /// The address a Sign in fills in: in the split only the app's own (nil: none filled in, never Claude Code's); in a
     /// clash the profile's own account in use (the app's, when the app decided it, else the profile's seat), never the

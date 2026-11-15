@@ -369,7 +369,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         }
         // the profile's other accounts (Accounts.swift; SwitchMenu.swift): while a limit is full, the one offered first,
         // then Switch account › with every standby account. Each opens cl_audit's Switch page with that account picked
-        let listed = p.entry.listed(by: p.view)              // never the account in use on standby too
+        let listed = p.show.listedEntry                      // never the account in use (ticked) on standby too
         let lines = SwitchMenu.lines(listed, now: now)
         var switches = SwitchMenu.group(p.show.named, lines: lines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
                                         inUseWeek: p.usage?.weekly != nil, target: self, action: #selector(switchAccount(_:)))

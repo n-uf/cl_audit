@@ -464,7 +464,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         m.addItem(.separator())
         // the profile's other accounts (Accounts.swift): Switch account › with every standby account; while a limit is full,
         // the one offered first also right under the full line. Each opens cl_audit's Switch page with that account picked
-        let listed = entry.listed(by: view)                  // never the account in use on standby too
+        let listed = show?.listedEntry ?? entry.listed(by: view)    // never the account in use (ticked) on standby too
         let lines = SwitchMenu.lines(listed)
         // while a limit is full, both times first: "5-hour full · back at 15:28, in 1h 42m"
         if let full = d.full(now: Date()) {
