@@ -145,7 +145,8 @@ struct DetailsView: View {
                         HStack(spacing: 5) {
                             Circle().fill(Color(nsColor: info.activeLit ? .systemGreen : .tertiaryLabelColor)).frame(width: 6, height: 6)
                                 .shadow(color: Color(nsColor: .systemGreen).opacity(info.activeLit ? 0.7 : 0), radius: 2)
-                            Text("\(a) · in use").font(.caption).foregroundStyle(.secondary).lineLimit(1).hidesEmail(true)
+                            // no label: the address with its lamp says it's in use
+                            Text(a).font(.caption).foregroundStyle(.secondary).lineLimit(1).hidesEmail(true)
                         }
                     } else {
                         Text(info.login ?? "No Claude Code sign-in").font(.caption).foregroundStyle(.secondary)

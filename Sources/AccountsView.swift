@@ -91,9 +91,23 @@ struct AccountBox<Header: View, Content: View>: View {
             }
         }
         .mintRow(selected || alert, red: alert && !selected)
-        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .onTapGesture { tap?() }
-        .help(tapHelp ?? "")
+        .modifier(BoxTap(tap: tap, help: tapHelp))
+    }
+}
+
+/// A click anywhere on a box, only for a box that has one (a standby row); the others keep their children's own help.
+private struct BoxTap: ViewModifier {
+    let tap: (() -> Void)?
+    let help: String?
+
+    func body(content: Content) -> some View {
+        if let tap {
+            content.contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                .onTapGesture { tap() }
+                .help(help ?? "")
+        } else {
+            content
+        }
     }
 }
 

@@ -1053,7 +1053,7 @@ struct AccountCard: View {
     }
     private var signInHelp: String {
         guard let a = SplitUsage.loginAddress(row.status, usual: row.status?.expectedEmail), a.contains("@") else {
-            return "Sign Claude Code in Terminal in on \(row.entry.name)'s folder"
+            return "Sign Claude Code in Terminal in, on \(row.entry.name)'s folder"
         }
         return "Sign Claude Code in Terminal in to \(Privacy.masked(a))"
     }

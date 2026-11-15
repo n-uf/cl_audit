@@ -1653,7 +1653,8 @@ struct AccountSettings: View {
         return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: red ? .warn : ok ? .ok : .warn,
                           detail: [plan].compactMap { $0 }.joined(separator: " · "), inUse: true,
                           rest: picked != nil && !red, alert: red,
-                          marks: (app: !entry.usageOnly && v.lit, terminal: readable && !split)) {
+                          // the Claude app's mark only when the app is what decides the account in use
+                          marks: (app: entry.claudeWindow && status?.resolved?.fromApp == true, terminal: readable && !split)) {
             Menu {
                 ForEach(loginItems) { it in
                     switch it.kind {
@@ -1771,7 +1772,8 @@ struct AccountSettings: View {
                 Divider()
                 Button("Forget…") { forgetStandby(s) }
             } label: { AccountBoxTitle(text: Privacy.masked(s.label)) }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
+            // hugs the address (a long one shortens with "…" rather than pushing the badge out)
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
         } content: {
             BoxNote(text: line + ".").fixedSize(horizontal: false, vertical: true)
         }
@@ -1799,7 +1801,7 @@ struct AccountSettings: View {
         return AccountBox(lamp: nil, badge: "Standby", detail: (own?.plan).map(Account.planWords), unlit: !switching,
                           selected: switching, litBadge: "Switching to",
                           litAction: pick.map { p in { model.showSwitch(AccountEntry.switchKey(entry.id, p.id)) } },
-                          marks: (app: false, terminal: true)) {
+                          marks: (app: false, terminal: !["expired", "noLogin"].contains(own?.state ?? ""))) {
             AccountBoxTitle(text: Privacy.masked(code))
         } content: {
             // its sign-in signed out or expired: that one line (A3), with its key; else the numbers (they are its)
@@ -1837,7 +1839,6 @@ struct AccountSettings: View {
         let s = standby.first { $0.id == r.standby } ?? standby.first { s in s.seat.map { r.to.same($0) } ?? false }
         return s.map { $0.seat?.email ?? $0.email }
     }
-
 
     /// In the order a full limit offers them (AccountBook.offerOrder); while one is selected, the order it had then, so the
     /// boxes don't move under the pointer.

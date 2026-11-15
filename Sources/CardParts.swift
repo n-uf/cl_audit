@@ -46,11 +46,12 @@ struct UsageNotice: Equatable {
             return UsageNotice(tone: .red, heading: "Terminal's sign-in has expired", line: signIn(address), key: .signIn, signedOut: true)
         case "noLogin":
             return UsageNotice(tone: .red, heading: "Terminal is signed out", line: signIn(address), key: .signIn, signedOut: true)
-        case "denied":
+        // the sign-in fine but not readable now: the last numbers stay while there are any; the notice only without them
+        case "denied" where !row.limits.contains { $0.p != nil }:
             return UsageNotice(tone: .amber, heading: "Can't read Terminal's sign-in yet",
                               // `security` refused or timed out (Login.read): no prompt is shown, a locked Keychain is the usual cause
                               line: "The Keychain didn't hand it over: unlock it, then Refresh now.", key: .refresh)
-        case "unreadable":
+        case "unreadable" where !row.limits.contains { $0.p != nil }:
             return UsageNotice(tone: .amber, heading: "Can't read Terminal's sign-in",
                               line: "Claude Code saved it in a form cl_audit doesn't know.", key: .refresh)
         default:
@@ -148,12 +149,13 @@ struct FaceKeyLabel<L: View>: View {
         let (top, bottom, rim, ink): (UInt32, UInt32, UInt32, UInt32) = tint == .red
             ? (0xf4907f, 0xdc5a4b, 0x5e170d, 0x1f0705) : (0xf4a075, 0xe47b4c, 0x5e240d, 0x1d0b04)
         let shape = RoundedRectangle(cornerRadius: 4, style: .continuous)
+        // under the full box (`width`): tighter print, and at least the box's width, never narrower than its label
         label()
-            .font(.system(size: 11, weight: .semibold)).tracking(1.1).textCase(.uppercase)
+            .font(.system(size: width == nil ? 11 : 10.5, weight: .semibold)).tracking(width == nil ? 1.1 : 0.6).textCase(.uppercase)
             .foregroundStyle(Color.hex(ink))
             .lineLimit(1).fixedSize()
-            .padding(.horizontal, 12)
-            .frame(width: width, height: 26)
+            .padding(.horizontal, width == nil ? 12 : 8)
+            .frame(minWidth: width, minHeight: 26, maxHeight: 26)
             .background(
                 shape.fill(LinearGradient(colors: [.hex(top), .hex(bottom)], startPoint: .top, endPoint: .bottom))
                     .overlay(Pinstripes().clipShape(shape))

@@ -1304,7 +1304,7 @@ do {
     }
     var dayOld = linkedToMo; dayOld.linked = now.addingTimeInterval(-25 * 3600)
     let dayOldSplit = splitWith(app: appPat, newest: dayOld)
-    check(dayOldSplit?.switched == false && dayOldSplit?.key == "Sign Claude Code in Terminal in to\(Privacy.masked(pat.email!))…",
+    check(dayOldSplit?.switched == false && dayOldSplit?.key == "Sign Claude Code in Terminal in to \(Privacy.masked(pat.email!))…",
           "a switch linked 25 hours ago waits no more: a split by hand, the B8 line and key")
     let older = splitWith(app: appPat, newest: nil)
     check(older?.switched == false && older?.key != nil, "no switch at all: a split by hand")
