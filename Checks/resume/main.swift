@@ -169,6 +169,9 @@ if role == "b" {
         check(RepointWords.done(r.sessions[0]).contains("its worktree isn't on this Mac"), "B (3): the page says the worktree was dropped")
 
         // Undo while running sessions can't be told: refused before anything is written, the re-point stays as it is
+        // (the whole throwaway home, every path with its bytes, before and after)
+        func homeTree() -> [String: Data?] { Dictionary(everything(home).map { ($0, fm.contents(atPath: home + "/" + $0)) }, uniquingKeysWith: { a, _ in a }) }
+        let treeBefore = homeTree()
         SessionsRestore.runningSessions = { nil }
         do {
             _ = try SessionsRepoint.undo(r.id, windowClosed: { true })
@@ -178,7 +181,8 @@ if role == "b" {
         }
         SessionsRestore.runningSessions = { [] }
         check(SessionsRepoint.store.load(r.id)?.undone == nil && fm.fileExists(atPath: newDir + "/\(S3).jsonl") && !fm.fileExists(atPath: oldT) && fm.contents(atPath: entryPath) != entryBefore,
-              "B (3): that refused Undo wrote nothing: still re-pointed")
+              "B (3): that refused Undo left it re-pointed")
+        check(homeTree() == treeBefore && treeBefore.count > 10, "B (3): that refused Undo wrote nothing anywhere in the home (\(treeBefore.count) paths)")
         // Undo: exactly back
         let u = try! SessionsRepoint.undo(r.id, windowClosed: { true })
         check(u.undone != nil && read(oldT) == oldText && mtime(oldT) == oldMtime && fm.contents(atPath: entryPath) == entryBefore
@@ -485,15 +489,14 @@ MainActor.assumeIsolated {
               "export: format 5, code.json in the image, no token in it")
         SessionsImport.discard(o.work)
     } else { check(false, "export: the move opens") }
-    // running sessions can't be told: a live source's export stops before anything is made
+    // running sessions can't be told: an export only reads its source into a copy, so it still goes ahead; its preview counts every
+    // session as in use (copied up to its last full line), never as idle
     do {
         var nilJob = job; nilJob.destination = URL(fileURLWithPath: sharedDir + "/nil-running.dmg"); nilJob.rootName = "nil running"
-        let before = (try? fm.contentsOfDirectory(atPath: bplace.path)) ?? []
         SessionsRestore.runningSessions = { nil }
-        do { _ = try SessionsExport.run(nilJob); check(false, "export: stops when running sessions can't be told") }
-        catch { check("\(error)" == "It couldn't be checked which Claude Code sessions run; nothing was exported. Try again.", "export: says it couldn't be checked: \(error)") }
+        let nilOut = try? SessionsExport.run(nilJob)
         SessionsRestore.runningSessions = { [] }
-        check(!fm.fileExists(atPath: nilJob.destination.path) && ((try? fm.contentsOfDirectory(atPath: bplace.path)) ?? []) == before, "export: that stop wrote nothing (no file, no work folder)")
+        check(nilOut != nil && fm.fileExists(atPath: nilJob.destination.path), "export: still made when running sessions can't be told (it only reads its source)")
         // (a day on, so no transcript is recent: only the unknown makes a session count as in use)
         let later = Date().addingTimeInterval(86400)
         let idle = SessionsExport.preview(part(studio), now: later)

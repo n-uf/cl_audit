@@ -1123,15 +1123,6 @@ enum SessionsExport {
         }
         let sources = job.parts.compactMap(\.source)
         if let why = SessionsBackup.placeProblem(job.place, for: sources) { throw ArchiveError(why) }
-        // which Claude Code sessions run, from a live source: if it can't be read, the whole export stops here, before anything is written
-        // (a profile's sessions can't be told apart from a running one's, so none is copied as if idle)
-        var held = Set<String>()
-        if !sources.isEmpty {
-            guard let live = SessionsRestore.runningSessions() else {
-                throw ArchiveError("It couldn't be checked which Claude Code sessions run; nothing was exported. Try again.")
-            }
-            held = live
-        }
         // the file must not land inside what is being copied from
         for s in sources {
             var from = [(s.codeDir as NSString).appendingPathComponent("projects")]
@@ -1194,7 +1185,7 @@ enum SessionsExport {
             guard let b = backup else { throw ArchiveError("Nothing to export from.") }
             let dir = "p\(i + 1)"
             let out = root.appendingPathComponent("profiles/\(dir)")
-            let (po, ids) = try buildPart(b, part: part, fp: fp, into: out, keys: job.keys, setup: job.setup, zip: job.password == nil, move: job.move, known: known, held: held, live: part.source != nil, now: job.now, cancel: cancel,
+            let (po, ids) = try buildPart(b, part: part, fp: fp, into: out, keys: job.keys, setup: job.setup, zip: job.password == nil, move: job.move, known: known, live: part.source != nil, now: job.now, cancel: cancel,
                                           progress: { f in progress?("\(label)writing the files", (Double(i) + f) / Double(job.parts.count)) })
             outcomes.append(po)
             rawIDs.formUnion(ids)
@@ -1325,7 +1316,7 @@ enum SessionsExport {
 
     /// Builds `out` (a backup's layout) from the backup `b`: ids and addresses replaced, keys decided, the in-use cut.
     /// Returns what it holds and the raw ids it replaced.
-    private static func buildPart(_ b: SessionsRestore.Backup, part: Part, fp: Fingerprint, into out: URL, keys: Keys, setup: Bool, zip: Bool, move: Bool = false, known: Identities, held: Set<String>, live: Bool, now: Date,
+    private static func buildPart(_ b: SessionsRestore.Backup, part: Part, fp: Fingerprint, into out: URL, keys: Keys, setup: Bool, zip: Bool, move: Bool = false, known: Identities, live: Bool, now: Date,
                                   cancel: () -> Bool, progress: @escaping (Double) -> Void) throws -> (PartOutcome, Set<String>) {
         let fm = FileManager.default
         guard let m = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) else { throw ArchiveError("The backup isn't there any more.") }

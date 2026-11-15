@@ -13,7 +13,7 @@ the notes before updating.
 ## 26.11.36 — 2026-11-15
 
 - When cl_audit can't read which programs are running (another user's `claude`, as with `sudo claude`, included), it now says it couldn't check whether Claude Code is using a session, instead of treating it as not running.
-- Undoing a re-point or exporting sessions now stops when cl_audit can't check whether Claude Code is using them, instead of going ahead; the Export page counts every session as in use while it can't tell.
+- Undoing a re-point now stops when cl_audit can't check whether Claude Code is using the sessions, instead of going ahead; the Export page counts every session as in use while it can't tell.
 
 ## 26.11.35 — 2026-11-15
 
