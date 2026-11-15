@@ -527,8 +527,9 @@ enum SwitchEngine {
     }
 
     /// Why a transcript may be being written, or nil: changed in the last 10 seconds, open in a process, or a Claude Code
-    /// process runs that session. A check that can't finish counts as busy.
-    static func busy(_ transcript: String, cli: String, now: Date = Date()) -> String? {
+    /// process runs that session. A check that can't finish counts as busy. `table`: the process table (the checks pass their
+    /// own; nil reads it now).
+    static func busy(_ transcript: String, cli: String, now: Date = Date(), table: [Processes.Entry]?? = nil) -> String? {
         if let m = (try? FileManager.default.attributesOfItem(atPath: transcript))?[.modificationDate] as? Date,
            now.timeIntervalSince(m) < 10 { return "its transcript changed seconds ago" }
         switch Processes.fileOpen(transcript) {
@@ -537,7 +538,7 @@ enum SwitchEngine {
         case .none: break
         }
         // (`cli` is a file name of letters, digits and "-" only: transcriptPath)
-        switch Processes.commandLineNames(cli) {
+        switch Processes.commandLineNames(cli, table: table) {
         case true?: return "Claude Code runs it"
         case nil: return "it couldn't be checked whether Claude Code runs it"
         case false?: break

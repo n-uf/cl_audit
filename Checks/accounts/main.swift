@@ -352,6 +352,50 @@ do {
     let commands = ["/opt/homebrew/bin/claude --resume \(uuid(901).uppercased())", "/bin/zsh -c claude \(uuid(905))", "claude"]
     let owned = Processes.owned(commands: commands, codeDir: "~/.claude-p8", alive: { $0 == 4242 || $0 == 4444 })
     check(owned == [uuid(901), uuid(902)], "owned: an id on a claude command line, a live registration; not another program's, not a dead or mismatched registration: \(owned.sorted())")
+    // the table those lines come from: a `claude` that can't be read (another user's, as with `sudo claude`) means "can't tell"
+    let mine = Processes.Entry(pid: 9002, uid: getuid(), ruid: getuid(), name: "claude",
+                               launch: Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["/opt/homebrew/bin/claude", "--resume", uuid(906)], configDir: nil))
+    let rootClaude = Processes.Entry(pid: 9001, uid: 0, ruid: 0, name: "claude", launch: nil, hidden: true)
+    let rootOther = Processes.Entry(pid: 9003, uid: 0, ruid: 0, name: "launchd", launch: nil)
+    let unreadable = Processes.Entry(pid: 9004, uid: nil, ruid: nil, name: "", launch: nil, hidden: true)
+    check(Processes.sessionsOwned(codeDir: "~/.claude-p8", table: [mine, rootOther])?.contains(uuid(906)) == true,
+          "workers from a table: this user's claude is read, another user's other program isn't needed")
+    check(Processes.sessionsOwned(codeDir: "~/.claude-p8", table: [mine, rootClaude]) == nil
+          && Processes.sessionsOwned(codeDir: "~/.claude-p8", table: [mine, unreadable]) == nil
+          && Processes.sessionsOwned(codeDir: "~/.claude-p8", table: .some(nil)) == nil,
+          "workers: another user's claude that can't be read, a process that can't be read at all, no table: can't tell (nil)")
+    check(Processes.sessionsOnCommandLines(table: [rootClaude]) == nil && Processes.commandLineNames(uuid(906), table: [mine, rootClaude]) == nil
+          && Processes.commandLineNames(uuid(906), table: [mine]) == true && Processes.commandLineNames(uuid(907), table: [mine]) == false,
+          "restore's running sessions and the switch's pgrep -f: nil when a claude can't be read; found or not otherwise")
+    let held = expand("~/.claude-p8/projects/p/\(uuid(906)).jsonl")
+    put(held, "{}\n")
+    let later = Date().addingTimeInterval(60)
+    check(SwitchEngine.busy(held, cli: uuid(906), now: later, table: [mine, rootClaude]) == "it couldn't be checked whether Claude Code runs it"
+          && SwitchEngine.busy(held, cli: uuid(906), now: later, table: [mine]) == "Claude Code runs it"
+          && SwitchEngine.busy(held, cli: uuid(907), now: later, table: [mine]) == nil,
+          "the switch's pointer: held, and said, when a claude can't be read; held when one runs the session; free otherwise")
+    check(Processes.looksLikeClaude("claude") && Processes.looksLikeClaude("2.1.318") && !Processes.looksLikeClaude("claude-helper")
+          && !Processes.looksLikeClaude("launchd") && !Processes.looksLikeClaude("1password"),
+          "a name that may be Claude Code: claude…, or the native installer's version number")
+    // the new-account page: Code tab or terminal by the program as it was started (argv[0], what `ps -o comm` printed)
+    let appClaude = home + "/Library/Application Support/Claude/claude-code/2.1.318/claude"
+    let tab = Processes.Entry(pid: 9005, uid: getuid(), ruid: getuid(), name: "claude", launch: Processes.Launch(exe: appClaude, args: [appClaude], configDir: "/x/.claude-w"))
+    let term = Processes.Entry(pid: 9006, uid: getuid(), ruid: getuid(), name: "claude", launch: Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: nil))
+    check(Processes.codeRun(tab) == ClaudeRun(id: 9005, kind: .codeTab, folder: "/x/.claude-w") && Processes.codeRun(term) == ClaudeRun(id: 9006, kind: .terminal, folder: "~/.claude"),
+          "new account: the app's claude is a Code tab's, a terminal's by name is a terminal's; the folder, or ~/.claude")
+    // KERN_PROCARGS2: an empty first argument isn't taken for the path's padding, and the environment isn't read as arguments
+    var raw = [UInt8](repeating: 0, count: 4)
+    withUnsafeBytes(of: Int32(3)) { b in for k in 0..<4 { raw[k] = b[k] } }
+    raw += Array("/x/claude".utf8) + [UInt8](repeating: 0, count: 7)          // 9 bytes, NUL, padding to 16
+    raw += [0] + Array("-p".utf8) + [0] + [0]                                   // "", "-p", ""
+    raw += Array("CLAUDE_CONFIG_DIR=/c".utf8) + [0] + Array("A=1".utf8) + [0, 0]
+    let parsed = Processes.parse(raw, size: raw.count)
+    check(parsed == Processes.Launch(exe: "/x/claude", args: ["", "-p", ""], configDir: "/c"), "argv by argc exactly, an empty first one too: \(String(describing: parsed))")
+    check(Processes.parse(Array(raw.prefix(22)), size: 22) == nil, "arguments cut short: not read")
+    // this Mac's own table reads (it is only read, never signalled): "can't tell" mustn't be the answer every time
+    let real = Processes.table()
+    check(real != nil && Processes.commandLines(real) != nil && real?.contains { $0.pid == getpid() && $0.launch != nil } == true,
+          "the real table reads, cl_audit's own process with its arguments; hidden: \(real?.filter(\.hidden).map(\.name) ?? [])")
 }
 
 // ============ 8b. the move inside the one folder: backup, held sessions, tasks with their state, Undo ============

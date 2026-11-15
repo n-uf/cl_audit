@@ -495,6 +495,14 @@ MainActor.assumeIsolated {
           && Processes.isCode(name: "2.1.318", exe: home + "/.local/share/claude/versions/2.1.318", args: ["2.1.318"], configDir: nil, want: std, std: std) == true
           && Processes.isCode(name: "claude", exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: "/elsewhere", want: want, std: std) == false,
           "process: the Claude app itself isn't Claude Code; its own Claude Code run from a terminal is; a versions/ launch is; another folder's isn't")
+    check(Processes.isCode(name: "2.1.318", exe: nil, args: [], configDir: nil, want: std, std: std) == nil,
+          "process: an unreadable one named like the native installer's version is unknown too")
+    let ours = Processes.Entry(pid: 9101, uid: getuid(), ruid: getuid(), name: "claude", launch: Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: cc))
+    let rootClaude = Processes.Entry(pid: 9102, uid: 0, ruid: 0, name: "claude", launch: nil, hidden: true)
+    let rootOther = Processes.Entry(pid: 9103, uid: 0, ruid: 0, name: "launchd", launch: nil)
+    check(Processes.codeRuns(codeDir: cc, table: [ours, rootOther]) == true && Processes.codeRuns(codeDir: cc, table: [rootOther]) == false
+          && Processes.codeRuns(codeDir: cc, table: [rootOther, rootClaude]) == nil && Processes.codeRuns(codeDir: cc, table: .some(nil)) == nil,
+          "Claude Code for the folder from a table: ours on it runs; none doesn't; another user's claude that can't be read, or no table: can't tell")
     check(Processes.isCode(name: "Claude", exe: "/Applications/Claude-Work.app/Contents/MacOS/Claude", args: [], configDir: nil, want: std, std: std) == false,
           "process: a profile's own window copy (Claude-Work.app) isn't Claude Code")
 

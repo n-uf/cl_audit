@@ -4,8 +4,8 @@
 // (Launcher.isWindow). Claude Code (`claude`): by the folder it runs on (CLAUDE_CONFIG_DIR, or ~/.claude), by the session ids
 // on its command line, or as the program of a Code-tab or a terminal. All of it is read from the kernel (proc_listallpids,
 // proc_pidinfo, KERN_PROCARGS2, proc_pidpath): no `ps` or `pgrep`, so nothing waits on a helper (waiting for one ran the run loop
-// and redrew SwiftUI windows mid-update). Where the table can't be read the answer is nil, and the callers then refuse rather
-// than guess. Of a process's environment only CLAUDE_CONFIG_DIR is kept; the rest is compared as bytes and wiped. Only `lsof`
+// and redrew SwiftUI windows mid-update). Where the table can't be read, or a process that may be Claude Code can't be (another
+// user's `claude`, as with `sudo claude`, included), the answer is nil, and the callers then refuse rather than guess. Of a process's environment only CLAUDE_CONFIG_DIR is kept; the rest is compared as bytes and wiped. Only `lsof`
 // (which program has a file open) is still a tool, run through `run`.
 //
 // Running. `run` and `output` start a program in the temporary folder with no input, wait at most its time limit, then ask it to
@@ -28,49 +28,103 @@ enum Processes {
         var configDir: String?
     }
 
-    /// A process of the table: its id, its effective and real user, its short name (proc_name) and how it was started (nil when
-    /// that can't be read: another user's process, or one that has just ended).
+    /// A process of the table: its id, its effective and real user (nil when even they can't be read), its name (proc_name for
+    /// cl_audit's user, else the kernel's short name) and how it was started. That is read for cl_audit's user's processes and for
+    /// any whose name looks like Claude Code's (`looksLikeClaude`); another user's other processes aren't read (`ps` couldn't read
+    /// them either). `hidden`: it may be Claude Code, but how it was started couldn't be read (another user's `claude`, as with
+    /// `sudo claude`, or anything whose basic facts can't be read): whoever asks then can't tell, and says so.
     struct Entry {
         var pid: pid_t
-        var uid: uid_t
-        var ruid: uid_t
+        var uid: uid_t?
+        var ruid: uid_t?
         var name: String
         var launch: Launch?
+        var hidden = false
     }
 
-    /// Every process the kernel lists whose basic facts can be read, cl_audit itself included; nil when the list can't be read.
+    /// Every process the kernel lists, cl_audit itself included, except those that ended meanwhile or are ended and waiting to
+    /// be reaped (they run nothing); nil when the list can't be read or may have been cut short.
     static func table() -> [Entry]? {
         let n = proc_listallpids(nil, 0)
         guard n > 0 else { return nil }
         var pids = [pid_t](repeating: 0, count: Int(n) + 64)
         let got = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size))
-        guard got > 0 else { return nil }
+        // a full list may have left processes out
+        guard got > 0, Int(got) < pids.count else { return nil }
+        let me = getuid()
         var out: [Entry] = []
+        // the basic facts through KERN_PROC (proc_pidinfo refuses another user's processes): nil when it ended (or is ended and
+        // waiting to be reaped); .unreadable when they can't be read
+        enum Facts { case read(kinfo_proc), unreadable }
+        func facts(_ pid: pid_t) -> Facts? {
+            var info = kinfo_proc()
+            var size = MemoryLayout<kinfo_proc>.stride
+            var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
+            guard sysctl(&mib, 4, &info, &size, nil, 0) == 0 else { return errno == ESRCH ? nil : .unreadable }
+            return size > 0 && info.kp_proc.p_stat != CChar(SZOMB) ? .read(info) : nil
+        }
         for pid in pids.prefix(Int(got)) where pid > 0 {
-            var info = proc_bsdinfo()
-            guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0 else { continue }
-            var nameBuf = [CChar](repeating: 0, count: 256)
-            let name = proc_name(pid, &nameBuf, UInt32(nameBuf.count)) > 0 ? String(cString: nameBuf) : ""
-            out.append(Entry(pid: pid, uid: info.pbi_uid, ruid: info.pbi_ruid, name: name, launch: launch(of: pid)))
+            guard let f = facts(pid) else { continue }                                  // ended
+            guard case .read(let info) = f else {
+                out.append(Entry(pid: pid, uid: nil, ruid: nil, name: "", launch: nil, hidden: true))
+                continue
+            }
+            let uid = info.kp_eproc.e_ucred.cr_uid, ruid = info.kp_eproc.e_pcred.p_ruid
+            var name = withUnsafeBytes(of: info.kp_proc.p_comm) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+            if uid == me {
+                var nameBuf = [CChar](repeating: 0, count: 256)
+                if proc_name(pid, &nameBuf, UInt32(nameBuf.count)) > 0 { name = String(cString: nameBuf) }
+            }
+            var e = Entry(pid: pid, uid: uid, ruid: ruid, name: name, launch: nil)
+            if uid == me || looksLikeClaude(name) {
+                let r = read(pid)
+                e.launch = r.launch
+                // not read: hidden, unless it ended meanwhile
+                e.hidden = r.launch == nil && !r.gone && facts(pid) != nil
+            }
+            out.append(e)
         }
         return out
     }
 
+    /// A name Claude Code's program may have: `claude…` (not a helper), or a version number (the native installer's
+    /// …/claude/versions/2.1.318).
+    static func looksLikeClaude(_ name: String) -> Bool {
+        let short = name.lowercased()
+        if short == "claude" || short == "claude.exe" || short.hasPrefix("claude") && !short.contains("helper") { return true }
+        let parts = short.split(separator: ".", omittingEmptySubsequences: false)
+        return parts.count >= 2 && parts.allSatisfy { !$0.isEmpty && $0.allSatisfy(\.isASCII) && $0.allSatisfy(\.isNumber) }
+    }
+
     /// How a process was started (KERN_PROCARGS2), or nil when it can't be read. Of its environment only CLAUDE_CONFIG_DIR is
     /// kept: each entry is compared as bytes, and the buffer is wiped before it is let go.
-    static func launch(of pid: pid_t) -> Launch? {
+    static func launch(of pid: pid_t) -> Launch? { read(pid).launch }
+
+    /// `launch(of:)`, and whether the process had ended (then nothing is hidden by it).
+    private static func read(_ pid: pid_t) -> (launch: Launch?, gone: Bool) {
         var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
         var size = 0
-        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size, size < 4 << 20 else { return nil }
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0 else { return (nil, errno == ESRCH) }
+        guard size > MemoryLayout<Int32>.size, size < 4 << 20 else { return (nil, false) }
         var buf = [UInt8](repeating: 0, count: size)
         defer { for k in buf.indices { buf[k] = 0 } }               // (the rest of the environment isn't kept)
-        guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return nil }
+        guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0 else { return (nil, errno == ESRCH) }
+        return (parse(buf, size: size), false)
+    }
+
+    /// KERN_PROCARGS2's bytes: argc, the executable path, NULs up to the next 8 bytes from its start (more when the layout is
+    /// another), exactly argc arguments (an empty one included, the first too), then the environment up to an empty entry.
+    static func parse(_ buf: [UInt8], size: Int) -> Launch? {
+        guard size > MemoryLayout<Int32>.size, size <= buf.count else { return nil }
         let argc = Int(buf.withUnsafeBytes { $0.load(as: Int32.self) })
         var i = MemoryLayout<Int32>.size
         let s0 = i
         while i < size && buf[i] != 0 { i += 1 }                    // the executable path
         let exe = String(decoding: buf[s0..<i], as: UTF8.self)
-        while i < size && buf[i] == 0 { i += 1 }                    // its padding
+        // its padding: its NUL rounded up to 8 bytes (so an empty first argument isn't taken for padding); a layout that
+        // isn't that is skipped NUL by NUL as before
+        let aligned = s0 + (i - s0 + 1 + 7) / 8 * 8
+        if aligned <= size && buf[i..<aligned].allSatisfy({ $0 == 0 }) { i = aligned } else { while i < size && buf[i] == 0 { i += 1 } }
         var args: [String] = []
         while args.count < argc && i < size {
             let start = i
@@ -89,6 +143,7 @@ enum Processes {
             }
             i += 1
         }
+        guard args.count == argc else { return nil }                // cut short: not read
         return Launch(exe: exe, args: args, configDir: configDir)
     }
 
@@ -137,24 +192,30 @@ enum Processes {
             runs.append(ClaudeRun(id: app.processIdentifier, kind: .desktop, folder: folder))
         }
         let uid = getuid()
-        for e in table() ?? [] where e.name == "claude" && e.ruid == uid {
-            let program = e.launch?.args.first ?? e.name
-            let kind: ClaudeRun.Kind = program.contains("/Library/Application Support/Claude") ? .codeTab : .terminal
-            runs.append(ClaudeRun(id: e.pid, kind: kind, folder: e.launch?.configDir.map(tilde) ?? "~/.claude"))
-        }
+        for e in table() ?? [] where e.name == "claude" && e.ruid == uid { runs.append(codeRun(e)) }
         return runs
     }
 
+    /// One `claude` process as the new-account page shows it: a Code-tab's when its program, as it was started (argv[0], what
+    /// `ps -o comm` printed), is in the Claude app's folder, else a terminal's; its folder, or ~/.claude.
+    static func codeRun(_ e: Entry) -> ClaudeRun {
+        let program = e.launch?.args.first ?? e.name
+        let kind: ClaudeRun.Kind = program.contains("/Library/Application Support/Claude") ? .codeTab : .terminal
+        return ClaudeRun(id: e.pid, kind: kind, folder: e.launch?.configDir.map(tilde) ?? "~/.claude")
+    }
+
     /// Whether Claude Code runs for this Claude Code folder (CLAUDE_CONFIG_DIR, or ~/.claude when it isn't set), among this
-    /// user's processes: nil when that can't be told (the table can't be read, or a process that may be Claude Code can't be).
-    /// The Claude app itself isn't Claude Code; the Claude Code it starts is.
-    static func codeRuns(codeDir: String) -> Bool? {
-        guard let all = table() else { return nil }
+    /// user's processes: nil when that can't be told (the table can't be read, a process that may be Claude Code can't be, or
+    /// another user's that looks like Claude Code, which may be on this folder, as `sudo claude` is). The Claude app itself isn't
+    /// Claude Code; the Claude Code it starts is.
+    static func codeRuns(codeDir: String, table given: [Entry]?? = nil) -> Bool? {
+        guard let all = given ?? table() else { return nil }
         let me = getpid(), uid = getuid()
         let want = FolderKey.canonical(codeDir)
         let std = FolderKey.canonical(NSHomeDirectory() + "/.claude")
         var unknown = false
-        for e in all where e.pid != me && e.uid == uid {
+        for e in all where e.pid != me {
+            guard e.uid == uid else { if e.hidden { unknown = true }; continue }
             switch isCode(name: e.name, exe: e.launch?.exe, args: e.launch?.args ?? [], configDir: e.launch?.configDir, want: want, std: std) {
             case true?: return true
             case nil: unknown = true
@@ -168,9 +229,7 @@ enum Processes {
     /// running by the caller: nothing shared is written); false otherwise. The Claude app's own main program isn't Claude Code (its window
     /// is checked apart); the Claude Code it carries, run from a terminal, is.
     static func isCode(name: String, exe: String?, args: [String], configDir: String?, want: String, std: String) -> Bool? {
-        let short = name.lowercased()
-        let looks = short == "claude" || short == "claude.exe" || short.hasPrefix("claude") && !short.contains("helper")
-        guard let exe else { return looks ? nil : false }
+        guard let exe else { return looksLikeClaude(name) ? nil : false }
         if exe.hasSuffix("/Claude.app/Contents/MacOS/Claude") || exe.contains("/Claude.app/Contents/Frameworks/") { return false }
         // a profile's own window copy (…/Claude-Work.app/Contents/MacOS/Claude): any app bundle's program that isn't Claude Code's own
         // claude.app is a window, not Claude Code
@@ -187,17 +246,20 @@ enum Processes {
         return key == want
     }
 
-    /// The command lines the kernel can read (each process's arguments joined by spaces, as `ps -o command` prints them), every
-    /// user's; nil when the table can't be read.
-    static func commandLines() -> [String]? {
-        table().map { $0.compactMap { $0.launch.map { $0.args.joined(separator: " ") } } }
+    /// The command lines the kernel reads (each process's arguments joined by spaces, as `ps -o command` prints them): this user's
+    /// and those of any user's process that looks like Claude Code. nil when the table can't be read or a process that may be
+    /// Claude Code can't be (`Entry.hidden`): a session it holds would look free. `given`: a table the caller read (the checks
+    /// pass their own); nil reads one now.
+    static func commandLines(_ given: [Entry]?? = nil) -> [String]? {
+        guard let all = given ?? table(), !all.contains(where: \.hidden) else { return nil }
+        return all.compactMap { $0.launch.map { $0.args.joined(separator: " ") } }
     }
 
     /// The session ids a running Claude Code owns (claude-transplant's workers): every id on the command line of a process whose
     /// program is `claude`, and the sessionId of `<codeDir>/sessions/<pid>.json` for a process that runs. nil when the processes
     /// can't be read (then nothing moves: claude-transplant's "cannot inspect running workers").
-    static func sessionsOwned(codeDir: String) -> Set<String>? {
-        commandLines().map { owned(commands: $0, codeDir: codeDir, alive: runs) }
+    static func sessionsOwned(codeDir: String, table given: [Entry]?? = nil) -> Set<String>? {
+        commandLines(given).map { owned(commands: $0, codeDir: codeDir, alive: runs) }
     }
 
     /// `sessionsOwned` on given command lines (the checks pass their own).
@@ -235,8 +297,8 @@ enum Processes {
 
     /// The session ids on the command lines that name Claude (`--resume <id>`, `--session-id <id>`), lower case; nil when the
     /// processes can't be read. Limits: a session resumed from its own picker, or with --continue, isn't named there.
-    static func sessionsOnCommandLines() -> Set<String>? {
-        guard let lines = commandLines() else { return nil }
+    static func sessionsOnCommandLines(table given: [Entry]?? = nil) -> Set<String>? {
+        guard let lines = commandLines(given) else { return nil }
         var out = Set<String>()
         for s in lines where s.localizedCaseInsensitiveContains("claude") {
             for m in uuidPattern.matches(in: s, range: NSRange(s.startIndex..., in: s)) { out.insert((s as NSString).substring(with: m.range).lowercased()) }
@@ -245,8 +307,8 @@ enum Processes {
     }
 
     /// Whether any process's command line has this text in it (what `pgrep -f` finds); nil when the processes can't be read.
-    static func commandLineNames(_ text: String) -> Bool? {
-        commandLines().map { $0.contains { $0.contains(text) } }
+    static func commandLineNames(_ text: String, table given: [Entry]?? = nil) -> Bool? {
+        commandLines(given).map { $0.contains { $0.contains(text) } }
     }
 
     enum Probe { case found, none, unknown }
@@ -288,7 +350,7 @@ enum Processes {
 
     /// The one runner: in the temporary folder, no input, errors dropped, what it prints kept (up to 1 MB) when `output`. Past
     /// `timeout` it is asked to end (SIGTERM), then killed (SIGKILL) if it hasn't within `grace`, and nil is returned. What it
-    /// printed is waited for only until the time limit, or a second after it ended (a program it started may hold the output open).
+    /// printed is read until a second after it ended at most (a program it started may hold the output open).
     private static func start(_ exe: String, _ args: [String], environment: [String: String]?, timeout: TimeInterval, grace: TimeInterval,
                               output: Bool) -> (status: Int32, out: Data)? {
         let p = Process()
@@ -326,7 +388,9 @@ enum Processes {
             while p.isRunning && Date() < reaped { usleep(5_000) }
             return nil
         }
-        if pipe != nil, read.wait(timeout: .now() + max(1, deadline.timeIntervalSinceNow)) == .timedOut { return nil }
+        // it ended, so all it wrote is in the pipe: read for at most a second more (a program it started may hold the pipe
+        // open for good), then what was read is its output
+        if pipe != nil { _ = read.wait(timeout: .now() + 1) }
         box.lock.lock(); let out = box.data; box.lock.unlock()
         return (p.terminationStatus, out)
     }

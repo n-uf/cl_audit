@@ -147,6 +147,9 @@ do {
     check(Date().timeIntervalSince(t0) < 4, "…and doesn't block for long (\(Date().timeIntervalSince(t0)) s)")
     let t1 = Date()
     check(Processes.output("/bin/sh", ["-c", "sleep 20"], timeout: 0.5, grace: 0.1) == nil && Date().timeIntervalSince(t1) < 3, "Processes.output stops a slow shell")
+    let t2 = Date()
+    let held = Processes.output("/bin/sh", ["-c", "echo hi; sleep 3 &"], timeout: 5, grace: 0.1)
+    check(held == "hi" && Date().timeIntervalSince(t2) < 2.5, "a program that ended while one it started holds its output: what it printed, within a second (\(held ?? "nil"))")
     check(ClaudeLocator.version(of: p("missing")) == nil, "no program, no version")
 }
 
