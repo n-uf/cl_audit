@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- A switch now moves only the Claude app's real session entries (`local_<id>.json` files). A file named like one but not an id, a link or anything that isn't a file stays in the old account, and the switch says so ("Left with ann: 2 files named like a Code-tab session that aren't one (a link, a file not named by an id).") and, when it moves anything, counts them in its record. Before, a name that wasn't an id was moved and a link was followed.
 
 ## 26.11.41 — 2026-11-15
 

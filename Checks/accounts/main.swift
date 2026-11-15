@@ -452,6 +452,7 @@ do {
     put("\(src)/\(tk)", #"{"sessionId":"local_t","scheduledTaskId":"t1"}"#)
     put("\(src)/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"t1","notifySessionId":"local_t"}],"recordedSkips":{"t1":{"n":2}},"runRetries":{}}"#)
     put("\(dst)/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"t9"}],"runRetries":{"t9":1}}"#)
+    put("\(src)/local_oddname.json", "{}")                  // shaped like an entry, not one: left in place, and said
     var e = profile("mv", "~/.claude-mv", u1, standby: [StandbyAccount(email: u2.email!, seat: u2, id: "k2")])
     e.desktop = .separate; e.desktopDataDir = wdE
     let k2 = e.standby[0]
@@ -463,6 +464,9 @@ do {
     check((try? SwitchEngine.run(p, windowClosed: { false }, backups: place)) == nil && !fm.fileExists(atPath: dst + "/" + a), "the window open: refused, nothing moved")
     let r = try! SwitchEngine.run(p, windowClosed: { true }, backups: place)
     check(r.held == [h] && r.backup != nil && SessionsBackup.load(profile: "mv", id: r.backup!, place: place)?.kind == .beforeSwitch(r.id), "a backup first, naming the receipt; the held one noted")
+    check(p.odd == [.unknownName] && r.leftInPlace == 1 && fm.fileExists(atPath: "\(src)/local_oddname.json") && !fm.fileExists(atPath: "\(dst)/local_oddname.json")
+          && SwitchRunner.stayWords(p)?.contains("Left with \(AccountNames.short(u1.email!)): 1 file named like a Code-tab session that isn't one (a file not named by an id).") == true,
+          "the odd name: left in place, counted in the receipt, said in the plan and done line (\(String(describing: r.leftInPlace)))")
     let moved = (try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: dst + "/" + a)))) as? [String: Any]
     check(moved != nil && moved?["error"] == nil && (moved?["bridgeSessionIds"] as? [Any])?.isEmpty == true && moved?["sessionId"] as? String == "local_a",
           "moved without the old account's error keys and Remote Control ids, same id")
@@ -1442,6 +1446,14 @@ do {
     symlink(base + "/elsewhere.json", s.sourceDir + "/" + entry(6))
     check(SessionTransfer.entries(s) == (1...4).map(entry), "the source's entries: ClaudeFiles' lister (a non-id name, a FIFO and a link left out): \(SessionTransfer.entries(s))")
     check(SessionTransfer.hasAnything(s), "something to move")
+    // ...but counted, so the plan and its done line say what stayed behind
+    let odd = SessionTransfer.odd(s)
+    check(odd.map(\.rawValue).sorted() == ["link", "notAFile", "unknownName"], "the odd names counted, by kind: \(odd)")
+    check(SwitchRunner.leftWords(odd, old: "ann") == "Left with ann: 3 files named like a Code-tab session that aren't one (a link, a file not named by an id, something that isn't a file).",
+          "the left-in-place line: \(SwitchRunner.leftWords(odd, old: "ann") ?? "nil")")
+    check(SwitchRunner.leftWords([.link], old: "ann") == "Left with ann: 1 file named like a Code-tab session that isn't one (a link).", "one left in place")
+    check(SwitchRunner.leftWords([.unknownName, .unknownName], old: "ann") == "Left with ann: 2 files named like a Code-tab session that aren't one (2 files not named by an id).", "two of a kind")
+    check(SwitchRunner.leftWords([], old: "ann") == nil, "none left: no line")
 
     // sorted: one moves, one is the target's already, one the target deleted, one a running Claude Code owns (by its cli id)
     let sorted = SessionTransfer.sort(s, owned: ["cli-4"])

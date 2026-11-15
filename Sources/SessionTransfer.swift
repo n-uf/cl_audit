@@ -5,7 +5,8 @@
 // the entries, moves them, and puts them back.
 //
 // The entries are ClaudeFiles' (its one lister: local_<UUID>.json, regular files only, never a link); any other name in
-// the source (not an id, a link, a pipe) is not listed, so it stays where it is, unmoved and unmentioned. A running Claude
+// the source shaped like one (not an id, a link, a pipe) is not listed, so it stays where it is, never moved; `odd` counts
+// them, for the caller to say. A running Claude
 // Code's sessions are held where they are (Processes, failing closed: when it can't be told, nothing moves). Every write is
 // create-only (SwitchEngine.writeNew, SafeFiles' CreateOnly), checked back, and only then is the original parked (never
 // deleted); a step is written down before it acts and marked done after. The tasks go through TaskRegistry (compare-and-swap,
@@ -62,6 +63,27 @@ enum SessionTransfer {
 
     /// The source's entries, by ClaudeFiles' one lister.
     static func entries(_ s: Scopes) -> [String] { ClaudeFiles.sessionEntries(in: s.sourceDir).map(\.name) }
+
+    /// What a name in the source that looks like an entry (local_….json) but isn't one is: never moved, only counted, so the
+    /// plan and its done line can say what stayed behind.
+    enum Odd: String, Codable, Equatable { case link, unknownName, notAFile }
+
+    /// The source's names shaped like an entry that ClaudeFiles doesn't list (a link, a name that isn't an id, a folder or a
+    /// pipe), sorted by name: they stay where they are, and are said. One read of the folder, each name sorted by the
+    /// lister's own rule (isEntryName and a regular file: an entry, not counted).
+    static func odd(_ s: Scopes) -> [Odd] {
+        let names = ((try? FileManager.default.contentsOfDirectory(atPath: s.sourceDir)) ?? []).sorted()
+        return names.compactMap { n in
+            guard n.hasPrefix("local_"), n.hasSuffix(".json") else { return nil }
+            var st = stat()
+            guard lstat((s.sourceDir as NSString).appendingPathComponent(n), &st) == 0 else { return nil }   // gone meanwhile
+            switch st.st_mode & S_IFMT {
+            case S_IFLNK: return .link
+            case S_IFREG: return ClaudeFiles.isEntryName(n) ? nil : .unknownName
+            default: return .notAFile
+            }
+        }
+    }
 
     /// The source has anything to move at all (an entry, or a task file).
     static func hasAnything(_ s: Scopes) -> Bool { !entries(s).isEmpty || TaskRegistry.exists(s.sourceDir) }

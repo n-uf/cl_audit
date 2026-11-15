@@ -184,7 +184,23 @@ final class SwitchRunner: ObservableObject {
             let out = why.contains("same id") ? "Remove one of the two, then switch again." : "Fix that, then switch again."
             parts.append("The scheduled tasks stay with \(old), and so do their sessions: \(why). \(out)")
         }
+        if let left = leftWords(p.odd, old: p.from.email.map(AccountNames.short) ?? "the old account") { parts.append(left) }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
+    /// The names in the old account's folder shaped like a Code-tab session that aren't one: never moved, said (with the
+    /// account they stay with, `old`, named by address like the tasks) so nobody thinks everything moved. nil when none.
+    static func leftWords(_ odd: [SessionTransfer.Odd], old: String) -> String? {
+        guard !odd.isEmpty else { return nil }
+        let kinds: [(SessionTransfer.Odd, String, String)] = [(.link, "a link", "links"),
+                                                             (.unknownName, "a file not named by an id", "files not named by an id"),
+                                                             (.notAFile, "something that isn't a file", "things that aren't files")]
+        let what = kinds.compactMap { k, one, many -> String? in
+            let n = odd.filter { $0 == k }.count
+            return n == 0 ? nil : n == 1 ? one : "\(n) \(many)"
+        }
+        let n = odd.count
+        return "Left with \(old): \(n) \(n == 1 ? "file named like a Code-tab session that isn't one" : "files named like a Code-tab session that aren't one") (\(what.joined(separator: ", ")))."
     }
 
     static func heldWords(_ n: Int) -> String {

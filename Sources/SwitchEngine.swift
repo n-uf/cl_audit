@@ -62,6 +62,7 @@ struct SwitchPlan: Equatable {
     var tasks = 0                       // scheduled tasks to move
     var taskStay: String? = nil         // why the scheduled tasks stay (taskProblem): then `tasks` is 0 and neither file is touched
     var taskHeld: [String] = []         // the sessions of those tasks, held too (a subset of `held`)
+    var odd: [SessionTransfer.Odd] = [] // names shaped like an entry that aren't one (a link, an unknown name): left in place, said
     var backupTranscripts = true        // the backup (SessionsBackup.swift) takes Claude Code's transcripts too
     var entry: AccountEntry? = nil      // cl_audit's record of the profile, for the backup
 
@@ -106,6 +107,8 @@ struct SwitchReceipt: StoredReceipt, Equatable {
     var partlyUndone: Date?
     /// How many scheduled tasks the tasks' step moved (written down with the step; nil for older receipts).
     var tasksMoved: Int?
+    /// How many names shaped like an entry, but not one, were left in place (SessionTransfer.odd; nil: none, or older).
+    var leftInPlace: Int?
 
     /// What this switch still has moved now: its placed session entries still where it put them, unchanged, and its
     /// scheduled tasks while the new account's task file is still as it wrote it. (Undo takes them back; after a partial
@@ -218,6 +221,7 @@ enum SwitchEngine {
         var p = SwitchPlan(profile: e.id, standby: s.id, dataDir: expand(dir), codeDir: Account(e).configDir, from: from, to: to, entry: e)
         // nothing is written through a link inside the folders: refused, and said why
         if let why = linkProblem(p) { return .failure(.notReady(why)) }
+        p.odd = SessionTransfer.odd(p.scopes)
         // the sessions and tasks, sorted by SessionTransfer (its entries are ClaudeFiles' one lister's)
         guard SessionTransfer.hasAnything(p.scopes) else { return .success(p) }
         guard let live = owned ?? Processes.sessionsOwned(codeDir: p.codeDir) else {
@@ -253,6 +257,7 @@ enum SwitchEngine {
         var r = SwitchReceipt(id: receiptID(now, p.profile), profile: p.profile, standby: p.standby, dataDir: p.dataDir,
                               from: SeatID(p.from), to: SeatID(p.to), started: now)
         r.held = p.held.isEmpty ? nil : p.held
+        r.leftInPlace = p.odd.isEmpty ? nil : p.odd.count
         let place = backups ?? BackupPrefs.placeURL
         if p.moves {
             let id = SessionsBackup.newID(now)
