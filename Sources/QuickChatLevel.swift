@@ -79,7 +79,7 @@ struct QuickChatLevel: Equatable {
     /// same account (`sameAccount`) and only while they count as the profile's (`counts`, QuickChatTarget.liveCounts).
     /// Otherwise the record's level alone: numbers the record doesn't show for the profile never come back from the chat.
     /// A refusal Claude Code met (refusedUntil) is the chat's own sign-in's: it stays for the same account while
-    /// `refusals` (not the split nor a clash), whether or not the numbers count yet. A percent from before a limit's reset is never
+    /// `refusals` (not the split), whether or not the numbers count yet. A percent from before a limit's reset is never
     /// kept (current). Live percents dropped while they didn't count stay dropped until Claude Code says them again
     /// (the next answer).
     static func kept(record: QuickChatLevel?, shown: QuickChatLevel?, sameAccount: Bool, counts: Bool, refusals: Bool,

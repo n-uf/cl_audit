@@ -2505,30 +2505,6 @@ MainActor.assumeIsolated {
     check(qcModel.blocked && qcModel.offer?.own == true && qcModel.offer?.key == backKey && qcModel.offer?.keyTitle == "Move Claude Code back…"
           && qcModel.offer?.lineWords(name: "Acc").contains("move Claude Code back to its own account") == true,
           "a clash, the record's own full level: the model offers the move-back (words reached through update): \(qcModel.offer?.lineWords(name: "Acc") ?? "none")")
-    // a clash: Claude Code's own limit event and limit refusal are the folder's account's (Other's), never the header's
-    // account's: nothing marked full, typing not held, no reading asked for; the answer still says the refusal. The same
-    // events outside a clash (and the split) hold the bar
-    func feed(_ target: QuickChatTarget) -> (blocked: Bool, filled: Int, problem: QuickChatProblem?) {
-        let m = QuickChatModel(); var filled = 0
-        m.limitFilled = { filled += 1 }
-        m.target = target
-        m.turns = [QuickChatTurn(question: "hi")]
-        m.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: now.addingTimeInterval(3600)))
-        m.handle(.message(text: "You've hit your limit", model: "", error: "rate_limit"))
-        m.handle(.done(isError: true, text: "You've hit your limit", ms: 10, session: "s"))
-        return (m.blocked, filled, m.turns.last?.problem)
-    }
-    let clashFeed = feed(clashTarget)
-    var ownTarget = clashTarget; ownTarget.clash = false
-    let ownFeed = feed(ownTarget)
-    check(clashTarget.clash && !clashFeed.blocked && clashFeed.filled == 0 && clashFeed.problem == .limitFull
-          && ownFeed.blocked && ownFeed.filled == 1 && ownFeed.problem == .limitFull,
-          "a clash: Other's limit event and refusal never mark the header's account full nor hold typing (outside a clash they do): \(clashFeed.blocked) / \(ownFeed.blocked)")
-    // …nor is a refusal kept from before: the kept level takes no refusals in a clash
-    var heldRefusal = QuickChatLevel(nil); heldRefusal.refusedUntil = now.addingTimeInterval(600)
-    qcModel.level = heldRefusal
-    qcModel.update(target: clashTarget, level: QuickChatLevel(nil), offer: { nil })
-    check(!qcModel.blocked, "a clash: a refusal Claude Code met (Other's account's) isn't kept as the profile's level")
     // the Switch page's remembered move-back is used only for its own switch, while one is under way or ended: not after a
     // Cancel (ready again), another pick, or another profile's page
     let started = SwitchPage.ClashBack(key: backKey, owner: "Work")
