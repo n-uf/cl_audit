@@ -233,13 +233,18 @@ do {
 do {
     let std = Account(profile("main", "~/.claude", u1)), other = Account(profile("work", "~/.claude-o'brien", u1))
     let l1 = ClaudeCLI.loginLines("/opt/claude", account: std, email: "ultra-2@example.com")
-    let unset = "unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY"
+    // (ClaudeAuth's SignInScript since landing 2: a base URL and extra headers are unset too, and the lines it shows are
+    // printed raw: `print -r --`, never zsh's echo, which takes a backslash in a path for an escape)
+    let unset = "unset ANTHROPIC_API_KEY ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE_USE_FOUNDRY ANTHROPIC_BASE_URL ANTHROPIC_CUSTOM_HEADERS"
     let cmd = l1.firstIndex { $0.contains("auth login") } ?? 0
-    check(l1.firstIndex(of: unset).map { $0 < cmd } == true, "a key or another provider from the shell's settings is unset before the sign-in")
+    check(l1.firstIndex(of: unset).map { $0 < cmd } == true, "a key, another provider, a base URL or extra headers from the shell's settings are unset before the sign-in")
     check(l1.contains("unset CLAUDE_CONFIG_DIR") && l1[cmd] == "'/opt/claude' auth login --claudeai --email 'ultra-2@example.com'",
           "~/.claude signs in with CLAUDE_CONFIG_DIR unset, the address filled in")
-    check(!l1.contains { $0.contains(".done") } && l1.contains { $0.hasPrefix("if [ $s -eq 0 ]; then echo 'Done.") },
-          "no marker for a switch; \"Done.\" only when the login ended well")
+    check(!l1.contains { $0.contains(".done") }
+          && l1.contains("if [ $s -eq 0 ]; then print -r -- 'Done. cl_audit picks up the new sign-in by itself within seconds.'; else print -r -- 'The sign-in did not finish. Close this window and try again from cl_audit.'; fi"),
+          "no marker for a switch; \"Done.\" only when the login ended well, in cl_audit's words")
+    check(l1.contains("print -r -- 'Signing in to Claude Code for ~/.claude…'") && !l1.contains { $0.hasPrefix("echo '") },
+          "the folder named as ~, printed raw")
     let marker = URL(fileURLWithPath: home + "/m it's.done")
     let l2 = ClaudeCLI.loginLines("/opt/claude", account: other, email: "a'b@example.com", marker: marker)
     check(l2.contains("export CLAUDE_CONFIG_DIR='\(home)/.claude-o'\\''brien'") && l2.contains { $0.hasSuffix("--email 'a'\\''b@example.com'") },

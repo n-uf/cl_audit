@@ -695,15 +695,21 @@ do {
         return String(t[r1.lowerBound..<r2.upperBound])
     }
     let launchers: [(String, String, String, String)] = [
-        ("Config.swift", "static func openLogin(", "openTerminal(file)", "login"),
-        ("Config.swift", "static func logout(", "p.run()", "logout"),
-        ("Config.swift", "static func renew(", "p.run()", "renew"),
+        ("Config.swift", "static func openLogin(", ".startSignIn(", "login"),
         ("Launcher.swift", "static func openClaude(", "openApplication(", "the Claude window"),
         ("Launcher.swift", "private static func openTerminal(", "Installer.run(", "Terminal"),
         ("QuickChatEngine.swift", "func start(environment", "process.run()", "quick chat")]
     for (f, a, launch, what) in launchers {
         let b = body(f, from: a, until: launch)
         check(!b.isEmpty && b.contains("FolderGuard.mayLaunch("), "\(what): FolderGuard is asked before it launches")
+    }
+    // logout and renew run through ClaudeAuth with cl_audit's tools, whose guard is FolderGuard (ClaudeAuth asks it
+    // before every run, the auth suite holds that)
+    check(body("Config.swift", from: "static var authTools", until: "return t").contains("FolderGuard.mayLaunch("),
+          "ClaudeAuth's tools in cl_audit: FolderGuard is the launch guard")
+    for (a, launch, what) in [("static func logout(", ".signOut(", "logout"), ("static func renew(", ".renew(claude:", "renew")] {
+        let b = body("Config.swift", from: a, until: launch)
+        check(!b.isEmpty && b.contains("tools: authTools"), "\(what): runs through ClaudeAuth with FolderGuard as its guard")
     }
     // and nothing else in the app starts `claude` with a profile's folder
     var launchSites: [String] = []

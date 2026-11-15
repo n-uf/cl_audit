@@ -8,6 +8,7 @@
 // Info.plist carries UsageAccountID, so it knows which entry of accounts.json it shows.
 
 import AppKit
+import ClaudeAuth
 import CryptoKit
 import ProfileCore
 
@@ -276,14 +277,16 @@ enum ClaudeCLI {
     /// already in use, where the folder's account doesn't change and so says nothing (SwitchRunner.swift).
     @discardableResult
     static func openLogin(_ claude: String, account: Account, email: String?, marker: URL? = nil, creating: Bool = false) -> Bool {
-        // never through a link
+        // never through a link; a brand-new folder is made here (FolderGuard), never by ClaudeAuth
         guard FolderGuard.mayLaunch("login", account.configDir, creating: creating) else { return false }
-        let file = loginScript(account.configDir)
-        do {
-            try (loginLines(claude, account: account, email: email, marker: marker).joined(separator: "\n") + "\n").write(to: file, atomically: true, encoding: .utf8)
-            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: file.path)
-        } catch { return false }
-        return openTerminal(file)
+        // ClaudeAuth writes the script (owner only from the start, never through a link) and opens it; the guard above
+        // already said yes
+        var tools = AuthTools.system
+        tools.mayLaunch = { _, _ in true }
+        tools.openTerminal = { openTerminal($0) }
+        return Authenticator(account.authFolder, tools: tools)
+            .startSignIn(claude: claude, email: email, script: loginScript(account.configDir), marker: marker,
+                         shown: tilde(account.configDir), done: doneWords, failed: failedWords) == .done
     }
 
     /// Log in… in the agent's surfaces (the menu bar, quick chat): Claude Code's own sign-in in Terminal for the profile's
@@ -333,28 +336,27 @@ enum ClaudeCLI {
     /// UNSET (also against one the login shell exports): set to ~/.claude, Claude Code takes it for a custom folder and
     /// writes ~/.claude/.claude.json and a Keychain item "Claude Code-credentials-<hash>" instead of the default folder's
     /// ~/.claude.json and "Claude Code-credentials" that cl_audit and the usual Claude app read. Any other folder sets it.
-    /// A key or another provider from the login shell's own settings would sign it in some other way: those are unset
-    /// first (as cl_quick's sign-in does).
+    /// A key, another provider, a base URL or extra headers from the login shell's own settings would sign it in some
+    /// other way: those are unset first (as cl_quick's sign-in does). ClaudeAuth's SignInScript, with cl_audit's words.
     static func loginLines(_ claude: String, account: Account, email: String?, marker: URL? = nil) -> [String] {
-        func q(_ s: String) -> String { "'" + s.replacingOccurrences(of: "'", with: "'\\''") + "'" }
-        var lines = ["#!/bin/zsh -l", "clear"]
-        lines.append("unset " + providerVariables.joined(separator: " "))
-        lines.append(account.isDefaultDir ? "unset CLAUDE_CONFIG_DIR" : "export CLAUDE_CONFIG_DIR=\(q(account.configDir))")
-        lines.append("echo \(q("Signing in to Claude Code for \(tilde(account.configDir))…"))")
-        var cmd = "\(q(claude)) auth login --claudeai"
-        if let email { cmd += " --email \(q(email))" }
-        lines += [cmd, "s=$?"]
-        // with a marker the script says when the login ended well (exit 0)
-        if let marker { lines.append("if [ $s -eq 0 ]; then : > \(q(marker.path)); fi") }
-        lines += ["echo",
-                  "if [ $s -eq 0 ]; then echo 'Done. cl_audit picks up the new sign-in by itself within seconds.'; "
-                  + "else echo 'The sign-in did not finish. Close this window and try again from cl_audit.'; fi"]
-        return lines
+        SignInScript.lines(claude: claude, folder: account.authFolder, email: email, marker: marker,
+                           shown: tilde(account.configDir), done: doneWords, failed: failedWords)
     }
 
-    /// The variables that would make Claude Code use a key or another provider instead of the claude.ai sign-in.
-    static let providerVariables = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN",
-                                    "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX", "CLAUDE_CODE_USE_FOUNDRY"]
+    /// The sign-in script's last line, cl_audit's words.
+    static let doneWords = "Done. cl_audit picks up the new sign-in by itself within seconds."
+    static let failedWords = "The sign-in did not finish. Close this window and try again from cl_audit."
+
+    /// The variables that would make Claude Code use a key or another provider instead of the claude.ai sign-in
+    /// (ClaudeAuth's AuthFolder.providerVariables).
+    static var providerVariables: [String] { AuthFolder.providerVariables }
+
+    /// ClaudeAuth's tools with cl_audit's own guard: every run asks FolderGuard first (its log, its seam).
+    static var authTools: AuthTools {
+        var t = AuthTools.system
+        t.mayLaunch = { what, folder in FolderGuard.mayLaunch(what, folder.path) }
+        return t
+    }
 
     /// The check's seam: opens a login script in Terminal (a check records the script and never opens one).
     nonisolated(unsafe) static var openTerminal: (URL) -> Bool = { Installer.run("/usr/bin/open", ["-a", "Terminal", $0.path]) == 0 }
@@ -362,30 +364,14 @@ enum ClaudeCLI {
     /// The check's seam: replaces running `claude auth logout` (a check records the call and signs nothing out).
     nonisolated(unsafe) static var logoutSeam: ((_ claude: String, _ configDir: String) -> Bool)?
 
-    /// Signs out the Claude Code login of a settings folder (`claude auth logout`), which also removes its
-    /// Keychain item. Blocks; call off the main thread.
+    /// Signs out the Claude Code login of a settings folder (`claude auth logout`, ClaudeAuth's signOut), which also
+    /// removes its Keychain item. The default folder runs with CLAUDE_CONFIG_DIR unset (AuthFolder.environment). Blocks
+    /// (at most 2 minutes); call off the main thread.
     @discardableResult
     static func logout(_ claude: String, configDir: String) -> Bool {
         if let seam = logoutSeam { return seam(claude, configDir) }
-        guard FolderGuard.mayLaunch("logout", configDir) else { return false }
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: claude)
-        p.arguments = ["auth", "logout"]
-        var env = ProcessInfo.processInfo.environment
-        for k in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR"] { env[k] = nil }
-        // The default folder is used with CLAUDE_CONFIG_DIR unset: set to ~/.claude, Claude Code treats it as a custom
-        // folder (its record in ~/.claude/.claude.json, its Keychain item "Claude Code-credentials-<hash>"), which isn't
-        // the item the default folder's sign-in is in.
-        if !Account.isDefault(configDir: configDir) { env["CLAUDE_CONFIG_DIR"] = expand(configDir) }
-        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
-        p.environment = env
-        p.currentDirectoryURL = FileManager.default.temporaryDirectory
-        p.standardInput = FileHandle.nullDevice
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return false }
-        p.waitQuietly()
-        return p.terminationStatus == 0
+        let folder = AuthFolder(path: expand(configDir), isDefault: Account.isDefault(configDir: configDir))
+        return Authenticator(folder, tools: authTools).signOut(claude: claude) == .done
     }
 
     /// The Terminal script `openLogin` writes for a folder.
@@ -393,26 +379,11 @@ enum ClaudeCLI {
         FileManager.default.temporaryDirectory.appendingPathComponent("usage-n-uf-login-\(Account.sha8(configDir)).command")
     }
 
-    /// Runs `claude -p` for the account's settings folder (Haiku, nothing saved). Blocks; call off the main thread.
-    static func renew(_ claude: String, account: Account) -> Bool {
-        guard FolderGuard.mayLaunch("renew", account.configDir) else { return false }
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: claude)
-        p.arguments = ["-p", "Reply with OK.", "--model", "haiku", "--no-session-persistence"]
-        var env = ProcessInfo.processInfo.environment
-        for k in ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CONFIG_DIR"] { env[k] = nil }
-        if !account.isDefaultDir { env["CLAUDE_CONFIG_DIR"] = account.configDir }
-        env["PATH"] = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:" + (env["PATH"] ?? "")
-        p.environment = env
-        p.currentDirectoryURL = FileManager.default.temporaryDirectory
-        p.standardInput = FileHandle.nullDevice
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return false }
-        let deadline = Date().addingTimeInterval(120)
-        while p.isRunning && Date() < deadline { Thread.sleep(forTimeInterval: 0.5) }
-        if p.isRunning { p.terminate(); return false }
-        return p.terminationStatus == 0
+    /// Runs `claude -p` for the account's settings folder (Haiku, nothing saved: ClaudeAuth's renew). `expecting`: the
+    /// profile's seat; when the folder's record names another (or nobody), nothing runs. Blocks (at most 2 minutes); call
+    /// off the main thread.
+    static func renew(_ claude: String, account: Account, expecting seat: Seat? = nil) -> Bool {
+        Authenticator(account.authFolder, tools: authTools).renew(claude: claude, expecting: seat.map(SignedInAccount.init)) == .done
     }
 }
 

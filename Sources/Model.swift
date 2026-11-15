@@ -25,6 +25,11 @@ func tilde(_ path: String) -> String {
 
 // (Seat and its one comparison are ProfileCore's: Core/Identity.swift)
 
+extension SignedInAccount {
+    /// A seat as ClaudeAuth names an account (from a record: guessed). Its ids and address only.
+    init(_ s: Seat) { self.init(accountID: s.account, email: s.email, organizationID: s.organization, origin: .record) }
+}
+
 struct Account {
     let label: String
     let name: String

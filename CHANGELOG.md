@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- Claude Code's sign-in, Renew sign-in and sign-out now run through one shared module, and never pass on a key, another provider, a base URL (`ANTHROPIC_BASE_URL`) or extra headers set in your shell, so a sign-in is never sent to another host. Sign-out gives up after two minutes instead of waiting for ever.
 
 ## 26.11.31 — 2026-11-14
 
