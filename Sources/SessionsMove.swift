@@ -523,7 +523,7 @@ enum SessionsMove {
         var settled = false
     }
 
-    struct Receipt: Equatable, Codable {
+    struct Receipt: Equatable, StoredReceipt {
         var id: String
         var started: Date
         var file: String                    // the export file's name
@@ -541,24 +541,9 @@ enum SessionsMove {
     static var root: URL { Store.folder.appendingPathComponent("moves") }
     static func validReceiptID(_ s: String) -> Bool { SessionsBackup.validID(s) }
 
-    static func save(_ r: Receipt) throws {
-        let d = root.appendingPathComponent(r.id)
-        try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        let url = d.appendingPathComponent("move.json")
-        try enc.encode(r).write(to: url, options: .atomic)
-        chmod(url.path, 0o600)
-    }
-
-    static func load(_ id: String) -> Receipt? {
-        guard validReceiptID(id) else { return nil }
-        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-        return (try? Data(contentsOf: root.appendingPathComponent("\(id)/move.json"))).flatMap { try? dec.decode(Receipt.self, from: $0) }.flatMap { $0.id == id ? $0 : nil }
-    }
-
-    /// Every move import's receipt, newest first.
-    static func receipts() -> [Receipt] {
-        ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter(validReceiptID).compactMap(load).sorted { $0.started > $1.started }
+    /// The move imports' receipts: moves/<id>/move.json, owner only (`store.list()`: every one, newest first).
+    static var store: ReceiptStore<Receipt> {
+        ReceiptStore(root: root, layout: .folders(file: "move.json"), fileMode: 0o600, validID: validReceiptID, idMustMatch: true)
     }
 
     /// Makes the folders of `path` that aren't there, one at a time, never through a link; returns those it made (outermost first).
@@ -584,7 +569,7 @@ enum SessionsMove {
     @discardableResult
     static func apply(_ p: Plan, takeSettings: Bool, file: String, now: Date = Date()) throws -> Receipt {
         var r = Receipt(id: SessionsBackup.newID(now), started: now, file: SessionsBackup.oneLine(file, max: 200), move: p.move, made: p.create)
-        do { try save(r) } catch { throw BackupError("The import's receipt couldn't be saved; nothing was made.") }
+        do { try store.save(r) } catch { throw BackupError("The import's receipt couldn't be saved; nothing was made.") }
         // 1. the profiles: each still free (its id, name, accounts and folders, its folder still without a sign-in) in the file as it is
         // now, added after the profiles that are here
         var wrote = Set<String>()
@@ -609,14 +594,14 @@ enum SessionsMove {
         } catch {
             r.problems.append("cl_audit's profiles file couldn't be written; no profile was made.")
             r.finished = now
-            try? save(r)
+            try? store.save(r)
             throw BackupError("cl_audit's profiles file couldn't be written (\(error.localizedDescription)); no profile was made.")
         }
         for i in r.made.indices {
             r.made[i].written = wrote.contains(r.made[i].id)
             if !r.made[i].written { r.problems.append("\(r.made[i].name) wasn't made: a profile with its name, account or folder appeared meanwhile, or its folder is now a link or holds a sign-in.") }
         }
-        try? save(r)
+        try? store.save(r)
         // 2. their folders: made empty, only those that aren't there (a folder that is there is used as it is)
         for i in r.made.indices where r.made[i].written {
             let e = r.made[i].entry
@@ -626,7 +611,7 @@ enum SessionsMove {
                 let (made, ok) = makeFolders(d)
                 r.made[i].folders += made
                 if !ok { r.problems.append("\(tilde(d)) couldn't be made (a file or a link is on the way): \(e.name)'s \(d == dirs[0] ? "sessions" : "window entries") can't be imported until it can.") }
-                try? save(r)
+                try? store.save(r)
             }
         }
         // 3. the settings, when asked: only those that can be taken, each written down before it is changed
@@ -638,12 +623,12 @@ enum SessionsMove {
                 let s = store(k.store)
                 let before = s.object(forKey: k.key) == nil ? nil : current(k)
                 r.settings.append(SettingStep(key: k.key, store: k.store, before: before, after: d.file))
-                try? save(r)
+                try? store.save(r)
                 write(k, d.file)
             }
         }
         r.finished = Date()
-        try? save(r)
+        try? store.save(r)
         return r
     }
 
@@ -670,7 +655,7 @@ enum SessionsMove {
     /// stays, and is said.
     @discardableResult
     static func undo(_ id: String, now: Date = Date()) throws -> Receipt {
-        guard var r = load(id) else { throw BackupError("The import's receipt isn't there any more.") }
+        guard var r = store.load(id) else { throw BackupError("The import's receipt isn't there any more.") }
         guard r.undone == nil else { return r }
         r.left = []
         // the settings first (they don't depend on anything)
@@ -707,7 +692,7 @@ enum SessionsMove {
         }
         for i in r.made.indices where removed.contains(r.made[i].id) { r.made[i].written = false }
         if r.left.isEmpty || r.made.allSatisfy({ !$0.written }) { r.undone = now }
-        try? save(r)
+        try? store.save(r)
         return r
     }
 }

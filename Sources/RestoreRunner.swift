@@ -233,7 +233,7 @@ final class RestoreRunner: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let p = SessionsRestore.plan(target, b, addMemory: memory, addSetup: setup, addConfig: config, addTasks: tasks)
             var not: NotYet?
-            if let why = SessionsRestore.blocker(profile: profile, except: resume) {
+            if let why = Flows.blocker(profile: profile, except: resume, for: .restoring) {
                 not = NotYet(title: "A restore of \(e.name) is unfinished", words: why)
             } else if p.windowNeeded, let m = w.flatMap({ SwitchMarker.current($0) }) {       // only a restore that writes in the window waits for it
                 if m.standby.hasPrefix("restore-") {
@@ -241,7 +241,7 @@ final class RestoreRunner: ObservableObject {
                 } else {
                     not = NotYet(title: "\(e.name)'s window is held closed", words: "An import's folder pick or the default-profile move is writing its files. Wait for it to end.")
                 }
-            } else if let why = SessionsRestore.busy() {
+            } else if let why = Flows.busy() {
                 not = NotYet(title: why.contains("claude-transplant") ? "claude-transplant is moving sessions" : "Another restore, import or move is under way",
                              words: why)
             }
@@ -436,7 +436,7 @@ final class RestoreRunner: ObservableObject {
         guard phase != .closing, phase != .writing, phase != .undoing, let r = receipt, r.undone == nil, let e = entry, let w = window else { return }
         note = nil
         if let why = DefaultProfile.undoRefusal(receipt: r.id) { note = why; return }
-        if let why = SessionsRestore.blocker(profile: key.profile, except: r.id) { note = why; return }
+        if let why = Flows.blocker(profile: key.profile, except: r.id, for: .restoring) { note = why; return }
         // (a re-point after the import changed Code-tab entries: its Undo, which runs first, needs the window closed too)
         // (and a move's history and trust, shared files, are taken back only while it is closed)
         guard r.windowTouched || SessionsRepoint.touchesWindow(restore: r.id) || SideFiles.touchesShared(restore: r.id) else { runUndo(r.id); return }
@@ -468,8 +468,8 @@ final class RestoreRunner: ObservableObject {
                 switch result {
                 case .success(let u):
                     self.receipt = u
-                    if let rp = self.repointed { self.repointed = SessionsRepoint.load(rp.id) ?? rp }
-                    if let sd = self.sided { self.sided = SideFiles.load(sd.id) ?? sd }
+                    if let rp = self.repointed { self.repointed = SessionsRepoint.store.load(rp.id) ?? rp }
+                    if let sd = self.sided { self.sided = SideFiles.store.load(sd.id) ?? sd }
                     if u.undone == nil {
                         // some restored transcripts are held by a running session: left in place, the receipt stays open
                         self.note = "\(u.undoLeft) restored \(u.undoLeft == 1 ? "transcript is" : "transcripts are") held by a running Claude Code session, so \(u.undoLeft == 1 ? "it was" : "they were") left in place and this restore stays open. Undo again once the session has ended takes the rest."
@@ -584,7 +584,7 @@ final class RestoreRunner: ObservableObject {
 
     /// For each switch's backup, the account that switch went to: "ultra-2" (the receipt names it by id only).
     static func targetWord(_ m: SessionsBackup.Manifest?, for e: AccountEntry) -> String? {
-        guard let m, case .beforeSwitch(let rid) = m.kind, let r = SwitchEngine.load(rid) else { return nil }
+        guard let m, case .beforeSwitch(let rid) = m.kind, let r = SwitchEngine.store.load(rid) else { return nil }
         let seats = [e.seat] + e.standby.map(\.seat)
         let emails = [e.seat?.email] + e.standby.map { $0.seat?.email ?? $0.email }
         guard let i = seats.firstIndex(where: { r.to.same($0) }), let email = emails[i] else { return nil }

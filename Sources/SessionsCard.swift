@@ -347,7 +347,7 @@ struct SessionsCard: View {
         let seats = [e.seat] + e.standby.map(\.seat)
         let emails = [e.seat?.email] + e.standby.map { $0.seat?.email ?? $0.email }
         for m in list {
-            guard case .beforeSwitch(let rid) = m.kind, let r = SwitchEngine.load(rid),
+            guard case .beforeSwitch(let rid) = m.kind, let r = SwitchEngine.store.load(rid),
                   let i = seats.firstIndex(where: { r.to.same($0) }), let email = emails[i] else { continue }
             out[m.id] = AccountNames.short(email)
         }

@@ -535,9 +535,9 @@ enum SessionsBackup {
                 items.append(Item(role: .record, original: Store.configURL.path, path: "records/profile.json", bytes: Int64(data.count), part: "accounts[id=\(e.id)]"))
             }
         }
-        if let r = receipt, let data = try? SwitchEngine.encoded(r) {
+        if let r = receipt, let data = try? SwitchEngine.store.encoded(r) {
             try put(data, "records/receipt.json", in: partial, dirFor)
-            items.append(Item(role: .record, original: SwitchEngine.root.appendingPathComponent("\(r.id)/receipt.json").path,
+            items.append(Item(role: .record, original: SwitchEngine.store.url(r.id).path,
                               path: "records/receipt.json", bytes: Int64(data.count)))
         }
 
@@ -552,7 +552,7 @@ enum SessionsBackup {
         out.version = neededVersion(items)
         out.seconds = (Date().timeIntervalSince(started) * 10).rounded() / 10
         try put(try encode(out), "backup.json", in: partial, dirFor)
-        guard renamex_np(partial.path, final.path, UInt32(RENAME_EXCL)) == 0 else { throw BackupError("couldn't put the backup in place") }
+        guard CreateOnly.rename(partial.path, to: final.path) else { throw BackupError("couldn't put the backup in place") }
         done = true
         return out
     }
@@ -563,8 +563,8 @@ enum SessionsBackup {
     static func manual(_ s: Source, window: Bool, transcripts: Bool = true, place: URL = BackupPrefs.placeURL,
                        keepLast: Int = BackupPrefs.keepLast, keepDays: Int = BackupPrefs.keepDays,
                        windowClosed: () -> Bool = { true }) throws -> Manifest {
-        let lock: SwitchEngine.Lock
-        do { lock = try SwitchEngine.Lock.take() } catch { throw BackupError("\(error)") }
+        let lock: FlowLock.Held
+        do { lock = try Flows.takeLock() } catch { throw BackupError("\(error)") }
         defer { lock.release() }
         let m = try make(s, kind: .manual, window: window, transcripts: transcripts, place: place)
         if window, !windowClosed() {
@@ -590,7 +590,7 @@ enum SessionsBackup {
         if fclonefileat(fd, AT_FDCWD, dst, 0) == 0 { return .cloned }
         var e = errno
         if e == ENOTSUP || e == EXDEV || e == EINVAL {
-            let out = open(dst, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+            let out = CreateOnly.open(dst)
             guard out >= 0 else { return .failed(String(cString: strerror(errno))) }
             defer { close(out) }
             if fcopyfile(fd, out, nil, copyfile_flags_t(COPYFILE_ALL)) == 0 { return .copied }
@@ -730,9 +730,9 @@ enum SessionsBackup {
         var ids = Set<String>(), unreadable = Set<String>()
         let here = FolderKey.canonical(place.path)
         for n in names(SwitchEngine.root.path) where !n.hasPrefix(".") && n.hasSuffix("-\(profile)") {
-            let file = SwitchEngine.root.appendingPathComponent("\(n)/receipt.json").path
+            let file = SwitchEngine.store.url(n).path
             guard mode(file) != nil else { continue }
-            guard let r = SwitchEngine.load(n) else { unreadable.insert(n); continue }
+            guard let r = SwitchEngine.store.load(n) else { unreadable.insert(n); continue }
             if r.profile == profile, r.unfinished, let b = r.backup, r.backupPlace.map({ FolderKey.canonical($0) == here }) ?? true { ids.insert(b) }
         }
         // a restore that stopped half way finishes from its backup
@@ -1088,7 +1088,7 @@ enum CodeCleanup {
             guard rename(tmp, target) == 0 else { unlink(tmp); throw BackupError("settings.json couldn't be replaced.") }
         } else {
             // a file made meanwhile is never replaced
-            guard renamex_np(tmp, target, UInt32(RENAME_EXCL)) == 0 else { unlink(tmp); throw BackupError("settings.json changed meanwhile; try again.") }
+            guard CreateOnly.rename(tmp, to: target) else { unlink(tmp); throw BackupError("settings.json changed meanwhile; try again.") }
         }
     }
 

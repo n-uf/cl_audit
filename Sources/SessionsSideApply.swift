@@ -60,7 +60,7 @@ extension SideFiles {
         var kept = 0                                    // there with other bytes, or an entry already there: left as it is
     }
 
-    struct Receipt: Codable, Equatable {
+    struct Receipt: StoredReceipt, Equatable {
         var id: String
         var profile: String
         var codeDir: String
@@ -167,17 +167,14 @@ extension SideFiles {
 
     // MARK: the receipt
 
-    private static func dir(_ id: String) -> URL { root.appendingPathComponent(id) }
-    private static func savedDir(_ id: String) -> URL { dir(id).appendingPathComponent("saved") }
-
-    static func save(_ r: Receipt) throws {
-        let d = dir(r.id)
-        try FileManager.default.createDirectory(at: d.appendingPathComponent("saved"), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        let url = d.appendingPathComponent("receipt.json")
-        try enc.encode(r).write(to: url, options: .atomic)
-        chmod(url.path, 0o600)                          // (it holds folders' trust entries)
+    /// The side files' receipts: sides/<id>/receipt.json, owner only (it holds folders' trust entries), "/" written as it is, with
+    /// saved/ beside it (the copies kept for Undo), read under 64 MB.
+    static var store: ReceiptStore<Receipt> {
+        ReceiptStore(root: root, layout: .folders(file: "receipt.json"), inner: "saved", escapeSlashes: false, fileMode: 0o600, readCap: 64 << 20,
+                     validID: SessionsRestore.validReceiptID, idMustMatch: true)
     }
+    private static func dir(_ id: String) -> URL { store.folder(id) }
+    private static func savedDir(_ id: String) -> URL { dir(id).appendingPathComponent("saved") }
 
     /// The page's words for the two shared files (their names are in the README only).
     static let settingsWords = "Claude Code's settings file for this profile"
@@ -204,28 +201,17 @@ extension SideFiles {
         }
     }
 
-    static func load(_ id: String) -> Receipt? {
-        guard SessionsRestore.validReceiptID(id) else { return nil }
-        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-        guard let d = readCapped(dir(id).appendingPathComponent("receipt.json").path, limit: 64 << 20), let r = try? dec.decode(Receipt.self, from: d), r.id == id else { return nil }
-        return r
-    }
-
-    static func receipts() -> [Receipt] {
-        ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter(SessionsRestore.validReceiptID).compactMap(load).sorted { $0.started > $1.started }
-    }
-
-    static func linked(restore id: String) -> [Receipt] { receipts().filter { $0.restore == id && $0.undone == nil } }
+    static func linked(restore id: String) -> [Receipt] { store.list().filter { $0.restore == id && $0.undone == nil } }
 
     /// The sessions of a profile whose history or trust waits for a folder.
-    static func waiting(profile: String) -> [Waiting] { receipts().filter { $0.profile == profile && $0.undone == nil }.flatMap(\.waiting).filter { $0.pick == nil } }
+    static func waiting(profile: String) -> [Waiting] { store.list().filter { $0.profile == profile && $0.undone == nil }.flatMap(\.waiting).filter { $0.pick == nil } }
 
     /// A small file in the receipt's folder: never over one, never through a link.
     private static func writeSaved(_ d: Data, id: String, name: String) throws {
-        let fd = open(savedDir(id).appendingPathComponent(name).path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        let fd = CreateOnly.open(savedDir(id).appendingPathComponent(name).path)
         guard fd >= 0 else { throw SideError("cl_audit's receipt folder can't be written (\(String(cString: strerror(errno)))); nothing more was written.") }
         defer { close(fd) }
-        let ok = d.isEmpty || d.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) == d.count }
+        let ok = CreateOnly.writeAll(fd, d)
         guard ok, fsync(fd) == 0 else { throw SideError("cl_audit's receipt folder can't be written; nothing more was written.") }
     }
 
@@ -250,10 +236,10 @@ extension SideFiles {
             defer { close(e) }
             return SessionsRestore.sha(fd: e) == sha ? .there : .differs
         }
-        let tmp = ".side-\(UUID().uuidString.prefix(8)).tmp"
-        let out = openat(dir, tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-        guard out >= 0 else { return .failed(String(cString: strerror(errno))) }
-        defer { unlinkat(dir, tmp, 0) }
+        let temp: CreateOnly.Temp
+        do { temp = try CreateOnly.Temp(".side-\(UUID().uuidString.prefix(8)).tmp", in: dir) } catch { return .failed("\(error)") }
+        defer { temp.discard() }
+        let out = temp.fd
         var buf = [UInt8](repeating: 0, count: 1 << 20)
         var off: off_t = 0
         var ok = true
@@ -264,10 +250,13 @@ extension SideFiles {
             off += off_t(n)
         }
         if ok { ok = fsync(out) == 0 && fchmod(out, mode) == 0 }
-        close(out)
+        temp.close()
         guard ok, off == off_t(bytes) else { return .failed("it couldn't be written whole (the disk may be full)") }
-        guard linkat(dir, tmp, dir, name, 0) == 0 else { return errno == EEXIST ? .differs : .failed(String(cString: strerror(errno))) }
-        return .created(sha)
+        switch temp.place(as: name) {
+        case .created: return .created(sha)
+        case .exists: return .differs
+        case .failed(let why): return .failed("\(why)")
+        }
     }
 
     static func unlinkIfSame(_ path: String, sha: String) -> Bool {
@@ -322,9 +311,9 @@ extension SideFiles {
         guard pfd >= 0 else { throw SideError("\(leaf)'s folder can't be opened; it wasn't changed.") }
         defer { close(pfd) }
         let tmp = "\(leaf).tmp.\(getpid()).\(UUID().uuidString.prefix(12).lowercased())"
-        let out = openat(pfd, tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, st.st_mode & 0o777)
+        let out = CreateOnly.open(tmp, in: pfd, mode: st.st_mode & 0o777)
         guard out >= 0 else { throw SideError("\(leaf) couldn't be written; it wasn't changed.") }
-        var ok = data.isEmpty || data.withUnsafeBytes { Darwin.write(out, $0.baseAddress, $0.count) == data.count }
+        var ok = CreateOnly.writeAll(out, data)
         if ok { ok = fchmod(out, st.st_mode & 0o777) == 0 && fsync(out) == 0 }
         close(out)
         var now = stat()
@@ -447,7 +436,7 @@ extension SideFiles {
         let h = historyWords
         var st = stat()
         if lstat(path, &st) != 0 {
-            let fd = open(path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+            let fd = CreateOnly.open(path)
             guard fd >= 0 else { throw SideError("\(h) couldn't be made; no prompt history was added.") }
             close(fd)
         } else {
@@ -516,11 +505,11 @@ extension SideFiles {
         sweepConfigCopies()
         guard let part = stashed(b), !part.sessions.isEmpty || !part.trust.isEmpty else { return nil }
         guard kinds != .nothing else { return nil }
-        let lock: SwitchEngine.Lock
-        do { lock = try SwitchEngine.Lock.take() } catch { throw SideError("\(error)") }
+        let lock: FlowLock.Held
+        do { lock = try Flows.takeLock() } catch { throw SideError("\(error)") }
         defer { lock.release() }
         var r = Receipt(id: SessionsRestore.receiptID(now, t.profile) + "-side", profile: t.profile, codeDir: t.codeDir, dataDir: t.dataDir, restore: restore, started: now, kinds: kinds)
-        try save(r)
+        try store.save(r)
         let projects = (t.codeDir as NSString).appendingPathComponent("projects")
         guard let tree = SessionsRestore.Tree(path: t.codeDir) else { throw SideError("\(tilde(t.codeDir)) can't be opened; no side files were written.") }
         let byCli = SessionsRepoint.entries(dataDir: t.dataDir)
@@ -535,14 +524,14 @@ extension SideFiles {
             // its own files: task list, plan, Rewind backups, pasted texts
             func write(_ comps: [String], _ it: Item, mode: mode_t = 0o600, count: (inout Written) -> Void) {
                 let path = (t.codeDir as NSString).appendingPathComponent((comps + [it.name]).joined(separator: "/"))
-                tree.willMake = { p in r.steps.append(Step(kind: .dir, session: s.id, path: p)); try? save(r) }
-                tree.madeFailed = { p in if let i = r.steps.lastIndex(where: { $0.kind == .dir && $0.path == p && !$0.done }) { r.steps.remove(at: i); try? save(r) } }
+                tree.willMake = { p in r.steps.append(Step(kind: .dir, session: s.id, path: p)); try? store.save(r) }
+                tree.madeFailed = { p in if let i = r.steps.lastIndex(where: { $0.kind == .dir && $0.path == p && !$0.done }) { r.steps.remove(at: i); try? store.save(r) } }
                 let made = tree.dir(comps, create: true)
                 tree.willMake = nil; tree.madeFailed = nil
                 for i in r.steps.indices where r.steps[i].kind == .dir && !r.steps[i].done && tree.made.contains(r.steps[i].path) { r.steps[i].done = true }
                 guard case .dir(let fd) = made else { r.problems.append("\(label): \(tilde((t.codeDir as NSString).appendingPathComponent(comps.joined(separator: "/")))) is a link or can't be made; \(it.name) wasn't written."); return }
                 defer { close(fd) }
-                r.steps.append(Step(kind: .made, session: s.id, path: path, sha: it.sha)); try? save(r)
+                r.steps.append(Step(kind: .made, session: s.id, path: path, sha: it.sha)); try? store.save(r)
                 let i = r.steps.count - 1
                 switch putFile(fd, it.name, from: stashPath(b, it), bytes: it.bytes, sha: it.sha, mode: mode) {
                 case .created: r.steps[i].done = true; count(&r.written)
@@ -550,7 +539,7 @@ extension SideFiles {
                 case .differs: r.steps.remove(at: i); r.written.kept += 1; r.problems.append("\(label): \(tilde(path)) is there already with other content; it was left as it is.")
                 case .failed(let why): r.steps.remove(at: i); r.problems.append("\(label): \(it.name) wasn't written (\(why)).")
                 }
-                try? save(r)
+                try? store.save(r)
             }
             if kinds.tasks {
                 let before = r.written.tasks
@@ -581,7 +570,7 @@ extension SideFiles {
                     w.history = name
                 }
                 r.waiting.append(w)
-                try save(r)
+                try store.save(r)
                 continue
             }
             if hasHistory, let h = s.history, let d = readCapped(stashPath(b, h), limit: Int(maxHistoryBytes)), SwitchEngine.sha(d) == h.sha {
@@ -599,7 +588,7 @@ extension SideFiles {
         }
         try writeShared(&r, lines: lines, trust: trustAdd, windowClosed: windowClosed)
         r.finished = Date()
-        try save(r)
+        try store.save(r)
         return r
     }
 
@@ -672,7 +661,7 @@ extension SideFiles {
                     var s = Step(kind: .lines, session: session, path: path, sha: SwitchEngine.sha(body), saved: name, count: fresh.count)
                     s.pick = pick
                     r.steps.append(s); stepAt = r.steps.count - 1
-                    try save(r)
+                    try store.save(r)
                 }
                 if let i = stepAt { r.steps[i].done = true }
                 r.written.historyLines += added
@@ -680,7 +669,7 @@ extension SideFiles {
             } catch {
                 r.problems.append("\(error)")
             }
-            try save(r)
+            try store.save(r)
         }
         // trust: each key spliced into .claude.json under Claude Code's lock
         if !trust.isEmpty {
@@ -709,7 +698,7 @@ extension SideFiles {
                         guard Date().timeIntervalSince(t0) < lockBudget else { throw SideError("Trust for \(tilde(tr.key)) wasn't written: \(settingsWords) took too long to read, and Claude Code could take its lock over meanwhile.") }
                         var s = Step(kind: .trust, session: tr.session, path: cfg, key: tr.key, value: tr.value)
                         s.pick = pick
-                        r.steps.append(s); try save(r)
+                        r.steps.append(s); try store.save(r)
                         let i = r.steps.count - 1
                         try replaceFile(cfg, with: n, was: rst)
                         r.steps[i].done = true
@@ -721,7 +710,7 @@ extension SideFiles {
                 } catch {
                     r.problems.append("\(error)")
                 }
-                try save(r)
+                try store.save(r)
             }
         }
     }
@@ -732,7 +721,7 @@ extension SideFiles {
     static func applyPending(_ t: SessionsRestore.Target, picked: [String: Folder], pick: String, windowClosed: () -> Bool) -> [String] {
         sweepConfigCopies()
         var problems: [String] = []
-        for var r in receipts() where r.profile == t.profile && r.undone == nil && r.waiting.contains(where: { picked[$0.session] != nil && $0.pick == nil }) {
+        for var r in store.list() where r.profile == t.profile && r.undone == nil && r.waiting.contains(where: { picked[$0.session] != nil && $0.pick == nil }) {
             var lines: [(session: String, data: Data)] = []
             var trust: [(session: String, key: String, value: String, mcp: Bool)] = []
             var done: [String] = []
@@ -758,7 +747,7 @@ extension SideFiles {
                 let blocked = r.problems.suffix(r.problems.count - before).contains { $0.hasPrefix("Prompt history and trust weren't written") }
                 if !blocked { for k in r.waiting.indices where done.contains(r.waiting[k].session) { r.waiting[k].pick = pick } }
                 problems += r.problems.suffix(r.problems.count - before)
-                try save(r)
+                try store.save(r)
             } catch { problems.append("\(error)") }
         }
         return problems
@@ -771,16 +760,16 @@ extension SideFiles {
     /// this profile and its window closed.
     @discardableResult
     static func undo(_ id: String, locked: Bool = false, windowClosed: () -> Bool) throws -> Receipt {
-        var lock: SwitchEngine.Lock?
-        if !locked { do { lock = try SwitchEngine.Lock.take() } catch { throw SideError("\(error)") } }
+        var lock: FlowLock.Held?
+        if !locked { do { lock = try Flows.takeLock() } catch { throw SideError("\(error)") } }
         defer { lock?.release() }
         sweepConfigCopies()
-        guard var r = load(id) else { throw SideError("No record of those side files.") }
+        guard var r = store.load(id) else { throw SideError("No record of those side files.") }
         guard r.undone == nil else { return r }
         try undoSteps(&r, r.steps.indices.filter { _ in true }, windowClosed: windowClosed)
         r.waiting = []
         r.undone = Date()
-        try save(r)
+        try store.save(r)
         try? FileManager.default.removeItem(at: savedDir(r.id))         // (the copies of history lines it kept for Undo: not needed any more)
         return r
     }
@@ -789,12 +778,12 @@ extension SideFiles {
     /// receipt) are taken back, and the session waits for its folder again.
     static func undoPick(_ pick: String, windowClosed: () -> Bool) throws -> [String] {
         var left: [String] = []
-        for var r in receipts() where r.undone == nil && r.steps.contains(where: { $0.pick == pick && !$0.settled }) {
+        for var r in store.list() where r.undone == nil && r.steps.contains(where: { $0.pick == pick && !$0.settled }) {
             let before = r.left.count
             try undoSteps(&r, r.steps.indices.filter { r.steps[$0].pick == pick }, windowClosed: windowClosed)
             for k in r.waiting.indices where r.waiting[k].pick == pick { r.waiting[k].pick = nil }
             for k in r.steps.indices where r.steps[k].pick == pick { r.written.historyLines -= r.steps[k].kind == .lines && r.steps[k].done ? r.steps[k].count : 0; r.written.trust -= r.steps[k].kind == .trust && r.steps[k].done ? 1 : 0 }
-            try save(r)
+            try store.save(r)
             left += r.left.suffix(r.left.count - before)
         }
         return left
@@ -809,7 +798,7 @@ extension SideFiles {
         }
         for i in which.reversed() where !r.steps[i].settled {
             let s = r.steps[i]
-            defer { r.steps[i].settled = true; try? save(r) }
+            defer { r.steps[i].settled = true; try? store.save(r) }
             switch s.kind {
             case .made:
                 guard let sha = s.sha else { continue }
@@ -863,7 +852,7 @@ extension SideFiles {
         let stash = b.dir.appendingPathComponent(dirName)
         var st = stat()
         if lstat(stash.path, &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR { try? fm.removeItem(at: stash) }
-        for r in receipts() where r.restore == id {
+        for r in store.list() where r.restore == id {
             // a session still waiting (no Pick yet), with history or only trust, keeps the receipt; only the files no one waits for go
             let waiting = r.undone == nil ? r.waiting.filter { $0.pick == nil } : []
             if waiting.isEmpty { try? fm.removeItem(at: dir(r.id)); continue }

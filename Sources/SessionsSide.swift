@@ -163,7 +163,7 @@ enum SideFiles {
         return FolderKey.canonical(codeDir) == std ? NSHomeDirectory() + "/.claude.json" : inside
     }
 
-    static func readCapped(_ path: String, limit: Int) -> Data? { SessionsRepoint.readCapped(path, limit: limit) }
+    static func readCapped(_ path: String, limit: Int) -> Data? { SafeFiles.readPlain(path, max: limit) }
 
     /// The plain files directly in a folder (never through a link), with their sizes.
     static func plainFiles(_ dir: String) -> [(name: String, bytes: Int64)]? {

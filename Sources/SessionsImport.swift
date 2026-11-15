@@ -355,7 +355,7 @@ struct ZipIndex {
             guard !over, stop <= UInt64(size) else { throw Stop.refused("The zip is damaged.") }
             let pfd = try folder(Array(comps.dropLast()))
             defer { close(pfd) }
-            let out = openat(pfd, leaf, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+            let out = CreateOnly.open(leaf, in: pfd)
             guard out >= 0 else { throw Stop.refused("The zip names a file twice, or one that is there already; refused.") }
             var good = false
             defer { close(out); if !good { unlinkat(pfd, leaf, 0) } }
@@ -1114,7 +1114,7 @@ enum SessionsImport {
         defer { close(fd) }
         var st = stat()
         guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_nlink == 1 else { throw ArchiveError("A file in the image isn't a plain file with one link; refused.") }
-        let out = Darwin.open(dst, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        let out = CreateOnly.open(dst)
         guard out >= 0 else { throw ArchiveError("Couldn't unpack the image.") }
         var ok = false
         defer { close(out); if !ok { unlink(dst) } }
@@ -1263,7 +1263,7 @@ enum SessionsImport {
         if o.move, let sp = o.side?.parts.first(where: { $0.dir == part.dir }), !sp.sessions.isEmpty || !sp.trust.isEmpty {
             try SideFiles.stash(o.tree, part: sp, into: partial.path)
         }
-        guard renamex_np(partial.path, final.path, UInt32(RENAME_EXCL)) == 0 else { throw ArchiveError("Couldn't put the backup in place.") }
+        guard CreateOnly.rename(partial.path, to: final.path) else { throw ArchiveError("Couldn't put the backup in place.") }
         done = true
         return Staged(id: id, target: target, stage: stage)
     }
@@ -1277,7 +1277,7 @@ enum SessionsImport {
         let to = s.stage.appendingPathComponent(target)
         if mkdir(to.path, 0o700) != 0, errno != EEXIST { throw ArchiveError(errno == ENOENT ? "Stopped." : "The backups folder can't be written.") }
         let src = s.stage.appendingPathComponent("\(s.target)/\(s.id)"), dst = to.appendingPathComponent(s.id)
-        guard renamex_np(src.path, dst.path, UInt32(RENAME_EXCL)) == 0 else { throw ArchiveError("Couldn't move the unpacked backup.") }
+        guard CreateOnly.rename(src.path, to: dst.path) else { throw ArchiveError("Couldn't move the unpacked backup.") }
         m.profile = target
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
         let file = dst.appendingPathComponent("backup.json")
@@ -1300,7 +1300,7 @@ enum SessionsImport {
         do { try fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]) }
         catch { throw ArchiveError("The backups folder \(tilde(place.path)) can't be written.") }
         let src = s.stage.appendingPathComponent("\(s.target)/\(s.id)"), dst = dir.appendingPathComponent(s.id)
-        guard renamex_np(src.path, dst.path, UInt32(RENAME_EXCL)) == 0 else { throw ArchiveError("Couldn't put the backup in the backups folder.") }
+        guard CreateOnly.rename(src.path, to: dst.path) else { throw ArchiveError("Couldn't put the backup in the backups folder.") }
         return SessionsRestore.Backup(profile: s.target, id: s.id, place: place)
     }
 
@@ -1327,7 +1327,7 @@ enum SessionsImport {
         if claimFails { return false }
         let me = getpid()
         let text = "\(me) \(startTime(of: me) ?? 0)\n"
-        let fd = Darwin.open(work.appendingPathComponent(ownerFile).path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        let fd = CreateOnly.open(work.appendingPathComponent(ownerFile).path)
         guard fd >= 0 else { return false }
         let n = strlen(text)
         let w = text.withCString { Darwin.write(fd, $0, n) }

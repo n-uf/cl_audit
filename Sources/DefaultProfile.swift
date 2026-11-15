@@ -112,7 +112,7 @@ enum DefaultProfile {
 
     // MARK: the record (what Undo puts back besides the files)
 
-    struct Record: Codable, Equatable, Identifiable {
+    struct Record: StoredReceipt, Equatable, Identifiable {
         var id: String
         var kind: Kind
         var profile: String                 // the profile that is (or becomes) the default one
@@ -141,11 +141,11 @@ enum DefaultProfile {
 
     static var folder: URL { Store.folder.appendingPathComponent("default-moves") }
 
+    /// The moves' records: default-moves/<id>.json.
+    static var store: ReceiptStore<Record> { ReceiptStore(root: folder, layout: .flat) }
+
     static func save(_ r: Record) {
-        let fm = FileManager.default
-        try? fm.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        if let d = try? enc.encode(r) { try? d.write(to: folder.appendingPathComponent("\(r.id).json"), options: .atomic) }
+        try? store.save(r)
         // under the lock: save() also runs on the restore's thread (attachReceipt) while the cards read all() on the main one
         forgetCache()
     }
@@ -158,9 +158,7 @@ enum DefaultProfile {
         let stamp = (try? FileManager.default.attributesOfItem(atPath: folder.path))?[.modificationDate] as? Date
         cacheLock.lock(); defer { cacheLock.unlock() }
         if let c = cache, c.stamp == stamp { return c.list }
-        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-        let list: [Record] = ((try? FileManager.default.contentsOfDirectory(atPath: folder.path)) ?? []).filter { $0.hasSuffix(".json") }.sorted()
-            .compactMap { (try? Data(contentsOf: folder.appendingPathComponent($0))).flatMap { try? dec.decode(Record.self, from: $0) } }
+        let list: [Record] = store.ids().compactMap(store.load)          // in the order of their file names
         cache = (stamp, list)
         return list
     }
@@ -182,7 +180,7 @@ enum DefaultProfile {
     /// The restore that belongs to a move: the one its record names, else, for a crash between the engine's first write and
     /// the record's, the restore of this profile that read the move's backup.
     static func restoreFor(_ r: Record) -> SessionsRestore.Receipt? {
-        if let id = r.receipt, let h = SessionsRestore.header(id) { return h }
+        if let id = r.receipt, let h = SessionsRestore.store.load(id) { return h }
         return SessionsRestore.headers().first { $0.profile == r.profile && $0.backup == r.backup }
     }
 

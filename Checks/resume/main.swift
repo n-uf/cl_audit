@@ -125,7 +125,7 @@ if role == "b" {
         let s2Before = read(proj + "/" + enc(gone) + "/\(S2).jsonl")
         check(rr.finished != nil && s2Before != nil && fm.fileExists(atPath: proj + "/" + enc(wt) + "/\(S3).jsonl") && fm.fileExists(atPath: proj + "/" + enc(wt) + "/memory/MEMORY.md"),
               "B: the import puts the transcripts under their old names (and the memory, added)")
-        check(SessionsRepoint.receipts().isEmpty, "B (2): nothing re-pointed before a folder is picked")
+        check(SessionsRepoint.store.list().isEmpty, "B (2): nothing re-pointed before a folder is picked")
 
         // ---- (3) Pick re-points S3 into new/garden-app (cloned there; its worktree isn't)
         try! fm.createDirectory(atPath: new, withIntermediateDirectories: true)

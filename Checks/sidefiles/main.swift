@@ -184,7 +184,7 @@ if role == "b" {
 
         // ---- Undo of the import takes the side files back first, exactly
         let u = try! SessionsRestore.undo(rr.id, windowClosed: { true })
-        let su = SideFiles.load(r.id)
+        let su = SideFiles.store.load(r.id)
         check(u.undone != nil && su?.undone != nil && su?.left.isEmpty == true, "B: the import's Undo takes the side files back: \(su?.left ?? [])")
         check(read(cc + "/history.jsonl") == histB && read(cc + "/.claude.json") == configB, "B: history.jsonl and .claude.json are byte for byte as they were")
         check(!fm.fileExists(atPath: cc + "/tasks/\(S2)") && !fm.fileExists(atPath: cc + "/plans/\(slug).md") && !fm.fileExists(atPath: cc + "/paste-cache/\(pasteHash).txt"),
@@ -202,12 +202,12 @@ if role == "b" {
         try! fm.createDirectory(atPath: new, withIntermediateDirectories: true)
         codeRuns = true
         let blocked = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: new)], windowClosed: { true })
-        check(blocked.problems.contains { $0.contains("Claude Code is running for this profile") && $0.contains("Undo this Pick") } && SideFiles.load(r2.id)?.waiting.count == 1 && !(read(cc + "/history.jsonl") ?? "").contains(new),
+        check(blocked.problems.contains { $0.contains("Claude Code is running for this profile") && $0.contains("Undo this Pick") } && SideFiles.store.load(r2.id)?.waiting.count == 1 && !(read(cc + "/history.jsonl") ?? "").contains(new),
               "B: with Claude Code running for this profile, nothing shared is written (said), and S2 keeps waiting: \(blocked.problems)")
         _ = try! SessionsRepoint.undo(blocked.id, windowClosed: { true })
         codeRuns = false
         let later = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: new)], windowClosed: { true })
-        let r2b = SideFiles.load(r2.id)
+        let r2b = SideFiles.store.load(r2.id)
         let hist2 = read(cc + "/history.jsonl") ?? ""
         check(later.sessions.count == 1 && SideFiles.waiting(profile: e.id).isEmpty && r2b?.waiting.first?.pick == later.id && hist2.components(separatedBy: #""project":"\#(new)""#).count - 1 == 2
               && (json(fm.contents(atPath: cc + "/.claude.json"))?["projects"] as? [String: Any])?[new] != nil && later.sessions[0].sideWritten == true,
@@ -266,7 +266,7 @@ if role == "b" {
         c6 = c6.replacingOccurrences(of: #""hasClaudeMdExternalIncludesWarningShown":false"#, with: #""hasClaudeMdExternalIncludesWarningShown":false,"lastCost":0.5"#)
         try! Data(c6.utf8).write(to: URL(fileURLWithPath: cc + "/.claude.json"))
         _ = try! SessionsRestore.undo(rr6.id, windowClosed: { true })
-        let s6 = SideFiles.load(r6.id)
+        let s6 = SideFiles.store.load(r6.id)
         let h6b = read(cc + "/history.jsonl") ?? ""
         check(s6?.undone != nil && h6b.hasPrefix(histB) && h6b.contains("stack trace please!") && h6b.split(separator: "\n").count == 2 && read(cc + "/.claude.json") == c6
               && s6?.left.count == 2, "B: Undo takes out only the lines still as written (the edited one stays) and leaves a changed trust entry; both said: \(s6?.left ?? [])")
@@ -318,7 +318,7 @@ if role == "b" {
         let stashDir = b.dir.appendingPathComponent("side").path
         check(fm.fileExists(atPath: stashDir), "B: (the stash is there before)")
         SessionsRestore.prune(profile: e.id, now: Date().addingTimeInterval(40 * 86400))
-        check(!fm.fileExists(atPath: stashDir) && SideFiles.receipts().filter { $0.restore == rr.id }.isEmpty && SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) != nil,
+        check(!fm.fileExists(atPath: stashDir) && SideFiles.store.list().filter { $0.restore == rr.id }.isEmpty && SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) != nil,
               "B: once the import can't be undone, its side files kept with the backup go (the backup stays), and its receipts with them")
         check(dockCalls == 0 && securityCalls == 0, "B: no Dock write and no Keychain call")
     }
@@ -504,15 +504,15 @@ MainActor.assumeIsolated {
     let sideID = SessionsRestore.receiptID(Date().addingTimeInterval(1), "studio") + "-side"
     var trustOnly = SideFiles.Receipt(id: sideID, profile: "studio", codeDir: cc, dataDir: wd, restore: restoreID, started: Date(), kinds: .movePreset)
     trustOnly.waiting = [SideFiles.Waiting(session: S2, title: nil, from: old, history: nil, historyLines: 0, trust: [SideFiles.Trust(session: S2, key: old, trusted: true)], why: "its folder isn't on this Mac yet")]
-    try! SideFiles.save(trustOnly)
+    try! SideFiles.store.save(trustOnly)
     SideFiles.retire(restore: restoreID, backup: SessionsRestore.Backup(profile: "studio", id: m.id, place: place))
-    check(SideFiles.load(sideID)?.waiting.first?.trust.count == 1, "retire: a session waiting with trust only keeps its receipt and trust")
+    check(SideFiles.store.load(sideID)?.waiting.first?.trust.count == 1, "retire: a session waiting with trust only keeps its receipt and trust")
     let outside = place.deletingLastPathComponent().appendingPathComponent(m.id).appendingPathComponent("side").path
     try! fm.createDirectory(atPath: outside, withIntermediateDirectories: true)
     SideFiles.retire(restore: restoreID, backup: SessionsRestore.Backup(profile: "..", id: m.id, place: place))
     SideFiles.retire(restore: restoreID, backup: SessionsRestore.Backup(profile: "studio", id: "../../x", place: place))
     SideFiles.retire(restore: "../" + restoreID, backup: SessionsRestore.Backup(profile: "studio", id: m.id, place: place))
-    check(fm.fileExists(atPath: outside) && SideFiles.load(sideID) != nil, "retire: a doctored receipt (\"..\" in its profile, backup id or own id) removes nothing")
+    check(fm.fileExists(atPath: outside) && SideFiles.store.load(sideID) != nil, "retire: a doctored receipt (\"..\" in its profile, backup id or own id) removes nothing")
     try? fm.removeItem(atPath: (outside as NSString).deletingLastPathComponent)
     let hfile = home + "/hist-budget/history.jsonl"
     write(hfile, hline("one", old, S2, ts: 1) + "\n")

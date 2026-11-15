@@ -23,7 +23,7 @@
 //   are left, those a running Claude Code session holds are left alone and listed;
 // - the Claude window must be closed while its files are written, asked again before every one; if it opens the run
 //   stops with what is back kept, and the receipt says so;
-// - one run at a time (SwitchEngine.Lock: cl_audit's own, and claude-transplant's), and none while a switch of the
+// - one run at a time (Flows.takeLock: cl_audit's own, and claude-transplant's), and none while a switch of the
 //   profile is unfinished;
 // - a receipt (restores/<id>/receipt.json) and a journal beside it (journal.jsonl, one line appended before a file is
 //   written and one after) say what was put back; Undo takes back exactly that, only files unchanged since, and
@@ -754,7 +754,7 @@ enum SessionsRestore {
     // MARK: the receipt
 
     /// What a run put back, for Undo and for finishing it. The header is receipt.json; the steps are journal.jsonl.
-    struct Receipt: Codable, Equatable {
+    struct Receipt: StoredReceipt, Equatable {
         struct Step: Equatable {
             enum Kind: String, Codable { case entry, tasks, transcript, file, dir, setup, config }
             /// A file of the Claude window's (written and taken back only while it is closed).
@@ -826,26 +826,15 @@ enum SessionsRestore {
 
     static func receiptID(_ d: Date, _ profile: String) -> String { SwitchEngine.receiptID(d, profile) }
 
-    private static func dir(_ id: String) -> URL { root.appendingPathComponent(id) }
-
-    static func save(_ r: Receipt) throws {
-        let d = dir(r.id)
-        try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try enc.encode(r).write(to: d.appendingPathComponent("receipt.json"), options: .atomic)
+    /// The restores' receipts: restores/<id>/receipt.json, the header (`store.load` reads it alone, no journal: enough to tell
+    /// whether a restore is unfinished), and journal.jsonl beside it, the steps (`load` folds them in).
+    static var store: ReceiptStore<Receipt> {
+        ReceiptStore(root: root, layout: .folders(file: "receipt.json"), validID: validReceiptID, idMustMatch: true, journalFile: "journal.jsonl")
     }
 
-    /// The receipt's header alone (no journal): enough to tell whether a restore is unfinished.
-    static func header(_ id: String) -> Receipt? {
-        guard validReceiptID(id) else { return nil }
-        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-        guard let r = (try? Data(contentsOf: dir(id).appendingPathComponent("receipt.json"))).flatMap({ try? dec.decode(Receipt.self, from: $0) }),
-              r.id == id else { return nil }
-        return r
-    }
-
+    /// The receipt with its steps (from the journal).
     static func load(_ id: String) -> Receipt? {
-        guard var r = header(id) else { return nil }
+        guard var r = store.load(id) else { return nil }
         r.steps = steps(id)
         return r
     }
@@ -853,11 +842,8 @@ enum SessionsRestore {
     static func validReceiptID(_ s: String) -> Bool { plainName(s) && !s.hasPrefix(".") && s.range(of: #"^[0-9]{8}-[0-9]{6}-[0-9a-f]{4}-.+$"#, options: .regularExpression) != nil }
 
     private static func steps(_ id: String) -> [Receipt.Step] {
-        guard let text = try? String(contentsOf: dir(id).appendingPathComponent("journal.jsonl"), encoding: .utf8) else { return [] }
         var out: [Receipt.Step] = []
-        let dec = JSONDecoder()
-        for line in text.split(separator: "\n") {
-            guard let e = try? dec.decode(Event.self, from: Data(line.utf8)) else { continue }       // a line cut short by a crash
+        for e in store.events(id, of: Event.self) {                         // (a line cut short by a crash is skipped)
             switch e.op {
             case "intent": out.append(Receipt.Step(kind: e.kind ?? .file, path: e.path, sha: e.sha, bytes: e.bytes ?? 0))
             case "done": if let i = out.lastIndex(where: { $0.path == e.path }) { out[i].done = true; if let h = e.sha { out[i].sha = h } }
@@ -869,44 +855,27 @@ enum SessionsRestore {
         return out
     }
 
-    private final class Journal {
-        let fd: Int32
-        init?(id: String) {
-            try? FileManager.default.createDirectory(at: dir(id), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let f = Darwin.open(dir(id).appendingPathComponent("journal.jsonl").path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW, 0o600)
-            guard f >= 0 else { return nil }
-            fd = f
-        }
-        deinit { close(fd) }
-        func add(_ e: Event, sync: Bool) {
-            guard var line = try? JSONEncoder().encode(e) else { return }
-            line.append(0x0A)
-            _ = line.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
-            if sync { fsync(fd) }
-        }
-    }
+    /// The journal beside a receipt, opened to append (one line written down before each file).
+    private static func openJournal(_ id: String) -> Journal<Event>? { store.journal(id, of: Event.self) }
 
     /// Every restore, newest first.
     static func receipts() -> [Receipt] {
-        ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter(validReceiptID).compactMap(load).sorted { $0.started > $1.started }
+        store.ids().compactMap(load).sorted { $0.started > $1.started }
     }
 
     /// Restores that wrote something and neither finished nor were undone, newest first (every profile's, or one's). Only
     /// the headers of the others are read: the journal of a long finished restore is never folded for this.
     static func unfinished(profile: String? = nil) -> [Receipt] {
-        ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter(validReceiptID).compactMap(header)
+        store.ids().compactMap(store.load)
             .filter { $0.finished == nil && $0.undone == nil && (profile == nil || $0.profile == profile) }
             .compactMap { load($0.id) }.filter(\.unfinished).sorted { $0.started > $1.started }
     }
 
     // MARK: whether one may start
 
-    /// Why a restore of this profile may not start, or nil: another restore that stopped half way. (A switch of
-    /// 26.11.13 and earlier that stopped half way no longer blocks: nothing can finish or undo it now, and the Sessions
-    /// card says what it left where.)
-    static func blocker(profile: String, except id: String? = nil) -> String? {
-        Unfinished.blocker(profile: profile, except: id, for: .restoring)
-    }
+    // (Why a restore of this profile may not start: Flows.blocker(profile:except:for: .restoring), another restore that
+    // stopped half way. A switch of 26.11.13 and earlier that stopped half way no longer blocks: nothing can finish or undo it
+    // now, and the Sessions card says what it left where.)
 
     /// Another restore (or an import's re-point, the default-profile move) that holds this Claude window closed right now
     /// (SwitchMarker), or nil. The restore that asks is not one: its own mark is `restore-<id>` (its runner's name, passed
@@ -916,13 +885,6 @@ enum SessionsRestore {
         // exempt: only the mark of the caller itself (each restore runner has its own name, "restore-<id>")
         if let own, m.pid == getpid(), m.profile == profile, m.standby == own { return nil }
         return "A restore of this Claude window is under way (since \(SessionsBackup.dateWords(m.started))). Wait for it, or undo it."
-    }
-
-    /// Whether one restore, import or move is under way elsewhere (cl_audit's own lock) or claude-transplant is moving
-    /// sessions (its lock): the words, or nil. Takes the locks and lets go at once. Taking claude-transplant's flock for
-    /// that instant can make a `lockf -t 0` caller that starts in that very moment fail once; it is only a look.
-    static func busy() -> String? {
-        do { try SwitchEngine.Lock.take().release(); return nil } catch { return "\(error)" }
     }
 
     // MARK: paths of a receipt
@@ -955,10 +917,7 @@ enum SessionsRestore {
             guard seen.insert(parent).inserted, let b = base(of: s.path, r), let rel = relative(s.path, under: b),
                   let tree = Tree(path: b), case .dir(let pfd) = tree.dir(Array(rel.dropLast()), create: false) else { continue }
             defer { close(pfd) }
-            for n in ((try? FileManager.default.contentsOfDirectory(atPath: parent)) ?? []) where n.hasPrefix(prefix) && n.hasSuffix(".tmp") {
-                var st = stat()
-                if fstatat(pfd, n, &st, AT_SYMLINK_NOFOLLOW) == 0, (st.st_mode & S_IFMT) == S_IFREG { unlinkat(pfd, n, 0) }
-            }
+            CreateOnly.sweep(pfd, names: (try? FileManager.default.contentsOfDirectory(atPath: parent)) ?? [], prefix: prefix)
         }
     }
 
@@ -966,7 +925,7 @@ enum SessionsRestore {
     /// the file there is exactly what the step says (its hash), otherwise not ours, so dropped. What can't be checked
     /// safely stays as it is, not done (Undo takes a not-done step back if the file matches it): a window file while the
     /// window is open (`windowOK` false), and a file with a second link (a temp name that wasn't swept).
-    private static func reconcile(_ r: Receipt, journal: Journal, windowOK: Bool) {
+    private static func reconcile(_ r: Receipt, journal: Journal<Event>, windowOK: Bool) {
         for s in r.steps where !s.done && s.kind != .dir {
             if !windowOK, s.inWindow { continue }
             func drop() { journal.add(Event(op: "gone", kind: nil, path: s.path, sha: nil, bytes: nil), sync: false) }
@@ -997,10 +956,10 @@ enum SessionsRestore {
                     mark: String? = nil, windowClosed: () -> Bool, stop: () -> Bool = { false },
                     progress: ((_ done: Int, _ total: Int) -> Void)? = nil,
                     receiptWritten: ((_ id: String) -> Void)? = nil, now: Date = Date()) throws -> Receipt {
-        let lock: SwitchEngine.Lock
-        do { lock = try SwitchEngine.Lock.take() } catch { throw RestoreError("\(error)") }
+        let lock: FlowLock.Held
+        do { lock = try Flows.takeLock() } catch { throw RestoreError("\(error)") }
         defer { lock.release() }
-        if let why = blocker(profile: t.profile, except: continuing) { throw RestoreError(why) }
+        if let why = Flows.blocker(profile: t.profile, except: continuing, for: .restoring) { throw RestoreError(why) }
         var old: Receipt?
         if let cid = continuing {
             guard let o = load(cid), o.profile == t.profile, o.backup == b.id, o.undone == nil else {
@@ -1009,7 +968,7 @@ enum SessionsRestore {
             // what the stop left: temp files of ours (only names with this receipt's prefix: always safe to take away, also
             // while the window is open), then the steps without their line (window files only while the window is closed)
             sweepTemps(o)
-            if let j = Journal(id: cid) { reconcile(o, journal: j, windowOK: !o.windowTouched || windowClosed()) }
+            if let j = openJournal(cid) { reconcile(o, journal: j, windowOK: !o.windowTouched || windowClosed()) }
             old = load(cid)
         }
         let p = plan(t, b, foreign: foreign, addMemory: addMemory, addSetup: addSetup, addConfig: addConfig, addTasks: addTasks, now: now)
@@ -1024,7 +983,7 @@ enum SessionsRestore {
                 let words = "\(o.unchecked) window \(o.unchecked == 1 ? "file" : "files") couldn't be checked while the window was open: still in the receipt as not done (probably back); Undo takes each back if it is exactly what was written."
                 if !o.problems.contains(words) { o.problems.append(words) }
             }
-            try save(o)
+            try store.save(o)
             return load(o.id) ?? o
         }
         if p.windowNeeded {
@@ -1052,15 +1011,15 @@ enum SessionsRestore {
         }
         r.changedCount = p.changed.count; r.changed = Array(p.changed.prefix(200)); r.partialCount = p.partial.count
         r.inUseCount = p.inUse.count; r.inUse = Array(p.inUse.prefix(200)); r.deletedCount = p.deletedSince.count
-        do { try save(r) } catch { throw RestoreError("The restore's receipt couldn't be saved; nothing written.") }
+        do { try store.save(r) } catch { throw RestoreError("The restore's receipt couldn't be saved; nothing written.") }
         receiptWritten?(r.id)               // the caller learns the receipt before the first file is written
-        guard let journal = Journal(id: r.id), let reader = Reader(path: b.dir.path) else {
-            if fresh { try? FileManager.default.removeItem(at: dir(r.id)) }
+        guard let journal = openJournal(r.id), let reader = Reader(path: b.dir.path) else {
+            if fresh { try? FileManager.default.removeItem(at: store.folder(r.id)) }
             throw RestoreError("The restore's receipt couldn't be written; nothing written.")
         }
         func stopped(_ why: String) -> RestoreError {
             r.stopped = why
-            if load(r.id)?.steps.isEmpty ?? true, fresh { try? FileManager.default.removeItem(at: dir(r.id)) } else { try? save(r) }
+            if load(r.id)?.steps.isEmpty ?? true, fresh { try? FileManager.default.removeItem(at: store.folder(r.id)) } else { try? store.save(r) }
             return RestoreError(why)
         }
         func gone(_ path: String) { journal.add(Event(op: "gone", kind: nil, path: path, sha: nil, bytes: nil), sync: false) }
@@ -1100,10 +1059,13 @@ enum SessionsRestore {
             let path = (t.dataDir as NSString).appendingPathComponent(piece.dest)
             let hash = SwitchEngine.sha(data)
             journal.add(Event(op: "intent", kind: piece.kind == .tasks ? .tasks : piece.kind == .config ? .config : .entry, path: path, sha: hash, bytes: Int64(data.count)), sync: true)
-            switch createNew(dfd, piece.leaf, data, tag: tmpTag) {
+            // a new small file, never over a name that exists: a private temp file beside it (named for this restore, so a
+            // leftover is found and taken away: sweepTemps), then linked into place and the temp name removed
+            switch CreateOnly.write(data, as: piece.leaf, in: dfd, temp: ".restore-\(tmpTag)-\(UUID().uuidString).tmp", sync: true) {
             case .created: journal.add(Event(op: "done", kind: nil, path: path, sha: nil, bytes: nil), sync: false)
             case .exists: gone(path); r.problems.append("\(piece.leaf) appeared meanwhile; left as it is."); continue
-            case .failed(let why): gone(path); throw stopped("\(piece.leaf) couldn't be written (\(why)); stopped. What is back is kept.")
+            case .notWhole: gone(path); throw stopped("\(piece.leaf) couldn't be written (couldn't write it whole); stopped. What is back is kept.")
+            case .notMade(let why), .failed(let why): gone(path); throw stopped("\(piece.leaf) couldn't be written (\(why)); stopped. What is back is kept.")
             }
             done += 1; progress?(done, total)
         }
@@ -1167,32 +1129,15 @@ enum SessionsRestore {
             for w in setupMissingPaths(t) where !r.problems.contains(w) { r.problems.append(w) }
         }
         r.finished = Date()
-        try save(r)
+        try store.save(r)
         guard var out = load(r.id) else { return r }
         sweepTemps(out)
         out.problems = r.problems
         return out
     }
 
-    enum Created { case created, exists, failed(String) }
     /// `.differs`: something is there under the name that isn't the backup's file (or isn't plainly ours): left as it is.
     enum Cloned { case created(String), exists, differs, failed(String) }
-
-    /// A new small file, never over a name that exists: a private temp file beside it (named for the restore that makes
-    /// it, so a leftover is found and taken away), then linked into place and the temp name removed.
-    static func createNew(_ dir: Int32, _ name: String, _ data: Data, tag: String = "x") -> Created {
-        let tmp = ".restore-\(tag)-\(UUID().uuidString).tmp"
-        let fd = openat(dir, tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-        guard fd >= 0 else { return .failed(String(cString: strerror(errno))) }
-        var ok = data.isEmpty
-        if !data.isEmpty { ok = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) == data.count } }
-        if ok { fsync(fd) }
-        close(fd)
-        defer { unlinkat(dir, tmp, 0) }
-        guard ok else { return .failed("couldn't write it whole") }
-        if linkat(dir, tmp, dir, name, 0) == 0 { return .created }
-        return errno == EEXIST ? .exists : .failed(String(cString: strerror(errno)))
-    }
 
     /// A transcript (or other file of Claude Code's) brought back as a clone of the backup's file, or a real copy when the
     /// backup is on another volume; the name must be free. What landed is looked at through its own descriptor (a plain
@@ -1210,7 +1155,7 @@ enum SessionsRestore {
             let e = errno
             if e == EEXIST { return .exists }
             guard e == ENOTSUP || e == EXDEV || e == EINVAL else { return .failed(String(cString: strerror(e))) }
-            landed = openat(dir, name, O_RDWR | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+            landed = CreateOnly.open(name, in: dir, readable: true)
             guard landed >= 0 else { return errno == EEXIST ? .exists : .failed(String(cString: strerror(errno))) }
             if fcopyfile(src, landed, nil, copyfile_flags_t(COPYFILE_ALL)) != 0 {
                 // our own, made a moment ago by this descriptor and nothing else: taken away only if the name is still that file
@@ -1243,14 +1188,14 @@ enum SessionsRestore {
     /// among them, and is asked before each: if it opens, the undo stops with what is taken back kept (Undo again).
     @discardableResult
     static func undo(_ id: String, mark: String? = nil, windowClosed: () -> Bool, now: Date = Date()) throws -> Receipt {
-        let lock: SwitchEngine.Lock
-        do { lock = try SwitchEngine.Lock.take() } catch { throw RestoreError("\(error)") }
+        let lock: FlowLock.Held
+        do { lock = try Flows.takeLock() } catch { throw RestoreError("\(error)") }
         defer { lock.release() }
         guard var r = load(id) else { throw RestoreError("No receipt for that restore.") }
         guard r.undone == nil else { return r }
         // a default-profile move whose old profile was kept as a standby account or removed: not undone any more
         if let why = DefaultProfile.undoRefusal(receipt: id) { throw RestoreError(why) }
-        if let why = blocker(profile: r.profile, except: r.id) { throw RestoreError(why) }
+        if let why = Flows.blocker(profile: r.profile, except: r.id, for: .restoring) { throw RestoreError(why) }
         if r.windowTouched {
             if let why = markerBlocker(profile: r.profile, dataDir: r.dataDir, own: mark) { throw RestoreError(why) }
             guard windowClosed() else { throw RestoreError("Quit the profile's Claude window first, then Undo.") }
@@ -1285,7 +1230,7 @@ enum SessionsRestore {
         }
         var left = 0                                   // restored transcripts left in place because a session holds them
         var gone: [String: Int] = [:]                  // a folder the receipt wrote into that can't be opened: how many steps it holds
-        let journal = Journal(id: r.id)                // each step an Undo is done with is written down, so a second Undo skips it
+        let journal = openJournal(r.id)                // each step an Undo is done with is written down, so a second Undo skips it
         for step in r.steps.reversed() {
             if step.settled { continue }
             let name = (step.path as NSString).lastPathComponent
@@ -1294,7 +1239,7 @@ enum SessionsRestore {
             if step.inWindow, !windowClosed() {
                 leaveOpen = true
                 r.problems.append("The Claude window opened during the undo; stopped. What is taken back stays so: Undo again once it is closed.")
-                try? save(r)
+                try? store.save(r)
                 throw RestoreError("The profile's Claude window opened during the undo; stopped. Undo again once it is closed.")
             }
             guard let b = base(of: step.path, r), let rel = relative(step.path, under: b) else {
@@ -1354,7 +1299,7 @@ enum SessionsRestore {
             let words = "\(left) restored \(left == 1 ? "transcript is" : "transcripts are") held by a running Claude Code session: left in place. The receipt stays open; Undo again once it has ended takes the rest."
             if !r.problems.contains(words) { r.problems.append(words) }
         }
-        try save(r)
+        try store.save(r)
         let out = load(id) ?? r
         sweepTemps(out)
         return out
@@ -1367,9 +1312,7 @@ enum SessionsRestore {
     }
 
     /// Every restore's header, newest first (no journals read).
-    static func headers() -> [Receipt] {
-        ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter(validReceiptID).compactMap(header).sorted { $0.started > $1.started }
-    }
+    static func headers() -> [Receipt] { store.list() }
 
     /// The last import of this profile that is finished and not undone (Undo last import, in Settings ▸ the profile ▸
     /// Sessions, opens its page): newest first. One an Undo only half did (a session held some transcripts) still counts.
@@ -1410,8 +1353,8 @@ enum SessionsRestore {
     /// be running).
     static func prune(profile: String? = nil, now: Date = Date()) {
         let fm = FileManager.default
-        for n in ((try? fm.contentsOfDirectory(atPath: root.path)) ?? []).filter(validReceiptID) {
-            guard let h = header(n), profile == nil || h.profile == profile else { continue }
+        for n in store.ids() {
+            guard let h = store.load(n), profile == nil || h.profile == profile else { continue }
             if h.finished == nil && h.undone == nil {
                 if !(load(n)?.steps.isEmpty ?? true) || now.timeIntervalSince(h.started) < 3600 { continue }
             }
@@ -1426,7 +1369,7 @@ enum SessionsRestore {
             if backupGone || now.timeIntervalSince(end) > 30 * 86400 {
                 // (an import's side files go with it: SessionsSideApply.swift)
                 if h.importedFrom != nil { SideFiles.retire(restore: n, backup: Backup(profile: h.profile, id: h.backup, place: URL(fileURLWithPath: h.backupPlace))) }
-                try? fm.removeItem(at: dir(n))
+                try? fm.removeItem(at: store.folder(n))
             }
         }
     }

@@ -104,7 +104,7 @@ if role == "b" {
               && everything(expand("~/.claude-work")).isEmpty, "B: their folders are made, empty")
         check(SessionsMove.current(SessionsMove.known.first { $0.key == "face" }!) == "silver" && BackupPrefs.keepLast == 7 && (BackupPrefs.store.string(forKey: BackupPrefs.placeKey) ?? "") == "",
               "B: the file's settings are taken, but not a backups folder that isn't on this Mac")
-        check(r.made.allSatisfy(\.written) && r.settings.count == 3 && SessionsMove.load(r.id)?.made.count == 2 && r.made.first { $0.name == "Work" }?.folders.isEmpty == false,
+        check(r.made.allSatisfy(\.written) && r.settings.count == 3 && SessionsMove.store.load(r.id)?.made.count == 2 && r.made.first { $0.name == "Work" }?.folders.isEmpty == false,
               "B: the receipt lists the profiles, the folders it made and the settings it took")
 
         // each part into its profile: the entries and tasks into their own account's folder; setup and MCP left out until asked
@@ -188,12 +188,12 @@ if role == "b" {
         ir.makeProfiles = false
         check(!ir.waitsForProfiles, "page: …Leave them out lets it go")
         ir.makeProfiles = true
-        let before = SessionsMove.receipts().count
+        let before = SessionsMove.store.list().count
         ir.applyMove(); ir.applyMove()
         check(ir.moveBusy, "page: Make is busy while it runs")
         settle { ir.moved != nil && !ir.moveBusy && ir.counting?.plan != nil }
         RunLoop.main.run(until: Date().addingTimeInterval(1))
-        check(SessionsMove.receipts().count == before + 1 && Store.load().count == 3, "page: pressed twice, made once: one receipt (\(SessionsMove.receipts().count - before))")
+        check(SessionsMove.store.list().count == before + 1 && Store.load().count == 3, "page: pressed twice, made once: one receipt (\(SessionsMove.store.list().count - before))")
         check(!ir.waitsForProfiles && ir.into == "laptop" && ir.suggestedInto?.name == "Work" && ir.madeProfiles.count == 2,
               "page: after Make, Into is still Laptop, Work is offered, and the steps for both made profiles are there at once")
         // the retarget (round 2): while the staged backup is still Laptop's, Close and import is off; it comes back for Work once it lands

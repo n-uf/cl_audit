@@ -392,7 +392,7 @@ do {
     guard case .success(let p2) = SwitchEngine.plan(e, standby: k2, dataDir: wdE, owned: []) else { check(false, "plan 2"); exit(1) }
     let r2 = try! SwitchEngine.run(p2, windowClosed: { true }, backups: place)
     SwitchEngine.markLinked(r2.id)
-    check(SwitchEngine.load(r2.id)?.linked != nil && (try? SwitchEngine.undo(r2.id, windowClosed: { true })) == nil, "linked: not undone")
+    check(SwitchEngine.store.load(r2.id)?.linked != nil && (try? SwitchEngine.undo(r2.id, windowClosed: { true })) == nil, "linked: not undone")
     check(SwitchEngine.unfinished(profile: "mv").isEmpty, "linked: not unfinished")
     // a target with the same task and other state: the tasks stay, and so do their sessions
     put("\(wdE)/claude-code-sessions/\(u3.account)/\(u3.organization!)/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"t1"}],"recordedSkips":{"t1":{"n":1}}}"#)
@@ -503,7 +503,7 @@ do {
     try! enc.encode(r).write(to: dir.appendingPathComponent("receipt.json"))
     let receiptBytes = try! Data(contentsOf: dir.appendingPathComponent("receipt.json"))
     check(SwitchEngine.unfinished(profile: "main").map(\.id) == [r.id], "an old switch that stopped half way is still read")
-    check(SessionsRestore.blocker(profile: "main") == nil, "…and no longer stops a restore")
+    check(Flows.blocker(profile: "main", for: .restoring) == nil, "…and no longer stops a restore")
     let e = profile("main", "~/.claude", u1, standby: [StandbyAccount(email: u2.email!, seat: u2, id: "k2")])
     let words = SessionsCard.oldSwitchWords(r, for: e)
     check(words.contains("moved 3 of the Claude window's sessions to ultra-2") && words.contains("Undo it") && words.contains("backup"),
@@ -783,7 +783,7 @@ do {
     r.steps[0].path = victim
     r.steps[0].sha = SwitchEngine.sha(Data(#"{"sessionId":"local_1"}"#.utf8))
     r.steps[1].path = "\(dst)/../../../../../victim12.json"
-    try! SwitchEngine.save(r)
+    try! SwitchEngine.store.save(r)
     let crafted = try! SwitchEngine.undo(r.id, windowClosed: { true })
     check(fm.fileExists(atPath: victim) && crafted.problems.filter { $0.contains("outside this switch's folders") }.count == 2,
           "Undo: a crafted path outside the scope (or climbing out of it) is skipped and named: \(crafted.problems)")
@@ -814,7 +814,7 @@ do {
     let r2 = try! SwitchEngine.run(p2, windowClosed: { true }, backups: place)
     var asked = 0
     let opened = (try? SwitchEngine.undo(r2.id, windowClosed: { asked += 1; return asked <= 2 })) == nil
-    check(opened && SwitchEngine.load(r2.id)?.undone == nil && SwitchEngine.load(r2.id)?.problems.contains { $0.contains("opened during Undo") } == true,
+    check(opened && SwitchEngine.store.load(r2.id)?.undone == nil && SwitchEngine.store.load(r2.id)?.problems.contains { $0.contains("opened during Undo") } == true,
           "Undo stops when the window opens mid-run; not marked undone, said")
     let window = Launcher.dataDirKey(of: Account(e))
     check(SwitchMarker.claim(window, profile: "other", standby: "x") && (try? SwitchEngine.undoHolding(r2.id, account: Account(e), windowClosed: { true })) == nil,
@@ -829,7 +829,7 @@ do {
     let r3 = try! SwitchEngine.run(p3, windowClosed: { true }, backups: place)
     check(SwitchEngine.linkReached([e], signedIn: { _ in u1 }).isEmpty && SwitchEngine.unfinished(profile: "r3").map(\.id) == [r3.id], "still on ultra-1: not linked")
     check(SwitchEngine.linkReached([e], signedIn: { _ in Seat(account: u2.account.uppercased(), organization: u2.organization, email: nil) }) == [r3.id]
-          && SwitchEngine.load(r3.id)?.linked != nil && SwitchEngine.unfinished(profile: "r3").isEmpty,
+          && SwitchEngine.store.load(r3.id)?.linked != nil && SwitchEngine.unfinished(profile: "r3").isEmpty,
           "the folder reached ultra-2 (seen by the agent, not the page): linked, nothing left unfinished")
     var onU2 = e; onU2.seat = u2
     fixture()
@@ -929,7 +929,7 @@ do {
     try? fm.removeItem(atPath: pre)
 }
 
-// ============ 14. a flow sees the others' unfinished work on the same profile (Unfinished.blocker) ============
+// ============ 14. a flow sees the others' unfinished work on the same profile (Flows.blocker) ============
 do {
     let wd14 = expand("~/Library/Application Support/Claude-xf")
     let src14 = SwitchEngine.scopeDir(wd14, SeatID(u1))
@@ -953,7 +953,7 @@ do {
                                         backup: "b14", backupPlace: place14.path, started: when)
         if imported { r.importedFrom = "export.zip" }
         r.finished = finished; r.undone = undone
-        try! SessionsRestore.save(r)
+        try! SessionsRestore.store.save(r)
         put(SessionsRestore.root.appendingPathComponent("\(r.id)/journal.jsonl").path, #"{"op":"intent","kind":"file","path":"/x14","bytes":1}"# + "\n")
         return SessionsRestore.load(r.id)!
     }
@@ -978,17 +978,17 @@ do {
     fresh14()
     guard case .success(let p) = SwitchEngine.plan(e, standby: e.standby[0], dataDir: wd14, owned: []) else { check(false, "plan xf"); exit(1) }
     let sw = try! SwitchEngine.run(p, windowClosed: { true }, backups: place14)
-    check(SwitchEngine.unfinished(profile: "xf").map(\.id) == [sw.id] && SessionsRestore.blocker(profile: "xf") == nil
-          && Unfinished.blocker(profile: "xf", for: .restoring) == nil, "a switch stopped half way: no restore, import or re-point waits for it")
-    check(Unfinished.blocker(profile: "xf", for: .switching) == nil, "…and the switch's own start check leaves its own receipt to the switch page's words")
+    check(SwitchEngine.unfinished(profile: "xf").map(\.id) == [sw.id] && Flows.blocker(profile: "xf", for: .restoring) == nil
+          && Flows.blocker(profile: "xf", for: .restoring) == nil, "a switch stopped half way: no restore, import or re-point waits for it")
+    check(Flows.blocker(profile: "xf", for: .switching) == nil, "…and the switch's own start check leaves its own receipt to the switch page's words")
 
     // a restore that stopped half way: a restore says what it always said; a switch is now refused, saying which and where
     fresh14()
     let rs = stoppedRestore("xf")
-    let own = SessionsRestore.blocker(profile: "xf")
+    let own = Flows.blocker(profile: "xf", for: .restoring)
     check(own == "A restore of this profile stopped half way on \(SessionsBackup.dateWords(t0)). Finish it or undo it first.", "restore on restore: the words are as they were: \(own ?? "-")")
-    check(SessionsRestore.blocker(profile: "xf", except: rs.id) == nil, "…and finishing or undoing it is the restore itself: allowed")
-    check(SessionsRestore.blocker(profile: "other") == nil && Unfinished.blocker(profile: "other", for: .switching) == nil, "another profile's unfinished restore blocks nothing here")
+    check(Flows.blocker(profile: "xf", except: rs.id, for: .restoring) == nil, "…and finishing or undoing it is the restore itself: allowed")
+    check(Flows.blocker(profile: "other", for: .restoring) == nil && Flows.blocker(profile: "other", for: .switching) == nil, "another profile's unfinished restore blocks nothing here")
     var why = startedWith()
     check(why?.contains("A restore of this profile stopped half way on") == true && why?.contains("Finish it or undo it first") == true && why?.contains("the profile's tile in Settings opens its page") == true
           && why?.contains("“Restore stopped”") != true,
@@ -1010,7 +1010,7 @@ do {
     check(why?.contains("default profile") == true && why?.contains("stopped half way") == true && why?.contains("in Settings ▸ General") == true
           && why?.contains("“The move stopped”") == true && why?.contains("default profile's page") != true,
           "a switch while this profile's move to the default profile is open: refused, said where: \(why ?? "it went on")")
-    check(SessionsRestore.blocker(profile: "xf") == nil, "…the move's own restore is not held back by its record")
+    check(Flows.blocker(profile: "xf", for: .restoring) == nil, "…the move's own restore is not held back by its record")
     fresh14(); move14("newdefault", old: "xf")
     check(startedWith()?.contains("default profile") == true, "the profile the move came from is refused too")
     fresh14(); move14("xf", finished: t0)
@@ -1032,7 +1032,7 @@ do {
 
     // one still running holds cl_audit's lock: said to be under way, not stopped
     fresh14(); stoppedRestore("xf")
-    let running = try! SwitchEngine.Lock.take()
+    let running = try! Flows.takeLock()
     why = startedWith()
     running.release()
     check(why == "Another restore, import or move is under way.", "a restore still running: under way, not stopped half way: \(why ?? "it went on")")

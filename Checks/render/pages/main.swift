@@ -380,7 +380,7 @@ struct AtlasMenu: View {
     signNew(codeA, ben)
     noteFolder()
     read(ben.email!, week: 12, resetsIn: 4 * 86400)
-    r.preview(.reached, goal: goal, target: benStandby, planned: p4, receipt: moved.flatMap { SwitchEngine.load($0.id) }, seen: ben)
+    r.preview(.reached, goal: goal, target: benStandby, planned: p4, receipt: moved.flatMap { SwitchEngine.store.load($0.id) }, seen: ben)
     draw("05", page: true)
     // 06 the Claude app signed in to ben too: ben in use, ann on standby
     appOn(ben)
@@ -393,7 +393,7 @@ struct AtlasMenu: View {
     signNew(codeA, dan)
     noteFolder()
     read(dan.email!, week: 55, resetsIn: 5 * 86400)
-    r.preview(.other(dan.email!), goal: goal, target: benStandby, planned: p7, receipt: moved7.flatMap { SwitchEngine.load($0.id) }, seen: dan)
+    r.preview(.other(dan.email!), goal: goal, target: benStandby, planned: p7, receipt: moved7.flatMap { SwitchEngine.store.load($0.id) }, seen: dan)
     draw("07", page: true)
     // 08 timed out: the sessions moved, no sign-in in 10 minutes (the folder still on ann)
     base()
@@ -1065,7 +1065,7 @@ MainActor.assumeIsolated {
     var doneImport = SessionsRestore.Receipt(id: SessionsRestore.receiptID(Date().addingTimeInterval(-86400), "exmain"), profile: "exmain", dataDir: mdata, codeDir: mcode, backup: SessionsBackup.newID(),
                                               backupPlace: BackupPrefs.placeURL.path, target: SeatID(u1), started: Date().addingTimeInterval(-86400), finished: Date().addingTimeInterval(-86400 + 60))
     doneImport.importedFrom = "cl_audit Work 2026-10-30.zip"; doneImport.sessionsAdded = 180; doneImport.entriesAdded = 30
-    try! SessionsRestore.save(doneImport)
+    try! SessionsRestore.store.save(doneImport)
     for f in [Face.std, .silver] { for (wn, w) in [("w460", CGFloat(460)), ("w340", CGFloat(340))] {
         snapshot(framed(SessionsCard(entry: exmain, model: model), f, w), "7b-sessions-card-last-\(f.rawValue)-\(wn)", w + 32)
     } }

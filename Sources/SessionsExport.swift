@@ -1173,8 +1173,8 @@ enum SessionsExport {
             var backup = part.backup
             if backup == nil, let src = part.source {
                 progress?("\(label)copying the sessions", 0)
-                let lock: SwitchEngine.Lock
-                do { lock = try SwitchEngine.Lock.take() } catch { throw ArchiveError("\(error)") }
+                let lock: FlowLock.Held
+                do { lock = try Flows.takeLock() } catch { throw ArchiveError("\(error)") }
                 defer { lock.release() }
                 let m: SessionsBackup.Manifest
                 do { m = try SessionsBackup.make(src, kind: .manual, window: !part.windowOpen, transcripts: true, setup: job.setup, place: work.appendingPathComponent("backups"), now: job.now, forExport: true) }
@@ -1680,7 +1680,7 @@ enum SessionsExport {
             for i in stride(from: n - 1, through: 0, by: -1) where buf[i] == 0x0A { end = pos + Int64(i) + 1; break search }
         }
         guard end > 0 else { return 0 }
-        let out = open(dst, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        let out = CreateOnly.open(dst)
         guard out >= 0 else { return nil }
         defer { close(out) }
         var big = [UInt8](repeating: 0, count: 1 << 20)

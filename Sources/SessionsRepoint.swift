@@ -125,17 +125,6 @@ enum SessionsRepoint {
         var worktreePath: String?
     }
 
-    static func readCapped(_ path: String, limit: Int) -> Data? {
-        let fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
-        guard fd >= 0 else { return nil }
-        defer { close(fd) }
-        var st = stat()
-        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_size >= 0, st.st_size <= off_t(limit) else { return nil }
-        var d = Data(count: Int(st.st_size))
-        let n = d.withUnsafeMutableBytes { pread(fd, $0.baseAddress, Int(st.st_size), 0) }
-        return n == Int(st.st_size) ? d : nil
-    }
-
     static func entryFacts(_ d: Data) -> EntryFacts? {
         guard let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let cli = j["cliSessionId"] as? String, AccountDiscovery.isUUID(cli) else { return nil }
         func path(_ k: String) -> String? { (j[k] as? String).flatMap { clean($0) ? $0 : nil } }
@@ -165,7 +154,7 @@ enum SessionsRepoint {
         let w = SessionsRestore.WindowNow.read(dataDir)
         for (_, paths) in w.entries {
             for p in paths {
-                guard let d = readCapped(p, limit: maxEntry), let f = entryFacts(d) else { continue }
+                guard let d = SafeFiles.readPlain(p, max: maxEntry), let f = entryFacts(d) else { continue }
                 out[f.cli, default: []].append((p, f))
             }
         }
@@ -177,7 +166,7 @@ enum SessionsRepoint {
         var byCli: [String: [(path: String, facts: EntryFacts)]] = [:]
         for e in p.entries {
             let path = backup.dir.appendingPathComponent(e.rel.joined(separator: "/")).path
-            guard let d = readCapped(path, limit: maxEntry), let f = entryFacts(d) else { continue }
+            guard let d = SafeFiles.readPlain(path, max: maxEntry), let f = entryFacts(d) else { continue }
             byCli[f.cli, default: []].append((path, f))
         }
         var out: [Session] = []
@@ -418,7 +407,7 @@ enum SessionsRepoint {
         var sideWritten: Bool? = nil        // a move's prompt history and trust that waited for this folder were written (SessionsSideApply.swift)
     }
 
-    struct Receipt: Codable, Equatable {
+    struct Receipt: StoredReceipt, Equatable {
         var id: String
         var profile: String
         var codeDir: String
@@ -438,32 +427,19 @@ enum SessionsRepoint {
         var folder: String
     }
 
-    private static func dir(_ id: String) -> URL { root.appendingPathComponent(id) }
     static func validID(_ s: String) -> Bool { SessionsRestore.validReceiptID(s) }
 
-    static func save(_ r: Receipt) throws {
-        let d = dir(r.id)
-        try FileManager.default.createDirectory(at: d.appendingPathComponent("saved"), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        try enc.encode(r).write(to: d.appendingPathComponent("receipt.json"), options: .atomic)
+    /// The re-points' receipts: repoints/<id>/receipt.json, with saved/ beside it (the old files and entries), read under 64 MB.
+    static var store: ReceiptStore<Receipt> {
+        ReceiptStore(root: root, layout: .folders(file: "receipt.json"), inner: "saved", readCap: 64 << 20, validID: validID, idMustMatch: true)
     }
-
-    static func load(_ id: String) -> Receipt? {
-        guard validID(id) else { return nil }
-        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-        guard let d = readCapped(dir(id).appendingPathComponent("receipt.json").path, limit: 64 << 20), let r = try? dec.decode(Receipt.self, from: d), r.id == id else { return nil }
-        return r
-    }
-
-    static func receipts() -> [Receipt] {
-        ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter(validID).compactMap(load).sorted { $0.started > $1.started }
-    }
+    private static func dir(_ id: String) -> URL { store.folder(id) }
 
     /// The re-points that follow an import's restore and aren't undone.
-    static func linked(restore id: String) -> [Receipt] { receipts().filter { $0.restore == id && $0.undone == nil } }
+    static func linked(restore id: String) -> [Receipt] { store.list().filter { $0.restore == id && $0.undone == nil } }
     static func touchesWindow(restore id: String) -> Bool { linked(restore: id).contains(where: \.touchesWindow) }
     /// The last re-point of a profile that isn't undone (the Sessions page's Undo).
-    static func last(profile: String) -> Receipt? { receipts().first { $0.profile == profile && $0.undone == nil && $0.finished != nil } }
+    static func last(profile: String) -> Receipt? { store.list().first { $0.profile == profile && $0.undone == nil && $0.finished != nil } }
 
     // MARK: re-pointing
 
@@ -476,14 +452,14 @@ enum SessionsRepoint {
     /// before each entry is written. A session that can't be re-pointed is said in the receipt's problems; the others go on.
     static func apply(_ t: SessionsRestore.Target, picks: [Pick], restore: String? = nil, mark: String? = nil, locked: Bool = false,
                       windowClosed: () -> Bool, now: Date = Date()) throws -> Receipt {
-        var lock: SwitchEngine.Lock?
+        var lock: FlowLock.Held?
         if !locked {
-            do { lock = try SwitchEngine.Lock.take() } catch { throw RepointError("\(error)") }
+            do { lock = try Flows.takeLock() } catch { throw RepointError("\(error)") }
         }
         defer { lock?.release() }
         guard !picks.isEmpty else { throw RepointError("No folder was picked.") }
         var r = Receipt(id: SessionsRestore.receiptID(now, t.profile), profile: t.profile, codeDir: t.codeDir, dataDir: t.dataDir, restore: restore, started: now)
-        try save(r)
+        try store.save(r)
         let byCli = entries(dataDir: t.dataDir)
         let projects = (t.codeDir as NSString).appendingPathComponent("projects")
         let running = SessionsRestore.runningSessions()
@@ -503,7 +479,7 @@ enum SessionsRepoint {
                                windowClosed: windowClosed, now: now, r: &r)
             } catch {
                 r.problems.append("\(error)")
-                try? save(r)
+                try? store.save(r)
             }
         }
         // a moved session's prompt history and trust that waited for its folder (SessionsSideApply.swift) are written now
@@ -515,7 +491,7 @@ enum SessionsRepoint {
             for k in r.sessions.indices where waited.contains(r.sessions[k].session) && !still.contains(r.sessions[k].session) { r.sessions[k].sideWritten = true }
         }
         r.finished = Date()
-        try save(r)
+        try store.save(r)
         return r
     }
 
@@ -585,7 +561,7 @@ enum SessionsRepoint {
         let entryDropped = s.entries.isEmpty ? [] : droppedWorktrees(s, picked: picked)
         let map = mapper(folder: s.folder, picked: picked, dropped: entryDropped)
         for p in s.entries {
-            guard let d = readCapped(p, limit: maxEntry), let e = entryRepointed(d, folder: s.folder, picked: picked, map: map, here: folderHere) else {
+            guard let d = SafeFiles.readPlain(p, max: maxEntry), let e = entryRepointed(d, folder: s.folder, picked: picked, map: map, here: folderHere) else {
                 throw RepointError("\(label): its Code-tab entry can't be read as one; left as it is.")
             }
             entryPlans.append((p, d, e.data, e.dropped))
@@ -602,46 +578,46 @@ enum SessionsRepoint {
         // 1. the new files: the transcript, then its folder
         let tag = String(r.id.prefix(20))
         let newBase = (projects as NSString).appendingPathComponent(newName)
-        if case .absent = created { r.steps.append(Step(kind: .dir, session: s.id, path: newBase)); try save(r) }
+        if case .absent = created { r.steps.append(Step(kind: .dir, session: s.id, path: newBase)); try store.save(r) }
         guard case .dir(let newDir) = tree.dir([newName], create: true) else {
-            if case .absent = created { r.steps.removeLast(); try? save(r) }
+            if case .absent = created { r.steps.removeLast(); try? store.save(r) }
             throw RepointError("\(label): the folder for its new name can't be made; nothing was written for it.")
         }
         defer { close(newDir) }
-        if case .absent = created { r.steps[r.steps.count - 1].done = true; try save(r) }
+        if case .absent = created { r.steps[r.steps.count - 1].done = true; try store.save(r) }
         func made(_ path: String, _ write: () throws -> (sha: String, lines: Int, kept: Int)) throws {
-            r.steps.append(Step(kind: .made, session: s.id, path: path)); try save(r)
+            r.steps.append(Step(kind: .made, session: s.id, path: path)); try store.save(r)
             let i = r.steps.count - 1
             let w: (sha: String, lines: Int, kept: Int)
             do { w = try write() } catch {
-                r.steps.remove(at: i); try? save(r); throw error            // nothing was put in place
+                r.steps.remove(at: i); try? store.save(r); throw error            // nothing was put in place
             }
             // the file is in place: its step stays whatever happens to the save, so Undo and a retry still see it
             r.steps[i].sha = w.sha; r.steps[i].done = true
             done.lines += w.lines; done.keptLines += w.kept; done.files += 1
-            try save(r)
+            try store.save(r)
         }
         try made(newBase + "/" + s.id + ".jsonl") {
             try copyFile(from: oldDir, [s.id + ".jsonl"], to: newDir, [s.id + ".jsonl"], rewrite: true, tag: tag, map: map)
         }
         if hasSub {
-            r.steps.append(Step(kind: .dir, session: s.id, path: newBase + "/" + s.id)); try save(r)
+            r.steps.append(Step(kind: .dir, session: s.id, path: newBase + "/" + s.id)); try store.save(r)
             guard mkdirat(newDir, s.id, 0o700) == 0 else {
-                r.steps.removeLast(); try? save(r)
+                r.steps.removeLast(); try? store.save(r)
                 throw RepointError("\(label): its folder couldn't be made under the new name; what was written for it stays until Undo.")
             }
-            r.steps[r.steps.count - 1].done = true; try save(r)
+            r.steps[r.steps.count - 1].done = true; try store.save(r)
         }
         for item in sub {
             let rel = item.rel
             if item.isDir {
-                r.steps.append(Step(kind: .dir, session: s.id, path: newBase + "/" + rel.joined(separator: "/"))); try save(r)
+                r.steps.append(Step(kind: .dir, session: s.id, path: newBase + "/" + rel.joined(separator: "/"))); try store.save(r)
                 let i = r.steps.count - 1
                 guard mkdirat(newDir, rel.joined(separator: "/"), 0o700) == 0 || errno == EEXIST else {
-                    r.steps.remove(at: i); try? save(r)
+                    r.steps.remove(at: i); try? store.save(r)
                     throw RepointError("\(label): a folder for it couldn't be made; what was written for it stays until Undo.")
                 }
-                r.steps[i].done = true; try save(r)
+                r.steps[i].done = true; try store.save(r)
                 continue
             }
             try made(newBase + "/" + rel.joined(separator: "/")) {
@@ -655,18 +631,18 @@ enum SessionsRepoint {
             if fstatat(oldDir, "memory", &mst, AT_SYMLINK_NOFOLLOW) == 0, (mst.st_mode & S_IFMT) == S_IFDIR, let list = walk(oldDir, ["memory"]) {
                 var x = stat()
                 if fstatat(newDir, "memory", &x, AT_SYMLINK_NOFOLLOW) != 0 {
-                    r.steps.append(Step(kind: .dir, session: s.id, path: newBase + "/memory")); try save(r)
+                    r.steps.append(Step(kind: .dir, session: s.id, path: newBase + "/memory")); try store.save(r)
                     if mkdirat(newDir, "memory", 0o700) == 0 { r.steps[r.steps.count - 1].done = true } else { r.steps.removeLast() }
-                    try save(r)
+                    try store.save(r)
                 }
                 for item in list {
                     let rel = item.rel
                     var e = stat()
                     if fstatat(newDir, rel.joined(separator: "/"), &e, AT_SYMLINK_NOFOLLOW) == 0 { continue }       // there: never replaced
                     if item.isDir {
-                        r.steps.append(Step(kind: .dir, session: s.id, path: newBase + "/" + rel.joined(separator: "/"))); try save(r)
+                        r.steps.append(Step(kind: .dir, session: s.id, path: newBase + "/" + rel.joined(separator: "/"))); try store.save(r)
                         if mkdirat(newDir, rel.joined(separator: "/"), 0o700) == 0 { r.steps[r.steps.count - 1].done = true } else { r.steps.removeLast() }
-                        try save(r)
+                        try store.save(r)
                         continue
                     }
                     let before = done.files
@@ -683,13 +659,13 @@ enum SessionsRepoint {
             let name = SwitchEngine.sha(e.old).prefix(16) + "-entry.json"
             let savedPath = dir(r.id).appendingPathComponent("saved").appendingPathComponent(String(name))
             try writeSaved(e.old, to: savedPath)
-            r.steps.append(Step(kind: .entry, session: s.id, path: e.path, sha: SwitchEngine.sha(e.new), saved: String(name))); try save(r)
+            r.steps.append(Step(kind: .entry, session: s.id, path: e.path, sha: SwitchEngine.sha(e.new), saved: String(name))); try store.save(r)
             let i = r.steps.count - 1
             try replace(e.path, expected: SwitchEngine.sha(e.old), with: e.new, tag: tag)
             r.steps[i].done = true
             done.entries += 1
             for k in e.dropped where !done.dropped.contains(k) { done.dropped.append(k) }
-            try save(r)
+            try store.save(r)
         }
         // 4. the old files: each copied into the receipt's folder, then taken away (only while it is the file that was read)
         var old: [[String]] = [[s.id + ".jsonl"]]
@@ -697,16 +673,16 @@ enum SessionsRepoint {
         for rel in old {
             let path = (projects as NSString).appendingPathComponent(s.project) + "/" + rel.joined(separator: "/")
             let name = "\(r.steps.count)-" + (rel.last ?? "file")
-            r.steps.append(Step(kind: .parked, session: s.id, path: path, saved: name)); try save(r)
+            r.steps.append(Step(kind: .parked, session: s.id, path: path, saved: name)); try store.save(r)
             let i = r.steps.count - 1
             let h = try park(oldDir, rel, to: dir(r.id).appendingPathComponent("saved").path, name: name)
             r.steps[i].sha = h; r.steps[i].done = true
-            try save(r)
+            try store.save(r)
         }
         for item in sub.filter(\.isDir).reversed() { unlinkat(oldDir, item.rel.joined(separator: "/"), AT_REMOVEDIR) }
         if hasSub { unlinkat(oldDir, s.id, AT_REMOVEDIR) }                 // only when empty
         r.sessions.append(done)
-        try save(r)
+        try store.save(r)
     }
 
     /// The worktrees a re-point drops: the entry's worktreePath, or the recorded cwd's worktree, when its place under the picked folder
@@ -774,11 +750,11 @@ enum SessionsRepoint {
         guard pfd >= 0 else { throw RepointError("A folder for \(dst.last ?? "a file") isn't a plain folder; what was written stays until Undo.") }
         defer { close(pfd) }
         let leaf = dst.last!
-        let tmp = ".repoint-\(tag)-\(UUID().uuidString.prefix(8)).tmp"
-        let out = openat(pfd, tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-        guard out >= 0 else { throw RepointError("\(leaf) couldn't be written (\(String(cString: strerror(errno)))); what was written stays until Undo.") }
-        var closed = false
-        defer { if !closed { close(out) }; unlinkat(pfd, tmp, 0) }
+        let temp: CreateOnly.Temp
+        do { temp = try CreateOnly.Temp(".repoint-\(tag)-\(UUID().uuidString.prefix(8)).tmp", in: pfd) }
+        catch { throw RepointError("\(leaf) couldn't be written (\(error)); what was written stays until Undo.") }
+        defer { temp.discard() }
+        let out = temp.fd
         var hash = SHA256()
         var pending = [UInt8]()
         pending.reserveCapacity(1 << 20)
@@ -834,19 +810,20 @@ enum SessionsRepoint {
         fsync(out)
         var times = [st.st_atimespec, st.st_mtimespec]
         futimens(out, &times)
-        close(out); closed = true
-        guard linkat(pfd, tmp, pfd, leaf, 0) == 0 else {
-            throw RepointError(errno == EEXIST ? "\(leaf) appeared meanwhile; what was written stays until Undo." : "\(leaf) couldn't be put in place; what was written stays until Undo.")
+        switch temp.place(as: leaf) {
+        case .created: break
+        case .exists: throw RepointError("\(leaf) appeared meanwhile; what was written stays until Undo.")
+        case .failed: throw RepointError("\(leaf) couldn't be put in place; what was written stays until Undo.")
         }
         return (hash.finalize().map { String(format: "%02x", $0) }.joined(), lines, kept)
     }
 
     /// A small file in the receipt's folder (an entry as it was): never over one, never through a link.
     private static func writeSaved(_ d: Data, to url: URL) throws {
-        let fd = open(url.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        let fd = CreateOnly.open(url.path)
         guard fd >= 0 else { throw RepointError("cl_audit's receipt folder can't be written (\(String(cString: strerror(errno)))); nothing more was changed.") }
         defer { close(fd) }
-        let ok = d.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) == d.count }
+        let ok = CreateOnly.writeAll(fd, d)
         guard ok, fsync(fd) == 0 else { throw RepointError("cl_audit's receipt folder can't be written; nothing more was changed.") }
     }
 
@@ -863,9 +840,9 @@ enum SessionsRepoint {
         close(fd)
         guard ok else { throw RepointError("\(leaf) changed meanwhile; it wasn't changed.") }
         let tmp = ".repoint-\(tag)-\(UUID().uuidString.prefix(8)).tmp"
-        let out = openat(pfd, tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+        let out = CreateOnly.open(tmp, in: pfd)
         guard out >= 0 else { throw RepointError("\(leaf) couldn't be written; it wasn't changed.") }
-        let wrote = data.withUnsafeBytes { Darwin.write(out, $0.baseAddress, $0.count) == data.count }
+        let wrote = CreateOnly.writeAll(out, data)
         fsync(out); close(out)
         guard wrote, renameat(pfd, tmp, pfd, leaf) == 0 else { unlinkat(pfd, tmp, 0); throw RepointError("\(leaf) couldn't be written; it wasn't changed.") }
     }
@@ -905,12 +882,12 @@ enum SessionsRepoint {
     /// before each entry.
     @discardableResult
     static func undo(_ id: String, locked: Bool = false, windowClosed: () -> Bool) throws -> Receipt {
-        var lock: SwitchEngine.Lock?
+        var lock: FlowLock.Held?
         if !locked {
-            do { lock = try SwitchEngine.Lock.take() } catch { throw RepointError("\(error)") }
+            do { lock = try Flows.takeLock() } catch { throw RepointError("\(error)") }
         }
         defer { lock?.release() }
-        guard var r = load(id) else { throw RepointError("No record of that change.") }
+        guard var r = store.load(id) else { throw RepointError("No record of that change.") }
         guard r.undone == nil else { return r }
         // the prompt history and trust this Pick wrote for a moved session (SessionsSideApply.swift) go first; the session waits for its
         // folder again
@@ -935,14 +912,14 @@ enum SessionsRepoint {
                 }
             }
             if idx.contains(where: { r.steps[$0].kind == .entry && r.steps[$0].done }), why == nil, !windowClosed() {
-                try? save(r)
+                try? store.save(r)
                 throw RepointError("Quit the profile's Claude window first, then Undo.")
             }
             if let why {
                 if let k = r.sessions.firstIndex(where: { $0.session == sid }) { r.sessions[k].left = why }
                 r.problems.append("\(r.sessions.first { $0.session == sid }?.title.map { "“\($0)”" } ?? "Session \(sid.prefix(8))") stays in its new folder: \(why).")
                 for i in idx { r.steps[i].settled = true }
-                try save(r)
+                try store.save(r)
                 continue
             }
             // 1. the old files back (create-only, from the copies kept)
@@ -954,20 +931,20 @@ enum SessionsRepoint {
                     let kept = dir(r.id).appendingPathComponent("saved").appendingPathComponent(saved).path
                     if lstat(kept, &x) == 0 {
                         do { try restoreParked(kept, to: s.path, codeDir: r.codeDir, expected: s.sha) }
-                        catch { try? save(r); throw error }
+                        catch { try? store.save(r); throw error }
                     }
                 }
                 r.steps[i].settled = true
             }
-            try save(r)
+            try store.save(r)
             // 2. the entries back
             for i in idx.reversed() where r.steps[i].kind == .entry {
                 let s = r.steps[i]
-                guard let saved = s.saved, let sha = s.sha, let old = readCapped(dir(r.id).appendingPathComponent("saved").appendingPathComponent(saved).path, limit: maxEntry) else { r.steps[i].settled = true; continue }
-                guard windowClosed() else { try? save(r); throw RepointError("The profile's Claude window opened during the undo; stopped. Undo again once it is closed.") }
+                guard let saved = s.saved, let sha = s.sha, let old = SafeFiles.readPlain(dir(r.id).appendingPathComponent("saved").appendingPathComponent(saved).path, max: maxEntry) else { r.steps[i].settled = true; continue }
+                guard windowClosed() else { try? store.save(r); throw RepointError("The profile's Claude window opened during the undo; stopped. Undo again once it is closed.") }
                 if fileSHA(s.path) == sha { try replace(s.path, expected: sha, with: old, tag: String(r.id.prefix(20))) }
                 r.steps[i].settled = true
-                try save(r)
+                try store.save(r)
             }
             // 3. the new files go, then the folders it made (only when empty)
             for i in idx.reversed() where r.steps[i].kind == .made {
@@ -980,10 +957,10 @@ enum SessionsRepoint {
                 r.steps[i].settled = true
             }
             if let k = r.sessions.firstIndex(where: { $0.session == sid }) { r.sessions[k].undone = true }
-            try save(r)
+            try store.save(r)
         }
         r.undone = Date()
-        try save(r)
+        try store.save(r)
         return r
     }
 

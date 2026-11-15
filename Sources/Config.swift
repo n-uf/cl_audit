@@ -492,14 +492,11 @@ enum Store {
     /// The copy written to a private temporary name in the same folder (never through a link, owner only), flushed to disk,
     /// then put in place only if `path` still doesn't exist (link: never over anything), and checked by its size.
     private static func writeCopy(_ data: Data, to path: String) -> Bool {
-        let tmp = folder.appendingPathComponent(".accounts.json.pre-\(UUID().uuidString).tmp").path
-        let fd = Darwin.open(tmp, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-        guard fd >= 0 else { return false }
-        defer { unlink(tmp) }
-        let n = data.withUnsafeBytes { Darwin.write(fd, $0.baseAddress, $0.count) }
-        let synced = fsync(fd) == 0
-        Darwin.close(fd)
-        guard n == data.count, synced, link(tmp, path) == 0 else { return false }
+        guard let temp = try? CreateOnly.Temp(folder.appendingPathComponent(".accounts.json.pre-\(UUID().uuidString).tmp").path) else { return false }
+        defer { temp.discard() }
+        let whole = CreateOnly.writeAll(temp.fd, data)
+        let synced = fsync(temp.fd) == 0
+        guard whole, synced, temp.place(as: path) == .created else { return false }
         var st = stat()
         return lstat(path, &st) == 0 && (st.st_mode & S_IFMT) == S_IFREG && Int(st.st_size) == data.count
     }

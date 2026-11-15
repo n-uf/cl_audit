@@ -29,7 +29,8 @@
 //   back is a switch the other way.
 //
 // Shared with the other writers of the window's files (Restore, Import, the default-profile move, re-pointing a moved
-// session): the scope folders, `placed`, `writeNew`, the lock and the window marks.
+// session): the scope folders, `placed`, `writeNew` and the window marks; the lock is Flows.takeLock, the receipts' store
+// and the create-only writes are SafeFiles'.
 //
 // Adapted from claude-transplant, Copyright (c) 2026 Vitaliy Hayda, under the MIT License:
 //   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
@@ -73,7 +74,7 @@ struct SwitchPlan: Equatable {
 // (SeatID, an account and organisation by their ids only, is ProfileCore's: Core/Identity.swift)
 
 /// The record of one switch, in cl_audit's folder (switches/<id>/receipt.json), saved before and after every step.
-struct SwitchReceipt: Codable, Equatable {
+struct SwitchReceipt: StoredReceipt, Equatable {
     var id: String
     var profile: String
     var standby: String
@@ -174,15 +175,16 @@ enum SwitchEngine {
         return try JSONSerialization.data(withJSONObject: j, options: [.withoutEscapingSlashes])
     }
 
-    /// A new file, never over an existing one: written to a private temp file beside it, then linked into place.
+    /// A new file, never over an existing one: written to a private temp file beside it, then linked into place (CreateOnly).
     static func writeNew(_ path: String, _ data: Data) throws {
-        let dir = (path as NSString).deletingLastPathComponent
-        let tmp = (dir as NSString).appendingPathComponent(".\((path as NSString).lastPathComponent).\(UUID().uuidString).tmp")
-        guard FileManager.default.createFile(atPath: tmp, contents: data, attributes: [.posixPermissions: 0o600]) else {
-            throw SwitchError.failed("couldn't write in \(tilde(dir))")
+        let dir = (path as NSString).deletingLastPathComponent, leaf = (path as NSString).lastPathComponent
+        let tmp = (dir as NSString).appendingPathComponent(".\(leaf).\(UUID().uuidString).tmp")
+        switch CreateOnly.write(data, as: path, temp: tmp, sync: false) {
+        case .created: return
+        case .exists: throw SwitchError.failed("\(leaf) is already there")
+        case .notMade, .notWhole: throw SwitchError.failed("couldn't write in \(tilde(dir))")
+        case .failed: throw SwitchError.failed("couldn't place \(leaf)")
         }
-        defer { unlink(tmp) }
-        guard link(tmp, path) == 0 else { throw SwitchError.failed(errno == EEXIST ? "\((path as NSString).lastPathComponent) is already there" : "couldn't place \((path as NSString).lastPathComponent)") }
     }
 
     // MARK: scheduled tasks
@@ -381,11 +383,11 @@ enum SwitchEngine {
     @discardableResult
     static func run(_ p: SwitchPlan, windowClosed: () -> Bool, now: Date = Date(), backups: URL? = nil,
                     backupMade: ((_ id: String, _ place: String) -> Void)? = nil) throws -> SwitchReceipt {
-        let lock = try Lock.take()
+        let lock = try Flows.takeLock()
         defer { lock.release() }
         guard windowClosed() else { throw SwitchError.notReady("The profile's Claude window is open; nothing moved.") }
         // looked at again under the lock, like a restore does: one that stopped half way since the page asked still holds it back
-        if let why = Unfinished.blocker(profile: p.profile, for: .switching) { throw SwitchError.notReady(why) }
+        if let why = Flows.blocker(profile: p.profile, for: .switching) { throw SwitchError.notReady(why) }
         // a link put in since the plan is refused all the same
         if let why = linkProblem(p) { throw SwitchError.notReady(why) }
         var r = SwitchReceipt(id: receiptID(now, p.profile), profile: p.profile, standby: p.standby, dataDir: p.dataDir,
@@ -414,7 +416,7 @@ enum SwitchEngine {
         do {
             try FileManager.default.createDirectory(at: dir.appendingPathComponent("parked"), withIntermediateDirectories: true,
                                                     attributes: [.posixPermissions: 0o700])
-            try save(r)
+            try store.save(r)
         } catch {
             // no receipt: nothing names the backup, and nothing moved
             if let id = r.backup { SessionsBackup.discard(profile: p.profile, id: id, place: place) }
@@ -426,11 +428,11 @@ enum SwitchEngine {
             try moveAll(p, &r, dir: dir, windowClosed: windowClosed)
         } catch {
             r.problems.append("\(error)")
-            try? save(r)
+            try? store.save(r)
             throw error
         }
         r.finished = Date()
-        try save(r)
+        try store.save(r)
         return r
     }
 
@@ -440,7 +442,7 @@ enum SwitchEngine {
         for name in p.move {
             guard windowClosed() else { throw SwitchError.windowOpen }
             do { try moveEntry(name, p, parked: dir.appendingPathComponent("parked"), &r) }
-            catch { r.problems.append("\(name) didn't move: \(error)."); try save(r) }
+            catch { r.problems.append("\(name) didn't move: \(error)."); try store.save(r) }
         }
         // the scheduled tasks, also when there's no session to move
         guard windowClosed() else { throw SwitchError.windowOpen }
@@ -465,11 +467,11 @@ enum SwitchEngine {
         let park = parked.appendingPathComponent(name).path
         r.steps.append(SwitchReceipt.Step(kind: .entry, path: dst, sha: sha(data), parked: park, original: src))
         let i = r.steps.count - 1
-        try save(r)                                            // what it will do, before anything is written
+        try store.save(r)                                            // what it will do, before anything is written
         do {
             try writeNew(dst, data)
         } catch {
-            r.steps.remove(at: i); try save(r); throw error   // nothing placed
+            r.steps.remove(at: i); try store.save(r); throw error   // nothing placed
         }
         do {
             guard readEntry(dst) == data else { throw SwitchError.failed("the placed entry didn't read back the same") }
@@ -482,11 +484,11 @@ enum SwitchEngine {
             } else if fm.fileExists(atPath: dst) && fm.fileExists(atPath: src) {
                 r.problems.append("\(name) is in both accounts: its copy couldn't be taken away. Undo takes it away.")
             }
-            try save(r)
+            try store.save(r)
             throw error
         }
         r.steps[i].done = true
-        try save(r)
+        try store.save(r)
     }
 
     /// The source's tasks join the target's (a task the target already has by its id, identical to it by taskProblem's
@@ -523,11 +525,11 @@ enum SwitchEngine {
             writes.append((file, data, r.steps.count - 1))
         }
         r.tasksMoved = movingIDs.count
-        try save(r)                                            // both written down before either file changes
+        try store.save(r)                                            // both written down before either file changes
         for w in writes {
             try w.data.write(to: URL(fileURLWithPath: w.file), options: .atomic)
             r.steps[w.step].done = true
-            try save(r)
+            try store.save(r)
         }
     }
 
@@ -545,7 +547,7 @@ enum SwitchEngine {
               (last["ownerAccountUuid"] as? String) != p.to.account else { return }
         if let why = busy(transcript, cli: cli, now: now) {
             r.problems.append("Session \(cli): \(why), so its Remote Control pointer is left as it is.")
-            try? save(r)
+            try? store.save(r)
             return
         }
         let fd = open(transcript, O_WRONLY | O_APPEND | O_NOFOLLOW)
@@ -561,7 +563,7 @@ enum SwitchEngine {
         r.steps.append(SwitchReceipt.Step(kind: .pointer, path: transcript, sha: sha(bytes), parked: nil, original: nil,
                                           offset: size, bytes: bytes.base64EncodedString(), dev: UInt64(st.st_dev), ino: UInt64(st.st_ino)))
         let i = r.steps.count - 1
-        do { try save(r) } catch {                             // not written down: not written
+        do { try store.save(r) } catch {                             // not written down: not written
             r.steps.remove(at: i)
             r.problems.append("Session \(cli): its Remote Control pointer is left as it is (the receipt couldn't be saved).")
             return
@@ -570,12 +572,12 @@ enum SwitchEngine {
         var after = stat()
         guard n == bytes.count else {
             r.problems.append("Session \(cli): its pointer line wasn't written whole.")
-            r.steps[i].offset = nil; try? save(r); return
+            r.steps[i].offset = nil; try? store.save(r); return
         }
         // where it landed: right after what was there, unless someone else wrote meanwhile (Undo then leaves it)
         if fstat(fd, &after) != 0 || UInt64(after.st_size) != size + UInt64(bytes.count) { r.steps[i].offset = nil }
         r.steps[i].done = true
-        try? save(r)
+        try? store.save(r)
     }
 
     /// Why a transcript may be being written, or nil: changed in the last 10 seconds, open in a process, or a Claude Code
@@ -656,10 +658,10 @@ enum SwitchEngine {
     /// must be closed. A linked switch isn't undone: the way back is a switch the other way.
     @discardableResult
     static func undo(_ id: String, windowClosed: () -> Bool) throws -> SwitchReceipt {
-        let lock = try Lock.take()
+        let lock = try Flows.takeLock()
         defer { lock.release() }
         guard windowClosed() else { throw SwitchError.notReady("Quit the profile's Claude window first, then Undo.") }
-        guard var r = load(id) else { throw SwitchError.failed("No receipt for that switch.") }
+        guard var r = store.load(id) else { throw SwitchError.failed("No receipt for that switch.") }
         guard r.undone == nil else { return r }
         guard r.linked == nil else { throw SwitchError.notReady("That switch finished; the way back is a switch the other way.") }
         let fm = FileManager.default
@@ -673,7 +675,7 @@ enum SwitchEngine {
             // the window must stay closed for every step, as for the switch itself
             guard windowClosed() else {
                 r.problems.append("The profile's Claude window opened during Undo; stopped. Undo again once it's closed.")
-                try? save(r)
+                try? store.save(r)
                 throw SwitchError.windowOpen
             }
             if let why = places.outside(step) { r.problems.append("\(name): \(why); left as it is"); left.append(name); continue }
@@ -711,7 +713,7 @@ enum SwitchEngine {
         for f in (try? fm.contentsOfDirectory(atPath: parkedDir)) ?? [] where places.scopesOK {
             let p = (parkedDir as NSString).appendingPathComponent(f)
             guard !named.contains(p), f.hasPrefix("local_"), f.hasSuffix(".json") else { continue }
-            guard windowClosed() else { try? save(r); throw SwitchError.windowOpen }
+            guard windowClosed() else { try? store.save(r); throw SwitchError.windowOpen }
             let back = (source as NSString).appendingPathComponent(f)
             if fm.fileExists(atPath: back) { r.problems.append("\(f) is back already") } else { try fm.moveItem(atPath: p, toPath: back) }
         }
@@ -720,7 +722,7 @@ enum SwitchEngine {
         } else {
             r.left = left; r.partlyUndone = Date()           // not undone: it stays open (unfinished) for another Undo
         }
-        try save(r)
+        try store.save(r)
         return r
     }
 
@@ -795,7 +797,7 @@ enum SwitchEngine {
     /// window during Undo, and another run on it is refused.
     @discardableResult
     static func undoHolding(_ id: String, account: Account, windowClosed: () -> Bool) throws -> SwitchReceipt {
-        let window = Launcher.dataDirKey(of: account), profile = load(id)?.profile ?? "", name = "undo-\(id)"
+        let window = Launcher.dataDirKey(of: account), profile = store.load(id)?.profile ?? "", name = "undo-\(id)"
         guard SwitchMarker.claim(window, profile: profile, standby: name) else {
             throw SwitchError.busy("Another run on the profile's Claude window is under way (a restore, an import or a switch).")
         }
@@ -829,37 +831,21 @@ enum SwitchEngine {
         return "\(f.string(from: d))-\(UUID().uuidString.prefix(4).lowercased())-\(profile)"
     }
 
-    static func load(_ id: String) -> SwitchReceipt? {
-        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
-        return (try? Data(contentsOf: root.appendingPathComponent("\(id)/receipt.json"))).flatMap { try? dec.decode(SwitchReceipt.self, from: $0) }
-    }
+    /// The switches' receipts: switches/<id>/receipt.json (the folder also holds the window marks and the lock).
+    static var store: ReceiptStore<SwitchReceipt> { ReceiptStore(root: root, layout: .folders(file: "receipt.json")) }
 
     /// A profile's switches, newest first.
     static func receipts(profile: String) -> [SwitchReceipt] {
-        ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter { $0.hasSuffix("-\(profile)") }
-            .compactMap(load).filter { $0.profile == profile }.sorted { $0.started > $1.started }
+        store.list { $0.hasSuffix("-\(profile)") }.filter { $0.profile == profile }
     }
 
     /// Every profile's switches, newest first.
     static func receipts() -> [SwitchReceipt] {
-        ((try? FileManager.default.contentsOfDirectory(atPath: root.path)) ?? []).filter { !$0.hasPrefix(".") && !$0.hasSuffix(".json") }
-            .compactMap(load).sorted { $0.started > $1.started }
+        store.list { !$0.hasPrefix(".") && !$0.hasSuffix(".json") }
     }
 
     /// A profile's switches that moved something and were neither linked nor undone, newest first.
     static func unfinished(profile: String) -> [SwitchReceipt] { receipts(profile: profile).filter(\.unfinished) }
-
-    /// A receipt as it is saved (receipt.json).
-    static func encoded(_ r: SwitchReceipt) throws -> Data {
-        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return try enc.encode(r)
-    }
-
-    static func save(_ r: SwitchReceipt) throws {
-        let dir = root.appendingPathComponent(r.id)
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try encoded(r).write(to: dir.appendingPathComponent("receipt.json"), options: .atomic)
-    }
 
     /// Claude Code signed in as the new account: the profile works on it, and the way back is a switch.
     /// Every unfinished switch whose profile reached the account it went for, by the profile's record or by what its
@@ -885,64 +871,25 @@ enum SwitchEngine {
     /// closed, so it no longer holds up the next switch. What stays where, in words. The backup made before it is kept.
     @discardableResult
     static func leaveAsIs(_ id: String, now: Date = Date()) throws -> String {
-        let lock = try Lock.take()
+        let lock = try Flows.takeLock()
         defer { lock.release() }
-        guard var r = load(id), r.unfinished else { return "" }
+        guard var r = store.load(id), r.unfinished else { return "" }
         r.leftAsIs = now
-        try save(r)
+        try store.save(r)
         let moved = r.steps.filter { $0.kind == .entry && $0.done }.count
         return "Left as it is: \(moved) Code-tab \(moved == 1 ? "session stays" : "sessions stay") under the account the switch went to, the rest under the one it came from"
             + (r.backup != nil ? "; the backup made before it holds them all as they were." : ".")
     }
 
     static func markLinked(_ id: String, now: Date = Date()) {
-        guard var r = load(id), r.linked == nil, r.undone == nil else { return }
+        guard var r = store.load(id), r.linked == nil, r.undone == nil else { return }
         r.linked = now
-        try? save(r)
+        try? store.save(r)
     }
 
     static func sha(_ d: Data) -> String { SHA256.hash(data: d).map { String(format: "%02x", $0) }.joined() }
 
-    // MARK: one writer at a time
-
-    struct Lock {
-        let fd: Int32
-        let transplant: Int32                // claude-transplant's lock, held too
-        /// A file lock holds against other processes only; this holds within cl_audit.
-        private static let inProcess = NSLock()
-        private static var held = false
-
-        /// cl_audit's own lock (switches/.lock), and claude-transplant's: it takes its lock with flock (/usr/bin/lockf),
-        /// which fcntl locks don't see, so it's taken the same way and held until release.
-        static func take() throws -> Lock {
-            inProcess.lock()
-            defer { inProcess.unlock() }
-            guard !held else { throw SwitchError.busy("Another restore, import or move is under way.") }
-            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let fd = open(root.appendingPathComponent(".lock").path, O_CREAT | O_RDWR, 0o600)
-            guard fd >= 0 else { throw SwitchError.busy("Couldn't take cl_audit's lock.") }
-            guard lockf(fd, F_TLOCK, 0) == 0 else { close(fd); throw SwitchError.busy("Another restore, import or move is under way.") }
-            // claude-transplant 4.2.1 runs `/usr/bin/lockf -k -s -w -t 0 <its folder>/lock …` (a flock; -k keeps the file
-            // between runs), or perl's flock on the same file, and makes the folder and the file when they're missing. cl_audit
-            // makes them too, so a claude-transplant that starts meanwhile finds the lock held, even on its first run.
-            let ctDir = expand("~/Library/Application Support/claude-transplant")
-            try? FileManager.default.createDirectory(atPath: ctDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-            let t = open((ctDir as NSString).appendingPathComponent("lock"), O_CREAT | O_RDWR | O_NOFOLLOW, 0o600)
-            guard t >= 0 else { lockf(fd, F_ULOCK, 0); close(fd); throw SwitchError.busy("Couldn't check claude-transplant's lock.") }
-            guard flock(t, LOCK_EX | LOCK_NB) == 0 else {
-                close(t); lockf(fd, F_ULOCK, 0); close(fd)
-                throw SwitchError.busy("claude-transplant is moving sessions; wait for it to finish.")
-            }
-            held = true
-            return Lock(fd: fd, transplant: t)
-        }
-
-        func release() {
-            flock(transplant, LOCK_UN); close(transplant)
-            lockf(fd, F_ULOCK, 0); close(fd)
-            Self.inProcess.lock(); Self.held = false; Self.inProcess.unlock()
-        }
-    }
+    // (one writer at a time: cl_audit's lock and claude-transplant's, Flows.takeLock)
 }
 
 /// A run that holds one Claude window (by its data folder) closed while it writes the window's files: a restore, an

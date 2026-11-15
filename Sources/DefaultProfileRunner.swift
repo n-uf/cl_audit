@@ -189,7 +189,7 @@ final class DefaultProfileRunner: ObservableObject {
             }
             claimed.append(w.key)
         }
-        if let why = SessionsRestore.busy() { releaseMarks(); rollbackPrepared(); phase = .failed(why); return }
+        if let why = Flows.busy() { releaseMarks(); rollbackPrepared(); phase = .failed(why); return }
         let apps = windows.flatMap { $0.apps() }
         guard !apps.isEmpty else { backUp(); return }
         phase = .closing
@@ -224,8 +224,8 @@ final class DefaultProfileRunner: ObservableObject {
         let windows = windowKeys()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result: Result<(String, String), Error> = Result {
-                let lock: SwitchEngine.Lock
-                do { lock = try SwitchEngine.Lock.take() } catch { throw BackupError("\(error)") }
+                let lock: FlowLock.Held
+                do { lock = try Flows.takeLock() } catch { throw BackupError("\(error)") }
                 defer { lock.release() }
                 let now = Date()
                 let oldID = SessionsBackup.newID(now)
