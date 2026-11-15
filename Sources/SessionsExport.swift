@@ -418,17 +418,32 @@ struct Identities: Equatable {
         guard let seat else { return }
         add(id: seat.account); add(id: seat.organization); add(email: seat.email); add(email: seat.was)
     }
-    mutating func formUnion(_ o: Identities) { ids.formUnion(o.ids); emails.formUnion(o.emails) }
-
-    /// The account and organisation folders a Claude window's Code tab has filed entries under: their names are ids.
-    mutating func add(windowDir dataDir: String) {
-        guard !dataDir.isEmpty else { return }
-        for s in ClaudeFiles.sessionScopes(dataDir: expand(dataDir)) { add(id: s.account); add(id: s.organization) }
+    mutating func formUnion(_ o: Identities) {
+        ids.formUnion(o.ids); emails.formUnion(o.emails)
+        for p in o.unread where !unread.contains(p) { unread.append(p) }
     }
 
+    /// The account and organisation folders a Claude window's Code tab has filed entries under: their names are ids.
+    /// Every name there that is an id, whatever it is (a folder, a link, a file) and whatever is below it: this is the leak
+    /// check, so it takes more than ClaudeFiles' lister does, never less.
+    mutating func add(windowDir dataDir: String) {
+        guard !dataDir.isEmpty else { return }
+        let fm = FileManager.default
+        let root = (expand(dataDir) as NSString).appendingPathComponent("claude-code-sessions")
+        for a in (try? fm.contentsOfDirectory(atPath: root)) ?? [] where ClaudeFiles.isUUID(a) {
+            add(id: a)
+            for o in (try? fm.contentsOfDirectory(atPath: (root as NSString).appendingPathComponent(a))) ?? [] where ClaudeFiles.isUUID(o) { add(id: o) }
+        }
+    }
+
+    /// The records too large to read (over ClaudeFiles.recordMax): their ids aren't known, so an export refuses to run.
+    var unread: [String] = []
+
     /// The account, organisation and address in one .claude.json (or a `.claude.json.backup*` of it): ids and an address only,
-    /// never a token, and every record (not one per account, not only those with an address).
+    /// never a token, and every record (not one per account, not only those with an address). One too large to read is
+    /// noted (`unread`), never skipped.
     mutating func add(claudeJSON path: String) {
+        if ClaudeFiles.tooLarge(path) { if !unread.contains(path) { unread.append(path) }; return }
         guard let r = ClaudeFiles.record(at: path) else { return }          // bounded, never blocking
         add(id: r.accountUuid); add(id: r.organizationUuid); add(email: r.emailAddress)
     }
@@ -1144,6 +1159,10 @@ enum SessionsExport {
         // every identity there is to know, from the start: a part's entries may name another profile's account
         var known = job.known
         for p in job.parts { for e in p.emails { known.add(email: e) }; if let s = p.source { known.add(source: s) } }
+        // an account record too large to read: its ids can't be looked for, so nothing goes out (a move keeps the real ids anyway)
+        if !job.move, let big = known.unread.first {
+            throw ArchiveError("Claude Code's account record \(tilde(big)) is larger than 64 MB, so cl_audit can't check the export for the ids in it; nothing was exported.")
+        }
         // the names that go in the file (the folder inside, the profiles' names) are scrubbed too: a profile can be named for its address
         // (a move scrubs nothing: its ids and addresses are the real ones, in the encrypted image)
         let names = Scrubber(job.move ? Identities() : known, fp: fp)
