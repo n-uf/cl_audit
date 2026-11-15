@@ -308,7 +308,7 @@ struct AtlasMenu: View {
     if let st = Store.status(for: model.accounts[0]), let resets = st.weeklyResets {
         let e = model.accounts[0]
         let back = "Back \(UsageReader.backWords(resets)), in \(TimeWords.countdown(resets))"
-        let offer = e.bestOffer()
+        let offer = e.fullOffer()               // (the alert's one offer, Reader.checkThresholds)
         let body = SwitchWords.alertLine(offer, accounts: e.standby.count).map { "\(back). \($0)" } ?? back
         draw("02", page: true, alert: ("Claude \(e.name): weekly limit full", body, offer == nil ? [] : [SwitchWords.button]))
     }
