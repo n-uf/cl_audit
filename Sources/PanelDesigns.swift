@@ -33,8 +33,8 @@ struct Limit: Identifiable {
     let p: Double?
     let resets: Date?
     let window: TimeInterval   // length of the limit's window
-    /// Old numbers (the panel's, ProfileDisplay's grey tier): the level's colour in grey (the bar, the segments, the ring,
-    /// the big number); a design's small percentage keeps its level colour, as on the menu bar row.
+    /// Old numbers (the panel's, ProfileDisplay's grey tier): every level colour in grey (the bar, the segments, the ring,
+    /// the percentage), so no grey bar stands beside a red or amber number.
     var stale = false
 
     /// How much of the window has already passed, in %, from the reset time.
@@ -80,7 +80,7 @@ struct LimitsView: View {
 
     func pct(_ l: Limit, _ size: CGFloat) -> some View {
         Text(Painter.pct(l.p)).font(.system(size: size, weight: .bold, design: .rounded)).monospacedDigit()
-            .foregroundStyle(l.p == nil ? Color.secondary : face.levelColor(l.p))
+            .foregroundStyle(l.p == nil ? Color.secondary : l.stale ? Color(nsColor: Painter.grey) : face.levelColor(l.p))
     }
 
     func resets(_ l: Limit) -> some View {
