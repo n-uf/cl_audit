@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- New profile now refuses an account that is on another profile's standby list, when you type its address and when Claude Code signs in to it ("That's a standby account of “Work”. One profile per account."); before, typing its address went ahead.
 
 ## 26.11.48 — 2026-11-15
 

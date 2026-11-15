@@ -50,13 +50,55 @@ enum FolderRules {
         return accounts.first { $0.id != id && windowKey($0.desktop, $0.desktopDataDir) == key }
     }
 
-    /// The profile (other than `id`) that has this seat: linked to it, keeping it as a standby account, or, not linked
-    /// yet, signed in to it. An account belongs to one profile.
+    /// The profile that has an account (`seatOwner`): as its account in use (or, not linked yet, its folder signed in to
+    /// it), or on its standby list.
+    struct SeatOwner {
+        var profile: AccountEntry
+        var standby: Bool
+    }
+
+    /// The one owner rule (New profile's address and its sign-in, and Finish): the profile (other than `id`) that has this
+    /// account, in use or standing by (a standby account is still that profile's: one profile per account), else, not
+    /// linked yet, the one whose folder is signed in to it. Compared by `sameAccount`.
+    static func seatOwner(_ who: AccountIdentity?, among accounts: [AccountEntry], except id: String? = nil,
+                          signedIn: (String) -> Seat? = Account.signedInSeat) -> SeatOwner? {
+        guard let who else { return nil }
+        let others = accounts.filter { $0.id != id }
+        if let e = others.first(where: { $0.seat.map { sameAccount(who, identity($0)) } ?? false }) { return SeatOwner(profile: e, standby: false) }
+        if let e = others.first(where: { $0.standby.contains { sameAccount(who, identity($0)) } }) { return SeatOwner(profile: e, standby: true) }
+        if let e = others.first(where: { $0.seat == nil && (signedIn($0.configDir).map { sameAccount(who, identity($0)) } ?? false) }) {
+            return SeatOwner(profile: e, standby: false)
+        }
+        return nil
+    }
+
+    /// The same for a folder's sign-in.
     static func seatOwner(_ seat: Seat?, among accounts: [AccountEntry], except id: String? = nil,
-                          signedIn: (String) -> Seat? = Account.signedInSeat) -> AccountEntry? {
-        guard let seat else { return nil }
-        return accounts.first { $0.id != id && $0.has(seat) }
-            ?? accounts.first { $0.id != id && $0.seat == nil && seat.same(signedIn($0.configDir)) }
+                          signedIn: (String) -> Seat? = Account.signedInSeat) -> SeatOwner? {
+        seatOwner(seat.map { identity($0) }, among: accounts, except: id, signedIn: signedIn)
+    }
+
+    /// The one identity rule (AccountIdentity.matches: the ids when both have one, any case; else the address, any case, and
+    /// the organisation), with one known by its address only (no id, no organisation: an address typed, a standby entry
+    /// remembered by its address) matched by the address (cl_quick's placeholder rule, as `isThat`).
+    static func sameAccount(_ a: AccountIdentity, _ b: AccountIdentity) -> Bool {
+        func addressOnly(_ x: AccountIdentity) -> Bool { (x.account ?? "").isEmpty && (x.organization ?? "").isEmpty }
+        guard addressOnly(a) || addressOnly(b) else { return a.matches(b) }
+        guard let e = a.email?.lowercased(), !e.isEmpty else { return false }
+        return e == b.email?.lowercased()
+    }
+
+    /// A seat as the owner rule compares it (an empty id is none).
+    static func identity(_ s: Seat) -> AccountIdentity {
+        AccountIdentity(account: s.account.isEmpty ? nil : s.account, email: s.email, organization: s.organization, source: .guessed)
+    }
+
+    /// A standby entry as the owner rule compares it: its seat (with the entry's address when the seat has none), else its
+    /// address only.
+    static func identity(_ q: StandbyAccount) -> AccountIdentity {
+        var i = q.seat.map { identity($0) } ?? AccountIdentity(account: nil, email: nil, organization: nil, source: .guessed)
+        if (i.email ?? "").isEmpty { i.email = q.email }
+        return i
     }
 
     /// cl_quick's noteAccount, for every profile: the account Claude Code in a profile's folder is signed in to is the

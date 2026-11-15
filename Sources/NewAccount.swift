@@ -134,14 +134,22 @@ enum NewAccountSetup {
     }
 
     /// Why Sign in (the address route) can't go with this address, or nil. The address only fills in the sign-in, so
-    /// this is the early, by-address part; afterwards the account and organisation ids decide (checks).
-    static func addressProblem(_ email: String, among accounts: [AccountEntry]) -> String? {
+    /// this is the early, by-address part (any profile's account in use or standing by, FolderRules.seatOwner); afterwards
+    /// the account and organisation ids decide (checks).
+    static func addressProblem(_ email: String, among accounts: [AccountEntry],
+                               signedIn: (String) -> Seat? = Account.signedInSeat) -> String? {
         let e = email.trimmingCharacters(in: .whitespaces)
         guard e.contains("@"), !e.hasPrefix("@"), !e.hasSuffix("@"), !e.contains(" ") else { return "Type the account's email address." }
-        if let owner = accounts.first(where: { ($0.seat?.email ?? Account.expectedEmail(configDir: $0.configDir))?.lowercased() == e.lowercased() }) {
-            return "That's the account of “\(owner.name)”. One profile per account."
+        let typed = AccountIdentity(account: nil, email: e, organization: nil, source: .guessed)
+        if let owner = FolderRules.seatOwner(typed, among: accounts, signedIn: signedIn) {
+            return "That's \(ownerWords(owner)). One profile per account."
         }
         return nil
+    }
+
+    /// Whose account it is, as New profile's refusals say it: "the account of “Work”", or "a standby account of “Work”".
+    static func ownerWords(_ o: FolderRules.SeatOwner, inUse: String = "the account of") -> String {
+        "\(o.standby ? "a standby account of" : inUse) “\(o.profile.name)”"
     }
 
     /// A free folder already signed in to this address, if any: picking it connects that folder, no new sign-in.
@@ -231,10 +239,10 @@ enum NewAccountSetup {
         }
 
         // the sign-in: one profile per Claude account seat (account and organisation ids, from the folder's
-        // .claude.json); the address typed only filled in the sign-in, so another one is said, not refused
+        // .claude.json), in use or standing by; the address typed only filled in the sign-in, so another one is said, not refused
         if let email = signedInEmail(d) {
             if let owner = FolderRules.seatOwner(Account.signedInSeat(configDir: d.configDir), among: accounts) {
-                out.append(.init(section: .signIn, state: .bad, text: "Signed in as \(Privacy.masked(email)), the Claude account of “\(owner.name)”: one profile per account"))
+                out.append(.init(section: .signIn, state: .bad, text: "Signed in as \(Privacy.masked(email)), \(ownerWords(owner, inUse: "the Claude account of")): one profile per account"))
             } else if !d.email.isEmpty, d.email.lowercased() != email.lowercased() {
                 out.append(.init(section: .signIn, state: .warn, text: "Signed in as \(Privacy.masked(email)), not \(Privacy.masked(d.email)): the browser's claude.ai account decided"))
             } else {
@@ -673,7 +681,7 @@ struct NewAccountView: View {
             }
             if let email = signedIn {
                 if let owner = FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) {
-                    return ("\(Privacy.masked(email)) is the account of “\(owner.name)”. One profile per account: Sign in to another account… in the pop-up.", face.danger)
+                    return ("\(Privacy.masked(email)) is \(NewAccountSetup.ownerWords(owner)). One profile per account: Sign in to another account… in the pop-up.", face.danger)
                 }
                 if !draft.email.isEmpty, draft.email.lowercased() != email.lowercased() {
                     return ("Signed in as \(Privacy.masked(email)), not \(Privacy.masked(draft.email)): the browser's claude.ai account decided. Keep it, or sign in again from the pop-up after switching the browser.", face.caution)
@@ -788,7 +796,7 @@ struct NewAccountView: View {
                     sub("Waiting for \(Privacy.masked(draft.email.isEmpty ? "the sign-in" : draft.email)) in the browser")
                 } else if let email = signedIn {
                     if let o = owner {
-                        Text("\(Privacy.masked(email)) is the account of “\(o.name)”: one profile per account")
+                        Text("\(Privacy.masked(email)) is \(NewAccountSetup.ownerWords(o)): one profile per account")
                             .font(.system(size: 11.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
                         if canSignInAgain {
                             // signing in again in the folder this setup made replaces its sign-in; no sign-out first

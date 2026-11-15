@@ -81,6 +81,10 @@ in step 1, nor in step 2 beyond the widget now following the headline exactly.
   accounts-identity change, so it waits for its own step and checks. Also open: the resolver's own comparison (address
   first) moving onto `matches` (ids first). Step 5 brought the reader's logic in (`ReaderMachine`) without it: its one
   other-account rule, `belongs`, compares seats with `Seat.same` and addresses in any case, as the reader always did.
+  Step 6 moved one refusal onto `matches`: New profile's owner rule (`FolderRules.seatOwner` in the app) takes every
+  profile's account in use and standby accounts and compares them by `matches`, with one known by its address only (an
+  address typed, a standby entry remembered by its address) matched by the address, as cl_quick's placeholder rule.
+  Refusing more there changes no saved data; the folder's own following (`noteAccounts`) still uses `Seat.same`.
 - **Reading usage (step 5).** `ReaderMachine` is cl_audit's reader as it was (`Sources/Reader.swift` is now its driver:
   the timers, the Keychain read through ClaudeAuth, the endpoints, the status line file, the alerts and the record). The
   rules where cl_quick differs are `ReadingRules`, cl_audit's set `clAudit`, cl_quick's `clQuick`:
