@@ -257,94 +257,7 @@ struct ConfigFile: Codable {
     var accounts: [AccountEntry]
 }
 
-/// What the agent last saw for a profile, for its Dock icon and the cl_audit window. No secrets.
-struct IconStatus: Codable {
-    var loginEmail: String?
-    var expectedEmail: String?
-    var state: String
-    var fiveHour: Double?
-    var weekly: Double?
-    var updatedAt: Date?
-    var renewNote: String?
-    var fiveHourResets: Date?
-    var weeklyResets: Date?
-    var plan: String?
-    var source: String? = nil          // where the numbers came from ("Anthropic", "Claude Code status line")
-    var problem: String? = nil         // why it couldn't update, in words
-    var renewing: Bool? = nil          // renewing the sign-in through Claude Code now
-    var scoped: [ScopedLimit]? = nil   // a model's own weekly limit (Fable)
-    var credits: Credits? = nil        // usage credits
-    var noFiveHour: Bool? = nil        // the plan has no 5-hour limit (Ultra): its 5-hour row is left out
-    /// The one answer about the profile's account (AccountResolver), written by the agent: every surface shows this.
-    var resolved: ResolvedAccount? = nil
-    /// The account these numbers were read for, from that very reading (the token's own profile, looked up for the token
-    /// the numbers were read with); nil when the reading doesn't say (the status line file) or before it's known.
-    var numbersOwner: String? = nil
-    /// The numbers' account couldn't be confirmed (the token's lookup keeps failing): shown as read, with their age, but
-    /// never full, alerted, offering a switch or deciding the split (Store.status(for:)).
-    var ownerUnconfirmed: Bool? = nil
-
-    /// The reading's own account, for answering the record again (Settings) and for checking the record's label:
-    /// `numbersOwner`, else the sign-in's own address (the token's profile; a record from before `numbersOwner`, or the
-    /// status line's numbers, which name none).
-    var readingOwner: String? { numbersOwner ?? loginEmail }
-
-    /// The account these numbers were read for: the sign-in's address, else the one its folder names.
-    var readFor: String? { (loginEmail ?? expectedEmail).map { $0.lowercased() } }
-
-    /// For `email`'s account only. Numbers read for another account (the one a profile was on before a switch, say)
-    /// are dropped, so one account's limits never show under another's name; the state and any problem stay.
-    func only(for email: String?) -> IconStatus {
-        guard let want = email?.lowercased(), !want.isEmpty, let got = readFor, !got.isEmpty, got != want else { return self }
-        var s = self
-        s.fiveHour = nil; s.weekly = nil; s.fiveHourResets = nil; s.weeklyResets = nil
-        s.scoped = nil; s.credits = nil; s.plan = nil; s.updatedAt = nil
-        return s
-    }
-
-    /// No numbers at all (the state, the problem and the account answer stay).
-    mutating func dropNumbers() {
-        fiveHour = nil; weekly = nil; fiveHourResets = nil; weeklyResets = nil
-        scoped = nil; credits = nil
-    }
-
-    /// Last known numbers: any limit they read as full is left out (never "full", a countdown or an offer from old numbers).
-    mutating func dropFull() {
-        if AtLimit.isFull(fiveHour) { fiveHour = nil; fiveHourResets = nil }
-        if AtLimit.isFull(weekly) { weekly = nil; weeklyResets = nil }
-        scoped = scoped.map { $0.map { AtLimit.isFull($0.percent) ? ScopedLimit(name: $0.name, percent: nil, resets: nil) : $0 } }
-    }
-
-    /// The sign-in needs the person: another account than the folder names, run out, or none. Every surface then shows
-    /// one key, Log in… (the card's needsLogin, the Dock menu's and the menu bar's).
-    var needsLogin: Bool {
-        let mismatch = loginEmail.flatMap { a in expectedEmail.map { a.lowercased() != $0.lowercased() } } ?? false
-        return mismatch || state == "expired" || state == "noLogin"
-    }
-
-    /// The card's words for it, which quick chat's line says too: "login expired", or nil when the sign-in is fine.
-    var loginWords: String? {
-        guard needsLogin else { return nil }
-        return state == "expired" ? "login expired" : state == "noLogin" ? "no Claude Code login" : "login is a different account"
-    }
-
-    /// What may be shown of the record now, the same rule wherever saved numbers are written, read or merged:
-    /// - a limit whose reset time has passed has no percent and no reset (never a number "in 0 min");
-    /// - an expired sign-in, or none (signed out), shows no numbers at all, even ones read a moment ago: no bars, never
-    ///   old numbers; they come back with the next good read (state ok).
-    /// When they were read (`updatedAt`) stays, for "last read" lines.
-    func current(now: Date = Date()) -> IconStatus {
-        var s = self
-        if Freshness.passed(s.fiveHourResets, now: now) { s.fiveHour = nil; s.fiveHourResets = nil }
-        if Freshness.passed(s.weeklyResets, now: now) { s.weekly = nil; s.weeklyResets = nil }
-        s.scoped = s.scoped.map { $0.map { Freshness.passed($0.resets, now: now) ? ScopedLimit(name: $0.name, percent: nil, resets: nil) : $0 } }
-        if s.state == "expired" || s.state == "noLogin" {
-            s.fiveHour = nil; s.weekly = nil; s.fiveHourResets = nil; s.weeklyResets = nil
-            s.scoped = nil; s.credits = nil
-        }
-        return s
-    }
-}
+// (IconStatus, the status record, and its codec: StatusRecord.swift)
 
 // MARK: - Renewing an expired login through Claude Code
 
@@ -646,8 +559,7 @@ enum Store {
     /// A profile's (or a standby account's) record, as it may be shown now (IconStatus.current): every screen reads it here.
     static func status(_ id: String) -> IconStatus? {
         guard let data = try? Data(contentsOf: statusFolder.appendingPathComponent("\(id).json")) else { return nil }
-        let dec = JSONDecoder(); dec.dateDecodingStrategy = .secondsSince1970
-        return (try? dec.decode(IconStatus.self, from: data))?.current()
+        return StatusCodec.decode(data)?.current()
     }
 
     /// The profile's record as the agent wrote it: its numbers carry the account they were read for (resolved.numbersFor),
@@ -666,27 +578,15 @@ enum Store {
     /// (the other rules still apply).
     static func status(for e: AccountEntry, now: Date = Date(), headline: Bool = true) -> IconStatus? {
         guard let s = status(e.id) else { return nil }
-        var out = s
-        // the reading is the folder's account no more (it signed in to another since), or the record's label for the
-        // numbers isn't the account they were read for (a record answered from something else than the reading): neither
-        // shows, until a read for the folder's account
-        var mislabelled = false
-        if let owner = s.resolved?.numbersFor?.lowercased(), owner.contains("@"),
-           let read = s.readingOwner?.lowercased(), read != owner { mislabelled = true }
-        if s.resolved?.readStale == true || mislabelled {
-            out.dropNumbers(); out.plan = nil; out.updatedAt = nil
-        }
-        if headline, let split = SplitUsage.of(s) {
-            out.dropNumbers(); out.plan = nil          // (the plan is Claude Code's account's too)
-            out.resolved?.line = split.line
-        }
+        // ProfileCore's Headline decides: a reading that is the folder's account no more, or whose label isn't the account
+        // it was read for, shows nowhere (nor when, nor the plan); the split's numbers and plan are Claude Code's account's;
+        // numbers whose account couldn't be confirmed, or older than the profile's read interval, are never full
+        let a = s.headline(now: now, ages: ages(e))
+        var out = s.shown(a, split: headline, now: now)
+        if headline, a.split != nil, let split = SplitUsage.of(s) { out.resolved?.line = split.line }
         // the numbers' account couldn't be confirmed: as read, with their age, but never full (no panel, countdown, red
         // or offer), and said so
-        if s.ownerUnconfirmed == true {
-            out.dropFull()
-            out.resolved?.line = Self.unconfirmedWords
-        }
-        if let at = out.updatedAt, now.timeIntervalSince(at) > Self.lastKnown(e) { out.dropFull() }
+        if a.unconfirmed { out.resolved?.line = Self.unconfirmedWords }
         return out
     }
 
@@ -696,9 +596,12 @@ enum Store {
     /// How old numbers may be and still say a limit is full: the profile's read interval, plus a minute for the read itself.
     static func lastKnown(_ e: AccountEntry) -> TimeInterval { TimeInterval(max(e.pollMinutes, 5) * 60 + 60) }
 
+    /// cl_audit's thresholds for the headline (Core/README.md): fresh for `lastKnown` (6 minutes at the default read
+    /// interval); never hidden by age here (a screen greys old numbers itself); a last-known full limit is left out.
+    static func ages(_ e: AccountEntry) -> Headline.Ages { Headline.Ages(freshFor: lastKnown(e), hiddenAfter: nil, datedFullStays: false) }
+
     static func writeStatus(_ id: String, _ s: IconStatus) -> Data? {
-        let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970; enc.outputFormatting = [.sortedKeys]
-        guard let data = try? enc.encode(s) else { return nil }
+        guard let data = StatusCodec.encode(s) else { return nil }
         try? FileManager.default.createDirectory(at: statusFolder, withIntermediateDirectories: true)
         // the numbers of the account the profile was on, kept once when another account's take their place, so a switch
         // can still remember its last week however the agent and the window take turns (FolderRules.noteAccounts)
@@ -716,8 +619,7 @@ enum Store {
     /// very account count.
     static func lastStatus(of e: AccountEntry) -> IconStatus? {
         guard let want = e.seat?.email?.lowercased(), !want.isEmpty else { return nil }
-        let dec = JSONDecoder(); dec.dateDecodingStrategy = .secondsSince1970
-        let prev = (try? Data(contentsOf: statusFolder.appendingPathComponent("\(e.id).prev"))).flatMap { try? dec.decode(IconStatus.self, from: $0) }
+        let prev = (try? Data(contentsOf: statusFolder.appendingPathComponent("\(e.id).prev"))).flatMap(StatusCodec.decode)
         return [status(e.id), prev].compactMap { $0 }.first { $0.readFor == want }
     }
 

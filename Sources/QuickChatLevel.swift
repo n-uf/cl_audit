@@ -55,15 +55,15 @@ struct QuickChatLevel: Equatable {
     /// The line's number: the week, or a full 5-hour limit in its place. A week whose reset has passed has none.
     func shown(_ now: Date = Date()) -> (name: String, percent: Double?, resets: Date?) {
         if let f = full(now) { return (f.id == "5h" ? "5-hour" : "week", 100, f.resets) }
-        if Freshness.passed(weekResets, now: now) { return ("week", nil, nil) }
-        return ("week", week, weekResets)
+        let w = Freshness.current(week, resets: weekResets, now: now)
+        return ("week", w.percent, w.resets)
     }
 
     /// Without the limits whose reset has passed: the panel stays open across a reset, its old percent never shown.
     func current(_ now: Date = Date()) -> QuickChatLevel {
         var l = self
-        if Freshness.passed(l.weekResets, now: now) { l.week = nil; l.weekResets = nil }
-        if Freshness.passed(l.fiveHourResets, now: now) { l.fiveHour = nil; l.fiveHourResets = nil }
+        (l.week, l.weekResets) = Freshness.current(l.week, resets: l.weekResets, now: now)
+        (l.fiveHour, l.fiveHourResets) = Freshness.current(l.fiveHour, resets: l.fiveHourResets, now: now)
         return l
     }
 

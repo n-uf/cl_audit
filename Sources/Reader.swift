@@ -174,8 +174,8 @@ final class UsageReader {
 
     /// A limit read as full whose reset time has passed: the numbers are out of date.
     static func resetPassed(_ u: Usage, now: Date = Date()) -> Bool {
-        (AtLimit.isFull(u.fiveHour) && (u.fiveHourResets.map { $0 <= now } ?? false))
-            || (AtLimit.isFull(u.weekly) && (u.weeklyResets.map { $0 <= now } ?? false))
+        (AtLimit.isFull(u.fiveHour) && Freshness.passed(u.fiveHourResets, now: now))
+            || (AtLimit.isFull(u.weekly) && Freshness.passed(u.weeklyResets, now: now))
     }
 
     /// While a limit is full, a read the moment it resets (2 s after), so the cards, the Dock icon and the "back"
@@ -457,8 +457,8 @@ final class UsageReader {
         // another account's numbers: no alerts about them; nor Claude Code's while the Claude app is on another account
         // (the split, SplitUsage): they aren't the profile's, so no full, back or level alert and no switch offer
         // (and none for numbers whose account couldn't be confirmed)
-        let r = answer()
-        if !onOtherAccount, !unconfirmed, !(r.fromApp && r.differs && r.clash == nil) {
+        let split = Headline.split(answer().owner(reading: nil, unconfirmed: unconfirmed))
+        if !onOtherAccount, !unconfirmed, split == nil {
             noteBack(u)
             checkThresholds(u)
             noteCredits(u, before: before, now: now)
@@ -764,8 +764,7 @@ final class UsageReader {
             status.scoped = nil; status.credits = nil; status.noFiveHour = nil
             status.problem = r.line
         }
-        let enc = JSONEncoder(); enc.dateEncodingStrategy = .secondsSince1970; enc.outputFormatting = [.sortedKeys]
-        if let data = try? enc.encode(status), data != lastStatus { lastStatus = Store.writeStatus(id, status) }
+        if let data = StatusCodec.encode(status), data != lastStatus { lastStatus = Store.writeStatus(id, status) }
     }
 
     /// The account answer for what this reader sees now (AccountResolver), with the numbers' own reading as their account.

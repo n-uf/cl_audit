@@ -175,7 +175,7 @@ final class QuickChatModel: ObservableObject {
     @Published var barProblem: QuickChatProblem?
     @Published var target: QuickChatTarget?
     /// The chat's profile is in the split (SplitUsage): Claude Code's live limits are its account's, not the profile's.
-    var inSplit: Bool { target.flatMap { SplitUsage.of(Store.status($0.profileID)) } != nil }
+    var inSplit: Bool { target.flatMap { Store.status($0.profileID) }.map { Headline.split($0.owner) != nil } ?? false }
     @Published var choice: QuickChatModelChoice = .haiku
     @Published var thinking: QuickChatThinking = .off
     /// The full name each choice answered with last ("Haiku 5.5"), for its key.

@@ -1367,5 +1367,74 @@ do {
     Store.removeStatus("spl"); Store.removeStatus("spm")
 }
 
+// ============ 8. the status record's one codec (StatusRecord.swift): today's bytes, older files, the headline over them ============
+do {
+    // written by main 20489f5's own writer (its IconStatus and ResolvedAccount, Store.writeStatus's settings): every field the
+    // agent writes; the split with a switch waiting and a stale reading; a file from before the resolver, numbersOwner and
+    // ownerUnconfirmed; a resolver answer from before its newer keys, with a clash, expired and unconfirmed
+    let fixtures: [(String, String)] = [
+        ("full", #"{"credits":{"cap":50,"currency":"USD","enabled":true,"out":false,"spentAt":1799999400,"used":4.2},"expectedEmail":"ultra-1@example.com","fiveHour":37.5,"fiveHourResets":1800003600,"loginEmail":"ultra-1@example.com","numbersOwner":"ultra-1@example.com","plan":"Ultra","renewNote":"Renewed 09:12","renewing":false,"resolved":{"account":"00000000-0000-4000-8000-000000000001","at":1800000000,"codeAccount":"00000000-0000-4000-8000-000000000001","codeName":"ultra-1@example.com","differs":false,"email":"ultra-1@example.com","fromApp":true,"lit":true,"numbersFor":"ultra-1@example.com"},"scoped":[{"name":"Fable","percent":12,"resets":1800259200}],"source":"Anthropic","state":"ok","updatedAt":1800000000.25,"weekly":64,"weeklyResets":1800259200}"#),
+        ("split", #"{"expectedEmail":"mo@example.com","loginEmail":"mo@example.com","noFiveHour":true,"numbersOwner":"mo@example.com","plan":"max","resolved":{"account":"00000000-0000-4000-8000-000000000002","at":1800000000,"codeAccount":"00000000-0000-4000-8000-000000000003","codeName":"mo@example.com","differs":true,"email":"pat@example.com","fromApp":true,"line":"Usage: Claude Code on m…@example.com","lit":true,"numbersFor":"mo@example.com","readStale":true,"switchWaits":true},"state":"ok","updatedAt":1800000000,"weekly":100,"weeklyResets":1800007200}"#),
+        ("old", #"{"fiveHour":5,"loginEmail":"free@example.com","source":"Claude Code status line","state":"ok","updatedAt":1800000000,"weekly":33}"#),
+        ("mid", #"{"expectedEmail":"ultra-2@example.com","loginEmail":"ultra-2@example.com","ownerUnconfirmed":true,"plan":"pro","problem":"Sign-in expired","resolved":{"at":1799999970,"clash":"Home","differs":false,"fromApp":false,"line":"Claude Code's folder is signed in to Home's account: its numbers show on Home.","lit":false,"numbersFor":"account 00000000","recordTooLarge":true},"state":"expired"}"#)]
+    var decoded: [String: IconStatus] = [:]
+    for (name, json) in fixtures {
+        let rec = StatusCodec.decode(Data(json.utf8))
+        decoded[name] = rec
+        check(rec != nil && rec.flatMap(StatusCodec.encode).map { String(decoding: $0, as: UTF8.self) } == json,
+              "\(name): today's file decodes and encodes back byte for byte")
+    }
+    check(decoded["full"]?.updatedAt == Date(timeIntervalSince1970: 1_800_000_000.25) && decoded["full"]?.credits?.used == 4.2
+          && decoded["full"]?.scoped?.first?.percent == 12 && decoded["full"]?.resolved?.codeAccount == "00000000-0000-4000-8000-000000000001",
+          "every field read as written (dates as seconds, fractions kept)")
+    let old = decoded["old"], mid = decoded["mid"]
+    check(old?.resolved == nil && old?.numbersOwner == nil && old?.ownerUnconfirmed == nil && old?.noFiveHour == nil && old?.weekly == 33,
+          "a file from before the newer keys: they are empty, the numbers as written")
+    check(mid?.resolved?.codeName == nil && mid?.resolved?.readStale == nil && mid?.resolved?.switchWaits == nil && mid?.resolved?.clash == "Home",
+          "a resolver answer from before its newer keys: they are empty")
+    check(StatusCodec.decode(Data(#"{"state":"ok","weekly":12,"later":{"x":1}}"#.utf8))?.weekly == 12 && StatusCodec.decode(Data("{}".utf8)) == nil
+          && StatusCodec.decode(Data("not json".utf8)) == nil, "a key from a newer version is skipped; no state, or not JSON: no record")
+
+    // the one writer: Store.writeStatus writes the codec's bytes, and the one reader reads them back
+    if let full = decoded["full"] {
+        let written = Store.writeStatus("codec", full)
+        let onDisk = try? Data(contentsOf: Store.statusFolder.appendingPathComponent("codec.json"))
+        check(written != nil && written == onDisk && onDisk.map { String(decoding: $0, as: UTF8.self) } == fixtures[0].1,
+              "Store.writeStatus writes exactly the codec's bytes")
+        Store.removeStatus("codec")
+    }
+
+    // the headline over the fixtures: ProfileCore's split agrees with SplitUsage (whose words every split line uses)
+    let at = Date(timeIntervalSince1970: 1_800_000_060)
+    for (name, rec) in decoded {
+        check((Headline.split(rec.owner) != nil) == (SplitUsage.of(rec) != nil), "\(name): the headline's split and SplitUsage agree")
+    }
+    var fresh = decoded["split"]!; fresh.resolved?.readStale = nil
+    var unsure = fresh; unsure.ownerUnconfirmed = true
+    var byHand = fresh; byHand.resolved?.switchWaits = nil
+    var elsewhere = fresh; elsewhere.resolved?.clash = "Home"
+    var nameless = fresh; nameless.resolved?.codeName = nil; nameless.resolved?.numbersFor = nil
+    for (name, rec) in [("unconfirmed", unsure), ("fresh", fresh), ("by hand", byHand), ("elsewhere", elsewhere), ("nameless", nameless)] {
+        check((Headline.split(rec.owner) != nil) == (SplitUsage.of(rec) != nil)
+              && Headline.split(rec.owner)?.switchWaits == SplitUsage.of(rec)?.switched, "\(name): the headline's split and SplitUsage agree")
+    }
+    let ages = Headline.Ages(freshFor: 6 * 60)
+    let splitShown = fresh.shown(fresh.headline(now: at, ages: ages), now: at)
+    check(splitShown.weekly == nil && splitShown.plan == nil && splitShown.updatedAt == fresh.updatedAt
+          && fresh.shown(fresh.headline(now: at, ages: ages), split: false, now: at).weekly == 100,
+          "the split: no numbers or plan on the headline; Claude Code's own (split false) keep them")
+    let staleShown = decoded["split"]!.shown(decoded["split"]!.headline(now: at, ages: ages), split: false, now: at)
+    check(staleShown.weekly == nil && staleShown.plan == nil && staleShown.updatedAt == nil, "a stale reading: nothing, nowhere, not even when")
+    let oldFull = fresh.shown(fresh.headline(now: at.addingTimeInterval(10 * 60), ages: ages), split: false, now: at.addingTimeInterval(10 * 60))
+    check(oldFull.weekly == nil && oldFull.weeklyResets == nil, "11 minutes old: a full limit is left out (last known)")
+    let unsureShown = unsure.shown(unsure.headline(now: at, ages: ages), now: at)
+    check(unsureShown.weekly == nil && unsureShown.plan == "max", "unconfirmed: no split, but a full limit never shows")
+    var signedOut = decoded["old"]!; signedOut.state = "noLogin"
+    check(signedOut.shown(signedOut.headline(now: at, ages: ages), now: at).weekly == nil, "signed out: no numbers")
+    let fullShown = decoded["full"]!.shown(decoded["full"]!.headline(now: at, ages: ages), now: at)
+    check(fullShown.weekly == 64 && fullShown.fiveHour == 37.5 && fullShown.scoped?.first?.percent == 12 && fullShown.credits?.used == 4.2
+          && fullShown.plan == "Ultra", "the profile's own numbers: all of them")
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

@@ -19,32 +19,7 @@
 import Foundation
 import ProfileCore
 
-/// What the resolver decided, as written into the profile's status record.
-struct ResolvedAccount: Codable, Equatable {
-    var account: String?            // the active account's id (lower case); nil: none known
-    var email: String?              // its address, where one is known on this Mac
-    var fromApp: Bool               // the Claude app's sign-in decided it
-    var numbersFor: String?         // the account the numbers were read for (Claude Code's): its address, or "account <8>"
-    var differs: Bool               // the numbers aren't the active account's
-    var line: String?               // the one line of state, or nil
-    var lit: Bool                   // the green lamp: an account is in use and its numbers may show
-    var clash: String?              // another profile's name: Claude Code's folder is on its account in use
-    var at: Date
-    /// Claude Code's .claude.json is too large to read: its account isn't known (said so, never "signed out").
-    var recordTooLarge: Bool? = nil
-    /// Claude Code's folder account's id (lower case), where known: the lists match its own row by it before its address.
-    var codeAccount: String? = nil
-    /// Claude Code's account as its rows and lines name it: the folder's address (else the numbers', else "account <8>").
-    /// `numbersFor` is only ever the reading's own account; this one is for naming.
-    var codeName: String? = nil
-    /// The folder has signed in to another account since the numbers were read: they are that reading's, not Claude
-    /// Code's now, and no surface shows them (Store.status(for:)) until a read for the new account.
-    var readStale: Bool? = nil
-    /// The split is a switch waiting for the Claude app: the profile's newest switch went to Claude Code's account, it is
-    /// still open or linked (not undone, not left as it is), and the app is still on the account it left. Then the line
-    /// asks for the app's sign-in and there is no key to log Claude Code back in (SplitUsage.switched).
-    var switchWaits: Bool? = nil
-}
+// (ResolvedAccount, what the resolver decided as the status record keeps it: StatusRecord.swift)
 
 enum AccountResolver {
     /// The answer for one profile. `app`: the Claude app's sign-in (AppSignIn); `code`: Claude Code's folder account;
