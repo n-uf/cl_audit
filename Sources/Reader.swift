@@ -48,6 +48,10 @@ final class UsageReader {
     private var backoff: TimeInterval = 0
     private var inFlight = false
     private var lastStatus: Data?
+    /// The next save writes the record even when what this reader sees didn't change: a refresh asked for (Refresh now, the
+    /// cl_audit window after a switch) and every read's answer, so a record that isn't the agent's (an older cl_audit
+    /// window wrote it, or it was lost) never sticks.
+    private var rewriteDue = false
     private var stopped = false                  // its profile was removed: nothing more is saved
     private var alerting: Set<String> = []       // alerts being handed to macOS
     private var lastAsked = Date.distantPast     // when a fetch last started
@@ -201,8 +205,9 @@ final class UsageReader {
             .compactMap { AtLimit.isFull($0.0) ? $0.1 : nil }.filter { $0 > now }.min()?.addingTimeInterval(2)
     }
 
-    /// Refresh now (a Dock icon, the dashboard): fetch now and read the sign-in again.
-    func refreshNow() { nextFetch = .distantPast; forceLoginRead = true; tick() }
+    /// Refresh now (a Dock icon, the dashboard, the cl_audit window after a switch): fetch now, read the sign-in again, and
+    /// write the record at once, changed or not.
+    func refreshNow() { nextFetch = .distantPast; forceLoginRead = true; rewriteDue = true; tick() }
 
     // MARK: another account signed in
 
@@ -290,13 +295,14 @@ final class UsageReader {
         guard !stopped else { inFlight = false; return }
         guard case let .token(token, expiresAt, plan) = login else {
             inFlight = false
+            rewriteDue = true                    // a read's answer: written, changed or not
             state = login.failure
             // no sign-in yet (or one it can't read): look again in a minute, not at the next read interval
             if Self.waitsForSignIn(login) { nextFetch = Date().addingTimeInterval(Self.signInRetry) }
             save(); return
         }
         self.plan = plan
-        if let expiresAt, expiresAt < Date() { inFlight = false; state = .expired; save(); maybeRenew(); return }
+        if let expiresAt, expiresAt < Date() { inFlight = false; rewriteDue = true; state = .expired; save(); maybeRenew(); return }
         let key = Account.sha8(token)
         // the token's account: looked up once per token (a confirmed one keeps its owner), again with backoff while it fails
         if profileFor != key, ownerByKey[key] == nil, Date() >= nextLookup { lookUpEmail(token, gen: gen) }
@@ -404,6 +410,7 @@ final class UsageReader {
         // asked for a folder or account it no longer reads, or with the old account's sign-in: not this account's numbers
         if gen != generation { nextFetch = .distantPast; tick(); return }           // read again now, for what it reads now
         if let at = signInChangedAt, asked < at { nextFetch = .distantPast; return }
+        rewriteDue = true                        // a read's answer: written, changed or not
         defer { save() }
         if let error { state = .failed(error.localizedDescription); return }
         switch response?.statusCode ?? 0 {
@@ -747,7 +754,8 @@ final class UsageReader {
 
     // MARK: saved status
 
-    /// Writes status/<id>.json when what this reader sees changed (the write posts the "changed" notice).
+    /// Writes status/<id>.json when what this reader sees changed, and always after a refresh asked for or a read
+    /// (`rewriteDue`); the write posts the "changed" notice. The agent is the record's one writer.
     func save() {
         guard !stopped else { return }
         var status = IconStatus(loginEmail: loginEmail, expectedEmail: expectedEmail, state: "\(state)",
@@ -774,7 +782,10 @@ final class UsageReader {
             status.scoped = nil; status.credits = nil; status.noFiveHour = nil
             status.problem = r.line
         }
-        if let data = StatusCodec.encode(status), data != lastStatus { lastStatus = Store.writeStatus(id, status) }
+        if let data = StatusCodec.encode(status), data != lastStatus || rewriteDue {
+            rewriteDue = false
+            lastStatus = Store.writeStatus(id, status)
+        }
     }
 
     /// The account answer for what this reader sees now (AccountResolver), with the numbers' own reading as their account.
