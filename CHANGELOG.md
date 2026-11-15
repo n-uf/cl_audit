@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.38 — 2026-11-15
+
 - A switch never writes over a scheduled-tasks.json that changed while it ran (or a link put in its place): it stops there and the tasks stay where they were. Undo puts a task file back only while it is still as the switch left it, and keeps the file's own permissions.
 
 ## 26.11.37 — 2026-11-15
