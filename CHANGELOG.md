@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- The Export page's result now repeats the line about files named like a Code-tab entry that were left out, not only the preview.
 
 ## 26.11.45 — 2026-11-15
 

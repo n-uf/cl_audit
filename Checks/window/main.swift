@@ -818,6 +818,8 @@ MainActor.assumeIsolated {
             check(oo.notEntriesLeftOut == 1 && mo.counts.sessions == 1 && mo.leftOut == 1 && !names.contains("local_notanid.json") && !names.contains("notes.txt")
                   && names.contains("local_\(sid(20)).json"),
                   "export (zip): the entry in, the name like one left out and counted: \(names)")
+            check(ExportWords.notEntriesDone(oo) == "1 file left out: named like a Code-tab entry, but not a Code-tab session." && ExportWords.notEntriesDone(zo!) == nil,
+                  "export result page: the same left-out line once the file is made, none when nothing was: \(ExportWords.notEntriesDone(oo) ?? "none")")
             SessionsImport.discard(opened.work)
         } else { check(false, "export (zip) of the odd names: made and opens") }
         try? fm.removeItem(atPath: dataO); try? fm.removeItem(atPath: codeO)

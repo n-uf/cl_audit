@@ -462,9 +462,16 @@ enum ExportWords {
     /// The window files named like a Code-tab entry that aren't one (a name that isn't an id, a .json.tmp left mid-write …):
     /// left out, said.
     static func notEntriesNote(_ pv: SessionsExport.Preview?) -> String? {
-        guard let p = pv, !p.windowLeftOut, p.notEntries > 0 else { return nil }
-        let one = p.notEntries == 1
-        return "\(n(p.notEntries, "file", "files")) left out: named like a Code-tab entry, but not \(one ? "a Code-tab session" : "Code-tab sessions")."
+        guard let p = pv, !p.windowLeftOut else { return nil }
+        return notEntriesWords(p.notEntries)
+    }
+
+    /// The same line once the file is made: what it actually left out (the result page repeats it).
+    static func notEntriesDone(_ o: SessionsExport.Outcome) -> String? { notEntriesWords(o.notEntriesLeftOut) }
+
+    private static func notEntriesWords(_ k: Int) -> String? {
+        guard k > 0 else { return nil }
+        return "\(n(k, "file", "files")) left out: named like a Code-tab entry, but not \(k == 1 ? "a Code-tab session" : "Code-tab sessions")."
     }
 
     /// The "cl_audit's profiles" row: each exported profile's record (name, look, Dock place, accounts) and cl_audit's General and backup
@@ -861,6 +868,7 @@ struct ExportPage: View {
                 SRowLine(text: "\(what) · \(Int(f * 100)) %", color: FaceTheme.mint)
             }
             if case .failed(let why) = runner.phase { SRowLine(text: why, color: face.danger) }
+            if case .done(let o) = runner.phase, let left = ExportWords.notEntriesDone(o) { SRowLine(text: left) }
             if let note = runner.note { SRowLine(text: note) }
             // Back and the key on one line when they fit; else the key above Back (neither is ever cut off)
             let back = Button(runner.phase == .preview ? "Cancel" : "Back") { model.selection = entry.id }.buttonStyle(.plain).foregroundStyle(face.muted)
