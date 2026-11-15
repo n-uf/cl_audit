@@ -8,6 +8,7 @@
 // What a reader sees is saved to status/<id>.json (no secrets) for the Dock icons and the cl_audit window.
 
 import AppKit
+import ClaudeAuth
 import ProfileCore
 import UserNotifications
 
@@ -332,7 +333,7 @@ final class UsageReader {
     }
 
     /// The folder's .claude.json (Claude Code writes it as it signs in) as it was when the Keychain was last read.
-    private var loginStamp: [FileAttributeKey: AnyHashable] = [:]
+    private var loginStamp = RecordStamp.none
 
     /// Every few seconds (the agent's sign-in watch): a profile with no readable sign-in looks at its folder's
     /// .claude.json, one stat, and when it changed since the last read, reads the Keychain at once, so the "no sign-in"
@@ -508,10 +509,11 @@ final class UsageReader {
         defaults.set(Date(), forKey: renewKey)
         renewNote = "Renewing the login through Claude Code…"
         save()
-        let acct = account, gen = generation
+        let acct = account, gen = generation, seat = entry.seat
         DispatchQueue.global(qos: .utility).async {
             let claude = ClaudeCLI.find()
-            let ok = claude.map { ClaudeCLI.renew($0, account: acct) } ?? false
+            // (ClaudeAuth checks the folder's account again as it runs: never another account's sign-in renewed)
+            let ok = claude.map { ClaudeCLI.renew($0, account: acct, expecting: seat) } ?? false
             DispatchQueue.main.async { [weak self] in
                 guard let self, !self.stopped else { return }
                 self.renewing = false
@@ -780,25 +782,22 @@ final class UsageReader {
     static func when(_ d: Date) -> String { TimeWords.when(d) }
 }
 
-/// Which account a profile's folder is signed in to, looked at on every tick: its .claude.json names a seat. The file
-/// is parsed only when its date or size changed. Signing out (no account named) isn't a change; signing in to another
-/// account after it is.
+/// Which account a profile's folder is signed in to, looked at on every tick: its .claude.json names a seat. ClaudeAuth's
+/// SignInChangeWatch over the record (read again only when its date, size or file changed; signing out isn't a change,
+/// signing in to another account after it is), with the seat it last named, which the reader compares exactly
+/// (Seat.same) where it always has.
 struct SignInWatch {
+    private var watch = SignInChangeWatch()
     private(set) var seen: Seat?                                  // the last account the file named
-    private var stamp: [FileAttributeKey: AnyHashable] = [:]
 
     /// One look: true when the file names another account than the last one it named.
-    mutating func look(stamp new: [FileAttributeKey: AnyHashable], seat: () -> Seat?) -> Bool {
-        guard new != stamp else { return false }
-        stamp = new
-        guard let now = seat() else { return false }
-        defer { seen = now }
-        return seen.map { !now.same($0) } ?? false
+    mutating func look(stamp new: RecordStamp, seat: () -> Seat?) -> Bool {
+        var named: Seat?
+        let changed = watch.look(stamp: new) { named = seat(); return named.map(SignedInAccount.init) }
+        if let named { seen = named }
+        return changed
     }
 
-    /// The .claude.json's date and size (empty when there's none).
-    static func stamp(configDir: String) -> [FileAttributeKey: AnyHashable] {
-        let attrs = (try? FileManager.default.attributesOfItem(atPath: Account.claudeJSON(configDir: configDir))) ?? [:]
-        return attrs.filter { $0.key == .modificationDate || $0.key == .size }.compactMapValues { $0 as? AnyHashable }
-    }
+    /// The .claude.json's stamp (ClaudeAuth's RecordStamp: date, size, file; .none when there's none).
+    static func stamp(configDir: String) -> RecordStamp { RecordStamp.of(Account.claudeJSON(configDir: configDir)) }
 }

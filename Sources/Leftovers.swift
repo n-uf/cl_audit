@@ -95,9 +95,9 @@ enum Leftovers {
         }
     }
 
-    /// The Keychain item Claude Code keeps a folder's sign-in in (named only; never read).
+    /// The Keychain item Claude Code keeps a folder's sign-in in (named only; never read): ClaudeAuth's AuthFolder.keychainItem.
     static func keychainItem(_ path: String) -> String {
-        Account(AccountEntry(id: "leftover", name: "", label: "", configDir: path)).keychainServices.first ?? "Claude Code-credentials"
+        Account(AccountEntry(id: "leftover", name: "", label: "", configDir: path)).authFolder.keychainItem
     }
 
     /// Whether a path may be offered: only a folder named like the ones cl_audit made (`~/.claude-<name>`, directly in the
