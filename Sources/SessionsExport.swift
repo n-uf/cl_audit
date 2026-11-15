@@ -36,6 +36,7 @@
 import CryptoKit
 import Foundation
 import ProfileCore
+import Runs
 
 struct ArchiveError: Error, CustomStringConvertible {
     let description: String
@@ -95,53 +96,26 @@ enum Tool {
     /// is capped, and `secret` is taken out of it before it is returned. nil: it couldn't start.
     static func run(_ exe: String, _ args: [String], stdin: Data? = nil, secret: String? = nil, extraEnv: [String: String] = [:],
                     cancel: () -> Bool = { false }, poll: () -> Bool = { false }) -> Output? {
-        signal(SIGPIPE, SIG_IGN)
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: exe)
-        p.arguments = args
         var env = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "en_US.UTF-8"]
         if let t = ProcessInfo.processInfo.environment["TMPDIR"] { env["TMPDIR"] = t }
         if let h = ProcessInfo.processInfo.environment["CFFIXED_USER_HOME"] { env["CFFIXED_USER_HOME"] = h }
         env["HOME"] = NSHomeDirectory()
         for (k, v) in extraEnv { env[k] = v }
-        p.environment = env
-        let outPipe = Pipe(), errPipe = Pipe(), inPipe = Pipe()
-        p.standardOutput = outPipe; p.standardError = errPipe
-        if stdin == nil { p.standardInput = FileHandle.nullDevice } else { p.standardInput = inPipe }
-        final class Box: @unchecked Sendable { var data = Data(); let lock = NSLock() }
-        let outBox = Box(), errBox = Box(), group = DispatchGroup()
-        do { try p.run() } catch { return nil }
-        runningLock.lock(); running.insert(p.processIdentifier); runningLock.unlock()
-        defer { runningLock.lock(); running.remove(p.processIdentifier); runningLock.unlock() }
-        for (pipe, box) in [(outPipe, outBox), (errPipe, errBox)] {
-            group.enter()
-            DispatchQueue.global(qos: .utility).async {
-                let h = pipe.fileHandleForReading
-                while true {
-                    let d = h.availableData
-                    if d.isEmpty { break }
-                    box.lock.lock(); if box.data.count < 1 << 20 { box.data.append(d) }; box.lock.unlock()
-                }
-                group.leave()
-            }
-        }
-        if let stdin {
-            try? inPipe.fileHandleForWriting.write(contentsOf: stdin)
-            try? inPipe.fileHandleForWriting.close()
-        }
-        var cancelled = false
-        while p.isRunning {
-            if cancel() || poll() { cancelled = true; p.terminate(); break }
-            usleep(200_000)
-        }
-        p.waitUntilExit()
-        group.wait()
-        func text(_ b: Box) -> String {
-            var s = String(decoding: b.data, as: UTF8.self)
+        // Runs' Runner: no time limit (an archive takes as long as it takes), stopped only when asked (SIGTERM, then waited
+        // for: never killed mid-write), both its outputs kept (1 MB each) and read to their ends; while it runs it is in
+        // `running`, for killAll
+        var pid: pid_t = 0
+        defer { if pid != 0 { runningLock.lock(); running.remove(pid); runningLock.unlock() } }
+        guard let r = Runs.Runner.run(Runs.Program(exe, args, environment: env, folder: .inherited, input: stdin, timeout: .infinity,
+                                                   grace: .infinity, keepOutput: true, keepErrors: true, drain: .infinity),
+                                      poll: { cancel() || poll() },
+                                      started: { p in pid = p; runningLock.lock(); running.insert(p); runningLock.unlock() }) else { return nil }
+        func text(_ d: Data) -> String {
+            var s = String(decoding: d, as: UTF8.self)
             if let secret, !secret.isEmpty { s = s.replacingOccurrences(of: secret, with: "…") }
             return s
         }
-        return Output(status: p.terminationStatus, out: text(outBox), err: text(errBox), cancelled: cancelled)
+        return Output(status: r.status, out: text(r.output), err: text(r.errors), cancelled: r.stopped)
     }
 }
 
