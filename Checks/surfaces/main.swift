@@ -1645,5 +1645,133 @@ MainActor.assumeIsolated {
     try? Store.save([])
 }
 
+// ============ 10. quick chat and the alerts through the one Headline (ProfileCore step 3d) ============
+do {
+    let pat = Seat(account: uuid(41), organization: uuid(81), email: "pat@example.com")
+    let mo = Seat(account: uuid(42), organization: uuid(82), email: "mo@example.com")
+    let ok200 = HTTPURLResponse(url: URL(string: "https://example.com")!, statusCode: 200, httpVersion: nil, headerFields: nil)
+    let fullWeek = Data(#"{"seven_day":{"utilization":100,"resets_at":"2099-01-02T00:00:00Z"}}"#.utf8)
+    // the folder on mo; its standby list (a hand-edited or older file) still has mo too, the least used by its last week,
+    // so a pick over the raw list names the account in use
+    var e = profile("qa", "~/.claude-qa", mo); e.claudeWindow = false
+    e.standby = [StandbyAccount(email: mo.email!, seat: mo, id: "kmo", lastInUse: t0, lastWeek: 5),
+                 StandbyAccount(email: pat.email!, seat: pat, id: "kpat", lastInUse: t0, lastWeek: 40)]
+    put(expand(e.configDir) + "/.claude.json",
+        #"{"oauthAccount":{"accountUuid":"\#(mo.account)","organizationUuid":"\#(mo.organization!)","emailAddress":"\#(mo.email!)"}}"#)
+    try! Store.save([e])
+    try? fm.removeItem(at: Store.statusFolder.appendingPathComponent("qa.json"))
+    check(AccountBook.best(e.standby)?.id == "kmo", "the raw list's pick is mo, the account in use (what the alert used to offer)")
+
+    // the full-limit alert's offer: never the account in use, though no record was saved yet (the reader's own answer)
+    // the poster runs on a background queue: its list behind a lock, and waits that end when it says so (or after 5 s)
+    let postLock = NSLock()
+    var postList: [(title: String, key: String?)] = []
+    var posts: [(title: String, key: String?)] { postLock.lock(); defer { postLock.unlock() }; return postList }
+    func clearPosts() { postLock.lock(); postList.removeAll(); postLock.unlock() }
+    func waitFor(_ done: () -> Bool, seconds: TimeInterval = 5) {
+        let until = Date().addingTimeInterval(seconds)
+        while !done() && Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    }
+    UsageReader.testPoster = { _, title, _, _, key in postLock.lock(); postList.append((title, key)); postLock.unlock(); return 0 }
+    let r = UsageReader(e, defaults: UserDefaults(suiteName: "cl-audit-surfaces-offer-\(getpid())")!)
+    r.finish(data: fullWeek, response: ok200, error: nil, asked: Date(), gen: r.generation)
+    waitFor { posts.contains { $0.title.contains("full") } && Store.status("qa") != nil }
+    let fullPost = posts.first { $0.title.contains("full") }
+    check(fullPost?.key == AccountEntry.switchKey("qa", "kpat"),
+          "the full alert offers pat, never mo (in use): \(fullPost.map { "\($0.title) → \($0.key ?? "none")" } ?? "no full alert")")
+    // quick chat and the alert make the one offer (the record is saved by now)
+    check(QuickChatSwitchOffer.best(e)?.key == AccountEntry.switchKey("qa", "kpat") && e.fullOffer()?.key == fullPost?.key,
+          "quick chat's offer is the alert's: \(QuickChatSwitchOffer.best(e)?.key ?? "none")")
+    var onlyMo = e; onlyMo.standby = [e.standby[0]]
+    check(onlyMo.fullOffer() == nil && QuickChatSwitchOffer.best(onlyMo) == nil, "only the account in use on standby: no offer anywhere")
+    var byAddress = e; byAddress.standby = [StandbyAccount(email: "lee@example.com", id: "klee")]
+    check(byAddress.fullOffer() == nil, "an account remembered by its address only is never offered")
+    r.stop()
+
+    // the alerts act only on numbers that may act (the Headline): a reading confirmed 10 minutes after it was read (its
+    // account looked up late) is only last known; its alerts wait for the next read
+    clearPosts()
+    let r2 = UsageReader(e, defaults: UserDefaults(suiteName: "cl-audit-surfaces-agealert-\(getpid())")!)
+    let now = Date()
+    var oldRead = Usage(fetchedAt: now.addingTimeInterval(-10 * 60), source: "Anthropic")
+    oldRead.weekly = 100; oldRead.weeklyResets = now.addingTimeInterval(86400); oldRead.noFiveHour = true
+    r2.apply(oldRead, now: now)
+    waitFor({ !posts.isEmpty }, seconds: 1)
+    check(posts.isEmpty, "a reading 10 minutes old: no full, level or credits alert, no offer: \(posts.map(\.title))")
+    var freshRead = oldRead; freshRead.fetchedAt = now.addingTimeInterval(-60)
+    r2.apply(freshRead, now: now)
+    waitFor { posts.contains { $0.title.contains("full") } }
+    check(posts.contains { $0.title.contains("full") }, "a minute old: the full alert goes, as before: \(posts.map(\.title))")
+    r2.stop()
+    UsageReader.testPoster = nil
+
+    // quick chat's live numbers count only while the Headline says the record's are the profile's
+    func rec(_ resolved: ResolvedAccount?, unconfirmed: Bool = false) -> IconStatus {
+        var s = IconStatus(state: "ok"); s.loginEmail = mo.email; s.numbersOwner = mo.email; s.weekly = 30
+        s.weeklyResets = now.addingTimeInterval(2 * 86400); s.noFiveHour = true; s.updatedAt = now; s.resolved = resolved
+        s.ownerUnconfirmed = unconfirmed ? true : nil
+        return s
+    }
+    let own = AccountResolver.resolve(e, among: [e], app: .unknown, code: mo, loginEmail: mo.email, names: [:], now: now)
+    _ = Store.writeStatus("qa", rec(own))
+    check(QuickChatTarget(e, now: now).liveCounts, "the profile's own numbers: Claude Code's live ones after an answer count")
+    _ = Store.writeStatus("qa", rec(own, unconfirmed: true))
+    check(!QuickChatTarget(e, now: now).liveCounts, "numbers whose account isn't confirmed: the live ones don't count (never full from them)")
+    var moved = own; moved.readStale = true
+    _ = Store.writeStatus("qa", rec(moved))
+    check(!QuickChatTarget(e, now: now).liveCounts, "a reading the sign-in moved on from: the live ones don't count")
+    var inSplit = own; inSplit.fromApp = true; inSplit.account = pat.account.lowercased(); inSplit.email = pat.email; inSplit.differs = true
+    _ = Store.writeStatus("qa", rec(inSplit))
+    check(Headline.split(Store.status("qa")!.owner) != nil && !QuickChatTarget(e, now: now).liveCounts,
+          "the split: Claude Code's live limits aren't the profile's")
+    check(QuickChatTarget(e, now: now).split, "...and the target knows it is the split")
+    var clashed = own; clashed.clash = "Home"
+    _ = Store.writeStatus("qa", rec(clashed))
+    check(!QuickChatTarget(e, now: now).liveCounts && !QuickChatTarget(e, now: now).split,
+          "a clash (the folder on another profile's account in use): the live ones are that profile's, not this one's")
+    var signedOut = rec(own); signedOut.state = "noLogin"
+    _ = Store.writeStatus("qa", signedOut)
+    check(!QuickChatTarget(e, now: now).liveCounts, "signed out: the live ones don't count")
+    try? fm.removeItem(at: Store.statusFolder.appendingPathComponent("qa.json"))
+    check(!QuickChatTarget(e, now: now).liveCounts, "no record yet: the live ones don't count")
+
+    // the merge itself: the record's level alone unless the live numbers count, for the same account
+    var record = QuickChatLevel(nil); record.noFiveHour = true                  // the record shows no numbers
+    var live = QuickChatLevel(nil); live.week = 100; live.weekResets = now.addingTimeInterval(86400); live.refusedUntil = now.addingTimeInterval(600)
+    let notCounted = QuickChatLevel.kept(record: record, shown: live, sameAccount: true, counts: false, refusals: false, now: now)
+    check(notCounted?.week == nil && notCounted?.refusedUntil == nil && notCounted?.full(now) == nil,
+          "the split: live numbers never bring back numbers the record doesn't show (the old merge did), nor a refusal")
+    let refusalOnly = QuickChatLevel.kept(record: record, shown: live, sameAccount: true, counts: false, refusals: true, now: now)
+    check(refusalOnly?.week == nil && refusalOnly?.refusedUntil != nil && refusalOnly?.full(now) != nil,
+          "numbers that don't count yet (no record, not confirmed): no live percent, but Claude Code's refusal still holds the bar")
+    check(QuickChatLevel.kept(record: record, shown: live, sameAccount: false, counts: true, refusals: true, now: now)?.week == nil,
+          "another account since: the record's level alone")
+    let counted = QuickChatLevel.kept(record: record, shown: live, sameAccount: true, counts: true, refusals: true, now: now)
+    check(counted?.week == 100 && counted?.refusedUntil != nil && counted?.full(now) != nil, "counted, same account: Claude Code's fuller week stays")
+    var lower = QuickChatLevel(nil); lower.week = 20; lower.weekResets = now.addingTimeInterval(86400)
+    var higher = lower; higher.week = 60
+    check(QuickChatLevel.kept(record: higher, shown: lower, sameAccount: true, counts: true, refusals: true, now: now)?.week == 60,
+          "the record's fuller reading wins")
+    var beforeReset = live; beforeReset.weekResets = now.addingTimeInterval(-60)
+    check(QuickChatLevel.kept(record: record, shown: beforeReset, sameAccount: true, counts: true, refusals: true, now: now)?.week == nil,
+          "a live percent from before its reset is never kept")
+
+    // the model: a refusal holds the bar whatever the record says; the offer comes only from numbers that count
+    let model = QuickChatModel()
+    var t = QuickChatTarget(e, now: now); t.liveCounts = false; t.split = false
+    model.target = t
+    var refused = QuickChatLevel(nil); refused.refusedUntil = now.addingTimeInterval(600)
+    model.level = refused
+    let offered = QuickChatSwitchOffer(key: "qa~kpat", short: "pat", words: "")
+    model.update(target: t, level: QuickChatLevel(nil), offer: { offered })
+    check(model.blocked && model.offer == nil, "a refusal before the numbers count: the bar holds, but no offer (it could name the account in use)")
+    var counting = t; counting.liveCounts = true
+    model.update(target: counting, level: QuickChatLevel(nil), offer: { offered })
+    check(model.blocked && model.offer == offered, "numbers that count: the bar holds and offers the switch")
+    var inTheSplit = t; inTheSplit.split = true
+    model.update(target: inTheSplit, level: QuickChatLevel(nil), offer: { offered })
+    check(!model.blocked && model.offer == nil, "the split: Claude Code's refusal is its account's, never the profile's limit")
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
