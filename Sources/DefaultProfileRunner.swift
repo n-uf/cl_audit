@@ -352,7 +352,7 @@ final class DefaultProfileRunner: ObservableObject {
     /// The old profile may stay as a standby account of the default profile: another account than the default's.
     var canKeepOldAsStandby: Bool {
         guard situation.kind == .otherFolder, let t = target, let s = old.seat, s.email != nil else { return false }
-        return !s.same(t.seat) && !t.has(s)
+        return !t.has(s)                // in use or standing by there, by the one owner rule
     }
 
     /// Keep it: the default profile remembers the old one's account as a standby account (signed out there: switching to it
@@ -379,8 +379,9 @@ final class DefaultProfileRunner: ObservableObject {
         e.standby.append(StandbyAccount(email: s.email ?? "", seat: Seat(account: s.account, organization: s.organization, email: s.email),
                                         plan: st?.plan, lastInUse: Date(), lastWeek: st?.weekly, lastWeekResets: st?.weeklyResets))
         // its own standby accounts go along, each once (one account, one standby list), never the default's account in use
-        for q in old.standby where !(e.seat.map { s in q.seat.map { s.same($0) } ?? false } ?? false)
-            && !e.standby.contains(where: { x in (x.seat != nil && q.seat.map { x.seat!.same($0) } == true) || x.email.lowercased() == q.email.lowercased() }) {
+        // (the one owner rule: by the ids, any case; one remembered by its address only by the address)
+        for q in old.standby where !(e.seat.map { q.identity.sameAccount(AccountIdentity($0)) } ?? false)
+            && !e.standby.contains(where: { $0.identity.sameAccount(q.identity) }) {
             e.standby.append(q)
         }
         e.leftoverFolders = Self.leftovers(of: old, into: e)
