@@ -270,7 +270,7 @@ enum DefaultProfile {
         for a in ((try? fm.contentsOfDirectory(atPath: root)) ?? []) where AccountDiscovery.isUUID(a) {
             let adir = (root as NSString).appendingPathComponent(a)
             for o in ((try? fm.contentsOfDirectory(atPath: adir)) ?? []) where AccountDiscovery.isUUID(o) {
-                p.tasks += SwitchEngine.tasks(in: (adir as NSString).appendingPathComponent(o)).count
+                p.tasks += TaskRegistry.tasks(in: (adir as NSString).appendingPathComponent(o)).count
             }
         }
         if let s = seat, let c = SidebarCounts.read(dataDir: oldDataDir, account: s.account) { p.groups = c.groups }

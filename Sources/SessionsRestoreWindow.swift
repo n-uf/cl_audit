@@ -87,11 +87,8 @@ extension SessionsRestore {
     /// The most entries a plan keeps for the page (tasks, servers and the names a file here lacks): the rest are counted.
     static let listCap = 200
 
-    /// The tasks of a scheduled-tasks.json: the objects of its `scheduledTasks` array (anything else in it is skipped). [] when it isn't one.
-    static func taskList(_ d: Data) -> [[String: Any]] {
-        guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], let list = j["scheduledTasks"] as? [Any] else { return [] }
-        return list.compactMap { $0 as? [String: Any] }
-    }
+    /// The tasks of a scheduled-tasks.json (TaskRegistry.taskList).
+    static func taskList(_ d: Data) -> [[String: Any]] { TaskRegistry.taskList(d) }
 
     /// The task that ran a Code-tab entry: its `scheduledTaskId`, exactly (nil: an ordinary session).
     static func taskID(_ entry: Data) -> String? {
@@ -130,12 +127,9 @@ extension SessionsRestore {
         return c
     }
 
-    /// The task file an import writes: the first file's object with its `scheduledTasks` replaced by `tasks`, each with `enabled: false`
-    /// and nothing else changed. nil: it can't be made.
+    /// The task file an import writes (TaskRegistry.paused: the tasks paused, nothing else changed). nil: it can't be made.
     static func pausedTasks(base: Data, tasks: [[String: Any]]) -> Data? {
-        guard var j = (try? JSONSerialization.jsonObject(with: base)) as? [String: Any] else { return nil }
-        j["scheduledTasks"] = tasks.map { t -> [String: Any] in var t = t; t["enabled"] = false; return t }
-        return try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        TaskRegistry.paused(base: base, tasks: tasks)
     }
 
     // MARK: claude_desktop_config.json
@@ -283,8 +277,7 @@ extension SessionsRestore {
         }
         if nowWindow.hasTasks.contains(where: { $0.sameIgnoringCase(scope) }) {
             tp.status = .here
-            let path = (SwitchEngine.scopeDir(t.dataDir, scope) as NSString).appendingPathComponent("scheduled-tasks.json")
-            let mine = Set(SafeFiles.readPlain(path, max: 64 << 20).map { taskList($0).compactMap { $0["id"] as? String } } ?? [])
+            let mine = TaskRegistry.ids(in: SwitchEngine.scopeDir(t.dataDir, scope))
             let lacking = all.filter { !mine.contains($0.id) }.map(\.name)
             tp.lacking = Array(lacking.prefix(listCap)); tp.moreLacking = max(0, lacking.count - listCap)
             return []
@@ -341,8 +334,7 @@ extension SessionsRestore {
             guard let g = groups[dest] else { continue }
             if nowWindow.hasTasks.contains(where: { $0.sameIgnoringCase(dest) }) {
                 here += 1
-                let path = (SwitchEngine.scopeDir(t.dataDir, dest) as NSString).appendingPathComponent("scheduled-tasks.json")
-                let mine = Set(SafeFiles.readPlain(path, max: 64 << 20).map { taskList($0).compactMap { $0["id"] as? String } } ?? [])
+                let mine = TaskRegistry.ids(in: SwitchEngine.scopeDir(t.dataDir, dest))
                 for task in g.tasks {
                     guard let id = task["id"] as? String else { continue }
                     if !mine.contains(id) { lacking.append(names[id] ?? id) }

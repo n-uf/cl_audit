@@ -102,7 +102,7 @@ struct SidebarCounts: Equatable {
         let scope = "\(account)/\(org)"
         c.sections = prefs.sections[scope] ?? 0
         c.groups = prefs.groups[scope] ?? 0
-        if let j = SafeRead.jsonObject((odir as NSString).appendingPathComponent("scheduled-tasks.json")) {
+        if let j = TaskRegistry.registry(odir) {
             c.tasks = (j["scheduledTasks"] as? [Any])?.count ?? 0
         }
         return c
