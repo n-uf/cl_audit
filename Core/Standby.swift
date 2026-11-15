@@ -155,6 +155,10 @@ public protocol StandbyHolder {
 /// never the profile's own account in use nor another profile's. An app applies it when it reads its profiles: an older
 /// list (one entry per account and organisation) is tidied once, and its note says so once.
 public enum StandbyTidy {
+    /// The one entry an account has on a standby list: its id in any organisation (normal form), else "@" and its address
+    /// (any case). Two entries with one key are one account here.
+    public static func key(_ s: StandbyAccount) -> String { s.seat.map { AccountID.normal($0.account) } ?? "@" + s.email.lowercased() }
+
     /// `recordOrgs`: the organisation each account's own record names (asked only when two entries of one account meet).
     public static func apply<P: StandbyHolder>(_ list: [P], recordOrgs: () -> [String: String] = { [:] }, now: Date = Date())
         -> (accounts: [P], changed: Bool) {
@@ -169,7 +173,7 @@ public enum StandbyTidy {
             for s in out[i].standby {
                 let account = s.seat.map { AccountID.normal($0.account) }
                 if let a = account, others.contains(a) || a == inUse[i] { continue }          // in use somewhere: not standby
-                let key = account ?? "@" + s.email.lowercased()
+                let key = Self.key(s)
                 guard let k = at[key] else { at[key] = kept.count; kept.append(s); continue }
                 // a second entry of the same account: one stays, with the newest last use and its record's organisation
                 var one = kept[k]

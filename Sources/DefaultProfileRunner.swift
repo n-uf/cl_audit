@@ -352,7 +352,26 @@ final class DefaultProfileRunner: ObservableObject {
     /// The old profile may stay as a standby account of the default profile: another account than the default's.
     var canKeepOldAsStandby: Bool {
         guard situation.kind == .otherFolder, let t = target, let s = old.seat, s.email != nil else { return false }
-        return !t.has(s)                // in use or standing by there, by the one owner rule
+        return Self.mayKeep(s, on: t)
+    }
+
+    /// The old profile's account may stand by on `t`: `t` doesn't have it, by the one owner rule (in use or standing by,
+    /// one remembered by its address included), nor by its id in another organisation (StandbyTidy keeps one entry per
+    /// id, never the account in use).
+    static func mayKeep(_ s: Seat, on t: AccountEntry) -> Bool {
+        !t.has(s) && !t.seats.contains { AccountID.same($0.account, s.account) }
+    }
+
+    /// `e`'s standby list once the old profile's own standby accounts join it: each once, as StandbyTidy keeps them (its id
+    /// in any organisation, else its address) and by the one owner rule, never `e`'s account in use (by either), so the
+    /// next tidy changes nothing.
+    static func merged(_ old: [StandbyAccount], into e: AccountEntry) -> [StandbyAccount] {
+        var out = e.standby
+        for q in old where !(e.seat.map { s in q.identity.sameAccount(AccountIdentity(s)) || AccountID.same(q.seat?.account, s.account) } ?? false)
+            && !out.contains(where: { StandbyTidy.key($0) == StandbyTidy.key(q) || $0.identity.sameAccount(q.identity) }) {
+            out.append(q)
+        }
+        return out
     }
 
     /// Keep it: the default profile remembers the old one's account as a standby account (signed out there: switching to it
@@ -379,11 +398,7 @@ final class DefaultProfileRunner: ObservableObject {
         e.standby.append(StandbyAccount(email: s.email ?? "", seat: Seat(account: s.account, organization: s.organization, email: s.email),
                                         plan: st?.plan, lastInUse: Date(), lastWeek: st?.weekly, lastWeekResets: st?.weeklyResets))
         // its own standby accounts go along, each once (one account, one standby list), never the default's account in use
-        // (the one owner rule: by the ids, any case; one remembered by its address only by the address)
-        for q in old.standby where !(e.seat.map { q.identity.sameAccount(AccountIdentity($0)) } ?? false)
-            && !e.standby.contains(where: { $0.identity.sameAccount(q.identity) }) {
-            e.standby.append(q)
-        }
+        e.standby = Self.merged(old.standby, into: e)
         e.leftoverFolders = Self.leftovers(of: old, into: e)
         m.accounts[ti] = e
         m.remove(old.id)
