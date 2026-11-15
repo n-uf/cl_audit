@@ -14,34 +14,11 @@ import SwiftUI
 enum Launcher {
     static let claudeBundleID = "com.anthropic.claudefordesktop"
 
-    /// A process's arguments, read from the kernel (KERN_PROCARGS2). No helper process, so it's safe to call
-    /// while SwiftUI draws: waiting for `ps` ran the run loop and redrew windows mid-update, which crashed.
-    static func arguments(of pid: pid_t) -> [String] {
-        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
-        var size = 0
-        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return [] }
-        var buf = [UInt8](repeating: 0, count: size)
-        guard sysctl(&mib, 3, &buf, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else { return [] }
-        let argc = Int(buf.withUnsafeBytes { $0.load(as: Int32.self) })
-        var i = MemoryLayout<Int32>.size
-        while i < size && buf[i] != 0 { i += 1 }        // the executable path
-        while i < size && buf[i] == 0 { i += 1 }        // its padding
-        var args: [String] = []
-        while args.count < argc && i < size {
-            let start = i
-            while i < size && buf[i] != 0 { i += 1 }
-            args.append(String(decoding: buf[start..<i], as: UTF8.self))
-            i += 1
-        }
-        return args
-    }
-
-    static func commandLine(of pid: pid_t) -> String { arguments(of: pid).joined(separator: " ") }
-
     /// The data folder a running Claude desktop app was started with (nil = the standard window), as one
-    /// comparable key. Exact, so "Claude-work" never matches "Claude-work-2".
+    /// comparable key. Exact, so "Claude-work" never matches "Claude-work-2". Its arguments come from the kernel
+    /// (Processes): no helper process, so it's safe to call while SwiftUI draws.
     static func dataDirKey(of pid: pid_t) -> String {
-        let dir = arguments(of: pid).first { $0.hasPrefix("--user-data-dir=") }.map { String($0.dropFirst("--user-data-dir=".count)) }
+        let dir = Processes.arguments(of: pid).first { $0.hasPrefix("--user-data-dir=") }.map { String($0.dropFirst("--user-data-dir=".count)) }
         return FolderKey.canonical(dir ?? FolderKey.standardDataDir)
     }
 
@@ -65,7 +42,7 @@ enum Launcher {
             if activate { Installer.openSwitch(AccountEntry.switchKey(m.profile, m.standby)) }
             return
         }
-        let running = NSRunningApplication.runningApplications(withBundleIdentifier: claudeBundleID)
+        let running = Processes.claudeApps()
         if let app = running.first(where: { isWindow(of: account, $0) }) {
             app.unhide()
             if #available(macOS 14, *) {
@@ -97,7 +74,7 @@ enum Launcher {
     }
 
     static func activity(for accounts: [Account]) -> [String: Activity] {
-        let running = NSRunningApplication.runningApplications(withBundleIdentifier: claudeBundleID)
+        let running = Processes.claudeApps()
         let keys = Set(running.map { dataDirKey(of: $0.processIdentifier) })
         var result: [String: Activity] = [:]
         for a in accounts { result[a.configDir] = Activity(desktopOpen: keys.contains(dataDirKey(of: a))) }
@@ -1193,8 +1170,7 @@ final class ManagerUI {
         },
         quitWindow: { [weak self] r in
             self?.model.begin(r.id, .quitting)
-            NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
-                .filter { Launcher.isWindow(of: r.account, $0) }.forEach { $0.terminate() }
+            Processes.claudeWindows(of: r.account).forEach { $0.terminate() }
         },
         showClaude: { r in Launcher.openClaude(r.account) },
         startUsage: { [weak self] r in

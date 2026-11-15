@@ -181,7 +181,7 @@ final class AgentRules {
     private func dockStarted(_ e: AccountEntry, _ app: NSRunningApplication) {
         if actions[e.id]?.kind == .dockStarts { actions[e.id] = nil }
         let byAgent = startedByAgent[e.id].map { Date().timeIntervalSince($0) < 20 } ?? false
-        let quiet = Launcher.arguments(of: app.processIdentifier).contains("--no-follow")
+        let quiet = Processes.arguments(of: app.processIdentifier).contains("--no-follow")
         // Opens from ▸ Only when asked: starting the Dock icon never opens the window (quitting it still quits it)
         guard e.runs.windowOpensWithDock, !byAgent, !quiet, !loggingIn, !windowOpen(e) else { return }
         agentLog.log("agent: \(e.id, privacy: .public): Dock icon started, opening its window")
@@ -197,8 +197,7 @@ final class AgentRules {
         guard let e = accounts.first(where: { $0.id == id }), e.runs.windowFollowsDock, windowOpen(e) else { return }
         agentLog.log("agent: \(id, privacy: .public): Dock icon quit, quitting its window")
         actions[id] = AgentAction(kind: .windowQuits, at: Date())
-        NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
-            .filter { Launcher.isWindow(of: Account(e), $0) }.forEach { $0.terminate() }
+        Processes.claudeWindows(of: Account(e)).forEach { $0.terminate() }
     }
 
     private func windowOpen(_ e: AccountEntry) -> Bool {

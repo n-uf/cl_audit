@@ -137,10 +137,7 @@ enum Uninstall {
     static func inTrash(_ path: String) -> Bool { path.contains("/.Trash/") || path.contains("/.Trashes/") }
 
     /// This program's real place now (macOS follows a moved app; Bundle.main keeps the place it started from).
-    static func currentExecutablePath() -> String? {
-        var buf = [CChar](repeating: 0, count: 4096)
-        return proc_pidpath(getpid(), &buf, UInt32(buf.count)) > 0 ? String(cString: buf) : nil
-    }
+    static func currentExecutablePath() -> String? { Processes.executable(of: getpid()) }
 
     /// cl_audit.app was moved to the Trash (seen from the agent, which runs inside it) or is gone (seen from a Dock icon
     /// app): offers, once per move, to remove what belongs to it. Folders are never deleted here.

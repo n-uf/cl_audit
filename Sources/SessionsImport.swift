@@ -1304,15 +1304,6 @@ enum SessionsImport {
         return SessionsRestore.Backup(profile: s.target, id: s.id, place: place)
     }
 
-    /// When a process started (seconds): with its pid, who a work folder belongs to (a pid alone can be reused).
-    static func startTime(of pid: pid_t) -> Int? {
-        var info = kinfo_proc()
-        var size = MemoryLayout<kinfo_proc>.stride
-        var mib: [Int32] = [CTL_KERN, KERN_PROC, KERN_PROC_PID, pid]
-        guard sysctl(&mib, 4, &info, &size, nil, 0) == 0, size > 0 else { return nil }
-        return Int(info.kp_proc.p_un.__p_starttime.tv_sec)
-    }
-
     /// A check's seam: makes every claim fail, as a full or unwritable disk would. Only a test build (compiled with
     /// -D CL_AUDIT_TESTING) has it as a variable; in the shipped app it is the constant false.
     #if CL_AUDIT_TESTING
@@ -1326,7 +1317,7 @@ enum SessionsImport {
     static func claim(_ work: URL) -> Bool {
         if claimFails { return false }
         let me = getpid()
-        let text = "\(me) \(startTime(of: me) ?? 0)\n"
+        let text = "\(me) \(Processes.startTime(of: me) ?? 0)\n"
         let fd = CreateOnly.open(work.appendingPathComponent(ownerFile).path)
         guard fd >= 0 else { return false }
         let n = strlen(text)
@@ -1343,10 +1334,10 @@ enum SessionsImport {
         let p = t.split(whereSeparator: { $0 == " " || $0 == "\n" }).compactMap { Int($0) }
         guard p.count == 2, p[0] > 0, p[0] <= Int(Int32.max) else { return nil }
         let pid = pid_t(p[0])
-        guard kill(pid, 0) == 0 || errno == EPERM else { return false }
+        guard Processes.runs(pid) else { return false }
         // a start time of 0 (it could not be read when the folder was claimed) or one that can't be read now is unknown:
         // the folder is kept, not guessed at
-        guard p[1] != 0, let now = startTime(of: pid) else { return true }
+        guard p[1] != 0, let now = Processes.startTime(of: pid) else { return true }
         return now == p[1]
     }
 

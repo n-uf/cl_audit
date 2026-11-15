@@ -282,8 +282,7 @@ enum NewAccountSetup {
         if let dir = d.createdConfigDir, !Account.isDefault(configDir: dir) {
             if let claude, signedInEmail(d) != nil { ClaudeCLI.logout(claude, configDir: dir) }
             let account = Account(d.entry)
-            let apps = NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
-                .filter { Launcher.isWindow(of: account, $0) }
+            let apps = Processes.claudeWindows(of: account)
             apps.forEach { $0.terminate() }
             let deadline = Date().addingTimeInterval(4)
             while apps.contains(where: { !$0.isTerminated }) && Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }

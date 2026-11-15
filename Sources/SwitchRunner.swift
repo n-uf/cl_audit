@@ -126,8 +126,7 @@ final class SwitchRunner: ObservableObject {
 
     /// The profile's own Claude window (by its data folder), if it runs.
     static func windowApps(_ e: AccountEntry) -> [NSRunningApplication] {
-        NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
-            .filter { !$0.isTerminated && Launcher.isWindow(of: Account(e), $0) }
+        Processes.claudeWindows(of: Account(e)).filter { !$0.isTerminated }
     }
 
     static func windowClosed(_ e: AccountEntry) -> Bool { windowApps(e).isEmpty }

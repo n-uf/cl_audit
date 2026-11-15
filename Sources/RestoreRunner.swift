@@ -523,8 +523,7 @@ final class RestoreRunner: ObservableObject {
                 self.sidebarMissed = true
                 return true
             }
-            let alone = NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
-                .allSatisfy { $0.isTerminated || $0.processIdentifier == pid }
+            let alone = Processes.claudeApps().allSatisfy { $0.isTerminated || $0.processIdentifier == pid }
             DispatchQueue.global(qos: .userInitiated).async {
                 let outcome = WindowLink.send(url, to: pid)
                 DispatchQueue.main.async { [weak self] in self?.linkSent(outcome, url: url, alone: alone, pid: pid, name: e.name) }
@@ -536,8 +535,7 @@ final class RestoreRunner: ObservableObject {
     private func linkSent(_ outcome: WindowLink.Outcome, url: URL, alone: Bool, pid: pid_t, name: String) {
         let stillAlone: Bool = {
             guard alone, let e = entry, SwitchRunner.windowApps(e).contains(where: { $0.processIdentifier == pid }) else { return false }
-            return NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
-                .allSatisfy { $0.isTerminated || $0.processIdentifier == pid }
+            return Processes.claudeApps().allSatisfy { $0.isTerminated || $0.processIdentifier == pid }
         }()
         switch outcome {
         case .sent:

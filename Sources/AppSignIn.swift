@@ -84,7 +84,7 @@ enum AppSignIn {
     static func cached(for e: AccountEntry, now: Date = Date()) -> Login {
         let dir = e.desktop == .standard ? expand(FolderKey.standardDataDir) : (Account(e).claudeUserDataDir ?? "")
         let cfg = (try? FileManager.default.attributesOfItem(atPath: (dir as NSString).appendingPathComponent("config.json")))?[.modificationDate] as? Date
-        let running = NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID).filter { !$0.isTerminated }
+        let running = Processes.claudeApps().filter { !$0.isTerminated }
             .map { "\($0.processIdentifier)" }.sorted().joined(separator: ",")
         let key = "\(e.claudeWindow)|\(dir)|\(cfg?.timeIntervalSince1970 ?? 0)|\(running)"
         memoLock.lock()
@@ -101,7 +101,7 @@ enum AppSignIn {
         guard e.claudeWindow else { return .unknown }
         let dir = e.desktop == .standard ? expand(FolderKey.standardDataDir) : (Account(e).claudeUserDataDir ?? "")
         guard !dir.isEmpty else { return .unknown }
-        let apps = NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID).filter { !$0.isTerminated }
+        let apps = Processes.claudeApps().filter { !$0.isTerminated }
         let mine = apps.first { Launcher.isWindow(of: Account(e), $0) }
         return current(dataDir: dir, launched: mine?.launchDate, onlyApp: apps.count == 1 && mine != nil)
     }

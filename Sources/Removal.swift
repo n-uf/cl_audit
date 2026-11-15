@@ -158,8 +158,7 @@ enum AccountRemoval {
             ClaudeCLI.logout(claude, configDir: e.configDir)
         }
         let account = Account(e)
-        let apps = NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
-            .filter { window && e.desktop == .separate && Launcher.isWindow(of: account, $0) }
+        let apps = window && e.desktop == .separate ? Processes.claudeWindows(of: account) : []
         apps.forEach { $0.terminate() }
         let deadline = Date().addingTimeInterval(5)
         while apps.contains(where: { !$0.isTerminated }) && Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
@@ -289,8 +288,7 @@ struct RemoveAccountSheet: View {
                 if running.contains(where: { $0.kind == .desktop }) {
                     Button("Quit its Claude window") {
                         let account = Account(entry)
-                        NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
-                            .filter { Launcher.isWindow(of: account, $0) }.forEach { $0.terminate() }
+                        Processes.claudeWindows(of: account).forEach { $0.terminate() }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { monitor.refresh() }
                     }
                     .buttonStyle(.pill(.red, compact: true))
