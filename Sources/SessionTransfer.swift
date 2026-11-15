@@ -1,0 +1,432 @@
+// SessionTransfer: the engines' piece that moves the Claude window's Code sessions from one account's folder to another's,
+// inside one window data folder (claude-code-sessions/<account>/<org>/), with their scheduled tasks and Remote Control
+// pointers. Session transfer only: no sign-in, no backup, no window, no receipt of its own. Its caller (a switch) holds the
+// flow lock, keeps the window closed, makes the backup and owns the record the steps are written down in; this piece sorts
+// the entries, moves them, and puts them back.
+//
+// The entries are ClaudeFiles' (its one lister: local_<UUID>.json, regular files only, never a link); any other name in
+// the source (not an id, a link, a pipe) is not listed, so it stays where it is, unmoved and unmentioned. A running Claude
+// Code's sessions are held where they are (Processes, failing closed: when it can't be told, nothing moves). Every write is
+// create-only (SwitchEngine.writeNew, SafeFiles' CreateOnly), checked back, and only then is the original parked (never
+// deleted); a step is written down before it acts and marked done after. The tasks go through TaskRegistry (compare-and-swap,
+// a differing twin refused); a session of tasks that can't move is held with them.
+//
+// Adapted from claude-transplant, Copyright (c) 2026 Vitaliy Hayda, under the MIT License:
+//   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+//   documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
+//   rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to
+//   permit persons to whom the Software is furnished to do so, subject to the following conditions: The above copyright
+//   notice and this permission notice shall be included in all copies or substantial portions of the Software.
+//   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE
+//   WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR
+//   COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+//   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+import Foundation
+import ProfileCore
+
+/// One step a transfer writes down (the switch's receipt keeps them).
+typealias TransferStep = SwitchReceipt.Step
+
+/// The record a transfer writes its steps and problems into, saved by its caller before and after every step.
+protocol TransferRecord {
+    var steps: [TransferStep] { get set }
+    var problems: [String] { get set }
+    var tasksMoved: Int? { get set }
+}
+
+extension SwitchReceipt: TransferRecord {}
+
+enum SessionTransfer {
+    /// The two accounts' folders of one window data folder, and the Claude Code folder whose transcripts the sessions have.
+    struct Scopes: Equatable {
+        var dataDir: String                 // the window's data folder (expanded)
+        var codeDir: String                 // the profile's Claude Code folder, as the caller's plan holds it
+        var from: SeatID
+        var to: SeatID
+
+        var sourceDir: String { SwitchEngine.scopeDir(dataDir, from) }
+        var targetDir: String { SwitchEngine.scopeDir(dataDir, to) }
+    }
+
+    /// What a transfer would do with the source's entries and tasks.
+    struct Sorted: Equatable {
+        var move: [String] = []             // entries to move ("local_<id>.json")
+        var already: [String] = []          // the target has that id already: left where they are
+        var deleted: [String] = []          // the target deleted a session with that id: left where they are
+        var held: [String] = []             // a running Claude Code owns it (or it can't be read): left where it is
+        var taskHeld: [String] = []         // the sessions of tasks that can't move, held too (a subset of `held`)
+        var tasks = 0                       // scheduled tasks to move
+        var taskStay: String? = nil         // why the scheduled tasks stay: then `tasks` is 0 and neither file is touched
+    }
+
+    /// The source's entries, by ClaudeFiles' one lister.
+    static func entries(_ s: Scopes) -> [String] { ClaudeFiles.sessionEntries(in: s.sourceDir).map(\.name) }
+
+    /// The source has anything to move at all (an entry, or a task file).
+    static func hasAnything(_ s: Scopes) -> Bool { !entries(s).isEmpty || TaskRegistry.exists(s.sourceDir) }
+
+    // MARK: who owns a session now (claude-transplant's workers: Processes.sessionsOwned)
+
+    /// Whether a running Claude Code owns this entry: its own id (without "local_") or its Claude Code session's.
+    static func ownedBy(_ owned: Set<String>, entry data: Data, name: String) -> Bool {
+        let id = String(name.dropFirst("local_".count).dropLast(".json".count)).lowercased()
+        if owned.contains(id) { return true }
+        let j = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        return (j?["cliSessionId"] as? String).map { owned.contains($0.lowercased()) } ?? false
+    }
+
+    // MARK: sorting (read-only)
+
+    /// Sorts the source's entries (`owned`: the session ids a running Claude Code owns), and says whether its tasks move.
+    static func sort(_ s: Scopes, owned: Set<String>) -> Sorted {
+        var out = Sorted()
+        let fm = FileManager.default
+        let taskBlock = TaskRegistry.twinProblem(source: s.sourceDir, target: s.targetDir)
+        let taskIDs = Set(TaskRegistry.tasks(in: s.sourceDir).compactMap { $0["id"] as? String })
+        for n in entries(s) {
+            let id = String(n.dropFirst("local_".count).dropLast(".json".count))
+            // bounded, never blocking: one that can't be read whole is held, never moved
+            guard let data = SafeRead.whole((s.sourceDir as NSString).appendingPathComponent(n), max: SafeRead.entryMax) else { out.held.append(n); continue }
+            if fm.fileExists(atPath: (s.targetDir as NSString).appendingPathComponent(n)) { out.already.append(n); continue }
+            if fm.fileExists(atPath: (s.targetDir as NSString).appendingPathComponent("deleted_\(id)")) { out.deleted.append(n); continue }
+            // a session a running Claude Code owns, or one of tasks that can't move: held where it is
+            let task = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["scheduledTaskId"] as? String
+            let taskHeld = taskBlock != nil && task.map(taskIDs.contains) == true
+            if ownedBy(owned, entry: data, name: n) || taskHeld { out.held.append(n); if taskHeld { out.taskHeld.append(n) }; continue }
+            out.move.append(n)
+        }
+        out.tasks = taskBlock == nil ? taskIDs.count : 0
+        out.taskStay = taskIDs.isEmpty ? nil : taskBlock       // nothing to say about tasks the source hasn't
+        return out
+    }
+
+    /// Why a transfer would write through a link, or nil: below the window's data folder, `claude-code-sessions` and both
+    /// accounts' two levels (created, moved into, written); below the Claude Code folder, `projects` and each project folder
+    /// (a transcript's pointer line is appended there). A part that isn't there yet is fine (it's made as a folder).
+    static func linkProblem(_ s: Scopes) -> String? {
+        let projects = (expand(s.codeDir) as NSString).appendingPathComponent("projects")
+        func isLink(_ path: String) -> Bool {
+            var st = stat()
+            guard lstat(path, &st) == 0 else { return false }
+            let kind = st.st_mode & S_IFMT
+            // a project folder's neighbours may be plain files (.DS_Store); only a link there is refused
+            return path.hasPrefix(projects + "/") ? kind == S_IFLNK : kind != S_IFDIR
+        }
+        let sessions = (s.dataDir as NSString).appendingPathComponent("claude-code-sessions")
+        var parts = [sessions]
+        for seat in [s.from, s.to] {
+            let a = (sessions as NSString).appendingPathComponent(seat.account)
+            parts += [a, (a as NSString).appendingPathComponent(seat.organization)]
+        }
+        parts.append(projects)
+        if !isLink(projects) {
+            for n in (try? FileManager.default.contentsOfDirectory(atPath: projects)) ?? [] { parts.append((projects as NSString).appendingPathComponent(n)) }
+        }
+        guard let bad = parts.first(where: isLink) else { return nil }
+        return "\(tilde(bad)) isn't a plain folder (a link or a file): cl_audit never writes through one, so nothing is moved."
+    }
+
+    // MARK: moving
+
+    /// Moves `entries`, then the tasks (when `tasks` > 0), then clears the moved sessions' Remote Control pointers.
+    /// `work`: the caller's own folder for this transfer (parked originals in work/parked, the task files' backups).
+    /// `windowClosed` is asked before every step: the window must stay closed. `save` writes the record down.
+    static func move<R: TransferRecord>(_ s: Scopes, entries: [String], tasks: Int, record r: inout R, work: URL,
+                                        windowClosed: () -> Bool, save: (R) throws -> Void) throws {
+        try FileManager.default.createDirectory(atPath: s.targetDir, withIntermediateDirectories: true)
+        for name in entries {
+            guard windowClosed() else { throw SwitchError.windowOpen }
+            do { try moveEntry(name, s, parked: work.appendingPathComponent("parked"), &r, save: save) }
+            catch { r.problems.append("\(name) didn't move: \(error)."); try save(r) }
+        }
+        // the scheduled tasks, also when there's no session to move
+        guard windowClosed() else { throw SwitchError.windowOpen }
+        if tasks > 0, !TaskRegistry.tasks(in: s.sourceDir).isEmpty { try moveTasks(s, backups: work, &r, save: save) }
+        let placedPaths = r.steps.filter { $0.kind == .entry && $0.done }.map(\.path)
+        for path in placedPaths {
+            guard windowClosed() else { throw SwitchError.windowOpen }
+            clearPointer(entryPath: path, s, &r, save: save)
+        }
+    }
+
+    /// One entry: written down, placed, checked, then its original parked. A check that fails after placing takes the
+    /// placed copy away again, so the session is never in both accounts.
+    private static func moveEntry<R: TransferRecord>(_ name: String, _ s: Scopes, parked: URL, _ r: inout R, save: (R) throws -> Void) throws {
+        let fm = FileManager.default
+        let src = (s.sourceDir as NSString).appendingPathComponent(name)
+        let dst = (s.targetDir as NSString).appendingPathComponent(name)
+        // bounded and never blocking, like every read of the window's files (SafeRead)
+        func readEntry(_ path: String) -> Data? { SafeRead.whole(path, max: SafeRead.entryMax) }
+        guard let original = readEntry(src) else { throw SwitchError.failed("\(name) can't be read as a session entry") }
+        let data = try SwitchEngine.placed(original)
+        let park = parked.appendingPathComponent(name).path
+        r.steps.append(TransferStep(kind: .entry, path: dst, sha: SwitchEngine.sha(data), parked: park, original: src))
+        let i = r.steps.count - 1
+        try save(r)                                                  // what it will do, before anything is written
+        do {
+            try SwitchEngine.writeNew(dst, data)
+        } catch {
+            r.steps.remove(at: i); try save(r); throw error         // nothing placed
+        }
+        do {
+            guard readEntry(dst) == data else { throw SwitchError.failed("the placed entry didn't read back the same") }
+            // the source checked unchanged, then parked (never deleted)
+            guard readEntry(src) == original else { throw SwitchError.failed("the original changed during the switch") }
+            try fm.moveItem(atPath: src, toPath: park)
+        } catch {
+            if readEntry(dst).map(SwitchEngine.sha) == SwitchEngine.sha(data), (try? fm.removeItem(atPath: dst)) != nil {
+                r.steps.remove(at: i)                          // the copy taken away: as if never placed
+            } else if fm.fileExists(atPath: dst) && fm.fileExists(atPath: src) {
+                r.problems.append("\(name) is in both accounts: its copy couldn't be taken away. Undo takes it away.")
+            }
+            try save(r)
+            throw error
+        }
+        r.steps[i].done = true
+        try save(r)
+    }
+
+    /// The source's tasks join the target's (a task the target already has by its id, identical to it by the twin rule,
+    /// stays the target's: a different one never gets here, the tasks stay), with their state (recordedSkips, runRetries);
+    /// the source keeps none. Both files are backed up and both steps written down first; the source is emptied before the
+    /// target gets them, so a stop in between never leaves a task in both accounts (it would run twice). Each file is
+    /// written through TaskRegistry's compare-and-swap: only while it is still as it was read here; a target that changed
+    /// meanwhile or can't be written puts the source back as it was and stops there: the tasks stay where they were, and
+    /// their steps leave the record (nothing of them to undo).
+    private static func moveTasks<R: TransferRecord>(_ s: Scopes, backups: URL, _ r: inout R, save: (R) throws -> Void) throws {
+        let fm = FileManager.default
+        let srcFile = TaskRegistry.path(s.sourceDir), dstFile = TaskRegistry.path(s.targetDir)
+        TaskRegistry.sweep(s.sourceDir); TaskRegistry.sweep(s.targetDir)          // a temp an earlier stop left
+        // the two files as they are now: what each write must still find
+        guard case .success(let srcBytes) = TaskRegistry.current(srcFile), case .success(let dstBytes) = TaskRegistry.current(dstFile) else {
+            throw SwitchError.failed("a scheduled-tasks.json isn't a plain file")
+        }
+        func object(_ d: Data?) -> [String: Any]? { d.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } }
+        let joined = TaskRegistry.joined(source: object(srcBytes) ?? [:], target: object(dstBytes) ?? ["scheduledTasks": [[String: Any]]()])
+        var writes: [(file: String, data: Data, expected: Data?, step: Int)] = []
+        for (file, json, was, tag) in [(srcFile, joined.source, srcBytes, "source"), (dstFile, joined.target, dstBytes, "target")] {
+            let existed = was != nil
+            let backup = backups.appendingPathComponent("scheduled-tasks.\(tag).json").path
+            // the backup is the very bytes read (never a copy made later, which a link swapped in meanwhile could redirect)
+            if let was {
+                try? fm.removeItem(atPath: backup)
+                guard CreateOnly.write(was, as: backup, temp: backup + ".tmp", sync: true) == .created else {
+                    throw SwitchError.failed("couldn't back up scheduled-tasks.json")
+                }
+            }
+            let data = try TaskRegistry.encode(json)
+            r.steps.append(TransferStep(kind: .tasks, path: file, sha: SwitchEngine.sha(data), parked: existed ? backup : nil, existed: existed))
+            writes.append((file, data, was, r.steps.count - 1))
+        }
+        r.tasksMoved = joined.moved.count
+        try save(r)                                                  // both written down before either file changes
+        for (k, w) in writes.enumerated() {
+            let wrote = TaskRegistry.swap(w.data, at: w.file, expected: w.expected)
+            guard wrote == .written else {
+                // the target couldn't take them: the source back as it was read (only while it is as written here), so the
+                // tasks are never in neither account
+                let putBack = k == 0 || (writes.first.flatMap { first in
+                    first.expected.map { TaskRegistry.swap($0, at: first.file, expected: first.data) == .written } } ?? false)
+                if putBack {
+                    // nothing of the tasks changed: written down as refused first (a later save that fails still leaves
+                    // Undo nothing to do with them), then their steps and backups go (a switch that moved nothing else then
+                    // has nothing to undo, and doesn't hold back the next switch)
+                    for w in writes { r.steps[w.step].refused = true }
+                    try? save(r)
+                    for w in writes { if let b = r.steps[w.step].parked { try? FileManager.default.removeItem(atPath: b) } }
+                    r.steps.removeSubrange(writes[0].step...)
+                    r.tasksMoved = nil
+                } else {
+                    r.steps[w.step].refused = true                     // this file's write was refused: nothing of it to undo
+                }
+                try? save(r)
+                if case .failed(let why) = wrote { throw SwitchError.failed(why) }
+                throw SwitchError.failed("scheduled-tasks.json changed during the switch; the tasks stay where they were")
+            }
+            r.steps[w.step].done = true
+            try save(r)
+        }
+    }
+
+    // MARK: the Remote Control pointer
+
+    /// Claude Code's own empty pointer line, appended when a moved session's transcript last points at a Remote Control
+    /// copy of another account, so the old pointer can't hide the session on the new one. Only when nothing else is
+    /// writing that transcript (see `busy`); one O_APPEND write; written down with where it went, for Undo.
+    static func clearPointer<R: TransferRecord>(entryPath: String, _ s: Scopes, _ r: inout R, now: Date = Date(), save: (R) throws -> Void) {
+        guard let j = SafeRead.jsonObject(entryPath, max: SafeRead.recordMax),
+              let cli = j["cliSessionId"] as? String, !cli.isEmpty,
+              let transcript = transcriptPath(cli, codeDir: s.codeDir),
+              let last = lastPointer(transcript),
+              let bridge = last["bridgeSessionId"] as? String, !bridge.isEmpty,
+              (last["ownerAccountUuid"] as? String) != s.to.account else { return }
+        if let why = busy(transcript, cli: cli, now: now) {
+            r.problems.append("Session \(cli): \(why), so its Remote Control pointer is left as it is.")
+            try? save(r)
+            return
+        }
+        let fd = open(transcript, O_WRONLY | O_APPEND | O_NOFOLLOW)
+        guard fd >= 0 else { return }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { return }
+        let size = UInt64(st.st_size)
+        let pointer: [String: Any] = ["type": "bridge-session", "sessionId": cli, "bridgeSessionId": "", "lastSequenceNum": 0]
+        guard let line = try? JSONSerialization.data(withJSONObject: pointer, options: [.sortedKeys]) else { return }
+        // a transcript that doesn't end its last line gets one first, in the same write
+        let bytes = (endsWithNewline(transcript, size: size) ? Data() : Data("\n".utf8)) + line + Data("\n".utf8)
+        r.steps.append(TransferStep(kind: .pointer, path: transcript, sha: SwitchEngine.sha(bytes), parked: nil, original: nil,
+                                    offset: size, bytes: bytes.base64EncodedString(), dev: UInt64(st.st_dev), ino: UInt64(st.st_ino)))
+        let i = r.steps.count - 1
+        do { try save(r) } catch {                                   // not written down: not written
+            r.steps.remove(at: i)
+            r.problems.append("Session \(cli): its Remote Control pointer is left as it is (the receipt couldn't be saved).")
+            return
+        }
+        let n = bytes.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+        var after = stat()
+        guard n == bytes.count else {
+            r.problems.append("Session \(cli): its pointer line wasn't written whole.")
+            r.steps[i].offset = nil; try? save(r); return
+        }
+        // where it landed: right after what was there, unless someone else wrote meanwhile (Undo then leaves it)
+        if fstat(fd, &after) != 0 || UInt64(after.st_size) != size + UInt64(bytes.count) { r.steps[i].offset = nil }
+        r.steps[i].done = true
+        try? save(r)
+    }
+
+    /// Why a transcript may be being written, or nil: changed in the last 10 seconds, open in a process, or a Claude Code
+    /// process runs that session. A check that can't finish counts as busy. `table`: the process table (the checks pass their
+    /// own; nil reads it now).
+    static func busy(_ transcript: String, cli: String, now: Date = Date(), table: [Processes.Entry]?? = nil) -> String? {
+        if let m = (try? FileManager.default.attributesOfItem(atPath: transcript))?[.modificationDate] as? Date,
+           now.timeIntervalSince(m) < 10 { return "its transcript changed seconds ago" }
+        switch Processes.fileOpen(transcript) {
+        case .found: return "its transcript is open in another program"
+        case .unknown: return "it couldn't be checked whether its transcript is open"
+        case .none: break
+        }
+        // (`cli` is a file name of letters, digits and "-" only: transcriptPath)
+        switch Processes.commandLineNames(cli, table: table) {
+        case true?: return "Claude Code runs it"
+        case nil: return "it couldn't be checked whether Claude Code runs it"
+        case false?: break
+        }
+        return nil
+    }
+
+    private static func endsWithNewline(_ path: String, size: UInt64) -> Bool {
+        guard size > 0, let last = SafeRead.read(path, max: 1, fromEnd: true)?.data else { return true }
+        return last == Data("\n".utf8)
+    }
+
+    /// <Claude Code folder>/projects/<project>/<cli id>.jsonl
+    static func transcriptPath(_ cli: String, codeDir: String) -> String? {
+        guard cli.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }) else { return nil }   // a file name, never a path
+        let projects = (expand(codeDir) as NSString).appendingPathComponent("projects")
+        for p in (try? FileManager.default.contentsOfDirectory(atPath: projects)) ?? [] {
+            let f = (projects as NSString).appendingPathComponent("\(p)/\(cli).jsonl")
+            if FileManager.default.fileExists(atPath: f) { return f }
+        }
+        return nil
+    }
+
+    /// The last Remote Control pointer line in a transcript (read from its end), or nil.
+    static func lastPointer(_ path: String) -> [String: Any]? {
+        // the last 4 MB of a regular file, never blocking: a FIFO or a device named like a transcript returns at once
+        guard let tail = SafeRead.read(path, max: 4 << 20, fromEnd: true)?.data else { return nil }
+        for line in String(decoding: tail, as: UTF8.self).split(separator: "\n").reversed()
+        where line.contains("\"bridge-session\"") {
+            if let j = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any], j["type"] as? String == "bridge-session" { return j }
+        }
+        return nil
+    }
+
+    // MARK: putting back
+
+    /// One step put back (the caller checked it is one of its own places and holds the window closed): a placed entry
+    /// that is unchanged goes and its original comes back (an original whose copy can't be taken away stays parked, so the
+    /// session is never in both accounts); a task file comes back from its backup if unchanged since; a pointer line comes
+    /// off if it's still the transcript's last bytes. Its name when it is left as it was (then the record is only partly
+    /// undone), else nil; problems go into the record.
+    static func undo<R: TransferRecord>(_ step: TransferStep, record r: inout R) throws -> String? {
+        let fm = FileManager.default
+        let name = (step.path as NSString).lastPathComponent
+        switch step.kind {
+        case .entry:
+            let now = (try? Data(contentsOf: URL(fileURLWithPath: step.path))).map(SwitchEngine.sha)
+            if now == step.sha {                                       // only what this transfer placed, unchanged
+                do { try fm.removeItem(atPath: step.path) }
+                catch { r.problems.append("\(name) couldn't be taken away; its original stays parked"); return name }
+            } else if now != nil {
+                r.problems.append("\(name) changed since; left as it is"); return name
+            }
+            guard let parked = step.parked, let original = step.original, fm.fileExists(atPath: parked) else { return nil }
+            if !fm.fileExists(atPath: original) { try fm.moveItem(atPath: parked, toPath: original) }
+            else { r.problems.append("\(name) is back already") }
+        case .tasks:
+            // (through TaskRegistry: put back, or taken away, only while the file is still exactly as this transfer wrote it)
+            guard case .success(let nowBytes) = TaskRegistry.current(step.path) else {
+                r.problems.append("\(name) changed since; left as it is"); return name
+            }
+            let now = nowBytes.map(SwitchEngine.sha)
+            // (the backup read as a plain file: never through a link)
+            let backupBytes = step.parked.flatMap { SafeFiles.readPlain($0, max: TaskRegistry.max) }
+            let before = backupBytes.map(SwitchEngine.sha)
+            if now == before || (now == nil && !step.existed) { return nil }    // never written (a stop before it)
+            // a write that was refused (the file had changed) or put back has nothing to undo, whatever the file holds
+            // now; any other step not marked done (a crash) is undone only while it still holds this transfer's bytes
+            if step.refused == true, !step.done, now != step.sha { return nil }
+            guard now == step.sha, let nowBytes else { r.problems.append("\(name) changed since; left as it is"); return name }
+            let done: TaskRegistry.Swap
+            if let backup = step.parked {
+                guard let backupBytes else { throw SwitchError.failed("the backup of \(name) is gone") }
+                done = TaskRegistry.swap(backupBytes, at: step.path, expected: nowBytes)
+                if done == .written { try? fm.removeItem(atPath: backup) }   // put back (as a move of the backup did)
+            } else if !step.existed {
+                done = TaskRegistry.remove(at: step.path, expected: nowBytes) // a task file this transfer made, unchanged
+            } else { return nil }
+            switch done {
+            case .written: break
+            case .changed: r.problems.append("\(name) changed since; left as it is"); return name
+            case .failed(let why): throw SwitchError.failed(why)
+            }
+        case .pointer:
+            if let why = takeBack(step) { r.problems.append("\(name): \(why)") }
+        }
+        return nil
+    }
+
+    /// A pointer line off again: only if the transcript is the same file and still ends with exactly those bytes where
+    /// they were written. Why not, or nil.
+    private static func takeBack(_ step: TransferStep) -> String? {
+        guard step.done else { return nil }                                // never written
+        guard let off = step.offset, let b = step.bytes.flatMap({ Data(base64Encoded: $0) }) else { return "its pointer line stays (where it went is unknown)" }
+        let fd = open(step.path, O_RDWR | O_NOFOLLOW)
+        guard fd >= 0 else { return "its pointer line stays (the transcript can't be opened)" }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0, UInt64(st.st_dev) == step.dev, UInt64(st.st_ino) == step.ino,
+              UInt64(st.st_size) == off + UInt64(b.count) else { return "written to since; its pointer line stays" }
+        var tail = Data(count: b.count)
+        let n = tail.withUnsafeMutableBytes { pread(fd, $0.baseAddress, b.count, off_t(off)) }
+        guard n == b.count, tail == b else { return "written to since; its pointer line stays" }
+        return ftruncate(fd, off_t(off)) == 0 ? nil : "its pointer line couldn't be taken off"
+    }
+
+    /// Anything parked that the steps don't name (a stop between parking and saving): back to `source` where it came from.
+    /// `windowClosed` asked before each; a name already back is said so.
+    static func returnParked<R: TransferRecord>(parkedDir: String, source: String, record r: inout R, windowClosed: () -> Bool,
+                                               save: (R) throws -> Void) throws {
+        let fm = FileManager.default
+        let named = Set(r.steps.compactMap(\.parked))
+        for f in (try? fm.contentsOfDirectory(atPath: parkedDir)) ?? [] {
+            let p = (parkedDir as NSString).appendingPathComponent(f)
+            guard !named.contains(p), f.hasPrefix("local_"), f.hasSuffix(".json") else { continue }
+            guard windowClosed() else { try? save(r); throw SwitchError.windowOpen }
+            let back = (source as NSString).appendingPathComponent(f)
+            if fm.fileExists(atPath: back) { r.problems.append("\(f) is back already") } else { try fm.moveItem(atPath: p, toPath: back) }
+        }
+    }
+}
