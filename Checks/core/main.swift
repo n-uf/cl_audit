@@ -3,7 +3,10 @@
 // an id, the standby accounts and the picks, the tidy standby list, fresh and full (in both modes), times in words with a
 // fixed calendar, the colour level, and parsing a sign-in item and Anthropic's replies (the signin suite's parsing
 // checks, re-added here); then a lint that Core/ stays shareable; then the headline (whose numbers a headline shows: the
-// split, a stale or mislabelled reading, signed out, unconfirmed, by age with both apps' thresholds). Fake data only: example.com addresses, zero-pattern
+// split, a stale or mislabelled reading, signed out, unconfirmed, by age with both apps' thresholds); the display; and the
+// reader as a state machine (events in, actions out: the sign-in read, expired, rejected, busy, a held reading, the
+// account lookup, the folder signed in to another account mid-read, the one other-account rule, renewals, cl_quick's
+// reading rules). Fake data only: example.com addresses, zero-pattern
 // ids, made-up tokens.
 //
 // Runs with HOME at Checks/.work/core/home (Checks/run.sh sets and guards it); it reads only Core/'s own sources.
@@ -402,6 +405,275 @@ do {
     check(make(nil).none == .notRead && make(nil).tier == .fresh && make(nil).grey, "nothing read: no numbers, grey")
     let stale = makeFor(Headline.Owner(reading: mo, readStale: true), read(40))
     check(stale.usage == nil && stale.none == .otherReading && stale.readAt == nil, "another reading: no numbers, no read time")
+}
+
+// ============ 9. the reader as a state machine: events in, actions out (no Keychain, no network, no clock) ============
+do {
+    let mo = Seat(account: uuid(61), organization: uuid(71), email: "mo@example.com")
+    let pat = Seat(account: uuid(62), organization: uuid(71), email: "pat@example.com")
+    func machine(_ linked: Seat? = mo, rules: ReadingRules = .clAudit) -> ReaderMachine {
+        ReaderMachine(rules: rules, timing: ReaderMachine.Timing(poll: 300, endpointSource: "endpoint"), linked: linked, firstFetch: t0)
+    }
+    func use(five: Double? = nil, week: Double? = nil, at: Date, resets: Date? = nil, source: String = "endpoint") -> Usage {
+        Usage(fiveHour: five, fiveHourResets: five == nil ? nil : resets ?? at.addingTimeInterval(3600), weekly: week,
+              weeklyResets: week == nil ? nil : resets ?? at.addingTimeInterval(86400), fetchedAt: at, source: source)
+    }
+    func endpoint(_ u: Usage) -> UsageAnswer { UsageAnswer(source: .usageEndpoint, usage: u) }
+    func tick(_ m: inout ReaderMachine, _ now: Date, line: Usage? = nil) -> [ReaderMachine.Action] {
+        m.handle(.tick(now: now, statusLine: line, folderThere: true))
+    }
+    func req(_ key: String, _ gen: Int = 0, _ at: Date = t0) -> ReaderMachine.Request { .init(key: key, generation: gen, asked: at) }
+    let token = SignInRead.token(key: "k1", expiresAt: t0.addingTimeInterval(8 * 3600), plan: "max")
+
+    // the record keeps the state's description: its words are data
+    check("\(FetchState.failed("HTTP 500"))" == #"failed("HTTP 500")"# && "\(FetchState.rateLimited)" == "rateLimited"
+          && "\(FetchState.noLogin)" == "noLogin" && "\(FetchState.ok)" == "ok", "FetchState's descriptions are the record's words, unchanged")
+
+    // a first read: the sign-in read (the token stays with the app), then its account looked up and the usage asked
+    var m = machine()
+    check(tick(&m, t0) == [.readSignIn(generation: 0), .save] && m.inFlight && m.nextFetch == t0.addingTimeInterval(300),
+          "the first tick reads the sign-in; the next read in one interval")
+    check(m.handle(.signInRead(token, generation: 0, now: t0)) == [.keepSignIn, .lookUp(req("k1")), .fetchUsage(req("k1"))]
+          && m.plan == "max" && m.kept == token, "a token: kept (by its key), its account looked up, the usage asked")
+    check(tick(&m, t0.addingTimeInterval(10)) == [.save], "while a read is under way, a tick only saves")
+    // its answer comes back before its account: held, nothing shown
+    check(m.handle(.usageAnswer(endpoint(use(week: 30, at: t0)), key: "k1", asked: t0, generation: 0, now: t0)) == [.save]
+          && m.held?.key == "k1" && m.usage == nil && m.state == .ok && m.rewriteDue, "a reading whose account isn't known yet is held, saved as a read")
+    var out = m.handle(.lookupAnswer(email: "mo@example.com", key: "k1", asked: t0, generation: 0, expected: "mo@example.com", now: t0))
+    check(m.held == nil && m.usage?.weekly == 30 && m.numbersOwner == "mo@example.com" && out.first.map {
+        if case .numbersTaken = $0 { return true }; return false } == true && out.last == .save,
+          "its account back: the held reading taken (the app's alerts), then saved")
+    // the next read: the token is kept, no Keychain read, no second lookup
+    out = tick(&m, t0.addingTimeInterval(301))
+    check(out == [.fetchUsage(req("k1", 0, t0.addingTimeInterval(301))), .save], "the next read asks with the kept sign-in, no lookup again: \(out)")
+    _ = m.handle(.written)
+    check(!m.rewriteDue, "written: no rewrite due")
+
+    // no sign-in: noLogin, looked for again in a minute; the folder's record watched (at most every 30 s)
+    var none = machine()
+    _ = tick(&none, t0)
+    check(none.handle(.signInRead(.notFound, generation: 0, now: t0)) == [.keepSignIn, .save] && none.state == .noLogin
+          && none.nextFetch == t0.addingTimeInterval(60) && none.watchesSignIn, "no sign-in: noLogin, again in a minute, the record watched")
+    check(none.handle(.signInRecordChanged(now: t0.addingTimeInterval(10), floor: 30)) == []
+          && none.handle(.signInRecordChanged(now: t0.addingTimeInterval(31), floor: 30)) == [.recordChanged, .tick]
+          && none.forceLoginRead && none.needsSignInRead(now: t0.addingTimeInterval(31)), "the record changed: read now, not more often than the floor")
+    var denied = machine()
+    _ = tick(&denied, t0)
+    _ = denied.handle(.signInRead(.denied, generation: 0, now: t0))
+    check(denied.state == .denied && denied.nextFetch == t0.addingTimeInterval(300) && !denied.watchesSignIn
+          && !denied.needsSignInRead(now: t0.addingTimeInterval(9 * 60)) && denied.needsSignInRead(now: t0.addingTimeInterval(10 * 60)),
+          "a refused read: denied, read again only every 10 minutes")
+
+    // an expired sign-in: expired, a renewal considered; the kept one read again only after 10 minutes
+    var exp = machine()
+    _ = tick(&exp, t0)
+    check(exp.handle(.signInRead(.token(key: "k9", expiresAt: t0.addingTimeInterval(-1), plan: nil), generation: 0, now: t0))
+          == [.keepSignIn, .save, .considerRenew] && exp.state == .expired && !exp.inFlight, "an expired token: expired, saved, a renewal considered")
+    check(tick(&exp, t0.addingTimeInterval(301)) == [.save, .considerRenew, .save] && exp.state == .expired,
+          "within 10 minutes: no Keychain read, still expired")
+    check(tick(&exp, t0.addingTimeInterval(601))  == [.readSignIn(generation: 0), .save], "10 minutes on: the sign-in read again")
+    // rejected by the endpoint (401/403): expired too, the same 10 minutes
+    var rej = machine()
+    _ = tick(&rej, t0); _ = rej.handle(.signInRead(token, generation: 0, now: t0))
+    check(rej.handle(.usageFailed(.signInRejected, asked: t0, generation: 0, now: t0)) == [.considerRenew, .save]
+          && rej.state == .expired && rej.loginRejected && !rej.needsSignInRead(now: t0.addingTimeInterval(599))
+          && rej.needsSignInRead(now: t0.addingTimeInterval(600)), "a rejected sign-in: expired, renewal considered, read again after 10 minutes")
+
+    // busy (429): a backoff from 2 minutes, doubled, at most 30; a good answer clears it
+    var busy = machine()
+    _ = tick(&busy, t0); _ = busy.handle(.signInRead(token, generation: 0, now: t0))
+    _ = busy.handle(.lookupAnswer(email: "mo@example.com", key: "k1", asked: t0, generation: 0, expected: nil, now: t0))
+    var backoffs: [TimeInterval] = []
+    for _ in 0..<6 { _ = busy.handle(.usageFailed(.rateLimited, asked: t0, generation: 0, now: t0)); backoffs.append(busy.backoff) }
+    check(backoffs == [120, 240, 480, 960, 1800, 1800] && busy.state == .rateLimited && busy.failing
+          && busy.nextFetch == t0.addingTimeInterval(300 + 1800), "429: backoff 2, 4, 8, 16, then 30 minutes, added to the interval: \(backoffs)")
+    _ = busy.handle(.usageAnswer(endpoint(use(week: 10, at: t0)), key: "k1", asked: t0, generation: 0, now: t0))
+    check(busy.backoff == 0 && busy.state == .ok && !busy.failing, "a good answer: no backoff, ok")
+    for (f, s) in [(ReaderMachine.Failure.http(500), FetchState.failed("HTTP 500")), (.network("offline"), .failed("offline")),
+                   (.unexpectedReply, .failed("unexpected reply"))] {
+        _ = busy.handle(.usageFailed(f, asked: t0, generation: 0, now: t0))
+        check(busy.state == s && busy.failing && busy.usage?.weekly == 10, "\(f): \(s), the numbers kept")
+    }
+
+    // an account lookup outage: 1, 2, 4… minutes, at most 30; a second reading without an account: "account not confirmed"
+    var look = machine()
+    var waits: [TimeInterval] = []
+    for _ in 0..<7 { _ = look.handle(.lookupFailed(now: t0)); waits.append(look.nextLookup.timeIntervalSince(t0)) }
+    check(waits == [60, 120, 240, 480, 960, 1800, 1800], "the lookup's retries: \(waits)")
+    _ = look.handle(.usageAnswer(endpoint(use(week: 50, at: t0)), key: "k2", asked: t0, generation: 0, now: t0))
+    _ = look.handle(.usageAnswer(endpoint(use(week: 60, at: t0)), key: "k2", asked: t0, generation: 0, now: t0))
+    check(look.unconfirmed && look.usage?.weekly == 60 && look.numbersOwner == nil && look.held == nil,
+          "the second reading still without an account: shown, not confirmed")
+    _ = look.handle(.accountFound(email: "mo@example.com", key: "k2", expected: nil, now: t0))
+    check(!look.unconfirmed && look.numbersOwner == "mo@example.com", "its account back: confirmed")
+
+    // the folder signed in to another account mid-read: everything of the old one goes, its answer is dropped
+    var sw = machine()
+    _ = tick(&sw, t0); _ = sw.handle(.signInRead(token, generation: 0, now: t0))
+    _ = sw.handle(.lookupAnswer(email: "mo@example.com", key: "k1", asked: t0, generation: 0, expected: nil, now: t0))
+    _ = sw.handle(.usageAnswer(endpoint(use(week: 70, at: t0)), key: "k1", asked: t0, generation: 0, now: t0))
+    _ = tick(&sw, t0.addingTimeInterval(301))                             // a read under way, generation 0
+    let t1 = t0.addingTimeInterval(302)
+    check(sw.handle(.folderLooked(changed: true, seen: pat, now: t1)) == [.forgetSignIn, .startedOver]
+          && sw.usage == nil && sw.kept == nil && sw.state == .idle && sw.generation == 1 && sw.forceLoginRead && sw.plan == nil
+          && sw.loginEmail == nil && sw.signInChangedAt == t1 && sw.onOtherAccount, "another account signed in: the old one's numbers, sign-in and plan go")
+    check(sw.handle(.usageAnswer(endpoint(use(week: 99, at: t1)), key: "k1", asked: t0.addingTimeInterval(301), generation: 0, now: t1)) == [.tick]
+          && sw.usage == nil && !sw.inFlight, "the old account's answer under way: dropped, read again now")
+    check(sw.handle(.usageAnswer(endpoint(use(week: 99, at: t1)), key: "k1", asked: t0, generation: 1, now: t1)) == []
+          && sw.usage == nil, "an answer asked before the change: the old account's, dropped")
+    check(sw.handle(.lookupAnswer(email: "mo@example.com", key: "k1", asked: t0, generation: 1, expected: "pat@example.com", now: t1)) == [],
+          "a lookup asked before the change: dropped")
+    check(tick(&sw, t1.addingTimeInterval(1), line: use(week: 5, at: t0.addingTimeInterval(200), source: "line")) == [.readSignIn(generation: 1), .save]
+          && sw.usage == nil, "the new sign-in read at once; a status line written before the change isn't taken")
+    // the Keychain still holds the old sign-in: read again 15, 30… seconds on, at most four times, within 5 minutes
+    _ = sw.handle(.signInRead(.token(key: "old", expiresAt: nil, plan: nil), generation: 1, now: t1))
+    var retries: [ReaderMachine.Action] = []
+    for i in 1...5 {
+        retries += sw.handle(.accountFound(email: "MO@example.com", key: "old", expected: "pat@example.com", now: t1.addingTimeInterval(Double(i))))
+    }
+    check(retries.filter { $0 == .signInNotThereYet }.count == 4 && sw.signInRetries == 4 && sw.forceLoginRead,
+          "the sign-in still the old account's: read again, four times at most")
+    var same = machine()
+    _ = same.handle(.folderLooked(changed: true, seen: mo, now: t0))
+    check(same.handle(.accountFound(email: "MO@example.com", key: "k1", expected: "mo@example.com", now: t0)) == [] && same.signInRetries == 0,
+          "the sign-in's address the folder's (any case): no read again")
+    var late = machine()
+    _ = late.handle(.folderLooked(changed: true, seen: pat, now: t0))
+    check(late.handle(.accountFound(email: "mo@example.com", key: "k1", expected: "pat@example.com", now: t0.addingTimeInterval(301))) == [],
+          "more than 5 minutes after the change: no read again")
+
+    // the one "is it another account" rule
+    let r = machine(mo)
+    check(r.belongs(.seat(nil)) == .unknown && r.belongs(.seat(mo)) == .same && r.belongs(.seat(pat)) == .other
+          && machine(nil).belongs(.seat(pat)) == .notLinked, "a seat against the linked one: unknown, same, other, not linked")
+    let hexSeat = Seat(account: "00000000-0000-4000-8000-0000000000ab", organization: uuid(71))
+    check(r.belongs(.seat(Seat(account: uuid(61), organization: uuid(71), email: "x@example.com"))) == .same
+          && machine(hexSeat).belongs(.seat(Seat(account: hexSeat.account.uppercased(), organization: uuid(71)))) == .other,
+          "seats by their ids, exactly (Seat.same: case counts, as before), never the address")
+    check(r.belongs(.address("MO@example.com"), expected: "mo@example.com") == .same && r.belongs(.address("pat@example.com"), expected: "mo@example.com") == .other
+          && r.belongs(.address("pat@example.com")) == .notLinked && r.belongs(.address(nil), expected: "mo@example.com") == .unknown,
+          "addresses in any case; none expected: not linked")
+    var other = machine(mo)
+    _ = other.handle(.folderLooked(changed: false, seen: pat, now: t0))
+    check(other.onOtherAccount && !other.mayRenewByItself(autoRenew: true, folderNow: mo, lastAttempt: nil, now: t0),
+          "the folder last seen on another account: on another account, never renewed in this profile's name")
+    _ = other.handle(.folderLooked(changed: false, seen: mo, now: t0))
+    check(!other.onOtherAccount && other.mayRenewByItself(autoRenew: true, folderNow: mo, lastAttempt: nil, now: t0)
+          && !other.mayRenewByItself(autoRenew: true, folderNow: pat, lastAttempt: nil, now: t0)
+          && !other.mayRenewByItself(autoRenew: true, folderNow: nil, lastAttempt: nil, now: t0)
+          && machine(nil).renewsIn(folderNow: nil), "the folder as it is now: renewed only when it's the profile's own (or none is linked)")
+
+    // renewing: at most every 30 minutes, one at a time; its end reads the sign-in again, unless the account changed since
+    var rn = machine(mo)
+    check(!rn.mayRenewByItself(autoRenew: false, folderNow: mo, lastAttempt: nil, now: t0)
+          && !rn.mayRenewByItself(autoRenew: true, folderNow: mo, lastAttempt: t0.addingTimeInterval(-29 * 60), now: t0)
+          && rn.mayRenewByItself(autoRenew: true, folderNow: mo, lastAttempt: t0.addingTimeInterval(-30 * 60), now: t0),
+          "off, or tried in the last 30 minutes: no renewal")
+    check(rn.handle(.renewStarted(note: "renewing")) == [.save] && rn.renewing && rn.renewNote == "renewing"
+          && !rn.mayRenewByItself(autoRenew: true, folderNow: mo, lastAttempt: nil, now: t0), "under way: no second one")
+    check(rn.handle(.renewEnded(note: "renewed", generation: 0)) == [.tick] && !rn.renewing && rn.renewNote == "renewed"
+          && rn.forceLoginRead && rn.nextFetch == .distantPast, "renewed: the sign-in read again now")
+    _ = rn.handle(.renewStarted(note: "renewing"))
+    _ = rn.handle(.folderLooked(changed: true, seen: pat, now: t0))
+    check(rn.handle(.renewEnded(note: "renewed", generation: 0)) == [] && !rn.renewing && rn.renewNote == nil,
+          "renewed for an account it no longer reads: its words dropped")
+    check(rn.handle(.renewRefused(note: "folder gone")) == [.save] && rn.renewNote == "folder gone", "a renewal refused: its note saved")
+
+    // linked to another account: read afresh, unless the folder is signed in to it already
+    var link = machine(mo)
+    _ = link.handle(.folderLooked(changed: false, seen: pat, now: t0))
+    _ = link.handle(.profile(linked: pat, poll: 600))
+    check(link.handle(.relinked(folderMoved: false, now: t0)) == [.tick] && link.generation == 0 && link.timing.poll == 600,
+          "linked to the account the folder is on already: its numbers stay, a tick")
+    _ = link.handle(.profile(linked: mo, poll: 600))
+    check(link.handle(.relinked(folderMoved: false, now: t0)) == [.forgetSignIn, .startedOver, .lookAfresh, .tick] && link.generation == 1,
+          "linked to another account than the folder's: start over, look afresh")
+    _ = link.handle(.profile(linked: pat, poll: 600))
+    check(link.handle(.relinked(folderMoved: true, now: t0)) == [.forgetSignIn, .startedOver, .lookAfresh, .tick] && link.generation == 3,
+          "with another folder: answers under way for the old folder dropped too")
+    check(link.handle(.folderMoved(now: t0)) == [.forgetSignIn] && link.generation == 4 && link.kept == nil, "the folder moved: its own sign-in")
+
+    // a full limit: read again 2 s after its reset; past it, read again at once (at most once a minute)
+    var full = machine()
+    _ = full.handle(.numbers(use(week: 100, at: t0, resets: t0.addingTimeInterval(600)), now: t0))
+    check(full.resetReadAt(now: t0) == t0.addingTimeInterval(602) && ReaderMachine.resetPassed(full.usage!, now: t0.addingTimeInterval(601)),
+          "full: a read planned 2 s after the reset")
+    var p2 = machine()
+    _ = tick(&p2, t0)                                                     // the first read: lastAsked t0
+    _ = p2.handle(.signInRead(token, generation: 0, now: t0))
+    _ = p2.handle(.usageAnswer(endpoint(use(week: 100, at: t0, resets: t0.addingTimeInterval(10))), key: nil, asked: t0, generation: 0, now: t0))
+    check(!tick(&p2, t0.addingTimeInterval(30)).contains { if case .fetchUsage = $0 { return true }; return false }
+          && tick(&p2, t0.addingTimeInterval(61)).contains(.fetchUsage(req("k1", 0, t0.addingTimeInterval(61)))),
+          "a full limit past its reset: read again, once a minute at most")
+
+    // the status line file: taken when newer (the model limits and credits kept), no account named
+    var line = machine()
+    var withScoped = use(week: 20, at: t0); withScoped.scoped = [ScopedLimit(name: "Fable", percent: 10, resets: nil)]
+    _ = line.handle(.accountFound(email: "mo@example.com", key: "k1", expected: nil, now: t0))
+    _ = line.handle(.usageAnswer(endpoint(withScoped), key: "k1", asked: t0, generation: 0, now: t0))
+    check(line.numbersOwner == "mo@example.com", "(read with a key whose account is known: its account's)")
+    _ = tick(&line, t0.addingTimeInterval(5), line: use(five: 3, week: 25, at: t0.addingTimeInterval(4), source: "line"))
+    check(line.usage?.weekly == 25 && line.usage?.scoped.first?.percent == 10 && line.numbersOwner == nil,
+          "a newer status line: its two limits, the model limit kept, no account")
+    _ = tick(&line, t0.addingTimeInterval(6), line: use(week: 90, at: t0.addingTimeInterval(1), source: "line"))
+    check(line.usage?.weekly == 25, "an older status line: not taken")
+
+    // Refresh now, and a stopped reader
+    var rf = machine()
+    _ = rf.handle(.refreshRequested)
+    check(rf.rewriteDue && rf.forceLoginRead && rf.nextFetch == .distantPast, "Refresh now: read now, the sign-in again, the record rewritten")
+    check(rf.handle(.stop) == [.planResetRead(nil)] && tick(&rf, t0) == [] && rf.resetReadAt(now: t0) == nil, "stopped: nothing more")
+
+    // cl_quick's rules: the scales, partial and empty answers, the week, refusals and how they lift, message text
+    var q = machine(rules: .clQuick)
+    _ = q.handle(.numbers(use(five: 20, week: 40, at: t0), now: t0))
+    _ = q.handle(.rateLimit(RateLimitEvent(window: .fiveHour, utilization: 0.42, resetsAt: t0.addingTimeInterval(7200), status: .allowed), now: t0.addingTimeInterval(60)))
+    check(q.usage?.fiveHour == 42 && q.usage?.weekly == 40 && q.usage?.fetchedAt == t0 && q.usage?.fiveHourResets == t0.addingTimeInterval(7200),
+          "a rate-limit event's fraction (0.42) is 42 %; a partial answer keeps the week and its read time; the window given whole, its reset too")
+    check(ReadingRules.clQuick.take(UsageAnswer(source: .usageEndpoint, usage: nil, given: []), last: q.usage) == nil
+          && ReadingRules.clQuick.take(endpoint(use(five: 1, week: 2, at: t0.addingTimeInterval(9))), last: q.usage)?.fetchedAt == t0.addingTimeInterval(9),
+          "an empty answer changes nothing; a whole one moves the read time")
+    let audit = ReadingRules.clAudit.take(UsageAnswer(source: .usageEndpoint, usage: use(week: 50, at: t0.addingTimeInterval(9)), given: [.week]), last: q.usage)
+    check(audit?.fiveHour == nil && audit?.weekly == 50 && audit?.fetchedAt == t0.addingTimeInterval(9), "cl_audit's: an answer replaces the numbers")
+    check(ReadingRules.clAudit.percents(UsageAnswer(source: .rateLimitEvent, usage: use(week: 0.5, at: t0), given: [.week]))?.weekly == 50
+          && ReadingRules.clAudit.percents(endpoint(use(week: 50, at: t0)))?.weekly == 50, "the endpoint gives 0–100, a rate-limit event 0–1")
+    let opus = #"{"limits":[{"type":"seven_day_opus","percent":80},{"type":"weekly","percent":70},{"type":"five_hour","percent":5}]}"#
+    check(UsageParser.fromAPI(Data(opus.utf8), source: "t", week: .sevenDayOnly)?.weekly == nil
+          && UsageParser.fromAPI(Data(opus.utf8), source: "t")?.weekly != nil, "the week is seven_day only for cl_quick; cl_audit's parser as it was")
+    let rejectedAt = t0.addingTimeInterval(100)
+    _ = q.handle(.rateLimit(RateLimitEvent(window: .named("seven_day"), utilization: 1, resetsAt: t0.addingTimeInterval(86400), status: .rejected), now: rejectedAt))
+    check(q.refusal == Refusal(until: t0.addingTimeInterval(86400), at: rejectedAt, on: .week), "a rejection: refusedUntil, refusedAt, refusedOn wk")
+    _ = q.handle(.rateLimit(RateLimitEvent(window: .named("seven_day_opus"), utilization: 0.1, resetsAt: nil, status: .allowed), now: rejectedAt))
+    check(q.refusal != nil && RateLimitEvent.Window.named("seven_day_opus") == .scoped("seven_day_opus"), "a model's window \"allowed\": the refusal stays")
+    func ask(_ m: inout ReaderMachine, _ u: Usage, at: Date) {
+        _ = m.handle(.usageAnswer(endpoint(u), key: nil, asked: at, generation: m.generation, now: at))
+    }
+    var withFable = use(five: 10, at: rejectedAt.addingTimeInterval(400)); withFable.scoped = [ScopedLimit(name: "Fable", percent: 5, resets: nil)]
+    ask(&q, withFable, at: rejectedAt.addingTimeInterval(400))
+    check(q.refusal != nil, "an answer without the week (a model's window only beside the 5-hour one): the refusal stays")
+    ask(&q, use(week: 40, at: rejectedAt.addingTimeInterval(299)), at: rejectedAt.addingTimeInterval(299))
+    check(q.refusal != nil, "the week with room, said under 5 minutes after the refusal: it stays")
+    ask(&q, use(week: 100, at: rejectedAt.addingTimeInterval(301)), at: rejectedAt.addingTimeInterval(301))
+    check(q.refusal != nil, "the week full, 5 minutes on: it stays")
+    ask(&q, use(week: 40, at: rejectedAt.addingTimeInterval(301)), at: rejectedAt.addingTimeInterval(301))
+    check(q.refusal == nil, "the week with room, 5 minutes on: lifted")
+    _ = q.handle(.rateLimit(RateLimitEvent(window: .fiveHour, utilization: 1, resetsAt: nil, status: .rejected), now: rejectedAt))
+    _ = q.handle(.rateLimit(RateLimitEvent(window: .fiveHour, utilization: 0.2, resetsAt: nil, status: .allowed), now: rejectedAt.addingTimeInterval(1)))
+    check(q.refusal == nil, "\"allowed\" lifts it at once")
+    _ = q.handle(.rateLimit(RateLimitEvent(window: .named("overage"), utilization: nil, resetsAt: nil, status: .rejected), now: rejectedAt))
+    check(q.refusal == nil, "a spend window's rejection sets none")
+    check(q.handle(.limitMessage(LimitMessage(isError: false, model: "claude-x", on: .unknown, until: nil), now: rejectedAt)) == [] && q.refusal == nil,
+          "limit words in a plain message: not read")
+    _ = q.handle(.limitMessage(LimitMessage(isError: false, model: "<synthetic>", on: .unknown, until: t0), now: rejectedAt))
+    check(q.refusal == Refusal(until: t0, at: rejectedAt, on: .unknown), "in a \"<synthetic>\" message: refusedOn unknown")
+    ask(&q, use(five: 10, week: 100, at: rejectedAt.addingTimeInterval(400)), at: rejectedAt.addingTimeInterval(400))
+    check(q.refusal != nil, "not said which window: a full one keeps it")
+    ask(&q, use(five: 10, week: 20, at: rejectedAt.addingTimeInterval(400)), at: rejectedAt.addingTimeInterval(400))
+    check(q.refusal == nil && ReadingRules.clQuick.readsMessage(isError: true, model: nil), "every window with room: lifted; an error message is read")
+    var a = machine()
+    _ = a.handle(.rateLimit(RateLimitEvent(window: .week, utilization: 1, resetsAt: nil, status: .rejected), now: t0))
+    _ = a.handle(.limitMessage(LimitMessage(isError: true, model: "<synthetic>", on: .week, until: nil), now: t0))
+    check(a.refusal == nil && !ReadingRules.clAudit.readsMessage(isError: true, model: "<synthetic>"), "cl_audit's rules: no refusal kept, no message text read")
 }
 
 print("core checks: \(passed) passed, \(failed) failed")
