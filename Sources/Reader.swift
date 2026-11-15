@@ -455,13 +455,19 @@ final class UsageReader {
         // the status line file has no credits: keep the last ones Anthropic gave
         u.credits = Credits.carry(u.credits, from: before, now: now) ?? (u.source == "Anthropic" ? nil : before)
         usage = u; state = .ok; backoff = 0
-        // another account's numbers: no alerts about them; nor Claude Code's while the Claude app is on another account
-        // (the split, SplitUsage): they aren't the profile's, so no full, back or level alert and no switch offer
-        // (and none for numbers whose account couldn't be confirmed)
-        let split = Headline.split(answer().owner(reading: nil, unconfirmed: unconfirmed))
-        if !onOtherAccount, !unconfirmed, split == nil {
+        // Alerts only for numbers that may act, as ProfileCore's Headline says it for every screen: the profile's own (not
+        // Claude Code's in the split, SplitUsage, nor a reading the sign-in has moved on from), confirmed, and fresh by the
+        // reading's own time (a reading held until its account was confirmed, and confirmed more than the read interval
+        // later, is only last known: its alerts wait for the next read). And none for another account than the profile's
+        // (onOtherAccount, until it follows it).
+        let resolved = answer()
+        let a = Headline.of(resolved.owner(reading: nil, unconfirmed: unconfirmed), signedIn: true, readAt: u.fetchedAt,
+                            now: now, ages: Store.ages(entry))
+        if !onOtherAccount, a.acts, a.numbers() {
             noteBack(u)
-            checkThresholds(u)
+            // the account in use as the resolver says it now (the record is saved after this)
+            var view = IconStatus(state: "ok"); view.resolved = resolved
+            checkThresholds(u, inUse: AccountView.of(view))
             noteCredits(u, before: before, now: now)
         }
         scheduleResetRead()
@@ -533,7 +539,7 @@ final class UsageReader {
     /// One alert per limit and reset, from cl_audit (the agent), at the profile's level, and one when the limit is
     /// full, saying when it's back ("Back at 15:28, in 1h 42m"). No e-mail addresses. The reset is marked as alerted
     /// only once macOS took the alert, so one that couldn't be shown (alerts not allowed yet) comes when they are.
-    private func checkThresholds(_ u: Usage) {
+    private func checkThresholds(_ u: Usage, inUse: AccountView) {
         guard entry.notify else { return }
         let limit = Double(entry.notifyPercent)
         // a model's own weekly limit (Fable) alerts like the two: at the level, and when full with when it's back
@@ -556,10 +562,10 @@ final class UsageReader {
             guard !alerting.contains(k) else { continue }
             alerting.insert(k)
             let c = UNMutableNotificationContent()
-            // the 5-hour or weekly limit full holds the profile back: another of its accounts with room (and current
-            // numbers) is offered, with a Switch account… button (Switch.swift), never naming it; Fable's own limit
-            // doesn't hold it back
-            let offer = full && (key == "5h" || key == "wk") ? entry.bestOffer() : nil
+            // the 5-hour or weekly limit full holds the profile back: another of its accounts with room is offered, with
+            // a Switch account… button (Switch.swift), never naming it: the one offer every place makes
+            // (AccountEntry.fullOffer: never the account in use); Fable's own limit doesn't hold it back
+            let offer = full && (key == "5h" || key == "wk") ? (Store.loadChecked()?.first { $0.id == id } ?? entry).fullOffer(view: inUse) : nil
             if full {
                 c.title = "Claude \(account.name): \(fullName) full"
                 let back = resets.map { "Back \(Self.backWords($0)), in \(TimeWords.countdown($0))" } ?? "Reset time unknown"

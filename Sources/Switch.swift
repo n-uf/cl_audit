@@ -43,9 +43,19 @@ extension AccountEntry {
         AccountBook.offerOrder(standby, now: now).map { SwitchOffer(profile: id, standby: $0) }
     }
 
-    /// The one to offer when a limit is full (AccountBook.best), or nil.
-    func bestOffer(now: Date = Date()) -> SwitchOffer? {
+    /// AccountBook.best over this entry's standby list as it is (fullOffer gives it the listed one: never the account in
+    /// use); private, so no place picks over the raw list again.
+    private func bestOffer(now: Date = Date()) -> SwitchOffer? {
         AccountBook.best(standby, now: now).map { SwitchOffer(profile: id, standby: $0) }
+    }
+
+    /// THE offer while a limit is full, for every place that makes one (the full-limit alert, quick chat; the menus pick
+    /// the same through SwitchMenu.best): AccountBook.best over the standby list as the account answer lists it, so never
+    /// the account in use, matched by its id or its address (AccountView.isActive). An account remembered by its address
+    /// only is never it; no numbers are read for it. `view`: the account answer when the caller has a newer one than the
+    /// saved record (the agent's reader, before it saves).
+    func fullOffer(view: AccountView? = nil, now: Date = Date()) -> SwitchOffer? {
+        listed(by: view ?? AccountView.of(Store.status(for: self, now: now))).bestOffer(now: now)
     }
 }
 
