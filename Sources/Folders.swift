@@ -65,7 +65,7 @@ enum FolderRules {
     /// standby accounts (its plan, when it left and its last week remembered, never its sign-in), and nothing else
     /// moves. One account, one profile:
     /// - an account another profile works on (its account in use) is refused: the profile stays as it is, and its numbers
-    ///   wait (Reader.swift) until its folder is on an account of its own again (`inUseElsewhere`);
+    ///   wait (Reader.swift: the resolver's clash) until its folder is on an account of its own again;
     /// - an account on another profile's standby list moves here: it leaves that list, with a note on both profiles;
     /// - a profile not linked yet takes the account only when no earlier profile not linked yet is signed in to it too.
     /// A folder signed out changes nothing (the account stays the profile's; it signs in again). `status`: the numbers of
@@ -117,38 +117,6 @@ enum FolderRules {
         return s.email.map { $0.lowercased() == q.email.lowercased() } ?? false
     }
 
-    /// The profile whose account in use the folder is signed in to, when that isn't this profile's account: refused by
-    /// `noteAccounts` (one account, one profile). nil otherwise.
-    static func inUseElsewhere(_ e: AccountEntry, among accounts: [AccountEntry],
-                               signedIn: (String) -> Seat? = Account.signedInSeat) -> (seat: Seat, owner: AccountEntry)? {
-        guard let now = signedIn(e.configDir), !(e.seat.map { now.same($0) } ?? false),
-              let owner = accounts.first(where: { $0.id != e.id && ($0.seat.map { now.same($0) } ?? false) }) else { return nil }
-        return (now, owner)
-    }
-
-    /// The claude.ai account id the profile's Claude window is signed in to (AppSignIn: the app's log after its launch,
-    /// else its data folder's config.json), or nil (signed out, or not known). Only the id is kept.
-    static func windowAccount(_ e: AccountEntry) -> String? {
-        let l = AppSignIn.cached(for: e)
-        return l.state == .known ? l.account : nil
-    }
-
-    /// The profile's Claude window is signed in to another claude.ai account than its Claude Code folder (or, with
-    /// none there, than the account the profile works on). Said plainly; the window's own sign-in is the person's.
-    static func windowOnAnotherAccount(_ e: AccountEntry, signedIn: (String) -> Seat? = Account.signedInSeat,
-                                       window: (AccountEntry) -> String? = windowAccount) -> Bool {
-        guard let w = window(e), let mine = signedIn(e.configDir)?.account ?? e.seat?.account else { return false }
-        return w.lowercased() != mine.lowercased()
-    }
-
-    /// "The Claude app uses a…@example.com; Claude Code uses b…@example.com. Usage shown is Claude Code's.": the two
-    /// sign-ins when they differ, each by its address where one is known on this Mac (else "account <first 8>").
-    static func windowWords(_ e: AccountEntry, window: String, names: [String: String]) -> String {
-        let app = names[window.lowercased()].map(Privacy.masked) ?? "account \(window.prefix(8))"
-        let code = (Account.signedInSeat(configDir: e.configDir) ?? e.seat).map { s in s.email.map(Privacy.masked) ?? "account \(s.account.prefix(8))" } ?? "no account"
-        return "The Claude app uses \(app); Claude Code uses \(code). Usage shown is Claude Code's."
-    }
-
     /// A profile that can't be linked because another profile has the seat its folder is signed in to.
     static func seatTaken(_ e: AccountEntry, among accounts: [AccountEntry],
                           signedIn: (String) -> Seat? = Account.signedInSeat) -> AccountEntry? {
@@ -197,13 +165,6 @@ enum FolderKind: Equatable {
         let marks: Set<String> = [".claude.json", "settings.json", "projects", "todos", "statsig", "shell-snapshots", "CLAUDE.md"]
         let isClaude = FolderKey.canonical(dir) == FolderKey.canonical("~/.claude") || names.contains { marks.contains($0) }
         return isClaude ? .claudeCode(email: Account.expectedEmail(configDir: path)) : .other
-    }
-
-    /// When Claude Code last used the folder (its newest session or settings file), for "last used 3 weeks ago".
-    static func lastUsed(_ path: String) -> Date? {
-        let dir = expand(path)
-        let candidates = ["projects", ".claude.json", "settings.json", "history.jsonl"].map { (dir as NSString).appendingPathComponent($0) }
-        return candidates.compactMap { try? FileManager.default.attributesOfItem(atPath: $0)[.modificationDate] as? Date }.max()
     }
 }
 

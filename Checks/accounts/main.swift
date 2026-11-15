@@ -151,7 +151,6 @@ do {
     dirs = ["~/.claude": u3, "~/.claude-work": u3]
     let refused = note([main, work])
     check(refused == [main, work], "an account another profile works on is refused: nothing changes")
-    check(FolderRules.inUseElsewhere(main, among: [main, work], signedIn: { dirs[$0] })?.owner.id == "work", "…and the profile says whose it is")
     // on another profile's standby: it comes here, with a note on both
     var w2 = profile("work", "~/.claude-work", u3, standby: [StandbyAccount(email: u4.email!, seat: u4, id: "w4")])
     dirs = ["~/.claude": u4, "~/.claude-work": u3]
@@ -171,11 +170,6 @@ do {
     dirs = ["~/.claude-a": u4, "~/.claude-b": u4]
     let linked = note([a, b])
     check(linked[0].seat.map { $0.same(u4) } == true && linked[1].seat == nil && linked[0].standby.isEmpty, "not linked yet: the first profile signed in to it takes it, no standby made")
-    // the Claude window keeps its own sign-in: only its account id is compared, and only said
-    var we = profile("main", "~/.claude", u2); we.claudeWindow = true
-    check(!FolderRules.windowOnAnotherAccount(we, signedIn: { _ in u2 }, window: { _ in u2.account }), "window and Claude Code on the same account: nothing said")
-    check(FolderRules.windowOnAnotherAccount(we, signedIn: { _ in u2 }, window: { _ in u1.account }), "the window on another account than Claude Code: said (a switch leaves the window alone)")
-    check(!FolderRules.windowOnAnotherAccount(we, signedIn: { _ in u2 }, window: { _ in nil }), "no window sign-in known: nothing said")
 }
 
 // ============ 4. the account book: which standby account a full limit offers ============
@@ -339,11 +333,6 @@ do {
     check(SwitchRunner.reached(idGoal, u6) && !SwitchRunner.reached(idGoal, u2), "an account known by its id alone: reached by that id")
 
     // the Claude app's account (its log, config.json), the active account and every surface reading one record: Checks/surfaces
-    var p8u = p8; p8u.claudeWindow = true
-    check(FolderRules.windowOnAnotherAccount(p8u, signedIn: { _ in u1 }, window: { _ in u2.account }) && !FolderRules.windowOnAnotherAccount(p8u, signedIn: { _ in u2 }, window: { _ in u2.account.uppercased() }),
-          "the window on another account than Claude Code: said; the same (any case): not")
-    check(FolderRules.windowWords(p8u, window: u2.account, names: [u2.account: u2.email!]).hasSuffix("Usage shown is Claude Code's.")
-          && FolderRules.windowWords(p8u, window: uuid(55), names: [:]).contains("account 00000000"), "said plainly, by address or the id's first 8")
 
     // who owns a session now: `claude` processes' command lines and the folder's live registrations
     put(expand("~/.claude-p8/sessions/4242.json"), #"{"pid":4242,"sessionId":"\#(uuid(902))"}"#)
