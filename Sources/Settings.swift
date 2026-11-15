@@ -1572,6 +1572,12 @@ struct AccountSettings: View {
     var view: AccountView { show.view }
     /// The in-use box's profile as the card has it (its lamp, line, numbers and notice with its key): the box draws this.
     var inUseRow: AccountRow { AccountRow(entry: entry, show: show) }
+    /// The red in-use box's keys: Sign in… when the value has a key (as the card's), Open with the profile whose account
+    /// the folder is on; none while the box isn't red.
+    var inUseKeys: (signIn: Bool, open: AccountEntry?) {
+        guard let n = UsageNotice.of(inUseRow), n.tone == .red else { return (false, nil) }
+        return (n.key == .signIn, elsewhere?.owner)
+    }
 
     /// Claude Code's folder on another profile's account in use, as the profile's record says it (AccountResolver):
     /// refused (FolderRules.noteAccounts), or nil. That profile by its id (names needn't be unique); by its name only in a
@@ -1689,12 +1695,15 @@ struct AccountSettings: View {
                     Text(notice.heading).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(face.danger)
                     BoxNote(text: notice.line, size: 12, tone: .danger).fixedSize(horizontal: false, vertical: true)
                 }
-                HStack(spacing: 7) {
-                    // the value's key, as the card's (none in the split with the app's account known by its id only: the
-                    // line says what to do)
-                    if notice.key == .signIn { logInKey(email: show.loginAddress) }
-                    if let move {
-                        Button("Open \(move.owner.name)") { model.selection = move.owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                // the value's key, as the card's (none in the split with the app's account known by its id only: the line
+                // says what to do), and Open while the folder is on another profile's account; neither: no row at all
+                let keys = inUseKeys
+                if keys.signIn || keys.open != nil {
+                    HStack(spacing: 7) {
+                        if keys.signIn { logInKey(email: show.loginAddress) }
+                        if let owner = keys.open {
+                            Button("Open \(owner.name)") { model.selection = owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                        }
                     }
                 }
             } else if switching, let code = v.codeRow {
@@ -1775,8 +1784,7 @@ struct AccountSettings: View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
         // unlit; clicked, its row lights and the Switch account key takes the place of "Standby"
         let selected = picked == s.id
-        let line = s.lastInUse.map { "Last in use on \(name) " + AccountBook.ago($0) }
-            ?? (s.seat == nil ? "Remembered by its address: it signs in when you switch to it" : "Not in use on \(name) yet")
+        let line = standbyWords(s, name: name)
         return AccountBox(lamp: nil, badge: "Standby", detail: s.plan.map(Account.planWords),
                           unlit: !selected, selected: selected, litBadge: "Switch account",
                           litAction: { model.showSwitch(AccountEntry.switchKey(entry.id, s.id)) },
@@ -1793,6 +1801,13 @@ struct AccountSettings: View {
         } content: {
             BoxNote(text: line + ".").fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// A standby box's one line, all it says under its address: when it was last in use here, never any numbers (a standby
+    /// account is never read).
+    func standbyWords(_ s: StandbyAccount, name: String) -> String {
+        s.lastInUse.map { "Last in use on \(name) " + AccountBook.ago($0) }
+            ?? (s.seat == nil ? "Remembered by its address: it signs in when you switch to it" : "Not in use on \(name) yet")
     }
 
     /// Selects a standby account, or deselects it on a second click (the order is held still while one is selected).
@@ -2097,7 +2112,6 @@ struct AccountSettings: View {
         let move = elsewhere
         let here = view.numbersOwner ?? status?.loginEmail ?? expected
         let plan = status?.plan.map(Account.planWords)
-        let linked = entry.seat?.email
         let canSignIn = !model.claudeKnownMissing
         func line(_ email: String, _ detail: [String?]) -> String {
             ([Privacy.masked(email)] + [detail.compactMap { $0 }.joined(separator: " · ")].filter { !$0.isEmpty }).joined(separator: "   ")
@@ -2107,10 +2121,11 @@ struct AccountSettings: View {
             items.append(LoginItem(id: "here", title: line(here, [plan, move == nil ? "this profile" : "signed in here"]), checked: true))
         }
         if move != nil {
-            if let linked {
-                items.append(LoginItem(id: "back", title: line(linked, ["\(name)'s account", "sign in…"]), enabled: canSignIn) {
+            // the profile's own account (the one value's address: the app's when it decided, else the seat's), as every Sign in
+            if let back = show.loginAddress {
+                items.append(LoginItem(id: "back", title: line(back, ["\(name)'s account", "sign in…"]), enabled: canSignIn) {
                     if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why }
-                    else if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: linked) }
+                    else if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: back) }
                 })
             }
         }
@@ -2619,7 +2634,6 @@ func samplePanel(_ entry: AccountEntry, status s: IconStatus?, sample: Bool = fa
         weekly: 58, weeklyResets: now.addingTimeInterval(2 * 86400 + 5 * 3600),
         updated: nil, source: nil, problem: nil, renewNote: nil, needsLogin: false,
         design: entry.panelDesign, accent: entry.accentNSColor)
-        .taking(AccountView.of(nil))
 }
 
 /// Settings is a page of the one cl_audit window, not a window of its own.
