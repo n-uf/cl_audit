@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-- New profile now refuses an account that is on another profile's standby list, when you type its address and when Claude Code signs in to it ("That's a standby account of “Work”. One profile per account."); before, typing its address went ahead.
+- New profile now refuses another profile's standby account when you type its address (before, the address went ahead), and also one remembered only by its address when Claude Code signs in to it and at Finish (before, only a standby account with its ids was refused there). The refusals now name it as a standby account: "That's a standby account of “Work”. One profile per account."
 
 ## 26.11.48 — 2026-11-15
 
