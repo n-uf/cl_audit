@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- The Claude app's sessions are found by one rule (the default profile's move and its counts, the accounts a window used and when, Restore's view of the window): folders named like an id, entries named `local_<id>.json`, never through a link; a window's "last used" now comes from its session entries alone, and its config.json and main.log are no longer read through a link.
 
 ## 26.11.39 — 2026-11-15
 
@@ -22,7 +22,6 @@ Nothing pending.
 
 - Only the background agent saves a profile's usage now. After a switch, the cl_audit window shows its own answer and asks the agent to read again, instead of saving it over the agent's. Refresh now always saves the agent's fresh reading, so a wrong or stale number can no longer stick on a Dock icon or the widget until the usage changes. While the agent isn't running, the Dock icons and the menu bar keep their last saved usage until it starts again, because the window no longer saves for them.
 - Undoing a re-point now stops when cl_audit can't check whether Claude Code is using the sessions, instead of going ahead; the Export page counts every session as in use while it can't tell.
-- The Claude app's sessions are found by one rule (the default profile's move and its counts, the accounts a window used and when, Restore's view of the window): folders named like an id, entries named `local_<id>.json`, never through a link; a window's "last used" now comes from its session entries alone, and its config.json and main.log are no longer read through a link.
 
 ## 26.11.36 — 2026-11-15
 
