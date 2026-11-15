@@ -1491,5 +1491,59 @@ do {
     try? fm.removeItem(atPath: base)
 }
 
+// ============ 19. New profile's one owner rule (FolderRules.seatOwner): in use or standing by, one profile per account ============
+do {
+    let u5 = seat(5, "ultra-5@example.com")
+    let none: (String) -> Seat? = { _ in nil }
+    let main = profile("main", "~/.claude-nmain", u4)
+    let work = profile("work", "~/.claude-nwork", u1, standby: [StandbyAccount(email: u2.email!, seat: u2, id: "s2"),
+                                                                StandbyAccount(email: "ULTRA-3@example.com", id: "s3")])
+    let list = [main, work]
+    func owner(_ s: Seat?, except: String? = nil) -> (String, Bool)? {
+        FolderRules.seatOwner(s, among: list, except: except, signedIn: none).map { ($0.profile.id, $0.standby) }
+    }
+    func owner(_ i: AccountIdentity) -> (String, Bool)? { FolderRules.seatOwner(i, among: list, signedIn: none).map { ($0.profile.id, $0.standby) } }
+    // a standby of another profile is refused
+    check(owner(u2).map { $0 == ("work", true) } == true, "another profile's standby account, by its ids: that profile's, as a standby")
+    check(owner(Seat(account: u2.account.uppercased(), organization: u2.organization!.uppercased(), email: nil)).map { $0 == ("work", true) } == true,
+          "…its ids in another case: the same account")
+    check(owner(AccountIdentity(account: nil, email: "Ultra-2@example.com", organization: u2.organization, source: .verified)).map { $0 == ("work", true) } == true
+          && owner(AccountIdentity(account: nil, email: u2.email, organization: uuid(999), source: .verified)) == nil,
+          "…by address (any case) and organisation when one side has no id; the same address in another organisation is another account")
+    check(owner(u3).map { $0 == ("work", true) } == true && owner(AccountIdentity(account: nil, email: "ultra-3@example.com", organization: nil, source: .guessed)).map { $0 == ("work", true) } == true,
+          "a standby entry remembered by its address only: found by the address, for a sign-in and an address typed")
+    // the profiles' own accounts as before; a free account allowed
+    check(owner(u1).map { $0 == ("work", false) } == true && owner(u4).map { $0 == ("main", false) } == true, "an account in use: its profile's")
+    check(owner(u2, except: "work") == nil && owner(u1, except: "work") == nil, "a profile's own accounts are never another's (except)")
+    check(owner(u5) == nil && owner(AccountIdentity(account: nil, email: u5.email, organization: nil, source: .guessed)) == nil && owner(nil) == nil,
+          "a free account: no owner")
+    let fresh = profile("fresh", "~/.claude-nfresh", nil)
+    check(FolderRules.seatOwner(u5, among: [fresh], signedIn: { $0 == fresh.configDir ? u5 : nil }).map { ($0.profile.id, $0.standby) == ("fresh", false) } == true,
+          "not linked yet: the profile whose folder is signed in to it")
+    // the address route's words
+    check(NewAccountSetup.addressProblem("ULTRA-2@example.com", among: list, signedIn: none) == "That's a standby account of “Work”. One profile per account.",
+          "an address typed that is another profile's standby account: refused, plainly")
+    check(NewAccountSetup.addressProblem(u4.email!, among: list, signedIn: none) == "That's the account of “Main”. One profile per account."
+          && NewAccountSetup.addressProblem(u5.email!, among: list, signedIn: none) == nil
+          && NewAccountSetup.addressProblem("nope", among: list, signedIn: none) == "Type the account's email address.", "an account in use refused as before; a free one allowed")
+    // the sign-in's line on the Checks card (the folder's .claude.json)
+    var d = NewAccountDraft(); d.name = "Draft"; d.source = .existing; d.existingDir = "~/.claude-ndraft"
+    func signInLine(_ s: Seat) -> SetupCheck? {
+        sign(d.configDir, nil); sign(d.configDir, s)          // a new file each time (the record is read again when it changed)
+        return NewAccountSetup.checks(d, accounts: list, runs: [], checked: true).first { $0.section == .signIn }
+    }
+    let standbyLine = signInLine(u2), inUseLine = signInLine(u4), freeLine = signInLine(u5)
+    check(standbyLine?.state == .bad && standbyLine?.text.hasSuffix(", a standby account of “Work”: one profile per account") == true,
+          "signed in to another profile's standby account: a red line that says so: \(standbyLine?.text ?? "none")")
+    check(inUseLine?.state == .bad && inUseLine?.text.hasSuffix(", the Claude account of “Main”: one profile per account") == true && freeLine?.state == .ok,
+          "another profile's account in use: red as before; a free one: fine")
+    try? fm.removeItem(atPath: expand(d.configDir))
+    // the folder and window rules are unchanged
+    check(FolderRules.configOwner("~/.claude-nwork/inside", among: list)?.id == "work" && FolderRules.configOwner("~/.claude-nwork", among: list, except: "work") == nil
+          && FolderRules.configOwner("~/.claude-nother", among: list) == nil, "configOwner: a folder inside another profile's, except itself, a free one")
+    check(FolderRules.windowOwner(.standard, "", among: list)?.id == "main" && FolderRules.windowOwner(.separate, "~/Library/Application Support/Claude-nfree", among: list) == nil,
+          "windowOwner: the usual window is the first profile's that opens it; a free own window has none")
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
