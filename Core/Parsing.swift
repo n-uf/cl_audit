@@ -64,8 +64,10 @@ public enum UsageParser {
     }
 
     /// Accepts {five_hour:{utilization,resets_at}, seven_day:{…}} and a {limits:[{type,percent,resets_at}]} variant.
-    /// `now`: when it was read; `source`: how an app names where the numbers came from.
-    public static func fromAPI(_ data: Data, now: Date = Date(), source: String) -> Usage? {
+    /// `now`: when it was read; `source`: how an app names where the numbers came from; `week`: which kind in limits[] is
+    /// the week (ReadingRules.Week: cl_audit's any "seven" or "week", or `seven_day` only).
+    public static func fromAPI(_ data: Data, now: Date = Date(), source: String,
+                               week: ReadingRules.Week = .sevenDayOrWeekly) -> Usage? {
         guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         var u = Usage(fetchedAt: now, source: source)
         if let w = j["five_hour"] as? [String: Any] { u.fiveHour = percent(w); u.fiveHourResets = date(w["resets_at"]) }
@@ -75,7 +77,7 @@ public enum UsageParser {
                 let kind = ((w["type"] ?? w["name"] ?? w["window"]) as? String ?? "").lowercased()
                 if kind.contains("five") || kind.contains("5h") || kind.contains("session") {
                     u.fiveHour = percent(w); u.fiveHourResets = date(w["resets_at"])
-                } else if kind.contains("seven") || kind.contains("week") {
+                } else if week == .sevenDayOnly ? kind == "seven_day" : kind.contains("seven") || kind.contains("week") {
                     u.weekly = percent(w); u.weeklyResets = date(w["resets_at"])
                 }
             }

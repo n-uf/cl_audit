@@ -121,9 +121,8 @@ extension ScopedLimit {
     }
 }
 
-enum FetchState: Equatable {
-    case idle, ok, noLogin, expired, denied, unreadable, rateLimited, failed(String)
-
+// (FetchState's cases are ProfileCore's: Core/Reading.swift. Its words are here.)
+extension FetchState {
     /// Said when a refused read is the problem (the Settings row, the menus, the saved status).
     static let deniedWords = "Signed in, but cl_audit can't read this sign-in yet: allow cl_audit Agent when macOS asks (Always Allow), then Refresh now."
     /// Said when the Keychain item is there but isn't a sign-in in the form cl_audit knows.
