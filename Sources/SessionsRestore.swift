@@ -144,8 +144,11 @@ enum SessionsRestore {
         var taskPlan = TaskPlan()           // the scheduled tasks themselves (an import: left out unless asked, and then paused)
         var taskPrompts: [Piece] = []       // the prompts of the tasks the tasks file written brings (scheduled-tasks/<id>/SKILL.md)
 
-        var count: Int { entries.count + tasks.count + configPieces.count + transcripts.count + files.count + setupPieces.count + taskPrompts.count }
-        var windowNeeded: Bool { !entries.isEmpty || !tasks.isEmpty || !configPieces.isEmpty }
+        var folderFiles: [Piece] = []       // the window's own folders' files (backlog/, waiting-input/): only where none is
+        var folderFilesThere = 0            // …of them, something is there already: left as it is
+
+        var count: Int { entries.count + tasks.count + configPieces.count + folderFiles.count + transcripts.count + files.count + setupPieces.count + taskPrompts.count }
+        var windowNeeded: Bool { !entries.isEmpty || !tasks.isEmpty || !configPieces.isEmpty || !folderFiles.isEmpty }
         var written: Int { count }
     }
 
@@ -195,10 +198,20 @@ enum SessionsRestore {
         // 1. the backup's own claims: every path plain, no sign-in, every file a plain file with one link
         var seen = Set<String>()
         var windowItems: [(SessionsBackup.Item, [String])] = []
+        var folderItems: [(SessionsBackup.Item, [String])] = []      // the window's own folders' files (windowExtra)
         var codeItems: [(SessionsBackup.Item, [String])] = []
         var sidebarItem: SessionsBackup.Item?
         var configItem: SessionsBackup.Item?
         var setupItems: [SessionsBackup.Item] = []
+        // the window's own folders' files (backlog/, waiting-input/), listed apart: only this Mac's own backup holds them, at
+        // window-extra/<account>/<org>/<folder>/<file> under real ids, each a window file
+        for it in m.windowExtra ?? [] {
+            guard let c = components(it.path), seen.insert(it.path).inserted, it.role == .window, SessionsBackup.isFolderFile(c), !imported,
+                  AccountDiscovery.isUUID(c[1]), AccountDiscovery.isUUID(c[2]), !c.dropFirst().contains(where: SessionsBackup.isSignIn) else {
+                return refuse("backup.json names a window file in a place it doesn't keep them (\(it.path.prefix(80))).")
+            }
+            folderItems.append((it, c))
+        }
         for it in m.items {
             guard let c = components(it.path), seen.insert(it.path).inserted else {
                 return refuse("backup.json names a path that isn't a plain one (\(it.path.prefix(80))); nothing is restored from it.")
@@ -254,9 +267,11 @@ enum SessionsRestore {
             guard windowBytes <= 512 << 20 else { return refuse("The backup's window files add up to more than a Claude window keeps (512 MB). Nothing is restored from it.") }
             windowData[c.joined(separator: "/")] = d
         }
-        for (_, c) in codeItems {
+        for (_, c) in codeItems + folderItems {
             guard let f = reader.file(c) else { return refuse("A file in the backup isn't a plain file with one link, or isn't there (\(c.last ?? "")). Nothing is restored from it.") }
             close(f.fd)
+            // (a window file's own cap, 64 MB: the writer reads it whole; a backup never takes a bigger one of these)
+            if SessionsBackup.isFolderFile(c), f.st.st_size > 64 << 20 { return refuse("A file of the window's backlog or waiting input in the backup is over 64 MB; nothing is restored from it.") }
         }
 
         // 2. the window now
@@ -264,14 +279,15 @@ enum SessionsRestore {
         p.scope = t.inUse
         let scopeID = t.inUse
         var backupNames = Set<String>()
-        let win: Tree? = windowItems.isEmpty || t.dataDir.isEmpty ? nil : Tree(path: t.dataDir)
-        if !windowItems.isEmpty {
+        let win: Tree? = (windowItems.isEmpty && folderItems.isEmpty) || t.dataDir.isEmpty ? nil : Tree(path: t.dataDir)
+        if !windowItems.isEmpty || !folderItems.isEmpty {
+            let what = windowItems.isEmpty ? "files" : "entries"            // (a backup with the backlog or waiting input alone: its files)
             if t.dataDir.isEmpty {
-                p.notes.append("The profile has no Claude window folder, so the window's entries aren't restored.")
+                p.notes.append("The profile has no Claude window folder, so the window's \(what) aren't restored.")
             } else if scopeID == nil {
-                p.notes.append("The profile isn't linked to an account yet, so there is no folder in the window to restore entries into; they aren't restored.")
+                p.notes.append("The profile isn't linked to an account yet, so there is no folder in the window to restore \(what) into; they aren't restored.")
             } else if win == nil {
-                p.notes.append("The window's data folder isn't there, so its entries aren't restored.")
+                p.notes.append("The window's data folder isn't there, so its \(what) aren't restored.")
             }
         }
         var restoredIDs: [(id: String, data: Data, from: SeatID)] = []
@@ -346,6 +362,38 @@ enum SessionsRestore {
                 }
             }
             // (scheduled-tasks.json: planTasks, above.) deleted_ markers and anything else the window keeps are never written back
+        }
+        // the window's own folders' files (the Code-tab backlog, the waiting input): each put back only into its own account's
+        // folder (the account in use's, or another of the profile's accounts whose folder is here: a switch never moves them), and
+        // only where nothing is; never through a link (each folder opened as the writer will, without following one)
+        if let w = win, scopeID != nil {
+            var otherAccount = 0
+            var blocked = Set<String>()             // the folders (backlog, waiting-input) that are a link or a file here
+            for (it, c) in folderItems.sorted(by: { $0.1.joined(separator: "/") < $1.1.joined(separator: "/") }) {
+                let from = SeatID(account: c[1], organization: c[2])
+                let ownIsInUse = scopeID.map { from.sameIgnoringCase($0) } ?? false
+                let accountDirs = ["claude-code-sessions", c[1], c[2]]
+                var ownThere = false
+                if !ownIsInUse, t.seats.contains(where: { $0.sameIgnoringCase(from) }), case .dir(let afd) = w.dir(accountDirs, create: false) { close(afd); ownThere = true }
+                guard ownIsInUse || ownThere else { otherAccount += 1; continue }
+                let dirs = accountDirs + [c[3]]
+                switch w.dir(dirs, create: false) {
+                case .blocked: blocked.insert(c[3]); continue                       // a link or a file where the folder is: nothing written through it
+                case .absent: break
+                case .dir(let dfd):
+                    var st = stat()
+                    let there = fstatat(dfd, c[4], &st, AT_SYMLINK_NOFOLLOW) == 0
+                    close(dfd)
+                    if there { p.folderFilesThere += 1; continue }                    // something is there: left as it is (counted, as entries are)
+                }
+                p.folderFiles.append(Piece(kind: .file, rel: c, base: .window, dirs: dirs, leaf: c[4], bytes: Int64(it.bytes), from: from))
+            }
+            for f in blocked.sorted() {
+                p.notes.append("The window's \(f) folder is a link or a file here: its files stay in the backup.")
+            }
+            if otherAccount > 0 {
+                p.notes.append("\(otherAccount == 1 ? "A file" : "\(otherAccount) files") of the window's backlog or waiting input \(otherAccount == 1 ? "belongs" : "belong") to an account this profile doesn't use, or whose folder isn't here: \(otherAccount == 1 ? "it stays" : "they stay") in the backup (each goes back only into its own account's folder).")
+            }
         }
         for (name, paths) in nowWindow.entries where !backupNames.contains(name) {
             p.madeAfter += 1
@@ -673,6 +721,17 @@ enum SessionsRestore {
             }
             return w
         }
+    }
+
+    /// The Restore page's words for the window's own folders' files to put back: "the Code-tab backlog", or "2 files of the
+    /// window's backlog and waiting input" (nil: none).
+    static func folderFilesWords(_ p: Plan) -> String? {
+        guard !p.folderFiles.isEmpty else { return nil }
+        let b = p.folderFiles.filter { $0.rel[3] == "backlog" }.count, w = p.folderFiles.count - b
+        var parts: [String] = []
+        if b > 0 { parts.append(b == 1 ? "the Code-tab backlog" : "\(b) Code-tab backlog files") }
+        if w > 0 { parts.append("\(w) waiting-input \(w == 1 ? "file" : "files")") }
+        return parts.joined(separator: " and ")
     }
 
     /// Whether two JSON objects hold the same keys and values (the bytes may differ: a dictionary writes its keys in any order).
@@ -1014,7 +1073,7 @@ enum SessionsRestore {
         // the window's files first (the window must stay closed), then Claude Code's
         // (claude_desktop_config.json before the entries: it is new here, made whole while the window is closed; the sidebar step later
         // works in the window as it does today)
-        for piece in p.configPieces + p.entries + p.tasks {
+        for piece in p.configPieces + p.entries + p.tasks + p.folderFiles {
             if stop() { throw stopped("Stopped by you. What is back is kept.") }
             guard windowClosed() else { throw stopped("The profile's Claude window opened during the restore; stopped. What is back is kept.") }
             guard let tree = win, let f = reader.file(piece.rel) else { throw stopped("A file in the backup changed while restoring; stopped. What is back is kept.") }
@@ -1024,7 +1083,11 @@ enum SessionsRestore {
             let before = tree.made.count
             let opened = tree.dir(piece.dirs, create: true)
             madeDirs(tree, since: before)
-            guard case .dir(let dfd) = opened else { throw stopped("A folder in the window's data is a link or can't be made; stopped. What is back is kept.") }
+            guard case .dir(let dfd) = opened else {
+                // the window's backlog or waiting input made a link or a file since the plan: that one file is left, the run goes on
+                if piece.kind == .file { r.problems.append("\(piece.dirs.last ?? "")/\(piece.leaf): its folder is a link or can't be made; left as it is."); continue }
+                throw stopped("A folder in the window's data is a link or can't be made; stopped. What is back is kept.")
+            }
             defer { close(dfd) }
             let path = (t.dataDir as NSString).appendingPathComponent(piece.dest)
             let hash = SwitchEngine.sha(data)

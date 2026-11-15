@@ -247,6 +247,7 @@ struct RestorePage: View {
         parts.append(n(p.transcripts.count, "transcript", "transcripts"))
         if !p.tasks.isEmpty { parts.append("the scheduled tasks file" + (p.taskPrompts.isEmpty ? "" : " with \(n(p.taskPrompts.count, "prompt", "prompts"))")) }
         if !p.configPieces.isEmpty { parts.append("the window's MCP settings") }
+        if let w = SessionsRestore.folderFilesWords(p) { parts.append(w) }
         if !p.files.isEmpty { parts.append(n(p.files.count, "other file", "other files") + " with the transcripts") }
         return p.count == 0 ? "none: everything in the backup is here" : parts.joined(separator: " · ")
     }
