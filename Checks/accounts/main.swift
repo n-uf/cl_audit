@@ -1421,5 +1421,72 @@ do {
     try? fm.removeItem(atPath: dir)
 }
 
+// ============ 18. SessionTransfer: the sessions moved between two accounts' folders, on ClaudeFiles' one lister ============
+do {
+    struct Record: TransferRecord { var steps: [TransferStep] = []; var problems: [String] = []; var tasksMoved: Int? = nil }
+    let base = home + "/transfer"
+    try? fm.removeItem(atPath: base)
+    let s = SessionTransfer.Scopes(dataDir: base + "/data", codeDir: base + "/code",
+                                   from: SeatID(account: uuid(201), organization: uuid(301)), to: SeatID(account: uuid(202), organization: uuid(302)))
+    try? fm.createDirectory(atPath: s.sourceDir, withIntermediateDirectories: true)
+    try? fm.createDirectory(atPath: s.targetDir, withIntermediateDirectories: true)
+    try? fm.createDirectory(atPath: base + "/code/projects", withIntermediateDirectories: true)
+    func entry(_ n: Int) -> String { "local_\(uuid(n)).json" }
+    for n in 1...4 { put(s.sourceDir + "/" + entry(n), #"{"sessionId":"local_\#(uuid(n))","cliSessionId":"cli-\#(n)"}"#) }
+    put(s.targetDir + "/" + entry(2), #"{"sessionId":"already"}"#)                      // the target has that id
+    put(s.targetDir + "/deleted_\(uuid(3))", "")                                        // the target deleted that one
+    // odd names: not ClaudeFiles' entries, never listed, moved or held
+    put(s.sourceDir + "/local_notanid.json", "{}")
+    mkfifo(s.sourceDir + "/" + entry(5), 0o600)
+    put(base + "/elsewhere.json", "{}")
+    symlink(base + "/elsewhere.json", s.sourceDir + "/" + entry(6))
+    check(SessionTransfer.entries(s) == (1...4).map(entry), "the source's entries: ClaudeFiles' lister (a non-id name, a FIFO and a link left out): \(SessionTransfer.entries(s))")
+    check(SessionTransfer.hasAnything(s), "something to move")
+
+    // sorted: one moves, one is the target's already, one the target deleted, one a running Claude Code owns (by its cli id)
+    let sorted = SessionTransfer.sort(s, owned: ["cli-4"])
+    check(sorted.move == [entry(1)] && sorted.already == [entry(2)] && sorted.deleted == [entry(3)] && sorted.held == [entry(4)]
+          && sorted.tasks == 0 && sorted.taskStay == nil, "sorted: move, already, deleted, held (\(sorted))")
+    check(SessionTransfer.ownedBy([uuid(1).lowercased()], entry: Data("{}".utf8), name: entry(1)), "owned by its own id too")
+
+    // moved: placed, checked, its original parked; written down step by step through the caller's save
+    var r = Record(), saves = 0
+    let work = URL(fileURLWithPath: base + "/work")
+    try? fm.createDirectory(at: work.appendingPathComponent("parked"), withIntermediateDirectories: true)
+    do {
+        try SessionTransfer.move(s, entries: sorted.move, tasks: 0, record: &r, work: work, windowClosed: { true }, save: { _ in saves += 1 })
+    } catch { check(false, "move: \(error)") }
+    let placed = s.targetDir + "/" + entry(1)
+    check(fm.fileExists(atPath: placed) && !fm.fileExists(atPath: s.sourceDir + "/" + entry(1))
+          && fm.fileExists(atPath: work.appendingPathComponent("parked/" + entry(1)).path), "moved: placed in the target, its original parked")
+    check(r.steps.count == 1 && r.steps[0].kind == .entry && r.steps[0].done && r.steps[0].path == placed && saves >= 2,
+          "one step, written down before and after (\(saves) saves)")
+    check(fm.fileExists(atPath: s.sourceDir + "/" + entry(4)) && fm.fileExists(atPath: s.sourceDir + "/local_notanid.json"), "the held one and the odd name stay")
+
+    // the window opening stops it before the next step
+    var r2 = Record()
+    do { try SessionTransfer.move(s, entries: [entry(3)], tasks: 0, record: &r2, work: work, windowClosed: { false }, save: { _ in }) ; check(false, "window open: stopped") }
+    catch { check("\(error)" == "\(SwitchError.windowOpen)" && r2.steps.isEmpty && fm.fileExists(atPath: s.sourceDir + "/" + entry(3)), "the window open: nothing moved") }
+
+    // put back: the placed copy goes, the original comes back
+    var left: [String] = []
+    for step in r.steps.reversed() { if let n = (try? SessionTransfer.undo(step, record: &r)) ?? nil { left.append(n) } }
+    check(left.isEmpty && !fm.fileExists(atPath: placed) && fm.fileExists(atPath: s.sourceDir + "/" + entry(1)), "undone: the session back in the source")
+    // a placed copy changed since is left as it is
+    var r3 = Record()
+    try? SessionTransfer.move(s, entries: [entry(1)], tasks: 0, record: &r3, work: work, windowClosed: { true }, save: { _ in })
+    put(placed, #"{"changed":true}"#)
+    let stays = (try? SessionTransfer.undo(r3.steps[0], record: &r3)) ?? nil
+    check(stays == entry(1) && r3.problems.contains { $0.contains("changed since") }, "a placed copy changed since: left as it is, said so")
+
+    // a link inside the folders: refused before anything
+    let linked = SessionTransfer.Scopes(dataDir: base + "/data2", codeDir: base + "/code", from: s.from, to: s.to)
+    try? fm.createDirectory(atPath: base + "/data2/claude-code-sessions", withIntermediateDirectories: true)
+    symlink(base + "/data/claude-code-sessions/" + uuid(201), base + "/data2/claude-code-sessions/" + uuid(201))
+    check(SessionTransfer.linkProblem(linked)?.contains("isn't a plain folder") == true && SessionTransfer.linkProblem(s) == nil,
+          "a link inside the folders: refused, said so; plain folders: fine")
+    try? fm.removeItem(atPath: base)
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
