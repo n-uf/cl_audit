@@ -623,6 +623,18 @@ do {
     _ = rf.handle(.refreshRequested)
     check(rf.rewriteDue && rf.forceLoginRead && rf.nextFetch == .distantPast, "Refresh now: read now, the sign-in again, the record rewritten")
     check(rf.handle(.stop) == [.planResetRead(nil)] && tick(&rf, t0) == [] && rf.resetReadAt(now: t0) == nil, "stopped: nothing more")
+    check(rf.handle(.renewStarted(note: "renewing")) == [] && rf.handle(.renewRefused(note: "gone")) == [] && !rf.renewing && rf.renewNote == nil,
+          "stopped: a renewal's start or refusal changes nothing")
+
+    // a request the app couldn't send (no kept sign-in for its key) is answered as a failure: the read ends, the next comes
+    var lost = machine()
+    _ = tick(&lost, t0); _ = lost.handle(.signInRead(token, generation: 0, now: t0))
+    check(lost.inFlight, "(a read under way)")
+    _ = lost.handle(.usageFailed(.network("the sign-in to ask with is gone"), asked: t0, generation: 0, now: t0))
+    check(!lost.inFlight && lost.failing && tick(&lost, t0.addingTimeInterval(300)).contains { if case .fetchUsage = $0 { return true }; return false },
+          "the usage request not sent: the read ends as failed, the next one comes on time")
+    _ = lost.handle(.lookupAnswer(email: nil, key: "k1", asked: t0, generation: 0, expected: nil, now: t0))
+    check(lost.lookupFails == 1 && lost.nextLookup == t0.addingTimeInterval(60), "the lookup not sent: a failed lookup, tried again in a minute")
 
     // cl_quick's rules: the scales, partial and empty answers, the week, refusals and how they lift, message text
     var q = machine(rules: .clQuick)
