@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.47 — 2026-11-15
+
 - The Switch page now says "Will stay with ann: …" before you press Switch (it said "Left with ann: …" then), and keeps "Left with ann: …" for after a switch.
 - When Claude Code's folder is signed in to another profile's account and the profile's own account is also on its standby list, the card's Switch account menu, the menu bar menu, the Dock icon's menu and the Switch page now list it once. In the menus it is the ticked account, "ann · move Claude Code back here", and choosing it still switches to it (the way back); Sign in… stays the lighter option that moves nothing.
 - The Switch page now keeps "Will stay with …" until something has moved, also after a Cancel while the window closes or while the sign-in is waited for with nothing moved.
