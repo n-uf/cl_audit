@@ -786,6 +786,43 @@ MainActor.assumeIsolated {
         SessionsImport.discard(oh.work)
     } else { check(false, "huge lists: the image opens: \(hugeLists.prefix(80))") }
 
+    // ---- names like an entry that aren't one (ClaudeFiles' one rule): a backup copies them and says "other files"; an export leaves them out, said
+    do {
+        let dataO = w + "/Claude-o", codeO = w + "/.claude-o"
+        let scopeO = "\(dataO)/claude-code-sessions/\(sid(1))/\(sid(2))"
+        write("\(scopeO)/local_\(sid(20)).json", #"{"sessionId":"local_\#(sid(20))","cliSessionId":"\#(sid(120))","title":"real","isArchived":false}"#)
+        write("\(scopeO)/local_notanid.json", #"{"sessionId":"local_notanid"}"#)                 // not an id: not an entry
+        write("\(scopeO)/notes.txt", "a stray file\n")                                           // not the window's own
+        write("\(scopeO)/archived-sessions.idx", "idx\n")                                        // the window's own index
+        write("\(scopeO)/deleted_\(sid(21))", "")                                                // the window's own marker
+        write(w + "/elsewhere-o.json", "{}")
+        symlink(w + "/elsewhere-o.json", "\(scopeO)/local_\(sid(22)).json")                    // a link: never taken at all
+        write("\(codeO)/CLAUDE.md", "# rules\n")
+        let srcO = SessionsBackup.Source(profile: "o", dataDir: dataO, codeDir: codeO)
+        let bO = try! SessionsBackup.make(srcO, kind: .manual, place: place)
+        check(bO.counts.sessions == 1 && SessionsBackup.otherFiles(bO) == 2 && SessionsBackup.summary(bO).hasPrefix("1 session · 2 other files · "),
+              "backup: everything plain copied, the entries counted as sessions, the rest said as other files (not the index or a marker): \(SessionsBackup.summary(bO))")
+        check(!SessionsBackup.summary(bA).contains("other file"), "backup: no other files, no words for them: \(SessionsBackup.summary(bA))")
+        var oldO = bO; oldO.counts.sessions = 2                 // a backup of 26.11.42 or earlier counted the odd name as a session
+        check(SessionsBackup.summary(oldO).hasPrefix("1 session · 2 other files · "), "backup (older count): the sessions counted from its items by the one rule: \(SessionsBackup.summary(oldO))")
+        let partO = SessionsExport.Part(profile: "o", name: "O", source: srcO, emails: [])
+        let pvO = SessionsExport.preview(partO)!
+        check(pvO.entries == 1 && pvO.notEntries == 1 && ExportWords.notEntriesNote(pvO) == "1 file left out: named like a Code-tab entry, but not a Code-tab session."
+              && ExportWords.notEntriesNote(pv) == nil,
+              "export preview: the one entry; the name like one that isn't, left out and said: \(ExportWords.notEntriesNote(pvO) ?? "none")")
+        let zipO = URL(fileURLWithPath: out + "/O.zip")
+        if let oo = try? SessionsExport.run(SessionsExport.Job(parts: [partO], keys: .leaveOut, destination: zipO, rootName: "o-export", place: place)),
+           let opened = try? SessionsImport.open(zipO, password: nil, place: place) {
+            let mo = opened.parts[0].manifest
+            let names = mo.items.filter { $0.role == .window }.map { ($0.path as NSString).lastPathComponent }
+            check(oo.notEntriesLeftOut == 1 && mo.counts.sessions == 1 && mo.leftOut == 1 && !names.contains("local_notanid.json") && !names.contains("notes.txt")
+                  && names.contains("local_\(sid(20)).json"),
+                  "export (zip): the entry in, the name like one left out and counted: \(names)")
+            SessionsImport.discard(opened.work)
+        } else { check(false, "export (zip) of the odd names: made and opens") }
+        try? fm.removeItem(atPath: dataO); try? fm.removeItem(atPath: codeO)
+    }
+
     // ---- the older rules refuse version 3: 26.11.7 reads `version == 1`, 26.11.8 `<= 2`; and a reader without the config role can't decode it
     let v3 = oi.parts[0].manifest.version
     check(v3 == 3 && !(v3 == 1) && !(v3 <= 2), "format: this build writes 3, which 26.11.7's guard (== 1) and 26.11.8's (<= 2) refuse")
