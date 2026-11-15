@@ -6,6 +6,7 @@
 // The status line file (<config dir>/usage.json) is used as a fallback when the call fails, only while it is fresh.
 
 import AppKit
+import ClaudeAuth
 import CryptoKit
 import ProfileCore
 import Security
@@ -48,13 +49,12 @@ struct Account {
         FolderKey.canonical(configDir) == FolderKey.canonical("~/.claude")
     }
 
+    /// The folder as ClaudeAuth (Auth/) knows it: the one place its sign-in is named and read.
+    var authFolder: AuthFolder { AuthFolder(path: configDir, isDefault: isDefaultDir) }
+
     /// Claude Code names the Keychain item after the config folder: the plain name for the
-    /// default folder, otherwise the name plus the first 8 hex chars of SHA-256 of the path.
-    var keychainServices: [String] {
-        let base = "Claude Code-credentials"
-        if isDefaultDir { return [base] }
-        return [configDir, configDir + "/"].map { base + "-" + Self.sha8($0) }
-    }
+    /// default folder, otherwise the name plus the first 8 hex chars of SHA-256 of the path (AuthFolder.keychainItems).
+    var keychainServices: [String] { authFolder.keychainItems }
 
     /// The account Claude Code says this folder is logged in to (oauthAccount in its .claude.json).
     /// The default folder keeps that file in the home folder, not inside ~/.claude.
@@ -151,48 +151,18 @@ enum FetchState: Equatable {
     }
 }
 
-// (Login's cases and Login.parse are ProfileCore's: Core/Parsing.swift. Reading the Keychain item stays here.)
+// (Login's cases and Login.parse are ProfileCore's: Core/Parsing.swift. Reading the Keychain item is ClaudeAuth's:
+// Auth/Keychain.swift.)
 extension Login {
-    /// Reads the login with Apple's `security` tool, the same way Claude Code reads it. Claude Code
-    /// stores the item through that tool, so the item already trusts it: no prompt, and no new
-    /// Keychain permission for this app. (Reading it through the Keychain API needs "Always Allow",
-    /// which is lost every time Claude Code re-saves a renewed login, so macOS kept asking.)
-    ///
-    /// Four outcomes, each with its own words: a token; no item at all (`.notFound`); an item that was refused or timed
-    /// out (`.denied`); an item whose text isn't the expected shape (`.unreadable`).
+    /// Reads the login with Apple's `security` tool, the same way Claude Code reads it (KeychainSignIn.read): a token;
+    /// no item at all (`.notFound`); an item that was refused or timed out (`.denied`); an item whose text isn't the
+    /// expected shape (`.unreadable`). Each with its own words.
     static func read(_ account: Account) -> Login {
-        for service in account.keychainServices {
-            for user in [NSUserName() as String?, nil] {
-                var args = ["find-generic-password", "-s", service, "-w"]
-                if let user { args += ["-a", user] }
-                let (status, out) = runSecurity(args)
-                if status == 44 { continue }              // no such item
-                if status != 0 { return .denied }
-                return parse(out)
-            }
-        }
-        return .notFound
+        KeychainSignIn.read(account.authFolder, tool: { let r = runSecurity($0); return (r.0, r.1) })
     }
 
     /// The check's seam: what runs `security` (arguments in, exit status and output out).
-    nonisolated(unsafe) static var runSecurity: ([String]) -> (Int32, Data) = { security($0) }
-
-    /// Runs /usr/bin/security; the output stays in memory and is never logged.
-    private static func security(_ args: [String]) -> (Int32, Data) {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/usr/bin/security")
-        p.arguments = args
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = FileHandle.nullDevice
-        p.standardInput = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return (-1, Data()) }
-        // a locked Keychain can keep it waiting; after 30 s it's stopped (the read counts as refused)
-        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 30) { if p.isRunning { p.terminate() } }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitQuietly()
-        return (p.terminationStatus, data)
-    }
+    nonisolated(unsafe) static var runSecurity: ([String]) -> (Int32, Data) = { let r = KeychainSignIn.system($0); return (r.status, r.output) }
 }
 
 // (UsageParser's replies are ProfileCore's: Core/Parsing.swift. The status line file is read here.)
