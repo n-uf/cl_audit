@@ -1725,18 +1725,24 @@ struct AccountSettings: View {
                     // one key; signing back in to the profile's own account is in the pop-up, under this account
                     Button("Open \(move.owner.name)") { model.selection = move.owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
                 } else if !split {
-                    signInKeys
+                    signInKeys(email: inUseKeyAddress)
                 }
             }
             signInAgainLine
         }
     }
 
+    /// The address the in-use box's Log in… fills in: the profile's own account's (in a clash never the folder's).
+    var inUseKeyAddress: String? { show.loginAddress }
+    /// The address Claude Code's own row's Log in… fills in: that row is about Claude Code's own account, the folder's.
+    var codeKeyAddress: String? { expected }
+
     /// The one key Claude Code's sign-in needs, under the box of the account it is on: Log in… (another address, signed
-    /// out, expired), or Refresh now (the Keychain's read denied, or not readable).
-    @ViewBuilder var signInKeys: some View {
+    /// out, expired), or Refresh now (the Keychain's read denied, or not readable). `email`: the address its Log in… fills in
+    /// (the in-use box's: ProfileShow.loginAddress; Claude Code's own row's: the folder's own, `expected`).
+    @ViewBuilder func signInKeys(email: String?) -> some View {
         if mismatch || status?.state == "noLogin" || status?.state == "expired" {
-            logInKey(email: show.loginAddress)
+            logInKey(email: email)
         } else if status?.state == "denied" || status?.state == "unreadable" {
             // the sign-in is there: not Log in…, but a fresh read (Refresh now), after allowing cl_audit Agent
             Button("Refresh now") { DistributedNotificationCenter.default().postNotificationName(Installer.refreshAllNote, object: entry.id, userInfo: nil, deliverImmediately: true) }
@@ -1846,7 +1852,7 @@ struct AccountSettings: View {
             if let t = target, t.lowercased() != code.lowercased() {
                 BoxNote(text: AccountView.codeRowWords(code: code, target: t), size: 10.5, tone: .caution).fixedSize(horizontal: false, vertical: true)
             }
-            signInKeys
+            signInKeys(email: codeKeyAddress)
         }
         // the profile's newest switch, read off the main thread (as the Sessions card reads them), again as things change
         .task(id: "\(entry.id) \(model.tick) \(model.switchChanges)") {
