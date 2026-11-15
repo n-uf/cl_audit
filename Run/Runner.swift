@@ -5,7 +5,8 @@
 // errors too, give it input, keep its own working folder, check every so often whether to stop it, and hear its pid as it
 // starts. For a program that keeps running and is talked to, see RunningProgram (Running.swift).
 //
-// Runs sits below ClaudeAuth and the app's own process code, which both run through it; Foundation and Process only, no
+// Runs sits below ClaudeAuth and the app's own process code, which both run through it; Foundation and Process only (and
+// posix_spawn for a program in a group of its own, `ownGroup`: Group.swift), no
 // app's paths or words, so another app can build it from source too. ProfileCore never depends on it. The one process-wide
 // setting it touches: a run with input (and a RunningProgram) ignores SIGPIPE, for good, so a program that ends without
 // reading never takes the caller with it.
@@ -44,13 +45,18 @@ public struct Program: Equatable {
     /// After it ended, what it printed is read for at most this long more (a program it started may hold the output open;
     /// `.infinity`: until the output closes).
     public var drain: TimeInterval
+    /// Runs in a process group of its own, with every other descriptor of the caller closed (Group.swift): stopped as a group
+    /// (SIGTERM to all of it, SIGKILL to all of it after the grace), and whatever of the group is left when it ends is killed,
+    /// so nothing it started (a filter, a pager, a helper) outlives it or keeps its output open. Opt-in; false: one process.
+    public var ownGroup: Bool
 
     public init(_ executable: String, _ arguments: [String] = [], environment: [String: String]? = nil, folder: Folder = .temporary,
                 input: Data? = nil, timeout: TimeInterval, grace: TimeInterval = 5, killAfterGrace: Bool = true,
-                keepOutput: Bool = false, keepErrors: Bool = false, outputCap: Int = 1 << 20, drain: TimeInterval = 1) {
+                keepOutput: Bool = false, keepErrors: Bool = false, outputCap: Int = 1 << 20, drain: TimeInterval = 1, ownGroup: Bool = false) {
         self.executable = executable; self.arguments = arguments; self.environment = environment; self.folder = folder
         self.input = input; self.timeout = timeout; self.grace = grace; self.killAfterGrace = killAfterGrace
         self.keepOutput = keepOutput; self.keepErrors = keepErrors; self.outputCap = outputCap; self.drain = drain
+        self.ownGroup = ownGroup
     }
 
     /// The working folder as a URL (nil: the caller's own).
@@ -95,6 +101,7 @@ public enum Runner {
     /// the result says `stopped`. `started`: told its pid as soon as it runs (a caller that can stop everything it started).
     public static func run(_ p: Program, poll: () -> Bool = { false }, pollEvery: TimeInterval = 0.2,
                            started: (pid_t) -> Void = { _ in }) -> Ran? {
+        if p.ownGroup { return runGroup(p, poll: poll, pollEvery: pollEvery, started: started) }
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: p.executable)
         proc.arguments = p.arguments

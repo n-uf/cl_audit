@@ -1,6 +1,7 @@
 # Runs
 
-The shared way to run a program, in one Swift module: Foundation only (Process), no app's paths, words or global state.
+The shared way to run a program, in one Swift module: Foundation only (Process, and posix_spawn for `ownGroup`), no app's paths,
+words or global state.
 ProfileCore never depends on it; the widget doesn't link it. cl_audit builds it first (`build.sh`, `Checks/run.sh`, and the
 quick chat's own `Checks/quick-chat/run.sh`) as a static library; cl_quick can compile it from source too.
 
@@ -14,12 +15,12 @@ Who runs through it:
 | Export's `Tool.run` (`Sources/SessionsExport.swift`) | ditto and hdiutil: a password as input, both outputs kept, no limit, stopped only when asked (cancel or a watch), its pid listed for `killAll` |
 | `UsageReader.post` (`Sources/Reader.swift`) | an alert through the app's own program: 20 s, then SIGTERM only |
 | `QuickChatProcess` (`Sources/QuickChatEngine.swift`) | the chat's `claude`, kept running: `RunningProgram` |
-
-Not through it (yet): the code checklist's git reads (`CodeChecklist`, its own `posix_spawn`).
+| `CodeChecklist.spawn` (`Sources/CodeChecklist.swift`) | a move's read-only git reads: `ownGroup`, its output kept (1 MB), errors dropped, the caller's folder, 10 s at most, a one-second grace, cancelled every 50 ms with the Export page's Stop |
 
 | File | What it holds |
 | --- | --- |
 | `Runner.swift` | `Program` (executable, arguments, environment, folder, input, timeout, grace, killed after it or not, output and errors kept or not, their cap, the drain), `Ran` (status, ended by a signal, output, errors, complete, stopped), `Runner.run` (with a poll and a started hook), `Runner.stop` (SIGTERM, the grace, SIGKILL or not, reaped), `Runner.waitQuietly` |
+| `Group.swift` | `Program.ownGroup`'s run: posix_spawn in a group of its own, every other descriptor closed, the group stopped and cleaned up as one |
 | `Running.swift` | `RunningProgram`: one that keeps running and is talked to: `start`, `write`, `onOutput` / `onErrors` (each chunk, in order, off the main thread; output's end as nil), `onExit`, `stop(grace:)` (input closed, SIGTERM, SIGKILL after the grace, without blocking) |
 | `Environment.swift` | `ProviderEnvironment`: the variables a `claude` run never gets (a key, a token, another provider, a base URL, extra headers) and `cleaned(_:)` (without them and without CLAUDE_CONFIG_DIR) |
 
@@ -41,3 +42,11 @@ Not through it (yet): the code checklist's git reads (`CodeChecklist`, its own `
 - `Ran.complete`: all it printed was read and none of it cut at the cap. A caller that needs the whole text (the Keychain read)
   refuses a result that isn't; one that takes what there is (a version line) doesn't need to.
 - A reader still blocked after the drain, on an output a child of the program holds open, ends when that child does.
+- `ownGroup` (opt-in): started with posix_spawn as the leader of a process group of its own, with only its input, output and
+  errors passed (every other descriptor of the caller closed) and signals as a fresh program has them. It is stopped as a group:
+  SIGTERM to all of it, SIGKILL to all of it after the grace. When the leader ends, whatever of its group is left (a filter, a
+  pager, a helper holding its output) is killed before the leader is reaped, so the kill never reaches a pid given to someone
+  else. A leader left to end by itself (`killAfterGrace` false, or stuck in the kernel) is dealt with the same way when it does
+  end, off the caller's thread, holding no thread meanwhile. It relies on nothing else in the process reaping its children (no
+  `waitpid(-1)`, SIGCHLD not ignored); a leader found already reaped is taken as gone, its status unknown, and nothing is sent to
+  its group. Only `Runner.run` has it; `RunningProgram` doesn't.
