@@ -59,14 +59,22 @@ enum FolderRules {
 
     /// The one owner rule (New profile's address and its sign-in, and Finish): the profile (other than `id`) that has this
     /// account, in use or standing by (a standby account is still that profile's: one profile per account), else, not
-    /// linked yet, the one whose folder is signed in to it. Compared by `sameAccount`.
+    /// linked yet, the one whose folder is signed in to it. Compared by `sameAccount`. An address alone (typed) also
+    /// matches a profile whose account in use has no address recorded, or that isn't linked yet, by the address its
+    /// folder's .claude.json names (`recordEmail`, through ClaudeFiles; also a record with no account id), as the
+    /// address check always did.
     static func seatOwner(_ who: AccountIdentity?, among accounts: [AccountEntry], except id: String? = nil,
-                          signedIn: (String) -> Seat? = Account.signedInSeat) -> SeatOwner? {
+                          signedIn: (String) -> Seat? = Account.signedInSeat,
+                          recordEmail: (String) -> String? = { Account.expectedEmail(configDir: $0) }) -> SeatOwner? {
         guard let who else { return nil }
         let others = accounts.filter { $0.id != id }
         if let e = others.first(where: { $0.seat.map { sameAccount(who, identity($0)) } ?? false }) { return SeatOwner(profile: e, standby: false) }
         if let e = others.first(where: { $0.standby.contains { sameAccount(who, identity($0)) } }) { return SeatOwner(profile: e, standby: true) }
         if let e = others.first(where: { $0.seat == nil && (signedIn($0.configDir).map { sameAccount(who, identity($0)) } ?? false) }) {
+            return SeatOwner(profile: e, standby: false)
+        }
+        if addressOnly(who), let e = others.first(where: { ($0.seat?.email ?? "").isEmpty
+            && sameAccount(who, AccountIdentity(account: nil, email: recordEmail($0.configDir), organization: nil, source: .guessed)) }) {
             return SeatOwner(profile: e, standby: false)
         }
         return nil
@@ -82,11 +90,13 @@ enum FolderRules {
     /// the organisation), with one known by its address only (no id, no organisation: an address typed, a standby entry
     /// remembered by its address) matched by the address (cl_quick's placeholder rule, as `isThat`).
     static func sameAccount(_ a: AccountIdentity, _ b: AccountIdentity) -> Bool {
-        func addressOnly(_ x: AccountIdentity) -> Bool { (x.account ?? "").isEmpty && (x.organization ?? "").isEmpty }
         guard addressOnly(a) || addressOnly(b) else { return a.matches(b) }
         guard let e = a.email?.lowercased(), !e.isEmpty else { return false }
         return e == b.email?.lowercased()
     }
+
+    /// Known by its address only: no account id and no organisation.
+    static func addressOnly(_ x: AccountIdentity) -> Bool { (x.account ?? "").isEmpty && (x.organization ?? "").isEmpty }
 
     /// A seat as the owner rule compares it (an empty id is none).
     static func identity(_ s: Seat) -> AccountIdentity {
