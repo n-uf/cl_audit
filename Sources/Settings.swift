@@ -1643,8 +1643,16 @@ struct AccountSettings: View {
         let shown = title.text
         let plan = entry.activePlan(v, recordPlan: status?.plan).map(Account.planWords)
         let ok = split ? v.lit : v.lit && move == nil && !mismatch && !["expired", "noLogin", "denied", "unreadable"].contains(status?.state)
-        return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: ok ? .ok : .warn,
-                          detail: [plan].compactMap { $0 }.joined(separator: " · "), inUse: true) {
+        // the card's notice (CardParts.swift): red when Terminal's sign-in is on another account or gone, amber when it
+        // can't be read yet or a switch waits for the Claude app
+        let notice = UsageNotice.of(AccountRow(entry: entry, status: status))
+        let red = notice?.tone == .red
+        let switching = SplitUsage.of(status)?.switched == true
+        let readable = notice == nil || ["denied", "unreadable"].contains(status?.state ?? "")
+        return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: red ? .warn : ok ? .ok : .warn,
+                          detail: [plan].compactMap { $0 }.joined(separator: " · "), inUse: true,
+                          rest: picked != nil && !red, alert: red,
+                          marks: (app: !entry.usageOnly && v.lit, terminal: readable && !split)) {
             Menu {
                 ForEach(loginItems) { it in
                     switch it.kind {
@@ -1659,9 +1667,21 @@ struct AccountSettings: View {
             } label: { AccountBoxTitle(text: Privacy.masked(shown), tint: tint, icon: icon) }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
         } content: {
-            if split, let code = v.codeRow {
-                // the numbers are Claude Code's, on another account: they sit under its own row (codeBox), not here
-                BoxNote(text: "The Claude app is on it; Claude Code is on \(Privacy.masked(code)), below.", size: 10.5)
+            if red, let notice {
+                // the sign-in is on another account or gone: the card's heading and sentence, and the reddish Sign in…
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(notice.heading).font(.system(size: 12.5, weight: .semibold)).foregroundStyle(face.danger)
+                    BoxNote(text: notice.line, size: 12, tone: .danger).fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 7) {
+                    logInKey(email: SplitUsage.loginAddress(status, usual: expected))
+                    if let move {
+                        Button("Open \(move.owner.name)") { model.selection = move.owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                    }
+                }
+            } else if switching, let code = v.codeRow {
+                // a switch waits for the Claude app: this account stays in use until then (Claude Code's row is lit below)
+                BoxNote(text: "In use until the switch to \(Privacy.masked(code)) finishes.", size: 11.5)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 // signed out or expired: that one line, in the box only, with Log in… (never "no numbers yet")
@@ -1672,11 +1692,13 @@ struct AccountSettings: View {
                     BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true)
                 }
             }
-            if let move {
-                // one key; signing back in to the profile's own account is in the pop-up, under this account
-                Button("Open \(move.owner.name)") { model.selection = move.owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
-            } else if !split {
-                signInKeys
+            if !red {
+                if let move {
+                    // one key; signing back in to the profile's own account is in the pop-up, under this account
+                    Button("Open \(move.owner.name)") { model.selection = move.owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                } else if !split {
+                    signInKeys
+                }
             }
             signInAgainLine
         }
@@ -1762,16 +1784,26 @@ struct AccountSettings: View {
         let target = Self.switchTarget(goal: goal, newest: newestSwitch, standby: entry.standby, code: code, codeAccount: view.codeAccount)
         // Claude Code's own record: in the split the profile's headline record has no numbers (SplitUsage), its row has them
         let own = codeStatus
-        return AccountBox(lamp: nil, badge: "Claude Code", detail: (own?.plan).map(Account.planWords)) {
+        // a switch to it waiting for the Claude app: lit SWITCHING TO (a click opens the Switch page, which says what's
+        // left); a split by hand: a standby account signed in to Claude Code in Terminal, so it shows its numbers
+        let switching = target.map { $0.lowercased() == code.lowercased() } ?? false
+        let pick = entry.standby.first { ($0.seat?.email ?? $0.email).lowercased() == code.lowercased() }
+        return AccountBox(lamp: nil, badge: "Standby", detail: (own?.plan).map(Account.planWords), unlit: !switching,
+                          selected: switching, litBadge: "Switching to",
+                          litAction: pick.map { p in { model.showSwitch(AccountEntry.switchKey(entry.id, p.id)) } },
+                          marks: (app: false, terminal: true)) {
             AccountBoxTitle(text: Privacy.masked(code))
         } content: {
             // its sign-in signed out or expired: that one line (A3), with its key; else the numbers (they are its)
             limitsOrWhy(own, entry: entry, none: own?.state == "noLogin" ? noSignInWords
-                                                : own?.state == "expired" ? "The sign-in ran out: Log in…, or turn on Renew sign-in." : nil)
+                                                : own?.state == "expired" ? "The sign-in ran out: Sign in…, or turn on Renew sign-in." : nil)
             if let n = AccountView.of(own).line, !["noLogin", "expired"].contains(own?.state) {
                 BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true)
             }
-            BoxNote(text: AccountView.codeRowWords(code: code, target: target), size: 10.5).fixedSize(horizontal: false, vertical: true)
+            // only a switch that didn't finish says more here (the Switch page has the rest)
+            if let t = target, t.lowercased() != code.lowercased() {
+                BoxNote(text: AccountView.codeRowWords(code: code, target: t), size: 10.5, tone: .caution).fixedSize(horizontal: false, vertical: true)
+            }
             signInKeys
         }
         // the profile's newest switch, read off the main thread (as the Sessions card reads them), again as things change
@@ -1845,12 +1877,12 @@ struct AccountSettings: View {
     }
 
     private var newAccountKey: some View {
-        Button("Sign in with another account…") {
+        Button("+ Sign in with another account…") {
             // a folder that is gone is never made again: nothing starts, the line says so (A4)
             if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why }
             else if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: nil) }
         }
-        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+        .buttonStyle(.link).font(.system(size: 12)).fixedSize()      // a link, not a big key (approved sketch)
         .help("Claude Code's sign-in in Terminal on \(entry.configDir), no address filled in. The account that signs in becomes the one \(entry.name.isEmpty ? "this profile" : entry.name) works on; the one before goes on standby.")
     }
 
@@ -1918,8 +1950,8 @@ struct AccountSettings: View {
     /// Terminal on the profile's folder, with the account in use's address filled in, watched like a switch
     /// (SwitchRunner.signInAgain); with no account known, a plain sign-in.
     func logInKey(email: String?) -> some View {
-        Button("Log in…") { signInAgain(email: email) }
-            .buttonStyle(.pill(.red, compact: true))
+        Button("Sign in…") { signInAgain(email: email) }
+            .buttonStyle(FaceKeyStyle(tint: .red))
     }
 
     func signInAgain(email: String?) {

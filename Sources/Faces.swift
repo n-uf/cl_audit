@@ -596,25 +596,29 @@ struct MintRow: ViewModifier {
     var on: Bool
     var reach: CGFloat = 12                 // how far the band reaches past the box on each side (inside a card's 14 pt)
     var barOffset: CGFloat = 6              // the bar's distance left of the box
+    /// The same treatment in red: the account in use whose sign-in is wrong or gone (Settings ▸ Accounts).
+    var red = false
 
     func body(content: Content) -> some View {
-        content
+        let c: Color = red ? .hex(0xff6b5e) : FaceTheme.mint
+        let bar: [Color] = red ? [.hex(0xffd9d4), .hex(0xff6b5e)] : [.hex(0xe2fffa), .hex(0x7ff3e2)]
+        return content
             .background(alignment: .leading) {
                 if on {
-                    LinearGradient(colors: [FaceTheme.mint.opacity(0.13), FaceTheme.mint.opacity(0.06)], startPoint: .top, endPoint: .bottom)
-                        .overlay(alignment: .top) { FaceTheme.mint.opacity(0.32).frame(height: 1) }
-                        .overlay(alignment: .bottom) { FaceTheme.mint.opacity(0.20).frame(height: 1) }
+                    LinearGradient(colors: [c.opacity(red ? 0.11 : 0.13), c.opacity(red ? 0.05 : 0.06)], startPoint: .top, endPoint: .bottom)
+                        .overlay(alignment: .top) { c.opacity(red ? 0.28 : 0.32).frame(height: 1) }
+                        .overlay(alignment: .bottom) { c.opacity(red ? 0.17 : 0.20).frame(height: 1) }
                         .padding(.horizontal, -reach).padding(.vertical, -6)
                         .allowsHitTesting(false)
                 }
             }
             .overlay(alignment: .leading) {
                 if on {
-                    Capsule().fill(LinearGradient(colors: [.hex(0xe2fffa), .hex(0x7ff3e2)], startPoint: .leading, endPoint: .trailing))
+                    Capsule().fill(LinearGradient(colors: bar, startPoint: .leading, endPoint: .trailing))
                         .frame(width: 3)
                         .padding(.vertical, 8)
-                        .shadow(color: FaceTheme.mint.opacity(0.8), radius: 2)
-                        .shadow(color: FaceTheme.mint.opacity(0.35), radius: 5)
+                        .shadow(color: c.opacity(0.8), radius: 2)
+                        .shadow(color: c.opacity(0.35), radius: 5)
                         .offset(x: -(barOffset + 3))
                         .allowsHitTesting(false)
                 }
@@ -623,7 +627,9 @@ struct MintRow: ViewModifier {
 }
 
 extension View {
-    func mintRow(_ on: Bool, reach: CGFloat = 12, barOffset: CGFloat = 6) -> some View { modifier(MintRow(on: on, reach: reach, barOffset: barOffset)) }
+    func mintRow(_ on: Bool, red: Bool = false, reach: CGFloat = 12, barOffset: CGFloat = 6) -> some View {
+        modifier(MintRow(on: on, reach: reach, barOffset: barOffset, red: red))
+    }
 }
 
 /// The glass of a display window, for other content too.

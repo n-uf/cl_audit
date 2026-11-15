@@ -21,10 +21,16 @@ struct AccountBox<Header: View, Content: View>: View {
     var litAction: (() -> Void)? = nil
     /// A tray on the dashboard card: tighter, its head on one line (lamp, address, display) centred.
     var compact = false
-    /// The account in use (Settings ▸ Accounts): sunk into a deep well like the display glass (Silver: its own display
-    /// glass), a thin green-tinted inner border with a faint green glow, and a lit green bar on its left edge (`lamp` on).
-    /// Standby boxes keep the plain window well.
+    /// The account in use (Settings ▸ Accounts): the dark display well, the box in focus (no hairline). Standby boxes keep
+    /// the plain window well. Two shades only: the box in focus is dark, every other box unlit.
     var inUse = false
+    /// The account in use while a standby is selected: the unlit shade, so the selected one is the only dark box.
+    var rest = false
+    /// The account in use whose sign-in is wrong or gone: the selected row's treatment in red (bar outside, band across
+    /// the panel, red lamp), its badge red.
+    var alert = false
+    /// Where the account is signed in: the Claude app (with its Code tab) and Claude Code in Terminal. nil: not shown.
+    var marks: (app: Bool, terminal: Bool)? = nil
     @ViewBuilder var header: () -> Header
     @ViewBuilder var content: () -> Content
     @Environment(\.face) private var outer
@@ -36,8 +42,8 @@ struct AccountBox<Header: View, Content: View>: View {
     /// The face what the box holds is printed with: a picked box is dark glass on every face, printed with the dark face
     /// as on Std; in the dark in-use well, empty bar segments are a touch lighter than the well, so they still read.
     private var boxFace: FaceTheme {
-        var f = selected && outer.light ? Face.std.theme : outer
-        if inUse, !selected, !f.light { f.segOff = .hex(0x1d1d20) }
+        var f = (selected || alert) && outer.light ? Face.std.theme : outer
+        if inUse, !selected, !rest, !f.light { f.segOff = .hex(0x1d1d20) }
         return f
     }
 
@@ -45,12 +51,15 @@ struct AccountBox<Header: View, Content: View>: View {
         let face = boxFace
         VStack(alignment: .leading, spacing: compact ? 6 : 8) {
             HStack(alignment: compact ? .center : .top, spacing: 8) {
-                LED(color: selected ? FaceTheme.mint : (lamp ?? .clear), lit: selected || lamp != nil).padding(.top, compact ? 0 : 5)
+                LED(color: selected ? FaceTheme.mint : alert ? .hex(0xff6b5e) : (lamp ?? .clear),
+                    lit: selected || alert || lamp != nil).padding(.top, compact ? 0 : 5)
                 VStack(alignment: .leading, spacing: 2) {
                     header()
                     if let detail, !detail.isEmpty {
-                        Text(detail).font(.system(size: 11)).foregroundStyle(face.muted).lineLimit(1)
+                        Text(detail).font(.system(size: 11)).foregroundStyle(face.muted)
+                            .fixedSize(horizontal: false, vertical: true)       // details in full, never "…"
                     }
+                    if let marks { SignInMarks(app: marks.app, terminal: marks.terminal).padding(.top, 3) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 if selected, let litBadge {
@@ -59,35 +68,50 @@ struct AccountBox<Header: View, Content: View>: View {
                     DisplayWindow(text: badge, tone: badgeTone, height: 18, size: 9).padding(.top, compact ? 0 : 1)
                 }
             }
-            content().opacity(unlit && dimsContent ? 0.6 : 1)
+            content().opacity((unlit || rest) && dimsContent ? 0.6 : 1)
         }
         .environment(\.face, face)
-        .environment(\.colorScheme, selected && outer.light ? .dark : scheme)    // the bars' own labels follow it
+        .environment(\.colorScheme, (selected || alert) && outer.light ? .dark : scheme)    // the bars' own labels follow it
         .padding(.horizontal, compact ? 10 : 11).padding(.top, compact ? 7 : 9).padding(.bottom, compact ? 8 : 10)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
-            if selected {
+            if selected || alert {
                 RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.hex(0x141518))
-                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).strokeBorder(FaceTheme.mint.opacity(0.22), lineWidth: 1))
-            } else if inUse {
-                let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
-                let g = green(face)
+                    .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        .strokeBorder((alert ? Color.hex(0xff5f52) : FaceTheme.mint).opacity(0.22), lineWidth: 1))
+            } else if inUse, !rest {
+                // the box in focus: the dark display well, no hairline and no green bar
                 WellShape(well: face.light ? face.display : InUseLook.well, radius: 8)
-                    .overlay { shape.fill(Color.clear.shadow(.inner(color: g.opacity(face.light ? 0.10 : 0.09), radius: 12))) }
-                    .overlay { shape.strokeBorder(face.light ? g.opacity(0.32) : .hex(0x24372a), lineWidth: 1) }
-                    .overlay(alignment: .leading) {
-                        if lamp != nil {
-                            RoundedRectangle(cornerRadius: 1.5, style: .continuous).fill(g)
-                                .frame(width: 3).padding(.vertical, 10).offset(x: -1)
-                                .shadow(color: g.opacity(face.light ? 0.35 : 0.6), radius: 4)
-                        }
-                    }
             } else {
                 WellShape(well: face.win, radius: 8)
-                    .overlay { if unlit { RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(face.light ? 0.06 : 0.24)) } }
+                    .overlay { if unlit || rest { RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Color.black.opacity(face.light ? 0.06 : 0.24)) } }
             }
         }
-        .mintRow(selected)
+        .mintRow(selected || alert, red: alert && !selected)
+    }
+}
+
+/// Where an account is signed in, as two small markers: the Claude app (its Code tab shares the app's sign-in) and Claude
+/// Code in Terminal (the sign-in usage is read through). Lit when signed in there.
+struct SignInMarks: View {
+    let app: Bool
+    let terminal: Bool
+    @Environment(\.face) private var face
+
+    var body: some View {
+        HStack(spacing: 5) { mark("Claude app", app); mark("Claude Code in Terminal", terminal) }
+    }
+
+    private func mark(_ t: String, _ on: Bool) -> some View {
+        HStack(spacing: 4) {
+            if on { Circle().fill(FaceTheme.ledOn).frame(width: 4, height: 4) }
+            Text(t).font(.system(size: 8.5, weight: .semibold)).tracking(0.9).textCase(.uppercase)
+                .strikethrough(!on, color: face.muted.opacity(0.5))
+        }
+        .foregroundStyle(on ? face.soft : face.muted.opacity(0.7))
+        .padding(.horizontal, 7).padding(.vertical, 2)
+        .overlay(Capsule().strokeBorder(on ? face.muted.opacity(0.5) : face.muted.opacity(0.25), lineWidth: 1))
+        .fixedSize()
     }
 }
 
