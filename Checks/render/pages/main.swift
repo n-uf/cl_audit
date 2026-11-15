@@ -236,9 +236,7 @@ struct AtlasMenu: View {
         let now = Date()
         let e = model.accounts[0]
         // the menu bar icon's menu (MenuBarItems: the agent's Profile, then menuNeedsUpdate's items)
-        let rec = Store.status(for: e)
-        let p = MenuBarItems.Profile(entry: e, usage: Usage.of(rec), problem: rec?.problem, needsLogin: MenuBarItems.needsLogin(rec),
-                                     view: AccountView.of(Store.status(e.id)))
+        let p = MenuBarItems.Profile(show: ProfileShow.load(e, now: now), problem: Store.status(for: e)?.problem)
         var mb: [NSMenuItem] = []
         func info(_ s: String) -> NSMenuItem { let i = NSMenuItem(title: s, action: nil, keyEquivalent: ""); i.isEnabled = false; return i }
         func item(_ s: String) -> NSMenuItem { let i = NSMenuItem(title: s, action: act, keyEquivalent: ""); i.target = dummy; return i }
@@ -255,7 +253,7 @@ struct AtlasMenu: View {
         mb.append(item("Quick chat"))
         if e.claudeWindow { mb.append(item("Open Claude window")) }
         mb.append(item("Refresh now"))
-        if p.needsLogin { mb.append(item("Log in…")) }
+        if let k = p.show.keyWords(short: false) { mb.append(item(k)) }
         mb += [.separator(), item("Dashboard"), item("Profile settings…"), .separator(), item("Hide from the menu bar")]
         let menuBar = VStack(alignment: .leading, spacing: 6) {
             MenuBarRow(profile: p, now: now).frame(width: 340).background(Color(white: 0.19)).clipShape(RoundedRectangle(cornerRadius: 9))
@@ -263,61 +261,13 @@ struct AtlasMenu: View {
         }
         snapshot(framed(menuBar, 460), "atlas-\(row)-menubar-std", 492, 1400)
 
-        // the Dock icon (its tile), its menu (applicationDockMenu's items) and its usage panel (detailsInfo), all from the
-        // Dock app's own copy of the record: Store.status(for:)
-        let st = Store.status(for: e)
-        let usage = Usage.of(st), view = AccountView.of(st)
-        let expired = st?.state == "expired", noLogin = st?.state == "noLogin"
-        let expected = st?.expectedEmail ?? Account(e).expectedEmail()
-        let mismatch: Bool = { guard let a = st?.loginEmail, let b = expected else { return false }; return a.lowercased() != b.lowercased() }()
-        let tile = TileModel(label: e.label, fiveHour: usage?.fiveHour, weekly: usage?.weekly, stale: expired || noLogin, style: e.style,
-                             warn: mismatch, tint: e.color, frame: e.frame,
-                             countdown: AtLimit.tileCountdown(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
-                                                              weekly: usage?.weekly, weeklyResets: usage?.weeklyResets))
-        var dm: [NSMenuItem] = []
-        let top = info(SwitchMenu.dockTitle(name: e.name, view, plan: st?.plan.map(Account.planWords)))
-        if view.lit, SwitchMenu.inUseShort(view) != nil { top.image = SwitchMenu.lamp() }
-        dm.append(top)
-        if let n = view.line { dm.append(info(n)) }
-        dm.append(.separator())
-        let dLines = SwitchMenu.lines(e.listed(by: view))
-        if let full = AtLimit.blocker(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets, weekly: usage?.weekly, weeklyResets: usage?.weeklyResets) {
-            let i = info("\(full.title) · \(full.both())")
-            i.attributedTitle = NSAttributedString(string: i.title)
-            dm.append(i)
-            if let best = SwitchMenu.best(dLines) { dm.append(SwitchMenu.bestItem(best, target: dummy, action: act)) }
-        }
-        func line(_ title: String, _ v: Double?, _ at: Date?) { dm.append(info("\(title): \(Painter.pct(v))" + (at.map { " · resets \(AppDelegate.when($0))" } ?? ""))) }
-        if usage?.noFiveHour != true { line("5-hour limit", usage?.fiveHour, usage?.fiveHourResets) }
-        line("Weekly limit", usage?.weekly, usage?.weeklyResets)
-        for s in e.showFable ? usage?.scoped ?? [] : [] {
-            if AtLimit.isFull(s.percent), let at = s.resets { dm.append(info("\(s.name) weekly limit: full · \(TimeWords.back(at))")) }
-            else { line("\(s.name) weekly limit", s.percent, s.resets) }
-        }
-        if let usage { dm.append(info("Updated \(AppDelegate.ago(usage.fetchedAt)) · \(usage.source)")) }
-        if let why = st?.problem { dm.append(info(why)) }
-        if let note = st?.renewNote { dm.append(info(note)) }
-        if Privacy.shared.show || st?.loginEmail == nil { dm.append(info("Login: \(st?.loginEmail ?? "checking…")")) }
-        if mismatch, let want = expected {
-            dm.append(info(Privacy.shared.show ? "⚠︎ This folder is set up for \(want)" : "⚠︎ This folder is set up for a different account"))
-        }
-        if mismatch || noLogin || expired { dm.append(item("Log in…")) }
-        dm.append(.separator())
-        let dSwitches = SwitchMenu.group(view, lines: dLines, inUseUsed: usage?.weekly ?? usage?.fiveHour, inUseWeek: usage?.weekly != nil,
-                                         target: dummy, action: act)
-        if !dSwitches.isEmpty { dm += dSwitches; dm.append(.separator()) }
-        dm.append(item("Quick chat"))
-        if e.claudeWindow { dm.append(item("Open Claude window")) }
-        dm += [item("Refresh now"), .separator(), item("Dashboard"), item("Profile settings…")]
-        let panel = DetailsInfo(name: e.name, icon: Painter.image(tile, pixels: 128), login: st?.loginEmail, expected: expected, mismatch: mismatch,
-                                plan: st?.plan, fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets, weekly: usage?.weekly,
-                                weeklyResets: usage?.weeklyResets, updated: usage?.fetchedAt, source: usage?.source, problem: st?.problem,
-                                renewNote: st?.renewNote, needsLogin: mismatch || noLogin || expired,
-                                scoped: e.showFable ? usage?.scoped ?? [] : [], credits: usage?.credits,
-                                noFiveHour: st?.noFiveHour == true, noNumbers: DetailsInfo.noNumbersWords(st)).taking(view)
+        // the Dock icon (its face), its menu and its usage panel, as the Dock app draws them from the profile's one value
+        // (IconApp: model(), profileMenu(), detailsInfo())
+        let dockApp = AppDelegate(); dockApp.entry = e; dockApp.show = ProfileShow.load(e, now: now)
+        let tile = dockApp.model(), panel = dockApp.detailsInfo()
         let dock = VStack(alignment: .leading, spacing: 10) {
             Image(nsImage: Painter.image(tile, pixels: 128)).resizable().frame(width: 96, height: 96)
-            AtlasMenu(dm)
+            AtlasMenu(dockApp.profileMenu().items)
             DetailsView(info: panel, actions: noop).fixedSize()       // the panel at its own size, as it opens by the Dock
         }
         snapshot(framed(dock, 520), "atlas-\(row)-dock-std", 552, 2000)
@@ -466,17 +416,11 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
             .environment(\.face, face).environment(\.colorScheme, .dark)
     }
     let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
-    let usage = Usage.of(head), view = AccountView.of(head)
-    let tile = TileModel(label: e.label, fiveHour: usage?.fiveHour, weekly: usage?.weekly, stale: false, style: e.style, warn: false,
-                         tint: e.color, frame: e.frame,
-                         countdown: AtLimit.tileCountdown(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
-                                                          weekly: usage?.weekly, weeklyResets: usage?.weeklyResets))
-    let panel = DetailsInfo(name: e.name, icon: Painter.image(tile, pixels: 128), login: head?.loginEmail, expected: head?.expectedEmail,
-                            mismatch: false, plan: head?.plan, fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
-                            weekly: usage?.weekly, weeklyResets: usage?.weeklyResets, updated: head?.updatedAt, source: usage?.source,
-                            problem: head?.problem, renewNote: nil, needsLogin: false, noFiveHour: head?.noFiveHour == true,
-                            noNumbers: DetailsInfo.noNumbersWords(head)).taking(view).takingSplit(SplitUsage.of(head))
-    let profileItem = MenuBarItems.Profile(entry: e, usage: usage, problem: head?.problem, needsLogin: false, view: view, split: SplitUsage.of(head))
+    // the Dock icon's face and panel, and the menu bar's item, as the apps draw them from the one value (ProfileShow)
+    let show = ProfileShow.load(e, now: now)
+    let dockApp = AppDelegate(); dockApp.entry = e; dockApp.show = show
+    let tile = dockApp.model(), panel = dockApp.detailsInfo()
+    let profileItem = MenuBarItems.Profile(show: show, problem: head?.problem)
     let glyph = MenuBarGlyph(look: e.menuBarLook, item: MenuBarItems.item(profileItem, now: now)).image(dark: true)
     for w in [CGFloat(340), 460, 708] {
         snapshot(framed(AccountCard(row: AccountRow(entry: e, status: head, codeStatus: own), actions: acts).frame(width: min(w, 460))
@@ -596,6 +540,71 @@ if ProcessInfo.processInfo.environment["DOCKPREVIEW_ONLY"] != nil {
     print("done"); exit(0)
 }
 
+// ==================================================================== the 3a surfaces (SHOW3A_ONLY=1, ProfileCore step 3a)
+// The menu bar icon (Levels and System colours, on a dark bar) with its row and menu, and the Dock icon's face, menu and
+// panel, as the apps draw them from each profile's one value (ProfileShow): fresh, last known with a full week (10 min),
+// old (40 min), full and fresh, a sign-in that can't be read, a sign-in on another account, expired. Std, 460. Files
+// show3a-<case>-std-w460.png. Sample data only: Main on ann@, ben@ on standby.
+@MainActor func show3aRenders() {
+    let now = Date()
+    let ann = Seat(account: uuid(51), organization: uuid(91), email: "ann@example.com")
+    let ben = Seat(account: uuid(52), organization: uuid(92), email: "ben@example.com")
+    var e = AccountEntry(id: "s3a", name: "Main", label: "MAIN", configDir: "~/.claude-s3a"); e.seat = ann; e.claudeWindow = false
+    e.standby = [StandbyAccount(email: ben.email!, seat: ben, id: "kb", plan: "Max", lastInUse: now.addingTimeInterval(-86400))]
+    e.menuBar = true
+    try! Store.save([e])
+    func rec(_ state: String, week: Double, five: Double, age: TimeInterval, login: String? = "ann@example.com") -> IconStatus {
+        var r = IconStatus(state: state); r.loginEmail = state == "noLogin" ? nil : login; r.expectedEmail = ann.email
+        r.weekly = week; r.fiveHour = five; r.updatedAt = now.addingTimeInterval(-age); r.source = "Anthropic"; r.plan = "Max"
+        r.weeklyResets = now.addingTimeInterval(2 * 86400 + 3 * 3600); r.fiveHourResets = now.addingTimeInterval(2 * 3600)
+        r.resolved = AccountResolver.resolve(e, among: [e], app: .unknown, code: ann, loginEmail: login, names: [:], now: now)
+        if state == "denied" { r.problem = FetchState.deniedWords }
+        return r
+    }
+    let cases: [(String, IconStatus)] = [
+        ("fresh", rec("ok", week: 64, five: 12, age: 60)), ("lastknown", rec("ok", week: 100, five: 30, age: 10 * 60)),
+        ("old", rec("ok", week: 64, five: 12, age: 40 * 60)), ("full", rec("ok", week: 100, five: 30, age: 60)),
+        ("denied", rec("denied", week: 64, five: 12, age: 60)), ("mismatch", rec("ok", week: 64, five: 12, age: 60, login: ben.email)),
+        ("expired", rec("expired", week: 64, five: 12, age: 60))]
+    let face = FaceTheme.of(.std)
+    for (name, r) in cases {
+        _ = Store.writeStatus(e.id, r)
+        // as the agent and the Dock app build them (Agent's MenuBarItems.Profile, IconApp's face, menu and panel)
+        let show = ProfileShow.load(e, now: now)
+        let profile = MenuBarItems.Profile(show: show, problem: show.record?.problem)
+        let items = MenuBarItems(profiles: { [profile] }, refresh: { _ in })
+        let barMenu = NSMenu(title: e.id); items.menuNeedsUpdate(barMenu)
+        let dockApp = AppDelegate(); dockApp.entry = e; dockApp.show = show
+        let tile = dockApp.model(), panel = dockApp.detailsInfo(), dockMenu = dockApp.profileMenu()
+        func glyph(_ colours: MenuBarColours) -> NSImage {
+            var look = e.menuBarLook; look.colours = colours; look.style = .barsNumber
+            return MenuBarGlyph(look: look, item: MenuBarItems.item(profile, now: now)).image(dark: true)
+        }
+        let all = VStack(alignment: .leading, spacing: 10) {
+            Text("\(name): the menu bar").font(.system(size: 12, weight: .semibold)).foregroundColor(.white)
+            HStack(spacing: 8) {
+                ForEach([MenuBarColours.levels, .system], id: \.self) { c in
+                    Image(nsImage: glyph(c)).padding(6).background(Color(white: 0.25)).clipShape(RoundedRectangle(cornerRadius: 5))
+                }
+            }
+            MenuBarRow(profile: profile, now: now).frame(width: 330).background(Color(white: 0.19)).clipShape(RoundedRectangle(cornerRadius: 9))
+            AtlasMenu(Array(barMenu.items.dropFirst()))
+            Text("\(name): the Dock icon").font(.system(size: 12, weight: .semibold)).foregroundColor(.white)
+            Image(nsImage: Painter.image(tile, pixels: 128)).resizable().frame(width: 96, height: 96)
+            AtlasMenu(dockMenu.items)
+            DetailsView(info: panel, actions: DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})).fixedSize()
+        }
+        snapshot(all.frame(width: 460, alignment: .leading).padding(16).background(Color(white: 0.1))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    .environment(\.face, face).environment(\.colorScheme, .dark), "show3a-\(name)-std-w460", 492, 2000)
+    }
+}
+
+if ProcessInfo.processInfo.environment["SHOW3A_ONLY"] != nil {
+    MainActor.assumeIsolated { show3aRenders() }
+    print("done"); exit(0)
+}
+
 MainActor.assumeIsolated {
     // (named "Main": the app puts "Claude " before a profile's name itself)
     var main = AccountEntry(id: "main", name: "Main", label: "MAIN", configDir: "~/.claude"); main.seat = u1
@@ -666,9 +675,7 @@ MainActor.assumeIsolated {
         _ = Store.writeStatus("main", rec)
         let st = Store.status(for: main)
         let v = AccountView.of(st)
-        let usage = Usage(fiveHour: st?.fiveHour, fiveHourResets: st?.fiveHourResets, weekly: st?.weekly, weeklyResets: st?.weeklyResets,
-                          fetchedAt: now, source: "test", noFiveHour: st?.noFiveHour == true)
-        let mp = MenuBarItems.Profile(entry: main, usage: usage, view: v)
+        let mp = MenuBarItems.Profile(show: ProfileShow.load(main, now: now))
         let panel = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: st?.loginEmail, expected: nil, mismatch: false,
                                 plan: st?.plan, fiveHour: st?.fiveHour, fiveHourResets: st?.fiveHourResets, weekly: st?.weekly, weeklyResets: st?.weeklyResets,
                                 updated: now.addingTimeInterval(-60), source: nil, problem: nil, renewNote: nil, needsLogin: false).taking(v)
@@ -817,8 +824,7 @@ MainActor.assumeIsolated {
         if tag == "o7c-card-app-other" {
             // all surfaces side by side: the menu bar row, the Dock menu's top lines, the Dock panel, the card, Settings ▸
             // Accounts, the Switch page's in-use box and quick chat's profile line
-            let u = Usage(fiveHour: nil, fiveHourResets: nil, weekly: rec.weekly, weeklyResets: rec.weeklyResets, fetchedAt: Date(), source: "test", noFiveHour: true)
-            let mp = MenuBarItems.Profile(entry: main, usage: u, view: AccountView.of(Store.status(for: main)))
+            let mp = MenuBarItems.Profile(show: ProfileShow.load(main))
             let v = AccountView.of(Store.status(for: main))
             let panel = DetailsInfo(name: main.name, icon: NSImage(size: NSSize(width: 64, height: 64)), login: rec.loginEmail, expected: nil, mismatch: false,
                                     plan: rec.plan, fiveHour: nil, fiveHourResets: nil, weekly: rec.weekly, weeklyResets: rec.weeklyResets,

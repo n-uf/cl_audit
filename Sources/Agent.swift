@@ -237,12 +237,11 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
             guard let self else { return [] }
             return self.order.compactMap { id in
                 self.readers[id].map { r in
-                    // the numbers and the state as the record says them (the reader decided them as it saved): the reader's
-                    // own copy can hold numbers no screen may show (past a reset, an expired sign-in's old ones)
-                    let rec = Store.status(for: r.entry)
-                    // (the headline record: in the split its line says cl_audit can't read the app's account's usage, SplitUsage)
-                    return MenuBarItems.Profile(entry: r.entry, usage: Usage.of(rec), problem: rec?.problem ?? r.state.menuText,
-                                                needsLogin: MenuBarItems.needsLogin(rec), view: AccountView.of(rec), split: SplitUsage.of(rec))
+                    // the profile as the record says it (the reader decided it as it saved), through the one value
+                    // (ProfileShow): the reader's own copy can hold numbers no screen may show (past a reset, an expired
+                    // sign-in's old ones)
+                    let show = ProfileShow.load(r.entry)
+                    return MenuBarItems.Profile(show: show, problem: show.record?.problem ?? r.state.menuText)
                 }
             }
         }, refresh: { [weak self] id in self?.refresh(id) })

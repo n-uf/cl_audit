@@ -31,11 +31,6 @@ struct DetailsInfo {
     /// Why there are no numbers when the sign-in is the reason ("Login expired", "Signed out"): the age line says it.
     var noNumbers: String? = nil
 
-    /// The age line's words for a record without numbers whose sign-in is the reason, else nil.
-    static func noNumbersWords(_ s: IconStatus?) -> String? {
-        guard let s, s.fiveHour == nil, s.weekly == nil else { return nil }
-        return s.state == "expired" ? "Login expired" : s.state == "noLogin" ? "Signed out" : nil
-    }
     /// The active account (AccountResolver, from the profile's record): green lamp and "in use"; nil: the sign-in line.
     var active: String? = nil
     var activeLit = true
@@ -47,17 +42,27 @@ struct DetailsInfo {
 
 extension DetailsInfo {
     /// The panel's account line from the profile's record (AccountResolver): the active account, its lamp, the one line.
+    /// (Settings' panel preview; the Dock icon's panel draws the profile's one value, `of(_:)`.)
     func taking(_ v: AccountView) -> DetailsInfo {
         var out = self
         out.active = v.label; out.activeLit = v.lit; out.activeNote = v.line
         return out
     }
-    /// The split (SplitUsage) in the panel's fixed width: the short line and the short key, in place of the long ones.
-    func takingSplit(_ s: SplitUsage?) -> DetailsInfo {
-        guard let s else { return self }
-        var out = self
-        out.activeNote = s.shortLine; out.splitKey = s.shortKey
-        return out
+
+    /// The Dock icon's panel for a profile, all from its one value (ProfileShow): the numbers, the lamp, the line and the
+    /// key in the panel's fixed width (the split's short line and short key), the age line's words without numbers.
+    static func of(_ s: ProfileShow, name: String, icon: NSImage, problem: String?, refreshing: Bool = false) -> DetailsInfo {
+        let u = s.usage, d = s.display, e = s.entry
+        var info = DetailsInfo(
+            name: name, icon: icon, login: s.record?.loginEmail, expected: s.record?.expectedEmail, mismatch: d.otherAccount,
+            plan: s.record?.plan, fiveHour: u?.fiveHour, fiveHourResets: u?.fiveHourResets, weekly: u?.weekly,
+            weeklyResets: u?.weeklyResets, updated: u?.fetchedAt, source: u?.source, problem: problem, renewNote: s.record?.renewNote,
+            needsLogin: d.needsLogin, design: e.panelDesign, accent: e.accentNSColor, refreshing: refreshing,
+            scoped: e.showFable ? u?.scoped ?? [] : [], credits: u?.credits, noFiveHour: s.record?.noFiveHour == true,
+            noNumbers: s.noNumbersWords)
+        info.active = s.view.label; info.activeLit = d.lamp; info.activeNote = s.lineWords(short: true)
+        if case .logInCode = d.key { info.splitKey = s.keyWords(short: true) }
+        return info
     }
 }
 
@@ -240,10 +245,12 @@ struct LevelBar: View {
     var height: CGFloat = 6
     var glow = true
     var marker: Double? = nil
+    /// Old numbers (ProfileDisplay's grey tier): the fill in grey.
+    var stale = false
     @Environment(\.face) private var face
 
     var body: some View {
-        let level = Painter.color(p, stale: false)
+        let level = Painter.color(p, stale: stale)
         let c = Color(nsColor: level)
         // the fill fades in from 70 % at its left end; crimson (95 and up) is drawn whole, so it shows as its own colour
         let fadeIn = level == Painter.crimson ? 1.0 : 0.7

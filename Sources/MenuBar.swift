@@ -124,6 +124,7 @@ struct MenuBarGlyph {
         var week: Double?
         var countdown: String?          // set while a full limit holds the profile back ("1h 42m", or "full")
         var noFive = false              // the plan has no 5-hour limit (Ultra): the week alone
+        var stale = false               // old numbers (ProfileDisplay's grey tier): drawn grey, or dimmed in the system's colours
     }
 
     let look: MenuBarLook
@@ -152,10 +153,12 @@ struct MenuBarGlyph {
     }
     private func track(_ dark: Bool?) -> NSColor { ink(dark).withAlphaComponent(template ? 0.3 : 0.25) }
 
-    /// A limit's colour: a full one is crimson (except in the system's colours, which macOS draws in one colour).
+    /// A limit's colour: a full one is crimson (except in the system's colours, which macOS draws in one colour); old
+    /// numbers grey (dimmed in the system's colours), whatever the look.
     private func colour(_ p: Double?, _ dark: Bool?) -> NSColor {
         guard p != nil else { return track(dark) }
-        if template { return ink(dark) }
+        if template { return item.stale ? ink(dark).withAlphaComponent(0.5) : ink(dark) }
+        if item.stale { return Painter.grey }
         if AtLimit.isFull(p) { return Painter.crimson }
         switch look.colours {
         case .levels: return Painter.color(p, stale: false)
@@ -241,15 +244,17 @@ struct MenuBarGlyph {
 /// The profiles' menu bar icons, in the agent: one per profile with its switch on, each with that profile's menu.
 final class MenuBarItems: NSObject, NSMenuDelegate {
     struct Profile {
-        let entry: AccountEntry
-        let usage: Usage?
+        /// The profile as its headline surfaces show it (ProfileShow: ProfileCore's one value and its words): the icon, the
+        /// row and the menu draw this and decide nothing.
+        let show: ProfileShow
+        /// Why it couldn't update, in words (the record's, else the reader's state).
         var problem: String? = nil
-        /// The record says the sign-in needs the person (IconStatus.needsLogin): the menu's key is Log in….
-        var needsLogin = false
-        /// The profile's account as its record says it (AccountResolver): the line under the name.
-        var view = AccountView(label: nil, numbersOwner: nil, line: nil, lit: false, clash: nil)
-        /// The Claude app on another account than Claude Code (SplitUsage): no numbers, its line, and its key.
-        var split: SplitUsage? = nil
+
+        var entry: AccountEntry { show.entry }
+        var display: ProfileDisplay { show.display }
+        var usage: Usage? { show.usage }
+        /// The account's names (the active account under the name, the standby lists without it).
+        var view: AccountView { show.view }
     }
 
     private var items: [String: NSStatusItem] = [:]      // by profile id
@@ -274,8 +279,6 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         self.profiles = profiles
         self.refresh = refresh
     }
-
-    static func needsLogin(_ s: IconStatus?) -> Bool { s?.needsLogin ?? false }
 
     /// Adds, removes and redraws the icons as the profiles say (the agent calls this every 30 s and after a change).
     func update(now: Date = Date()) {
@@ -324,13 +327,12 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         }
     }
 
+    /// What the icon draws (`now`: the countdown's clock; the value itself was made when the profile was read).
     static func item(_ p: Profile, now: Date = Date()) -> MenuBarGlyph.Item {
-        let u = p.usage
-        let full = u.flatMap { AtLimit.blocker(fiveHour: $0.fiveHour, fiveHourResets: $0.fiveHourResets, weekly: $0.weekly,
-                                               weeklyResets: $0.weeklyResets, now: now) }
+        let u = p.usage, d = p.display
         return MenuBarGlyph.Item(label: p.entry.label, accent: p.entry.accentNSColor, five: u?.fiveHour, week: u?.weekly,
-                                 countdown: full.map { f in f.resets.map { TimeWords.countdown($0, now: now) } ?? "full" },
-                                 noFive: u?.noFiveHour ?? false)
+                                 countdown: d.full.map { f in f.resets.map { TimeWords.countdown($0, now: now) } ?? "full" },
+                                 noFive: u?.noFiveHour ?? false, stale: d.tier == .stale)
     }
 
     private func draw(_ p: Profile, now: Date) {
@@ -339,8 +341,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         button.title = ""
         button.imagePosition = .imageOnly
         let u = p.usage
-        if let u, let full = AtLimit.blocker(fiveHour: u.fiveHour, fiveHourResets: u.fiveHourResets, weekly: u.weekly,
-                                             weeklyResets: u.weeklyResets, now: now) {
+        if let full = p.display.full {
             button.toolTip = "Claude \(p.entry.name): \(full.title) · \(full.both(now))"
         } else {
             button.toolTip = "Claude \(p.entry.name): 5-hour \(Painter.pct(u?.fiveHour)) · week \(Painter.pct(u?.weekly))"
@@ -370,11 +371,9 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         // then Switch account › with every standby account. Each opens cl_audit's Switch page with that account picked
         let listed = p.entry.listed(by: p.view)              // never the account in use on standby too
         let lines = SwitchMenu.lines(listed, now: now)
-        let isFull = p.usage.flatMap { AtLimit.blocker(fiveHour: $0.fiveHour, fiveHourResets: $0.fiveHourResets, weekly: $0.weekly,
-                                                       weeklyResets: $0.weeklyResets, now: now) } != nil
         var switches = SwitchMenu.group(p.view, lines: lines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
                                         inUseWeek: p.usage?.weekly != nil, target: self, action: #selector(switchAccount(_:)))
-        if isFull, let best = SwitchMenu.best(lines) {
+        if p.display.full != nil, let best = SwitchMenu.best(lines) {
             switches.insert(SwitchMenu.bestItem(best, target: self, action: #selector(switchAccount(_:))), at: 0)
         }
         if !switches.isEmpty {
@@ -384,9 +383,9 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         add("Quick chat", #selector(quickChat(_:)))
         if p.entry.claudeWindow { add("Open Claude window", #selector(openClaude(_:))) }
         add("Refresh now", #selector(refreshNow(_:)))
-        if p.needsLogin { add("Log in…", #selector(logIn(_:))) }
-        // the split: Claude Code's own sign-in, to the Claude app's account (the same Log in, its address filled in)
-        else if let k = p.split?.key { add(k, #selector(logIn(_:))) }       // (the key carries its "…")
+        // the one key: Log in…, or in the split Claude Code's own sign-in to the Claude app's account (the same Log in, its
+        // address filled in; the key carries its "…")
+        if let k = p.show.keyWords(short: false) { add(k, #selector(logIn(_:))) }
         menu.addItem(.separator())
         add("Dashboard", #selector(dashboard(_:)))
         add("Profile settings…", #selector(settings(_:)))
@@ -420,7 +419,7 @@ struct MenuBarRow: View {
 
     /// The row's one line of state: in the split its short form ("Can't read P's usage" over "Terminal: M": the row is about
     /// 300 pt of text, two lines), else the record's line.
-    static func lineWords(_ p: MenuBarItems.Profile) -> String? { p.split?.shortLine ?? p.view.line }
+    static func lineWords(_ p: MenuBarItems.Profile) -> String? { p.show.lineWords(short: true) }
 
     private var limits: [Limit] {
         let u = profile.usage
@@ -431,9 +430,8 @@ struct MenuBarRow: View {
     }
 
     var body: some View {
-        let u = profile.usage
-        let full = u.flatMap { AtLimit.blocker(fiveHour: $0.fiveHour, fiveHourResets: $0.fiveHourResets, weekly: $0.weekly,
-                                               weeklyResets: $0.weeklyResets, now: now) }
+        let u = profile.usage, d = profile.display
+        let full = d.full, lit = d.lamp, stale = d.tier == .stale
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
                 Circle().fill(Color(nsColor: profile.entry.accentNSColor)).frame(width: 7, height: 7)
@@ -444,11 +442,11 @@ struct MenuBarRow: View {
                         .font(.system(size: 11, weight: .semibold)).foregroundStyle(Color(nsColor: Painter.crimson)).lineLimit(1)
                 }
             }
-            // the active account and the one line of state, from the profile's record (AccountResolver)
+            // the active account, its lamp (ProfileDisplay's) and the one line of state
             if let inUse = profile.view.inUseLine {
                 HStack(spacing: 6) {
-                    Circle().fill(Color(nsColor: profile.view.lit ? .systemGreen : .tertiaryLabelColor)).frame(width: 7, height: 7)
-                        .shadow(color: Color(nsColor: .systemGreen).opacity(profile.view.lit ? 0.7 : 0), radius: 2.5)
+                    Circle().fill(Color(nsColor: lit ? .systemGreen : .tertiaryLabelColor)).frame(width: 7, height: 7)
+                        .shadow(color: Color(nsColor: .systemGreen).opacity(lit ? 0.7 : 0), radius: 2.5)
                     Text(inUse).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1)
                 }
             }
@@ -457,12 +455,12 @@ struct MenuBarRow: View {
             }
             if u == nil {
                 // (the split says what gives the numbers: its line is above, never "yet")
-                Text(profile.split?.numbersHint ?? "No numbers yet").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text(profile.show.numbersHint ?? "No numbers yet").font(.system(size: 11)).foregroundStyle(.secondary)
             }
             ForEach(u == nil ? [] : limits) { l in
                 HStack(spacing: 8) {
                     Text(l.name).font(.system(size: 11)).frame(width: 46, alignment: .leading).lineLimit(1)
-                    LevelBar(p: l.p, height: 5, glow: false).frame(width: 110)
+                    LevelBar(p: l.p, height: 5, glow: false, stale: stale).frame(width: 110)
                     Text(Painter.pct(l.p)).font(.system(size: 11, weight: .semibold)).monospacedDigit()
                         .frame(width: 36, alignment: .trailing)
                     Text(resetWords(l)).font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)

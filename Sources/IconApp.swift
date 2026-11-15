@@ -24,7 +24,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // A Dock icon only shows what the cl_audit agent saved for its profile (status/<id>.json): it never reads the
     // Keychain or the network, sends no alerts and has no login item. Refresh and renew are asked of the agent.
-    var status: IconStatus?
+    /// The profile as its record says it, through the one value (ProfileShow): the face, the menu and the panel draw this.
+    var show: ProfileShow?
+    /// The record as the headline surfaces read it (Store.status(for:)).
+    var status: IconStatus? { show?.record }
     /// Refresh now was asked: "Updating…" until the agent saves newer numbers (at most 15 s).
     var refreshAsked: Date?
     var claudeOpen = false        // this account's Claude window is running (drawn as a dot on the tile)
@@ -33,7 +36,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var timer: Timer?
 
     var style: IconStyle { entry.style }
-    var pollMinutes: Int { max(entry.pollMinutes, 1) }
 
     static func loadEntry(_ id: String) -> AccountEntry {
         Store.load().first { $0.id == id } ?? AccountEntry(id: id, name: id, label: "?", configDir: "~/.claude")
@@ -41,13 +43,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: what the agent saved
 
-    var usage: Usage? { Usage.of(status) }
+    /// The one value; before the first load, the value of no record.
+    var display: ProfileDisplay { (show ?? ProfileShow.of(entry, raw: nil)).display }
+    var usage: Usage? { show?.usage }
     var loginEmail: String? { status?.loginEmail }
-    /// The profile's account as its record says it (AccountResolver): the Dock menu and panel show this.
-    var view: AccountView { AccountView.of(status) }
+    /// The profile's account names as its record says them (AccountResolver): the Dock menu and panel show this.
+    var view: AccountView { show?.view ?? AccountView.of(nil) }
     var plan: String? { status?.plan }
-    var expired: Bool { status?.state == "expired" }
-    var noLogin: Bool { status?.state == "noLogin" }
     var refreshing: Bool {
         guard let t = refreshAsked else { return false }
         return Date().timeIntervalSince(t) < 15 && (status?.updatedAt ?? .distantPast) < t
@@ -58,11 +60,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func loadStatus() {
-        let fresh = Store.status(for: entry)
-        if fresh?.updatedAt != status?.updatedAt, let at = fresh?.updatedAt {
+        let fresh = ProfileShow.load(entry)
+        if fresh.record?.updatedAt != status?.updatedAt, let at = fresh.record?.updatedAt {
             dockLog.log("\(self.entry.id, privacy: .public): shows the agent's numbers from \(Int(-at.timeIntervalSinceNow)) s ago")
         }
-        status = fresh
+        show = fresh
         redraw()
     }
 
@@ -73,6 +75,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applyEntry() {
         account = Account(entry)
+        show = ProfileShow.load(entry)          // the value follows the profile's settings (its read interval, its panel)
         redraw()
     }
 
@@ -169,7 +172,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DistributedNotificationCenter.default().addObserver(self, selector: #selector(quietQuitAsked(_:)), name: Installer.quietQuitNote, object: accountID)
         // logging out or shutting down quits every app: not a reason for its window to quit (macOS reopens it)
         ws.addObserver(self, selector: #selector(quietQuitAsked(_:)), name: NSWorkspace.willPowerOffNotification, object: nil)
-        status = Store.status(for: entry)
+        show = ProfileShow.load(entry)
         tileView = TileView(model: model())
         NSApp.dockTile.contentView = tileView
         NSApp.dockTile.display()
@@ -351,22 +354,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func detailsInfo() -> DetailsInfo {
         var icon = model(); icon.warn = false
-        let info = DetailsInfo(
-            name: account.name, icon: Painter.image(icon, pixels: 128),
-            login: loginEmail, expected: expectedEmail, mismatch: mismatch, plan: plan,
-            fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
-            weekly: usage?.weekly, weeklyResets: usage?.weeklyResets,
-            updated: usage?.fetchedAt, source: usage?.source,
-            problem: problem, renewNote: status?.renewNote,
-            needsLogin: mismatch || noLogin || expired,
-            design: entry.panelDesign,
-            accent: entry.accentNSColor,
-            refreshing: refreshing,
-            scoped: entry.showFable ? usage?.scoped ?? [] : [], credits: usage?.credits,
-            noFiveHour: status?.noFiveHour == true,
-            noNumbers: DetailsInfo.noNumbersWords(status))
-        // the split: its short line and short key (the panel's width is fixed), in place of Log in…
-        return info.taking(view).takingSplit(SplitUsage.of(status))
+        // all from the one value (the split: its short line and short key, the panel's width being fixed)
+        return DetailsInfo.of(show ?? ProfileShow.of(entry, raw: nil), name: account.name, icon: Painter.image(icon, pixels: 128),
+                              problem: problem, refreshing: refreshing)
     }
 
     func detailsActions() -> DetailsActions {
@@ -380,29 +370,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     // MARK: data
 
-    var isStale: Bool {
-        guard let usage else { return true }
-        let limit = max(TimeInterval(pollMinutes * 60) * 3, 30 * 60)
-        return Date().timeIntervalSince(usage.fetchedAt) > limit
-    }
-
     /// The address the folder names, as the record has it (the agent's reader wrote it): the icon never reads .claude.json.
     var expectedEmail: String? { status?.expectedEmail }
 
-    /// The login in the Keychain belongs to a different account than this folder is set up for.
-    var mismatch: Bool {
-        guard let a = loginEmail, let b = expectedEmail else { return false }
-        return a.lowercased() != b.lowercased()
-    }
-
+    /// The face, from the one value: grey for old numbers or none (ProfileDisplay.grey: the one threshold, StatusAges), the
+    /// warning for a sign-in on another account, the countdown for the full limit that holds the profile back.
     func model() -> TileModel {
-        TileModel(label: account.label, fiveHour: usage?.fiveHour, weekly: usage?.weekly,
-                  stale: isStale || expired || noLogin, style: style, warn: mismatch,
-                  tint: entry.color, frame: entry.frame,
-                  fiveHourElapsed: windowElapsed(usage?.fiveHourResets, 5 * 3600),
-                  weeklyElapsed: windowElapsed(usage?.weeklyResets, 7 * 86400), windowOpen: claudeOpen && entry.windowDot,
-                  countdown: AtLimit.tileCountdown(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
-                                                   weekly: usage?.weekly, weeklyResets: usage?.weeklyResets))
+        let d = display
+        return TileModel(label: account.label, fiveHour: usage?.fiveHour, weekly: usage?.weekly,
+                         stale: d.grey, style: style, warn: d.otherAccount,
+                         tint: entry.color, frame: entry.frame,
+                         fiveHourElapsed: windowElapsed(usage?.fiveHourResets, 5 * 3600),
+                         weeklyElapsed: windowElapsed(usage?.weeklyResets, 7 * 86400), windowOpen: claudeOpen && entry.windowDot,
+                         countdown: AtLimit.tileCountdown(d.full))
     }
 
     func redraw() {
@@ -466,20 +446,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             settings.target = self; short.addItem(settings)
             return short
         }
+        return profileMenu()
+    }
+
+    /// The Dock icon's own menu (right-click), all from the one value (ProfileShow): the account and its lamp, the line, the
+    /// full limit and the offer, the limits, the one key.
+    func profileMenu() -> NSMenu {
+        let d = display
         let m = NSMenu(); m.autoenablesItems = false
-        // the active account and the one line of state, from the profile's record (AccountResolver)
+        // the active account, its lamp and the one line of state
         let top = info(SwitchMenu.dockTitle(name: account.name, view, plan: plan.map(Account.planWords)))
-        if view.lit, SwitchMenu.inUseShort(view) != nil { top.image = SwitchMenu.lamp() }
+        if d.lamp, SwitchMenu.inUseShort(view) != nil { top.image = SwitchMenu.lamp() }
         m.addItem(top)
-        if let n = view.line { m.addItem(info(n)) }
+        if let n = show?.lineWords(short: false) { m.addItem(info(n)) }
         m.addItem(.separator())
         // the profile's other accounts (Accounts.swift): Switch account › with every standby account; while a limit is full,
         // the one offered first also right under the full line. Each opens cl_audit's Switch page with that account picked
         let listed = entry.listed(by: view)                  // never the account in use on standby too
         let lines = SwitchMenu.lines(listed)
         // while a limit is full, both times first: "5-hour full · back at 15:28, in 1h 42m"
-        if let full = AtLimit.blocker(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets,
-                                      weekly: usage?.weekly, weeklyResets: usage?.weeklyResets) {
+        if let full = d.full {
             let i = info("\(full.title) · \(full.both())")
             i.attributedTitle = NSAttributedString(string: i.title, attributes: [
                 .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: Painter.crimson])
@@ -510,14 +496,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let why = problem { m.addItem(info(why)) }
         if let note = status?.renewNote { m.addItem(info(note)) }
         if Privacy.shared.show || loginEmail == nil { m.addItem(info("Login: \(loginEmail ?? "checking…")")) }
-        if mismatch, let want = expectedEmail {
+        if d.otherAccount, let want = expectedEmail {
             m.addItem(info(Privacy.shared.show ? "⚠︎ This folder is set up for \(want)" : "⚠︎ This folder is set up for a different account"))
         }
-        if mismatch || noLogin || expired {
-            let login = NSMenuItem(title: "Log in…", action: #selector(logIn), keyEquivalent: "")
-            login.target = self; m.addItem(login)
-        } else if let k = SplitUsage.of(status)?.key {
-            // the split: Claude Code's own sign-in, to the Claude app's account (the same Log in, its address filled in)
+        // the one key: Log in…, or in the split Claude Code's own sign-in to the Claude app's account (the same Log in, its
+        // address filled in)
+        if let k = show?.keyWords(short: false) {
             let login = NSMenuItem(title: k, action: #selector(logIn), keyEquivalent: "")
             login.target = self; m.addItem(login)
         }
@@ -568,8 +552,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func logIn() {
         // the profile's one folder; a folder that is gone is said, never made again (ClaudeCLI.logIn)
         let reading = Account(entry)
-        // the split (SplitUsage): Claude Code logs in to the Claude app's account
-        ClaudeCLI.logIn(reading, email: SplitUsage.loginAddress(status, usual: expectedEmail))
+        // the split: Claude Code logs in to the Claude app's account (ProfileShow.loginAddress)
+        ClaudeCLI.logIn(reading, email: show.map { $0.loginAddress } ?? expectedEmail)
     }
 }
 

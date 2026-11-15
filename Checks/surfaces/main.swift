@@ -36,6 +36,20 @@ func profile(_ id: String, _ dir: String, _ s: Seat?) -> AccountEntry {
     return e
 }
 _ = NSApplication.shared
+/// The Dock icon of a profile as the Dock app draws it from the one value (IconApp: its face, its panel, its right-click menu).
+@MainActor func dockOf(_ e: AccountEntry, _ s: ProfileShow) -> (face: TileModel, panel: DetailsInfo, menu: NSMenu) {
+    let d = AppDelegate(); d.entry = e; d.show = s
+    return (d.model(), d.detailsInfo(), d.profileMenu())
+}
+/// The menu bar icon's menu of a profile, as the agent builds it (MenuBarItems.menuNeedsUpdate).
+@MainActor func menuBarMenu(_ s: ProfileShow) -> NSMenu {
+    let items = MenuBarItems(profiles: { [MenuBarItems.Profile(show: s)] }, refresh: { _ in })
+    let m = NSMenu(title: s.entry.id)
+    items.menuNeedsUpdate(m)
+    return m
+}
+/// Every title of a menu and its submenus.
+func titles(_ m: NSMenu) -> [String] { m.items.flatMap { [$0.title] + ($0.submenu.map(titles) ?? []) } }
 /// The Dock icon's preview (Settings.swift's `preview`, which the Dock's tiles and Settings' tile draw) for a record that has no
 /// numbers (signed out, expired, split) or none at all (an existing profile whose record is missing): the blank tile, never the
 /// samples (23 % and 41 %), which only a profile that doesn't exist yet (`sample: true`, no record) draws.
@@ -276,16 +290,17 @@ do {
         _ = Store.writeStatus("main", rec)
         let want = AccountView.of(Store.status(for: main))
         let views: [(String, AccountView)] = [
-            ("menu bar", MenuBarItems.Profile(entry: main, usage: nil, view: AccountView.of(Store.status(for: main))).view),
+            ("menu bar", MenuBarItems.Profile(show: ProfileShow.load(main)).view),
             ("card", AccountRow(entry: main, status: Store.status(for: main)).view),
             ("palette row", { let row = AccountRow(entry: main, status: Store.status(for: main))
                               var v = row.view; v.label = row.needsLogin || row.view.clash != nil ? v.label : row.subtitle; return v }()),
             ("Settings", AccountSettings(entry: .constant(main), model: model).view),
             ("Switch page", SwitchPage(entry: main, standby: main.standby[0], model: model, runner: model.runner(of: main.id)).view)]
         for (s, v) in views { check(v == want, "\(name): \(s) agrees on the account, the numbers' owner and the line") }
-        let panel = DetailsInfo(name: "x", icon: NSImage(), login: nil, expected: nil, mismatch: false, plan: nil, fiveHour: nil, fiveHourResets: nil,
-                                weekly: nil, weeklyResets: nil, updated: nil, source: nil, problem: nil, renewNote: nil, needsLogin: false).taking(want)
-        check(panel.active == want.label && panel.activeNote == want.line && panel.activeLit == want.lit, "\(name): the Dock panel agrees")
+        // the Dock panel from the one value (each case here is signed in and readable: the lamp is the record's)
+        let panel = DetailsInfo.of(ProfileShow.load(main), name: "x", icon: NSImage(), problem: nil)
+        check(panel.active == want.label && (panel.activeNote == want.line || SplitUsage.of(Store.status("main")) != nil) && panel.activeLit == want.lit,
+              "\(name): the Dock panel agrees")
         check(SwitchMenu.dockTitle(name: "P", want, plan: nil) == (want.short.map { "Claude P · \($0) in use" } ?? "Claude P"), "\(name): the Dock menu agrees")
         check(QuickChatTarget(main).email == want.label, "\(name): quick chat agrees")
         // (B8: in the split, the Claude app on another account than Claude Code, they are not the profile's: none show)
@@ -349,7 +364,7 @@ do {
     check(after.seat?.same(u2) == true && want.label == u2.email, "after the switch the record names ultra-2: \(want.label ?? "-")")
     let page = SwitchPage(entry: after, standby: after.standby[0], model: m, runner: m.runner(of: "sw"))
     let views: [(String, AccountView)] = [
-        ("menu bar", MenuBarItems.Profile(entry: after, usage: nil, view: AccountView.of(Store.status("sw"))).view),
+        ("menu bar", MenuBarItems.Profile(show: ProfileShow.load(after)).view),
         ("card", AccountRow(entry: after, status: Store.status(for: after)).view),
         ("Settings", AccountSettings(entry: .constant(after), model: m).view),
         ("Switch page", page.view)]
@@ -507,20 +522,19 @@ do {
         let rec = Store.status(for: p)
         check(rec?.state == "expired" && rec?.weekly == nil && rec?.fiveHour == nil && rec?.weeklyResets == nil && rec?.fiveHourResets == nil,
               "\(what): the record as every screen reads it has no numbers, state expired")
-        let mb = MenuBarItems.Profile(entry: p, usage: Usage.of(rec), problem: rec?.problem, needsLogin: MenuBarItems.needsLogin(rec),
-                                      view: AccountView.of(rec))
+        let show = ProfileShow.load(p, now: now)
+        let mb = MenuBarItems.Profile(show: show, problem: rec?.problem)
         let glyph = MenuBarItems.item(mb, now: now)
-        check(mb.usage == nil && glyph.week == nil && glyph.five == nil && glyph.countdown == nil && mb.needsLogin,
-              "\(what): the menu bar has no bars, no countdown, and Log in…")
+        check(mb.usage == nil && glyph.week == nil && glyph.five == nil && glyph.countdown == nil && show.needsLogin
+              && show.keyWords(short: false) == "Log in…" && !show.display.lamp && show.display.grey,
+              "\(what): the menu bar has no bars, no countdown, Log in…, the lamp off")
         let row = AccountRow(entry: p, status: rec)
         check(row.limits.allSatisfy { $0.p == nil } && row.full == nil && row.needsLogin && row.subtitle == "login expired",
               "\(what): the card (and Settings' in-use box, which draws its limits) says login expired, no bars, Log in…")
         check(previewShowsNone(p, rec) && panelShowsNone(p, rec), "\(what): the Dock icon's preview and Settings' panel preview have no numbers, never the samples")
-        let panel = DetailsInfo(name: p.name, icon: NSImage(), login: rec?.loginEmail, expected: rec?.expectedEmail, mismatch: false, plan: rec?.plan,
-                                fiveHour: rec?.fiveHour, fiveHourResets: rec?.fiveHourResets, weekly: rec?.weekly, weeklyResets: rec?.weeklyResets,
-                                updated: rec?.updatedAt, source: rec?.source, problem: rec?.problem, renewNote: nil, needsLogin: rec?.needsLogin ?? false)
-        check(panel.weekly == nil && panel.fiveHour == nil && panel.needsLogin, "\(what): the Dock panel has no numbers and Log in…")
-        check(DetailsInfo.noNumbersWords(rec) == "Login expired", "\(what): the Dock panel's age line says Login expired, never Reading usage…")
+        let panel = DetailsInfo.of(show, name: p.name, icon: NSImage(), problem: rec?.problem)
+        check(panel.weekly == nil && panel.fiveHour == nil && panel.needsLogin && !panel.activeLit, "\(what): the Dock panel has no numbers, Log in…, the lamp off")
+        check(panel.noNumbers == "Login expired", "\(what): the Dock panel's age line says Login expired, never Reading usage…")
         let target = QuickChatTarget(p), level = QuickChatLevel(Usage.of(rec), now: now)
         check(target.loginWords == "login expired" && level.week == nil && level.fiveHour == nil && level.full(now) == nil,
               "\(what): quick chat's line says login expired, no level")
@@ -548,7 +562,7 @@ do {
     live.updatedAt = now.addingTimeInterval(-60); live.source = "Claude Code status line"
     _ = Store.writeStatus("stale", live)
     let liveShown = Store.status(for: p)
-    check(liveShown?.weekly == 53 && DetailsInfo.noNumbersWords(liveShown) == nil, "a fresh status line still shows its numbers, and the panel its age")
+    check(liveShown?.weekly == 53 && ProfileShow.load(p).noNumbersWords == nil, "a fresh status line still shows its numbers, and the panel its age")
     check(Usage.of(liveShown)?.weekly == 53 && AccountRow(entry: p, status: liveShown).weekly == 53, "…on the menu bar and the card alike")
     Login.runSecurity = { _ in (44, Data()) }
 
@@ -560,7 +574,7 @@ do {
     let shown = Store.status(for: p)
     check(shown?.fiveHour == nil && shown?.fiveHourResets == nil && shown?.weekly == 53 && shown?.scoped?.first?.percent == nil,
           "Anthropic's numbers: the 5-hour limit past its reset has no percent (no 100% \"in 0 min\"), the week stays, Fable past its reset none")
-    let mbA = MenuBarItems.item(MenuBarItems.Profile(entry: p, usage: Usage.of(shown), view: AccountView.of(shown)), now: now)
+    let mbA = MenuBarItems.item(MenuBarItems.Profile(show: ProfileShow.load(p, now: now)), now: now)
     check(mbA.five == nil && mbA.week == 53 && mbA.countdown == nil, "the menu bar: no 5-hour percent, no countdown")
     check(AccountRow(entry: p, status: shown).full == nil, "the card: nothing full")
     var u = Usage(fiveHour: 100, fiveHourResets: now.addingTimeInterval(-30), weekly: 53, weeklyResets: now.addingTimeInterval(86400),
@@ -590,15 +604,16 @@ do {
         let rec = Store.status(for: p)
         check(rec?.state == "noLogin" && rec?.weekly == nil && rec?.fiveHour == nil && (!keepsWhen || rec?.updatedAt != nil),
               "\(what): the record as every screen reads it has no numbers\(keepsWhen ? ", when they were read kept" : "")")
-        let mb = MenuBarItems.Profile(entry: p, usage: Usage.of(rec), problem: rec?.problem, needsLogin: MenuBarItems.needsLogin(rec),
-                                      view: AccountView.of(rec))
+        let show = ProfileShow.load(p, now: now)
+        let mb = MenuBarItems.Profile(show: show, problem: rec?.problem)
         let glyph = MenuBarItems.item(mb, now: now)
-        check(mb.usage == nil && glyph.week == nil && glyph.five == nil && mb.needsLogin, "\(what): the menu bar has no bars, and Log in…")
+        check(mb.usage == nil && glyph.week == nil && glyph.five == nil && show.needsLogin && !show.display.lamp,
+              "\(what): the menu bar has no bars, Log in…, the lamp off")
         let row = AccountRow(entry: p, status: rec)
         check(row.limits.allSatisfy { $0.p == nil } && row.needsLogin && row.subtitle == "no Claude Code login",
               "\(what): the card and Settings' box: no bars, its state line, Log in…")
         check(previewShowsNone(p, rec) && panelShowsNone(p, rec), "\(what): the Dock icon's preview and Settings' panel preview have no numbers, never the samples")
-        check(rec?.needsLogin == true && rec?.fiveHour == nil && DetailsInfo.noNumbersWords(rec) == "Signed out",
+        check(rec?.needsLogin == true && rec?.fiveHour == nil && show.noNumbersWords == "Signed out",
               "\(what): the Dock panel (from the same record): no numbers, Log in…, its age line says Signed out")
         let q = QuickChatTarget(p), ql2 = QuickChatLevel(Usage.of(rec), now: now)
         check(q.loginWords == "no Claude Code login" && ql2.week == nil && ql2.fiveHour == nil, "\(what): quick chat's line says so, no level")
@@ -1147,16 +1162,22 @@ do {
     check(split?.numbersHint == "Log Claude Code in Terminal in to \(Privacy.masked(pat.email!)) to see its numbers."
           && split?.shortLine == "Can't read \(Privacy.masked(pat.email!))'s usage\nTerminal: \(Privacy.masked(mo.email!))",
           "the line under it and the short form: \(split?.numbersHint ?? "-") / \(split?.shortLine ?? "-")")
-    let panelInfo = DetailsInfo(name: "x", icon: NSImage(), login: nil, expected: nil, mismatch: false, plan: nil, fiveHour: nil, fiveHourResets: nil,
-                                weekly: nil, weeklyResets: nil, updated: nil, source: nil, problem: nil, renewNote: nil, needsLogin: false,
-                                noFiveHour: false, noNumbers: nil).takingSplit(split)
+    let splitShow = ProfileShow.load(e, now: now)
+    let panelInfo = DetailsInfo.of(splitShow, name: "x", icon: NSImage(), problem: nil)
     check(split?.shortKey == "Log in to \(Privacy.masked(pat.email!)) in Terminal…"
-          && panelInfo.activeNote == split?.shortLine && panelInfo.splitKey == split?.shortKey,
-          "the Dock panel takes the short line and the short key: \(split?.shortKey ?? "-")")
+          && panelInfo.activeNote == split?.shortLine && panelInfo.splitKey == split?.shortKey && panelInfo.activeLit && !panelInfo.needsLogin,
+          "the Dock panel takes the short line and the short key, the lamp lit (pat is in use): \(split?.shortKey ?? "-")")
+    check(splitShow.display.none == .split && splitShow.display.lamp && splitShow.display.full == nil && splitShow.display.grey
+          && splitShow.display.key == .logInCode(to: pat.email!) && splitShow.keyWords(short: false) == split?.key
+          && splitShow.loginAddress == pat.email && splitShow.numbersHint == split?.numbersHint,
+          "the value in the split: no numbers (the split), nothing full, grey, lit, the key to pat, pat's address for Log in")
     // the menu bar row's line: the short form in the split, the record's line otherwise (MenuBarRow.lineWords)
-    let barProfile = MenuBarItems.Profile(entry: e, usage: Usage.of(head), problem: head?.problem, needsLogin: false, view: AccountView.of(head), split: split)
-    check(MenuBarRow.lineWords(barProfile) == split?.shortLine
-          && MenuBarRow.lineWords(MenuBarItems.Profile(entry: e, usage: nil, problem: nil, needsLogin: false, view: AccountView.of(head), split: nil)) == AccountView.of(head).line,
+    let barProfile = MenuBarItems.Profile(show: splitShow, problem: head?.problem)
+    var notSplit = record(app: appPat, code: mo, reading: mo.email, weekly: 40)
+    notSplit.resolved = AccountResolver.resolve(e, among: [e], app: .unknown, code: mo, loginEmail: mo.email, names: [:], now: now)
+    let notSplitShow = ProfileShow.of(e, raw: notSplit, now: now)
+    check(MenuBarRow.lineWords(barProfile) == split?.shortLine && notSplitShow.display.split == nil
+          && MenuBarRow.lineWords(MenuBarItems.Profile(show: notSplitShow)) == notSplit.resolved?.line,
           "the menu bar row says the short split line, and the record's line outside the split")
     // every key and menu item reads its label once, with its ellipsis (the menus no longer add one)
     check(split?.key?.hasSuffix("…") == true && split?.key?.hasSuffix("……") == false && split?.shortKey?.hasSuffix("…") == true,
@@ -1396,8 +1417,13 @@ do {
     let old = decoded["old"], mid = decoded["mid"]
     check(old?.resolved == nil && old?.numbersOwner == nil && old?.ownerUnconfirmed == nil && old?.noFiveHour == nil && old?.weekly == 33,
           "a file from before the newer keys: they are empty, the numbers as written")
-    check(mid?.resolved?.codeName == nil && mid?.resolved?.readStale == nil && mid?.resolved?.switchWaits == nil && mid?.resolved?.clash == "Home",
-          "a resolver answer from before its newer keys: they are empty")
+    check(mid?.resolved?.codeName == nil && mid?.resolved?.readStale == nil && mid?.resolved?.switchWaits == nil && mid?.resolved?.clash == "Home"
+          && mid?.resolved?.clashID == nil, "a resolver answer from before its newer keys (clashID too): they are empty")
+    // today's writer with the clash's profile id (step 3a): the field is only added, and round-trips
+    let withID = #"{"resolved":{"at":1800000000,"clash":"Home","clashID":"home","differs":false,"fromApp":false,"lit":false},"state":"ok"}"#
+    let idRec = StatusCodec.decode(Data(withID.utf8))
+    check(idRec?.resolved?.clashID == "home" && idRec.flatMap(StatusCodec.encode).map { String(decoding: $0, as: UTF8.self) } == withID,
+          "a record naming the clash's profile id decodes and encodes back byte for byte")
     check(StatusCodec.decode(Data(#"{"state":"ok","weekly":12,"later":{"x":1}}"#.utf8))?.weekly == 12 && StatusCodec.decode(Data("{}".utf8)) == nil
           && StatusCodec.decode(Data("not json".utf8)) == nil, "a key from a newer version is skipped; no state, or not JSON: no record")
 
@@ -1440,6 +1466,127 @@ do {
     let fullShown = decoded["full"]!.shown(decoded["full"]!.headline(now: at, ages: ages), now: at)
     check(fullShown.weekly == 64 && fullShown.fiveHour == 37.5 && fullShown.scoped?.first?.percent == 12 && fullShown.credits?.used == 4.2
           && fullShown.plan == "Ultra", "the profile's own numbers: all of them")
+}
+
+// ============ 9. ProfileCore step 3a: one value per profile (ProfileShow), drawn by the menu bar, the Dock icon and its panel ============
+// (on the main actor: the Dock app's delegate and the menu bar's items are drawn there)
+MainActor.assumeIsolated {
+    let now = Date()
+    var e = profile("show", "~/.claude-show", u1); e.claudeWindow = false
+    e.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "k2", plan: "Max", lastInUse: now.addingTimeInterval(-86400))]
+    try! Store.save([e, other])
+    func rec(_ state: String = "ok", week: Double? = 40, five: Double? = 12, age: TimeInterval = 60, weekIn: TimeInterval = 2 * 86400,
+             fiveIn: TimeInterval = 3600, login: String? = u1.email, code: Seat? = u1) -> IconStatus {
+        var s = IconStatus(state: state); s.loginEmail = login; s.expectedEmail = u1.email; s.weekly = week; s.fiveHour = five
+        s.weeklyResets = now.addingTimeInterval(weekIn); s.fiveHourResets = now.addingTimeInterval(fiveIn)
+        s.updatedAt = now.addingTimeInterval(-age); s.source = "Anthropic"; s.plan = "Max"
+        s.resolved = AccountResolver.resolve(e, among: [e, other], app: .unknown, code: code, loginEmail: login, names: [:], now: now)
+        return s
+    }
+    func show(_ r: IconStatus, _ entry: AccountEntry? = nil) -> ProfileShow {
+        _ = Store.writeStatus("show", r); return ProfileShow.load(entry ?? e, now: now)
+    }
+    func lamp(_ m: NSMenu) -> Bool { m.items.first?.image != nil }
+    func items(_ m: NSMenu) -> [NSMenuItem] { m.items.flatMap { [$0] + ($0.submenu.map(items) ?? []) } }
+    let u2Short = AccountNames.short(u2.email!)
+
+    // the one formula for the thresholds: the app's and the widget's
+    check(Store.ages(e) == StatusAges.of(pollMinutes: 5) && StatusAges.freshFor(pollMinutes: 5) == 6 * 60
+          && StatusAges.greyAfter(pollMinutes: 5) == 30 * 60 && StatusAges.freshFor(pollMinutes: 20) == 21 * 60
+          && StatusAges.greyAfter(pollMinutes: 20) == 60 * 60 && StatusAges.freshFor(pollMinutes: 1) == 6 * 60,
+          "the thresholds: fresh for the read interval (5 min at least) plus a minute, grey after three reads (30 min at least)")
+
+    // fresh, the profile's own: numbers, lit, no key, not grey, on every 3a surface
+    let ok = show(rec())
+    let okDock = dockOf(e, ok), okItem = MenuBarItems.item(MenuBarItems.Profile(show: ok), now: now)
+    check(ok.display.usage?.weekly == 40 && ok.display.tier == .fresh && ok.display.lamp && ok.display.key == nil && !ok.display.grey
+          && okItem.week == 40 && !okItem.stale && !okDock.face.stale && okDock.face.weekly == 40 && okDock.panel.activeLit && lamp(okDock.menu)
+          && titles(okDock.menu).contains("Weekly limit: 40% · resets \(AppDelegate.when(now.addingTimeInterval(2 * 86400)))"),
+          "fresh: the numbers, the lamp lit, no key; the menu bar, the Dock face, its panel and its menu alike")
+
+    // the tiers: last known at 10 minutes (a full week left out, the 5-hour shown), grey past 30 minutes
+    let known = show(rec(week: 100, age: 10 * 60))
+    let knownDock = dockOf(e, known)
+    check(known.display.tier == .lastKnown && known.display.usage?.weekly == nil && known.display.usage?.fiveHour == 12 && known.display.full == nil
+          && !known.display.grey && MenuBarItems.item(MenuBarItems.Profile(show: known), now: now).countdown == nil
+          && knownDock.face.countdown == nil && !knownDock.face.stale && knownDock.panel.full == nil,
+          "10 minutes old: last known, a full week left out, no countdown anywhere, not grey")
+    check(show(rec(age: 29 * 60)).display.tier == .lastKnown, "29 minutes old: last known, not grey yet")
+    let old = show(rec(age: 40 * 60))
+    let oldDock = dockOf(e, old), oldItem = MenuBarItems.item(MenuBarItems.Profile(show: old), now: now)
+    check(old.display.tier == .stale && old.display.grey && old.display.usage?.weekly == 40 && old.display.level(40) == .none
+          && oldItem.stale && oldItem.week == 40 && oldDock.face.stale && oldDock.face.weekly == 40,
+          "40 minutes old: grey on the menu bar (as on the Dock face, one threshold), the numbers still drawn")
+    var slow = e; slow.pollMinutes = 20
+    check(show(rec(age: 40 * 60), slow).display.tier == .lastKnown && show(rec(age: 61 * 60), slow).display.tier == .stale,
+          "a 20-minute read interval: grey only after an hour")
+
+    // full and fresh: the countdown, the full line and the offer; full and old: none of them
+    let full = show(rec(week: 100, weekIn: 3 * 3600))
+    let fullDock = dockOf(e, full), fullBar = menuBarMenu(full)
+    check(full.display.full?.kind == .week && MenuBarItems.item(MenuBarItems.Profile(show: full), now: now).countdown != nil
+          && fullDock.face.countdown != nil && fullDock.panel.full != nil
+          && titles(fullDock.menu).contains { $0.hasPrefix("Week full · ") } && titles(fullDock.menu).contains("Switch to \(u2Short)…")
+          && titles(fullBar).contains("Switch to \(u2Short)…"),
+          "a fresh full week: the countdown on both icons, the full panel, the full line and the offer in both menus")
+    let fullOld = show(rec(week: 100, age: 10 * 60, weekIn: 3 * 3600))
+    check(fullOld.display.full == nil && dockOf(e, fullOld).face.countdown == nil && !titles(dockOf(e, fullOld).menu).contains("Switch to \(u2Short)…")
+          && !titles(menuBarMenu(fullOld)).contains("Switch to \(u2Short)…"), "the same full week read 10 minutes ago: nothing full, no offer")
+
+    // a reset that has passed: that limit has no percent; both passed: no numbers at all
+    let pastReset = show(rec(week: 100, weekIn: -60))
+    check(pastReset.display.usage?.weekly == nil && pastReset.display.usage?.weeklyResets == nil && pastReset.display.usage?.fiveHour == 12
+          && pastReset.display.full == nil && dockOf(e, pastReset).face.countdown == nil, "the week's reset passed: no week, nothing full, the 5-hour shown")
+    let gone = show(rec(weekIn: -60, fiveIn: -60))
+    check(gone.display.usage == nil && gone.display.none == .notRead && gone.display.grey && dockOf(e, gone).face.stale
+          && dockOf(e, gone).panel.weekly == nil, "both resets passed: no numbers (nothing left), grey")
+
+    // the lamp agrees with the face (Settings' rule): off while the sign-in needs the person or can't be read
+    for (state, words) in [("denied", "refused"), ("unreadable", "unreadable")] {
+        let s = show(rec(state))
+        let dk = dockOf(e, s)
+        check(s.display.usage?.weekly == 40 && !s.display.lamp && s.display.key == nil && !dk.panel.activeLit && !lamp(dk.menu)
+              && !titles(dk.menu).contains("Log in…") && !titles(menuBarMenu(s)).contains("Log in…"),
+              "a sign-in \(words): the numbers as read, the lamp off on the menu bar row, the Dock panel and its menu, no Log in")
+    }
+    for state in ["expired", "noLogin"] {
+        let s = show(rec(state))
+        let dk = dockOf(e, s)
+        check(s.display.usage == nil && !s.display.lamp && s.display.needsLogin && dk.face.stale && !dk.panel.activeLit && !lamp(dk.menu)
+              && titles(dk.menu).contains("Log in…") && titles(menuBarMenu(s)).contains("Log in…") && dk.face.countdown == nil,
+              "\(state): no numbers, grey, the lamp off, Log in… in both menus")
+    }
+    let mixed = show(rec(login: u3.email, code: u1))
+    let mixedDock = dockOf(e, mixed)
+    check(mixed.display.otherAccount && mixed.display.needsLogin && !mixed.display.lamp && mixedDock.face.warn && mixedDock.panel.mismatch
+          && !lamp(mixedDock.menu) && titles(mixedDock.menu).contains("Log in…"),
+          "the sign-in on another account than the folder's: the warning, Log in…, the lamp off")
+
+    // another profile's account: the clash names that profile by its id (names needn't be unique), the lamp off
+    let clash = show(rec(login: u3.email, code: u3))
+    check(Store.status("show")?.resolved?.clashID == "other" && clash.display.clash == ProfileDisplay.Clash(id: "other", name: "Other")
+          && !clash.display.lamp && !dockOf(e, clash).panel.activeLit,
+          "Claude Code's folder on another profile's account: the clash by id (other) and name, the lamp off")
+
+    // standby is never read: no surface shows a standby account with numbers
+    for (what, s) in [("fresh", ok), ("full", full)] {
+        let key = AccountEntry.switchKey("show", "k2")
+        let standbyLines = (items(dockOf(e, s).menu) + items(menuBarMenu(s))).filter { ($0.representedObject as? String) == key }.map(\.title)
+        check(!standbyLines.isEmpty && standbyLines.allSatisfy { !$0.contains("%") },
+              "\(what): the standby account is listed in both menus, never with numbers: \(standbyLines)")
+    }
+    // unconfirmed: as read, never full, said so
+    var unsure = rec(week: 100, weekIn: 3 * 3600); unsure.ownerUnconfirmed = true
+    let us = show(unsure)
+    check(us.display.usage?.fiveHour == 12 && us.display.usage?.weekly == nil && us.display.full == nil && us.lineWords(short: true) == Store.unconfirmedWords
+          && dockOf(e, us).panel.activeNote == Store.unconfirmedWords && dockOf(e, us).face.countdown == nil,
+          "unconfirmed: as read, a full week left out, the line says so on the row and the panel")
+    // no record at all: nothing, grey, no lamp
+    Store.removeStatus("show")
+    let noRec = ProfileShow.load(e, now: now)
+    check(noRec.record == nil && noRec.display.usage == nil && noRec.display.grey && !noRec.display.lamp && dockOf(e, noRec).face.stale,
+          "no record: no numbers, grey, the lamp off")
+    try? Store.save([])
 }
 
 print("checks: \(passed) passed, \(failed) failed")

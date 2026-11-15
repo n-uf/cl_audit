@@ -54,8 +54,12 @@ extension AtLimit {
     /// The Dock icon's countdown face for a full limit (D1), or nil when nothing is full.
     static func tileCountdown(fiveHour: Double?, fiveHourResets: Date?, weekly: Double?, weeklyResets: Date?,
                               now: Date = Date()) -> TileCountdown? {
-        guard let b = blocker(fiveHour: fiveHour, fiveHourResets: fiveHourResets, weekly: weekly, weeklyResets: weeklyResets, now: now)
-        else { return nil }
+        tileCountdown(blocker(fiveHour: fiveHour, fiveHourResets: fiveHourResets, weekly: weekly, weeklyResets: weeklyResets, now: now), now: now)
+    }
+
+    /// The countdown face for the full limit that holds the profile back (ProfileDisplay.full), or nil.
+    static func tileCountdown(_ full: FullLimit?, now: Date = Date()) -> TileCountdown? {
+        guard let b = full else { return nil }
         let (big, small) = b.resets.map { TimeWords.tile($0, now: now) } ?? ("—", "")
         return TileCountdown(big: big, small: small, footer: b.tileFooter)
     }
