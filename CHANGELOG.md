@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.31 — 2026-11-14
+
 - The widget now decides whose usage it shows with the same rule as the menu bar and the Dock icon: when the Claude app and Claude Code are on different accounts, numbers whose account cl_audit couldn't confirm show there as read (never as full) instead of disappearing.
 
 ## 26.11.30 — 2026-11-14
