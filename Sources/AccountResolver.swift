@@ -102,16 +102,19 @@ struct SplitUsage: Equatable {
 
     /// "cl_audit can't read P@…'s usage: Claude Code in Terminal is signed in to M@…" (Claude Code inside the Claude app runs
     /// on the app's own sign-in, so the app's account is the one in use; only Terminal's login, the one cl_audit reads with,
-    /// is on M); a switch waiting for the app: "Switched to M@…: sign the Claude app in to M@… to finish"
+    /// is on M); a switch waiting for the app, the card's words on every surface (Settings, menu bar, widget, Dock panel,
+    /// quick chat): "Switching to M@…: one step left. Sign the Claude app in to M@… to finish."
     var line: String {
-        switched ? "Switched to \(Privacy.masked(code)): sign the Claude app in to \(Privacy.masked(code)) to finish"
+        switched ? "\(Self.switchingHead(code)). Sign the Claude app in to \(Privacy.masked(code)) to finish."
                  : "cl_audit can't read \(Privacy.masked(app))'s usage: Claude Code in Terminal is signed in to \(Privacy.masked(code))."
     }
-    /// The short form where space is short: "Can't read P@…'s usage" over "Terminal: M@…" (a switch waiting for the app has
-    /// no short form: its line is already short).
+    /// The short form where space is short: "Can't read P@…'s usage" over "Terminal: M@…"; a switch waiting for the app:
+    /// its first clause, "Switching to M@…: one step left".
     var shortLine: String {
-        switched ? line : "Can't read \(Privacy.masked(app))'s usage\nTerminal: \(Privacy.masked(code))"
+        switched ? Self.switchingHead(code) : "Can't read \(Privacy.masked(app))'s usage\nTerminal: \(Privacy.masked(code))"
     }
+    /// The after-switch heading, the same on the card (UsageNotice) and every other surface.
+    static func switchingHead(_ to: String) -> String { "Switching to \(Privacy.masked(to)): one step left" }
     /// Under the line, in place of "No numbers yet": what gives the numbers. Nil while a switch waits for the app (nothing
     /// to log in to then).
     var numbersHint: String? {

@@ -29,7 +29,7 @@ struct UsageNotice: Equatable {
         if let split = row.split {
             if split.switched {
                 let to = Privacy.masked(split.code)
-                return UsageNotice(tone: .amber, heading: "Switching to \(to): one step left",
+                return UsageNotice(tone: .amber, heading: SplitUsage.switchingHead(split.code),
                                   line: "Sign the Claude app in to \(to) to finish.", key: .none)
             }
             return UsageNotice(tone: .red, heading: "Terminal is signed in to \(Privacy.masked(split.code))",

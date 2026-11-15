@@ -1245,7 +1245,8 @@ do {
         _ = Store.writeStatus("spl", s)
         return SplitUsage.of(Store.status(for: e))
     }
-    let switchedLine = "Switched to \(Privacy.masked(mo.email!)): sign the Claude app in to \(Privacy.masked(mo.email!)) to finish"
+    // the card's after-switch words on every surface: the heading, then what's left; the short form is the heading
+    let switchedLine = "Switching to \(Privacy.masked(mo.email!)): one step left. Sign the Claude app in to \(Privacy.masked(mo.email!)) to finish."
     for (what, r) in [("linked (Claude Code reached mo)", linkedToMo), ("still open", toMo)] {
         let s = splitWith(app: appPat, newest: r)
         check(s?.switched == true && s?.line == switchedLine && s?.key == nil && s?.loginEmail == nil
