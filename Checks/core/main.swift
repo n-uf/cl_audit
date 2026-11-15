@@ -387,7 +387,8 @@ do {
 
     // the clash: carried with the other profile's id, the lamp off; unconfirmed: said first, never full
     let clash = makeFor(Headline.Owner(inUse: pat, signIn: mo, differs: true, elsewhere: true), read(40), clash: ProfileDisplay.Clash(id: "home", name: "Home"))
-    check(clash.clash == ProfileDisplay.Clash(id: "home", name: "Home") && !clash.lamp && clash.split == nil, "another profile's account: the clash by id, no split, the lamp off")
+    check(clash.clash == ProfileDisplay.Clash(id: "home", name: "Home") && !clash.lamp && clash.split == nil && clash.key == .logIn && clash.needsLogin,
+          "another profile's account: the clash by id, no split, the lamp off, the one key Log in (to the profile's own account)")
     let unsure = makeFor(Headline.Owner(inUse: pat, signIn: mo, differs: true, unconfirmed: true), read(100), note: "a line")
     check(unsure.usage?.fiveHour == 12 && unsure.usage?.weekly == nil && unsure.full == nil && unsure.line == .unconfirmed,
           "unconfirmed: as read, never full, said first")

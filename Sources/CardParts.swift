@@ -21,7 +21,7 @@ struct UsageNotice: Equatable {
 
     /// The notice for the card's profile, from its one value (ProfileShow): the split, the sign-in on another account than
     /// the folder's, another profile's account, expired, signed out, or not readable while there are no numbers. The key is
-    /// the value's (Sign in… whenever it has one); another profile's account keeps the approved card's Sign in… too.
+    /// the value's (Sign in… whenever it has one), to the value's address (ProfileShow.loginAddress).
     static func of(_ row: AccountRow) -> UsageNotice? {
         let show = row.show, d = show.display
         let name = row.entry.name.isEmpty ? "this profile" : row.entry.name
@@ -45,7 +45,7 @@ struct UsageNotice: Equatable {
             return UsageNotice(tone: .red, heading: "Terminal is signed in to another account", line: signIn(address), key: key)
         }
         if let other = d.clash {
-            return UsageNotice(tone: .red, heading: "Terminal is signed in to \(other.name)'s account", line: signIn(address), key: .signIn)
+            return UsageNotice(tone: .red, heading: "Terminal is signed in to \(other.name)'s account", line: signIn(address), key: key)
         }
         switch d.sign {
         case .expired:

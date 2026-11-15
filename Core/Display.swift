@@ -13,7 +13,8 @@
 // - the lamp (the account in use, and nothing in the way): lit for a known account in use, unless its sign-in needs the
 //   person or can't be read, or the sign-in is on another profile's account; in the split the lamp is the account in
 //   use's (lit: the sign-in that reads the numbers is the other account's matter);
-// - the one key: log in when the sign-in is on another account than the folder's, ran out or is gone; else, in the split,
+// - the one key: log in when the sign-in is on another account than the folder's or on another profile's account in use
+//   (the clash: the caller fills in the profile's own account, never the folder's), ran out or is gone; else, in the split,
 //   log the sign-in in to the account in use (only when its address is known, and never while a switch waits for the
 //   other app); else none;
 // - the line: numbers whose account couldn't be confirmed say so first, then the split, then the caller's own line.
@@ -55,7 +56,7 @@ public struct ProfileDisplay: Equatable {
 
     /// The one key the profile's sign-in needs.
     public enum Key: Equatable {
-        /// Log in again (the folder's account).
+        /// Log in again (the profile's own account: the folder's, or in a clash the one the profile has in use).
         case logIn
         /// The split: log the sign-in in to the account in use, this address filled in.
         case logInCode(to: String)
@@ -151,7 +152,7 @@ public struct ProfileDisplay: Equatable {
             AtLimit.blocker(fiveHour: u.fiveHour, fiveHourResets: u.fiveHourResets, weekly: u.weekly, weeklyResets: u.weeklyResets, now: now)
         } : nil
         let lamp = inUse && (answer.split != nil || (clash == nil && sign == .ok && !otherAccount))
-        let key: Key? = otherAccount || sign == .expired || sign == .signedOut ? .logIn
+        let key: Key? = otherAccount || clash != nil || sign == .expired || sign == .signedOut ? .logIn
             : answer.split.flatMap { s in s.switchWaits ? nil : splitTo.map { Key.logInCode(to: $0) } }
         let line: Line? = answer.unconfirmed ? .unconfirmed : answer.split.map { Line.split($0) } ?? note.map { Line.given($0) }
         return ProfileDisplay(usage: usage, none: none, readAt: readAt, tier: tier, full: full, lamp: lamp, key: key, line: line,

@@ -13,9 +13,10 @@ Nothing pending.
 ## 26.11.40 — 2026-11-15
 
 - The Claude app's sessions are found by one rule (the default profile's move and its counts, the accounts a window used and when, Restore's view of the window): folders named like an id, entries named `local_<id>.json`, never through a link; a window's "last used" now comes from its session entries alone, and its config.json and main.log are no longer read through a link.
-- The profile icon on the dashboard cards and in the palette now turns grey when the usage is old (three missed reads, 30 minutes at the usual setting), the same moment the Dock icon and the menu bar do, instead of after an hour.
+- The profile icon on the dashboard cards and in the palette now turns grey when the usage is old (three missed reads, 30 minutes at the usual setting), the same moment the Dock icon and the menu bar do, instead of after an hour. With no numbers to show (signed out, expired, the Claude app and Claude Code on different accounts, a sign-in that can't be read), it is grey at once, like the Dock icon.
 - The green lamp by the account in use on the dashboard card now goes off when the sign-in can't be read, or is on another account than the folder's or on another profile's, as it already did in the menu bar, the Dock icon and Settings.
-- The dashboard card's Sign in… key now follows the menus' rule. When the Claude app's account is known only by its id, the card says to sign Claude Code in Terminal in to the Claude app's account instead of offering a key that fills in no address; while a switch waits for the Claude app, Sign in… shows only when Terminal's sign-in has run out or is gone.
+- The dashboard card's Sign in… key now follows the menus' rule. When the Claude app's account is known only by its id, the card says to sign Claude Code in Terminal in to the Claude app's account instead of offering a key that fills in no address; while a switch waits for the Claude app, Sign in… shows only when Terminal's sign-in has run out, is gone or is on another account.
+- When Claude Code's folder is signed in to another profile's account, Sign in… now signs Terminal in to the profile's own account (the Claude app's, when it decided which account is in use) instead of the other profile's, on the dashboard card and in Settings. The menu bar menu, the Dock icon's menu and its panel now offer the same Sign in… there too.
 
 ## 26.11.39 — 2026-11-15
 

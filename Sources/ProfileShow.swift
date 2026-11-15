@@ -74,7 +74,16 @@ struct ProfileShow {
         display.none == .expired ? "Sign-in expired" : display.none == .signedOut ? "Signed out" : nil
     }
 
-    /// The address a Sign in fills in: in the split only the app's own (nil: none filled in, never Claude Code's), else the
-    /// folder's. Every Sign in takes it here (the menus, quick chat, the card, Settings ▸ Accounts' in-use box).
-    var loginAddress: String? { display.split != nil ? splitWords?.loginEmail : record?.expectedEmail }
+    /// The address a Sign in fills in: in the split only the app's own (nil: none filled in, never Claude Code's); in a
+    /// clash the profile's own account in use (the app's, when the app decided it, else the profile's seat), never the
+    /// folder's, which is the other profile's; else the folder's. Every Sign in takes it here (the menus, quick chat, the
+    /// card, Settings ▸ Accounts' in-use box).
+    var loginAddress: String? {
+        if display.split != nil { return splitWords?.loginEmail }
+        if display.clash != nil {
+            if record?.resolved?.fromApp == true, let l = view.label, l.contains("@") { return l }
+            return entry.seat?.email
+        }
+        return record?.expectedEmail
+    }
 }
