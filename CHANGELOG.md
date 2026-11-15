@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.33 — 2026-11-15
+
 - The dashboard card: when a profile has no numbers to show, it says why in one heading and one sentence (Terminal signed out, its sign-in expired, Terminal on another account or on another profile's account, the Keychain not handing the sign-in over, a switch with one step left), with one compact key. Standby accounts no longer sit on the card; while a limit is full, a compact Switch account key opens a menu of them, by address only. The refresh time sits in a badge, and every key is compact.
 - Settings ▸ Accounts shows the profile's accounts as In use and Standby. Click anywhere on a standby account to pick it for a switch. An account in use that Claude Code in Terminal isn't signed in to is marked red, with Sign in….
 - When the Keychain doesn't hand the sign-in over, the last numbers stay and the card asks you to unlock it, then Refresh now.
