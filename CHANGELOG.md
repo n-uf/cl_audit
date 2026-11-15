@@ -13,8 +13,8 @@ the notes before updating.
 ## 26.11.31 — 2026-11-14
 
 - The widget now decides whose usage it shows with the same rule as the menu bar and the Dock icon: when the Claude app and Claude Code are on different accounts, numbers whose account cl_audit couldn't confirm show there as read (never as full) instead of disappearing.
-- The menu bar icon and its menu now turn grey when the usage is old (three missed reads, 30 minutes at the usual setting), the same moment the Dock icon does.
-- The green "in use" lamp in the menu bar menu, the Dock icon's menu and its panel now goes off when the sign-in has run out, is gone, is on another account or can't be read, as it already did in Settings.
+- The menu bar icon and the bars at the top of its menu now turn grey when the usage is old (three missed reads, 30 minutes at the usual setting), the same moment the Dock icon does.
+- The green "in use" lamp in the menu bar menu, the Dock icon's menu and its panel now goes off when the sign-in has run out, is gone, can't be read, or is on another account than the folder's or on another profile's, as it already did in Settings.
 
 ## 26.11.30 — 2026-11-14
 

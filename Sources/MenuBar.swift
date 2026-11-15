@@ -331,7 +331,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
     static func item(_ p: Profile, now: Date = Date()) -> MenuBarGlyph.Item {
         let u = p.usage, d = p.display
         return MenuBarGlyph.Item(label: p.entry.label, accent: p.entry.accentNSColor, five: u?.fiveHour, week: u?.weekly,
-                                 countdown: d.full.map { f in f.resets.map { TimeWords.countdown($0, now: now) } ?? "full" },
+                                 countdown: d.full(now: now).map { f in f.resets.map { TimeWords.countdown($0, now: now) } ?? "full" },
                                  noFive: u?.noFiveHour ?? false, stale: d.tier == .stale)
     }
 
@@ -341,7 +341,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         button.title = ""
         button.imagePosition = .imageOnly
         let u = p.usage
-        if let full = p.display.full {
+        if let full = p.display.full(now: now) {
             button.toolTip = "Claude \(p.entry.name): \(full.title) · \(full.both(now))"
         } else {
             button.toolTip = "Claude \(p.entry.name): 5-hour \(Painter.pct(u?.fiveHour)) · week \(Painter.pct(u?.weekly))"
@@ -373,7 +373,7 @@ final class MenuBarItems: NSObject, NSMenuDelegate {
         let lines = SwitchMenu.lines(listed, now: now)
         var switches = SwitchMenu.group(p.view, lines: lines, inUseUsed: p.usage?.weekly ?? p.usage?.fiveHour,
                                         inUseWeek: p.usage?.weekly != nil, target: self, action: #selector(switchAccount(_:)))
-        if p.display.full != nil, let best = SwitchMenu.best(lines) {
+        if p.display.full(now: now) != nil, let best = SwitchMenu.best(lines) {
             switches.insert(SwitchMenu.bestItem(best, target: self, action: #selector(switchAccount(_:))), at: 0)
         }
         if !switches.isEmpty {
@@ -431,7 +431,7 @@ struct MenuBarRow: View {
 
     var body: some View {
         let u = profile.usage, d = profile.display
-        let full = d.full, lit = d.lamp, stale = d.tier == .stale
+        let full = d.full(now: now), lit = d.lamp, stale = d.tier == .stale
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
                 Circle().fill(Color(nsColor: profile.entry.accentNSColor)).frame(width: 7, height: 7)

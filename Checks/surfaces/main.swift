@@ -1567,6 +1567,22 @@ MainActor.assumeIsolated {
     check(Store.status("show")?.resolved?.clashID == "other" && clash.display.clash == ProfileDisplay.Clash(id: "other", name: "Other")
           && !clash.display.lamp && !dockOf(e, clash).panel.activeLit,
           "Claude Code's folder on another profile's account: the clash by id (other) and name, the lamp off")
+    // the review's record: the Claude app decided the account, Claude Code's folder on Other's account, the same address,
+    // state ok. Lit before on the menus only; Settings' in-use box is off (its `elsewhere` finds Other by name: `move == nil`
+    // fails), and now the 3a surfaces agree with it
+    let appClash = #"{"expectedEmail":"ultra-1@example.com","loginEmail":"ultra-1@example.com","resolved":{"account":"\#(u1.account)","at":1800000000,"clash":"Other","clashID":"other","differs":false,"email":"ultra-1@example.com","fromApp":true,"lit":true,"numbersFor":"ultra-1@example.com"},"state":"ok","updatedAt":\#(Int(now.timeIntervalSince1970) - 60),"weekly":40}"#
+    let appClashShow = show(StatusCodec.decode(Data(appClash.utf8))!)
+    let settingsModel = SettingsModel(); settingsModel.accounts = [e, other]
+    let appClashDock = dockOf(e, appClashShow)
+    check(AccountView.of(appClashShow.record).lit && !appClashShow.display.lamp && !appClashDock.panel.activeLit && !lamp(appClashDock.menu)
+          && AccountSettings(entry: .constant(e), model: settingsModel).elsewhere?.owner.id == "other",
+          "an app-decided account with Claude Code on Other's: the lamp off on the menu bar row, the Dock panel and menu, as Settings' (its move is Other)")
+
+    // a value made a moment before a full limit's reset: drawn after it, no countdown (the face and the icon look again)
+    let beforeReset = ProfileShow.of(e, raw: rec(week: 100, weekIn: -60), now: now.addingTimeInterval(-120))
+    check(beforeReset.display.full != nil && beforeReset.display.full(now: Date()) == nil && dockOf(e, beforeReset).face.countdown == nil
+          && MenuBarItems.item(MenuBarItems.Profile(show: beforeReset), now: Date()).countdown == nil,
+          "a full week whose reset passed since the value was made: no countdown on the Dock face or the menu bar icon")
 
     // standby is never read: no surface shows a standby account with numbers
     for (what, s) in [("fresh", ok), ("full", full)] {
@@ -1581,6 +1597,11 @@ MainActor.assumeIsolated {
     check(us.display.usage?.fiveHour == 12 && us.display.usage?.weekly == nil && us.display.full == nil && us.lineWords(short: true) == Store.unconfirmedWords
           && dockOf(e, us).panel.activeNote == Store.unconfirmedWords && dockOf(e, us).face.countdown == nil,
           "unconfirmed: as read, a full week left out, the line says so on the row and the panel")
+    // …but a record from before the resolver has no line for it (as Store.shown, which only sets a resolved block's line)
+    var unsureOld = rec(); unsureOld.resolved = nil; unsureOld.ownerUnconfirmed = true
+    let usOld = show(unsureOld)
+    check(usOld.display.line == nil && usOld.lineWords(short: true) == nil && dockOf(e, usOld).panel.activeNote == nil,
+          "unconfirmed in a record from before the resolver: no line, as before")
     // no record at all: nothing, grey, no lamp
     Store.removeStatus("show")
     let noRec = ProfileShow.load(e, now: now)

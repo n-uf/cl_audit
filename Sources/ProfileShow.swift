@@ -31,9 +31,11 @@ struct ProfileShow {
             : raw.state == "denied" || raw.state == "unreadable" ? .unreadable : .ok
         let view = AccountView.of(shown)
         let r = raw.resolved
-        let d = ProfileDisplay.make(raw.headline(now: now, ages: ages), read: Usage.of(raw), sign: sign, otherAccount: raw.mismatch,
+        var d = ProfileDisplay.make(raw.headline(now: now, ages: ages), read: Usage.of(raw), sign: sign, otherAccount: raw.mismatch,
                                     inUse: view.lit, clash: r?.clash.map { ProfileDisplay.Clash(id: r?.clashID, name: $0) },
                                     note: r?.line, splitTo: r?.email.flatMap { $0.contains("@") ? $0 : nil }, ages: ages, now: now)
+        // a record from before the resolver has no line to say it in (Store.shown neither): no "account not confirmed" there
+        if r == nil, d.line == .unconfirmed { d.line = nil }
         return ProfileShow(entry: e, display: d, record: shown, view: view, splitWords: d.split != nil ? SplitUsage.of(raw) : nil)
     }
 

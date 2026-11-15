@@ -382,7 +382,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                          tint: entry.color, frame: entry.frame,
                          fiveHourElapsed: windowElapsed(usage?.fiveHourResets, 5 * 3600),
                          weeklyElapsed: windowElapsed(usage?.weeklyResets, 7 * 86400), windowOpen: claudeOpen && entry.windowDot,
-                         countdown: AtLimit.tileCountdown(d.full))
+                         countdown: AtLimit.tileCountdown(d.full(now: Date())))   // (none once its reset has passed)
     }
 
     func redraw() {
@@ -465,7 +465,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let listed = entry.listed(by: view)                  // never the account in use on standby too
         let lines = SwitchMenu.lines(listed)
         // while a limit is full, both times first: "5-hour full · back at 15:28, in 1h 42m"
-        if let full = d.full {
+        if let full = d.full(now: Date()) {
             let i = info("\(full.title) · \(full.both())")
             i.attributedTitle = NSAttributedString(string: i.title, attributes: [
                 .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold), .foregroundColor: Painter.crimson])
