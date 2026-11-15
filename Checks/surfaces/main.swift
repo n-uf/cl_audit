@@ -2366,6 +2366,11 @@ MainActor.assumeIsolated {
     check(UsageNotice.of(expired.settings.inUseRow)?.key == .signIn && !expired.page.inUseRow.lit && expired.page.inUseRow.weekly == nil
           && expired.preview.needsLogin && expired.preview.noNumbers == "Sign-in expired" && same(expired.preview, expired.panel),
           "expired: Settings' Sign in…, the Switch page unlit with no numbers, the preview with Sign in… and its words as the panel")
+    // the short age line is the clash's alone: outside a clash it is the long one (expired, signed out, none)
+    let signedOut = surfaces(rec("noLogin", week: nil, five: nil))
+    check(expired.panel.noNumbersShort == expired.panel.noNumbers && signedOut.panel.noNumbersShort == signedOut.panel.noNumbers
+          && signedOut.panel.noNumbers == "Signed out" && fresh.panel.noNumbersShort == nil && fresh.panel.noNumbers == nil,
+          "outside a clash the panel's short age line is its long one: \(expired.panel.noNumbersShort ?? "-") / \(signedOut.panel.noNumbersShort ?? "-")")
 
     // a clash, by the record's profile id: Other (id other), though a profile listed before it is called Other too
     let clash = surfaces(rec(login: u3.email, code: u3))
