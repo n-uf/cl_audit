@@ -648,10 +648,8 @@ final class UsageReader {
         lastResolved = r
         status.resolved = r
         if r.clash != nil {
-            // Claude Code's folder on another profile's account in use: those numbers are that profile's
-            status.fiveHour = nil; status.weekly = nil; status.fiveHourResets = nil; status.weeklyResets = nil
-            status.scoped = nil; status.credits = nil; status.noFiveHour = nil
-            status.problem = r.line
+            // Claude Code's folder on another profile's account in use: those numbers and that plan are that profile's
+            status.dropForClash(r.line)
         }
         if let data = StatusCodec.encode(status), data != lastStatus || m.rewriteDue {
             send(.written)

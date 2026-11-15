@@ -1573,6 +1573,9 @@ struct AccountSettings: View {
     var view: AccountView { show.view }
     /// The in-use box's profile as the card has it (its lamp, line, numbers and notice with its key): the box draws this.
     var inUseRow: AccountRow { AccountRow(entry: entry, show: show) }
+    /// The in-use box's plan: the record's (ProfileShow.plan, none in a clash), or in the split the one the profile
+    /// remembers for the app's account (activePlan).
+    var inUsePlan: String? { entry.activePlan(view, recordPlan: show.plan) }
     /// The red in-use box's keys: Sign in… when the value has a key (as the card's), Open with the profile whose account
     /// the folder is on; none while the box isn't red.
     var inUseKeys: (signIn: Bool, open: AccountEntry?) {
@@ -1660,7 +1663,7 @@ struct AccountSettings: View {
         let (tint, icon): (Color?, String?) = title.tone == .danger ? (face.danger, "exclamationmark.triangle.fill")
             : title.tone == .caution ? (face.caution, "clock.badge.exclamationmark") : (nil, nil)
         let shown = title.text
-        let plan = entry.activePlan(v, recordPlan: status?.plan).map(Account.planWords)
+        let plan = inUsePlan.map(Account.planWords)
         // the one value: the lamp (off while the sign-in needs the person, can't be read, or is on another account or
         // another profile's, whether or not that profile is still found by its name), the key, the line, the numbers
         let row = inUseRow, show = row.show
@@ -2118,7 +2121,7 @@ struct AccountSettings: View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
         let move = elsewhere
         let here = view.numbersOwner ?? status?.loginEmail ?? expected
-        let plan = status?.plan.map(Account.planWords)
+        let plan = show.plan.map(Account.planWords)            // (none in a clash: ProfileShow.plan)
         let canSignIn = !model.claudeKnownMissing
         func line(_ email: String, _ detail: [String?]) -> String {
             ([Privacy.masked(email)] + [detail.compactMap { $0 }.joined(separator: " · ")].filter { !$0.isEmpty }).joined(separator: "   ")

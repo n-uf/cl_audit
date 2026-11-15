@@ -1304,9 +1304,10 @@ do {
     var e = profile("spl", "~/.claude-spl", mo)
     e.desktop = .separate; e.desktopDataDir = wdS; e.claudeWindow = true
     e.standby = [StandbyAccount(email: pat.email!, seat: pat, id: "kp", plan: "Max")]
-    func signIn(_ dir: String, _ s: Seat) {
+    func signIn(_ dir: String, _ s: Seat, plan: String? = nil) {
         try? fm.removeItem(atPath: expand(dir) + "/.claude.json")
-        put(expand(dir) + "/.claude.json", #"{"oauthAccount":{"accountUuid":"\#(s.account)","organizationUuid":"\#(s.organization!)","emailAddress":"\#(s.email!)"}}"#)
+        let planKey = plan.map { #","planDisplayName":"\#($0)""# } ?? ""
+        put(expand(dir) + "/.claude.json", #"{"oauthAccount":{"accountUuid":"\#(s.account)","organizationUuid":"\#(s.organization!)","emailAddress":"\#(s.email!)"\#(planKey)}}"#)
     }
     signIn(e.configDir, mo)
     try? fm.removeItem(atPath: expand(wdS) + "/config.json")
@@ -1481,7 +1482,7 @@ do {
     // and raises no alert, so the full limit alerts exactly once, from the profile whose account it is
     var same = profile("spm", "~/.claude-spm", mo); same.claudeWindow = false
     var twin = profile("spt", "~/.claude-spt", nil); twin.claudeWindow = false
-    signIn(same.configDir, mo); signIn(twin.configDir, mo)
+    signIn(same.configDir, mo, plan: "Ultra"); signIn(twin.configDir, mo, plan: "Ultra")
     try! Store.save([same, twin])
     posts.removeAll()
     let mr = UsageReader(same, defaults: UserDefaults(suiteName: "cl-audit-surfaces-same-\(getpid())")!)
@@ -1496,6 +1497,12 @@ do {
           "two profiles' folders on one account: exactly one full alert, from the profile whose account it is: \(fulls)")
     check(Store.status("spt")?.resolved?.clash == "Spm" && Store.status(for: twin)?.weekly == nil,
           "the twin is the clash: its card shows no numbers, and it stays quiet")
+    // nor the plan: the reader writes none into a clash record (it is mo's, Spm's), so every reader of it, the widget too,
+    // shows none; the profile whose account it is keeps it
+    let widgetClash = AgentFiles.load(from: Store.folder, now: now)
+    check(Store.status("spm")?.plan == "Ultra" && Store.status("spt")?.plan == nil && Store.status("spt")?.problem == Store.status("spt")?.resolved?.line
+          && widgetClash.first { $0.id == "spm" }?.plan == "Ultra" && widgetClash.first { $0.id == "spt" }.map { $0.plan == nil && $0.week == nil } == true,
+          "the reader's clash record has no plan (Spm's Ultra stays on Spm): the widget shows none for the twin: \(Store.status("spt")?.plan ?? "nil")")
     mr.stop(); tr.stop()
     Store.removeStatus("spt")                                               // the widget checks below read every record
     try! Store.save([e, same])
@@ -2389,6 +2396,27 @@ MainActor.assumeIsolated {
           && !titles(menuBarMenu(clashShow)).contains { $0.contains(u3Short) },
           "a clash the app didn't decide: the card, the Switch page, the Dock panel (as drawn), the Dock menu and the menu bar name u1, never the folder's u3")
     check(clash.settings.inUseKeys.signIn && clash.settings.inUseKeys.open?.id == "other", "a clash: Settings' red box has Sign in… and Open Other")
+    // no plan in Settings' in-use box nor its pop-up in a clash, even from a record that still has one (the Reader writes
+    // none there: dropForClash); outside a clash the record's
+    check(Store.status("acc")?.plan == "Max" && clash.settings.inUsePlan == nil
+          && clash.settings.loginItems.first { $0.id == "here" }.map { !$0.title.contains("Max") } == true,
+          "a clash: Settings' in-use box and its pop-up show no plan (the record's Max is Other's account's): \(clash.settings.loginItems.map(\.title))")
+    let plain = surfaces(rec())
+    check(plain.settings.inUsePlan == "Max" && plain.settings.loginItems.first { $0.id == "here" }?.title.contains("Max") == true,
+          "outside a clash: Settings' in-use box and its pop-up show the record's plan")
+    _ = Store.writeStatus("acc", rec(login: u3.email, code: u3))
+    // the record as the Reader writes it in a clash: the numbers and the plan dropped, the problem the line; the status
+    // file only loses those keys (same codec, no other change)
+    var asRead = rec(login: u3.email, code: u3); asRead.dropForClash(asRead.resolved?.line)
+    func keys(_ s: IconStatus) -> Set<String> {
+        Set(((try? JSONSerialization.jsonObject(with: StatusCodec.encode(s) ?? Data())) as? [String: Any] ?? [:]).keys)
+    }
+    let before = rec(login: u3.email, code: u3)
+    check(asRead.plan == nil && asRead.weekly == nil && asRead.problem == before.resolved?.line && asRead.resolved == before.resolved
+          && StatusCodec.decode(StatusCodec.encode(asRead)!).map { $0.plan == nil && $0.resolved?.clash == "Other" } == true
+          && keys(before).subtracting(keys(asRead)) == ["plan", "weekly", "fiveHour", "weeklyResets", "fiveHourResets"]
+          && keys(asRead).subtracting(keys(before)) == ["problem"],
+          "the Reader's clash record: no plan nor numbers, the problem the line; the status JSON only loses those keys: \(keys(before).symmetricDifference(keys(asRead)).sorted())")
     // …with no seat: no account named anywhere (the card says the line instead), never the sign-in's u3
     var noSeat = e; noSeat.seat = nil
     let noSeatShow = ProfileShow.load(noSeat, now: now), noSeatPanel = DetailsInfo.of(noSeatShow, name: "x", icon: NSImage(), problem: nil)

@@ -69,6 +69,13 @@ struct IconStatus: Codable {
         scoped = nil; credits = nil
     }
 
+    /// Claude Code's folder on another profile's account in use (a clash): the numbers and the plan are that profile's
+    /// account's, so the record keeps none of them (every reader of it, the widget too, shows none); `line` says why.
+    mutating func dropForClash(_ line: String?) {
+        dropNumbers(); noFiveHour = nil; plan = nil
+        problem = line
+    }
+
     /// The sign-in needs the person: another account than the folder names, run out, or none. Every surface then shows
     /// one key, Sign in… (the card's needsLogin, the Dock menu's and the menu bar's).
     var needsLogin: Bool { mismatch || state == "expired" || state == "noLogin" }
