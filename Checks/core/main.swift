@@ -2,7 +2,8 @@
 // AppKit, SwiftUI or WidgetKit), which proves the rules need neither. The ids, the one comparison and identities without
 // an id, the standby accounts and the picks, the tidy standby list, fresh and full (in both modes), times in words with a
 // fixed calendar, the colour level, and parsing a sign-in item and Anthropic's replies (the signin suite's parsing
-// checks, re-added here); then a lint that Core/ stays shareable. Fake data only: example.com addresses, zero-pattern
+// checks, re-added here); then a lint that Core/ stays shareable; then the headline (whose numbers a headline shows: the
+// split, a stale or mislabelled reading, signed out, unconfirmed, by age with both apps' thresholds). Fake data only: example.com addresses, zero-pattern
 // ids, made-up tokens.
 //
 // Runs with HOME at Checks/.work/core/home (Checks/run.sh sets and guards it); it reads only Core/'s own sources.
@@ -226,6 +227,93 @@ do {
         }
     }
     check(files.count >= 5 && found.isEmpty, "Core/ (\(files.count) files): Foundation only, no app paths, files, wording or global state: \(found)")
+}
+
+// ============ 7. the headline: whose numbers a headline may show, and how ============
+do {
+    let now = t0
+    func who(_ n: Int?, _ email: String?, org: String? = nil, _ source: AccountIdentity.Source = .guessed) -> AccountIdentity {
+        AccountIdentity(account: n.map(uuid), email: email, organization: org, source: source)
+    }
+    let pat = who(2, "pat@example.com"), mo = who(3, "mo@example.com")
+    // cl_audit's thresholds (fresh for the read interval plus a minute, never hidden, a last-known full left out) and
+    // cl_quick's (under 5 minutes fresh, last known to an hour with a dated full kept, hidden after)
+    let audit = Headline.Ages(freshFor: 6 * 60), quick = Headline.Ages(freshFor: 5 * 60, hiddenAfter: 3600, datedFullStays: true)
+    let ahead = now.addingTimeInterval(3600)
+    func answer(_ o: Headline.Owner, signedIn: Bool = true, age: TimeInterval? = 60, ages: Headline.Ages = audit) -> Headline.Answer {
+        Headline.of(o, signedIn: signedIn, readAt: age.map { now.addingTimeInterval(-$0) }, now: now, ages: ages)
+    }
+    func limit(_ a: Headline.Answer, _ p: Double?, _ resets: Date? = nil, age: TimeInterval = 60, split: Bool = true) -> Headline.Limit? {
+        a.limit(p, resets: resets, readAt: now.addingTimeInterval(-age), split: split, now: now)
+    }
+
+    // the profile's own numbers: shown, the plan, and they act
+    let own = answer(Headline.Owner(signIn: mo, reading: mo))
+    check(own.split == nil && !own.otherReading && own.numbers() && own.plan() && own.readTime && own.acts
+          && limit(own, 100, ahead) == Headline.Limit(percent: 100, resets: ahead, lastKnown: false), "the profile's own fresh numbers: shown, full acts")
+
+    // the split, as a resolver decided it (cl_audit) and as compared here (cl_quick)
+    let decided = answer(Headline.Owner(inUse: pat, signIn: mo, differs: true, switchWaits: true))
+    check(decided.split == Headline.Split(switchWaits: true) && !decided.numbers() && !decided.plan() && decided.readTime
+          && limit(decided, 40) == nil, "the split (decided): no numbers, no plan, its read time; the switch waiting carried")
+    check(decided.numbers(split: false) && decided.plan(split: false) && limit(decided, 40, split: false)?.percent == 40,
+          "…the sign-in's own numbers for its labelled line (split false)")
+    check(answer(Headline.Owner(inUse: pat, signIn: pat, differs: true)).split != nil && answer(Headline.Owner(inUse: pat, signIn: mo, differs: false)).split == nil,
+          "a decided answer wins over the identities")
+    check(answer(Headline.Owner(inUse: pat, signIn: mo)).split == Headline.Split(switchWaits: false)
+          && answer(Headline.Owner(inUse: pat, signIn: who(2, "other@example.com"))).split == nil, "compared here: by the ids when both have one")
+    check(answer(Headline.Owner(inUse: who(2, "pat@example.com", org: uuid(51)), signIn: who(5, "pat@example.com", org: uuid(51)))).split != nil,
+          "both ids known: the ids decide, even on one address (a personal plan and a team seat)")
+    let process = who(nil, "Pat@example.com", org: uuid(51), .verified)
+    check(answer(Headline.Owner(inUse: who(2, "pat@example.com", org: uuid(51)), signIn: process)).split == nil
+          && answer(Headline.Owner(inUse: who(2, "pat@example.com", org: uuid(52)), signIn: process)).split != nil
+          && answer(Headline.Owner(inUse: mo, signIn: process)).split != nil,
+          "an identity without an id (a running process's): by address (any case) and organisation")
+    check(answer(Headline.Owner(inUse: nil, signIn: mo, differs: true)).split == nil && answer(Headline.Owner(inUse: pat, signIn: nil, differs: true)).split == nil,
+          "no account in use apart from the sign-in, or no sign-in: no split")
+    check(answer(Headline.Owner(inUse: pat, signIn: mo, differs: true, elsewhere: true)).split == nil,
+          "the sign-in on another profile's account in use: its numbers are that profile's, no split here")
+
+    // numbers whose account couldn't be confirmed: as read, never full, and they decide no split
+    let unsure = answer(Headline.Owner(inUse: pat, signIn: mo, differs: true, unconfirmed: true))
+    check(unsure.split == nil && unsure.numbers() && !unsure.acts && limit(unsure, 100, ahead) == nil && limit(unsure, 70)?.percent == 70,
+          "unconfirmed: no split, numbers as read, a full one left out")
+    check(limit(answer(Headline.Owner(unconfirmed: true), ages: quick), 100, ahead) == Headline.Limit(percent: 100, resets: ahead, lastKnown: true),
+          "…kept dated full limits (cl_quick's): as last known, never as acting")
+
+    // another reading: stale, or labelled for another account than it was read for
+    let stale = answer(Headline.Owner(reading: mo, readStale: true))
+    check(stale.otherReading && !stale.numbers() && !stale.numbers(split: false) && !stale.plan(split: false) && !stale.readTime,
+          "a stale reading: no numbers anywhere, no plan, no read time")
+    let mislabelled = answer(Headline.Owner(reading: who(nil, "mo@example.com"), label: who(nil, "pat@example.com")))
+    check(mislabelled.otherReading && !mislabelled.numbers(), "labelled for another account than it was read for: none")
+    check(!answer(Headline.Owner(reading: who(nil, "MO@example.com"), label: who(nil, "mo@example.com"))).otherReading
+          && !answer(Headline.Owner(reading: nil, label: who(nil, "mo@example.com"))).otherReading, "the same address in another case, or no reading named: its own")
+
+    // signed out or expired: no numbers at all, the plan stays
+    let out = answer(Headline.Owner(), signedIn: false)
+    check(!out.numbers() && !out.numbers(split: false) && out.plan() && out.readTime && limit(out, 30) == nil, "signed out: no numbers, the plan and the read time stay")
+
+    // by age, cl_audit's thresholds: fresh for 6 minutes; then last known, a full limit left out; never hidden
+    check(answer(Headline.Owner(), age: 5 * 60).acts && limit(answer(Headline.Owner(), age: 5 * 60), 100, ahead)?.percent == 100, "5 minutes old: acts")
+    let audOld = answer(Headline.Owner(), age: 7 * 60)
+    check(audOld.age == .lastKnown && !audOld.acts && limit(audOld, 100, ahead, age: 7 * 60) == nil
+          && limit(audOld, 60, ahead, age: 7 * 60) == Headline.Limit(percent: 60, resets: ahead, lastKnown: true), "7 minutes old: last known, a full limit left out")
+    check(answer(Headline.Owner(), age: 2 * 86400).numbers() && answer(Headline.Owner(), age: nil).age == .undated && answer(Headline.Owner(), age: nil).acts,
+          "never hidden by age (cl_audit's); undated numbers act")
+    // cl_quick's: under 5 minutes fresh, to an hour last known (a dated full stays grey until its reset), hidden after
+    let q10 = answer(Headline.Owner(), age: 10 * 60, ages: quick)
+    check(q10.age == .lastKnown && limit(q10, 100, ahead, age: 10 * 60) == Headline.Limit(percent: 100, resets: ahead, lastKnown: true)
+          && limit(q10, 100, nil, age: 10 * 60) == nil, "cl_quick's 10 minutes: a dated full stays as last known; a dateless 100% doesn't")
+    check(!answer(Headline.Owner(), age: 2 * 3600, ages: quick).numbers() && answer(Headline.Owner(), age: 2 * 3600, ages: quick).age == .hidden,
+          "cl_quick's over an hour: hidden")
+
+    // a limit whose reset has passed: no percent, no reset (the one rule, Freshness.current)
+    check(limit(own, 55, now.addingTimeInterval(-1)) == Headline.Limit(percent: nil, resets: nil, lastKnown: false)
+          && Freshness.current(55, resets: now, now: now).percent == nil && Freshness.current(55, resets: now, now: now).resets == nil
+          && Freshness.current(55, resets: ahead, now: now).percent == 55 && Freshness.current(55, resets: ahead, now: now).resets == ahead
+          && ScopedLimit(name: "Fable", percent: 9, resets: now).current(now: now) == ScopedLimit(name: "Fable", percent: nil, resets: nil),
+          "a reset that has passed: no percent and no reset, a model's limit keeps its name")
 }
 
 print("core checks: \(passed) passed, \(failed) failed")
