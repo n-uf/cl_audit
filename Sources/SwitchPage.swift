@@ -273,6 +273,13 @@ struct SwitchPage: View {
         }
     }
 
+    /// The in-use box's name: the account in use as every surface names it (ProfileShow.inUseLabel); for an old record
+    /// with none worked out, the folder's own address, except in a clash with no own account known (that address is the
+    /// other profile's); else "its account".
+    static func inUseName(_ s: ProfileShow, expected: String?) -> String {
+        s.inUseLabel ?? (s.inUseUnknown ? nil : expected) ?? "its account"
+    }
+
     /// The in-use box's plan (ProfileShow.plan: none in a clash).
     static func inUseDetail(plan: String?) -> String { plan.map(Account.planWords) ?? "" }
 
@@ -282,7 +289,7 @@ struct SwitchPage: View {
         let detail = Self.inUseDetail(plan: row.show.plan)
         let limits = row.limits
         return AccountBox(lamp: row.lit ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: row.lit ? .ok : .warn, detail: detail) {
-            Text(Privacy.masked(row.show.inUseLabel ?? (row.show.inUseUnknown ? nil : row.status?.expectedEmail) ?? "its account")).font(.system(size: 13, weight: .semibold))
+            Text(Privacy.masked(Self.inUseName(row.show, expected: row.status?.expectedEmail))).font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
         } content: {
             if let n = row.line { BoxText(text: n, role: .note) }

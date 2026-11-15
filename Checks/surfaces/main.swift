@@ -2397,6 +2397,15 @@ MainActor.assumeIsolated {
     check(noSeatDock.menu.items.first?.title == "Claude Acc" && noSeatDock.panel.plan == nil && clashDock.panel.plan == nil
           && cardRow(noSeat, now: now).show.plan == nil,
           "a clash: no plan in the Dock menu's title, the Dock panel or the card: \(noSeatDock.menu.items.first?.title ?? "-")")
+    // the Switch page's in-use name: the profile's own in a clash, none known there "its account" (never the folder's u3);
+    // a record with no account worked out, outside a clash: the folder's own address, else "its account"
+    var unworked = IconStatus(state: "noLogin"); unworked.expectedEmail = u1.email
+    unworked.resolved = AccountResolver.resolve(e, among: [e, other], app: .unknown, code: nil, loginEmail: nil, names: [:], now: now)
+    let unworkedShow = ProfileShow.of(e, raw: unworked, now: now)
+    check(SwitchPage.inUseName(clashShow, expected: u3.email) == u1.email && SwitchPage.inUseName(noSeatShow, expected: u3.email) == "its account"
+          && unworkedShow.inUseLabel == nil && SwitchPage.inUseName(unworkedShow, expected: u1.email) == u1.email
+          && SwitchPage.inUseName(unworkedShow, expected: nil) == "its account",
+          "the Switch page's in-use name: u1 in a clash, \"its account\" with none of its own (never u3), the folder's address for a record with none worked out")
     // one account, one row: the profile's own account (u1, ticked in a clash) is also remembered on its standby list. It is
     // that one row everywhere: ticked, saying what choosing it does, still switchable (the way to move Claude Code back);
     // never a second row on standby
