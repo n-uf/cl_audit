@@ -439,15 +439,20 @@ do {
     // ...but a refresh request rewrites the record at once, even with its state unchanged
     reader.refreshNow()
     check(bytes("ow") == agentBytes, "the agent rewrites its record on a refresh request even when its state is unchanged: the wrong one is gone")
-    // and the next read replaces a wrong record, whatever the read found
+    // and the next read replaces a wrong record, even a read that leaves the reader's state as it was (Anthropic busy twice)
+    let busy = HTTPURLResponse(url: URL(string: "https://example.com")!, statusCode: 429, httpVersion: nil, headerFields: nil)
+    reader.finish(data: nil, response: busy, error: nil, asked: Date(), gen: reader.generation)
+    let busyBytes = bytes("ow")
     _ = Store.writeStatus("ow", old)
+    reader.finish(data: nil, response: busy, error: nil, asked: Date(), gen: reader.generation)
+    check(busyBytes != nil && busyBytes != oldBytes && bytes("ow") == busyBytes && Store.status("ow")?.resolved?.email == u2.email,
+          "a wrong record is replaced on the agent's next read, though that read left its state unchanged")
+    // a read with numbers lands them
     let reply = Data(#"{"seven_day":{"utilization":30,"resets_at":"2099-01-02T00:00:00Z"}}"#.utf8)
     let ok200 = HTTPURLResponse(url: URL(string: "https://example.com")!, statusCode: 200, httpVersion: nil, headerFields: nil)
     reader.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: reader.generation)
-    let replaced = Store.status("ow")
-    let replacedWeek: Double? = replaced?.weekly
-    check(bytes("ow") != oldBytes && replacedWeek == 30 && replaced?.resolved?.email == u2.email,
-          "a wrong record is replaced on the agent's next read: \(String(describing: replacedWeek))")
+    let replacedWeek: Double? = Store.status("ow")?.weekly
+    check(replacedWeek == 30, "a read with numbers saves them: \(String(describing: replacedWeek))")
     reader.stop()
     RunLoop.main.run(until: Date().addingTimeInterval(0.5))    // the refresh's sign-in read (no sign-in) ends, dropped
     check(posts.isEmpty, "no alert from these reads: \(posts)")
@@ -455,22 +460,62 @@ do {
     put(folder.appendingPathComponent("oldrec.json").path, #"{"loginEmail":"ultra-1@example.com","state":"ok","updatedAt":1800000000,"weekly":12}"#)
     check(Store.status("oldrec")?.weekly == 12 && Store.status("oldrec")?.resolved == nil, "an old record decodes as before")
     let answer = AccountResolver.resolve(ow, among: [ow], app: .unknown, code: u1, loginEmail: u1.email, names: [:], now: t0)
-    Store.hold("oldrec", answer)
+    Store.hold("oldrec", answer, file: Store.stamp("oldrec"), lifetime: 600)
     check(Store.status("oldrec")?.weekly == 12 && Store.status("oldrec")?.resolved == answer, "a held answer over an old record: its numbers kept, the answer shown")
     var rewritten = StatusCodec.decode(bytes("oldrec") ?? Data()) ?? IconStatus(state: "ok"); rewritten.weekly = 13
     _ = Store.writeStatus("oldrec", rewritten)
     check(!Store.isHeld("oldrec") && Store.status("oldrec")?.weekly == 13 && Store.status("oldrec")?.resolved == nil,
           "the agent's write of it wins over the held answer")
-    // no one but the agent's reader writes a record
-    let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
-    var writers: [String] = []
-    for f in ((try? fm.contentsOfDirectory(atPath: src.path)) ?? []).sorted() where f.hasSuffix(".swift") {
-        let lines = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? []
-        for (i, l) in lines.enumerated() where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") && l.contains("Store.writeStatus(") {
-            writers.append("\(f):\(i + 1)")
+    // the same bytes written again (the agent's rewrite of an unchanged state) let the held answer go too
+    let same = bytes("oldrec")
+    Store.hold("oldrec", answer, file: Store.stamp("oldrec"), lifetime: 600)
+    _ = Store.writeStatus("oldrec", StatusCodec.decode(same ?? Data()) ?? rewritten)
+    check(same != nil && bytes("oldrec") == same && !Store.isHeld("oldrec"), "the same bytes rewritten release the held answer")
+    // a write landing while the window works out its answer (after its stamp was taken) counts as the agent's newer record
+    let early = Store.stamp("oldrec")
+    _ = Store.writeStatus("oldrec", rewritten)
+    Store.hold("oldrec", answer, file: early, lifetime: 600)
+    check(!Store.isHeld("oldrec"), "a write after the stamp, before the hold: the record wins at once")
+    // removal releases it, also one held while there was no file (a removed profile's id given to a new one shows nothing of it)
+    Store.removeStatus("oldrec")
+    Store.hold("oldrec", answer, file: Store.stamp("oldrec"), lifetime: 600)
+    check(Store.isHeld("oldrec"), "an answer held with no record yet")
+    Store.removeStatus("oldrec")
+    check(!Store.isHeld("oldrec") && Store.status("oldrec") == nil, "removing the record releases the held answer")
+    // a held answer expires: a lost refresh or a hung agent can't keep it up
+    var quick = ow; quick.pollMinutes = 5
+    Store.hold("oldrec", answer, file: nil, lifetime: Store.heldLifetime(quick))
+    check(Store.heldLifetime(quick) == 600 && Store.isHeld("oldrec", now: Date().addingTimeInterval(590))
+          && !Store.isHeld("oldrec", now: Date().addingTimeInterval(601)) && !Store.isHeld("oldrec"),
+          "a held answer lasts two read intervals (10 min at 5), then the record shows")
+    // no one but the agent's reader writes a record: every Swift file of the app, the widget, the launcher and the libraries
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    var writers: [String] = [], nearWrites: [String] = []
+    for dir in ["Sources", "Widget", "Launcher", "Core", "Auth"] {
+        let base = root.appendingPathComponent(dir)
+        let files = (fm.enumerator(atPath: base.path)?.allObjects as? [String] ?? []).filter { $0.hasSuffix(".swift") }.sorted()
+        for f in files {
+            var text = (try? String(contentsOf: base.appendingPathComponent(f), encoding: .utf8)) ?? ""
+            let name = "\(dir)/\(f)"
+            // Config.swift's writeStatus itself (the record and its .prev copy) is the one write next to statusFolder
+            if name == "Sources/Config.swift", let a = text.range(of: "    static func writeStatus("),
+               let b = text.range(of: "\n    }\n", range: a.upperBound..<text.endIndex) {
+                text.replaceSubrange(a.lowerBound..<b.upperBound, with: "\n")
+            }
+            let lines = text.components(separatedBy: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+            let code = lines.map { $0.hasPrefix("//") || $0.hasPrefix("///") ? "" : $0 }
+            for (i, l) in code.enumerated() where l.contains("writeStatus") && name != "Sources/Reader.swift" {
+                writers.append("\(name):\(i + 1)")
+            }
+            guard name != "Sources/Reader.swift" else { continue }
+            for (i, l) in code.enumerated() where l.contains(".write(") {
+                let near = code[max(0, i - 3)...min(code.count - 1, i + 3)]
+                if near.contains(where: { $0.contains("statusFolder") || $0.contains("\"status/") }) { nearWrites.append("\(name):\(i + 1)") }
+            }
         }
     }
-    check(writers.count == 1 && writers[0].hasPrefix("Reader.swift:"), "Store.writeStatus is called by the agent's reader alone: \(writers)")
+    check(writers.isEmpty, "writeStatus is used by the agent's reader alone: \(writers)")
+    check(nearWrites.isEmpty, "nothing else writes next to the status folder: \(nearWrites)")
 }
 
 // ============ 4. a deleted folder is never made again: no claude for a folder that isn't there ============
