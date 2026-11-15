@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.34 — 2026-11-15
+
 - Quick chat no longer brings another account's usage back after an answer: Claude Code's own numbers count only while the profile's numbers are its own (not when the Claude app and Claude Code are on different accounts, when the account isn't confirmed, or when the folder is on another profile's account). A limit Claude Code says is full still holds what you type.
 - A full-limit alert's switch offer never names the account already in use; it offers the same account as quick chat and the menus.
 - Alerts (a limit at its level or full, back, usage credits) follow the same rule as every screen: none for numbers older than the read interval (a reading whose account was confirmed late).
