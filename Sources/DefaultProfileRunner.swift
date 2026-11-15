@@ -85,13 +85,14 @@ final class DefaultProfileRunner: ObservableObject {
         }
         if situation.kind == .windowOnly { closeWindows(); return }
         // otherFolder: ~/.claude must be signed in first (Claude Code's own login; nothing is moved or copied)
-        // (the record is read through the folder cache: this page is on the main thread, and ~/.claude.json can be large)
-        if DefaultProfile.cachedSeat("~/.claude") != nil { prepareTarget(); return }
+        // (the record is read through ClaudeFiles, again only when it changed: this page is on the main thread, and
+        // ~/.claude.json can be large)
+        if Account.signedInSeat(configDir: "~/.claude") != nil { prepareTarget(); return }
         guard let claude = m.requireClaude() else { phase = .failed(m.noClaudeWhy); return }
         let email = old.seat?.email ?? Account.expectedEmail(configDir: old.configDir)
         let probe = AccountEntry(id: "default", name: "default", label: "DEFAULT", configDir: "~/.claude")
         guard ClaudeCLI.openLogin(claude, account: Account(probe), email: email, creating: true) else { phase = .failed("Terminal didn't open."); return }
-        seatAtAsk = DefaultProfile.cachedSeat("~/.claude")
+        seatAtAsk = Account.signedInSeat(configDir: "~/.claude")
         signInStarted = Date()
         phase = .signingIn
         tick(every: 2) { [weak self] in
@@ -100,7 +101,7 @@ final class DefaultProfileRunner: ObservableObject {
             if let started = self.signInStarted, Date().timeIntervalSince(started) > 3600 {
                 self.phase = .ready; self.note = "The sign-in didn't finish in an hour; start again."; return true
             }
-            guard DefaultProfile.cachedSeat("~/.claude") != nil else { return false }
+            guard Account.signedInSeat(configDir: "~/.claude") != nil else { return false }
             self.prepareTarget()
             return true
         }
@@ -119,7 +120,7 @@ final class DefaultProfileRunner: ObservableObject {
 
     /// Step 1 done (or not needed): the ~/.claude profile is there, linked to the account ~/.claude is signed in to.
     func prepareTarget() {
-        guard let m = model, let seat = DefaultProfile.cachedSeat("~/.claude") else { return }
+        guard let m = model, let seat = Account.signedInSeat(configDir: "~/.claude") else { return }
         if let t = target {
             if t.seat == nil, let i = m.accounts.firstIndex(where: { $0.id == t.id }) {
                 m.accounts[i] = DefaultProfile.linked(t, seat: seat); pendingLinked = true; pendingLinkedID = t.id

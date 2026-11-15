@@ -1953,7 +1953,7 @@ struct AccountSettings: View {
     /// The account in use is also the one the usual Claude app is signed in to (~/.claude holds it), but this profile opens its
     /// own window: said once on the Accounts card, with the way to the default-profile offer. Gone once the offer is dismissed.
     @ViewBuilder var usualAppNote: some View {
-        let usual = DefaultProfile.cachedSeat("~/.claude")        // drawn every few seconds: the record is read when it changed
+        let usual = Account.signedInSeat(configDir: "~/.claude")  // drawn every few seconds: the record is read when it changed
         // Claude Code's account as the profile's record says it, and only while it is the account shown in use: never a
         // note about the stored account under another address
         let v = view

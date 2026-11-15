@@ -47,7 +47,9 @@ enum DefaultProfile {
     /// - A ~/.claude profile without a sign-in has the usual app, and a separate-window profile on another folder sits
     ///   next to it: otherFolder towards that profile.
     /// The usual app is a profile's that is signed in (a working default profile): no offer.
-    static func situation(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = DefaultProfile.cachedSeat) -> Situation? {
+    /// `signedIn`: the folder's record through ClaudeFiles (read again only when it changed: the cards that ask are drawn
+    /// every few seconds, and ~/.claude.json can be large).
+    static func situation(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = Account.signedInSeat) -> Situation? {
         guard let first = accounts.first else { return nil }
         let usual = accounts.first { $0.desktop == .standard }
         // the usual app belongs to a profile that works (signed in): the default profile exists
@@ -66,10 +68,6 @@ enum DefaultProfile {
         return nil
     }
 
-    /// The account a folder is signed in to, from the folder's record read again only when its date changed: the cards that
-    /// ask are drawn every few seconds, and ~/.claude.json can be large.
-    static let cachedSeat: (String) -> Seat? = { Account.signedInSeat(configDir: $0) }
-
     /// The prefs the offer's "Not now" is kept in (UserDefaults; a check replaces it).
     nonisolated(unsafe) static var prefs: PrefStore = UserDefaults.standard
     static let dismissedKey = "defaultProfileOfferDismissed"
@@ -80,7 +78,7 @@ enum DefaultProfile {
 
     /// The card shows by itself only until it is dismissed (once, it doesn't come back by itself); it is always there to
     /// be found in Settings ▸ General and on the profile's Claude window card while a situation exists.
-    static func card(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = DefaultProfile.cachedSeat) -> Situation? {
+    static func card(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = Account.signedInSeat) -> Situation? {
         dismissed ? nil : situation(accounts, signedIn: signedIn)
     }
 
