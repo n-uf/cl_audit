@@ -13,8 +13,8 @@ Nothing pending.
 ## 26.11.51 — 2026-11-15
 
 - An account switch now opens the profile's Claude window again once the switch is settled: when Claude Code reaches the account, after Undo or Leave it as it is, or when the switch stopped before moving anything. While moved sessions wait for that, the window stays closed (the Dock icon, the menu bar and the card open that switch's page instead) and the Switch page says so. Before, the switch never opened the window it had closed.
-- Quick chat now restarts its Claude Code process when the profile's folder moves back to its own account, so it never keeps answering on another profile's account; a question waiting after Switch account… now goes as soon as Claude Code has moved.
-- When Claude Code's folder is signed in to another profile's account (Work, say): the Dock icon's panel says "No usage: Terminal is on Work's account" instead of "Reading usage…" or "Sign-in expired", quick chat's header names the profile's own account, and no plan shows for it any more (the card, the Switch page, Settings ▸ Accounts, the Dock panel and menu, and the widget showed Work's). The Switch page says "Move Claude Code back to …" only before the move starts, and names the folder's address again for an old record (it said "its account").
+- Quick chat now restarts its Claude Code process when the profile's folder moves back to its own account, so it never keeps answering on another profile's account, and its header names the account it answers on; a question waiting after Switch account… now goes as soon as Claude Code has moved.
+- When Claude Code's folder is signed in to another profile's account (Work, say): the Dock icon's panel says "No usage: Terminal is on Work's account" instead of "Reading usage…" or "Sign-in expired", and no plan shows for it any more (the card, the Switch page, Settings ▸ Accounts, the Dock panel and menu, and the widget showed Work's). The Switch page says "Move Claude Code back to …" only before the move starts, and names the folder's address again for an old record (it said "its account").
 
 ## 26.11.50 — 2026-11-15
 

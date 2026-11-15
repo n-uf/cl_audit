@@ -147,7 +147,7 @@ struct QCHeader: View {
         HStack(spacing: 8) {
             if let t = model.target {
                 Text(t.name).font(.system(size: 12.5, weight: .semibold)).foregroundColor(QCColor.text)
-                if let e = t.shownEmail {
+                if let e = t.email {
                     Text(Privacy.masked(e)).font(.system(size: 12)).foregroundColor(QCColor.muted).lineLimit(1).truncationMode(.middle)
                 }
             }

@@ -897,7 +897,7 @@ MainActor.assumeIsolated {
                 Text("Card").font(.caption.bold())
                 AccountCard(row: cardRow(main), actions: acts).frame(width: min(w, 460))
                 Text("Quick chat").font(.caption.bold())
-                Text("\(main.name) · " + (QuickChatTarget(main).shownEmail ?? "no account")).font(.system(size: 12))
+                Text("\(main.name) · " + (QuickChatTarget(main).email ?? "no account")).font(.system(size: 12))
                 Text("Settings ▸ Accounts").font(.caption.bold())
                 AccountSettings(entry: .constant(main), model: model, width: w)
             }
@@ -1065,7 +1065,7 @@ MainActor.assumeIsolated {
                             Text(SwitchMenu.dockTitle(name: main.name, v, plan: rec.plan)); if let l = v.line { Text(l).foregroundStyle(.secondary) }
                         }.font(.system(size: 13)).frame(width: 300, alignment: .leading)
                         Text("Quick chat").font(.caption.bold())
-                        Text("Claude \(main.name) · " + (QuickChatTarget(main).shownEmail ?? "no account")).font(.system(size: 12)).frame(width: 300, alignment: .leading)
+                        Text("Claude \(main.name) · " + (QuickChatTarget(main).email ?? "no account")).font(.system(size: 12)).frame(width: 300, alignment: .leading)
                     }
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Dock panel").font(.caption.bold())

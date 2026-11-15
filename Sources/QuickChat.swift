@@ -118,11 +118,9 @@ struct QuickChatTarget: Equatable {
     var isDefaultDir: Bool
     /// The folder's account, the one Claude Code's process runs on: Claude Code's own sign-in there (the record's codeName,
     /// AccountView.numbersOwner), even when the Claude app decided the account in use (in a clash the other profile's, in
-    /// the split Claude Code's). The process's key, the kept level's account test and the switch wait go by it, never the
-    /// header's name.
+    /// the split Claude Code's). The header names it, and the process's key, the kept level's account test and the switch
+    /// wait go by it.
     var email: String?
-    /// The account the header names: as the menus name it (in a clash the profile's own, never the folder's).
-    var shownEmail: String?
     /// The record says the sign-in needs the person ("sign-in expired"): the line says so, with Sign in….
     var loginWords: String?
     /// Claude Code's own numbers after an answer may count as the profile's: ProfileCore's Headline says the record's are
@@ -133,12 +131,6 @@ struct QuickChatTarget: Equatable {
     /// The split (Headline.split): Claude Code is on another account than the profile's in use, so a refusal Claude Code
     /// meets is its account's, never the profile's limit.
     var split: Bool
-    /// The folder is on another profile's account (a clash): `email` is that profile's, so no words name it (the note
-    /// after a switch names `shownEmail` then).
-    var clash: Bool
-
-    /// The account the note after Switch account… names: where Claude Code went, except in a clash (the profile's own).
-    var switchedTo: String? { clash ? shownEmail : email }
 
     /// What the `claude` process runs with: it is kept while this is the same, and replaced when it changes (the folder's
     /// account is in it, so a process on another account's sign-in is never kept).
@@ -153,10 +145,8 @@ struct QuickChatTarget: Equatable {
         let rec = Store.status(for: e, now: now)
         let raw = Store.status(e.id), h = raw?.headline(now: now, ages: Store.ages(e))
         email = AccountView.of(rec).numbersOwner
-        shownEmail = ProfileShow.of(e, raw: raw, now: now).inUseLabel
         loginWords = rec?.loginWords
-        clash = raw?.resolved?.clash != nil
-        liveCounts = (h.map { $0.numbers() && !$0.unconfirmed } ?? false) && !clash
+        liveCounts = (h.map { $0.numbers() && !$0.unconfirmed } ?? false) && raw?.resolved?.clash == nil
         split = h?.split != nil
     }
     var workFolder: String { QuickChatSettings.workFolder(profileID) }
@@ -346,7 +336,7 @@ final class QuickChatModel: ObservableObject {
         if Date().timeIntervalSince(wait.since) > 600 { switchWait = nil; return }
         guard !blocked, !busy, let t = target, t.email != wait.from else { return }
         switchWait = nil
-        let who = t.switchedTo.map(AccountNames.short) ?? "another account"
+        let who = t.email.map(AccountNames.short) ?? "another account"
         note = "\(t.name) switched to \(who). Sending what you typed."
         sendingWaiting = true
         send()
