@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.40 — 2026-11-15
+
 - The Claude app's sessions are found by one rule (the default profile's move and its counts, the accounts a window used and when, Restore's view of the window): folders named like an id, entries named `local_<id>.json`, never through a link; a window's "last used" now comes from its session entries alone, and its config.json and main.log are no longer read through a link.
 
 ## 26.11.39 — 2026-11-15
