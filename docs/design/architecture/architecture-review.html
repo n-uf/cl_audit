@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>cl_audit architecture review</title>
+<style>
+:root{--bg:#f6f6f8;--card:#fff;--line:#d7d7de;--text:#1b1b20;--muted:#5f5f69;--code:#eceef3;
+--claude:#8a8a96;--agent:#2f6fd6;--app:#7a4cc4;--state:#c47a12;--ui:#c43c3c;--core:#16a06a;--files:#0f8fa8;--xfer:#b0559a;--bug:#d93030}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#121215;--card:#1c1c21;--line:#33333b;--text:#ececf0;--muted:#9c9ca8;--code:#25252c;
+--claude:#9a9aa6;--agent:#6aa0ff;--app:#b18cff;--state:#f0a83a;--ui:#ff7070;--core:#3fcf8e;--files:#3cc4dc;--xfer:#e48cd0;--bug:#ff5a5a}}
+:root[data-theme="dark"]{--bg:#121215;--card:#1c1c21;--line:#33333b;--text:#ececf0;--muted:#9c9ca8;--code:#25252c;
+--claude:#9a9aa6;--agent:#6aa0ff;--app:#b18cff;--state:#f0a83a;--ui:#ff7070;--core:#3fcf8e;--files:#3cc4dc;--xfer:#e48cd0;--bug:#ff5a5a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:14.5px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;padding:28px 16px 64px}
+.wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:34px}
+h1{font-size:23px;margin:0 0 6px}h2{font-size:17px;margin:0 0 4px}
+.sub{color:var(--muted);margin:0 0 12px;font-size:13.5px;max-width:900px}
+code{font:12px ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--code);padding:1px 5px;border-radius:4px}
+.lead{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.scroll{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:8px}
+svg{display:block;width:100%;min-width:980px;height:auto}
+svg text{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",system-ui,sans-serif;fill:var(--text)}
+svg .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+svg .h{font-size:13px;font-weight:700}svg .s{font-size:11px;fill:var(--muted)}svg .gt{font-size:12px;font-weight:800;letter-spacing:.04em}
+svg .box{fill:var(--card);stroke:var(--line)}
+svg .lbl{font-size:10.5px;fill:var(--muted)}
+svg .bugc{fill:var(--bug)}svg .bugt{fill:#fff;font-size:11px;font-weight:800}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--muted);margin:8px 2px}
+.sw{display:inline-block;width:12px;height:12px;border-radius:3px;vertical-align:-2px;margin-right:6px}
+table{width:100%;border-collapse:collapse;font-size:13px;background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+th,td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:color-mix(in srgb,var(--muted) 7%,transparent)}
+tr:last-child td{border-bottom:0}
+.b{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--bug);color:#fff;font-size:11px;font-weight:800;margin-right:6px;flex:none}
+.bugs{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.bug{display:flex;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13px}
+.seq{counter-reset:s;display:flex;flex-direction:column;gap:6px}
+.st{display:grid;grid-template-columns:34px 210px 1fr;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:10px;padding:8px 12px;font-size:13px;align-items:start}
+.st .n{font:800 15px ui-monospace,Menlo,monospace;color:var(--agent)}
+.who{font-size:11px;font-weight:700;padding:1px 7px;border-radius:999px;display:inline-block}
+.who.app{color:var(--app);background:color-mix(in srgb,var(--app) 14%,transparent)}
+.who.flow{color:var(--agent);background:color-mix(in srgb,var(--agent) 14%,transparent)}
+.who.ext{color:var(--claude);background:color-mix(in srgb,var(--claude) 18%,transparent)}
+.dec{border:2px solid var(--agent);border-radius:12px;padding:14px 16px;background:var(--card)}
+.dec ol{margin:6px 0 0;padding-left:20px}.dec li{margin:6px 0}
+@media (max-width:720px){.bugs{grid-template-columns:1fr}.st{grid-template-columns:26px 1fr}.st>div:nth-child(3){grid-column:2}th:nth-child(3),td:nth-child(3){display:none}}
+</style></head><body><div class="wrap">
+
+<header>
+<h1>cl_audit architecture: today, and the proposed modules</h1>
+<p class="sub">Built from two read-only audits of cl_audit at 26.11.25 (59b3dbf), compared with cl_quick (fa661ea) and claude-transplant 4.2.1. Every box names the real type, file or path, and red numbers mark the problems the audits found. Nothing has been changed.</p>
+<div class="lead"><b>In one line:</b> cl_audit is two processes, the background agent and the app, plus Dock-icon copies and a sandboxed widget. They share about 15 files on disk, with no shared code layer between them. Account and usage rules are decided again on every screen, about 45 times. The six data-moving flows each have their own writer, receipt format and window handling (14 writers, 6 receipt formats, 4 window state machines). The proposal is three libraries on two foundation layers, with thin flows on top and screens that only draw.</div>
+</header>
+
+<section>
+<h2>1 · Today: processes, files and who touches what</h2>
+<p class="sub">Arrows show reads and writes. Each red number is a finding, explained below the diagram.</p>
+<div class="legend">
+ <span><span class="sw" style="background:color-mix(in srgb,var(--claude) 30%,transparent)"></span>Claude's own files and processes</span>
+ <span><span class="sw" style="background:color-mix(in srgb,var(--agent) 30%,transparent)"></span>cl_audit agent process</span>
+ <span><span class="sw" style="background:color-mix(in srgb,var(--app) 30%,transparent)"></span>cl_audit app process</span>
+ <span><span class="sw" style="background:color-mix(in srgb,var(--state) 30%,transparent)"></span>cl_audit's state on disk</span>
+ <span><span class="sw" style="background:color-mix(in srgb,var(--ui) 30%,transparent)"></span>surfaces (each decides again)</span>
+</div>
+<div class="scroll">
+<svg viewBox="0 0 1200 830" role="img" aria-label="cl_audit today">
+<defs>
+ <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker>
+ <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--bug)"/></marker>
+</defs>
+
+<!-- Claude files -->
+<rect x="10" y="30" width="300" height="580" rx="12" fill="color-mix(in srgb,var(--claude) 10%,transparent)" stroke="color-mix(in srgb,var(--claude) 55%,transparent)"/>
+<text x="24" y="52" class="gt" style="fill:var(--claude)">CLAUDE CODE + CLAUDE APP (not ours)</text>
+<rect class="box" x="22" y="64" width="276" height="56" rx="7"/><text x="32" y="84" class="h mono">~/.claude/.claude.json</text><text x="32" y="102" class="s">oauthAccount = Claude Code's account</text>
+<rect class="box" x="22" y="128" width="276" height="56" rx="7"/><text x="32" y="148" class="h">Keychain item</text><text x="32" y="166" class="s mono">Claude Code-credentials-&lt;sha8&gt;</text>
+<rect class="box" x="22" y="192" width="276" height="70" rx="7"/><text x="32" y="212" class="h">Claude app config + logs</text><text x="32" y="230" class="s mono">config.json lastKnownAccountUuid</text><text x="32" y="246" class="s mono">logs/main.log "Initialization…"</text>
+<rect class="box" x="22" y="270" width="276" height="96" rx="7"/><text x="32" y="290" class="h">Claude app data folder</text><text x="32" y="308" class="s mono">claude-code-sessions/&lt;acct&gt;/&lt;org&gt;/</text><text x="32" y="324" class="s mono">  local_*.json (+ local_*.json.tmp)</text><text x="32" y="340" class="s mono">  scheduled-tasks.json</text><text x="32" y="356" class="s mono">claude_desktop_config.json</text>
+<rect class="box" x="22" y="374" width="276" height="70" rx="7"/><text x="32" y="394" class="h mono">~/.claude/projects/…/*.jsonl</text><text x="32" y="412" class="s mono">sessions/&lt;pid&gt;.json · usage.json</text><text x="32" y="428" class="s">transcripts, running sessions, status line</text>
+<rect class="box" x="22" y="452" width="276" height="56" rx="7"/><text x="32" y="472" class="h">Claude app window</text><text x="32" y="490" class="s">NSRunningApplication terminate / open</text>
+<rect class="box" x="22" y="516" width="276" height="80" rx="7"/><text x="32" y="536" class="h">Outside tools and network</text><text x="32" y="554" class="s mono">security · ps · ditto · hdiutil</text><text x="32" y="570" class="s mono">claude auth login --email (Terminal)</text><text x="32" y="586" class="s mono">api.anthropic.com oauth/usage</text>
+<circle class="bugc" cx="290" cy="282" r="10"/><text class="bugt" x="290" y="286" text-anchor="middle">6</text>
+
+<!-- Agent -->
+<rect x="350" y="30" width="380" height="250" rx="12" fill="color-mix(in srgb,var(--agent) 9%,transparent)" stroke="color-mix(in srgb,var(--agent) 55%,transparent)"/>
+<text x="364" y="52" class="gt" style="fill:var(--agent)">AGENT PROCESS · UsageDock --agent</text>
+<text x="364" y="68" class="lbl">AgentDelegate · Agent.swift:185 · 3 s save, 30 s tick, 60 s discovery</text>
+<rect class="box" x="362" y="80" width="174" height="84" rx="7"/><text x="372" y="99" class="h">UsageReader ×profile</text><text x="372" y="116" class="s mono">Reader.swift</text><text x="372" y="132" class="s">Login.read → security</text><text x="372" y="148" class="s">URLSession → usage API</text>
+<rect class="box" x="544" y="80" width="174" height="84" rx="7"/><text x="554" y="99" class="h">noteAccounts</text><text x="554" y="116" class="s mono">Folders.swift:72</text><text x="554" y="132" class="s">stored seat follows</text><text x="554" y="148" class="s">Claude Code, not the app</text>
+<rect class="box" x="362" y="174" width="174" height="94" rx="7"/><text x="372" y="193" class="h">AccountResolver.resolve</text><text x="372" y="210" class="s mono">AccountResolver.swift:42</text><text x="372" y="226" class="s">app account, else Claude</text><text x="372" y="242" class="s">Code's; split, clash</text><text x="372" y="258" class="s">(the one shared rule)</text>
+<rect class="box" x="544" y="174" width="174" height="94" rx="7"/><text x="554" y="193" class="h">Store.writeStatus</text><text x="554" y="210" class="s mono">Config.swift:640</text><text x="554" y="226" class="s">clash drop only here</text><text x="554" y="242" class="s">dedupes on its own last</text><text x="554" y="258" class="s">write (won't overwrite)</text>
+<path d="M449,164 L449,174" stroke="var(--muted)" marker-end="url(#ar)"/>
+<path d="M536,221 L544,221" stroke="var(--muted)" marker-end="url(#ar)"/>
+
+<!-- App -->
+<rect x="350" y="296" width="380" height="314" rx="12" fill="color-mix(in srgb,var(--app) 9%,transparent)" stroke="color-mix(in srgb,var(--app) 55%,transparent)"/>
+<text x="364" y="318" class="gt" style="fill:var(--app)">APP PROCESS · Settings window and pages</text>
+<rect class="box" x="362" y="330" width="356" height="50" rx="7" style="stroke:var(--bug);stroke-width:1.5"/><text x="372" y="350" class="h">SettingsModel.resolveNow / resolveWithoutAgent</text><text x="372" y="368" class="s">Settings.swift:224-257 · rewrites status, no clash drop, no lock</text>
+<circle class="bugc" cx="708" cy="342" r="10"/><text class="bugt" x="708" y="346" text-anchor="middle">1</text>
+<rect class="box" x="362" y="388" width="174" height="102" rx="7"/><text x="372" y="407" class="h">SwitchRunner</text><text x="372" y="423" class="s mono">→ SwitchEngine</text><text x="372" y="439" class="s">receipt rewritten whole</text><text x="372" y="455" class="s">no fsync · never reopens</text><text x="372" y="471" class="s">drops task twin</text>
+<circle class="bugc" cx="526" cy="400" r="10"/><text class="bugt" x="526" y="404" text-anchor="middle">5</text>
+<rect class="box" x="544" y="388" width="174" height="102" rx="7"/><text x="554" y="407" class="h">RestoreRunner</text><text x="554" y="423" class="s mono">→ SessionsRestore/Backup</text><text x="554" y="439" class="s">receipt + journal.jsonl</text><text x="554" y="455" class="s">Finish / Undo · reopens</text><text x="554" y="471" class="s">blocker: restores only</text>
+<rect class="box" x="362" y="498" width="174" height="102" rx="7"/><text x="372" y="517" class="h">Export / Import</text><text x="372" y="533" class="s mono">SessionsExport/Import</text><text x="372" y="549" class="s">ditto · hdiutil AES-256</text><text x="372" y="565" class="s">untrusted-tree validator</text><text x="372" y="581" class="s">SecretScan lives here</text>
+<rect class="box" x="544" y="498" width="174" height="102" rx="7"/><text x="554" y="517" class="h">Repoint · SideFiles</text><text x="554" y="533" class="h">DefaultProfile · Removal</text><text x="554" y="549" class="s">4 window state machines</text><text x="554" y="565" class="s">Removal: no lock, 5 s,</text><text x="554" y="581" class="s">then hard delete</text>
+<circle class="bugc" cx="708" cy="510" r="10"/><text class="bugt" x="708" y="514" text-anchor="middle">8</text>
+
+<!-- State -->
+<rect x="770" y="30" width="420" height="580" rx="12" fill="color-mix(in srgb,var(--state) 9%,transparent)" stroke="color-mix(in srgb,var(--state) 55%,transparent)"/>
+<text x="784" y="52" class="gt" style="fill:var(--state)">~/Library/Application Support/usage-n-uf</text>
+<circle class="bugc" cx="1176" cy="46" r="10"/><text class="bugt" x="1176" y="50" text-anchor="middle">7</text>
+<rect class="box" x="782" y="64" width="396" height="56" rx="7"/><text x="792" y="84" class="h mono">accounts.json</text><text x="792" y="102" class="s">profiles, seat, standby · Store.edit under accounts.lock · .pre-&lt;v&gt; copy</text>
+<rect class="box" x="782" y="128" width="396" height="72" rx="7" style="stroke:var(--bug);stroke-width:1.5"/><text x="792" y="148" class="h mono">status/&lt;profile&gt;.json  (+ .prev)</text><text x="792" y="166" class="s">IconStatus: numbers, state (free text), resolved{email, numbersFor, split}</text><text x="792" y="182" class="s">2 writers (agent + app) · read by surfaces, widget, old Dock copies</text>
+<rect class="box" x="782" y="208" width="396" height="160" rx="7"/><text x="792" y="228" class="h">Receipts: 6 formats</text>
+<text x="792" y="248" class="s mono">switches/&lt;id&gt;/receipt.json, parked/, tasks.*.json</text>
+<text x="792" y="266" class="s mono">restores/&lt;id&gt;/receipt.json + journal.jsonl</text>
+<text x="792" y="284" class="s mono">repoints/&lt;id&gt; · sides/&lt;id&gt; · moves/&lt;id&gt;/move.json</text>
+<text x="792" y="302" class="s mono">default-moves/&lt;uuid&gt;.json (saved with try?)</text>
+<text x="792" y="320" class="s mono">switches/active-&lt;sha8&gt;.json (window marks)</text>
+<text x="792" y="342" class="s" style="fill:var(--bug)">each flow's "unfinished?" check sees only its own kind</text>
+<text x="792" y="358" class="s">switch receipts are never pruned</text>
+<circle class="bugc" cx="1166" cy="222" r="10"/><text class="bugt" x="1166" y="226" text-anchor="middle">4</text>
+<rect class="box" x="782" y="376" width="396" height="56" rx="7"/><text x="792" y="396" class="h mono">backups/&lt;id&gt;/backup.json  (v≤4)</text><text x="792" y="414" class="s">made before a switch, default move, export · pruned by count/days</text>
+<rect class="box" x="782" y="440" width="396" height="56" rx="7"/><text x="792" y="460" class="h">flow lock (flock) shared with claude-transplant</text><text x="792" y="478" class="s">SwitchEngine.Lock · not taken by Move, Removal, Uninstall</text>
+<rect class="box" x="782" y="504" width="396" height="44" rx="7"/><text x="792" y="524" class="h mono">consent.log</text><text x="792" y="540" class="s">one line per accepted risky run (Experimental.swift)</text>
+<rect class="box" x="782" y="556" width="396" height="44" rx="7"/><text x="792" y="576" class="h">Uninstall deletes this whole folder</text><text x="792" y="592" class="s">including unfinished receipts and parked originals</text>
+
+<!-- arrows -->
+<path d="M310,110 L350,110" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/><text x="314" y="104" class="lbl">read</text>
+<path d="M350,450 L310,450" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/><text x="314" y="444" class="lbl">write</text>
+<path d="M718,221 C745,221 750,165 782,165" stroke="var(--muted)" stroke-width="1.5" fill="none" marker-end="url(#ar)"/><text x="736" y="200" class="lbl">writes</text>
+<path d="M718,355 C752,355 750,185 782,185" stroke="var(--bug)" stroke-width="1.5" stroke-dasharray="5 4" fill="none" marker-end="url(#arr)"/><text x="733" y="262" class="lbl" style="fill:var(--bug)">also</text><text x="733" y="274" class="lbl" style="fill:var(--bug)">writes</text>
+<path d="M730,440 C752,440 755,290 782,290" stroke="var(--muted)" stroke-width="1.5" fill="none" marker-end="url(#ar)"/><text x="736" y="430" class="lbl">receipts</text>
+<path d="M730,520 C752,520 755,405 782,405" stroke="var(--muted)" stroke-width="1.5" fill="none" marker-end="url(#ar)"/><text x="736" y="540" class="lbl">backups</text>
+<path d="M980,610 L980,648" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/><text x="988" y="634" class="lbl">read raw by every surface</text>
+<path d="M160,610 L160,648" stroke="var(--muted)" stroke-width="1.5" marker-end="url(#ar)"/><text x="168" y="634" class="lbl">some surfaces read Claude's files directly</text>
+
+<!-- Surfaces -->
+<rect x="10" y="650" width="1180" height="170" rx="12" fill="color-mix(in srgb,var(--ui) 8%,transparent)" stroke="color-mix(in srgb,var(--ui) 50%,transparent)"/>
+<text x="24" y="672" class="gt" style="fill:var(--ui)">SURFACES · decisions made locally (in use, whose numbers, fresh, full, colour, lamp, button)</text>
+<g>
+<rect class="box" x="22" y="684" width="158" height="124" rx="7"/><text x="32" y="704" class="h">Menu bar</text><text x="32" y="720" class="s mono">MenuBar.swift</text><text x="32" y="738" class="s">never greys stale</text><text x="32" y="754" class="s">full always crimson</text><text x="32" y="790" class="h" style="fill:var(--ui)">5 decisions</text>
+<rect class="box" x="188" y="684" width="158" height="124" rx="7"/><text x="198" y="704" class="h">Dock icon copies</text><text x="198" y="720" class="s mono">IconApp.swift</text><text x="198" y="738" class="s">greys after ≥30 min</text><text x="198" y="754" class="s">reads .claude.json</text><text x="198" y="790" class="h" style="fill:var(--ui)">6 decisions</text>
+<rect class="box" x="354" y="684" width="158" height="124" rx="7"/><text x="364" y="704" class="h">Dashboard card</text><text x="364" y="720" class="s mono">Launcher AccountRow</text><text x="364" y="738" class="s">greys after 60 min</text><text x="364" y="754" class="s">own problem order</text><text x="364" y="790" class="h" style="fill:var(--ui)">5 decisions</text>
+<rect class="box" x="520" y="684" width="158" height="124" rx="7"/><text x="530" y="704" class="h">Settings ▸ Accounts</text><text x="530" y="720" class="s mono">Settings.swift:1426+</text><text x="530" y="738" class="s">own lamp rule</text><text x="530" y="754" class="s">clash by name</text><text x="530" y="790" class="h" style="fill:var(--ui)">6 decisions</text>
+<rect class="box" x="686" y="684" width="158" height="124" rx="7"/><text x="696" y="704" class="h">Switch page / menu</text><text x="696" y="720" class="s mono">SwitchPage/Menu</text><text x="696" y="738" class="s">match by address</text><text x="696" y="754" class="s">own "best standby"</text><text x="696" y="790" class="h" style="fill:var(--ui)">4 decisions</text>
+<rect class="box" x="852" y="684" width="158" height="124" rx="7"/><text x="862" y="704" class="h">Quick chat level</text><text x="862" y="720" class="s mono">QuickChat.swift</text><text x="862" y="738" class="s">merges claude's own</text><text x="862" y="754" class="s">rate_limit_event</text><text x="862" y="790" class="h" style="fill:var(--ui)">3 decisions</text>
+<circle class="bugc" cx="1000" cy="696" r="10"/><text class="bugt" x="1000" y="700" text-anchor="middle">3</text>
+<rect class="box" x="1018" y="684" width="160" height="124" rx="7"/><text x="1028" y="704" class="h">Widget extension</text><text x="1028" y="720" class="s mono">WidgetViews.swift:63</text><text x="1028" y="738" class="s">sandboxed, read-only</text><text x="1028" y="754" class="s">hand-copied decoder</text><text x="1028" y="790" class="h" style="fill:var(--ui)">5 decisions</text>
+<circle class="bugc" cx="1168" cy="696" r="10"/><text class="bugt" x="1168" y="700" text-anchor="middle">2</text>
+</g>
+</svg>
+</div>
+<div class="bugs" style="margin-top:12px">
+<div class="bug"><span class="b">1</span><div><b>Two writers of the status file.</b> The app rewrites it without the agent's clash check. The agent won't overwrite it until its own state changes, so a wrong answer can stick.</div></div>
+<div class="bug"><span class="b">2</span><div><b>The widget has its own copy of the reader.</b> It knew none of the account rules until 26.11.25 patched it separately, and a renamed field would blank it silently.</div></div>
+<div class="bug"><span class="b">3</span><div><b>Quick chat merges Claude Code's live limit events</b> into the profile's level. 26.11.25 fixed this for the split case only.</div></div>
+<div class="bug"><span class="b">4</span><div><b>The flows don't see each other's unfinished work.</b> A restore or import can run on top of a half-finished switch, and the reverse; their Undos then disagree. <i>High.</i></div></div>
+<div class="bug"><span class="b">5</span><div><b>A switch drops a scheduled task</b> whose id the target account already has. The source's copy survives only in the receipt and the backup. claude-transplant refuses this case. <i>Data loss.</i></div></div>
+<div class="bug"><span class="b">6</span><div><b>The Claude app's pending-write file (<code>local_*.json.tmp</code>) is left behind</b> on a switch, so the app may bring the session back on restart, in both accounts. claude-transplant moves it together with the session file. <i>Unsure.</i></div></div>
+<div class="bug"><span class="b">7</span><div><b>Uninstall and Removal ignore unfinished work.</b> Uninstall deletes every receipt and parked original. Removal hard-deletes a folder even when the window didn't quit within 5 s.</div></div>
+<div class="bug"><span class="b">8</span><div><b>14 hand-written "create a new file safely" writers.</b> Only some flush to disk, only one refuses symlinks when cloning, and none records the file's identity. There are also 6 receipt formats and 4 different "is Claude running" checks.</div></div>
+</div>
+</section>
+
+<section>
+<h2>2 · Target: three libraries on two foundations, flows on top, screens only draw</h2>
+<p class="sub">Each library is a static Swift module compiled before the app, with only Foundation and Darwin, never AppKit or SwiftUI. A higher layer may use a lower one, never the reverse. The cl_quick tags mark what that app would share.</p>
+<div class="scroll">
+<svg viewBox="0 0 1200 780" role="img" aria-label="Target module layering">
+<defs><marker id="ad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="var(--muted)"/></marker></defs>
+
+<!-- App row -->
+<rect x="10" y="10" width="1180" height="160" rx="12" fill="color-mix(in srgb,var(--app) 9%,transparent)" stroke="color-mix(in srgb,var(--app) 55%,transparent)"/>
+<text x="24" y="32" class="gt" style="fill:var(--app)">APP + AGENT (stays in cl_audit) · SwiftUI, AppKit, timers, side effects</text>
+<rect class="box" x="22" y="44" width="226" height="114" rx="7"/><text x="32" y="64" class="h">Surfaces</text><text x="32" y="82" class="s">menu bar, Dock, card, Settings,</text><text x="32" y="98" class="s">Switch, quick chat, widget</text><text x="32" y="118" class="s">render ProfileDisplay only;</text><text x="32" y="134" class="s">colours from Level, words here</text>
+<rect class="box" x="256" y="44" width="226" height="114" rx="7"/><text x="266" y="64" class="h">Pages + runners</text><text x="266" y="82" class="s">thin ObservableObjects</text><text x="266" y="98" class="s">consent sheet (Experimental)</text><text x="266" y="118" class="s">Save / Open panels</text><text x="266" y="134" class="s">progress from the flow</text>
+<rect class="box" x="490" y="44" width="226" height="114" rx="7"/><text x="500" y="64" class="h">WindowControl (impl)</text><text x="500" y="82" class="s">NSRunningApplication quit,</text><text x="500" y="98" class="s">confirm by process identity,</text><text x="500" y="118" class="s">Launcher.openClaude;</text><text x="500" y="134" class="s">always reopens what it closed</text>
+<rect class="box" x="724" y="44" width="226" height="114" rx="7"/><text x="734" y="64" class="h">Agent effects</text><text x="734" y="82" class="s">timers, URLSession usage API,</text><text x="734" y="98" class="s">/usr/bin/security (agent only),</text><text x="734" y="118" class="s">notifications, ClaudeCLI login</text><text x="734" y="134" class="s">the only status writer</text>
+<rect class="box" x="958" y="44" width="220" height="114" rx="7"/><text x="968" y="64" class="h">Adapters</text><text x="968" y="82" class="s">AccountEntry ↔ Profile</text><text x="968" y="98" class="s">accounts.json Codable keys</text><text x="968" y="118" class="s">Removal / Uninstall</text><text x="968" y="134" class="s">go through FlowGate</text>
+
+<!-- Flows row -->
+<rect x="10" y="196" width="1180" height="150" rx="12" fill="color-mix(in srgb,var(--agent) 8%,transparent)" stroke="color-mix(in srgb,var(--agent) 55%,transparent)"/>
+<text x="24" y="218" class="gt" style="fill:var(--agent)">FLOW ENGINES (layer 3) · plan → run(continuing:) → undo, no UI</text>
+<rect class="box" x="22" y="230" width="186" height="104" rx="7" style="stroke:var(--agent);stroke-width:1.5"/><text x="32" y="250" class="h">FlowGate.begin(kind)</text><text x="32" y="268" class="s">flock + window mark +</text><text x="32" y="284" class="s">EVERY unfinished receipt</text><text x="32" y="300" class="s">(fixes 4, 7)</text>
+<rect class="box" x="216" y="230" width="186" height="104" rx="7"/><text x="226" y="250" class="h">SessionTransfer</text><text x="226" y="268" class="s">units: fork, notify, routine</text><text x="226" y="284" class="s">park with .json.tmp</text><text x="226" y="300" class="s">refuse task twin (fixes 5, 6)</text><text x="226" y="316" class="s">model: claude-transplant</text>
+<rect class="box" x="410" y="230" width="186" height="104" rx="7"/><text x="420" y="250" class="h">SwitchFlow</text><text x="420" y="268" class="s">= SessionTransfer</text><text x="420" y="284" class="s">+ SignInWatch</text><text x="420" y="300" class="s">+ link / leave as is</text>
+<rect x="490" y="310" width="98" height="18" rx="9" fill="color-mix(in srgb,var(--core) 18%,transparent)"/><text x="539" y="323" text-anchor="middle" style="font-size:10.5px;font-weight:700;fill:var(--core)">cl_quick: watch</text>
+<rect class="box" x="604" y="230" width="186" height="104" rx="7"/><text x="614" y="250" class="h">Backups · Restore</text><text x="614" y="268" class="s">make, list, prune</text><text x="614" y="284" class="s">plan, run, finish, undo</text><text x="614" y="300" class="s">protects default-move</text><text x="614" y="316" class="s">backups</text>
+<rect class="box" x="798" y="230" width="186" height="104" rx="7"/><text x="808" y="250" class="h">Exchange</text><text x="808" y="268" class="s">export, open, materialize,</text><text x="808" y="284" class="s">commit · Move to</text><text x="808" y="300" class="s">another Mac</text>
+<rect class="box" x="992" y="230" width="186" height="104" rx="7"/><text x="1002" y="250" class="h">Repoint · SideFiles</text><text x="1002" y="268" class="s">ProfilesFile (cl_audit's</text><text x="1002" y="284" class="s">own profiles), each with</text><text x="1002" y="300" class="s">undo, all behind FlowGate</text>
+
+<!-- Libraries row -->
+<rect x="10" y="372" width="384" height="220" rx="12" fill="color-mix(in srgb,var(--core) 9%,transparent)" stroke="color-mix(in srgb,var(--core) 55%,transparent)"/>
+<text x="24" y="394" class="gt" style="fill:var(--core)">ProfileCore</text>
+<rect x="296" y="382" width="86" height="18" rx="9" fill="color-mix(in srgb,var(--core) 22%,transparent)"/><text x="339" y="395" text-anchor="middle" style="font-size:10.5px;font-weight:700;fill:var(--core)">cl_quick</text>
+<text x="24" y="416" class="s mono">AccountID · Seat.same (id, else email+org)</text>
+<text x="24" y="434" class="s mono">StandbyAccount · AccountBook.best / ago</text>
+<text x="24" y="452" class="s mono">Freshness · FullLimit (acts / display)</text>
+<text x="24" y="470" class="s mono">Level (50/80/95) · TimeWords</text>
+<text x="24" y="488" class="s mono">Resolve.account → AccountState</text>
+<text x="24" y="506" class="s mono">StatusRecord (fields internal)</text>
+<text x="24" y="524" class="s mono">Display.make → ProfileDisplay</text>
+<text x="24" y="548" class="s">Steps 0-3 under way. 0 and 1 are being built now.</text>
+<text x="24" y="566" class="s">No Keychain, no files, no cl_audit paths.</text>
+
+<rect x="408" y="372" width="384" height="220" rx="12" fill="color-mix(in srgb,var(--files) 9%,transparent)" stroke="color-mix(in srgb,var(--files) 55%,transparent)"/>
+<text x="422" y="394" class="gt" style="fill:var(--files)">ClaudeFiles</text>
+<rect x="694" y="382" width="86" height="18" rx="9" fill="color-mix(in srgb,var(--core) 22%,transparent)"/><text x="737" y="395" text-anchor="middle" style="font-size:10.5px;font-weight:700;fill:var(--core)">cl_quick</text>
+<text x="422" y="416" class="s mono">ClaudeLayout (dataDir, codeDir, scopes)</text>
+<text x="422" y="434" class="s mono">WindowList (the one entry lister)</text>
+<text x="422" y="452" class="s mono">CodeTabEntry · TaskRegistry</text>
+<text x="422" y="470" class="s mono">Transcripts (locate, cwd, pointer)</text>
+<text x="422" y="488" class="s mono">Sidebar · WindowConfig · Setup</text>
+<text x="422" y="506" class="s mono">SideData (history lock, trust)</text>
+<text x="422" y="524" class="s mono">account reader · ClaudeLocator</text>
+<text x="422" y="548" class="s">Replaces 6 listers, 3 .claude.json caches</text>
+<text x="422" y="566" class="s">and 2 sidebar readers.</text>
+
+<rect x="806" y="372" width="384" height="220" rx="12" fill="color-mix(in srgb,var(--xfer) 9%,transparent)" stroke="color-mix(in srgb,var(--xfer) 55%,transparent)"/>
+<text x="820" y="394" class="gt" style="fill:var(--xfer)">Transfer</text>
+<text x="820" y="416" class="s mono">BackupManifest (v≤4) · ExportManifest (v≤6)</text>
+<text x="820" y="434" class="s mono">BackupLayout.allowed(role:path:)</text>
+<text x="820" y="452" class="s mono">Archive.zip / image / attach (ditto, hdiutil)</text>
+<text x="820" y="470" class="s mono">ZipIndex · UntrustedTree.validate</text>
+<text x="820" y="488" class="s mono">Fingerprint · Scrubber · LeakCheck</text>
+<text x="820" y="506" class="s mono">WorkFolder (claim, sweep)</text>
+<text x="820" y="548" class="s">Keeps the password on stdin and its composed</text>
+<text x="820" y="566" class="s">form, so older images still open.</text>
+
+<!-- Foundation row -->
+<rect x="10" y="618" width="680" height="128" rx="12" fill="color-mix(in srgb,var(--muted) 9%,transparent)" stroke="color-mix(in srgb,var(--muted) 50%,transparent)"/>
+<text x="24" y="640" class="gt" style="fill:var(--muted)">SafeFiles (layer 1)</text>
+<text x="24" y="662" class="s mono">SafeRead(max:, links: .refuse|.follow) · Dir (descriptor walk) · PathRules · Hash</text>
+<text x="24" y="680" class="s mono">CreateOnly.write: O_EXCL temp → fsync → linkat, journals dev/ino (replaces 14 copies)</text>
+<text x="24" y="698" class="s mono">CreateOnly.clone (CLONE_NOFOLLOW) · Swap.replace(expected sha)</text>
+<text x="24" y="716" class="s mono">Journal (sequenced, fsync file+dir, gap = corrupt) · ReceiptStore · FlowLock (flock)</text>
+<text x="24" y="734" class="s">FlowLock keeps claude-transplant's lock path, so the two tools still block each other.</text>
+
+<rect x="704" y="618" width="486" height="128" rx="12" fill="color-mix(in srgb,var(--muted) 9%,transparent)" stroke="color-mix(in srgb,var(--muted) 50%,transparent)"/>
+<text x="718" y="640" class="gt" style="fill:var(--muted)">Processes · SecretScan (layer 1)</text>
+<text x="718" y="662" class="s mono">ProcessRunner (timeout, stdin, secret redaction)</text>
+<text x="718" y="680" class="s mono">ProcessTable: pid + start time, 2 s timeout</text>
+<text x="718" y="698" class="s mono">RunningSessions → nil means unknown → refuse</text>
+<text x="718" y="716" class="s mono">SecretScan.scan(data / path)</text>
+<text x="718" y="734" class="s">Replaces 4 "who's running" checks; fail closed.</text>
+
+<!-- dependency arrows -->
+<path d="M600,170 L600,196" stroke="var(--muted)" stroke-width="2" marker-end="url(#ad)"/>
+<path d="M200,346 L200,372" stroke="var(--muted)" stroke-width="2" marker-end="url(#ad)"/>
+<path d="M600,346 L600,372" stroke="var(--muted)" stroke-width="2" marker-end="url(#ad)"/>
+<path d="M1000,346 L1000,372" stroke="var(--muted)" stroke-width="2" marker-end="url(#ad)"/>
+<path d="M600,592 L600,618" stroke="var(--muted)" stroke-width="2" marker-end="url(#ad)"/>
+<path d="M1000,592 L1000,618" stroke="var(--muted)" stroke-width="2" marker-end="url(#ad)"/>
+<text x="608" y="188" class="lbl">uses</text>
+<text x="608" y="364" class="lbl">uses</text>
+<text x="608" y="610" class="lbl">uses</text>
+<text x="210" y="610" class="lbl">ProfileCore uses neither ClaudeFiles nor SafeFiles</text>
+</svg>
+</div>
+<p class="sub" style="margin-top:10px">Injected seams: the folders' root paths, a clock (<code>now:</code>), <code>ProcessRunner</code>, <code>WindowControl</code>, plus <code>KeychainReader</code> and <code>UsageAPI</code> in the agent only. Every check suite keeps its throwaway HOME.</p>
+</section>
+
+<section>
+<h2>3 · An account switch in the target, step by step</h2>
+<p class="sub">Combines claude-transplant's way of moving sessions with cl_audit's sign-in side. Each step names the part that does it.</p>
+<div class="seq">
+<div class="st"><div class="n">1</div><div><span class="who app">app</span> consent sheet</div><div>Ticked box, <code>ConsentLog</code> line. Cancel writes nothing.</div></div>
+<div class="st"><div class="n">2</div><div><span class="who flow">flow</span> <code>FlowGate.begin(.switch)</code></div><div>flock on the shared lock path, the window mark, and a check for <b>any</b> unfinished receipt of any kind for this profile. If one exists: refuse, and offer Finish or Undo for it.</div></div>
+<div class="st"><div class="n">3</div><div><span class="who flow">flow</span> <code>Backups.make</code></div><div>Full backup of entries, sidebar and transcripts into <code>backups/&lt;id&gt;</code>, renamed into place with <code>RENAME_EXCL</code>. Better than claude-transplant, which keeps only parked copies.</div></div>
+<div class="st"><div class="n">4</div><div><span class="who app">app</span> <code>WindowControl.close</code></div><div>Quit the Claude window, confirm by process identity (pid plus start time), with a stall watchdog. If it doesn't close: stop, nothing moved.</div></div>
+<div class="st"><div class="n">5</div><div><span class="who flow">flow</span> <code>SessionTransfer.run</code></div><div><code>WindowList</code> per scope. Move whole units (forks, notify, routines), and hold a unit rather than split it. Refuse a differing task twin. For each record: <code>CreateOnly.write</code> (fsync, dev/ino in the journal), check the source before and after, then park it together with its <code>.json.tmp</code>. Sequenced journal.</div></div>
+<div class="st"><div class="n">6</div><div><span class="who ext">claude CLI</span> sign in</div><div><code>claude auth login --email &lt;target&gt;</code> in Terminal, on the folder. <code>FolderGuard</code> never makes a missing folder. No Keychain read by cl_audit.</div></div>
+<div class="st"><div class="n">7</div><div><span class="who flow">flow</span> <code>SignInWatch.judge</code></div><div>Watches <code>.claude.json</code> every 2 s for up to 10 min. Matches by id, else email plus organisation; also links sign-ins made elsewhere. Shared with cl_quick.</div></div>
+<div class="st"><div class="n">8</div><div><span class="who app">app</span> <code>WindowControl.reopen</code></div><div>Always reopens a window it closed, on success, timeout or cancel (today's switch never does).</div></div>
+<div class="st"><div class="n">9</div><div><span class="who flow">flow</span> <code>ReceiptStore</code></div><div>The receipt is closed when the Claude app reaches the account (at most 24 h). Otherwise: Undo, which reverses only unchanged steps, or Leave it as it is.</div></div>
+</div>
+</section>
+
+<section>
+<h2>4 · Who reads and writes each file: today and target</h2>
+<table>
+<tr><th>File</th><th>Today</th><th>Target owner</th></tr>
+<tr><td><code>status/&lt;profile&gt;.json</code></td><td>Written by the agent and by the app. Read raw by 8 surfaces, the widget's own decoder and old Dock copies.</td><td>Written only by the agent, through ProfileCore's <code>StatusStore</code>. Read only through <code>Display.make</code>.</td></tr>
+<tr><td><code>accounts.json</code></td><td><code>Store.edit</code> under flock, called from both processes.</td><td>Same lock, through the adapters. Every key round-trips, legacy ones included.</td></tr>
+<tr><td><code>.claude.json</code> (Claude Code's account)</td><td>3 caches, plus IconApp and <code>preview()</code> reading it directly.</td><td>One reader in ClaudeFiles. Step 0 removes the direct reads.</td></tr>
+<tr><td>Claude app <code>config.json</code> and <code>main.log</code></td><td><code>AppSignIn</code>, using AppKit.</td><td>The parser goes into ClaudeFiles; the running-app check stays a seam.</td></tr>
+<tr><td><code>claude-code-sessions/…/local_*.json</code></td><td>6 listers that differ on UUID, case and links. Written by switch, restore, repoint and the default move, each with its own writer.</td><td><code>WindowList</code> reads; <code>SessionTransfer</code> and <code>Restore</code> write through <code>CreateOnly</code>.</td></tr>
+<tr><td><code>scheduled-tasks.json</code></td><td>The switch replaces it whole; restore only where there's none.</td><td><code>TaskRegistry</code> with compare-and-swap; refuse a differing twin.</td></tr>
+<tr><td>Receipts (6 kinds)</td><td>6 formats, each flow sees only its own kind.</td><td><code>ReceiptStore</code> + <code>Journal</code>, the same JSON keys and folders; <code>FlowGate</code> reads all of them.</td></tr>
+<tr><td>Keychain sign-in</td><td>The agent only, through <code>/usr/bin/security</code>.</td><td>Unchanged. No library may touch it; a check scan enforces that.</td></tr>
+</table>
+</section>
+
+<section>
+<h2>5 · The order, in small releases</h2>
+<table>
+<tr><th>When</th><th>Step</th><th>Fixes</th></tr>
+<tr><td>Now</td><td>ProfileCore 0 (screen checks) and 1 (Core/ module, simple rules)</td><td>the widget's copies, colour copies, best-standby rules</td></tr>
+<tr><td>Next</td><td>ProfileCore 2 (status record) and 3a–3d (one ProfileDisplay per screen group), then 4 (one writer)</td><td>1, 2, 3; four stale thresholds; the lamp</td></tr>
+<tr><td>Then</td><td>Engines 0: restore the missing backup and sign-in check suites, plus fixtures of every released receipt format</td><td>the coverage gap (needed before touching writers)</td></tr>
+<tr><td></td><td>Engines 1–6: SafeFiles, one CreateOnly writer (one flow per commit), bounded reads, Processes, ClaudeFiles, Transfer</td><td>8; unsafe reads; fail-open Undo</td></tr>
+<tr><td></td><td>Engines 7a/7b: ReceiptStore, then FlowGate with cross-flow blocking (visible: a refusal line)</td><td>4, 7</td></tr>
+<tr><td></td><td>Engines 8–12: SessionTransfer, Backups/Restore, Exchange, one window helper, SignInWatch shared with cl_quick</td><td>5, 6; window not reopened; cl_quick's folder bug</td></tr>
+</table>
+</section>
+
+<section class="dec">
+<h2>For your review</h2>
+<ol>
+<li><b>The layering above:</b> ProfileCore, ClaudeFiles and Transfer on top of SafeFiles, Processes and SecretScan, with the flow engines on top of those, and screens that only draw. OK, or change it?</li>
+<li><b>Fix the two data-loss bugs now, before the refactor.</b> #4: one flow running on top of another's unfinished work. #5: a switch dropping a task. Each is a small fix that ships on its own. I recommend this, since the full refactor will take weeks.</li>
+<li><b>Point 6</b> (the Claude app's <code>.json.tmp</code> file left behind) is unconfirmed. A quick check on a test profile would settle it before we change anything.</li>
+<li><b>Sharing:</b> cl_quick takes ProfileCore, the account reader in ClaudeFiles, and SignInWatch. It moves no sessions, so it doesn't need the rest.</li>
+</ol>
+</section>
+
+</div></body></html>

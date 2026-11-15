@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Switch State Text</title>
+<style>
+  * { box-sizing: border-box; }
+  :root { --glow: 127,249,234; --on: 74,222,128; --mono: ui-monospace, "SF Mono", Menlo, monospace; --sans: -apple-system, system-ui, sans-serif; }
+  body { margin: 0; padding: 0 16px 60px; background: #f4f4f2; font: 14px/1.5 var(--sans); color: #374151; }
+  main { max-width: 1100px; margin: 0 auto; }
+  h1 { font: 700 15px var(--mono); text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 4px; color: #111827; }
+  .lead { margin: 0 0 18px; color: #6b7280; font-size: 13px; max-width: 100ch; }
+  .var { margin: 26px 0 0; }
+  .var h2 { font: 700 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 3px; color: #111827; }
+  .var p { margin: 0 0 8px; color: #6b7280; font-size: 12.5px; max-width: 100ch; }
+  .stage { padding: 16px; border-radius: 12px; display: flex; flex-wrap: wrap; gap: 10px;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #29292b, #222224); }
+  /* the panel, at the tight width (Overview cards): 165 px */
+  .pchip { width: 165px; display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 7px 0 10px; border-radius: 6px; background: rgba(0,0,0,.28); box-shadow: inset 0 1px 3px rgba(0,0,0,.75), 0 1px 0 rgba(255,255,255,.05); color: #ececee; }
+  .pchip.tall { height: 50px; }
+  .tx { display: grid; gap: 3px; min-width: 0; flex: 1; line-height: 1.1; }
+  .ttl { font: 600 8.5px var(--sans); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.62); white-space: nowrap; }
+  .st { font: 600 9.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: rgb(var(--glow)); text-shadow: 0 0 3px rgba(var(--glow), .6); }
+  .st.off { color: rgba(var(--glow), .42); text-shadow: none; }
+  .note { font: 500 8.5px var(--mono); letter-spacing: .04em; color: rgba(var(--glow), .45); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .key { flex: none; width: 30px; height: 22px; border-radius: 4px; display: grid; place-items: center;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #74746f, #52524e);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #2e2e2c, 0 2px 0 #121211; }
+  .key i { width: 6px; height: 6px; border-radius: 50%; background: #3a3532; box-shadow: inset 0 1px 1px rgba(0,0,0,.55); }
+  .key.on i { background: rgb(var(--on)); box-shadow: 0 0 6px rgba(var(--on), .85); }
+  /* C: marquee only when the text is longer than the window */
+  .mq { overflow: hidden; white-space: nowrap; }
+  .mq span { display: inline-block; padding-right: 2em; animation: mq 7s linear infinite; }
+  .mq span + span { }
+  @keyframes mq { 0%, 18% { transform: translateX(0); } 82%, 100% { transform: translateX(-100%); } }
+
+  /* D: the state word holds still; only the detail after it scrolls, and only when it doesn't fit */
+  .st2 { display: flex; align-items: baseline; gap: .7em; min-width: 0; font: 600 9.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; color: rgb(var(--glow)); text-shadow: 0 0 3px rgba(var(--glow), .6); }
+  .st2.off { color: rgba(var(--glow), .42); text-shadow: none; }
+  .st2 > b { flex: none; font-weight: 600; }
+  .tick { position: relative; flex: 1; min-width: 0; overflow: hidden; font-weight: 400; opacity: .78;
+    -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 6px, #000 calc(100% - 10px), transparent); mask-image: linear-gradient(90deg, transparent 0, #000 6px, #000 calc(100% - 10px), transparent); }
+  .tick > span { display: inline-block; padding-left: 6px; }
+  .tick.run > span { animation: tick var(--dur, 6s) linear infinite; }
+  .tick.run > span::after { content: attr(data-t); padding-left: 3em; }   /* a second copy, so the loop is seamless */
+  @keyframes tick { 0%, 15% { transform: translateX(0); } 100% { transform: translateX(var(--shift)); } }
+  @media (prefers-reduced-motion: reduce) { .tick.run > span { animation: none; } .tick.run > span::after { content: none; } .tick { text-overflow: ellipsis; } }
+  .pchip.w210 { width: 210px; }
+  .row-lbl { width: 100%; font: 600 10px var(--mono); color: #9a9aa0; letter-spacing: .06em; margin: 2px 0 -2px; }
+  .tag { display: inline-block; margin-top: 4px; font: 600 10px var(--mono); color: #6b7280; }
+  .pick { color: #b45309; }
+</style>
+</head>
+<body>
+<main>
+<h1>cl_audit T4 · switch state text · options</h1>
+<p class="lead">The panel at its tightest width (165 px, the two cards on the Overview). The states the demo shows: open, closed, opening…, quitting…, running, starting…, quits in 10 s, waits for the window, stopped · no alerts. Today the last three are cut off ("STOPPED · NO ALE…").</p>
+
+<section class="var">
+  <h2 class="pick">D · Modified C: the state word holds still, the detail scrolls (built)</h2>
+  <p>One line, panel height unchanged (40 px). The state word (STOPPED, WAITING, QUITS IN 10 S) never moves. The detail after it, slightly lighter, sits in the space left on the line; only when it doesn't fit does it pause, scroll through and loop, fading at both edges like a display window. When it fits it stays still. With "reduce motion" turned on it doesn't move and ends in "…" instead.</p>
+  <div class="stage">
+    <div class="row-lbl">165 px · the two cards on the Overview</div>
+    <div class="pchip"><div class="tx"><span class="ttl">Dock icon</span><span class="st2 off"><b>stopped</b><span class="tick"><span data-t="· no alerts">· no alerts</span></span></span></div><span class="key"><i></i></span></div><div class="pchip"><div class="tx"><span class="ttl">Dock icon</span><span class="st2 off"><b>waiting</b><span class="tick"><span data-t="· for the window">· for the window</span></span></span></div><span class="key"><i></i></span></div><div class="pchip"><div class="tx"><span class="ttl">Dock icon</span><span class="st2"><b>quits in 10 s</b><span class="tick"><span data-t="· after the window">· after the window</span></span></span></div><span class="key on"><i></i></span></div><div class="pchip"><div class="tx"><span class="ttl">Dock icon</span><span class="st2"><b>running</b></span></div><span class="key on"><i></i></span></div><div class="pchip"><div class="tx"><span class="ttl">Claude window</span><span class="st2"><b>open</b></span></div><span class="key on"><i></i></span></div>
+    <div class="row-lbl">210 px · the Demo dashboard at 1440 px</div>
+    <div class="pchip w210"><div class="tx"><span class="ttl">Dock icon</span><span class="st2 off"><b>stopped</b><span class="tick"><span data-t="· no alerts">· no alerts</span></span></span></div><span class="key"><i></i></span></div><div class="pchip w210"><div class="tx"><span class="ttl">Dock icon</span><span class="st2 off"><b>waiting</b><span class="tick"><span data-t="· for the window">· for the window</span></span></span></div><span class="key"><i></i></span></div><div class="pchip w210"><div class="tx"><span class="ttl">Dock icon</span><span class="st2"><b>quits in 10 s</b><span class="tick"><span data-t="· after the window">· after the window</span></span></span></div><span class="key on"><i></i></span></div><div class="pchip w210"><div class="tx"><span class="ttl">Dock icon</span><span class="st2"><b>running</b></span></div><span class="key on"><i></i></span></div><div class="pchip w210"><div class="tx"><span class="ttl">Claude window</span><span class="st2"><b>open</b></span></div><span class="key on"><i></i></span></div>
+  </div>
+</section>
+
+</main>
+<script>
+  // scroll a detail only when it is longer than the space it has; each loop moves one copy plus the gap
+  document.querySelectorAll(".tick").forEach((t) => {
+    const s = t.firstElementChild;
+    const one = s.offsetWidth;                 // the text alone (with its 6 px lead)
+    if (one <= t.clientWidth) return;
+    t.classList.add("run");
+    const gap = parseFloat(getComputedStyle(s, "::after").paddingLeft) || 0;
+    const shift = one - 6 + gap;
+    s.style.setProperty("--shift", `-${shift}px`);
+    s.style.setProperty("--dur", `${Math.max(4, shift / 16)}s`);
+  });
+</script>
+</body>
+</html>

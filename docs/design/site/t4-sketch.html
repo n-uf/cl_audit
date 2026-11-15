@@ -1,0 +1,325 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cl_audit T4 Sketch</title>
+<style>
+  * { box-sizing: border-box; }
+  :root {
+    --text: #ececee; --soft: #c4c4c8; --muted: #9a9aa0; --faint: #6e6e74;
+    --led: 255,122,61; --glow: 127,249,234;
+    --green: #22c55e; --amber: #f59e0b; --red: #ef4444;
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, monospace;
+    /* brushed grain, as in the T4 sketch */
+    --grain: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px);
+  }
+  body { margin: 0; padding: 0 16px 60px; background: #f4f4f2; font: 14px/1.5 var(--sans); color: #374151; }
+  main.doc { max-width: 1180px; margin: 0 auto; }
+  h1.doc { font: 700 15px var(--mono); text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 4px; color: #111827; }
+  .lead { margin: 0 0 18px; color: #6b7280; font-size: 13px; max-width: 110ch; }
+  .var { margin: 28px 0 0; }
+  .var > h2 { font: 700 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 3px; color: #111827; }
+  .var > p.why { margin: 0 0 8px; color: #6b7280; font-size: 12.5px; max-width: 110ch; }
+
+  /* ── the chassis: the app window as a front panel ── */
+  .chassis { color: var(--text); border-radius: 14px; overflow: hidden;
+    background: var(--grain), linear-gradient(180deg, #232325, #1b1b1d 40%, #19191b);
+    box-shadow: 0 0 0 1px #000, 0 0 0 2px rgba(255,255,255,.06), 0 20px 50px rgba(0,0,0,.35); }
+  .titlebar { display: flex; align-items: center; height: 28px; padding: 0 12px; position: relative; }
+  .lights { display: flex; gap: 7px; } .lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+  .lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+  .tb-title { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 12.5px; font-weight: 600; }
+
+  /* the top strip: brand, page display, page keys */
+  .fascia { display: flex; align-items: center; gap: 14px; padding: 6px 18px 12px; border-bottom: 1px solid rgba(0,0,0,.55); box-shadow: 0 1px 0 rgba(255,255,255,.04); }
+  .brand { display: grid; line-height: 1.1; }
+  .brand b { font-size: 18px; font-weight: 700; letter-spacing: -.01em; }
+  .brand span { font: 600 8.5px var(--sans); letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.42); margin-top: 3px; }
+  .spacer { flex: 1; }
+
+  /* printed label on a plate */
+  .lbl { font: 600 9.5px/1 var(--sans); letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.5); white-space: nowrap; }
+
+  /* a key strip: keys set into a brushed plate */
+  .plate { display: inline-flex; align-items: center; gap: 8px; padding: 7px 9px; border-radius: 7px;
+    background: var(--grain), linear-gradient(180deg, #48484b, #333336);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -1px 0 rgba(0,0,0,.4), 0 0 0 1px #0b0b0c, 0 6px 16px rgba(0,0,0,.4); }
+  .divider { width: 1px; align-self: stretch; background: rgba(0,0,0,.45); box-shadow: 1px 0 0 rgba(255,255,255,.08); }
+
+  /* aluminium key */
+  .k { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 30px; padding: 0 14px; border: 0; border-radius: 3px;
+    font: 600 11px/1 var(--sans); letter-spacing: .1em; text-transform: uppercase; color: #232323; text-decoration: none; white-space: nowrap; cursor: pointer; user-select: none;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.12) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #e4e4e0, #bdbdb8);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8), inset 0 -1px 0 rgba(0,0,0,.25), 0 0 0 1px #1a1a1a, 0 2px 0 #111;
+    transition: transform .06s, box-shadow .06s, filter .15s; }
+  .k:hover { filter: brightness(1.04); }
+  .k:active, .k.on { transform: translateY(1px); box-shadow: inset 0 1px 0 rgba(255,255,255,.5), inset 0 -1px 0 rgba(0,0,0,.2), 0 0 0 1px #1a1a1a, 0 1px 0 #111; }
+  .k.on { background: repeating-linear-gradient(90deg, rgba(255,255,255,.1) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #d8d8d4, #b4b4af); }
+  .k.sm { height: 24px; padding: 0 10px; font-size: 10px; gap: 6px; }
+  /* LED: off is a dark dot in the key; lit is orange and glows */
+  .led { width: 6px; height: 6px; border-radius: 50%; flex: none; background: #6b5a52; box-shadow: inset 0 1px 1px rgba(0,0,0,.45); }
+  .k.on .led, .led.lit { background: rgb(var(--led)); box-shadow: 0 0 6px rgba(var(--led),.9), 0 0 0 1px rgba(120,40,0,.25); }
+
+  /* recessed display window: glowing monospace (VFD) */
+  .disp { position: relative; display: inline-flex; align-items: center; gap: 8px; height: 24px; padding: 0 10px; border-radius: 5px; overflow: hidden; flex: none;
+    background: linear-gradient(180deg, #030607, #0a1113 70%, #0c1517);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,.9), inset 0 0 0 1px rgba(255,255,255,.035), 0 0 0 1px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.07);
+    font: 600 10.5px var(--mono); letter-spacing: .16em; text-transform: uppercase; white-space: nowrap;
+    color: rgb(var(--glow)); text-shadow: 0 0 3px rgba(var(--glow),.75), 0 0 9px rgba(var(--glow),.35); }
+  .disp::after { content: ""; position: absolute; inset: 0 0 55% 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,.07), transparent); }
+  .disp em { font-style: normal; color: rgba(var(--glow),.36); text-shadow: none; }
+  .disp.wide { height: auto; padding: 7px 12px; letter-spacing: .08em; text-transform: none; font-size: 11.5px; line-height: 1.5; white-space: normal; display: block; }
+
+  /* module: a raised sub-panel with a printed label and an engraved rule */
+  .content { padding: 16px 18px 18px; display: grid; gap: 14px; }
+  .mod { position: relative; padding: 14px 16px 16px; border-radius: 10px; min-width: 0;
+    background: var(--grain), linear-gradient(180deg, #29292b, #222224);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #0c0c0d, 0 4px 12px rgba(0,0,0,.25); }
+  .mlabel { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+  .mlabel::after { content: ""; flex: 1; height: 1px; background: rgba(0,0,0,.5); box-shadow: 0 1px 0 rgba(255,255,255,.05); }
+  .mod h1 { margin: 0 0 6px; font-size: 28px; line-height: 1.12; letter-spacing: -.02em; }
+  .mod h3 { margin: 0 0 4px; font-size: 16px; font-weight: 650; }
+  .mod p { margin: 0; color: var(--soft); font-size: 14px; max-width: 72ch; }
+  .meta { margin-top: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+  .note { color: var(--muted); font-size: 12px; }
+
+  .hero { display: grid; grid-template-columns: 330px 330px minmax(0,1fr); gap: 14px; }
+  .acc { display: grid; gap: 10px; }
+  .acc-head { display: flex; gap: 10px; align-items: center; }
+  .icon { width: 48px; height: 48px; border-radius: 11px; background: linear-gradient(160deg,#444,#1b1b1b); box-shadow: inset 0 0 0 1px rgba(255,255,255,.15); display: grid; place-items: center; font: 800 13px var(--mono); }
+  .acc-name { font-weight: 600; font-size: 15px; } .sub { color: var(--muted); font-size: 12px; }
+  .plan { margin-left: auto; align-self: flex-start; }
+
+  /* card switches: a printed label, a tiny display and an LED key */
+  .sw-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sw { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 6px 0 9px; border-radius: 6px;
+    background: rgba(0,0,0,.28); box-shadow: inset 0 1px 2px rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.05); }
+  .sw .tx { display: grid; gap: 3px; }
+  .sw .tx .lbl { font-size: 8.5px; color: rgba(255,255,255,.62); }
+  .sw .tx .st { font: 600 9.5px var(--mono); letter-spacing: .08em; color: rgb(var(--glow)); text-shadow: 0 0 3px rgba(var(--glow),.6); }
+  .sw .tx .st.off { color: rgba(var(--glow),.4); text-shadow: none; }
+  .ledkey { width: 26px; height: 20px; padding: 0; display: grid; place-items: center; }
+  .ledkey.busy .led { animation: blink .5s steps(1) infinite; background: rgb(var(--led)); }
+  @keyframes blink { 50% { background: #6b5a52; box-shadow: none; } }
+
+  /* level meter (the Segments design) */
+  .meter { display: grid; gap: 7px; }
+  .mrow { display: grid; grid-template-columns: 56px 1fr 40px; align-items: center; gap: 8px; font-size: 12px; }
+  .mrow .lbl { font-size: 8.5px; }
+  .segs { display: grid; grid-template-columns: repeat(12,1fr); gap: 3px; height: 9px; padding: 2px; border-radius: 3px; background: #0b0d0e; box-shadow: inset 0 1px 2px rgba(0,0,0,.8); }
+  .segs i { border-radius: 1px; background: rgba(255,255,255,.06); }
+  .pct { font: 700 12px var(--mono); text-align: right; }
+
+  /* login section */
+  .login-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .login-head h2 { margin: 0; font-size: 16px; font-weight: 650; }
+  .more { margin-left: auto; color: var(--muted); font-size: 12.5px; text-decoration: none; }
+  .tabs { display: flex; gap: 7px; margin-top: 12px; flex-wrap: wrap; width: 100%; }
+  .tabs .k { flex: 1 1 auto; }
+  .readout { margin-top: 12px; padding: 12px 14px; border-radius: 7px; min-height: 92px;
+    background: rgba(0,0,0,.26); box-shadow: inset 0 1px 3px rgba(0,0,0,.7), 0 1px 0 rgba(255,255,255,.05); }
+  .readout b { display: block; font-size: 14px; margin-bottom: 3px; }
+  .readout p { font-size: 13.5px; color: #b4b4ba; line-height: 1.6; }
+  code { font: 12px var(--mono); padding: 1px 5px; border-radius: 4px; background: rgba(255,255,255,.07); color: #d4d4d8; }
+
+  /* install */
+  .cols2 { display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; align-items: start; }
+  .steps { display: grid; }
+  .step { display: grid; grid-template-columns: 44px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.035); }
+  .step:first-child { border: 0; box-shadow: none; }
+  .step .disp { justify-content: center; height: 22px; padding: 0 6px; font-size: 10px; letter-spacing: .1em; }
+  .step b { display: block; font-size: 14px; } .step span { color: var(--muted); font-size: 13.5px; }
+  .gk { margin-top: 10px; padding: 10px 12px; border-radius: 9px; background: #2b2b2e; box-shadow: 0 0 0 1px rgba(255,255,255,.08); font-size: 12.5px; }
+  .gk-row { display: flex; justify-content: space-between; align-items: center; gap: 10px; color: var(--muted); flex-wrap: wrap; }
+  .gk-btn { padding: 3px 12px; border-radius: 6px; background: rgba(255,255,255,.14); color: #fff; font-weight: 600; box-shadow: 0 0 0 2px rgb(var(--led)); }
+  .srow { display: flex; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.035); font-size: 13px; }
+  .srow:first-of-type { border: 0; box-shadow: none; }
+  .srow .v { color: var(--muted); text-align: right; }
+
+  /* menu bar + dock stubs for context */
+  .menubar { display: flex; align-items: center; gap: 16px; height: 26px; padding: 0 14px; background: rgba(20,20,22,.9); color: #e8e8ea; font-size: 12.5px; border-radius: 10px 10px 0 0; }
+  .menubar .dl { display: inline-flex; align-items: center; gap: 6px; padding: 0 8px; height: 18px; border-radius: 3px; font: 600 9.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: #232323;
+    background: linear-gradient(180deg, #e4e4e0, #bdbdb8); box-shadow: 0 0 0 1px #111; }
+  .menubar .dl.dim { background: none; box-shadow: none; color: #e8e8ea; font: 12.5px var(--sans); letter-spacing: 0; text-transform: none; padding: 0; }
+  .desk { padding: 0 0 10px; border-radius: 12px; background: radial-gradient(900px 400px at 70% 0%, #2a2a30, transparent 70%), #121214; }
+  .desk .chassis { margin: 0 8px; }
+
+  /* phone */
+  .phones { display: flex; gap: 22px; flex-wrap: wrap; align-items: flex-start; }
+  .phone { width: 390px; max-width: 100%; border-radius: 26px; padding: 10px; background: #0d0d0e; box-shadow: 0 0 0 2px #2a2a2c, 0 20px 40px rgba(0,0,0,.3); }
+  .phone .chassis { border-radius: 16px; }
+  .phone .fascia { flex-wrap: wrap; padding: 4px 12px 10px; gap: 10px; }
+  .phone .fascia .plate { width: 100%; justify-content: space-between; gap: 5px; padding: 6px; }
+  .phone .fascia .plate .k { flex: 1 1 auto; padding: 0 6px; }
+  .phone .content { padding: 12px; }
+  .phone .mod h1 { font-size: 22px; }
+  .phone .plate.hero-keys { display: flex; flex-wrap: wrap; }
+  .phone .tabs .k { font-size: 9.5px; padding: 0 8px; }
+  .phone .readout { min-height: 140px; }
+
+  @media (max-width: 1100px) { .hero { grid-template-columns: 1fr 1fr; } .hero .intro { grid-column: 1 / -1; order: -1; } }
+  @media (max-width: 760px) { .hero, .cols2 { grid-template-columns: 1fr; } .fascia { flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+<main class="doc">
+<h1 class="doc">cl_audit site · T4 front panel · whole-site sketch</h1>
+<p class="lead">Every control on the site as a part of one hi-fi front panel, from sketch T4. Window = brushed dark chassis; sections = raised modules with a printed label and engraved rule; every button, page switch and tab = a small aluminium key with an LED hole; lit orange LED = current page / chosen tab / the one prominent Download; display windows (cyan glass, glowing monospace) show the current page, the version line, the step numbers, switch states and the LOGIN · SECURITY badge. Keys press down a pixel; the current page stays latched down. The Mac menu bar and Dock stay as they are (they're the Mac, not the app).</p>
+
+<section class="var">
+  <h2>1 · Overview, top of the page (1440 px)</h2>
+  <p class="why">Top strip: brand with a printed sub-label, a display window naming the page, and a PAGE key strip (the current page latched, LED lit). The hero: two profile modules and the intro module; its actions are the T4 plate. The version line becomes a display window. Menu bar Download is quiet (plain text) while the hero's Download key is in view: only one lit Download LED on screen.</p>
+  <div class="desk">
+    <div class="menubar"><b>cl_audit</b><span>Overview</span><span>Dashboard</span><span>Settings</span><span>Install</span><span>FAQ</span><span class="spacer"></span><span class="dl dim">↓ Download for Mac</span><span>GitHub</span><span>Sat 24 Oct 19:40</span></div>
+    <div class="chassis">
+      <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span><span class="tb-title">cl_audit</span></div>
+      <div class="fascia">
+        <span class="brand"><b>cl_audit</b><span>Usage audit · all Claude profiles</span></span>
+        <span class="disp"><em>PAGE</em>OVERVIEW</span>
+        <span class="spacer"></span>
+        <span class="plate"><span class="lbl">Page</span><span class="divider"></span>
+          <a class="k sm on" href="#"><span class="led"></span>Overview</a><a class="k sm" href="#"><span class="led"></span>Dashboard</a><a class="k sm" href="#"><span class="led"></span>Settings</a><a class="k sm" href="#"><span class="led"></span>Install</a><a class="k sm" href="#"><span class="led"></span>FAQ</a>
+        </span>
+      </div>
+      <div class="content">
+        <div class="hero">
+          <div class="mod acc">
+            <div class="mlabel"><span class="lbl">Profile · Home</span></div>
+            <div class="acc-head"><span class="icon">34</span><div><div class="acc-name">Claude Home</div><div class="sub">home@example.com</div></div><span class="disp plan">MAX</span></div>
+            <div class="sw-row">
+              <span class="sw"><span class="tx"><span class="lbl">Claude window</span><span class="st">OPEN</span></span><button class="k ledkey on"><span class="led"></span></button></span>
+              <span class="sw"><span class="tx"><span class="lbl">Dock icon</span><span class="st">RUNNING</span></span><button class="k ledkey on"><span class="led"></span></button></span>
+            </div>
+            <div class="meter">
+              <div class="mrow"><span class="lbl">5-hour</span><span class="segs"><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="pct" style="color:#22c55e">34%</span></div>
+              <div class="mrow"><span class="lbl">Week</span><span class="segs"><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#f59e0b"></i><i></i><i></i><i></i><i></i><i></i></span><span class="pct" style="color:#f59e0b">61%</span></div>
+            </div>
+            <div class="meta" style="margin-top:2px"><a class="k sm" href="#">Show window</a><a class="k sm" href="#">Terminal</a><a class="k sm" href="#">···</a><span class="note" style="margin-left:auto">just now</span></div>
+          </div>
+          <div class="mod acc">
+            <div class="mlabel"><span class="lbl">Profile · Work</span></div>
+            <div class="acc-head"><span class="icon">82</span><div><div class="acc-name">Claude Work</div><div class="sub">work@example.com</div></div><span class="disp plan">TEAM</span></div>
+            <div class="sw-row">
+              <span class="sw"><span class="tx"><span class="lbl">Claude window</span><span class="st off">CLOSED</span></span><button class="k ledkey"><span class="led"></span></button></span>
+              <span class="sw"><span class="tx"><span class="lbl">Dock icon</span><span class="st">STARTING…</span></span><button class="k ledkey busy"><span class="led"></span></button></span>
+            </div>
+            <div class="meter">
+              <div class="mrow"><span class="lbl">5-hour</span><span class="segs"><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#f59e0b"></i><i style="background:#f59e0b"></i><i style="background:#f59e0b"></i><i style="background:#f59e0b"></i><i></i><i></i></span><span class="pct" style="color:#ef4444">82%</span></div>
+              <div class="mrow"><span class="lbl">Week</span><span class="segs"><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="pct" style="color:#22c55e">40%</span></div>
+            </div>
+            <div class="meta" style="margin-top:2px"><a class="k sm" href="#">Open window</a><a class="k sm" href="#">Terminal</a><a class="k sm" href="#">···</a><span class="note" style="margin-left:auto">1 min ago</span></div>
+          </div>
+          <div class="mod intro">
+            <div class="mlabel"><span class="lbl">cl_audit for Mac</span></div>
+            <h1>Every Claude profile, side by side on your Mac.</h1>
+            <p>A profile is one Claude setup: its Claude Code folder and sign-in, its Claude window and its Dock icon. cl_audit shows each profile's usage limits live in the Dock and on a dashboard, with figures read directly from Anthropic.</p>
+            <div style="margin-top:16px"><span class="plate"><span class="lbl">cl_audit</span><span class="divider"></span><a class="k on" href="#" style="transform:none"><span class="led"></span>Download for Mac</a><a class="k" href="#"><span class="led"></span>Install steps</a><a class="k" href="#"><span class="led"></span>Dashboard</a></span></div>
+            <div class="meta"><span class="disp">26.10.1 <em>·</em> 24 OCT 2026 <em>·</em> APPLE SILICON <em>·</em> MACOS 13+</span></div>
+            <div class="note" style="margin-top:6px">Free and source-available · runs entirely on your Mac · Checked with Claude Code 2.1.310 and the Claude app 3.6556.2. Newer Claude versions may need a cl_audit update.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="var">
+  <h2>2 · Login section</h2>
+  <p class="why">One module. Badge = the V4 two-part readout (LOGIN dim, SECURITY lit). The five tabs are a row of keys; the chosen one latches down with its LED lit (no green, no icons). The explanation sits in a recessed readout under the keys that keeps the height of the longest explanation.</p>
+  <div class="chassis"><div class="content">
+    <section class="mod">
+      <div class="login-head"><span class="disp"><em>LOGIN</em>SECURITY</span><h2>How cl_audit handles the Claude login</h2><a class="more" href="#">Details ›</a></div>
+      <div class="tabs" id="tabs">
+        <button class="k sm on" data-i="0"><span class="led"></span>Password never seen</button><button class="k sm" data-i="1"><span class="led"></span>Read-only, in memory</button><button class="k sm" data-i="2"><span class="led"></span>Sent only to Anthropic</button><button class="k sm" data-i="3"><span class="led"></span>History stays local</button><button class="k sm" data-i="4"><span class="led"></span>No server or analytics</button>
+      </div>
+      <div class="readout" id="readout"><b>The password is never seen</b><p>Sign-in happens in Claude's own screens: Claude Code's sign-in in Terminal (<code>claude auth login</code>) and the Claude app's sign-in window. cl_audit only opens them, so whatever is typed goes straight to Anthropic.</p></div>
+    </section>
+  </div></div>
+</section>
+
+<section class="var">
+  <h2>3 · Install, top of the page</h2>
+  <p class="why">Leads with the download: a DOWNLOAD plate with the one lit key and the release in a display window, then the three numbered steps (numbers in small display windows), ending with the Privacy &amp; Security ▸ Open Anyway step drawn as macOS shows it. Requirements on the right; building from source comes after, in its own module.</p>
+  <div class="chassis">
+    <div class="fascia">
+      <span class="brand"><b>cl_audit</b><span>Usage audit · all Claude profiles</span></span>
+      <span class="disp"><em>PAGE</em>INSTALL</span><span class="spacer"></span>
+      <span class="plate"><span class="lbl">Page</span><span class="divider"></span><a class="k sm"><span class="led"></span>Overview</a><a class="k sm"><span class="led"></span>Dashboard</a><a class="k sm"><span class="led"></span>Settings</a><a class="k sm on"><span class="led"></span>Install</a><a class="k sm"><span class="led"></span>FAQ</a></span>
+    </div>
+    <div class="content">
+      <div class="cols2">
+        <div class="mod">
+          <div class="mlabel"><span class="lbl">Download</span></div>
+          <h1 style="font-size:24px">Install cl_audit</h1>
+          <div class="meta" style="margin:10px 0 12px"><span class="plate"><span class="lbl">Mac</span><span class="divider"></span><a class="k on" style="transform:none"><span class="led"></span>Download cl_audit 26.10.1</a></span><span class="disp">REL 24 OCT 2026</span></div>
+          <div class="steps">
+            <div class="step"><span class="disp">01</span><div><b>Unzip it and move cl_audit to Applications</b><span>Double-click <code>cl_audit.zip</code> in Downloads, then drag cl_audit into the Applications folder.</span></div></div>
+            <div class="step"><span class="disp">02</span><div><b>Open it; macOS asks once</b><span>cl_audit isn't signed with an Apple Developer ID yet, so the first time macOS says it can't verify the app. Click Done.</span></div></div>
+            <div class="step"><span class="disp">03</span><div><b>Allow it in Privacy &amp; Security</b><span>System Settings ▸ Privacy &amp; Security, scroll down and click <b style="display:inline">Open Anyway</b> next to cl_audit, then confirm. Only once.</span>
+              <div class="gk"><b style="font-size:12.5px">Privacy &amp; Security</b><div class="gk-row"><span>“cl_audit” was blocked to protect your Mac.</span><span class="gk-btn">Open Anyway</span></div></div></div></div>
+          </div>
+        </div>
+        <div class="mod">
+          <div class="mlabel"><span class="lbl">Requires</span></div>
+          <div class="srow"><span>Checked with</span><span class="v">Claude Code 2.1.310 · Claude app 3.6556.2</span></div>
+          <div class="srow"><span>Mac</span><span class="v">Apple silicon</span></div>
+          <div class="srow"><span>macOS</span><span class="v">13 Ventura or later</span></div>
+          <div class="srow"><span>Per profile</span><span class="v">Claude Code, signed in</span></div>
+          <div class="srow"><span>Optional</span><span class="v">the Claude app, for Claude windows</span></div>
+          <div class="mlabel" style="margin-top:14px"><span class="lbl">Or build it from source</span></div>
+          <div class="disp wide">git clone https://github.com/n-uf/cl_audit.git<br>cd cl_audit &amp;&amp; ./build.sh</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="var">
+  <h2>4 · Phone width (390 px)</h2>
+  <p class="why">The PAGE plate spans the width with the five keys sharing it (the page display hides). The hero keys and the login keys wrap inside their plates; the readout keeps one height for the longest explanation at that width. No sideways scroll.</p>
+  <div class="phones">
+    <div class="phone"><div class="chassis">
+      <div class="fascia">
+        <span class="brand"><b>cl_audit</b><span>Usage audit · all Claude profiles</span></span>
+        <span class="plate"><a class="k sm on"><span class="led"></span>Overview</a><a class="k sm"><span class="led"></span>Dash</a><a class="k sm"><span class="led"></span>Settings</a><a class="k sm"><span class="led"></span>Install</a><a class="k sm"><span class="led"></span>FAQ</a></span>
+      </div>
+      <div class="content">
+        <div class="mod">
+          <div class="mlabel"><span class="lbl">cl_audit for Mac</span></div>
+          <h1>Every Claude profile, side by side on your Mac.</h1>
+          <p>A profile is one Claude setup: its Claude Code folder and sign-in, its Claude window and its Dock icon.</p>
+          <div style="margin-top:14px"><span class="plate hero-keys"><a class="k on" style="transform:none"><span class="led"></span>Download for Mac</a><a class="k"><span class="led"></span>Install steps</a><a class="k"><span class="led"></span>Dashboard</a></span></div>
+          <div class="meta"><span class="disp">26.10.1 <em>·</em> 24 OCT 2026</span></div>
+        </div>
+      </div>
+    </div></div>
+    <div class="phone"><div class="chassis"><div class="content">
+      <section class="mod">
+        <div class="login-head"><span class="disp"><em>LOGIN</em>SECURITY</span><h2>How cl_audit handles the Claude login</h2></div>
+        <div class="tabs"><button class="k sm on"><span class="led"></span>Password never seen</button><button class="k sm"><span class="led"></span>Read-only, in memory</button><button class="k sm"><span class="led"></span>Sent only to Anthropic</button><button class="k sm"><span class="led"></span>History stays local</button><button class="k sm"><span class="led"></span>No server or analytics</button></div>
+        <div class="readout"><b>The password is never seen</b><p>Sign-in happens in Claude's own screens: Claude Code's sign-in in Terminal (<code>claude auth login</code>) and the Claude app's sign-in window. cl_audit only opens them, so whatever is typed goes straight to Anthropic.</p></div>
+      </section>
+    </div></div></div>
+  </div>
+</section>
+
+<section class="var">
+  <h2>Elsewhere, the same parts</h2>
+  <p class="why">Dashboard: the Show chips become keys with an LED in each profile's colour; 24 H / 7 D / 30 D a three-key strip; totals in a display. Settings: the profile strip is a key row; on/off switches are LED keys; steppers are − / + keys around a small display; menus are recessed. FAQ: each question is a module with a + / − key. The Claude windows, Terminals and the Dock pop-ups stay as macOS draws them.</p>
+</section>
+</main>
+<script>
+  const facts = [
+    ["The password is never seen", "Sign-in happens in Claude's own screens: Claude Code's sign-in in Terminal (<code>claude auth login</code>) and the Claude app's sign-in window. cl_audit only opens them, so whatever is typed goes straight to Anthropic."],
+    ["The saved login is read-only, in memory", "Claude Code saves its login in the Mac's Keychain. cl_audit reads it the way Claude Code does, with Apple's <code>security</code> tool, so macOS asks nothing. It keeps only the short-lived part, in memory, and never writes, renews or logs it. Any app running as the same user could read it the same way; cl_audit doesn't change that."],
+    ["It is sent only to Anthropic", "The login is used for two requests to Anthropic's own server, <code>api.anthropic.com</code>: the 5-hour and weekly usage, and which account a profile is signed in to. Nothing else leaves the Mac."],
+    ["Usage history stays on the Mac", "The charts come from the session files Claude Code already writes on the Mac: only time, model, token counts, project folder and where Claude was used. Nothing is uploaded."],
+    ["No server, analytics or sign-up", "cl_audit has no server of its own, collects no statistics and needs no account. Its code is open: the login is read in <code>Login.read</code> (Sources/Model.swift)."],
+  ];
+  const tabs = [...document.querySelectorAll("#tabs .k")], out = document.getElementById("readout");
+  tabs.forEach((b, i) => b.addEventListener("click", () => { tabs.forEach((x) => x.classList.toggle("on", x === b)); out.innerHTML = `<b>${facts[i][0]}</b><p>${facts[i][1]}</p>`; }));
+</script>
+</body>
+</html>

@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cl_audit · switch accounts, keep the sessions</title>
+<style>
+/* cl_audit: one profile, two of your accounts. When one account's week is full, switch the profile to the other and
+   the Claude window's sessions and sidebar come along. Told as a week in the life. Std face only, made-up data,
+   HTML only, nothing built. */
+:root {
+  --bg: #121214; --text: #ececee; --muted: #9a9aa0; --faint: #6e6e74;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --grain: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px);
+  --alu: repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #74746f, #52524e);
+  --key-up: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #2e2e2c, 0 2px 0 #121211, 0 3px 7px rgba(0,0,0,.45);
+  --key-down: inset 0 1px 0 rgba(255,255,255,.2), inset 0 -1px 0 rgba(0,0,0,.3), 0 0 0 1px #2e2e2c, 0 1px 0 #121211, 0 2px 4px rgba(0,0,0,.45);
+  --well: inset 0 1px 3px rgba(0,0,0,.75), 0 1px 0 rgba(255,255,255,.05);
+  --glow: 127, 249, 234;
+  --ok: #4ade80; --caution: #f5a524; --danger: #f2655a; --accent: #ff7a3d;
+  --label-w: 146px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+.page { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { margin: 0 0 4px; font-size: 21px; letter-spacing: -.01em; }
+.lede { margin: 0 0 12px; color: rgba(236,236,238,.85); max-width: 100ch; }
+code { font: 12.5px var(--mono); background: rgba(255,255,255,.07); padding: 0 4px; border-radius: 4px; }
+.tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 999px; font: 600 10px/16px var(--font); letter-spacing: .04em; vertical-align: 1px; white-space: nowrap; }
+.tag.check { color: #ffd38a; background: rgba(245,165,36,.14); box-shadow: inset 0 0 0 1px rgba(245,165,36,.45); }
+
+/* the understanding box */
+.got { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; margin: 14px 0 6px; }
+.got div { padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,.03); box-shadow: inset 0 0 0 1px rgba(255,255,255,.07); font-size: 13px; }
+.got b { display: block; font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+@media (max-width: 760px) { .got { grid-template-columns: 1fr; } }
+
+/* timeline */
+.step { display: grid; grid-template-columns: 150px minmax(0,1fr); gap: 18px; padding: 26px 0; border-top: 1px solid rgba(255,255,255,.07); scroll-margin-top: 60px; }
+.when { position: relative; }
+.when .t { font: 600 12px var(--mono); color: var(--accent); letter-spacing: .06em; }
+.when h2 { margin: 4px 0 6px; font-size: 16px; line-height: 1.3; }
+.when p { margin: 0; font-size: 12.5px; color: var(--muted); }
+@media (max-width: 760px) { .step { grid-template-columns: 1fr; gap: 10px; } }
+.scene { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 14px; align-items: start; min-width: 0; }
+.scene.one { grid-template-columns: minmax(0, 620px); }
+@media (max-width: 900px) { .scene { grid-template-columns: 1fr; } }
+.cap { font: 600 10.5px var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--faint); margin: 0 0 6px; }
+.why { padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,.03); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); font-size: 13px; }
+.why ul { margin: 4px 0 0; padding-left: 18px; } .why li { margin: 3px 0; }
+.why b { color: #e6e6e8; }
+
+/* app parts */
+.card, .sheet { position: relative; padding: 14px 18px 12px; border-radius: 10px; background: var(--grain), linear-gradient(180deg, #29292b, #222224);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #0c0c0d, 0 4px 12px rgba(0,0,0,.25); min-width: 0; container-type: inline-size; }
+.sheet { background: var(--grain), linear-gradient(180deg, #2c2c2f, #232326); box-shadow: inset 0 1px 0 rgba(255,255,255,.08), 0 0 0 1px #0b0b0c, 0 10px 30px rgba(0,0,0,.45); }
+.card h4 { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; font: 600 11px/1.2 var(--font); letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+.card h4::after { content: ""; flex: 1; min-width: 12px; height: 1px; background: rgba(0,0,0,.5); box-shadow: 0 1px 0 rgba(255,255,255,.05); }
+.i { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1.2px solid rgba(255,255,255,.4); font: 700 9px/1 var(--font); color: rgba(255,255,255,.55); flex: none; text-transform: none; letter-spacing: 0; }
+.row { display: grid; grid-template-columns: var(--label-w) minmax(0, 1fr); align-items: center; column-gap: 10px; min-height: 42px; padding: 5px 0; border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.035); }
+.card h4 + .row { border-top: 0; box-shadow: none; }
+.row .k { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
+.row .v { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.row .line { grid-column: 1 / -1; margin: 1px 0 2px; font-size: 12px; line-height: 1.4; color: var(--muted); }
+@container (max-width: 480px) { .row { grid-template-columns: 1fr; row-gap: 6px; } }
+.row.stack { grid-template-columns: 1fr; row-gap: 6px; }
+.state { font-size: 12.5px; color: var(--muted); }
+.sw { display: inline-grid; place-items: center; width: 36px; height: 26px; border-radius: 3px; background: var(--alu); box-shadow: var(--key-up); flex: none; border: 0; padding: 0; cursor: pointer; }
+.led { width: 7px; height: 7px; border-radius: 50%; display: inline-block; background: #2b2f2c; box-shadow: inset 0 1px 1px rgba(0,0,0,.7); }
+.sw.on .led, .led.on { background: var(--ok); box-shadow: 0 0 5px rgba(74,222,128,.8); }
+.key { display: inline-grid; place-items: center; height: 30px; min-width: 36px; padding: 0 12px; border: 0; border-radius: 3px; background: var(--alu); box-shadow: var(--key-up); color: #f1f1f0; font: 600 13px var(--font); flex: none; cursor: pointer; white-space: nowrap; }
+.key:active { transform: translateY(1px); box-shadow: var(--key-down); }
+.key.go { background: repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #e8763f, #b9542a); }
+.key.ghost { background: transparent; box-shadow: inset 0 0 0 1px rgba(255,255,255,.18); color: var(--muted); }
+.key.sm { height: 24px; padding: 0 9px; font-size: 12px; }
+.seg { display: flex; flex: 1; min-width: 0; padding: 3px; border-radius: 6px; background: rgba(0,0,0,.4); box-shadow: var(--well); }
+.seg button { flex: 1; min-width: 0; height: 24px; border: 0; border-radius: 4px; background: transparent; color: var(--muted); font: 600 12px/1 var(--font); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 0 6px; cursor: pointer; }
+.seg button.sel { background: var(--alu); color: #f4f4f2; box-shadow: var(--key-up); }
+.lcd { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; min-height: 26px; padding: 3px 9px; border-radius: 4px; background: linear-gradient(180deg, #030607, #0a1113 70%, #0c1517);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 0 0 1px rgba(0,0,0,.55); font: 600 12px/1.4 var(--mono); letter-spacing: .06em; color: rgb(var(--glow)); text-shadow: 0 0 3px rgba(var(--glow), .7); }
+
+/* account list in settings */
+.accts { display: grid; gap: 6px; width: 100%; }
+.acct { display: grid; grid-template-columns: auto minmax(0,1fr) auto; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,.3); box-shadow: var(--well); font-size: 13px; }
+.acct .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct .who small { display: block; font-size: 11.5px; color: var(--muted); }
+.acct .badge { font: 600 10px var(--font); letter-spacing: .08em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; color: #a8f5c4; background: rgba(74,222,128,.12); }
+.acct .badge.idle { color: var(--muted); background: rgba(255,255,255,.06); }
+.addrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+/* every limit of an account, as bars (the dashboard's meters, smaller) */
+.acct .lims { grid-column: 1 / -1; display: grid; gap: 5px; padding: 4px 0 2px 15px; }
+.ml { display: grid; grid-template-columns: 44px minmax(0,1fr) 34px minmax(0, 92px); gap: 8px; align-items: center; font-size: 11.5px; color: var(--muted); }
+.ml .meter { grid-column: auto; }
+.ml b { font: 600 11.5px var(--mono); text-align: right; color: var(--ok); }
+.ml b.a { color: var(--caution); } .ml b.r { color: var(--danger); }
+.ml i { font-style: normal; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.acct .nolim { grid-column: 1 / -1; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 4px 0 2px 15px; font-size: 12px; color: #ffd38a; }
+@container (max-width: 400px) { .ml { grid-template-columns: 40px minmax(0,1fr) 34px; } .ml i { display: none; } }
+/* the Add account menu, drawn open */
+.menu { margin-top: 6px; padding: 5px; border-radius: 8px; background: rgba(46,46,50,.98); box-shadow: 0 10px 28px rgba(0,0,0,.55), inset 0 0 0 1px rgba(255,255,255,.12); font-size: 13px; width: 100%; }
+.menu .mh { font: 600 10.5px var(--font); letter-spacing: .1em; text-transform: uppercase; color: var(--faint); padding: 6px 8px 3px; }
+.menu .mi { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 1px 10px; padding: 5px 8px; border-radius: 5px; }
+.menu .mi:first-of-type { background: rgba(255,122,61,.85); color: #fff; }
+.menu .mi:first-of-type small, .menu .mi:first-of-type em { color: rgba(255,255,255,.85); }
+.menu .mi span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menu .mi small { grid-column: 1 / -1; font-size: 11.5px; color: var(--muted); }
+.menu .mi em { font-style: normal; font-size: 11.5px; color: var(--ok); white-space: nowrap; }
+.menu .mi.dim { opacity: .45; }
+.menu .sep { height: 1px; margin: 4px 6px; background: rgba(255,255,255,.1); }
+
+/* dashboard card */
+.dcard { padding: 12px 14px; border-radius: 10px; background: var(--grain), linear-gradient(180deg, #2a2a2c, #232325); box-shadow: inset 0 1px 0 rgba(255,255,255,.07), 0 0 0 1px #0c0c0d, 0 4px 12px rgba(0,0,0,.3); min-width: 0; }
+.dhead { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.dico { width: 38px; height: 38px; border-radius: 9px; display: grid; place-items: center; background: #1d1d1f; box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); font: 700 11px/1.05 var(--mono); text-align: center; color: #f0f0f0; flex: none; }
+.dico.full { border: 2px solid var(--danger); color: var(--danger); }
+.dname { min-width: 0; } .dname b { display: block; font-size: 15px; } .dname span { font-size: 12px; color: var(--muted); }
+.plan { margin-left: auto; font: 700 10px var(--mono); letter-spacing: .1em; padding: 3px 7px; border-radius: 4px; background: #0a1113; color: rgb(var(--glow)); box-shadow: 0 0 0 1px rgba(0,0,0,.6); }
+.dbody { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; align-items: stretch; }
+.dbody.nofull { grid-template-columns: 1fr; }
+.lim { display: grid; gap: 8px; align-content: start; font-size: 13px; }
+.lim .l { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; }
+.lim .l span:last-child { font: 600 12.5px var(--mono); color: var(--ok); }
+.lim .l.red span { color: var(--danger) !important; }
+.lim .l small { grid-column: 1 / -1; font-size: 11.5px; color: var(--muted); }
+.meter { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(12, 1fr); gap: 2px; }
+.meter u { height: 6px; border-radius: 1px; background: rgba(255,255,255,.08); }
+.meter u.g { background: var(--ok); } .meter u.r { background: var(--danger); } .meter u.a { background: var(--caution); }
+.fullbox { min-width: 170px; padding: 10px 12px; border-radius: 8px; background: #0b0b0c; box-shadow: inset 0 0 0 1px rgba(242,101,90,.5); display: grid; gap: 4px; align-content: start; }
+.fullbox .h { font: 700 11px var(--mono); letter-spacing: .1em; color: var(--danger); }
+.fullbox .big { font: 700 20px var(--mono); color: var(--danger); }
+.fullbox .s { font-size: 12px; color: var(--muted); }
+.fullbox .alt { margin-top: 6px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,.08); display: grid; gap: 6px; font-size: 12px; color: #d8d8dc; }
+@container (max-width: 470px) { .dbody { grid-template-columns: 1fr; } }
+.dcard { container-type: inline-size; }
+.other { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(0,0,0,.45); font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; }
+
+/* notification */
+.notif { display: grid; grid-template-columns: 34px minmax(0,1fr); gap: 10px; padding: 10px 12px; border-radius: 14px; background: rgba(60,60,64,.88); box-shadow: 0 8px 24px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.1); font-size: 13px; max-width: 380px; }
+.notif .ic { width: 34px; height: 34px; border-radius: 8px; background: #1d1d1f; display: grid; place-items: center; font: 700 10px var(--mono); color: var(--danger); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+.notif b { display: block; } .notif .acts { display: flex; gap: 6px; margin-top: 8px; }
+
+/* switch page */
+.sheet .title { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.sheet .title b { font-size: 15px; } .sheet .title span { font-size: 12px; color: var(--muted); }
+.cols2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@container (max-width: 520px) { .cols2 { grid-template-columns: 1fr; } }
+.box { padding: 9px 11px; border-radius: 7px; background: rgba(0,0,0,.25); box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); font-size: 12.5px; }
+.box .h { font: 600 10.5px var(--font); letter-spacing: .12em; text-transform: uppercase; margin-bottom: 5px; }
+.box.stay .h { color: var(--muted); } .box.go .h { color: var(--accent); }
+.box ul { margin: 0; padding-left: 16px; } .box li { margin: 2px 0; }
+.steps { display: grid; gap: 6px; margin-top: 10px; }
+.st { display: grid; grid-template-columns: 22px minmax(0,1fr); gap: 8px; align-items: start; font-size: 13px; }
+.st .n { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font: 600 11px var(--font); background: rgba(255,255,255,.08); color: var(--muted); }
+.st.done .n { background: rgba(74,222,128,.18); color: var(--ok); } .st.done .n::after { content: "✓"; } .st.done .n span { display: none; }
+.st.now .n { background: rgba(255,122,61,.22); color: #ffb08a; }
+.st small { display: block; font-size: 12px; color: var(--muted); }
+.actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+.sidebar { border-radius: 8px; padding: 8px; background: #19191b; box-shadow: inset 0 0 0 1px rgba(255,255,255,.07); font-size: 12px; min-width: 0; }
+.sidebar .acc { font-size: 11px; color: var(--muted); padding: 2px 6px 6px; border-bottom: 1px solid rgba(255,255,255,.06); margin-bottom: 4px; }
+.sidebar .sec { font: 600 10px var(--font); letter-spacing: .12em; text-transform: uppercase; color: var(--faint); margin: 8px 4px 3px; }
+.sidebar .s { padding: 3px 6px; border-radius: 4px; color: #d6d6da; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.sidebar .s.pin::before { content: "📌 "; font-size: 10px; }
+.sidebar .empty { padding: 30px 6px; text-align: center; color: var(--faint); }
+.twin { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(0,1fr); gap: 10px; align-items: center; }
+.twin .arrow { color: var(--accent); font-weight: 700; }
+.rare { margin-top: 34px; padding-top: 22px; border-top: 2px dashed rgba(255,255,255,.08); }
+.rec { margin: 30px 0 0; padding: 12px 14px; border-radius: 10px; background: rgba(255,122,61,.08); box-shadow: inset 0 0 0 1px rgba(255,122,61,.35); max-width: 100ch; font-size: 13.5px; }
+.rec b { color: #ffb08a; } .rec ol { margin: 6px 0 0; padding-left: 20px; } .rec li { margin: 5px 0; }
+</style></head>
+<body><div class="page">
+
+<h1>One profile, two of your accounts</h1>
+<p class="lede">A week in the life. The profile <b>Claude Main</b> works on <b>ultra-1</b>. When ultra-1's week is full, Main switches to <b>ultra-2</b>, and the Claude window opens with exactly the same sessions and sidebar. When ultra-1 is back, it switches back. Made-up data, Std face, nothing built.</p>
+
+<div class="got">
+  <div><b>The profile stays</b>Name, Dock icon, folder, projects, settings, MCP servers, CLAUDE.md: all unchanged. Only the account it works on changes.</div>
+  <div><b>The sessions follow</b>The Code sidebar's sessions, sections, groups, pins and scheduled tasks move to the account you switch to, then back when you switch back.</div>
+  <div><b>It's not a setting</b>Switching is something you do when a limit is full, from the dashboard, an alert or a menu. Settings only list the profile's accounts and add one.</div>
+</div>
+
+<!-- ================================================================ 0 -->
+<section class="step" id="once">
+  <div class="when"><div class="t">ONCE</div><h2>Give the profile its second account</h2><p>New profile still starts with one account. Later, Settings ▸ Claude Main ▸ Claude Code ▸ Accounts ▸ <b>Add account</b>.</p></div>
+  <div class="scene">
+    <div class="card">
+      <h4>Claude Code <span class="i">i</span></h4>
+      <div class="row stack"><span class="k"><span>Accounts</span><span class="i">i</span></span>
+        <div class="v"><div class="accts">
+          <div class="acct"><span class="led on"></span><span class="who">ultra-1@example.com<small>Ultra · Personal</small></span><span class="badge">in use</span>
+            <div class="lims">
+              <div class="ml"><span>Week</span><div class="meter"><u class="a"></u><u class="a"></u><u class="a"></u><u class="a"></u><u class="a"></u><u class="a"></u><u class="a"></u><u class="a"></u><u class="a"></u><u></u><u></u><u></u></div><b class="a">71%</b><i>in 3 days</i></div>
+              <div class="ml"><span>Fable</span><div class="meter"><u class="g"></u><u class="g"></u><u class="g"></u><u class="g"></u><u class="g"></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u></div><b>40%</b><i>in 3 days</i></div>
+            </div></div>
+          <div class="addrow"><button class="key">Add account ▾</button><span class="state">The profile works on one at a time.</span></div>
+          <div class="menu">
+            <div class="mh">Found on this Mac</div>
+            <div class="mi"><span>ultra-2@example.com · Personal</span><em>signed in</em><small>Used in this window before · Claude Code signed in at ~/.claude-u2</small></div>
+            <div class="mi"><span>old@example.com · Personal</span><em style="color:#ffd38a">needs sign-in</em><small>Used in this window in August · no Claude Code sign-in kept</small></div>
+            <div class="mi dim"><span>you@work.example · Acme</span><span></span><small>Claude Work's account</small></div>
+            <div class="sep"></div>
+            <div class="mi" style="background:none;color:var(--text)"><span>Sign in to another account…</span></div>
+          </div>
+        </div></div>
+        <div class="line">Found: every account this window has used, with its address, plus the accounts signed in to Claude Code folders on this Mac.</div></div>
+      <div class="row"><span class="k"><span>Sessions follow</span><span class="i">i</span></span>
+        <span class="v"><button class="sw on"><span class="led"></span></button><span class="state">to the account you switch to</span></span>
+        <div class="line">Sessions, sections, groups, pins and scheduled tasks.</div></div>
+      <div class="row"><span class="k"><span>Folder</span><span class="i">i</span></span><span class="v"><span class="state">~/.claude</span></span></div>
+    </div>
+    <div class="col" style="display:grid;gap:14px;align-content:start">
+      <div class="cap">After adding ultra-2</div>
+      <div class="card">
+        <h4>Claude Code <span class="i">i</span></h4>
+        <div class="row stack"><span class="k"><span>Accounts</span><span class="i">i</span></span>
+          <div class="v"><div class="accts">
+            <div class="acct"><span class="led on"></span><span class="who">ultra-1@example.com<small>Ultra · Personal</small></span><span class="badge">in use</span>
+              <div class="lims">
+                <div class="ml"><span>Week</span><div class="meter"><u class="a"></u><u class="a"></u><u class="a"></u><u class="a"></u><u class="a"></u><u class="a"></u><u class="a"></u><u class="a"></u><u class="a"></u><u></u><u></u><u></u></div><b class="a">71%</b><i>in 3 days</i></div>
+                <div class="ml"><span>Fable</span><div class="meter"><u class="g"></u><u class="g"></u><u class="g"></u><u class="g"></u><u class="g"></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u></div><b>40%</b><i>in 3 days</i></div>
+              </div></div>
+            <div class="acct"><span class="led"></span><span class="who">ultra-2@example.com<small>Ultra · Personal</small></span><span class="badge idle">standby</span>
+              <div class="lims">
+                <div class="ml"><span>Week</span><div class="meter"><u class="g"></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u></div><b>8%</b><i>in 5 days</i></div>
+                <div class="ml"><span>Fable</span><div class="meter"><u class="g"></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u></div><b>3%</b><i>in 5 days</i></div>
+              </div></div>
+            <div class="addrow"><button class="key">Add account ▾</button></div>
+          </div></div></div>
+      </div>
+      <div class="cap">An account without a sign-in kept</div>
+      <div class="card">
+        <div class="row stack" style="border-top:0;box-shadow:none"><span class="k"><span>Accounts</span><span class="i">i</span></span>
+          <div class="v"><div class="accts">
+            <div class="acct"><span class="led"></span><span class="who">old@example.com<small>Pro · Personal</small></span><span class="badge idle">standby</span>
+              <div class="nolim">Limits unknown: no sign-in kept for it<button class="key sm">Sign in…</button></div></div>
+          </div></div></div>
+      </div>
+      <div class="why">
+        <b>Found automatically, added on one click.</b> cl_audit finds the accounts by itself, but adds one only when you pick it: old or team accounts the window once used stay out.
+        <ul><li><b>Every limit, with bars</b>, for each account: the ones its plan has (Ultra: week and Fable; Max: 5-hour, week and Fable; Pro: 5-hour and week), plus usage credits when it spends them. The standby account's limits update like the one in use.</li>
+        <li><b>signed in</b>: a Claude Code folder already holds its sign-in, so its limits show at once.</li>
+        <li><b>needs sign-in</b>: Anthropic gives an account's limits only to a signed-in Claude Code, so a found account without a sign-in shows no numbers. One sign-in in Terminal and the browser, address filled in, fixes that for good: the sign-in is kept and renews by itself.</li>
+        <li>An account belongs to one profile: other profiles' accounts are dimmed.</li></ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ 1 -->
+<section class="step" id="full">
+  <div class="when"><div class="t">MON 15:40</div><h2>ultra-1's week is full</h2><p>The card says when it's back, and offers the other account.</p></div>
+  <div class="scene">
+    <div>
+      <div class="cap">Dashboard</div>
+      <div class="dcard">
+        <div class="dhead"><div class="dico full">0h<br>3d</div><div class="dname"><b>Claude Main</b><span>ultra-1@example.com</span></div><span class="plan">ULTRA</span></div>
+        <div class="dbody">
+          <div class="lim">
+            <div class="l"><span>Week</span><span>100%</span><div class="meter"><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u></div><small>full</small></div>
+            <div class="l"><span>Fable</span><span>64%</span><div class="meter"><u class="g"></u><u class="g"></u><u class="g"></u><u class="g"></u><u class="g"></u><u class="g"></u><u class="g"></u><u class="a"></u><u></u><u></u><u></u><u></u></div><small>in 3 days</small></div>
+          </div>
+          <div class="fullbox"><span class="h">WEEK FULL</span><span class="big">in 2d 17h</span><span class="s">back Thu 09:00</span>
+            <div class="alt">ultra-2: week 8% used<button class="key go sm" data-go="sw">Switch to ultra-2…</button></div></div>
+        </div>
+      </div>
+    </div>
+    <div>
+      <div class="cap">The alert, at the same time</div>
+      <div class="notif"><span class="ic">0h</span><div><b>Claude Main: week full</b>Back Thu 09:00. ultra-2 has 92% of its week left.<div class="acts"><button class="key sm">Switch to ultra-2</button><button class="key ghost sm">Later</button></div></div></div>
+      <div class="why" style="margin-top:12px">The same <b>Switch to ultra-2…</b> is in the Dock icon's menu and the menu bar icon's menu. All of them open the page below; nothing changes until you confirm there.</div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ 2 -->
+<section class="step" id="sw">
+  <div class="when"><div class="t">MON 15:41</div><h2>Switch Claude Main to ultra-2</h2><p>One page says what stays, what follows, and what will happen.</p></div>
+  <div class="scene">
+    <div class="sheet">
+      <div class="title"><b>Switch Claude Main to ultra-2</b><span>ultra-1 → ultra-2</span></div>
+      <div class="cols2">
+        <div class="box stay"><div class="h">Stays as it is</div><ul><li>Name, Dock icon, look</li><li>Folder <code>~/.claude</code>: projects, settings, MCP, CLAUDE.md</li><li>Claude Code history (<code>claude --resume</code>)</li></ul></div>
+        <div class="box go"><div class="h">Follows to ultra-2</div><ul><li>166 sessions in the sidebar</li><li>5 sections, 9 groups, 3 pins</li><li>4 scheduled tasks</li></ul></div>
+      </div>
+      <div class="steps">
+        <div class="st"><span class="n"><span>1</span></span><div>The Claude window closes<small>2 sessions are working: “Release notes”, “Fix login”. Wait for them, or close anyway.</small></div></div>
+        <div class="st"><span class="n"><span>2</span></span><div>The sessions and the sidebar move to ultra-2<small>Same ids; nothing is copied. A receipt makes it undoable.</small></div></div>
+        <div class="st"><span class="n"><span>3</span></span><div>Claude Code and the window sign in as ultra-2 <span class="tag check">to check</span><small>Without a browser sign-in if both sign-ins can be kept; otherwise one click in the browser.</small></div></div>
+        <div class="st"><span class="n"><span>4</span></span><div>The window opens again on ultra-2</div></div>
+      </div>
+      <div class="actions"><button class="key ghost">Cancel</button><button class="key">Wait for the 2, then switch</button><button class="key go">Close and switch</button></div>
+    </div>
+    <div class="why">
+      <b>Your other Claude windows</b> (Claude Work, …) stay open; only Main's closes, for about half a minute.
+      <ul><li><b>ultra-1</b> keeps nothing in its sidebar meanwhile. Its sessions aren't lost: they're with ultra-2, and they come back when you switch back.</li>
+      <li>Chats and Projects on claude.ai don't move; they belong to each account.</li></ul>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ 3 -->
+<section class="step" id="after">
+  <div class="when"><div class="t">MON 15:42</div><h2>Back at work, on ultra-2</h2><p>Same window, same sidebar. The card now shows ultra-2's limits.</p></div>
+  <div class="scene">
+    <div>
+      <div class="cap">The Claude Main window, before and after</div>
+      <div class="twin">
+        <div class="sidebar"><div class="acc">ultra-1 · before</div><div class="sec">Pinned</div><div class="s pin">Release notes</div><div class="s pin">Weekly report</div><div class="sec">Site</div><div class="s">Fix the footer</div><div class="s">New article</div><div class="sec">App</div><div class="s">Fix login</div><div class="s">Widget sizes</div></div>
+        <span class="arrow">→</span>
+        <div class="sidebar"><div class="acc">ultra-2 · after</div><div class="sec">Pinned</div><div class="s pin">Release notes</div><div class="s pin">Weekly report</div><div class="sec">Site</div><div class="s">Fix the footer</div><div class="s">New article</div><div class="sec">App</div><div class="s">Fix login</div><div class="s">Widget sizes</div></div>
+      </div>
+    </div>
+    <div>
+      <div class="cap">Dashboard</div>
+      <div class="dcard">
+        <div class="dhead"><div class="dico">8%<br>wk</div><div class="dname"><b>Claude Main</b><span>ultra-2@example.com</span></div><span class="plan">ULTRA</span></div>
+        <div class="dbody nofull"><div class="lim">
+          <div class="l"><span>Week</span><span>8%</span><div class="meter"><u class="g"></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u></div><small>in 5 days</small></div>
+          <div class="l"><span>Fable</span><span>3%</span><div class="meter"><u class="g"></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u><u></u></div><small>in 5 days</small></div>
+        </div></div>
+        <div class="other" style="display:grid;gap:5px"><span>Standby · ultra-1@example.com</span>
+          <div class="ml"><span>Week</span><div class="meter"><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u><u class="r"></u></div><b class="r">100%</b><i>back Thu 09:00</i></div>
+          <div class="ml"><span>Fable</span><div class="meter"><u class="g"></u><u class="g"></u><u class="g"></u><u class="g"></u><u class="g"></u><u class="g"></u><u class="g"></u><u class="a"></u><u></u><u></u><u></u><u></u></div><b>64%</b><i>in 3 days</i></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================================================================ 4 -->
+<section class="step" id="back">
+  <div class="when"><div class="t">THU 09:00</div><h2>ultra-1 is back</h2><p>Switch back now, or stay on ultra-2 until its week fills up.</p></div>
+  <div class="scene">
+    <div class="notif"><span class="ic" style="color:var(--ok)">ok</span><div><b>Claude Main: ultra-1 is back</b>Its week starts again. ultra-2 is at 61%.<div class="acts"><button class="key sm" data-go="sw">Switch back to ultra-1</button><button class="key ghost sm">Stay on ultra-2</button></div></div></div>
+    <div class="why">Switching back is the same page the other way: the sessions, sidebar and scheduled tasks go back to ultra-1, including the sessions you started on ultra-2 this week.</div>
+  </div>
+</section>
+
+<!-- ================================================================ rare -->
+<section class="step rare" id="backup">
+  <div class="when"><div class="t">RARELY</div><h2>A backup, or a new Mac</h2><p>App-wide, so in General settings, away from the profiles.</p></div>
+  <div class="scene">
+    <div class="card">
+      <h4>Sessions backup <span class="i">i</span></h4>
+      <div class="row"><span class="k"><span>Keep sessions</span><span class="i">i</span></span>
+        <span class="v"><span class="seg"><button>30 days</button><button class="sel">90 days</button><button>1 year</button><button>Always</button></span></span>
+        <div class="line">Claude Code deletes older ones when it starts. 90 days is about 15 GB here.</div></div>
+      <div class="row"><span class="k"><span>Archive</span><span class="i">i</span></span>
+        <span class="v"><button class="key">Export…</button><button class="key">Import…</button><span class="state">last 2 Nov</span></span>
+        <div class="line">Every profile's sessions with their sidebars, for a backup or another Mac. Never sign-ins.</div></div>
+    </div>
+    <div class="why">Export and Import each open a page with a preview first. Import only adds: nothing on the Mac is overwritten.</div>
+  </div>
+</section>
+
+<div class="rec">
+  <b>What this needs you to decide</b>
+  <ol>
+    <li><b>A profile with two accounts.</b> Today a profile has exactly one. This makes it “one or more, one at a time”, added in the profile's settings; New profile still starts with one. An account still belongs to one profile only.</li>
+    <li><b>Sessions follow the account:</b> on by default, as sketched, or asked each time on the switch page.</li>
+    <li><b>Switching back:</b> offered when the first account is back, as sketched, or never automatically.</li>
+  </ol>
+  <p style="margin:8px 0 0">To check before building: whether the window and Claude Code can each keep both sign-ins, so a switch needs no browser step.</p>
+</div>
+
+</div>
+<script>
+document.querySelectorAll('.seg').forEach(seg => seg.querySelectorAll('button').forEach(b => b.addEventListener('click', () => seg.querySelectorAll('button').forEach(x => x.classList.toggle('sel', x === b)))));
+document.querySelectorAll('.sw').forEach(s => s.addEventListener('click', () => s.classList.toggle('on')));
+document.querySelectorAll('[data-go]').forEach(k => k.addEventListener('click', () => document.getElementById(k.dataset.go).scrollIntoView({behavior: 'smooth'})));
+</script>
+</body></html>

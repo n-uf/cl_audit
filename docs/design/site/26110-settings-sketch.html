@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Site 26.11.0 sketch</title>
+<style>
+/* Sketch for cl-audit.n-uf.com at cl_audit 26.11.0: the Settings demo regrouped as the app (README "Profile settings",
+   "General settings"; Swift Settings.swift, MenuBar.swift, WidgetCard.swift, Dashboard.swift at app main ebfd3f5),
+   the demo's own menu bar with profile icons, and the dashboard additions (Fable row, usage credits, CSV + cost).
+   HTML only, drawn in the site's own styles; the app's renders replace the drawn icons and widget in the build. */
+:root { --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --grain: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px); --green: #22c55e; --amber: #f59e0b; --red: #ef4444; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #101012; color: #ececee; font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+.page { max-width: 1340px; margin: 0 auto; padding: 22px 16px 70px; }
+.top { position: sticky; top: 0; z-index: 9; display: flex; gap: 14px; align-items: center; margin: 0 -16px 16px; padding: 10px 16px; background: rgba(16,16,18,.88); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255,255,255,.06); }
+.top h1 { margin: 0; font-size: 17px; } .top .sp { flex: 1; }
+.fsel button { font: 600 10px var(--font); letter-spacing: .12em; text-transform: uppercase; padding: 5px 10px; border: 0; border-radius: 3px; background: #2a2a2d; color: #ccc; cursor: pointer; }
+.fsel button.on { background: #ff7a3d; color: #1a0a02; }
+h2 { margin: 30px 0 4px; font-size: 18px; } h2 small { font: 600 11px var(--mono); color: #ff7a3d; letter-spacing: .12em; margin-right: 8px; }
+.note { margin: 0 0 12px; opacity: .8; font-size: 13.5px; max-width: 110ch; }
+.note b { color: #fff; }
+.q { margin: 26px 0 0; padding: 12px 14px; border-radius: 10px; background: rgba(255,122,61,.08); box-shadow: inset 0 0 0 1px rgba(255,122,61,.35); font-size: 13.5px; max-width: 110ch; }
+.q b { color: #ffb08a; } .q ol { margin: 6px 0 0; padding-left: 20px; } .q li { margin: 3px 0; }
+.wide { overflow-x: auto; padding: 2px; }
+
+/* the window and its faces (site app.css + faces.css, abridged) */
+.win { width: 1240px; padding: 14px; border-radius: 12px; --text: #ececee; --soft: rgba(236,236,238,.82); --muted: #9a9aa0; --print: rgba(255,255,255,.5);
+  --rule: rgba(0,0,0,.45); --rule-hi: rgba(255,255,255,.035); --led: 255, 122, 61; --led-on: 74, 222, 128; color: var(--text);
+  background: var(--grain), linear-gradient(180deg, #232325, #1b1b1d 30%, #19191b); }
+.face-black .win { background: repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, rgba(0,0,0,.05) 1px 2px), linear-gradient(180deg, #1d1d1f, #141416 40%, #111113); --print: rgba(255,255,255,.66); }
+.face-silver .win { background: repeating-linear-gradient(0deg, rgba(255,255,255,.2) 0 1px, rgba(0,0,0,.025) 1px 2px), linear-gradient(180deg, #d0d2d3, #c2c4c5 45%, #b9bbbc);
+  --text: #1c1c1e; --soft: #2c2c2f; --muted: #46464b; --print: rgba(30,32,34,.7); --rule: rgba(0,0,0,.22); --rule-hi: rgba(255,255,255,.45); }
+.card { position: relative; padding: 14px 16px 14px; border-radius: 10px; margin-bottom: 10px;
+  background: var(--grain), linear-gradient(180deg, #29292b, #222224); box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #0c0c0d, 0 4px 12px rgba(0,0,0,.25); }
+.face-black .card { border-radius: 4px; background: repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, rgba(0,0,0,.05) 1px 2px), linear-gradient(180deg, #2b2b2d, #1e1e20 60%, #19191b);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.14), inset 0 -1px 0 rgba(0,0,0,.6), 0 0 0 1px #050505, 0 6px 16px rgba(0,0,0,.4); }
+.face-silver .card { border-radius: 4px; background: repeating-linear-gradient(0deg, rgba(255,255,255,.24) 0 1px, rgba(0,0,0,.025) 1px 2px), linear-gradient(180deg, #e0e2e3, #d0d2d3 55%, #c6c8c9);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.32), 0 3px 10px rgba(0,0,0,.16); }
+.card h4 { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; font: 600 9.5px/1.2 var(--font); letter-spacing: .16em; text-transform: uppercase; color: var(--print); white-space: nowrap; }
+.card h4::after { content: ""; flex: 1; height: 1px; background: rgba(0,0,0,.5); box-shadow: 0 1px 0 rgba(255,255,255,.05); }
+.face-silver .card h4::after { background: rgba(0,0,0,.28); box-shadow: 0 1px 0 rgba(255,255,255,.55); }
+.idot { display: inline-grid; place-items: center; width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 1.1px var(--muted); color: var(--muted); font: italic 600 8px/1 Georgia, serif; }
+.srow { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 34px; border-top: 1px solid var(--rule); box-shadow: inset 0 1px 0 var(--rule-hi); font-size: 13.5px; }
+.card h4 + .srow, .srow.first { border-top: 0; box-shadow: none; }
+.srow > span:first-child { display: inline-flex; align-items: center; gap: 6px; color: var(--soft); white-space: nowrap; }
+.srow.stack { flex-direction: column; align-items: stretch; gap: 6px; padding: 7px 0 6px; }
+.v { color: var(--muted); font-size: 12.5px; text-align: right; }
+.sub { color: var(--muted); font-size: 11.5px; }
+.cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.colhead { margin: 2px 0 7px 4px; font: 700 9.5px/1.2 var(--font); letter-spacing: .17em; text-transform: uppercase; color: rgba(255,122,61,.9); text-shadow: 0 0 6px rgba(255,122,61,.35); }
+.face-silver .colhead { color: #c2541f; text-shadow: none; }
+.colhead.new::after { content: "new"; margin-left: 8px; padding: 1px 5px; border-radius: 3px; font: 700 8px var(--mono); color: #1a0a02; background: #ffb08a; text-shadow: none; }
+.tag-new { margin-left: 6px; padding: 0 5px; border-radius: 3px; font: 700 8px/14px var(--mono); letter-spacing: .1em; color: #1a0a02; background: #ffb08a; }
+.tag-ren { margin-left: 6px; padding: 0 5px; border-radius: 3px; font: 600 8px/14px var(--mono); color: #7ff9ea; box-shadow: inset 0 0 0 1px rgba(127,249,234,.5); }
+
+/* parts */
+.sw { display: inline-block; width: 30px; height: 20px; border-radius: 4px; position: relative; flex: none;
+  background: linear-gradient(180deg, #74746f, #52524e); box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 0 0 1px #2e2e2c, 0 2px 0 #121211; }
+.sw::after { content: ""; position: absolute; left: 12px; top: 7px; width: 6px; height: 6px; border-radius: 50%; background: #3a3532; }
+.sw.on::after { background: rgb(var(--led-on)); box-shadow: 0 0 6px rgba(var(--led-on), .85); }
+.face-silver .sw { background: linear-gradient(180deg, #ededeb, #c8c8c3); box-shadow: inset 0 1px 0 #fff, 0 0 0 1px #6d6d69, 0 2px 0 #4c4c49; }
+.ctl { display: inline-flex; align-items: center; gap: 8px; }
+.track { display: flex; gap: 2px; padding: 3px; border-radius: 5px; background: rgba(0,0,0,.3); box-shadow: inset 0 1px 3px rgba(0,0,0,.7); }
+.face-silver .track { background: linear-gradient(180deg, #a9a9a4, #b9b9b4); box-shadow: inset 0 1px 3px rgba(0,0,0,.35); }
+.track b { flex: 1; text-align: center; padding: 4px 6px; border-radius: 3px; font: 600 9px/1.2 var(--font); letter-spacing: .08em; text-transform: uppercase; color: #9a9aa0; white-space: nowrap; }
+.face-silver .track b { color: #3e3e42; }
+.track b.on { color: #f1f1f0; background: linear-gradient(180deg, #74746f, #52524e); box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 0 0 1px #2e2e2c, 0 2px 0 #121211; }
+.face-silver .track b.on { color: #232323; background: linear-gradient(180deg, #ededeb, #c8c8c3); box-shadow: inset 0 1px 0 #fff, 0 0 0 1px #6d6d69; }
+.menu { display: inline-block; padding: 2px 22px 2px 9px; border-radius: 4px; font-size: 12px; color: #ececee; background: #121315; box-shadow: inset 0 1px 3px rgba(0,0,0,.75); }
+.disp { display: inline-flex; align-items: center; gap: 6px; height: 22px; padding: 0 9px; border-radius: 4px; font: 600 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap;
+  color: #7ff9ea; text-shadow: 0 0 3px rgba(127,249,234,.7); background: linear-gradient(180deg, #030607, #0c1517); box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 0 0 1px rgba(0,0,0,.55); }
+.disp em { font-style: normal; color: rgba(127,249,234,.4); text-shadow: none; }
+.disp .g { color: rgb(var(--led-on)); text-shadow: 0 0 3px rgba(var(--led-on), .6); }
+.face-silver .disp { color: #1c1e20; text-shadow: none; background: linear-gradient(180deg, #fbfcfc, #eef0f1); box-shadow: inset 0 0 0 1px rgba(0,0,0,.2), inset 0 2px 4px rgba(0,0,0,.14); }
+.face-silver .disp em { color: rgba(28,30,32,.45); } .face-silver .disp .g { color: #11743a; text-shadow: none; }
+.keys2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px 0 4px; }
+.key { display: grid; place-items: center; height: 30px; border-radius: 3px; font: 600 10px var(--font); letter-spacing: .12em; text-transform: uppercase; color: #f1f1f0; position: relative;
+  background: linear-gradient(180deg, #6a6a65, #4a4a46); box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 0 0 1px #2e2e2c, 0 1px 0 #121211; }
+.key::before { content: ""; position: absolute; left: 6px; right: 6px; top: 3px; height: 2px; border-radius: 2px; background: rgb(var(--led-on)); box-shadow: 0 0 5px rgb(var(--led-on)); }
+.face-silver .key { color: #232323; background: linear-gradient(180deg, #dadad6, #bababa); box-shadow: inset 0 1px 0 #fff, 0 0 0 1px #6d6d69; }
+.ksub { font-size: 10.5px; color: var(--muted); line-height: 1.3; }
+.swatches { display: inline-flex; gap: 6px; } .swatches i { width: 13px; height: 13px; border-radius: 50%; box-shadow: 0 0 0 1px rgba(0,0,0,.45); }
+.swatches i.on { box-shadow: 0 0 0 2px #1d1d1f, 0 0 0 3.5px #ff7a3d; }
+.pane { padding: 8px; border-radius: 7px; background: rgba(0,0,0,.26); box-shadow: inset 0 1px 3px rgba(0,0,0,.6); }
+.face-silver .pane { background: linear-gradient(180deg, #a9a9a4, #b9b9b4); box-shadow: inset 0 1px 3px rgba(0,0,0,.35); }
+.fade { opacity: .45; }
+.strip { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; padding: 6px 6px 6px 10px; border-radius: 6px; background: rgba(0,0,0,.27); box-shadow: inset 0 1px 3px rgba(0,0,0,.75); }
+.strip span { flex: 1; font: 600 8.5px/1.3 var(--font); letter-spacing: .13em; text-transform: uppercase; color: var(--print); }
+.strip b { padding: 4px 9px; border-radius: 3px; font: 600 9px var(--font); letter-spacing: .1em; text-transform: uppercase; color: #f1f1f0; background: linear-gradient(180deg, #74746f, #52524e); }
+.mini-gal { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.mini-gal i { height: 34px; border-radius: 8px; background: linear-gradient(180deg, #2c2c2e, #121214); box-shadow: inset 0 0 0 1px rgba(255,255,255,.12); }
+
+/* menu bar icons (drawn; the build uses the app's renders) */
+.fam { margin: 6px 0 3px; font: 600 9px var(--font); letter-spacing: .14em; text-transform: uppercase; color: var(--print); }
+.fams { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.mstyles { display: flex; gap: 4px; }
+.mst { flex: 1; display: grid; justify-items: center; gap: 3px; padding: 6px 2px 4px; border-radius: 5px; font-size: 9.5px; color: var(--muted); }
+.mst.on { background: rgba(0,0,0,.27); box-shadow: inset 0 1px 3px rgba(0,0,0,.6); color: var(--text); font-weight: 600; }
+.face-silver .mst.on { background: rgba(255,255,255,.5); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.mb { display: inline-flex; align-items: center; gap: 4px; height: 20px; padding: 0 6px; border-radius: 4px; font: 600 10px var(--font); color: var(--mbfg); }
+.mb .lab { font: 700 8px var(--mono); letter-spacing: .06em; opacity: .85; }
+.mb .bars { display: grid; gap: 2px; width: 18px; } .mb .bars u { display: block; height: 3px; border-radius: 1.5px; background: rgba(127,127,127,.35); position: relative; overflow: hidden; }
+.mb .bars u::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--p); background: var(--c); }
+.mb .ring { width: 14px; height: 14px; border-radius: 50%; background: conic-gradient(var(--c) var(--p), rgba(127,127,127,.35) 0); -webkit-mask: radial-gradient(circle, transparent 4px, #000 4.5px); mask: radial-gradient(circle, transparent 4px, #000 4.5px); }
+.mb .num { font: 700 11px var(--font); font-variant-numeric: tabular-nums; }
+.mb .cd { font: 600 10px var(--font); color: #ef4444; }
+.mbar-l { --mbfg: #1d1d1f; background: rgba(246,246,246,.92); }
+.mbar-d { --mbfg: #f2f2f2; background: rgba(30,30,32,.92); }
+.lanebar { display: flex; justify-content: space-between; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 5px; }
+.lanecaps { display: flex; justify-content: space-between; font-size: 9.5px; color: var(--muted); padding: 2px 6px 0; }
+.chrow { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 11.5px; } .chrow > span:first-child { width: 72px; font: 600 9px var(--font); letter-spacing: .12em; text-transform: uppercase; color: var(--print); }
+.chrow .opts { display: flex; flex-wrap: wrap; gap: 4px; } .chrow .opts b { padding: 2px 7px; border-radius: 4px; font-weight: 500; color: var(--muted); }
+.chrow .opts b.on { color: var(--text); font-weight: 600; background: rgba(0,0,0,.27); box-shadow: inset 0 1px 2px rgba(0,0,0,.6); }
+.face-silver .chrow .opts b.on { background: rgba(255,255,255,.55); box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+.chrow .opts b.dis { opacity: .4; }
+
+/* widget mock */
+.wg { width: 330px; height: 155px; margin: 4px auto 0; border-radius: 22px; padding: 14px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-content: center;
+  background: linear-gradient(180deg, #29292b, #1f1f21); box-shadow: 0 10px 30px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.06); color: #ececee; }
+.wg .p b { display: flex; align-items: center; gap: 6px; font-size: 12px; } .wg .p b i { width: 7px; height: 7px; border-radius: 50%; }
+.wg .lim { display: grid; grid-template-columns: 30px 1fr 30px; gap: 5px; align-items: center; font-size: 9.5px; color: #9a9aa0; margin-top: 5px; }
+.wg .segs { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; height: 6px; } .wg .segs u { border-radius: 1px; background: rgba(255,255,255,.08); }
+.wg .pc { text-align: right; font: 700 10px var(--mono); }
+.wg .back { margin-top: 4px; font: 600 9.5px var(--mono); color: #ff7b6e; }
+
+/* the site's desktop menu bar */
+.desk { position: relative; height: 330px; border-radius: 10px; overflow: hidden; background: linear-gradient(160deg, #3a2a3f, #1b2235 60%, #10121a); }
+.topbar { display: flex; align-items: center; gap: 16px; height: 26px; padding: 0 12px; font-size: 12.5px; color: #f2f2f2; background: rgba(28,28,30,.55); backdrop-filter: blur(10px); }
+.topbar .sp { flex: 1; } .topbar .mb { --mbfg: #f2f2f2; padding: 0 5px; } .topbar .mb.open { background: rgba(255,255,255,.18); }
+.dd { position: absolute; top: 30px; right: 180px; width: 290px; padding: 6px; border-radius: 9px; background: rgba(40,40,44,.92); backdrop-filter: blur(16px); box-shadow: 0 10px 30px rgba(0,0,0,.5), 0 0 0 .5px rgba(255,255,255,.2); font-size: 12.5px; color: #eee; }
+.dd .hd { display: flex; align-items: center; gap: 6px; padding: 4px 8px 6px; font-weight: 600; } .dd .hd i { width: 8px; height: 8px; border-radius: 50%; background: #14b8a6; }
+.dd .row { display: grid; grid-template-columns: 62px 1fr 38px; gap: 8px; align-items: center; padding: 3px 8px; font-size: 11.5px; }
+.dd .bar { height: 5px; border-radius: 3px; background: rgba(255,255,255,.12); position: relative; overflow: hidden; } .dd .bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: var(--p); background: var(--c); }
+.dd .pc { text-align: right; font: 700 11px var(--mono); }
+.dd .info { padding: 2px 8px 4px; font-size: 11px; color: #a1a1a6; }
+.dd .red { color: #ff7b6e; }
+.dd hr { border: 0; border-top: 1px solid rgba(255,255,255,.12); margin: 5px 4px; }
+.dd .it { padding: 3px 8px; border-radius: 4px; } .dd .it:hover { background: #0a64d6; }
+
+/* dashboard bits */
+.dashcard { width: 400px; }
+.lim { display: grid; gap: 5px; margin-top: 6px; }
+.lrow { display: flex; align-items: baseline; gap: 6px; font-size: 13px; } .lrow b { font-weight: 600; } .lrow .pc { margin-left: auto; font: 700 12.5px var(--mono); }
+.segs12 { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; height: 7px; } .segs12 u { border-radius: 1.5px; background: rgba(0,0,0,.38); }
+.face-silver .segs12 u { background: rgba(0,0,0,.11); }
+.credits { margin-top: 8px; }
+.hist { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.hist h3 { margin: 0; font-size: 17px; } .hist .grow { flex: 1; }
+.kk { padding: 5px 10px; border-radius: 3px; font: 600 9.5px var(--font); letter-spacing: .1em; text-transform: uppercase; color: #f1f1f0; background: linear-gradient(180deg, #74746f, #52524e); box-shadow: inset 0 1px 0 rgba(255,255,255,.28), 0 0 0 1px #2e2e2c, 0 2px 0 #121211; }
+.face-silver .kk { color: #232323; background: linear-gradient(180deg, #ededeb, #c8c8c3); box-shadow: inset 0 1px 0 #fff, 0 0 0 1px #6d6d69; }
+</style></head>
+<body class="face-std"><div class="page">
+<div class="top"><h1>cl-audit.n-uf.com at cl_audit 26.11.0 · sketch</h1><span class="sp"></span>
+  <span class="fsel"><button data-f="std" class="on">Std</button> <button data-f="black">Black</button> <button data-f="silver">Silver</button></span></div>
+
+<p class="note">The site's demo follows the app as built (app main, not released). Drawn in the site's own styles; <b>new</b> and <span class="tag-ren">renamed</span> marks are for this sketch only. The menu bar icons and the widget are drawn here; the build uses the app's offscreen renders (asked for) so they match pixel for pixel. Nothing goes live before 26.11.0.</p>
+
+<h2><small>1</small>Settings ▸ a profile</h2>
+<p class="note">Three columns with the subject printed at the top in the LED orange, as in the app: <b>Who it is</b> · <b>Its Dock icon</b> · <b>Its menu bar icon</b>. Profile gains <b>Fable's limit</b>; "Updates and alerts" becomes <b>Alerts</b>; "Opening and closing" + "Dock icon clicks" become one <b>Dock icon</b> card and a <b>Claude window</b> card; the new <b>Menu bar</b> card fills the third column.</p>
+<div class="wide"><div class="win"><div class="cols">
+  <div>
+    <div class="colhead">Who it is</div>
+    <section class="card"><h4>Profile</h4>
+      <div class="srow"><span>Name <i class="idot">i</i></span><span class="v">work</span></div>
+      <div class="srow"><span>Icon label <i class="idot">i</i></span><span class="v">WORK</span></div>
+      <div class="srow"><span>Colour <i class="idot">i</i></span><span class="swatches"><i style="background:#d97757"></i><i style="background:#eab308"></i><i style="background:#84cc16"></i><i class="on" style="background:#14b8a6"></i><i style="background:#3b82f6"></i><i style="background:#8b5cf6"></i></span></div>
+      <div class="srow"><span>Fable's limit <i class="idot">i</i><span class="tag-new">NEW</span></span><span class="ctl"><span class="sub">shown and alerted</span><span class="sw on"></span></span></div>
+      <div class="keys2"><span class="key">Usage in the Dock</span><span class="key">Claude window</span></div>
+      <div class="keys2" style="padding-top:0"><span class="ksub">A Dock icon shows this profile's usage; click it for details.</span><span class="ksub">A Claude window for this profile, signed in to its account; open it from the dashboard or the Dock icon.</span></div>
+    </section>
+    <section class="card"><h4>Claude Code <i class="idot">i</i></h4>
+      <div class="srow"><span>Folder <i class="idot">i</i></span><span class="menu">~/.claude-work</span></div>
+      <div class="srow"><span>Login <i class="idot">i</i></span><span class="v" style="color:#22c55e">✓ you@work.example</span></div>
+      <div class="srow"><span>Renew sign-in <i class="idot">i</i></span><span class="sw on"></span></div>
+    </section>
+    <section class="card"><h4>Alerts <span class="tag-ren">was Updates and alerts</span></h4>
+      <div class="srow"><span>Refresh every <i class="idot">i</i></span><span class="menu">5 min</span></div>
+      <div class="srow"><span>Notify at <i class="idot">i</i></span><span class="ctl"><span class="sw on"></span><span class="disp">85%</span></span></div>
+      <div class="srow"><span>Notify when back <i class="idot">i</i></span><span class="ctl"><span class="sub">when a full limit resets</span><span class="sw on"></span></span></div>
+      <p class="sub" style="margin:6px 0 0">The (i) and the alerts cover the 5-hour, weekly and Fable limits and usage credits.</p>
+    </section>
+  </div>
+  <div>
+    <div class="colhead">Its Dock icon</div>
+    <section class="card"><h4>Dock icon <i class="idot">i</i> <span class="tag-ren">was Opening and closing + Dock icon clicks</span></h4>
+      <div class="srow stack"><span>Runs <i class="idot">i</i></span><span class="track"><b class="on">At login</b><b>With its window</b><b>When started</b></span></div>
+      <div class="srow"><span>Click <i class="idot">i</i></span><span class="menu">Usage, then Claude</span></div>
+      <div class="srow"><span>Usage shows for <i class="idot">i</i></span><span class="disp">3 s</span></div>
+      <div class="srow"><span>Press and hold <i class="idot">i</i></span><span class="sw on"></span></div>
+      <div class="srow stack"><span>Usage panel <i class="idot">i</i></span><span class="track"><b>Glow</b><b class="on">Rings</b><b>Numbers</b><b>Segments</b><b>Pace</b></span><div class="pane" style="height:70px"></div></div>
+    </section>
+    <section class="card"><h4>Claude window <i class="idot">i</i><span class="tag-new">NEW CARD</span></h4>
+      <div class="srow"><span>With Dock icon <i class="idot">i</i></span><span class="ctl"><span class="v" style="text-align:left">opens and quits with the Dock icon<br><span class="sub">not at login; Claude asks about unsent work</span></span><span class="sw"></span></span></div>
+    </section>
+    <section class="card"><h4>Icon</h4>
+      <div class="fam">Classic</div><div class="mini-gal"><i></i><i></i><i></i></div>
+      <p class="sub" style="margin:8px 0 0">As today: 13 styles, preview lane, Colour, Frame, Claude open dot.</p>
+    </section>
+  </div>
+  <div>
+    <div class="colhead new">Its menu bar icon</div>
+    <section class="card"><h4>Menu bar <i class="idot">i</i><span class="tag-new">NEW</span></h4>
+      <div class="srow"><span>In the menu bar <i class="idot">i</i></span><span class="sw on"></span></div>
+      <div class="fams" data-fams></div>
+      <div class="pane" style="margin-top:8px">
+        <div style="font-size:11px"><b>Preview</b> <span class="sub">your menu bar (dark), then light</span></div>
+        <div class="lanebar mbar-d" data-lane="d" style="margin-top:6px"></div>
+        <div class="lanebar mbar-l" data-lane="l" style="margin-top:4px"></div>
+        <div class="lanecaps"><span>no numbers yet</span><span>plenty left</span><span>half used</span><span>at limit</span><span>full</span></div>
+      </div>
+      <div style="margin-top:8px">
+        <div class="chrow"><span>Colours</span><span class="opts"><b class="on">Levels</b><b>System</b><b>Accent</b><b>Profile colour</b></span></div>
+        <div class="chrow"><span>Label</span><span class="opts"><b>None</b><b class="on">Profile label</b></span></div>
+        <div class="chrow"><span>When full</span><span class="opts"><b class="on">Countdown</b><b>Red only</b></span></div>
+      </div>
+    </section>
+  </div>
+</div></div></div>
+<p class="note" style="margin-top:8px">Fading, as in the app: without a Dock icon the Dock icon card fades under "Not in use · no Dock icon" (Show in the Dock) and the Claude window card under "no Dock icon to open it with"; without a Claude window, the Claude window card fades under "no Claude window" (Add Claude window). The Menu bar card never fades: it works with or without the Dock icon.</p>
+
+<h2><small>2</small>Settings ▸ General</h2>
+<p class="note">Three columns: <b>cl_audit</b> (Usage in the background, Privacy, About) · <b>How usage looks</b> (Face, Dashboard cards, Widget) · <b>The Dock</b> (App icon, Dock). "Emails" becomes <b>Privacy</b>; the new <b>Widget</b> card has "Limits as" with the live medium widget, then "Look". General tile: "cl_audit · looks · widget · Dock".</p>
+<div class="wide"><div class="win"><div class="cols">
+  <div>
+    <div class="colhead">cl_audit</div>
+    <section class="card"><h4>Usage in the background <i class="idot">i</i></h4>
+      <span class="disp" style="display:flex"><span class="g">Reading usage</span> <em>· 3 profiles · every 5–10 min</em></span>
+      <p class="sub" style="margin:6px 0 2px">cl_audit reads every profile's usage and sends the alerts on its own, even with this window and the Dock icons closed. It starts when you log in.</p>
+      <div class="srow"><span>Alerts <i class="idot">i</i></span><span class="disp"><span class="g">Allowed</span></span></div>
+      <div class="srow"><span>Last read</span><span class="v">1 min ago</span></div>
+    </section>
+    <section class="card"><h4>Privacy <span class="tag-ren">was Emails</span></h4>
+      <div class="srow"><span>Show emails <i class="idot">i</i></span><span class="sw on"></span></div>
+    </section>
+    <section class="card"><h4>About</h4>
+      <div class="srow"><span>Version <i class="idot">i</i></span><span class="disp">26.11.0 <em>· build 1xx</em></span></div>
+      <div class="srow"><span>Changes</span><span class="kk">What's new</span></div>
+      <div class="srow"><span>Clean-up <i class="idot">i</i></span><span class="v">Cleaned up 2 leftovers · 18:15</span></div>
+      <div class="srow"><span>Uninstall <i class="idot">i</i></span><span class="kk" style="color:#f87171">Uninstall cl_audit…</span></div>
+    </section>
+  </div>
+  <div>
+    <div class="colhead">How usage looks</div>
+    <section class="card"><h4>Face</h4><p class="sub" style="margin:0">Std · Black · Silver, as today.</p></section>
+    <section class="card"><h4>Dashboard cards <i class="idot">i</i></h4><p class="sub" style="margin:0">As today.</p></section>
+    <section class="card"><h4>Widget <i class="idot">i</i><span class="tag-new">NEW</span></h4>
+      <div class="srow stack"><span>Limits as</span><span class="track"><b>Glow</b><b>Rings</b><b>Numbers</b><b class="on">Segments</b><b>Pace</b></span>
+        <div class="pane"><div class="wg" data-widget></div></div></div>
+      <div class="srow stack"><span>Look <i class="idot">i</i></span><span class="track"><b>System</b><b class="on">Std</b><b>Black</b><b>Silver</b></span></div>
+    </section>
+  </div>
+  <div>
+    <div class="colhead">The Dock</div>
+    <section class="card"><h4>App icon</h4><p class="sub" style="margin:0">As today: six designs, Front panel's choices.</p></section>
+    <section class="card"><h4>Dock</h4><p class="sub" style="margin:0">As today: Keep in order, Experimental.</p></section>
+  </div>
+</div></div></div>
+
+<h2><small>3</small>The site's menu bar: profile icons</h2>
+<p class="note">The demo desktop already has a menu bar. Each profile with "In the menu bar" on gets its icon there, right of the clock area like any menu bar app; a click opens its own menu (limits, Fable, read time, Open Claude window, Refresh now, Dashboard, Profile settings…, Hide from the menu bar). Here: <b>work</b> (full, countdown) and <b>home</b> on; side off. On phones the icons hide (the site's phone menu bar has no room).</p>
+<div class="desk">
+  <div class="topbar"><b></b><b>cl_audit</b><span>Overview</span><span>Demo dashboard</span><span>Settings</span><span class="sp"></span>
+    <span class="mb" data-mb="home"></span><span class="mb open" data-mb="work"></span><span>Tue 3 Nov 21:40</span></div>
+  <div class="dd">
+    <div class="hd"><i></i>Claude work <span style="margin-left:auto;font-weight:400;color:#a1a1a6">Team</span></div>
+    <div class="row"><span>5-hour</span><span class="bar" style="--p:100%;--c:#ef4444"></span><span class="pc red">100%</span></div>
+    <div class="info red">full · back at 23:22, in 1h 42m</div>
+    <div class="row"><span>Week</span><span class="bar" style="--p:61%;--c:#f59e0b"></span><span class="pc" style="color:#f59e0b">61%</span></div>
+    <div class="info">resets in 3 days</div>
+    <div class="row"><span>Fable</span><span class="bar" style="--p:44%;--c:#22c55e"></span><span class="pc" style="color:#22c55e">44%</span></div>
+    <div class="info">resets Thu 09:00</div>
+    <div class="info" style="color:#ffb24a">Using usage credits · $4.20 spent</div>
+    <div class="info">Read 1 min ago</div>
+    <hr><div class="it">Open Claude window</div><div class="it">Refresh now</div><div class="it">Dashboard</div><div class="it">Profile settings…</div><hr><div class="it">Hide from the menu bar</div>
+  </div>
+</div>
+
+<h2><small>4</small>Dashboard additions</h2>
+<p class="note">A <b>Fable</b> row on the profiles whose plan has it (demo: home Max, work Team; side Pro has none), and while a profile spends usage credits one line under its limits. Under Usage history, the totals add <b>"≈ $… at list prices"</b> and a <b>CSV</b> key sits next to the period keys.</p>
+<div class="wide"><div class="win" style="width:900px"><div style="display:flex;gap:12px;align-items:start">
+  <section class="card dashcard"><h4>Claude home · Max</h4><div class="lim" data-lims="home"></div></section>
+  <section class="card dashcard"><h4>Claude work · Team</h4><div class="lim" data-lims="work"></div>
+    <div class="credits"><span class="disp"><span style="color:#ffb24a">Using usage credits</span> <em>· $4.20 spent</em></span></div></section>
+</div>
+<div class="hist" style="margin-top:6px"><h3>Usage history</h3><span class="kk">When you use Claude</span><span class="kk">Tokens per day</span><span class="kk">Where it goes</span><span class="grow"></span>
+  <span class="disp">1,307 replies <em>· 36.1M tokens · ≈ $123 at list prices</em></span><span class="kk">24 h</span><span class="kk">7 d</span><span class="kk">30 d</span><span class="kk">CSV</span></div>
+</div></div>
+<p class="note">The CSV key on the demo saves a small sample CSV (made-up rows, the app's columns); hovering the cost says "at API list prices, not your bill".</p>
+
+<h2><small>5</small>Text</h2>
+<p class="note">Overview: the FAQ "Is cl_audit a menu bar app?" → Dock icons first, plus an optional menu bar icon per profile and a widget; the overview's card-switch rows get Fable's limit, usage credits, menu bar icons, the widget, CSV and cost, and windows back after a Claude update; "Opening and closing" → Dock icon (Runs) and Claude window. FAQ: Opening and closing answers → the new cards; "Will cl_audit keep working when Claude updates?" adds that profile windows come back. Install: the widget needs macOS 14 (the app stays 13+). Version 26.11.0 and its checked-with line. All of it through a humanize review and the SEO session's check before it ships.</p>
+
+<div class="q"><b>To decide</b><ol>
+  <li>Demo menu bar: icons for <b>home and work</b> (work full, showing the countdown), side off? Or only one profile, to keep the bar quiet?</li>
+  <li>Widget on the site: just inside the General ▸ Widget card, or also a medium widget on the Overview's desktop?</li>
+  <li>Fable rows on <b>home (Max) and work (Team)</b>, none on side (Pro)?</li>
+  <li>The CSV key: a real sample download, or a key that explains it's a demo?</li>
+</ol></div>
+</div>
+<script>
+const lv = (p) => p >= 80 ? "#ef4444" : p >= 50 ? "#f59e0b" : "#22c55e";
+const glyph = (style, five, week, opt = {}) => {
+  const c5 = five == null ? "rgba(127,127,127,.35)" : lv(five), cw = week == null ? "rgba(127,127,127,.35)" : lv(week);
+  const lab = opt.label ? `<span class="lab">${opt.label}</span>` : "";
+  const bars = `<span class="bars"><u style="--p:${five ?? 0}%;--c:${c5}"></u><u style="--p:${week ?? 0}%;--c:${cw}"></u></span>`;
+  const ring = `<span class="ring" style="--p:${Math.max(five ?? 0, 0)}%;--c:${c5}"></span>`;
+  const n = five == null ? "–" : Math.round(Math.max(five, week ?? 0));
+  const num = `<span class="num" style="color:${five == null ? "inherit" : lv(Math.max(five, week ?? 0))}">${n}</span>`;
+  const cd = opt.cd ? `<span class="cd">${opt.cd}</span>` : "";
+  const body = { bars, barsNumber: bars + num, ring, ringNumber: ring + num, number: num,
+    twoNumbers: `<span class="num" style="color:${c5}">${five ?? "–"}</span><span class="num" style="color:${cw};opacity:.8">${week ?? "–"}</span>` }[style];
+  return lab + body + cd;
+};
+document.querySelector("[data-fams]").innerHTML = [["Bars", [["bars", "Two bars"], ["barsNumber", "Bars + number"]]], ["Rings", [["ring", "Ring"], ["ringNumber", "Ring + number"]]], ["Numbers", [["number", "Number"], ["twoNumbers", "Two numbers"]]]]
+  .map(([f, ss]) => `<div><div class="fam">${f}</div><div class="mstyles">${ss.map(([k, t]) => `<span class="mst${k === "bars" ? " on" : ""}"><span class="mb mbar-d">${glyph(k, 34, 12)}</span>${t}</span>`).join("")}</div></div>`).join("");
+const lane = [[null, null], [12, 20], [55, 48], [88, 72], [100, 64]];
+for (const el of document.querySelectorAll("[data-lane]"))
+  el.innerHTML = lane.map(([a, b], i) => `<span class="mb">${glyph("bars", a, b, { label: "WORK", cd: i === 4 ? "1h 42m" : "" })}</span>`).join("");
+document.querySelector('[data-mb="home"]').innerHTML = glyph("bars", 34, 12, { label: "HOME" });
+document.querySelector('[data-mb="work"]').innerHTML = glyph("bars", 100, 61, { label: "WORK", cd: "1h 42m" });
+const segs = (p, n = 10) => Array.from({ length: n }, (_, i) => `<u style="${i < Math.round(p / 100 * n) ? `background:${lv(((i + 1) / n) * 100)}` : ""}"></u>`).join("");
+document.querySelector("[data-widget]").innerHTML = [["home", "#d97757", 34, 12, null], ["work", "#14b8a6", 100, 61, "back at 23:22"]].map(([n, c, a, b, back]) =>
+  `<div class="p"><b><i style="background:${c}"></i>${n}</b><div class="lim"><span>5-hour</span><span class="segs">${segs(a)}</span><span class="pc" style="color:${lv(a)}">${a}%</span></div>
+   <div class="lim"><span>Week</span><span class="segs">${segs(b)}</span><span class="pc" style="color:${lv(b)}">${b}%</span></div>${back ? `<div class="back">${back}</div>` : ""}</div>`).join("");
+const limRows = { home: [["5-hour", "in 3 h 12 min", 34], ["Week", "in 6 days", 12], ["Fable", "resets Thu 09:00", 21]], work: [["5-hour", "full · back at 23:22", 100], ["Week", "in 3 days", 61], ["Fable", "resets Thu 09:00", 44]] };
+for (const el of document.querySelectorAll("[data-lims]")) el.innerHTML = limRows[el.dataset.lims].map(([n, w, p]) =>
+  `<div class="lrow"><b>${n}</b><span class="sub" style="${p >= 100 ? "color:#fca5a5" : ""}">· ${w}</span><span class="pc" style="color:${lv(p)}">${p}%</span></div><div class="segs12">${segs(p, 12)}</div>`).join("");
+document.querySelectorAll(".fsel button").forEach((b) => b.onclick = () => { document.body.className = "face-" + b.dataset.f; document.querySelectorAll(".fsel button").forEach((x) => x.classList.toggle("on", x === b)); });
+</script>
+</body></html>

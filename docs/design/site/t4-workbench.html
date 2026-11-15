@@ -1,0 +1,612 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cl_audit T4 Final Options</title>
+<style>
+  * { box-sizing: border-box; }
+  :root { --glow: 127,249,234; --led: 255,122,61; --on: 74,222,128; --mono: ui-monospace, "SF Mono", Menlo, monospace; --sans: -apple-system, system-ui, sans-serif;
+    --gun: repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #74746f, #52524e);
+    --gun-up: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #2e2e2c, 0 2px 0 #121211, 0 3px 7px rgba(0,0,0,.45); }
+  body { margin: 0; padding: 0 16px 60px; background: #f4f4f2; font: 14px/1.5 var(--sans); color: #374151; }
+  main { max-width: 1180px; margin: 0 auto; }
+  h1 { font: 700 15px var(--mono); text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 4px; color: #111827; }
+  .lead { margin: 0 0 18px; color: #6b7280; font-size: 13px; max-width: 110ch; }
+  .var { margin: 30px 0 0; }
+  .var > h2 { font: 700 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 3px; color: #111827; }
+  .var > p { margin: 0 0 8px; color: #6b7280; font-size: 12.5px; max-width: 110ch; }
+  .pick { color: #b45309 !important; }
+  /* the app window around the panels, as on the site */
+  .chassis { padding: 18px; border-radius: 12px; display: grid; grid-template-columns: 372px minmax(0, 1fr); gap: 14px; align-items: start; color: #ececee;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #232325, #1b1b1d); }
+  @media (max-width: 860px) { .chassis { grid-template-columns: 1fr; } }
+
+  /* shared bits inside panels */
+  .lbl { font: 600 9.5px/1.2 var(--sans); letter-spacing: .16em; text-transform: uppercase; white-space: nowrap; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .icon { width: 50px; height: 50px; border-radius: 11px; display: grid; place-items: center; font: 800 15px var(--mono); color: #fff; background: linear-gradient(160deg, #3c3c3c, #141414); box-shadow: inset 0 0 0 1px rgba(255,255,255,.15); }
+  .name { font-weight: 600; font-size: 16px; } .mail { font-size: 12.5px; opacity: .6; }
+  .disp { margin-left: auto; align-self: flex-start; height: 22px; padding: 0 8px; border-radius: 4px; display: inline-flex; align-items: center;
+    background: linear-gradient(180deg, #030607, #0c1517); box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 0 0 1px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.07);
+    font: 600 10px var(--mono); letter-spacing: .14em; color: rgb(var(--glow)); text-shadow: 0 0 3px rgba(var(--glow), .7); }
+  .sws { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 12px; }
+  .sw { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 7px 0 10px; border-radius: 5px; background: rgba(0,0,0,.3); box-shadow: inset 0 1px 3px rgba(0,0,0,.75), 0 1px 0 rgba(255,255,255,.05); }
+  .sw .t { flex: 1; display: grid; gap: 3px; }
+  .sw .t span:first-child { font: 600 8.5px var(--sans); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.62); }
+  .sw .t span:last-child { font: 600 9.5px var(--mono); letter-spacing: .06em; color: rgb(var(--glow)); text-shadow: 0 0 3px rgba(var(--glow), .6); }
+  .swk { width: 30px; height: 22px; border-radius: 4px; display: grid; place-items: center; background: var(--gun); box-shadow: var(--gun-up); }
+  .swk i { width: 6px; height: 6px; border-radius: 50%; background: rgb(var(--on)); box-shadow: 0 0 6px rgba(var(--on), .85); }
+  .meter { display: grid; gap: 4px; margin-top: 12px; }
+  .meter .h { display: flex; justify-content: space-between; font-size: 13px; } .meter .h b { font: 700 12px var(--mono); }
+  .segs { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; height: 8px; }
+  .segs i { border-radius: 1px; background: rgba(255,255,255,.08); }
+  .keys { display: flex; gap: 7px; margin-top: 14px; align-items: center; }
+  .key { height: 26px; padding: 0 12px; border-radius: 4px; display: inline-flex; align-items: center; gap: 6px; font: 600 10px var(--sans); letter-spacing: .12em; text-transform: uppercase;
+    color: #f1f1f0; text-shadow: 0 -1px 0 rgba(0,0,0,.35); background: var(--gun); box-shadow: var(--gun-up); }
+  .key .d { width: 6px; height: 6px; border-radius: 50%; background: #d97757; }
+  .list > div { padding: 9px 0; border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.035); display: grid; gap: 1px; }
+  .list > div:first-child { border: 0; box-shadow: none; }
+  .list b { font-size: 14px; } .list span { font-size: 13px; opacity: .62; }
+  /* screws: Phillips heads in the corners */
+  .screw { position: absolute; width: 9px; height: 9px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #d9d9d6, #8d8d89 55%, #4a4a47);
+    box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 1px 1px rgba(255,255,255,.12); }
+  .screw::before, .screw::after { content: ""; position: absolute; left: 50%; top: 50%; width: 6px; height: 1.2px; margin: -.6px 0 0 -3px; background: rgba(0,0,0,.55); border-radius: 1px; }
+  .screw::after { transform: rotate(90deg); }
+  .s1 { left: 7px; top: 7px; } .s2 { right: 7px; top: 7px; } .s3 { left: 7px; bottom: 7px; } .s4 { right: 7px; bottom: 7px; }
+  .s1::before { transform: rotate(20deg); } .s2::before { transform: rotate(-35deg); } .s3::before { transform: rotate(55deg); } .s4::before { transform: rotate(5deg); }
+
+  /* ─── A · Black deck faceplate: horizontal hairline, chamfer, screws, silk-screened frames ─── */
+  .pa { position: relative; padding: 22px 22px 22px; border-radius: 4px;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, rgba(0,0,0,.05) 1px 2px),
+      linear-gradient(180deg, #2b2b2d 0%, #1e1e20 60%, #19191b 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.14), inset 0 2px 0 rgba(255,255,255,.04), inset 0 -1px 0 rgba(0,0,0,.6),
+      inset 1px 0 0 rgba(255,255,255,.05), inset -1px 0 0 rgba(0,0,0,.4), 0 0 0 1px #050505, 0 6px 16px rgba(0,0,0,.4); }
+  .pa .lbl { color: rgba(255,255,255,.72); }
+  /* a silk-screened frame around a group, its label sitting on the top line */
+  .frame { position: relative; margin-top: 16px; padding: 14px 12px 12px; border: 1px solid rgba(255,255,255,.22); border-radius: 3px; }
+  .frame > .lbl { position: absolute; left: 10px; top: -6px; padding: 0 6px; background: #222224; color: rgba(255,255,255,.75); }
+  .pa .head { display: flex; align-items: baseline; gap: 10px; margin-bottom: 4px; }
+  .pa .head .model { font: 700 italic 13px var(--sans); letter-spacing: .02em; color: #e9e9e9; }
+  .pa .head .lbl { margin-left: auto; }
+
+  /* ─── B · Silver deck faceplate: light brushed aluminium, dark legends, black windows ─── */
+  .pb { position: relative; padding: 22px; border-radius: 4px; color: #1f1f1f;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.22) 0 1px, rgba(0,0,0,.035) 1px 2px),
+      linear-gradient(180deg, #d9d9d5 0%, #c3c3be 55%, #b2b2ad 100%);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(0,0,0,.25), 0 0 0 1px #1a1a1a, 0 6px 16px rgba(0,0,0,.45); }
+  .pb .lbl { color: rgba(20,20,20,.72); }
+  .pb .frame { border-color: rgba(0,0,0,.35); }
+  .pb .frame > .lbl { background: #c8c8c3; color: rgba(20,20,20,.8); }
+  .pb .mail, .pb .list span { opacity: .65; }
+  .pb .meter .h b { color: #0f7a35; }
+  .pb .sw { background: #121315; box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.4); }
+  .pb .segwin { padding: 3px; border-radius: 3px; background: #0d0f10; box-shadow: inset 0 1px 2px rgba(0,0,0,.9), 0 1px 0 rgba(255,255,255,.4); }
+  .pb .list > div { border-top-color: rgba(0,0,0,.25); box-shadow: inset 0 1px 0 rgba(255,255,255,.4); }
+  .pb .key { color: #232323; text-shadow: none; background: linear-gradient(180deg, #2d2d2f, #1a1a1b); color: #ececec; }
+  .pb .screw { background: radial-gradient(circle at 35% 30%, #f2f2ef, #a9a9a4 55%, #6a6a66); }
+
+  /* ─── C · Black faceplate with a silver trim strip and a smoked-glass window (cassette door) ─── */
+  .pc { position: relative; border-radius: 4px; overflow: hidden;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0 1px, rgba(0,0,0,.05) 1px 2px), linear-gradient(180deg, #252527, #1a1a1c);
+    box-shadow: inset 0 -1px 0 rgba(0,0,0,.6), 0 0 0 1px #050505, 0 6px 16px rgba(0,0,0,.4); }
+  .pc .trim { display: flex; align-items: center; gap: 10px; height: 26px; padding: 0 14px;
+    background: repeating-linear-gradient(0deg, rgba(255,255,255,.25) 0 1px, rgba(0,0,0,.04) 1px 2px), linear-gradient(180deg, #e2e2de, #b9b9b4);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(0,0,0,.4); }
+  .pc .trim .lbl { color: #262626; }
+  .pc .trim .lbl.r { margin-left: auto; color: rgba(38,38,38,.6); }
+  .pc .body { padding: 14px 16px 16px; }
+  .pc .glass { position: relative; padding: 12px; border-radius: 6px;
+    background: linear-gradient(180deg, rgba(12,14,16,.92), rgba(6,8,9,.96));
+    box-shadow: inset 0 1px 4px rgba(0,0,0,.9), inset 0 0 0 1px rgba(255,255,255,.05), 0 1px 0 rgba(255,255,255,.07); }
+  .pc .glass::after { content: ""; position: absolute; inset: 0 0 60% 0; border-radius: 6px 6px 0 0; pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,255,255,.06), transparent); }
+  .pc .lbl { color: rgba(255,255,255,.7); }
+
+  .note { margin-top: 10px; color: #9a9aa0; font-size: 12px; }
+
+  /* ─── 2 · the Download on a non-Mac ─── */
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 900px) { .pair { grid-template-columns: 1fr; } }
+  .col-cap { font: 700 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: #9a9aa0; margin: 0 0 6px; }
+  .win { border-radius: 12px; overflow: hidden; color: #ececee;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #232325, #1b1b1d); }
+  .mbar { display: flex; align-items: center; gap: 14px; height: 28px; padding: 0 12px; background: rgba(20,20,22,.95); font-size: 12.5px; color: #e8e8ea; }
+  .mbar .sp { flex: 1; }
+  .mdl { display: inline-flex; align-items: center; gap: 6px; height: 20px; padding: 0 10px; border-radius: 4px; font: 700 9.5px var(--sans); letter-spacing: .12em; text-transform: uppercase;
+    color: #2a1004; background: linear-gradient(180deg, #f08a55, #e06b33); box-shadow: inset 0 1px 0 rgba(255,220,195,.45), 0 0 0 1px #5a1f05; }
+  .mdl.off { color: #8e8e93; background: none; box-shadow: none; font: 12.5px var(--sans); letter-spacing: 0; text-transform: none; }
+  .wbody { padding: 14px; }
+  .pnl { padding: 14px 16px 16px; border-radius: 10px;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #29292b, #222224);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #0c0c0d; }
+  .pnl .lbl { color: rgba(255,255,255,.5); display: block; margin-bottom: 10px; }
+  .pnl + .pnl { margin-top: 12px; }
+  .rdisp { display: flex; align-items: center; height: 28px; padding: 0 10px; border-radius: 5px; font: 600 10.5px var(--mono); letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; overflow: hidden;
+    background: linear-gradient(180deg, #030607, #0c1517); box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 0 0 1px rgba(0,0,0,.55);
+    color: rgb(var(--glow)); }
+  .rdisp em { font-style: normal; color: rgba(var(--glow), .4); margin: 0 .5em; }
+  .rdisp .amb { color: #f2b544; }
+  .kplate { display: inline-flex; gap: 8px; padding: 7px 9px; border-radius: 7px; margin-top: 10px;
+    background: linear-gradient(180deg, #48484b, #333336); box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 0 0 1px #0b0b0c; }
+  .kk { position: relative; height: 30px; padding: 0 14px; border-radius: 4px; display: inline-flex; align-items: center; font: 600 10.5px var(--sans); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap;
+    color: #f1f1f0; background: var(--gun); box-shadow: var(--gun-up); }
+  .kk.dl { padding-top: 4px; color: #232323; background: repeating-linear-gradient(90deg, rgba(255,255,255,.12) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #e4e4e0, #bdbdb8);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8), inset 0 -1px 0 rgba(0,0,0,.25), 0 0 0 1px #1a1a1a, 0 2px 0 #111; }
+  .kk.dl::before { content: ""; position: absolute; left: 6px; right: 6px; top: 4px; height: 3px; border-radius: 3px; background: linear-gradient(180deg, #ffb08a, #ff7a3d 60%, #f0612a); }
+  /* not available: a dark unlit key, legend dim, its slot dark, not clickable */
+  .kk.na { padding-top: 4px; color: rgba(241,241,240,.45); text-shadow: none; cursor: not-allowed;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.03) 0 1px, rgba(0,0,0,.05) 1px 2px), linear-gradient(180deg, #3a3a3c, #2a2a2c);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.08), inset 0 -1px 0 rgba(0,0,0,.4), 0 0 0 1px #151515, 0 1px 0 #0a0a0a; }
+  .kk.na::before { content: ""; position: absolute; left: 6px; right: 6px; top: 4px; height: 3px; border-radius: 3px; background: #4a3a33; box-shadow: inset 0 1px 1px rgba(0,0,0,.5); }
+  .nnote { margin-top: 8px; font-size: 12.5px; color: #9a9aa0; }
+  .nnote b { color: #d4d4d8; font-weight: 600; }
+
+  /* ─── 3 · display indicators ─── */
+  .tdisp { display: flex; align-items: center; gap: 14px; height: 40px; padding: 0 16px; border-radius: 6px; overflow: hidden; white-space: nowrap;
+    background: linear-gradient(180deg, #030607, #0a1113 70%, #0c1517);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,.9), inset 0 0 0 1px rgba(255,255,255,.035), 0 0 0 1px rgba(0,0,0,.55);
+    font: 600 12px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: rgb(var(--glow)); text-shadow: 0 0 3px rgba(var(--glow), .75), 0 0 9px rgba(var(--glow), .35); }
+  .tdisp em { font-style: normal; color: rgba(var(--glow), .38); text-shadow: none; }
+  .tdisp .sub { font-weight: 400; color: rgba(var(--glow), .72); }
+  .tdisp .grp { display: inline-flex; align-items: center; gap: 8px; }
+  .tt { width: 20px; height: 20px; flex: none; filter: drop-shadow(0 0 2px rgba(var(--glow), .7)) drop-shadow(0 0 6px rgba(var(--glow), .3)); }
+  .tt.sm { width: 16px; height: 16px; }
+  .tt.amber { color: #fbbf24; filter: drop-shadow(0 0 2px rgba(251,191,36,.7)) drop-shadow(0 0 6px rgba(251,191,36,.3)); }
+  .tt.dim { color: rgba(var(--glow), .3); filter: none; }
+  .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; }
+  .tcell { display: grid; justify-items: center; gap: 8px; padding: 14px 8px 10px; border-radius: 8px; background: #050708; color: rgb(var(--glow)); }
+  .tcell .tt { width: 40px; height: 40px; }
+  .tcell span { font: 600 10px var(--mono); letter-spacing: .06em; color: #9a9aa0; text-align: center; }
+  .tcell b { font: 700 11px var(--mono); color: #d4d4d8; }
+  .narrow { width: 334px; max-width: 100%; }
+
+  /* ─── 3b · Dock-style lamps: pairs of [Claude tile][usage icon], lit one pair after another ─── */
+  .mdock { display: inline-flex; align-items: flex-end; gap: 7px; flex: none; }
+  .mdock.shelf { padding: 3px 5px 4px; border-radius: 5px; background: rgba(255,255,255,.05); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
+  .pair { display: inline-flex; gap: 2px; position: relative; }
+  .pair .ct, .pair .ui { width: 13px; height: 13px; border-radius: 3.5px; }
+  .pair .ct { background: linear-gradient(160deg, #eb9a62, #d4703f 55%, #b5532d); box-shadow: inset 0 0 0 .5px rgba(255,255,255,.2); }
+  .pair .ui { position: relative; background: #0e0f10; box-shadow: inset 0 0 0 .8px rgba(255,255,255,.28); }
+  .pair .ui i { position: absolute; bottom: 2.5px; width: 2.2px; border-radius: 1px; }
+  .pair .ui i:first-child { left: 3.2px; height: 7px; } .pair .ui i:last-child { left: 7.4px; height: 4px; }
+  .pair.g .ui i { background: #22c55e; box-shadow: 0 0 3px rgba(34,197,94,.9); }
+  .pair.a .ui i { background: #f59e0b; box-shadow: 0 0 3px rgba(245,158,11,.9); }
+  .pair.a .ui i:first-child { height: 8.5px; }
+  .pair.r .ui { background: #3a0d0d; } .pair.r .ui i { background: #ef4444; box-shadow: 0 0 3px rgba(239,68,68,.9); }
+  .pair .dot { position: absolute; left: 50%; bottom: -4px; width: 2px; height: 2px; margin-left: -1px; border-radius: 50%; background: rgba(255,255,255,.55); }
+  /* off: unlit lamp; on: lit with a soft glow */
+  .pair { opacity: .22; filter: saturate(.3); transition: opacity .25s, filter .25s; }
+  .pair.on { opacity: 1; filter: saturate(1) drop-shadow(0 0 3px rgba(255,160,110,.45)); }
+  /* bigger set for the candidates */
+  .big .pair .ct, .big .pair .ui { width: 30px; height: 30px; border-radius: 8px; }
+  .big .pair { gap: 4px; } .big.mdock { gap: 14px; }
+  .big .pair .ui i { bottom: 6px; width: 5px; border-radius: 2px; } .big .pair .ui i:first-child { left: 7px; height: 16px; } .big .pair .ui i:last-child { left: 17px; height: 9px; }
+  .big .pair.a .ui i:first-child { height: 19px; }
+  .big .pair .dot { bottom: -8px; width: 4px; height: 4px; margin-left: -2px; }
+
+  /* ─── 3c · display-indicator lamps: glowing outline glyphs; unlit = a faint ghost, like a telltale ─── */
+  .ind { display: inline-flex; align-items: center; gap: 8px; flex: none; }
+  .ip { display: inline-block; flex: none; --w: rgb(255,150,95); --u: rgb(74,222,128); }
+  .ind.mono .ip { --w: rgb(var(--glow)); --u: rgb(var(--glow)); }
+  .ip svg { display: block; width: 30px; height: 15px; overflow: visible; }
+  .ip .w { stroke: var(--w); } .ip .wf { fill: var(--w); }
+  .ip .u { stroke: var(--u); } .ip .uf { fill: var(--u); }
+  .ip g { opacity: .13; transition: opacity .18s, filter .18s; }
+  .ip.on g { opacity: 1; }
+  .ip.on .gw { filter: drop-shadow(0 0 1.5px var(--w)) drop-shadow(0 0 4px color-mix(in srgb, var(--w) 55%, transparent)); }
+  .ip.on .gu { filter: drop-shadow(0 0 1.5px var(--u)) drop-shadow(0 0 4px color-mix(in srgb, var(--u) 55%, transparent)); }
+  .ind.big .ip svg { width: 84px; height: 42px; }
+  .ind.big { gap: 22px; }
+
+  /* the lamp row framed like the Dock: a thin, rounded, softly lit outline around the pairs */
+  .ind.framed { padding: 3px 7px; border-radius: 6px; border: 1px solid rgba(var(--glow), .42);
+    box-shadow: 0 0 4px rgba(var(--glow), .25), inset 0 0 4px rgba(var(--glow), .12); }
+  .ind.big.framed { padding: 12px 20px; border-radius: 16px; border-width: 1.5px; }
+  .stage .ind.big + .ind.big { margin-top: 4px; }
+
+  /* ─── 3d · tighter pairs, simpler interiors ─── */
+  .ind.tight { gap: 4px; }
+  .ind.tight.big { gap: 12px; }
+  .ip svg.s { width: 25px; height: 13px; }
+  .ind.big .ip svg.s { width: 76px; height: 40px; }
+
+  /* ─── 3e · orange window lamp + its usage as a green percent ─── */
+  .ipct { display: inline-flex; align-items: center; gap: 3px; flex: none; opacity: .13; transition: opacity .18s; }
+  .ipct.on { opacity: 1; }
+  .ipct .lw { width: 11px; height: 11px; border-radius: 2.6px; background: rgb(255,150,95); }
+  .ipct.on .lw { box-shadow: 0 0 3px rgb(255,150,95), 0 0 8px rgba(255,150,95,.5); }
+  .ipct .lp { font: 700 11px/1 var(--mono); letter-spacing: .02em; color: rgb(74,222,128); }
+  .ipct.on .lp { text-shadow: 0 0 3px rgba(74,222,128,.85), 0 0 9px rgba(74,222,128,.35); }
+  .ind.big .ipct { gap: 8px; } .ind.big .ipct .lw { width: 34px; height: 34px; border-radius: 8px; } .ind.big .ipct .lp { font-size: 30px; }
+  .ind.pct { gap: 9px; } .ind.pct.big { gap: 26px; }
+
+  /* ─── 3f · window lamp + usage in an icon frame; all light, then the usage counts up, colour by level ─── */
+  .ipf { display: inline-flex; align-items: center; gap: 3px; flex: none; --lv: 74,222,128; opacity: .13; transition: opacity .2s; }
+  .ipf.on { opacity: 1; }
+  .ipf .lw { width: 13px; height: 13px; border-radius: 3px; background: rgb(255,150,95); }
+  .ipf.on .lw { box-shadow: 0 0 3px rgb(255,150,95), 0 0 8px rgba(255,150,95,.5); }
+  .ipf .lu { display: inline-grid; place-items: center; min-width: 25px; height: 13px; padding: 0 2px; border-radius: 3px; box-sizing: border-box;
+    border: 1.2px solid rgb(var(--lv)); font: 700 8px/1 var(--mono); letter-spacing: 0; color: rgb(var(--lv)); transition: color .25s, border-color .25s; }
+  .ipf.on .lu { box-shadow: 0 0 3px rgba(var(--lv),.7), inset 0 0 3px rgba(var(--lv),.25); text-shadow: 0 0 3px rgba(var(--lv),.8); }
+  .ind.pf { gap: 7px; }
+  .ind.big.pf { gap: 22px; }
+  .ind.big .ipf { gap: 8px; } .ind.big .ipf .lw { width: 40px; height: 40px; border-radius: 9px; }
+  .ind.big .ipf .lu { min-width: 76px; height: 40px; border-radius: 9px; border-width: 2.5px; font-size: 22px; }
+
+  /* ─── 3g · square usage icon (Dock-icon ratio), counting up to 100 %, slow and calm ─── */
+  .iq { display: inline-flex; align-items: center; gap: 3px; flex: none; --lv: 74,222,128; opacity: .13; transition: opacity 1s ease; }
+  .iq.on { opacity: 1; }
+  .iq .lw, .iq .lu { width: 15px; height: 15px; border-radius: 3.5px; box-sizing: border-box; }
+  .iq .lw { background: rgb(255,150,95); }
+  .iq.on .lw { box-shadow: 0 0 3px rgb(255,150,95), 0 0 8px rgba(255,150,95,.5); }
+  .iq .lu { display: grid; place-items: center; border: 1.2px solid rgb(var(--lv)); font: 700 7px/1 var(--mono); letter-spacing: -.02em; color: rgb(var(--lv));
+    font-variant-numeric: tabular-nums; transition: color .9s ease, border-color .9s ease, box-shadow .9s ease, text-shadow .9s ease; }
+  .iq.on .lu { box-shadow: 0 0 3px rgba(var(--lv),.7), inset 0 0 3px rgba(var(--lv),.25); text-shadow: 0 0 3px rgba(var(--lv),.8); }
+  .ind.q { gap: 8px; }
+  .ind.big.q { gap: 24px; }
+  .ind.big .iq { gap: 8px; } .ind.big .iq .lw, .ind.big .iq .lu { width: 46px; height: 46px; border-radius: 10px; }
+  .ind.big .iq .lu { border-width: 2.5px; font-size: 18px; }
+
+  /* ─── 3h · the Dock's own proportions, scaled from the icon size --s (Dock: 56 px icon, 10 px between icons,
+     shelf padding 6 / 10 / 13 px, shelf radius 22 px, icon radius 13 px, 4 px running dot 2 px from the bottom) ─── */
+  .dk { --s: 15px; display: inline-flex; align-items: flex-start; flex: none; gap: calc(var(--s) * .179);
+    padding: calc(var(--s) * .107) calc(var(--s) * .179) calc(var(--s) * .232); border-radius: calc(var(--s) * .393);
+    border: 1px solid rgba(var(--glow), .42); box-shadow: 0 0 4px rgba(var(--glow), .25), inset 0 0 4px rgba(var(--glow), .12); }
+  .dk.big { --s: 56px; border-width: 1.5px; }
+  .dk .it { position: relative; width: var(--s); height: var(--s); border-radius: calc(var(--s) * .232); box-sizing: border-box; opacity: .13; transition: opacity 1s ease; }
+  .dk.on .it { opacity: 1; }
+  .dk .it::after { content: ""; position: absolute; left: 50%; bottom: calc(var(--s) * -.196); width: calc(var(--s) * .071); height: calc(var(--s) * .071);
+    margin-left: calc(var(--s) * -.036); border-radius: 50%; background: rgba(var(--glow), .7); }
+  .dk .cw { background: rgb(255,150,95); }
+  .dk.on .cw { box-shadow: 0 0 3px rgb(255,150,95), 0 0 8px rgba(255,150,95,.5); }
+  .dk .us { --lv: 74,222,128; --bw: calc(var(--s) * .08); display: grid; place-items: center; box-shadow: inset 0 0 0 var(--bw) rgb(var(--lv));
+    font: 700 calc(var(--s) * .44)/1 var(--mono); letter-spacing: -.03em; color: rgb(var(--lv)); font-variant-numeric: tabular-nums;
+    transition: opacity 1s ease, color .9s ease, box-shadow .9s ease; }
+  .dk.on .us { box-shadow: inset 0 0 0 var(--bw) rgb(var(--lv)), 0 0 3px rgba(var(--lv),.7), inset 0 0 calc(var(--bw) + 3px) rgba(var(--lv),.25); text-shadow: 0 0 3px rgba(var(--lv),.8); }
+  .dk:not(.big) .us { --bw: 1.2px; }
+
+  /* ─── 3i · a live little Dock: pairs launch one by one, usage moves on its own ─── */
+  .lslot { display: inline-block; flex: none; vertical-align: middle; }          /* reserves the final width: the text after it never moves */
+  .lfr { --s: 18px; --g: calc(var(--s) * .179); display: inline-flex; align-items: center; gap: var(--g); overflow: hidden; box-sizing: border-box;
+    height: calc(var(--s) * 1.29); padding: 0 var(--g); border-radius: calc(var(--s) * .393);
+    border: 1px solid rgba(var(--glow), .42); box-shadow: 0 0 4px rgba(var(--glow), .2), inset 0 0 4px rgba(var(--glow), .1);
+    transition: width .55s cubic-bezier(.25,.8,.3,1); }
+  .lfr.big { --s: 56px; border-width: 1.5px; }
+  .lp { display: inline-flex; gap: var(--g); flex: none; transform: scale(.35) translateY(30%); opacity: 0;
+    transition: transform .7s cubic-bezier(.3,1.45,.5,1), opacity .35s ease; }
+  .lp.in { transform: none; opacity: 1; }
+  /* the Claude tile, like the app icon: warm gradient, a highlight at the top-left, a soft lit glow */
+  .ltile { width: var(--s); height: var(--s); border-radius: calc(var(--s) * .232); flex: none;
+    background: radial-gradient(120% 90% at 30% 15%, rgba(255,255,255,.32), rgba(255,255,255,0) 55%), linear-gradient(160deg, #f0a46c, #d9733f 55%, #b5532d);
+    box-shadow: inset 0 0 0 .5px rgba(255,255,255,.18), inset 0 -2px 4px rgba(0,0,0,.18), 0 0 6px rgba(255,140,80,.35); }
+  .ltile.win { position: relative; }   /* C2: a window drawn on the tile */
+  .ltile.win::after { content: ""; position: absolute; inset: 24% 20% 26%; border-radius: calc(var(--s) * .06); border: calc(var(--s) * .05) solid rgba(255,255,255,.85);
+    border-top-width: calc(var(--s) * .12); }
+  /* the usage, like a phone's battery widget: a dark round-cornered icon with a ring and the figure */
+  .lu { width: var(--s); height: var(--s); border-radius: calc(var(--s) * .232); flex: none; display: block;
+    background: linear-gradient(180deg, #121416, #07090a); box-shadow: inset 0 0 0 .6px rgba(255,255,255,.14), inset 0 1px 0 rgba(255,255,255,.06); }
+  .lu svg { display: block; width: 100%; height: 100%; }
+  .lu .tr { stroke: rgba(255,255,255,.12); }
+  .lu .arc { transition: stroke .9s ease; filter: drop-shadow(0 0 1.5px currentColor); }
+  .lu text { font: 700 8.6px var(--mono); fill: #eef1f3; letter-spacing: -.04em; }
+  .lslot + .lnote { margin-left: 4px; }
+  .lslot[data-size="56"] { display: block; margin-bottom: 16px; }
+  .replay { margin-top: 8px; font: 600 11px var(--mono); padding: 4px 10px; border-radius: 6px; border: 1px solid #c8c8c8; background: #fff; cursor: pointer; }
+
+  /* ─── 3j · the Claude window as a display pictogram ─── */
+  .pj { display: inline-flex; align-items: center; gap: 4px; flex: none; }
+  .pj svg { display: block; width: 18px; height: 18px; overflow: visible; }
+  .pj.big svg { width: 56px; height: 56px; }
+  .pj .o { stroke: rgb(255,150,95); filter: drop-shadow(0 0 1.5px rgb(255,150,95)) drop-shadow(0 0 4px rgba(255,150,95,.45)); }
+  .pj .of { fill: rgb(255,150,95); filter: drop-shadow(0 0 1.5px rgb(255,150,95)) drop-shadow(0 0 4px rgba(255,150,95,.45)); }
+  .pj .tr { stroke: rgba(var(--glow), .14); }
+  .pj .arc { filter: drop-shadow(0 0 1.5px currentColor); }
+  .pj text { font: 700 8.2px var(--mono); fill: rgb(var(--glow)); letter-spacing: -.04em; }
+  .pjrow { display: inline-flex; align-items: center; gap: 10px; padding: 2px 8px; border-radius: 7px; border: 1px solid rgba(var(--glow), .42);
+    box-shadow: 0 0 4px rgba(var(--glow), .2), inset 0 0 4px rgba(var(--glow), .1); }
+  .pjrow.big { gap: 26px; padding: 10px 22px; border-radius: 20px; }
+  .pjcap { font: 600 10px var(--mono); color: #9a9aa0; margin: 0 0 6px; }
+</style>
+</head>
+<body>
+<main>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <!-- side by side: two windows next to each other -->
+    <symbol id="i-pair" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="1.8" y="5" width="9.2" height="14" rx="2"/><rect x="13" y="5" width="9.2" height="14" rx="2"/><path d="M1.8 8.5h9.2M13 8.5h9.2"/></symbol>
+    <!-- side by side: windows stacked in depth -->
+    <symbol id="i-stack" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M5 8V5.5A2 2 0 0 1 7 3.5h12A2 2 0 0 1 21 5.5V15a2 2 0 0 1-2 2h-2"/><rect x="3" y="8" width="14" height="12.5" rx="2"/><path d="M3 11.5h14"/></symbol>
+    <!-- side by side: three app tiles on a shelf -->
+    <symbol id="i-tiles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="1.8" y="7" width="5.6" height="5.6" rx="1.5"/><rect x="9.2" y="7" width="5.6" height="5.6" rx="1.5"/><rect x="16.6" y="7" width="5.6" height="5.6" rx="1.5"/><path d="M1.5 16.5h21"/></symbol>
+    <!-- usage in the Dock: a Dock shelf with two tiles, each with its level bar -->
+    <symbol id="i-dock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M2 19.5h20"/><rect x="4" y="6" width="7" height="10.5" rx="1.8"/><rect x="13" y="6" width="7" height="10.5" rx="1.8"/>
+      <path d="M7.5 14v-2.5M16.5 14V9" stroke-width="2.2"/></symbol>
+    <!-- usage: a gauge above the Dock line -->
+    <symbol id="i-gauge" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M3.5 15a8.5 8.5 0 0 1 17 0"/><path d="M12 15l4-5"/><circle cx="12" cy="15" r="1.2" fill="currentColor"/><path d="M2 20h20"/></symbol>
+    <!-- usage: two level bars, 5-hour and week (like the Dock icon) -->
+    <symbol id="i-bars" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="5" y="3" width="5" height="18" rx="1.5"/><rect x="14" y="3" width="5" height="18" rx="1.5"/><path d="M7.5 18v-6M16.5 18v-10" stroke-width="2.6"/></symbol>
+  </defs>
+</svg>
+
+<h1>cl_audit T4 · final options</h1>
+<p class="lead">The options that were chosen and built on the site (cl-audit.n-uf.com, branch t4-front-panel). Every earlier variant is kept in archive/cl-audit-site-t4-workbench-all-options.html.</p>
+<h1 style="margin-top:30px">1 · Faces: Black and Silver (built, next to Std)</h1>
+<p class="lead">Every panel on the site (profile cards, the intro, the login section, the feature cards, Settings, FAQ, Install) gets the same faceplate treatment. Shown here on a profile card and a text panel. Keys, display windows and LEDs stay as they are now. No maker's name or logo anywhere: only cl_audit's own labels.</p>
+
+<!-- A -->
+<section class="var">
+  <h2 class="pick">Black face</h2>
+  <p>Black anodised plate with a fine horizontal hairline and a chamfered top edge, no screws. Built without the inner frames (a single plate edge per panel).</p>
+  <div class="chassis">
+    <div class="pa">
+      <div class="head"><span class="model">cl_audit</span><span class="lbl">Profile · Home</span></div>
+      <div class="row" style="margin-top:10px"><span class="icon">34</span><div><div class="name">Claude home</div><div class="mail">you@example.com</div></div><span class="disp">MAX</span></div>
+      <div class="frame"><span class="lbl">Switches</span>
+        <div class="sws" style="margin:0"><div class="sw"><div class="t"><span>Claude window</span><span>OPEN</span></div><span class="swk"><i></i></span></div><div class="sw"><div class="t"><span>Dock icon</span><span>RUNNING</span></div><span class="swk"><i></i></span></div></div>
+      </div>
+      <div class="frame"><span class="lbl">Usage</span>
+        <div class="meter" style="margin:0"><div class="h"><span>5-hour</span><b style="color:#22c55e">34%</b></div><div class="segs"><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+        <div class="meter"><div class="h"><span>Week</span><b style="color:#22c55e">12%</b></div><div class="segs"><i style="background:#22c55e"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div>
+      </div>
+      <div class="keys"><span class="key"><span class="d"></span>Show window</span><span class="key">Terminal</span><span class="key">···</span></div>
+    </div>
+    <div class="pa">
+      <div class="head"><span class="model">cl_audit</span><span class="lbl">Card switches</span></div>
+      <div class="frame"><span class="lbl">Per profile</span>
+        <div class="list">
+          <div><b>Claude window</b><span>Opens or quits the profile's Claude window.</span></div>
+          <div><b>Dock icon</b><span>Starts or quits the profile's Dock icon. The Dock is not restarted. While stopped, the profile doesn't refresh or alert.</span></div>
+          <div><b>Opening and closing</b><span>A profile setting: the Dock icon follows its window, the window follows its Dock icon, or both.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- B -->
+<section class="var">
+  <h2 class="pick">Silver face</h2>
+  <p>Brushed silver with dark printed legends, no screws. Built after a silver integrated amplifier: silver keys, white-lit content windows and displays with dark printing, a light Mac desktop.</p>
+  <div class="chassis">
+    <div class="pb">
+      <div class="row"><span class="lbl">Profile · Home</span></div>
+      <div class="row" style="margin-top:10px"><span class="icon">34</span><div><div class="name">Claude home</div><div class="mail">you@example.com</div></div><span class="disp">MAX</span></div>
+      <div class="frame"><span class="lbl">Switches</span>
+        <div class="sws" style="margin:0"><div class="sw"><div class="t"><span>Claude window</span><span>OPEN</span></div><span class="swk"><i></i></span></div><div class="sw"><div class="t"><span>Dock icon</span><span>RUNNING</span></div><span class="swk"><i></i></span></div></div>
+      </div>
+      <div class="frame"><span class="lbl">Usage</span>
+        <div class="meter" style="margin:0"><div class="h"><span>5-hour</span><b>34%</b></div><div class="segwin"><div class="segs"><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></div>
+        <div class="meter"><div class="h"><span>Week</span><b>12%</b></div><div class="segwin"><div class="segs"><i style="background:#22c55e"></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></div>
+      </div>
+      <div class="keys"><span class="key"><span class="d"></span>Show window</span><span class="key">Terminal</span><span class="key">···</span></div>
+    </div>
+    <div class="pb">
+      <div class="row"><span class="lbl">Card switches</span></div>
+      <div class="frame"><span class="lbl">Per profile</span>
+        <div class="list">
+          <div><b>Claude window</b><span>Opens or quits the profile's Claude window.</span></div>
+          <div><b>Dock icon</b><span>Starts or quits the profile's Dock icon. The Dock is not restarted. While stopped, the profile doesn't refresh or alert.</span></div>
+          <div><b>Opening and closing</b><span>A profile setting: the Dock icon follows its window, the window follows its Dock icon, or both.</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- C -->
+<h1 style="margin-top:44px">2 · The Download on a computer that isn't a Mac</h1>
+<p class="lead">The page asks the browser which system it runs on. On a Mac nothing changes. On Windows, Linux, Android or an iPhone (an iPad, which says it is a Mac, is told apart by its touch screen) every Download key turns into an unlit key that can't be pressed, reading MAC ONLY. The menu bar shows "Mac only" as plain text. The demo, Install steps, GitHub and the build commands stay. Apple silicon versus Intel can only be told in Chrome and Edge, so an Intel Mac is flagged only there.</p>
+
+<section class="var">
+  <h2 class="pick">Unlit key, the reason in the display (built)</h2>
+  <p>The hero's release display shows the reason instead, in amber: THIS COMPUTER ISN'T A MAC · cl_audit runs on macOS 13+, Apple silicon. No extra line; the message sits where the eye already goes. The release line itself is no longer shown on these systems.</p>
+  <div class="pair"><div><div class="col-cap">On a Mac · as now</div><div class="win"><div class="mbar"><b>cl_audit</b><span>Overview</span><span>Demo dashboard</span><span class="sp"></span><span class="mdl">↓ Download for Mac</span><span>GitHub</span></div>
+      <div class="wbody">
+        <div class="pnl"><span class="lbl">What it does · hero</span><div class="rdisp">cl_audit 26.10.1<em>·</em>24 Oct 2026<em>·</em>Apple silicon<em>·</em>macOS 13 or later</div><div class="kplate"><span class="kk dl">Download for Mac</span><span class="kk">Install steps</span><span class="kk">Demo dashboard</span></div></div>
+        <div class="pnl"><span class="lbl">Install · card</span><div class="kplate" style="margin-top:0"><span class="kk dl">Download for Mac</span></div><div class="nnote">cl_audit 26.10.1 · Apple silicon · macOS 13 or later · needs Claude Code</div></div>
+      </div></div></div><div><div class="col-cap">On Windows, Linux, iPhone…</div><div class="win"><div class="mbar"><b>cl_audit</b><span>Overview</span><span>Demo dashboard</span><span class="sp"></span><span class="mdl off">Mac only</span><span>GitHub</span></div>
+      <div class="wbody">
+        <div class="pnl"><span class="lbl">What it does · hero</span><div class="rdisp"><span class="amb">This computer isn't a Mac</span><em>·</em>cl_audit runs on macOS 13+, Apple silicon</div><div class="kplate"><span class="kk na">Mac only</span><span class="kk">Install steps</span><span class="kk">Demo dashboard</span></div></div>
+        <div class="pnl"><span class="lbl">Install · card</span><div class="kplate" style="margin-top:0"><span class="kk na">Mac only</span></div><div class="nnote">Open this page on your Mac to download it · Apple silicon · macOS 13 or later</div></div>
+      </div></div></div></div>
+</section>
+
+<h1 style="margin-top:44px">3 · The little Dock on the Overview display (built)</h1>
+<p class="lead">After OVERVIEW: three pairs, each the Claude window as a display pictogram (a chat bubble in a rounded-square frame, lit orange lines) and its usage as two rings bare on the glass (5-hour outside, week inside, each in its level colour: green, amber from 50, red from 80). The Dock starts with one pair, the other two launch into it, growing from its centre; then every usage drifts on its own clock with eased changes, a 5-hour window resetting after it fills. When a usage first turns red (80 %) and when it reaches 100 %, an alert is typed in at the right end of the display for 3 s, worded to fit the free space; then it shrinks to a warning sign with the profile's name under it while that profile stays red.</p>
+<section class="var">
+  <h2 class="pick">Large</h2>
+  <div class="stage" style="background:#050708;padding:24px"><span class="pjrow big"><span class="pj big"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"/><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"/><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"/></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="19.7 57.8"/><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="4.1 33.9"/></svg></span><span class="pj big"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"/><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"/><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"/></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#ef4444" style="color:#ef4444" stroke-dasharray="48.0 57.8"/><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#f59e0b" style="color:#f59e0b" stroke-dasharray="20.7 33.9"/></svg></span><span class="pj big"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"/><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"/><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"/></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="6.9 57.8"/><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="13.6 33.9"/></svg></span></span></div>
+</section>
+<section class="var">
+  <h2 class="pick">On the display, with the red-usage alert</h2>
+  <div class="stage"><div class="tdisp"><em>Overview</em><span class="pjrow"><span class="pj"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"/><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"/><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"/></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="19.7 57.8"/><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="4.1 33.9"/></svg></span><span class="pj"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"/><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"/><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"/></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#ef4444" style="color:#ef4444" stroke-dasharray="48.0 57.8"/><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#f59e0b" style="color:#f59e0b" stroke-dasharray="20.7 33.9"/></svg></span><span class="pj"><svg viewBox="0 0 24 24" fill="none"><rect class="o" x="3" y="3" width="18" height="18" rx="4.2" stroke-width="1.5"/><path class="o" stroke-width="1.4" stroke-linejoin="round" d="M8.6 7.6h6.8a2 2 0 0 1 2 2v3.2a2 2 0 0 1-2 2h-3.3l-2.9 2.4v-2.4h-.6a2 2 0 0 1-2-2V9.6a2 2 0 0 1 2-2z"/><path class="o" stroke-width="1.3" stroke-linecap="round" d="M9.2 10.4h5.6M9.2 12.5h3.4"/></svg><svg viewBox="0 0 24 24"><circle class="tr" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="9.2" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="6.9 57.8"/><circle class="tr" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1"/><circle class="arc" cx="12" cy="12" r="5.4" fill="none" stroke-width="2.1" stroke-linecap="round" transform="rotate(-90 12 12)" stroke="#22c55e" style="color:#22c55e" stroke-dasharray="13.6 33.9"/></svg></span></span><span>Claude apps side by side</span><em>·</em><span class="sub">each one's usage in the Dock</span><span style="margin-left:auto;display:inline-flex;align-items:center;gap:7px;color:#ef4444;text-shadow:0 0 3px rgba(239,68,68,.8)"><svg viewBox="0 0 24 24" fill="none" style="width:15px;height:15px;stroke:#ef4444"><path d="M12 3.6 21.4 20H2.6z" stroke-width="1.8" stroke-linejoin="round"/><path d="M12 9.5v5M12 17.3v.1" stroke-width="2" stroke-linecap="round"/></svg>work · 5-hour 83%</span></div></div>
+</section>
+</main>
+<script>
+  // light the pairs one after another: 1, 1+2, 1+2+3, hold, all off, again
+  const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  document.querySelectorAll(".anim, .anim2").forEach((a) => {
+    const ps = [...a.querySelectorAll(".pair, .ip, .ipct")];
+    if (still) { ps.forEach((p) => p.classList.add("on")); return; }
+    let k = 0;
+    const steps = ps.length + 2;   // n lit steps, a hold, then off
+    setInterval(() => {
+      k = (k + 1) % (steps + 1);
+      ps.forEach((p, i) => p.classList.toggle("on", k > i && k <= steps - 1));
+    }, 650);
+  });
+</script>
+<script>
+  // 3f: all lamps on, then each usage counts up to its figure, colour by level (as on the site); hold; dark; again
+  (() => {
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const lv = (p) => (p >= 80 ? "239,68,68" : p >= 50 ? "245,158,11" : "74,222,128");
+    const set = (l, v) => { l.querySelector(".lu").textContent = `${v}%`; l.style.setProperty("--lv", lv(v)); };
+    document.querySelectorAll(".anim3").forEach((row) => {
+      const ls = [...row.querySelectorAll(".ipf")];
+      if (still) { ls.forEach((l) => { l.classList.add("on"); set(l, +l.dataset.to); }); return; }
+      const cycle = () => {
+        ls.forEach((l) => { set(l, 0); l.classList.add("on"); });                 // 1 · all on
+        const t0 = performance.now() + 500, dur = 1600;
+        const step = (now) => {                                                    // 2 · count up, colour by level
+          const k = Math.min(1, Math.max(0, (now - t0) / dur)), e = 1 - Math.pow(1 - k, 3);
+          ls.forEach((l) => set(l, Math.round(+l.dataset.to * e)));
+          if (k < 1) requestAnimationFrame(step);
+          else setTimeout(() => { ls.forEach((l) => l.classList.remove("on")); setTimeout(cycle, 900); }, 3200);   // 3 · hold, dark, again
+        };
+        requestAnimationFrame(step);
+      };
+      cycle();
+    });
+  })();
+</script>
+<script>
+  // 3g: fade all on, climb 0 -> 100 slowly (eased), colour by level with soft transitions, hold, fade out, rest, again
+  (() => {
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const lv = (p) => (p >= 80 ? "239,68,68" : p >= 50 ? "245,158,11" : "74,222,128");
+    const set = (l, v) => { const u = l.querySelector(".lu"); if (u.textContent !== String(v)) u.textContent = v; l.style.setProperty("--lv", lv(v)); };
+    document.querySelectorAll(".anim4").forEach((row) => {
+      const ls = [...row.querySelectorAll(".iq")];
+      if (still) { ls.forEach((l) => { l.classList.add("on"); set(l, 34); }); return; }
+      const cycle = () => {
+        ls.forEach((l) => { set(l, 0); l.classList.add("on"); });                       // fade on
+        const t0 = performance.now() + 1100, dur = 6000;
+        const step = (now) => {
+          const k = Math.min(1, Math.max(0, (now - t0) / dur)), e = 1 - Math.pow(1 - k, 2);   // eases out near the top
+          ls.forEach((l) => set(l, Math.round(100 * e)));
+          if (k < 1) requestAnimationFrame(step);
+          else setTimeout(() => { ls.forEach((l) => l.classList.remove("on")); setTimeout(cycle, 2200); }, 3000);   // hold, fade out, rest
+        };
+        requestAnimationFrame(step);
+      };
+      cycle();
+    });
+  })();
+</script>
+<script>
+  // 3h: same calm sequence as 3g on the Dock-proportioned rows
+  (() => {
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const lv = (p) => (p >= 80 ? "239,68,68" : p >= 50 ? "245,158,11" : "74,222,128");
+    document.querySelectorAll(".anim5").forEach((row) => {
+      const us = [...row.querySelectorAll(".us")];
+      const set = (v) => us.forEach((u) => { if (u.textContent !== String(v)) u.textContent = v; u.style.setProperty("--lv", lv(v)); });
+      if (still) { row.classList.add("on"); set(34); return; }
+      const cycle = () => {
+        set(0); row.classList.add("on");
+        const t0 = performance.now() + 1100, dur = 6000;
+        const step = (now) => {
+          const k = Math.min(1, Math.max(0, (now - t0) / dur)), e = 1 - Math.pow(1 - k, 2);
+          set(Math.round(100 * e));
+          if (k < 1) requestAnimationFrame(step);
+          else setTimeout(() => { row.classList.remove("on"); setTimeout(cycle, 2200); }, 3000);
+        };
+        requestAnimationFrame(step);
+      };
+      cycle();
+    });
+  })();
+</script>
+<script>
+  // 3i · a live little Dock. Launch: the frame widens, the pair pops in, one after another. Live: each usage moves on
+  // its own clock (small irregular rises, a 5-hour reset after it fills), every change eased.
+  (() => {
+    const NS = "http://www.w3.org/2000/svg";
+    const lv = (p) => (p >= 80 ? "#ef4444" : p >= 50 ? "#f59e0b" : "#22c55e");
+    const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const START = [[34, 12], [78, 61], [12, 40]];
+    const rnd = (a, b) => a + Math.random() * (b - a);
+    function ringSvg(kind) {
+      const svg = document.createElementNS(NS, "svg"); svg.setAttribute("viewBox", "0 0 24 24");
+      const rings = kind === "twin" ? [[9, 2.3], [5.4, 2.3]] : [[8.6, 2.4]];
+      const arcs = rings.map(([r, w]) => {
+        const c = 2 * Math.PI * r;
+        const tr = document.createElementNS(NS, "circle"); tr.setAttribute("class", "tr"); Object.entries({ cx: 12, cy: 12, r, fill: "none", "stroke-width": w }).forEach(([k, v]) => tr.setAttribute(k, v));
+        const a = document.createElementNS(NS, "circle"); a.setAttribute("class", "arc");
+        Object.entries({ cx: 12, cy: 12, r, fill: "none", "stroke-width": w, "stroke-linecap": "round", transform: "rotate(-90 12 12)", "stroke-dasharray": `0 ${c}` }).forEach(([k, v]) => a.setAttribute(k, v));
+        svg.append(tr, a); return { a, c };
+      });
+      let text = null;
+      if (kind !== "twin") { text = document.createElementNS(NS, "text"); Object.entries({ x: 12, y: 12.3, "text-anchor": "middle", "dominant-baseline": "central" }).forEach(([k, v]) => text.setAttribute(k, v)); text.textContent = "0"; svg.append(text); }
+      return { svg, arcs, text };
+    }
+    // one usage figure: eases from its shown value to a target
+    function gauge(arc, text) {
+      let shown = 0, raf = 0;
+      return (to, ms = 1400) => {
+        cancelAnimationFrame(raf);
+        const from = shown, t0 = performance.now();
+        const step = (now) => {
+          const k = still ? 1 : Math.min(1, (now - t0) / ms), e = k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2;
+          shown = from + (to - from) * e;
+          const v = Math.round(shown);
+          arc.a.setAttribute("stroke-dasharray", `${(arc.c * shown) / 100} ${arc.c}`);
+          arc.a.style.opacity = shown < .6 ? "0" : "1";          // no round-cap dot at 0
+          arc.a.setAttribute("stroke", lv(v)); arc.a.style.color = lv(v);
+          if (text && text.textContent !== String(v)) text.textContent = v;
+          if (k < 1) raf = requestAnimationFrame(step);
+        };
+        raf = requestAnimationFrame(step);
+      };
+    }
+    function build(slot) {
+      const size = +slot.dataset.size, kind = slot.dataset.dock, tile = slot.dataset.tile;
+      const g = size * .179, pairW = 2 * size + g, border = size > 30 ? 1.5 : 1;
+      const width = (k) => (k === 0 ? 2 * g : k * pairW + (k - 1) * g + 2 * g) + 2 * border;
+      slot.style.width = width(3) + "px";
+      slot.innerHTML = "";
+      const fr = document.createElement("span"); fr.className = "lfr" + (size > 30 ? " big" : ""); fr.style.width = width(0) + "px"; slot.append(fr);
+      const pairs = START.map(([five, week]) => {
+        const p = document.createElement("span"); p.className = "lp";
+        const t = document.createElement("span"); t.className = "ltile" + (tile === "c2" ? " win" : "");
+        const u = document.createElement("span"); u.className = "lu";
+        const r = ringSvg(kind); u.append(r.svg); p.append(t, u);
+        const set = [gauge(r.arcs[0], r.text)]; if (r.arcs[1]) set.push(gauge(r.arcs[1], null));
+        return { el: p, set, five, week };
+      });
+      let timers = [];
+      const later = (fn, ms) => timers.push(setTimeout(fn, ms));
+      const launch = () => {
+        timers.forEach(clearTimeout); timers = [];
+        fr.style.width = width(0) + "px"; fr.innerHTML = "";
+        pairs.forEach((p) => { p.el.classList.remove("in"); p.set.forEach((f) => f(0, 1)); });
+        pairs.forEach((p, i) => later(() => {
+          fr.append(p.el); fr.style.width = width(i + 1) + "px";                        // the Dock opens a place
+          later(() => { p.el.classList.add("in"); later(() => { p.set[0](p.five, 1600); p.set[1]?.(p.week, 1900); }, 350); }, 260);   // the pair pops in, its usage fills
+        }, 500 + i * 1500));
+        pairs.forEach((p, i) => later(() => live(p), 500 + 3 * 1500 + 1500 + i * 900));
+      };
+      const live = (p) => {                                                                // every profile on its own clock
+        const tick = () => {
+          if (p.five >= 100) {                                                             // full: hold a while, then the 5-hour window resets
+            later(() => { p.five = Math.round(rnd(3, 9)); p.set[0](p.five, 2200); later(tick, rnd(3000, 6000)); }, rnd(3500, 6000));
+            return;
+          }
+          p.five = Math.min(100, p.five + Math.round(rnd(1, 3)));
+          p.set[0](p.five, 1300);
+          if (p.set[1] && Math.random() < .35) { p.week = Math.min(100, p.week + 1); p.set[1](p.week, 1600); }
+          later(tick, rnd(2200, 5600));
+        };
+        later(tick, rnd(1500, 4000));
+      };
+      if (still) { pairs.forEach((p, i) => { fr.append(p.el); p.el.classList.add("in"); p.set[0](p.five); p.set[1]?.(p.week); }); fr.style.width = width(3) + "px"; return () => {}; }
+      launch();
+      return launch;
+    }
+    const launches = [...document.querySelectorAll(".lslot[data-dock]")].map(build);
+    document.querySelector("[data-replay]")?.addEventListener("click", () => launches.forEach((l) => l()));
+  })();
+</script>
+</body>
+</html>

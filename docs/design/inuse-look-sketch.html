@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>In-use account look</title>
+<style>
+:root{--bg:#1c1c1e;--panel:#2a2a2d;--panel2:#26262a;--well:#111214;--line:#3a3a3f;--text:#ececef;--muted:#9a9aa2;--green:#4cd964;--green-d:#2f8f42;--amber:#f0a030;--mint:#7fe0d0;--lcd:#0c1a12}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;padding:24px 16px}
+h1{font-size:18px;margin:0 0 4px}p.lead{color:var(--muted);margin:0 0 20px;max-width:760px;line-height:1.45}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:22px}
+.opt h2{font-size:14px;margin:0 0 4px}.opt .why{color:var(--muted);font-size:12.5px;margin:0 0 10px;line-height:1.4}
+.label{font-size:11px;letter-spacing:.12em;color:var(--muted);text-transform:uppercase;margin:0 0 8px}
+.box{border-radius:10px;padding:12px 14px;margin-bottom:10px;position:relative}
+.row{display:flex;align-items:center;gap:8px}.dot{width:7px;height:7px;border-radius:50%;background:#555}
+.email{font-weight:600;font-size:15px}.sub{color:var(--muted);font-size:12.5px;margin:2px 0 0 15px}
+.badge{margin-left:auto;font:600 11px ui-monospace,Menlo,monospace;letter-spacing:.14em;padding:4px 8px;border-radius:4px}
+.badge.use{background:var(--lcd);color:var(--green);box-shadow:inset 0 0 0 1px #1f3a26}
+.badge.sb{background:#0f1a19;color:var(--mint);box-shadow:inset 0 0 0 1px #1d3532}
+.lim{margin:10px 0 0}.lim .t{display:flex;font-size:13px;font-weight:600}.lim .t span{margin-left:auto}.lim .t small{color:var(--muted);font-weight:400;margin-left:6px}
+.bar{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;margin-top:5px}.bar i{height:9px;border-radius:2px;background:#151517}
+.bar i.g{background:var(--green)}.bar i.a{background:var(--amber)}
+.note{color:var(--muted);font-size:12px;margin-top:8px}.caution{color:var(--amber);font-size:12.5px}
+.key{margin-left:auto;font:600 11px -apple-system,sans-serif;letter-spacing:.1em;padding:6px 10px;border-radius:6px;background:linear-gradient(#5a5a60,#3c3c42);color:#eee;box-shadow:0 1px 0 #000}
+/* today */
+.today .use,.today .sb{background:var(--panel);box-shadow:inset 0 0 0 1px var(--line)}
+/* A: dark well */
+.A .use{background:var(--well);box-shadow:inset 0 0 0 1px #24372a,inset 0 0 24px rgba(76,217,100,.06)}
+.A .use::before{content:"";position:absolute;left:-1px;top:10px;bottom:10px;width:3px;border-radius:2px;background:var(--green);box-shadow:0 0 8px rgba(76,217,100,.6)}
+.A .sb{background:var(--panel);box-shadow:inset 0 0 0 1px var(--line)}
+/* B: lit edge, dimmed standby */
+.B .use{background:var(--panel);box-shadow:inset 0 0 0 1.5px var(--green-d),0 0 14px rgba(76,217,100,.12)}
+.B .sb{background:var(--panel2);box-shadow:inset 0 0 0 1px var(--line);opacity:.62}
+.B .sb:hover{opacity:1}
+/* C: header strip + compact standby */
+.C .use{background:var(--panel);box-shadow:inset 0 0 0 1px var(--line);padding:0;overflow:hidden}
+.C .strip{background:var(--well);padding:10px 14px;border-bottom:1px solid #24372a}
+.C .body{padding:4px 14px 12px}
+.C .sb{background:transparent;box-shadow:inset 0 0 0 1px var(--line);padding:8px 14px}
+.C .sb .email{font-weight:500;font-size:14px;color:#cfcfd4}
+.pick{margin-top:22px;color:var(--muted);font-size:13px}
+@media (max-width:520px){body{padding:16px}}
+</style></head><body>
+<h1>Settings ▸ Accounts: making the account in use stand out</h1>
+<p class="lead">Sample addresses. Today both boxes are the same raised grey panel, so the in-use one only differs by its badge and bars. Three options, the standby box as it would sit under each.</p>
+<div class="grid">
+
+<div class="opt today"><h2>Today (26.11.14)</h2><p class="why">For comparison.</p>
+<div class="box use"><div class="row"><span class="dot" style="background:var(--green)"></span><span class="email">ann@example.com</span><span class="badge use">IN USE</span></div><div class="sub">Ultra · Main works on it</div>
+<div class="lim"><div class="t">5-hour<small>· in 2 h 45 min</small><span style="color:var(--amber)">77%</span></div><div class="bar"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="a"></i><i class="a"></i><i class="a"></i><i></i><i></i><i></i></div></div>
+<div class="lim"><div class="t">Week<small>· in 46 h</small><span style="color:var(--green)">47%</span></div><div class="bar"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></div>
+<div class="box sb"><div class="row"><span class="dot"></span><span class="email">ben@example.com</span><span class="badge sb">STANDBY</span></div><div class="sub">Max</div></div>
+</div>
+
+<div class="opt A"><h2>A · Dark well (your suggestion)</h2><p class="why">The in-use box sinks into a deep near-black well, like the display glass, with a lit green bar on its left edge. Standby stays the raised grey panel.</p>
+<div class="box use"><div class="row"><span class="dot" style="background:var(--green)"></span><span class="email">ann@example.com</span><span class="badge use">IN USE</span></div><div class="sub">Ultra · Main works on it</div>
+<div class="lim"><div class="t">5-hour<small>· in 2 h 45 min</small><span style="color:var(--amber)">77%</span></div><div class="bar"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="a"></i><i class="a"></i><i class="a"></i><i style="background:#1d1d20"></i><i style="background:#1d1d20"></i><i style="background:#1d1d20"></i></div></div>
+<div class="lim"><div class="t">Week<small>· in 46 h</small><span style="color:var(--green)">47%</span></div><div class="bar"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i style="background:#1d1d20"></i><i style="background:#1d1d20"></i><i style="background:#1d1d20"></i><i style="background:#1d1d20"></i><i style="background:#1d1d20"></i><i style="background:#1d1d20"></i></div></div></div>
+<div class="box sb"><div class="row"><span class="dot"></span><span class="email">ben@example.com</span><span class="badge sb">STANDBY</span></div><div class="sub">Max</div></div>
+</div>
+
+<div class="opt B"><h2>B · Lit edge, standby dimmed</h2><p class="why">Same panel colour, but the in-use box gets a thin green outline with a soft glow, and standby boxes fade back (full on hover).</p>
+<div class="box use"><div class="row"><span class="dot" style="background:var(--green)"></span><span class="email">ann@example.com</span><span class="badge use">IN USE</span></div><div class="sub">Ultra · Main works on it</div>
+<div class="lim"><div class="t">5-hour<small>· in 2 h 45 min</small><span style="color:var(--amber)">77%</span></div><div class="bar"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="a"></i><i class="a"></i><i class="a"></i><i></i><i></i><i></i></div></div>
+<div class="lim"><div class="t">Week<small>· in 46 h</small><span style="color:var(--green)">47%</span></div><div class="bar"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></div>
+<div class="box sb"><div class="row"><span class="dot"></span><span class="email">ben@example.com</span><span class="badge sb">STANDBY</span></div><div class="sub">Max</div></div>
+</div>
+
+<div class="opt C"><h2>C · Display header, compact standby</h2><p class="why">The in-use account sits in a dark display strip across the top of its box; standby accounts shrink to one outlined line each.</p>
+<div class="box use"><div class="strip"><div class="row"><span class="dot" style="background:var(--green)"></span><span class="email">ann@example.com</span><span class="badge use">IN USE</span></div><div class="sub">Ultra · Main works on it</div></div>
+<div class="body"><div class="lim"><div class="t">5-hour<small>· in 2 h 45 min</small><span style="color:var(--amber)">77%</span></div><div class="bar"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="a"></i><i class="a"></i><i class="a"></i><i></i><i></i><i></i></div></div>
+<div class="lim"><div class="t">Week<small>· in 46 h</small><span style="color:var(--green)">47%</span></div><div class="bar"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i></i><i></i><i></i><i></i><i></i><i></i></div></div></div></div>
+<div class="box sb"><div class="row"><span class="dot"></span><span class="email">ben@example.com</span><span style="color:var(--muted);font-size:12.5px">· Max</span><span class="badge sb">STANDBY</span></div></div>
+</div>
+
+</div>
+<p class="pick">Reply with A, B or C, or say what to change.</p>
+</body></html>

@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cl_audit Agent Design</title>
+<style>
+:root {
+  --bg: #f6f6f4; --card: #ffffff; --text: #1f2328; --muted: #5f6670; --faint: #8b929b; --rule: #e1e3e6;
+  --a: #2f6fdb; --a-bg: #e8f0fd; --ok: #1a7f45; --ok-bg: #e6f4ec; --warn: #b45309; --warn-bg: #fdf1e3;
+  --bad: #b42318; --bad-bg: #fdecea; --code: #eef0f2; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161719; --card: #1f2023; --text: #e8e8ea; --muted: #a3a6ad; --faint: #7c8088; --rule: #2e3035;
+    --a: #7aa7ff; --a-bg: #1d2840; --ok: #4ade80; --ok-bg: #16281e; --warn: #fbbf24; --warn-bg: #2d2412;
+    --bad: #f87171; --bad-bg: #321a1a; --code: #2a2c30;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161719; --card: #1f2023; --text: #e8e8ea; --muted: #a3a6ad; --faint: #7c8088; --rule: #2e3035;
+  --a: #7aa7ff; --a-bg: #1d2840; --ok: #4ade80; --ok-bg: #16281e; --warn: #fbbf24; --warn-bg: #2d2412;
+  --bad: #f87171; --bad-bg: #321a1a; --code: #2a2c30;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 -apple-system, system-ui, sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 28px 16px 80px; }
+h1 { font-size: 26px; letter-spacing: -.02em; margin: 0 0 6px; }
+h2 { font-size: 19px; margin: 44px 0 6px; letter-spacing: -.01em; }
+h2 small { font: 600 11px var(--mono); color: var(--a); letter-spacing: .1em; margin-right: 8px; }
+h3 { font-size: 15px; margin: 20px 0 6px; }
+p { margin: 0 0 10px; max-width: 78ch; }
+.lede { color: var(--muted); font-size: 15.5px; }
+code { font: 12.5px var(--mono); background: var(--code); padding: 1px 5px; border-radius: 4px; }
+.tldr { margin: 18px 0 8px; padding: 16px 18px; border-radius: 12px; background: var(--a-bg); border: 1px solid color-mix(in srgb, var(--a) 35%, transparent); }
+.tldr b { color: var(--a); }
+.tldr ul { margin: 8px 0 0; padding-left: 20px; }
+.tldr li { margin: 3px 0; }
+.card { background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 16px; }
+
+/* architecture diagrams */
+.arch { display: grid; gap: 10px; }
+.lane { display: grid; grid-template-columns: 150px 1fr; gap: 12px; align-items: stretch; }
+.lane > .lbl { font: 600 11px/1.3 -apple-system, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-top: 10px; }
+.lane > .lbl small { display: block; text-transform: none; letter-spacing: 0; font-weight: 400; margin-top: 3px; }
+.boxes { display: flex; flex-wrap: wrap; gap: 8px; }
+.box { flex: 1 1 220px; min-width: 0; border-radius: 9px; padding: 10px 12px; border: 1px solid var(--rule); background: var(--card); font-size: 13px; }
+.box b { display: block; font-size: 14px; margin-bottom: 4px; }
+.box ul { margin: 0; padding-left: 17px; color: var(--muted); }
+.box li { margin: 1px 0; }
+.box.many { box-shadow: 4px 4px 0 -1px var(--card), 4px 4px 0 0 var(--rule), 8px 8px 0 -1px var(--card), 8px 8px 0 0 var(--rule); margin-right: 8px; margin-bottom: 8px; }
+.box.a { border-color: color-mix(in srgb, var(--a) 55%, transparent); background: color-mix(in srgb, var(--a) 7%, var(--card)); }
+.box.ok { border-color: color-mix(in srgb, var(--ok) 55%, transparent); background: color-mix(in srgb, var(--ok) 7%, var(--card)); }
+.box.warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); background: color-mix(in srgb, var(--warn) 7%, var(--card)); }
+.box.ext { border-style: dashed; background: transparent; }
+.box .x { color: var(--bad); }
+.flow { font-size: 12.5px; color: var(--muted); padding: 2px 0 2px 162px; }
+.flow span { display: inline-block; margin-right: 18px; }
+.flow i { font-style: normal; color: var(--a); font-weight: 600; }
+
+/* tables */
+.tw { overflow-x: auto; margin: 8px 0; border: 1px solid var(--rule); border-radius: 10px; background: var(--card); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 8px 11px; border-top: 1px solid var(--rule); vertical-align: top; }
+thead th { border-top: 0; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; background: color-mix(in srgb, var(--rule) 35%, transparent); }
+td.c { text-align: center; }
+.y { color: var(--ok); font-weight: 700; }
+.n { color: var(--faint); }
+.bad { color: var(--bad); }
+.warnc { color: var(--warn); }
+.tag { display: inline-block; font: 600 10.5px/1.6 var(--mono); padding: 0 6px; border-radius: 4px; letter-spacing: .04em; }
+.tag.bad { background: var(--bad-bg); color: var(--bad); }
+.tag.ok { background: var(--ok-bg); color: var(--ok); }
+.tag.warn { background: var(--warn-bg); color: var(--warn); }
+
+/* problems */
+.probs { display: grid; gap: 10px; counter-reset: p; }
+.prob { display: grid; grid-template-columns: 28px 1fr; gap: 10px; padding: 12px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--rule); }
+.prob::before { counter-increment: p; content: counter(p); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 600 12px var(--mono); background: var(--bad-bg); color: var(--bad); }
+.prob b { display: block; }
+.prob p { margin: 3px 0 0; color: var(--muted); font-size: 13.5px; }
+
+/* principles */
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.rule { padding: 12px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--rule); font-size: 13.5px; }
+.rule b { display: block; margin-bottom: 3px; font-size: 14px; }
+.rule span { color: var(--muted); }
+
+/* settings mock */
+.mock { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.mcard { background: #1f1f21; color: #e6e6e8; border-radius: 10px; padding: 12px 14px; font-size: 13px; box-shadow: 0 0 0 1px #000, 0 6px 16px rgba(0,0,0,.25); }
+.mcard h4 { margin: 0 0 8px; font: 600 10px/1 -apple-system, system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.5); }
+.mrow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 10px; padding: 7px 0; border-top: 1px solid rgba(255,255,255,.07); }
+.mrow:first-of-type { border-top: 0; }
+.mrow .k { width: 110px; flex: none; color: #d6d6d8; }
+.mrow .v { flex: 1 1 250px; color: rgba(255,255,255,.62); font-size: 12.5px; }
+.seg { display: inline-flex; border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 1px #000; margin-bottom: 4px; white-space: nowrap; }
+.seg span { padding: 3px 9px; font: 600 10px/1.6 -apple-system, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; background: #2c2c2f; color: rgba(255,255,255,.55); }
+.seg span.on { background: #48484c; color: #fff; box-shadow: inset 0 2px 0 rgb(74,222,128); }
+.sw { display: inline-block; width: 30px; height: 17px; border-radius: 9px; background: #3a3a3d; position: relative; vertical-align: -3px; margin-right: 6px; }
+.sw.on { background: #2f8f55; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #ddd; }
+.sw.on::after { left: 15px; }
+.strip { margin: 2px 0 6px; padding: 6px 10px; border-radius: 6px; background: #121214; box-shadow: inset 0 1px 2px rgba(0,0,0,.8); font: 600 9px/1.4 -apple-system, system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.5); }
+.disp { display: inline-block; padding: 4px 10px; border-radius: 4px; background: #050809; box-shadow: inset 0 1px 3px #000; font: 600 10.5px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: rgb(74,222,128); text-shadow: 0 0 4px rgba(74,222,128,.5); }
+.disp em { font-style: normal; color: rgba(74,222,128,.45); text-shadow: none; }
+.disp.amber { color: #ffb24a; text-shadow: 0 0 4px rgba(255,170,60,.5); }
+
+/* stages */
+.stages { display: grid; gap: 12px; counter-reset: s; }
+.stage { padding: 14px 16px; border-radius: 12px; background: var(--card); border: 1px solid var(--rule); }
+.stage h3 { margin: 0 0 8px; display: flex; gap: 10px; align-items: center; }
+.stage h3::before { counter-increment: s; content: counter(s); flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 600 12.5px var(--mono); background: var(--a-bg); color: var(--a); }
+.stage dl { display: grid; grid-template-columns: 110px 1fr; gap: 4px 12px; margin: 0; font-size: 13.5px; }
+.stage dt { color: var(--muted); font-weight: 600; }
+.stage dd { margin: 0; }
+.note { padding: 12px 14px; border-radius: 10px; background: var(--warn-bg); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); font-size: 14px; margin: 12px 0; }
+.dec { display: grid; gap: 10px; }
+.dec .card b { display: block; }
+.dec .card p { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; }
+.files { columns: 2 280px; column-gap: 24px; font-size: 13.5px; padding-left: 18px; margin: 6px 0; }
+.files li { break-inside: avoid; margin: 0 0 6px; }
+
+@media (max-width: 640px) {
+  .lane { grid-template-columns: 1fr; gap: 4px; }
+  .lane > .lbl { padding-top: 0; }
+  .flow { padding-left: 0; }
+  .stage dl { grid-template-columns: 1fr; }
+  .stage dd { margin-bottom: 6px; }
+  h1 { font-size: 22px; }
+}
+</style>
+</head>
+<body><main>
+<h1>cl_audit: one background agent</h1>
+<p class="lede">A ground-up look at how cl_audit runs, where the current design is inconsistent, and a target design in which every job has exactly one owner. Concept only: nothing is built until you pick.</p>
+
+<div class="tldr"><b>In short.</b> Today each profile's Dock icon app does everything for its profile: it reads the usage, renews the sign-in, sends alerts, starts at login and opens or quits Claude windows. Because of that, an app has to keep running even for profiles that show nothing, and anything that quits a Dock icon also stops its usage.
+<ul>
+  <li><b>Target:</b> one background <b>cl_audit agent</b> reads the usage and sends the alerts for every profile. It also runs the opening and closing rules.</li>
+  <li><b>Dock icons only show the usage</b> and handle clicks. They exist only while Usage in the Dock is on.</li>
+  <li><b>The cl_audit window</b> is only the dashboard, settings and launcher. Quitting it changes nothing.</li>
+  <li>Result: closing a window or quitting a Dock icon can never stop usage or alerts. A usage only profile installs nothing. There is one login item and one source of notifications.</li>
+</ul></div>
+
+<h2><small>1</small>How it works today</h2>
+<p>The app is one program that plays two roles. Opened as <b>cl_audit</b>, it is the window. Copied into <code>/Applications/cl_audit &lt;profile&gt;.app</code> with a profile id inside, it is that profile's Dock icon app. They share two files and talk through system notifications.</p>
+<div class="card arch">
+  <div class="lane"><div class="lbl">Always running<small>one per profile, even with nothing in the Dock</small></div>
+    <div class="boxes"><div class="box warn many"><b>Profile app · “cl_audit Work”</b><ul>
+      <li>reads the sign-in from the Keychain</li><li>asks Anthropic for the usage every few minutes</li><li>checks the account, renews the sign-in</li><li>sends its own alerts</li><li>its own login item</li><li>draws the Dock tile, handles clicks and menus</li><li>opens or quits its Claude window, quits itself with it</li><li>runs hidden when Usage in the Dock is off (restarts itself to switch)</li><li>writes the config when you drag it out of the Dock</li></ul></div></div></div>
+  <div class="lane"><div class="lbl">Only while open<small>no login item</small></div>
+    <div class="boxes"><div class="box"><b>cl_audit · the window</b><ul>
+      <li>dashboard, settings, launcher</li><li>installs and updates the profile app copies</li><li>starts Dock icons that follow a Claude window (only while it is open)</li><li>changes Dock pins, redraws icon files</li></ul></div></div></div>
+  <div class="lane"><div class="lbl">Shared files</div>
+    <div class="boxes"><div class="box"><b>accounts.json</b><ul><li>the profiles; written by cl_audit <span class="x">and</span> by profile apps</li></ul></div>
+      <div class="box"><b>status/&lt;profile&gt;.json</b><ul><li>each profile app's last usage; cl_audit only reads it</li></ul></div></div></div>
+  <div class="lane"><div class="lbl">Outside</div>
+    <div class="boxes"><div class="box ext"><b>Keychain · Anthropic · Claude windows · the Dock</b><ul><li>sign-ins read with Apple's <code>security</code> tool; usage from <code>api.anthropic.com</code>; windows told apart by their data folder; pins written to the Dock's list</li></ul></div></div></div>
+</div>
+
+<h3>Who does what today</h3>
+<div class="tw"><table>
+<thead><tr><th>Job</th><th>cl_audit window</th><th>Each profile app</th><th>Works when…</th></tr></thead>
+<tbody>
+<tr><td>Read usage, check account, renew sign-in</td><td class="c n">–</td><td class="c y">✓</td><td class="warnc">…that profile's app is running</td></tr>
+<tr><td>Alerts at the limit</td><td class="c n">–</td><td class="c y">✓</td><td class="warnc">…that app is running and allowed notifications (asked once per app)</td></tr>
+<tr><td>Start at login</td><td class="c n">–</td><td class="c y">✓</td><td>one login item per profile</td></tr>
+<tr><td>Show usage in the Dock</td><td class="c n">–</td><td class="c y">✓</td><td>an app per Dock icon (macOS gives each running app one Dock icon)</td></tr>
+<tr><td>Dock icon starts when its window opens</td><td class="c y">✓</td><td class="c n">–</td><td class="warnc">…cl_audit is open</td></tr>
+<tr><td>Dock icon quits when its window quits</td><td class="c n">–</td><td class="c y">✓</td><td class="bad">…and its usage stops with it</td></tr>
+<tr><td>Window opens or quits with the Dock icon</td><td class="c n">–</td><td class="c y">✓</td><td>each app decides for itself</td></tr>
+<tr><td>Dock pins</td><td class="c y">✓</td><td class="c y">✓</td><td>two writers, kept apart by a lock file</td></tr>
+<tr><td>Config changes</td><td class="c y">✓</td><td class="c y">✓</td><td class="warnc">read-modify-write from several processes</td></tr>
+</tbody></table></div>
+
+<h2><small>2</small>Where it's inconsistent</h2>
+<div class="probs">
+  <div class="prob"><div><b>Reading usage depends on showing it</b><p>The app that reads a profile's usage is the same app that draws its Dock icon. To hide the icon, the app must keep running in the background, so "Usage in the Dock off" still means an app, a login item and a process. Turning it on or off restarts the app.</p></div></div>
+  <div class="prob"><div><b>Quitting a Dock icon stops the usage</b><p>The dashboard's Dock icon switch, the Dock menu's Quit, and "quit the Dock icon with its window" all stop that profile's usage and alerts too. That's the Work bug you found: closing its Claude window quits its collector.</p></div></div>
+  <div class="prob"><div><b>Some rules need cl_audit open</b><p>"Start the Dock icon when the window opens" runs in cl_audit, which isn't always running ("starting needs cl_audit running"). The same setting works or not depending on whether a window happens to be open.</p></div></div>
+  <div class="prob"><div><b>The opening and closing rules live in three places</b><p>Each profile app, cl_audit's installer, and the dashboard's own prediction of what will happen next. Each special case (no window, no Dock icon, usage only) has to be handled in all three. The window-only case was missed.</p></div></div>
+  <div class="prob"><div><b>Settings that contradict each other</b><p>Open at login and "the Dock icon follows the window" can both be on and disagree. Usage only quietly overrides Open at login. The effective behaviour is worked out in scattered small rules, not in one place.</p></div></div>
+  <div class="prob"><div><b>One of everything per profile</b><p>Each profile has its own login item, notification permission, sign-in reader, renewal timer and copy of the whole app. Every release reinstalls and restarts all the copies, including the ones that show nothing.</p></div></div>
+  <div class="prob"><div><b>Two sources of truth for the Dock</b><p>The config says whether a profile is in the Dock. Each profile app also changes the config when it notices it was dragged out. About a third of all changes so far went into keeping the Dock and the settings in step.</p></div></div>
+  <div class="prob"><div><b>A stopped reader looks like stale data</b><p>When a profile app isn't running, its usage just gets old. The dashboard can't tell "nothing is reading" from "Anthropic didn't answer".</p></div></div>
+</div>
+
+<h2><small>3</small>Design rules</h2>
+<div class="rules">
+  <div class="rule"><b>One owner per job</b><span>Reading, showing and controlling are separate, and each has exactly one owner.</span></div>
+  <div class="rule"><b>Reading never depends on showing</b><span>Usage is read and alerts are sent for every profile, whatever is open, quit or hidden.</span></div>
+  <div class="rule"><b>Switches only add or remove what they name</b><span>Usage in the Dock adds or removes a Dock icon. Claude window adds or removes a window. Nothing else.</span></div>
+  <div class="rule"><b>The config says what you want; one place works out what runs</b><span>Every process asks that place, so a special case is handled once.</span></div>
+  <div class="rule"><b>No new moving parts</b><span>Keep the same files and system notifications, and the same Keychain reading. No server, no new permissions beyond one login item.</span></div>
+</div>
+
+<h2><small>4</small>Target design</h2>
+<div class="card arch">
+  <div class="lane"><div class="lbl">Always running<small>one, started at login</small></div>
+    <div class="boxes"><div class="box ok"><b>cl_audit agent</b><ul>
+      <li>reads the usage for <strong>every</strong> profile on its own schedule</li><li>sign-in, account check, renewal</li><li>all alerts, as "cl_audit"</li><li>runs the opening and closing rules: starts and quits Dock icons, opens and quits Claude windows</li><li>owns the Dock pins and saved usage</li><li>no window, no Dock icon; lives inside cl_audit.app</li></ul></div></div></div>
+  <div class="flow"><span>agent <i>→</i> saved usage <i>→</i> Dock icons and the window</span><span>Dock icons and the window <i>→</i> "refresh", "renew" <i>→</i> agent</span></div>
+  <div class="lane"><div class="lbl">Only when shown<small>profiles with Usage in the Dock on</small></div>
+    <div class="boxes"><div class="box a many"><b>Dock icon · “cl_audit Work”</b><ul>
+      <li>draws the tile from the saved usage</li><li>click, double-click, press and hold, menu, details panel</li><li>opens the Claude window directly; everything else is asked of the agent</li><li>never reads the Keychain or the network, and never writes the config</li></ul></div></div></div>
+  <div class="lane"><div class="lbl">Only while open</div>
+    <div class="boxes"><div class="box a"><b>cl_audit · the window</b><ul>
+      <li>dashboard, settings, launcher (as today)</li><li>the only place the config is edited</li><li>installs Dock icon copies; shows whether the agent is running</li></ul></div></div></div>
+</div>
+
+<h3>Who does what in the target</h3>
+<div class="tw"><table>
+<thead><tr><th>Job</th><th>Agent</th><th>Dock icon</th><th>Window</th></tr></thead>
+<tbody>
+<tr><td>Read usage, check account, renew sign-in</td><td class="c y">✓ all profiles</td><td class="c n">–</td><td class="c n">–</td></tr>
+<tr><td>Alerts</td><td class="c y">✓ one permission</td><td class="c n">–</td><td class="c n">–</td></tr>
+<tr><td>Start at login</td><td class="c y">✓ one login item</td><td class="c n">started by the agent</td><td class="c n">–</td></tr>
+<tr><td>Show usage in the Dock</td><td class="c n">–</td><td class="c y">✓</td><td class="c n">–</td></tr>
+<tr><td>Opening and closing rules</td><td class="c y">✓ only here</td><td class="c n">–</td><td class="c n">shows what the agent is doing</td></tr>
+<tr><td>Dock pins</td><td class="c y">✓ only writer</td><td class="c n">–</td><td class="c n">asks the agent</td></tr>
+<tr><td>Config</td><td class="c n">reads; records a Dock icon you drag out</td><td class="c n">reads</td><td class="c y">✓ edits</td></tr>
+<tr><td>Saved usage</td><td class="c y">✓ writes, with an "alive" mark</td><td class="c n">reads</td><td class="c n">reads</td></tr>
+</tbody></table></div>
+
+<h3>What runs for a profile</h3>
+<p>The two switches decide everything a profile has, and the agent always reads its usage.</p>
+<div class="tw"><table>
+<thead><tr><th>Usage in the Dock</th><th>Claude window</th><th>What the profile has</th></tr></thead>
+<tbody>
+<tr><td>off</td><td>off</td><td><b>Usage only:</b> nothing installed or running of its own. Usage on the dashboard, in the launcher and in alerts.</td></tr>
+<tr><td>on</td><td>off</td><td>A Dock icon showing the usage. A click shows the details.</td></tr>
+<tr><td>off</td><td>on</td><td>Its Claude window, when you open it. No Dock icon, so no opening and closing rules.</td></tr>
+<tr><td>on</td><td>on</td><td>Dock icon and Claude window, linked as Opening and closing says.</td></tr>
+</tbody></table></div>
+
+<h3>Opening and closing, simplified</h3>
+<p>Today, Open at login plus two questions make eight combinations, some of them contradictory. The target has one choice for when the Dock icon runs, plus one switch for the window. The card shows only with Usage in the Dock on. Without a Dock icon, it fades with the app's strip.</p>
+<div class="mock">
+  <div class="mcard"><h4>Opening and closing</h4>
+    <div class="mrow"><span class="k">Dock icon runs</span><span class="v"><span class="seg"><span class="on">At login</span><span>With its window</span><span>When started</span></span><br>At login: always there, from when you log in. With its window: starts and quits with the Claude window. When started: only when you start it.</span></div>
+    <div class="mrow"><span class="k">Claude window</span><span class="v"><span class="sw on"></span>opens and quits with the Dock icon<br>not at login; Claude asks about unsent work</span></div>
+  </div>
+  <div class="mcard"><h4>Opening and closing</h4>
+    <div class="strip">Not in use · no Dock icon to open or close</div>
+    <div style="opacity:.45">
+    <div class="mrow"><span class="k">Dock icon runs</span><span class="v"><span class="seg"><span class="on">At login</span><span>With its window</span><span>When started</span></span></span></div>
+    <div class="mrow"><span class="k">Claude window</span><span class="v"><span class="sw on"></span>opens and quits with the Dock icon</span></div></div>
+    <div class="mrow"><span class="k">Usage</span><span class="v">read by cl_audit for every profile, always</span></div>
+  </div>
+</div>
+<div style="margin-top:10px;font-size:13.5px;color:var(--muted)">Old settings carry over as follows:
+<ul style="margin:4px 0;font-size:13.5px">
+  <li>Open at login on → <b>At login</b>.</li>
+  <li>"Start or quit the Dock icon too" → <b>With its window</b>.</li>
+  <li>Both off → <b>When started</b>.</li>
+  <li>"Open or quit the Claude window too" → the window switch.</li>
+</ul>
+Saved choices stay stored while a switch makes them not apply.</div>
+
+<h3>Main display</h3>
+<p>The agent writes an "alive" mark with the usage, so the top display can tell the cases apart.</p>
+<p><span class="disp">Reading usage <em>· 4 profiles · every 2–5 min</em></span>&nbsp; <span class="disp amber">cl_audit agent stopped <em>· start</em></span>&nbsp; <span class="disp amber">Anthropic didn't answer <em>· 2 profiles</em></span></p>
+
+<h2><small>5</small>Same events, before and after</h2>
+<div class="tw"><table>
+<thead><tr><th>When…</th><th>Today</th><th>Target</th></tr></thead>
+<tbody>
+<tr><td>You log in to the Mac</td><td>Each profile app starts itself (one login item each)</td><td>The agent starts and starts the Dock icons set to At login</td></tr>
+<tr><td>A Claude window quits</td><td class="bad">A Dock icon that follows it quits, <b>and its usage and alerts stop</b></td><td>The Dock icon quits. Usage keeps being read.</td></tr>
+<tr><td>A Claude window opens</td><td class="warnc">A following Dock icon starts only if cl_audit is open</td><td>The agent starts it, always</td></tr>
+<tr><td>You quit a Dock icon</td><td class="bad">That profile stops refreshing and alerting</td><td>Only the icon goes</td></tr>
+<tr><td>Usage in the Dock off</td><td>The app restarts as a hidden background app, and the Dock restarts to unpin it</td><td>The Dock icon quits, is unpinned and its app is removed. Its Dock place is remembered, so turning it back on puts it back there.</td></tr>
+<tr><td>A usage only profile</td><td>A hidden app, a login item and a process</td><td>Nothing of its own</td></tr>
+<tr><td>Alerts</td><td>From "cl_audit Work", "cl_audit Main"…, each asking for permission</td><td>From cl_audit, one permission</td></tr>
+<tr><td>You quit cl_audit</td><td>Window-following Dock icons stop starting</td><td>No effect</td></tr>
+<tr><td>Something crashes</td><td>That profile goes stale, unnoticed</td><td>macOS restarts the agent; the display says if it's down</td></tr>
+<tr><td>A new release</td><td>Every profile app is reinstalled and restarted</td><td>The agent updates with cl_audit; only Dock icon copies are reinstalled</td></tr>
+</tbody></table></div>
+
+<h2><small>6</small>Required changes</h2>
+<ul class="files">
+  <li><b>New: the agent.</b> A small helper app inside <code>cl_audit.app</code> (same program, a third role), registered as cl_audit's one login item. Built and signed by <code>build.sh</code>.</li>
+  <li><b>Reading moves to the agent.</b> Fetching, sign-in reading, account check, renewal and alerts move out of <code>IconApp.swift</code> into one scheduler for all profiles, with each profile's own interval and backoff. The status line fallback moves too.</li>
+  <li><b>Dock icon app slims down.</b> <code>IconApp.swift</code> keeps the tile, clicks, menu and details panel, and reads the saved usage when told it changed. Removed: the network, the Keychain, renewals, alerts, its login item, the hidden mode and its restart, the window rules, and config writes.</li>
+  <li><b>Opening and closing rules in the agent only.</b> Out of <code>IconApp.swift</code> (window watching, quit with window), <code>Config.swift</code> (starting followers, "waits for window") and the dashboard's guesses in <code>Launcher.swift</code>.</li>
+  <li><b>One profile model.</b> In <code>Config.swift</code>: <i>Dock icon runs</i> replaces Open at login and the Dock icon half of the lifecycle; <i>window follows the Dock icon</i> keeps the other half. One function answers "what runs for this profile", and every process uses it. Old configs are migrated.</li>
+  <li><b>Saved usage.</b> Written only by the agent, with an "alive" mark and a "changed" notice. The config is changed only through one locked write.</li>
+  <li><b>Installer.</b> Installs a Dock icon copy when Usage in the Dock is turned on and removes it when it is turned off; the Dock place is remembered with the profile. No longer starts apps: the agent does.</li>
+  <li><b>Dock.</b> The agent is the only writer, through the existing one-writer path. The hidden mode and its restart go away.</li>
+  <li><b>Settings and dashboard.</b> <code>Settings.swift</code>: the new Opening and closing card. <code>NewAccount.swift</code>: "Start reading usage" installs nothing. <code>Launcher.swift</code>: the Dock icon switch is only the icon; the main display shows the agent's state.</li>
+  <li><b>Clean-up for existing installs.</b> <code>Removal.swift</code>: take out the old per-profile login items and the hidden apps of usage only profiles, once.</li>
+  <li><b>Words.</b> README (How it works, Security: one reader of the sign-in), the site and the CHANGELOG.</li>
+</ul>
+
+<h2><small>7</small>Stages</h2>
+<div class="stages">
+  <div class="stage"><h3>Prove the background agent</h3><dl>
+    <dt>Built</dt><dd>A test build with the helper inside cl_audit.app. It starts at login and writes its "alive" mark; nothing moves to it yet.</dd>
+    <dt>Checked</dt><dd>That it registers while ad hoc signed. That macOS restarts it after a crash. That an update doesn't bring new prompts.</dd>
+    <dt>Your part</dt><dd>Allow "cl_audit" once if macOS asks about a background item, and give the go or no-go.</dd>
+    <dt>Ends with</dt><dd>A yes or no on the approach. If no, the fallback is cl_audit itself running at login with no window open.</dd></dl></div>
+  <div class="stage"><h3>The agent reads usage for every profile</h3><dl>
+    <dt>Built</dt><dd>Reading, sign-in, renewal and alerts in the agent. Dock icons show what it saved. The old per-profile login items and usage only apps are removed.</dd>
+    <dt>Your part</dt><dd>Allow notifications for cl_audit once, then use it for a day.</dd>
+    <dt>Ends with</dt><dd>One login item, one alert source, and usage that never stops because something quit.</dd></dl></div>
+  <div class="stage"><h3>Dock icons only show, and one set of opening rules</h3><dl>
+    <dt>Built</dt><dd>No hidden mode and no restart: Usage in the Dock only starts or quits and pins or unpins. The rules run in the agent, and the new "Dock icon runs" choice replaces the old settings, with migration.</dd>
+    <dt>Your part</dt><dd>Check the new Opening and closing card against your profiles.</dd>
+    <dt>Ends with</dt><dd>Every switch does only what it names.</dd></dl></div>
+  <div class="stage"><h3>Settings and words follow one model</h3><dl>
+    <dt>Built</dt><dd>Every page asks the one profile model. The agent's state shows in the main display. README, site and security text are updated.</dd>
+    <dt>Your part</dt><dd>Approve the release and the site publish.</dd>
+    <dt>Ends with</dt><dd>A release with the new design.</dd></dl></div>
+</div>
+
+<div class="note"><b>Until then:</b> the small 26.10.10 fix (with Usage in the Dock off, stop the window links and always start at login) closes the Work bug in a few lines, and stage 2 makes it unnecessary. It's still worth shipping now, since the stages span several releases.</div>
+
+<h2><small>8</small>Decisions for you</h2>
+<div class="dec">
+  <div class="card"><b>Where the agent lives: inside cl_audit.app (recommended)</b><p>No extra app in /Applications, and it updates with cl_audit. Two alternatives are weaker. cl_audit itself running at login would mean quitting the window stops the usage, which is the same coupling as today. A separate app in /Applications is one more thing to install and keep matched.</p></div>
+  <div class="card"><b>Dragging a Dock icon out by hand: keep "the switch follows the Dock" (recommended)</b><p>As today, dragging the icon out turns Usage in the Dock off. Only the agent records it, through the one config write.</p></div>
+  <div class="card"><b>Dock icons stay separate apps (no choice here)</b><p>macOS gives each running app one Dock icon, so a live per-profile tile needs a per-profile app. The target only makes them as small as possible.</p></div>
+</div>
+
+<h2><small>9</small>Risks</h2>
+<ul style="font-size:14px;max-width:80ch">
+  <li><b>Login item with ad hoc signing.</b> macOS's background item rules are stricter for unsigned helpers; stage 1 exists to find out before anything moves.</li>
+  <li><b>One reader for all.</b> If the agent stops, every profile goes stale, not one. That's why it's restarted by macOS and the main display says so.</li>
+  <li><b>Notification permission moves.</b> Old per-profile entries stay in System Settings › Notifications until you remove them; harmless.</li>
+  <li><b>The usage endpoint isn't public.</b> Same as today; one reader makes a change easier to handle in one place.</li>
+</ul>
+</main></body>
+</html>

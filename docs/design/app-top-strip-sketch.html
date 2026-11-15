@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cl_audit top strip</title>
+<style>
+:root { --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.face-std, .face-black, .face-silver {
+  --text: #ececee; --muted: #9a9aa0; --print: rgba(255,255,255,.5);
+  --glow: 127, 249, 234; --led-on: 74, 222, 128;
+  --alu: repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #74746f, #52524e);
+  --alu-down: repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #6a6a65, #4a4a46);
+  --key-up: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #2e2e2c, 0 2px 0 #121211, 0 3px 7px rgba(0,0,0,.45);
+  --key-down: inset 0 1px 0 rgba(255,255,255,.2), inset 0 -1px 0 rgba(0,0,0,.3), 0 0 0 1px #2e2e2c, 0 1px 0 #121211, 0 2px 4px rgba(0,0,0,.45);
+  --legend: #f1f1f0; --legend-shadow: 0 -1px 0 rgba(0,0,0,.35);
+  --page-key: repeating-linear-gradient(90deg, rgba(255,255,255,.035) 0 1px, rgba(0,0,0,.05) 1px 2px), linear-gradient(180deg, #3b3b3e, #1d1d1f);
+  --page-key-up: inset 0 1px 0 rgba(255,255,255,.14), inset 0 -1px 0 rgba(0,0,0,.6), 0 0 0 1px #000, 0 2px 0 #000, 0 3px 7px rgba(0,0,0,.5);
+  --page-key-down: inset 0 1px 0 rgba(255,255,255,.08), inset 0 -1px 0 rgba(0,0,0,.6), 0 0 0 1px #000, 0 1px 0 #000, 0 2px 4px rgba(0,0,0,.5);
+  --page-legend: #e9e9e9;
+  --chassis: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #232325, #1b1b1d 30%, #19191b);
+  --chassis-shadow: 0 0 0 1px #000, 0 0 0 2px rgba(255,255,255,.07), 0 18px 50px rgba(0,0,0,.5);
+  --plate: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #3a3a3d, #2c2c2f);
+  --plate-shadow: inset 0 1px 0 rgba(255,255,255,.1), inset 0 -1px 0 rgba(0,0,0,.4), 0 0 0 1px #0b0b0c, 0 4px 12px rgba(0,0,0,.3);
+  --strip: rgba(0,0,0,.3);
+  --strip-shadow: inset 0 1px 3px rgba(0,0,0,.75), inset 0 0 0 1px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.05);
+  --divider: rgba(0,0,0,.5); --divider-hi: rgba(255,255,255,.07);
+  --disp-bg: linear-gradient(180deg, #030607, #0a1113 70%, #0c1517);
+  --disp-shadow: inset 0 1px 3px rgba(0,0,0,.9), inset 0 0 0 1px rgba(255,255,255,.035), 0 0 0 1px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.07);
+  --disp-text: rgb(var(--glow)); --disp-glow: 0 0 3px rgba(var(--glow), .75), 0 0 9px rgba(var(--glow), .35);
+  --disp-dim: rgba(var(--glow), .42); --disp-sheen: linear-gradient(180deg, rgba(255,255,255,.07), transparent);
+  --rule: rgba(0,0,0,.6); --rule-hi: rgba(255,255,255,.04); --led-off: #3a3532;
+  color: var(--text);
+}
+.face-black {
+  --chassis: repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, rgba(0,0,0,.05) 1px 2px), linear-gradient(180deg, #1d1d1f, #141416 40%, #111113);
+  --plate: repeating-linear-gradient(0deg, rgba(255,255,255,.035) 0 1px, rgba(0,0,0,.05) 1px 2px), linear-gradient(180deg, #2b2b2d 0%, #1e1e20 60%, #19191b 100%);
+  --plate-shadow: inset 0 1px 0 rgba(255,255,255,.14), inset 0 -1px 0 rgba(0,0,0,.6), 0 0 0 1px #050505, 0 6px 16px rgba(0,0,0,.4);
+  --strip: repeating-linear-gradient(0deg, rgba(255,255,255,.03) 0 1px, rgba(0,0,0,.05) 1px 2px), linear-gradient(180deg, #19191b, #121214);
+  --strip-shadow: inset 0 1px 3px rgba(0,0,0,.75), inset 0 0 0 1px rgba(0,0,0,.5), 0 1px 0 rgba(255,255,255,.07);
+  --print: rgba(255,255,255,.62);
+}
+.face-silver {
+  --text: #1c1c1e; --muted: #46464b; --print: rgba(20,20,20,.62);
+  --alu: repeating-linear-gradient(90deg, rgba(255,255,255,.14) 0 1px, rgba(0,0,0,.03) 1px 2px), linear-gradient(180deg, #ededeb, #c8c8c3);
+  --alu-down: repeating-linear-gradient(90deg, rgba(255,255,255,.12) 0 1px, rgba(0,0,0,.03) 1px 2px), linear-gradient(180deg, #dadad6, #bababa);
+  --key-up: inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(0,0,0,.18), 0 0 0 1px #6d6d69, 0 2px 0 #4c4c49, 0 3px 6px rgba(0,0,0,.22);
+  --key-down: inset 0 1px 0 rgba(255,255,255,.6), inset 0 -1px 0 rgba(0,0,0,.15), 0 0 0 1px #6d6d69, 0 1px 0 #4c4c49;
+  --legend: #232323; --legend-shadow: 0 1px 0 rgba(255,255,255,.55);
+  --page-key: var(--alu); --page-key-up: var(--key-up); --page-key-down: var(--key-down); --page-legend: #232323;
+  --chassis: repeating-linear-gradient(0deg, rgba(255,255,255,.2) 0 1px, rgba(0,0,0,.025) 1px 2px), linear-gradient(180deg, #d0d2d3, #c2c4c5 45%, #b9bbbc);
+  --chassis-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 0 0 1px rgba(0,0,0,.2), 0 18px 50px rgba(0,0,0,.25);
+  --plate: repeating-linear-gradient(0deg, rgba(255,255,255,.24) 0 1px, rgba(0,0,0,.025) 1px 2px), linear-gradient(180deg, #e0e2e3 0%, #d0d2d3 55%, #c6c8c9 100%);
+  --plate-shadow: inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.32), 0 3px 10px rgba(0,0,0,.16);
+  --strip: repeating-linear-gradient(0deg, rgba(255,255,255,.14) 0 1px, rgba(0,0,0,.03) 1px 2px), linear-gradient(180deg, #a9a9a4, #b9b9b4);
+  --strip-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 1px rgba(0,0,0,.12), 0 1px 0 rgba(255,255,255,.6);
+  --divider: rgba(0,0,0,.28); --divider-hi: rgba(255,255,255,.5);
+  --disp-bg: linear-gradient(180deg, #fbfcfc, #eef0f1);
+  --disp-shadow: inset 0 0 0 1px rgba(0,0,0,.2), inset 0 2px 4px rgba(0,0,0,.14), inset 0 -2px 0 rgba(255,255,255,.9), 0 1px 0 rgba(255,255,255,.7);
+  --disp-text: #1c1e20; --disp-glow: none; --disp-dim: rgba(28,30,32,.45); --disp-sheen: none;
+  --rule: rgba(0,0,0,.3); --rule-hi: rgba(255,255,255,.5); --led-off: #8c8c88;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; background: #101012; color: #ececee; }
+.page { max-width: 1180px; margin: 0 auto; padding: 24px 16px 70px; }
+h1 { margin: 0 0 6px; font-size: 20px; letter-spacing: -.01em; }
+h2 { margin: 36px 0 4px; font-size: 18px; letter-spacing: -.01em; }
+.lede { margin: 0 0 6px; max-width: 96ch; color: #c7c7cc; }
+.rec { margin: 14px 0 0; padding: 12px 14px; border-radius: 10px; background: rgba(255,122,61,.09); box-shadow: inset 0 0 0 1px rgba(255,122,61,.28); color: #e9e9ec; max-width: 96ch; }
+.note { margin: 0 0 12px; max-width: 100ch; color: #b4b4ba; font-size: 13.5px; }
+.note b { color: #ececee; }
+.cap { margin: 14px 2px 6px; font: 600 10px/1.2 var(--font); letter-spacing: .16em; text-transform: uppercase; color: #8e8e93; }
+.row-note { margin: 6px 2px 0; font-size: 12px; color: #8e8e93; }
+
+/* the window top: title bar + strip + a bit of the page under it */
+.win { width: 1100px; max-width: 100%; border-radius: 12px; overflow: hidden; background: var(--chassis); box-shadow: var(--chassis-shadow); }
+.win.narrow { width: 760px; }
+.titlebar { position: relative; display: flex; align-items: center; height: 28px; padding: 0 12px; }
+.lights { display: flex; gap: 7px; }
+.lights i { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; }
+.lights i:nth-child(2) { background: #febc2e; } .lights i:nth-child(3) { background: #28c840; }
+.tb-title { position: absolute; left: 0; right: 0; text-align: center; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+.face-silver .titlebar { background: linear-gradient(180deg, rgba(255,255,255,.35), rgba(255,255,255,0)); }
+.under { height: 22px; border-top: 1px solid var(--rule); box-shadow: inset 0 1px 0 var(--rule-hi); }
+
+/* one row: every control the same height (--h) on one centre line */
+.strip-row { --h: 26px; display: flex; align-items: center; gap: 12px; padding: 4px 16px 12px; min-height: calc(var(--h) + 16px); }
+.grow { flex: 1; min-width: 8px; }
+.brand { display: grid; line-height: 1.1; flex: none; }
+.brand b { font-size: 17px; font-weight: 700; letter-spacing: -.01em; }
+.brand span { margin-top: 4px; font: 600 8px/1 var(--font); letter-spacing: .16em; text-transform: uppercase; color: var(--print); }
+.lbl { font: 600 8.5px/1 var(--font); letter-spacing: .16em; text-transform: uppercase; color: var(--print); white-space: nowrap; }
+
+/* keys: the face of the key is the box; its bevel and edge are shadows, so they never move the layout.
+   Latched keys don't drop: the darker face and the lit strip say "on". */
+.key { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 7px; flex: none;
+  height: var(--h); padding: 0 11px; border: 0; border-radius: 3px; cursor: pointer;
+  font: 600 10px/1 var(--font); letter-spacing: .1em; text-transform: uppercase; white-space: nowrap;
+  color: var(--legend); text-shadow: var(--legend-shadow); background: var(--alu); box-shadow: var(--key-up); }
+.key.on { background: var(--alu-down); box-shadow: var(--key-down); }
+.key.on::before { content: ""; position: absolute; left: 5px; right: 5px; top: 3px; height: 2px; border-radius: 2px;
+  background: var(--lamp, #ff7a3d); box-shadow: 0 0 3px var(--lamp, #ff7a3d), 0 0 7px var(--lamp, #ff7a3d); }
+.key.sq { width: var(--h); padding: 0; }
+.key .led { width: 6px; height: 6px; border-radius: 50%; background: var(--led-off); box-shadow: inset 0 1px 1px rgba(0,0,0,.5); }
+.key.lit .led { background: rgb(var(--led-on)); box-shadow: 0 0 6px rgba(var(--led-on), .85); }
+.key.lit { background: var(--alu-down); box-shadow: var(--key-down); }
+.pkey { position: relative; display: inline-flex; align-items: center; height: var(--h); padding: 0 13px; border: 0; border-radius: 3px; flex: none;
+  font: 600 10px/1 var(--font); letter-spacing: .12em; text-transform: uppercase; color: var(--page-legend);
+  background: var(--page-key); box-shadow: var(--page-key-up); }
+.pkey.on { box-shadow: var(--page-key-down); }
+.face-std .pkey.on, .face-black .pkey.on { color: #fff; }
+.pkey.on::before { content: ""; position: absolute; left: 5px; right: 5px; top: 3px; height: 2px; border-radius: 2px;
+  background: linear-gradient(180deg, #ffb08a, #ff7a3d 60%, #f0612a); box-shadow: 0 0 3px rgba(255,122,61,.8), 0 0 8px rgba(255,122,61,.5); }
+.pages { display: inline-flex; gap: 6px; flex: none; }
+.sw { position: relative; display: inline-grid; place-items: center; flex: none; width: 30px; height: var(--h); border-radius: 4px;
+  background: var(--alu); box-shadow: var(--key-up); }
+.sw::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--led-off); box-shadow: inset 0 1px 1px rgba(0,0,0,.55); }
+.sw.on { background: var(--alu-down); box-shadow: var(--key-down); }
+.sw.on::after { background: rgb(var(--led-on)); box-shadow: 0 0 6px rgba(var(--led-on), .85); }
+
+/* the display window: fixed width so "Updating…" and "1 h 12 min ago" never change its size */
+.disp { position: relative; display: inline-flex; align-items: center; gap: 8px; height: var(--h); padding: 0 10px; border-radius: 4px; overflow: hidden; flex: none;
+  background: var(--disp-bg); box-shadow: var(--disp-shadow);
+  font: 600 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; white-space: nowrap; color: var(--disp-text); text-shadow: var(--disp-glow); }
+.disp::after { content: ""; position: absolute; inset: 0 0 55% 0; pointer-events: none; background: var(--disp-sheen); }
+.disp em { font-style: normal; color: var(--disp-dim); text-shadow: none; }
+.disp.fixed { width: 196px; }
+.disp.wide { flex: 1; min-width: 220px; justify-content: flex-start; }
+.disp.wide .r { margin-left: auto; }
+
+/* containers */
+.well { display: inline-flex; align-items: center; gap: 6px; padding: 4px; border-radius: 6px; background: var(--strip); box-shadow: var(--strip-shadow); flex: none; }
+.well .dv, .plate .dv { width: 1px; align-self: stretch; margin: 2px 4px; background: var(--divider); box-shadow: 1px 0 0 var(--divider-hi); }
+.plate { display: inline-flex; align-items: flex-end; gap: 14px; padding: 6px 10px 7px; border-radius: 7px; background: var(--plate); box-shadow: var(--plate-shadow); flex: none; }
+.group { display: grid; gap: 4px; justify-items: start; }
+.group .keys { display: inline-flex; gap: 6px; align-items: center; }
+.k-home { --lamp: #d97757; } .k-work { --lamp: #14b8a6; } .k-side { --lamp: #8b5cf6; }
+
+/* option A at a narrow window: the strip takes its own row under brand and page keys */
+.win.narrow .optA { flex-wrap: wrap; row-gap: 10px; }
+.win.narrow .optA .well { order: 3; flex: 1 1 100%; }
+.win.narrow .optA .well .disp.fixed { margin-left: auto; }
+.win.narrow .optC { flex-wrap: wrap; row-gap: 10px; }
+.win.narrow .optC .ckeys { order: 4; }
+.win.narrow .optB { flex-wrap: wrap; row-gap: 10px; }
+.win.narrow .optB .plate { order: 3; }
+.win.narrow .optB .bright { order: 4; margin-left: auto; }
+.optC { --h: 28px; }
+.optB { align-items: flex-end; }
+.optB > .brand { margin-bottom: 4px; }
+.optB > .bright, .optB > .pages { margin-bottom: 7px; }   /* the plate's bottom padding: keys share one centre line */
+.cdisp { flex: 1; min-width: 0; display: inline-flex; gap: 6px; align-items: center; }
+.cdisp .disp.wide { min-width: 0; text-overflow: ellipsis; }
+.win.narrow .optC .cdisp { order: 3; flex: 1 1 100%; }
+.win.narrow .optC .pages { margin-left: auto; }
+
+.stack { display: grid; gap: 14px; }
+.opt-head { display: flex; align-items: baseline; gap: 10px; }
+.opt-head b { font: 700 12px/1 var(--mono); letter-spacing: .1em; color: #ff9a66; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>cl_audit · top strip options</h1>
+  <p class="lede">The row under the title bar, redrawn three ways in Std, Black and Silver. Every control in a row shares one height and one centre line: a held-down key no longer drops a pixel. Its darker face and lit strip say it's on, and the edge under a key is drawn as a shadow, so it can't push the key off line. "Updated" sits in a fixed-width display, so "Updating…" and "1 h 12 min ago" take the same space. <b>Emails</b> is new here: an LED key, green while emails are shown.</p>
+  <p class="rec"><b>Recommendation: A.</b> It matches the home site's fascia (one recessed strip of keys between the name and the page keys), keeps everything on one 26 pt line, and folds cleanly into a second row when the window is narrow. B reads more "hi-fi" but is taller, and C puts most weight on information you rarely need to read.</p>
+
+  <div id="opts"></div>
+</div>
+<script>
+const FACES = [["std", "Std"], ["black", "Black"], ["silver", "Silver"]];
+const brand = `<div class="brand"><b>cl_audit</b><span>Usage audit for Claude profiles</span></div>`;
+const pages = (p = "dash") => `<span class="pages"><span class="pkey ${p === "dash" ? "on" : ""}">Dashboard</span><span class="pkey ${p === "settings" ? "on" : ""}">Settings</span></span>`;
+const prof = (cls = "key") => `<span class="${cls} on k-home">Home</span><span class="${cls} on k-work">Work</span><span class="${cls} k-side">Side</span>`;
+const emails = `<span class="key lit" title="Show emails"><span class="led"></span>Emails</span>`;
+const updated = `<span class="disp fixed">Updated <em>· 2 min ago</em></span><span class="key sq" title="Refresh now (⌘R)">↻</span>`;
+const win = (face, row, narrow) => `<div class="face-${face}"><div class="win ${narrow ? "narrow" : ""}"><div class="titlebar"><span class="lights"><i></i><i></i><i></i></span><span class="tb-title">cl_audit</span></div>${row}<div class="under"></div></div></div>`;
+
+const OPTS = [
+  { id: "A", title: "Fascia with one key strip",
+    note: "Like the home site: the name, then one recessed strip holding the profile keys, the Emails key and the Updated display with its refresh key, then the page keys. <b>Trade-off:</b> one long strip; with many profiles it gets wide (it wraps to its own row first).",
+    row: (p) => p === "settings"
+      ? `<div class="strip-row optA">${brand}<span class="grow"></span><span class="well">${emails}</span>${pages("settings")}</div>`
+      : `<div class="strip-row optA">${brand}<span class="well">${prof()}<span class="dv"></span>${emails}<span class="dv"></span>${updated}</span><span class="grow"></span>${pages()}</div>` },
+  { id: "B", title: "Labelled control plate",
+    note: "A raised plate with small printed labels over each group, as on an amplifier's front: PROFILES over the profile keys, EMAILS over its switch. Updated and refresh sit apart on the right, before the page keys. <b>Trade-off:</b> the clearest labels, but the strip is about 12 pt taller.",
+    row: () => `<div class="strip-row optB">${brand}<span class="plate"><span class="group"><span class="lbl">Profiles</span><span class="keys">${prof()}</span></span><span class="dv"></span><span class="group"><span class="lbl">Emails</span><span class="keys"><span class="sw on"></span></span></span></span><span class="grow"></span><span class="bright" style="display:inline-flex;gap:6px;align-items:center">${updated}</span>${pages()}</div>` },
+  { id: "C", title: "Display window as the centrepiece",
+    note: "A wide display spells out the state, like the site's page display: what's shown and when it was updated, with refresh at its end. The profile and Emails keys sit beside it, smaller in weight. <b>Trade-off:</b> the most readable state, but the display repeats what the keys already show.",
+    row: () => `<div class="strip-row optC">${brand}<span class="cdisp"><span class="disp wide">Dashboard <em>· 2 of 3 profiles ·</em> 2 min ago</span><span class="key sq" title="Refresh now (⌘R)">↻</span></span><span class="ckeys" style="display:inline-flex;gap:6px;align-items:center">${prof()}<span style="width:4px"></span>${emails}</span>${pages()}</div>` },
+];
+
+document.getElementById("opts").innerHTML = OPTS.map((o) => `
+  <h2><span class="opt-head"><b>${o.id}</b>${o.title}</span></h2>
+  <p class="note">${o.note}</p>
+  <div class="stack">${FACES.map(([f, t]) => `<div><div class="cap">${t}</div>${win(f, o.row())}</div>`).join("")}</div>
+  ${o.id === "A" ? `
+    <div class="cap">Narrow window (760 pt), Std and Silver: the strip takes its own row</div>
+    <div class="stack">${win("std", o.row(), true)}${win("silver", o.row(), true)}</div>
+    <div class="cap">Settings page: the profile keys and Updated are hidden; Emails stays (it also blurs emails in Settings)</div>
+    <div class="stack">${win("std", o.row("settings"))}${win("silver", o.row("settings"))}</div>` : `
+    <div class="cap">Narrow window (760 pt), Std</div>
+    <div class="stack">${win("std", o.row(), true)}</div>`}
+`).join("");
+</script>
+</body>
+</html>

@@ -1,0 +1,347 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cl_audit and claude-transplant</title>
+<style>
+  :root { --bg:#fbfaf7; --ink:#1d1d1b; --muted:#6b6a65; --rule:#e4e1d8; --card:#ffffff; --accent:#0a7ea4; --warn:#b5651d; --ok:#2f7d4f; --bad:#b3261e; --off:#8c8a83; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#141413; --ink:#ecebe6; --muted:#a3a19a; --rule:#2c2b28; --card:#1c1c1a; --accent:#4fb8db; --warn:#e3a157; --ok:#6cc08f; --bad:#f08a80; --off:#77756f; } }
+  :root[data-theme="dark"] { --bg:#141413; --ink:#ecebe6; --muted:#a3a19a; --rule:#2c2b28; --card:#1c1c1a; --accent:#4fb8db; --warn:#e3a157; --ok:#6cc08f; --bad:#f08a80; --off:#77756f; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.55 ui-sans-serif, system-ui, sans-serif; }
+  main { max-width: 880px; margin: 0 auto; padding: 32px 16px 64px; }
+  h1 { font-size: 26px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  h2 { font-size: 18px; margin: 34px 0 10px; padding-top: 14px; border-top: 1px solid var(--rule); }
+  h3 { font-size: 15px; margin: 18px 0 6px; }
+  code { font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; background: color-mix(in srgb, var(--ink) 7%, transparent); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  .card { background: var(--card); border: 1px solid var(--rule); border-radius: 10px; padding: 14px 16px; margin: 12px 0; }
+  .card h3 { margin-top: 0; }
+  .answer { border-left: 4px solid var(--accent); }
+  .tag { display:inline-block; font-size:12px; padding: 1px 8px; border-radius: 99px; border:1px solid currentColor; margin-left: 6px; vertical-align: 1px; white-space: nowrap; }
+  .rec { color: var(--ok); } .no { color: var(--bad); } .maybe { color: var(--warn); } .wait { color: var(--accent); }
+  table { width:100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align:left; padding: 7px 8px; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  ul, ol { padding-left: 20px; } li { margin: 4px 0; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+
+  .legend { display:flex; flex-wrap:wrap; gap:14px; font-size:13px; color:var(--muted); margin: 6px 0 10px; }
+  .sw { display:inline-block; width:12px; height:12px; border-radius:3px; vertical-align:-2px; margin-right:6px; }
+  .map { display:grid; grid-template-columns: 170px 1fr 1fr; gap: 6px; font-size: 13.5px; }
+  .map .h { font-weight: 600; color: var(--muted); font-size: 12.5px; text-transform: uppercase; letter-spacing: .04em; padding: 4px 2px; }
+  .map .lbl { font-weight: 600; padding: 8px 2px; }
+  .map .lbl small { display:block; font-weight: 400; color: var(--muted); }
+  .cell { border-radius: 8px; padding: 8px 10px; border: 1px solid var(--rule); background: var(--card); overflow-wrap:anywhere; }
+  .reach { background: color-mix(in srgb, var(--ok) 12%, var(--card)); border-color: color-mix(in srgb, var(--ok) 50%, transparent); }
+  .out { background: color-mix(in srgb, var(--off) 10%, var(--card)); border-style: dashed; color: var(--muted); }
+  .shared { background: color-mix(in srgb, var(--warn) 12%, var(--card)); border-color: color-mix(in srgb, var(--warn) 50%, transparent); }
+  .span2 { grid-column: 2 / 4; }
+
+  .ladder { display:flex; flex-direction:column; gap:8px; }
+  .step { display:grid; grid-template-columns: 34px 1fr; gap: 10px; align-items:start; }
+  .num { width: 28px; height: 28px; border-radius: 99px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size: 13px; border: 2px solid currentColor; margin-top: 12px; }
+  .step .card { margin: 0; }
+  .meta { display:flex; flex-wrap:wrap; gap: 6px 16px; font-size: 13px; color: var(--muted); margin-top: 6px; }
+
+  .flow { counter-reset: s; list-style: none; padding-left: 0; }
+  .flow > li { counter-increment: s; position: relative; padding-left: 34px; margin: 8px 0; }
+  .flow > li::before { content: counter(s); position: absolute; left: 0; top: 0; width: 24px; height: 24px; border-radius: 99px; background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--accent); font-weight: 700; font-size: 12.5px; display:flex; align-items:center; justify-content:center; }
+
+  @media (max-width: 620px) {
+    .map { grid-template-columns: 1fr 1fr; }
+    .map .lbl { grid-column: 1 / 3; padding-bottom: 0; }
+    .map .h.first { display:none; }
+    .span2 { grid-column: 1 / 3; }
+    table { font-size: 13px; }
+  }
+</style>
+</head>
+<body><main>
+<h1>claude-transplant and cl_audit</h1>
+<p class="sub">Research only: nothing was installed, run, committed or changed, and no Claude profile, folder or Keychain item was touched. 2026-11-03, updated the same day with the Claude Space session's account switch and its answer on which login moved. claude-transplant read at v4.2.1 (2026-11-01); cl_audit read at commit 12f3012 (widget redraw on install).</p>
+
+<div class="card answer">
+<h3>Short answer</h3>
+<ul>
+  <li><b>Your account switch is exactly the case claude-transplant handles.</b> The Claude Space session moved the standard Claude window to a fresh Ultra account, and claude-transplant carried about 100 Code sessions over. It worked, and its undo is still available on this Mac.</li>
+  <li><b>In cl_audit, that's the standard profile only.</b> The tool's paths are fixed to <code>~/Library/Application Support/Claude</code> and <code>~/.claude/projects</code>. Every other profile keeps its sessions in its own folders, out of the tool's reach.</li>
+  <li><b>Right now cl_audit is watching the old account.</b> Claude Space confirmed that only the desktop app signed in to the new account. Claude Code's login in <code>~/.claude</code>, which cl_audit reads usage from, is still the old account. So:
+    <ul>
+      <li>the standard profile's numbers in cl_audit are the old account's;</li>
+      <li>Claude Code in Terminal still runs on the old account;</li>
+      <li>cl_audit doesn't track the new Ultra account at all.</li>
+    </ul>
+    The fix is in open question 1.</li>
+  <li><b>cl_audit doesn't notice a switch.</b> Once a profile is linked to an account seat, cl_audit never updates that link. When <code>~/.claude</code> moves to the new account, the standard profile will show the new account's usage but stay linked to the old seat. cl_audit would then refuse the old account as a new profile, and wouldn't treat the new account as taken. This comes from reading the code; it wasn't tested.</li>
+  <li><b>Not safe with other Claude windows open.</b> When the tool restarts Claude, it takes the first Claude process it finds, then quits and reopens the app as a whole. With other profiles' windows open, it can hit the wrong one.</li>
+  <li><b>Recommendation, in order:</b>
+    <ol>
+      <li>Write the switch down as a short how-to in cl_audit's README.</li>
+      <li>Make cl_audit notice when a profile's account changes and offer to relink it. That's needed whether or not you use claude-transplant.</li>
+      <li>If you'll switch accounts again, add a guided "Change account…" in cl_audit. It would do the backup, quitting, sign-in, relink and usage check, and hand the session move to claude-transplant for the standard profile.</li>
+    </ol>
+    Don't bundle the tool inside cl_audit.</li>
+</ul>
+</div>
+
+<h2>What the Claude Space session did</h2>
+<p>The Claude Space session reported this; it wasn't re-checked here. The goal was to sign the Claude desktop app in to a fresh Ultra account, so the weekly limit starts from zero, without losing the Code sidebar. The session left out a separate workspace clean-up (sidebar sections, a folder rename, rewriting sessions' working folders), and the same should go for any cl_audit feature.</p>
+<ol class="flow">
+  <li><b>Back up</b> (Claude can stay open). <code>~/.claude</code> went into <code>~/claude-config-backup-&lt;date&gt;.tgz</code>. <code>~/Library/Application Support/Claude/</code>, minus caches, was copied to <code>~/Claude-profile-backup-&lt;date&gt;/</code>.</li>
+  <li><b>Optional:</b> check that the new account signs in, without touching the old one: <code>CLAUDE_CONFIG_DIR=~/.claude-newacct claude</code>, then <code>/login</code>.</li>
+  <li><b>Quit</b> the Claude desktop app.</li>
+  <li><b>Run</b> <code>npx claude-transplant</code> (<code>npx</code> runs an npm package without installing it; needs Node 22). Pick the old account and organisation as From and the new one as To. The tool lists the open sessions it would affect and the restart it needs, then prints a one-time approval command. In v4.2.1's code that's <code>--restart-approved &lt;64-hex token&gt;</code>; Claude Space calls it <code>--approve &lt;hash&gt;</code>.</li>
+  <li><b>Run the printed command.</b> It quits and reopens Claude gracefully, moves the records from the old account's folder to the new one's, checks them ("chat messages unchanged ✓"), puts the originals in quarantine under <code>~/Library/Application Support/claude-transplant/</code> and writes a receipt.</li>
+  <li><b>Sign in</b> to the new account in the desktop app. The sessions are in the sidebar.</li>
+</ol>
+<table>
+  <tr><th>Checked afterwards</th><td>Sessions present, the right plan, the weekly limit reset (about 90% on the old account, 0% on the new).</td></tr>
+  <tr><th>Not switched</th><td>Claude Code's own login in <code>~/.claude</code>: <code>oauthAccount</code> in <code>~/.claude.json</code> still names the old account (Claude Space checked it). Nobody ran <code>claude auth login</code> for the new account. The <code>claude setup-token</code> run earlier was for the old account's CI token. So the reset applies to the desktop app's sign-in only.</td></tr>
+  <tr><th>Doesn't follow the switch</th><td>
+    <ul>
+      <li>A <code>CLAUDE_CODE_OAUTH_TOKEN</code> for CI (a long-lived Claude Code token): make a new one with <code>claude setup-token</code>.</li>
+      <li>claude.ai connectors and MCP servers (tools Claude can call): reconnect them.</li>
+      <li>Cloud sessions, cloud environments, synced plugins, plan and billing: all belong to the account.</li>
+    </ul></td></tr>
+  <tr><th>Rollback</th><td><code>npx claude-transplant undo</code> reverses the last move from quarantine. For a deeper rollback, restore <code>~/Claude-profile-backup-*/</code> with Claude closed.</td></tr>
+  <tr><th>Removal</th><td><code>~/.npm/_npx</code> (npx's download cache). <code>~/Library/Application Support/claude-transplant/</code> holds the quarantine and receipts, so it's the rollback: delete it last, once you're sure.</td></tr>
+  <tr><th>Claude Space's advice</th><td>Always <code>--dry-run</code> first, skip <code>--cloud</code> unless you need it, back up both folders. It's unofficial, built on Claude's private files and endpoints, and can break with a Claude update.</td></tr>
+</table>
+
+<h2>What claude-transplant does</h2>
+<p><a href="https://github.com/vitaliyhayda/claude-transplant">vitaliyhayda/claude-transplant</a>: a command-line tool, plus an optional menu bar app, for macOS.</p>
+<ul>
+  <li><b>The problem:</b> the Claude desktop app keeps one small record file per Code session, <code>claude-code-sessions/&lt;account&gt;/&lt;organisation&gt;/local_&lt;id&gt;.json</code> in its data folder. It lists only the folder of the account you're signed in to. The conversations themselves (transcripts) sit in <code>~/.claude/projects</code>, where every account can read them.</li>
+  <li><b>What it moves:</b> only those record files, from one account's folder to another's inside the same data folder, keeping each session's id. Transcripts stay where they are. Each move writes the new record, checks it, puts the old one in quarantine (not deleted) and saves a receipt for <code>undo</code>.</li>
+  <li><b>Covers:</b> the desktop app's Code tab only. Claude Code in Terminal doesn't have this problem, because <code>claude --resume</code> reads the transcripts whoever is signed in. It doesn't touch claude.ai chats or Projects, or the VS Code extension.</li>
+  <li><b>Sessions in use:</b> the desktop app rewrites the records it has open from memory. A session whose Code worker (the Claude Code process behind it) is running waits for an approved, graceful restart; nothing is force-killed. Sessions run by Claude Code in Terminal are always refused.</li>
+</ul>
+
+<h3>What it reads and writes</h3>
+<table>
+  <tr><th>Place</th><th>What it does there</th></tr>
+  <tr><td><code>~/Library/Application Support/Claude/claude-code-sessions/</code></td><td>Moves session records and scheduled-task lists between account folders. <b>Writes.</b></td></tr>
+  <tr><td><code>~/.claude/projects/</code></td><td>Reads transcripts to check each session. Its only write is one empty "Remote Control" pointer line appended to a moved transcript. (Remote Control lets claude.ai drive a session on this Mac.)</td></tr>
+  <tr><td><code>~/.claude.json</code>, its backups, every <code>~/.claude*</code> folder, <code>~/.claude-switch/accounts</code></td><td>Reads them only to show account names and emails in its list.</td></tr>
+  <tr><td><code>~/Library/Logs/Claude/main.log</code>, <code>Claude/config.json</code></td><td>Reads which account the desktop app is signed in to now.</td></tr>
+  <tr><td><code>~/Library/Application Support/claude-transplant/</code></td><td>Its own folder: receipts, quarantine, lock, cache, logs, and the menu bar app.</td></tr>
+  <tr><td><code>~/Library/LaunchAgents/io.github.vitaliyhayda.claude-transplant.plist</code></td><td>The menu bar app's login item, only if you install the menu bar app. The <code>npx</code> command line installs nothing.</td></tr>
+  <tr><td>Keychain: <code>Claude Safe Storage</code> and the app's <code>Cookies</code> file</td><td>Only with <code>--cloud</code>, which the menu bar's Move always uses. <code>Claude Safe Storage</code> is the desktop app's key for its saved web cookies. The tool reads it with <code>/usr/bin/security</code>, decrypts the claude.ai sign-in cookie in memory, and uses it on claude.ai to archive the old account's Remote Control copies. It never reads the Claude Code login items (<code>Claude Code-credentials…</code>).</td></tr>
+  <tr><td>Network</td><td>None for a local move. <code>claude.ai</code> with <code>--cloud</code>. The menu bar app checks <code>registry.npmjs.org</code> for updates at launch and every 6 h, and its Update button runs <code>npx claude-transplant@&lt;version&gt; menubar</code>.</td></tr>
+  <tr><td>Processes</td><td>Reads the process list (<code>ps</code>, <code>pgrep</code>) to find running workers. Quits Claude with AppleScript (<code>tell application "/Applications/Claude.app" to quit</code>) and reopens it with <code>open -g -a</code>, only after you approve the restart.</td></tr>
+</table>
+
+<h3>Project health</h3>
+<table>
+  <tr><th>Licence</th><td>MIT</td></tr>
+  <tr><th>Age and pace</th><td>Created 2026-09-02. v4.2.1 on 2026-11-01. About one release a week (v4.0.7 to v4.2.1 in five weeks).</td></tr>
+  <tr><th>People</th><td>One maintainer: 104 of the 107 commits. Two outside contributors with one or two commits each. 50 stars, 8 forks.</td></tr>
+  <tr><th>Open issues</th><td>3 open, among them a pull request for a Windows port and <a href="https://github.com/vitaliyhayda/claude-transplant/issues/33">issue 33</a>: undoing a failed move can leave a forked session without its parent, and the menu bar's Update can stop its own menu bar.</td></tr>
+  <tr><th>Size and dependencies</th><td>One JavaScript file (5,561 lines) and one Swift file for the menu bar (1,734 lines). No npm dependencies. Needs Node 22 or newer; the menu bar also needs the Xcode command line tools, because it compiles itself at install.</td></tr>
+  <tr><th>Tests</th><td>A large test file (about 750 KB), run in CI on macOS for every change. Releases publish to npm from CI.</td></tr>
+  <tr><th>Evidence it works</th><td>
+    <ul>
+      <li>The author checked it with Claude desktop 4.4212.0 and Claude Code 2.1.309, and moved 499 sessions to another account and back.</li>
+      <li>Claude Space moved about 100 sessions on this Mac.</li>
+      <li>cl_audit's README lists Claude Code 2.1.310 and the Claude app 3.6556.2.</li>
+    </ul>
+    Both tools rely on Claude's private file layout.</td></tr>
+</table>
+
+<h2>Where a profile's history lives</h2>
+<p>When cl_audit opens a profile's Claude window, <code>Launcher.openClaude</code> starts the desktop app with <code>--user-data-dir=&lt;folder&gt;</code> (the desktop app's flag for its data folder). It also sets <code>CLAUDE_CONFIG_DIR</code> (Claude Code's setting for its folder). So that window's Code tab saves transcripts in the profile's Claude Code folder and records in the profile's data folder.</p>
+<div class="legend">
+  <span><span class="sw" style="background:color-mix(in srgb, var(--ok) 35%, transparent)"></span>claude-transplant reaches it</span>
+  <span><span class="sw" style="border:1px dashed var(--off)"></span>out of its reach</span>
+  <span><span class="sw" style="background:color-mix(in srgb, var(--warn) 35%, transparent)"></span>shared by every Claude window</span>
+</div>
+<div class="map">
+  <div class="h first"></div><div class="h">Standard profile <span class="muted">(e.g. "main")</span></div><div class="h">Any other profile <span class="muted">(e.g. "work")</span></div>
+
+  <div class="lbl">Claude Code folder<small>CLAUDE_CONFIG_DIR</small></div>
+  <div class="cell reach"><code>~/.claude</code></div>
+  <div class="cell out"><code>~/.claude-work</code></div>
+
+  <div class="lbl">Transcripts<small>one .jsonl file per session</small></div>
+  <div class="cell reach"><code>~/.claude/projects/&lt;folder&gt;/&lt;id&gt;.jsonl</code></div>
+  <div class="cell out"><code>~/.claude-work/projects/…</code>, or a link to another profile's when "memory &amp; history" is shared</div>
+
+  <div class="lbl">Desktop data folder<small>--user-data-dir</small></div>
+  <div class="cell reach"><code>~/Library/Application Support/Claude</code></div>
+  <div class="cell out"><code>~/Library/Application Support/Claude-work</code></div>
+
+  <div class="lbl">Session records<small>what the Code sidebar lists</small></div>
+  <div class="cell reach"><code>…/Claude/claude-code-sessions/&lt;account&gt;/&lt;org&gt;/</code></div>
+  <div class="cell out"><code>…/Claude-work/claude-code-sessions/&lt;account&gt;/&lt;org&gt;/</code></div>
+
+  <div class="lbl">Claude Code login<small>Keychain</small></div>
+  <div class="cell"><code>Claude Code-credentials</code></div>
+  <div class="cell"><code>Claude Code-credentials-&lt;8 hex&gt;</code> <span class="muted">(first 8 hex characters of SHA-256 of the folder path)</span></div>
+
+  <div class="lbl">Desktop cookie key<small>Keychain</small></div>
+  <div class="cell shared span2"><code>Claude Safe Storage</code>. The Electron framework names this key after the app, not the data folder, so it's very likely one key for every Claude window, cl_audit's included. claude-transplant reads it only with <code>--cloud</code>. <span class="muted">(Not checked on this Mac, by design.)</span></div>
+</div>
+<p class="small muted">Neither tool reads the Claude Code login items for a move; they're in the table so the naming is in one place. cl_audit's agent reads them, read-only, to fetch usage.</p>
+
+<h2>How cl_audit is built, for this question</h2>
+<ul>
+  <li><b>A profile is one seat</b> (one account in one organisation), and no two profiles share one.
+    <ul>
+      <li>Each profile has its own Claude Code folder.</li>
+      <li>Every profile except the one using <code>~/.claude</code> also has its own desktop data folder (<code>~/Library/Application Support/Claude-&lt;id&gt;</code>). The profile using <code>~/.claude</code> uses the standard Claude window.</li>
+    </ul></li>
+  <li><b>How a profile gets its seat:</b> <code>FolderRules.linkSeats</code> links a profile to the seat its folder is signed in to, once, and from then on leaves linked profiles alone. The "Wrong account" warning compares two things: the email the agent sees for the login, and the email in the folder's <code>.claude.json</code>. After a clean switch, both say the new account, so nothing warns that the saved seat is still the old one.</li>
+  <li><b>Keychain naming:</b> <code>Account.keychainServices</code> gives <code>Claude Code-credentials</code> for <code>~/.claude</code>. For any other folder it's <code>Claude Code-credentials-&lt;sha8&gt;</code>, tried for the path with and without a trailing slash.</li>
+  <li><b>Three roles, one program:</b>
+    <ul>
+      <li>The <b>agent</b> reads usage and the plan for every profile. It is the only part that reads the Keychain, and it starts and quits Dock icons and Claude windows.</li>
+      <li>The <b>Dock icons</b> only show what the agent saved.</li>
+      <li>The <b>cl_audit window</b> is the only settings editor: one locked write to <code>accounts.json</code>.</li>
+    </ul></li>
+  <li><b>Already there, and useful for a switch:</b>
+    <ul>
+      <li>sign-in in Terminal for a folder (<code>ClaudeCLI.openLogin</code>);</li>
+      <li>the agent's window quit and reopen, including "Claude is asking";</li>
+      <li><code>ClaudeRuns.scan</code>, which lists every running Claude window and Claude Code session;</li>
+      <li>the usage and plan reading that would confirm the reset.</li>
+    </ul></li>
+  <li><b>Never done today:</b> writing into Claude's own data (session records, transcripts), and reading the desktop app's cookie key. The README's security section says so explicitly.</li>
+</ul>
+
+<h2>Integration options, lightest first</h2>
+<div class="ladder">
+  <div class="step"><div class="num rec">1</div><div class="card">
+    <h3>A how-to in the README <span class="tag rec">recommended now</span></h3>
+    <p>"Moving the standard profile to another account": Claude Space's six steps, plus five lines for cl_audit:</p>
+    <ul>
+      <li>Sign Claude Code in too (<code>claude auth login</code> for <code>~/.claude</code>), not only the desktop app. This is the step this switch missed.</li>
+      <li>Quit every Claude window first, not only the standard one.</li>
+      <li>Leave <code>--cloud</code> off.</li>
+      <li>Only the standard profile can carry its sessions this way.</li>
+      <li>Relink the profile afterwards (option 2).</li>
+    </ul>
+    <div class="meta"><span>Effort: under an hour</span><span>Reaches: standard profile</span><span>Risk: low</span></div>
+  </div></div>
+
+  <div class="step"><div class="num rec">2</div><div class="card">
+    <h3>cl_audit notices a changed account <span class="tag rec">recommended</span></h3>
+    <ul>
+      <li>When a profile's folder is signed in to a different seat than the one it's linked to, the profile settings say so, with <b>Use this account</b>. That relinks the profile and keeps its Dock icon, window and settings. It's refused if another profile has that seat.</li>
+      <li>The check needs only <code>.claude.json</code>, which cl_audit already reads; no Keychain.</li>
+      <li>This is a fix to cl_audit itself, useful with or without claude-transplant. It belongs to the session that builds cl_audit.</li>
+    </ul>
+    <div class="meta"><span>Effort: small</span><span>Reaches: every profile</span><span>Risk: low</span></div>
+  </div></div>
+
+  <div class="step"><div class="num maybe">3</div><div class="card">
+    <h3>A guided "Change account…" for a profile <span class="tag maybe">if you'll switch again</span></h3>
+    <p>cl_audit walks through Claude Space's steps:</p>
+    <ol>
+      <li>Back up the profile's two folders, minus caches, to a dated folder.</li>
+      <li>The agent quits every Claude window.</li>
+      <li>Terminal runs <code>claude auth login</code> for the profile's folder.</li>
+      <li>Terminal runs a pinned <code>npx claude-transplant@4.2.1 --dry-run</code>, then the move. The tool asks for its own approval; cl_audit never passes <code>--cloud</code>.</li>
+      <li>The window reopens, and you sign in with Claude's own screen.</li>
+      <li>cl_audit relinks the seat, confirms the new plan and the usage reset, and lists what doesn't follow the switch.</li>
+    </ol>
+    <div class="meta"><span>Effort: medium</span><span>Reaches: standard profile (others after option 4 or 5)</span><span>Risk: needs Node 22 for this flow; depends on a tool cl_audit doesn't control</span></div>
+  </div></div>
+
+  <div class="step"><div class="num maybe">4</div><div class="card">
+    <h3>Improve claude-transplant itself <span class="tag maybe">your call</span></h3>
+    <p>A pull request with three changes:</p>
+    <ul>
+      <li>a <code>--data-dir</code> flag;</li>
+      <li>a <code>--config-dir</code> flag, or reading <code>CLAUDE_CONFIG_DIR</code>;</li>
+      <li>matching the desktop process by its <code>--user-data-dir</code>.</li>
+    </ul>
+    <p>The tool would then work for any one cl_audit profile, safely beside the other windows, and option 3 would reach every profile. It helps anyone running several Claude windows.</p>
+    <div class="meta"><span>Effort: medium, in someone else's 5,500-line file</span><span>Reaches: one profile at a time</span><span>Risk: low for cl_audit; the maintainer decides</span></div>
+  </div></div>
+
+  <div class="step"><div class="num maybe">5</div><div class="card">
+    <h3>A native record move <span class="tag maybe">later, if at all</span></h3>
+    <ul>
+      <li>Swift code in cl_audit moves the simple sessions: no forks, no scheduled tasks, no running worker, Claude closed. It refuses the rest and points to claude-transplant.</li>
+      <li>It uses the tool's lessons: atomic writes, quarantine instead of delete, a receipt and undo, and dropping the old account's saved error fields.</li>
+      <li>No Node, and it works for every profile.</li>
+      <li>The same code could later carry a session from one profile to another (say Work's limit is full and you go on in Main). That's a separate feature, because the data folders and transcripts differ.</li>
+    </ul>
+    <div class="meta"><span>Effort: large</span><span>Reaches: every profile</span><span>Risk: cl_audit starts writing Claude's private data</span></div>
+  </div></div>
+
+  <div class="step"><div class="num no">×</div><div class="card">
+    <h3>Bundle claude-transplant inside cl_audit <span class="tag no">not recommended</span></h3>
+    <p>Shipping its JavaScript in the app means shipping Node 22 or requiring it. It also means following its weekly releases and taking on its bugs (see issue 33), with the menu bar's <code>--cloud</code> path breaking the README's promise about what cl_audit reads.</p>
+  </div></div>
+</div>
+
+<h2>Risks</h2>
+<h3>Credentials</h3>
+<ul>
+  <li><code>--cloud</code> reads <code>Claude Safe Storage</code>, which unlocks the desktop app's claude.ai sign-in cookie. If that key is shared, as it very likely is, the same read unlocks every cl_audit profile's web sign-in. That's a full claude.ai session, much more than the short-lived usage token cl_audit keeps in memory.</li>
+  <li>Without <code>--cloud</code>, the tool reads no Keychain item. So any cl_audit flow should leave it off.</li>
+  <li>The backups contain every transcript and the desktop app's data, with its cookies still encrypted. Keep them in your home folder only, and delete them once you're sure.</li>
+</ul>
+<h3>Sessions and windows in use</h3>
+<ul>
+  <li>A record moved under a running window gets rolled back, because the desktop app rewrites the records it has open from memory.</li>
+  <li>claude-transplant's <code>appProcess</code> takes the first process running <code>/Applications/Claude.app/Contents/MacOS/Claude</code>, whatever its data folder. Its AppleScript quit and <code>open -a</code> address the app, not one window.</li>
+  <li>With cl_audit's other windows open, three things can happen: the wrong profile's window quits; "reopen" just brings an existing profile window forward; or the move stops with "Open Claude sessions changed". So quit them all first.</li>
+  <li>Its signed-in-account check reads <code>~/Library/Logs/Claude/main.log</code>, which every window probably writes to (not checked).</li>
+</ul>
+<h3>cl_audit after a switch</h3>
+<ul>
+  <li><b>Two sign-ins per profile:</b> the standard profile has Claude Code's sign-in in <code>~/.claude</code>, which is what cl_audit reads usage from, and the desktop app's own. A switch has to move both.
+    <ul>
+      <li>This time only the desktop app moved, so the standard window and its profile are now on different accounts. cl_audit's one-seat-per-profile model doesn't expect that.</li>
+      <li>Nothing in cl_audit flags it: its "Wrong account" check compares two records of the Claude Code login, which still agree with each other.</li>
+    </ul></li>
+  <li><b>Stale seat:</b> the profile stays linked to the old account, as described above. Until option 2 exists, the way out is removing the profile and adding it again. That reinstalls its Dock icon but keeps its folders.</li>
+  <li><b>Mixed history:</b> the dashboard's usage history reads the profile's Claude Code folder, so it probably shows the old and new account's use as one profile from now on.</li>
+  <li><b>Sessions landing where no window looks:</b> the tool lists every <code>~/.claude*</code> folder's account as a target, cl_audit's profiles included. Moving the standard window's sessions "to Work" files them under Work's seat in the standard data folder, which no window shows, because Work's seat belongs to another profile.</li>
+</ul>
+<h3>Rollback</h3>
+<ul>
+  <li><code>undo</code> reverses only the last move, and refuses if a moved session changed since.</li>
+  <li><code>~/Library/Application Support/claude-transplant/</code> on this Mac is the rollback for Claude Space's move; deleting it makes the move final.</li>
+</ul>
+<h3>Licence</h3>
+<ul>
+  <li>MIT works with cl_audit's PolyForm Perimeter licence. cl_audit may bundle, port or adapt the code, as long as the MIT copyright and permission notice stay with any copied part.</li>
+  <li>Learning the file format and writing new Swift code needs no notice; crediting the project is still good form.</li>
+  <li>Don't use "claude-transplant" as a feature name.</li>
+</ul>
+<h3>Upkeep, supply chain, data</h3>
+<ul>
+  <li>One maintainer, weekly releases, and Claude's private file layout underneath. Pin a version (<code>npx claude-transplant@4.2.1</code>): without one, npx fetches the newest release.</li>
+  <li>Moving personal history into a Team or Enterprise organisation makes it that organisation's data.</li>
+  <li>Since cl_audit is public, check how Anthropic's terms treat moving to a fresh account to reset a weekly limit before cl_audit presents a feature that way.</li>
+</ul>
+
+<h2>Open questions for you</h2>
+<ol>
+  <li><b>Move <code>~/.claude</code> to the new account too?</b> It's still on the old one.
+    <ul>
+      <li>cl_audit shows no Log in… button here, because it sees no mismatch. Do it in Terminal instead: <code>claude auth login</code> with <code>CLAUDE_CONFIG_DIR</code> unset, then sign in to the new account.</li>
+      <li>Afterwards, relink the profile. Until option 2 exists, that means removing the profile in cl_audit and adding it again; its folders are kept, and its Dock icon is reinstalled.</li>
+      <li>If you'd rather keep watching the old account, a better fit is giving the old account its own profile (new folder and window). The standard profile would then follow the new account.</li>
+    </ul></li>
+  <li><b>One-off or recurring?</b> If you'll switch the standard profile's account again, option 3 earns its keep. If not, options 1 and 2 are enough.</li>
+  <li><b>What happens to the old account?</b> If it comes back as its own profile, it gets new folders and window, and its earlier sessions stay with the new account in the standard window.</li>
+  <li><b>Carry sessions between profiles at all?</b> For example, Work's limit is full and you go on in Main. Only option 5 leads there.</li>
+  <li><b>May cl_audit write into Claude's own data folders?</b> Only option 5 needs this, and the README's security section would change.</li>
+  <li><b>Contribute option 4 upstream?</b> It's a pull request to someone else's repo, so it waits for your go.</li>
+</ol>
+
+<h2>How this was researched</h2>
+<ul class="small">
+  <li>claude-transplant: README, package.json, LICENSE, SECURITY.md, the CI workflow, <code>transplant.js</code> and <code>menubar.swift</code>, read through the GitHub API as plain text, plus its commit, issue and release history. Nothing was run.</li>
+  <li>cl_audit: README, <code>Launcher.swift</code> (<code>openClaude</code>), <code>Model.swift</code> (<code>Account</code>, <code>Seat</code>), <code>Folders.swift</code> (<code>linkSeats</code>, <code>ClaudeRuns</code>), <code>Settings.swift</code> (Wrong account), <code>Agent.swift</code>, <code>Config.swift</code>, <code>NewAccount.swift</code>. Read only; another session owns cl_audit builds.</li>
+  <li>The Claude Space session sent three messages: its assessment, the live account switch on this Mac (about 100 sessions), and, on request, which login moved. Its report is included as given, without account ids or emails. One detail differs from the v4.2.1 code: the approval flag's name.</li>
+  <li>Not touched: any Claude profile, Claude Code folder, desktop data folder, Keychain item, or cl_audit's own <code>accounts.json</code>.</li>
+</ul>
+</main></body>
+</html>

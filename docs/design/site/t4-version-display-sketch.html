@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Release Display</title>
+<style>
+  * { box-sizing: border-box; }
+  :root { --glow: 127,249,234; --mono: ui-monospace, "SF Mono", Menlo, monospace; --sans: -apple-system, system-ui, sans-serif; }
+  body { margin: 0; padding: 0 16px 60px; background: #f4f4f2; font: 14px/1.5 var(--sans); color: #374151; }
+  main { max-width: 1100px; margin: 0 auto; }
+  h1 { font: 700 15px var(--mono); text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 4px; color: #111827; }
+  .lead { margin: 0 0 18px; color: #6b7280; font-size: 13px; max-width: 105ch; }
+  .var { margin: 26px 0 0; }
+  .var h2 { font: 700 12px var(--mono); text-transform: uppercase; letter-spacing: .08em; margin: 0 0 3px; color: #111827; }
+  .var p { margin: 0 0 8px; color: #6b7280; font-size: 12.5px; max-width: 105ch; }
+  .stage { padding: 18px; border-radius: 12px; display: grid; gap: 16px;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #29292b, #222224); }
+  .w584 { width: 584px; max-width: 100%; } .w334 { width: 334px; max-width: 100%; }
+  .cap { font: 600 10px var(--mono); color: #9a9aa0; letter-spacing: .06em; margin-bottom: 6px; }
+  .cap b { color: #d4d4d8; font-weight: 600; }
+
+  /* the display window, as on the site */
+  .disp { position: relative; display: block; width: 100%; height: 30px; padding: 0 12px; border-radius: 5px; overflow: hidden;
+    background: linear-gradient(180deg, #030607, #0a1113 70%, #0c1517);
+    box-shadow: inset 0 1px 3px rgba(0,0,0,.9), inset 0 0 0 1px rgba(255,255,255,.035), 0 0 0 1px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.07);
+    font: 600 11px/30px var(--mono); letter-spacing: .12em; text-transform: uppercase; white-space: nowrap;
+    color: rgb(var(--glow)); text-shadow: 0 0 3px rgba(var(--glow), .75), 0 0 9px rgba(var(--glow), .35); cursor: default; }
+  .disp::after { content: ""; position: absolute; inset: 0 0 55% 0; pointer-events: none; background: linear-gradient(180deg, rgba(255,255,255,.07), transparent); }
+  .disp em { font-style: normal; color: rgba(var(--glow), .38); text-shadow: none; }
+  .disp .sub { font-weight: 400; color: rgba(var(--glow), .72); text-shadow: 0 0 2px rgba(var(--glow), .45), 0 0 6px rgba(var(--glow), .18); }
+  /* the text line inside the window; it is moved left to show the rest of a long text */
+  .line { display: inline-block; will-change: transform; }
+  .line.scroll { transition: transform var(--t, 4s) linear; }
+
+  /* the frames row: still pictures of the sequence */
+  .frames { display: grid; gap: 10px; }
+  .frame { display: grid; grid-template-columns: 190px minmax(0, 1fr); gap: 12px; align-items: center; }
+  .frame .cap { margin: 0; }
+  @media (max-width: 760px) { .frame { grid-template-columns: 1fr; gap: 4px; } }
+</style>
+</head>
+<body>
+<main>
+<h1>cl_audit T4 · release display · final (built)</h1>
+<p class="lead">The release display above the hero keys steps through three pages: the release, the versions it was checked with, and an amber NOTE. A page longer than the window waits, scrolls to its end and waits again before the next page; page marks at the right end are small keys (a click shows that page), and the current one drains from the left as a countdown to the next page. The pointer over the display holds the page change. The earlier variants are in archive/cl-audit-site-t4-version-display-sketch-all-options.html.</p>
+<section class="var">
+  <h2>The three pages</h2>
+  <div class="stage">
+    <div class="w584"><div class="disp"><span class="line"><span>cl_audit 26.10.1</span> <em>·</em> <span>24 Oct 2026</span> <em>·</em> <span class="sub">Apple silicon · macOS 13 or later</span></span></div></div>
+    <div class="w584"><div class="disp"><span class="line"><em>Checked with</em> <span>Claude Code 2.1.310</span> <em>·</em> <span>Claude app 3.6556.2</span></span></div></div>
+    <div class="w584"><div class="disp"><span class="line"><em style="color:#fbbf24;text-shadow:0 0 3px rgba(251,191,36,.7)">Note</em> <span class="sub">newer Claude versions may need a cl_audit update</span></span></div></div>
+  </div>
+</section>
+</main>
+
+
+</body>
+</html>

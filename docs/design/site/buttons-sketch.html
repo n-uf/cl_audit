@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Hi-Fi Buttons</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0 16px 60px; background: #f4f4f2; font: 14px/1.5 -apple-system, system-ui, sans-serif; color: #374151; }
+  main { max-width: 1100px; margin: 0 auto; }
+  h1 { font: 700 15px ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 4px; color: #111827; }
+  .lead { margin: 0 0 18px; color: #6b7280; font-size: 13px; max-width: 100ch; }
+  .var { margin: 26px 0 0; }
+  .var h2 { font: 700 12px ui-monospace, Menlo, monospace; text-transform: uppercase; letter-spacing: .08em; margin: 0 0 3px; color: #111827; }
+  .var p.why { margin: 0 0 8px; color: #6b7280; font-size: 12.5px; max-width: 100ch; }
+  /* the site's hero card, as on cl-audit.n-uf.com */
+  .stage { background: #1c1c1e; border-radius: 14px; padding: 18px; box-shadow: 0 10px 28px rgba(0,0,0,.18); }
+  .hero { padding: 22px 24px; border-radius: 14px; color: #ececee;
+    background: linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.015)), rgba(255,255,255,.031);
+    box-shadow: inset 0 0 0 1px rgba(255,255,255,.07), inset 0 1px 0 rgba(255,255,255,.04); }
+  .hero h3 { margin: 0 0 6px; font-size: 26px; letter-spacing: -.02em; }
+  .hero p { margin: 0 0 16px; color: #a8a8ae; font-size: 14px; max-width: 70ch; }
+  .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .meta { margin-top: 10px; color: #8e8e93; font-size: 12px; }
+  .link { color: #9a9aa0; text-decoration: none; font-size: 13.5px; }
+  .link:hover { color: #ececee; }
+  .key { position: relative; display: inline-flex; align-items: center; gap: 9px; border: 0; cursor: pointer; text-decoration: none; user-select: none;
+    transition: transform .06s, box-shadow .06s, filter .15s; -webkit-tap-highlight-color: transparent; }
+  .key:active { transform: translateY(1px); }
+  .led { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+
+  /* T1 · brushed aluminium */
+  .t1 { height: 38px; padding: 0 18px; border-radius: 4px; font: 600 11.5px/1 -apple-system, system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: #2a2a2a;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.12) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #ececea, #c7c7c2);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.85), inset 0 -1px 0 rgba(0,0,0,.22), 0 0 0 1px #6f6f6b, 0 2px 0 #2c2c2a, 0 4px 8px rgba(0,0,0,.45); }
+  .t1:hover { filter: brightness(1.04); }
+  .t1:active { box-shadow: inset 0 1px 0 rgba(255,255,255,.6), inset 0 -1px 0 rgba(0,0,0,.2), 0 0 0 1px #6f6f6b, 0 1px 0 #2c2c2a, 0 2px 4px rgba(0,0,0,.4); }
+  .t1 .led { background: #ff7a3d; box-shadow: 0 0 0 2px rgba(0,0,0,.18), 0 0 8px rgba(255,122,61,.9); }
+
+  /* T2 · black anodised, white legend */
+  .t2 { height: 38px; padding: 0 18px; border-radius: 4px; font: 600 11.5px/1 -apple-system, system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: #e9e9e9;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.035) 0 1px, rgba(0,0,0,.05) 1px 2px), linear-gradient(180deg, #3b3b3e, #1d1d1f);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.14), inset 0 -1px 0 rgba(0,0,0,.6), 0 0 0 1px #000, 0 2px 0 #000, 0 4px 9px rgba(0,0,0,.55); }
+  .t2:hover { filter: brightness(1.12); }
+  .t2:active { box-shadow: inset 0 1px 0 rgba(255,255,255,.08), inset 0 -1px 0 rgba(0,0,0,.6), 0 0 0 1px #000, 0 1px 0 #000, 0 2px 4px rgba(0,0,0,.5); }
+  .t2 .bar { position: absolute; left: 10px; right: 10px; top: 5px; height: 2px; border-radius: 2px; background: #ff7a3d; box-shadow: 0 0 8px rgba(255,122,61,.85); }
+  .t2.primary { padding-top: 4px; }
+
+  /* T3 · backlit legend */
+  .t3 { height: 38px; padding: 0 18px; border-radius: 5px; font: 600 11px/1 ui-monospace, "SF Mono", Menlo, monospace; letter-spacing: .16em; text-transform: uppercase; color: #cfcfd2;
+    background: linear-gradient(180deg, #2b2b2e, #18181a);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.1), inset 0 0 0 1px rgba(255,255,255,.04), 0 0 0 1px #050505, 0 2px 0 #050505, 0 4px 9px rgba(0,0,0,.5); }
+  .t3.primary { color: #ffb27d; text-shadow: 0 0 4px rgba(255,140,80,.8), 0 0 12px rgba(255,120,60,.45); }
+  .t3:hover { filter: brightness(1.15); }
+  .t3:active { box-shadow: inset 0 1px 2px rgba(0,0,0,.6), 0 0 0 1px #050505, 0 1px 0 #050505; }
+
+  /* T4 · keys set in a brushed front-panel strip */
+  .plate { display: inline-flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 7px;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, rgba(0,0,0,.04) 1px 2px), linear-gradient(180deg, #4a4a4d, #343437);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -1px 0 rgba(0,0,0,.4), 0 0 0 1px #0d0d0e, 0 6px 16px rgba(0,0,0,.45); }
+  .plate .lbl { font: 600 9.5px/1 -apple-system, system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+  .t4 { height: 30px; padding: 0 14px; border-radius: 3px; font: 600 11px/1 -apple-system, system-ui, sans-serif; letter-spacing: .1em; text-transform: uppercase; color: #232323;
+    background: repeating-linear-gradient(90deg, rgba(255,255,255,.12) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #e4e4e0, #bdbdb8);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,.8), inset 0 -1px 0 rgba(0,0,0,.25), 0 0 0 1px #1a1a1a, 0 2px 0 #111; }
+  .t4:active { box-shadow: inset 0 1px 0 rgba(255,255,255,.5), 0 0 0 1px #1a1a1a, 0 1px 0 #111; }
+  .t4 .led { width: 6px; height: 6px; background: #ff7a3d; box-shadow: 0 0 6px rgba(255,122,61,.9); }
+  .divider { width: 1px; align-self: stretch; background: rgba(0,0,0,.45); box-shadow: 1px 0 0 rgba(255,255,255,.08); }
+
+  @media (max-width: 600px) { .hero h3 { font-size: 21px; } .plate { flex-wrap: wrap; } }
+</style>
+</head>
+<body>
+<main>
+<h1>cl_audit site · hero buttons · hi-fi sketches</h1>
+<p class="lead">The Overview's Download for Mac / Install steps / Open the dashboard, as keys from a Technics receiver front panel. Shown on the site's own hero card. Press them: they go down a pixel like real keys.</p>
+
+<section class="var">
+  <h2>T1 · Brushed aluminium keys</h2>
+  <p class="why">Silver keys with a fine brushed grain, dark uppercase legend, a crisp bevel and a shadow underneath. The download key carries a small orange LED. The most “front panel”, and the most contrast against the dark page.</p>
+  <div class="stage"><div class="hero">
+    <h3>Every Claude profile, side by side on your Mac.</h3>
+    <p>A profile is one Claude setup: its Claude Code folder and sign-in, its Claude window and its Dock icon.</p>
+    <div class="row"><a class="key t1" href="#"><span class="led"></span>Download for Mac</a><a class="key t1" href="#">Install steps</a><a class="link" href="#">Open the dashboard</a></div>
+    <div class="meta">cl_audit 26.10.1 · 24 Oct 2026 · Apple silicon · macOS 13 or later</div>
+  </div></div>
+</section>
+
+<section class="var">
+  <h2>T2 · Black anodised keys</h2>
+  <p class="why">Dark brushed keys with a white printed legend, like the turntable’s start/stop keys; the download key has a thin orange light strip along its top edge. Calmer on the dark site.</p>
+  <div class="stage"><div class="hero">
+    <h3>Every Claude profile, side by side on your Mac.</h3>
+    <p>A profile is one Claude setup: its Claude Code folder and sign-in, its Claude window and its Dock icon.</p>
+    <div class="row"><a class="key t2 primary" href="#"><span class="bar"></span>Download for Mac</a><a class="key t2" href="#">Install steps</a><a class="link" href="#">Open the dashboard</a></div>
+    <div class="meta">cl_audit 26.10.1 · 24 Oct 2026 · Apple silicon · macOS 13 or later</div>
+  </div></div>
+</section>
+
+<section class="var">
+  <h2>T3 · Backlit keys</h2>
+  <p class="why">Dark keys whose legend glows, like an illuminated function key: the download key glows warm orange (the site’s accent), Install steps is plain white. Matches the LOGIN · SECURITY display window.</p>
+  <div class="stage"><div class="hero">
+    <h3>Every Claude profile, side by side on your Mac.</h3>
+    <p>A profile is one Claude setup: its Claude Code folder and sign-in, its Claude window and its Dock icon.</p>
+    <div class="row"><a class="key t3 primary" href="#">↓ Download for Mac</a><a class="key t3" href="#">Install steps</a><a class="link" href="#">Open the dashboard</a></div>
+    <div class="meta">cl_audit 26.10.1 · 24 Oct 2026 · Apple silicon · macOS 13 or later</div>
+  </div></div>
+</section>
+
+<section class="var">
+  <h2>T4 · Keys in a front-panel strip</h2>
+  <p class="why">Smaller aluminium keys set into a brushed dark plate, with a printed label, like a row of keys on the receiver. Groups the actions as one control; the dashboard becomes the third key.</p>
+  <div class="stage"><div class="hero">
+    <h3>Every Claude profile, side by side on your Mac.</h3>
+    <p>A profile is one Claude setup: its Claude Code folder and sign-in, its Claude window and its Dock icon.</p>
+    <div class="row"><span class="plate"><span class="lbl">cl_audit</span><span class="divider"></span><a class="key t4" href="#"><span class="led"></span>Download for Mac</a><a class="key t4" href="#">Install steps</a><a class="key t4" href="#">Dashboard</a></span></div>
+    <div class="meta">cl_audit 26.10.1 · 24 Oct 2026 · Apple silicon · macOS 13 or later</div>
+  </div></div>
+</section>
+</main>
+</body>
+</html>

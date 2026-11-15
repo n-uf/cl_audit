@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Move: sessions resume</title>
+<style>
+:root {
+  --bg: #f6f5f2; --card: #ffffff; --ink: #1d1d1f; --soft: #4a4a4f; --muted: #7a7a80; --line: #e2e0da;
+  --ok: #1f7a4d; --ok-bg: #e3f3ea; --warn: #9a6200; --warn-bg: #fbefd6; --no: #b3261e; --no-bg: #fbe4e1;
+  --accent: #3b5bdb; --accent-bg: #e8edff; --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161618; --card: #202023; --ink: #ececef; --soft: #c4c4c9; --muted: #8d8d94; --line: #34343a;
+    --ok: #6fd3a0; --ok-bg: #173527; --warn: #f0b85a; --warn-bg: #3a2c12; --no: #ff8a80; --no-bg: #3d1a17;
+    --accent: #8ea6ff; --accent-bg: #1f2747;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161618; --card: #202023; --ink: #ececef; --soft: #c4c4c9; --muted: #8d8d94; --line: #34343a;
+  --ok: #6fd3a0; --ok-bg: #173527; --warn: #f0b85a; --warn-bg: #3a2c12; --no: #ff8a80; --no-bg: #3d1a17;
+  --accent: #8ea6ff; --accent-bg: #1f2747;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; }
+main { max-width: 1080px; margin: 0 auto; padding: 32px 16px 64px; }
+h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -0.01em; }
+h2 { font-size: 18px; margin: 40px 0 12px; }
+p.lede { color: var(--soft); margin: 0 0 8px; max-width: 760px; }
+.note { color: var(--muted); font-size: 13px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+.grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+@media (max-width: 760px) { .grid3, .grid2 { grid-template-columns: 1fr; } }
+.case h3 { margin: 0 0 4px; font-size: 15px; }
+.case .where { font-family: var(--mono); font-size: 12px; color: var(--muted); margin-bottom: 10px; word-break: break-all; }
+.row { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; font-size: 14px; }
+.pill { flex: none; font-size: 11px; font-weight: 600; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+.ok { color: var(--ok); background: var(--ok-bg); }
+.warn { color: var(--warn); background: var(--warn-bg); }
+.no { color: var(--no); background: var(--no-bg); }
+.acc { color: var(--accent); background: var(--accent-bg); }
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+td code, .mono { font-family: var(--mono); font-size: 12px; }
+.tablewrap { overflow-x: auto; }
+.group td { background: var(--bg); font-weight: 600; color: var(--soft); font-size: 12.5px; }
+.opt h3 { margin: 0 0 2px; font-size: 16px; }
+.opt .tag { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.opt dl { display: grid; grid-template-columns: 92px 1fr; gap: 4px 10px; margin: 8px 0 0; font-size: 13.5px; }
+.opt dt { color: var(--muted); }
+.opt dd { margin: 0; }
+.steps { counter-reset: s; list-style: none; padding: 0; margin: 0; }
+.steps li { counter-increment: s; position: relative; padding: 10px 0 10px 40px; border-bottom: 1px solid var(--line); }
+.steps li::before { content: counter(s); position: absolute; left: 0; top: 10px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-bg); color: var(--accent); font-weight: 700; font-size: 13px; display: flex; align-items: center; justify-content: center; }
+.q li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Move: a moved session should resume on the new Mac</h1>
+  <p class="lede">What a session needs after "Move to another Mac" that doesn't come along today, and four ways to close the gaps. Sample data throughout: profile <b>Studio</b>, account <span class="mono">sam@example.com</span>, project <span class="mono">~/code/garden-app</span>, worktree <span class="mono">wt-forms</span>, session "Fix the sign-up form".</p>
+  <p class="note">Evidence: a real export → import with cl_audit's own engine into a fresh throwaway home (the new-Mac stand-in), and the resume rules read from Claude Code 2.1.318's and the Claude app's program text. The resume itself wasn't run: that needs a signed-in Claude Code and launching the programs, which the operator's second-user test will show.</p>
+
+  <h2>Today, on the new Mac</h2>
+  <div class="grid3">
+    <div class="card case">
+      <h3>Folder at the same path</h3>
+      <div class="where">~/code/garden-app is there (cloned beforehand)</div>
+      <div class="row"><span class="pill ok">resumes</span><span>Code tab and <span class="mono">claude --resume</span> both pick it up</span></div>
+      <div class="row"><span class="pill warn">empty</span><span>Rewind, the task list and up-arrow prompt history</span></div>
+      <div class="row"><span class="pill warn">asks again</span><span>folder trust; allowed tools and the project's MCP servers are gone</span></div>
+      <div class="row"><span class="pill no">gone</span><span>the worktree <span class="mono">wt-forms</span> and any uncommitted work, unless moved by hand</span></div>
+    </div>
+    <div class="card case">
+      <h3>Folder missing</h3>
+      <div class="where">~/code/garden-app isn't on this Mac</div>
+      <div class="row"><span class="pill warn">shows</span><span>the Code tab lists it and shows the history</span></div>
+      <div class="row"><span class="pill no">refuses</span><span>sending: "The project folder at … no longer exists … Open a new session in a different folder to continue."</span></div>
+      <div class="row"><span class="pill warn">resumes</span><span><span class="mono">claude --resume &lt;id&gt;</span> finds it by id from any folder, but runs outside the project</span></div>
+      <div class="row"><span class="pill no">says</span><span>Import only counts it under "Folder not here"</span></div>
+    </div>
+    <div class="card case">
+      <h3>Folder at another path</h3>
+      <div class="where">the code is at ~/work/garden-app</div>
+      <div class="row"><span class="pill no">refuses</span><span>Code tab, as for a missing folder, until "Choose folder" re-points it</span></div>
+      <div class="row"><span class="pill warn">hidden</span><span>the new folder's <span class="mono">/resume</span> list shows it only after Ctrl+A (all projects)</span></div>
+      <div class="row"><span class="pill warn">stale</span><span>absolute paths inside the transcript and Rewind still name ~/code/…</span></div>
+      <div class="row"><span class="pill no">says</span><span>Import: the same "Folder not here" words; nothing offers to re-point</span></div>
+    </div>
+  </div>
+
+  <h2>What a session needs, and what travels</h2>
+  <div class="card tablewrap">
+    <table>
+      <thead><tr><th>Item</th><th>Where (in ~/.claude-studio)</th><th>Needed for</th><th>Today</th><th>Secret risk</th><th>Size</th></tr></thead>
+      <tbody>
+        <tr class="group"><td colspan="6">Travels and is written</td></tr>
+        <tr><td>The conversation</td><td><code>projects/&lt;folder&gt;/&lt;id&gt;.jsonl</code></td><td>resume</td><td><span class="pill ok">yes</span> under the old folder name</td><td>high</td><td>KB–tens of MB</td></tr>
+        <tr><td>Subagents, tool results, title</td><td><code>projects/&lt;folder&gt;/&lt;id&gt;/</code></td><td>subagents, re-reads, the list's title</td><td><span class="pill ok">yes</span></td><td>high</td><td>KB–MB</td></tr>
+        <tr><td>Code-tab entry</td><td>the window's <code>local_….json</code></td><td>the Code tab, where it resumes</td><td><span class="pill ok">yes</span> old paths kept</td><td>medium</td><td>KB</td></tr>
+        <tr class="group"><td colspan="6">In the image, left out on import by default</td></tr>
+        <tr><td>Project memory</td><td><code>projects/&lt;folder&gt;/memory/</code></td><td>every session of the project</td><td><span class="pill warn">opt-in</span></td><td>medium</td><td>KB</td></tr>
+        <tr><td>Setup</td><td>CLAUDE.md, settings.json, skills …</td><td>behaviour</td><td><span class="pill warn">opt-in</span></td><td>medium</td><td>KB</td></tr>
+        <tr class="group"><td colspan="6">Never carried</td></tr>
+        <tr><td>The code</td><td>the project folder, its worktrees, uncommitted work</td><td>everything after resume</td><td><span class="pill no">no</span></td><td>high (.env, patches)</td><td>unbounded</td></tr>
+        <tr><td>Rewind</td><td><code>file-history/&lt;id&gt;/</code></td><td>Rewind (copies of every edited file)</td><td><span class="pill no">no</span></td><td>high</td><td>MB–hundreds of MB</td></tr>
+        <tr><td>Task list</td><td><code>tasks/&lt;id&gt;/</code></td><td>the task panel</td><td><span class="pill no">no</span></td><td>low</td><td>bytes</td></tr>
+        <tr><td>Plan</td><td><code>plans/&lt;name&gt;.md</code></td><td>plan mode (Claude Code can rebuild it from the history)</td><td><span class="pill no">no</span></td><td>medium</td><td>KB</td></tr>
+        <tr><td>Prompt history</td><td><code>history.jsonl</code> lines + <code>paste-cache/</code></td><td>up-arrow in that project</td><td><span class="pill no">no</span></td><td>high (every prompt typed)</td><td>KB–MB</td></tr>
+        <tr><td>Trust, allowed tools, project MCP</td><td>the project's entry in <code>.claude.json</code></td><td>no trust prompt; tools and MCP as before</td><td><span class="pill no">no</span> (a sign-in file)</td><td>high</td><td>KB</td></tr>
+        <tr><td>Session env</td><td><code>session-env/&lt;id&gt;/</code></td><td>hook exports, rewritten when hooks run</td><td><span class="pill no">no</span></td><td>high</td><td>bytes</td></tr>
+        <tr><td>Image cache, shell snapshots, debug, old todos</td><td><code>image-cache/</code> …</td><td>nothing on resume</td><td><span class="pill no">no</span></td><td>medium</td><td>KB–MB</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Options</h2>
+  <div class="grid2">
+    <div class="card opt">
+      <h3>A. Folders: find or pick each session's folder</h3>
+      <div class="tag">Import side · fixes the refusal and the hidden list</div>
+      <dl>
+        <dt>Does</dt><dd>Import checks each session's folder. At the same path: nothing to do. Missing or moved: listed with "Pick its folder on this Mac". A picked folder moves the conversation to that folder's name and rewrites the paths in the conversation and the Code-tab entry. A worktree that isn't there is dropped from the entry, so the session runs in the project folder.</dd>
+        <dt>Plus</dt><dd>A0, the small first step: mark imported entries the way the window marks its own imports, so the Code tab offers "Choose folder" instead of refusing. Seen only in the program text: the second-user test confirms it.</dd>
+        <dt>Size</dt><dd>nothing new in the file</dd>
+        <dt>Secrets</dt><dd>none new</dd>
+        <dt>Cost</dt><dd>A0 small, A medium (rewriting the conversation's lines safely)</dd>
+        <dt>Move preset</dt><dd><span class="pill acc">always on</span> it's part of Import</dd>
+      </dl>
+    </div>
+    <div class="card opt">
+      <h3>B-lite. Code: a checklist, not the code</h3>
+      <div class="tag">Export records, Import shows · fixes "what do I need to fetch?"</div>
+      <dl>
+        <dt>Does</dt><dd>Per project: the git remote (with any user name or token stripped), branch, last commit, and how many commits weren't pushed and files weren't committed. The Export page warns first ("garden-app: 3 commits not pushed, push them before you move"). The Import page shows a checklist: clone <span class="mono">github.com/…/garden-app</span> at <span class="mono">~/code/garden-app</span>, check out <span class="mono">feature/forms</span>.</dd>
+        <dt>Size</dt><dd>bytes</dd>
+        <dt>Secrets</dt><dd>low once the remote URL's credentials are stripped</dd>
+        <dt>Cost</dt><dd>small to medium (read-only git on the old Mac)</dd>
+        <dt>Move preset</dt><dd><span class="pill acc">on</span></dd>
+      </dl>
+    </div>
+    <div class="card opt">
+      <h3>B. Code carried</h3>
+      <div class="tag">Export and Import · fixes the code itself</div>
+      <dl>
+        <dt>Does</dt><dd>Everything in B-lite, plus: on import, "Clone it here" for a missing repo at the same path (git with the person's own credentials, on their click). In the encrypted image only: a git bundle of the unpushed commits and a patch of the uncommitted changes, applied on request. A folder that isn't a git repo is listed, and included only on request, with a size cap.</dd>
+        <dt>Size</dt><dd>bundles KB–MB; folders up to the cap</dd>
+        <dt>Secrets</dt><dd>high: uncommitted files can be .env or keys (image only, scanned and listed)</dd>
+        <dt>Cost</dt><dd>large; cl_audit starts running git on the new Mac</dd>
+        <dt>Move preset</dt><dd><span class="pill warn">off</span> opt-in per project</dd>
+      </dl>
+    </div>
+    <div class="card opt">
+      <h3>C. Side files of each moved session</h3>
+      <div class="tag">Export and Import · fixes Rewind, tasks, plans, history, trust</div>
+      <dl>
+        <dt>Does</dt><dd>Carries, per moved session: its task list, its plan, its prompt-history lines with their pasted text, and its project's trust and allowed tools. All in the image only, with the paths re-pointed when A picks a new folder. Rewind's file history is a row of its own, with its size shown. The project's MCP servers follow E2b's MCP rules, left out until Add them. Not carried: session env (hooks write it again; it holds tokens), image cache, shell snapshots, debug files and old todos.</dd>
+        <dt>Size</dt><dd>small, except Rewind (MB–hundreds of MB)</dd>
+        <dt>Secrets</dt><dd>high for prompt history and pastes (image only, key scan listed)</dd>
+        <dt>Cost</dt><dd>medium</dd>
+        <dt>Move preset</dt><dd><span class="pill acc">on</span> tasks, plan, history, trust · <span class="pill warn">off</span> Rewind (size)</dd>
+      </dl>
+    </div>
+  </div>
+
+  <h2>Proposed order</h2>
+  <div class="card">
+    <ol class="steps">
+      <li><b>A0 + A + B-lite.</b> A moved session opens in the right folder, and the person knows what code to fetch. That is the blocker itself.</li>
+      <li><b>C.</b> Rewind, tasks, plans and up-arrow history come along; trust isn't asked again.</li>
+      <li><b>B</b>, if wanted: unpushed and uncommitted work travels in the image; "Clone it here" on the new Mac.</li>
+    </ol>
+  </div>
+
+  <h2>For the operator to pick</h2>
+  <div class="card">
+    <ol class="q">
+      <li>Which options, and in what order (proposed: A0 + A + B-lite, then C, then B if wanted).</li>
+      <li>Rewind's file history in a move: on by default, or a row you turn on (it can be hundreds of MB)?</li>
+      <li>B: should cl_audit ever run git on the new Mac ("Clone it here"), or stay a checklist?</li>
+      <li>Project memory for a move: added by default on import (it belongs to the sessions), or left out as today?</li>
+    </ol>
+  </div>
+</main>
+</body>
+</html>

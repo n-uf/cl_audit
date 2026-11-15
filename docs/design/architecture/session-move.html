@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sessions move</title>
+<style>
+/* cl_audit: move a profile's whole Code sidebar to another account, or into a store. Research, read-only, 2026-11-05.
+   HTML only, nothing built. Std face only. */
+:root {
+  --bg: #121214; --text: #ececee; --muted: #9a9aa0; --faint: #6e6e74;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --grain: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px);
+  --alu: repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #74746f, #52524e);
+  --key-up: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #2e2e2c, 0 2px 0 #121211, 0 3px 7px rgba(0,0,0,.45);
+  --well: inset 0 1px 3px rgba(0,0,0,.75), 0 1px 0 rgba(255,255,255,.05);
+  --ok: #4ade80; --caution: #f5a524; --danger: #f2655a; --accent: #ff7a3d;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+.page { max-width: 1120px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: -.01em; }
+h2 { margin: 36px 0 8px; font-size: 17px; }
+h2 small { font: 600 11px var(--mono); letter-spacing: .12em; color: var(--accent); margin-right: 8px; }
+h3 { margin: 18px 0 6px; font-size: 14.5px; }
+p, li { max-width: 96ch; }
+.lede { margin: 0 0 14px; color: rgba(236,236,238,.8); }
+.meta { font-size: 12.5px; color: var(--muted); margin: 0 0 18px; }
+ul.tight, ol.tight { margin: 6px 0 0; padding-left: 20px; } ul.tight li, ol.tight li { margin: 4px 0; }
+code { font: 12.5px var(--mono); background: rgba(255,255,255,.07); padding: 0 4px; border-radius: 4px; overflow-wrap: anywhere; }
+a { color: #e8a07f; }
+.verdict { margin: 8px 0 0; padding: 14px 16px; border-radius: 10px; background: rgba(255,122,61,.08); box-shadow: inset 0 0 0 1px rgba(255,122,61,.35); }
+.verdict .big { font-size: 18px; font-weight: 650; color: #ffb08a; margin: 0 0 6px; }
+.box { margin: 10px 0 0; padding: 10px 13px; border-radius: 8px; background: rgba(255,255,255,.03); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); font-size: 13.5px; }
+.box b { color: #ffb08a; font-weight: 600; }
+.tablewrap { overflow-x: auto; margin-top: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,.07); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; }
+td:first-child { min-width: 7em; }
+td.y { color: var(--ok); } td.p { color: var(--caution); } td.n { color: var(--danger); }
+.muted { color: var(--muted); }
+
+/* where it lives */
+.stores { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 10px; }
+@media (max-width: 900px) { .stores { grid-template-columns: 1fr; } }
+.store { padding: 12px 14px; border-radius: 10px; background: rgba(255,255,255,.035); box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); font-size: 13px; }
+.store h4 { margin: 0 0 4px; font: 600 11px var(--font); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+.store .path { font: 12px var(--mono); color: #ffb08a; overflow-wrap: anywhere; margin-bottom: 6px; }
+.store ul { margin: 4px 0 0; padding-left: 16px; } .store li { margin: 3px 0; }
+.tag { display: inline-block; font: 600 10px var(--mono); letter-spacing: .08em; padding: 1px 6px; border-radius: 4px; margin-left: 4px; vertical-align: 1px; }
+.tag.acct { background: rgba(74,222,128,.14); color: var(--ok); } .tag.glob { background: rgba(255,255,255,.08); color: var(--muted); } .tag.live { background: rgba(245,165,36,.16); color: var(--caution); }
+
+/* settings cards, layout A */
+.sketches { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 18px; margin-top: 12px; align-items: start; }
+@media (max-width: 900px) { .sketches { grid-template-columns: 1fr; } }
+.sk { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.sk h3 { margin: 0; } .sk .why { margin: 0; font-size: 12.5px; color: rgba(236,236,238,.75); }
+.movepage { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+@media (max-width: 700px) { .movepage { grid-template-columns: 1fr; } }
+.card { position: relative; padding: 14px 16px 10px; border-radius: 10px; background: var(--grain), linear-gradient(180deg, #29292b, #222224);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #0c0c0d, 0 4px 12px rgba(0,0,0,.25); }
+.card + .card { margin-top: 10px; }
+.card h4 { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; font: 600 11px/1.2 var(--font); letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+.card h4::after { content: ""; flex: 1; min-width: 12px; height: 1px; background: rgba(0,0,0,.5); box-shadow: 0 1px 0 rgba(255,255,255,.05); }
+.i { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1.2px solid rgba(255,255,255,.4); font: 700 9px/1 var(--font); color: rgba(255,255,255,.55); flex: none; }
+.srow { padding: 7px 0 6px; border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.035); font-size: 14px; }
+.card h4 + .srow { border-top: 0; box-shadow: none; }
+.srow .k { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+.srow .v { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.desc { margin: 5px 0 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
+.desc.warn { color: var(--caution); }
+.key { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: 3px; flex: none;
+  font: 600 10.5px/1 var(--font); letter-spacing: .1em; text-transform: uppercase; color: #f1f1f0; text-shadow: 0 -1px 0 rgba(0,0,0,.35); white-space: nowrap;
+  background: var(--alu); box-shadow: var(--key-up); }
+.key.primary { background: linear-gradient(180deg, #e9e9e6, #c9c9c5); color: #26262a; text-shadow: none; }
+.led { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+.ok-l { background: var(--ok); box-shadow: 0 0 5px rgba(74,222,128,.8); }
+.caution-l { background: var(--caution); box-shadow: 0 0 5px rgba(245,165,36,.8); }
+.off-l { background: #3a3a3c; }
+.popup { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; height: 30px; padding: 0 10px; border-radius: 6px; background: rgba(0,0,0,.45); box-shadow: var(--well); font: 500 13.5px var(--font); width: 100%; }
+.popup .chev { color: var(--faint); font-size: 11px; }
+.list { display: grid; margin-top: 2px; }
+.li { display: grid; grid-template-columns: 12px 1fr auto; gap: 8px; align-items: baseline; padding: 6px 0; border-top: 1px solid rgba(0,0,0,.4); font-size: 13px; }
+.li:first-child { border-top: 0; }
+.li .n { font: 600 12.5px var(--mono); color: #d4d4d8; }
+.li .s { grid-column: 2 / 4; font-size: 11.5px; color: var(--muted); margin-top: -2px; }
+.steps { display: grid; gap: 0; }
+.st { display: grid; grid-template-columns: 26px 1fr; gap: 10px; padding: 8px 0; border-top: 1px solid rgba(0,0,0,.4); }
+.st:first-child { border-top: 0; }
+.st .no { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid rgba(255,255,255,.35); font: 600 11px var(--font); color: rgba(255,255,255,.7); }
+.st.done .no { background: var(--ok); border-color: var(--ok); color: #0b2a14; }
+.st.now .no { border-color: #5fd4c4; color: #5fd4c4; }
+.st .t { font-weight: 600; font-size: 13.5px; } .st .d { font-size: 12px; color: var(--muted); margin-top: 1px; }
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,.45); }
+.bar .cancel { color: var(--muted); font-size: 14px; }
+pre.tree { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,.35); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); font: 12px/1.55 var(--mono); color: #d4d4d8; overflow-x: auto; }
+.stages { display: grid; gap: 8px; margin-top: 10px; }
+.stage { display: grid; grid-template-columns: 54px 1fr auto; gap: 12px; align-items: start; padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,.03); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+.stage .no { font: 600 11px var(--mono); letter-spacing: .1em; color: var(--accent); padding-top: 2px; }
+.stage .t { font-weight: 600; } .stage .d { font-size: 13px; color: rgba(236,236,238,.78); margin-top: 2px; }
+.stage .c { font: 600 12px var(--mono); color: var(--muted); white-space: nowrap; padding-top: 2px; }
+@media (max-width: 640px) { .stage { grid-template-columns: 1fr; gap: 4px; } }
+ol.dec li { margin: 8px 0; }
+</style></head>
+<body><div class="page">
+<h1>Moving a profile's whole Code sidebar</h1>
+<p class="meta">Research only, 2026-11-05. Nothing written, quit or signed in.
+  Measured by counting entries and reading key names and lengths in the two Claude windows' folders, and by the app's own read-only sidebar listing. No titles, group names or contents were copied out.
+  claude-transplant v4.2.1 (its main). Findings only; the UI sketches are the hub's (cl-audit-session-move-sketch.html). Export/import stays as the second feature (section 8); its page is unchanged.</p>
+
+<div class="box" style="margin:0 0 12px;box-shadow:inset 0 0 0 1px rgba(242,101,90,.55);background:rgba(242,101,90,.08)">
+  <b>Correction, 2026-11-05 (later the same day): the sidebar is synced to claude.ai.</b> A closer read of the Claude app's code shows the sidebar store syncs per account and organisation to <code>/api/claude_code/organizations/&lt;org&gt;/user_settings</code>, and the server's copy is merged in when an account signs in. Synced: groups, which session sits in which, order, sections, pins, sort and group-by. The Local Storage store and the <code>claude_desktop_config.json</code> mirror on this Mac are caches of it. The statements below that it's local only are wrong.
+  <ul class="tight">
+    <li><b>For the move:</b> sessions and scheduled tasks are local files and move as described. The sidebar should be rebuilt <b>through the app</b> once the window is signed in as the new account: a new Claude Code session, opened by cl_audit with its prompt filled in (<code>claude://code/new?folder=…&amp;q=…</code>), applies the plan with the app's own sidebar tools, and the app syncs it.</li>
+    <li><b>Then:</b> each account keeps its own synced sidebar, and session ids don't change, so later switches only file the sessions made since.</li>
+    <li><b>Signing out of the window</b> is harmless for the sidebar: the server's copy comes back at sign-in.</li>
+  </ul>
+</div>
+<div class="verdict">
+  <p class="big">The whole sidebar can move. It's two jobs, though. (See the correction above: the sidebar is also kept on claude.ai.)</p>
+  <ul class="tight">
+    <li><b>The sessions themselves:</b> entries, titles, archived and starred state, and scheduled tasks. They move the way claude-transplant moves them, which has been run live.</li>
+    <li><b>The sidebar's structure:</b> sections, custom groups and their order, which session sits in which group, pins and collapsed state. It sits in the window's own settings stores, in a private format kept in two copies: a live browser-storage copy and a mirror in <code>claude_desktop_config.json</code>. No tool writes it today, <b>claude-transplant included</b>. That's why groups have had to be rebuilt by hand after an account switch. A short test has to show which copy the app trusts at start before cl_audit writes it. The safe fallback is to let the app write it through its own sidebar tools.</li>
+    <li><b>Store</b> is the same move with cl_audit's own folder as the destination, plus the transcripts, so Claude Code's 30-day clean-up can't take them.</li>
+  </ul>
+</div>
+
+<div class="box" style="margin-top:14px"><b>At a glance, for the sketch's "depends on research" parts.</b> Everything is in the Claude window's own data folder, filed under <code>&lt;account&gt;/&lt;org&gt;</code> except where it says otherwise.
+  <ul class="tight">
+    <li><b>Sections</b> (built-in and custom, with order, shown, collapsed, sort and grouping): <code>codeSidebarByScope</code> in Local Storage's <code>dframe-store</code>, mirrored as <code>dframe-code-sections</code> in <code>claude_desktop_config.json</code>.</li>
+    <li><b>Groups, which session sits in which, and the order inside a group:</b> <code>customGroupsByScope</code> (groups, <code>assignments</code>, <code>order</code>), mirrored as <code>dframe-group-scopes</code>.</li>
+    <li><b>Pins</b> (<code>pinnedOrder</code>, <code>navPinnedIds</code>) and <b>collapsed groups:</b> Local Storage only, for the whole window, by session or group id.</li>
+    <li><b>Titles, archived, starred, who started a session:</b> inside each session's entry, <code>claude-code-sessions/&lt;account&gt;/&lt;org&gt;/local_&lt;id&gt;.json</code>.</li>
+    <li><b>Scheduled tasks:</b> <code>scheduled-tasks.json</code> beside the entries.</li>
+  </ul>
+  The sidebar parts are also synced to claude.ai per account and organisation (see the correction at the top).</div>
+
+<h2><small>1</small>Where the sidebar lives</h2>
+<p class="lede">Each Claude window has its own data folder: the standard one for Main, <code>Claude-work</code> for Work. Inside it, everything about the Code sidebar is filed under a key made of <b>account id / organisation id</b>. The window shows only the key it's signed in to.</p>
+<div class="stores">
+  <div class="store"><h4>The sessions</h4><div class="path">claude-code-sessions/&lt;account&gt;/&lt;org&gt;/</div>
+    <ul>
+      <li><code>local_&lt;id&gt;.json</code>: one entry per session, holding title, archived and starred state, worktree, the session that started it, and the account's connector list (names and addresses, no tokens) <span class="tag acct">PER ACCOUNT</span></li>
+      <li><code>scheduled-tasks.json</code>: the routines <span class="tag acct">PER ACCOUNT</span></li>
+      <li><code>archived-sessions.idx</code>: a list of archived ids the app keeps up itself <span class="tag acct">PER ACCOUNT</span></li>
+      <li><code>deleted_&lt;id&gt;</code> markers <span class="tag acct">PER ACCOUNT</span></li>
+    </ul></div>
+  <div class="store"><h4>The structure, live</h4><div class="path">Local Storage › dframe-store (claude.ai origin)</div>
+    <ul>
+      <li><code>codeSidebarByScope</code>: the sections (built-in Pinned, Routines, Sessions and custom ones) with order, shown, collapsed, sort and grouping <span class="tag acct">PER ACCOUNT</span></li>
+      <li><code>customGroupsByScope</code>: groups (id, name), which session is in which group, and the order inside each group <span class="tag acct">PER ACCOUNT</span></li>
+      <li><code>pinnedOrder</code>, <code>navPinnedIds</code>, <code>collapsedGroups</code>, sort and group-by choices, folder colours, sidebar width <span class="tag glob">WHOLE WINDOW</span></li>
+      <li>plus "persisted" copies of the sections, groups and starred lists <span class="tag live">LIVE</span></li>
+    </ul></div>
+  <div class="store"><h4>The structure, mirror</h4><div class="path">claude_desktop_config.json › preferences.epitaxyPrefs</div>
+    <ul>
+      <li><code>dframe-code-sections</code> and <code>dframe-group-scopes</code>: the same sections, groups, assignments and order, key for key <span class="tag acct">PER ACCOUNT</span></li>
+      <li><code>code-projects-order</code>, <code>starred-*</code> lists</li>
+      <li>The file also holds MCP server settings, which can contain secrets. cl_audit may only ever change the sidebar keys.</li>
+    </ul></div>
+</div>
+<div class="box">
+  <b>Synced to claude.ai (corrected).</b> Groups point at local session ids (<code>code:local_…</code>), but the store itself syncs per account and organisation to claude.ai (<code>/api/claude_code/organizations/&lt;org&gt;/user_settings</code>). The <code>ccd-sync-pending:ccd/dframe-store</code> key marks an upload still waiting. An earlier account's structure is still here because each account keeps its own synced copy.
+  <br><b>Group membership is partly inherited.</b> In the sidebar measured, most sessions shown in a group weren't filed there directly (about one in six was). A session started from another session shows in its starter's group: in one group, nearly every session was there only that way. Entries keep who started them, so membership follows when the entries move together.
+</div>
+
+<h3>Measured</h3>
+<p class="muted" style="font-size:12.5px;margin:0 0 6px">Sample numbers, rounded from one Mac's; the profile and folder names are generic.</p>
+<div class="tablewrap"><table>
+<tr><th></th><th>Main window (standard)</th><th>Work window (Claude-work)</th></tr>
+<tr><td>Current account</td><td>120 entries · 4 groups · 100 sessions in groups (about 20 filed directly) · 15 scheduled tasks · 80 archived · no pins now</td><td>10 entries · 2 groups · 5 filed directly · no scheduled tasks</td></tr>
+<tr><td>Earlier account (before an account switch)</td><td>1 entry left · 5 groups · 40 assignments pointing at entries that now sit under the current account · an archive index of 75 ids</td><td>none</td></tr>
+<tr><td>Other scopes</td><td>2 untouched default sidebars (just the 3 built-in sections), a few entry folders with no sidebar</td><td>1 default sidebar</td></tr>
+<tr><td>After the account switch</td><td>Most of the current group names also exist under the earlier account, with new ids: the groups were rebuilt by hand.</td><td></td></tr>
+</table></div>
+
+<h2><small>2</small>What claude-transplant moves, and what happens to the groups</h2>
+<p>It moves the entries and their scheduled-task families only. <code>transplant.js</code> never mentions <code>claude_desktop_config</code>, <code>epitaxy</code>, <code>dframe</code> or Local Storage. Title, archived and starred state travel because they're inside the entry (its <code>DURABLE_RECORD_KEYS</code>, line 45). After a move:</p>
+<ul class="tight">
+  <li><b>In the new account:</b> the sessions show under the default Sessions section, grouped by project. Sessions inherit their starter's group only if that group exists here, and it doesn't, because groups are per account.</li>
+  <li><b>In the old account:</b> its groups and assignments stay, pointing at sessions that are no longer there. The Mac measured shows exactly that: dozens of dangling assignments.</li>
+  <li><b>Pins:</b> they're kept for the whole window by session id, and ids don't change, so pins probably survive. There were none to check on the Mac measured.</li>
+</ul>
+
+<h2><small>3</small>Switching a window to another account, and back</h2>
+<ul class="tight">
+  <li><b>Switch:</b> the window shows the new account's folder and the new account's sidebar. A first-time account gets the three built-in sections and nothing else. Nothing of the old account is changed or deleted.</li>
+  <li><b>Switch back:</b> the old account's sessions and structure show again as they were. That follows from how the data is laid out; it wasn't tried, since switching was out of bounds.</li>
+  <li><b>Switch back after a claude-transplant move:</b> the old groups come back empty, because their sessions are gone, and the new account's groups stay where they are.</li>
+  <li>cl_audit can see a switch without asking: the window's <code>config.json</code> records the last account, and a new account scope appears in the stores.</li>
+</ul>
+
+<h2><small>4</small>Writing it safely, and how ids map</h2>
+<ul class="tight">
+  <li><b>Only with that window closed.</b> The live copy belongs to the running window and is rewritten from memory. cl_audit closes only that profile's window, which it can tell apart by its data folder, after a yes, gracefully, and reopens it afterwards.</li>
+  <li><b>Two copies.</b> If cl_audit writes, it writes both the mirror (plain JSON, sidebar keys only) and the live copy, or proves first that the app rebuilds one from the other at start. The live copy is a Chromium database, the riskiest file in the plan. Hence a test first, and a fallback: <b>let the app write it.</b> The Claude window has its own sidebar tools (create group, move sessions, pin, sections), used today from inside a session. cl_audit can leave a sidebar plan for a session in the target window to apply, so every write goes through the app.</li>
+  <li><b>Id mapping when the target already has sessions and groups:</b>
+    <ul class="tight">
+      <li><b>Sessions</b> keep their ids (claude-transplant's rule). The same id in the target means "already there", or a refusal. Never overwrite.</li>
+      <li><b>Groups</b> match by name. A group with the same name is reused, keeping the target's id; otherwise a new group goes after the target's own, in the source order.</li>
+      <li><b>Assignments</b> are rewritten to the target's group ids. Only the direct ones need writing; inherited membership follows the entries.</li>
+      <li><b>Order inside a group:</b> the moved sessions go after the target's, in their source order.</li>
+      <li><b>Built-in sections:</b> the target keeps its own settings, unless it's a first-time account still on defaults; then it takes the source's.</li>
+      <li><b>Pins:</b> moved pinned sessions are added after the target's pins.</li>
+      <li><b>Scheduled tasks:</b> move as whole families, or not at all.</li>
+    </ul>
+  </li>
+  <li><b>The source keeps its structure untouched,</b> and its entries are parked in quarantine, not deleted. Undo puts back the entries, and the target's structure from a copy taken just before.</li>
+</ul>
+
+<h2><small>5</small>Store</h2>
+<p>A Store is a move whose target is cl_audit's own folder, <code>~/Library/Application Support/usage-n-uf/stores/&lt;date&gt; &lt;profile&gt;/</code>:</p>
+<pre class="tree">manifest.json      when, from which profile, account fingerprint (never the address or a token), counts, checksums
+entries/           local_&lt;id&gt;.json exactly as they were
+tasks/             the scheduled-task families
+sidebar.json       cl_audit's own plain description: sections, groups by name and order,
+                   who sits where and in what order, pins, collapsed (no app-private ids except the sessions')
+claude-code/       each session's transcript, its subagents and tool results, rewind history</pre>
+<p>Restore is the same move in reverse, onto the same account, another account of that window, or another profile. It shows a preview first and keeps a receipt. Transcripts go back only where they're missing, and nothing is ever overwritten.</p>
+
+<h2><small>6</small>How a move runs</h2>
+<p class="lede">The UI sketches are the hub's, in <a href="cl-audit-session-move-sketch.html">cl-audit-session-move-sketch.html</a>. These are the steps and rules they rest on.</p>
+<ol class="tight">
+  <li><b>Plan, read-only.</b> List what goes and what stays, with reasons:
+    <ul class="tight">
+      <li>sessions;</li>
+      <li>groups, with which ones join a same-named group in the target;</li>
+      <li>pins;</li>
+      <li>whole scheduled-task families;</li>
+      <li>transcripts to copy when the target uses another Claude Code folder;</li>
+      <li>blocked: running in the window, open in Terminal, already there, id clash, missing fork parent, incomplete task family.</li>
+    </ul>
+    If claude-transplant has an unfinished move on this Mac (its own folder, <code>~/Library/Application Support/claude-transplant</code>), refuse until it's finished or undone, so the two tools never work on the same window at once.</li>
+  <li><b>Close only the windows involved:</b> the source's, and the target's when it's another profile. Show the exact list first, quit gracefully after a yes, never force-kill.</li>
+  <li><b>Move the sessions:</b> entries and scheduled tasks, and transcripts when needed. Originals are parked in quarantine.</li>
+  <li><b>Rebuild the sidebar</b> in the target's scope: groups by name, places, order, sections, pins. The method is the one stage 0 picks.</li>
+  <li><b>Reopen and check:</b> counts match, and the receipt is saved, with Undo ready.</li>
+</ol>
+<p>"Bring here…" is the claude-transplant case. After a window switches accounts, it brings the earlier account's sessions and their groups to the new one. It would also restore the groups and places an earlier account switch left behind.</p>
+
+<h3>Rules carried over from claude-transplant</h3>
+<ul class="tight">
+  <li>Plan first, then an exact list of what closes. Only that profile's window closes, gracefully, never force-killed.</li>
+  <li>Lock, journal after every step, and writes that can't overwrite (temp file, then a hard link).</li>
+  <li>Same ids. "Already there" only if the target holds every message.</li>
+  <li>Sessions running in the window wait for the approved restart. A session Terminal is running is refused until it stops, because restarting the window doesn't stop it.</li>
+  <li>Fork parents first; whole scheduled-task families or none.</li>
+  <li>Drop the old account's error keys; clear Remote Control ids; append the empty pointer line.</li>
+  <li>Originals parked in quarantine; a receipt; Undo.</li>
+</ul>
+<div style="margin-top:10px"><b>Added for the sidebar:</b>
+  <ul class="tight">
+    <li>a copy of the target's structure before the change;</li>
+    <li>only the sidebar keys of <code>claude_desktop_config.json</code> are touched, never its MCP settings;</li>
+    <li>deleted-session markers are checked.</li>
+  </ul>
+  <p style="margin:8px 0 0"><b>Left out on purpose:</b> claude.ai Remote Control copies. They stay in the old account, with no Keychain cookie read.</p></div>
+
+<h2><small>7</small>What moves and what doesn't</h2>
+<div class="tablewrap"><table>
+<tr><th>Part of the sidebar</th><th>Where</th><th>claude-transplant</th><th>cl_audit Move / Store</th></tr>
+<tr><td>Sessions (entries)</td><td>claude-code-sessions/&lt;account&gt;/&lt;org&gt;/</td><td class="y">moves</td><td class="y">moves (stage 2)</td></tr>
+<tr><td>Titles, archived, starred</td><td>inside each entry</td><td class="y">moves</td><td class="y">moves with the entry</td></tr>
+<tr><td>Scheduled tasks</td><td>scheduled-tasks.json</td><td class="y">moves whole families</td><td class="y">moves whole families</td></tr>
+<tr><td>Archive index</td><td>archived-sessions.idx</td><td class="y">not written; the app rebuilds it</td><td class="y">same</td></tr>
+<tr><td>Groups: names, order, which session where, order inside</td><td>live store + config mirror, per account</td><td class="n">no</td><td class="p">yes, after the test (stage 3)</td></tr>
+<tr><td>Sections: order, shown, collapsed, sort, grouping</td><td>same</td><td class="n">no</td><td class="p">yes, after the test</td></tr>
+<tr><td>Inherited group membership</td><td>who started each session, in the entry</td><td class="p">travels, but the group doesn't</td><td class="y">follows once the group exists</td></tr>
+<tr><td>Pins</td><td>whole-window list by session id</td><td class="p">probably kept (same ids)</td><td class="p">kept or added; checked in the test</td></tr>
+<tr><td>Look: sort, group-by, folder colours, width</td><td>whole window</td><td class="n">no</td><td class="p">kept as the target has it</td></tr>
+<tr><td>Transcripts, subagents, rewind history</td><td>the profile's Claude Code folder</td><td class="p">stay in place (one shared folder)</td><td class="y">copied when the target or the store uses another folder</td></tr>
+<tr><td>Remote Control copies on claude.ai</td><td>claude.ai</td><td class="p">archived with <code>--cloud</code></td><td class="n">no, on purpose</td></tr>
+<tr><td>Chats, Projects, Cowork</td><td>claude.ai, or Cowork's own folders</td><td class="n">no</td><td class="n">no (not part of the Code sidebar)</td></tr>
+</table></div>
+
+<h2><small>8</small>Two features, one engine</h2>
+<p class="lede">The operator keeps both:</p>
+<ul class="tight">
+  <li><b>(a) Move:</b> the sessions setup with its sidebar, to another account, another profile or the store. It stays on this Mac, and the source is parked.</li>
+  <li><b>(b) Export and import:</b> for backups and another Mac, as designed on <a href="cl-audit-session-export.html">the export page</a>. It makes a copy, in an archive file.</li>
+</ul>
+<p>They're one engine with two front doors:</p>
+<div class="tablewrap"><table>
+<tr><th>Part</th><th>Shared by both</th><th>Only Move</th><th>Only export / import</th></tr>
+<tr><td>Reading</td><td>One inventory of a window and its Claude Code folder: entries, scheduled tasks, the sidebar per account, transcripts with subagents and rewind history.</td><td></td><td></td></tr>
+<tr><td>Preview</td><td>One preview, with the same statuses:
+  <ul class="tight">
+    <li>goes;</li>
+    <li>already there;</li>
+    <li>running, or open in Terminal;</li>
+    <li>id clash, missing fork parent, incomplete task family;</li>
+    <li>deleted marker;</li>
+    <li>folder not on this Mac;</li>
+    <li>older than 30 days.</li>
+  </ul></td><td>which windows close</td><td>keys found</td></tr>
+<tr><td>Writing</td><td>One writer: lock, journal, writes that can't overwrite, receipt and Undo.</td><td>parks the source in quarantine; closes and reopens windows</td><td>leaves the source alone</td></tr>
+<tr><td>Format</td><td><b>The store folder is the archive's content</b>: <code>manifest.json</code>, <code>entries/</code>, <code>tasks/</code>, <code>sidebar.json</code>, <code>claude-code/</code>. Export makes a store copy without touching the source, then packs it. Import unpacks into a store, then runs Restore. Restore and Import are one code path.</td><td>Store and Restore</td><td>packing: a zip, or an encrypted disk image with a password</td></tr>
+<tr><td>Extras</td><td>Keep for (30 days); the transcript copy into another Claude Code folder.</td><td>"Bring here…" after an account switch</td><td>the key scan; Cowork (optional); paths for another Mac (later)</td></tr>
+</table></div>
+<p>A gain over the first export design: an archive now carries the sidebar too (<code>sidebar.json</code>), so a backup restores the groups, not only the sessions.</p>
+
+<h2><small>9</small>Wrapper on claude-transplant?</h2>
+<div class="verdict" style="margin-top:4px">
+  <p class="big" style="font-size:16px">It makes sense only for part of the job, and a wrapper can't meet the brief.</p>
+  <ul class="tight">
+    <li>claude-transplant moves no sections, groups or pins, and reaches only the standard window, so the brief's main ask (the sidebar, for every profile) would still need cl_audit's own code.</li>
+    <li><b>Recommended: (iii) cl_audit's own move</b>, built on claude-transplant's rules.
+      <ul class="tight">
+        <li>It never runs claude-transplant, and it waits for any unfinished claude-transplant move.</li>
+        <li>Offering (ii) upstream is a courtesy, not a dependency.</li>
+      </ul>
+    </li>
+    <li>Licence: no problem in any option.</li>
+  </ul>
+</div>
+<div class="tablewrap"><table>
+<tr><th>Check</th><th>(i) Pure wrapper, pinned version installed on click</th><th>(ii) Wrapper plus an upstream change (data-folder option, one-window restart)</th><th>(iii) cl_audit's own move, its rules adopted</th></tr>
+<tr><td>Covers</td><td>Entries and scheduled tasks, between accounts of the standard window (Main) only</td><td>The same for every profile's window, once merged and released</td><td>Entries, scheduled tasks, sidebar, Store, other profiles, and export/import on the same engine</td></tr>
+<tr><td>Sections, groups, pins</td><td class="n">no: there's no code for them in <code>transplant.js</code></td><td class="n">no, unless the change also adds them, which is beyond the tool's scope</td><td class="y">yes (stage 3)</td></tr>
+<tr><td>Node for cl_audit users</td><td class="p">Node 22 or later. A Mac with Homebrew may have it, but most Macs don't. "Install on click" can't install Node without an installer and an admin password, or bundling a runtime of about 100 MB.</td><td class="p">same</td><td class="y">none: Swift, inside cl_audit</td></tr>
+<tr><td>Supply chain at run time</td><td class="p"><code>npx</code> fetches from npm at run time. One maintainer account publishes all 30 versions; the package has no dependencies. Safer: pin 4.2.1, check the sha512 npm publishes before running it with <code>node</code>, and never pass <code>--cloud</code> (it reads Claude's cookie key from Keychain).</td><td class="p">same, plus a new pin for every release we need</td><td class="y">none at run time</td></tr>
+<tr><td>Other profiles' windows</td><td class="n">No.
+  <ul class="tight">
+    <li>Paths come from the home folder (<code>layout()</code>, line 575).</li>
+    <li>The restart picks the first process running Claude's executable (line 401) and quits by app path (line 515), so it can close the wrong window, or another one.</li>
+    <li>The signed-in account is read from <code>~/Library/Logs/Claude/main.log</code> (line 976), and there's one log folder for every window.</li>
+    <li>A fake home folder fixes the paths, but not the restart or the log.</li>
+  </ul></td><td class="p">Yes, if the change adds a data-folder option, a restart of one process, and an account check per window, for example the data folder's own <code>config.json</code>.</td><td class="y">yes: cl_audit already tells windows apart by their data folder</td></tr>
+<tr><td>Support for new Claude versions</td><td class="p">Theirs. One maintainer (104 of 107 commits), about one release a week. Its tested table stops at Claude 4.4212.0; current Claude is far past it (4.16336.0 when measured).</td><td class="p">theirs, and cl_audit waits for their releases</td><td class="p">Ours. Entries are copied unchanged, as claude-transplant does, so most format changes pass through. Unknown shapes are refused, and the stage-0 test is re-run after Claude updates.</td></tr>
+<tr><td>Lock, journal, recovery</td><td class="y">theirs, proven ("command and flag names are stable"; a <code>--json</code> event stream)</td><td class="y">theirs</td><td class="p">ours, ported from its rules</td></tr>
+<tr><td>Licence</td><td class="y">MIT: fine to call; fine to bundle with its notice. cl_audit is PolyForm Perimeter 1.0.1.</td><td class="y">same</td><td class="y">fine to port its logic, keeping its MIT notice</td></tr>
+<tr><td>Verdict</td><td>Feasible and solid for the standard window's entries, about a third of the brief</td><td>Worth offering upstream; still no sidebar, and the timing isn't ours</td><td><b>Recommended</b></td></tr>
+</table></div>
+<p><b>If the hub's sketch keeps a "use claude-transplant" switch</b>, the only safe form is a hybrid for the standard window:</p>
+<ul class="tight">
+  <li>it's offered only when Node 22 or later is already installed;</li>
+  <li>it runs pinned 4.2.1 after a sha512 check, never with <code>--cloud</code>;</li>
+  <li>it moves entries and tasks only;</li>
+  <li>cl_audit's own sidebar step runs afterwards.</li>
+</ul>
+<p>About 2 more days. It adds a second way to do the same thing, so I'd leave it out.</p>
+
+<h2><small>10</small>Stages and cost</h2>
+<p class="lede">Rough cost in days of one session's work, including renders and checks.</p>
+<div class="stages">
+  <div class="stage"><span class="no">0</span><div><div class="t">Find out what the app trusts</div><div class="d">A throwaway test window with its own folder, signed in to two accounts in turn. Change the mirror only, then the live copy, with the window closed, and see what the sidebar shows. Also check: pins across accounts, inherited membership, the archive index. Your part: allow the test window and sign it in. Ends with: direct write or the app's own tools, decided on evidence.</div></div><span class="c">1 day</span></div>
+  <div class="stage"><span class="no">1</span><div><div class="t">See the sidebar</div><div class="d">The Sessions card, read-only: sessions, groups, routines, earlier accounts' leftovers, Keep for. Ends with: you see what each window holds.</div></div><span class="c">1 day</span></div>
+  <div class="stage"><span class="no">2</span><div><div class="t">Move the sessions</div><div class="d">Entries and scheduled tasks to another account of the same window ("Bring here…" after a switch), claude-transplant's way, for any profile's window. Ends with: the sessions show under the new account.</div></div><span class="c">3–4 days</span></div>
+  <div class="stage"><span class="no">3</span><div><div class="t">Move the sidebar with them</div><div class="d">Groups, places, order, sections and pins, by the method stage 0 picked; ids mapped by name. Ends with: the sidebar looks the same after the move.</div></div><span class="c">2–3 days</span></div>
+  <div class="stage"><span class="no">4</span><div><div class="t">Store and Restore</div><div class="d">cl_audit's own folder, transcripts included; restore onto the same or another account. Ends with: a setup can be parked and brought back.</div></div><span class="c">2–3 days</span></div>
+  <div class="stage"><span class="no">5</span><div><div class="t">Move to another profile</div><div class="d">Into another window and Claude Code folder: transcripts copied there, both windows closed. Ends with: Main's sidebar can become Work's.</div></div><span class="c">1–2 days</span></div>
+  <div class="stage"><span class="no">6</span><div><div class="t">Export and Import</div><div class="d">Export packs a store copy (key scan, optional password); Import unpacks it and runs Restore. On this Mac, or another one with the same user name. Ends with: a backup that brings back the sessions and the sidebar.</div></div><span class="c">2 days</span></div>
+  <div class="stage"><span class="no">7</span><div><div class="t">Another Mac, another user name</div><div class="d">Old project paths mapped to new ones; needs a test on a second Mac or user. Later.</div></div><span class="c">1–2 days</span></div>
+</div>
+<p class="muted" style="font-size:12.5px">Move (stages 0–5): about 10–14 days, of which 0–3 (about 7–9) cover the account-switch case end to end. Export and Import add about 2, because they reuse the store. Another user name adds 1–2 later.</p>
+
+<h2><small>11</small>What you'd decide</h2>
+<ol class="dec">
+  <li><b>The test window (stage 0):</b> may cl_audit's builder make a throwaway Claude window with its own folder, and will you sign it in to two accounts for an hour?</li>
+  <li><b>How the structure is written,</b> once stage 0 has answered: directly into the window's stores with the window closed (recommended, if the test shows it holds), or always through the app's own sidebar tools from a session in that window (safest; you'd paste one line into a session there)?</li>
+  <li><b>Store:</b> takes the sessions off the account, so the sidebar empties until Restore (recommended, the move you asked for), or keeps a snapshot and leaves the sidebar as it is?</li>
+  <li><b>Groups with the same name</b> in the target: joined (recommended), or kept apart as "name (moved)"?</li>
+  <li><b>The old account's leftover structure</b> after a move: left as it is (recommended, so Undo is simple), or cleared once the move is checked?</li>
+  <li><b>Where the offer appears</b> when a window switches accounts: as the "Earlier account ▸ Bring here…" row in the Sessions card (recommended), or also as a question at the end of the Account change in the Claude Code card?</li>
+  <li><b>Keep for</b> (kept from export/import): may cl_audit change how long Claude Code keeps a profile's sessions, and to what?</li>
+  <li><b>claude-transplant:</b> cl_audit's own move, with claude-transplant's rules ported and credited (recommended), or also a "use claude-transplant" mode for the standard window when Node is already installed (about +2 days)?</li>
+  <li><b>Export and Import details,</b> as on the export page, all recommended there:
+    <ul class="tight">
+      <li>sessions with keys found are left out;</li>
+      <li>a zip, or an encrypted disk image with a password;</li>
+      <li>Cowork off;</li>
+      <li>another user name later.</li>
+    </ul>
+    Keep those defaults?</li>
+</ol>
+</div></body></html>

@@ -1,0 +1,354 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sessions export and import</title>
+<style>
+/* cl_audit: can it export and import all sessions? Research, read-only, measured on this Mac 2026-11-05. HTML only, nothing built. */
+:root {
+  --bg: #121214; --text: #ececee; --muted: #9a9aa0; --faint: #6e6e74;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --grain: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px);
+  --alu: repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #74746f, #52524e);
+  --key-up: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #2e2e2c, 0 2px 0 #121211, 0 3px 7px rgba(0,0,0,.45);
+  --well: inset 0 1px 3px rgba(0,0,0,.75), 0 1px 0 rgba(255,255,255,.05);
+  --ok: #4ade80; --caution: #f5a524; --danger: #f2655a; --accent: #ff7a3d;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+.page { max-width: 1120px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { margin: 0 0 4px; font-size: 22px; letter-spacing: -.01em; }
+h2 { margin: 36px 0 8px; font-size: 17px; }
+h2 small { font: 600 11px var(--mono); letter-spacing: .12em; color: var(--accent); margin-right: 8px; }
+h3 { margin: 18px 0 6px; font-size: 14.5px; }
+p, li { max-width: 96ch; }
+.lede { margin: 0 0 14px; color: rgba(236,236,238,.8); }
+.meta { font-size: 12.5px; color: var(--muted); margin: 0 0 18px; }
+ul.tight { margin: 6px 0 0; padding-left: 18px; } ul.tight li { margin: 4px 0; }
+code { font: 12.5px var(--mono); background: rgba(255,255,255,.07); padding: 0 4px; border-radius: 4px; overflow-wrap: anywhere; }
+a { color: #e8a07f; }
+.verdict { margin: 8px 0 0; padding: 14px 16px; border-radius: 10px; background: rgba(255,122,61,.08); box-shadow: inset 0 0 0 1px rgba(255,122,61,.35); }
+.verdict .big { font-size: 18px; font-weight: 650; color: #ffb08a; margin: 0 0 6px; }
+.box { margin: 10px 0 0; padding: 10px 13px; border-radius: 8px; background: rgba(255,255,255,.03); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); font-size: 13.5px; }
+.box b { color: #ffb08a; font-weight: 600; }
+.tablewrap { overflow-x: auto; margin-top: 8px; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,.07); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; white-space: nowrap; }
+td.y { color: var(--ok); } td.p { color: var(--caution); } td.n { color: var(--danger); }
+.muted { color: var(--muted); } .faint { color: var(--faint); }
+
+/* the settings card, as cl_audit draws it (layout A) */
+.sketches { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; margin-top: 12px; align-items: start; }
+@media (max-width: 1000px) { .sketches { grid-template-columns: 1fr; } }
+.sk { display: grid; gap: 8px; align-content: start; min-width: 0; }
+.sk h3 { margin: 0; } .sk .why { margin: 0; font-size: 12.5px; color: rgba(236,236,238,.75); }
+.card { position: relative; padding: 14px 16px 10px; border-radius: 10px; background: var(--grain), linear-gradient(180deg, #29292b, #222224);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #0c0c0d, 0 4px 12px rgba(0,0,0,.25); }
+.card h4 { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; font: 600 11px/1.2 var(--font); letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+.card h4::after { content: ""; flex: 1; min-width: 12px; height: 1px; background: rgba(0,0,0,.5); box-shadow: 0 1px 0 rgba(255,255,255,.05); }
+.i { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1.2px solid rgba(255,255,255,.4); font: 700 9px/1 var(--font); color: rgba(255,255,255,.55); flex: none; }
+.srow { padding: 7px 0 6px; border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.035); font-size: 14px; }
+.card h4 + .srow { border-top: 0; box-shadow: none; }
+.srow .k { display: flex; align-items: center; gap: 7px; margin-bottom: 5px; }
+.srow .v { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.desc { margin: 5px 0 0; font-size: 12px; line-height: 1.45; color: var(--muted); }
+.key { display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 28px; padding: 0 12px; border-radius: 3px; flex: none;
+  font: 600 10.5px/1 var(--font); letter-spacing: .1em; text-transform: uppercase; color: #f1f1f0; text-shadow: 0 -1px 0 rgba(0,0,0,.35); white-space: nowrap;
+  background: var(--alu); box-shadow: var(--key-up); }
+.key.primary { background: linear-gradient(180deg, #e9e9e6, #c9c9c5); color: #26262a; text-shadow: none; }
+.key.primary::before { content: ""; position: absolute; }
+.led { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+.ok-l { background: var(--ok); box-shadow: 0 0 5px rgba(74,222,128,.8); }
+.caution-l { background: var(--caution); box-shadow: 0 0 5px rgba(245,165,36,.8); }
+.off-l { background: #3a3a3c; }
+.mswitch { display: inline-grid; place-items: center; width: 36px; height: 26px; border-radius: 3px; background: var(--alu); box-shadow: var(--key-up); flex: none; }
+.words { font-size: 13px; color: var(--muted); }
+.popup { display: inline-flex; align-items: center; justify-content: space-between; gap: 8px; height: 30px; padding: 0 10px; border-radius: 6px; background: rgba(0,0,0,.45); box-shadow: var(--well); font: 500 13.5px var(--font); width: 100%; }
+.popup .chev { color: var(--faint); font-size: 11px; }
+.list { display: grid; gap: 0; margin-top: 2px; }
+.li { display: grid; grid-template-columns: 12px 1fr auto; gap: 8px; align-items: baseline; padding: 6px 0; border-top: 1px solid rgba(0,0,0,.4); font-size: 13px; }
+.li:first-child { border-top: 0; }
+.li .n { font: 600 12.5px var(--mono); color: #d4d4d8; }
+.li .s { grid-column: 2 / 4; font-size: 11.5px; color: var(--muted); margin-top: -2px; }
+.bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0,0,0,.45); }
+.bar .cancel { color: var(--muted); font-size: 14px; }
+.cap { font: 600 10px var(--font); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.45); margin: 0; }
+pre.tree { margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: rgba(0,0,0,.35); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); font: 12px/1.55 var(--mono); color: #d4d4d8; overflow-x: auto; }
+.stages { display: grid; gap: 8px; margin-top: 10px; }
+.stage { display: grid; grid-template-columns: 54px 1fr auto; gap: 12px; align-items: start; padding: 10px 12px; border-radius: 8px; background: rgba(255,255,255,.03); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); }
+.stage .no { font: 600 11px var(--mono); letter-spacing: .1em; color: var(--accent); padding-top: 2px; }
+.stage .t { font-weight: 600; } .stage .d { font-size: 13px; color: rgba(236,236,238,.78); margin-top: 2px; }
+.stage .c { font: 600 12px var(--mono); color: var(--muted); white-space: nowrap; padding-top: 2px; }
+.stage.later { opacity: .72; }
+@media (max-width: 640px) { .stage { grid-template-columns: 1fr; gap: 4px; } }
+ol.dec li { margin: 8px 0; }
+</style></head>
+<body><div class="page">
+<h1>Can cl_audit export and import all sessions?</h1>
+<p class="meta">Research only, 2026-11-05. Nothing was built, written or quitted. Counts, sizes and dates were measured on this Mac without reading what the sessions say. claude-transplant read at v4.2.1, which is still its main (ad7458c, rechecked 2026-11-05; file by file identical). cl_audit at main d94dc7a. Updated the same day with section 3, claude-transplant compared.</p>
+
+<div class="verdict">
+  <p class="big">Partly: yes for everything kept on this Mac, no for what lives only on Anthropic's servers.</p>
+  <ul class="tight">
+    <li><b>Export: yes.</b> Every profile's Claude Code sessions, its Claude window's Code-tab list and its Cowork sessions are plain files, so cl_audit can pack one profile or all of them into one archive, read-only, while Claude stays open.</li>
+    <li><b>Import of Claude Code sessions: yes, safely.</b> They're barely tied to an account. They can go into any profile, folder or account, or onto another Mac with the same user name, by only adding files.</li>
+    <li><b>Import of the Claude window's Code-tab list: yes, the way claude-transplant does it.</b> Each entry is copied unchanged under the signed-in account and organisation (only three error keys dropped and the Remote Control ids cleared), and the target profile's window is closed and reopened after a yes. claude-transplant has run this live (a whole Code-tab list, account to account), so it belongs in stage 3, not "later". Sessions that belong to a scheduled task are left out.</li>
+    <li><b>Cowork: export only.</b> Its records carry the account's name and address, and they're tied to the Cowork virtual machine.</li>
+    <li><b>Chats, Projects and cloud sessions: no.</b> They're on claude.ai. Its own Settings ▸ Privacy ▸ Export data mails you a copy.</li>
+  </ul>
+  <p style="margin:8px 0 0">The strongest reason to build it: <b>Claude Code deletes sessions after 30 days</b> (its default; neither profile changes it). Today Main's oldest session is 29 days old. An export is the only way to keep older ones.</p>
+</div>
+
+<h2><small>1</small>What can move</h2>
+<div class="tablewrap"><table>
+<tr><th>What</th><th>Where it lives (per profile)</th><th>Export</th><th>Import</th></tr>
+<tr><td>Claude Code sessions (Terminal and the Claude window's Code tab both write these)</td><td><code>&lt;folder&gt;/projects/&lt;project&gt;/&lt;id&gt;.jsonl</code>, with <code>&lt;id&gt;/subagents</code>, <code>tool-results</code>, <code>workflows</code></td><td class="y">yes</td><td class="y">yes, add-only</td></tr>
+<tr><td>Rewind history (earlier versions of edited files)</td><td><code>&lt;folder&gt;/file-history/&lt;id&gt;/</code></td><td class="y">yes</td><td class="y">yes, with its session</td></tr>
+<tr><td>Plans</td><td><code>&lt;folder&gt;/plans/</code></td><td class="y">optional</td><td class="y">yes</td></tr>
+<tr><td>Claude window: the Code tab's list (titles, worktrees, archived)</td><td><code>&lt;window folder&gt;/claude-code-sessions/&lt;account&gt;/&lt;org&gt;/local_&lt;id&gt;.json</code></td><td class="y">yes</td><td class="y">yes, stage 3; that window closed after a yes</td></tr>
+<tr><td>Scheduled tasks and the sessions they started</td><td><code>&lt;window folder&gt;/claude-code-sessions/&lt;account&gt;/&lt;org&gt;/scheduled-tasks.json</code></td><td class="p">listed</td><td class="p">left out in the first version</td></tr>
+<tr><td>Cowork sessions</td><td><code>&lt;window folder&gt;/local-agent-mode-sessions/&lt;account&gt;/&lt;org&gt;/local_&lt;id&gt;/</code></td><td class="y">yes</td><td class="n">no</td></tr>
+<tr><td>Prompt history (↑ in Claude Code)</td><td><code>&lt;folder&gt;/history.jsonl</code></td><td class="p">optional</td><td class="p">append, later</td></tr>
+<tr><td>Chats, Projects, cloud sessions, Remote Control copies</td><td>claude.ai only (the window keeps just a small browser cache)</td><td class="n">no</td><td class="n">no</td></tr>
+<tr><td>Sign-ins, settings, shell snapshots, caches, plugins</td><td>Keychain, <code>.claude.json</code>, <code>settings.json</code>, <code>sessions/</code>, <code>shell-snapshots/</code> …</td><td class="n">never</td><td class="n">never</td></tr>
+</table></div>
+
+<h2><small>2</small>What a Mac holds</h2>
+<p class="lede">Each cl_audit profile is a pair: a Claude Code folder and, for every profile except Main, its own Claude window folder. The pairing holds on disk: on the Mac measured, every Code-tab entry of the second profile, and all but one of the standard one's, had its session in that profile's Claude Code folder.</p>
+<p class="muted" style="font-size:12.5px;margin:0 0 6px">Sample numbers, rounded from one Mac's; the profile and folder names are generic.</p>
+<div class="tablewrap"><table>
+<tr><th></th><th>Main · <code>~/.claude</code> + standard window</th><th>Work · <code>~/.claude-work</code> + <code>Claude-work</code></th></tr>
+<tr><td>Claude Code sessions</td><td>150 (3 GB), plus about 2,000 subagent sessions, tool results and images: 5 GB in 8,000 files</td><td>250 (1 GB), plus about 400 subagent sessions: 1.5 GB in 1,600 files</td></tr>
+<tr><td>Oldest kept</td><td>about 30 days back (Claude Code had just cleaned up)</td><td>about 2 weeks back</td></tr>
+<tr><td>Rewind history</td><td>about 100 sessions, 100 MB</td><td>a few sessions, under 1 MB</td></tr>
+<tr><td>Projects whose folder is gone</td><td>about a quarter (mostly removed worktrees)</td><td>about two thirds</td></tr>
+<tr><td>Claude window, Code tab</td><td>about 130 entries in several account and organisation folders; 20 deleted-session markers</td><td>10 entries; 5 deleted-session markers</td></tr>
+<tr><td>Cowork</td><td>a few sessions (tens of MB of conversation and log, plus uploads and outputs); the folder is mostly plugin copies</td><td>none (plugin copies only)</td></tr>
+<tr><td>Packed size, estimated</td><td colspan="2">Sessions compress 2–5× (five measured), images don't: a few GB for both profiles together.</td></tr>
+</table></div>
+<p class="muted" style="font-size:12.5px">Not sessions, so left out: Cowork's virtual machine images (about 10 GB per window), the windows' caches, and scheduled tasks.</p>
+
+<h2><small>3</small>claude-transplant compared</h2>
+<div class="verdict" style="margin-top:4px">
+  <p class="big" style="font-size:16px">Mostly aligned. Where they differ, the design now follows claude-transplant: the Code-tab list moves in stage 3, and seven of its rules are added: lock, journal, no-clobber writes, its "already there" test, fork parents first, whole task families or none, and the Remote Control clean-up. Decision 1 changes, and two decisions are new.</p>
+  <p style="margin:0">Both treat a session as one unit: its transcript, the folder beside it (subagents, tool results) and its Code-tab entry. Both keep ids and paths as they are, never overwrite, show a dry run first, and keep a receipt for undo. They differ in purpose:</p>
+  <ul class="tight">
+    <li>claude-transplant <b>moves</b> entries between two accounts inside the standard profile's folders, where both accounts share one <code>~/.claude</code>.</li>
+    <li>cl_audit <b>copies</b> sessions between profiles that each have their own folders, so it has to carry the transcript too, and it can do so through an archive.</li>
+  </ul>
+</div>
+
+<h3>How claude-transplant moves a session</h3>
+<p>Read in <code>transplant.js</code> v4.2.1 (5,561 lines). It has one move strategy, <code>rehome</code>; <code>rehomeOne</code> starts at line 2572.</p>
+<ol class="tight">
+  <li>Check that the source entry, its transcript and the folder beside the transcript haven't changed since the plan (fingerprints). Refuse if a running Claude Code worker owns the session, if the id is already in the target, if a fork's parent isn't there, or if a scheduled-task family is incomplete.</li>
+  <li>Write the entry into <code>&lt;new account&gt;/&lt;new org&gt;/</code>, under the same file name with the same <code>sessionId</code> and <code>cliSessionId</code>. Only three error keys are dropped (<code>error</code>, <code>errorAt</code>, <code>priorErrorMark</code>; line 43) and the Remote Control ids are cleared. The write goes to a private temp file, then appears through a hard link that can't overwrite anything (<code>writeNew</code>, line 734).</li>
+  <li>If the transcript's last Remote Control pointer belongs to the old account, append Claude Code's own empty pointer line (line 2347). That's its only write to a transcript.</li>
+  <li>Move the session's scheduled tasks (routines) with it, in each organisation's <code>scheduled-tasks.json</code> (line 3095 on).</li>
+  <li>Verify, then park the source entry in quarantine in its own folder. Nothing is deleted. <code>undo</code> restores everything from the receipt.</li>
+  <li>If a session is open in the window, print a plan of exactly what will close and a one-time approval token. Quit Claude gracefully: AppleScript <code>quit</code> on <code>/Applications/Claude.app</code> (line 515), up to 30 s, never force-killed. Move, then reopen.</li>
+</ol>
+<p><b>No export or import:</b> its commands are <code>accounts</code>, <code>keep-local</code>, <code>sweep</code>, <code>finish</code>, <code>undo</code>, <code>restart</code>, <code>menubar</code> and the move itself (<code>parse</code>, line 5166; anything else stops at "unknown command", line 5466). <b>Fixed paths:</b> <code>layout()</code> at line 575 builds every path from the home folder, as <code>Claude/claude-code-sessions</code>, <code>~/.claude/projects</code> and <code>~/.claude.json</code>, and <code>main</code> calls it with no arguments (line 5207). There's no option for another window folder or Claude Code folder, so Work is out of its reach.</p>
+
+<h3>Item by item</h3>
+<div class="tablewrap"><table>
+<tr><th>Item</th><th>claude-transplant</th><th>cl_audit design</th><th>Verdict</th></tr>
+<tr><td>Claude Code transcript</td><td>Stays where it is (the shared <code>~/.claude/projects</code>), never copied. It's checked by fingerprint, and at most one empty Remote Control pointer line is appended.</td><td>Copied into the archive; imported add-only into the target profile's own folder.</td><td class="p">differs by need: separate folders need a copy. Add the pointer line.</td></tr>
+<tr><td>Subagents, tool results (the folder beside the transcript)</td><td>Stay in place, checked unchanged. Links are accepted only as leaves; special files are refused.</td><td>Copied with their session.</td><td class="y">aligned; adopt the link rule</td></tr>
+<tr><td>Rewind history (<code>file-history</code>)</td><td>Not touched (no mention in the code).</td><td>Copied with its session.</td><td class="y">design goes further, needed across folders</td></tr>
+<tr><td>Todos, plans, prompt history</td><td>Not touched. This Mac has no <code>todos</code> folder.</td><td>Plans optional; prompt history later.</td><td class="y">no conflict</td></tr>
+<tr><td>Code-tab entries</td><td>Moved account to account inside the standard window folder only: same ids, three error keys dropped, Remote Control ids cleared, verified, source quarantined. The window is restarted after approval.</td><td>Exported; import was "later, fragile".</td><td class="p">differs: follow claude-transplant, in stage 3</td></tr>
+<tr><td>Scheduled tasks (routines)</td><td>Moved with their whole family (task entries, runs, notification routes). An incomplete family is refused.</td><td>Not covered.</td><td class="n">gap: refuse and list those sessions in the first version</td></tr>
+<tr><td>Forks</td><td>The parent must be in the target or move first.</td><td>Only named as an idea.</td><td class="p">adopt as a rule</td></tr>
+<tr><td>Deleted-session markers (<code>deleted_&lt;id&gt;</code>)</td><td>Not looked at: it lists only <code>local_*.json</code> (line 782).</td><td>The preview flags an import whose id has a marker.</td><td class="y">design adds a check</td></tr>
+<tr><td>Cowork</td><td>Reads records only to learn account addresses (line 941).</td><td>Export only.</td><td class="y">aligned: neither imports</td></tr>
+<tr><td>Settings and sign-ins</td><td>Reads <code>.claude.json</code> files and backups for account names, and the window's <code>config.json</code> and <code>main.log</code> for the signed-in account. Writes none.</td><td>Never exported or imported.</td><td class="y">aligned</td></tr>
+<tr><td>Remote Control copies on claude.ai</td><td>With <code>--cloud</code>: archives the old account's copies, using the window's claude.ai cookie decrypted from Keychain in memory.</td><td>None; they stay in the old account.</td><td class="p">differs on purpose: no Keychain cookie reads</td></tr>
+<tr><td>Ids and paths</td><td>Never rewritten; clashes refused.</td><td>Same; path mapping only in a later stage.</td><td class="y">aligned</td></tr>
+<tr><td>Restart</td><td>Quits the whole Claude app (the first process for <code>/Applications/Claude.app</code>) after approving an exact list of what closes.</td><td>Closes only the target profile's window, after a yes.</td><td class="y">aligned; cl_audit can tell the windows apart by their folder</td></tr>
+</table></div>
+
+<h3>Safety rules</h3>
+<div class="tablewrap"><table>
+<tr><th>Rule</th><th>claude-transplant</th><th>Design before</th><th>Now</th></tr>
+<tr><td>Dry run first</td><td>yes (<code>--dry-run</code>)</td><td>yes, both previews</td><td class="y">kept</td></tr>
+<tr><td>Never overwrite; atomic writes (temp file, then a hard link that can't overwrite)</td><td>yes (line 734)</td><td>never overwrite, but no mechanism named</td><td class="y">adopted</td></tr>
+<tr><td>One operation at a time (lock)</td><td>yes (<code>lockf</code>, line 759)</td><td>not stated</td><td class="y">adopted</td></tr>
+<tr><td>Journal after every step; crash recovery unwinds unfinished work</td><td>yes (line 2999)</td><td>receipt only</td><td class="y">adopted</td></tr>
+<tr><td>Receipt and undo</td><td>yes</td><td>yes</td><td class="y">kept</td></tr>
+<tr><td>Nothing deleted: sources parked in quarantine</td><td>yes</td><td>import adds only; undo removes only unchanged added files</td><td class="y">kept; a Move option would park sources the same way</td></tr>
+<tr><td>Sessions in use: refused, or held for an approved restart; Terminal sessions always refused</td><td>yes</td><td>export copies complete lines and marks the session in use</td><td class="p">kept for export (read-only); import refuses sessions running in the target</td></tr>
+<tr><td>"Already there" only if the target holds every message and sidecar file</td><td>yes</td><td>same checksum</td><td class="y">adopted (target holds all of it, not just the same bytes)</td></tr>
+<tr><td>Never duplicate a transcript, never merge histories</td><td>yes</td><td>never merges, but copies</td><td class="p">copying is the point of export; a Move option keeps one live copy</td></tr>
+<tr><td>Fork parents first; whole task families or nothing</td><td>yes</td><td>no</td><td class="y">adopted (task families: refused)</td></tr>
+<tr><td>Drop account error keys; clear Remote Control ids; append the empty pointer</td><td>yes</td><td>no</td><td class="y">adopted for the Code-tab import</td></tr>
+<tr><td>Keychain</td><td>only with <code>--cloud</code>, cookie in memory</td><td>never</td><td class="y">stricter, kept</td></tr>
+<tr><td>Keys scan, deleted markers, the 30-day clean-up</td><td>no (it doesn't export)</td><td>yes</td><td class="y">design adds them</td></tr>
+</table></div>
+<p>It stays the right tool for switching the standard profile's account in place. cl_audit can't call it here: it has no export or import, its paths are fixed, and it needs Node 22.</p>
+
+<h2><small>4</small>What breaks on import</h2>
+<ul class="tight">
+  <li><b>Another account or organisation.</b> Claude Code sessions barely mention the account: 5 of 2,000 sampled lines name an organisation. When a window moved to another account, its sessions carried on there (reported by another session, not re-tested). Nothing on Anthropic's side follows: Remote Control and cloud copies stay with the old account. The Code-tab list is filed under <code>&lt;account&gt;/&lt;org&gt;</code> and shows only the signed-in pair's folder, so an import must write into the target's signed-in pair. Cowork records name the account outright, so they don't move.</li>
+  <li><b>Project paths.</b> Claude Code files a session under a folder named after the project path (<code>/</code> and <code>.</code> become <code>-</code>), and lists it only when started in that path. On the same Mac, or another Mac with the same user name, paths match. Gone folders (often a quarter or more of a profile's projects) import fine but stay hidden until the path exists again. A different user name changes every path; that's stage 4.</li>
+  <li><b>Worktrees.</b> Code-tab entries name their worktree. A missing one is shown in the preview before anything is written.</li>
+  <li><b>Clashing ids.</b> Session ids are random, so they clash only when the same session is on both sides.
+    <ul class="tight">
+      <li>The target already holds every message and file: "already here", skipped (claude-transplant's test).</li>
+      <li>Grown on either side: the target's copy stays and the archive's is left out. Never overwrite, never merge. A "keep as a copy" option would mean rewriting the id in every line, so it's not in the first version.</li>
+      <li>An entry whose id has a deleted-session marker in the window would vanish again, so the preview flags it.</li>
+    </ul>
+  </li>
+  <li><b>Claude running.</b> Claude Code keeps appending to a session in use. Export copies complete lines only and marks the session "in use". Importing Claude Code sessions only adds new files, so Claude can stay open. The Claude window rewrites its Code-tab list from memory, so importing that list needs that one window closed. As in claude-transplant, the preview lists exactly what closes, and cl_audit closes it gracefully after a yes and reopens it.</li>
+  <li><b>Forks and scheduled tasks.</b> A forked session needs its parent, so the parent is imported first or the fork is left out. Sessions started by a scheduled task belong to that task's family. claude-transplant moves whole families and refuses incomplete ones; the first version leaves them out and lists them.</li>
+  <li><b>Remote Control.</b> If a session's last Remote Control pointer belongs to the old account, the import appends Claude Code's own empty pointer line, as claude-transplant does, so the old pointer can't hide the session. The copies on claude.ai stay in the old account.</li>
+  <li><b>The 30-day clean-up.</b> Claude Code deletes sessions older than 30 days when it starts. Unless the profile keeps sessions longer (stage 0), it could delete old imported ones right away. Which date it goes by still needs a test.</li>
+</ul>
+
+<h2><small>5</small>Safety</h2>
+<ul class="tight">
+  <li><b>Never in an archive:</b>
+    <ul class="tight">
+      <li>Keychain items;</li>
+      <li><code>.claude.json</code> (account, user id, per-project MCP settings) and <code>.credentials.json</code>;</li>
+      <li><code>settings.json</code>;</li>
+      <li><code>sessions/*.json</code> (hold peer tokens);</li>
+      <li><code>shell-snapshots/</code> (your shell's environment, which can hold exported keys) and <code>session-env/</code>;</li>
+      <li>telemetry, caches and plugins;</li>
+      <li>the window's cookies, local storage and <code>config.json</code>;</li>
+      <li>Cowork's virtual machine images.</li>
+    </ul>
+  </li>
+  <li><b>Keys inside sessions.</b> Tool output can contain keys, <code>.env</code> files and tokens a command printed, and rewind history keeps old copies of edited files. Before anything is written, export scans for known key shapes:
+    <ul class="tight">
+      <li>Anthropic, GitHub, AWS, Google, Slack and Stripe keys;</li>
+      <li>private-key blocks;</li>
+      <li>signed tokens;</li>
+      <li><code>password=</code> lines.</li>
+    </ul>
+    The preview shows, per session, the kinds and counts found, never the values. Flagged sessions are left out by default. No redaction in the first version, because rewriting would change the history.</li>
+  <li><b>Add-only.</b> Import never overwrites or deletes. A receipt lists every file it added, with a checksum, and Undo last import removes exactly those, and only if they're unchanged.</li>
+  <li><b>Written the way claude-transplant writes:</b>
+    <ul class="tight">
+      <li>one operation at a time, under a lock;</li>
+      <li>every file goes to a temp file first and appears through a hard link that can't overwrite;</li>
+      <li>a journal after every step, so a crash leaves nothing half-done.</li>
+    </ul>
+  </li>
+  <li><b>Export is read-only.</b> It writes only the archive, wherever you save it. The save panel says the archive holds your conversations.</li>
+</ul>
+
+<h2><small>6</small>Recommended design</h2>
+<p class="lede">Sessions belong to a profile, so the controls go on the profile's page in a <b>Sessions</b> card, in layout A: one title with ⓘ, labels of one width each with ⓘ, switches with words, pop-ups, one grey line per row at most. Export and Import each open a page like New profile: settings in cards, then a preview of exactly what will happen. Nothing is written until the last key.</p>
+
+<div class="sketches">
+  <div class="sk">
+    <h3>Settings ▸ Work ▸ Sessions</h3>
+    <p class="why">What's kept, for how long, and the two keys.</p>
+    <div class="card">
+      <h4>Sessions <span class="i">i</span></h4>
+      <div class="srow"><div class="k">Kept here <span class="i">i</span></div>
+        <div class="v">250 in Claude Code · 10 in the Claude window</div>
+        <p class="desc">1 GB · since 21 Oct · Claude Code deletes them after 30 days.</p></div>
+      <div class="srow"><div class="k">Keep for <span class="i">i</span></div>
+        <div class="v"><span class="popup">30 days (Claude Code's default) <span class="chev">⌃⌄</span></span></div></div>
+      <div class="srow"><div class="k">Export <span class="i">i</span></div>
+        <div class="v"><span class="key">Export…</span></div>
+        <p class="desc">Never exported.</p></div>
+      <div class="srow"><div class="k">Import <span class="i">i</span></div>
+        <div class="v"><span class="key">Import…</span></div></div>
+    </div>
+  </div>
+
+  <div class="sk">
+    <h3>Export ▸ preview</h3>
+    <p class="why">One profile or all of them; what goes in; keys found.</p>
+    <div class="card">
+      <h4>What <span class="i">i</span></h4>
+      <div class="srow"><div class="k">From <span class="i">i</span></div><div class="v"><span class="popup">All profiles <span class="chev">⌃⌄</span></span></div></div>
+      <div class="srow"><div class="k">Claude Code <span class="i">i</span></div><div class="v"><span class="mswitch"><span class="led ok-l"></span></span><span class="words">400 sessions, with rewind history</span></div></div>
+      <div class="srow"><div class="k">Claude window <span class="i">i</span></div><div class="v"><span class="mswitch"><span class="led ok-l"></span></span><span class="words">140 Code-tab entries</span></div></div>
+      <div class="srow"><div class="k">Cowork <span class="i">i</span></div><div class="v"><span class="mswitch"><span class="led off-l"></span></span><span class="words">left out</span></div></div>
+    </div>
+    <div class="card">
+      <h4>Keys <span class="i">i</span></h4>
+      <div class="srow"><div class="k">Found <span class="i">i</span></div><div class="v"><span class="mswitch"><span class="led ok-l"></span></span><span class="words">leave those 5 sessions out</span></div>
+        <p class="desc">2 GitHub tokens, 3 private keys; which sessions is in the list below.</p></div>
+      <div class="srow"><div class="k">Password <span class="i">i</span></div><div class="v"><span class="mswitch"><span class="led off-l"></span></span><span class="words">not encrypted</span></div></div>
+    </div>
+    <div class="card">
+      <h4>Preview <span class="i">i</span></h4>
+      <div class="list">
+        <div class="li"><span class="led ok-l"></span><span>~/projects/app</span><span class="n">300</span><span class="s">1.8 GB · 2 in use, copied up to their last full line</span></div>
+        <div class="li"><span class="led ok-l"></span><span>~/projects/site</span><span class="n">95</span><span class="s">0.6 GB</span></div>
+        <div class="li"><span class="led caution-l"></span><span>~/projects/infra</span><span class="n">5</span><span class="s">keys found: left out</span></div>
+      </div>
+      <div class="bar"><span class="cancel">Cancel</span><span class="key primary">Export 395 sessions · ≈ 2.5 GB</span></div>
+    </div>
+  </div>
+
+  <div class="sk">
+    <h3>Import ▸ preview</h3>
+    <p class="why">Into which profile, and exactly what happens to each session.</p>
+    <div class="card">
+      <h4>Into <span class="i">i</span></h4>
+      <div class="srow"><div class="k">Profile <span class="i">i</span></div><div class="v"><span class="popup">Work <span class="chev">⌃⌄</span></span></div>
+        <p class="desc">Its account; Claude Code can stay open.</p></div>
+      <div class="list" style="margin-top:6px">
+        <div class="li"><span class="led ok-l"></span><span>Add</span><span class="n">210</span><span class="s">new to this profile</span></div>
+        <div class="li"><span class="led off-l"></span><span>Already here</span><span class="n">60</span><span class="s">same content: skipped</span></div>
+        <div class="li"><span class="led caution-l"></span><span>Grown on either side</span><span class="n">3</span><span class="s">this profile's copy stays; the archive's is left out</span></div>
+        <div class="li"><span class="led caution-l"></span><span>Code-tab entries</span><span class="n">10</span><span class="s">the Work window closes and reopens; you confirm first</span></div>
+        <div class="li"><span class="led caution-l"></span><span>Part of a scheduled task</span><span class="n">2</span><span class="s">left out, with the task's name</span></div>
+        <div class="li"><span class="led caution-l"></span><span>Folder not on this Mac</span><span class="n">30</span><span class="s">added; listed once that folder exists</span></div>
+        <div class="li"><span class="led caution-l"></span><span>Older than 30 days</span><span class="n">40</span><span class="s">Claude Code would delete them: raise Keep for first</span></div>
+      </div>
+      <div class="bar"><span class="cancel">Cancel</span><span class="key primary">Import 210 sessions</span></div>
+      <p class="desc">Undo last import removes exactly what this added.</p>
+    </div>
+  </div>
+</div>
+<p class="muted" style="font-size:12.5px">The numbers in the sketch are samples, and the project names are made up.</p>
+
+<h3>The archive</h3>
+<p>A single file, <code>cl_audit sessions 2026-11-05.zip</code>, made with macOS's own <code>ditto</code>, so Finder opens it. With a password it becomes an encrypted disk image instead; both are built into macOS. The account is recorded only as a fingerprint of its id, never its address or a token.</p>
+<pre class="tree">manifest.json            format 1 · made by cl_audit &lt;version&gt; · this Mac's home path
+                         per profile: name, folders, account fingerprint
+                         per session: id, kind, project path, title, first and last activity,
+                                      files with size and checksum, keys found (kinds and counts), in use
+profiles/&lt;profile&gt;/claude-code/projects/&lt;project&gt;/&lt;id&gt;.jsonl  (+ &lt;id&gt;/subagents, tool-results, workflows)
+profiles/&lt;profile&gt;/claude-code/file-history/&lt;id&gt;/
+profiles/&lt;profile&gt;/claude-code/plans/                          (if chosen)
+profiles/&lt;profile&gt;/window/code-tab/local_&lt;id&gt;.json             (account and organisation folders dropped)
+profiles/&lt;profile&gt;/cowork/local_&lt;id&gt;/                           (if chosen; conversation, log, uploads, outputs)</pre>
+<p><b>Dry run</b> is built in: both previews read everything and write nothing. Import compares checksums with the target first, so "already here", "grown in both places" and "deleted marker" are known before the key is pressed.</p>
+
+<h2><small>7</small>Stages and cost</h2>
+<p class="lede">Rough cost in days of one session's work, including renders and checks.</p>
+<div class="stages">
+  <div class="stage"><span class="no">0</span><div><div class="t">Keep sessions longer</div><div class="d">The <b>Keep for</b> pop-up writes Claude Code's own setting (<code>cleanupPeriodDays</code>) into that profile's <code>settings.json</code>. Without it, exports are the only long-term copy, and old imports may be deleted at once. Ends with: no more silent loss after 30 days.</div></div><span class="c">½ day</span></div>
+  <div class="stage"><span class="no">1</span><div><div class="t">See what's kept</div><div class="d">The Sessions card, read-only: counts, size, oldest, the 30-day line. Ends with: you can see what each profile holds.</div></div><span class="c">½–1 day</span></div>
+  <div class="stage"><span class="no">2</span><div><div class="t">Export</div><div class="d">One profile or all of them; Claude Code sessions, rewind history and the Code-tab list; key scan, manifest, checksums and preview. Read-only, with Claude open. Ends with: an archive you can keep anywhere.</div></div><span class="c">2–3 days</span></div>
+  <div class="stage"><span class="no">3</span><div><div class="t">Import, with the Code-tab list</div><div class="d">Into any profile (any account) on this Mac or another with the same user name. Claude Code sessions are added with Claude open. Code-tab entries are written claude-transplant's way: copied unchanged under the signed-in account and organisation, error keys dropped, Remote Control ids cleared. Only the target window closes and reopens, after a yes.
+    <ul class="tight">
+      <li>Fork parents go first; scheduled-task sessions are left out.</li>
+      <li>Lock, journal, preview, receipt and Undo last import.</li>
+    </ul>
+    Ends with: the sessions are in <code>claude --resume</code> and in that window's sidebar.</div></div><span class="c">3–4 days</span></div>
+  <div class="stage later"><span class="no">4</span><div><div class="t">Another Mac, another user name</div><div class="d">Maps old project paths to new ones in folder names. Needs a test on a second Mac or user. Ends with: moving to a new Mac keeps the history.</div></div><span class="c">1–2 days</span></div>
+</div>
+<p class="muted" style="font-size:12.5px">Not planned: importing Cowork (tied to the account and its virtual machine) and anything on claude.ai.</p>
+
+<h2><small>8</small>What you'd decide</h2>
+<ol class="dec">
+  <li><b>How far the first version goes</b> (changed after the claude-transplant comparison): stages 0–3 with the Code-tab list in stage 3, about 6–8 days (recommended), or Claude Code sessions only, about 5–6 days?</li>
+  <li><b>Keep for:</b> may cl_audit change how long Claude Code keeps a profile's sessions (it writes one setting into that profile's <code>settings.json</code>)? If yes, what default: Claude Code's 30 days, 90 days, a year, always?</li>
+  <li><b>Sessions with keys found:</b> left out by default (recommended), or kept but only with a password?</li>
+  <li><b>Archive:</b> zip, plus an encrypted disk image when a password is set (recommended), or always encrypted?</li>
+  <li><b>Cowork in exports:</b> off by default (recommended; few sessions use it), or on?</li>
+  <li><b>Another Mac with a different user name</b> (stage 4): needed now, later or never?</li>
+  <li><b>New: copy only, or also Move?</b> Between two profiles on this Mac, Move would park the source session in quarantine after the import checks out, as claude-transplant does, so only one live copy remains and Undo brings it back. Recommended: copy only in the first version, Move later.</li>
+  <li><b>New: scheduled tasks.</b> Leave sessions started by a scheduled task out and list them (recommended for the first version), or move whole task families as claude-transplant does (later, +1–2 days)?</li>
+</ol>
+</div></body></html>
