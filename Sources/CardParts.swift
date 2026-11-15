@@ -19,39 +19,46 @@ struct UsageNotice: Equatable {
     /// Signed out or expired: no sign-in to show the window or Terminal on, so both wait in ⋯.
     var signedOut = false
 
+    /// The notice for the card's profile, from its one value (ProfileShow): the split, the sign-in on another account than
+    /// the folder's, another profile's account, expired, signed out, or not readable while there are no numbers. The key is
+    /// the value's (Sign in… whenever it has one); another profile's account keeps the approved card's Sign in… too.
     static func of(_ row: AccountRow) -> UsageNotice? {
+        let show = row.show, d = show.display
         let name = row.entry.name.isEmpty ? "this profile" : row.entry.name
         func signIn(_ address: String?) -> String {
             guard let a = address, a.contains("@") else { return "Sign in to read \(name)'s usage." }
             return "Sign in as \(Privacy.masked(a)) to read \(name)'s usage."
         }
-        let address = SplitUsage.loginAddress(row.status, usual: row.status?.expectedEmail)
-        if let split = row.split {
+        let address = show.loginAddress
+        let key: Key = d.key != nil ? .signIn : .none
+        if d.split != nil, let split = show.splitWords {
             if split.switched {
                 let to = Privacy.masked(split.code)
                 return UsageNotice(tone: .amber, heading: SplitUsage.switchingHead(split.code),
-                                  line: "Sign the Claude app in to \(to) to finish.", key: .none)
+                                  line: "Sign the Claude app in to \(to) to finish.", key: key)
             }
+            // (no key when the app's account is known by its id only: the key only fills in the app's own address)
             return UsageNotice(tone: .red, heading: "Terminal is signed in to \(Privacy.masked(split.code))",
-                              line: signIn(split.loginEmail), key: .signIn)
+                              line: d.key == nil ? split.hint.map { $0 + "." } ?? signIn(nil) : signIn(address), key: key)
         }
-        if row.mismatch {
-            return UsageNotice(tone: .red, heading: "Terminal is signed in to another account", line: signIn(address), key: .signIn)
+        if d.otherAccount {
+            return UsageNotice(tone: .red, heading: "Terminal is signed in to another account", line: signIn(address), key: key)
         }
-        if let other = row.view.clash {
-            return UsageNotice(tone: .red, heading: "Terminal is signed in to \(other)'s account", line: signIn(address), key: .signIn)
+        if let other = d.clash {
+            return UsageNotice(tone: .red, heading: "Terminal is signed in to \(other.name)'s account", line: signIn(address), key: .signIn)
         }
-        switch row.status?.state {
-        case "expired":
-            return UsageNotice(tone: .red, heading: "Terminal's sign-in has expired", line: signIn(address), key: .signIn, signedOut: true)
-        case "noLogin":
-            return UsageNotice(tone: .red, heading: "Terminal is signed out", line: signIn(address), key: .signIn, signedOut: true)
+        switch d.sign {
+        case .expired:
+            return UsageNotice(tone: .red, heading: "Terminal's sign-in has expired", line: signIn(address), key: key, signedOut: true)
+        case .signedOut:
+            return UsageNotice(tone: .red, heading: "Terminal is signed out", line: signIn(address), key: key, signedOut: true)
         // the sign-in fine but not readable now: the last numbers stay while there are any; the notice only without them
-        case "denied" where !row.limits.contains { $0.p != nil }:
-            return UsageNotice(tone: .amber, heading: "Can't read Terminal's sign-in yet",
-                              // `security` refused or timed out (Login.read): no prompt is shown, a locked Keychain is the usual cause
-                              line: "The Keychain didn't hand it over: unlock it, then Refresh now.", key: .refresh)
-        case "unreadable" where !row.limits.contains { $0.p != nil }:
+        case .unreadable where d.usage == nil:
+            if row.status?.state == "denied" {
+                return UsageNotice(tone: .amber, heading: "Can't read Terminal's sign-in yet",
+                                  // `security` refused or timed out (Login.read): no prompt is shown, a locked Keychain is the usual cause
+                                  line: "The Keychain didn't hand it over: unlock it, then Refresh now.", key: .refresh)
+            }
             return UsageNotice(tone: .amber, heading: "Can't read Terminal's sign-in",
                               line: "Claude Code saved it in a form cl_audit doesn't know.", key: .refresh)
         default:

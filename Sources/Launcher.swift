@@ -124,9 +124,14 @@ enum UsageIconState {
     }
 }
 
+/// A profile as the dashboard draws it (its card, the palette's row): ProfileCore's one value for it (ProfileShow, as the
+/// menu bar and the Dock icon draw it) and what the window knows of it now. The card decides nothing itself: the numbers or
+/// why there are none, how old they are (its icon greys with the Dock icon), what is full, the lamp, the key, the line and
+/// the split are the value's.
 struct AccountRow: Identifiable {
     let entry: AccountEntry
-    let status: IconStatus?
+    /// The one value (ProfileShow.load).
+    let show: ProfileShow
     var activity = Launcher.Activity()
     var usageIcon: UsageIconState = .inDock
     /// A change cl_audit started and is still waiting for (the switch shows it at once, its lamp pulsing).
@@ -138,59 +143,81 @@ struct AccountRow: Identifiable {
     var followQuitIn: TimeInterval?
     /// The agent is starting the Dock icon with its window.
     var followStarting = false
-    /// The profile's account as its record says it (AccountResolver): the card's line under the name, with its lamp.
-    var view: AccountView { AccountView.of(status) }
-    /// The Claude app on one account, Claude Code on another (SplitUsage): no numbers for the profile, the line and its key.
-    var split: SplitUsage? { SplitUsage.of(status) }
+    /// The record as the headline surfaces read it (Store.status(for:)): its plan, credits, addresses and state, for words.
+    var status: IconStatus? { show.record }
+    var display: ProfileDisplay { show.display }
+    /// The profile's account as its record says it (AccountResolver): the card's line under the name.
+    var view: AccountView { show.view }
     var id: String { entry.id }
     var account: Account { Account(entry) }
 
-    var stale: Bool {
-        guard let u = status?.updatedAt else { return true }
-        return Date().timeIntervalSince(u) > 3600
-    }
-    var mismatch: Bool {
-        guard let a = status?.loginEmail, let b = status?.expectedEmail else { return false }
-        return a.lowercased() != b.lowercased()
-    }
-    var needsLogin: Bool { status?.needsLogin ?? false }
-    var fiveHour: Double? { status?.fiveHour }
-    var weekly: Double? { status?.weekly }
+    /// The numbers as they may show (the value's), or nil.
+    var usage: Usage? { show.usage }
+    var needsLogin: Bool { show.needsLogin }
+    var fiveHour: Double? { usage?.fiveHour }
+    var weekly: Double? { usage?.weekly }
     /// How close the account is to any limit (the higher of the two).
     var worst: Double? { (fiveHour == nil && weekly == nil) ? nil : max(fiveHour ?? 0, weekly ?? 0) }
     var accent: Color { Color(nsColor: entry.accentNSColor) }
+    /// The green lamp by the account in use (the value's: off while the sign-in needs the person, can't be read, or is on
+    /// another account than the folder's or another profile's).
+    var lit: Bool { display.lamp }
+    /// The one line under the account, or nil.
+    var line: String? { show.lineWords(short: false) }
 
-    var icon: NSImage {
-        Painter.image(TileModel(label: entry.label.isEmpty ? "?" : entry.label, fiveHour: fiveHour, weekly: weekly,
-                                stale: stale, style: entry.style, warn: mismatch, tint: entry.color, frame: entry.frame,
-                                fiveHourElapsed: windowElapsed(status?.fiveHourResets, 5 * 3600),
-                                weeklyElapsed: windowElapsed(status?.weeklyResets, 7 * 86400),
-                                windowOpen: activity.desktopOpen && entry.windowDot,
-                                countdown: AtLimit.tileCountdown(fiveHour: fiveHour, fiveHourResets: status?.fiveHourResets,
-                                                                 weekly: weekly, weeklyResets: status?.weeklyResets)), pixels: 128)
+    /// The profile's tile, as its Dock icon draws it from the same value: grey when the numbers are old (three missed reads)
+    /// or there are none, the warning for a sign-in on another account, the countdown for the full limit.
+    var tile: TileModel {
+        let d = display, now = Date()
+        return TileModel(label: entry.label.isEmpty ? "?" : entry.label, fiveHour: fiveHour, weekly: weekly,
+                         stale: d.grey, style: entry.style, warn: d.otherAccount, tint: entry.color, frame: entry.frame,
+                         fiveHourElapsed: windowElapsed(usage?.fiveHourResets, 5 * 3600),
+                         weeklyElapsed: windowElapsed(usage?.weeklyResets, 7 * 86400),
+                         windowOpen: activity.desktopOpen && entry.windowDot,
+                         countdown: AtLimit.tileCountdown(d.full(now: now), now: now))
     }
+    var icon: NSImage { Painter.image(tile, pixels: 128) }
 
-    /// The full limit that holds this profile back now, or nil.
-    var full: FullLimit? {
-        AtLimit.blocker(fiveHour: fiveHour, fiveHourResets: status?.fiveHourResets, weekly: weekly, weeklyResets: status?.weeklyResets)
-    }
+    /// The full limit that holds this profile back now (the value's, until its reset passes), or nil.
+    var full: FullLimit? { display.full(now: Date()) }
 
     var limits: [Limit] {
-        (status?.noFiveHour == true ? []
-            : [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: fiveHour, resets: status?.fiveHourResets, window: 5 * 3600)])
-            + [Limit(id: "wk", title: "Week", name: "Week", p: weekly, resets: status?.weeklyResets, window: 7 * 86400)]
-            + (entry.showFable ? status?.scoped ?? [] : []).map(\.limit)
+        Limit.card(fiveHour: usage?.fiveHour, fiveHourResets: usage?.fiveHourResets, weekly: usage?.weekly,
+                   weeklyResets: usage?.weeklyResets, scoped: usage?.scoped ?? [], noFiveHour: status?.noFiveHour == true,
+                   fable: entry.showFable)
     }
 
     var subtitle: String {
-        if mismatch { return "sign-in is a different account" }
-        if view.clash != nil { return view.line ?? "another profile's account" }
-        if status?.state == "expired" { return "sign-in expired" }
-        if status?.state == "noLogin" { return "no Claude Code sign-in" }
-        if status?.state == "denied" { return "signed in, can't read it yet" }
-        if status?.state == "unreadable" { return "signed in, can't read this kind" }
+        let d = display
+        if d.otherAccount { return "sign-in is a different account" }
+        if d.clash != nil { return line ?? "another profile's account" }
+        switch d.sign {
+        case .expired: return "sign-in expired"
+        case .signedOut: return "no Claude Code sign-in"
+        case .unreadable: return status?.state == "denied" ? "signed in, can't read it yet" : "signed in, can't read this kind"
+        case .ok: break
+        }
         // the account in use as the profile's record says it (AccountResolver): the palette rows show this
         return view.label ?? status?.expectedEmail ?? entry.configDir
+    }
+}
+
+extension Limit {
+    /// The limits as the dashboard draws them (the card, Settings ▸ Accounts' boxes, the Switch page): the 5-hour (unless the
+    /// plan has none), the week, and a model's own weeks when the profile shows them, each as given: what may show is
+    /// already decided (the one value, or the record Store.status(for:) gives).
+    static func card(fiveHour: Double?, fiveHourResets: Date?, weekly: Double?, weeklyResets: Date?, scoped: [ScopedLimit],
+                     noFiveHour: Bool, fable: Bool) -> [Limit] {
+        (noFiveHour ? [] : [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: fiveHour, resets: fiveHourResets, window: 5 * 3600)])
+            + [Limit(id: "wk", title: "Week", name: "Week", p: weekly, resets: weeklyResets, window: 7 * 86400)]
+            + (fable ? scoped : []).map(\.limit)
+    }
+
+    /// A record's limits, as Store.status(for:) gives it (Settings ▸ Accounts' boxes and the Switch page, Claude Code's own
+    /// row included).
+    static func card(_ s: IconStatus?, entry e: AccountEntry) -> [Limit] {
+        card(fiveHour: s?.fiveHour, fiveHourResets: s?.fiveHourResets, weekly: s?.weekly, weeklyResets: s?.weeklyResets,
+             scoped: s?.scoped ?? [], noFiveHour: s?.noFiveHour == true, fable: e.showFable)
     }
 }
 
@@ -247,7 +274,8 @@ final class LauncherModel: ObservableObject {
         agent = Agent.readMark()
         let doing = Agent.isAlive(agent) ? agent?.actions ?? [:] : [:]
         rows = entries.map {
-            var r = AccountRow(entry: $0, status: Store.status(for: $0), activity: acts[Account($0).configDir] ?? .init(), usageIcon: UsageIconState.of($0))
+            var r = AccountRow(entry: $0, show: ProfileShow.load($0, now: now), activity: acts[Account($0).configDir] ?? .init(),
+                               usageIcon: UsageIconState.of($0))
             settle(&r, now, doing[$0.id])
             return r
         }
@@ -950,12 +978,12 @@ struct AccountCard: View {
                         // expired: lamp and address red, and the why in the limits' place (UsageNotice)
                         let out = notice?.signedOut == true
                         HStack(spacing: 5) {
-                            Circle().fill(out ? face.danger : row.view.lit ? FaceTheme.ledOn : face.muted.opacity(0.4)).frame(width: 6, height: 6)
+                            Circle().fill(out ? face.danger : row.lit ? FaceTheme.ledOn : face.muted.opacity(0.4)).frame(width: 6, height: 6)
                             Text(label).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
                                 .foregroundStyle(out ? face.danger : face.muted)
                                 .hidesEmail(label.contains("@"))
                         }
-                        if let n = row.view.line, notice == nil {          // (a notice says it once, in the limits' place)
+                        if let n = row.line, notice == nil {          // (a notice says it once, in the limits' place)
                             Text(n).font(.system(size: 10.5)).foregroundStyle(face.muted.opacity(0.8)).lineLimit(2)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
@@ -1031,12 +1059,12 @@ struct AccountCard: View {
     /// Terminal in ⋯, saying whose sign-in it opens on.
     private var terminalWords: String {
         if notice?.signedOut == true { return "Terminal (asks to sign in first)" }
-        if let s = row.split, !s.switched { return "Terminal (signed in as \(Privacy.masked(s.code)))" }
-        if let other = row.view.clash { return "Terminal (on \(other)'s account)" }
+        if let s = row.show.splitWords, !s.switched { return "Terminal (signed in as \(Privacy.masked(s.code)))" }
+        if let other = row.display.clash { return "Terminal (on \(other.name)'s account)" }
         return "Terminal"
     }
     private var signInHelp: String {
-        guard let a = SplitUsage.loginAddress(row.status, usual: row.status?.expectedEmail), a.contains("@") else {
+        guard let a = row.show.loginAddress, a.contains("@") else {
             return "Sign Claude Code in Terminal in, on \(row.entry.name)'s folder"
         }
         return "Sign Claude Code in Terminal in to \(Privacy.masked(a))"
@@ -1153,7 +1181,7 @@ final class ManagerUI {
             self?.closePalette()
             // the profile's one folder; a folder that is gone is said, never made again (ClaudeCLI.logIn)
             // (in the split, the Claude app's account: Claude Code logs in to it, and the numbers line up)
-            ClaudeCLI.logIn(Account(r.entry), email: SplitUsage.loginAddress(r.status, usual: r.status?.expectedEmail))
+            ClaudeCLI.logIn(Account(r.entry), email: r.show.loginAddress)
         },
         mainScreen: { [weak self] in self?.closePalette(); self?.showMain() },
         settings: { [weak self] in self?.showMain(page: .settings) },

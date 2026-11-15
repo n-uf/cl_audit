@@ -1648,9 +1648,10 @@ struct AccountSettings: View {
         let ok = split ? v.lit : v.lit && move == nil && !mismatch && !["expired", "noLogin", "denied", "unreadable"].contains(status?.state)
         // the card's notice (CardParts.swift): red when Terminal's sign-in is on another account or gone, amber when it
         // can't be read yet or a switch waits for the Claude app
-        let notice = UsageNotice.of(AccountRow(entry: entry, status: status))
+        let show = ProfileShow.load(entry)
+        let notice = UsageNotice.of(AccountRow(entry: entry, show: show))
         let red = notice?.tone == .red
-        let switching = SplitUsage.of(status)?.switched == true
+        let switching = show.display.split?.switchWaits == true
         let readable = notice == nil || ["denied", "unreadable"].contains(status?.state ?? "")
         return AccountBox(lamp: ok ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: red ? .warn : ok ? .ok : .warn,
                           detail: [plan].compactMap { $0 }.joined(separator: " · "), inUse: true,
@@ -1678,7 +1679,7 @@ struct AccountSettings: View {
                     BoxNote(text: notice.line, size: 12, tone: .danger).fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 7) {
-                    logInKey(email: SplitUsage.loginAddress(status, usual: expected))
+                    logInKey(email: show.loginAddress)
                     if let move {
                         Button("Open \(move.owner.name)") { model.selection = move.owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
                     }
@@ -1853,9 +1854,9 @@ struct AccountSettings: View {
 
     /// The limits as the dashboard draws them, or one line why there are none yet.
     @ViewBuilder func limitsOrWhy(_ st: IconStatus?, entry e: AccountEntry, none: String?) -> some View {
-        let row = AccountRow(entry: e, status: st)
-        if row.limits.contains(where: { $0.p != nil }) {
-            CardLimits(limits: row.limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits)
+        let limits = Limit.card(st, entry: e)
+        if limits.contains(where: { $0.p != nil }) {
+            CardLimits(limits: limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits)
         } else {
             BoxNote(text: none ?? st?.problem ?? "No numbers yet: the agent reads them within a few minutes.")
                 .fixedSize(horizontal: false, vertical: true)

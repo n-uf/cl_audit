@@ -80,11 +80,12 @@ enum AccountResolver {
     }
 }
 
-/// The split: the Claude app (the account in use) on one account, Claude Code, whose sign-in reads the numbers, on another.
-/// Then nothing headline shows Claude Code's numbers as the profile's (Store.status(for:) drops them: no bars, nothing full
-/// or red, no countdown, no alert, no switch offer); every surface says the line instead, with one key to log Claude Code
-/// in to the app's account. Claude Code's numbers stay only as one labelled secondary line (the card) and in its own row
-/// in Settings ▸ Accounts.
+/// The split's words: the Claude app (the account in use) on one account, Claude Code, whose sign-in reads the numbers, on
+/// another. Whether a record is the split is ProfileCore's one rule (Headline.split over the record's owner, which the
+/// headline answer and the one value carry); this only says it. Then nothing headline shows Claude Code's numbers as the
+/// profile's (Store.status(for:) drops them: no bars, nothing full or red, no countdown, no alert, no switch offer); every
+/// surface says the line instead, with one key to log Claude Code in to the app's account. Claude Code's numbers stay only
+/// in its own row in Settings ▸ Accounts.
 struct SplitUsage: Equatable {
     let app: String                 // the account in use: the Claude app's
     let code: String                // Claude Code's
@@ -92,12 +93,13 @@ struct SplitUsage: Equatable {
     /// sign in, so there is no key to log Claude Code back in. Otherwise a split by hand.
     var switched = false
 
-    static func of(_ s: IconStatus?) -> SplitUsage? {
-        // (numbers whose account couldn't be confirmed decide nothing: whose they are isn't known)
-        guard let r = s?.resolved, r.fromApp, r.differs, r.clash == nil, s?.ownerUnconfirmed != true,
-              let code = r.codeName ?? r.numbersFor else { return nil }
-        return SplitUsage(app: r.email ?? r.account.map { "account \($0.prefix(8))" } ?? "the Claude app's account", code: code,
-                          switched: r.switchWaits == true)
+    /// The words for record `s` while its headline answer is the split (`split`: the answer's, Headline.split); nil when it
+    /// isn't, or the record has no resolver answer to name the accounts.
+    static func words(_ s: IconStatus?, _ split: Headline.Split?) -> SplitUsage? {
+        guard let split, let r = s?.resolved else { return nil }
+        // (the split has Claude Code's account by its name or the numbers': Headline.split needs one of them)
+        return SplitUsage(app: r.email ?? r.account.map { "account \($0.prefix(8))" } ?? "the Claude app's account",
+                          code: r.codeName ?? r.numbersFor ?? "Claude Code's account", switched: split.switchWaits)
     }
 
     /// "cl_audit can't read P@…'s usage: Claude Code in Terminal is signed in to M@…" (Claude Code inside the Claude app runs
@@ -130,13 +132,6 @@ struct SplitUsage: Equatable {
     var loginEmail: String? { !switched && app.contains("@") ? app : nil }
     /// In place of the key when the app's address isn't known.
     var hint: String? { !switched && loginEmail == nil ? "Sign Claude Code in Terminal in to the Claude app's account" : nil }
-
-    /// The address a Log in fills in: in the split only the app's own (nil: none filled in, never Claude Code's), else the
-    /// usual one (`usual`: the folder's expected address).
-    static func loginAddress(_ s: IconStatus?, usual: String?) -> String? {
-        if let split = of(s) { return split.loginEmail }
-        return usual
-    }
 }
 
 /// What every surface shows of a profile's account, from its status record only (never a file, a log or a seat).

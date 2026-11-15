@@ -292,10 +292,9 @@ enum ClaudeCLI {
     /// Log in… in the agent's surfaces (the menu bar, quick chat): Claude Code's own sign-in in Terminal for the profile's
     /// one folder, with the record's address filled in.
     static func logIn(profile e: AccountEntry) {
-        let s = Store.status(e.id)
-        // the Claude app on another account than Claude Code (SplitUsage): Claude Code logs in to the app's account, and
-        // only ever with the app's own address (none when it isn't known, never Claude Code's)
-        logIn(Account(e), email: SplitUsage.loginAddress(s, usual: s?.expectedEmail))
+        // the Claude app on another account than Claude Code (the split): Claude Code logs in to the app's account, and
+        // only ever with the app's own address (none when it isn't known, never Claude Code's): the one value's
+        logIn(Account(e), email: ProfileShow.load(e).loginAddress)
     }
 
     /// Log in… in the agent's surfaces (the menu bar, the Dock icon's menu, the launcher): an alert when the folder is gone,
@@ -618,7 +617,7 @@ enum Store {
         // numbers whose account couldn't be confirmed, or older than the profile's read interval, are never full
         let a = s.headline(now: now, ages: ages(e))
         var out = s.shown(a, split: headline, now: now)
-        if headline, a.split != nil, let split = SplitUsage.of(s) { out.resolved?.line = split.line }
+        if headline, let split = SplitUsage.words(s, a.split) { out.resolved?.line = split.line }
         // the numbers' account couldn't be confirmed: as read, with their age, but never full (no panel, countdown, red
         // or offer), and said so
         if a.unconfirmed { out.resolved?.line = Self.unconfirmedWords }

@@ -239,20 +239,21 @@ struct SwitchPage: View {
 
     private var inUseBox: some View {
         // the active account and the one line of state, from the profile's record (AccountResolver)
-        let st = Store.status(for: entry)
+        let show = ProfileShow.load(entry)
+        let st = show.record
         let v = AccountView.of(st)
         let detail = st?.plan.map(Account.planWords) ?? ""
-        let row = AccountRow(entry: entry, status: st)
+        let limits = Limit.card(st, entry: entry)
         return AccountBox(lamp: v.lit ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: v.lit ? .ok : .warn, detail: detail) {
             Text(Privacy.masked(v.label ?? "its account")).font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
         } content: {
             if let n = v.line { BoxText(text: n, role: .note) }
-            if row.limits.contains(where: { $0.p != nil }) {
-                CardLimits(limits: row.limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits, fullBox: false)
+            if limits.contains(where: { $0.p != nil }) {
+                CardLimits(limits: limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits, fullBox: false)
             } else {
                 // (in the split the line above says why: here, what gives the numbers)
-                BoxText(text: SplitUsage.of(st)?.numbersHint ?? "No numbers yet: the agent reads them within a few minutes.", role: .note)
+                BoxText(text: show.numbersHint ?? "No numbers yet: the agent reads them within a few minutes.", role: .note)
             }
         }
     }

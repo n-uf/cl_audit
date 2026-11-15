@@ -1,7 +1,8 @@
 // A profile as its headline surfaces show it (ProfileCore step 3a: the menu bar icon with its row and menu, the Dock icon
-// with its face, its menu and its panel): ProfileCore's one "what to show" value (ProfileDisplay), made once from the
-// profile's status record, and cl_audit's words for it. The surfaces draw this and decide nothing themselves: not whether
-// the numbers show, how old they are, what is full, the lamp, the key or the line.
+// with its face, its menu and its panel; step 3b: the dashboard card and the palette's row): ProfileCore's one "what to
+// show" value (ProfileDisplay), made once from the profile's status record, and cl_audit's words for it. The surfaces draw
+// this and decide nothing themselves: not whether the numbers show, how old they are, what is full, the lamp, the key, the
+// line or the split.
 
 import Foundation
 import ProfileCore
@@ -15,7 +16,7 @@ struct ProfileShow {
     /// The account's names: the active account for the account line, and the standby lists without it.
     let view: AccountView
     /// The split's words (SplitUsage), only while the display says the split.
-    private let splitWords: SplitUsage?
+    let splitWords: SplitUsage?
 
     /// The value for `raw`, the record as read (Store.status(_:)), at `now`.
     static func of(_ e: AccountEntry, raw read: IconStatus?, now: Date = Date()) -> ProfileShow {
@@ -36,7 +37,7 @@ struct ProfileShow {
                                     note: r?.line, splitTo: r?.email.flatMap { $0.contains("@") ? $0 : nil }, ages: ages, now: now)
         // a record from before the resolver has no line to say it in (Store.shown neither): no "account not confirmed" there
         if r == nil, d.line == .unconfirmed { d.line = nil }
-        return ProfileShow(entry: e, display: d, record: shown, view: view, splitWords: d.split != nil ? SplitUsage.of(raw) : nil)
+        return ProfileShow(entry: e, display: d, record: shown, view: view, splitWords: SplitUsage.words(raw, d.split))
     }
 
     /// The profile's value now, from its saved record.
@@ -74,6 +75,6 @@ struct ProfileShow {
     }
 
     /// The address a Sign in fills in: in the split only the app's own (nil: none filled in, never Claude Code's), else the
-    /// folder's (SplitUsage.loginAddress over the same record).
+    /// folder's. Every Sign in takes it here (the menus, quick chat, the card, Settings ▸ Accounts' in-use box).
     var loginAddress: String? { display.split != nil ? splitWords?.loginEmail : record?.expectedEmail }
 }
