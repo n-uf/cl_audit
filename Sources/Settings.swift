@@ -2601,19 +2601,25 @@ func preview(_ e: AccountEntry, status: IconStatus?, style: IconStyle? = nil, ti
     return Painter.image(m, pixels: 128)
 }
 
-/// The details panel as Settings previews it, from the profile's record (Store.status(for:)): only the record's numbers, the
-/// same rule as `preview`. The samples (5-hour 23 %, week 58 %) only for a profile that doesn't exist yet (`sample` on, no record).
+/// The details panel as Settings previews it: the profile's one value from its saved record (`s`: that record as
+/// Store.status(for:) gives it, nil when there is none), drawn as the Dock icon's own panel draws it (DetailsInfo.of): the
+/// numbers, their age and grey, the lamp, the line and the key. The samples (5-hour 23 %, week 58 %) only for a profile
+/// that doesn't exist yet (`sample` on, no record).
 func samplePanel(_ entry: AccountEntry, status s: IconStatus?, sample: Bool = false, now: Date = Date()) -> DetailsInfo {
-    let sampled = s == nil && sample
+    let name = entry.name.isEmpty ? "profile" : entry.name, icon = preview(entry, status: s, sample: sample)
+    guard s == nil && sample else {
+        // the value of the profile's saved record, as the Dock icon makes it (ProfileShow.load: the record as read, so the
+        // split's read time too, which Store.status(for:) leaves out with its numbers); no record: the value of none
+        let show = s == nil ? ProfileShow.of(entry, raw: nil, now: now) : ProfileShow.load(entry, now: now)
+        return DetailsInfo.of(show, name: name, icon: icon, problem: nil)
+    }
     return DetailsInfo(
-        name: entry.name.isEmpty ? "profile" : entry.name, icon: preview(entry, status: s, sample: sample),
-        login: s?.loginEmail, expected: s?.expectedEmail, mismatch: false, plan: s?.plan,
-        fiveHour: s?.fiveHour ?? (sampled ? 23 : nil), fiveHourResets: s?.fiveHourResets ?? (sampled ? now.addingTimeInterval(3 * 3600 + 20 * 60) : nil),
-        weekly: s?.weekly ?? (sampled ? 58 : nil), weeklyResets: s?.weeklyResets ?? (sampled ? now.addingTimeInterval(2 * 86400 + 5 * 3600) : nil),
-        updated: s?.updatedAt, source: nil, problem: nil, renewNote: nil,
-        needsLogin: false,
-        design: entry.panelDesign, accent: entry.accentNSColor, noFiveHour: s?.noFiveHour == true)
-        .taking(AccountView.of(s))
+        name: name, icon: icon, login: nil, expected: nil, mismatch: false, plan: nil,
+        fiveHour: 23, fiveHourResets: now.addingTimeInterval(3 * 3600 + 20 * 60),
+        weekly: 58, weeklyResets: now.addingTimeInterval(2 * 86400 + 5 * 3600),
+        updated: nil, source: nil, problem: nil, renewNote: nil, needsLogin: false,
+        design: entry.panelDesign, accent: entry.accentNSColor)
+        .taking(AccountView.of(nil))
 }
 
 /// Settings is a page of the one cl_audit window, not a window of its own.

@@ -30,6 +30,8 @@ struct DetailsInfo {
     var noFiveHour = false              // the plan has no 5-hour limit (Ultra): no 5-hour row
     /// Why there are no numbers when the sign-in is the reason ("Sign-in expired", "Signed out"): the age line says it.
     var noNumbers: String? = nil
+    /// Old numbers (ProfileDisplay's grey tier): the bars are drawn grey, as on the menu bar row.
+    var stale = false
 
     /// The active account (AccountResolver, from the profile's record): green lamp and "in use"; nil: the sign-in line.
     var active: String? = nil
@@ -49,18 +51,21 @@ extension DetailsInfo {
         return out
     }
 
-    /// The Dock icon's panel for a profile, all from its one value (ProfileShow): the numbers, the lamp, the line and the
-    /// key in the panel's fixed width (the split's short line and short key), the age line's words without numbers.
+    /// The Dock icon's panel for a profile, all from its one value (ProfileShow): the numbers and their grey, the lamp, the
+    /// line and the key in the panel's fixed width (the split's short line and short key), the age line: when the numbers
+    /// were read (the split's too, though none show), else the words for none.
     static func of(_ s: ProfileShow, name: String, icon: NSImage, problem: String?, refreshing: Bool = false) -> DetailsInfo {
         let u = s.usage, d = s.display, e = s.entry
         var info = DetailsInfo(
             name: name, icon: icon, login: s.record?.loginEmail, expected: s.record?.expectedEmail, mismatch: d.otherAccount,
             plan: s.record?.plan, fiveHour: u?.fiveHour, fiveHourResets: u?.fiveHourResets, weekly: u?.weekly,
-            weeklyResets: u?.weeklyResets, updated: u?.fetchedAt, source: u?.source, problem: problem, renewNote: s.record?.renewNote,
+            weeklyResets: u?.weeklyResets, updated: d.readAt, source: u?.source, problem: problem, renewNote: s.record?.renewNote,
             needsLogin: d.needsLogin, design: e.panelDesign, accent: e.accentNSColor, refreshing: refreshing,
             scoped: e.showFable ? u?.scoped ?? [] : [], credits: u?.credits, noFiveHour: s.record?.noFiveHour == true,
-            noNumbers: s.noNumbersWords)
-        info.active = s.view.label; info.activeLit = d.lamp; info.activeNote = s.lineWords(short: true)
+            noNumbers: s.noNumbersWords, stale: d.tier == .stale)
+        // (in a clash the app didn't decide, the profile's own account, as on the card: never the folder's, the other profile's)
+        info.active = s.display.clash != nil ? s.inUseLabel : s.view.label
+        info.activeLit = d.lamp; info.activeNote = s.lineWords(short: true)
         if case .logInCode = d.key { info.splitKey = s.keyWords(short: true) }
         return info
     }

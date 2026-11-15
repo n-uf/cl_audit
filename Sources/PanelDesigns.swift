@@ -33,10 +33,13 @@ struct Limit: Identifiable {
     let p: Double?
     let resets: Date?
     let window: TimeInterval   // length of the limit's window
+    /// Old numbers (the panel's, ProfileDisplay's grey tier): the level's colour in grey (the bar, the segments, the ring,
+    /// the big number); a design's small percentage keeps its level colour, as on the menu bar row.
+    var stale = false
 
     /// How much of the window has already passed, in %, from the reset time.
     var elapsed: Double? { windowElapsed(resets, window) }
-    var color: Color { Color(nsColor: Painter.color(p, stale: false)) }
+    var color: Color { Color(nsColor: Painter.color(p, stale: stale)) }
     var frac: CGFloat { CGFloat(min(max(p ?? 0, 0), 100)) / 100 }
 }
 
@@ -47,9 +50,9 @@ extension DetailsInfo {
     }
 
     var limits: [Limit] {
-        (noFiveHour ? [] : [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: fiveHour, resets: fiveHourResets, window: 5 * 3600)])
+        ((noFiveHour ? [] : [Limit(id: "5h", title: "5-hour session", name: "5-hour", p: fiveHour, resets: fiveHourResets, window: 5 * 3600)])
             + [Limit(id: "wk", title: "Week", name: "Week", p: weekly, resets: weeklyResets, window: 7 * 86400)]
-            + scoped.map(\.limit)
+            + scoped.map(\.limit)).map { var l = $0; l.stale = stale; return l }
     }
 }
 
@@ -102,7 +105,7 @@ struct LimitsView: View {
                 Spacer()
                 pct(l, large ? 15 : 13)
             }
-            LevelBar(p: l.p, height: large ? 9 : 7)
+            LevelBar(p: l.p, height: large ? 9 : 7, stale: l.stale)
             resets(l)
         }
     }
@@ -146,7 +149,7 @@ struct LimitsView: View {
                 Text("%").font(.system(size: (large ? 20 : 15) * k, weight: .bold, design: .rounded))
             }
             .foregroundStyle(l.p == nil ? Color.secondary : l.color)
-            LevelBar(p: l.p, height: 4, glow: false)
+            LevelBar(p: l.p, height: 4, glow: false, stale: l.stale)
             resets(l)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -164,7 +167,7 @@ struct LimitsView: View {
                 Spacer()
                 pct(l, large ? 15 : 13)
             }
-            SegmentBar(p: l.p, height: large ? 11 : 9)
+            SegmentBar(p: l.p, height: large ? 11 : 9, stale: l.stale)
         }
     }
 
@@ -177,7 +180,7 @@ struct LimitsView: View {
                 Spacer()
                 pct(l, large ? 15 : 13)
             }
-            LevelBar(p: l.p, height: large ? 10 : 8, marker: l.elapsed).padding(.vertical, 4)
+            LevelBar(p: l.p, height: large ? 10 : 8, marker: l.elapsed, stale: l.stale).padding(.vertical, 4)
             if let r = l.resets, AtLimit.isFull(l.p) {
                 Text("full · \(TimeWords.back(r))").font(.caption2).foregroundStyle(.secondary)
             } else if let r = l.resets, let e = l.elapsed {
@@ -191,6 +194,8 @@ struct LimitsView: View {
 struct SegmentBar: View {
     let p: Double?
     var height: CGFloat = 9
+    /// Old numbers: the lit segments in grey.
+    var stale = false
     let count = 12
     @Environment(\.face) private var face
 
@@ -201,7 +206,7 @@ struct SegmentBar: View {
         HStack(spacing: 3) {
             ForEach(0..<count, id: \.self) { i in
                 let zone = Double(i + 1) / Double(count) * 100
-                let c = Color(nsColor: zone > 95 ? Painter.crimson : zone > 80 ? Painter.red : zone > 50 ? Painter.amber : Painter.green)
+                let c = Color(nsColor: stale ? Painter.grey : zone > 95 ? Painter.crimson : zone > 80 ? Painter.red : zone > 50 ? Painter.amber : Painter.green)
                 // inside the window an unlit segment is sunk into the plate
                 RoundedRectangle(cornerRadius: face.active ? 1.5 : 2)
                     .fill(i < lit ? AnyShapeStyle(c) : face.meterOff)
