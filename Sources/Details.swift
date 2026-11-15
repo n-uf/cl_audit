@@ -30,6 +30,8 @@ struct DetailsInfo {
     var noFiveHour = false              // the plan has no 5-hour limit (Ultra): no 5-hour row
     /// Why there are no numbers when the sign-in is the reason ("Sign-in expired", "Signed out"): the age line says it.
     var noNumbers: String? = nil
+    /// The same in a short form for a panel too narrow for it (a long profile's name in a clash).
+    var noNumbersShort: String? = nil
     /// Old numbers (ProfileDisplay's grey tier): the bars are drawn grey, as on the menu bar row.
     var stale = false
 
@@ -65,7 +67,7 @@ extension DetailsInfo {
             weeklyResets: u?.weeklyResets, updated: d.readAt, source: u?.source, problem: problem, renewNote: s.record?.renewNote,
             needsLogin: d.needsLogin, design: e.panelDesign, accent: e.accentNSColor, refreshing: refreshing,
             scoped: e.showFable ? u?.scoped ?? [] : [], credits: u?.credits, noFiveHour: s.record?.noFiveHour == true,
-            noNumbers: s.noNumbersWords, stale: d.tier == .stale)
+            noNumbers: s.noNumbersWords, noNumbersShort: s.noNumbersShort, stale: d.tier == .stale)
         // (in a clash the app didn't decide, the profile's own account, as on the card: never the folder's, the other profile's;
         // none of its own known: no address at all)
         info.active = s.inUseLabel; info.activeUnknown = s.inUseUnknown
@@ -92,6 +94,7 @@ struct AgoButton: View {
     var refreshing = false
     /// No numbers because of the sign-in ("Sign-in expired"): said instead of "Reading usage…", which would never end.
     var noNumbers: String? = nil
+    var noNumbersShort: String? = nil
     let action: () -> Void
     @State private var hover = false
 
@@ -101,6 +104,8 @@ struct AgoButton: View {
             // never a bare "Not yet": before the first read, what is happening
             label(refreshing ? "Updating…" : ago.map { "Updated \($0)" } ?? noNumbers ?? "Reading usage…")
             label(refreshing ? "Updating…" : ago ?? noNumbers ?? "Reading…")
+            // (a long profile's name in a clash: the words don't fit; the short form does, rather than a blank line)
+            label(refreshing ? "Updating…" : ago ?? noNumbersShort ?? noNumbers ?? "Reading…")
             Color.clear.frame(width: 0, height: 0)
         }
     }
@@ -212,7 +217,7 @@ struct DetailsView: View {
             }
             .controlSize(.small)
             // the age on a line of its own under the keys, so its long form ("Reading usage…", "Updated 1 min ago") fits
-            AgoButton(date: info.updated, source: info.source, refreshing: info.refreshing, noNumbers: info.noNumbers, action: actions.refresh)
+            AgoButton(date: info.updated, source: info.source, refreshing: info.refreshing, noNumbers: info.noNumbers, noNumbersShort: info.noNumbersShort, action: actions.refresh)
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
         // the content's own width, the same 16 pt inset on every side: a row that's short of room gives way inside

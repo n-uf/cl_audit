@@ -69,14 +69,18 @@ struct ProfileShow {
     /// Under the line when there are no numbers, in place of "No numbers yet": in the split, what gives the numbers.
     var numbersHint: String? { splitWords?.numbersHint }
 
-    /// The Dock panel's age line when the sign-in is why there are no numbers ("Sign-in expired", "Signed out"), or the
-    /// folder is on another profile's account (a clash: the Reader keeps no numbers there, so none are on their way), else nil.
+    /// The Dock panel's age line when the folder is on another profile's account (a clash: the Reader keeps no numbers
+    /// there, so none are on their way; said first, as the card's notice does), or the sign-in is why there are no numbers
+    /// ("Sign-in expired", "Signed out"), else nil.
     var noNumbersWords: String? {
+        if let other = display.clash, display.usage == nil { return "No usage: Terminal is on \(other.name)'s account" }
         if display.none == .expired { return "Sign-in expired" }
         if display.none == .signedOut { return "Signed out" }
-        if let other = display.clash, display.usage == nil { return "No usage: Terminal is on \(other.name)'s account" }
         return nil
     }
+
+    /// The same for a panel too narrow for it (a long profile's name): the short form of the clash's words.
+    var noNumbersShort: String? { display.clash != nil && display.usage == nil ? "No usage here" : noNumbersWords }
 
     /// The account in use as every surface names it (the card, the Switch page, the Dock panel and menu, the menu bar row):
     /// the record's (AccountView.label); in a clash the app didn't decide, the profile's own account (its seat; nil when it
