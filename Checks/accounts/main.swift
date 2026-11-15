@@ -1576,5 +1576,73 @@ do {
           "windowOwner: the usual window is the first profile's that opens it; a free own window has none")
 }
 
+// ============ 20. one owner rule everywhere: noteAccounts, isThat, seatTaken, has (AccountIdentity.sameAccount) ============
+do {
+    // ids with letters, so a case can differ (uuid(n) has none)
+    func hexSeat(_ n: Int, _ email: String?, org: String? = nil) -> Seat {
+        Seat(account: "00000000-0000-4000-8000-0000000000a\(n)", organization: org ?? "00000000-0000-4000-8000-0000000000b\(n)", email: email)
+    }
+    func upper(_ s: Seat) -> Seat { Seat(account: s.account.uppercased(), organization: s.organization?.uppercased(), email: s.email?.uppercased()) }
+    let h1 = hexSeat(1, "hex-1@example.com"), h2 = hexSeat(2, "hex-2@example.com")
+    let otherOrg = hexSeat(1, "hex-1@example.com", org: "00000000-0000-4000-8000-0000000000c1")       // h1's address, another organisation
+    let otherID = Seat(account: "00000000-0000-4000-8000-0000000000d1", organization: h1.organization, email: h1.email)   // another id, h1's address
+    var dirs: [String: Seat] = [:]
+    func note(_ list: [AccountEntry]) -> [AccountEntry] { FolderRules.noteAccounts(list, signedIn: { dirs[$0] }, status: { _ in nil }, now: t0) }
+    // noteAccounts: the account in use signed in again with its ids in another case, or with "" for no organisation
+    let main = profile("main", "~/.claude-o20main", h1)
+    dirs = ["~/.claude-o20main": upper(h1)]
+    check(note([main]) == [main], "noteAccounts: the account in use, ids in another case: the same account, nothing moves")
+    let noOrg = profile("noorg", "~/.claude-o20noorg", Seat(account: h2.account, organization: nil, email: h2.email))
+    dirs = ["~/.claude-o20noorg": Seat(account: h2.account, organization: "", email: h2.email)]
+    check(note([noOrg]) == [noOrg], "noteAccounts: no organisation (nil) and an empty one: the same account")
+    // the same address in another organisation, or another id: another account, followed
+    dirs = ["~/.claude-o20main": otherOrg]
+    let moved = note([main])[0]
+    check(moved.seat.map { $0.same(otherOrg) } == true && moved.standby.first?.seat.map { $0.same(h1) } == true,
+          "noteAccounts: h1's address in another organisation is another account: in use, h1 stands by")
+    dirs = ["~/.claude-o20main": otherID]
+    check(note([main])[0].seat.map { $0.same(otherID) } == true, "noteAccounts: both ids present but different: another account, never the address")
+    // another profile's account in use, ids in another case: refused
+    let work = profile("work", "~/.claude-o20work", h2)
+    dirs = ["~/.claude-o20main": upper(h2), "~/.claude-o20work": h2]
+    check(note([main, work]) == [main, work], "noteAccounts: another profile's account in use, ids in another case: refused")
+    // a standby entry with its ids in another case moves here; one remembered by its address moves by the address
+    let w2 = profile("work", "~/.claude-o20work", h1, standby: [StandbyAccount(email: h2.email!, seat: upper(h2), id: "c2")])
+    let m2 = profile("main", "~/.claude-o20main", otherID)
+    dirs = ["~/.claude-o20main": h2, "~/.claude-o20work": h1]
+    let came = note([m2, w2])
+    check(came[0].seat.map { $0.same(h2) } == true && came[1].standby.isEmpty && came[1].accountNote?.kind == .left,
+          "noteAccounts: another profile's standby entry, ids in another case: it moves here, said on both")
+    let wAddr = profile("work", "~/.claude-o20work", h1, standby: [StandbyAccount(email: "HEX-2@example.com", id: "a2")])
+    check(note([m2, wAddr])[1].standby.isEmpty, "noteAccounts: one remembered by its address only: found by the address")
+    // a standby entry with the same address in another organisation, or another id: another account, it stays
+    let wOrg = profile("work", "~/.claude-o20work", h2, standby: [StandbyAccount(email: h1.email!, seat: otherOrg, id: "o1")])
+    let mOrg = profile("main", "~/.claude-o20main", otherID)
+    dirs = ["~/.claude-o20main": h1, "~/.claude-o20work": h2]
+    let kept = note([mOrg, wOrg])
+    check(kept[0].seat.map { $0.same(h1) } == true && kept[1].standby.map(\.id) == ["o1"] && kept[1].accountNote == nil,
+          "noteAccounts: another profile's standby with the same address in another organisation (or another id) stays there")
+    // isThat
+    check(FolderRules.isThat(h1, StandbyAccount(email: "", seat: upper(h1), id: "x")) && FolderRules.isThat(h1, StandbyAccount(email: "Hex-1@example.com", id: "y"))
+          && !FolderRules.isThat(h1, StandbyAccount(email: h1.email!, seat: otherOrg, id: "z")) && !FolderRules.isThat(h1, StandbyAccount(email: h1.email!, seat: otherID, id: "w"))
+          && FolderRules.isThat(Seat(account: h2.account, organization: "", email: nil), StandbyAccount(email: "", seat: Seat(account: h2.account, organization: nil), id: "v")),
+          "isThat: ids in any case, an address only by the address, another organisation or id never by the address, nil and \"\" one")
+    // has and seatTaken
+    let holder = profile("holder", "~/.claude-o20holder", h2, standby: [StandbyAccount(email: "HEX-1@example.com", id: "s1")])
+    let byID = profile("byid", "~/.claude-o20byid", h1)
+    check(holder.has(upper(h2)) && holder.has(h1) && holder.has(otherID) && !byID.has(otherID) && !byID.has(otherOrg) && !holder.has(hexSeat(3, nil)) && !holder.has(nil),
+          "has: in use (ids in any case); a standby remembered by its address only by the address, whatever the id; another id or organisation "
+          + "with the address of one known by its ids, or a free one: no")
+    let fresh = profile("fresh", "~/.claude-o20fresh", nil)
+    func taken(_ s: Seat, _ list: [AccountEntry]) -> String? { FolderRules.seatTaken(fresh, among: list, signedIn: { $0 == fresh.configDir ? s : nil })?.id }
+    check(taken(upper(h2), [holder, fresh]) == "holder" && taken(h1, [holder, fresh]) == "holder",
+          "seatTaken: another profile's account in use with its ids in another case, or its standby by address: taken")
+    check(taken(otherID, [byID, fresh]) == nil && taken(otherOrg, [byID, fresh]) == nil,
+          "seatTaken: another id or another organisation with the same address: free")
+    let early = profile("early", "~/.claude-o20early", nil)
+    check(FolderRules.seatTaken(fresh, among: [early, fresh], signedIn: { $0 == early.configDir ? h1 : ($0 == fresh.configDir ? upper(h1) : nil) })?.id == "early",
+          "seatTaken: an earlier profile not linked yet signed in to it, ids in another case: taken")
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

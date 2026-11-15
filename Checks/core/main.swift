@@ -52,6 +52,29 @@ do {
     check(!AccountIdentity(account: nil, email: "ann@example.com", organization: uuid(52), source: .verified).matches(fromFile), "another organisation: another account")
     check(!AccountIdentity(account: uuid(9), email: "ann@example.com", organization: uuid(51), source: .guessed).matches(fromFile),
           "both with ids: the ids decide, not the address")
+    // the one owner rule (sameAccount): matches, with one side known by its address only matched by the address
+    let typed = AccountIdentity.address("ANN@example.com")
+    check(typed.addressOnly && !fromFile.addressOnly && !fromProcess.addressOnly && typed.sameAccount(fromFile) && fromFile.sameAccount(typed),
+          "an address only (no id, no organisation): the address decides, any case, either side")
+    check(!AccountIdentity.address("").sameAccount(.address("")) && !AccountIdentity.address(nil).sameAccount(fromFile), "no address: never the same")
+    check(AccountIdentity(hex).sameAccount(AccountIdentity(Seat(account: hex.account.uppercased(), organization: uuid(51).uppercased()))),
+          "ids differing only by case: one account")
+    check(!AccountIdentity(a).sameAccount(AccountIdentity(Seat(account: uuid(1), organization: uuid(52), email: a.email))),
+          "the same address in another organisation (both ids): another account")
+    check(noOrg.sameAccount(Seat(account: uuid(3), organization: "")) && !noOrg.same(Seat(account: uuid(3), organization: "")),
+          "no organisation (nil) and an empty one: one account by the owner rule (Seat.same stays exact)")
+    check(!a.sameAccount(Seat(account: uuid(9), organization: uuid(51), email: a.email)) && !a.sameAccount(nil),
+          "both ids present but different: another account, never the address")
+    check(!fromProcess.sameAccount(AccountIdentity(account: nil, email: "ann@example.com", organization: uuid(52), source: .guessed)),
+          "an address with an organisation isn't address-only: the organisation counts")
+    check(AccountIdentity(Seat(account: "", email: "ann@example.com")).addressOnly, "an empty id is none")
+    let byAddress = StandbyAccount(email: "Ann@example.com", id: "q1"), seated = StandbyAccount(email: "", seat: Seat(account: uuid(1), organization: uuid(51)), id: "q2")
+    check(byAddress.identity.addressOnly && AccountIdentity(a).sameAccount(byAddress.identity) && seated.identity.sameAccount(AccountIdentity(a))
+          && seated.identity.email == "" && StandbyAccount(email: "x@example.com", seat: Seat(account: uuid(1)), id: "q3").identity.email == "x@example.com",
+          "a standby entry's identity: its seat (the entry's address when the seat has none), else its address only")
+    check(AccountIdentity(a).withoutOrganization.sameAccount(AccountIdentity(account: uuid(1).uppercased(), email: nil, organization: nil, source: .verified))
+          && !AccountIdentity(a).sameAccount(AccountIdentity(account: uuid(1), email: nil, organization: nil, source: .verified)),
+          "an id named without an organisation: compared with the seat's left out (withoutOrganization)")
     // the saved shapes stay as they were (older Dock icon copies read the same files)
     let keys = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(Seat(account: "a", organization: "o", email: "e@example.com"))) as? [String: Any])?.keys.sorted()
     check(keys == ["account", "email", "organization"], "Seat's JSON keys: \(keys ?? [])")
@@ -548,8 +571,10 @@ do {
           && machine(nil).belongs(.seat(pat)) == .notLinked, "a seat against the linked one: unknown, same, other, not linked")
     let hexSeat = Seat(account: "00000000-0000-4000-8000-0000000000ab", organization: uuid(71))
     check(r.belongs(.seat(Seat(account: uuid(61), organization: uuid(71), email: "x@example.com"))) == .same
-          && machine(hexSeat).belongs(.seat(Seat(account: hexSeat.account.uppercased(), organization: uuid(71)))) == .other,
-          "seats by their ids, exactly (Seat.same: case counts, as before), never the address")
+          && machine(hexSeat).belongs(.seat(Seat(account: hexSeat.account.uppercased(), organization: uuid(71)))) == .same
+          && machine(hexSeat).belongs(.seat(Seat(account: hexSeat.account, organization: uuid(72)))) == .other
+          && r.belongs(.seat(Seat(account: uuid(62), organization: uuid(71), email: mo.email))) == .other,
+          "seats by the one owner rule: the ids in any case, another organisation another account, never the address")
     check(r.belongs(.address("MO@example.com"), expected: "mo@example.com") == .same && r.belongs(.address("pat@example.com"), expected: "mo@example.com") == .other
           && r.belongs(.address("pat@example.com")) == .notLinked && r.belongs(.address(nil), expected: "mo@example.com") == .unknown,
           "addresses in any case; none expected: not linked")

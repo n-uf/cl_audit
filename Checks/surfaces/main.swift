@@ -2536,5 +2536,50 @@ do {
           "…the rest of the note stays (a session a running Claude Code holds), then the left-behind line when something moved")
 }
 
+// ============ 15. one owner rule in the resolver and the lists (AccountIdentity.sameAccount) ============
+do {
+    // ids with letters, so a case can differ (uuid(n) has none)
+    func hx(_ n: Int, _ email: String?, org: String? = nil) -> Seat {
+        Seat(account: "00000000-0000-4000-8000-0000000000a\(n)", organization: org ?? "00000000-0000-4000-8000-0000000000b\(n)", email: email)
+    }
+    func upper(_ s: Seat) -> Seat { Seat(account: s.account.uppercased(), organization: s.organization?.uppercased(), email: s.email) }
+    let h1 = hx(1, "hex-1@example.com"), h2 = hx(2, "hex-2@example.com")
+    let otherOrg = hx(1, h1.email, org: "00000000-0000-4000-8000-0000000000c1"), otherID = Seat(account: "00000000-0000-4000-8000-0000000000d1", organization: h1.organization, email: h1.email)
+    let me = profile("hme", "~/.claude-hme", h2)
+    var them = profile("hthem", "~/.claude-hthem", h1); them.claudeWindow = false
+    func clash(_ code: Seat, _ owner: AccountEntry = them) -> String? {
+        AccountResolver.resolve(me, among: [me, owner], app: .unknown, code: code, loginEmail: code.email, names: [:], now: t0).clash
+    }
+    // the clash owner: another profile's account in use
+    check(clash(upper(h1)) == "Hthem", "clash: another profile's account in use, ids in another case")
+    check(clash(Seat(account: h1.account, organization: "", email: h1.email), profile("hnil", "~/.claude-hnil", Seat(account: h1.account, organization: nil, email: h1.email))) == "Hnil",
+          "clash: no organisation (nil) and an empty one: the same account")
+    check(clash(otherOrg) == nil && clash(otherID) == nil, "clash: the same address in another organisation, or another id: another account, never the address")
+    // the Claude app's account among the profile's (`mine`), differs and the switch waiting for the app: by the id (the app
+    // names no organisation for certain, so a seat's is left out)
+    var sw = profile("hsw", "~/.claude-hsw", upper(h2)); sw.standby = [StandbyAccount(email: h1.email!, seat: upper(h1), id: "k1")]
+    let appH1 = AppSignIn.Login(account: h1.account, org: h1.organization, state: .known, source: "log", at: t0)
+    let appH2 = AppSignIn.Login(account: h2.account, org: nil, state: .known, source: "config", at: nil)
+    let same = AccountResolver.resolve(sw, among: [sw], app: appH2, code: h2, loginEmail: nil, names: [:], now: t0)
+    check(same.email == h2.email && !same.differs && same.fromApp, "mine: the app's id against a seat with its ids in another case, the app's organisation not known: that seat")
+    let noAddr = AccountResolver.resolve(sw, among: [sw], app: appH2, code: otherID, loginEmail: nil, names: [:], now: t0)
+    check(noAddr.differs, "differs, no address to compare: by the ids, another id is another account (never the address)")
+    var toH2 = SwitchReceipt(id: SwitchEngine.receiptID(t0, "hsw"), profile: "hsw", standby: "k2", dataDir: "/x",
+                             from: SeatID(account: h1.account.uppercased(), organization: h1.organization!.uppercased()), to: SeatID(h2), started: t0)
+    toH2.linked = t0
+    let waits = AccountResolver.resolve(sw, among: [sw], app: appH1, code: h2, loginEmail: h2.email, names: [:], newestSwitch: toH2, now: t0)
+    check(waits.differs && waits.email == h1.email && waits.switchWaits == true, "a switch waiting for the app: the switch's from, ids in another case, is the app's account")
+    var fromOther = toH2; fromOther.from = SeatID(otherID)
+    check(AccountResolver.resolve(sw, among: [sw], app: appH1, code: h2, loginEmail: h2.email, names: [:], newestSwitch: fromOther, now: t0).switchWaits == nil,
+          "…from another id with the app's address: not that switch")
+    // the lists' helpers: the record names ids and addresses, no organisation
+    let v = AccountView(label: h1.email, numbersOwner: h2.email, line: nil, lit: true, clash: nil, account: h1.account, differs: true, codeAccount: h2.account)
+    check(v.isActive(StandbyAccount(email: "", seat: upper(h1), id: "a")) && v.isActive(StandbyAccount(email: "HEX-1@example.com", id: "b"))
+          && v.isActive(StandbyAccount(email: h1.email!, seat: otherOrg, id: "c")) && !v.isActive(StandbyAccount(email: h1.email!, seat: otherID, id: "d")),
+          "isActive: ids in any case; an address only by the address; the record names no organisation; another id never by the address")
+    check(v.isCodeRow(id: h2.account.uppercased(), email: nil) && v.isCodeRow(id: nil, email: "HEX-2@example.com") && !v.isCodeRow(id: otherID.account, email: h2.email),
+          "isCodeRow: by the id in any case, else the address; another id never by the address")
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
