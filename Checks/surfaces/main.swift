@@ -1321,7 +1321,8 @@ do {
     // the reader: numbers whose reading doesn't name its account (no profile looked up for its token) carry none
     signIn(e.configDir, mo)
     var posts: [String] = []
-    UsageReader.testPoster = { _, title, _, _, _ in posts.append(title); return 0 }
+    // the poster runs on a background queue: its titles join the list on the main thread, where the checks read it
+    UsageReader.testPoster = { _, title, _, _, _ in DispatchQueue.main.async { posts.append(title) }; return 0 }
     let reply = Data(#"{"seven_day":{"utilization":100,"resets_at":"2099-01-02T00:00:00Z"}}"#.utf8)
     let ok200 = HTTPURLResponse(url: URL(string: "https://example.com")!, statusCode: 200, httpVersion: nil, headerFields: nil)
     let sr = UsageReader(e, defaults: UserDefaults(suiteName: "cl-audit-surfaces-split-\(getpid())")!)
@@ -1333,15 +1334,29 @@ do {
     check(posts.isEmpty && SplitUsage.of(saved) != nil && Store.status(for: e)?.weekly == nil,
           "the split: no full or back alert, no switch offer, and no numbers for the profile: \(posts)")
     sr.stop()
-    // the same read with the app on mo (no split): the full alert goes out (the check above isn't empty by accident)
+    // the same read with the app on mo (no split): the full alert goes out (the check above isn't empty by accident). One
+    // account belongs to one profile: a second profile whose folder is signed in to mo too (a clash) shows no numbers
+    // and raises no alert, so the full limit alerts exactly once, from the profile whose account it is
     var same = profile("spm", "~/.claude-spm", mo); same.claudeWindow = false
-    signIn(same.configDir, mo)
-    try! Store.save([e, same])
+    var twin = profile("spt", "~/.claude-spt", nil); twin.claudeWindow = false
+    signIn(same.configDir, mo); signIn(twin.configDir, mo)
+    try! Store.save([same, twin])
+    posts.removeAll()
     let mr = UsageReader(same, defaults: UserDefaults(suiteName: "cl-audit-surfaces-same-\(getpid())")!)
+    let tr = UsageReader(twin, defaults: UserDefaults(suiteName: "cl-audit-surfaces-twin-\(getpid())")!)
     mr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: mr.generation)
-    RunLoop.main.run(until: Date().addingTimeInterval(0.8))
-    check(posts.contains { $0.contains("full") }, "Claude Code's account in use (no split): its full limit alerts as before: \(posts)")
-    mr.stop()
+    tr.finish(data: reply, response: ok200, error: nil, asked: Date(), gen: tr.generation)
+    let until = Date().addingTimeInterval(5)
+    while !posts.contains(where: { $0.contains("full") }) && Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    RunLoop.main.run(until: Date().addingTimeInterval(0.5))                // time for a second, unwanted one to show
+    let fulls = posts.filter { $0.contains("full") }
+    check(fulls == ["Claude Spm: weekly limit full"],
+          "two profiles' folders on one account: exactly one full alert, from the profile whose account it is: \(fulls)")
+    check(Store.status("spt")?.resolved?.clash == "Spm" && Store.status(for: twin)?.weekly == nil,
+          "the twin is the clash: its card shows no numbers, and it stays quiet")
+    mr.stop(); tr.stop()
+    Store.removeStatus("spt")                                               // the widget checks below read every record
+    try! Store.save([e, same])
     UsageReader.testPoster = nil
 
     // old numbers are only last known: never full, never a countdown or an offer

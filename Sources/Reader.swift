@@ -459,11 +459,13 @@ final class UsageReader {
         // Claude Code's in the split, SplitUsage, nor a reading the sign-in has moved on from), confirmed, and fresh by the
         // reading's own time (a reading held until its account was confirmed, and confirmed more than the read interval
         // later, is only last known: its alerts wait for the next read). And none for another account than the profile's
-        // (onOtherAccount, until it follows it).
+        // (onOtherAccount, until it follows it), nor in a clash: one account belongs to one profile, so when the folder is
+        // signed in to another profile's account, that profile's card shows the numbers and it alone raises the alerts
+        // (this profile's card shows none).
         let resolved = answer()
         let a = Headline.of(resolved.owner(reading: nil, unconfirmed: unconfirmed), signedIn: true, readAt: u.fetchedAt,
                             now: now, ages: Store.ages(entry))
-        if !onOtherAccount, a.acts, a.numbers() {
+        if !onOtherAccount, resolved.clash == nil, a.acts, a.numbers() {
             noteBack(u)
             // the account in use as the resolver says it now (the record is saved after this)
             var view = IconStatus(state: "ok"); view.resolved = resolved
