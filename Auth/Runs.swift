@@ -35,10 +35,13 @@ public enum AuthRun {
         ClaudeCommand(executable: claude, arguments: signOutArguments, environment: folder.environment(base), timeout: 120)
     }
 
-    /// The real runner (Runs' Runner): in the temporary folder, no input, output dropped; past the command's timeout asked
-    /// to end, then killed after 5 seconds.
+    /// The real runner (Runs' Runner): in the temporary folder, no input, output dropped, in a process group of its own
+    /// (`ownGroup`): past the command's timeout the whole group is asked to end, then killed after 5 seconds, so what `claude`
+    /// started in it (a hook, an MCP server, a shell tool) goes with it. A normal end leaves the group alone
+    /// (`killGroupOnEnd` false): whatever Claude Code leaves running then (an updater, say) is its own business.
     public static func system(_ c: ClaudeCommand) -> Int32? {
-        Runs.Runner.run(Program(c.executable, c.arguments, environment: c.environment, timeout: c.timeout, grace: 5))?.status
+        Runs.Runner.run(Program(c.executable, c.arguments, environment: c.environment, timeout: c.timeout, grace: 5, ownGroup: true,
+                                killGroupOnEnd: false))?.status
     }
 
     /// Waits for a process to end without running the run loop (Runs' Runner.waitQuietly).

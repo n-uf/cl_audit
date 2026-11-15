@@ -376,6 +376,25 @@ do {
           && AuthRun.system(ClaudeCommand(executable: "/usr/bin/false", arguments: [], environment: [:], timeout: 5)) == 1
           && AuthRun.system(ClaudeCommand(executable: home + "/no-such-program", arguments: [], environment: [:], timeout: 5)) == nil,
           "a run's status; nil when it can't start")
+    // what the run started goes with it: a child of a run that runs out of time is gone too (its own process group)
+    let childFile = home + "/auth-child.pid"
+    try? FileManager.default.removeItem(atPath: childFile)
+    t = Date()
+    let timedOut = AuthRun.system(ClaudeCommand(executable: "/bin/sh", arguments: ["-c", "sleep 30 & echo $! > '\(childFile)'; sleep 30"], environment: [:], timeout: 2))
+    let child = (try? String(contentsOfFile: childFile, encoding: .utf8)).flatMap { pid_t($0.trimmingCharacters(in: .whitespacesAndNewlines)) } ?? -1
+    var childGone = false
+    let until = Date().addingTimeInterval(2)
+    while child > 0 && !childGone && Date() < until { childGone = kill(child, 0) != 0; if !childGone { usleep(20_000) } }
+    check(timedOut == nil && child > 0 && childGone && Date().timeIntervalSince(t) < 7,
+          "a claude run that runs out of time: what it started is gone with it (child \(child))")
+    try? FileManager.default.removeItem(atPath: childFile)
+    // …but a normal end leaves what it started running (Claude Code's updater, say): only a timeout ends the group
+    let ended = AuthRun.system(ClaudeCommand(executable: "/bin/sh", arguments: ["-c", "sleep 20 >/dev/null 2>&1 & echo $! > '\(childFile)'"], environment: [:], timeout: 10))
+    let left = (try? String(contentsOfFile: childFile, encoding: .utf8)).flatMap { pid_t($0.trimmingCharacters(in: .whitespacesAndNewlines)) } ?? -1
+    let leftRunning = left > 0 && kill(left, 0) == 0
+    if left > 0 { kill(left, SIGKILL) }
+    check(ended == 0 && leftRunning, "a claude run that ends normally: what it left running is left alone (child \(left))")
+    try? FileManager.default.removeItem(atPath: childFile)
     // one that ignores the request to end is killed after the grace
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/bin/sh")
