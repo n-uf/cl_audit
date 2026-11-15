@@ -8,12 +8,11 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- The widget now decides whose usage it shows with the same rule as the menu bar and the Dock icon: when the Claude app and Claude Code are on different accounts, numbers whose account cl_audit couldn't confirm show there as read (never as full) instead of disappearing.
 
 ## 26.11.30 — 2026-11-14
 
 - A switch no longer starts while a restore or an import of the same profile, or the move to the default profile, stopped half way; it says which one and where to finish or undo it.
-- The widget now decides whose usage it shows with the same rule as the menu bar and the Dock icon: when the Claude app and Claude Code are on different accounts, numbers whose account cl_audit couldn't confirm show there as read (never as full) instead of disappearing.
 
 ## 26.11.29 — 2026-11-14
 
