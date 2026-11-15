@@ -1,7 +1,7 @@
 // What the cl_audit widget draws, shared by the widget (Widget.swift, a sandboxed extension) and cl_audit itself (the
-// Widget card in Settings ▸ General shows the real widget as its preview). No WidgetKit here and nothing from Sources/:
-// only ProfileCore's rules (Core/), so both programs build it. Names start with W (or Widget) so they don't meet
-// cl_audit's own.
+// Widget card in Settings ▸ General shows the real widget as its preview). No WidgetKit here and nothing from Sources/
+// but the status record's codec (Sources/StatusRecord.swift, which the widget compiles too): ProfileCore's rules (Core/),
+// so both programs build it. Names start with W (or Widget) so they don't meet cl_audit's own.
 //
 // The look is kept in usage-n-uf/widget.json, which cl_audit writes and the widget reads (its sandbox may read that
 // folder only): the plate (System, Std, Black, Silver) and how the limits are drawn (Glow, Rings, Numbers, Segments,
@@ -78,40 +78,9 @@ enum AgentFiles {
         let id: String; let name: String; let accent: String?; let showFable: Bool?; let seat: SeatEmail?; let pollMinutes: Int?
     }
     private struct SeatEmail: Decodable { let email: String? }
-    /// The record's account answer (the app's ResolvedAccount), the fields the widget's rules need.
-    private struct Resolved: Decodable {
-        let fromApp: Bool?; let differs: Bool?; let clash: String?; let readStale: Bool?; let numbersFor: String?
-    }
-    private struct Status: Decodable {
-        let fiveHour: Double?; let fiveHourResets: Double?; let weekly: Double?; let weeklyResets: Double?
-        let updatedAt: Double?; let plan: String?; let scoped: [Scoped]?; let noFiveHour: Bool?
-        let loginEmail: String?; let expectedEmail: String?; let state: String?
-        let resolved: Resolved?; let numbersOwner: String?; let ownerUnconfirmed: Bool?
-
-        /// Read for this account: numbers read for another (the one a profile was on before a switch) never show.
-        func belongs(to email: String?) -> Bool {
-            guard let want = email?.lowercased(), !want.isEmpty, let got = (loginEmail ?? expectedEmail)?.lowercased(), !got.isEmpty else { return true }
-            return got == want
-        }
-
-        /// The app's headline rule (Store.status(for:)), kept here because the widget is built on its own: no numbers in
-        /// the split (the Claude app on another account than Claude Code, whose numbers these are), for a stale reading,
-        /// or under a label that isn't the reading's own account.
-        var shown: Bool {
-            guard let r = resolved else { return true }
-            if r.fromApp == true && r.differs == true && r.clash == nil { return false }
-            if r.readStale == true { return false }
-            if let owner = r.numbersFor?.lowercased(), owner.contains("@"), let read = (numbersOwner ?? loginEmail)?.lowercased(), read != owner { return false }
-            return true
-        }
-    }
-    private struct Scoped: Decodable { let name: String; let percent: Double?; let resets: Double? }
 
     /// `dir`: cl_audit's folder (a check passes its own throwaway one).
     static func load(from dir: URL = folder, now: Date = Date()) -> [WidgetProfile] {
-        // the app's rule (IconStatus.current; ProfileCore's Freshness): a limit whose reset has passed shows no percent, and
-        // an expired sign-in (or none) shows no numbers at all
-        func passed(_ t: Double?) -> Bool { Freshness.passed(t.map { Date(timeIntervalSince1970: $0) }, now: now) }
         let dec = JSONDecoder()
         guard let data = try? Data(contentsOf: dir.appendingPathComponent("accounts.json")),
               let list = try? dec.decode(Accounts.self, from: data) else {
@@ -120,30 +89,21 @@ enum AgentFiles {
         }
         let profiles = list.accounts.map { e -> WidgetProfile in
             var p = WidgetProfile(id: e.id, name: e.name, accent: e.accent ?? "orange")
+            // the record through the app's own codec and ProfileCore's Headline, as the menu bar and the Dock icon read it
+            // (Store.status(for:)): no numbers past a reset or for a sign-in that is expired or gone, none in the split or for
+            // another reading than the label's, and none full when old (the app's Store.lastKnown: the read interval, 5
+            // minutes at least, plus a minute) or when their account couldn't be confirmed. Numbers read for another account
+            // than the profile's (the one it was on before a switch) never show.
             if let d = try? Data(contentsOf: dir.appendingPathComponent("status/\(e.id).json")),
-               let s = try? dec.decode(Status.self, from: d), s.belongs(to: e.seat?.email) {
-                p.updated = s.updatedAt.map { Date(timeIntervalSince1970: $0) }
+               let raw = StatusCodec.decode(d)?.current(now: now), !raw.readForAnother(than: e.seat?.email) {
+                let ages = Headline.Ages(freshFor: TimeInterval(max(e.pollMinutes ?? 5, 5) * 60 + 60))
+                let s = raw.shown(raw.headline(now: now, ages: ages), now: now)
+                p.updated = raw.updatedAt
                 p.noFive = s.noFiveHour ?? false
-                // (the split's, a stale reading's or a mislabelled reading's numbers and plan aren't the profile's)
-                if s.shown { p.plan = s.plan }
-                if s.shown, s.state != "expired" && s.state != "noLogin" {
-                    if !passed(s.fiveHourResets) {
-                        p.five = s.fiveHour; p.fiveResets = s.fiveHourResets.map { Date(timeIntervalSince1970: $0) }
-                    }
-                    if !passed(s.weeklyResets) {
-                        p.week = s.weekly; p.weekResets = s.weeklyResets.map { Date(timeIntervalSince1970: $0) }
-                    }
-                    if e.showFable ?? true, let f = s.scoped?.first(where: { $0.name == "Fable" }), !passed(f.resets) { p.fable = f.percent }
-                }
-                // old numbers are only last known (the app's Store.lastKnown: the read interval, 5 minutes at least, plus a
-                // minute): a limit they read as full is left out, never full or counting down
-                // (and numbers whose account couldn't be confirmed are never full either)
-                let lastKnown = TimeInterval(max(e.pollMinutes ?? 5, 5) * 60 + 60)
-                if s.ownerUnconfirmed == true || p.updated.map({ now.timeIntervalSince($0) > lastKnown }) == true {
-                    if AtLimit.isFull(p.five) { p.five = nil; p.fiveResets = nil }
-                    if AtLimit.isFull(p.week) { p.week = nil; p.weekResets = nil }
-                    if AtLimit.isFull(p.fable) { p.fable = nil }
-                }
+                p.plan = s.plan
+                p.five = s.fiveHour; p.fiveResets = s.fiveHourResets
+                p.week = s.weekly; p.weekResets = s.weeklyResets
+                if e.showFable ?? true { p.fable = s.scoped?.first { $0.name == "Fable" }?.percent }
             }
             return p
         }
