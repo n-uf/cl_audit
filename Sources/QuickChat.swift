@@ -392,11 +392,11 @@ final class QuickChatModel: ObservableObject {
                 turns[i].problem = .refused(text: text.isEmpty ? error : text)
             }
         case .limit(let type, let used, let status, let resets):
-            // not the profile's (the split, a reading the sign-in moved on from, an account not confirmed: the Headline's
-            // word, QuickChatTarget.liveCounts): Claude Code's account's limits, no level from them
-            guard liveCounts else { break }
+            // the split: Claude Code's account's limits, nothing from them. Otherwise whether it refuses, and until when,
+            // is the chat's own sign-in's; its percents only while they count as the profile's (QuickChatTarget.liveCounts)
+            guard !inSplit else { break }
             var l = level ?? QuickChatLevel(nil)
-            l.apply(type: type, used: used, status: status, resets: resets)
+            l.apply(type: type, used: used, status: status, resets: resets, counts: liveCounts)
             level = l
         case .done(let isError, let text, let ms, let s):
             flush()

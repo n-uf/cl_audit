@@ -1756,6 +1756,17 @@ do {
     check(QuickChatLevel.kept(record: record, shown: beforeReset, sameAccount: true, counts: true, refusals: true, now: now)?.week == nil,
           "a live percent from before its reset is never kept")
 
+    // Claude Code's own limit event when its numbers don't count: the refusal and its real reset, never the percent
+    var event = QuickChatLevel(nil); event.noFiveHour = false
+    let soon = now.addingTimeInterval(8 * 60)
+    event.apply(type: "five_hour", used: 1, status: "rejected", resets: soon, counts: false)
+    check(event.fiveHour == nil && event.refusedUntil == soon && event.full(now)?.resets == soon,
+          "a refusal while the numbers don't count: held until its own reset (8 minutes), no percent")
+    event.apply(type: "five_hour", used: 0.2, status: "allowed", resets: soon, counts: false)
+    check(event.refusedUntil == nil && event.fiveHour == nil, "allowed again: the hold goes")
+    event.apply(type: "five_hour", used: 0.42, status: "allowed", resets: soon, counts: true)
+    check(event.fiveHour == 42 && event.fiveHourResets == soon, "numbers that count: the percent and its reset, as before")
+
     // the model: a refusal holds the bar whatever the record says; the offer comes only from numbers that count
     let model = QuickChatModel()
     var t = QuickChatTarget(e, now: now); t.liveCounts = false; t.split = false

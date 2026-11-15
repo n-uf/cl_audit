@@ -31,12 +31,16 @@ struct QuickChatLevel: Equatable {
     }
 
     /// What Claude Code said after an answer: "seven_day" or "five_hour", the share used (0…1), refusing or not.
-    mutating func apply(type: String?, used: Double?, status: String?, resets: Date?) {
-        let pct = used.map { min(100, max(0, $0 * 100)) }
-        switch type {
-        case "seven_day"?: if let pct { week = pct }; if let resets { weekResets = resets }
-        case "five_hour"?: if let pct { fiveHour = pct }; if let resets { fiveHourResets = resets }
-        default: break
+    /// `counts` false (QuickChatTarget.liveCounts): only whether it refuses and until when (the chat's own sign-in's,
+    /// with its real reset), never its percents.
+    mutating func apply(type: String?, used: Double?, status: String?, resets: Date?, counts: Bool = true) {
+        if counts {
+            let pct = used.map { min(100, max(0, $0 * 100)) }
+            switch type {
+            case "seven_day"?: if let pct { week = pct }; if let resets { weekResets = resets }
+            case "five_hour"?: if let pct { fiveHour = pct }; if let resets { fiveHourResets = resets }
+            default: break
+            }
         }
         if status == "rejected" { refusedUntil = resets ?? Date().addingTimeInterval(3600) }
         else if status == "allowed" { refusedUntil = nil }
@@ -76,7 +80,8 @@ struct QuickChatLevel: Equatable {
     /// Otherwise the record's level alone: numbers the record doesn't show for the profile never come back from the chat.
     /// A refusal Claude Code met (refusedUntil) is the chat's own sign-in's: it stays for the same account while
     /// `refusals` (not the split), whether or not the numbers count yet. A percent from before a limit's reset is never
-    /// kept (current).
+    /// kept (current). Live percents dropped while they didn't count stay dropped until Claude Code says them again
+    /// (the next answer).
     static func kept(record: QuickChatLevel?, shown: QuickChatLevel?, sameAccount: Bool, counts: Bool, refusals: Bool,
                      now: Date = Date()) -> QuickChatLevel? {
         guard sameAccount, counts || refusals, let mine = shown?.current(now), var theirs = record else { return record }
