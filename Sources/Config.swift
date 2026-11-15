@@ -11,6 +11,7 @@ import AppKit
 import ClaudeAuth
 import CryptoKit
 import ProfileCore
+import Runs
 
 /// What a plain click on the Dock icon does. Double-click or ⌥-click always shows the full details.
 enum ClickAction: String, Codable, CaseIterable, Identifiable {
@@ -1040,21 +1041,11 @@ enum Installer {
         }
     }
 
-    /// Runs a tool and waits for it; with `timeout`, stops it after that many seconds (and returns -1).
+    /// Runs a tool and waits for it (Runs' Runner, in cl_audit's own working folder and environment, its output dropped);
+    /// with `timeout`, it is asked to end after that many seconds (SIGTERM, never killed: given 0.2 s, then left to end by
+    /// itself) and -1 comes back. -1 also when it couldn't start.
     @discardableResult
     static func run(_ tool: String, _ args: [String], timeout: TimeInterval? = nil) -> Int32 {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: tool)
-        p.arguments = args
-        p.standardOutput = FileHandle.nullDevice
-        p.standardError = FileHandle.nullDevice
-        do { try p.run() } catch { return -1 }
-        if let timeout {
-            let deadline = Date().addingTimeInterval(timeout)
-            while p.isRunning && Date() < deadline { usleep(20_000) }
-            if p.isRunning { p.terminate(); usleep(200_000); return -1 }
-        }
-        p.waitQuietly()
-        return p.terminationStatus
+        Runs.Runner.run(Runs.Program(tool, args, folder: .inherited, timeout: timeout ?? .infinity, grace: 0.2, killAfterGrace: false))?.status ?? -1
     }
 }

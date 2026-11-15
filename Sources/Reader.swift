@@ -10,6 +10,7 @@
 import AppKit
 import ClaudeAuth
 import ProfileCore
+import Runs
 import UserNotifications
 
 final class UsageReader {
@@ -702,15 +703,10 @@ final class UsageReader {
     static func post(id: String, title: String, body: String, thread: String, offer: SwitchOffer? = nil) -> Int32 {
         if let t = testPoster { return t(id, title, body, thread, offer?.key) }
         guard let app = LegacyCleanup.agentParentApp() else { return 1 }
-        let p = Process()
-        p.executableURL = app.appendingPathComponent("Contents/MacOS/UsageDock")
-        p.arguments = ["--post-alert", id, title, body, thread] + (offer.map { [$0.key] } ?? [])
-        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return 1 }
-        let deadline = Date().addingTimeInterval(20)
-        while p.isRunning && Date() < deadline { usleep(50_000) }
-        if p.isRunning { p.terminate(); return 1 }
-        return p.terminationStatus
+        // (Runs' Runner: 20 s at most, then asked to end and left to; in the agent's own folder and environment)
+        let args = ["--post-alert", id, title, body, thread] + (offer.map { [$0.key] } ?? [])
+        return Runs.Runner.run(Runs.Program(app.appendingPathComponent("Contents/MacOS/UsageDock").path, args, folder: .inherited,
+                                            timeout: 20, grace: 0, killAfterGrace: false))?.status ?? 1
     }
 
     static func sameReset(_ old: String, _ stamp: Int?) -> Bool {
