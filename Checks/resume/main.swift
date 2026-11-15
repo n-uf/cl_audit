@@ -168,6 +168,17 @@ if role == "b" {
         check(read(proj + "/" + enc(gone) + "/\(S2).jsonl") == s2Before && fm.contents(atPath: s2Entry) == s2EntryBefore, "B (2): the session whose folder wasn't picked: untouched")
         check(RepointWords.done(r.sessions[0]).contains("its worktree isn't on this Mac"), "B (3): the page says the worktree was dropped")
 
+        // Undo while running sessions can't be told: refused before anything is written, the re-point stays as it is
+        SessionsRestore.runningSessions = { nil }
+        do {
+            _ = try SessionsRepoint.undo(r.id, windowClosed: { true })
+            check(false, "B (3): Undo is refused when running sessions can't be told")
+        } catch {
+            check("\(error)" == "It couldn't be checked which Claude Code sessions run; nothing was taken back. Try again.", "B (3): Undo says it couldn't be checked: \(error)")
+        }
+        SessionsRestore.runningSessions = { [] }
+        check(SessionsRepoint.store.load(r.id)?.undone == nil && fm.fileExists(atPath: newDir + "/\(S3).jsonl") && !fm.fileExists(atPath: oldT) && fm.contents(atPath: entryPath) != entryBefore,
+              "B (3): that refused Undo wrote nothing: still re-pointed")
         // Undo: exactly back
         let u = try! SessionsRepoint.undo(r.id, windowClosed: { true })
         check(u.undone != nil && read(oldT) == oldText && mtime(oldT) == oldMtime && fm.contents(atPath: entryPath) == entryBefore
@@ -474,6 +485,24 @@ MainActor.assumeIsolated {
               "export: format 5, code.json in the image, no token in it")
         SessionsImport.discard(o.work)
     } else { check(false, "export: the move opens") }
+    // running sessions can't be told: a live source's export stops before anything is made
+    do {
+        var nilJob = job; nilJob.destination = URL(fileURLWithPath: sharedDir + "/nil-running.dmg"); nilJob.rootName = "nil running"
+        let before = (try? fm.contentsOfDirectory(atPath: bplace.path)) ?? []
+        SessionsRestore.runningSessions = { nil }
+        do { _ = try SessionsExport.run(nilJob); check(false, "export: stops when running sessions can't be told") }
+        catch { check("\(error)" == "It couldn't be checked which Claude Code sessions run; nothing was exported. Try again.", "export: says it couldn't be checked: \(error)") }
+        SessionsRestore.runningSessions = { [] }
+        check(!fm.fileExists(atPath: nilJob.destination.path) && ((try? fm.contentsOfDirectory(atPath: bplace.path)) ?? []) == before, "export: that stop wrote nothing (no file, no work folder)")
+        // (a day on, so no transcript is recent: only the unknown makes a session count as in use)
+        let later = Date().addingTimeInterval(86400)
+        let idle = SessionsExport.preview(part(studio), now: later)
+        SessionsRestore.runningSessions = { nil }
+        let unknown = SessionsExport.preview(part(studio), now: later)
+        SessionsRestore.runningSessions = { [] }
+        check(idle != nil && unknown != nil && idle!.sessions > 0 && idle!.inUse == 0 && unknown!.inUse == unknown!.sessions,
+              "preview: when running sessions can't be told, every session counts as in use, never idle: \(unknown?.inUse ?? -1) of \(unknown?.sessions ?? -1), idle \(idle?.inUse ?? -1)")
+    }
     // the older rule (26.11.10/11 read up to 4): this file is refused, a move without the checklist isn't
     func olderReads(_ v: Int) -> Bool { v >= 1 && v <= 4 }
     check(!olderReads(5) && olderReads(4), "format: 26.11.11's rule (up to 4) refuses 5")
