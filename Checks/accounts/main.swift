@@ -1773,6 +1773,116 @@ do {
     let h7 = WindowHold(e, profile: "wh", run: "switch-k2"), h8 = WindowHold(e, profile: "wh", run: "restore-9")
     check(h7.claim() && !h8.claim(), "another run on a held window: refused")
     h7.finish()
+
+    // a switch through the page's runner: the window it closed stays closed while the moved sessions aren't linked (said on
+    // the page), and opens again once the switch is settled: by Undo, or by reaching the account
+    var winOpened: [String] = []
+    ClaudeWindow.seams.open = { a, _ in winOpened.append(Launcher.dataDirKey(of: a)) }
+    SwitchEngine.settled = { ClaudeWindow.afterSwitch($0, activate: false) }
+    WindowHold.stallAfter = 10
+    let wdS = expand("~/Library/Application Support/Claude-swwin")
+    put("\(wdS)/claude-code-sessions/\(u1.account)/\(u1.organization!)/local_\(uuid(901)).json", #"{"sessionId":"local_\#(uuid(901))"}"#)
+    sign("~/.claude-swwin", u1)
+    let kS = StandbyAccount(email: u2.email!, seat: u2, id: "k2")
+    var sw = profile("swwin", "~/.claude-swwin", u1, standby: [kS])
+    sw.desktop = .separate; sw.desktopDataDir = wdS
+    try! Store.save([sw])
+    let mS = SettingsModel()
+    mS.accounts = [sw]
+    let keyS = Launcher.dataDirKey(of: Account(sw))
+    stand[keyS] = [standIn()]
+    let rS = mS.runner(of: "swwin")
+    func failed(_ r: SwitchRunner) -> Bool { if case .failed = r.phase { return true }; return false }
+    rS.start(kS)
+    waitFor(15) { rS.phase == .waiting || failed(rS) }
+    check(rS.phase == .waiting && rS.receipt?.closedWindow == true && !ClaudeWindow.isOpen(Account(sw)) && winOpened.isEmpty,
+          "a switch that moves: the window closed for it, the receipt says so: \(rS.phase)")
+    sign("~/.claude-swwin", u3)
+    waitFor(5) { rS.look(); return rS.phase != .waiting }
+    spin(0.3)
+    check(rS.phase == .other(u3.email!) && rS.windowNote == SwitchRunner.windowStaysClosed("ultra-2") && winOpened.isEmpty && !SwitchMarker.blocks(Account(sw)),
+          "another account signed in: the moved sessions aren't linked, so the window stays closed, and the page says why: \(rS.windowNote ?? "nil")")
+    check(SwitchEngine.keepsClosed(Account(sw))?.id == rS.receipt?.id, "…and no opener starts it meanwhile (Launcher.openClaude asks keepsClosed)")
+    rS.reset()                                                           // (a click on the window opens this page afresh)
+    check(rS.failedStep == .notStarted && rS.canUndo && rS.windowNote == SwitchRunner.windowStaysClosed("ultra-2"),
+          "the page opened afresh shows the switch that holds the window closed, with its Undo and why")
+    rS.undo()
+    waitFor(15) { rS.phase == .undone && !winOpened.isEmpty }
+    spin(0.3)
+    check(rS.phase == .undone && winOpened == [keyS] && rS.windowNote == SwitchRunner.windowOpenAgain && SwitchEngine.keepsClosed(Account(sw)) == nil,
+          "Undo: the switch is settled (after its mark went), the window it closed opens again, once: \(winOpened)")
+
+    // linked by the agent (or the app) before the runner's own look: no reopen while the runner holds the window, then once
+    winOpened = []
+    sign("~/.claude-swwin", u1)
+    rS.reset()
+    check(rS.windowNote == nil && rS.phase == .ready, "a new switch's page: no window line left from the last one")
+    stand[keyS] = [standIn()]
+    rS.start(kS)
+    waitFor(15) { rS.phase == .waiting || failed(rS) }
+    if let id = rS.receipt?.id { SwitchEngine.markLinked(id) }
+    spin(0.8)
+    let heldBack = winOpened.isEmpty
+    sign("~/.claude-swwin", u2)
+    waitFor(5) { rS.look(); return rS.phase != .waiting }
+    waitFor(3) { !winOpened.isEmpty }
+    spin(0.6)
+    check(heldBack && rS.phase == .reached && rS.receipt?.linked != nil && winOpened == [keyS] && rS.windowNote == SwitchRunner.windowOpenAgain,
+          "linked before the runner saw it: held back while the switch holds the window, then opened once: \(heldBack) \(winOpened)")
+    SwitchEngine.settled(rS.receipt!)                                  // a second process settling it too: never a second open
+    spin(0.6)
+    check(winOpened == [keyS], "the app and the agent both settling it: opened once")
+
+    // Leave it as it is (the Sessions card) settles it too
+    winOpened = []
+    put("\(wdS)/claude-code-sessions/\(u1.account)/\(u1.organization!)/local_\(uuid(902)).json", #"{"sessionId":"local_\#(uuid(902))"}"#)
+    sign("~/.claude-swwin", u1)
+    rS.reset()
+    stand[keyS] = [standIn()]
+    rS.start(kS)
+    waitFor(15) { rS.phase == .waiting || failed(rS) }
+    let closedForIt = rS.receipt?.closedWindow == true
+    sign("~/.claude-swwin", u3)
+    waitFor(5) { rS.look(); return rS.phase != .waiting }
+    spin(0.3)
+    let stayed = winOpened.isEmpty
+    if let id = rS.receipt?.id { _ = try? SwitchEngine.leaveAsIs(id) }
+    waitFor(3) { !winOpened.isEmpty }
+    check(closedForIt && stayed && winOpened == [keyS], "Leave it as it is: settled, the window it closed opens again")
+
+    // Cancel while the window closes: nothing moved; it closes later by its own answer, and opens again
+    winOpened = []
+    put("\(wdS)/claude-code-sessions/\(u1.account)/\(u1.organization!)/local_\(uuid(903)).json", #"{"sessionId":"local_\#(uuid(903))"}"#)
+    sign("~/.claude-swwin", u1)
+    rS.reset()
+    stand[keyS] = [standIn(ignoringTerm: true)]
+    rS.start(kS)
+    waitFor(3) { rS.phase == .closing }
+    rS.cancel()
+    check(rS.phase == .ready && rS.windowNote == SwitchRunner.windowLateClose, "Cancel while it closes: said that it opens again if it closes")
+    stand[keyS]?.forEach { kill($0.processIdentifier, SIGKILL) }
+    waitFor(3) { !winOpened.isEmpty }
+    check(winOpened == [keyS] && rS.windowNote == nil, "…it closed later: opened again, the line gone")
+
+    // a window that stalled (asking about work under way), then closed by that answer: Try again counts it as this switch's
+    winOpened = []
+    WindowHold.stallAfter = 1
+    rS.reset()
+    stand[keyS] = [standIn(ignoringTerm: true)]
+    rS.start(kS)
+    waitFor(4) { failed(rS) }
+    let stalledFirst = rS.failedStep == .closing
+    stand[keyS]?.forEach { kill($0.processIdentifier, SIGKILL) }
+    waitFor(2) { !ClaudeWindow.isOpen(Account(sw)) }
+    rS.retry()
+    waitFor(15) { rS.phase == .waiting || failed(rS) }
+    check(stalledFirst && rS.phase == .waiting && rS.receipt?.closedWindow == true,
+          "stalled, closed by its own answer, Try again: the receipt says this switch closed it (it opens again when settled)")
+    rS.cancel()
+    if let id = rS.receipt?.id { _ = try? SwitchEngine.leaveAsIs(id) }
+    waitFor(3) { !winOpened.isEmpty }
+    check(winOpened == [keyS], "…and settled: opened again")
+    SwitchEngine.settled = { _ in }
     ClaudeWindow.seams = .real
     WindowHold.every = 0.5; WindowHold.stallAfter = 45; WindowHold.lateCloseFor = 60
 }
