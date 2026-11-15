@@ -35,9 +35,11 @@ enum AccountResolver {
         // answer). When Claude Code's folder has since signed in to another account (a switch, a log-in), the reading is
         // stale: its numbers are dropped (Store.status) until a read for the folder's account, and the folder's account is
         // the one Claude Code is on (for the rows and lines)
-        let stale = loginEmail.map { l in code?.email.map { $0.lowercased() != l.lowercased() } ?? false } ?? false
+        // (every "the same account" below is the one owner rule, AccountIdentity.sameAccount: a reading is known by its
+        // address only, so its address decides; the Claude app's account by its id only, `byID`)
+        let stale = loginEmail.map { l in code?.email.map { !AccountIdentity.address($0).sameAccount(.address(l)) } ?? false } ?? false
         let codeLabel = (stale ? code?.email : loginEmail) ?? code?.email ?? code.map { "account \($0.account.prefix(8))" }
-        let owner = code.flatMap { c in accounts.first { $0.id != e.id && ($0.seat.map { c.same($0) } ?? false) } }
+        let owner = code.flatMap { c in accounts.first { $0.id != e.id && ($0.seat.map { c.sameAccount($0) } ?? false) } }
         // without the app: Claude Code's folder account is the active one (its address from its record, else the numbers')
         // (ids as AccountID keeps them: one normal form, one comparison)
         var r = ResolvedAccount(account: code.map { AccountID.normal($0.account) }, email: code?.email ?? loginEmail, fromApp: false,
@@ -45,15 +47,15 @@ enum AccountResolver {
                                 codeAccount: code.map { AccountID.normal($0.account) }, codeName: codeLabel, readStale: stale ? true : nil,
                                 clashID: owner?.id)
         if e.claudeWindow, app.state == .known, let id = app.account.map(AccountID.normal) {
-            let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { AccountID.same($0.account, id) }
+            let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { byID(id).sameAccount(known($0)) }
             r.account = id
-            r.email = mine?.email ?? (AccountID.same(code?.account, id) ? (code?.email ?? loginEmail) : nil) ?? names[id]
+            r.email = mine?.email ?? (code.map { byID(id).sameAccount(known($0)) } == true ? (code?.email ?? loginEmail) : nil) ?? names[id]
             r.fromApp = true
             r.lit = true
         }
         // in every case: the numbers' own address decides when both are known; else the folder's id
-        if let n = (stale ? code?.email : loginEmail)?.lowercased(), let a = r.email?.lowercased() { r.differs = n != a }
-        else if r.fromApp, let id = r.account { r.differs = code.map { !AccountID.same($0.account, id) } ?? false }
+        if let n = stale ? code?.email : loginEmail, let a = r.email { r.differs = !AccountIdentity.address(n).sameAccount(.address(a)) }
+        else if r.fromApp, let id = r.account { r.differs = code.map { !byID(id).sameAccount(known($0)) } ?? false }
         if let o = owner {
             r.line = "Claude Code's folder is signed in to \(o.name)'s account: its numbers show on \(o.name)."
             r.lit = r.fromApp
@@ -73,11 +75,18 @@ enum AccountResolver {
         // (a switch linked more than a day ago waits no more: then it's a split by hand)
         if r.fromApp, r.differs, r.clash == nil, let n = newestSwitch, let id = r.account,
            AccountSettings.switchTarget(goal: nil, newest: n, standby: [], code: codeLabel, codeAccount: code.map { AccountID.normal($0.account) }) != nil,
-           AccountID.same(n.from.account, id), n.linked.map({ now.timeIntervalSince($0) <= 24 * 3600 }) ?? true {
+           byID(id).sameAccount(byID(n.from.account)), n.linked.map({ now.timeIntervalSince($0) <= 24 * 3600 }) ?? true {
             r.switchWaits = true
         }
         return r
     }
+
+    /// An account as the Claude app's config.json and the status record name it: by its id only (neither names an
+    /// organisation), compared by the one owner rule.
+    static func byID(_ id: String?) -> AccountIdentity { AccountIdentity(account: id, email: nil, organization: nil, source: .verified) }
+
+    /// A seat as compared with an account named by its id only: its organisation left out (one not known there isn't "none").
+    static func known(_ s: Seat) -> AccountIdentity { AccountIdentity(s).withoutOrganization }
 }
 
 /// The split's words: the Claude app (the account in use) on one account, Claude Code, whose sign-in reads the numbers, on
@@ -166,12 +175,11 @@ struct AccountView: Equatable {
     var inUseLine: String? { short }
     var short: String? { label.map(AccountNames.short) }
 
-    /// This standby account is the one the record names active (by its id, else its address): it is in use, so no list
-    /// shows it on standby too.
+    /// This standby account is the one the record names active (by its id, else its address: the one owner rule, the record
+    /// naming no organisation): it is in use, so no list shows it on standby too.
     func isActive(_ s: StandbyAccount) -> Bool {
-        if let a = account, let seat = s.seat { return AccountID.same(seat.account, a) }
-        if let l = label?.lowercased(), l.contains("@") { return (s.seat?.email ?? s.email).lowercased() == l }
-        return false
+        AccountIdentity(account: account, email: label.flatMap { $0.contains("@") ? $0 : nil }, organization: nil, source: .guessed)
+            .sameAccount(s.identity.withoutOrganization)
     }
 
     /// Claude Code's account when it isn't the active one (the Claude app is still on another, e.g. right after a switch):
@@ -179,12 +187,12 @@ struct AccountView: Equatable {
     /// account's, or when Claude Code's folder is on another profile's account (that profile has them).
     var codeRow: String? { differs && clash == nil ? numbersOwner : nil }
 
-    /// Claude Code's own row is this account: by its id first (a row named "account <8>" has no address), else its address.
+    /// Claude Code's own row is this account: by its id first (a row named "account <8>" has no address), else its address
+    /// (the one owner rule, the record naming no organisation).
     func isCodeRow(id: String?, email: String?) -> Bool {
-        guard codeRow != nil else { return false }
-        if let c = codeAccount, let i = id { return AccountID.same(c, i) }
-        guard let e = email?.lowercased(), !e.isEmpty else { return false }
-        return e == codeRow?.lowercased()
+        guard let row = codeRow else { return false }
+        return AccountIdentity(account: codeAccount, email: row, organization: nil, source: .guessed)
+            .sameAccount(AccountIdentity(account: id, email: email, organization: nil, source: .guessed))
     }
 
     /// The last line of Claude Code's own row. On the account the profile's current switch went for: only the Claude app's
