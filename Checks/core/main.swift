@@ -316,5 +316,87 @@ do {
           "a reset that has passed: no percent and no reset, a model's limit keeps its name")
 }
 
+// ============ 8. the display: one "what to show" value per profile ============
+do {
+    let now = t0
+    func who(_ n: Int?, _ email: String?) -> AccountIdentity { AccountIdentity(account: n.map(uuid), email: email, organization: nil, source: .guessed) }
+    let pat = who(2, "pat@example.com"), mo = who(3, "mo@example.com")
+    // cl_audit's thresholds (fresh 6 minutes, grey after 30) and cl_quick's (fresh 5, grey once last known, hidden after an hour)
+    let audit = Headline.Ages(freshFor: 6 * 60, greyAfter: 30 * 60)
+    let quick = Headline.Ages(freshFor: 5 * 60, hiddenAfter: 3600, datedFullStays: true)
+    let ahead = now.addingTimeInterval(3600)
+    func read(_ week: Double?, five: Double? = 12, age: TimeInterval = 60, resets: Date? = nil) -> Usage {
+        Usage(fiveHour: five, fiveHourResets: ahead, weekly: week, weeklyResets: resets ?? ahead,
+              fetchedAt: now.addingTimeInterval(-age), source: "test")
+    }
+    func make(_ u: Usage?, sign: ProfileDisplay.SignIn = .ok, other: Bool = false, inUse: Bool = true, ages: Headline.Ages = audit,
+              note: String? = nil) -> ProfileDisplay {
+        makeFor(Headline.Owner(), u, sign: sign, other: other, inUse: inUse, note: note, ages: ages)
+    }
+    func makeFor(_ o: Headline.Owner, _ u: Usage?, sign: ProfileDisplay.SignIn = .ok, other: Bool = false, inUse: Bool = true,
+              clash: ProfileDisplay.Clash? = nil, note: String? = nil, splitTo: String? = nil, ages: Headline.Ages = audit) -> ProfileDisplay {
+        let a = Headline.of(o, signedIn: sign != .expired && sign != .signedOut, readAt: u?.fetchedAt, now: now, ages: ages)
+        return ProfileDisplay.make(a, read: u, sign: sign, otherAccount: other, inUse: inUse, clash: clash, note: note, splitTo: splitTo,
+                                   ages: ages, now: now)
+    }
+
+    // the profile's own fresh numbers: shown, full acts, lit, no key, the caller's line
+    let own = make(read(100), note: "a line")
+    check(own.usage?.weekly == 100 && own.none == nil && own.tier == .fresh && own.full == FullLimit(kind: .week, resets: ahead)
+          && own.lamp && own.key == nil && own.line == .given("a line") && !own.grey && own.readAt == now.addingTimeInterval(-60),
+          "fresh: the numbers, the full week, the lamp lit, no key, the caller's line")
+    check(own.level(60) == .amber && own.level(96) == .crimson, "the level, as the shared rule")
+
+    // the tiers: last known (a full one left out, nothing full), grey past greyAfter; cl_quick's grey at once, hidden after an hour
+    let known = make(read(100, age: 10 * 60))
+    check(known.tier == .lastKnown && known.usage?.weekly == nil && known.usage?.fiveHour == 12 && known.full == nil && !known.grey,
+          "10 minutes (cl_audit's): last known, the full week left out, nothing full, not grey")
+    let grey = make(read(40, age: 31 * 60))
+    check(grey.tier == .stale && grey.grey && grey.usage?.weekly == 40 && grey.level(40) == .none && grey.full == nil,
+          "31 minutes (cl_audit's): grey, the numbers kept, their level none")
+    let q10 = make(read(100, age: 10 * 60), ages: quick)
+    check(q10.tier == .stale && q10.usage?.weekly == 100 && q10.full == nil, "10 minutes (cl_quick's): grey at once, a dated full kept but never acting")
+    let qOld = make(read(40, age: 2 * 3600), ages: quick)
+    check(qOld.usage == nil && qOld.none == .hidden && qOld.tier == .stale && qOld.grey, "two hours (cl_quick's): hidden")
+
+    // the split: no numbers, the account in use's lamp, the key to it (not while a switch waits, not without its address)
+    let splitOwner = Headline.Owner(inUse: pat, signIn: mo, differs: true)
+    let split = makeFor(splitOwner, read(100), note: "Usage: Claude Code on mo", splitTo: "pat@example.com")
+    check(split.usage == nil && split.none == .split && split.full == nil && split.lamp && split.key == .logInCode(to: "pat@example.com")
+          && split.line == .split(Headline.Split(switchWaits: false)) && split.split != nil && split.grey,
+          "the split: no numbers, nothing full, lit, the key to the account in use, the split's line over the caller's")
+    check(makeFor(Headline.Owner(inUse: pat, signIn: mo, differs: true, switchWaits: true), read(100), splitTo: "pat@example.com").key == nil
+          && makeFor(splitOwner, read(100)).key == nil, "a switch waiting for the other app, or no address: no key")
+    check(makeFor(splitOwner, read(100), sign: .expired, splitTo: "pat@example.com").key == .logIn
+          && makeFor(splitOwner, read(100), sign: .expired).lamp, "the split with the sign-in run out: Log in first; the lamp stays the account in use's")
+
+    // signed out, expired, unreadable, another account: the key and the lamp
+    let out = make(read(40), sign: .signedOut), exp = make(read(40), sign: .expired)
+    check(out.usage == nil && out.none == .signedOut && out.key == .logIn && !out.lamp && out.needsLogin
+          && exp.none == .expired && exp.key == .logIn && !exp.lamp, "signed out or expired: no numbers, why, Log in, the lamp off")
+    let unread = make(read(40), sign: .unreadable)
+    check(unread.usage?.weekly == 40 && unread.key == nil && !unread.lamp, "a sign-in that can't be read: the numbers as read, no key, the lamp off")
+    let other = make(read(40), other: true)
+    check(other.key == .logIn && !other.lamp && other.otherAccount, "the sign-in on another account than the folder's: Log in, the lamp off")
+    check(!make(read(40), inUse: false).lamp, "no account in use known: no lamp")
+
+    // the clash: carried with the other profile's id, the lamp off; unconfirmed: said first, never full
+    let clash = makeFor(Headline.Owner(inUse: pat, signIn: mo, differs: true, elsewhere: true), read(40), clash: ProfileDisplay.Clash(id: "home", name: "Home"))
+    check(clash.clash == ProfileDisplay.Clash(id: "home", name: "Home") && !clash.lamp && clash.split == nil, "another profile's account: the clash by id, no split, the lamp off")
+    let unsure = makeFor(Headline.Owner(inUse: pat, signIn: mo, differs: true, unconfirmed: true), read(100), note: "a line")
+    check(unsure.usage?.fiveHour == 12 && unsure.usage?.weekly == nil && unsure.full == nil && unsure.line == .unconfirmed,
+          "unconfirmed: as read, never full, said first")
+
+    // resets that have passed, nothing read, another reading
+    let past = make(read(100, resets: now.addingTimeInterval(-1)))
+    check(past.usage?.weekly == nil && past.usage?.weeklyResets == nil && past.usage?.fiveHour == 12 && past.full == nil,
+          "the week's reset passed: no percent, no reset, nothing full")
+    let empty = make(read(40, five: nil, resets: now.addingTimeInterval(-1)))
+    check(empty.usage == nil && empty.none == .notRead, "every limit's reset passed: no numbers (nothing left)")
+    check(make(nil).none == .notRead && make(nil).tier == .fresh && make(nil).grey, "nothing read: no numbers, grey")
+    let stale = makeFor(Headline.Owner(reading: mo, readStale: true), read(40))
+    check(stale.usage == nil && stale.none == .otherReading && stale.readAt == nil, "another reading: no numbers, no read time")
+}
+
 print("core checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

@@ -8,7 +8,7 @@ import Foundation
 
 // MARK: - Usage data
 
-public struct Usage {
+public struct Usage: Equatable {
     public var fiveHour: Double?
     public var fiveHourResets: Date?
     public var weekly: Double?

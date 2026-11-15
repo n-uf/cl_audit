@@ -31,9 +31,12 @@ public enum Headline {
         /// A last-known full limit whose reset is known and still ahead stays, as last known, until that reset
         /// (AtLimit.full in `.display` mode); false: a last-known full limit is left out.
         public var datedFullStays: Bool
+        /// Numbers older than this are drawn grey (stale); nil: as soon as they are only last known (older than
+        /// `freshFor`). ProfileDisplay's tier; the answer itself doesn't use it.
+        public var greyAfter: TimeInterval?
 
-        public init(freshFor: TimeInterval, hiddenAfter: TimeInterval? = nil, datedFullStays: Bool = false) {
-            self.freshFor = freshFor; self.hiddenAfter = hiddenAfter; self.datedFullStays = datedFullStays
+        public init(freshFor: TimeInterval, hiddenAfter: TimeInterval? = nil, datedFullStays: Bool = false, greyAfter: TimeInterval? = nil) {
+            self.freshFor = freshFor; self.hiddenAfter = hiddenAfter; self.datedFullStays = datedFullStays; self.greyAfter = greyAfter
         }
     }
 

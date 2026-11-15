@@ -11,6 +11,7 @@ its own repository and cl_quick compiles it from source too.
 | `Standby.swift` | `StandbyAccount`, `AccountBook` (`ago`, `sane`, `offerOrder` and the picks `best` and `mostRecent`), `AccountNote`, `StandbyTidy` over any `StandbyHolder` |
 | `Limits.swift` | `Usage`, `Freshness` (thresholds are parameters; `Freshness.current`, the one "reset passed" rule: no percent and no reset once a limit's reset has passed), `ScopedLimit`, `FullLimit` (data only: which limit, its reset, the other full one), `AtLimit` (`isFull`, `holding`, `blocker`, and `full` in two modes), `Credits` |
 | `Headline.swift` | `Headline`: whose numbers a profile's headline may show, and how. `Headline.of(owner, signedIn:, readAt:, now:, ages:)` takes `Owner` (the account in use, the sign-in's, the reading's and the label's as `AccountIdentity`, or a resolver's own `differs`; another profile has the account; stale; unconfirmed) and `Ages` (`freshFor`, `hiddenAfter`, `datedFullStays`) and answers `Answer` (`otherReading`, `split`, `unconfirmed`, `signedIn`, `age`; `numbers(split:)`, `plan(split:)`, `readTime`, `acts`, and `limit(_:resets:readAt:split:now:)` for each limit). `Headline.split`, `otherReading` and `age` are its parts |
+| `Display.swift` | `ProfileDisplay`: the one "what to show" value per profile, `ProfileDisplay.make(answer, read:, sign:, otherAccount:, inUse:, clash:, note:, splitTo:, ages:, now:)` from the headline's answer and what the caller read. It carries `usage` (each limit as the answer lets it show) or `none` (why: `notRead`, `expired`, `signedOut`, `otherReading`, `split`, `hidden`), `readAt`, `tier` (`fresh`, `lastKnown`, `stale`: grey past `Ages.greyAfter`, else as soon as last known), `full` (only numbers that act), `lamp`, `key` (`logIn`, `logInCode(to:)`), `line` (`unconfirmed`, `split`, the caller's `given`), `clash` (the other profile's id and name), `split`, `sign`, `otherAccount`; `grey`, `level(_:)`, `needsLogin`. No words: each app says it |
 | `TimeWords.swift` | `TimeWords` (`when`, `back`, `countdown`, with a calendar parameter; always written in the Gregorian calendar, only the time zone is the caller's) and `Level`, the one colour level |
 | `Parsing.swift` | `Login.parse` (a sign-in item's text) and `UsageParser` (Anthropic's usage and profile replies; the caller names the source) |
 
@@ -21,7 +22,8 @@ the usage source's name), reading files and the Keychain, and its own records. c
 (status/<profile>.json) is one of those: its JSON shape, its one codec and where the file is stay in the app
 (`Sources/StatusRecord.swift`: `IconStatus`, `ResolvedAccount`, `StatusCodec`, which the widget compiles too); the record
 asks `Headline` what may show (`IconStatus.headline`, `shown`), and the app adds its lines (the split's, "account not
-confirmed").
+confirmed"). The menu bar icon, the Dock icon and its panel draw `ProfileDisplay` only, through `Sources/ProfileShow.swift`
+(it makes the value from the record and says it in cl_audit's words); the other screens move onto it in steps 3b to 3d.
 
 Keys that are data, not wording, stay here: `ScopedLimit.key` ("mfable") is kept in saved alert marks, so it must not
 change with an app's words.
@@ -51,10 +53,13 @@ in step 1, nor in step 2 beyond the widget now following the headline exactly.
 - **Full in two modes, and the age tiers.** cl_quick acts on a full limit only from fresh numbers (under 5 minutes) and
   shows an older, dated full grey as "last known" until its reset. `AtLimit.full(_:resets:readAt:mode:)` has both
   (`.acts(freshFor:)`, `.display`), and the headline's `Ages` carries the tiers as parameters:
-  - cl_quick: `freshFor` 5 minutes, `hiddenAfter` an hour, `datedFullStays` on (5 to 60 minutes grey "last known");
-  - cl_audit (`Store.ages`, the widget the same): `freshFor` the profile's read interval (5 minutes at least) plus a
-    minute, so 6 minutes by default; `hiddenAfter` none (the headline never hides old numbers; its screens grey them on
-    their own thresholds until step 3); `datedFullStays` off (a last-known full limit is left out, never grey).
+  - cl_quick: `freshFor` 5 minutes, `hiddenAfter` an hour, `datedFullStays` on (5 to 60 minutes grey "last known";
+    `greyAfter` none, so `ProfileDisplay` greys as soon as numbers are last known);
+  - cl_audit (`StatusAges` in `Sources/StatusRecord.swift`, one formula for `Store.ages` and the widget): `freshFor` the
+    profile's read interval (5 minutes at least) plus a minute, so 6 minutes by default; `greyAfter` three read intervals,
+    30 minutes at least (the Dock icon's old rule; since step 3a the menu bar greys by it too, and the dashboard card
+    moves onto it in 3b); `hiddenAfter` none (old numbers are never hidden, only grey); `datedFullStays` off (a last-known
+    full limit is left out).
   cl_audit's other screens keep `holding`/`blocker` (full while the reset is ahead or unknown) on what the headline left.
 - **Freshness of a status line file.** `Freshness.isFresh` takes the window; cl_audit keeps its 15 minutes for a status
   line file.
