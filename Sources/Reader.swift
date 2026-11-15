@@ -34,8 +34,6 @@ final class UsageReader {
     private var signIn = SignInWatch()
     private var planName: String?                // Claude's own name for the plan ("Ultra"), from that same .claude.json
 
-    /// At most one automatic renewal per this many seconds, even across restarts.
-    static let renewSpacing: TimeInterval = 30 * 60
     /// How the usage endpoint's numbers name their source.
     static let endpointSource = "Anthropic"
 
@@ -50,10 +48,11 @@ final class UsageReader {
     /// Anthropic didn't answer the last time (an error or "busy"): for the main display.
     var failing: Bool { machine.failing }
 
-    /// The machine's intervals for a profile: its read interval, cl_audit's other values.
+    /// The machine's intervals for a profile: its read interval, cl_audit's other values (Timing's defaults: at most one
+    /// automatic renewal per 30 minutes, even across restarts, and the rest).
     static func timing(_ e: AccountEntry) -> ReaderMachine.Timing {
         var t = ReaderMachine.Timing(poll: TimeInterval(max(e.pollMinutes, 1) * 60), endpointSource: endpointSource)
-        t.signInRetry = signInRetry; t.renewSpacing = renewSpacing
+        t.signInRetry = signInRetry
         return t
     }
 
@@ -252,7 +251,11 @@ final class UsageReader {
 
     /// The usage, asked with the kept sign-in; the answer goes to `finish`.
     private func fetchUsage(_ req: ReaderMachine.Request) {
-        guard let token = token(for: req) else { return }
+        // (no kept sign-in for its key: never asked, but answered as a failure, so the read under way ends)
+        guard let token = token(for: req) else {
+            send(.usageFailed(.network("the sign-in to ask with is gone"), asked: req.asked, generation: req.generation, now: Date()))
+            return
+        }
         URLSession.shared.dataTask(with: Self.request("usage", token: token)) { [weak self] data, resp, err in
             DispatchQueue.main.async {
                 self?.finish(data: data, response: resp as? HTTPURLResponse, error: err, asked: req.asked, gen: req.generation, key: req.key)
@@ -294,7 +297,11 @@ final class UsageReader {
     /// The kept sign-in's account, from Anthropic's profile endpoint; the answer goes to the machine (dropped there when
     /// another folder or account is read since, or it was the old account's sign-in).
     private func lookUpEmail(_ req: ReaderMachine.Request) {
-        guard let token = token(for: req) else { return }
+        // (no kept sign-in for its key: never asked, but answered as a failed lookup, tried again later)
+        guard let token = token(for: req) else {
+            send(.lookupAnswer(email: nil, key: req.key, asked: req.asked, generation: req.generation, expected: expectedEmail, now: Date()))
+            return
+        }
         URLSession.shared.dataTask(with: Self.request("profile", token: token)) { [weak self] data, resp, _ in
             let ok = (resp as? HTTPURLResponse)?.statusCode == 200
             let email = ok ? data.flatMap(UsageParser.email) : nil
