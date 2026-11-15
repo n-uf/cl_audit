@@ -33,6 +33,7 @@
 // path, a branch name, a commit, a count, an address with no credentials and no key shape), anything else dropped and said.
 
 import Foundation
+import Runs
 
 enum CodeChecklist {
     static let fileName = "code.json"
@@ -119,7 +120,7 @@ enum CodeChecklist {
                             "--no-replace-objects"]
 
     /// git in `dir`, read-only: its own process group, a plain environment, `timeout` seconds at most (then SIGTERM to the group, SIGKILL
-    /// a second later, and nothing more is waited for), `cancel` asked every 50 ms.
+    /// a second later, and its end waited for a second at most), `cancel` asked every 50 ms.
     static func git(_ git: String, _ dir: String, _ args: [String], until deadline: Date, cancel: () -> Bool = { false }) -> Run? {
         var env = ["PATH": "/usr/bin:/bin:/usr/sbin:/sbin", "LANG": "en_US.UTF-8", "HOME": NSHomeDirectory(), "GIT_OPTIONAL_LOCKS": "0",
                    "GIT_TERMINAL_PROMPT": "0", "GIT_ASKPASS": "/usr/bin/false", "SSH_ASKPASS": "/usr/bin/false", "GIT_PAGER": "cat", "PAGER": "cat",
@@ -131,59 +132,17 @@ enum CodeChecklist {
         return spawn(git, ["-C", dir] + safeFlags + args, env: env, until: end, cancel: cancel)
     }
 
-    /// Runs `exe` in a process group of its own and reads its standard output until it ends or `end` passes; stderr goes nowhere.
+    /// Runs `exe` through Runs in a process group of its own (`ownGroup`: every other descriptor closed; past `end`, or on `cancel`,
+    /// SIGTERM to the group and SIGKILL a second later; when it ends, whatever of its group is left is killed, so a filter or pager it
+    /// started never holds the output open) and keeps its standard output (1 MB at most); stderr goes nowhere. nil: it couldn't start,
+    /// ran out of time or was stopped. A signal that ended it reads as 128 + the signal, as a shell says it.
     static func spawn(_ exe: String, _ args: [String], env: [String: String], until end: Date, cancel: () -> Bool) -> Run? {
-        var fds: [Int32] = [0, 0]
-        guard pipe(&fds) == 0 else { return nil }
-        let (r, w) = (fds[0], fds[1])
-        var actions: posix_spawn_file_actions_t?
-        posix_spawn_file_actions_init(&actions)
-        defer { posix_spawn_file_actions_destroy(&actions) }
-        posix_spawn_file_actions_addopen(&actions, 0, "/dev/null", O_RDONLY, 0)
-        posix_spawn_file_actions_adddup2(&actions, w, 1)
-        posix_spawn_file_actions_addopen(&actions, 2, "/dev/null", O_WRONLY, 0)
-        posix_spawn_file_actions_addclose(&actions, r)
-        posix_spawn_file_actions_addclose(&actions, w)
-        var attr: posix_spawnattr_t?
-        posix_spawnattr_init(&attr)
-        defer { posix_spawnattr_destroy(&attr) }
-        posix_spawnattr_setflags(&attr, Int16(POSIX_SPAWN_SETPGROUP | POSIX_SPAWN_CLOEXEC_DEFAULT))
-        posix_spawnattr_setpgroup(&attr, 0)
-        let argv: [UnsafeMutablePointer<CChar>?] = ([exe] + args).map { strdup($0) } + [nil]
-        let envp: [UnsafeMutablePointer<CChar>?] = env.map { strdup("\($0.key)=\($0.value)") } + [nil]
-        defer { argv.forEach { free($0) }; envp.forEach { free($0) } }
-        var pid: pid_t = 0
-        let rc = posix_spawn(&pid, exe, &actions, &attr, argv, envp)
-        close(w)
-        guard rc == 0 else { close(r); return nil }
-        defer { close(r) }
-        _ = fcntl(r, F_SETFL, fcntl(r, F_GETFL) | O_NONBLOCK)
-        var out = Data()
-        var buf = [UInt8](repeating: 0, count: 64 << 10)
-        var eof = false, late = false
-        while !eof {
-            if Date() >= end || cancel() { late = true; break }
-            var p = pollfd(fd: r, events: Int16(POLLIN), revents: 0)
-            let n = poll(&p, 1, 50)
-            if n > 0 {
-                let k = Darwin.read(r, &buf, buf.count)
-                if k > 0 { if out.count < 1 << 20 { out.append(contentsOf: buf[0..<k]) } } else if k == 0 { eof = true } else if errno != EAGAIN && errno != EINTR { eof = true }
-            }
-        }
-        var status: Int32 = 0
-        if late {
-            // the whole group: git and anything it started (a filter, a pager) that may hold the pipe
-            kill(-pid, SIGTERM)
-            let grace = Date().addingTimeInterval(1)
-            while waitpid(pid, &status, WNOHANG) == 0 && Date() < grace { usleep(20_000) }
-            kill(-pid, SIGKILL)
-            if waitpid(pid, &status, WNOHANG) == 0 { _ = waitpid(pid, &status, 0) }
-            return nil
-        }
-        while waitpid(pid, &status, 0) < 0 && errno == EINTR {}
-        kill(-pid, SIGKILL)                                     // nothing of its group outlives it
-        let code: Int32 = (status & 0x7f) == 0 ? (status >> 8) & 0xff : 128 + (status & 0x7f)
-        return Run(status: code, out: String(decoding: out, as: UTF8.self))
+        let left = end.timeIntervalSinceNow
+        guard left > 0 else { return nil }
+        let p = Program(exe, args, environment: env, folder: .inherited, timeout: left, grace: 1, keepOutput: true, outputCap: 1 << 20,
+                        drain: max(0, min(1, left)), ownGroup: true)                     // (a second at most; less when less was left at the start)
+        guard let r = Runner.run(p, poll: cancel, pollEvery: 0.05), !r.stopped else { return nil }
+        return Run(status: r.signaled ? 128 + r.status : r.status, out: String(decoding: r.output, as: UTF8.self))
     }
 
     /// The settings a repo's own config can hold that run a program (a filter, a diff driver, a monitor, a pager, an ssh command) or pull in
