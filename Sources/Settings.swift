@@ -1565,13 +1565,22 @@ struct AccountSettings: View {
         }
     }
 
+    /// The profile's one value (ProfileShow, as the card, the menu bar and the Dock icon draw it): the in-use box draws it.
+    var show: ProfileShow { _ = model.tick; return ProfileShow.load(entry) }
+
     /// The profile's account as its record says it (AccountResolver): the in-use box and its lines show this.
-    var view: AccountView { AccountView.of(status) }
+    var view: AccountView { show.view }
+    /// The in-use box's profile as the card has it (its lamp, line, numbers and notice with its key): the box draws this.
+    var inUseRow: AccountRow { AccountRow(entry: entry, show: show) }
 
     /// Claude Code's folder on another profile's account in use, as the profile's record says it (AccountResolver):
-    /// refused (FolderRules.noteAccounts), or nil.
+    /// refused (FolderRules.noteAccounts), or nil. That profile by its id (names needn't be unique); by its name only in a
+    /// record from before the id.
     var elsewhere: (seat: Seat, owner: AccountEntry)? {
-        guard let name = view.clash, let owner = model.accounts.first(where: { $0.name == name && $0.id != entry.id }) else { return nil }
+        let clashID = status?.resolved?.clashID
+        guard let name = view.clash,
+              let owner = model.accounts.first(where: { p in p.id != entry.id && (clashID.map { id in p.id == id } ?? (p.name == name)) })
+        else { return nil }
         return (Seat(account: "", organization: nil, email: view.numbersOwner), owner)
     }
 
@@ -1645,11 +1654,13 @@ struct AccountSettings: View {
             : title.tone == .caution ? (face.caution, "clock.badge.exclamationmark") : (nil, nil)
         let shown = title.text
         let plan = entry.activePlan(v, recordPlan: status?.plan).map(Account.planWords)
-        let ok = split ? v.lit : v.lit && move == nil && !mismatch && !["expired", "noLogin", "denied", "unreadable"].contains(status?.state)
+        // the one value: the lamp (off while the sign-in needs the person, can't be read, or is on another account or
+        // another profile's, whether or not that profile is still found by its name), the key, the line, the numbers
+        let row = inUseRow, show = row.show
+        let ok = row.lit
         // the card's notice (CardParts.swift): red when Terminal's sign-in is on another account or gone, amber when it
         // can't be read yet or a switch waits for the Claude app
-        let show = ProfileShow.load(entry)
-        let notice = UsageNotice.of(AccountRow(entry: entry, show: show))
+        let notice = UsageNotice.of(row)
         let red = notice?.tone == .red
         let switching = show.display.split?.switchWaits == true
         let readable = notice == nil || ["denied", "unreadable"].contains(status?.state ?? "")
@@ -1679,7 +1690,9 @@ struct AccountSettings: View {
                     BoxNote(text: notice.line, size: 12, tone: .danger).fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 7) {
-                    logInKey(email: show.loginAddress)
+                    // the value's key, as the card's (none in the split with the app's account known by its id only: the
+                    // line says what to do)
+                    if notice.key == .signIn { logInKey(email: show.loginAddress) }
                     if let move {
                         Button("Open \(move.owner.name)") { model.selection = move.owner.id }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
                     }
@@ -1690,10 +1703,10 @@ struct AccountSettings: View {
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 // signed out or expired: that one line, in the box only, with Log in… (never "no numbers yet")
-                limitsOrWhy(status, entry: entry, none: status?.state == "noLogin" ? noSignInWords
+                limitsOrWhy(row.limits, credits: row.usage?.credits, status, none: status?.state == "noLogin" ? noSignInWords
                                                        : status?.state == "expired" ? "The sign-in ran out: Sign in…, or turn on Renew sign-in." : nil)
                 // signed out or expired: that line alone says it (no "Claude Code's account shows" beside it)
-                if let n = v.line, move == nil, !["noLogin", "expired"].contains(status?.state) {
+                if let n = row.line, move == nil, !["noLogin", "expired"].contains(status?.state) {
                     BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true)
                 }
             }
@@ -1854,9 +1867,14 @@ struct AccountSettings: View {
 
     /// The limits as the dashboard draws them, or one line why there are none yet.
     @ViewBuilder func limitsOrWhy(_ st: IconStatus?, entry e: AccountEntry, none: String?) -> some View {
-        let limits = Limit.card(st, entry: e)
+        limitsOrWhy(Limit.card(st, entry: e), credits: st?.credits, st, none: none)
+    }
+
+    /// The same for limits already decided (the in-use box: the one value's, AccountRow.limits); `st`: the record, for its
+    /// problem's words.
+    @ViewBuilder func limitsOrWhy(_ limits: [Limit], credits: Credits?, _ st: IconStatus?, none: String?) -> some View {
         if limits.contains(where: { $0.p != nil }) {
-            CardLimits(limits: limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits)
+            CardLimits(limits: limits, design: DashboardPrefs.shared.cardStyle, credits: credits)
         } else {
             BoxNote(text: none ?? st?.problem ?? "No numbers yet: the agent reads them within a few minutes.")
                 .fixedSize(horizontal: false, vertical: true)
@@ -2065,9 +2083,11 @@ struct AccountSettings: View {
         var action: () -> Void = {}
     }
 
-    /// The address the pop-up's Sign in… signs in to: the one value's (ProfileShow.loginAddress), else the folder's; never
-    /// the account the sign-in happens to be on (that can be the wrong one).
-    var popUpSignInAddress: String? { ProfileShow.load(entry).loginAddress ?? expected }
+    /// The address the pop-up's Sign in… signs in to: the one value's (ProfileShow.loginAddress: the folder's, in a clash
+    /// the profile's own, in the split the Claude app's), never the account the sign-in happens to be on (that can be the
+    /// wrong one). Nil (the split with the app's account known by its id only, a clash with no account of its own): the
+    /// plain sign-in with no address filled in, as the card's.
+    var popUpSignInAddress: String? { show.loginAddress }
 
     /// What the account in use's pop-up lists, telling the same story as its label (the account Claude Code in this
     /// folder is signed in to, ticked): when that is another profile's account, the profile's own one to sign back in to

@@ -38,7 +38,11 @@ struct SwitchPage: View {
     /// What the folder is signed in to now (its .claude.json, read again only when it changed).
     private var seen: Seat? { runner.seen }
     /// The profile's account as its record says it (AccountResolver).
-    var view: AccountView { _ = model.tick; return AccountView.of(Store.status(for: entry)) }
+    /// The profile's one value (ProfileShow): the in-use box draws it.
+    var show: ProfileShow { _ = model.tick; return ProfileShow.load(entry) }
+    var view: AccountView { show.view }
+    /// The in-use box's profile as the card has it (the lamp, the line, the numbers): the box draws this.
+    var inUseRow: AccountRow { AccountRow(entry: entry, show: show) }
     /// The account landed on is another profile's account in use: the profile didn't follow it.
     private var clash: (seat: Seat?, owner: String)? { view.clash.map { (nil, $0) } }
 
@@ -238,22 +242,20 @@ struct SwitchPage: View {
     }
 
     private var inUseBox: some View {
-        // the active account and the one line of state, from the profile's record (AccountResolver)
-        let show = ProfileShow.load(entry)
-        let st = show.record
-        let v = AccountView.of(st)
-        let detail = st?.plan.map(Account.planWords) ?? ""
-        let limits = Limit.card(st, entry: entry)
-        return AccountBox(lamp: v.lit ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: v.lit ? .ok : .warn, detail: detail) {
-            Text(Privacy.masked(v.label ?? "its account")).font(.system(size: 13, weight: .semibold))
+        // the account in use, its lamp, the one line and the numbers: the profile's one value, as the card draws it
+        let row = inUseRow
+        let detail = row.status?.plan.map(Account.planWords) ?? ""
+        let limits = row.limits
+        return AccountBox(lamp: row.lit ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: row.lit ? .ok : .warn, detail: detail) {
+            Text(Privacy.masked(row.show.inUseLabel ?? "its account")).font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
         } content: {
-            if let n = v.line { BoxText(text: n, role: .note) }
+            if let n = row.line { BoxText(text: n, role: .note) }
             if limits.contains(where: { $0.p != nil }) {
-                CardLimits(limits: limits, design: DashboardPrefs.shared.cardStyle, credits: st?.credits, fullBox: false)
+                CardLimits(limits: limits, design: DashboardPrefs.shared.cardStyle, credits: row.usage?.credits, fullBox: false)
             } else {
                 // (in the split the line above says why: here, what gives the numbers)
-                BoxText(text: show.numbersHint ?? "No numbers yet: the agent reads them within a few minutes.", role: .note)
+                BoxText(text: row.show.numbersHint ?? "No numbers yet: the agent reads them within a few minutes.", role: .note)
             }
         }
     }
