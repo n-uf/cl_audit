@@ -146,7 +146,7 @@ do {
     check(ClaudeLocator.version(of: p("slow/claude"), timeout: 1) == nil, "a program that doesn't answer gives no version")
     check(Date().timeIntervalSince(t0) < 4, "…and doesn't block for long (\(Date().timeIntervalSince(t0)) s)")
     let t1 = Date()
-    check(ClaudeLocator.run("/bin/sh", ["-c", "sleep 20"], path: nil, timeout: 0.5) == nil && Date().timeIntervalSince(t1) < 3, "run() stops a slow shell")
+    check(Processes.output("/bin/sh", ["-c", "sleep 20"], timeout: 0.5, grace: 0.1) == nil && Date().timeIntervalSince(t1) < 3, "Processes.output stops a slow shell")
     check(ClaudeLocator.version(of: p("missing")) == nil, "no program, no version")
 }
 

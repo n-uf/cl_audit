@@ -108,14 +108,15 @@ enum ClaudeLocator {
         var dirs = ["/opt/homebrew/bin", "/usr/local/bin"] + nvmNodeBins(home: home) + [(home as NSString).appendingPathComponent(".volta/bin")]
         dirs = dirs.filter { isExecutable(($0 as NSString).appendingPathComponent("npm")) }
         guard let dir = dirs.first else { return nil }
-        let out = run((dir as NSString).appendingPathComponent("npm"), ["config", "get", "prefix"], path: dir, timeout: timeout)
+        let out = Processes.output((dir as NSString).appendingPathComponent("npm"), ["config", "get", "prefix"], environment: environment(path: dir),
+                                   timeout: timeout, grace: 0.1)
         guard let line = out?.split(separator: "\n").last.map({ $0.trimmingCharacters(in: .whitespaces) }), line.hasPrefix("/") else { return nil }
         return line
     }
 
     /// What the login shell says `claude` is (an alias or a function says nothing usable). Slow rc files can't hang it.
     static func shellLookup(timeout: TimeInterval = 5) -> String? {
-        let out = run("/bin/zsh", ["-lc", "command -v claude"], path: nil, timeout: timeout)
+        let out = Processes.output("/bin/zsh", ["-lc", "command -v claude"], environment: environment(path: nil), timeout: timeout, grace: 0.1)
         return out?.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.last(where: { $0.hasPrefix("/") })
     }
 
@@ -166,35 +167,18 @@ enum ClaudeLocator {
     /// "2.1.211" from `claude --version` ("2.1.211 (Claude Code)"); nil when it doesn't answer in time. Blocks: call off
     /// the main thread.
     static func version(of path: String, timeout: TimeInterval = 5) -> String? {
-        guard let out = run(path, ["--version"], path: nil, timeout: timeout) else { return nil }
+        guard let out = Processes.output(path, ["--version"], environment: environment(path: nil), timeout: timeout, grace: 0.1) else { return nil }
         for word in out.split(whereSeparator: { $0 == " " || $0 == "\n" }) where word.first?.isNumber == true && word.contains(".") {
             return String(word)
         }
         return nil
     }
 
-    /// Runs a program and returns what it printed, or nil when it can't start, fails or takes longer than `timeout`
-    /// (it is stopped then). Blocks.
-    static func run(_ exe: String, _ args: [String], path: String?, timeout: TimeInterval) -> String? {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: exe)
-        p.arguments = args
-        var env = ProcessInfo.processInfo.environment
-        for k in ["CLAUDE_CONFIG_DIR", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN"] { env[k] = nil }
+    /// The environment the lookup's programs run with: a `claude` run's (Processes.claudeEnvironment), `path` first on PATH.
+    private static func environment(path: String?) -> [String: String] {
+        var env = Processes.claudeEnvironment()
         if let path { env["PATH"] = path + ":/usr/bin:/bin:" + (env["PATH"] ?? "") }
-        p.environment = env
-        p.currentDirectoryURL = FileManager.default.temporaryDirectory
-        let out = Pipe()
-        p.standardOutput = out
-        p.standardError = FileHandle.nullDevice
-        p.standardInput = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }
-        let deadline = Date().addingTimeInterval(timeout)
-        while p.isRunning && Date() < deadline { usleep(20_000) }
-        if p.isRunning { p.terminate(); usleep(100_000); if p.isRunning { kill(p.processIdentifier, SIGKILL) }; return nil }
-        guard p.terminationStatus == 0 else { return nil }
-        return String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return env
     }
 }
 
