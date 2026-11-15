@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.49 — 2026-11-15
+
 - New profile now refuses another profile's standby account when you type its address (before, the address went ahead), and also one remembered only by its address when Claude Code signs in to it and at Finish (before, only a standby account with its ids was refused there). The refusals now name it as a standby account: "That's a standby account of “Work”. One profile per account."
 
 ## 26.11.48 — 2026-11-15
