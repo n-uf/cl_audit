@@ -25,6 +25,14 @@ public struct StandbyAccount: Codable, Equatable, Hashable, Identifiable {
 
     public static func newID() -> String { String(UUID().uuidString.lowercased().filter(\.isHexDigit).prefix(8)) }
 
+    /// The entry as the one owner rule compares it (AccountIdentity.sameAccount): its seat, with the entry's address when
+    /// the seat has none; else its address only.
+    public var identity: AccountIdentity {
+        var i = seat.map { AccountIdentity($0) } ?? AccountIdentity(account: nil, email: nil, organization: nil, source: .guessed)
+        if (i.email ?? "").isEmpty { i.email = email }
+        return i
+    }
+
     /// The decoder's clock, when a caller gives one (`decoder.userInfo[StandbyAccount.now]`); else the Mac's.
     public static let now = CodingUserInfoKey(rawValue: "profilecore.now")!
 

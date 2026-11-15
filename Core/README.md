@@ -7,7 +7,7 @@ its own repository and cl_quick compiles it from source too.
 
 | File | What it holds |
 | --- | --- |
-| `Identity.swift` | `Seat` and `SeatID` with their exact `same` (as cl_audit has always compared them), `SeatID.sameIgnoringCase` where cl_audit already ignored case, the loose comparison `AccountID` (case doesn't count, no organisation = empty); `AccountIdentity` for an account known by address and organisation only, with where it came from (`verified` by the running process, or `guessed` from a file) |
+| `Identity.swift` | `Seat` and `SeatID` with their exact `same` (change detection and saved keys), `SeatID.sameIgnoringCase` where cl_audit already ignored case, the loose comparison `AccountID` (case doesn't count, no organisation = empty); `AccountIdentity` for an account known by address and organisation only, with where it came from (`verified` by the running process, or `guessed` from a file); the one owner rule `AccountIdentity.sameAccount` (`matches`, with one side known by its address only matched by the address; `Seat.sameAccount`, `StandbyAccount.identity`, `withoutOrganization` for a source that names no organisation) |
 | `Standby.swift` | `StandbyAccount`, `AccountBook` (`ago`, `sane`, `offerOrder` and the picks `best` and `mostRecent`), `AccountNote`, `StandbyTidy` over any `StandbyHolder` |
 | `Limits.swift` | `Usage`, `Freshness` (thresholds are parameters; `Freshness.current`, the one "reset passed" rule: no percent and no reset once a limit's reset has passed), `ScopedLimit`, `FullLimit` (data only: which limit, its reset, the other full one), `AtLimit` (`isFull`, `holding`, `blocker`, and `full` in two modes), `Credits` |
 | `Headline.swift` | `Headline`: whose numbers a profile's headline may show, and how. `Headline.of(owner, signedIn:, readAt:, now:, ages:)` takes `Owner` (the account in use, the sign-in's, the reading's and the label's as `AccountIdentity`, or a resolver's own `differs`; another profile has the account; stale; unconfirmed) and `Ages` (`freshFor`, `hiddenAfter`, `datedFullStays`) and answers `Answer` (`otherReading`, `split`, `unconfirmed`, `signedIn`, `age`; `numbers(split:)`, `plan(split:)`, `readTime`, `acts`, and `limit(_:resets:readAt:split:now:)` for each limit). `Headline.split`, `otherReading` and `age` are its parts |
@@ -43,8 +43,8 @@ in step 1, nor in step 2 beyond the widget now following the headline exactly.
 
 - **Identity without an id.** cl_quick knows the account from the running claude process (`initialize.account`: address
   and organisation, no account id) and treats a folder's `.claude.json` as a guess. `AccountIdentity` matches by ids when
-  both sides have one, else by address and organisation, and carries `source` (`verified` / `guessed`). cl_audit still
-  compares seats by id (`Seat.same`), exactly.
+  both sides have one, else by address and organisation, and carries `source` (`verified` / `guessed`). Every owner
+  check in cl_audit compares by `sameAccount` (below, the one owner rule).
 - **The headline's identity rule (settled in step 2).** `Headline` compares accounts with `AccountIdentity.matches` only:
   the ids decide whenever both sides have one (in their normal form, `AccountID`; cl_audit's record already writes its
   ids in lower case, so for its records that is the exact id), else address (any case) and organisation. cl_quick passes
@@ -74,17 +74,20 @@ in step 1, nor in step 2 beyond the widget now following the headline exactly.
   "yesterday").
 - **Standby is never read.** A standby account's numbers are never read and show nowhere; the headline is only ever
   asked about the account in use.
-- **Open question: the seat comparisons outside the headline.** For the headline it is settled (above). `Seat.same` and
-  `SeatID.same` still compare the ids exactly (case counts; for `Seat`, no organisation is not an empty one), while
-  cl_audit's id reads (`AccountResolver`, a switch reaching its account, a move's folders) ignore case. Whether those
-  move onto `AccountIdentity.matches` too would make `Seat("ABC", nil)` and `Seat("abc", "")` one seat, an
-  accounts-identity change, so it waits for its own step and checks. Also open: the resolver's own comparison (address
-  first) moving onto `matches` (ids first). Step 5 brought the reader's logic in (`ReaderMachine`) without it: its one
-  other-account rule, `belongs`, compares seats with `Seat.same` and addresses in any case, as the reader always did.
-  Step 6 moved one refusal onto `matches`: New profile's owner rule (`FolderRules.seatOwner` in the app) takes every
-  profile's account in use and standby accounts and compares them by `matches`, with one known by its address only (an
-  address typed, a standby entry remembered by its address) matched by the address, as cl_quick's placeholder rule.
-  Refusing more there changes no saved data; the folder's own following (`noteAccounts`) still uses `Seat.same`.
+- **The one owner rule (settled in step 7).** Every "is this the same account / whose account is it" check compares by
+  `AccountIdentity.sameAccount`: `matches` (the ids in any case when both have one, never the address then; else the
+  address, any case, and the organisation, nil and "" one), except that one side known by its address only (no id, no
+  organisation: an address typed, a standby entry remembered by its address, the address a reading was for) is matched
+  by the address, as cl_quick's placeholder rule. In cl_audit: New profile's owner rule (`FolderRules.seatOwner`, step
+  6), the folder's own following (`noteAccounts`, its standby entries, `seatTaken`, `AccountEntry.has`), the reader's
+  `belongs`, the resolver (another profile's account in use, the app's account among the profile's, `differs`, a switch
+  waiting for the app) and the lists' `isActive`/`isCodeRow`. A status record and the Claude app's config.json name no
+  organisation, so a seat compared with them leaves its own out (`withoutOrganization`): an organisation not known isn't
+  "none". The resolver keeps its order (the numbers' own address first, as the reading names it, then the ids), which
+  is the address-only rule for a reading known by its address. `Seat("ABC", nil)` and `Seat("abc", "")` are one account
+  now; no saved data changes. `Seat.same` and `SeatID.same` stay exact for what isn't an owner check: change detection
+  (a profile's seat changed, the sign-in changed since asked) and a switch's receipts and keys. The found accounts
+  (`AccountList.adding`) and `StandbyTidy` stay one entry per account id in any organisation, on purpose.
 - **Reading usage (step 5).** `ReaderMachine` is cl_audit's reader as it was (`Sources/Reader.swift` is now its driver:
   the timers, the Keychain read through ClaudeAuth, the endpoints, the status line file, the alerts and the record). The
   rules where cl_quick differs are `ReadingRules`, cl_audit's set `clAudit`, cl_quick's `clQuick`:

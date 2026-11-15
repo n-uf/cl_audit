@@ -20,8 +20,12 @@ public struct Seat: Codable, Equatable, Hashable {
     }
 
     /// The same seat (the ids; not the email or when it was linked), exactly as written: case counts, and no organisation
-    /// (nil) is not an empty one. AccountID's looser comparison is a proposal for a later step (Core/README.md).
+    /// (nil) is not an empty one. For "is this the same account / whose account is it" use `sameAccount`, the one owner
+    /// rule; this exact equality is kept for change detection and saved keys (Core/README.md).
     public func same(_ o: Seat?) -> Bool { o.map { account == $0.account && organization == $0.organization } ?? false }
+
+    /// The same account by the one owner rule (AccountIdentity.sameAccount).
+    public func sameAccount(_ o: Seat?) -> Bool { o.map { AccountIdentity(self).sameAccount(AccountIdentity($0)) } ?? false }
 }
 
 /// An account and organisation by their ids only, as a record of a switch keeps them (no organisation is "").
@@ -63,9 +67,9 @@ public struct AccountIdentity: Equatable, Hashable {
         self.account = account; self.email = email; self.organization = organization; self.source = source
     }
 
-    /// A seat's identity (from a file unless said otherwise).
+    /// A seat's identity (from a file unless said otherwise). An empty account id is none.
     public init(_ s: Seat, source: Source = .guessed) {
-        self.init(account: s.account, email: s.email, organization: s.organization, source: source)
+        self.init(account: s.account.isEmpty ? nil : s.account, email: s.email, organization: s.organization, source: source)
     }
 
     /// The same account: by the ids when both have one; else by address (case doesn't count) and organisation.
@@ -73,6 +77,30 @@ public struct AccountIdentity: Equatable, Hashable {
         if let a = account, let b = o.account { return AccountID.same(a, b) && AccountID.sameOrganization(organization, o.organization) }
         guard let e = email?.lowercased(), !e.isEmpty, e == o.email?.lowercased() else { return false }
         return AccountID.sameOrganization(organization, o.organization)
+    }
+
+    /// An account known by its address only (a typed address, the address a reading was for).
+    public static func address(_ email: String?, source: Source = .guessed) -> AccountIdentity {
+        AccountIdentity(account: nil, email: email, organization: nil, source: source)
+    }
+
+    /// Known by its address only: no account id and no organisation (an address typed, a standby entry remembered by its
+    /// address).
+    public var addressOnly: Bool { (account ?? "").isEmpty && (organization ?? "").isEmpty }
+
+    /// The one owner rule, for every "is this the same account / whose account is it" check: `matches` (the ids in any case
+    /// when both have one, never the address then; else the address, any case, and the organisation), except that one
+    /// side known by its address only is matched by the address (cl_quick's placeholder rule).
+    public func sameAccount(_ o: AccountIdentity) -> Bool {
+        guard addressOnly || o.addressOnly else { return matches(o) }
+        guard let e = email?.lowercased(), !e.isEmpty else { return false }
+        return e == o.email?.lowercased()
+    }
+
+    /// The identity as a source that names no organisation knows it (a status record, the Claude app's config.json): an
+    /// organisation not known there isn't "none", so a seat compared with such an identity leaves its own out too.
+    public var withoutOrganization: AccountIdentity {
+        AccountIdentity(account: account, email: email, organization: nil, source: source)
     }
 }
 
