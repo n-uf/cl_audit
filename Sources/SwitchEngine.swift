@@ -109,6 +109,9 @@ struct SwitchReceipt: StoredReceipt, Equatable {
     var tasksMoved: Int?
     /// How many names shaped like an entry, but not one, were left in place (SessionTransfer.odd; nil: none, or older).
     var leftInPlace: Int?
+    /// The switch closed the profile's Claude window for its move (nil: it was closed already, or an older receipt). It stays
+    /// closed while the moved sessions aren't linked, and opens again once the switch is settled (SwitchEngine.settled).
+    var closedWindow: Bool?
 
     /// What this switch still has moved now: its placed session entries still where it put them, unchanged, and its
     /// scheduled tasks while the new account's task file is still as it wrote it. (Undo takes them back; after a partial
@@ -243,9 +246,10 @@ enum SwitchEngine {
     ///
     /// A backup of the sessions is made first, right here under the lock: the window is known closed and nothing has
     /// moved. The receipt names it (saved before the first move) and it names the receipt. If it can't be made, the switch
-    /// stops with nothing moved. `backups`: where it goes (General ▸ Backups unless given).
+    /// stops with nothing moved. `backups`: where it goes (General ▸ Backups unless given). `closedWindow`: the switch closed the
+    /// profile's Claude window for it (written down: the window opens again once the switch is settled, `settled`).
     @discardableResult
-    static func run(_ p: SwitchPlan, windowClosed: () -> Bool, now: Date = Date(), backups: URL? = nil,
+    static func run(_ p: SwitchPlan, windowClosed: () -> Bool, now: Date = Date(), backups: URL? = nil, closedWindow: Bool = false,
                     backupMade: ((_ id: String, _ place: String) -> Void)? = nil) throws -> SwitchReceipt {
         let lock = try Flows.takeLock()
         defer { lock.release() }
@@ -258,6 +262,7 @@ enum SwitchEngine {
                               from: SeatID(p.from), to: SeatID(p.to), started: now)
         r.held = p.held.isEmpty ? nil : p.held
         r.leftInPlace = p.odd.isEmpty ? nil : p.odd.count
+        r.closedWindow = closedWindow ? true : nil
         let place = backups ?? BackupPrefs.placeURL
         if p.moves {
             let id = SessionsBackup.newID(now)
@@ -362,6 +367,28 @@ enum SwitchEngine {
         return r
     }
 
+    /// Called once a switch is settled (linked, undone, or left as it is), with its receipt: the app and the agent open the
+    /// profile's Claude window again here when the switch closed it (ClaudeWindow.afterSwitch). Nothing by default (the checks).
+    nonisolated(unsafe) static var settled: (SwitchReceipt) -> Void = { _ in }
+
+    /// The first process to open a settled switch's window again (the app or the agent, both told): true once per switch, by
+    /// a file made create-only in the switch's own folder (taken away with it).
+    static func claimReopen(_ id: String) -> Bool {
+        guard !id.isEmpty, !id.contains("/"), id != "..", id != "." else { return false }
+        let path = root.appendingPathComponent(id).appendingPathComponent("reopened").path
+        let fd = Darwin.open(path, O_CREAT | O_EXCL | O_WRONLY | O_NOFOLLOW | O_CLOEXEC, 0o600)
+        guard fd >= 0 else { return false }
+        close(fd)
+        return true
+    }
+
+    /// The unsettled switch that closed this window, if any: it moved sessions that aren't linked yet, so the Claude app must
+    /// not run on them; the window stays closed until the switch is settled (Launcher.openClaude asks this).
+    static func keepsClosed(_ account: Account) -> SwitchReceipt? {
+        let key = Launcher.dataDirKey(of: account)
+        return receipts().first { $0.unfinished && $0.closedWindow == true && FolderKey.canonical($0.dataDir) == key }
+    }
+
     /// The places a switch's Undo may touch, from what cl_audit knows rather than from receipt.json alone: the two
     /// accounts' scope folders in the profile's own window data folder (real ids, plain folders), this receipt's own folder
     /// (parked/ and the task files' backups) and the profile's Claude Code `projects` (pointer lines).
@@ -437,8 +464,11 @@ enum SwitchEngine {
         guard SwitchMarker.claim(window, profile: profile, standby: name) else {
             throw SwitchError.busy("Another run on the profile's Claude window is under way (a restore, an import or a switch).")
         }
-        defer { SwitchMarker.release(window, profile: profile, standby: name) }
-        return try undo(id, windowClosed: windowClosed)
+        let r: SwitchReceipt
+        do { r = try undo(id, windowClosed: windowClosed) } catch { SwitchMarker.release(window, profile: profile, standby: name); throw error }
+        SwitchMarker.release(window, profile: profile, standby: name)
+        if r.undone != nil { settled(r) }                       // (after its mark is gone: the window it closed may open)
+        return r
     }
 
     // MARK: receipts
@@ -495,15 +525,17 @@ enum SwitchEngine {
         guard var r = store.load(id), r.unfinished else { return "" }
         r.leftAsIs = now
         try store.save(r)
+        settled(r)
         let moved = r.steps.filter { $0.kind == .entry && $0.done }.count
         return "Left as it is: \(moved) Code-tab \(moved == 1 ? "session stays" : "sessions stay") under the account the switch went to, the rest under the one it came from"
             + (r.backup != nil ? "; the backup made before it holds them all as they were." : ".")
     }
 
     static func markLinked(_ id: String, now: Date = Date()) {
-        guard var r = store.load(id), r.linked == nil, r.undone == nil else { return }
+        guard var r = store.load(id), r.linked == nil, r.undone == nil, r.leftAsIs == nil else { return }
         r.linked = now
-        try? store.save(r)
+        guard (try? store.save(r)) != nil else { return }
+        settled(r)
     }
 
     static func sha(_ d: Data) -> String { SHA256.hash(data: d).map { String(format: "%02x", $0) }.joined() }
