@@ -13,7 +13,9 @@ its own repository and cl_quick compiles it from source too.
 | `Headline.swift` | `Headline`: whose numbers a profile's headline may show, and how. `Headline.of(owner, signedIn:, readAt:, now:, ages:)` takes `Owner` (the account in use, the sign-in's, the reading's and the label's as `AccountIdentity`, or a resolver's own `differs`; another profile has the account; stale; unconfirmed) and `Ages` (`freshFor`, `hiddenAfter`, `datedFullStays`) and answers `Answer` (`otherReading`, `split`, `unconfirmed`, `signedIn`, `age`; `numbers(split:)`, `plan(split:)`, `readTime`, `acts`, and `limit(_:resets:readAt:split:now:)` for each limit). `Headline.split`, `otherReading` and `age` are its parts |
 | `Display.swift` | `ProfileDisplay`: the one "what to show" value per profile, `ProfileDisplay.make(answer, read:, sign:, otherAccount:, inUse:, clash:, note:, splitTo:, ages:, now:)` from the headline's answer and what the caller read. It carries `usage` (each limit as the answer lets it show) or `none` (why: `notRead`, `expired`, `signedOut`, `otherReading`, `split`, `hidden`), `readAt`, `tier` (`fresh`, `lastKnown`, `stale`: grey past `Ages.greyAfter`, else, or when it is below `freshFor`, as soon as last known), `full` (only numbers that act; `full(now:)` drops it once its reset passes, for drawing), `lamp`, `key` (`logIn`, `logInCode(to:)`), `line` (`unconfirmed`, `split`, the caller's `given`), `clash` (the other profile's id and name), `split`, `sign`, `otherAccount`; `grey`, `level(_:)`, `needsLogin`. No words: each app says it |
 | `TimeWords.swift` | `TimeWords` (`when`, `back`, `countdown`, with a calendar parameter; always written in the Gregorian calendar, only the time zone is the caller's) and `Level`, the one colour level |
-| `Parsing.swift` | `Login.parse` (a sign-in item's text) and `UsageParser` (Anthropic's usage and profile replies; the caller names the source) |
+| `Parsing.swift` | `Login.parse` (a sign-in item's text) and `UsageParser` (Anthropic's usage and profile replies; the caller names the source, and which `limits[]` kind is the week) |
+| `Reading.swift` | The reading rules as parameters, `ReadingRules` (`clAudit`, `clQuick`: `fractionSources`, `partial`, `week`, `refusals`, `messageText`; `percents`, `take`, `lifts`, `readsMessage`), with `UsageAnswer` (an answer in its source's scale and the windows it named), `Refusal` (`until`, `at`, `on`), `RateLimitEvent`, `LimitMessage`; `FetchState` (the reader's state, whose description the status record keeps) and `SignInRead` (a sign-in as read, by its token's key, never the token) |
+| `ReaderMachine.swift` | `ReaderMachine`: one profile's reading as a state machine, `handle(Event) -> [Action]`. Events: a tick (with the status line's numbers and whether the folder is there), the folder looked at, the profile's settings, relinked, folder moved, read now, Refresh now, adopt the saved record, a sign-in read, the sign-in record changed, the usage endpoint's answer or failure (`Failure`: rejected, busy, HTTP, network, unexpected), the lookup's answer, an account found, a lookup failed, numbers, a renewal refused, started or ended, a rate-limit event, a limit message, written, stop. Actions: read the sign-in, keep or forget it, look its account up, fetch the usage (`Request`: the key, the generation, when; never the token), consider a renewal, numbers taken (the app's alerts), plan the read at a reset, started over, look afresh, the sign-in not there yet, the record changed, save, tick. `Timing` holds the intervals; `belongs(_:expected:)` is the one "is it another account" rule (`onOtherAccount`, `renewsIn`, `mayRenewByItself`, the new sign-in's retries and relinking all use it); `needsSignInRead`, `watchesSignIn`, `resetPassed`, `resetReadAt` |
 
 What stays in each app: its screens, colours and words (cl_audit's names and times for a full limit, `FullLimit.id`/
 `name`/`other`/`countdown`/`back`/`both`, in `Widget/WidgetViews.swift` so the widget shares them, and `title`; the Dock
@@ -77,6 +79,27 @@ in step 1, nor in step 2 beyond the widget now following the headline exactly.
   cl_audit's id reads (`AccountResolver`, a switch reaching its account, a move's folders) ignore case. Whether those
   move onto `AccountIdentity.matches` too would make `Seat("ABC", nil)` and `Seat("abc", "")` one seat, an
   accounts-identity change, so it waits for its own step and checks. Also open: the resolver's own comparison (address
-  first) moving onto `matches` (ids first) when the reader's logic comes into the core (step 5).
-- **Later steps.** Reading usage (the two input scales, partial answers, refusals and how they lift, which windows hold
-  back the account) isn't in the core yet.
+  first) moving onto `matches` (ids first). Step 5 brought the reader's logic in (`ReaderMachine`) without it: its one
+  other-account rule, `belongs`, compares seats with `Seat.same` and addresses in any case, as the reader always did.
+- **Reading usage (step 5).** `ReaderMachine` is cl_audit's reader as it was (`Sources/Reader.swift` is now its driver:
+  the timers, the Keychain read through ClaudeAuth, the endpoints, the status line file, the alerts and the record). The
+  rules where cl_quick differs are `ReadingRules`, cl_audit's set `clAudit`, cl_quick's `clQuick`:
+  - *Two input scales.* The usage endpoint and the status line give 0–100, a rate-limit event 0–1 (`fractionSources`, the
+    same for both); `percents` makes them 0–100.
+  - *Partial and empty answers.* cl_audit: `replace` (an endpoint answer is the numbers; one with no limit at all is
+    "unexpected reply", parsed so in the app). cl_quick: `keepLast` (a window named is taken whole, its reset included; one
+    not named keeps its last numbers; the read time moves on only when every window the last numbers had was named;
+    `rate_limits: null` changes nothing).
+  - *The week.* cl_audit's parser takes any `limits[]` kind naming "seven" or "week"; cl_quick's `sevenDayOnly` takes
+    `seven_day` only (`UsageParser.fromAPI(…, week:)`; `RateLimitEvent.Window.named`). A model's, spend or overage window
+    is `scoped`: it holds back a model or a spend, never the account.
+  - *Refusals.* cl_audit keeps none (`refusals: nil`: full is 100% in the numbers, nothing else). cl_quick's `Refusal` has
+    `until`, `at` and `on` (5h, wk, unknown); a rate-limit event "rejected" sets it, "allowed" lifts it at once; the
+    usage endpoint lifts it only when it was said at least 5 minutes ago (`liftAfter`) and the answer names the window that
+    refused (for unknown, every window it names) with room. A model's or a spend window neither sets nor lifts one.
+  - *Limit words from message text.* cl_audit reads none (`never`); cl_quick only from an error or a "<synthetic>"
+    message (`errorOrSynthetic`, `readsMessage`, also for "Prompt is too long"). The app parses the words into a
+    `LimitMessage`; the machine applies the gate.
+  - *What stays cl_audit's.* The status line file's merge (its two limits over the endpoint's model limits and credits,
+    no account named), the held reading and "account not confirmed", and the sign-in schedule are cl_audit's reader as it
+    was; cl_quick, which reads usage from its running claude, need not send those events.
