@@ -25,7 +25,9 @@ enum ClaudeWindow {
         var isRunning: (Instance) -> Bool
 
         static let real = Seams(
-            find: { a in Processes.claudeWindows(of: a).filter { !$0.isTerminated }.map { Instance(pid: $0.processIdentifier, started: Processes.startTime(of: $0.processIdentifier)) } },
+            // (isTerminated is updated on the main thread only: the process table says whether it still runs, from any thread)
+            find: { a in Processes.claudeWindows(of: a).filter { !$0.isTerminated && Processes.runs($0.processIdentifier) }
+                        .map { Instance(pid: $0.processIdentifier, started: Processes.startTime(of: $0.processIdentifier)) } },
             quit: { pid in NSRunningApplication(processIdentifier: pid)?.terminate() },
             open: { a, activate in Launcher.openClaude(a, activate: activate) },
             isRunning: { i in Processes.runs(i.pid) && Processes.startTime(of: i.pid) == i.started })
@@ -54,6 +56,30 @@ enum ClaudeWindow {
     static func closed(_ asked: [Instance], _ a: Account) -> Bool {
         !asked.contains(where: seams.isRunning) && instances(a).isEmpty
     }
+
+    /// A switch is settled (linked, undone or left as it is): the Claude window it closed opens again, when the profile has its
+    /// Claude window on and nothing has opened it since. While a run still marks the window (the switch's own runner until it
+    /// ends, an Undo until it lets go, another run such as a restore) it waits, every half second for ten minutes at most, and opens it once the
+    /// mark is gone; never in its place (no jump to that run's page). Once per switch, whichever process gets there first (the
+    /// app or the agent, SwitchEngine.claimReopen). `activate`: false in the agent. Set as SwitchEngine.settled by both.
+    static func afterSwitch(_ r: SwitchReceipt, activate: Bool) {
+        guard r.closedWindow == true else { return }
+        let until = Date().addingTimeInterval(reopenWait)
+        func attempt() {
+            guard let e = Store.load().first(where: { $0.id == r.profile }), e.claudeWindow else { return }
+            let a = Account(e)
+            if SwitchMarker.blocks(a) {
+                guard Date() < until else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + reopenEvery) { attempt() }
+                return
+            }
+            guard !isOpen(a), SwitchEngine.claimReopen(r.id) else { return }
+            open(a, activate: activate)
+        }
+        DispatchQueue.main.async { attempt() }
+    }
+    nonisolated(unsafe) static var reopenWait: TimeInterval = 600
+    nonisolated(unsafe) static var reopenEvery: TimeInterval = 0.5
 
     /// Asks the window to quit and waits up to `seconds` for it to close; whether it did. Blocks: off the main thread only.
     static func quitAndWait(_ a: Account, seconds: TimeInterval) -> Bool {
@@ -98,10 +124,11 @@ final class WindowHold {
     func release() { SwitchMarker.release(key, profile: profile, standby: run) }
 
     /// Asks the window to quit and watches it close: `closed` once every instance asked is gone and none is there (at once when
-    /// it was already closed: then this hold didn't close it); `stalled` after `stallAfter` seconds, the mark let go first.
-    func close(closed: @escaping () -> Void, stalled: @escaping () -> Void) {
+    /// it was already closed: then this hold didn't close it, unless `askedBefore`: an earlier try of the same flow asked it to
+    /// quit and it closed by its own answer since); `stalled` after `stallAfter` seconds, the mark let go first.
+    func close(askedBefore: Bool = false, closed: @escaping () -> Void, stalled: @escaping () -> Void) {
         stopWatching()
-        if isClosed { closed(); return }
+        if isClosed { closedByUs = askedBefore; closed(); return }
         closedByUs = true
         asked = ClaudeWindow.quit(account)
         let started = Date()
@@ -128,7 +155,8 @@ final class WindowHold {
         release()
         guard closedByUs else { return }
         closedByUs = false
-        if reopens { ClaudeWindow.open(account) }
+        // (opened meanwhile, or another run's mark on it now: left as it is, never that run's page instead)
+        if reopens, isClosed, !SwitchMarker.blocks(account) { ClaudeWindow.open(account) }
     }
 
     /// Cancelled while the window closes: the watch stops and the mark goes; the window was already asked to quit, so if it does
@@ -143,15 +171,19 @@ final class WindowHold {
         guard was, reopens else { return false }
         let since = Date()
         stopWatching()
-        watch = Timer.scheduledTimer(withTimeInterval: Self.every, repeats: true) { [weak self] t in
+        // (the watch keeps this hold alive until it ends, at most `lateCloseFor`: its caller may have let go of it already)
+        watch = Timer.scheduledTimer(withTimeInterval: Self.every, repeats: true) { t in
             let over: Bool = {
-                guard let self, !busy() else { return true }
-                if self.isClosed { ClaudeWindow.open(self.account); return true }
+                guard !busy() else { return true }
+                if self.isClosed {
+                    if !SwitchMarker.blocks(self.account) { ClaudeWindow.open(self.account) }
+                    return true
+                }
                 return Date().timeIntervalSince(since) > Self.lateCloseFor
             }()
             guard over else { return }
             t.invalidate()
-            self?.watch = nil
+            self.watch = nil
             watched?()
         }
         return true

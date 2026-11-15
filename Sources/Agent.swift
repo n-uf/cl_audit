@@ -212,6 +212,8 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ note: Notification) {
         NSApp.setActivationPolicy(.prohibited)
         agentLog.log("agent \(self.myBuild, privacy: .public) started, pid \(getpid()), \(Bundle.main.bundlePath, privacy: .public)")
+        // a switch the agent sees settled (linkReached) opens the window it closed, behind what the person is doing
+        SwitchEngine.settled = { ClaudeWindow.afterSwitch($0, activate: false) }
         pausedUntil = Self.crashBackoff(defaults)
         beat()
         if let until = pausedUntil {

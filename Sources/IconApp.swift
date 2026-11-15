@@ -104,6 +104,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
         if isSettingsApp {
             SwitchMarker.sweep()                           // a switch left marked by a cl_audit that's gone keeps no window closed
+            SwitchEngine.settled = { ClaudeWindow.afterSwitch($0, activate: true) }   // a settled switch opens the window it closed
             SwitchWaiting.clearAll(wait: false)            // so does a "switch is waiting for you" alert a cl_audit that's gone left
             NSWindow.allowsAutomaticWindowTabbing = false   // Settings and Dashboard are separate windows
             AppIconPrefs.shared.apply()                    // the chosen app icon (Settings ▸ General ▸ App icon)
