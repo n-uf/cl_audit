@@ -302,7 +302,9 @@ do {
         // the Dock panel from the one value (each case here is signed in and readable: the lamp is the record's)
         let panel = DetailsInfo.of(ProfileShow.load(main), name: "x", icon: NSImage(), problem: nil)
         let splitHere = ProfileShow.load(main).display.split != nil
-        check(panel.active == want.label && (panel.activeNote == want.line || splitHere) && panel.activeLit == want.lit,
+        // (in a clash the app didn't decide, the panel names the profile's own account, never the folder's: step 3c)
+        let panelLabel = want.clash != nil && Store.status("main")?.resolved?.fromApp != true ? main.seat?.email : want.label
+        check(panel.active == panelLabel && (panel.activeNote == want.line || splitHere) && panel.activeLit == want.lit,
               "\(name): the Dock panel agrees")
         check(SwitchMenu.dockTitle(name: "P", want, plan: nil) == (want.short.map { "Claude P · \($0)" } ?? "Claude P"), "\(name): the Dock menu agrees")
         check(QuickChatTarget(main).email == want.label, "\(name): quick chat agrees")
@@ -2241,6 +2243,133 @@ do {
               "a switch waiting, Terminal's sign-in \(what): still the switch's notice, with Sign in…")
     }
     Store.removeStatus("card"); Store.removeStatus("csp")
+    try? Store.save([])
+}
+
+// ============ 13. ProfileCore step 3c: Settings ▸ Accounts, the Switch page, the Dock panel and its preview draw the one value ============
+MainActor.assumeIsolated {
+    let now = Date()
+    var e = profile("acc", "~/.claude-acc", u1); e.claudeWindow = false
+    e.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "k2", plan: "Max", lastInUse: now.addingTimeInterval(-86400))]
+    // a second profile called "Other" (names needn't be unique), listed before the real one: a match by name finds it
+    var twin = profile("other2", "~/.claude-other2", nil); twin.name = "Other"; twin.claudeWindow = false
+    let model = SettingsModel(); model.accounts = [e, twin, other]
+    try! Store.save([e, twin, other])
+    func rec(_ state: String = "ok", week: Double? = 40, five: Double? = 12, age: TimeInterval = 60, login: String? = u1.email,
+             code: Seat? = u1) -> IconStatus {
+        var s = IconStatus(state: state); s.loginEmail = state == "noLogin" ? nil : login; s.expectedEmail = code?.email
+        s.weekly = week; s.fiveHour = five; s.weeklyResets = now.addingTimeInterval(2 * 86400); s.fiveHourResets = now.addingTimeInterval(3600)
+        s.updatedAt = now.addingTimeInterval(-age); s.source = "Anthropic"; s.plan = "Max"
+        s.resolved = AccountResolver.resolve(e, among: [e, other], app: .unknown, code: code, loginEmail: login, names: [:], now: now)
+        return s
+    }
+    /// Settings ▸ Accounts, the Switch page and the panel preview for profile `p` with record `r` written.
+    func surfaces(_ r: IconStatus?, _ p: AccountEntry? = nil) -> (settings: AccountSettings, page: SwitchPage, preview: DetailsInfo, panel: DetailsInfo) {
+        let p = p ?? e
+        if let r { _ = Store.writeStatus(p.id, r) } else { Store.removeStatus(p.id) }
+        let preview = samplePanel(p, status: Store.status(for: p), now: now)
+        return (AccountSettings(entry: .constant(p), model: model),
+                SwitchPage(entry: p, standby: p.standby.first ?? StandbyAccount(email: u2.email!, id: "x"), model: model, runner: model.runner(of: p.id)),
+                preview, DetailsInfo.of(ProfileShow.load(p, now: now), name: preview.name, icon: preview.icon, problem: nil))
+    }
+    /// The preview draws what the Dock icon's own panel draws.
+    func same(_ a: DetailsInfo, _ b: DetailsInfo) -> Bool {
+        a.active == b.active && a.activeLit == b.activeLit && a.activeNote == b.activeNote && a.needsLogin == b.needsLogin
+            && a.splitKey == b.splitKey && a.fiveHour == b.fiveHour && a.weekly == b.weekly && a.updated == b.updated
+            && a.stale == b.stale && a.noNumbers == b.noNumbers && a.mismatch == b.mismatch
+    }
+
+    // fresh: lit everywhere, numbers, no key; the preview is the panel
+    let fresh = surfaces(rec())
+    check(fresh.settings.inUseRow.lit && fresh.page.inUseRow.lit && UsageNotice.of(fresh.settings.inUseRow) == nil
+          && fresh.settings.inUseRow.weekly == 40 && fresh.page.inUseRow.weekly == 40 && same(fresh.preview, fresh.panel)
+          && fresh.panel.activeLit && !fresh.panel.stale && fresh.panel.limits.allSatisfy { !$0.stale },
+          "fresh: Settings and the Switch page lit with the numbers, the preview as the panel, nothing grey")
+    // old numbers: the panel's bars grey (its limits carry it), the preview too
+    let old = surfaces(rec(age: 40 * 60))
+    check(old.panel.stale && old.panel.limits.allSatisfy { $0.stale } && old.panel.weekly == 40 && same(old.preview, old.panel),
+          "40 minutes old: the Dock panel's bars grey (the menu bar row's rule), the numbers still drawn; the preview the same")
+    check(!surfaces(rec(age: 10 * 60)).panel.stale, "10 minutes old: last known, not grey")
+    // the sign-in: can't be read (numbers, unlit), expired (red, Sign in…, no numbers): on the Switch page as in Settings
+    let denied = surfaces(rec("denied"))
+    check(!denied.settings.inUseRow.lit && !denied.page.inUseRow.lit && denied.page.inUseRow.weekly == 40 && same(denied.preview, denied.panel),
+          "a sign-in that can't be read: unlit in Settings and on the Switch page (as the card), the numbers as read")
+    let expired = surfaces(rec("expired"))
+    check(UsageNotice.of(expired.settings.inUseRow)?.key == .signIn && !expired.page.inUseRow.lit && expired.page.inUseRow.weekly == nil
+          && expired.preview.needsLogin && expired.preview.noNumbers == "Sign-in expired" && same(expired.preview, expired.panel),
+          "expired: Settings' Sign in…, the Switch page unlit with no numbers, the preview with Sign in… and its words as the panel")
+
+    // a clash, by the record's profile id: Other (id other), though a profile listed before it is called Other too
+    let clash = surfaces(rec(login: u3.email, code: u3))
+    check(clash.settings.elsewhere?.owner.id == "other" && !clash.settings.inUseRow.lit && !clash.page.inUseRow.lit
+          && UsageNotice.of(clash.settings.inUseRow)?.key == .signIn && clash.settings.popUpSignInAddress == u1.email,
+          "a clash: Open Other by its id (not the first profile called Other), unlit, Sign in… to the profile's own u1")
+    // the account line: the profile's own account (its seat, u1), never the folder's (Other's u3), on the card and the page
+    check(cardRow(e, now: now).show.inUseLabel == u1.email && clash.page.inUseRow.show.inUseLabel == u1.email && clash.settings.view.label == u3.email
+          && clash.panel.active == u1.email && clash.preview.active == u1.email,
+          "a clash the app didn't decide: the card's, the Switch page's and the Dock panel's account line name u1, not the folder's u3")
+    var noSeat = e; noSeat.seat = nil
+    check(ProfileShow.load(noSeat, now: now).inUseLabel == nil, "…with no seat: no account named (the card says the line instead), never u3")
+    // a record from before the id: by its name (the first profile so called)
+    var byName = rec(login: u3.email, code: u3); byName.resolved?.clashID = nil
+    let oldClash = surfaces(byName)
+    check(oldClash.settings.elsewhere?.owner.name == "Other" && !oldClash.settings.inUseRow.lit, "a record from before the clash's id: by its name, unlit")
+    // the clash's profile renamed since: still found by its id, and unlit; removed: no Open, still unlit (the value's lamp)
+    var renamed = other; renamed.name = "Work"
+    model.accounts = [e, twin, renamed]
+    let renamedClash = surfaces(rec(login: u3.email, code: u3))
+    check(renamedClash.settings.elsewhere?.owner.id == "other" && !renamedClash.settings.inUseRow.lit,
+          "the clash's profile renamed: Open Work (by its id), unlit")
+    model.accounts = [e, twin]
+    let removed = surfaces(rec(login: u3.email, code: u3))
+    check(removed.settings.elsewhere == nil && !removed.settings.inUseRow.lit && UsageNotice.of(removed.settings.inUseRow)?.tone == .red,
+          "the clash's profile removed: no Open, still unlit and red (Settings lit before, the value off)")
+    model.accounts = [e, twin, other]
+    // the app decided the account in use (u2), Claude Code's folder on Other's: the app's u2 on the line
+    let appClash = #"{"expectedEmail":"ultra-3@example.com","loginEmail":"ultra-3@example.com","resolved":{"account":"\#(u2.account)","at":1800000000,"clash":"Other","clashID":"other","differs":true,"email":"ultra-2@example.com","fromApp":true,"lit":true,"numbersFor":"ultra-3@example.com"},"state":"ok","updatedAt":\#(Int(now.timeIntervalSince1970) - 60),"weekly":40}"#
+    let app = surfaces(StatusCodec.decode(Data(appClash.utf8))!)
+    check(app.page.inUseRow.show.inUseLabel == u2.email && app.settings.popUpSignInAddress == u2.email && app.settings.elsewhere?.owner.id == "other",
+          "a clash with the app's account in use: the line and Sign in… name the app's u2")
+
+    // unconfirmed: as read, never full, said so in Settings and on the page
+    var unsure = rec(week: 100); unsure.ownerUnconfirmed = true
+    let us = surfaces(unsure)
+    check(us.settings.inUseRow.line == Store.unconfirmedWords && us.settings.inUseRow.full == nil && us.page.inUseRow.line == Store.unconfirmedWords
+          && us.page.inUseRow.weekly == nil && us.page.inUseRow.fiveHour == 12, "unconfirmed: the line says so, a full week left out")
+    // standby never shown: the standby's own numbers nowhere in the in-use boxes, and it isn't listed in use
+    var standbyRec = IconStatus(state: "ok"); standbyRec.loginEmail = u2.email; standbyRec.weekly = 77; standbyRec.updatedAt = now
+    _ = Store.writeStatus("acc~k2", standbyRec)
+    let withStandby = surfaces(rec())
+    check(withStandby.settings.inUseRow.limits.allSatisfy { $0.p != 77 } && withStandby.page.inUseRow.limits.allSatisfy { $0.p != 77 }
+          && e.standbyRows(by: withStandby.settings.view).map(\.id) == ["k2"], "standby: never its numbers in an in-use box, listed on standby once")
+    Store.removeStatus("acc~k2")
+    // no record: unlit, no numbers; the preview none either (not the samples)
+    let none = surfaces(nil)
+    check(!none.settings.inUseRow.lit && !none.page.inUseRow.lit && none.preview.weekly == nil && none.preview.fiveHour == nil && same(none.preview, none.panel),
+          "no record: unlit, no numbers, the preview none (as the panel)")
+
+    // the split: by hand (Sign in… to pat), the app's account by id only (no key, the pop-up's plain sign-in), the panel's
+    // age line from when the numbers were read, though none show
+    let pat = Seat(account: uuid(81), organization: uuid(181), email: "pat@example.com")
+    let mo = Seat(account: uuid(82), organization: uuid(182), email: "mo@example.com")
+    var s = profile("asp", "~/.claude-asp", mo); s.claudeWindow = true
+    s.standby = [StandbyAccount(email: pat.email!, seat: pat, id: "kp", plan: "Max")]
+    model.accounts = [s]; try! Store.save([s])
+    func splitRec(_ app: AppSignIn.Login) -> IconStatus {
+        var r = IconStatus(state: "ok"); r.loginEmail = mo.email; r.numbersOwner = mo.email; r.expectedEmail = mo.email
+        r.weekly = 30; r.weeklyResets = now.addingTimeInterval(2 * 86400); r.noFiveHour = true; r.updatedAt = now.addingTimeInterval(-120)
+        r.resolved = AccountResolver.resolve(s, among: [s], app: app, code: mo, loginEmail: mo.email, names: [:], now: now)
+        return r
+    }
+    let split = surfaces(splitRec(AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)), s)
+    check(split.panel.weekly == nil && abs((split.panel.updated?.timeIntervalSince(now) ?? 0) + 120) < 1 && split.panel.noNumbers == nil
+          && split.settings.inUseRow.lit && UsageNotice.of(split.settings.inUseRow)?.key == .signIn && split.settings.popUpSignInAddress == pat.email
+          && same(split.preview, split.panel) && split.preview.splitKey != nil,
+          "the split: the panel's age line says when (not Reading usage…), Settings lit with Sign in… to pat, the preview as the panel")
+    let anon = surfaces(splitRec(AppSignIn.Login(account: uuid(83), org: uuid(183), state: .known, source: "log", at: now)), s)
+    check(UsageNotice.of(anon.settings.inUseRow)?.key == UsageNotice.Key.none && anon.settings.popUpSignInAddress == nil && same(anon.preview, anon.panel),
+          "the split with the app's account by id only: no Sign in… in Settings' box, the pop-up's plain sign-in (never mo's)")
+    Store.removeStatus("acc"); Store.removeStatus("asp")
     try? Store.save([])
 }
 

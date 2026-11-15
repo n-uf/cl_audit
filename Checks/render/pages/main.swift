@@ -678,6 +678,92 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
     print("done"); exit(0)
 }
 
+// ==================================================================== Settings ▸ Accounts, the Switch page, the Dock panel (SHOW3C_ONLY=1, step 3c)
+// For each state: Settings ▸ Accounts (the profile's settings, its top), the Switch page's in-use box (the page's top), the
+// Dock icon's panel and Settings' preview of it (side by side), as the app builds them from the profile's record: fresh, old
+// (40 min), a sign-in that can't be read, expired, a clash (Main's folder on Work's account; Work also renamed), the split
+// (by hand, and the app's account by id only) and no record. Std, 460. Files show3c-<case>-<surface>-std.png. Sample data
+// only: Main on ann@ (ben@ on standby), Work on cat@; Main2 with the app on pat@, Claude Code on mo@.
+@MainActor func show3cRenders() {
+    let now = Date()
+    let ann = Seat(account: uuid(91), organization: uuid(191), email: "ann@example.com")
+    let ben = Seat(account: uuid(92), organization: uuid(192), email: "ben@example.com")
+    let cat = Seat(account: uuid(93), organization: uuid(193), email: "cat@example.com")
+    let pat = Seat(account: uuid(94), organization: uuid(194), email: "pat@example.com")
+    let mo = Seat(account: uuid(95), organization: uuid(195), email: "mo@example.com")
+    var e = AccountEntry(id: "c3m", name: "Main", label: "MAIN", configDir: "~/.claude-c3m"); e.seat = ann; e.claudeWindow = false
+    e.standby = [StandbyAccount(email: ben.email!, seat: ben, id: "kb", plan: "Max", lastInUse: now.addingTimeInterval(-86400))]
+    var work = AccountEntry(id: "c3k", name: "Work", label: "WORK", configDir: "~/.claude-c3k"); work.seat = cat; work.claudeWindow = false
+    var s = AccountEntry(id: "c3t", name: "Main2", label: "MAIN", configDir: "~/.claude-c3t"); s.seat = mo; s.claudeWindow = true
+    s.desktop = .separate; s.desktopDataDir = "~/Library/Application Support/Claude-c3t"
+    s.standby = [StandbyAccount(email: pat.email!, seat: pat, id: "kp", plan: "Max")]
+    for d in [e.configDir, work.configDir, s.configDir] { try? fm.createDirectory(atPath: expand(d), withIntermediateDirectories: true) }
+    try! Store.save([e, work, s])
+    let model = SettingsModel(); model.accounts = [e, work, s]
+    func rec(_ state: String, week: Double?, five: Double?, age: TimeInterval, login: String? = "ann@example.com", code: Seat? = nil) -> IconStatus {
+        let code = code ?? ann
+        var r = IconStatus(state: state); r.loginEmail = state == "noLogin" ? nil : login; r.expectedEmail = code.email
+        r.weekly = week; r.fiveHour = five; r.updatedAt = now.addingTimeInterval(-age); r.source = "Anthropic"; r.plan = "Max"
+        r.weeklyResets = now.addingTimeInterval(2 * 86400 + 3 * 3600); r.fiveHourResets = now.addingTimeInterval(2 * 3600)
+        r.resolved = AccountResolver.resolve(e, among: [e, work], app: .unknown, code: code, loginEmail: login, names: [:], now: now)
+        if state == "denied" { r.problem = FetchState.deniedWords }
+        return r
+    }
+    func splitRec(_ app: AppSignIn.Login) -> IconStatus {
+        var r = IconStatus(state: "ok"); r.loginEmail = mo.email; r.numbersOwner = mo.email; r.expectedEmail = mo.email
+        r.weekly = 30; r.weeklyResets = now.addingTimeInterval(41 * 3600); r.noFiveHour = true; r.plan = "Ultra"
+        r.updatedAt = now.addingTimeInterval(-120); r.source = "Anthropic"
+        r.resolved = AccountResolver.resolve(s, among: [s], app: app, code: mo, loginEmail: mo.email, names: [:], now: now)
+        return r
+    }
+    let appPat = AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)
+    let appAnon = AppSignIn.Login(account: uuid(96), org: uuid(196), state: .known, source: "log", at: now)
+    var renamed = work; renamed.name = "Office"
+    let cases: [(String, AccountEntry, IconStatus?, [AccountEntry])] = [
+        ("fresh", e, rec("ok", week: 64, five: 12, age: 60), [e, work, s]),
+        ("old40", e, rec("ok", week: 64, five: 12, age: 40 * 60), [e, work, s]),
+        ("denied", e, rec("denied", week: 64, five: 12, age: 60), [e, work, s]),
+        ("expired", e, rec("expired", week: 64, five: 12, age: 60), [e, work, s]),
+        ("clash", e, rec("ok", week: 64, five: 12, age: 60, login: cat.email, code: cat), [e, work, s]),
+        ("clash-renamed", e, rec("ok", week: 64, five: 12, age: 60, login: cat.email, code: cat), [e, renamed, s]),
+        ("split", s, splitRec(appPat), [e, work, s]), ("split-anon", s, splitRec(appAnon), [e, work, s]),
+        ("norecord", e, nil, [e, work, s])]
+    let face = FaceTheme.of(.std)
+    func framed(_ v: some View, _ w: CGFloat) -> some View {
+        v.environment(\.settingsColumnWidth, w).frame(width: w, alignment: .leading).padding(16).background(Color(white: 0.1))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .environment(\.face, face).environment(\.colorScheme, .dark)
+    }
+    let noop = DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})
+    for (name, p, r, all) in cases {
+        model.accounts = all
+        if let r { _ = Store.writeStatus(p.id, r) } else { Store.removeStatus(p.id) }
+        model.tick += 1
+        snapshot(framed(AccountSettings(entry: .constant(p), model: model, width: 460).frame(height: 760, alignment: .top).clipped(), 460),
+                 "show3c-\(name)-settings-std", 492, 800)
+        snapshot(framed(SwitchPage(entry: p, standby: p.standby[0], model: model, runner: model.runner(of: p.id), width: 460)
+                            .frame(height: 560, alignment: .top).clipped(), 460), "show3c-\(name)-switch-std", 492, 600)
+        let preview = samplePanel(p, status: Store.status(for: p), now: now)
+        let panel = DetailsInfo.of(ProfileShow.load(p, now: now), name: preview.name, icon: preview.icon, problem: Store.status(for: p)?.problem)
+        let panels = HStack(alignment: .top, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Dock panel").font(.caption.bold()).foregroundColor(.white)
+                DetailsView(info: panel, actions: noop).fixedSize()
+            }
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Settings' preview").font(.caption.bold()).foregroundColor(.white)
+                DetailsView(info: preview, actions: noop).fixedSize()
+            }
+        }
+        snapshot(framed(panels, 760), "show3c-\(name)-panel-std", 792, 700)
+    }
+}
+
+if ProcessInfo.processInfo.environment["SHOW3C_ONLY"] != nil {
+    MainActor.assumeIsolated { show3cRenders() }
+    print("done"); exit(0)
+}
+
 MainActor.assumeIsolated {
     // (named "Main": the app puts "Claude " before a profile's name itself)
     var main = AccountEntry(id: "main", name: "Main", label: "MAIN", configDir: "~/.claude"); main.seat = u1
