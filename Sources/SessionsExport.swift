@@ -423,20 +423,14 @@ struct Identities: Equatable {
     /// The account and organisation folders a Claude window's Code tab has filed entries under: their names are ids.
     mutating func add(windowDir dataDir: String) {
         guard !dataDir.isEmpty else { return }
-        let fm = FileManager.default
-        let root = (expand(dataDir) as NSString).appendingPathComponent("claude-code-sessions")
-        for a in (try? fm.contentsOfDirectory(atPath: root)) ?? [] where AccountDiscovery.isUUID(a) {
-            add(id: a)
-            for o in (try? fm.contentsOfDirectory(atPath: (root as NSString).appendingPathComponent(a))) ?? [] where AccountDiscovery.isUUID(o) { add(id: o) }
-        }
+        for s in ClaudeFiles.sessionScopes(dataDir: expand(dataDir)) { add(id: s.account); add(id: s.organization) }
     }
 
     /// The account, organisation and address in one .claude.json (or a `.claude.json.backup*` of it): ids and an address only,
     /// never a token, and every record (not one per account, not only those with an address).
     mutating func add(claudeJSON path: String) {
-        guard let data = FileManager.default.contents(atPath: path),
-              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let o = j["oauthAccount"] as? [String: Any] else { return }
-        add(id: o["accountUuid"] as? String); add(id: o["organizationUuid"] as? String); add(email: o["emailAddress"] as? String)
+        guard let r = ClaudeFiles.record(at: path) else { return }          // bounded, never blocking
+        add(id: r.accountUuid); add(id: r.organizationUuid); add(email: r.emailAddress)
     }
 
     /// A Claude Code folder's .claude.json and the backups kept beside it (and, for the usual folder, in ~/.claude/backups).

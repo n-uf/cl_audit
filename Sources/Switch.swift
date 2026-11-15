@@ -81,20 +81,18 @@ struct SidebarCounts: Equatable {
     /// For `account` in the window whose data folder is `dataDir`; nil when the window has nothing for it.
     static func read(dataDir: String, account: String) -> SidebarCounts? {
         let dir = expand(dataDir)
-        let root = (dir as NSString).appendingPathComponent("claude-code-sessions/\(account)")
-        let fm = FileManager.default
         let prefs = sidebarPrefs(dataDir: dir)
-        // the organisation the sidebar was set up for, else the one with the most sessions
-        let orgs = ((try? fm.contentsOfDirectory(atPath: root)) ?? []).filter(AccountDiscovery.isUUID)
+        // the organisation the sidebar was set up for, else the one with the most sessions (ClaudeFiles' rule for both)
+        let scopes = ClaudeFiles.sessionScopes(dataDir: dir, account: account)
+        let entries = Dictionary(uniqueKeysWithValues: scopes.map { ($0.organization, ClaudeFiles.sessionEntries(in: $0.path).map(\.name)) })
+        let orgs = scopes.map(\.organization)
         let scoped = orgs.first { prefs.scopes.contains("\(account)/\($0)") }
-        let sizes = Dictionary(uniqueKeysWithValues: orgs.map { ($0, entries(root, $0).count) })     // each folder listed once
-        let org = scoped ?? orgs.max { sizes[$0, default: 0] < sizes[$1, default: 0] }
-        guard let org else { return nil }
+        let org = scoped ?? orgs.max { entries[$0, default: []].count < entries[$1, default: []].count }
+        guard let org, let odir = scopes.first(where: { $0.organization == org })?.path else { return nil }
         var c = SidebarCounts()
-        let odir = (root as NSString).appendingPathComponent(org)
         // an entry can be large (it carries the account's connector list): only its "isArchived" is looked for
         let archived = [Data(#""isArchived":true"#.utf8), Data(#""isArchived" : true"#.utf8), Data(#""isArchived": true"#.utf8)]
-        for f in entries(root, org) {
+        for f in entries[org, default: []] {
             // bounded, never blocking (SafeRead): a FIFO named like an entry can't hold up the Switch page
             let d = SafeRead.whole((odir as NSString).appendingPathComponent(f), max: SafeRead.entryMax) ?? Data()
             if archived.contains(where: { d.range(of: $0) != nil }) { c.archived += 1 } else { c.sessions += 1 }
@@ -106,11 +104,6 @@ struct SidebarCounts: Equatable {
             c.tasks = (j["scheduledTasks"] as? [Any])?.count ?? 0
         }
         return c
-    }
-
-    private static func entries(_ root: String, _ org: String) -> [String] {
-        ((try? FileManager.default.contentsOfDirectory(atPath: (root as NSString).appendingPathComponent(org))) ?? [])
-            .filter { $0.hasPrefix("local_") && $0.hasSuffix(".json") }
     }
 
     /// The sidebar's mirror: per account/organisation, how many sections it shows and how many groups it has.

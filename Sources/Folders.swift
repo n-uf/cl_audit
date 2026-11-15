@@ -70,7 +70,7 @@ enum FolderRules {
     /// - a profile not linked yet takes the account only when no earlier profile not linked yet is signed in to it too.
     /// A folder signed out changes nothing (the account stays the profile's; it signs in again). `status`: the numbers of
     /// the account a profile was on, as last saved (only its own).
-    static func noteAccounts(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = { FolderFactsCache.facts($0)?.seat },
+    static func noteAccounts(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = { Account.signedInSeat(configDir: $0) },
                              status: (AccountEntry) -> IconStatus? = { Store.lastStatus(of: $0) },
                              now: Date = Date()) -> [AccountEntry] {
         var out = accounts

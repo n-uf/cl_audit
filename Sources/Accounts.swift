@@ -68,16 +68,12 @@ struct AccountFacts: Equatable {
 
     static func of(configDir: String) -> AccountFacts? { of(claudeJSON: Account.claudeJSON(configDir: configDir)) }
 
-    static func of(claudeJSON path: String) -> AccountFacts? {
-        guard let o = SafeRead.oauthAccount(path) else { return nil }        // bounded, non-blocking
-        return of(oauthAccount: o)
-    }
+    /// Read again only when the file changed (ClaudeFiles), so it can be asked on every tick.
+    static func of(claudeJSON path: String) -> AccountFacts? { ClaudeFiles.record(at: path).flatMap(of(record:)) }
 
-    static func of(oauthAccount o: [String: Any]) -> AccountFacts? {
-        guard let account = o["accountUuid"] as? String, !account.isEmpty else { return nil }
-        let plan = (o["planDisplayName"] as? String).flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
-        return AccountFacts(seat: Seat(account: account, organization: o["organizationUuid"] as? String, email: o["emailAddress"] as? String),
-                            plan: plan, org: orgWords(type: o["organizationType"] as? String, name: o["organizationName"] as? String))
+    static func of(record r: ClaudeFiles.Record) -> AccountFacts? {
+        guard let seat = r.seat else { return nil }
+        return AccountFacts(seat: seat, plan: r.plan, org: orgWords(type: r.organizationType, name: r.organizationName))
     }
 
     /// A personal plan's organisation is "Personal" (Claude names it after the address); a team's has its own name.
@@ -108,24 +104,13 @@ enum AccountDiscovery {
     /// The accounts a Claude window's data folder has used (its Code tab files sessions under <account>/<organisation>),
     /// with when it last did. Only ids and dates are read; no session is opened.
     static func windowSeats(dataDir: String) -> [(seat: Seat, used: Date?)] {
-        let root = (expand(dataDir) as NSString).appendingPathComponent("claude-code-sessions")
-        let fm = FileManager.default
-        var out: [(Seat, Date?)] = []
-        for a in ((try? fm.contentsOfDirectory(atPath: root)) ?? []).sorted() where isUUID(a) {
-            let adir = (root as NSString).appendingPathComponent(a)
-            for o in ((try? fm.contentsOfDirectory(atPath: adir)) ?? []).sorted() where isUUID(o) {
-                let odir = (adir as NSString).appendingPathComponent(o)
-                let names = (try? fm.contentsOfDirectory(atPath: odir)) ?? []
-                let dates = names.filter { $0.hasPrefix("local_") && $0.hasSuffix(".json") }.compactMap {
-                    (try? fm.attributesOfItem(atPath: (odir as NSString).appendingPathComponent($0)))?[.modificationDate] as? Date
-                }
-                guard !dates.isEmpty else { continue }       // no session ever filed there: not an account it used
-                out.append((Seat(account: a, organization: o, email: nil), dates.max()))
-            }
+        ClaudeFiles.sessionScopes(dataDir: expand(dataDir)).compactMap { s in
+            let dates = ClaudeFiles.sessionEntries(in: s.path).map(\.modified)
+            guard !dates.isEmpty else { return nil }        // no session ever filed there: not an account it used
+            return (Seat(account: s.account, organization: s.organization, email: nil), dates.max())
         }
-        return out
     }
 
-    static func isUUID(_ s: String) -> Bool { UUID(uuidString: s) != nil }
+    static func isUUID(_ s: String) -> Bool { ClaudeFiles.isUUID(s) }
 
 }

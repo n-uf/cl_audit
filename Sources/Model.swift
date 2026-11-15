@@ -69,44 +69,30 @@ struct Account {
     /// home folder (~/.claude.json), any other inside the folder.
     static func claudeJSON(configDir: String) -> String {
         let dir = expand(configDir)
-        return isDefault(configDir: dir) ? expand("~/.claude.json") : (dir as NSString).appendingPathComponent(".claude.json")
+        return ClaudeFiles.recordPath(folder: dir, isDefault: isDefault(configDir: dir))
     }
 
     /// The seat Claude Code says the folder is signed in to now (its .claude.json), or nil when it isn't.
-    static func signedInSeat(configDir: String) -> Seat? {
-        guard let oauth = oauthAccount(configDir: configDir),
-              let account = oauth["accountUuid"] as? String, !account.isEmpty else { return nil }
-        return Seat(account: account, organization: oauth["organizationUuid"] as? String, email: oauth["emailAddress"] as? String)
-    }
+    static func signedInSeat(configDir: String) -> Seat? { record(configDir: configDir)?.seat }
 
-    /// The folder's .claude.json oauthAccount block: bounded, never blocking (a FIFO or a link to /dev/zero returns at
-    /// once), parsed again only when the file changed (SafeRead).
-    static func oauthAccount(configDir: String) -> [String: Any]? { SafeRead.oauthAccount(claudeJSON(configDir: configDir)) }
+    /// The folder's record (ClaudeFiles: bounded, never blocking, parsed again only when the file changed).
+    static func record(configDir: String) -> ClaudeFiles.Record? { ClaudeFiles.record(at: claudeJSON(configDir: configDir)) }
 
-    /// The folder's .claude.json is too large to read (SafeRead.claudeJSONMax): its account isn't known, which the screens
+    /// The folder's .claude.json is too large to read (ClaudeFiles.recordMax): its account isn't known, which the screens
     /// say as such, never as "signed out".
-    static func recordTooLarge(configDir: String) -> Bool { SafeRead.tooLarge(claudeJSON(configDir: configDir), max: SafeRead.claudeJSONMax) }
+    static func recordTooLarge(configDir: String) -> Bool { ClaudeFiles.tooLarge(claudeJSON(configDir: configDir)) }
 
-    static func expectedEmail(configDir: String) -> String? {
-        oauthAccount(configDir: configDir)?["emailAddress"] as? String
-    }
+    static func expectedEmail(configDir: String) -> String? { record(configDir: configDir)?.emailAddress }
 
     /// Claude's own name for the folder's plan ("Ultra"), as Claude Code recorded it (oauthAccount.planDisplayName in
     /// .claude.json), or nil. The sign-in's subscriptionType can be coarser: an Ultra account's says "max".
-    static func planName(configDir: String) -> String? {
-        guard let oauth = oauthAccount(configDir: configDir),
-              let name = oauth["planDisplayName"] as? String, !name.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-        return name
-    }
+    static func planName(configDir: String) -> String? { record(configDir: configDir)?.plan }
 
     /// The plan as words: Claude's own name as it is ("Ultra"), the sign-in's lower-case one capitalised ("Max").
     static func planWords(_ plan: String) -> String { plan == plan.lowercased() ? plan.capitalized : plan }
 
     /// The claude.ai account id Claude Code recorded for the folder (to compare with the desktop app's).
-    static func expectedAccountUuid(configDir: String) -> String? {
-        guard let oauth = oauthAccount(configDir: configDir) else { return nil }
-        return oauth["accountUuid"] as? String
-    }
+    static func expectedAccountUuid(configDir: String) -> String? { record(configDir: configDir)?.accountUuid }
 
     static func sha8(_ s: String) -> String {
         SHA256.hash(data: Data(s.utf8)).map { String(format: "%02x", $0) }.joined().prefix(8).description

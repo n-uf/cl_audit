@@ -40,17 +40,17 @@ enum AccountList {
         var pairs: [SeatID] = []                 // every account/organisation pair seen in a block, in order
 
         mutating func take(claudeJSON path: String) {
-            // bounded and non-blocking, parsed again only when the file changed (SafeRead)
-            guard let o = SafeRead.oauthAccount(path) else { return }
-            take(oauthAccount: o)
+            // bounded and non-blocking, parsed again only when the file changed (ClaudeFiles)
+            guard let r = ClaudeFiles.record(at: path) else { return }
+            take(record: r)
         }
 
-        mutating func take(oauthAccount o: [String: Any]) {
-            let account = (o["accountUuid"] as? String)?.lowercased(), org = (o["organizationUuid"] as? String)?.lowercased()
-            if let a = account, let e = o["emailAddress"] as? String, !e.isEmpty, emails[a] == nil { emails[a] = e }
+        mutating func take(record o: ClaudeFiles.Record) {
+            let account = o.accountUuid?.lowercased(), org = o.organizationUuid?.lowercased()
+            if let a = account, let e = o.emailAddress, !e.isEmpty, emails[a] == nil { emails[a] = e }
             if let g = org, orgs[g] == nil,
-               let w = AccountFacts.orgWords(type: o["organizationType"] as? String, name: o["organizationName"] as? String) { orgs[g] = w }
-            if let a = account, plans[a] == nil, let p = o["planDisplayName"] as? String, !p.isEmpty { plans[a] = p }
+               let w = AccountFacts.orgWords(type: o.organizationType, name: o.organizationName) { orgs[g] = w }
+            if let a = account, plans[a] == nil, let p = o.planDisplayName, !p.isEmpty { plans[a] = p }
             if let a = account, let g = org, AccountDiscovery.isUUID(a), AccountDiscovery.isUUID(g) {
                 let s = SeatID(account: a, organization: g)
                 if !pairs.contains(s) { pairs.append(s) }
@@ -95,23 +95,21 @@ enum AccountList {
         let fm = FileManager.default
         var out: [(SeatID, Date?)] = []
         for (kind, readsEmail) in [("claude-code-sessions", false), ("local-agent-mode-sessions", true)] {
-            let root = (expand(dataDir) as NSString).appendingPathComponent(kind)
-            for a in ((try? fm.contentsOfDirectory(atPath: root)) ?? []).sorted() where AccountDiscovery.isUUID(a) {
-                let adir = (root as NSString).appendingPathComponent(a)
-                for o in ((try? fm.contentsOfDirectory(atPath: adir)) ?? []).sorted() where AccountDiscovery.isUUID(o) {
-                    let odir = (adir as NSString).appendingPathComponent(o)
-                    let files = ((try? fm.contentsOfDirectory(atPath: odir)) ?? []).filter { $0.hasSuffix(".json") }
-                    let dates = files.compactMap { (try? fm.attributesOfItem(atPath: (odir as NSString).appendingPathComponent($0)))?[.modificationDate] as? Date }
-                    let s = SeatID(account: a.lowercased(), organization: o.lowercased())
-                    if let i = out.firstIndex(where: { $0.0 == s }) { out[i].1 = [out[i].1, dates.max()].compactMap { $0 }.max() }
-                    else { out.append((s, dates.max())) }
-                    if readsEmail, logins.emails[s.account] == nil {
-                        for f in files.prefix(50) {
-                            guard let j = SafeRead.jsonObject((odir as NSString).appendingPathComponent(f), max: SafeRead.recordMax),
-                                  let e = j["emailAddress"] as? String, !e.isEmpty else { continue }
-                            logins.emails[s.account] = e
-                            break
-                        }
+            for scope in ClaudeFiles.sessionScopes(dataDir: expand(dataDir), kind: kind) {
+                let odir = scope.path
+                // the Code tab's: its session entries (ClaudeFiles' rule); the agent sessions': their records
+                let files = readsEmail ? ((try? fm.contentsOfDirectory(atPath: odir)) ?? []).filter { $0.hasSuffix(".json") }
+                    : ClaudeFiles.sessionEntries(in: odir).map(\.name)
+                let dates = files.compactMap { (try? fm.attributesOfItem(atPath: (odir as NSString).appendingPathComponent($0)))?[.modificationDate] as? Date }
+                let s = SeatID(account: scope.account.lowercased(), organization: scope.organization.lowercased())
+                if let i = out.firstIndex(where: { $0.0 == s }) { out[i].1 = [out[i].1, dates.max()].compactMap { $0 }.max() }
+                else { out.append((s, dates.max())) }
+                if readsEmail, logins.emails[s.account] == nil {
+                    for f in files.prefix(50) {
+                        guard let j = SafeRead.jsonObject((odir as NSString).appendingPathComponent(f), max: SafeRead.recordMax),
+                              let e = j["emailAddress"] as? String, !e.isEmpty else { continue }
+                        logins.emails[s.account] = e
+                        break
                     }
                 }
             }

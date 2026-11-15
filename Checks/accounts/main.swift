@@ -818,7 +818,7 @@ do {
     // a .claude.json larger than the cap: not read, and said as too large, never as signed out
     try? fm.createDirectory(atPath: expand("~/.claude-huge12"), withIntermediateDirectories: true)
     fm.createFile(atPath: expand("~/.claude-huge12/.claude.json"), contents: nil)
-    if let h = FileHandle(forWritingAtPath: expand("~/.claude-huge12/.claude.json")) { try? h.truncate(atOffset: UInt64(SafeRead.claudeJSONMax + 1)); try? h.close() }
+    if let h = FileHandle(forWritingAtPath: expand("~/.claude-huge12/.claude.json")) { try? h.truncate(atOffset: UInt64(ClaudeFiles.recordMax + 1)); try? h.close() }
     t = Date()
     let hugeSeat = Account.signedInSeat(configDir: "~/.claude-huge12")
     check(hugeSeat == nil && Account.recordTooLarge(configDir: "~/.claude-huge12") && Date().timeIntervalSince(t) < 1, "a .claude.json over the cap (64 MB) isn't read (at once)")

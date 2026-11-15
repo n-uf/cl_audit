@@ -68,7 +68,7 @@ enum DefaultProfile {
 
     /// The account a folder is signed in to, from the folder's record read again only when its date changed: the cards that
     /// ask are drawn every few seconds, and ~/.claude.json can be large.
-    static let cachedSeat: (String) -> Seat? = { FolderFactsCache.facts($0)?.seat }
+    static let cachedSeat: (String) -> Seat? = { Account.signedInSeat(configDir: $0) }
 
     /// The prefs the offer's "Not now" is kept in (UserDefaults; a check replaces it).
     nonisolated(unsafe) static var prefs: PrefStore = UserDefaults.standard
@@ -238,18 +238,10 @@ enum DefaultProfile {
     }
 
     static func entryNames(_ dataDir: String) -> [String: [String]] {
-        // lower-case file name -> every path of it under claude-code-sessions/<account>/<org>/
-        let fm = FileManager.default
-        let root = (expand(dataDir) as NSString).appendingPathComponent("claude-code-sessions")
+        // lower-case file name -> every path of it under claude-code-sessions/<account>/<org>/ (ClaudeFiles' rule)
         var out: [String: [String]] = [:]
-        for a in ((try? fm.contentsOfDirectory(atPath: root)) ?? []).sorted() where AccountDiscovery.isUUID(a) {
-            let adir = (root as NSString).appendingPathComponent(a)
-            for o in ((try? fm.contentsOfDirectory(atPath: adir)) ?? []).sorted() where AccountDiscovery.isUUID(o) {
-                let odir = (adir as NSString).appendingPathComponent(o)
-                for n in ((try? fm.contentsOfDirectory(atPath: odir)) ?? []).sorted() where n.hasPrefix("local_") && n.hasSuffix(".json") {
-                    out[n.lowercased(), default: []].append((odir as NSString).appendingPathComponent(n))
-                }
-            }
+        for s in ClaudeFiles.sessionScopes(dataDir: expand(dataDir)) {
+            for e in ClaudeFiles.sessionEntries(in: s.path) { out[e.name.lowercased(), default: []].append((s.path as NSString).appendingPathComponent(e.name)) }
         }
         return out
     }
@@ -266,13 +258,7 @@ enum DefaultProfile {
             if let a, let b, SessionsRestore.sameJSON(a, b) || SwitchEngine.sha(a) == SwitchEngine.sha(b) { p.same += 1 } else { p.clash += 1 }
         }
         let fm = FileManager.default
-        let root = (expand(oldDataDir) as NSString).appendingPathComponent("claude-code-sessions")
-        for a in ((try? fm.contentsOfDirectory(atPath: root)) ?? []) where AccountDiscovery.isUUID(a) {
-            let adir = (root as NSString).appendingPathComponent(a)
-            for o in ((try? fm.contentsOfDirectory(atPath: adir)) ?? []) where AccountDiscovery.isUUID(o) {
-                p.tasks += TaskRegistry.tasks(in: (adir as NSString).appendingPathComponent(o)).count
-            }
-        }
+        for s in ClaudeFiles.sessionScopes(dataDir: expand(oldDataDir)) { p.tasks += TaskRegistry.tasks(in: s.path).count }
         if let s = seat, let c = SidebarCounts.read(dataDir: oldDataDir, account: s.account) { p.groups = c.groups }
         if let src = oldCodeDir {
             let projects = (expand(src) as NSString).appendingPathComponent("projects")

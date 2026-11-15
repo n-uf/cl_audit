@@ -660,22 +660,15 @@ enum SessionsRestore {
         static func read(_ dataDir: String) -> WindowNow {
             var w = WindowNow()
             let fm = FileManager.default
-            let root = (dataDir as NSString).appendingPathComponent("claude-code-sessions")
-            func isDir(_ p: String) -> Bool { var st = stat(); return lstat(p, &st) == 0 && (st.st_mode & S_IFMT) == S_IFDIR }
-            for account in ((try? fm.contentsOfDirectory(atPath: root)) ?? []).sorted() where isDir((root as NSString).appendingPathComponent(account)) {
-                let adir = (root as NSString).appendingPathComponent(account)
-                for org in ((try? fm.contentsOfDirectory(atPath: adir)) ?? []).sorted() where isDir((adir as NSString).appendingPathComponent(org)) {
-                    let odir = (adir as NSString).appendingPathComponent(org)
-                    for name in ((try? fm.contentsOfDirectory(atPath: odir)) ?? []).sorted() {
-                        let path = (odir as NSString).appendingPathComponent(name)
-                        var st = stat()
-                        guard lstat(path, &st) == 0 else { continue }
-                        if name.hasPrefix("deleted_") { w.deleted.insert(String(name.dropFirst("deleted_".count)).lowercased()); continue }
-                        guard (st.st_mode & S_IFMT) == S_IFREG else { continue }
-                        // names are compared case-insensitively (the Mac's disks ignore case)
-                        if name.hasPrefix("local_"), name.hasSuffix(".json") { w.entries[name.lowercased(), default: []].append(path) }
-                        else if name == "scheduled-tasks.json" { w.hasTasks.insert(SeatID(account: account, organization: org)) }
-                    }
+            // the account/organisation folders and their entries by ClaudeFiles' rule; the deleted_ markers and the task list beside
+            for s in ClaudeFiles.sessionScopes(dataDir: dataDir) {
+                // names are compared case-insensitively (the Mac's disks ignore case)
+                for e in ClaudeFiles.sessionEntries(in: s.path) { w.entries[e.name.lowercased(), default: []].append((s.path as NSString).appendingPathComponent(e.name)) }
+                for name in ((try? fm.contentsOfDirectory(atPath: s.path)) ?? []).sorted() {
+                    var st = stat()
+                    guard lstat((s.path as NSString).appendingPathComponent(name), &st) == 0 else { continue }
+                    if name.hasPrefix("deleted_") { w.deleted.insert(String(name.dropFirst("deleted_".count)).lowercased()); continue }
+                    if (st.st_mode & S_IFMT) == S_IFREG, name == "scheduled-tasks.json" { w.hasTasks.insert(SeatID(account: s.account, organization: s.organization)) }
                 }
             }
             return w

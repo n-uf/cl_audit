@@ -334,7 +334,7 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
     func noteAccounts() {
         guard let list = Store.loadChecked() else { return }
         // a switch whose profile reached its account is linked, whoever saw the sign-in (SwitchEngine.linkReached)
-        SwitchEngine.linkReached(list, signedIn: { FolderFactsCache.facts($0)?.seat })
+        SwitchEngine.linkReached(list, signedIn: { Account.signedInSeat(configDir: $0) })
         guard FolderRules.noteAccounts(list) != list else { return }
         do { _ = try Store.edit { FolderRules.noteAccounts($0) } }
         catch { agentLog.error("agent: the account a folder is signed in to couldn't be noted: \(String(describing: error), privacy: .public)") }
