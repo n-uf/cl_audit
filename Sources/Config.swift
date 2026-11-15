@@ -525,10 +525,56 @@ enum Store {
     }
 
     /// A profile's (or a standby account's) record, as it may be shown now (IconStatus.current): every screen reads it here.
+    /// With this process's own account answer for it while that waits for the agent (`hold`), the answer in place of the
+    /// record's.
     static func status(_ id: String) -> IconStatus? {
-        guard let data = try? Data(contentsOf: statusFolder.appendingPathComponent("\(id).json")) else { return nil }
-        return StatusCodec.decode(data)?.current()
+        let url = statusFolder.appendingPathComponent("\(id).json")
+        var s = (try? Data(contentsOf: url)).flatMap(StatusCodec.decode)
+        if let answer = held(id, file: url) {
+            var r = s ?? IconStatus(state: "idle")
+            r.resolved = answer
+            s = r
+        }
+        return s?.current()
     }
+
+    // MARK: the window's own answer, in memory only
+
+    /// The cl_audit window's own account answer for a profile (SettingsModel.resolveNow, resolveWithoutAgent), kept in this
+    /// process only while it waits for the agent: the agent alone writes status/<id>.json (Reader.save). `status(_:)` shows it
+    /// in place of the record's answer until the agent's next record lands (the file written again, even with the same
+    /// bytes: its stamp changes); then the record wins.
+    nonisolated(unsafe) private static var heldAnswers: [String: (answer: ResolvedAccount, file: FileStamp?)] = [:]
+    private static let heldLock = NSLock()
+
+    /// A record file as written: the agent writes it whole (a new file each time), so a write always changes this.
+    struct FileStamp: Equatable {
+        let number: Int
+        let modified: Date
+        static func of(_ file: URL) -> FileStamp? {
+            guard let a = try? FileManager.default.attributesOfItem(atPath: file.path),
+                  let n = a[.systemFileNumber] as? Int, let m = a[.modificationDate] as? Date else { return nil }
+            return FileStamp(number: n, modified: m)
+        }
+    }
+
+    /// Keeps `answer` for profile `id` in memory until the agent writes its record again.
+    static func hold(_ id: String, _ answer: ResolvedAccount) {
+        let stamp = FileStamp.of(statusFolder.appendingPathComponent("\(id).json"))
+        heldLock.lock(); defer { heldLock.unlock() }
+        heldAnswers[id] = (answer, stamp)
+    }
+
+    /// The answer held for `id`, while the record at `file` hasn't been written since it was held; else nil, and it is let go.
+    private static func held(_ id: String, file: URL) -> ResolvedAccount? {
+        heldLock.lock(); defer { heldLock.unlock() }
+        guard let h = heldAnswers[id] else { return nil }
+        if FileStamp.of(file) != h.file { heldAnswers[id] = nil; return nil }
+        return h.answer
+    }
+
+    /// An answer is held for `id` (the agent hasn't written since): for the checks.
+    static func isHeld(_ id: String) -> Bool { held(id, file: statusFolder.appendingPathComponent("\(id).json")) != nil }
 
     /// The profile's record as the agent wrote it: its numbers carry the account they were read for (resolved.numbersFor),
     /// so nothing here compares them with a stored account.
@@ -570,11 +616,13 @@ enum Store {
     /// last-known full limit is left out.
     static func ages(_ e: AccountEntry) -> Headline.Ages { StatusAges.of(pollMinutes: e.pollMinutes) }
 
+    /// Writes a profile's record. The agent's alone (Reader.save): the cl_audit window never writes it, it holds its own
+    /// answer in memory (`hold`) and asks the agent to read.
     static func writeStatus(_ id: String, _ s: IconStatus) -> Data? {
         guard let data = StatusCodec.encode(s) else { return nil }
         try? FileManager.default.createDirectory(at: statusFolder, withIntermediateDirectories: true)
         // the numbers of the account the profile was on, kept once when another account's take their place, so a switch
-        // can still remember its last week however the agent and the window take turns (FolderRules.noteAccounts)
+        // can still remember its last week (FolderRules.noteAccounts)
         if let old = status(id), let was = old.readFor, was != s.readFor, s.readFor != nil,
            let bytes = try? Data(contentsOf: statusFolder.appendingPathComponent("\(id).json")) {
             try? bytes.write(to: statusFolder.appendingPathComponent("\(id).prev"), options: .atomic)

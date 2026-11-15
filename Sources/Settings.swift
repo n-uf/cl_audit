@@ -221,36 +221,36 @@ final class SettingsModel: ObservableObject {
     static var followsDock = true
 
     /// The agent writes each profile's account answer (AccountResolver) into its record. While it isn't running, this
-    /// window fills it with the same function, so the screens still have one answer; never a different rule.
+    /// window answers with the same function, so its screens still have one answer; never a different rule. The answer is
+    /// kept in memory only (Store.hold): the agent alone writes the record, and its next one wins.
     func resolveWithoutAgent() {
         guard !isFirstRun, !Agent.isAlive(Agent.readMark()) else { return }
         let list = accounts
         for e in list {
-            var s = Store.status(e.id) ?? IconStatus(state: "idle")
+            let s = Store.status(e.id)
             var r = AccountResolver.resolve(e, among: list, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
-                                            loginEmail: s.readingOwner, names: AccountList.names(),
+                                            loginEmail: s?.readingOwner, names: AccountList.names(),
                                             recordTooLarge: Account.recordTooLarge(configDir: e.configDir),
                                             newestSwitch: SwitchEngine.receipts(profile: e.id).first)
-            if var old = s.resolved { old.at = r.at; if old == r { continue } }
+            if var old = s?.resolved { old.at = r.at; if old == r { continue } }
             r.at = Date()
-            s.resolved = r
-            _ = Store.writeStatus(e.id, s)
+            Store.hold(e.id, r)
         }
     }
 
-    /// Right after a switch (or a log-in) ended on an account: the profile's record is answered again now, by the same
-    /// function, so no screen shows the account it left in use for the seconds until the agent's next read (and the agent
-    /// is asked to read it now). Another account's numbers then wait for that read (Store.status).
+    /// Right after a switch (or a log-in) ended on an account: the profile is answered again now, by the same function, so
+    /// no screen of this window shows the account it left in use until the agent's next read, and the agent is asked to
+    /// read it now. The answer is kept in memory only (Store.hold) and never written: the agent's new record wins as soon
+    /// as it lands. Another account's numbers then wait for that read (Store.status).
     func resolveNow(_ id: String) {
         guard let e = accounts.first(where: { $0.id == id }) else { return }
-        var s = Store.status(id) ?? IconStatus(state: "idle")
+        let s = Store.status(id)
         var r = AccountResolver.resolve(e, among: accounts, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
-                                        loginEmail: s.readingOwner, names: AccountList.names(),
+                                        loginEmail: s?.readingOwner, names: AccountList.names(),
                                         recordTooLarge: Account.recordTooLarge(configDir: e.configDir),
                                         newestSwitch: SwitchEngine.receipts(profile: e.id).first)
         r.at = Date()
-        s.resolved = r
-        _ = Store.writeStatus(id, s)
+        Store.hold(id, r)
         tick += 1
         // never from a check or a render: they must not reach a running cl_audit
         if Self.followsDock {
