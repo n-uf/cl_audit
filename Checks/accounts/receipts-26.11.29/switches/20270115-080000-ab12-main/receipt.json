@@ -1,0 +1,57 @@
+{
+  "backup" : "20270115-080000-cd34",
+  "backupPlace" : "\/sample\/Library\/Application Support\/usage-n-uf\/backups",
+  "dataDir" : "\/sample\/Library\/Application Support\/Claude-main",
+  "from" : {
+    "account" : "00000000-0000-4000-8000-000000000001",
+    "organization" : "00000000-0000-4000-8000-00000000000a"
+  },
+  "held" : [
+    "local_00000000-0000-4000-8000-00000000001b.json"
+  ],
+  "id" : "20270115-080000-ab12-main",
+  "left" : [
+    "local_00000000-0000-4000-8000-00000000000e.json"
+  ],
+  "partlyUndone" : "2027-01-15T08:01:00Z",
+  "problems" : [
+    "Session 00000000-0000-4000-8000-00000000001a: its transcript changed seconds ago, so its Remote Control pointer is left as it is."
+  ],
+  "profile" : "main",
+  "standby" : "k2",
+  "started" : "2027-01-15T08:00:00Z",
+  "steps" : [
+    {
+      "done" : true,
+      "existed" : true,
+      "kind" : "entry",
+      "original" : "\/sample\/Library\/Application Support\/Claude-main\/claude-code-sessions\/00000000-0000-4000-8000-000000000001\/00000000-0000-4000-8000-00000000000a\/local_00000000-0000-4000-8000-00000000000e.json",
+      "parked" : "\/sample\/Library\/Application Support\/usage-n-uf\/switches\/20270115-080000-ab12-main\/parked\/local_00000000-0000-4000-8000-00000000000e.json",
+      "path" : "\/sample\/Library\/Application Support\/Claude-main\/claude-code-sessions\/00000000-0000-4000-8000-000000000002\/00000000-0000-4000-8000-00000000000b\/local_00000000-0000-4000-8000-00000000000e.json",
+      "sha" : "a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1"
+    },
+    {
+      "done" : true,
+      "existed" : false,
+      "kind" : "tasks",
+      "path" : "\/sample\/Library\/Application Support\/Claude-main\/claude-code-sessions\/00000000-0000-4000-8000-000000000002\/00000000-0000-4000-8000-00000000000b\/scheduled-tasks.json",
+      "sha" : "b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2"
+    },
+    {
+      "bytes" : "eyJ0eXBlIjoiYnJpZGdlLXNlc3Npb24ifQo=",
+      "dev" : 16777234,
+      "done" : true,
+      "existed" : true,
+      "ino" : 987654,
+      "kind" : "pointer",
+      "offset" : 4096,
+      "path" : "\/sample\/.claude-main\/projects\/-Users-sample-code-app\/00000000-0000-4000-8000-00000000000f.jsonl",
+      "sha" : "c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3"
+    }
+  ],
+  "tasksMoved" : 2,
+  "to" : {
+    "account" : "00000000-0000-4000-8000-000000000002",
+    "organization" : "00000000-0000-4000-8000-00000000000b"
+  }
+}

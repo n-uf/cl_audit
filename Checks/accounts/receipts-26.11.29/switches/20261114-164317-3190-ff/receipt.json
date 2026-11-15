@@ -1,0 +1,45 @@
+{
+  "backup" : "20261114-164317-d577",
+  "backupPlace" : "\/sample\/Library\/Application Support\/usage-n-uf\/backups",
+  "dataDir" : "\/sample\/Library\/Application Support\/Claude-fail",
+  "finished" : "2026-11-15T00:43:17Z",
+  "from" : {
+    "account" : "00000000-0000-4000-8000-000000000001",
+    "organization" : "00000000-0000-4000-8000-00000000000a"
+  },
+  "id" : "20261114-164317-3190-ff",
+  "left" : [
+    "local_00000000-0000-4000-8000-00000000001f.json"
+  ],
+  "partlyUndone" : "2026-11-15T00:43:17Z",
+  "problems" : [
+    "local_00000000-0000-4000-8000-00000000001f.json changed since; left as it is"
+  ],
+  "profile" : "ff",
+  "standby" : "f2",
+  "started" : "2026-11-15T00:43:17Z",
+  "steps" : [
+    {
+      "done" : true,
+      "existed" : true,
+      "kind" : "entry",
+      "original" : "\/sample\/Library\/Application Support\/Claude-fail\/claude-code-sessions\/00000000-0000-4000-8000-000000000001\/00000000-0000-4000-8000-00000000000a\/local_00000000-0000-4000-8000-00000000001f.json",
+      "parked" : "\/sample\/Library\/Application Support\/usage-n-uf\/switches\/20261114-164317-3190-ff\/parked\/local_00000000-0000-4000-8000-00000000001f.json",
+      "path" : "\/sample\/Library\/Application Support\/Claude-fail\/claude-code-sessions\/00000000-0000-4000-8000-000000000002\/00000000-0000-4000-8000-00000000000b\/local_00000000-0000-4000-8000-00000000001f.json",
+      "sha" : "e8434b4d00c1fb5ad074ec588fa52225e00e66c34b3e9a0e9936a028b210ab0e"
+    },
+    {
+      "done" : true,
+      "existed" : true,
+      "kind" : "entry",
+      "original" : "\/sample\/Library\/Application Support\/Claude-fail\/claude-code-sessions\/00000000-0000-4000-8000-000000000001\/00000000-0000-4000-8000-00000000000a\/local_00000000-0000-4000-8000-00000000002a.json",
+      "parked" : "\/sample\/Library\/Application Support\/usage-n-uf\/switches\/20261114-164317-3190-ff\/parked\/local_00000000-0000-4000-8000-00000000002a.json",
+      "path" : "\/sample\/Library\/Application Support\/Claude-fail\/claude-code-sessions\/00000000-0000-4000-8000-000000000002\/00000000-0000-4000-8000-00000000000b\/local_00000000-0000-4000-8000-00000000002a.json",
+      "sha" : "237e3ca93b612129aac261f1959f7b2934a906c004a594847bce577fbd220a98"
+    }
+  ],
+  "to" : {
+    "account" : "00000000-0000-4000-8000-000000000002",
+    "organization" : "00000000-0000-4000-8000-00000000000b"
+  }
+}

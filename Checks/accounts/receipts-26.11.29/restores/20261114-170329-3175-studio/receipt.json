@@ -1,0 +1,42 @@
+{
+  "backup" : "20261114-170329-1099",
+  "backupPlace" : "\/sample\/Library\/Application Support\/usage-n-uf\/backups",
+  "changed" : [
+
+  ],
+  "changedCount" : 0,
+  "codeDir" : "\/sample\/.claude-studio",
+  "configAdded" : false,
+  "dataDir" : "\/sample\/Library\/Application Support\/Claude-studio",
+  "deletedCount" : 0,
+  "entriesAdded" : 3,
+  "finished" : "2026-11-15T01:03:30Z",
+  "id" : "20261114-170329-3175-studio",
+  "importedFrom" : "resume move.dmg",
+  "inUse" : [
+
+  ],
+  "inUseCount" : 0,
+  "partialCount" : 0,
+  "planned" : 10,
+  "problems" : [
+    "local_00000000-0000-4000-8000-000000000012.json changed since; left as it is."
+  ],
+  "profile" : "studio",
+  "sessionsAdded" : 4,
+  "setupAdded" : [
+
+  ],
+  "started" : "2026-11-15T01:03:29Z",
+  "target" : {
+    "account" : "00000000-0000-4000-8000-000000000001",
+    "organization" : "00000000-0000-4000-8000-000000000002"
+  },
+  "tasksAdded" : [
+
+  ],
+  "tasksAddedCount" : 0,
+  "tasksRisky" : 0,
+  "undoLeft" : 0,
+  "undone" : "2026-11-15T01:03:31Z"
+}

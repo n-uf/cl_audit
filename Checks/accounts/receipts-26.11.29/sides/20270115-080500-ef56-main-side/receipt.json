@@ -1,0 +1,99 @@
+{
+  "codeDir" : "/sample/.claude-main",
+  "dataDir" : "/sample/Library/Application Support/Claude-main",
+  "finished" : "2027-01-15T08:00:05Z",
+  "id" : "20270115-080500-ef56-main-side",
+  "kinds" : {
+    "history" : true,
+    "mcp" : false,
+    "plans" : true,
+    "rewind" : false,
+    "tasks" : true,
+    "trust" : true
+  },
+  "left" : [
+    "history.jsonl: changed since"
+  ],
+  "problems" : [
+    "A pasted text over 8 MB was left out."
+  ],
+  "profile" : "main",
+  "restore" : "20270115-080500-ef56-main",
+  "started" : "2027-01-15T08:00:00Z",
+  "steps" : [
+    {
+      "count" : 0,
+      "done" : true,
+      "kind" : "made",
+      "path" : "/sample/.claude-main/todos/00000000-0000-4000-8000-00000000001c.json",
+      "session" : "00000000-0000-4000-8000-00000000001c",
+      "settled" : false,
+      "sha" : "d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4"
+    },
+    {
+      "count" : 0,
+      "done" : true,
+      "kind" : "dir",
+      "path" : "/sample/.claude-main/plans",
+      "session" : "00000000-0000-4000-8000-00000000001c",
+      "settled" : false
+    },
+    {
+      "count" : 3,
+      "done" : true,
+      "kind" : "lines",
+      "path" : "/sample/.claude-main/history.jsonl",
+      "saved" : "lines-1.jsonl",
+      "session" : "00000000-0000-4000-8000-00000000001c",
+      "settled" : false
+    },
+    {
+      "count" : 0,
+      "done" : true,
+      "key" : "/sample/code/app",
+      "kind" : "trust",
+      "path" : "/sample/.claude-main/.claude.json",
+      "pick" : "20270115-081000-0a0b-main",
+      "saved" : "claude-json-1.json",
+      "session" : "00000000-0000-4000-8000-00000000001c",
+      "settled" : true,
+      "value" : "{\"allowedTools\":[\"Bash(git status)\"],\"hasTrustDialogAccepted\":true}"
+    }
+  ],
+  "waiting" : [
+    {
+      "from" : "/old/code/web",
+      "history" : "waiting-1.jsonl",
+      "historyLines" : 2,
+      "mcp" : false,
+      "session" : "00000000-0000-4000-8000-00000000001d",
+      "title" : "Fix the build",
+      "trust" : [
+        {
+          "allowedTools" : [
+            "Read"
+          ],
+          "key" : "/old/code/web",
+          "mcpServers" : [
+
+          ],
+          "session" : "00000000-0000-4000-8000-00000000001d",
+          "trusted" : true
+        }
+      ],
+      "why" : "its folder isn't on this Mac"
+    }
+  ],
+  "written" : {
+    "historyLines" : 3,
+    "kept" : 0,
+    "mcp" : 0,
+    "pastes" : 0,
+    "plans" : 1,
+    "rewind" : 0,
+    "taskLists" : 0,
+    "tasks" : 2,
+    "there" : 1,
+    "trust" : 1
+  }
+}

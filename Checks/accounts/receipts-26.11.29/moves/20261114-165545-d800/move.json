@@ -1,0 +1,176 @@
+{
+  "file" : "cl_audit all profiles move.dmg",
+  "finished" : "2026-11-15T00:55:45Z",
+  "id" : "20261114-165545-d800",
+  "left" : [
+
+  ],
+  "made" : [
+    {
+      "entry" : {
+        "autoRenew" : false,
+        "claudeWindow" : true,
+        "clickAction" : "peekThenOpen",
+        "color" : "teal",
+        "configDir" : "~\/.claude-work",
+        "desktop" : "separate",
+        "desktopDataDir" : "~\/Library\/Application Support\/Claude-work",
+        "dockRuns" : "atLogin",
+        "forgotten" : [
+
+        ],
+        "iconHidden" : true,
+        "id" : "work",
+        "label" : "WORK",
+        "leftoverFolders" : [
+
+        ],
+        "longPressDetails" : true,
+        "menuBar" : true,
+        "menuBarLook" : {
+          "colours" : "levels",
+          "label" : false,
+          "style" : "bars",
+          "whenFull" : "countdown"
+        },
+        "name" : "Work",
+        "notify" : true,
+        "notifyBack" : true,
+        "notifyPercent" : 80,
+        "opensFromDock" : true,
+        "panelDesign" : "glow",
+        "peekSeconds" : 3,
+        "pollMinutes" : 7,
+        "seat" : {
+          "account" : "00000000-0000-4000-8000-000000000001",
+          "email" : "move-1@example.com",
+          "organization" : "00000000-0000-4000-8000-000000000002"
+        },
+        "showFable" : true,
+        "standby" : [
+          {
+            "addedAt" : "2026-11-15T00:55:45Z",
+            "email" : "move-2@example.com",
+            "id" : "00000000",
+            "seat" : {
+              "account" : "00000000-0000-4000-8000-000000000003",
+              "email" : "move-2@example.com",
+              "organization" : "00000000-0000-4000-8000-000000000004"
+            }
+          }
+        ],
+        "style" : "rings",
+        "windowDot" : true,
+        "windowFollowsDock" : false
+      },
+      "folders" : [
+        "\/sample\/.claude-work",
+        "\/sample\/Library\/Application Support\/Claude-work"
+      ],
+      "id" : "work",
+      "inDock" : true,
+      "name" : "Work",
+      "notes" : [
+
+      ],
+      "part" : "p1",
+      "place" : 0,
+      "signIns" : [
+        "move-1@example.com",
+        "move-2@example.com"
+      ],
+      "written" : false
+    },
+    {
+      "entry" : {
+        "autoRenew" : false,
+        "claudeWindow" : true,
+        "clickAction" : "peekThenOpen",
+        "color" : "orange",
+        "configDir" : "~\/.claude-home",
+        "desktop" : "separate",
+        "desktopDataDir" : "~\/Library\/Application Support\/Claude-home",
+        "dockRuns" : "atLogin",
+        "forgotten" : [
+
+        ],
+        "iconHidden" : true,
+        "id" : "home",
+        "label" : "HOME",
+        "leftoverFolders" : [
+
+        ],
+        "longPressDetails" : true,
+        "menuBar" : false,
+        "menuBarLook" : {
+          "colours" : "levels",
+          "label" : false,
+          "style" : "bars",
+          "whenFull" : "countdown"
+        },
+        "name" : "Home",
+        "notify" : true,
+        "notifyBack" : true,
+        "notifyPercent" : 90,
+        "opensFromDock" : true,
+        "panelDesign" : "glow",
+        "peekSeconds" : 3,
+        "pollMinutes" : 5,
+        "seat" : {
+          "account" : "00000000-0000-4000-8000-000000000005",
+          "email" : "move-3@example.com",
+          "organization" : "00000000-0000-4000-8000-000000000006"
+        },
+        "showFable" : true,
+        "standby" : [
+
+        ],
+        "style" : "bars",
+        "windowDot" : true,
+        "windowFollowsDock" : false
+      },
+      "folders" : [
+        "\/sample\/.claude-home",
+        "\/sample\/Library\/Application Support\/Claude-home"
+      ],
+      "id" : "home",
+      "inDock" : false,
+      "name" : "Home",
+      "notes" : [
+
+      ],
+      "part" : "p2",
+      "place" : 1,
+      "signIns" : [
+        "move-3@example.com"
+      ],
+      "written" : false
+    }
+  ],
+  "move" : true,
+  "problems" : [
+
+  ],
+  "settings" : [
+    {
+      "after" : "silver",
+      "key" : "face",
+      "settled" : true,
+      "store" : "general"
+    },
+    {
+      "after" : "false",
+      "key" : "showEmails",
+      "settled" : true,
+      "store" : "general"
+    },
+    {
+      "after" : "7",
+      "key" : "backupsKeepLast",
+      "settled" : true,
+      "store" : "backups"
+    }
+  ],
+  "started" : "2026-11-15T00:55:45Z",
+  "undone" : "2026-11-15T00:55:48Z"
+}

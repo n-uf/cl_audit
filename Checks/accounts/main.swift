@@ -1047,5 +1047,118 @@ do {
     fresh14()
 }
 
+// ============ 15. receipts 26.11.29 wrote load through SafeFiles' ReceiptStore and save back byte for byte ============
+// Checks/accounts/receipts-26.11.29: what 20489f5's own writers left in its check runs (a switch, an import's restore with
+// its journal, a re-point, a move import; only the throwaway paths made sample ones) and what its save functions wrote for
+// a switch with every step kind, a side files receipt and a default-profile move record. Each is read through its store and
+// saved again: the same bytes (so an older cl_audit reads what this one writes), at the same place and mode.
+do {
+    let fixtures = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("receipts-26.11.29")
+    let kinds = ["switches", "restores", "repoints", "sides", "moves", "default-moves"]
+    for k in kinds {
+        let dst = Store.folder.appendingPathComponent(k)
+        try? fm.removeItem(at: dst)
+        try! fm.copyItem(at: fixtures.appendingPathComponent(k), to: dst)
+    }
+    DefaultProfile.forgetCache()
+    func bytes(_ u: URL) -> Data? { fm.contents(atPath: u.path) }
+    func mode(_ u: URL) -> Int { ((try? fm.attributesOfItem(atPath: u.path))?[.posixPermissions] as? NSNumber)?.intValue ?? -1 }
+    /// Every receipt of a store: read, encoded and saved again, the same bytes as the file 26.11.29 wrote.
+    func roundTrip<R: StoredReceipt>(_ store: ReceiptStore<R>, _ what: String, count: Int, mode want: Int? = nil) {
+        let ids = store.ids()
+        check(ids.count == count, "\(what): \(count) old receipts found (\(ids.count))")
+        for id in ids {
+            let u = store.url(id), old = bytes(u)
+            guard let r = store.load(id) else { check(false, "\(what) \(id): reads"); continue }
+            check(r.id == id && (try? store.encoded(r)) == old, "\(what) \(id): encoded as 26.11.29 encoded it")
+            try? store.save(r)
+            check(bytes(u) == old && old != nil, "\(what) \(id): saved again byte for byte")
+            if let want { check(mode(u) == want, "\(what) \(id): mode \(String(want, radix: 8)) (\(String(mode(u), radix: 8)))") }
+        }
+    }
+    roundTrip(SwitchEngine.store, "switch", count: 2)
+    roundTrip(SessionsRestore.store, "restore", count: 1)
+    roundTrip(SessionsRepoint.store, "re-point", count: 1)
+    roundTrip(SideFiles.store, "side files", count: 1, mode: 0o600)
+    roundTrip(SessionsMove.store, "move import", count: 1, mode: 0o600)
+    roundTrip(DefaultProfile.store, "default-profile move", count: 1)
+
+    // the flows read them as before
+    let sw = SwitchEngine.receipts(profile: "main")
+    check(sw.count == 1 && sw[0].steps.map(\.kind) == [.entry, .tasks, .pointer] && sw[0].steps[2].ino == 987_654 && sw[0].tasksMoved == 2
+          && sw[0].unfinished && SwitchEngine.receipts().count == 2 && SwitchEngine.receipts(profile: "ff").first?.left?.count == 1,
+          "switch: old receipts read by the flow (every step kind, a partly undone one)")
+    let rid = "20261114-170329-3175-studio"
+    let rs = SessionsRestore.load(rid)
+    check(rs?.steps.count == 22 && rs?.steps.allSatisfy { $0.done && $0.settled } == true && rs?.importedFrom == "resume move.dmg"
+          && rs?.entriesAdded == 3 && SessionsRestore.headers().map(\.id) == [rid] && SessionsRestore.unfinished().isEmpty,
+          "restore: the old journal folds into its 22 steps, done and settled")
+    check(SessionsRepoint.store.list().first?.sessions.isEmpty == false && SessionsRepoint.store.list().first?.steps.isEmpty == false, "re-point: read with its sessions and steps")
+    check(SideFiles.waiting(profile: "main").first?.trust.first?.allowedTools == ["Read"], "side files: the waiting session read by the flow")
+    check(DefaultProfile.all().first?.oldHandled == "standby" && DefaultProfile.unfinished(involving: "home") == nil, "default-profile move: read by the flow")
+
+    // the journal: lines Journal appends are read by the restore's fold (as 26.11.29 reads them), after the old ones
+    struct Line: Codable { var op: String; var kind: String?; var path: String; var sha: String?; var bytes: Int64? }
+    let first = rs?.steps.first?.path ?? ""
+    if let j = SessionsRestore.store.journal(rid, of: Line.self) {
+        j.add(Line(op: "intent", kind: "file", path: first + "-new", sha: "ab", bytes: 2), sync: true)
+        j.add(Line(op: "done", kind: nil, path: first + "-new", sha: nil, bytes: nil), sync: false)
+    }
+    let after = SessionsRestore.load(rid)
+    check(after?.steps.count == 23 && after?.steps.last?.path == first + "-new" && after?.steps.last?.done == true && after?.steps.last?.kind == .file,
+          "journal: new lines appended after the old ones, folded the same way")
+    let lines = (try? String(contentsOf: SessionsRestore.store.folder(rid).appendingPathComponent("journal.jsonl"), encoding: .utf8))?.split(separator: "\n") ?? []
+    check(lines.count == 68 && mode(SessionsRestore.store.folder(rid).appendingPathComponent("journal.jsonl")) != -1, "journal: one line per event (\(lines.count))")
+    for k in kinds { try? fm.removeItem(at: Store.folder.appendingPathComponent(k)) }
+    DefaultProfile.forgetCache()
+}
+
+// ============ 16. SafeFiles: create-only writes and the one lock ============
+do {
+    let dir = home + "/safefiles"
+    try? fm.removeItem(atPath: dir)
+    try! fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+    let target = dir + "/a.json"
+    check(CreateOnly.write(Data("1".utf8), as: target, temp: dir + "/.a.tmp", sync: true) == .created && fm.contents(atPath: target) == Data("1".utf8),
+          "create-only: a new file is made")
+    check(CreateOnly.write(Data("2".utf8), as: target, temp: dir + "/.a.tmp", sync: false) == .exists && fm.contents(atPath: target) == Data("1".utf8),
+          "create-only: never over a file that is there")
+    check(((try? fm.contentsOfDirectory(atPath: dir)) ?? []) == ["a.json"], "create-only: no temp file left")
+    symlink(dir + "/elsewhere", dir + "/link.json")
+    check(CreateOnly.write(Data("3".utf8), as: dir + "/link.json", temp: dir + "/.l.tmp", sync: false) == .exists && !fm.fileExists(atPath: dir + "/elsewhere"),
+          "create-only: never through a link")
+    check(CreateOnly.open(dir + "/link.json") < 0 && CreateOnly.open(target) < 0, "create-only open: a link or a name that is there is refused")
+    let mine = CreateOnly.open(dir + "/b", mode: 0o600)
+    var st = stat(); fstat(mine, &st); close(mine)
+    check(mine >= 0 && (st.st_mode & 0o777) == 0o600, "create-only open: owner only")
+    check(CreateOnly.rename(dir + "/b", to: target) == false && CreateOnly.rename(dir + "/b", to: dir + "/c") && fm.fileExists(atPath: dir + "/c"),
+          "rename: only where nothing is")
+    let pfd = open(dir, O_RDONLY | O_DIRECTORY)
+    fm.createFile(atPath: dir + "/.w-1.tmp", contents: Data())
+    CreateOnly.sweep(pfd, names: (try? fm.contentsOfDirectory(atPath: dir)) ?? [], prefix: ".w-")
+    close(pfd)
+    check(!fm.fileExists(atPath: dir + "/.w-1.tmp") && fm.fileExists(atPath: target), "sweep: only the writer's own temp names")
+
+    // the lock: one holder in this process, a second take refused until it is released; the other tool's lock too
+    let lock = FlowLock(path: dir + "/locks/.lock", other: dir + "/other/lock")
+    let held = try? lock.take()
+    var second: FlowLock.Busy?
+    do { _ = try lock.take() } catch let b as FlowLock.Busy { second = b } catch {}
+    check(held != nil && second == .held, "lock: a second take is refused while one holds it")
+    let otherFD = open(dir + "/other/lock", O_RDWR)
+    check(flock(otherFD, LOCK_EX | LOCK_NB) != 0, "lock: the other tool's lock file is held (flock)")
+    held?.release()
+    check(flock(otherFD, LOCK_EX | LOCK_NB) == 0, "lock: released with it")
+    var third: FlowLock.Busy?
+    do { _ = try lock.take() } catch let b as FlowLock.Busy { third = b } catch {}
+    check(third == .otherHeld, "lock: the other tool holding its lock refuses the take (\(String(describing: third)))")
+    flock(otherFD, LOCK_UN); close(otherFD)
+    if let again = try? lock.take() { again.release(); check(true, "lock: free again") } else { check(false, "lock: free again") }
+    // cl_audit's lock keeps its paths: switches/.lock and claude-transplant's lock
+    check(Flows.lock.path == SwitchEngine.root.appendingPathComponent(".lock").path
+          && Flows.lock.other == expand("~/Library/Application Support/claude-transplant/lock"), "cl_audit's lock: the same two files as before")
+    try? fm.removeItem(atPath: dir)
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

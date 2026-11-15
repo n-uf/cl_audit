@@ -1,0 +1,138 @@
+{
+  "codeDir" : "\/sample\/.claude-studio",
+  "dataDir" : "\/sample\/Library\/Application Support\/Claude-studio",
+  "finished" : "2026-11-15T01:03:30Z",
+  "id" : "20261114-170330-3a0b-studio",
+  "problems" : [
+
+  ],
+  "profile" : "studio",
+  "restore" : "20261114-170329-3175-studio",
+  "sessions" : [
+    {
+      "dropped" : [
+        "branch",
+        "sourceBranch",
+        "worktreeName",
+        "worktreePath"
+      ],
+      "entries" : 1,
+      "files" : 3,
+      "from" : "\/sample\/work\/code\/old\/garden-app",
+      "keptLines" : 0,
+      "lines" : 4,
+      "memory" : 1,
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "title" : "Fix the sign-up form",
+      "to" : "\/sample\/work\/code\/new\/garden-app",
+      "undone" : true
+    }
+  ],
+  "started" : "2026-11-15T01:03:30Z",
+  "steps" : [
+    {
+      "done" : true,
+      "kind" : "dir",
+      "path" : "\/sample\/.claude-studio\/projects\/-opt-projects-n-uf-cl-audit-wt-anyflow-Checks--work-resume-code-new-garden-app",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true
+    },
+    {
+      "done" : true,
+      "kind" : "made",
+      "path" : "\/sample\/.claude-studio\/projects\/-opt-projects-n-uf-cl-audit-wt-anyflow-Checks--work-resume-code-new-garden-app\/00000000-0000-4000-8000-00000000000c.jsonl",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true,
+      "sha" : "11b06d594911f1399ba9e7eccdc54ec64bfbe31e6fb7ebe4f4db812c0e202c4d"
+    },
+    {
+      "done" : true,
+      "kind" : "dir",
+      "path" : "\/sample\/.claude-studio\/projects\/-opt-projects-n-uf-cl-audit-wt-anyflow-Checks--work-resume-code-new-garden-app\/00000000-0000-4000-8000-00000000000c",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true
+    },
+    {
+      "done" : true,
+      "kind" : "dir",
+      "path" : "\/sample\/.claude-studio\/projects\/-opt-projects-n-uf-cl-audit-wt-anyflow-Checks--work-resume-code-new-garden-app\/00000000-0000-4000-8000-00000000000c\/subagents",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true
+    },
+    {
+      "done" : true,
+      "kind" : "made",
+      "path" : "\/sample\/.claude-studio\/projects\/-opt-projects-n-uf-cl-audit-wt-anyflow-Checks--work-resume-code-new-garden-app\/00000000-0000-4000-8000-00000000000c\/subagents\/agent-a1.jsonl",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true,
+      "sha" : "9be5fb35a4c5ca55f2eb72080adc771bf1afa2e6ace206fa5faf996b0086fcfa"
+    },
+    {
+      "done" : true,
+      "kind" : "dir",
+      "path" : "\/sample\/.claude-studio\/projects\/-opt-projects-n-uf-cl-audit-wt-anyflow-Checks--work-resume-code-new-garden-app\/00000000-0000-4000-8000-00000000000c\/tool-results",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true
+    },
+    {
+      "done" : true,
+      "kind" : "made",
+      "path" : "\/sample\/.claude-studio\/projects\/-opt-projects-n-uf-cl-audit-wt-anyflow-Checks--work-resume-code-new-garden-app\/00000000-0000-4000-8000-00000000000c\/tool-results\/toolu_01.txt",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true,
+      "sha" : "abfb8dc9fda8646d110339300236d4a505afb408c6ea42af3e3040259efd410c"
+    },
+    {
+      "done" : true,
+      "kind" : "dir",
+      "path" : "\/sample\/.claude-studio\/projects\/-opt-projects-n-uf-cl-audit-wt-anyflow-Checks--work-resume-code-new-garden-app\/memory",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true
+    },
+    {
+      "done" : true,
+      "kind" : "made",
+      "path" : "\/sample\/.claude-studio\/projects\/-opt-projects-n-uf-cl-audit-wt-anyflow-Checks--work-resume-code-new-garden-app\/memory\/MEMORY.md",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true,
+      "sha" : "e1396f2c9da9223823d8607ba9192919318e8256daa27becde3057d3f6d6930d"
+    },
+    {
+      "done" : true,
+      "kind" : "entry",
+      "path" : "\/sample\/Library\/Application Support\/Claude-studio\/claude-code-sessions\/00000000-0000-4000-8000-000000000001\/00000000-0000-4000-8000-000000000002\/local_00000000-0000-4000-8000-000000000013.json",
+      "saved" : "f9c6c9d9f758f2a2-entry.json",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true,
+      "sha" : "24a23b192341c2711c7aea264bed8939a643ea9f97fff38be9e2a34a8778f9f2"
+    },
+    {
+      "done" : true,
+      "kind" : "parked",
+      "path" : "\/sample\/.claude-studio\/projects\/-opt-projects-n-uf-cl-audit-wt-anyflow-Checks--work-resume-code-old-garden-app--claude-worktrees-wt-forms\/00000000-0000-4000-8000-00000000000c.jsonl",
+      "saved" : "10-00000000-0000-4000-8000-00000000000c.jsonl",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true,
+      "sha" : "8e697f25a97abd7635e2c5766677af337f8a3edbda1bc4a7d06247d9ab7b72ac"
+    },
+    {
+      "done" : true,
+      "kind" : "parked",
+      "path" : "\/sample\/.claude-studio\/projects\/-opt-projects-n-uf-cl-audit-wt-anyflow-Checks--work-resume-code-old-garden-app--claude-worktrees-wt-forms\/00000000-0000-4000-8000-00000000000c\/subagents\/agent-a1.jsonl",
+      "saved" : "11-agent-a1.jsonl",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true,
+      "sha" : "938676f9320916bf76ca01abf757b44b36658c4a1a87b783aee5554e7b99b8f3"
+    },
+    {
+      "done" : true,
+      "kind" : "parked",
+      "path" : "\/sample\/.claude-studio\/projects\/-opt-projects-n-uf-cl-audit-wt-anyflow-Checks--work-resume-code-old-garden-app--claude-worktrees-wt-forms\/00000000-0000-4000-8000-00000000000c\/tool-results\/toolu_01.txt",
+      "saved" : "12-toolu_01.txt",
+      "session" : "00000000-0000-4000-8000-00000000000c",
+      "settled" : true,
+      "sha" : "abfb8dc9fda8646d110339300236d4a505afb408c6ea42af3e3040259efd410c"
+    }
+  ],
+  "undone" : "2026-11-15T01:03:30Z"
+}

@@ -1,0 +1,19 @@
+{
+  "backup" : "20270115-080900-1234",
+  "backupPlace" : "\/sample\/Library\/Application Support\/usage-n-uf\/backups",
+  "created" : true,
+  "defaultBackup" : "20270115-080800-9abc",
+  "finished" : "2027-01-15T08:00:30Z",
+  "flipped" : true,
+  "id" : "00000000-0000-4000-8000-00000000001e",
+  "kind" : "otherFolder",
+  "linkedSeat" : true,
+  "oldDataDir" : "\/sample\/Library\/Application Support\/Claude-main",
+  "oldDesktop" : "separate",
+  "oldDesktopDataDir" : "\/sample\/Library\/Application Support\/Claude-main",
+  "oldHandled" : "standby",
+  "oldProfile" : "main",
+  "profile" : "home",
+  "receipt" : "20270115-080900-5678-home",
+  "started" : "2027-01-15T08:00:00Z"
+}
