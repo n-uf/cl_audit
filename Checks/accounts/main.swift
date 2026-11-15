@@ -1661,5 +1661,121 @@ do {
           "the standby merge: h1 in another organisation, the account in use in another, h1 by its address and hex-3 twice (any case) go in once; the next tidy changes nothing")
 }
 
+// ============ 21. ClaudeWindow / WindowHold: a window found, closed by identity, reopened (stand-in processes) ============
+do {
+    var stand: [String: [Process]] = [:]                       // window key -> its stand-in "instances"
+    var opened: [String] = []
+    func standIn(ignoringTerm: Bool = false) -> Process {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        // One that ignores TERM says so once the trap is set (SIG_IGN survives the exec): a TERM sent before that would kill the
+        // shell, and the stand-in would "close" when it must not.
+        let ready = Pipe()
+        p.arguments = ["-c", ignoringTerm ? "trap '' TERM; echo ready; exec sleep 30" : "exec sleep 30"]
+        if ignoringTerm { p.standardOutput = ready }
+        try? p.run()
+        if ignoringTerm { _ = ready.fileHandleForReading.availableData }
+        return p
+    }
+    func spin(_ s: TimeInterval) { RunLoop.main.run(until: Date().addingTimeInterval(s)) }
+    func waitFor(_ s: TimeInterval, _ ok: () -> Bool) { let end = Date().addingTimeInterval(s); while !ok() && Date() < end { spin(0.05) } }
+    ClaudeWindow.seams = ClaudeWindow.Seams(
+        find: { a in (stand[Launcher.dataDirKey(of: a)] ?? []).filter(\.isRunning).map { .init(pid: $0.processIdentifier, started: Processes.startTime(of: $0.processIdentifier)) } },
+        quit: { pid in kill(pid, SIGTERM) },
+        open: { a, _ in opened.append(Launcher.dataDirKey(of: a)) },
+        isRunning: ClaudeWindow.Seams.real.isRunning)
+    WindowHold.every = 0.05; WindowHold.stallAfter = 1; WindowHold.lateCloseFor = 2
+    var e = profile("wh", "~/.claude-wh", u1)
+    e.desktop = .separate; e.desktopDataDir = expand("~/Library/Application Support/Claude-wh")
+    let key = Launcher.dataDirKey(of: Account(e))
+
+    // closed by identity, then reopened when the flow ends
+    stand[key] = [standIn()]
+    let h = WindowHold(e, profile: "wh", run: "switch-k2")
+    check(h.claim() && SwitchMarker.blocks(Account(e)), "a hold marks the window: no opener starts it meanwhile")
+    var closed = false, stalled = false
+    h.close(closed: { closed = true }, stalled: { stalled = true })
+    waitFor(3) { closed || stalled }
+    check(closed && !stalled && h.closedByUs && h.isClosed, "close: asked to quit, watched until the instance is gone")
+    h.finish()
+    check(opened == [key] && !SwitchMarker.blocks(Account(e)), "finish: the mark goes, then the window it closed opens again")
+    h.finish()
+    check(opened == [key], "finish twice: reopened once")
+
+    // already closed: nothing to reopen
+    opened = []
+    let h2 = WindowHold(e, profile: "wh", run: "restore-1")
+    var closed2 = false
+    _ = h2.claim()
+    h2.close(closed: { closed2 = true }, stalled: {})
+    h2.finish()
+    check(closed2 && !h2.closedByUs && opened.isEmpty, "a window that was already closed: done at once, never opened by the hold")
+
+    // a window that won't close (it asks about work under way): stalled, the mark let go, nothing reopened
+    stand[key] = [standIn(ignoringTerm: true)]
+    let h3 = WindowHold(e, profile: "wh", run: "switch-k2")
+    _ = h3.claim()
+    var stalled3 = false, closed3 = false
+    h3.close(closed: { closed3 = true }, stalled: { stalled3 = true })
+    waitFor(3) { stalled3 || closed3 }
+    h3.finish()
+    check(stalled3 && !closed3 && !SwitchMarker.blocks(Account(e)) && opened.isEmpty, "a window that won't close: stalled after the limit, the mark let go, nothing reopened")
+    stand[key]?.forEach { kill($0.processIdentifier, SIGKILL) }
+    waitFor(2) { !ClaudeWindow.isOpen(Account(e)) }
+
+    // the profile without its Claude window: a window it closed isn't reopened
+    var noWin = e; noWin.claudeWindow = false
+    stand[key] = [standIn()]
+    let h4 = WindowHold(noWin, profile: "wh", run: "switch-k2")
+    _ = h4.claim()
+    var closed4 = false
+    h4.close(closed: { closed4 = true }, stalled: {})
+    waitFor(3) { closed4 }
+    h4.finish()
+    check(closed4 && opened.isEmpty, "Claude window off for the profile: closed, never reopened")
+
+    // cancelled while it closes: watched a little, reopened if it closes then
+    stand[key] = [standIn(ignoringTerm: true)]
+    let h5 = WindowHold(e, profile: "wh", run: "restore-2")
+    _ = h5.claim()
+    h5.close(closed: {}, stalled: {})
+    spin(0.2)
+    check(h5.cancelClosing() && h5.isWatching && !SwitchMarker.blocks(Account(e)), "cancel while closing: the mark goes, a late close is watched for")
+    stand[key]?.forEach { kill($0.processIdentifier, SIGKILL) }           // it closes by its own answer, later
+    waitFor(2) { !opened.isEmpty }
+    check(opened == [key] && !h5.isWatching, "…and it closed later: opened again")
+    opened = []
+    stand[key] = [standIn(ignoringTerm: true)]
+    let h6 = WindowHold(e, profile: "wh", run: "restore-3")
+    _ = h6.claim()
+    h6.close(closed: {}, stalled: {})
+    spin(0.2)
+    _ = h6.cancelClosing()
+    waitFor(3) { !h6.isWatching }
+    check(opened.isEmpty, "…and it never closed: the watch ends, nothing opened")
+    stand[key]?.forEach { kill($0.processIdentifier, SIGKILL) }
+
+    // identity: a new instance of the same window (another start) isn't the one asked to quit, and keeps it open
+    let first = standIn(), second = standIn(ignoringTerm: true)
+    stand[key] = [first]
+    let asked = ClaudeWindow.quit(Account(e))
+    waitFor(2) { !first.isRunning }
+    stand[key] = [second]
+    check(asked.count == 1 && !ClaudeWindow.closed(asked, Account(e)), "a new instance of the window started since: not closed")
+    kill(second.processIdentifier, SIGKILL)
+    waitFor(2) { !second.isRunning }
+    check(ClaudeWindow.closed(asked, Account(e)), "…and once it's gone too: closed")
+    // a pid given to another process isn't the instance asked (start time differs)
+    check(!ClaudeWindow.Seams.real.isRunning(ClaudeWindow.Instance(pid: getpid(), started: (Processes.startTime(of: getpid()) ?? 0) - 100)),
+          "a pid running with another start time isn't the instance asked to quit")
+
+    // a second run on a held window is refused
+    let h7 = WindowHold(e, profile: "wh", run: "switch-k2"), h8 = WindowHold(e, profile: "wh", run: "restore-9")
+    check(h7.claim() && !h8.claim(), "another run on a held window: refused")
+    h7.finish()
+    ClaudeWindow.seams = .real
+    WindowHold.every = 0.5; WindowHold.stallAfter = 45; WindowHold.lateCloseFor = 60
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
