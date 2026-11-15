@@ -23,6 +23,10 @@
 // process runs (claude-transplant's rule); otherwise config.json says the account and the sessions folder the
 // organisation. No token is read: config.json's lastKnownAccountUuid is an id.
 //
+// This file is the one reader of the Claude app's config.json and main.log, and app-neutral (Foundation and ProfileCore, with
+// ClaudeFiles' sessions folders): a data folder, the logs folder, the launch and whether it is the only Claude app in, the
+// answer out. Which window is the profile's and whether it runs alone is the app's (AppSignInWindow.swift).
+//
 // Adapted from claude-transplant, Copyright (c) 2026 Vitaliy Hayda, under the MIT License:
 //   Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
 //   documentation files (the "Software"), to deal in the Software without restriction, including without limitation the
@@ -34,7 +38,7 @@
 //   COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
 //   OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-import AppKit
+import Foundation
 import ProfileCore
 
 enum AppSignIn {
@@ -76,45 +80,25 @@ enum AppSignIn {
         return l
     }
 
-    /// `current(for:)` kept a few seconds per profile (the log grows all the time; a screen asks on every tick), and read
-    /// again at once when the data folder's config.json changes or the window starts or quits.
-    private static var memo: [String: (key: String, at: Date, login: Login)] = [:]
-    private static let memoLock = NSLock()
-
-    static func cached(for e: AccountEntry, now: Date = Date()) -> Login {
-        let dir = e.desktop == .standard ? expand(FolderKey.standardDataDir) : (Account(e).claudeUserDataDir ?? "")
-        let cfg = (try? FileManager.default.attributesOfItem(atPath: (dir as NSString).appendingPathComponent("config.json")))?[.modificationDate] as? Date
-        let running = Processes.claudeApps().filter { !$0.isTerminated }
-            .map { "\($0.processIdentifier)" }.sorted().joined(separator: ",")
-        let key = "\(e.claudeWindow)|\(dir)|\(cfg?.timeIntervalSince1970 ?? 0)|\(running)"
-        memoLock.lock()
-        let hit = memo[e.id]
-        memoLock.unlock()
-        if let h = hit, h.key == key, now.timeIntervalSince(h.at) < 10 { return h.login }
-        let l = current(for: e)
-        memoLock.lock(); memo[e.id] = (key, now, l); memoLock.unlock()
-        return l
-    }
-
-    /// The profile's own window: its data folder, launch and whether it is the only Claude app running.
-    static func current(for e: AccountEntry) -> Login {
-        guard e.claudeWindow else { return .unknown }
-        let dir = e.desktop == .standard ? expand(FolderKey.standardDataDir) : (Account(e).claudeUserDataDir ?? "")
-        guard !dir.isEmpty else { return .unknown }
-        let apps = Processes.claudeApps().filter { !$0.isTerminated }
-        let mine = apps.first { Launcher.isWindow(of: Account(e), $0) }
-        return current(dataDir: dir, launched: mine?.launchDate, onlyApp: apps.count == 1 && mine != nil)
-    }
-
     /// config.json's lastKnownAccountUuid (lower case), or nil. Only that key is kept.
     static func lastKnown(dataDir: String) -> String? { config(dataDir: dataDir)?.id }
 
-    /// config.json's lastKnownAccountUuid (lower case) and the file's modification time, or nil. Only that key is kept.
-    static func config(dataDir: String) -> (id: String, modified: Date)? {
-        guard let r = boundedRead((expand(dataDir) as NSString).appendingPathComponent("config.json"), max: configBytes, fromEnd: false),
+    /// config.json's lastKnownAccountUuid (lower case), the file's modification time and whether it keeps a sign-in (an
+    /// "oauth:tokenCache…" key: only its name is looked at, never its value), or nil. Only that is kept.
+    static func config(dataDir: String) -> (id: String, modified: Date, keepsSignIn: Bool)? {
+        guard let r = boundedRead(((dataDir as NSString).expandingTildeInPath as NSString).appendingPathComponent("config.json"), max: configBytes, fromEnd: false),
               let j = try? JSONSerialization.jsonObject(with: r.data) as? [String: Any],
-              let id = j["lastKnownAccountUuid"] as? String, AccountDiscovery.isUUID(id) else { return nil }
-        return (id.lowercased(), r.modified)
+              let id = j["lastKnownAccountUuid"] as? String, ClaudeFiles.isUUID(id) else { return nil }
+        return (id.lowercased(), r.modified, j.keys.contains { $0.hasPrefix("oauth:tokenCache") })
+    }
+
+    /// When the Claude app last logged that it quits for an update ("[stealth-update] Triggering stealth update"), from the
+    /// last 256 KB of its main.log (bounded, no link followed, like the account lines).
+    static func lastStealthUpdate(logs: URL) -> Date? {
+        guard let r = boundedRead(logs.appendingPathComponent("main.log").path, max: 256 << 10, fromEnd: true),
+              let text = String(data: r.data, encoding: .utf8),
+              let line = text.split(separator: "\n").last(where: { $0.contains("[stealth-update] Triggering stealth update") }) else { return nil }
+        return timeFormatShort.date(from: String(line.prefix(19)))
     }
 
     /// The most entries looked at in one sessions folder listing.
@@ -123,22 +107,9 @@ enum AppSignIn {
     /// The newest claude-code-sessions/<account>/<org> folder in the data folder: its organisation (lower case), or nil.
     /// Names and times only, at most `maxListed` entries; a link (the account's folder or an org's) is never followed.
     static func sessionsOrg(dataDir: String, account: String) -> String? {
-        let dir = (expand(dataDir) as NSString).appendingPathComponent("claude-code-sessions/\(account)")
-        func isDir(_ p: String) -> Date? {
-            var st = stat()
-            guard lstat(p, &st) == 0, (st.st_mode & S_IFMT) == S_IFDIR else { return nil }
-            return Date(timeIntervalSince1970: TimeInterval(st.st_mtimespec.tv_sec) + TimeInterval(st.st_mtimespec.tv_nsec) / 1e9)
-        }
-        guard isDir(dir) != nil, let d = opendir(dir) else { return nil }
-        defer { closedir(d) }
         var best: (org: String, at: Date)?
-        var seen = 0
-        while seen < maxListed, let e = readdir(d) {
-            seen += 1
-            let name = withUnsafePointer(to: e.pointee.d_name) { $0.withMemoryRebound(to: CChar.self, capacity: 256) { String(cString: $0) } }
-            guard name.utf8.count == 36, AccountDiscovery.isUUID(name), let t = isDir((dir as NSString).appendingPathComponent(name)) else { continue }
-            if best.map({ t > $0.at }) ?? true { best = (name.lowercased(), t) }
-        }
+        for s in ClaudeFiles.sessionScopes(dataDir: (dataDir as NSString).expandingTildeInPath, account: account, limit: maxListed)
+            where best.map({ s.modified > $0.at }) ?? true { best = (s.organization.lowercased(), s.modified) }
         return best?.org
     }
 
@@ -247,7 +218,7 @@ enum AppSignIn {
         } else if body.hasPrefix("[oauth-v2] lookup") {
             if let o = token(after: "orgId=", in: body), let a = token(after: "cacheKey=acct:", in: body) { pair = (a, o) }
         }
-        guard let (a, o) = pair, AccountDiscovery.isUUID(a), AccountDiscovery.isUUID(o) else { return nil }
+        guard let (a, o) = pair, ClaudeFiles.isUUID(a), ClaudeFiles.isUUID(o) else { return nil }
         return (a.lowercased(), o.lowercased())
     }
 
@@ -324,7 +295,7 @@ enum AppSignIn {
             let b = body as NSString
             guard let im = initRE.firstMatch(in: body, range: NSRange(location: 0, length: b.length)) else { return unknown(.unknown, t) }
             let account = b.substring(with: im.range(at: 1)).lowercased(), org = b.substring(with: im.range(at: 2)).lowercased()
-            guard AccountDiscovery.isUUID(account), AccountDiscovery.isUUID(org) else { return unknown(.unknown, t) }
+            guard ClaudeFiles.isUUID(account), ClaudeFiles.isUUID(org) else { return unknown(.unknown, t) }
             if let k = lastKnown, k != account { return unknown(.unknown, t) }
             return Login(account: account, org: org, state: .known, source: "log", at: t)
         }

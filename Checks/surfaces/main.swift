@@ -799,7 +799,7 @@ do {
     // the sign-in files, and the folder's address read from .claude.json (`Account.expectedEmail(configDir:)` and the `expectedEmail()`
     // that calls it): a screen takes the expected address from the status record (`status.expectedEmail`)
     let fileReads = [".claude.json", "config.json", "main.log", "Logs/Claude", "claudeJSON(", "signedInSeat(", "lastKnownAccountUuid",
-                     "expectedEmail(", "FolderFactsCache", "inUseElsewhere", "AppSignIn."]
+                     "expectedEmail(", "FolderFactsCache", "inUseElsewhere", "AppSignIn.", "ClaudeFiles."]
     let forbidden = fileReads + ["entry.seat", "e.seat?.", "profile.entry.seat"]
     var reads: [String] = []
     for f in surfaceFiles {
@@ -1932,6 +1932,88 @@ do {
     var inTheSplit = t; inTheSplit.split = true
     model.update(target: inTheSplit, level: QuickChatLevel(nil), offer: { offered })
     check(!model.blocked && model.offer == nil, "the split: Claude Code's refusal is its account's, never the profile's limit")
+}
+
+// ============ 11. ClaudeFiles: the one reader of .claude.json's account, the one lister of the window's sessions ============
+do {
+    let dir = home + "/cf"
+    try? fm.removeItem(atPath: dir)
+    // the record: field by field, a guess; read again when the file changed; through a link named by the path; never a FIFO
+    let rec = dir + "/code/.claude.json"
+    put(rec, #"{"oauthAccount":{"accountUuid":"\#(u1.account)","organizationUuid":"\#(u1.organization!)","emailAddress":"\#(u1.email!)","organizationType":"claude_max","organizationName":"x","planDisplayName":"Ultra"},"projects":{}}"#)
+    let r = ClaudeFiles.record(at: rec)
+    check(r?.seat == Seat(account: u1.account, organization: u1.organization, email: u1.email) && r?.plan == "Ultra" && r?.organizationType == "claude_max"
+          && r?.identity == AccountIdentity(account: u1.account, email: u1.email, organization: u1.organization, source: .guessed),
+          "the record: its seat, plan and fields, and the identity guessed from the file")
+    check(ClaudeFiles.identity(folder: dir + "/code", isDefault: false) == r?.identity
+          && ClaudeFiles.recordPath(folder: dir + "/code", isDefault: true, home: "/h") == "/h/.claude.json",
+          "a folder in, its identity out; the default folder's record is in the home folder")
+    put(rec, #"{"oauthAccount":{"accountUuid":"\#(u2.account)","emailAddress":"\#(u2.email!)","planDisplayName":"  "}}"#)
+    let again = ClaudeFiles.record(at: rec)
+    check(again?.seat?.account == u2.account && again?.plan == nil && again?.planDisplayName == "  ", "read again once the file changed; a blank plan is none (the field kept as written)")
+    try? fm.createDirectory(atPath: dir + "/linked", withIntermediateDirectories: true)
+    try? fm.createSymbolicLink(atPath: dir + "/linked/.claude.json", withDestinationPath: rec)
+    check(ClaudeFiles.record(at: dir + "/linked/.claude.json")?.seat?.account == u2.account, "a .claude.json that is a link to the real one: read")
+    try? fm.createDirectory(atPath: dir + "/fifo", withIntermediateDirectories: true)
+    mkfifo(dir + "/fifo/.claude.json", 0o600)
+    let tf = Date()
+    check(ClaudeFiles.record(at: dir + "/fifo/.claude.json") == nil && Date().timeIntervalSince(tf) < 2, "a FIFO named like it: nothing, at once")
+    put(dir + "/none/.claude.json", #"{"projects":{}}"#)
+    check(ClaudeFiles.record(at: dir + "/none/.claude.json") == nil, "no oauthAccount block: no record")
+    put(dir + "/big/.claude.json", "{}")
+    if let h = FileHandle(forWritingAtPath: dir + "/big/.claude.json") { try? h.truncate(atOffset: UInt64(ClaudeFiles.recordMax + 1)); try? h.close() }
+    check(ClaudeFiles.tooLarge(dir + "/big/.claude.json") && ClaudeFiles.record(at: dir + "/big/.claude.json") == nil, "larger than recordMax: too large, not read")
+    try? fm.removeItem(atPath: dir + "/big")
+
+    // the sessions: account and organisation folders named like a UUID and real (no link), entries local_<UUID>.json and regular
+    let data = dir + "/window", cs = dir + "/window/claude-code-sessions"
+    let a = uuid(11), o = uuid(12).uppercased(), o2 = uuid(13)
+    let odir = cs + "/\(a)/\(o)"
+    put(odir + "/local_\(uuid(21)).json", "{}")
+    put(odir + "/local_\(uuid(22).uppercased()).json", #"{"isArchived":true}"#)
+    put(odir + "/local_notes.json", "{}")
+    put(odir + "/scheduled-tasks.json", #"{"scheduledTasks":[]}"#)
+    try? fm.createSymbolicLink(atPath: odir + "/local_\(uuid(23)).json", withDestinationPath: odir + "/local_\(uuid(21)).json")
+    put(cs + "/\(a)/not-an-org/local_\(uuid(24)).json", "{}")
+    put(dir + "/elsewhere/local_\(uuid(25)).json", "{}")
+    try? fm.createSymbolicLink(atPath: cs + "/\(a)/\(o2)", withDestinationPath: dir + "/elsewhere")
+    let scopes = ClaudeFiles.sessionScopes(dataDir: data)
+    check(scopes.map(\.organization) == [o] && scopes.first?.account == a,
+          "folders: UUID-named real folders only, names as on disk (a linked one and one not named like a UUID aren't): \(scopes.map(\.organization))")
+    let names = ClaudeFiles.sessionEntries(in: odir).map(\.name)
+    let want = ["local_\(uuid(21)).json", "local_\(uuid(22).uppercased()).json"].sorted()
+    check(names == want, "entries: local_<UUID>.json regular files only (no link, no other name), case as on disk: \(names)")
+    check(ClaudeFiles.sessionScopes(dataDir: data, account: a).count == 1 && ClaudeFiles.sessionScopes(dataDir: data, account: uuid(99)).isEmpty
+          && ClaudeFiles.sessionScopes(dataDir: data, limit: 1).isEmpty, "one account's folders; at most `limit` names looked at in each folder")
+    check(AppSignIn.sessionsOrg(dataDir: data, account: a) == o.lowercased(), "the Claude app's organisation from the sessions folder: the newest, lower case")
+    // the listers that use it agree
+    check(AccountDiscovery.windowSeats(dataDir: data).map(\.seat.organization) == [o], "the accounts the window used: the same folder")
+    check(DefaultProfile.entryNames(data).keys.sorted() == want.map { $0.lowercased() }.sorted(), "the default move's preview: the same entries, keyed lower case")
+    let counts = SidebarCounts.read(dataDir: data, account: a)
+    check(counts?.sessions == 1 && counts?.archived == 1, "the Switch page's counts: the same entries (one archived)")
+    let now = SessionsRestore.WindowNow.read(data)
+    check(Set(now.entries.keys) == Set(want.map { $0.lowercased() }) && now.hasTasks == [SeatID(account: a, organization: o)],
+          "restore's view of the window: the same entries, and its task list")
+
+    // the Claude app's config.json and main.log (AppSignIn)
+    put(data + "/config.json", #"{"lastKnownAccountUuid":"\#(u1.account.uppercased())","oauth:tokenCache":"x"}"#)
+    let c = AppSignIn.config(dataDir: data)
+    check(c?.id == u1.account && c?.keepsSignIn == true, "config.json: the account (lower case) and that it keeps a sign-in (the key's name only)")
+    put(data + "/config.json", #"{"lastKnownAccountUuid":"\#(u1.account)"}"#)
+    check(AppSignIn.config(dataDir: data)?.keepsSignIn == false, "…no token cache key: no sign-in kept")
+    let logs = URL(fileURLWithPath: dir + "/logs")
+    put(logs.path + "/main.log", "2026-11-15 10:00:00.123 [info] [stealth-update] Triggering stealth update\n2026-11-15 10:00:05.000 [info] other\n")
+    check(AppSignIn.lastStealthUpdate(logs: logs) == AppSignIn.timeFormatShort.date(from: "2026-11-15 10:00:00"), "main.log: the last stealth update, to the second")
+
+    // both readers are app-neutral: Foundation and ProfileCore only, no app type, no log or print
+    let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
+    for f in ["ClaudeFiles.swift", "AppSignIn.swift"] {
+        let t = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8)) ?? ""
+        let imports = t.components(separatedBy: "\n").filter { $0.hasPrefix("import ") }
+        let app = ["AccountEntry", "Account(", "FolderKey", "expand(", "tilde(", "Store.", "NSWorkspace", "NSRunningApplication", "AccountDiscovery",
+                   "Processes.", "print(", "NSLog", "os_log", "Logger"].filter { t.contains($0) }
+        check(!t.isEmpty && Set(imports).isSubset(of: ["import Foundation", "import ProfileCore"]) && app.isEmpty, "\(f): app-neutral (imports \(imports), app names \(app))")
+    }
 }
 
 print("checks: \(passed) passed, \(failed) failed")

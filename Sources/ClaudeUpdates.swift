@@ -54,23 +54,8 @@ enum ClaudeUpdates {
         return (plist?["CFBundleShortVersionString"] as? String) ?? (plist?["CFBundleVersion"] as? String)
     }
 
-    static var logFile: URL {
-        FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/Claude/main.log")
-    }
-
-    /// When Claude last logged that it quits for an update, from the end of its log (the last 256 KB).
-    static func lastStealthUpdate(in file: URL = logFile) -> Date? {
-        guard let h = try? FileHandle(forReadingFrom: file) else { return nil }
-        defer { try? h.close() }
-        let size = (try? h.seekToEnd()) ?? 0
-        try? h.seek(toOffset: size > 262_144 ? size - 262_144 : 0)
-        guard let data = try? h.readToEnd(), let text = String(data: data, encoding: .utf8) else { return nil }
-        guard let line = text.split(separator: "\n").last(where: { $0.contains("[stealth-update] Triggering stealth update") })
-        else { return nil }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return f.date(from: String(line.prefix(19)))
-    }
+    /// When Claude last logged that it quits for an update (AppSignIn, the one reader of its log).
+    static func lastStealthUpdate() -> Date? { AppSignIn.lastStealthUpdate(logs: AppSignIn.logsDir) }
 }
 
 /// The agent's side: looks on each tick, keeps its state across restarts, opens the windows and sends the alert.

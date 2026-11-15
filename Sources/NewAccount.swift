@@ -295,17 +295,13 @@ enum NewAccountSetup {
     /// Whether this account's own Claude window is signed in, and to the same claude.ai account as Claude Code.
     enum DesktopSignIn { case notChecked, notSignedIn, same, different, unknown }
 
-    /// Reads the window's config.json only for whether a login is stored and which account it last used
+    /// Reads the window's config.json (AppSignIn.config) only for whether a login is stored and which account it last used
     /// (an account id, not the organisation); nothing from it is kept or shown. The usual Claude app is checked too.
     static func desktopSignIn(_ d: NewAccountDraft) -> DesktopSignIn {
         guard d.claudeWindow, foldersReady(d) else { return .notChecked }
-        let file = (expand(d.dataDir) as NSString).appendingPathComponent("config.json")
-        guard let data = FileManager.default.contents(atPath: file),
-              let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              j.keys.contains(where: { $0.hasPrefix("oauth:tokenCache") }),
-              let desktop = j["lastKnownAccountUuid"] as? String else { return .notSignedIn }
+        guard let c = AppSignIn.config(dataDir: expand(d.dataDir)), c.keepsSignIn else { return .notSignedIn }
         guard let code = Account.expectedAccountUuid(configDir: d.configDir) else { return .unknown }
-        return desktop == code ? .same : .different
+        return c.id == code.lowercased() ? .same : .different
     }
 
     static func windowOpen(_ d: NewAccountDraft) -> Bool {

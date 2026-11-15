@@ -26,6 +26,7 @@ Nothing pending.
 ## 26.11.36 — 2026-11-15
 
 - When cl_audit can't read which programs are running (another user's `claude`, as with `sudo claude`, included), it now says it couldn't check whether Claude Code is using a session, instead of treating it as not running.
+- The Claude app's sessions are counted by one rule everywhere (the Switch page's counts, the default profile's move, the accounts a window used, Restore's view of the window): account and organisation folders named like an id, entries named `local_<id>.json`, and never a link. A link or a file of another name in that folder no longer counts as a session. The Claude app's config.json and log are read the same bounded way everywhere and no longer through a link.
 
 ## 26.11.35 — 2026-11-15
 
