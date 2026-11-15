@@ -1213,7 +1213,7 @@ enum SessionsImport {
             let name = c.last ?? ""
             if it.role == .window, c.count == 4 {
                 seats.insert(SeatID(account: c[1], organization: c[2]))
-                if name.hasPrefix("local_"), name.hasSuffix(".json") {
+                if ClaudeFiles.isEntryName(name) {                 // counted by the one entry rule: what a restore puts back
                     counts.sessions += 1
                     // (read through the restore's own cap for a window file, 64 MB: one bigger is refused when it is restored)
                     if !SidebarPlan.flag("isArchived", in: (try? readSmall(dst, limit: 64 << 20)) ?? Data()) { counts.sidebar += 1 }
