@@ -1761,18 +1761,25 @@ struct AccountSettings: View {
             ?? (s.seat == nil ? "Remembered by its address: it signs in when you switch to it" : "Not in use on \(name) yet")
         return AccountBox(lamp: nil, badge: "Standby", detail: s.plan.map(Account.planWords),
                           unlit: !selected, selected: selected, litBadge: "Switch account",
-                          litAction: { model.showSwitch(AccountEntry.switchKey(entry.id, s.id)) }) {
+                          litAction: { model.showSwitch(AccountEntry.switchKey(entry.id, s.id)) },
+                          // a click anywhere on the row selects it (again: deselects); the address pop-up and the lit
+                          // key are their own controls and never select or deselect
+                          tap: { toggle(s) }, tapHelp: selected ? "Click to deselect" : "Click to select, then Switch account") {
             Menu {
                 Button("Switch to it…") { model.showSwitch(AccountEntry.switchKey(entry.id, s.id)) }
                 Divider()
                 Button("Forget…") { forgetStandby(s) }
             } label: { AccountBoxTitle(text: Privacy.masked(s.label)) }
-            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
         } content: {
-            // a click below the address selects the account (again: deselects); the address menu and the lit key stay
-            // outside the click area, so they never select or deselect
-            selectArea(s, selected) { BoxNote(text: line + ".").fixedSize(horizontal: false, vertical: true) }
+            BoxNote(text: line + ".").fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// Selects a standby account, or deselects it on a second click (the order is held still while one is selected).
+    private func toggle(_ s: StandbyAccount) {
+        if picked == s.id { picked = nil; heldOrder = [] }
+        else { if picked == nil { heldOrder = AccountBook.offerOrder(entry.standby).map(\.id) }; picked = s.id }
     }
 
     /// Claude Code's account while the Claude app is still on another one (AccountView.codeRow): its address, its plan, the
@@ -1830,16 +1837,6 @@ struct AccountSettings: View {
         return s.map { $0.seat?.email ?? $0.email }
     }
 
-    /// The part of a standby box a click selects (again: deselects).
-    private func selectArea<V: View>(_ s: StandbyAccount, _ selected: Bool, @ViewBuilder _ v: () -> V) -> some View {
-        v().frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                if picked == s.id { picked = nil; heldOrder = [] }
-                else { if picked == nil { heldOrder = AccountBook.offerOrder(entry.standby).map(\.id) }; picked = s.id }
-            }
-            .help(selected ? "Click to deselect" : "Click to select, then Switch account")
-    }
 
     /// In the order a full limit offers them (AccountBook.offerOrder); while one is selected, the order it had then, so the
     /// boxes don't move under the pointer.

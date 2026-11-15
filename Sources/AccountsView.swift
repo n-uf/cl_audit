@@ -31,6 +31,9 @@ struct AccountBox<Header: View, Content: View>: View {
     var alert = false
     /// Where the account is signed in: the Claude app (with its Code tab) and Claude Code in Terminal. nil: not shown.
     var marks: (app: Bool, terminal: Bool)? = nil
+    /// A click anywhere on the box (a standby row selects or deselects); the address pop-up and the lit key keep their own.
+    var tap: (() -> Void)? = nil
+    var tapHelp: String? = nil
     @ViewBuilder var header: () -> Header
     @ViewBuilder var content: () -> Content
     @Environment(\.face) private var outer
@@ -88,6 +91,9 @@ struct AccountBox<Header: View, Content: View>: View {
             }
         }
         .mintRow(selected || alert, red: alert && !selected)
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .onTapGesture { tap?() }
+        .help(tapHelp ?? "")
     }
 }
 
