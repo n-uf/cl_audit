@@ -106,7 +106,7 @@ struct SidebarPlan: Codable, Equatable {
     }
 
     /// "local_<uuid>": nothing else goes into the prompt as a session.
-    static func isSessionID(_ s: String) -> Bool { s.hasPrefix("local_") && AccountDiscovery.isUUID(String(s.dropFirst("local_".count))) }
+    static func isSessionID(_ s: String) -> Bool { s.hasPrefix("local_") && ClaudeFiles.isUUID(String(s.dropFirst("local_".count))) }
 
     /// "cg-<uuid>" or a short word of letters, digits and dashes.
     static func isGroupID(_ s: String) -> Bool {

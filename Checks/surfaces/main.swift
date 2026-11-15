@@ -2001,7 +2001,6 @@ do {
           && ClaudeFiles.sessionScopes(dataDir: data, limit: 1).isEmpty, "one account's folders; at most `limit` names looked at in each folder")
     check(AppSignIn.sessionsOrg(dataDir: data, account: a) == o.lowercased(), "the Claude app's organisation from the sessions folder: the newest, lower case")
     // the listers that use it agree
-    check(AccountDiscovery.windowSeats(dataDir: data).map(\.seat.organization) == [o], "the accounts the window used: the same folder")
     check(DefaultProfile.entryNames(data).keys.sorted() == want.map { $0.lowercased() }.sorted(), "the default move's preview: the same entries, keyed lower case")
     let counts = SidebarCounts.read(dataDir: data, account: a)
     check(counts?.sessions == 1 && counts?.archived == 1, "the Switch page's counts: the same entries (one archived)")

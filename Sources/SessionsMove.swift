@@ -228,7 +228,7 @@ enum SessionsMove {
             for a in list.prefix(maxAccounts) {
                 guard let x = a as? [String: Any], let acc = x["account"] as? String, let org = x["organization"] as? String else { bad += 1; continue }
                 if Fingerprint.isValid(acc) || Fingerprint.isValid(org) { fingerprints += 1; continue }
-                guard AccountDiscovery.isUUID(acc), AccountDiscovery.isUUID(org) else { bad += 1; continue }
+                guard ClaudeFiles.isUUID(acc), ClaudeFiles.isUUID(org) else { bad += 1; continue }
                 let seat = SeatID(account: acc.lowercased(), organization: org.lowercased())
                 guard seats.insert(seat).inserted else { notes.append("an account another profile of the file has too: left out"); continue }
                 let email = (x["email"] as? String).flatMap { validEmail($0) ? $0 : nil }

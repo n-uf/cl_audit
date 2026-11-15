@@ -51,7 +51,7 @@ enum AccountList {
             if let g = org, orgs[g] == nil,
                let w = AccountFacts.orgWords(type: o.organizationType, name: o.organizationName) { orgs[g] = w }
             if let a = account, plans[a] == nil, let p = o.planDisplayName, !p.isEmpty { plans[a] = p }
-            if let a = account, let g = org, AccountDiscovery.isUUID(a), AccountDiscovery.isUUID(g) {
+            if let a = account, let g = org, ClaudeFiles.isUUID(a), ClaudeFiles.isUUID(g) {
                 let s = SeatID(account: a, organization: g)
                 if !pairs.contains(s) { pairs.append(s) }
             }
@@ -136,7 +136,7 @@ enum AccountList {
             guard let head = SafeRead.read(f, max: 64 << 10)?.data else { continue }   // a FIFO or device: skipped at once
             let s = String(decoding: head, as: UTF8.self)
             for m in re.matches(in: s, range: NSRange(s.startIndex..., in: s)) {
-                if let r = Range(m.range(at: 1), in: s), AccountDiscovery.isUUID(String(s[r])) { out.insert(s[r].lowercased()) }
+                if let r = Range(m.range(at: 1), in: s), ClaudeFiles.isUUID(String(s[r])) { out.insert(s[r].lowercased()) }
             }
         }
         return out

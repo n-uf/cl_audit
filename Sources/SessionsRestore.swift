@@ -58,7 +58,7 @@ enum SessionsRestore {
             self.profile = profile
             self.dataDir = dataDir.isEmpty ? "" : expand(dataDir)
             self.codeDir = expand(codeDir)
-            func valid(_ s: SeatID) -> Bool { AccountDiscovery.isUUID(s.account) && AccountDiscovery.isUUID(s.organization) }
+            func valid(_ s: SeatID) -> Bool { ClaudeFiles.isUUID(s.account) && ClaudeFiles.isUUID(s.organization) }
             self.inUse = inUse.flatMap { valid($0) ? $0 : nil }
             self.seats = seats.filter(valid)
         }
@@ -207,7 +207,7 @@ enum SessionsRestore {
         // window-extra/<account>/<org>/<folder>/<file> under real ids, each a window file
         for it in m.windowExtra ?? [] {
             guard let c = components(it.path), seen.insert(it.path).inserted, it.role == .window, SessionsBackup.isFolderFile(c), !imported,
-                  AccountDiscovery.isUUID(c[1]), AccountDiscovery.isUUID(c[2]), !c.dropFirst().contains(where: SessionsBackup.isSignIn) else {
+                  ClaudeFiles.isUUID(c[1]), ClaudeFiles.isUUID(c[2]), !c.dropFirst().contains(where: SessionsBackup.isSignIn) else {
                 return refuse("backup.json names a window file in a place it doesn't keep them (\(it.path.prefix(80))).")
             }
             folderItems.append((it, c))
@@ -219,8 +219,8 @@ enum SessionsRestore {
             switch it.role {
             case .window:
                 // (an export keeps its accounts as fingerprints, never their ids)
-                guard c.count == 4, c[0] == "window", AccountDiscovery.isUUID(c[1]) || (imported && !move && Fingerprint.isValid(c[1])),
-                      AccountDiscovery.isUUID(c[2]) || (imported && !move && Fingerprint.isValid(c[2])) else {
+                guard c.count == 4, c[0] == "window", ClaudeFiles.isUUID(c[1]) || (imported && !move && Fingerprint.isValid(c[1])),
+                      ClaudeFiles.isUUID(c[2]) || (imported && !move && Fingerprint.isValid(c[2])) else {
                     return refuse("backup.json names a window file in a place it doesn't keep them (\(it.path.prefix(80))).")
                 }
                 windowItems.append((it, c))

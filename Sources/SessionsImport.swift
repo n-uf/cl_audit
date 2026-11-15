@@ -1004,7 +1004,7 @@ enum SessionsImport {
                 guard let c = SessionsRestore.components(it.path), seen.insert(it.path).inserted else { throw ArchiveError("A backup.json names a path that isn't a plain one (\(it.path.prefix(60))); refused.") }
                 switch it.role {
                 case .window:
-                    let named = movePart ? AccountDiscovery.isUUID(c.count == 4 ? c[1] : "") && AccountDiscovery.isUUID(c.count == 4 ? c[2] : "")
+                    let named = movePart ? ClaudeFiles.isUUID(c.count == 4 ? c[1] : "") && ClaudeFiles.isUUID(c.count == 4 ? c[2] : "")
                                          : c.count == 4 && Fingerprint.isValid(c[1]) && Fingerprint.isValid(c[2])
                     guard c.count == 4, c[0] == "window", named else { throw ArchiveError("A backup.json names a window file in a place an export doesn't keep them; refused.") }
                 case .transcript: guard c.count >= 3, c[0] == "transcripts" else { throw ArchiveError("A backup.json names a transcript in a place an export doesn't keep them; refused.") }

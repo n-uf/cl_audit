@@ -132,7 +132,7 @@ enum SideFiles {
 
     // MARK: names
 
-    static func validID(_ s: String) -> Bool { AccountDiscovery.isUUID(s) && s == s.lowercased() }
+    static func validID(_ s: String) -> Bool { ClaudeFiles.isUUID(s) && s == s.lowercased() }
     static func validSlug(_ s: String) -> Bool { s.utf8.count <= 128 && s.range(of: #"^[a-z0-9]+(-[a-z0-9]+)*$"#, options: .regularExpression) != nil }
     static func validHash(_ s: String) -> Bool { s.range(of: #"^[0-9a-f]{16}$"#, options: .regularExpression) != nil }
     static func validBackupName(_ s: String) -> Bool { s.utf8.count <= 40 && s.range(of: #"^[0-9a-f]{16}@v[1-9][0-9]{0,8}$"#, options: .regularExpression) != nil }

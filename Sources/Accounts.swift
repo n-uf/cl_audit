@@ -66,13 +66,9 @@ struct AccountFacts: Equatable {
     var plan: String?              // Claude's own name ("Ultra"), when recorded
     var org: String?               // "Personal", or a team's name
 
-    static func of(configDir: String) -> AccountFacts? { of(claudeJSON: Account.claudeJSON(configDir: configDir)) }
-
     /// Read again only when the file changed (ClaudeFiles), so it can be asked on every tick.
-    static func of(claudeJSON path: String) -> AccountFacts? { ClaudeFiles.record(at: path).flatMap(of(record:)) }
-
-    static func of(record r: ClaudeFiles.Record) -> AccountFacts? {
-        guard let seat = r.seat else { return nil }
+    static func of(configDir: String) -> AccountFacts? {
+        guard let r = Account.record(configDir: configDir), let seat = r.seat else { return nil }
         return AccountFacts(seat: seat, plan: r.plan, org: orgWords(type: r.organizationType, name: r.organizationName))
     }
 
@@ -81,36 +77,4 @@ struct AccountFacts: Equatable {
         if let t = type?.lowercased(), !t.isEmpty, !t.contains("team"), !t.contains("enterprise") { return "Personal" }
         return name.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
     }
-}
-
-enum AccountDiscovery {
-    /// What Claude Code recorded about every account it knows on this Mac, by account id: each Claude Code folder's
-    /// .claude.json and the backups Claude Code keeps of the usual one.
-    static func knownFacts(home: String = NSHomeDirectory()) -> [String: AccountFacts] {
-        var files = Detect.configFolders().map { Account.claudeJSON(configDir: $0.path) }
-        files.append((home as NSString).appendingPathComponent(".claude.json.backup"))
-        let backups = (home as NSString).appendingPathComponent(".claude/backups")
-        for n in ((try? FileManager.default.contentsOfDirectory(atPath: backups)) ?? []).sorted() where n.hasPrefix(".claude.json.backup") {
-            files.append((backups as NSString).appendingPathComponent(n))
-        }
-        var out: [String: AccountFacts] = [:]
-        for f in files {
-            guard let facts = AccountFacts.of(claudeJSON: f), facts.seat.email != nil else { continue }
-            if out[facts.seat.account] == nil { out[facts.seat.account] = facts }
-        }
-        return out
-    }
-
-    /// The accounts a Claude window's data folder has used (its Code tab files sessions under <account>/<organisation>),
-    /// with when it last did. Only ids and dates are read; no session is opened.
-    static func windowSeats(dataDir: String) -> [(seat: Seat, used: Date?)] {
-        ClaudeFiles.sessionScopes(dataDir: expand(dataDir)).compactMap { s in
-            let dates = ClaudeFiles.sessionEntries(in: s.path).map(\.modified)
-            guard !dates.isEmpty else { return nil }        // no session ever filed there: not an account it used
-            return (Seat(account: s.account, organization: s.organization, email: nil), dates.max())
-        }
-    }
-
-    static func isUUID(_ s: String) -> Bool { ClaudeFiles.isUUID(s) }
-
 }

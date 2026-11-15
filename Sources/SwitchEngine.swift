@@ -212,7 +212,7 @@ enum SwitchEngine {
             return .failure(.notReady("\(s.email) hasn't been signed in on this Mac yet, so its sessions' folder isn't known: nothing to move."))
         }
         // the ids name folders: only real ids (never a path)
-        guard [from.account, from.organization!, to.account, to.organization!].allSatisfy(AccountDiscovery.isUUID) else {
+        guard [from.account, from.organization!, to.account, to.organization!].allSatisfy(ClaudeFiles.isUUID) else {
             return .failure(.notReady("An account id isn't one Claude would use; nothing is moved."))
         }
         guard !from.same(to) else { return .failure(.notReady("That's the account in use.")) }
@@ -412,7 +412,7 @@ enum SwitchEngine {
         // the receipt's data folder must be one the profile's window uses (its own, or the usual app's)
         let dirs = [expand(FolderKey.standardDataDir), e.flatMap { Account($0).claudeUserDataDir }.map(expand)].compactMap { $0 }
             .map { ($0 as NSString).standardizingPath }
-        let ids = [r.from.account, r.from.organization, r.to.account, r.to.organization].allSatisfy(AccountDiscovery.isUUID)
+        let ids = [r.from.account, r.from.organization, r.to.account, r.to.organization].allSatisfy(ClaudeFiles.isUUID)
         guard ids, dirs.contains((expand(r.dataDir) as NSString).standardizingPath) else {
             return UndoPlaces(from: nil, to: nil, own: own, projects: projects)
         }

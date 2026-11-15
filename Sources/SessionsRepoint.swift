@@ -126,7 +126,7 @@ enum SessionsRepoint {
     }
 
     static func entryFacts(_ d: Data) -> EntryFacts? {
-        guard let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let cli = j["cliSessionId"] as? String, AccountDiscovery.isUUID(cli) else { return nil }
+        guard let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any], let cli = j["cliSessionId"] as? String, ClaudeFiles.isUUID(cli) else { return nil }
         func path(_ k: String) -> String? { (j[k] as? String).flatMap { clean($0) ? $0 : nil } }
         let title = (j["title"] as? String).map { SessionsBackup.oneLine($0, max: 80) }.flatMap { $0.isEmpty ? nil : $0 }
         return EntryFacts(cli: cli.lowercased(), title: title, cwd: path("cwd"), originCwd: path("originCwd"), worktreePath: path("worktreePath"))
@@ -172,7 +172,7 @@ enum SessionsRepoint {
         var out: [Session] = []
         for t in p.transcripts where t.rel.count == 3 && t.rel[2].hasSuffix(".jsonl") {
             let id = String(t.rel[2].dropLast(6)).lowercased()
-            guard AccountDiscovery.isUUID(id) else { continue }
+            guard ClaudeFiles.isUUID(id) else { continue }
             let path = backup.dir.appendingPathComponent(t.rel.joined(separator: "/")).path
             if let s = session(id: id, project: t.rel[1], transcript: path, entries: byCli[id] ?? []) { out.append(s) }
         }
@@ -187,7 +187,7 @@ enum SessionsRepoint {
             for s in r.steps where s.kind == .transcript && s.path.hasSuffix(".jsonl") {
                 let leaf = (s.path as NSString).lastPathComponent
                 let id = String(leaf.dropLast(6)).lowercased()
-                if AccountDiscovery.isUUID(id) { ids.insert(id) }
+                if ClaudeFiles.isUUID(id) { ids.insert(id) }
             }
         }
         guard !ids.isEmpty else { return [] }
@@ -467,7 +467,7 @@ enum SessionsRepoint {
         for pick in picks {
             let id = pick.session.lowercased()
             do {
-                guard AccountDiscovery.isUUID(id) else { throw RepointError("A session with a broken id; left as it is.") }
+                guard ClaudeFiles.isUUID(id) else { throw RepointError("A session with a broken id; left as it is.") }
                 // where its transcript is now
                 guard let found = locate(id, projects: projects) else { throw RepointError("Session \(id.prefix(8)): its transcript isn't in \(tilde(projects)); left as it is.") }
                 guard let s = session(id: id, project: found.project, transcript: found.path, entries: byCli[id] ?? []) else {
