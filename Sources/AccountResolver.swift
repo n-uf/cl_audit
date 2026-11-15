@@ -37,7 +37,7 @@ enum AccountResolver {
         // the one Claude Code is on (for the rows and lines)
         // (every "the same account" below is the one owner rule, AccountIdentity.sameAccount: a reading is known by its
         // address only, so its address decides; the Claude app's account by its id only, `byID`)
-        let stale = loginEmail.map { l in code?.email.map { !AccountIdentity.address($0).sameAccount(.address(l)) } ?? false } ?? false
+        let stale = loginEmail.map { l in code?.email.map { !sameAddress($0, l) } ?? false } ?? false
         let codeLabel = (stale ? code?.email : loginEmail) ?? code?.email ?? code.map { "account \($0.account.prefix(8))" }
         let owner = code.flatMap { c in accounts.first { $0.id != e.id && ($0.seat.map { c.sameAccount($0) } ?? false) } }
         // without the app: Claude Code's folder account is the active one (its address from its record, else the numbers')
@@ -54,7 +54,7 @@ enum AccountResolver {
             r.lit = true
         }
         // in every case: the numbers' own address decides when both are known; else the folder's id
-        if let n = stale ? code?.email : loginEmail, let a = r.email { r.differs = !AccountIdentity.address(n).sameAccount(.address(a)) }
+        if let n = stale ? code?.email : loginEmail, let a = r.email { r.differs = !sameAddress(n, a) }
         else if r.fromApp, let id = r.account { r.differs = code.map { !byID(id).sameAccount(known($0)) } ?? false }
         if let o = owner {
             r.line = "Claude Code's folder is signed in to \(o.name)'s account: its numbers show on \(o.name)."
@@ -79,6 +79,12 @@ enum AccountResolver {
             r.switchWaits = true
         }
         return r
+    }
+
+    /// Two addresses (a reading's, an account's) name one account: the one owner rule's address-only part; with either
+    /// empty, the plain comparison as before (two empty addresses are not "another account", so nothing goes stale).
+    static func sameAddress(_ a: String, _ b: String) -> Bool {
+        a.isEmpty || b.isEmpty ? a.lowercased() == b.lowercased() : AccountIdentity.address(a).sameAccount(.address(b))
     }
 
     /// An account as the Claude app's config.json and the status record name it: by its id only (neither names an
