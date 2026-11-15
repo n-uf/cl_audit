@@ -306,7 +306,7 @@ enum SessionsRestore {
         // the Claude Code sessions those entries belong to (their transcript and its folder are left out with them)
         var taskCLI = Set<String>()
         if imported {
-            for (_, c) in windowItems where c[3].hasPrefix("local_") {
+            for (_, c) in windowItems where ClaudeFiles.isEntryName(c[3]) {      // entries only: a stray file holds nothing back
                 guard let d = windowData[c.joined(separator: "/")], leftOutTask(d) != nil,
                       let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], let cli = j["cliSessionId"] as? String, !cli.isEmpty else { continue }
                 taskCLI.insert(cli.lowercased())
@@ -315,7 +315,7 @@ enum SessionsRestore {
         var handled = Set<String>()
         for (it, c) in ordered {
             let name = c[3], from = SeatID(account: c[1], organization: c[2])
-            if name.hasPrefix("local_"), name.hasSuffix(".json"), AccountDiscovery.isUUID(String(name.dropFirst(6).dropLast(5))) {
+            if ClaudeFiles.isEntryName(name) {                 // the one entry rule (anything else the window keeps is never written back)
                 guard handled.insert(name.lowercased()).inserted else { continue }
                 backupNames.insert(name.lowercased())
                 let sid = String(name.dropFirst(6).dropLast(5))
