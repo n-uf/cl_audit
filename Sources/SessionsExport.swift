@@ -899,6 +899,8 @@ enum SessionsExport {
         for f in list {
             if cancel() { return nil }
             if f.role == .window {
+                // the window's own folders (backlog/, waiting-input/) stay in this Mac's backups: an export never carries them
+                if SessionsBackup.isFolderFile(f.rel.split(separator: "/").map(String.init)) { continue }
                 let leaf = (f.rel as NSString).lastPathComponent
                 // named like an entry but not one (ClaudeFiles' one rule): never exported, counted and said
                 if leaf.hasPrefix("local_"), !ClaudeFiles.isEntryName(leaf) { pv.notEntries += 1; continue }

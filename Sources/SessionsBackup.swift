@@ -92,6 +92,17 @@ enum SessionsBackup {
     /// The highest a backup.json is written in and read up to (a backup, an export's part): 4. Only an export.json goes to 5 or 6.
     static let backupVersion = 4
 
+    /// The window's own folders inside an account folder that a backup takes the plain files of (one level, never a link): the
+    /// Code-tab backlog (backlog/tasks.json) and the waiting input. A restore puts each file back only where none is.
+    /// They are kept apart, under window-extra/<account>/<org>/<folder>/<file> and listed in the manifest's `windowExtra`, not in
+    /// `items`: a reader that doesn't know them (26.11.43 and earlier) ignores the key and the folder and restores the rest, so
+    /// the format stays as it was. Only this Mac's backups hold them; an export never does.
+    static let windowFolders = ["backlog", "waiting-input"]
+    static let extraRoot = "window-extra"
+
+    /// Whether a backup path is a file of one of the window's own folders: window-extra/<account>/<org>/<folder>/<file>.
+    static func isFolderFile(_ c: [String]) -> Bool { c.count == 5 && c[0] == extraRoot && windowFolders.contains(c[3]) }
+
     /// The lowest format that holds these items, which is what a backup and an export write: 4 for a move's part, 3 only when a format-3
     /// part is in it (the window's config, a scheduled task's prompt), else 2, so 26.11.8 still imports a plain zip from this build.
     /// (formatVersion stays the highest written: what this build reads up to.)
@@ -126,6 +137,9 @@ enum SessionsBackup {
         var dataDir: String                 // where the window's data was, and the Claude Code folder
         var codeDir: String
         var items: [Item]
+        /// The window's own folders' files (`windowFolders`: the Code-tab backlog, the waiting input), at window-extra/…: apart from
+        /// `items`, so an older reader ignores them and restores the rest. nil: none (or a backup from before they were taken).
+        var windowExtra: [Item]? = nil
         /// Setup (CLAUDE.md, skills …) left out because it is a link: names only, never where it pointed.
         var setupLeftOut: [String]? = nil
         /// The setup units ("skill:guard") that hold a file settings.json's hooks or status line run, learned from the live settings.json
@@ -303,6 +317,19 @@ enum SessionsBackup {
                               let d = FileManager.default.contents(atPath: path),
                               let j = try? JSONSerialization.jsonObject(with: d) as? [String: Any] {
                         g.counts.tasks += (j["scheduledTasks"] as? [Any])?.count ?? 0
+                    }
+                }
+                // the window's own folders (the Code-tab backlog, the waiting input): a real folder only, its plain files, one level
+                for sub in windowFolders {
+                    let sdir = (odir as NSString).appendingPathComponent(sub)
+                    guard mode(sdir)?.kind == S_IFDIR else { continue }
+                    for name in names(sdir) {
+                        let path = (sdir as NSString).appendingPathComponent(name)
+                        guard let m = mode(path), m.kind == S_IFREG else { continue }
+                        // (over a window file's own cap, 64 MB, it isn't one of the window's: never taken, counted)
+                        if skipped(name) || m.links > 1 || m.size > 64 << 20 { g.leftOut += 1; continue }
+                        g.files.append(Planned(role: .window, src: path, rel: "\(extraRoot)/\(account)/\(org)/\(sub)/\(name)", original: path, bytes: m.size))
+                        g.bytes += m.size
                     }
                 }
             }
@@ -539,15 +566,18 @@ enum SessionsBackup {
                               path: "records/receipt.json", bytes: Int64(data.count)))
         }
 
+        // the window's own folders' files go apart (windowExtra), where an older reader doesn't look
+        let extra = items.filter { isFolderFile($0.path.split(separator: "/").map(String.init)) }
+        let named = items.filter { !isFolderFile($0.path.split(separator: "/").map(String.init)) }
         let m = Manifest(id: id, profile: s.profile, kind: kind, created: now, seconds: 0, accounts: g.accounts, counts: g.counts,
                          window: window, transcripts: transcripts,
                          bytes: items.reduce(0) { $0 + $1.bytes }, cloned: cloned, copied: copied, copiedBytes: copiedBytes,
-                         leftOut: leftOut, dataDir: s.dataDir, codeDir: s.codeDir, items: items,
+                         leftOut: leftOut, dataDir: s.dataDir, codeDir: s.codeDir, items: named, windowExtra: extra.isEmpty ? nil : extra,
                          setupLeftOut: setupLeftOut.isEmpty ? nil : setupLeftOut.sorted(), setupHookUnits: g.setupHookUnits, configLeftOut: configLeftOut,
                          envBlanked: envBlanked, secretBlanked: secretBlanked, secretLeftOut: secretLeftOut.isEmpty ? nil : secretLeftOut.sorted(),
                          secretHooksDropped: secretHooksDropped, secretRulesDropped: secretRulesDropped)
         var out = m
-        out.version = neededVersion(items)
+        out.version = neededVersion(named)
         out.seconds = (Date().timeIntervalSince(started) * 10).rounded() / 10
         try put(try encode(out), "backup.json", in: partial, dirFor)
         guard CreateOnly.rename(partial.path, to: final.path) else { throw BackupError("couldn't put the backup in place") }
@@ -845,6 +875,10 @@ enum SessionsBackup {
             let other = otherFiles(m)
             if other > 0 { parts.append(n(other, "other file", "other files")) }
             if m.counts.tasks > 0 { parts.append(n(m.counts.tasks, "task", "tasks")) }
+            // the window's own folders (windowExtra): named, so a backup that holds a backlog says so
+            let extra = (m.windowExtra ?? []).map { $0.path.split(separator: "/").map(String.init) }
+            if extra.contains(where: { $0.count == 5 && $0[3] == "backlog" }) { parts.append("backlog") }
+            if extra.contains(where: { $0.count == 5 && $0[3] == "waiting-input" }) { parts.append("waiting input") }
             if m.items.contains(where: { $0.role == .sidebar }) { parts.append("sidebar") }
             if m.items.contains(where: { $0.role == .config }) { parts.append("MCP settings") }
         } else {

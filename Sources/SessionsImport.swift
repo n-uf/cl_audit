@@ -990,6 +990,8 @@ enum SessionsImport {
                   let m = try? dec.decode(SessionsBackup.Manifest.self, from: bj) else { throw ArchiveError("A profile's backup.json is missing or can't be read; refused.") }
             guard m.version >= 1, m.version <= SessionsBackup.backupVersion else { throw ArchiveError("That export holds a backup from a newer cl_audit; nothing is imported from it.") }
             guard SessionsBackup.validID(m.id), SessionsBackup.validProfile(m.profile), m.items.count <= maxFiles else { throw ArchiveError("A profile's backup.json names things that aren't plain ones; refused.") }
+            // the window's own folders (backlog/, waiting-input/) stay in this Mac's backups: an export never carries them
+            guard m.windowExtra == nil else { throw ArchiveError("A profile's backup.json names window files an export doesn't carry; refused.") }
             // a move's part (format 4) names its window folders by the real ids: only in a move, only from an image; every other part
             // has fingerprints there. The two never mix in one file.
             let movePart = m.move == true
