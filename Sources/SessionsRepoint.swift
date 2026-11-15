@@ -889,12 +889,20 @@ enum SessionsRepoint {
         defer { lock?.release() }
         guard var r = store.load(id) else { throw RepointError("No record of that change.") }
         guard r.undone == nil else { return r }
+        // which Claude Code sessions run is looked at before anything is written: if it can't be read, nothing is taken back (a failed
+        // look must not turn the undo into one that goes ahead as if none ran)
+        var running = Set<String>()
+        if r.steps.contains(where: { !$0.settled }) {
+            guard let live = SessionsRestore.runningSessions() else {
+                throw RepointError("It couldn't be checked which Claude Code sessions run; nothing was taken back. Try again.")
+            }
+            running = live
+        }
         // the prompt history and trust this Pick wrote for a moved session (SessionsSideApply.swift) go first; the session waits for its
         // folder again
         do { r.problems += try SideFiles.undoPick(id, windowClosed: windowClosed) } catch { throw RepointError("\(error)") }
         for k in r.sessions.indices { r.sessions[k].sideWritten = nil }
         let sessions = r.steps.map(\.session).reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }
-        let running = SessionsRestore.runningSessions() ?? []
         for sid in sessions.reversed() {
             let idx = r.steps.indices.filter { r.steps[$0].session == sid && !r.steps[$0].settled }
             if idx.isEmpty { continue }
