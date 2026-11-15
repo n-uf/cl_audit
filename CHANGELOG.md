@@ -8,7 +8,14 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- The dashboard card: when a profile has no numbers to show, it says why in one heading and one sentence (Terminal signed out, its sign-in expired, Terminal on another account or on another profile's account, the Keychain not handing the sign-in over, a switch with one step left), with one compact key. Standby accounts no longer sit on the card; while a limit is full, a compact Switch account key opens a menu of them, by address only. The refresh time sits in a badge, and every key is compact.
+- Settings ▸ Accounts shows the profile's accounts as In use and Standby. Click anywhere on a standby account to pick it for a switch. An account in use that Claude Code in Terminal isn't signed in to is marked red, with Sign in….
+- When the Keychain doesn't hand the sign-in over, the last numbers stay and the card asks you to unlock it, then Refresh now.
+- After a switch, the waiting line now reads "Switching to … : one step left. Sign the Claude app in to … to finish." instead of "Switched to …".
+- "Log in" is now "Sign in" across cl_audit. Claude Code's own `claude auth login` and `/login` keep their names.
+- Menus no longer say "· in use": the account in use is ticked.
+- Twelve long keys got short titles; what they used to spell out is in their hover text.
+- A profile's Settings list their sections as Profile, Claude Code, Claude window, Alerts, Sessions.
 
 ## 26.11.32 — 2026-11-14
 
