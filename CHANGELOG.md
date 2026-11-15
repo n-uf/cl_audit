@@ -13,6 +13,7 @@ Nothing pending.
 ## 26.11.49 — 2026-11-15
 
 - New profile now refuses another profile's standby account when you type its address (before, the address went ahead), and also one remembered only by its address when Claude Code signs in to it and at Finish (before, only a standby account with its ids was refused there). The refusals now name it as a standby account: "That's a standby account of “Work”. One profile per account."
+- Every "whose account is this" check now follows that one rule. A profile not linked yet whose folder is signed in to an account another profile remembers on standby by its address only now gets the "signed in to the same Claude account as …" line in Settings (before, only one with its ids counted), and moving to the default profile no longer offers to keep the old profile as a standby account the default profile already has that way. Account ids written in another case (a hand-edited file) now count as the same account everywhere; two seats with the same address in different organisations stay two accounts.
 
 ## 26.11.48 — 2026-11-15
 
