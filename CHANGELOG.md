@@ -8,6 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
+- The Switch page now says, before you press Switch, which files named like a Code-tab session will stay with the old account ("Left with ann: 2 files named like a Code-tab session that aren't one…"). After a switch that stopped before moving anything, it no longer says so, since nothing was left behind.
 - The Switch page's account in use now has the same green lamp as the card, the menu bar and Settings: off while the sign-in can't be read, has run out, is gone, or is on another account than the folder's or on another profile's.
 - In Settings ▸ Accounts, the lamp of the account in use now also goes off when Claude Code's folder is on another profile's account and that profile has since been renamed or removed. "Open" now opens that profile by its id, so it never opens another profile with the same name.
 - When Claude Code's folder is signed in to another profile's account, the dashboard card, the Switch page, the Dock icon's usage panel and menu, and the menu bar menu now name the profile's own account instead of the other profile's, or none when the profile has none of its own.

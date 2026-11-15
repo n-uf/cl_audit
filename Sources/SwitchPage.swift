@@ -340,6 +340,22 @@ struct SwitchPage: View {
     }
     private var moves: Bool { plan?.moves == true || runner.receipt != nil }
 
+    /// Before Switch is pressed: the files in the old account's folder named like a Code-tab session that aren't one, from
+    /// the plan read now (SwitchEngine's `odd`, the receipt's leftInPlace), in the runner's own words (leftWords). Once it
+    /// started, the runner's note says it (stayWords), so nil then.
+    static func leftBefore(_ p: SwitchPlan?, started: Bool) -> String? {
+        guard !started, let p else { return nil }
+        return SwitchRunner.leftWords(p.odd, old: p.from.email.map(AccountNames.short) ?? "the old account")
+    }
+
+    /// The runner's note as the page shows it: after a switch that moved nothing (it stopped before the move), without
+    /// the files it would have left behind (nothing moved, so nothing was left).
+    static func noteShown(_ note: String?, plan: SwitchPlan?, movedNothing: Bool) -> String? {
+        guard movedNothing, let n = note, let left = leftBefore(plan, started: false), n.contains(left) else { return note }
+        let rest = n.replacingOccurrences(of: left, with: "").trimmingCharacters(in: .whitespaces)
+        return rest.isEmpty ? nil : rest
+    }
+
     private func sessionWords(_ p: SwitchPlan?) -> String {
         guard let p, p.moves else { return "none of the Claude window's sessions are on \(from), so nothing moves" }
         func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
@@ -405,7 +421,9 @@ struct SwitchPage: View {
                           : "\(name) is still on \(from): Claude Code on \(entry.configDir), its sessions, the Claude window and \(name)'s settings are as they were.")
                 }
             }
-            if let n = runner.moveNote { SRowLine(text: n) }
+            // (stopped before the move: nothing was left behind, so the note says nothing of it)
+            if let n = Self.noteShown(runner.moveNote, plan: runner.planned,
+                                      movedNothing: runner.receipt == nil && runner.phase != .undone) { SRowLine(text: n) }
         }
     }
 
@@ -430,6 +448,7 @@ struct SwitchPage: View {
             SRow(label: "Stays", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
             SRowLine(text: "\(from) stays on \(name) as a standby account: nothing read, switch back any time.")
             if let n = runner.moveNote { SRowLine(text: n) }
+            else if let l = Self.leftBefore(plan, started: runner.phase != .ready) { SRowLine(text: l) }
         }
     }
 
