@@ -73,7 +73,7 @@ enum SettingNotes {
         if a.dockRuns != b.dockRuns {
             let text: String
             switch b.dockRuns {
-            case .atLogin: text = "\(p)'s Dock icon starts when you log in to your Mac and stays until you quit it."
+            case .atLogin: text = "\(p)'s Dock icon starts when you sign in to your Mac and stays until you quit it."
             case .withWindow: text = b.claudeWindow ? "\(p)'s Dock icon starts when its Claude window opens and quits 10 s after the window quits."
                                                     : "\(p) has no Claude window, so its Dock icon runs only when you start it."
             case .whenStarted: text = "\(p)'s Dock icon runs only when you start it. Its usage is read either way."

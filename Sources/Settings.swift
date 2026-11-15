@@ -604,7 +604,7 @@ final class SettingsModel: ObservableObject {
                 self.discarding = false
                 self.draft = nil
                 self.selection = self.accounts.first?.id
-                self.message = "Cancelled \(d.name.isEmpty ? "the new profile" : d.name); its folders and login were removed"
+                self.message = "Cancelled \(d.name.isEmpty ? "the new profile" : d.name); its folders and sign-in were removed"
             }
         }
     }
@@ -1686,7 +1686,7 @@ struct AccountSettings: View {
             } else {
                 // signed out or expired: that one line, in the box only, with Log in… (never "no numbers yet")
                 limitsOrWhy(status, entry: entry, none: status?.state == "noLogin" ? noSignInWords
-                                                       : status?.state == "expired" ? "The sign-in ran out: Log in…, or turn on Renew sign-in." : nil)
+                                                       : status?.state == "expired" ? "The sign-in ran out: Sign in…, or turn on Renew sign-in." : nil)
                 // signed out or expired: that line alone says it (no "Claude Code's account shows" beside it)
                 if let n = v.line, move == nil, !["noLogin", "expired"].contains(status?.state) {
                     BoxNote(text: n, size: 10.5).fixedSize(horizontal: false, vertical: true)
@@ -1738,11 +1738,11 @@ struct AccountSettings: View {
             switch r.phase {
             case .waiting:
                 HStack(spacing: 8) {
-                    BoxNote(text: "Logging in: finish it in Terminal and the browser.", tone: .caution).lineLimit(1)
+                    BoxNote(text: "Signing in: finish it in Terminal and the browser.", tone: .caution).lineLimit(1)
                     Spacer(minLength: 6)
                     Button("Cancel") { r.cancel() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 }
-            case .reached: BoxNote(text: "Logged in.", size: 10.5)
+            case .reached: BoxNote(text: "Signed in.", size: 10.5)
             case .timedOut: BoxNote(text: "No sign-in came in 10 minutes; nothing changed.", tone: .caution)
             case .other(let e): BoxNote(text: "Signed in as \(Privacy.masked(e)): that's the account in use now.", tone: .caution)
             case .failed(let why): BoxNote(text: why, tone: .danger)
@@ -1947,7 +1947,7 @@ struct AccountSettings: View {
         return "Signed in, but the sign-in isn't in a form cl_audit knows (Claude Code \(v)): Refresh now, or sign in again from Terminal."
     }
 
-    /// "Log in…" (the one key for a lost, expired or signed-out sign-in, as everywhere): Claude Code's own sign-in in
+    /// "Sign in…" (the one key for a lost, expired or signed-out sign-in, as everywhere): Claude Code's own sign-in in
     /// Terminal on the profile's folder, with the account in use's address filled in, watched like a switch
     /// (SwitchRunner.signInAgain); with no account known, a plain sign-in.
     func logInKey(email: String?) -> some View {
@@ -2080,7 +2080,7 @@ struct AccountSettings: View {
         }
         if move != nil {
             if let linked {
-                items.append(LoginItem(id: "back", title: line(linked, ["\(name)'s account", "log in…"]), enabled: canSignIn) {
+                items.append(LoginItem(id: "back", title: line(linked, ["\(name)'s account", "sign in…"]), enabled: canSignIn) {
                     if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why }
                     else if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: linked) }
                 })
@@ -2091,7 +2091,7 @@ struct AccountSettings: View {
         // without Claude Code the items that need it are greyed; this one, right above them, says why
         if !canSignIn { items.append(LoginItem(id: "install", title: ClaudeInstall.missingInstall) { model.showInstallHelp() }) }
         if move == nil {
-            items.append(LoginItem(id: "again", title: "Log in…", enabled: canSignIn) { signInAgain(email: linked ?? here) })
+            items.append(LoginItem(id: "again", title: "Sign in…", enabled: canSignIn) { signInAgain(email: linked ?? here) })
         }
         items.append(LoginItem(id: "renew", title: "Renew sign-in by itself", enabled: canSignIn, kind: .toggle(entry.autoRenew)) {
             entry.autoRenew.toggle()
@@ -2120,7 +2120,7 @@ struct AccountSettings: View {
                     .allowsHitTesting(model.dockRestarting == nil || model.dockRestarting == entry.id)
             }
             if !entry.iconHidden {
-                SRow(label: "Runs", info: "At login: always there, from when you log in to the Mac. With its window: starts when \(name)'s Claude window opens and quits 10 s after it quits (a Claude update restarts the window). When started: only when you start it (a click on its Dock tile, or its switch on the dashboard).") {
+                SRow(label: "Runs", info: "At login: always there, from when you sign in to the Mac. With its window: starts when \(name)'s Claude window opens and quits 10 s after it quits (a Claude update restarts the window). When started: only when you start it (a click on its Dock tile, or its switch on the dashboard).") {
                     Menu {
                         Picker("", selection: $entry.dockRuns) { ForEach(DockRuns.allCases) { Text($0.title).tag($0) } }
                             .pickerStyle(.inline).labelsHidden()
@@ -2164,7 +2164,7 @@ struct AccountSettings: View {
     /// The grey line under Runs: what the current choice means.
     private var runsWords: String {
         switch entry.dockRuns {
-        case .atLogin: return "Always there, from when you log in."
+        case .atLogin: return "Always there, from when you sign in."
         case .withWindow:
             return entry.claudeWindow ? "Starts with the Claude window, quits 10 s after it."
                                       : "No Claude window, so it runs only when you start it."

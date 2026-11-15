@@ -68,12 +68,12 @@ struct ProfileShow {
     /// Under the line when there are no numbers, in place of "No numbers yet": in the split, what gives the numbers.
     var numbersHint: String? { splitWords?.numbersHint }
 
-    /// The Dock panel's age line when the sign-in is why there are no numbers ("Login expired", "Signed out"), else nil.
+    /// The Dock panel's age line when the sign-in is why there are no numbers ("Sign-in expired", "Signed out"), else nil.
     var noNumbersWords: String? {
-        display.none == .expired ? "Login expired" : display.none == .signedOut ? "Signed out" : nil
+        display.none == .expired ? "Sign-in expired" : display.none == .signedOut ? "Signed out" : nil
     }
 
-    /// The address a Log in fills in: in the split only the app's own (nil: none filled in, never Claude Code's), else the
+    /// The address a Sign in fills in: in the split only the app's own (nil: none filled in, never Claude Code's), else the
     /// folder's (SplitUsage.loginAddress over the same record).
     var loginAddress: String? { display.split != nil ? splitWords?.loginEmail : record?.expectedEmail }
 }

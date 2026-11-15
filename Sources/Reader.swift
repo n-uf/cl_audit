@@ -507,7 +507,7 @@ final class UsageReader {
         }
         renewing = true
         defaults.set(Date(), forKey: renewKey)
-        renewNote = "Renewing the login through Claude Code…"
+        renewNote = "Renewing the sign-in through Claude Code…"
         save()
         let acct = account, gen = generation, seat = entry.seat
         DispatchQueue.global(qos: .utility).async {
@@ -520,7 +520,7 @@ final class UsageReader {
                 // renewed for a folder or account it no longer reads: its words would be about another sign-in
                 guard gen == self.generation else { return }
                 self.renewNote = claude == nil ? "Couldn't renew: Claude Code isn't installed"
-                    : ok ? "Login renewed at \(Self.when(Date()))" : "Couldn't renew the login: run Claude Code for this profile once"
+                    : ok ? "Sign-in renewed at \(Self.when(Date()))" : "Couldn't renew the sign-in: run Claude Code for this profile once"
                 self.nextFetch = .distantPast
                 self.forceLoginRead = true
                 self.tick()

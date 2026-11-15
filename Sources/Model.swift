@@ -147,7 +147,7 @@ enum FetchState: Equatable {
         switch self {
         case .idle, .ok: return nil
         case .noLogin: return "No Claude Code sign-in for this profile"
-        case .expired: return "Login expired: Log in…, or use Claude Code once to renew it"
+        case .expired: return "Sign-in expired: Sign in…, or use Claude Code once to renew it"
         case .denied: return Self.deniedWords
         case .unreadable: return Self.unreadableWords
         case .rateLimited: return "Usage service busy, retrying later"

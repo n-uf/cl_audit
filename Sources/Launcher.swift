@@ -208,10 +208,10 @@ struct AccountRow: Identifiable {
     }
 
     var subtitle: String {
-        if mismatch { return "login is a different account" }
+        if mismatch { return "sign-in is a different account" }
         if view.clash != nil { return view.line ?? "another profile's account" }
-        if status?.state == "expired" { return "login expired" }
-        if status?.state == "noLogin" { return "no Claude Code login" }
+        if status?.state == "expired" { return "sign-in expired" }
+        if status?.state == "noLogin" { return "no Claude Code sign-in" }
         if status?.state == "denied" { return "signed in, can't read it yet" }
         if status?.state == "unreadable" { return "signed in, can't read this kind" }
         // the account in use as the profile's record says it (AccountResolver): the palette rows show this

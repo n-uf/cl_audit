@@ -70,7 +70,7 @@ struct IconStatus: Codable {
     }
 
     /// The sign-in needs the person: another account than the folder names, run out, or none. Every surface then shows
-    /// one key, Log in… (the card's needsLogin, the Dock menu's and the menu bar's).
+    /// one key, Sign in… (the card's needsLogin, the Dock menu's and the menu bar's).
     var needsLogin: Bool { mismatch || state == "expired" || state == "noLogin" }
 
     /// The sign-in is on another account than the folder names (both addresses known, any case).
@@ -79,10 +79,10 @@ struct IconStatus: Codable {
     /// Signed in: not expired and not signed out (an expired sign-in, or none, shows no numbers at all).
     var signedIn: Bool { state != "expired" && state != "noLogin" }
 
-    /// The card's words for it, which quick chat's line says too: "login expired", or nil when the sign-in is fine.
+    /// The card's words for it, which quick chat's line says too: "sign-in expired", or nil when the sign-in is fine.
     var loginWords: String? {
         guard needsLogin else { return nil }
-        return state == "expired" ? "login expired" : state == "noLogin" ? "no Claude Code login" : "login is a different account"
+        return state == "expired" ? "sign-in expired" : state == "noLogin" ? "no Claude Code sign-in" : "sign-in is a different account"
     }
 
     /// What may be shown of the record now, the same rule wherever saved numbers are written, read or merged:

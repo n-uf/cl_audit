@@ -28,7 +28,7 @@ struct DetailsInfo {
     var scoped: [ScopedLimit] = []
     var credits: Credits? = nil
     var noFiveHour = false              // the plan has no 5-hour limit (Ultra): no 5-hour row
-    /// Why there are no numbers when the sign-in is the reason ("Login expired", "Signed out"): the age line says it.
+    /// Why there are no numbers when the sign-in is the reason ("Sign-in expired", "Signed out"): the age line says it.
     var noNumbers: String? = nil
 
     /// The active account (AccountResolver, from the profile's record): green lamp and "in use"; nil: the sign-in line.
@@ -36,7 +36,7 @@ struct DetailsInfo {
     var activeLit = true
     /// "Usage: Claude Code on b…" when the numbers are another account's, or why Claude Code's account is shown.
     var activeNote: String? = nil
-    /// The split (SplitUsage): its short key, "Log in to P@… in Terminal" (the panel's width is fixed), in place of Log in….
+    /// The split (SplitUsage): its short key, "Sign in to P@… in Terminal" (the panel's width is fixed), in place of Sign in….
     var splitKey: String? = nil
 }
 
@@ -81,7 +81,7 @@ struct AgoButton: View {
     let date: Date?
     var source: String? = nil
     var refreshing = false
-    /// No numbers because of the sign-in ("Login expired"): said instead of "Reading usage…", which would never end.
+    /// No numbers because of the sign-in ("Sign-in expired"): said instead of "Reading usage…", which would never end.
     var noNumbers: String? = nil
     let action: () -> Void
     @State private var hover = false
@@ -148,7 +148,7 @@ struct DetailsView: View {
                             Text("\(a) · in use").font(.caption).foregroundStyle(.secondary).lineLimit(1).hidesEmail(true)
                         }
                     } else {
-                        Text(info.login ?? "No Claude Code login").font(.caption).foregroundStyle(.secondary)
+                        Text(info.login ?? "No Claude Code sign-in").font(.caption).foregroundStyle(.secondary)
                             .hidesEmail(info.login != nil)
                     }
                     if let n = info.activeNote {
@@ -191,7 +191,7 @@ struct DetailsView: View {
                 Button("Claude", action: actions.openClaude).buttonStyle(.pill(Color(nsColor: info.accent), compact: true))
                     .keyboardShortcut(.defaultAction).help("Open Claude for this profile")
                 Button("Dashboard", action: actions.dashboard).buttonStyle(PillButtonStyle(tint: nil, compact: true))
-                if info.needsLogin { Button("Log in…", action: actions.logIn).buttonStyle(.pill(.red, compact: true)) }
+                if info.needsLogin { Button("Sign in…", action: actions.logIn).buttonStyle(.pill(.red, compact: true)) }
                 Spacer(minLength: 4)
                 Button(action: actions.settings) { Image(systemName: "gearshape") }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Settings…")
@@ -227,7 +227,7 @@ struct CompactView: View {
             }
             CardLimits(limits: info.limits, design: info.design, credits: info.credits)
             if info.mismatch || info.problem != nil {
-                Text(info.mismatch ? "Login is a different account" : info.problem ?? "")
+                Text(info.mismatch ? "Sign-in is a different account" : info.problem ?? "")
                     .font(.caption2).foregroundStyle(.orange).lineLimit(1)
             }
         }
