@@ -459,7 +459,8 @@ enum SessionsMove {
         p.notes = f.notes
         var taken = here                                    // what is here, and what this plan makes, as it goes
         for fp in f.profiles.sorted(by: { $0.place != $1.place ? $0.place < $1.place : $0.name < $1.name }) {
-            let seats = fp.accounts.map { Seat(account: $0.seat.account, organization: $0.seat.organization) }
+            // (with their addresses, as apply's made profiles have them: one remembered here by its address only is this account too)
+            let seats = fp.accounts.map { Seat(account: $0.seat.account, organization: $0.seat.organization, email: $0.email) }
             if let owner = here.first(where: { e in seats.contains { e.has($0) } }) {
                 p.here.append(Here(name: fp.name, here: owner.name, id: owner.id, part: fp.part,
                                    why: owner.name.lowercased() == fp.name.lowercased() ? "the same account" : "its account is \(owner.name)'s here"))
