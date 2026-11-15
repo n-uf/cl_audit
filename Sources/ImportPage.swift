@@ -729,7 +729,8 @@ struct ImportPage: View {
                     VStack(alignment: .leading, spacing: 6) {
                         value(MoveWords.done(r))
                         line("They aren't signed in and have no Dock icon yet: what to do next for each is listed below.")
-                        Button("Take back the profiles it made") { runner.undoMove() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.moveBusy)
+                        Button("Undo import") { runner.undoMove() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.moveBusy)
+                            .help("Take back the profiles it made")
                     }
                 }
             } else if let p = runner.movePlan {
@@ -924,8 +925,9 @@ struct MoveSteps: View {
                             Text(s).font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
                         }
                         if m.inDock, let e = model.accounts.first(where: { $0.id == m.id }), e.iconHidden {
-                            Button("Put \(m.name) in the Dock") { model.setUsageInDock(m.id, true) }
+                            Button("Add to Dock") { model.setUsageInDock(m.id, true) }
                                 .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(model.dockRestarting != nil)
+                                .help("Put \(m.name) in the Dock")
                         }
                     }
                 }
@@ -936,7 +938,8 @@ struct MoveSteps: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Text("Undo this import (above) first; then this takes back the profiles it made, their empty folders and the settings it took.")
                             .font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
-                        Button("Take back the profiles it made") { runner.undoMove() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.moveBusy)
+                        Button("Undo import") { runner.undoMove() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().disabled(runner.moveBusy)
+                            .help("Take back the profiles it made")
                         if let n = runner.moveNote { Text(n).font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true) }
                     }
                 }

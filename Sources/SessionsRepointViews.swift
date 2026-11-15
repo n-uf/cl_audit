@@ -61,7 +61,8 @@ struct FoldersRow: View {
                     }
                 }
             } else if runner.phase == .ready {
-                Button("Pick its folder on this Mac…") { runner.pickFolder(s.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                Button("Pick folder…") { runner.pickFolder(s.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    .help("Pick its folder on this Mac")
             }
         }
         .padding(8).frame(maxWidth: .infinity, alignment: .leading)

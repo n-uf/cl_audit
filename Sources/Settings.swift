@@ -1928,7 +1928,8 @@ struct AccountSettings: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text("This account is also what the usual Claude app and the claude command in Terminal use (~/.claude), but \(entry.name.isEmpty ? "this profile" : entry.name) opens its own window, so Claude opened from the Dock shows other sessions.")
                     .font(.system(size: 10.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
-                Button("Make the default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                Button("Default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    .help("Make the default profile")
             }
             .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 2)
         }
@@ -2244,7 +2245,8 @@ struct AccountSettings: View {
             }
             if entry.claudeWindow { SRowLine(text: DesktopMode.opensWords(entry.desktop)) }
             if entry.claudeWindow, entry.desktop == .separate, DefaultProfile.situation(model.accounts)?.old.id == entry.id {
-                let key = Button("Make the default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                let key = Button("Default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    .help("Make the default profile")
                 let why = Text("Then Claude opens with these sessions.").font(.system(size: 10.5)).foregroundStyle(face.muted)
                 // one line when it fits, else the words under the key (never cut off)
                 ViewThatFits(in: .horizontal) {

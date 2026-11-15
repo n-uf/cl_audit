@@ -550,7 +550,7 @@ struct ExportPage: View {
         case .working: Button("Stop") { runner.stop() }.buttonStyle(.pill(FaceTheme.ledRed, compact: true))
         case .done(let o):
             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([o.file]) }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
-            Button("Back to \(name)'s settings") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            Button("‹ Back") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).help("Back to \(name)'s settings")
         case .preview where !runner.move:
             Button("Move to another Mac") { runner.movePreset() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
         default: EmptyView()

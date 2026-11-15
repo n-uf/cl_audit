@@ -793,8 +793,8 @@ struct NewAccountView: View {
                             .font(.system(size: 11.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
                         if canSignInAgain {
                             // signing in again in the folder this setup made replaces its sign-in; no sign-out first
-                            Button("Sign in to another account…") { askAddress() }
-                                .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize().padding(.top, 3)
+                            Button("+ Sign in to another account…") { askAddress() }
+                                .buttonStyle(.link).font(.system(size: 12)).fixedSize().padding(.top, 3)     // a link, not a big key
                         }
                     } else {
                         sub(Privacy.masked(email) + (draft.source == .existing && !draft.started ? ", already in the folder" : ""))

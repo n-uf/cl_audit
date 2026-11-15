@@ -30,7 +30,8 @@ struct DefaultProfileCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(DefaultProfile.why(s)).font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 8) {
-                    Button("Make the default profile…") { model.showDefaultProfile() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+                    Button("Default profile…") { model.showDefaultProfile() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+                        .help("Make the default profile")
                     Button("Not now") { DefaultProfile.dismissed = true; model.objectWillChange.send() }
                         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 }
@@ -45,7 +46,8 @@ struct DefaultProfileCard: View {
             SRow(label: "Opens directly", first: true, stacked: true) {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Not \(s.old.name)'s window").font(.system(size: 12)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
-                    Button("Make the default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                    Button("Default profile…") { model.showDefaultProfile() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                        .help("Make the default profile")
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -167,7 +169,8 @@ struct DefaultProfilePage: View {
     @ViewBuilder private var topKeys: some View {
         switch runner.phase {
         case .ready, .failed:
-            Button("Make the default profile") { consent = ConsentRequest(flow: "Making the default profile") { runner.start() } }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            Button("Make default") { consent = ConsentRequest(flow: "Making the default profile") { runner.start() } }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+                .help("Make the default profile")
                 .disabled(preview == nil && counts == nil)
             Button("Not now") { DefaultProfile.dismissed = true; model.selection = model.homeSelection }
                 .buttonStyle(PillButtonStyle(tint: nil, compact: true))
@@ -342,7 +345,8 @@ struct DefaultProfilePage: View {
             } else {
                 if runner.canKeepOldAsStandby {
                     HStack(spacing: 8) {
-                        Button("Keep \(name) as a standby account") { runner.keepOldAsStandby() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+                        Button("Keep as standby") { runner.keepOldAsStandby() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+                            .help("Keep \(name) as a standby account")
                     }
                     SRowLine(text: "Its account is remembered on the default profile, signed out: switching to it signs it in on the default profile's folder. Its own folder is meant to stay as it is, with its sessions and settings.")
                 }

@@ -127,14 +127,14 @@ struct RestorePage: View {
             Button(imp ? "Undo this import" : "Undo this restore") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
         case .done:
             Button(imp ? "Undo this import" : "Undo this restore") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
-            Button("Back to \(name)'s settings") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            Button("‹ Back") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).help("Back to \(name)'s settings")
         case .stopped:
             Button(imp ? "Undo this import" : "Undo this restore") { runner.undo() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
             // also with nothing left to write: a restore stopped after its last file is only marked finished
             Button("Finish \(imp ? "importing" : "restoring")\(count > 0 ? " \(count)" : "")") { consent = ConsentRequest(flow: flow) { runner.start() } }
                 .buttonStyle(.pill(FaceTheme.ledOn, compact: true)).disabled(plan == nil || runner.notYet != nil)
         case .undone:
-            Button("Back to \(name)'s settings") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            Button("‹ Back") { model.selection = entry.id }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).help("Back to \(name)'s settings")
         case .ready, .failed:
             EmptyView()
         }

@@ -147,10 +147,11 @@ struct SwitchPage: View {
             Button("Cancel") { runner.cancel() }.buttonStyle(.pill(FaceTheme.ledRed, compact: true))
         case .reached:
             if !again, let back = cameFrom {
-                Button("Switch back to \(AccountNames.short(back.email))…") { model.showSwitch(AccountEntry.switchKey(entry.id, back.id)) }
+                Button("Switch back…") { model.showSwitch(AccountEntry.switchKey(entry.id, back.id)) }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true))
+                    .help("Switch back to \(Privacy.masked(back.email))")
             }
-            Button("Back to \(name)'s settings") { leave() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            Button("‹ Back") { leave() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).help("Back to \(name)'s settings")
         case .other(let e):
             Button(again ? "Log in…" : "Sign in as \(to) again") { if again { runner.retry() } else { consent = ConsentRequest(flow: "Account switching") { runner.retry() } } }
                 .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
@@ -162,11 +163,11 @@ struct SwitchPage: View {
             Button("Try again") { if again { runner.retry() } else { consent = ConsentRequest(flow: "Account switching") { runner.retry() } } }
                 .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
             if runner.canUndo { undoKey }
-            Button("Back to \(name)'s settings") { leave() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+            Button("‹ Back") { leave() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).help("Back to \(name)'s settings")
         case .closing:
             Button("Cancel") { runner.cancel() }.buttonStyle(.pill(FaceTheme.ledRed, compact: true))
         case .undone:
-            Button("Back to \(name)'s settings") { leave() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true))
+            Button("‹ Back") { leave() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).help("Back to \(name)'s settings")
         case .ready, .moving:
             EmptyView()
         }
