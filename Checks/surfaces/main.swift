@@ -745,7 +745,8 @@ do {
     // Claude app's log lines we parse, our own log lines, the launch names ("login", "logout") and test sample text
     let wordsRe = try! NSRegularExpression(pattern: #"(?i)\blog(?:ged|ging)?[ -](?:in|out)\b|\blogin\b|\blogout\b"#)
     let wordsExempt = ["at login", "login items", "login item", "login shell", "login session", "auth login", "/login", "/logout",
-                       "login-state transition", "account logged out", "loggedout", "usage-n-uf-login", "-login-page-"]
+                       "login-state transition", "account logged out", "loggedout", "usage-n-uf-login", "-login-page-",
+                       "login-item"]          // a command-line flag (--forget-login-item), macOS's Login Items, never shown
     func loginWording(inLiteral s: String) -> Bool {
         let t = s.lowercased()
         if t == "login" || t == "logout" { return false }          // launch names (FolderGuard's seam), never shown
