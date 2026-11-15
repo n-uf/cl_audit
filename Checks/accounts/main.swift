@@ -409,7 +409,9 @@ do {
         posix_spawn_file_actions_init(&fa)
         defer { posix_spawn_file_actions_destroy(&fa) }
         posix_spawn_file_actions_addchdir_np(&fa, standDir)
-        let cargv = argv.map { strdup($0) } + [nil], cenv = ["CLAUDE_CONFIG_DIR=/x/standin", "A=1"].map { strdup($0) } + [nil]
+        let standinEnv: [String] = ["CLAUDE_CONFIG_DIR=/x/standin", "A=1"]
+        let cargv: [UnsafeMutablePointer<CChar>?] = argv.map { strdup($0) } + [nil]
+        let cenv: [UnsafeMutablePointer<CChar>?] = standinEnv.map { strdup($0) } + [nil]
         defer { cargv.forEach { free($0) }; cenv.forEach { free($0) } }
         var pid: pid_t = 0
         return posix_spawn(&pid, path, &fa, nil, cargv, cenv) == 0 ? pid : nil
