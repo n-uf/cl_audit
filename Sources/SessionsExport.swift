@@ -905,7 +905,8 @@ enum SessionsExport {
         let (list, counts) = files(of: part)
         pv.entries = counts.sessions; pv.tasks = counts.tasks
         pv.windowLeftOut = part.windowOpen && part.source != nil
-        let held = part.source != nil ? (SessionsRestore.runningSessions() ?? []) : []
+        // (read-only: when it can't be checked which sessions run, every session of a live source counts as in use, never as idle)
+        let held: Set<String>? = part.source != nil ? SessionsRestore.runningSessions() : []
         var unitKinds: [Unit: Set<Secret>] = [:]
         var unitBytes: [Unit: Int64] = [:]
         var unitUse: [Unit: Bool] = [:]
@@ -941,7 +942,7 @@ enum SessionsExport {
             if u.isSession, f.rel.split(separator: "/").count == 3 {
                 var st = stat()
                 let m = lstat(f.src, &st) == 0 ? Date(timeIntervalSince1970: TimeInterval(st.st_mtimespec.tv_sec)) : nil
-                unitUse[u] = part.source != nil && inUse(unit: u, held: held, mtime: m, now: now)
+                unitUse[u] = part.source != nil && (held == nil || inUse(unit: u, held: held ?? [], mtime: m, now: now))
                 if unitFiles[u] == nil { unitFiles[u] = f.src }
             }
             pv.transcriptBytes += f.bytes
@@ -1122,6 +1123,15 @@ enum SessionsExport {
         }
         let sources = job.parts.compactMap(\.source)
         if let why = SessionsBackup.placeProblem(job.place, for: sources) { throw ArchiveError(why) }
+        // which Claude Code sessions run, from a live source: if it can't be read, the whole export stops here, before anything is written
+        // (a profile's sessions can't be told apart from a running one's, so none is copied as if idle)
+        var held = Set<String>()
+        if !sources.isEmpty {
+            guard let live = SessionsRestore.runningSessions() else {
+                throw ArchiveError("It couldn't be checked which Claude Code sessions run; nothing was exported. Try again.")
+            }
+            held = live
+        }
         // the file must not land inside what is being copied from
         for s in sources {
             var from = [(s.codeDir as NSString).appendingPathComponent("projects")]
@@ -1158,7 +1168,6 @@ enum SessionsExport {
             throw ArchiveError("The backups folder \(tilde(job.place.path)) can't be written.")
         }
 
-        let held = job.parts.contains { $0.source != nil } ? (SessionsRestore.runningSessions() ?? []) : []
         var outcomes: [PartOutcome] = []
         var manifestParts: [ExportManifest.Part] = []
         var rawIDs = Set<String>()
