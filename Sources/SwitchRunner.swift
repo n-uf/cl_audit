@@ -63,6 +63,9 @@ final class SwitchRunner: ObservableObject {
     @Published private(set) var receipt: SwitchReceipt?
     /// What the move said: sessions held (a running Claude Code owns them), entries that didn't move, why tasks stayed.
     @Published private(set) var moveNote: String?
+    /// What the old account keeps because it isn't a session entry ("Left with ann: …", leftWords), apart from moveNote so a
+    /// page can leave it out when nothing moved: the switch stopped before the move, so nothing was left behind.
+    @Published private(set) var leftNote: String?
     /// The plan before it ran: how many sessions and tasks move (the page's steps say it).
     @Published private(set) var planned: SwitchPlan?
     /// What the folder named at the switch's last look (the page's check line): the switch's own read, never the page's.
@@ -139,7 +142,7 @@ final class SwitchRunner: ObservableObject {
     /// without a sign-in): only the sign-in.
     func start(_ s: StandbyAccount) {
         guard !isRunning, let e = entry else { return }
-        targetSnapshot = s; receipt = nil; moveNote = nil; planned = nil; failedStep = nil
+        targetSnapshot = s; receipt = nil; moveNote = nil; leftNote = nil; planned = nil; failedStep = nil
         let g = Goal(standby: s.id, wantedSeat: s.seat, wantedEmail: s.email,
                      from: Account.signedInSeat(configDir: e.configDir) ?? e.seat, started: Date())
         // the profile's folder deleted: nothing closes, moves or signs in (a sign-in would make it again), said instead
@@ -160,7 +163,7 @@ final class SwitchRunner: ObservableObject {
         case .failure(let why): goal = g; fail(.notStarted, why.description)
         case .success(let p):
             planned = p
-            moveNote = Self.stayWords(p)
+            moveNote = Self.stayWords(p); leftNote = Self.leftBehind(p)
             if p.moves { closeAndMove(e, g) } else { begin(e, g) }
         }
     }
@@ -184,13 +187,19 @@ final class SwitchRunner: ObservableObject {
             let out = why.contains("same id") ? "Remove one of the two, then switch again." : "Fix that, then switch again."
             parts.append("The scheduled tasks stay with \(old), and so do their sessions: \(why). \(out)")
         }
-        if let left = leftWords(p.odd, old: p.from.email.map(AccountNames.short) ?? "the old account") { parts.append(left) }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
+    }
+
+    /// What the plan leaves with the old account: its odd names, said in the past tense ("Left with ann: …"), kept in
+    /// `leftNote` apart from stayWords. nil when none.
+    static func leftBehind(_ p: SwitchPlan) -> String? {
+        leftWords(p.odd, old: p.from.email.map(AccountNames.short) ?? "the old account")
     }
 
     /// The names in the old account's folder shaped like a Code-tab session that aren't one: never moved, said (with the
     /// account they stay with, `old`, named by address like the tasks) so nobody thinks everything moved. nil when none.
-    static func leftWords(_ odd: [SessionTransfer.Odd], old: String) -> String? {
+    /// `before`: said before Switch is pressed, so "Will stay with ann: …" instead of "Left with ann: …".
+    static func leftWords(_ odd: [SessionTransfer.Odd], old: String, before: Bool = false) -> String? {
         guard !odd.isEmpty else { return nil }
         let kinds: [(SessionTransfer.Odd, String, String)] = [(.link, "a link", "links"),
                                                              (.unknownName, "a file not named by an id", "files not named by an id"),
@@ -200,7 +209,7 @@ final class SwitchRunner: ObservableObject {
             return n == 0 ? nil : n == 1 ? one : "\(n) \(many)"
         }
         let n = odd.count
-        return "Left with \(old): \(n) \(n == 1 ? "file named like a Code-tab session that isn't one" : "files named like a Code-tab session that aren't one") (\(what.joined(separator: ", ")))."
+        return "\(before ? "Will stay with" : "Left with") \(old): \(n) \(n == 1 ? "file named like a Code-tab session that isn't one" : "files named like a Code-tab session that aren't one") (\(what.joined(separator: ", ")))."
     }
 
     static func heldWords(_ n: Int) -> String {
@@ -246,6 +255,7 @@ final class SwitchRunner: ObservableObject {
                     self.receipt = r
                     let notes = (Self.stayWords(p).map { [$0] } ?? []) + r.problems
                     self.moveNote = notes.isEmpty ? nil : notes.joined(separator: " ")
+                    self.leftNote = Self.leftBehind(p)
                     self.begin(e, g)
                 case .failure(let err):
                     // stopped half way: its receipt, for Undo; nothing moved: nothing to put back
@@ -276,6 +286,7 @@ final class SwitchRunner: ObservableObject {
                 case .success(let back):
                     self.receipt = back
                     self.moveNote = back.problems.isEmpty ? nil : back.problems.joined(separator: " ")
+                    self.leftNote = nil
                     // only partly: it stays open, and says what was left
                     if back.undone != nil { self.phase = .undone } else { self.fail(.move, Self.partlyWords(back)) }
                 case .failure(let err): self.fail(.move, "\(err)")
@@ -292,7 +303,7 @@ final class SwitchRunner: ObservableObject {
     /// never the folder's); nil: the profile's seat, else the folder's.
     func signInAgain(email given: String? = nil) {
         guard !isRunning, let e = entry, let email = given ?? e.seat?.email ?? Account.expectedEmail(configDir: e.configDir) else { return }
-        targetSnapshot = nil; receipt = nil; moveNote = nil; planned = nil; failedStep = nil
+        targetSnapshot = nil; receipt = nil; moveNote = nil; leftNote = nil; planned = nil; failedStep = nil
         // (the seat is the one to reach only when it is that address: another address is watched by its address)
         let seat = e.seat.flatMap { s in s.email.map { $0.lowercased() == email.lowercased() } == true ? s : nil }
         begin(e, Goal(standby: nil, wantedSeat: given == nil ? e.seat : seat, wantedEmail: email,
@@ -340,7 +351,7 @@ final class SwitchRunner: ObservableObject {
     }
 
     /// Back to the start, for another switch from the page.
-    func reset() { cancel(); guard phase != .moving else { return }; phase = .ready; goal = nil; moveNote = nil; planned = nil; failedStep = nil
+    func reset() { cancel(); guard phase != .moving else { return }; phase = .ready; goal = nil; moveNote = nil; leftNote = nil; planned = nil; failedStep = nil
         if !canUndo { receipt = nil } }
 
     /// One look at the folder: its file is read off the main thread, and what it said is judged here, on the main thread.
@@ -397,8 +408,8 @@ final class SwitchRunner: ObservableObject {
 
     /// Renders only: the page as it looks in a phase.
     func preview(_ p: Phase, goal g: Goal?, target: StandbyAccount? = nil, planned plan: SwitchPlan? = nil, receipt r: SwitchReceipt? = nil,
-                 note: String? = nil, seen s: Seat? = nil, failedAt f: FailedStep? = nil) {
+                 note: String? = nil, left: String? = nil, seen s: Seat? = nil, failedAt f: FailedStep? = nil) {
         phase = p; goal = g; targetSnapshot = target ?? targetSnapshot
-        planned = plan; receipt = r; moveNote = note; seen = s; failedStep = f
+        planned = plan; receipt = r; moveNote = note; leftNote = left; seen = s; failedStep = f
     }
 }
