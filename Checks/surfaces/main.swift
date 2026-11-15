@@ -50,6 +50,8 @@ _ = NSApplication.shared
 }
 /// Every title of a menu and its submenus.
 func titles(_ m: NSMenu) -> [String] { m.items.flatMap { [$0.title] + ($0.submenu.map(titles) ?? []) } }
+/// The dashboard card's row of a profile, as the dashboard builds it (LauncherModel.reload): the one value of its saved record.
+func cardRow(_ e: AccountEntry, now: Date = Date()) -> AccountRow { AccountRow(entry: e, show: ProfileShow.load(e, now: now)) }
 /// The Dock icon's preview (Settings.swift's `preview`, which the Dock's tiles and Settings' tile draw) for a record that has no
 /// numbers (signed out, expired, split) or none at all (an existing profile whose record is missing): the blank tile, never the
 /// samples (23 % and 41 %), which only a profile that doesn't exist yet (`sample: true`, no record) draws.
@@ -291,20 +293,20 @@ do {
         let want = AccountView.of(Store.status(for: main))
         let views: [(String, AccountView)] = [
             ("menu bar", MenuBarItems.Profile(show: ProfileShow.load(main)).view),
-            ("card", AccountRow(entry: main, status: Store.status(for: main)).view),
-            ("palette row", { let row = AccountRow(entry: main, status: Store.status(for: main))
+            ("card", cardRow(main).view),
+            ("palette row", { let row = cardRow(main)
                               var v = row.view; v.label = row.needsLogin || row.view.clash != nil ? v.label : row.subtitle; return v }()),
             ("Settings", AccountSettings(entry: .constant(main), model: model).view),
             ("Switch page", SwitchPage(entry: main, standby: main.standby[0], model: model, runner: model.runner(of: main.id)).view)]
         for (s, v) in views { check(v == want, "\(name): \(s) agrees on the account, the numbers' owner and the line") }
         // the Dock panel from the one value (each case here is signed in and readable: the lamp is the record's)
         let panel = DetailsInfo.of(ProfileShow.load(main), name: "x", icon: NSImage(), problem: nil)
-        check(panel.active == want.label && (panel.activeNote == want.line || SplitUsage.of(Store.status("main")) != nil) && panel.activeLit == want.lit,
+        let splitHere = ProfileShow.load(main).display.split != nil
+        check(panel.active == want.label && (panel.activeNote == want.line || splitHere) && panel.activeLit == want.lit,
               "\(name): the Dock panel agrees")
         check(SwitchMenu.dockTitle(name: "P", want, plan: nil) == (want.short.map { "Claude P · \($0)" } ?? "Claude P"), "\(name): the Dock menu agrees")
         check(QuickChatTarget(main).email == want.label, "\(name): quick chat agrees")
         // (B8: in the split, the Claude app on another account than Claude Code, they are not the profile's: none show)
-        let splitHere = SplitUsage.of(Store.status("main")) != nil
         check(Store.status(for: main)?.weekly == (splitHere ? nil : 40),
               "\(name): the record's own numbers show, except in the split (the app on another account): \(splitHere)")
         if name == "different" { check(want.label == u2.email && want.numbersOwner == u1.email, "different: u2 in use, the numbers u1's") }
@@ -334,7 +336,7 @@ do {
     _ = Store.writeStatus("main", mid)
     let shownMid = Store.status(for: main)
     check(shownMid?.weekly == nil && shownMid?.updatedAt == nil, "after a switch, ultra-1's numbers never show under ultra-2, not even for a moment")
-    check(AccountRow(entry: main, status: shownMid).limits.allSatisfy { $0.p == nil } && AccountView.of(shownMid).label == u2.email,
+    check(cardRow(main).limits.allSatisfy { $0.p == nil } && AccountView.of(shownMid).label == u2.email,
           "the card shows ultra-2 with no numbers until the new read")
     mid.loginEmail = u2.email; mid.weekly = 12; _ = Store.writeStatus("main", mid)
     check(Store.status(for: main)?.weekly == 12, "the new read: ultra-2's own numbers show")
@@ -365,7 +367,7 @@ do {
     let page = SwitchPage(entry: after, standby: after.standby[0], model: m, runner: m.runner(of: "sw"))
     let views: [(String, AccountView)] = [
         ("menu bar", MenuBarItems.Profile(show: ProfileShow.load(after)).view),
-        ("card", AccountRow(entry: after, status: Store.status(for: after)).view),
+        ("card", cardRow(after).view),
         ("Settings", AccountSettings(entry: .constant(after), model: m).view),
         ("Switch page", page.view)]
     for (s, v) in views { check(v == want && v.label == u2.email, "after a switch: \(s) names ultra-2") }
@@ -659,7 +661,7 @@ do {
         check(mb.usage == nil && glyph.week == nil && glyph.five == nil && glyph.countdown == nil && show.needsLogin
               && show.keyWords(short: false) == "Sign in…" && !show.display.lamp && show.display.grey,
               "\(what): the menu bar has no bars, no countdown, Sign in…, the lamp off")
-        let row = AccountRow(entry: p, status: rec)
+        let row = cardRow(p, now: now)
         check(row.limits.allSatisfy { $0.p == nil } && row.full == nil && row.needsLogin && row.subtitle == "sign-in expired",
               "\(what): the card (and Settings' in-use box, which draws its limits) says sign-in expired, no bars, Sign in…")
         check(previewShowsNone(p, rec) && panelShowsNone(p, rec), "\(what): the Dock icon's preview and Settings' panel preview have no numbers, never the samples")
@@ -694,7 +696,7 @@ do {
     _ = Store.writeStatus("stale", live)
     let liveShown = Store.status(for: p)
     check(liveShown?.weekly == 53 && ProfileShow.load(p).noNumbersWords == nil, "a fresh status line still shows its numbers, and the panel its age")
-    check(Usage.of(liveShown)?.weekly == 53 && AccountRow(entry: p, status: liveShown).weekly == 53, "…on the menu bar and the card alike")
+    check(Usage.of(liveShown)?.weekly == 53 && cardRow(p).weekly == 53, "…on the menu bar and the card alike")
     Login.runSecurity = { _ in (44, Data()) }
 
     // a limit whose reset has passed never shows its percent, from Anthropic too, whatever the state
@@ -707,7 +709,7 @@ do {
           "Anthropic's numbers: the 5-hour limit past its reset has no percent (no 100% \"in 0 min\"), the week stays, Fable past its reset none")
     let mbA = MenuBarItems.item(MenuBarItems.Profile(show: ProfileShow.load(p, now: now)), now: now)
     check(mbA.five == nil && mbA.week == 53 && mbA.countdown == nil, "the menu bar: no 5-hour percent, no countdown")
-    check(AccountRow(entry: p, status: shown).full == nil, "the card: nothing full")
+    check(cardRow(p, now: now).full == nil, "the card: nothing full")
     var u = Usage(fiveHour: 100, fiveHourResets: now.addingTimeInterval(-30), weekly: 53, weeklyResets: now.addingTimeInterval(86400),
                   fetchedAt: now, source: "Anthropic")
     check(u.current(now: now).fiveHour == nil && u.current(now: now).weekly == 53, "a Usage past a reset drops that limit")
@@ -740,7 +742,7 @@ do {
         let glyph = MenuBarItems.item(mb, now: now)
         check(mb.usage == nil && glyph.week == nil && glyph.five == nil && show.needsLogin && !show.display.lamp,
               "\(what): the menu bar has no bars, Sign in…, the lamp off")
-        let row = AccountRow(entry: p, status: rec)
+        let row = cardRow(p, now: now)
         check(row.limits.allSatisfy { $0.p == nil } && row.needsLogin && row.subtitle == "no Claude Code sign-in",
               "\(what): the card and Settings' box: no bars, its state line, Sign in…")
         check(previewShowsNone(p, rec) && panelShowsNone(p, rec), "\(what): the Dock icon's preview and Settings' panel preview have no numbers, never the samples")
@@ -765,7 +767,7 @@ do {
     let back = Store.status(for: p)
     check(outReader.state == .ok && back?.state == "ok" && back?.weekly == 64 && back?.fiveHour == 7,
           "a good read: the numbers come back")
-    check(Usage.of(back)?.weekly == 64 && AccountRow(entry: p, status: back).weekly == 64 && !AccountRow(entry: p, status: back).needsLogin
+    check(Usage.of(back)?.weekly == 64 && cardRow(p).weekly == 64 && !cardRow(p).needsLogin
           && QuickChatTarget(p).loginWords == nil, "…on the menu bar, the card and quick chat alike, without Sign in…")
     check(preview(p, status: back, sample: false).tiffRepresentation != preview(p, status: Store.status(for: p).map { var s = $0; s.dropNumbers(); return s }, sample: false).tiffRepresentation,
           "…and in the Dock icon's preview: the record's own numbers (7 % and 64 %), not a blank tile")
@@ -1315,13 +1317,13 @@ do {
     }
     _ = Store.writeStatus("spl", record(app: appPat, code: mo, reading: mo.email, weekly: 100))
     let head = Store.status(for: e), own = Store.status(for: e, headline: false)
-    let split = SplitUsage.of(head)
+    let split = ProfileShow.load(e, now: now).splitWords
     check(split?.app == pat.email && split?.code == mo.email, "the split: the app on pat, Claude Code on mo")
     // the headline record: no numbers, no plan, the line instead; nothing full, red or counting down
     check(head?.weekly == nil && head?.fiveHour == nil && head?.plan == nil && AccountView.of(head).label == pat.email
           && AccountView.of(head).line == "cl_audit can't read \(Privacy.masked(pat.email!))'s usage: Claude Code in Terminal is signed in to \(Privacy.masked(mo.email!)).",
           "the profile's record has no numbers for pat, and its line says so: \(AccountView.of(head).line ?? "-")")
-    let row = AccountRow(entry: e, status: head)
+    let row = cardRow(e, now: now)
     check(row.full == nil && row.limits.allSatisfy { $0.p == nil } && !row.needsLogin
           && AtLimit.tileCountdown(fiveHour: row.fiveHour, fiveHourResets: head?.fiveHourResets, weekly: row.weekly, weeklyResets: head?.weeklyResets) == nil,
           "the card and its tile: no limits, no full panel, no countdown, no red Sign in")
@@ -1329,7 +1331,7 @@ do {
           "the menu bar strip, the Dock icon and quick chat: no numbers for pat (neutral)")
     check(previewShowsNone(e, head) && panelShowsNone(e, head),
           "the split: the Dock icon's preview (Settings' tile, the Dock's tile) and Settings' panel preview have no numbers, never the samples")
-    check(row.split?.key == "Sign Claude Code in Terminal in to \(Privacy.masked(pat.email!))…" && split?.loginEmail == pat.email,
+    check(row.show.splitWords?.key == "Sign Claude Code in Terminal in to \(Privacy.masked(pat.email!))…" && split?.loginEmail == pat.email,
           "the key: Sign Claude Code in Terminal in to pat, with pat's address filled in")
     check(split?.numbersHint == "Sign Claude Code in Terminal in to \(Privacy.masked(pat.email!)) to see its numbers."
           && split?.shortLine == "Can't read \(Privacy.masked(pat.email!))'s usage\nTerminal: \(Privacy.masked(mo.email!))",
@@ -1371,7 +1373,7 @@ do {
     FolderGuard.launchSeam = { what, dir in launches.append("\(what) \(dir)"); return true }
     let keepTerminal = ClaudeCLI.openTerminal
     ClaudeCLI.openTerminal = { u in scripts.append((try? String(contentsOf: u, encoding: .utf8)) ?? ""); return true }
-    let started = ClaudeCLI.openLogin("/usr/bin/false", account: Account(e), email: SplitUsage.of(Store.status("spl"))?.loginEmail)
+    let started = ClaudeCLI.openLogin("/usr/bin/false", account: Account(e), email: ProfileShow.load(e).loginAddress)
     check(started && launches == ["login \(Account(e).configDir)"] && scripts.first?.contains(pat.email!) == true && scripts.first?.contains(mo.email!) == false,
           "the key's login: launched once on the folder, pat's address in it: \(launches)")
     ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = nil
@@ -1390,10 +1392,10 @@ do {
     var anonRec = record(app: anon, code: mo, reading: mo.email, weekly: 100)
     anonRec.resolved = AccountResolver.resolve(e, among: [e], app: anon, code: mo, loginEmail: mo.email, names: [:], now: now)
     _ = Store.writeStatus("spl", anonRec)
-    let anonSplit = SplitUsage.of(Store.status(for: e))
+    let anonSplit = ProfileShow.load(e).splitWords
     check(anonSplit != nil && anonSplit?.key == nil && anonSplit?.hint == "Sign Claude Code in Terminal in to the Claude app's account"
           && anonSplit?.numbersHint == "Sign Claude Code in Terminal in to the Claude app's account to see its numbers."
-          && SplitUsage.loginAddress(Store.status("spl"), usual: mo.email) == nil,
+          && ProfileShow.load(e).loginAddress == nil,
           "the app's account known by its id only: no key, the hint, and no address (never mo's): \(anonSplit?.app ?? "-")")
     launches.removeAll(); scripts.removeAll()
     ClaudeCLI.logIn(profile: e)
@@ -1412,7 +1414,7 @@ do {
         var s = record(app: app, code: mo, reading: mo.email, weekly: 100)
         s.resolved = AccountResolver.resolve(e, among: [e], app: app, code: mo, loginEmail: mo.email, names: names, newestSwitch: newest, now: now)
         _ = Store.writeStatus("spl", s)
-        return SplitUsage.of(Store.status(for: e))
+        return ProfileShow.load(e, now: now).splitWords
     }
     // the card's after-switch words on every surface: the heading, then what's left; the short form is the heading
     let switchedLine = "Switching to \(Privacy.masked(mo.email!)): one step left. Sign the Claude app in to \(Privacy.masked(mo.email!)) to finish."
@@ -1466,7 +1468,7 @@ do {
     let saved = Store.status("spl")
     check(saved?.weekly == 100 && saved?.resolved?.numbersFor == nil && saved?.numbersOwner == nil,
           "the reader: numbers with no account from their reading say none (never .claude.json's mo): \(saved?.resolved?.numbersFor ?? "nil")")
-    check(posts.isEmpty && SplitUsage.of(saved) != nil && Store.status(for: e)?.weekly == nil,
+    check(posts.isEmpty && ProfileShow.of(e, raw: saved).display.split != nil && Store.status(for: e)?.weekly == nil,
           "the split: no full or back alert, no switch offer, and no numbers for the profile: \(posts)")
     sr.stop()
     // the same read with the app on mo (no split): the full alert goes out (the check above isn't empty by accident). One
@@ -1497,9 +1499,9 @@ do {
     // old numbers are only last known: never full, never a countdown or an offer
     _ = Store.writeStatus("spm", record(app: .unknown, code: mo, reading: mo.email, weekly: 100, age: 20 * 60))
     let old = Store.status(for: same)
-    check(old?.weekly == nil && AccountRow(entry: same, status: old).full == nil, "numbers 20 minutes old: a full limit is left out (last known, never full)")
+    check(old?.weekly == nil && cardRow(same, now: now).full == nil, "numbers 20 minutes old: a full limit is left out (last known, never full)")
     _ = Store.writeStatus("spm", record(app: .unknown, code: mo, reading: mo.email, weekly: 100, age: 60))
-    check(Store.status(for: same)?.weekly == 100 && AccountRow(entry: same, status: Store.status(for: same)).full != nil, "a minute old: full, as read")
+    check(Store.status(for: same)?.weekly == 100 && cardRow(same).full != nil, "a minute old: full, as read")
 
     // the widget (its own copy of the rules, over the same records): the split shows nothing for the profile, a fresh full
     // limit shows, an old one doesn't
@@ -1564,7 +1566,7 @@ do {
     RunLoop.main.run(until: Date().addingTimeInterval(0.6))
     let un = Store.status("spm"), unHead = Store.status(for: same)
     check(lr.unconfirmed && un?.ownerUnconfirmed == true && un?.weekly == 100 && unHead?.weekly == nil
-          && AccountView.of(unHead).line == Store.unconfirmedWords && AccountRow(entry: same, status: unHead).full == nil && posts.isEmpty,
+          && AccountView.of(unHead).line == Store.unconfirmedWords && cardRow(same).full == nil && posts.isEmpty,
           "its second reading still without an owner: \"account not confirmed\", never full, no alert: \(posts)")
     lr.finish(data: week(70), response: ok200, error: nil, asked: Date(), gen: lr.generation, key: "c2")
     check(Store.status(for: same)?.weekly == 70 && AccountView.of(Store.status(for: same)).line == Store.unconfirmedWords
@@ -1621,19 +1623,24 @@ do {
         Store.removeStatus("codec")
     }
 
-    // the headline over the fixtures: ProfileCore's split agrees with SplitUsage (whose words every split line uses)
+    // the headline over the fixtures: ProfileCore's split is the one rule (SplitUsage only words it, SplitUsage.words)
     let at = Date(timeIntervalSince1970: 1_800_000_060)
     for (name, rec) in decoded {
-        check((Headline.split(rec.owner) != nil) == (SplitUsage.of(rec) != nil), "\(name): the headline's split and SplitUsage agree")
+        let split = Headline.split(rec.owner)
+        check((split != nil) == (name == "split") && (SplitUsage.words(rec, split) != nil) == (split != nil),
+              "\(name): the split only in the split's file, and its words with it")
     }
     var fresh = decoded["split"]!; fresh.resolved?.readStale = nil
     var unsure = fresh; unsure.ownerUnconfirmed = true
     var byHand = fresh; byHand.resolved?.switchWaits = nil
     var elsewhere = fresh; elsewhere.resolved?.clash = "Home"
     var nameless = fresh; nameless.resolved?.codeName = nil; nameless.resolved?.numbersFor = nil
-    for (name, rec) in [("unconfirmed", unsure), ("fresh", fresh), ("by hand", byHand), ("elsewhere", elsewhere), ("nameless", nameless)] {
-        check((Headline.split(rec.owner) != nil) == (SplitUsage.of(rec) != nil)
-              && Headline.split(rec.owner)?.switchWaits == SplitUsage.of(rec)?.switched, "\(name): the headline's split and SplitUsage agree")
+    for (name, rec, waits) in [("unconfirmed", unsure, Bool?.none), ("fresh", fresh, true), ("by hand", byHand, false),
+                               ("elsewhere", elsewhere, nil), ("nameless", nameless, nil)] {
+        let words = SplitUsage.words(rec, Headline.split(rec.owner))
+        check(Headline.split(rec.owner)?.switchWaits == waits && words?.switched == waits
+              && (waits == nil || (words?.app == "pat@example.com" && words?.code == "mo@example.com")),
+              "\(name): the headline's split (switch waiting: \(waits.map(String.init) ?? "no split")), and the words name pat and mo")
     }
     let ages = Headline.Ages(freshFor: 6 * 60)
     let splitShown = fresh.shown(fresh.headline(now: at, ages: ages), now: at)
@@ -2033,6 +2040,144 @@ do {
                    "Processes.", "print(", "NSLog", "os_log", "Logger"].filter { t.contains($0) }
         check(!t.isEmpty && Set(imports).isSubset(of: ["import Foundation", "import ProfileCore"]) && app.isEmpty, "\(f): app-neutral (imports \(imports), app names \(app))")
     }
+}
+
+// ============ 12. ProfileCore step 3b: the dashboard card (and the palette's row) draw the one value ============
+do {
+    let now = Date()
+    var e = profile("card", "~/.claude-card", u1); e.claudeWindow = false
+    e.standby = [StandbyAccount(email: u2.email!, seat: u2, id: "k2", plan: "Max", lastInUse: now.addingTimeInterval(-86400))]
+    try! Store.save([e, other])
+    func rec(_ state: String = "ok", week: Double? = 40, five: Double? = 12, age: TimeInterval = 60, weekIn: TimeInterval = 2 * 86400,
+             login: String? = u1.email, code: Seat? = u1) -> IconStatus {
+        // (the folder's .claude.json names Claude Code's account: another profile's in a clash)
+        var s = IconStatus(state: state); s.loginEmail = state == "noLogin" ? nil : login; s.expectedEmail = code?.email
+        s.weekly = week; s.fiveHour = five; s.weeklyResets = now.addingTimeInterval(weekIn); s.fiveHourResets = now.addingTimeInterval(3600)
+        s.updatedAt = now.addingTimeInterval(-age); s.source = "Anthropic"; s.plan = "Max"
+        s.resolved = AccountResolver.resolve(e, among: [e, other], app: .unknown, code: code, loginEmail: login, names: [:], now: now)
+        return s
+    }
+    /// The card's row for a record of profile `p` (default the card's), checked against the value it draws: the lamp, the
+    /// line, what is full, the tile's grey and warning, the notice's key (the value's, and Sign in… for another profile's
+    /// account), the numbers.
+    func card(_ r: IconStatus?, _ p: AccountEntry? = nil, _ what: String) -> (row: AccountRow, notice: UsageNotice?) {
+        let p = p ?? e
+        if let r { _ = Store.writeStatus(p.id, r) } else { Store.removeStatus(p.id) }
+        let row = cardRow(p, now: now), d = row.show.display, n = UsageNotice.of(row)
+        let keyed = (n?.key == .signIn) == (d.key != nil || (d.clash != nil && d.split == nil))
+        check(row.lit == d.lamp && row.line == row.show.lineWords(short: false) && row.full == d.full(now: Date())
+              && row.tile.stale == d.grey && row.tile.warn == d.otherAccount && (row.tile.countdown == nil) == (row.full == nil)
+              && row.fiveHour == d.usage?.fiveHour && row.weekly == d.usage?.weekly && keyed,
+              "\(what): the card draws the value (lamp, line, full, grey, warning, numbers, key)")
+        return (row, n)
+    }
+
+    // the tiers: fresh; last known at 10 minutes (a full week left out); grey past three missed reads (30 minutes at the
+    // usual read interval), where the card's own rule greyed only after an hour
+    let fresh = card(rec(), nil, "fresh")
+    check(fresh.notice == nil && fresh.row.lit && !fresh.row.tile.stale && fresh.row.limits.first { $0.id == "wk" }?.p == 40
+          && fresh.row.line == nil && fresh.row.subtitle == u1.email, "fresh: the numbers, lit, not grey, no notice")
+    let known = card(rec(week: 100, age: 10 * 60, weekIn: 3 * 3600), nil, "last known")
+    check(known.row.full == nil && known.row.tile.countdown == nil && !known.row.tile.stale && known.row.weekly == nil
+          && known.row.fiveHour == 12, "10 minutes old: last known, the full week left out, no countdown, not grey")
+    let grey = card(rec(age: 40 * 60), nil, "40 minutes old")
+    check(grey.row.tile.stale && grey.row.weekly == 40 && grey.notice == nil, "40 minutes old: the card's tile greys (as the Dock icon), the numbers still drawn")
+    check(card(rec(age: 61 * 60), nil, "an hour old").row.tile.stale, "61 minutes old: grey")
+    var slow = e; slow.pollMinutes = 20
+    check(!card(rec(age: 40 * 60), slow, "a 20-minute read interval").row.tile.stale, "a 20-minute read interval: 40 minutes old isn't grey yet")
+    try! Store.save([e, other])
+    // full and fresh: the full box and the countdown on the tile
+    let full = card(rec(week: 100, weekIn: 3 * 3600), nil, "full")
+    check(full.row.full?.kind == .week && full.row.tile.countdown != nil && full.notice == nil, "a fresh full week: full, the countdown, Switch account (no notice)")
+    // a reset that has passed: no percent, nothing full
+    let past = card(rec(week: 100, weekIn: -60), nil, "a passed reset")
+    check(past.row.weekly == nil && past.row.full == nil && past.row.fiveHour == 12, "the week's reset passed: no week, nothing full")
+
+    // the sign-in: not readable (the numbers as read, the lamp off; the amber notice only without numbers), expired and
+    // signed out (red, Sign in…, no numbers, grey), on another account (the warning dot, red, Sign in…)
+    for (state, heading) in [("denied", "Can't read Terminal's sign-in yet"), ("unreadable", "Can't read Terminal's sign-in")] {
+        let withNumbers = card(rec(state), nil, "\(state), numbers")
+        check(withNumbers.notice == nil && withNumbers.row.weekly == 40 && !withNumbers.row.lit, "\(state) with numbers: as read, no notice, the lamp off")
+        let without = card(rec(state, week: nil, five: nil), nil, "\(state), none")
+        check(without.notice?.heading == heading && without.notice?.tone == .amber && without.notice?.key == .refresh && !without.row.lit,
+              "\(state) without numbers: the amber notice, Refresh now, the lamp off")
+    }
+    for (state, heading) in [("expired", "Terminal's sign-in has expired"), ("noLogin", "Terminal is signed out")] {
+        let c = card(rec(state), nil, state)
+        check(c.notice?.heading == heading && c.notice?.tone == .red && c.notice?.key == .signIn && c.notice?.signedOut == true
+              && c.notice?.line == "Sign in as \(Privacy.masked(u1.email!)) to read Card's usage." && c.row.limits.allSatisfy { $0.p == nil }
+              && c.row.tile.stale && !c.row.lit && c.row.needsLogin, "\(state): red, Sign in… to the folder's address, no numbers, grey, the lamp off")
+    }
+    let mixed = card(rec(login: u2.email, code: u1), nil, "another account")
+    check(mixed.notice?.heading == "Terminal is signed in to another account" && mixed.notice?.key == .signIn && mixed.row.tile.warn
+          && !mixed.row.lit && mixed.row.subtitle == "sign-in is a different account", "the sign-in on another account than the folder's: red, Sign in…, the warning, the lamp off")
+
+    // another profile's account: by its id, and by its name in a record from before the id; the profile renamed since
+    let clash = card(rec(login: u3.email, code: u3), nil, "clash by id")
+    check(clash.row.display.clash == ProfileDisplay.Clash(id: "other", name: "Other") && clash.notice?.heading == "Terminal is signed in to Other's account"
+          && clash.notice?.key == .signIn && clash.row.display.key == nil && !clash.row.lit,
+          "Claude Code on Other's account (by id): red, the approved Sign in…, the lamp off (its numbers the reader's to drop, 6f)")
+    var byName = rec(login: u3.email, code: u3); byName.resolved?.clashID = nil
+    let oldClash = card(byName, nil, "clash by old name")
+    check(oldClash.row.display.clash == ProfileDisplay.Clash(id: nil, name: "Other") && oldClash.notice?.heading == "Terminal is signed in to Other's account"
+          && !oldClash.row.lit, "a record from before the clash's id: by its name, the same notice, the lamp off")
+    var renamed = other; renamed.name = "Work"
+    try! Store.save([e, renamed])
+    let renamedClash = card(rec(login: u3.email, code: u3), nil, "renamed clash profile")
+    check(renamedClash.notice?.tone == .red && !renamedClash.row.lit && renamedClash.row.display.clash?.id == "other",
+          "the clash's profile renamed since the record: still red and unlit, the clash by its id")
+    try! Store.save([e, other])
+
+    // unconfirmed: as read, never full, said so
+    var unsure = rec(week: 100, weekIn: 3 * 3600); unsure.ownerUnconfirmed = true
+    let us = card(unsure, nil, "unconfirmed")
+    check(us.row.fiveHour == 12 && us.row.weekly == nil && us.row.full == nil && us.row.line == Store.unconfirmedWords && us.notice == nil,
+          "unconfirmed: as read, a full week left out, the line says so")
+
+    // standby is never read: the card's numbers are the account in use's only, its switch menu names standby by address
+    var standbyRec = IconStatus(state: "ok"); standbyRec.loginEmail = u2.email; standbyRec.weekly = 77; standbyRec.updatedAt = now
+    _ = Store.writeStatus("card~k2", standbyRec)
+    let withStandby = card(rec(week: 100, weekIn: 3 * 3600), nil, "standby")
+    let trays = withStandby.row.entry.listed(by: withStandby.row.view).cardTrays().map(\.offer.standby.label)
+    check(withStandby.row.limits.allSatisfy { $0.p != 77 } && trays == [u2.email!] && trays.allSatisfy { !$0.contains("%") },
+          "standby: never the standby's numbers on the card; Switch account lists it by address only: \(trays)")
+    Store.removeStatus("card~k2")
+
+    // no record at all: nothing, grey, unlit, no notice
+    let none = card(nil, nil, "no record")
+    check(none.row.status == nil && none.row.limits.allSatisfy { $0.p == nil } && none.row.tile.stale && !none.row.lit && none.notice == nil
+          && none.row.subtitle == e.configDir, "no record: no numbers, grey, unlit, no notice")
+
+    // the split: the Claude app on pat (in use), Claude Code on mo
+    let pat = Seat(account: uuid(61), organization: uuid(161), email: "pat@example.com")
+    let mo = Seat(account: uuid(62), organization: uuid(162), email: "mo@example.com")
+    var s = profile("csp", "~/.claude-csp", mo); s.claudeWindow = true
+    s.standby = [StandbyAccount(email: pat.email!, seat: pat, id: "kp", plan: "Max")]
+    try! Store.save([s])
+    func splitRec(app: AppSignIn.Login, newest: SwitchReceipt? = nil) -> IconStatus {
+        var r = IconStatus(state: "ok"); r.loginEmail = mo.email; r.numbersOwner = mo.email; r.expectedEmail = mo.email
+        r.weekly = 100; r.weeklyResets = now.addingTimeInterval(2 * 86400); r.noFiveHour = true; r.plan = "Ultra"; r.updatedAt = now
+        r.resolved = AccountResolver.resolve(s, among: [s], app: app, code: mo, loginEmail: mo.email, names: [:], newestSwitch: newest, now: now)
+        return r
+    }
+    let appPat = AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)
+    let split = card(splitRec(app: appPat), s, "split")
+    check(split.notice?.heading == "Terminal is signed in to \(Privacy.masked(mo.email!))" && split.notice?.tone == .red
+          && split.notice?.key == .signIn && split.notice?.line == "Sign in as \(Privacy.masked(pat.email!)) to read Csp's usage."
+          && split.row.lit && split.row.full == nil && split.row.limits.allSatisfy { $0.p == nil } && split.row.status?.plan == nil
+          && split.row.show.loginAddress == pat.email, "the split: red, Sign in… as pat, lit (pat is in use), no numbers or plan, nothing full")
+    let anonApp = AppSignIn.Login(account: uuid(63), org: uuid(163), state: .known, source: "log", at: now)
+    let anon = card(splitRec(app: anonApp), s, "split, the app's account by id")
+    check(anon.notice?.key == UsageNotice.Key.none && anon.notice?.line == "Sign Claude Code in Terminal in to the Claude app's account."
+          && anon.row.show.loginAddress == nil, "the split with the app's account known by its id only: no key (the value's), the hint")
+    var toMo = SwitchReceipt(id: SwitchEngine.receiptID(now, "csp"), profile: "csp", standby: "km", dataDir: "/x", from: SeatID(pat), to: SeatID(mo), started: now)
+    toMo.steps = [SwitchReceipt.Step(kind: .entry, path: "/x/a", sha: nil, parked: nil, original: nil, done: true)]
+    toMo.linked = now
+    let waiting = card(splitRec(app: appPat, newest: toMo), s, "split, a switch waiting")
+    check(waiting.notice?.tone == .amber && waiting.notice?.heading == SplitUsage.switchingHead(mo.email!) && waiting.notice?.key == UsageNotice.Key.none
+          && waiting.row.lit, "a switch to mo waiting for the app: amber, no key, lit")
+    Store.removeStatus("card"); Store.removeStatus("csp")
+    try? Store.save([])
 }
 
 print("checks: \(passed) passed, \(failed) failed")

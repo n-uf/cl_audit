@@ -80,6 +80,9 @@ func saveReceipt(_ r: SwitchReceipt) {
     try! enc.encode(r).write(to: dir.appendingPathComponent("receipt.json"))
 }
 
+/// The dashboard card's row of a profile, as the dashboard builds it (LauncherModel.reload): the one value of its saved record.
+func cardRow(_ e: AccountEntry, now: Date = Date()) -> AccountRow { AccountRow(entry: e, show: ProfileShow.load(e, now: now)) }
+
 @MainActor func snapshot(_ v: some View, _ name: String, _ w: CGFloat, _ h: CGFloat = 3600) {
     if ProcessInfo.processInfo.environment["ONEFOLDER_ONLY"] != nil, !name.hasPrefix("o") { return }  // the one-folder renders only
     if ProcessInfo.processInfo.environment["B2_ONLY"] != nil, !name.hasPrefix("6") { return }      // stage B2 renders only
@@ -274,7 +277,7 @@ struct AtlasMenu: View {
 
         // the dashboard card at its own height; Settings ▸ the profile from the top through its Sessions card (Profile,
         // Claude Code with the accounts, Sessions with a stopped switch's Undo and Leave it as it is)
-        snapshot(framed(AccountCard(row: AccountRow(entry: e, status: Store.status(for: e)), actions: acts).frame(width: 460)
+        snapshot(framed(AccountCard(row: cardRow(e), actions: acts).frame(width: 460)
                             .fixedSize(horizontal: false, vertical: true), 460),
                  "atlas-\(row)-card-std", 492, 1000)
         snapshot(framed(AccountSettings(entry: .constant(e), model: model, width: 460).frame(height: 1180, alignment: .top).clipped(), 460),
@@ -408,7 +411,7 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
     rec.resolved = AccountResolver.resolve(e, among: [e], app: AppSignIn.cached(for: e), code: mo, loginEmail: mo.email, names: [:], now: now)
     _ = Store.writeStatus("main", rec)
     let head = Store.status(for: e), own = Store.status(for: e, headline: false)
-    print("split:", SplitUsage.of(head) != nil ? "yes" : "NO (the app's account wasn't read)")
+    print("split:", ProfileShow.load(e, now: now).display.split != nil ? "yes" : "NO (the app's account wasn't read)")
     let face = FaceTheme.of(.std)
     func framed(_ v: some View, _ w: CGFloat) -> some View {
         v.environment(\.settingsColumnWidth, w).frame(width: w, alignment: .leading).padding(16).background(Color(white: 0.1))
@@ -423,7 +426,7 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
     let profileItem = MenuBarItems.Profile(show: show, problem: head?.problem)
     let glyph = MenuBarGlyph(look: e.menuBarLook, item: MenuBarItems.item(profileItem, now: now)).image(dark: true)
     for w in [CGFloat(340), 460, 708] {
-        snapshot(framed(AccountCard(row: AccountRow(entry: e, status: head), actions: acts).frame(width: min(w, 460))
+        snapshot(framed(AccountCard(row: cardRow(e, now: now), actions: acts).frame(width: min(w, 460))
                             .fixedSize(horizontal: false, vertical: true), w), "split-card-std-w\(Int(w))", w + 32, 1000)
         let dock = VStack(alignment: .leading, spacing: 10) {
             Image(nsImage: Painter.image(tile, pixels: 128)).resizable().frame(width: 96, height: 96)
@@ -445,9 +448,8 @@ if ProcessInfo.processInfo.environment["ATLAS_SWITCH"] != nil {
     rec.resolved = AccountResolver.resolve(e, among: [e], app: AppSignIn.cached(for: e), code: mo, loginEmail: mo.email, names: [:],
                                            newestSwitch: moved, now: now)
     _ = Store.writeStatus("main", rec)
-    let swHead = Store.status(for: e)
-    print("switched:", SplitUsage.of(swHead)?.switched == true ? "yes" : "NO")
-    snapshot(framed(AccountCard(row: AccountRow(entry: e, status: swHead), actions: acts)
+    print("switched:", ProfileShow.load(e, now: now).display.split?.switchWaits == true ? "yes" : "NO")
+    snapshot(framed(AccountCard(row: cardRow(e, now: now), actions: acts)
                         .frame(width: 460).fixedSize(horizontal: false, vertical: true), 460), "split-card-switched-std-w460", 492, 1000)
 }
 
@@ -487,7 +489,7 @@ if ProcessInfo.processInfo.environment["SPLIT_ONLY"] != nil {
     var spl = record("ok", mo, week: 100, five: nil); spl.numbersOwner = mo.email; spl.noFiveHour = true
     spl.resolved = AccountResolver.resolve(splE, among: [splE], app: AppSignIn.cached(for: splE), code: mo, loginEmail: mo.email, names: [:], now: now)
     _ = Store.writeStatus(splE.id, spl)
-    print("split:", SplitUsage.of(Store.status(for: splE)) != nil ? "yes" : "NO (the app's account wasn't read)")
+    print("split:", ProfileShow.load(splE, now: now).display.split != nil ? "yes" : "NO (the app's account wasn't read)")
     let face = FaceTheme.of(.std)
     func tile(_ e: AccountEntry, _ what: String, sample: Bool = false, note: String? = nil) -> some View {
         VStack(spacing: 4) {
@@ -605,6 +607,77 @@ if ProcessInfo.processInfo.environment["SHOW3A_ONLY"] != nil {
     print("done"); exit(0)
 }
 
+// ==================================================================== the dashboard card (CARD3B_ONLY=1, ProfileCore step 3b)
+// The card in each state, as the dashboard builds it from the profile's record: fresh, last known with a full week (10 min),
+// old (40 and 70 min), full, a sign-in that can't be read (with numbers and without), on another account, expired, signed
+// out, another profile's account, unconfirmed, the split (by hand, the app's account by id only, a switch waiting) and no
+// record. Std, 340 and 460. Files card3b-<case>-std-w<width>.png. Sample data only: Main on ann@, ben@ on standby; Work on
+// cat@; the split's Main2 with the app on pat@ and Claude Code on mo@.
+@MainActor func card3bRenders() {
+    let now = Date()
+    let ann = Seat(account: uuid(71), organization: uuid(171), email: "ann@example.com")
+    let ben = Seat(account: uuid(72), organization: uuid(172), email: "ben@example.com")
+    let cat = Seat(account: uuid(73), organization: uuid(173), email: "cat@example.com")
+    let pat = Seat(account: uuid(74), organization: uuid(174), email: "pat@example.com")
+    let mo = Seat(account: uuid(75), organization: uuid(175), email: "mo@example.com")
+    var e = AccountEntry(id: "c3b", name: "Main", label: "MAIN", configDir: "~/.claude-c3b"); e.seat = ann; e.claudeWindow = false
+    e.standby = [StandbyAccount(email: ben.email!, seat: ben, id: "kb", plan: "Max", lastInUse: now.addingTimeInterval(-86400))]
+    var work = AccountEntry(id: "c3w", name: "Work", label: "WORK", configDir: "~/.claude-c3w"); work.seat = cat; work.claudeWindow = false
+    var s = AccountEntry(id: "c3s", name: "Main2", label: "MAIN", configDir: "~/.claude-c3s"); s.seat = mo; s.claudeWindow = true
+    s.desktop = .separate; s.desktopDataDir = "~/Library/Application Support/Claude-c3s"
+    s.standby = [StandbyAccount(email: pat.email!, seat: pat, id: "kp", plan: "Max")]
+    try! Store.save([e, work, s])
+    func rec(_ state: String, week: Double?, five: Double?, age: TimeInterval, login: String? = "ann@example.com", code: Seat? = nil,
+             unconfirmed: Bool = false) -> IconStatus {
+        let code = code ?? ann
+        var r = IconStatus(state: state); r.loginEmail = state == "noLogin" ? nil : login; r.expectedEmail = code.email
+        r.weekly = week; r.fiveHour = five; r.updatedAt = now.addingTimeInterval(-age); r.source = "Anthropic"; r.plan = "Max"
+        r.weeklyResets = now.addingTimeInterval(2 * 86400 + 3 * 3600); r.fiveHourResets = now.addingTimeInterval(2 * 3600)
+        r.resolved = AccountResolver.resolve(e, among: [e, work], app: .unknown, code: code, loginEmail: login, names: [:], now: now)
+        if state == "denied" { r.problem = FetchState.deniedWords }
+        if unconfirmed { r.ownerUnconfirmed = true }
+        return r
+    }
+    func splitRec(_ app: AppSignIn.Login, newest: SwitchReceipt? = nil) -> IconStatus {
+        var r = IconStatus(state: "ok"); r.loginEmail = mo.email; r.numbersOwner = mo.email; r.expectedEmail = mo.email
+        r.weekly = 100; r.weeklyResets = now.addingTimeInterval(41 * 3600); r.noFiveHour = true; r.plan = "Ultra"; r.updatedAt = now
+        r.source = "Anthropic"
+        r.resolved = AccountResolver.resolve(s, among: [s], app: app, code: mo, loginEmail: mo.email, names: [:], newestSwitch: newest, now: now)
+        return r
+    }
+    let appPat = AppSignIn.Login(account: pat.account, org: pat.organization, state: .known, source: "log", at: now)
+    let appAnon = AppSignIn.Login(account: uuid(76), org: uuid(176), state: .known, source: "log", at: now)
+    var toMo = SwitchReceipt(id: SwitchEngine.receiptID(now, "c3s"), profile: "c3s", standby: "km", dataDir: "/x", from: SeatID(pat), to: SeatID(mo), started: now)
+    toMo.steps = [SwitchReceipt.Step(kind: .entry, path: "/x/a", sha: nil, parked: nil, original: nil, done: true)]
+    toMo.linked = now
+    let cases: [(String, AccountEntry, IconStatus?)] = [
+        ("fresh", e, rec("ok", week: 64, five: 12, age: 60)), ("lastknown", e, rec("ok", week: 100, five: 30, age: 10 * 60)),
+        ("old40", e, rec("ok", week: 64, five: 12, age: 40 * 60)), ("old70", e, rec("ok", week: 64, five: 12, age: 70 * 60)),
+        ("full", e, rec("ok", week: 100, five: 30, age: 60)), ("denied", e, rec("denied", week: 64, five: 12, age: 60)),
+        ("denied-none", e, rec("denied", week: nil, five: nil, age: 60)), ("mismatch", e, rec("ok", week: 64, five: 12, age: 60, login: ben.email)),
+        ("expired", e, rec("expired", week: 64, five: 12, age: 60)), ("signedout", e, rec("noLogin", week: 64, five: 12, age: 60)),
+        ("clash", e, rec("ok", week: 64, five: 12, age: 60, login: cat.email, code: cat)),
+        ("unconfirmed", e, rec("ok", week: 100, five: 30, age: 60, unconfirmed: true)),
+        ("split", s, splitRec(appPat)), ("split-anon", s, splitRec(appAnon)), ("split-switching", s, splitRec(appPat, newest: toMo)),
+        ("norecord", e, nil)]
+    let face = FaceTheme.of(.std)
+    let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
+    for (name, p, r) in cases {
+        if let r { _ = Store.writeStatus(p.id, r) } else { Store.removeStatus(p.id) }
+        for w in [CGFloat(340), 460] {
+            snapshot(AccountCard(row: cardRow(p, now: now), actions: acts).frame(width: w).fixedSize(horizontal: false, vertical: true)
+                        .environment(\.settingsColumnWidth, w).padding(16).background(Color(white: 0.1))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                        .environment(\.face, face).environment(\.colorScheme, .dark), "card3b-\(name)-std-w\(Int(w))", w + 32, 420)
+        }
+    }
+}
+
+if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
+    MainActor.assumeIsolated { card3bRenders() }
+    print("done"); exit(0)
+}
+
 MainActor.assumeIsolated {
     // (named "Main": the app puts "Claude " before a profile's name itself)
     var main = AccountEntry(id: "main", name: "Main", label: "MAIN", configDir: "~/.claude"); main.seat = u1
@@ -690,7 +763,7 @@ MainActor.assumeIsolated {
                 Text("Dock panel").font(.caption.bold())
                 DetailsView(info: panel, actions: noop).frame(width: min(w, 340))
                 Text("Card").font(.caption.bold())
-                AccountCard(row: AccountRow(entry: main, status: st), actions: acts).frame(width: min(w, 460))
+                AccountCard(row: cardRow(main), actions: acts).frame(width: min(w, 460))
                 Text("Quick chat").font(.caption.bold())
                 Text("\(main.name) · " + (QuickChatTarget(main).email ?? "no account")).font(.system(size: 12))
                 Text("Settings ▸ Accounts").font(.caption.bold())
@@ -798,12 +871,12 @@ MainActor.assumeIsolated {
     // the dashboard card: the account in use's limits, the standby accounts in unlit trays (no levels); then its week full,
     // the one offered first selected (the card's actions: `acts`, as for the a-renders)
     for f in [Face.std, .silver] { for (wn, w) in oWidths {
-        snapshot(framed(AccountCard(row: AccountRow(entry: main, status: Store.status(for: main)), actions: acts).frame(width: min(w, 460)), f, w),
+        snapshot(framed(AccountCard(row: cardRow(main), actions: acts).frame(width: min(w, 460)), f, w),
                  "o7a-card-standby-\(f.rawValue)-\(wn)", w + 32, 900)
     } }
     status("main", u1.email!, week: 100, fable: 60, resetsIn: 7 * 3600)
     for f in [Face.std, .silver] { for (wn, w) in oWidths {
-        snapshot(framed(AccountCard(row: AccountRow(entry: main, status: Store.status(for: main)), actions: acts).frame(width: min(w, 460)), f, w),
+        snapshot(framed(AccountCard(row: cardRow(main), actions: acts).frame(width: min(w, 460)), f, w),
                  "o7b-card-standby-full-\(f.rawValue)-\(wn)", w + 32, 900)
     } }
     status("main", u1.email!, week: 94, fable: 60, resetsIn: 7 * 3600)
@@ -817,7 +890,7 @@ MainActor.assumeIsolated {
         var rec = plainRecord ?? IconStatus(state: "ok")
         rec.resolved = AccountResolver.resolve(main, among: [main], app: app, code: u1, loginEmail: u1.email, names: [u2.account: u2.email!])
         _ = Store.writeStatus("main", rec)
-        let row = AccountRow(entry: main, status: Store.status(for: main))
+        let row = cardRow(main)
         for f in [Face.std, .silver] { for (wn, w) in oWidths {
             snapshot(framed(AccountCard(row: row, actions: acts).frame(width: min(w, 460)), f, w), "\(tag)-\(f.rawValue)-\(wn)", w + 32, 900)
         } }
