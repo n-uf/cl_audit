@@ -1769,6 +1769,9 @@ MainActor.assumeIsolated {
     check(AccountView.of(appClashShow.record).lit && !appClashShow.display.lamp && !appClashDock.panel.activeLit && !lamp(appClashDock.menu)
           && AccountSettings(entry: .constant(e), model: settingsModel).elsewhere?.owner.id == "other",
           "an app-decided account with Claude Code on Other's: the lamp off on the menu bar row, the Dock panel and menu, as Settings' (its move is Other)")
+    check(appClashShow.display.key == .logIn && appClashShow.loginAddress == u1.email && appClashDock.panel.needsLogin
+          && titles(appClashDock.menu).contains("Sign in…") && titles(menuBarMenu(appClashShow)).contains("Sign in…"),
+          "…and Sign in… (to the profile's own u1) on the Dock panel, the Dock menu and the menu bar menu, as on the card")
 
     // a value made a moment before a full limit's reset: drawn after it, no countdown (the face and the icon look again)
     let beforeReset = ProfileShow.of(e, raw: rec(week: 100, weekIn: -60), now: now.addingTimeInterval(-120))
@@ -2058,18 +2061,17 @@ do {
         return s
     }
     /// The card's row for a record of profile `p` (default the card's), checked against the value it draws: the lamp, the
-    /// line, what is full, the tile's grey and warning, the notice's key (the value's, and Sign in… for another profile's
-    /// account), the numbers.
-    func card(_ r: IconStatus?, _ p: AccountEntry? = nil, _ what: String) -> (row: AccountRow, notice: UsageNotice?) {
+    /// line, what is full, the tile's grey and warning, the numbers (each state below says its notice and key itself).
+    func card(_ r: IconStatus?, _ p: AccountEntry? = nil, _ what: String) -> (row: AccountRow, notice: UsageNotice?, terminalInRow: Bool) {
         let p = p ?? e
         if let r { _ = Store.writeStatus(p.id, r) } else { Store.removeStatus(p.id) }
-        let row = cardRow(p, now: now), d = row.show.display, n = UsageNotice.of(row)
-        let keyed = (n?.key == .signIn) == (d.key != nil || (d.clash != nil && d.split == nil))
+        let row = cardRow(p, now: now), d = row.show.display
         check(row.lit == d.lamp && row.line == row.show.lineWords(short: false) && row.full == d.full(now: Date())
               && row.tile.stale == d.grey && row.tile.warn == d.otherAccount && (row.tile.countdown == nil) == (row.full == nil)
-              && row.fiveHour == d.usage?.fiveHour && row.weekly == d.usage?.weekly && keyed,
-              "\(what): the card draws the value (lamp, line, full, grey, warning, numbers, key)")
-        return (row, n)
+              && row.fiveHour == d.usage?.fiveHour && row.weekly == d.usage?.weekly,
+              "\(what): the card draws the value (lamp, line, full, grey, warning, numbers)")
+        let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
+        return (row, UsageNotice.of(row), AccountCard(row: row, actions: acts).terminalInRow)
     }
 
     // the tiers: fresh; last known at 10 minutes (a full week left out); grey past three missed reads (30 minutes at the
@@ -2079,7 +2081,7 @@ do {
           && fresh.row.line == nil && fresh.row.subtitle == u1.email, "fresh: the numbers, lit, not grey, no notice")
     let known = card(rec(week: 100, age: 10 * 60, weekIn: 3 * 3600), nil, "last known")
     check(known.row.full == nil && known.row.tile.countdown == nil && !known.row.tile.stale && known.row.weekly == nil
-          && known.row.fiveHour == 12, "10 minutes old: last known, the full week left out, no countdown, not grey")
+          && known.row.fiveHour == 12 && known.notice == nil, "10 minutes old: last known, the full week left out, no countdown, not grey, no key")
     let grey = card(rec(age: 40 * 60), nil, "40 minutes old")
     check(grey.row.tile.stale && grey.row.weekly == 40 && grey.notice == nil, "40 minutes old: the card's tile greys (as the Dock icon), the numbers still drawn")
     check(card(rec(age: 61 * 60), nil, "an hour old").row.tile.stale, "61 minutes old: grey")
@@ -2091,7 +2093,8 @@ do {
     check(full.row.full?.kind == .week && full.row.tile.countdown != nil && full.notice == nil, "a fresh full week: full, the countdown, Switch account (no notice)")
     // a reset that has passed: no percent, nothing full
     let past = card(rec(week: 100, weekIn: -60), nil, "a passed reset")
-    check(past.row.weekly == nil && past.row.full == nil && past.row.fiveHour == 12, "the week's reset passed: no week, nothing full")
+    check(past.row.weekly == nil && past.row.full == nil && past.row.fiveHour == 12 && past.notice == nil,
+          "the week's reset passed: no week, nothing full, no key")
 
     // the sign-in: not readable (the numbers as read, the lamp off; the amber notice only without numbers), expired and
     // signed out (red, Sign in…, no numbers, grey), on another account (the warning dot, red, Sign in…)
@@ -2112,21 +2115,37 @@ do {
     check(mixed.notice?.heading == "Terminal is signed in to another account" && mixed.notice?.key == .signIn && mixed.row.tile.warn
           && !mixed.row.lit && mixed.row.subtitle == "sign-in is a different account", "the sign-in on another account than the folder's: red, Sign in…, the warning, the lamp off")
 
-    // another profile's account: by its id, and by its name in a record from before the id; the profile renamed since
+    // another profile's account: by its id, and by its name in a record from before the id; the profile renamed since.
+    // The folder's .claude.json names Other's account (u3): the key signs Terminal in to Card's own (u1), never Other's
+    let ownLine = "Sign in as \(Privacy.masked(u1.email!)) to read Card's usage."
     let clash = card(rec(login: u3.email, code: u3), nil, "clash by id")
     check(clash.row.display.clash == ProfileDisplay.Clash(id: "other", name: "Other") && clash.notice?.heading == "Terminal is signed in to Other's account"
-          && clash.notice?.key == .signIn && clash.row.display.key == nil && !clash.row.lit,
-          "Claude Code on Other's account (by id): red, the approved Sign in…, the lamp off (its numbers the reader's to drop, 6f)")
+          && clash.notice?.key == .signIn && clash.row.display.key == .logIn && clash.notice?.line == ownLine
+          && clash.row.show.loginAddress == u1.email && clash.row.status?.expectedEmail == u3.email && !clash.row.lit,
+          "Claude Code on Other's account (by id): red, Sign in… as Card's own u1 (never Other's u3), the lamp off: \(clash.notice?.line ?? "-")")
     var byName = rec(login: u3.email, code: u3); byName.resolved?.clashID = nil
     let oldClash = card(byName, nil, "clash by old name")
     check(oldClash.row.display.clash == ProfileDisplay.Clash(id: nil, name: "Other") && oldClash.notice?.heading == "Terminal is signed in to Other's account"
-          && !oldClash.row.lit, "a record from before the clash's id: by its name, the same notice, the lamp off")
+          && oldClash.notice?.key == .signIn && oldClash.notice?.line == ownLine && !oldClash.row.lit,
+          "a record from before the clash's id: by its name, the same notice and key to u1, the lamp off")
     var renamed = other; renamed.name = "Work"
     try! Store.save([e, renamed])
     let renamedClash = card(rec(login: u3.email, code: u3), nil, "renamed clash profile")
-    check(renamedClash.notice?.tone == .red && !renamedClash.row.lit && renamedClash.row.display.clash?.id == "other",
-          "the clash's profile renamed since the record: still red and unlit, the clash by its id")
+    check(renamedClash.notice?.tone == .red && renamedClash.notice?.key == .signIn && renamedClash.notice?.line == ownLine
+          && !renamedClash.row.lit && renamedClash.row.display.clash?.id == "other",
+          "the clash's profile renamed since the record: still red, Sign in… to u1, unlit, the clash by its id")
     try! Store.save([e, other])
+    // the app decided the account in use (u2, not the seat's u1), Claude Code's folder on Other's: the app's address, never
+    // the folder's nor the seat's
+    let appClash = #"{"expectedEmail":"ultra-3@example.com","loginEmail":"ultra-3@example.com","resolved":{"account":"\#(u2.account)","at":1800000000,"clash":"Other","clashID":"other","differs":true,"email":"ultra-2@example.com","fromApp":true,"lit":true,"numbersFor":"ultra-3@example.com"},"state":"ok","updatedAt":\#(Int(now.timeIntervalSince1970) - 60),"weekly":40}"#
+    let appDecided = card(StatusCodec.decode(Data(appClash.utf8))!, nil, "clash, the app's account")
+    check(appDecided.notice?.key == .signIn && appDecided.notice?.line == "Sign in as \(Privacy.masked(u2.email!)) to read Card's usage."
+          && appDecided.row.show.loginAddress == u2.email,
+          "a clash with the app's account in use: Sign in… as the app's u2, never the folder's u3: \(appDecided.notice?.line ?? "-")")
+    // the menu bar and the Dock icon offer the same key there (the value's), to the same address
+    let clashShow = ProfileShow.load(e, now: now)
+    check(clashShow.keyWords(short: false) == "Sign in…" && clashShow.loginAddress == u2.email,
+          "the menu bar's and the Dock menu's key in a clash: Sign in…, to the app's u2")
 
     // unconfirmed: as read, never full, said so
     var unsure = rec(week: 100, weekIn: 3 * 3600); unsure.ownerUnconfirmed = true
@@ -2169,13 +2188,23 @@ do {
     let anonApp = AppSignIn.Login(account: uuid(63), org: uuid(163), state: .known, source: "log", at: now)
     let anon = card(splitRec(app: anonApp), s, "split, the app's account by id")
     check(anon.notice?.key == UsageNotice.Key.none && anon.notice?.line == "Sign Claude Code in Terminal in to the Claude app's account."
-          && anon.row.show.loginAddress == nil, "the split with the app's account known by its id only: no key (the value's), the hint")
+          && anon.row.show.loginAddress == nil && anon.terminalInRow,
+          "the split with the app's account known by its id only: no key (the value's), the hint, Terminal in the keys row")
+    check(!split.terminalInRow, "the split with its Sign in…: Terminal steps into ⋯")
     var toMo = SwitchReceipt(id: SwitchEngine.receiptID(now, "csp"), profile: "csp", standby: "km", dataDir: "/x", from: SeatID(pat), to: SeatID(mo), started: now)
     toMo.steps = [SwitchReceipt.Step(kind: .entry, path: "/x/a", sha: nil, parked: nil, original: nil, done: true)]
     toMo.linked = now
     let waiting = card(splitRec(app: appPat, newest: toMo), s, "split, a switch waiting")
     check(waiting.notice?.tone == .amber && waiting.notice?.heading == SplitUsage.switchingHead(mo.email!) && waiting.notice?.key == UsageNotice.Key.none
-          && waiting.row.lit, "a switch to mo waiting for the app: amber, no key, lit")
+          && waiting.row.lit && waiting.terminalInRow, "a switch to mo waiting for the app: amber, no key, lit, Terminal in the row")
+    // …while Terminal's sign-in has run out, is gone or is on another account: the switch still waits, and Sign in… shows
+    for (what, state, expected) in [("expired", "expired", mo.email!), ("signed out", "noLogin", mo.email!), ("another account", "ok", "zed@example.com")] {
+        var r = splitRec(app: appPat, newest: toMo); r.state = state; r.expectedEmail = expected
+        let c = card(r, s, "a switch waiting, \(what)")
+        check(c.notice?.tone == .amber && c.notice?.heading == SplitUsage.switchingHead(mo.email!) && c.notice?.key == .signIn
+              && c.row.display.key == .logIn && !c.terminalInRow,
+              "a switch waiting, Terminal's sign-in \(what): still the switch's notice, with Sign in…")
+    }
     Store.removeStatus("card"); Store.removeStatus("csp")
     try? Store.save([])
 }

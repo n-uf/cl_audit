@@ -1051,9 +1051,9 @@ struct AccountCard: View {
     private var showsSwitch: Bool { notice == nil && row.full != nil }
     /// Signed out or expired: no window key in the row (it waits in ⋯ with Terminal).
     private var windowInRow: Bool { row.entry.claudeWindow && notice?.signedOut != true }
-    /// Terminal in the row only while the card is as usual or a switch waits; otherwise (a notice with its key, or the
-    /// Switch account key) it steps into ⋯ so the row stays one line at 340 pt.
-    private var terminalInRow: Bool {
+    /// Terminal in the row only while the card is as usual or its notice has no key; otherwise (a notice with its key, or
+    /// the Switch account key) it steps into ⋯ so the row stays one line at 340 pt. (Not private: the surfaces checks.)
+    var terminalInRow: Bool {
         !row.entry.usageOnly && !showsSwitch && (notice == nil || notice?.key == UsageNotice.Key.none)
     }
     /// Terminal in ⋯, saying whose sign-in it opens on.
