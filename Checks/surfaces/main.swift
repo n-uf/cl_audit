@@ -2164,6 +2164,15 @@ do {
           && !scripts[0].contains(u3.email!) && !scripts[0].contains("--email") && clashModel.runner(of: e.id).goal == nil,
           "Settings' Sign in in a clash, no seat: the plain sign-in, no address, never Other's u3: \(launched)")
     ClaudeLocator.current = keepLocator; ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = nil
+    // the address pop-up's Sign in… on a profile with no seat whose sign-in is on another account (u2; the folder names
+    // u1): the folder's u1, never the account the sign-in is on (the pop-up's ticked line, u2)
+    var onOther = IconStatus(state: "ok"); onOther.loginEmail = u2.email; onOther.expectedEmail = u1.email; onOther.updatedAt = now
+    _ = Store.writeStatus(e.id, onOther)
+    let popUp = AccountSettings(entry: .constant(noSeat), model: clashModel)
+    let popUpItems = popUp.loginItems
+    check(popUp.popUpSignInAddress == u1.email && popUpItems.contains { $0.id == "again" }
+          && popUpItems.first { $0.id == "here" }?.title.contains(Privacy.masked(u2.email!)) == true,
+          "the pop-up's Sign in… on a no-seat profile signed in to another account: the folder's u1, never u2: \(popUp.popUpSignInAddress ?? "nil")")
     // …and with an address (the app's u2) the runner signs in to that one, not the seat's u1 nor the folder's u3 (on a
     // folder that isn't there: the goal is set, nothing runs)
     var gone = e; gone.configDir = "~/.claude-card-gone"; gone.id = "cardgone"

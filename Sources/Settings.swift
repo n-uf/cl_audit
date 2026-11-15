@@ -2065,6 +2065,10 @@ struct AccountSettings: View {
         var action: () -> Void = {}
     }
 
+    /// The address the pop-up's Sign in… signs in to: the one value's (ProfileShow.loginAddress), else the folder's; never
+    /// the account the sign-in happens to be on (that can be the wrong one).
+    var popUpSignInAddress: String? { ProfileShow.load(entry).loginAddress ?? expected }
+
     /// What the account in use's pop-up lists, telling the same story as its label (the account Claude Code in this
     /// folder is signed in to, ticked): when that is another profile's account, the profile's own one to sign back in to
     /// comes next; then Renew sign-in. Other accounts are listed by themselves (AccountList).
@@ -2095,7 +2099,7 @@ struct AccountSettings: View {
         // without Claude Code the items that need it are greyed; this one, right above them, says why
         if !canSignIn { items.append(LoginItem(id: "install", title: ClaudeInstall.missingInstall) { model.showInstallHelp() }) }
         if move == nil {
-            items.append(LoginItem(id: "again", title: "Sign in…", enabled: canSignIn) { signInAgain(email: linked ?? here) })
+            items.append(LoginItem(id: "again", title: "Sign in…", enabled: canSignIn) { signInAgain(email: popUpSignInAddress) })
         }
         items.append(LoginItem(id: "renew", title: "Renew sign-in by itself", enabled: canSignIn, kind: .toggle(entry.autoRenew)) {
             entry.autoRenew.toggle()
