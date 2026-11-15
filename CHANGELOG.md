@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.41 — 2026-11-15
+
 - The profile icon on the dashboard cards and in the palette now turns grey when the usage is old (three missed reads, 30 minutes at the usual setting), the same moment the Dock icon and the menu bar do, instead of after an hour.
 - The green lamp by the account in use on the dashboard card now goes off when the sign-in can't be read, or is on another account than the folder's or on another profile's, as it already did in the menu bar, the Dock icon and Settings.
 - The dashboard card's Sign in… key now follows the menus' rule. When the Claude app's account is known only by its id, the card says to sign Claude Code in Terminal in to the Claude app's account instead of offering a key that fills in no address; while a switch waits for the Claude app, Sign in… shows only when Terminal's sign-in has run out, is gone or is on another account.
