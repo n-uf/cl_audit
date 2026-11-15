@@ -218,50 +218,9 @@ struct ClaudeRun: Identifiable, Equatable {
 }
 
 enum ClaudeRuns {
-    /// Every Claude desktop app and Claude Code session of this user. Reads each session's environment only
-    /// for CLAUDE_CONFIG_DIR (which folder it uses); nothing else from it is kept. Call off the main thread.
-    static func scan() -> [ClaudeRun] {
-        var runs: [ClaudeRun] = []
-        for app in NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID) {
-            let dir = Launcher.arguments(of: app.processIdentifier).first { $0.hasPrefix("--user-data-dir=") }
-            let folder = dir.map { tilde(String($0.dropFirst("--user-data-dir=".count))) } ?? FolderKey.standardDataDir
-            runs.append(ClaudeRun(id: app.processIdentifier, kind: .desktop, folder: folder))
-        }
-        for pid in pids(named: "claude") {
-            let path = run("/bin/ps", ["-o", "comm=", "-p", "\(pid)"])
-            let kind: ClaudeRun.Kind = path.contains("/Library/Application Support/Claude") ? .codeTab : .terminal
-            runs.append(ClaudeRun(id: pid, kind: kind, folder: configDir(of: pid)))
-        }
-        return runs
-    }
-
     /// Quits the Claude desktop apps (their Code-tab sessions end with them).
     static func quitDesktopApps() {
-        NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID).forEach { $0.terminate() }
-    }
-
-    private static func pids(named name: String) -> [pid_t] {
-        run("/usr/bin/pgrep", ["-x", "-U", "\(getuid())", name]).split(separator: "\n").compactMap { pid_t($0.trimmingCharacters(in: .whitespaces)) }
-    }
-
-    /// The session's CLAUDE_CONFIG_DIR, or ~/.claude when it isn't set.
-    private static func configDir(of pid: pid_t) -> String {
-        let env = run("/bin/ps", ["-E", "-ww", "-o", "command=", "-p", "\(pid)"])
-        for part in env.split(separator: " ") where part.hasPrefix("CLAUDE_CONFIG_DIR=") {
-            return tilde(String(part.dropFirst("CLAUDE_CONFIG_DIR=".count)))
-        }
-        return "~/.claude"
-    }
-
-    private static func run(_ tool: String, _ args: [String]) -> String {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: tool)
-        p.arguments = args
-        let out = Pipe(); p.standardOutput = out; p.standardError = Pipe()
-        do { try p.run() } catch { return "" }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitQuietly()
-        return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        Processes.claudeApps().forEach { $0.terminate() }
     }
 }
 
@@ -284,7 +243,7 @@ final class RunsMonitor: ObservableObject {
 
     func refresh() {
         DispatchQueue.global(qos: .utility).async {
-            let r = Self.preview ?? ClaudeRuns.scan()
+            let r = Self.preview ?? Processes.claudeRuns()
             DispatchQueue.main.async {
                 if r != self.runs { self.runs = r }
                 self.checked = true

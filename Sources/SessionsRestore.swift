@@ -149,8 +149,9 @@ enum SessionsRestore {
         var written: Int { count }
     }
 
-    /// A check's seam: the session ids Claude Code processes were started with (nil: it couldn't be told).
-    nonisolated(unsafe) static var runningSessions: () -> Set<String>? = { psSessions() }
+    /// A check's seam: the session ids Claude Code processes were started with (nil: it couldn't be told). Limits: a session
+    /// resumed from its own picker, or with --continue, isn't named there; the transcript's age covers it (`recent`).
+    nonisolated(unsafe) static var runningSessions: () -> Set<String>? = { Processes.sessionsOnCommandLines() }
     /// A transcript changed in the last two minutes counts as held (a session resumed without its id on the command line).
     static let recent: TimeInterval = 120
 
@@ -725,30 +726,6 @@ enum SessionsRestore {
             off += off_t(n)
         }
         return h.finalize().map { String(format: "%02x", $0) }.joined()
-    }
-
-    /// The session ids on the command lines of Claude Code processes (`--resume <id>`, `--session-id <id>`): one `ps`.
-    /// Limits: a session resumed from its own picker, or with --continue, isn't named there; the transcript's age covers it.
-    static func psSessions() -> Set<String>? {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/ps")
-        p.arguments = ["-axww", "-o", "command="]
-        let pipe = Pipe()
-        p.standardOutput = pipe; p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }
-        final class Box: @unchecked Sendable { var data = Data() }
-        let box = Box(), done = DispatchGroup()
-        done.enter()
-        DispatchQueue.global(qos: .utility).async { box.data = pipe.fileHandleForReading.readDataToEndOfFile(); done.leave() }
-        if done.wait(timeout: .now() + 5) == .timedOut { p.terminate(); return nil }
-        p.waitUntilExit()
-        guard p.terminationStatus == 0, let re = try? NSRegularExpression(pattern: "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}") else { return nil }
-        var out = Set<String>()
-        for line in String(decoding: box.data, as: UTF8.self).split(separator: "\n") where line.localizedCaseInsensitiveContains("claude") {
-            let s = String(line)
-            for m in re.matches(in: s, range: NSRange(s.startIndex..., in: s)) { out.insert((s as NSString).substring(with: m.range).lowercased()) }
-        }
-        return out
     }
 
     // MARK: the receipt

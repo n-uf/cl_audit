@@ -487,15 +487,15 @@ MainActor.assumeIsolated {
     if case .refused(let why) = SideFiles.trustEntry(crafted, (old, old), mcp: true, label: "“x”") { check(why.contains("can't be written"), "…and said: \(why)") } else { check(false, "-1e999: the entry is refused with a line") }
     // whether a process is Claude Code for a folder (the process list itself is never read here)
     let want = FolderKey.canonical(cc), std = FolderKey.canonical(home + "/.claude")
-    check(SideFiles.judge(name: "claude", exe: nil, args: [], configDir: nil, want: want, std: std) == nil
-          && SideFiles.judge(name: "zsh", exe: nil, args: [], configDir: nil, want: want, std: std) == false,
+    check(Processes.isCode(name: "claude", exe: nil, args: [], configDir: nil, want: want, std: std) == nil
+          && Processes.isCode(name: "zsh", exe: nil, args: [], configDir: nil, want: want, std: std) == false,
           "process: one that looks like Claude Code but can't be read is unknown (counted as running); another isn't")
-    check(SideFiles.judge(name: "Claude", exe: "/Applications/Claude.app/Contents/MacOS/Claude", args: [], configDir: nil, want: std, std: std) == false
-          && SideFiles.judge(name: "claude", exe: home + "/Library/Application Support/Claude/claude-code/2.1.318/claude.app/Contents/MacOS/claude", args: ["claude"], configDir: cc, want: want, std: std) == true
-          && SideFiles.judge(name: "2.1.318", exe: home + "/.local/share/claude/versions/2.1.318", args: ["2.1.318"], configDir: nil, want: std, std: std) == true
-          && SideFiles.judge(name: "claude", exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: "/elsewhere", want: want, std: std) == false,
+    check(Processes.isCode(name: "Claude", exe: "/Applications/Claude.app/Contents/MacOS/Claude", args: [], configDir: nil, want: std, std: std) == false
+          && Processes.isCode(name: "claude", exe: home + "/Library/Application Support/Claude/claude-code/2.1.318/claude.app/Contents/MacOS/claude", args: ["claude"], configDir: cc, want: want, std: std) == true
+          && Processes.isCode(name: "2.1.318", exe: home + "/.local/share/claude/versions/2.1.318", args: ["2.1.318"], configDir: nil, want: std, std: std) == true
+          && Processes.isCode(name: "claude", exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: "/elsewhere", want: want, std: std) == false,
           "process: the Claude app itself isn't Claude Code; its own Claude Code run from a terminal is; a versions/ launch is; another folder's isn't")
-    check(SideFiles.judge(name: "Claude", exe: "/Applications/Claude-Work.app/Contents/MacOS/Claude", args: [], configDir: nil, want: std, std: std) == false,
+    check(Processes.isCode(name: "Claude", exe: "/Applications/Claude-Work.app/Contents/MacOS/Claude", args: [], configDir: nil, want: std, std: std) == false,
           "process: a profile's own window copy (Claude-Work.app) isn't Claude Code")
 
     // ---- round 2: retire keeps a session waiting with trust only; a doctored receipt's ".." removes nothing; the history lock's budget

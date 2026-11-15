@@ -349,8 +349,8 @@ do {
     put(expand("~/.claude-p8/sessions/4242.json"), #"{"pid":4242,"sessionId":"\#(uuid(902))"}"#)
     put(expand("~/.claude-p8/sessions/4343.json"), #"{"pid":4343,"sessionId":"\#(uuid(903))"}"#)
     put(expand("~/.claude-p8/sessions/4444.json"), #"{"pid":1,"sessionId":"\#(uuid(904))"}"#)
-    let ps = " 100 /opt/homebrew/bin/claude --resume \(uuid(901).uppercased())\n 101 /bin/zsh -c claude \(uuid(905))\n 102 claude\n"
-    let owned = SwitchEngine.owned(ps: ps, codeDir: "~/.claude-p8", alive: { $0 == 4242 || $0 == 4444 })
+    let commands = ["/opt/homebrew/bin/claude --resume \(uuid(901).uppercased())", "/bin/zsh -c claude \(uuid(905))", "claude"]
+    let owned = Processes.owned(commands: commands, codeDir: "~/.claude-p8", alive: { $0 == 4242 || $0 == 4444 })
     check(owned == [uuid(901), uuid(902)], "owned: an id on a claude command line, a live registration; not another program's, not a dead or mismatched registration: \(owned.sorted())")
 }
 
@@ -860,12 +860,12 @@ do {
           "Leave it as it is: the receipt closed, nothing moved, what stays where said: \(words12)")
 
     // SHOULD 7: the program is the executable's last path component, the path whole even with spaces
-    check(SwitchEngine.isClaude(home + "/Library/Application Support/Claude/claude-code/2.1.318/claude --resume \(uuid(1220))")
-          && SwitchEngine.isClaude("claude") && SwitchEngine.isClaude("/opt/homebrew/bin/claude -p hi")
-          && !SwitchEngine.isClaude("/bin/zsh -c claude \(uuid(1220))") && !SwitchEngine.isClaude("/usr/bin/vim claude"),
+    check(Processes.isClaude(home + "/Library/Application Support/Claude/claude-code/2.1.318/claude --resume \(uuid(1220))")
+          && Processes.isClaude("claude") && Processes.isClaude("/opt/homebrew/bin/claude -p hi")
+          && !Processes.isClaude("/bin/zsh -c claude \(uuid(1220))") && !Processes.isClaude("/usr/bin/vim claude"),
           "claude by its executable's last path component, spaces in the path included; not as another program's argument")
-    let ps = " 300 " + home + "/Library/Application Support/Claude/claude-code/2.1.318/claude --resume \(uuid(1221))\n"
-    check(SwitchEngine.owned(ps: ps, codeDir: "~/.claude-r3", alive: { _ in false }) == [uuid(1221)], "the Claude app's own claude, under a path with a space: its session is owned")
+    let command = home + "/Library/Application Support/Claude/claude-code/2.1.318/claude --resume \(uuid(1221))"
+    check(Processes.owned(commands: [command], codeDir: "~/.claude-r3", alive: { _ in false }) == [uuid(1221)], "the Claude app's own claude, under a path with a space: its session is owned")
     try? fm.removeItem(atPath: expand("~/.claude-r3"))
 }
 

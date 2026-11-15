@@ -238,61 +238,7 @@ enum SwitchEngine {
         return nil
     }
 
-    // MARK: who owns a session now (claude-transplant's workers)
-
-    /// The session ids a running Claude Code owns: every id on the command line of a process whose program is `claude`,
-    /// and the sessionId of `<codeDir>/sessions/<pid>.json` for a process that runs. nil when the processes can't be read
-    /// (then nothing moves: claude-transplant's "cannot inspect running workers").
-    static func workers(codeDir: String) -> Set<String>? {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/ps")
-        p.arguments = ["-axo", "pid=,command="]
-        var env = ProcessInfo.processInfo.environment; env["LC_ALL"] = "C"; p.environment = env
-        let out = Pipe()
-        p.standardOutput = out; p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return nil }
-        let data = out.fileHandleForReading.readDataToEndOfFile()
-        p.waitUntilExit()
-        guard p.terminationStatus == 0 else { return nil }
-        return owned(ps: String(decoding: data, as: UTF8.self), codeDir: codeDir, alive: { kill($0, 0) == 0 || errno == EPERM })
-    }
-
-    /// `workers` on what `ps -axo pid=,command=` printed (the checks pass their own).
-    static func owned(ps: String, codeDir: String, alive: (pid_t) -> Bool) -> Set<String> {
-        var ids: Set<String> = []
-        let uuid = try! NSRegularExpression(pattern: "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", options: [.caseInsensitive])
-        for line in ps.split(separator: "\n") {
-            let parts = line.trimmingCharacters(in: .whitespaces).split(separator: " ", maxSplits: 1).map(String.init)
-            guard parts.count == 2, isClaude(parts[1]) else { continue }
-            let cmd = parts[1]
-            for m in uuid.matches(in: cmd, range: NSRange(cmd.startIndex..., in: cmd)) {
-                if let r = Range(m.range, in: cmd) { ids.insert(cmd[r].lowercased()) }
-            }
-        }
-        let dir = (expand(codeDir) as NSString).appendingPathComponent("sessions")
-        for n in (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? [] where n.hasSuffix(".json") {
-            guard let pid = pid_t(n.dropLast(5)), pid > 0, alive(pid),
-                  let j = SafeRead.jsonObject((dir as NSString).appendingPathComponent(n), max: SafeRead.recordMax),
-                  (j["pid"] as? NSNumber)?.int32Value == pid, let s = j["sessionId"] as? String else { continue }
-            ids.insert(s.lowercased())
-        }
-        return ids
-    }
-
-    /// Whether a command line's program is `claude`: its executable's last path component, the path taken whole even with
-    /// spaces in it (".../Application Support/Claude/claude-code/2.1.318/claude --resume …"), up to the first argument
-    /// that starts with "-". `/bin/zsh -c claude …` is zsh's, not claude's.
-    static func isClaude(_ command: String) -> Bool {
-        let words = command.split(separator: " ", omittingEmptySubsequences: false)
-        var path = ""
-        for (i, w) in words.enumerated() {
-            if i > 0 && w.hasPrefix("-") { break }
-            path = i == 0 ? String(w) : path + " " + w
-            if (path as NSString).lastPathComponent.lowercased() == "claude" { return i == 0 || path.hasPrefix("/") }
-            if i == 0 && !path.hasPrefix("/") { break }            // a bare program name has no spaces
-        }
-        return false
-    }
+    // MARK: who owns a session now (claude-transplant's workers: Processes.sessionsOwned)
 
     /// Whether a running Claude Code owns this entry: its own id (without "local_") or its Claude Code session's.
     static func ownedBy(_ owned: Set<String>, entry data: Data, name: String) -> Bool {
@@ -324,7 +270,7 @@ enum SwitchEngine {
         let fm = FileManager.default
         let names = ((try? fm.contentsOfDirectory(atPath: p.sourceDir)) ?? []).filter { $0.hasPrefix("local_") && $0.hasSuffix(".json") }.sorted()
         guard !names.isEmpty || fm.fileExists(atPath: (p.sourceDir as NSString).appendingPathComponent("scheduled-tasks.json")) else { return .success(p) }
-        guard let live = owned ?? workers(codeDir: p.codeDir) else {
+        guard let live = owned ?? Processes.sessionsOwned(codeDir: p.codeDir) else {
             return .failure(.notReady("cl_audit couldn't see which sessions Claude Code is running now; nothing is moved."))
         }
         let taskBlock = taskProblem(source: p.sourceDir, target: p.targetDir)
@@ -585,41 +531,18 @@ enum SwitchEngine {
     static func busy(_ transcript: String, cli: String, now: Date = Date()) -> String? {
         if let m = (try? FileManager.default.attributesOfItem(atPath: transcript))?[.modificationDate] as? Date,
            now.timeIntervalSince(m) < 10 { return "its transcript changed seconds ago" }
-        // lsof -S 2: its own time limit for kernel calls (-b isn't used: it can't then find a file named by path)
-        switch probe("/usr/sbin/lsof", ["-S", "2", "-t", "--", transcript]) {
+        switch Processes.fileOpen(transcript) {
         case .found: return "its transcript is open in another program"
         case .unknown: return "it couldn't be checked whether its transcript is open"
         case .none: break
         }
-        switch probe("/usr/bin/pgrep", ["-f", "--", cli]) {
-        case .found: return "Claude Code runs it"
-        case .unknown: return "it couldn't be checked whether Claude Code runs it"
-        case .none: break
+        // (`cli` is a file name of letters, digits and "-" only: transcriptPath)
+        switch Processes.commandLineNames(cli) {
+        case true?: return "Claude Code runs it"
+        case nil: return "it couldn't be checked whether Claude Code runs it"
+        case false?: break
         }
         return nil
-    }
-
-    enum Probe { case found, none, unknown }
-
-    /// Whether a command finds something (exit 0), within `limit` seconds: past it, only that command (cl_audit's own
-    /// child) is stopped, and the answer is unknown.
-    static func probe(_ tool: String, _ args: [String], limit: TimeInterval = 5) -> Probe {
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: tool)
-        p.arguments = args
-        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
-        guard (try? p.run()) != nil else { return .unknown }
-        let deadline = Date().addingTimeInterval(limit)
-        while p.isRunning && Date() < deadline { usleep(50_000) }
-        if p.isRunning {
-            p.terminate()
-            let grace = Date().addingTimeInterval(1)
-            while p.isRunning && Date() < grace { usleep(50_000) }
-            if p.isRunning { kill(p.processIdentifier, SIGKILL) }
-            p.waitUntilExit()
-            return .unknown
-        }
-        return p.terminationStatus == 0 ? .found : .none
     }
 
     private static func endsWithNewline(_ path: String, size: UInt64) -> Bool {
@@ -903,19 +826,13 @@ enum SwitchMarker {
 
     static func url(_ window: String) -> URL { SwitchEngine.root.appendingPathComponent("active-\(Account.sha8(window)).json") }
 
-    /// The program a running process was started from, or nil when it isn't running.
-    static func executable(of pid: pid_t) -> String? {
-        var buf = [CChar](repeating: 0, count: 4096)
-        return proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 ? String(cString: buf) : nil
-    }
-
     private static func read(_ file: URL) -> Mark? {
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
         return (try? Data(contentsOf: file)).flatMap { try? dec.decode(Mark.self, from: $0) }
     }
 
     /// Whether the cl_audit that wrote a mark still runs.
-    static func live(_ m: Mark) -> Bool { executable(of: m.pid) == m.exe }
+    static func live(_ m: Mark) -> Bool { Processes.executable(of: m.pid) == m.exe }
 
     /// The mark on a window, if the cl_audit that wrote it still runs; a stale one is taken away.
     static func current(_ window: String) -> Mark? {
@@ -935,7 +852,7 @@ enum SwitchMarker {
     /// Marks the window for this run; false when another run on it (another profile or run, or another cl_audit) holds it.
     static func claim(_ window: String, profile: String, standby: String) -> Bool {
         if let m = current(window), m.pid != getpid() || m.profile != profile || m.standby != standby { return false }
-        guard let exe = executable(of: getpid()) else { return false }
+        guard let exe = Processes.executable(of: getpid()) else { return false }
         let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
         try? FileManager.default.createDirectory(at: SwitchEngine.root, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         guard let d = try? enc.encode(Mark(pid: getpid(), exe: exe, profile: profile, standby: standby, started: Date())) else { return false }
