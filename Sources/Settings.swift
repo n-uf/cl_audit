@@ -227,6 +227,7 @@ final class SettingsModel: ObservableObject {
         guard !isFirstRun, !Agent.isAlive(Agent.readMark()) else { return }
         let list = accounts
         for e in list {
+            let stamp = Store.stamp(e.id)            // before the read: a write landing meanwhile is the agent's, newer
             let s = Store.status(e.id)
             var r = AccountResolver.resolve(e, among: list, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
                                             loginEmail: s?.readingOwner, names: AccountList.names(),
@@ -234,7 +235,7 @@ final class SettingsModel: ObservableObject {
                                             newestSwitch: SwitchEngine.receipts(profile: e.id).first)
             if var old = s?.resolved { old.at = r.at; if old == r { continue } }
             r.at = Date()
-            Store.hold(e.id, r)
+            Store.hold(e.id, r, file: stamp, lifetime: Store.heldLifetime(e))
         }
     }
 
@@ -244,13 +245,14 @@ final class SettingsModel: ObservableObject {
     /// as it lands. Another account's numbers then wait for that read (Store.status).
     func resolveNow(_ id: String) {
         guard let e = accounts.first(where: { $0.id == id }) else { return }
+        let stamp = Store.stamp(id)                  // before the read: a write landing meanwhile is the agent's, newer
         let s = Store.status(id)
         var r = AccountResolver.resolve(e, among: accounts, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
                                         loginEmail: s?.readingOwner, names: AccountList.names(),
                                         recordTooLarge: Account.recordTooLarge(configDir: e.configDir),
                                         newestSwitch: SwitchEngine.receipts(profile: e.id).first)
         r.at = Date()
-        Store.hold(id, r)
+        Store.hold(id, r, file: stamp, lifetime: Store.heldLifetime(e))
         tick += 1
         // never from a check or a render: they must not reach a running cl_audit
         if Self.followsDock {

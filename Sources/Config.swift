@@ -543,9 +543,13 @@ enum Store {
     /// The cl_audit window's own account answer for a profile (SettingsModel.resolveNow, resolveWithoutAgent), kept in this
     /// process only while it waits for the agent: the agent alone writes status/<id>.json (Reader.save). `status(_:)` shows it
     /// in place of the record's answer until the agent's next record lands (the file written again, even with the same
-    /// bytes: its stamp changes); then the record wins.
-    nonisolated(unsafe) private static var heldAnswers: [String: (answer: ResolvedAccount, file: FileStamp?)] = [:]
+    /// bytes: its stamp changes, a removal included), or until it expires (a lost refresh, a hung agent); then the record
+    /// wins.
+    nonisolated(unsafe) private static var heldAnswers: [String: (answer: ResolvedAccount, file: FileStamp?, until: Date)] = [:]
     private static let heldLock = NSLock()
+
+    /// How long the window's answer for a profile is held at most: two of its read intervals (10 minutes by default).
+    static func heldLifetime(_ e: AccountEntry) -> TimeInterval { 2 * TimeInterval(max(e.pollMinutes, 1)) * 60 }
 
     /// A record file as written: the agent writes it whole (a new file each time), so a write always changes this.
     struct FileStamp: Equatable {
@@ -558,23 +562,36 @@ enum Store {
         }
     }
 
-    /// Keeps `answer` for profile `id` in memory until the agent writes its record again.
-    static func hold(_ id: String, _ answer: ResolvedAccount) {
-        let stamp = FileStamp.of(statusFolder.appendingPathComponent("\(id).json"))
+    /// The stamp of profile `id`'s record file now (nil: none). Taken before the record is read for an answer, so a write
+    /// that lands while the answer is worked out counts as the agent's newer record.
+    static func stamp(_ id: String) -> FileStamp? { FileStamp.of(statusFolder.appendingPathComponent("\(id).json")) }
+
+    /// Keeps `answer` for profile `id` in memory until the record changes from `file` (its stamp when the record was read
+    /// for the answer, `stamp(_:)`) or `lifetime` seconds have passed.
+    static func hold(_ id: String, _ answer: ResolvedAccount, file: FileStamp?, lifetime: TimeInterval, now: Date = Date()) {
         heldLock.lock(); defer { heldLock.unlock() }
-        heldAnswers[id] = (answer, stamp)
+        heldAnswers[id] = (answer, file, now.addingTimeInterval(lifetime))
     }
 
-    /// The answer held for `id`, while the record at `file` hasn't been written since it was held; else nil, and it is let go.
-    private static func held(_ id: String, file: URL) -> ResolvedAccount? {
+    /// Lets go of the answer held for `id`: its record was removed (a removed profile's id may be given to a new one).
+    static func release(_ id: String) {
+        heldLock.lock(); defer { heldLock.unlock() }
+        heldAnswers[id] = nil
+    }
+
+    /// The answer held for `id`, while the record at `file` hasn't been written or removed since and it hasn't expired;
+    /// else nil, and it is let go.
+    private static func held(_ id: String, file: URL, now: Date = Date()) -> ResolvedAccount? {
         heldLock.lock(); defer { heldLock.unlock() }
         guard let h = heldAnswers[id] else { return nil }
-        if FileStamp.of(file) != h.file { heldAnswers[id] = nil; return nil }
+        if now >= h.until || FileStamp.of(file) != h.file { heldAnswers[id] = nil; return nil }
         return h.answer
     }
 
-    /// An answer is held for `id` (the agent hasn't written since): for the checks.
-    static func isHeld(_ id: String) -> Bool { held(id, file: statusFolder.appendingPathComponent("\(id).json")) != nil }
+    /// An answer is held for `id` at `now` (the agent hasn't written since, and it hasn't expired): for the checks.
+    static func isHeld(_ id: String, now: Date = Date()) -> Bool {
+        held(id, file: statusFolder.appendingPathComponent("\(id).json"), now: now) != nil
+    }
 
     /// The profile's record as the agent wrote it: its numbers carry the account they were read for (resolved.numbersFor),
     /// so nothing here compares them with a stored account.
@@ -644,6 +661,7 @@ enum Store {
     static func removeStatus(_ id: String) {
         try? FileManager.default.removeItem(at: statusFolder.appendingPathComponent("\(id).prev"))
         try? FileManager.default.removeItem(at: statusFolder.appendingPathComponent("\(id).json"))
+        release(id)
     }
 
     /// A short id for a new account, unique among `taken`.

@@ -79,7 +79,7 @@ enum Cleanup {
         // 3. saved usage of unknown profiles, and of standby accounts (<profile>~<id>.json, 26.11.13 and earlier: a standby
         // account isn't read any more)
         for f in staleStatus(in: Store.statusFolder, ids: ids) {
-            if !dry { try? fm.removeItem(at: f) }
+            if !dry { try? fm.removeItem(at: f); Store.release(f.deletingPathExtension().lastPathComponent) }
             removed.append("saved usage of \(f.deletingPathExtension().lastPathComponent)")
         }
         // 4. Dock pins and recent-app entries of Dock icon apps that are gone: one Dock change, only when there is one
