@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.51 — 2026-11-15
+
 - An account switch now opens the profile's Claude window again once the switch is settled: when Claude Code reaches the account, after Undo or Leave it as it is, or when the switch stopped before moving anything. While moved sessions wait for that, the window stays closed (the Dock icon, the menu bar and the card open that switch's page instead) and the Switch page says so. Before, the switch never opened the window it had closed.
 
 ## 26.11.50 — 2026-11-15
