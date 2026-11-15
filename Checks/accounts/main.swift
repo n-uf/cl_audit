@@ -791,6 +791,23 @@ do {
           "…so it is only partly undone, names what was left, and stays open for another Undo")
     try? fm.removeItem(at: SwitchEngine.root.appendingPathComponent(r.id))      // out of the way of the cases below
 
+    // why a stopped switch may stay open beside a later restore or import: its Undo takes back only what is still exactly as
+    // the switch wrote it. A file a restore or import changed (or wrote over) since is left byte for byte, and said.
+    fixture()
+    guard case .success(let pw) = SwitchEngine.plan(e, standby: e.standby[0], dataDir: wd, owned: []) else { check(false, "plan r3w"); exit(1) }
+    let rw = try! SwitchEngine.run(pw, windowClosed: { true }, backups: place)       // moved, never linked: stopped half way, open
+    check(SwitchEngine.unfinished(profile: "r3").map(\.id) == [rw.id], "the switch is open (stopped before the sign-in)")
+    guard let placed = rw.steps.first(where: { $0.kind == .entry }), let parkedOriginal = placed.parked else { check(false, "an entry step"); exit(1) }
+    let changedBytes = Data(#"{"sessionId":"local_1","changedByALaterRestore":true}"#.utf8)
+    try! changedBytes.write(to: URL(fileURLWithPath: placed.path))
+    let placedName = (placed.path as NSString).lastPathComponent
+    let undoneW = try! SwitchEngine.undo(rw.id, windowClosed: { true })
+    check(fm.contents(atPath: placed.path) == changedBytes, "stopped switch's Undo: a file changed since it wrote it stays byte for byte as it is now")
+    check(undoneW.problems.contains("\(placedName) changed since; left as it is") && undoneW.left?.contains(placedName) == true && undoneW.undone == nil && undoneW.partlyUndone != nil,
+          "…and Undo says it left it, and stays open: \(undoneW.problems)")
+    check(fm.fileExists(atPath: parkedOriginal), "…its parked original is not moved over it")
+    try? fm.removeItem(at: SwitchEngine.root.appendingPathComponent(rw.id))
+
     // SHOULD 1: the window opening during Undo stops it before the next step
     fixture()
     guard case .success(let p2) = SwitchEngine.plan(e, standby: e.standby[0], dataDir: wd, owned: []) else { check(false, "plan r3b"); exit(1) }
