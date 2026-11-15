@@ -6,6 +6,11 @@
 // usage endpoint, with the status line file as a fallback while it is fresh (written in the last 15 minutes, no reset
 // passed); the account check from its profile endpoint.
 // What a reader sees is saved to status/<id>.json (no secrets) for the Dock icons and the cl_audit window.
+//
+// The reading's logic and state are ProfileCore's ReaderMachine (Core/ReaderMachine.swift): events in, actions out. This
+// class is its driver: it keeps the timers, looks at the folder's sign-in record (ClaudeAuth's watch), reads the Keychain
+// (the token stays here, never in the machine), asks the endpoints, reads the status line file, feeds what comes back to
+// the machine, and performs its actions in order (the alerts, the saved record, the read at a reset).
 
 import AppKit
 import ClaudeAuth
@@ -18,61 +23,38 @@ final class UsageReader {
     private(set) var account: Account
     private let defaults: UserDefaults           // the agent's: alert marks and renewal times, per profile id
 
-    private(set) var usage: Usage?
-    private(set) var state: FetchState = .idle
-    private var plan: String?
-    private var loginEmail: String?
-    private var profileFor: String?              // short hash of the token the e-mail was looked up for
-    /// The account the numbers in `usage` were read for, from that very reading: the profile looked up for the token
-    /// they were read with (`numbersKey`); nil while it isn't known, and for the status line file (which names none).
-    private var numbersOwner: String?
-    private var numbersKey: String?              // short hash of the token the numbers were read with
-    /// A reading whose token's account isn't known yet: held (not shown, not alerted) until it is (profileFound).
-    private(set) var heldReading: (usage: Usage, key: String)?
-    /// How many readings in a row were held for the token being held: at the second, the numbers show as "account not
-    /// confirmed" (never full, no alert) rather than stay hidden or frozen.
-    private var heldReads = 0
-    /// The numbers shown are a reading whose account couldn't be confirmed (its lookup keeps failing).
-    private(set) var unconfirmed = false
-    /// Tokens whose account was confirmed (short hash → address): the same token keeps its owner through a lookup outage.
-    private var ownerByKey: [String: String] = [:]
-    /// The profile lookup's retry, with backoff while it fails.
-    private var lookupFails = 0
-    private var nextLookup = Date.distantPast
-    private var renewNote: String?
-    private var renewing = false
+    /// The reading's state and rules (whose numbers, the held reading, the schedule, the kept sign-in without its token).
+    private(set) var machine: ReaderMachine
+    /// The kept sign-in with its token: here only. The machine knows it by its key (Account.sha8).
     private var cachedLogin: Login?
-    private var lastLoginRead = Date.distantPast
-    private var loginRejected = false
-    private var forceLoginRead = false
-    private var nextFetch: Date
-    private var backoff: TimeInterval = 0
-    private var inFlight = false
     private var lastStatus: Data?
-    /// The next save writes the record even when what this reader sees didn't change: a refresh asked for (Refresh now, the
-    /// cl_audit window after a switch) and every read's answer, so a record that isn't the agent's (an older cl_audit
-    /// window wrote it, or it was lost) never sticks.
-    private var rewriteDue = false
-    private var stopped = false                  // its profile was removed: nothing more is saved
     private var alerting: Set<String> = []       // alerts being handed to macOS
-    private var lastAsked = Date.distantPast     // when a fetch last started
     private var resetRead: DispatchWorkItem?     // reads again the moment a full limit resets
     // Claude Code signed in to another account in this folder: .claude.json names another seat
     private var signIn = SignInWatch()
-    private var signInChangedAt: Date?           // when the account changed: older numbers and status lines are the old one's
-    private var signInRetries = 0                // reads again when the new sign-in hasn't reached the Keychain yet
     private var planName: String?                // Claude's own name for the plan ("Ultra"), from that same .claude.json
 
     /// At most one automatic renewal per this many seconds, even across restarts.
     static let renewSpacing: TimeInterval = 30 * 60
+    /// How the usage endpoint's numbers name their source.
+    static let endpointSource = "Anthropic"
 
     var id: String { entry.id }
-    private var pollMinutes: Int { max(entry.pollMinutes, 1) }
     private var expectedEmail: String? { account.expectedEmail() }
+    var usage: Usage? { machine.usage }
+    var state: FetchState { machine.state }
+    /// A reading whose token's account isn't known yet: held (not shown, not alerted) until it is (profileFound).
+    var heldReading: (usage: Usage, key: String)? { machine.held.map { ($0.usage, $0.key) } }
+    /// The numbers shown are a reading whose account couldn't be confirmed (its lookup keeps failing).
+    var unconfirmed: Bool { machine.unconfirmed }
     /// Anthropic didn't answer the last time (an error or "busy"): for the main display.
-    var failing: Bool {
-        if case .failed = state { return true }
-        return state == .rateLimited
+    var failing: Bool { machine.failing }
+
+    /// The machine's intervals for a profile: its read interval, cl_audit's other values.
+    static func timing(_ e: AccountEntry) -> ReaderMachine.Timing {
+        var t = ReaderMachine.Timing(poll: TimeInterval(max(e.pollMinutes, 1) * 60), endpointSource: endpointSource)
+        t.signInRetry = signInRetry; t.renewSpacing = renewSpacing
+        return t
     }
 
     /// `startIn`: seconds until the first fetch, so profiles don't all ask at once.
@@ -80,11 +62,46 @@ final class UsageReader {
         entry = e
         account = Account(e)
         self.defaults = defaults
-        nextFetch = Date().addingTimeInterval(startIn)
+        machine = ReaderMachine(rules: .clAudit, timing: Self.timing(e), linked: e.seat, firstFetch: Date().addingTimeInterval(startIn))
         adoptSaved()                             // the numbers don't blank while the agent restarts
         Self.adoptOldMarks(e.id, into: defaults)
-        _ = signInChanged()                      // the first look: what the folder is signed in to now
-        scheduleResetRead()
+        lookAtFolder(follow: false)              // the first look: what the folder is signed in to now
+        perform([.planResetRead(machine.resetReadAt(now: Date()))])
+    }
+
+    /// Hands an event to the machine and performs what it says.
+    private func send(_ event: ReaderMachine.Event, keep: (() -> Void)? = nil) {
+        perform(machine.handle(event), keep: keep)
+    }
+
+    /// The machine's actions, in order. `keep` stores a sign-in just read (its token stays in this class).
+    private func perform(_ actions: [ReaderMachine.Action], keep: (() -> Void)? = nil) {
+        for action in actions {
+            switch action {
+            case .readSignIn(let gen): readSignIn(gen: gen)
+            case .keepSignIn: keep?()
+            case .forgetSignIn: cachedLogin = nil
+            case .lookUp(let req): lookUpEmail(req)
+            case .fetchUsage(let req): fetchUsage(req)
+            case .considerRenew: maybeRenew()
+            case let .numbersTaken(u, before, now): alertGate(u, before: before, now: now)
+            case .planResetRead(let at): planResetRead(at)
+            case .startedOver:
+                agentLog.log("reader \(self.id, privacy: .public): Claude Code is signed in to another account; reading the new sign-in")
+                resetRead?.cancel(); resetRead = nil
+                Self.forgetLimitMarks(id, in: defaults)   // no "is back" or "full" alert from the switch itself
+            case .lookAfresh:
+                signIn = SignInWatch(); lookAtFolder(follow: false)
+                adoptSaved()
+                agentLog.log("reader \(self.id, privacy: .public): the profile works on another account; reading it")
+            case .signInNotThereYet:
+                agentLog.log("reader \(self.id, privacy: .public): the Keychain still has the old sign-in; reading it again soon")
+            case .recordChanged:
+                agentLog.log("reader \(self.id, privacy: .public): the folder's sign-in record changed; reading the sign-in now")
+            case .save: save()
+            case .tick: tick()
+            }
+        }
     }
 
     /// Carry on from what was saved last, if it was read for the profile's account (after a switch the saved numbers are
@@ -93,42 +110,33 @@ final class UsageReader {
     private func adoptSaved() {
         guard let saved = Store.status(entry.id), entry.seat == nil || saved.readFor != nil,
               let s = Optional(saved.only(for: entry.seat?.email)), let at = s.updatedAt, s.fiveHour != nil || s.weekly != nil else { return }
-        usage = Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly,
-                      weeklyResets: s.weeklyResets, fetchedAt: at, source: s.source ?? "Anthropic",
+        let u = Usage(fiveHour: s.fiveHour, fiveHourResets: s.fiveHourResets, weekly: s.weekly,
+                      weeklyResets: s.weeklyResets, fetchedAt: at, source: s.source ?? Self.endpointSource,
                       scoped: s.scoped ?? [], credits: s.credits, noFiveHour: s.noFiveHour ?? false)
-        loginEmail = s.loginEmail
-        numbersOwner = s.readingOwner                    // the saved numbers' own reading
-        plan = s.plan
-        renewNote = s.renewNote
+        // (the saved numbers' own reading is their account)
+        send(.adopt(usage: u, loginEmail: s.loginEmail, owner: s.readingOwner, plan: s.plan, renewNote: s.renewNote))
     }
 
     /// The profile's settings changed: another account (a switch), another folder to read, or another interval reads
     /// again at once.
     func update(_ e: AccountEntry) {
-        guard e != entry, !stopped else { return }
+        guard e != entry, !machine.stopped else { return }
         let seatChanged = !(e.seat.map { $0.same(entry.seat) } ?? (entry.seat == nil))
         let pollChanged = e.pollMinutes != entry.pollMinutes
         entry = e
+        send(.profile(linked: e.seat, poll: Self.timing(e).poll))
         if seatChanged {
             let want = Account(e)
-            let readsNewAlready = want.configDir == account.configDir && (e.seat.map { $0.same(signIn.seen) } ?? false)
             let folderMoved = want.configDir != account.configDir
             account = want
-            if folderMoved { generation += 1 }       // replies under way for the old folder are dropped
-            if !readsNewAlready {
-                // the profile works on another account (a switch): the old one's numbers, sign-in and marks go (no "is
-                // back" from the switch itself); the new one's are read afresh
-                startOver()
-                signIn = SignInWatch(); _ = signInChanged()
-                adoptSaved()
-                agentLog.log("reader \(self.id, privacy: .public): the profile works on another account; reading it")
-            }
-            // else: linked to the account this folder is signed in to (FolderRules.noteAccounts): its numbers, read since that
-            // sign-in, are this account's and show now
-            tick()
+            // the profile works on another account (a switch): replies under way for an old folder are dropped; unless the
+            // folder is signed in to it already (FolderRules.noteAccounts: its numbers, read since that sign-in, are this
+            // account's and show now), the old one's numbers, sign-in and marks go (no "is back" from the switch itself)
+            // and the new one's are read afresh (the machine's .lookAfresh); then a tick
+            send(.relinked(folderMoved: folderMoved, now: Date()))
             return
         }
-        if followFolder() || pollChanged { nextFetch = .distantPast; tick(); return }
+        if followFolder() || pollChanged { send(.readNow); tick(); return }
         if renewsByItself && state == .expired { maybeRenew() }
         save()
     }
@@ -137,7 +145,7 @@ final class UsageReader {
     private var renewsByItself: Bool { entry.autoRenew }
 
     /// Bumped when the folder or the account read changes: a reply asked for before is dropped.
-    private(set) var generation = 0
+    var generation: Int { machine.generation }
 
     /// The profile's folder changed (Settings ▸ Claude Code ▸ Folder): read from there from now on, its own sign-in;
     /// replies under way for the old folder are dropped. True when it moved.
@@ -146,198 +154,116 @@ final class UsageReader {
         let want = Account(entry)
         guard want.configDir != account.configDir else { return false }
         account = want
-        loginEmail = nil; profileFor = nil; nextFetch = .distantPast; cachedLogin = nil
-        numbersOwner = nil; numbersKey = nil; heldReading = nil; heldReads = 0; unconfirmed = false
-        generation += 1
-        signInChangedAt = now
-        signIn = SignInWatch(); _ = signInChanged()
+        send(.folderMoved(now: now))
+        signIn = SignInWatch(); lookAtFolder(follow: false)
         return true
     }
 
     /// The profile was removed: a read or renewal still under way saves nothing.
-    func stop() { stopped = true; resetRead?.cancel() }
+    func stop() { send(.stop) }
 
     /// Every 30 s: the status line file if it's newer and fresh (UsageParser.fromStatusLine), a fetch when it's due, and the saved status. A full limit whose
     /// reset has passed is read again at once (then at most once a minute until Anthropic's numbers move on).
     func tick() {
-        guard !stopped else { return }
-        if signInChanged() { startOver() }
-        if var local = UsageParser.fromStatusLine(account), local.fetchedAt > (usage?.fetchedAt ?? .distantPast),
-           local.fetchedAt > (signInChangedAt ?? .distantPast) {
-            // the status line has only the two limits: the model limits and credits stay as Anthropic last gave them
-            local.scoped = usage?.scoped ?? []; local.credits = usage?.credits
-            local.noFiveHour = usage?.noFiveHour ?? false
-            if local.noFiveHour { local.fiveHour = nil; local.fiveHourResets = nil }
-            usage = local
-            numbersOwner = nil; numbersKey = nil          // the status line names no account: whose these are isn't known
-        }
-        if let u = usage, Self.resetPassed(u), !failing, Date().timeIntervalSince(lastAsked) >= 60 { nextFetch = .distantPast }
+        guard !machine.stopped else { return }
+        lookAtFolder(follow: true)
         // the profile's folder isn't there any more: no read of its sign-in at all, whatever was made while it existed.
         // A link to a folder is read (only launching refuses links: FolderGuard.folderReady)
-        if Date() >= nextFetch, Account.isDefault(configDir: account.configDir) || FolderGuard.isFolder(account.configDir) { fetch() }
-        save()
-    }
-
-    /// A limit read as full whose reset time has passed: the numbers are out of date.
-    static func resetPassed(_ u: Usage, now: Date = Date()) -> Bool {
-        (AtLimit.isFull(u.fiveHour) && Freshness.passed(u.fiveHourResets, now: now))
-            || (AtLimit.isFull(u.weekly) && Freshness.passed(u.weeklyResets, now: now))
+        let dir = account.configDir
+        send(.tick(now: Date(), statusLine: UsageParser.fromStatusLine(account),
+                   folderThere: Account.isDefault(configDir: dir) || FolderGuard.isFolder(dir)))
     }
 
     /// While a limit is full, a read the moment it resets (2 s after), so the cards, the Dock icon and the "back"
-    /// alert follow at once rather than at the next scheduled read.
-    private func scheduleResetRead() {
+    /// alert follow at once rather than at the next scheduled read. nil: none planned.
+    private func planResetRead(_ at: Date?) {
         resetRead?.cancel(); resetRead = nil
-        guard let u = usage, !stopped else { return }
-        let now = Date()
-        guard let at = Self.resetReadAt(u, now: now) else { return }
+        guard let at, !machine.stopped else { return }
         let item = DispatchWorkItem { [weak self] in
-            guard let self, !self.stopped else { return }
-            self.nextFetch = .distantPast
+            guard let self, !self.machine.stopped else { return }
+            self.send(.readNow)
             self.tick()
         }
         resetRead = item
-        DispatchQueue.main.asyncAfter(deadline: .now() + at.timeIntervalSince(now), execute: item)
-    }
-
-    /// When to read again for a full limit's reset: 2 s after the first full limit resets, or nil.
-    static func resetReadAt(_ u: Usage, now: Date = Date()) -> Date? {
-        [(u.fiveHour, u.fiveHourResets), (u.weekly, u.weeklyResets)]
-            .compactMap { AtLimit.isFull($0.0) ? $0.1 : nil }.filter { $0 > now }.min()?.addingTimeInterval(2)
+        DispatchQueue.main.asyncAfter(deadline: .now() + at.timeIntervalSince(Date()), execute: item)
     }
 
     /// Refresh now (a Dock icon, the dashboard, the cl_audit window after a switch): fetch now, read the sign-in again, and
     /// write the record at once, changed or not.
-    func refreshNow() { nextFetch = .distantPast; forceLoginRead = true; rewriteDue = true; tick() }
+    func refreshNow() { send(.refreshRequested); tick() }
 
     // MARK: another account signed in
 
     /// The last answer the resolver gave (its time kept while nothing else changed, so the record isn't rewritten).
     private var lastResolved: ResolvedAccount?
 
-    /// The folder read is signed in to another account than the one the profile is linked to: its numbers show, labelled
-    /// with that account (AccountResolver), but no alerts go out about them in this profile's name and no renewal runs,
-    /// until the profile follows it (FolderRules.noteAccounts, within seconds).
-    private var onOtherAccount: Bool {
-        guard let linked = entry.seat, let seen = signIn.seen else { return false }
-        return !seen.same(linked)
-    }
-
-    /// Whether Claude Code was signed in to another account in this folder since the last look.
-    private func signInChanged() -> Bool {
+    /// One look at the folder's .claude.json (ClaudeAuth's watch): the machine learns the account it names, and with
+    /// `follow`, that Claude Code was signed in to another account since the last look (it starts over: the kept sign-in,
+    /// the numbers and the alert marks are the old account's, and the new sign-in is read now, so no stale numbers and no
+    /// "Wrong account" until Refresh now). The folder signed in to another account than the profile's
+    /// (ReaderMachine.onOtherAccount): its numbers show, labelled with that account (AccountResolver), but no alerts go
+    /// out about them in this profile's name and no renewal runs, until the profile follows it (FolderRules.noteAccounts).
+    private func lookAtFolder(follow: Bool) {
         let dir = account.configDir
-        return signIn.look(stamp: SignInWatch.stamp(configDir: dir)) {
+        let changed = signIn.look(stamp: SignInWatch.stamp(configDir: dir)) {
             planName = Account.planName(configDir: dir)       // read with it: no extra reads
             return Account.signedInSeat(configDir: dir)
         }
-    }
-
-    /// Another account is signed in: the kept sign-in, the numbers and the alert marks are the old account's. Drop
-    /// them and read the new sign-in now (one Keychain read, as at the start), so no stale numbers and no "Wrong
-    /// account" until Refresh now.
-    private func startOver(now: Date = Date()) {
-        agentLog.log("reader \(self.id, privacy: .public): Claude Code is signed in to another account; reading the new sign-in")
-        cachedLogin = nil; forceLoginRead = true; loginRejected = false
-        loginEmail = nil; profileFor = nil; plan = nil; renewNote = nil
-        usage = nil; state = .idle; backoff = 0
-        numbersOwner = nil; numbersKey = nil; heldReading = nil; heldReads = 0; unconfirmed = false
-        signInChangedAt = now; signInRetries = 0
-        generation += 1                           // replies under way are the old account's
-        resetRead?.cancel(); resetRead = nil
-        Self.forgetLimitMarks(id, in: defaults)   // no "is back" or "full" alert from the switch itself
-        nextFetch = .distantPast
-    }
-
-    /// Right after a change, the Keychain can still hold the old sign-in for a moment (Claude Code writes the two at
-    /// different times): when the sign-in read names another account than .claude.json, read it again a few times.
-    private func checkNewSignIn(_ email: String) {
-        guard let at = signInChangedAt, Date().timeIntervalSince(at) < 5 * 60, signInRetries < 4,
-              let expected = expectedEmail, expected.lowercased() != email.lowercased() else { return }
-        signInRetries += 1
-        forceLoginRead = true
-        nextFetch = Date().addingTimeInterval(TimeInterval(15 * signInRetries))
-        agentLog.log("reader \(self.id, privacy: .public): the Keychain still has the old sign-in; reading it again soon")
+        send(.folderLooked(changed: follow && changed, seen: signIn.seen, now: Date()))
     }
 
     // MARK: fetching
 
-    private func fetch() {
-        guard !inFlight else { return }
-        lastAsked = Date()
-        nextFetch = Date().addingTimeInterval(TimeInterval(pollMinutes * 60) + backoff)
-        inFlight = true
-        let gen = generation
-        // the Keychain is read off the main thread (a locked Keychain can keep /usr/bin/security waiting), so one
-        // profile never holds up the others or the agent's rules
-        if needsLoginRead() {
-            let acct = account
-            // the folder's sign-in record as it was before the read: a change after it is read again (watchSignIn)
-            let stamp = SignInWatch.stamp(configDir: acct.configDir)
-            DispatchQueue.global(qos: .utility).async {
-                let login = Login.read(acct)
-                DispatchQueue.main.async { [weak self] in
-                    guard let self else { return }
-                    // read for a folder or account it no longer reads: dropped, read again
-                    guard gen == self.generation else { self.inFlight = false; self.nextFetch = .distantPast; self.tick(); return }
+    /// The sign-in read (the machine decided it is needed: none yet, Refresh now, or expired/refused, then at most every 10
+    /// minutes). The Keychain is read off the main thread (a locked Keychain can keep /usr/bin/security waiting), so one
+    /// profile never holds up the others or the agent's rules. The token is kept here; the machine gets its key.
+    private func readSignIn(gen: Int) {
+        let acct = account
+        // the folder's sign-in record as it was before the read: a change after it is read again (watchSignIn)
+        let stamp = SignInWatch.stamp(configDir: acct.configDir)
+        DispatchQueue.global(qos: .utility).async {
+            let login = Login.read(acct)
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                // (read for a folder or account it no longer reads: dropped, read again; else kept, then asked with)
+                self.send(.signInRead(Self.described(login), generation: gen, now: Date())) {
                     self.cachedLogin = login
                     self.loginStamp = stamp
-                    self.lastLoginRead = Date()
-                    self.loginRejected = false
-                    self.forceLoginRead = false
-                    self.ask(with: login, gen: gen)
                 }
             }
-        } else {
-            ask(with: cachedLogin ?? .notFound, gen: gen)
         }
     }
 
-    private func ask(with login: Login, gen: Int) {
-        guard !stopped else { inFlight = false; return }
-        guard case let .token(token, expiresAt, plan) = login else {
-            inFlight = false
-            rewriteDue = true                    // a read's answer: written, changed or not
-            state = login.failure
-            // no sign-in yet (or one it can't read): look again in a minute, not at the next read interval
-            if Self.waitsForSignIn(login) { nextFetch = Date().addingTimeInterval(Self.signInRetry) }
-            save(); return
+    /// A sign-in as the machine knows it: without its token, by the token's short hash.
+    static func described(_ login: Login) -> SignInRead {
+        switch login {
+        case let .token(token, expiresAt, plan): return .token(key: Account.sha8(token), expiresAt: expiresAt, plan: plan)
+        case .notFound: return .notFound
+        case .denied: return .denied
+        case .unreadable: return .unreadable
         }
-        self.plan = plan
-        if let expiresAt, expiresAt < Date() { inFlight = false; rewriteDue = true; state = .expired; save(); maybeRenew(); return }
-        let key = Account.sha8(token)
-        // the token's account: looked up once per token (a confirmed one keeps its owner), again with backoff while it fails
-        if profileFor != key, ownerByKey[key] == nil, Date() >= nextLookup { lookUpEmail(token, gen: gen) }
-        let asked = Date()
+    }
+
+    /// The kept sign-in's token, for the request the machine asked for (made with its key).
+    private func token(for req: ReaderMachine.Request) -> String? {
+        guard case let .token(token, _, _)? = cachedLogin, Account.sha8(token) == req.key else { return nil }
+        return token
+    }
+
+    /// The usage, asked with the kept sign-in; the answer goes to `finish`.
+    private func fetchUsage(_ req: ReaderMachine.Request) {
+        guard let token = token(for: req) else { return }
         URLSession.shared.dataTask(with: Self.request("usage", token: token)) { [weak self] data, resp, err in
-            DispatchQueue.main.async { self?.finish(data: data, response: resp as? HTTPURLResponse, error: err, asked: asked, gen: gen, key: key) }
+            DispatchQueue.main.async {
+                self?.finish(data: data, response: resp as? HTTPURLResponse, error: err, asked: req.asked, gen: req.generation, key: req.key)
+            }
         }.resume()
-    }
-
-    /// The kept sign-in is read again only when needed: none yet, Refresh now, or expired/refused (then at most
-    /// every 10 minutes).
-    private func needsLoginRead() -> Bool {
-        var usable = false
-        if case let .token(_, expiresAt, _)? = cachedLogin {
-            usable = !loginRejected && (expiresAt ?? .distantFuture) > Date().addingTimeInterval(60)
-        }
-        // no sign-in yet, or one that isn't readable: a minute (it may have just been made); a refused or expired one
-        // waits ten (asking again sooner would only repeat a prompt)
-        let wait: TimeInterval = cachedLogin == nil ? 0 : Self.waitsForSignIn(cachedLogin) ? Self.signInRetry : 10 * 60
-        return forceLoginRead || (!usable && Date().timeIntervalSince(lastLoginRead) >= wait)
     }
 
     /// While a profile waits for a sign-in to show up, it looks again this often.
     static let signInRetry: TimeInterval = 60
     /// The sign-in watch reads the Keychain no more often than this per profile.
     nonisolated(unsafe) static var watchFloor: TimeInterval = 30
-
-    /// The last read found no item, or an item in a form cl_audit doesn't know: a sign-in may be on its way.
-    static func waitsForSignIn(_ l: Login?) -> Bool {
-        switch l {
-        case .notFound?, .unreadable?: return true
-        default: return false
-        }
-    }
 
     /// The folder's .claude.json (Claude Code writes it as it signs in) as it was when the Keychain was last read.
     private var loginStamp = RecordStamp.none
@@ -346,16 +272,13 @@ final class UsageReader {
     /// .claude.json, one stat, and when it changed since the last read, reads the Keychain at once, so the "no sign-in"
     /// goes within seconds of Claude Code finishing the login instead of on the read schedule.
     func watchSignIn() {
-        guard !stopped, !inFlight, Self.waitsForSignIn(cachedLogin), state == .noLogin || state == .unreadable else { return }
+        guard machine.watchesSignIn else { return }
         let stamp = SignInWatch.stamp(configDir: account.configDir)
         guard stamp != loginStamp else { return }
         // Claude Code rewrites ~/.claude.json often (settings, projects): only a record that names an account is a sign-in...
         guard Account.signedInSeat(configDir: account.configDir) != nil else { loginStamp = stamp; return }
         // ...and the Keychain is read at most every 30 seconds, whatever the record does
-        guard Date().timeIntervalSince(lastLoginRead) >= Self.watchFloor else { return }
-        agentLog.log("reader \(self.id, privacy: .public): the folder's sign-in record changed; reading the sign-in now")
-        forceLoginRead = true; nextFetch = .distantPast
-        tick()
+        send(.signInRecordChanged(now: Date(), floor: Self.watchFloor))
     }
 
     static func request(_ path: String, token: String) -> URLRequest {
@@ -368,16 +291,17 @@ final class UsageReader {
         return req
     }
 
-    private func lookUpEmail(_ token: String, gen: Int) {
-        let key = Account.sha8(token), asked = Date()
+    /// The kept sign-in's account, from Anthropic's profile endpoint; the answer goes to the machine (dropped there when
+    /// another folder or account is read since, or it was the old account's sign-in).
+    private func lookUpEmail(_ req: ReaderMachine.Request) {
+        guard let token = token(for: req) else { return }
         URLSession.shared.dataTask(with: Self.request("profile", token: token)) { [weak self] data, resp, _ in
             let ok = (resp as? HTTPURLResponse)?.statusCode == 200
             let email = ok ? data.flatMap(UsageParser.email) : nil
             DispatchQueue.main.async {
-                guard let self, gen == self.generation else { return }      // another folder or account since
-                if let at = self.signInChangedAt, asked < at { return }    // the old account's sign-in
-                if let email { self.profileFound(email, key: key) } else { self.lookupFailed() }
-                self.save()
+                guard let self else { return }
+                self.send(.lookupAnswer(email: email, key: req.key, asked: req.asked, generation: req.generation,
+                                        expected: self.expectedEmail, now: Date()))
             }
         }.resume()
     }
@@ -385,84 +309,43 @@ final class UsageReader {
     /// The account of the token `key` came back: it is the sign-in's address, and the owner of the numbers read with that
     /// token. A reading held for it (read before its owner was known) is taken now, with its alerts.
     /// Once the account is back, the numbers shown as "account not confirmed" are its own, and the usual rules (alerts
-    /// included) apply to them.
+    /// included) apply to them. (Right after a sign-in change, a token whose account isn't the folder's is read again
+    /// soon: the Keychain can still hold the old sign-in for a moment.)
     func profileFound(_ email: String, key: String) {
-        loginEmail = email; profileFor = key; checkNewSignIn(email)
-        ownerByKey[key] = email; lookupFails = 0; nextLookup = .distantPast
-        if let h = heldReading, h.key == key {
-            heldReading = nil; heldReads = 0
-            numbersKey = key; numbersOwner = email
-            apply(h.usage)
-        } else if numbersKey == key {
-            numbersOwner = email                         // the numbers read with this token: its account's
-            if unconfirmed, let u = usage { unconfirmed = false; apply(u) }
-        }
+        send(.accountFound(email: email, key: key, expected: expectedEmail, now: Date()))
     }
 
     /// The token's account couldn't be looked up: tried again later, a little later each time (1, 2, 4… minutes, at most 30).
-    func lookupFailed(now: Date = Date()) {
-        lookupFails += 1
-        nextLookup = now.addingTimeInterval(min(60 * pow(2, Double(lookupFails - 1)), 1800))
-    }
+    func lookupFailed(now: Date = Date()) { send(.lookupFailed(now: now)) }
 
+    /// The usage endpoint's reply, handed to the machine. Whose these numbers are is the account of the token they were
+    /// read with, never the folder's .claude.json; a token whose account isn't known yet has its reading held, and at the
+    /// second reading still without an owner, shown as "account not confirmed" (ReaderMachine).
     func finish(data: Data?, response: HTTPURLResponse?, error: Error?, asked: Date = Date(), gen: Int, key: String? = nil) {
-        inFlight = false
-        guard !stopped else { return }
-        // asked for a folder or account it no longer reads, or with the old account's sign-in: not this account's numbers
-        if gen != generation { nextFetch = .distantPast; tick(); return }           // read again now, for what it reads now
-        if let at = signInChangedAt, asked < at { nextFetch = .distantPast; return }
-        rewriteDue = true                        // a read's answer: written, changed or not
-        defer { save() }
-        if let error { state = .failed(error.localizedDescription); return }
-        switch response?.statusCode ?? 0 {
-        case 200:
-            guard let data, let u = UsageParser.fromAPI(data, source: "Anthropic") else { state = .failed("unexpected reply"); return }
-            // whose these numbers are: the account of the token they were read with; never the folder's .claude.json.
-            // Read with a token whose account isn't known yet (its lookup still under way): unowned, so held, neither shown
-            // nor alerted, until the lookup comes back (profileFound); the numbers before it, whose owner is known, stay
-            // meanwhile (a renewed token of the same account doesn't blank them)
-            // A token whose account was confirmed before keeps it (a lookup outage never blanks or freezes it). A new
-            // token's reading is held; at the second reading still without an owner (its lookup keeps failing) the
-            // numbers show as "account not confirmed": as read, with their age, but never full, alerted or offering a switch
-            if let key, let known = profileFor == key ? loginEmail : ownerByKey[key] {
-                heldReading = nil; heldReads = 0; unconfirmed = false
-                numbersKey = key; numbersOwner = known
-                apply(u)
-            } else if let key {
-                // (a token already shown as not confirmed stays shown so, read after read)
-                if !(unconfirmed && numbersKey == key) {
-                    heldReads = heldReading?.key == key ? heldReads + 1 : 1
-                    guard heldReads >= 2 else { heldReading = (u, key); state = .ok; return }
-                }
-                heldReading = nil
-                numbersKey = key; numbersOwner = nil; unconfirmed = true
-                apply(u)
-            } else {
-                heldReading = nil
-                numbersKey = nil; numbersOwner = nil; unconfirmed = false
-                apply(u)
+        let now = Date()
+        let failure: ReaderMachine.Failure
+        if let error {
+            failure = .network(error.localizedDescription)
+        } else {
+            switch response?.statusCode ?? 0 {
+            case 200:
+                guard let data, let u = UsageParser.fromAPI(data, source: Self.endpointSource) else { failure = .unexpectedReply; break }
+                send(.usageAnswer(UsageAnswer(source: .usageEndpoint, usage: u), key: key, asked: asked, generation: gen, now: now))
+                return
+            case 401, 403: failure = .signInRejected
+            case 429: failure = .rateLimited
+            case let code: failure = .http(code)
             }
-        case 401, 403:
-            state = .expired
-            loginRejected = true
-            maybeRenew()
-        case 429:
-            state = .rateLimited
-            backoff = min(max(backoff * 2, 120), 1800)
-            nextFetch = Date().addingTimeInterval(TimeInterval(pollMinutes * 60) + backoff)
-        case let code:
-            state = .failed("HTTP \(code)")
         }
+        send(.usageFailed(failure, asked: asked, generation: gen, now: now))
     }
 
     /// A good reading: keep it, send what alerts it calls for, and plan the read at the next reset (saving is the
     /// caller's).
-    func apply(_ u: Usage, now: Date = Date()) {
-        var u = u
-        let before = usage?.credits
-        // the status line file has no credits: keep the last ones Anthropic gave
-        u.credits = Credits.carry(u.credits, from: before, now: now) ?? (u.source == "Anthropic" ? nil : before)
-        usage = u; state = .ok; backoff = 0
+    func apply(_ u: Usage, now: Date = Date()) { send(.numbers(u, now: now)) }
+
+    /// The machine took a good reading (`u`, its credits carried on): the alerts it calls for.
+    private func alertGate(_ u: Usage, before: Credits?, now: Date) {
         // Alerts only for numbers that may act, as ProfileCore's Headline says it for every screen: the profile's own (not
         // Claude Code's in the split, SplitUsage, nor a reading the sign-in has moved on from), confirmed, and fresh by the
         // reading's own time (a reading held until its account was confirmed, and confirmed more than the read interval
@@ -473,73 +356,57 @@ final class UsageReader {
         let resolved = answer()
         let a = Headline.of(resolved.owner(reading: nil, unconfirmed: unconfirmed), signedIn: true, readAt: u.fetchedAt,
                             now: now, ages: Store.ages(entry))
-        if !onOtherAccount, resolved.clash == nil, a.acts, a.numbers() {
+        if !machine.onOtherAccount, resolved.clash == nil, a.acts, a.numbers() {
             noteBack(u)
             // the account in use as the resolver says it now (the record is saved after this)
             var view = IconStatus(state: "ok"); view.resolved = resolved
             checkThresholds(u, inUse: AccountView.of(view))
             noteCredits(u, before: before, now: now)
         }
-        scheduleResetRead()
+        // (then the machine's .planResetRead: the read at the next reset)
     }
 
     // MARK: renewing an expired sign-in
 
     private var renewKey: String { "lastRenewAttempt.\(id)" }
 
-    /// An automatic renewal may run: Renew sign-in on, none under way, and the folder signed in to the account the
-    /// profile works on; one signed in to another account is never renewed in its name.
-    static func mayRenewByItself(autoRenew: Bool, renewing: Bool, onOtherAccount: Bool) -> Bool {
-        autoRenew && !renewing && !onOtherAccount
-    }
-
-    /// The folder a renewal would run in, as it is now (not as the last beat saw it), is signed in to the profile's
-    /// account: never another account's sign-in renewed in its name.
-    static func renewsInItsFolder(_ seat: Seat?, _ dir: String) -> Bool {
-        seat.map { $0.same(Account.signedInSeat(configDir: dir)) } ?? true
-    }
-
+    /// An automatic renewal, when the machine allows it (ReaderMachine.mayRenewByItself): Renew sign-in on, none under way,
+    /// the folder signed in to the account the profile works on as the watch saw it and as it is now (one signed in to
+    /// another account is never renewed in its name), and none in the last 30 minutes, even across restarts.
     private func maybeRenew() {
-        guard Self.mayRenewByItself(autoRenew: renewsByItself, renewing: renewing, onOtherAccount: onOtherAccount) else { return }
-        guard Self.renewsInItsFolder(entry.seat, account.configDir) else { return }
-        if let last = defaults.object(forKey: renewKey) as? Date, Date().timeIntervalSince(last) < Self.renewSpacing { return }
+        let last = defaults.object(forKey: renewKey) as? Date
+        guard machine.mayRenewByItself(autoRenew: renewsByItself, folderNow: Account.signedInSeat(configDir: account.configDir),
+                                       lastAttempt: last, now: Date()) else { return }
         renewLogin()
     }
 
     /// Runs Claude Code once for this profile's folder so it swaps its access key (see ClaudeCLI.renew). Finding
     /// Claude Code and running it happen off the main thread.
     func renewLogin() {
-        guard !renewing, !stopped else { return }
+        guard !machine.renewing, !machine.stopped else { return }
         // its folder isn't there (deleted, or a link): never renewed, nothing started (Claude Code would make it again)
         guard FolderGuard.folderReady(account.configDir) else {
-            renewNote = "Not renewed: its Claude Code folder isn't there"
-            save(); return
+            send(.renewRefused(note: "Not renewed: its Claude Code folder isn't there")); return
         }
         // never in a folder signed in to another account, whose sign-in would be renewed in this profile's name; the
         // profile follows that one by itself, or signs back in with Log in…
-        guard Self.renewsInItsFolder(entry.seat, account.configDir) else {
-            renewNote = "Not renewed: this folder is signed in to another account"
-            save(); return
+        guard machine.renewsIn(folderNow: Account.signedInSeat(configDir: account.configDir)) else {
+            send(.renewRefused(note: "Not renewed: this folder is signed in to another account")); return
         }
-        renewing = true
         defaults.set(Date(), forKey: renewKey)
-        renewNote = "Renewing the sign-in through Claude Code…"
-        save()
-        let acct = account, gen = generation, seat = entry.seat
+        send(.renewStarted(note: "Renewing the sign-in through Claude Code…"))
+        let acct = account, gen = machine.generation, seat = entry.seat
         DispatchQueue.global(qos: .utility).async {
             let claude = ClaudeCLI.find()
             // (ClaudeAuth checks the folder's account again as it runs: never another account's sign-in renewed)
             let ok = claude.map { ClaudeCLI.renew($0, account: acct, expecting: seat) } ?? false
             DispatchQueue.main.async { [weak self] in
-                guard let self, !self.stopped else { return }
-                self.renewing = false
-                // renewed for a folder or account it no longer reads: its words would be about another sign-in
-                guard gen == self.generation else { return }
-                self.renewNote = claude == nil ? "Couldn't renew: Claude Code isn't installed"
+                guard let self else { return }
+                // (renewed for a folder or account it no longer reads: its words would be about another sign-in, so the
+                // machine drops them; else it reads the sign-in again now)
+                let note = claude == nil ? "Couldn't renew: Claude Code isn't installed"
                     : ok ? "Sign-in renewed at \(Self.when(Date()))" : "Couldn't renew the sign-in: run Claude Code for this profile once"
-                self.nextFetch = .distantPast
-                self.forceLoginRead = true
-                self.tick()
+                self.send(.renewEnded(note: note, generation: gen))
             }
         }
     }
@@ -593,7 +460,7 @@ final class UsageReader {
                 DispatchQueue.main.async { [weak self] in
                     self?.alerting.remove(k)
                     // marked only for the account it was about (not one read since a switch, whose marks were cleared)
-                    if code == 0, self?.stopped != true, self?.generation == gen { d.set(mark, forKey: k); if full { d.set(mark, forKey: levelKey) } }
+                    if code == 0, self?.machine.stopped != true, self?.generation == gen { d.set(mark, forKey: k); if full { d.set(mark, forKey: levelKey) } }
                 }
                 switch code {
                 case 0: agentLog.log("\(me, privacy: .public): alert sent: \(title, privacy: .public) \(full ? "full" : "at \(Int(p.rounded()))%", privacy: .public)")
@@ -753,19 +620,20 @@ final class UsageReader {
     /// Writes status/<id>.json when what this reader sees changed, and always after a refresh asked for or a read
     /// (`rewriteDue`); the write posts the "changed" notice. The agent is the record's one writer.
     func save() {
-        guard !stopped else { return }
-        var status = IconStatus(loginEmail: loginEmail, expectedEmail: expectedEmail, state: "\(state)",
+        let m = machine, usage = m.usage, state = m.state
+        guard !m.stopped else { return }
+        var status = IconStatus(loginEmail: m.loginEmail, expectedEmail: expectedEmail, state: "\(state)",
                                 fiveHour: usage?.fiveHour, weekly: usage?.weekly, updatedAt: usage?.fetchedAt,
-                                renewNote: renewNote, fiveHourResets: usage?.fiveHourResets,
-                                weeklyResets: usage?.weeklyResets, plan: planName ?? plan,
-                                source: usage?.source, problem: state.menuText, renewing: renewing,
+                                renewNote: m.renewNote, fiveHourResets: usage?.fiveHourResets,
+                                weeklyResets: usage?.weeklyResets, plan: planName ?? m.plan,
+                                source: usage?.source, problem: state.menuText, renewing: m.renewing,
                                 scoped: usage.map { $0.scoped.isEmpty ? nil : $0.scoped } ?? nil, credits: usage?.credits,
                                 noFiveHour: usage?.noFiveHour == true ? true : nil)
         // decided here, for every surface: no percent past its limit's reset, and an expired sign-in with no fresh numbers
         // has none at all (no bars, "login expired", Log in…). The reader keeps its own copy, to read again at a reset
         status = status.current()
-        status.numbersOwner = numbersOwner
-        status.ownerUnconfirmed = unconfirmed ? true : nil
+        status.numbersOwner = m.numbersOwner
+        status.ownerUnconfirmed = m.unconfirmed ? true : nil
         // the one answer about the account (AccountResolver), written here once for every surface to read: the numbers
         // stay, labelled with the account they were read for (no "otherAccount" state for the profile's own folder)
         var r = answer()
@@ -778,8 +646,8 @@ final class UsageReader {
             status.scoped = nil; status.credits = nil; status.noFiveHour = nil
             status.problem = r.line
         }
-        if let data = StatusCodec.encode(status), data != lastStatus || rewriteDue {
-            rewriteDue = false
+        if let data = StatusCodec.encode(status), data != lastStatus || m.rewriteDue {
+            send(.written)
             lastStatus = Store.writeStatus(id, status)
         }
     }
@@ -789,7 +657,7 @@ final class UsageReader {
         let list = Store.loadChecked() ?? []
         let me = list.first { $0.id == id } ?? entry
         return AccountResolver.resolve(me, among: list, app: AppSignIn.cached(for: me),
-                                       code: Account.signedInSeat(configDir: me.configDir), loginEmail: numbersOwner,
+                                       code: Account.signedInSeat(configDir: me.configDir), loginEmail: machine.numbersOwner,
                                        names: AccountList.names(), recordTooLarge: Account.recordTooLarge(configDir: me.configDir),
                                        newestSwitch: SwitchEngine.receipts(profile: me.id).first)
     }
