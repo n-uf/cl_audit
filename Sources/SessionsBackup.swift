@@ -820,12 +820,30 @@ enum SessionsBackup {
         return "\(what) · \(dateWords(m.created, now: now))"
     }
 
-    /// "84 sessions · 12 tasks · sidebar · transcripts · 5.5 GB, sharing space with the originals"
+    /// A window file the backup keeps beside the entries that is the window's own (its task list, its archive index, a
+    /// deleted_ marker): not an "other file".
+    static func windowOwn(_ name: String) -> Bool {
+        ClaudeFiles.isEntryName(name) || name == "scheduled-tasks.json" || name == "archived-sessions.idx" || name.hasPrefix("deleted_")
+    }
+
+    /// The window files a backup holds that are neither entries nor the window's own: copied with the rest (the backup
+    /// is the safety copy), never counted as sessions, and said ("· 2 other files").
+    static func otherFiles(_ m: Manifest) -> Int {
+        m.items.filter { $0.role == .window && !windowOwn(($0.path as NSString).lastPathComponent) }.count
+    }
+
+    /// "84 sessions · 2 other files · 12 tasks · sidebar · transcripts · 5.5 GB, sharing space with the originals" (the
+    /// sessions: the entries by ClaudeFiles' one rule; other files only when there are any)
     static func summary(_ m: Manifest) -> String {
         func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
         var parts: [String] = []
         if m.window {
-            parts.append(n(m.counts.sessions, "session", "sessions"))
+            // counted from the items by the one rule (a backup or import of 26.11.42 and earlier counted any local_….json
+            // as a session); a manifest without window items keeps its own count
+            let names = m.items.filter { $0.role == .window }.map { ($0.path as NSString).lastPathComponent }
+            parts.append(n(names.isEmpty ? m.counts.sessions : names.filter(ClaudeFiles.isEntryName).count, "session", "sessions"))
+            let other = otherFiles(m)
+            if other > 0 { parts.append(n(other, "other file", "other files")) }
             if m.counts.tasks > 0 { parts.append(n(m.counts.tasks, "task", "tasks")) }
             if m.items.contains(where: { $0.role == .sidebar }) { parts.append("sidebar") }
             if m.items.contains(where: { $0.role == .config }) { parts.append("MCP settings") }
