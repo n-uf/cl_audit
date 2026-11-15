@@ -24,10 +24,16 @@ echo "compiling ProfileCore…"
 swiftc -O -swift-version 5 -parse-as-library -module-name ProfileCore -application-extension -target arm64-apple-macos13.0 \
   -emit-module -emit-module-path "$out/ProfileCore.swiftmodule" -emit-library -static -o "$out/libProfileCore.a" \
   "$here"/Core/*.swift
+# ClaudeAuth (Auth/): a profile's one folder's Claude Code sign-in (its Keychain item, the watch, sign-in, renew,
+# sign-out, which account it is). Above ProfileCore, which never imports it; the app links it, the widget doesn't.
+echo "compiling ClaudeAuth…"
+swiftc -O -swift-version 5 -parse-as-library -module-name ClaudeAuth -target arm64-apple-macos13.0 -I "$out" \
+  -emit-module -emit-module-path "$out/ClaudeAuth.swiftmodule" -emit-library -static -o "$out/libClaudeAuth.a" \
+  "$here"/Auth/*.swift
 echo "compiling…"
 swiftc -O -swift-version 5 -target arm64-apple-macos13.0 \
   -o "$out/UsageDock" "$here"/Sources/*.swift "$here/Widget/WidgetViews.swift" \
-  -I "$out" -L "$out" -lProfileCore \
+  -I "$out" -L "$out" -lProfileCore -lClaudeAuth \
   -framework AppKit -framework SwiftUI -framework Charts -framework Security -framework ServiceManagement -framework UserNotifications \
   -framework WidgetKit
 
