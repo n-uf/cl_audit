@@ -59,22 +59,22 @@ enum FolderRules {
 
     /// The one owner rule (New profile's address and its sign-in, and Finish): the profile (other than `id`) that has this
     /// account, in use or standing by (a standby account is still that profile's: one profile per account), else, not
-    /// linked yet, the one whose folder is signed in to it. Compared by `sameAccount`. An address alone (typed) also
-    /// matches a profile whose account in use has no address recorded, or that isn't linked yet, by the address its
-    /// folder's .claude.json names (`recordEmail`, through ClaudeFiles; also a record with no account id), as the
-    /// address check always did.
+    /// linked yet, the one whose folder is signed in to it. Compared by the one owner rule (ProfileCore's
+    /// AccountIdentity.sameAccount: the ids when both have one, any case; else the address and organisation; one known by
+    /// its address only by the address). An address alone (typed) also matches a profile whose account in use has no
+    /// address recorded, or that isn't linked yet, by the address its folder's .claude.json names (`recordEmail`, through
+    /// ClaudeFiles; also a record with no account id), as the address check always did.
     static func seatOwner(_ who: AccountIdentity?, among accounts: [AccountEntry], except id: String? = nil,
                           signedIn: (String) -> Seat? = Account.signedInSeat,
                           recordEmail: (String) -> String? = { Account.expectedEmail(configDir: $0) }) -> SeatOwner? {
         guard let who else { return nil }
         let others = accounts.filter { $0.id != id }
-        if let e = others.first(where: { $0.seat.map { sameAccount(who, identity($0)) } ?? false }) { return SeatOwner(profile: e, standby: false) }
-        if let e = others.first(where: { $0.standby.contains { sameAccount(who, identity($0)) } }) { return SeatOwner(profile: e, standby: true) }
-        if let e = others.first(where: { $0.seat == nil && (signedIn($0.configDir).map { sameAccount(who, identity($0)) } ?? false) }) {
+        if let e = others.first(where: { $0.seat.map { who.sameAccount(AccountIdentity($0)) } ?? false }) { return SeatOwner(profile: e, standby: false) }
+        if let e = others.first(where: { $0.standby.contains { who.sameAccount($0.identity) } }) { return SeatOwner(profile: e, standby: true) }
+        if let e = others.first(where: { $0.seat == nil && (signedIn($0.configDir).map { who.sameAccount(AccountIdentity($0)) } ?? false) }) {
             return SeatOwner(profile: e, standby: false)
         }
-        if addressOnly(who), let e = others.first(where: { ($0.seat?.email ?? "").isEmpty
-            && sameAccount(who, AccountIdentity(account: nil, email: recordEmail($0.configDir), organization: nil, source: .guessed)) }) {
+        if who.addressOnly, let e = others.first(where: { ($0.seat?.email ?? "").isEmpty && who.sameAccount(.address(recordEmail($0.configDir))) }) {
             return SeatOwner(profile: e, standby: false)
         }
         return nil
@@ -83,32 +83,7 @@ enum FolderRules {
     /// The same for a folder's sign-in.
     static func seatOwner(_ seat: Seat?, among accounts: [AccountEntry], except id: String? = nil,
                           signedIn: (String) -> Seat? = Account.signedInSeat) -> SeatOwner? {
-        seatOwner(seat.map { identity($0) }, among: accounts, except: id, signedIn: signedIn)
-    }
-
-    /// The one identity rule (AccountIdentity.matches: the ids when both have one, any case; else the address, any case, and
-    /// the organisation), with one known by its address only (no id, no organisation: an address typed, a standby entry
-    /// remembered by its address) matched by the address (cl_quick's placeholder rule, as `isThat`).
-    static func sameAccount(_ a: AccountIdentity, _ b: AccountIdentity) -> Bool {
-        guard addressOnly(a) || addressOnly(b) else { return a.matches(b) }
-        guard let e = a.email?.lowercased(), !e.isEmpty else { return false }
-        return e == b.email?.lowercased()
-    }
-
-    /// Known by its address only: no account id and no organisation.
-    static func addressOnly(_ x: AccountIdentity) -> Bool { (x.account ?? "").isEmpty && (x.organization ?? "").isEmpty }
-
-    /// A seat as the owner rule compares it (an empty id is none).
-    static func identity(_ s: Seat) -> AccountIdentity {
-        AccountIdentity(account: s.account.isEmpty ? nil : s.account, email: s.email, organization: s.organization, source: .guessed)
-    }
-
-    /// A standby entry as the owner rule compares it: its seat (with the entry's address when the seat has none), else its
-    /// address only.
-    static func identity(_ q: StandbyAccount) -> AccountIdentity {
-        var i = q.seat.map { identity($0) } ?? AccountIdentity(account: nil, email: nil, organization: nil, source: .guessed)
-        if (i.email ?? "").isEmpty { i.email = q.email }
-        return i
+        seatOwner(seat.map { AccountIdentity($0) }, among: accounts, except: id, signedIn: signedIn)
     }
 
     /// cl_quick's noteAccount, for every profile: the account Claude Code in a profile's folder is signed in to is the
@@ -120,8 +95,9 @@ enum FolderRules {
     ///   wait (Reader.swift: the resolver's clash) until its folder is on an account of its own again;
     /// - an account on another profile's standby list moves here: it leaves that list, with a note on both profiles;
     /// - a profile not linked yet takes the account only when no earlier profile not linked yet is signed in to it too.
-    /// A folder signed out changes nothing (the account stays the profile's; it signs in again). `status`: the numbers of
-    /// the account a profile was on, as last saved (only its own).
+    /// A folder signed out changes nothing (the account stays the profile's; it signs in again). Every "the same account"
+    /// here is the one owner rule (Seat.sameAccount, `isThat`): ids in any case. `status`: the numbers of the account a
+    /// profile was on, as last saved (only its own).
     static func noteAccounts(_ accounts: [AccountEntry], signedIn: (String) -> Seat? = { Account.signedInSeat(configDir: $0) },
                              status: (AccountEntry) -> IconStatus? = { Store.lastStatus(of: $0) },
                              now: Date = Date()) -> [AccountEntry] {
@@ -129,10 +105,10 @@ enum FolderRules {
         for i in out.indices {
             guard var s = signedIn(out[i].configDir) else { continue }
             let old = out[i].seat
-            if let old, s.same(old) { continue }
+            if let old, s.sameAccount(old) { continue }
             // another profile works on it: refused
-            if out.indices.contains(where: { $0 != i && out[$0].seat.map { s.same($0) } == true }) { continue }
-            if old == nil, out.indices.contains(where: { $0 < i && out[$0].seat == nil && s.same(signedIn(out[$0].configDir)) }) { continue }
+            if out.indices.contains(where: { $0 != i && out[$0].seat.map { s.sameAccount($0) } == true }) { continue }
+            if old == nil, out.indices.contains(where: { $0 < i && out[$0].seat == nil && s.sameAccount(signedIn(out[$0].configDir)) }) { continue }
             // on another profile's standby list: it comes here, said on both
             let email = s.email ?? ""
             for j in out.indices where j != i && out[j].standby.contains(where: { Self.isThat(s, $0) }) {
@@ -162,22 +138,19 @@ enum FolderRules {
         return out
     }
 
-    /// A standby entry for the account signed in: by its seat, or, for one remembered by its address only (from an older
-    /// build's Another address…, not signed in yet), by the address (cl_quick's placeholder rule).
-    static func isThat(_ s: Seat, _ q: StandbyAccount) -> Bool {
-        if let seat = q.seat { return s.same(seat) }
-        return s.email.map { $0.lowercased() == q.email.lowercased() } ?? false
-    }
+    /// A standby entry for the account signed in, by the one owner rule: by its seat, or, for one remembered by its address
+    /// only (from an older build's Another address…, not signed in yet), by the address (cl_quick's placeholder rule).
+    static func isThat(_ s: Seat, _ q: StandbyAccount) -> Bool { AccountIdentity(s).sameAccount(q.identity) }
 
     /// A profile that can't be linked because another profile has the seat its folder is signed in to.
     static func seatTaken(_ e: AccountEntry, among accounts: [AccountEntry],
                           signedIn: (String) -> Seat? = Account.signedInSeat) -> AccountEntry? {
         guard e.seat == nil, let s = signedIn(e.configDir) else { return nil }
         // the first profile signed in to it gets it: only later ones are the ones left out (a profile keeping it as a
-        // standby account has it too)
+        // standby account has it too, one remembered by its address included: AccountEntry.has, the one owner rule)
         if let linked = accounts.first(where: { $0.id != e.id && $0.has(s) }) { return linked }
         guard let i = accounts.firstIndex(where: { $0.id == e.id }) else { return nil }
-        return accounts[..<i].first { $0.seat == nil && s.same(signedIn($0.configDir)) }
+        return accounts[..<i].first { $0.seat == nil && s.sameAccount(signedIn($0.configDir)) }
     }
 
     /// Clashes between saved accounts, as one message for the Settings bar (nil when all is well).

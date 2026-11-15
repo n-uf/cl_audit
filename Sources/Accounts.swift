@@ -55,8 +55,13 @@ extension AccountEntry {
     /// Every seat this profile has: the one in use and its standby accounts'.
     var seats: [Seat] { [seat].compactMap { $0 } + standby.compactMap(\.seat) }
 
-    /// The profile has this seat, in use or standing by.
-    func has(_ s: Seat?) -> Bool { s.map { x in seats.contains { x.same($0) } } ?? false }
+    /// The profile has this account, in use or standing by (one remembered by its address only included), by the one owner
+    /// rule (AccountIdentity.sameAccount: the ids in any case).
+    func has(_ s: Seat?) -> Bool {
+        guard let s else { return false }
+        let who = AccountIdentity(s)
+        return seat.map { who.sameAccount(AccountIdentity($0)) } == true || standby.contains { who.sameAccount($0.identity) }
+    }
 }
 
 /// What Claude Code recorded about the account a folder is signed in to (the oauthAccount block of its .claude.json):
