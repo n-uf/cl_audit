@@ -195,6 +195,70 @@ do {
     check(threw && !bad.isRunning && !bad.write(Data("x".utf8)), "one that can't start: start throws, writes fail")
 }
 
+// ============ 4d. a process group of its own (ownGroup): stopped as a group, nothing of it outlives the run ============
+do {
+    /// Gone for good (a zombie still answers kill 0 until it is reaped: up to 2 s for launchd to reap an orphan).
+    func gone(_ pid: pid_t) -> Bool {
+        let until = Date().addingTimeInterval(2)
+        while kill(pid, 0) == 0 && Date() < until { usleep(20_000) }
+        return kill(pid, 0) != 0
+    }
+    func groupGone(_ pgid: pid_t) -> Bool {
+        let until = Date().addingTimeInterval(2)
+        while kill(-pgid, 0) == 0 && Date() < until { usleep(20_000) }
+        return kill(-pgid, 0) != 0
+    }
+    func text(_ d: Data) -> String { String(decoding: d, as: UTF8.self) }
+    // the same rules as any run: status, output, errors, input, folder, environment
+    let r = Runner.run(Program("/bin/sh", ["-c", "read x; echo \"$x-$V\"; echo err >&2; exit 3"], environment: ["V": "v", "PATH": "/usr/bin:/bin"],
+                               input: Data("in\n".utf8), timeout: 5, keepOutput: true, keepErrors: true, ownGroup: true))
+    check(r?.status == 3 && text(r?.output ?? Data()) == "in-v\n" && text(r?.errors ?? Data()) == "err\n" && r?.signaled == false && r?.complete == true,
+          "group: status, output, errors, input and environment as any run: \(String(describing: r))")
+    check(Runner.run(Program(home + "/no-such-program", timeout: 5, ownGroup: true)) == nil, "group: a program that can't start: nil")
+    let crash = Runner.run(Program("/bin/sh", ["-c", "kill -SEGV $$"], timeout: 5, ownGroup: true))
+    check(crash?.signaled == true && crash?.status == SIGSEGV, "group: ended by a signal of its own: signaled, the signal as status")
+    // its own group, the leader's pid its id
+    var pgidSeen: pid_t = -2, leader: pid_t = -1
+    _ = Runner.run(Program("/bin/sleep", ["0.3"], timeout: 5, ownGroup: true), started: { pid in leader = pid; pgidSeen = getpgid(pid) })
+    check(leader > 0 && pgidSeen == leader && pgidSeen != getpgrp(), "group: it leads a group of its own, not the caller's (\(pgidSeen) / \(leader))")
+    // nothing of the caller's descriptors leaks in
+    let leak = open("/dev/null", O_RDONLY)
+    // (its own output, fd 1, is seen there: the probe works; the caller's isn't)
+    let fdr = Runner.run(Program("/bin/sh", ["-c", "[ -e /dev/fd/1 ] && ! [ -e /dev/fd/\(leak) ] && echo closed || echo open"], timeout: 5, keepOutput: true, ownGroup: true))
+    close(leak)
+    check(leak >= 0 && text(fdr?.output ?? Data()) == "closed\n", "group: a descriptor of the caller's is closed in it: \(text(fdr?.output ?? Data()))")
+    // a child that ignores SIGTERM, with children of its own ignoring it too: past the timeout, SIGKILL to the whole group
+    var p1: pid_t = -1
+    var r1: Ran?? = .none
+    // (a long-lived member that ignores SIGTERM too, `sleep 30`: the group stays until it really gets SIGKILL)
+    let t1 = took { r1 = Runner.run(Program("/bin/sh", ["-c", "trap '' TERM; sleep 30 & while :; do sleep 0.1; done"], timeout: 0.5, grace: 0.5, ownGroup: true),
+                                    started: { p1 = $0 }) }
+    check(r1! == nil && t1 < 3.5 && gone(p1) && groupGone(p1), "group: one that ignores SIGTERM: the group killed after the grace, all of it gone (\(String(format: "%.1f", t1)) s)")
+    // a grandchild holding the output: when the program ends, the rest of its group is killed, so the output closes at once
+    var r2: Ran?? = .none
+    let t2 = took { r2 = Runner.run(Program("/bin/sh", ["-c", "sleep 20 & echo $!"], timeout: 10, keepOutput: true, drain: .infinity, ownGroup: true)) }
+    let grand = pid_t(text(r2??.output ?? Data()).trimmingCharacters(in: .whitespacesAndNewlines)) ?? -1
+    check(r2??.ok == true && r2??.complete == true && grand > 0 && t2 < 3 && gone(grand),
+          "group: a grandchild that held the output is killed when the program ends; the output whole, no wait (\(String(format: "%.1f", t2)) s)")
+    // stopped mid-run by the caller's poll: the whole group, the result says stopped
+    var p3: pid_t = -1
+    var r3: Ran?? = .none
+    let t0 = Date()
+    let t3 = took { r3 = Runner.run(Program("/bin/sh", ["-c", "sleep 20 & echo $!; sleep 20"], timeout: 30, keepOutput: true, ownGroup: true),
+                                    poll: { Date().timeIntervalSince(t0) > 1.0 }, pollEvery: 0.05, started: { p3 = $0 }) }
+    let grand3 = pid_t(text(r3??.output ?? Data()).trimmingCharacters(in: .whitespacesAndNewlines)) ?? -1
+    check(r3??.stopped == true && r3??.ok == false && t3 < 3 && grand3 > 0 && gone(grand3) && gone(p3) && groupGone(p3),
+          "group: stopped mid-run, the whole group gone, the result says stopped (\(String(format: "%.1f", t3)) s, \(String(describing: r3)))")
+    // killAfterGrace false: only asked to end, left to end by itself after the grace (then reaped off the caller's thread)
+    var p4: pid_t = -1
+    var r4: Ran?? = .none
+    let t4 = took { r4 = Runner.run(Program("/bin/sh", ["-c", "trap '' TERM; while :; do sleep 0.1; done"], timeout: 0.3, grace: 0.3, killAfterGrace: false, ownGroup: true),
+                                    started: { p4 = $0 }) }
+    let left = kill(p4, 0) == 0
+    kill(-p4, SIGKILL)
+    check(r4! == nil && t4 < 2 && left && gone(p4), "group: killAfterGrace false: asked to end only, left running after the grace (then cleaned up here)")
+}
+
 // ============ 5. lint: Run/ stays Foundation only, starts processes only here, never logs ============
 do {
     let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
