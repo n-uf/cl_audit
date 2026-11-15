@@ -264,7 +264,7 @@ enum NewAccountSetup {
             return d.connected ? "\(d.configDir) stays as it is; nothing was created." : "Nothing has been created yet."
         }
         var parts: [String] = []
-        if d.createdConfigDir != nil, let e = signedInEmail(d) { parts.append("signs out the Claude Code login (\(Privacy.masked(e)))") }
+        if d.createdConfigDir != nil, let e = signedInEmail(d) { parts.append("signs out the Claude Code sign-in (\(Privacy.masked(e)))") }
         if d.createdConfigDir != nil, windowOpen(d) { parts.append("quits its Claude window") }
         let dirs = [d.createdConfigDir, d.createdDataDir.map { _ in "its desktop data folder" }].compactMap { $0 }
         if !dirs.isEmpty { parts.append("deletes " + dirs.joined(separator: " and ")) }
@@ -818,7 +818,7 @@ struct NewAccountView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         case .unknown: sub("Signed in")
                         case .different:
-                            Text("The Claude window is signed in to another account: in that window, Settings ▸ Log out, then sign in as \(Privacy.masked(signedIn ?? ""))")
+                            Text("The Claude window is signed in to another account: in that window, Settings ▸ Sign out, then sign in as \(Privacy.masked(signedIn ?? ""))")
                                 .font(.system(size: 11.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
                         default:
                             HStack(spacing: 5) {

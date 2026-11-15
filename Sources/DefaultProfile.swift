@@ -319,7 +319,7 @@ enum DefaultProfile {
                     "Switch \(name) to the usual Claude app, saved before anything moves.",
                     "Move \(name)'s sessions list and sidebar into the usual app's data. Nothing is overwritten."]
         case .otherFolder:
-            return ["Sign Claude Code into ~/.claude (its own login in Terminal).",
+            return ["Sign Claude Code into ~/.claude (its own sign-in in Terminal).",
                     "Back up \(name) and the ~/.claude profile, with both windows closed.",
                     "Move \(name)'s sessions (transcripts, sessions list, sidebar) into the default profile. Nothing is overwritten.",
                     "Choose what \(name) becomes: a standby account of the default profile, or removed."]

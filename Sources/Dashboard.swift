@@ -83,7 +83,7 @@ struct DashboardSettings: View {
         let stoppedSince = p.map { $0.stoppedSince } ?? mark?.beat
         let allowed = p.map { Optional($0.allowed) } ?? alerts.allowed
         let stopped: Bool = { if case .stopped = health { return !starter.starting }; return false }()
-        return SCard(title: "Usage in the background", info: "cl_audit's background agent reads every profile's usage on each profile's own schedule, renews sign-ins, sends the alerts, and starts and quits Dock icons and Claude windows as each profile says. macOS starts it when you log in and again after a crash; cl_audit starts it too when this window opens and whenever it has been silent for 90 s. Shows as “cl_audit Agent” in Activity Monitor; macOS restarts it if it's force-quit. To stop it, turn cl_audit off in System Settings ▸ General ▸ Login Items & Extensions.") {
+        return SCard(title: "Usage in the background", info: "cl_audit's background agent reads every profile's usage on each profile's own schedule, renews sign-ins, sends the alerts, and starts and quits Dock icons and Claude windows as each profile says. macOS starts it when you sign in and again after a crash; cl_audit starts it too when this window opens and whenever it has been silent for 90 s. Shows as “cl_audit Agent” in Activity Monitor; macOS restarts it if it's force-quit. To stop it, turn cl_audit off in System Settings ▸ General ▸ Login Items & Extensions.") {
             Group {
                 switch health {
                 case let .reading(n, lo, hi):
@@ -100,7 +100,7 @@ struct DashboardSettings: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text("cl_audit reads every profile's usage and sends the alerts on its own, even with this window and the Dock icons closed. It starts when you log in.")
+            Text("cl_audit reads every profile's usage and sends the alerts on its own, even with this window and the Dock icons closed. It starts when you sign in.")
                 .font(.system(size: 11.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.top, 7).padding(.bottom, 4)

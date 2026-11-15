@@ -65,7 +65,7 @@ struct SwitchPage: View {
 
     private var title: String {
         if appBehind { return "Switched Claude Code of \(name) to \(to)" }
-        if again { return runner.phase == .reached ? "Logged Claude \(name) in" : "Log Claude \(name) in" }
+        if again { return runner.phase == .reached ? "Signed Claude \(name) in" : "Sign Claude \(name) in" }
         switch runner.phase {
         case .closing, .moving, .waiting: return "Switching Claude \(name) to \(to)"
         case .reached: return "Switched Claude \(name) to \(to)"
@@ -116,7 +116,7 @@ struct SwitchPage: View {
         case .ready: return nil
         case .waiting, .closing, .moving, .failed: return nil       // said by `strip` above
         case .reached:
-            if again { return Top(text: "Logged in", dim: "· \(to)", tone: .ok) }
+            if again { return Top(text: "Signed in", dim: "· \(to)", tone: .ok) }
             if appBehind { return Top(text: "Claude Code on \(to)", dim: "· the Claude app still on \(appShort)", tone: .amber) }
             return Top(text: "Now on \(to)", dim: "· \(from) on standby", tone: .ok)
         case .other(let e):
@@ -153,7 +153,7 @@ struct SwitchPage: View {
             }
             Button("‹ Back") { leave() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).help("Back to \(name)'s settings")
         case .other(let e):
-            Button(again ? "Log in…" : "Sign in as \(to) again") { if again { runner.retry() } else { consent = ConsentRequest(flow: "Account switching") { runner.retry() } } }
+            Button(again ? "Sign in…" : "Sign in as \(to) again") { if again { runner.retry() } else { consent = ConsentRequest(flow: "Account switching") { runner.retry() } } }
                 .buttonStyle(.pill(FaceTheme.ledOn, compact: true))
             if runner.canUndo { undoKey }
             if clash == nil, !runner.canUndo {
@@ -309,7 +309,7 @@ struct SwitchPage: View {
 
     /// A sign-in again on the account in use: the same account, so nothing moves to anything.
     private var againCard: some View {
-        SCard(title: "What changes", info: "Log in: Claude Code's own sign-in on \(name)'s folder, as the account in use, in Terminal, finished in the browser. It moves nothing.") {
+        SCard(title: "What changes", info: "Sign in: Claude Code's own sign-in on \(name)'s folder, as the account in use, in Terminal, finished in the browser. It moves nothing.") {
             SRow(label: "Claude Code", first: true, stacked: true) {
                 value("Claude Code on \(entry.configDir) logs in as \(to). Sessions and the Claude window are not touched.")
             }

@@ -203,7 +203,7 @@ struct DefaultProfilePage: View {
                 Text(DefaultProfile.why(s)).font(.system(size: 12.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
                 SRowLine(text: kind == .windowOnly
                          ? "\(name) is already on ~/.claude, so there is no sign-in step and no transcript to move: only the window's data."
-                         : "Claude Code is signed into ~/.claude first (its own login, in Terminal). cl_audit never moves or copies a sign-in.")
+                         : "Claude Code is signed into ~/.claude first (its own sign-in, in Terminal). cl_audit never moves or copies a sign-in.")
             }
             .padding(.vertical, 4)
         }
