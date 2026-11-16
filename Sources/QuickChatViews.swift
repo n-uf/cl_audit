@@ -130,7 +130,6 @@ struct QCWindow: View {
             Text(n).font(.system(size: 11.5)).foregroundColor(QCColor.muted)
                 .frame(maxWidth: .infinity).padding(.top, 10)
         }
-        // a limit filled since the last answer: said once, under the chat, with the switch
         // the bar's own live full limit, with Switch account…; only its offer and key when the last turn says the limit
         if model.limitBubbleBelow {
             QCProblemView(problem: .limitFull(model.fullNow), model: model, answered: false, live: true, keyOnly: model.limitRepeated)
