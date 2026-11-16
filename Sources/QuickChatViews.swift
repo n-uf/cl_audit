@@ -137,7 +137,8 @@ struct QCWindow: View {
     }
 }
 
-/// The account line: the profile and the address of its account in use (masked unless Privacy shows addresses), then
+/// The account line: the profile and the address of the account quick chat answers on, its folder's (masked unless Privacy
+/// shows addresses), then
 /// New chat and Hide.
 struct QCHeader: View {
     @ObservedObject var model: QuickChatModel
