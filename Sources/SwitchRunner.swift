@@ -140,15 +140,6 @@ final class SwitchRunner: ObservableObject {
     static func marker(for profile: String) -> URL { Store.folder.appendingPathComponent("signed-in-\(Account.sha8(profile)).done") }
     private func clearMarker() { try? FileManager.default.removeItem(at: Self.marker(for: profile)) }
 
-    // MARK: the profile's Claude window (shared with Restore, Export and the default-profile move)
-
-    /// The profile's own Claude window (by its data folder), if it runs.
-    static func windowApps(_ e: AccountEntry) -> [NSRunningApplication] {
-        Processes.claudeWindows(of: Account(e)).filter { !$0.isTerminated }
-    }
-
-    static func windowClosed(_ e: AccountEntry) -> Bool { windowApps(e).isEmpty }
-
     // MARK: going
 
     /// Switch to a standby account: the profile's Claude window closes, its sessions and scheduled tasks move to that
@@ -263,7 +254,7 @@ final class SwitchRunner: ObservableObject {
         phase = .moving
         let closedIt = hold?.closedByUs == true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Result { try SwitchEngine.run(p, windowClosed: { Self.windowClosed(e) }, closedWindow: closedIt) }
+            let result = Result { try SwitchEngine.run(p, windowClosed: { !ClaudeWindow.isOpen(Account(e)) }, closedWindow: closedIt) }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 switch result {
@@ -307,7 +298,7 @@ final class SwitchRunner: ObservableObject {
         guard !isRunning, let r = receipt, r.linked == nil, r.undone == nil, let e = entry else { return }
         phase = .moving
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Result { try SwitchEngine.undoHolding(r.id, account: Account(e), windowClosed: { Self.windowClosed(e) }) }
+            let result = Result { try SwitchEngine.undoHolding(r.id, account: Account(e), windowClosed: { !ClaudeWindow.isOpen(Account(e)) }) }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 switch result {

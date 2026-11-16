@@ -85,7 +85,7 @@ final class ExportRunner: ObservableObject {
     private func part(of e: AccountEntry) -> SessionsExport.Part {
         let emails = ([e.seat?.email] + e.standby.map { $0.seat?.email ?? $0.email }).compactMap { $0 }.filter { !$0.isEmpty }
         return SessionsExport.Part(profile: e.id, name: e.name.isEmpty ? e.id : e.name, source: SessionsBackup.Source(e), emails: emails,
-                                   windowOpen: e.claudeWindow && !SwitchRunner.windowClosed(e), windowClosed: { SwitchRunner.windowClosed(e) })
+                                   windowOpen: e.claudeWindow && ClaudeWindow.isOpen(Account(e)), windowClosed: { !ClaudeWindow.isOpen(Account(e)) })
     }
 
     /// The profiles and where each is exported from, for the current choice.

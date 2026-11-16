@@ -42,7 +42,7 @@ struct SessionsCard: View {
     private var name: String { entry.name.isEmpty ? "This profile" : entry.name }
     private var source: SessionsBackup.Source { SessionsBackup.Source(entry) }
     /// The profile's Claude window is open: it rewrites its entries from memory, so a copy now could be half way.
-    private var windowOpen: Bool { _ = model.tick; return !SwitchRunner.windowClosed(entry) }
+    private var windowOpen: Bool { _ = model.tick; return ClaudeWindow.isOpen(Account(entry)) }
     private var switching: Bool { _ = model.tick; return SwitchMarker.blocks(Account(entry)) }
 
     /// A switch that stopped half way, to offer Undo it and Leave it as it is: never while that switch itself is still
@@ -327,7 +327,7 @@ struct SessionsCard: View {
         working = true; problem = nil
         Task {
             let result = await Task.detached(priority: .utility) {
-                Result { try SwitchEngine.undoHolding(r.id, account: Account(e), windowClosed: { SwitchRunner.windowClosed(e) }) }
+                Result { try SwitchEngine.undoHolding(r.id, account: Account(e), windowClosed: { !ClaudeWindow.isOpen(Account(e)) }) }
             }.value
             working = false
             switch result {
@@ -366,7 +366,7 @@ struct SessionsCard: View {
         working = true; problem = nil
         Task {
             let result = await Task.detached(priority: .utility) {
-                Result { try SessionsBackup.manual(src, window: !open, windowClosed: { SwitchRunner.windowClosed(e) }) }
+                Result { try SessionsBackup.manual(src, window: !open, windowClosed: { !ClaudeWindow.isOpen(Account(e)) }) }
             }.value
             if case .failure(let err) = result {
                 var why = "\(err)"
