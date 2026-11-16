@@ -273,7 +273,7 @@ enum NewAccountSetup {
         }
         var parts: [String] = []
         if d.createdConfigDir != nil, let e = signedInEmail(d) { parts.append("signs out the Claude Code sign-in (\(Privacy.masked(e)))") }
-        if d.createdConfigDir != nil, windowOpen(d) { parts.append("quits its Claude window") }
+        if let a = ownWindow(d), ClaudeWindow.isOpen(a) { parts.append("quits its Claude window") }
         let dirs = [d.createdConfigDir, d.createdDataDir.map { _ in "its desktop data folder" }].compactMap { $0 }
         if !dirs.isEmpty { parts.append("deletes " + dirs.joined(separator: " and ")) }
         let first = parts.joined(separator: ", ")
@@ -287,14 +287,26 @@ enum NewAccountSetup {
         let fm = FileManager.default
         // Never the default folder: ~/.claude's sign-in (Claude Code's own "Claude Code-credentials", which the usual Claude
         // app and `claude` in Terminal use) and its folder are never this draft's to sign out or delete, whatever it recorded.
-        if let dir = d.createdConfigDir, !Account.isDefault(configDir: dir) {
-            if let claude, signedInEmail(d) != nil { ClaudeCLI.logout(claude, configDir: dir) }
-            // the window it opened quits first (confirmed by identity, pid and start time), 4 s at most
-            _ = ClaudeWindow.quitAndWait(Account(d.entry), seconds: 4)
+        let ownConfig = d.createdConfigDir.flatMap { Account.isDefault(configDir: $0) ? nil : $0 }
+        if let dir = ownConfig, let claude, signedInEmail(d) != nil { ClaudeCLI.logout(claude, configDir: dir) }
+        // the window started on the window folder this setup made quits before its folders go (confirmed by identity, pid
+        // and start time), 4 s at most; never another window (ownWindow)
+        if let a = ownWindow(d) { _ = ClaudeWindow.quitAndWait(a, seconds: 4) }
+        if let dir = ownConfig {
             try? fm.removeItem(at: URL(fileURLWithPath: expand(dir)))      // removes the links, not what they point to
             try? fm.removeItem(at: ClaudeCLI.loginScript(dir))
         }
         if let dir = d.createdDataDir { try? fm.removeItem(at: URL(fileURLWithPath: expand(dir))) }
+    }
+
+    /// The window Cancel quits: the one started on the window folder this setup made (by that folder, whatever the draft's name
+    /// says now), or none. Never the usual Claude window (the standard data folder), which a new profile never owns here.
+    static func ownWindow(_ d: NewAccountDraft) -> Account? {
+        guard let dir = d.createdDataDir, !dir.isEmpty,
+              FolderKey.canonical(expand(dir)) != FolderKey.canonical(expand(FolderKey.standardDataDir)) else { return nil }
+        var e = d.entry
+        e.desktop = .separate; e.desktopDataDir = dir
+        return Account(e)
     }
 
     /// Whether this account's own Claude window is signed in, and to the same claude.ai account as Claude Code.
