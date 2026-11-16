@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- Cancel on a new profile now quits only the Claude window started on the window folder that setup made, and always before deleting that folder: also when the profile had connected an existing Claude Code folder (before, that window kept running on a deleted folder) or was renamed since. It never quits the usual Claude window.
 
 ## 26.11.53 — 2026-11-15
 
