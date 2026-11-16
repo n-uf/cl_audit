@@ -229,7 +229,7 @@ struct DefaultProfilePage: View {
                         }
                     }
                 }
-                SRowLine(text: "Both windows close first, and a backup of each is made. Nothing is deleted from \(name)'s window folder. When the move is done, the usual Claude window opens again if it was open; \(name)'s own window stays closed.")
+                SRowLine(text: "Both windows close first, and a backup of each is made. Nothing is deleted from \(name)'s window folder. When the move is done, the usual Claude window opens again if it was open (or to arrange the sidebar); \(name)'s own window stays closed.")
             } else {
                 SRow(label: "What moves", first: true, stacked: true) { value("counting…") }
             }
