@@ -137,9 +137,9 @@ struct QCWindow: View {
     }
 }
 
-/// The account line: the profile and the address of the account quick chat answers on, its folder's (masked unless Privacy
-/// shows addresses), then
-/// New chat and Hide.
+/// The account line: the profile and the address of the account quick chat answers on, its folder's, except in a clash,
+/// where that is another profile's: then the profile's own (QuickChatTarget.shownEmail; masked unless Privacy shows
+/// addresses), then New chat and Hide.
 struct QCHeader: View {
     @ObservedObject var model: QuickChatModel
     @ObservedObject private var privacy = Privacy.shared
@@ -148,7 +148,7 @@ struct QCHeader: View {
         HStack(spacing: 8) {
             if let t = model.target {
                 Text(t.name).font(.system(size: 12.5, weight: .semibold)).foregroundColor(QCColor.text)
-                if let e = t.email {
+                if let e = t.shownEmail {
                     Text(Privacy.masked(e)).font(.system(size: 12)).foregroundColor(QCColor.muted).lineLimit(1).truncationMode(.middle)
                 }
             }
@@ -391,7 +391,8 @@ struct QCProblemView: View {
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(QCColor.crimson.opacity(0.38)))
     }
 
-    private var title: String {
+    /// Its first words (internal: the checks read them).
+    var title: String {
         switch problem {
         case .notInstalled: return ClaudeInstall.missing + "."
         case .notSignedIn(let name, _): return "\(name)'s Claude Code isn't signed in."
@@ -399,10 +400,16 @@ struct QCProblemView: View {
         case .refused(let text): return text
         case .noProfile: return "There's no profile to chat on yet."
         case .limitFull:
+            // the split or a clash: the limit is the folder's account's, not one the header may name (in a clash another
+            // profile's): no account named as full, never the folder's address
+            if model.inSplit || model.inClash { return Self.otherLimitTitle }
             let f = model.level?.full()
             return "This account's \(f?.id == "5h" ? "5-hour limit" : "week") is full" + (f?.resets.map { ", " + TimeWords.back($0) } ?? "") + "."
         }
     }
+
+    /// A full limit in the split or a clash.
+    static let otherLimitTitle = "Claude Code's account here has hit its limit."
 
     private var more: String {
         switch problem {

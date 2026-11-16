@@ -309,8 +309,9 @@ do {
               "\(name): the Dock panel agrees (as drawn: \(panel.accountLine?.text ?? "no account line"))")
         check(SwitchMenu.dockTitle(name: "P", mainShow.named, plan: nil) == (named.map { "Claude P · \(AccountNames.short($0))" } ?? "Claude P")
               && mainShow.named.inUseLine == named.map(AccountNames.short), "\(name): the Dock menu and the menu bar row agree")
-        check(QuickChatTarget(main).email == want.numbersOwner,
-              "\(name): quick chat's header and process name the folder's account, even when the app decided the one in use")
+        let qcMain = QuickChatTarget(main)
+        check(qcMain.email == want.numbersOwner && qcMain.shownEmail == (want.clash != nil ? named : want.numbersOwner),
+              "\(name): quick chat's process on the folder's account, even when the app decided the one in use; its header names it, except in a clash (the profile's own, as the menus): \(qcMain.shownEmail ?? "none")")
         // (B8: in the split, the Claude app on another account than Claude Code, they are not the profile's: none show)
         check(Store.status(for: main)?.weekly == (splitHere ? nil : 40),
               "\(name): the record's own numbers show, except in the split (the app on another account): \(splitHere)")
@@ -2140,19 +2141,26 @@ do {
     let clashPanel = DetailsInfo.of(clashNone.row.show, name: e.name, icon: NSImage(), problem: nil)
     check(clashNone.row.show.display.usage == nil && clashPanel.noNumbers == "No usage: Terminal is on Other's account",
           "a clash with no numbers: the Dock panel's age line says no usage here and whose account, never Reading usage…: \(clashPanel.noNumbers ?? "-")")
-    // (quick chat's `claude` process, the kept level's account and the switch wait: the folder's u3, so moving back, which
-    // changes it, replaces the process: the key differs)
+    // quick chat in a clash: its header names the profile's own account (u1), never the folder's (u3); its `claude` process,
+    // the kept level's account and the switch wait follow the folder's u3 (by its id and organisation), so moving back, which
+    // changes it, replaces the process
+    func qkey(_ t: QuickChatTarget) -> QuickChatProcessKey { t.processKey(claude: "/c", model: "m", effort: nil) }
     let clashChat = QuickChatTarget(e, now: now)
-    let clashKey = clashChat.processKey(claude: "/c", model: "m", effort: nil)
-    check(clashChat.email == u3.email, "a clash: quick chat runs on the folder's account (u3): \(clashChat.email ?? "-")")
+    check(clashChat.clash && clashChat.email == u3.email && clashChat.shownEmail == u1.email
+          && clashChat.account?.account == u3.account.lowercased() && clashChat.account?.organization == u3.organization?.lowercased(),
+          "a clash: quick chat's header names the profile's own u1, its process the folder's u3 (id and organisation): \(clashChat.shownEmail ?? "-") / \(clashChat.email ?? "-")")
+    var seatless = e; seatless.seat = nil
+    let noSeatChat = QuickChatTarget(seatless, now: now)
+    check(noSeatChat.clash && noSeatChat.shownEmail == nil && noSeatChat.email == u3.email,
+          "a clash with no own account known: the header names no address, never the folder's u3: \(noSeatChat.shownEmail ?? "none")")
     _ = Store.writeStatus(e.id, rec())
     let backChat = QuickChatTarget(e, now: now)
-    check(backChat.email == u1.email && backChat.processKey(claude: "/c", model: "m", effort: nil) != clashKey,
+    check(backChat.email == u1.email && backChat.shownEmail == u1.email && !backChat.clash && !qkey(backChat).keeps(qkey(clashChat)),
           "moved back to the profile's own account: quick chat's process key changes, so the open process is replaced")
     // the same when the Claude app decided the account in use: the app on the profile's own u1, the folder on Other's u3.
-    // The process runs on the folder's u3 (its key, the kept level's account, the switch wait); moving the folder back to
-    // u1 changes the key. The split (the app on u2, the folder on u1): the process on u1; Claude Code signing in to u2
-    // changes the key
+    // The header names u1, the process runs on the folder's u3 (its key, the kept level's account, the switch wait); moving
+    // the folder back to u1 changes the key. The split (the app on u2, the folder on u1), unchanged: the header and the
+    // process on u1; Claude Code signing in to u2 changes the key
     var win = e; win.claudeWindow = true
     func appRec(_ app: AppSignIn.Login, code: Seat) -> IconStatus {
         var s = rec(week: nil, five: nil, login: code.email, code: code)
@@ -2161,24 +2169,152 @@ do {
     }
     _ = Store.writeStatus(e.id, appRec(appU1, code: u3))
     let qcAppClash = QuickChatTarget(win, now: now)
-    let qcAppClashKey = qcAppClash.processKey(claude: "/c", model: "m", effort: nil)
     check(Store.status(e.id)?.resolved?.fromApp == true && Store.status(e.id)?.resolved?.clash == "Other"
-          && qcAppClash.email == u3.email,
-          "an app-decided clash: quick chat's process on the folder's u3, never the app's u1: \(qcAppClash.email ?? "-")")
+          && qcAppClash.clash && qcAppClash.email == u3.email && qcAppClash.shownEmail == u1.email,
+          "an app-decided clash: quick chat's header on the app's u1 (the profile's own), its process on the folder's u3: \(qcAppClash.shownEmail ?? "-") / \(qcAppClash.email ?? "-")")
     _ = Store.writeStatus(e.id, appRec(appU1, code: u1))
     let appBackChat = QuickChatTarget(win, now: now)
-    check(appBackChat.email == u1.email && Store.status(e.id)?.resolved?.clash == nil
-          && appBackChat.processKey(claude: "/c", model: "m", effort: nil) != qcAppClashKey && appBackChat.email != qcAppClash.email,
+    check(appBackChat.email == u1.email && appBackChat.shownEmail == u1.email && !appBackChat.clash
+          && !qkey(appBackChat).keeps(qkey(qcAppClash)) && !QuickChatTarget.sameAccount(appBackChat.account, qcAppClash.account),
           "an app-decided clash moved back to u1: the process key changes (the old process on u3 isn't kept, nor its refusals) and the switch wait sees the move")
     _ = Store.writeStatus(e.id, appRec(appU2, code: u1))
     let splitChat = QuickChatTarget(win, now: now)
-    let splitKey = splitChat.processKey(claude: "/c", model: "m", effort: nil)
-    check(splitChat.split && splitChat.email == u1.email,
-          "the split: quick chat's process on Claude Code's own u1, never the app's u2: \(splitChat.email ?? "-")")
+    check(splitChat.split && !splitChat.clash && splitChat.email == u1.email && splitChat.shownEmail == u1.email,
+          "the split, unchanged: quick chat's header and process on Claude Code's own u1, never the app's u2: \(splitChat.shownEmail ?? "-")")
     _ = Store.writeStatus(e.id, appRec(appU2, code: u2))
     let splitDone = QuickChatTarget(win, now: now)
-    check(!splitDone.split && splitDone.email == u2.email && splitDone.processKey(claude: "/c", model: "m", effort: nil) != splitKey,
+    check(!splitDone.split && splitDone.email == u2.email && !qkey(splitDone).keeps(qkey(splitChat)),
           "the split ended, Claude Code signed in to the app's u2: the process key changes")
+
+    // the key by the folder's seat: its address in capitals, readings alternating between the status line (no address of
+    // its own) and the endpoint, and a record with no seat (its address only) are one account; one login's Team seat (u1's
+    // id in another organisation) is another
+    _ = Store.writeStatus(e.id, rec())
+    let base = QuickChatTarget(e, now: now)
+    check(Store.status(e.id)?.resolved?.codeOrganization == u1.organization?.lowercased() && base.account?.organization == u1.organization?.lowercased(),
+          "the record keeps the folder account's organisation beside its id, and quick chat's key takes it")
+    let caps = Seat(account: u1.account.uppercased(), organization: u1.organization?.uppercased(), email: u1.email!.uppercased())
+    _ = Store.writeStatus(e.id, rec(login: caps.email, code: caps))
+    let loud = QuickChatTarget(e, now: now)
+    check(loud.email == caps.email && qkey(loud).keeps(qkey(base)) && qkey(base).keeps(qkey(loud)),
+          "the folder's address, id and organisation in capitals: the same seat, the process kept")
+    _ = Store.writeStatus(e.id, rec(login: nil, code: u1))
+    let viaLine = QuickChatTarget(e, now: now)
+    _ = Store.writeStatus(e.id, rec(login: u1.email!.uppercased(), code: u1))
+    let viaEndpoint = QuickChatTarget(e, now: now)
+    check(viaLine.email != viaEndpoint.email && qkey(viaLine).keeps(qkey(viaEndpoint)) && qkey(viaEndpoint).keeps(qkey(viaLine)),
+          "the status line, then the endpoint (its address in another case), then the status line: the process kept: \(viaLine.email ?? "-") / \(viaEndpoint.email ?? "-")")
+    _ = Store.writeStatus(e.id, rec(login: u1.email!.uppercased(), code: nil))
+    let noSeatRec = QuickChatTarget(e, now: now)
+    check(noSeatRec.account?.account == nil && noSeatRec.account?.organization == nil && qkey(noSeatRec).keeps(qkey(base)),
+          "a record with no seat (its address only): matched by the address, any case: the process kept")
+    let team = Seat(account: u1.account, organization: uuid(301), email: u1.email)
+    _ = Store.writeStatus(e.id, rec(code: team))
+    let teamChat = QuickChatTarget(e, now: now)
+    check(teamChat.email == base.email && !qkey(teamChat).keeps(qkey(base)) && !QuickChatTarget.sameAccount(teamChat.account, base.account),
+          "one login's personal and Team seats: two keys, the process replaced")
+
+    // the model, as the agent drives it (update) and as Claude Code's events reach it (handle). In a clash, Other's limit
+    // event and refusal never mark the header's account full or hold typing, and the bubble names no account as full;
+    // outside a clash they do (and the bubble says this account's week); in the split, the bubble as in a clash
+    let soon = now.addingTimeInterval(3600)
+    var filled = 0
+    func chat(_ t: QuickChatTarget, level: QuickChatLevel?) -> QuickChatModel {
+        let m = QuickChatModel(); m.resolveClaude = { _ in }; m.limitFilled = { filled += 1 }
+        m.update(target: t, level: level, offer: { nil })
+        m.turns = [QuickChatTurn(question: "q")]
+        return m
+    }
+    func refuse(_ m: QuickChatModel) {
+        m.handle(.message(text: "You've hit your limit", model: "claude-haiku-5-5", error: "rate_limit"))
+        m.handle(.done(isError: true, text: "You've hit your limit", ms: 5, session: "s"))
+    }
+    func bubble(_ m: QuickChatModel) -> String { QCProblemView(problem: .limitFull, model: m, answered: true).title }
+    _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
+    let inClash = chat(QuickChatTarget(e, now: now), level: QuickChatLevel(nil))
+    inClash.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
+    check(inClash.inClash && inClash.level?.full() == nil && !inClash.blocked, "a clash: Other's limit event marks nothing full, typing stays free")
+    refuse(inClash)
+    inClash.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(nil), offer: { nil })
+    let clashBubble = bubble(inClash)
+    check(inClash.turns.last?.problem == .limitFull && inClash.level?.full() == nil && !inClash.blocked && inClash.offer == nil && filled == 0
+          && clashBubble == QCProblemView.otherLimitTitle && !clashBubble.contains("This account") && !clashBubble.contains("@"),
+          "a clash: Other's refusal is said, but nothing full, no hold, no offer, no look for one; the bubble names no account as full: \(clashBubble)")
+    _ = Store.writeStatus(e.id, rec())
+    let ownLevel = QuickChatLevel(Usage.of(Store.status(for: e, now: now)))
+    let outside = chat(QuickChatTarget(e, now: now), level: ownLevel)
+    check(outside.liveCounts && !outside.inClash && !outside.blocked, "outside a clash, the profile's own numbers: free to type")
+    outside.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
+    check(outside.level?.full()?.kind == .week && outside.blocked, "outside a clash: Claude Code's limit event marks the week full and holds typing")
+    let refusedOnly = chat(QuickChatTarget(e, now: now), level: ownLevel)
+    refuse(refusedOnly)
+    let ownBubble = bubble(refusedOnly)
+    check(refusedOnly.level?.full() != nil && refusedOnly.blocked && filled == 1 && ownBubble.hasPrefix("This account's "),
+          "outside a clash: a refusal holds typing, the controller looks for an offer, the bubble says this account's limit: \(ownBubble)")
+    _ = Store.writeStatus(e.id, appRec(appU2, code: u1))
+    let inSplit = chat(QuickChatTarget(win, now: now), level: QuickChatLevel(nil))
+    refuse(inSplit)
+    check(inSplit.inSplit && !inSplit.blocked && filled == 1 && bubble(inSplit) == QCProblemView.otherLimitTitle,
+          "the split: the refusal holds nothing, and the bubble names no account as full: \(bubble(inSplit))")
+
+    // Switch account… with a question waiting: a folder signed out on the way (no id: its address kept, or none) hasn't
+    // moved, so nothing goes and no note names the old address; on another seat (u2) the question goes, the note naming
+    // what the header names; a move into a clash names the profile's own account, never the folder's
+    func typedThenSwitch(_ r: IconStatus) -> (QuickChatModel, () -> Int) {
+        _ = Store.writeStatus(e.id, r)
+        var asked = 0
+        let m = QuickChatModel(); m.resolveClaude = { _ in asked += 1 }
+        let full = QuickChatLevel(Usage.of(Store.status(for: e, now: now)))
+        m.update(target: QuickChatTarget(e, now: now), level: full, offer: { QuickChatSwitchOffer(key: "card~k2", short: "ultra-2", words: "") })
+        m.field = "what's typed"
+        m.switchAccount()
+        return (m, { asked })
+    }
+    func move(_ m: QuickChatModel, _ r: IconStatus) {
+        _ = Store.writeStatus(e.id, r)
+        m.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
+    }
+    let fullWeek = rec(week: 100, weekIn: 3 * 3600)
+    let (w1, asked1) = typedThenSwitch(fullWeek)
+    check(w1.blocked && w1.offer != nil, "a full week: the bar holds and offers the switch")
+    move(w1, rec("ok", week: nil, five: nil, login: u1.email, code: nil))
+    move(w1, rec("noLogin", week: nil, five: nil, login: nil, code: nil))
+    check(w1.turns.isEmpty && w1.note == nil && asked1() == 0 && w1.field == "what's typed",
+          "the folder signed out on the way (its address kept, then none): not moved, nothing sent, no note: \(w1.note ?? "none")")
+    move(w1, rec(week: 10, login: u2.email, code: u2))
+    check(w1.turns.map(\.question) == ["what's typed"] && asked1() == 1 && w1.note == "Card switched to \(AccountNames.short(u2.email!)). Sending what you typed.",
+          "on another seat (u2): what was typed goes, the note names u2 as the header does: \(w1.note ?? "none")")
+    let (w2, asked2) = typedThenSwitch(fullWeek)
+    move(w2, rec(week: nil, five: nil, login: u3.email, code: u3))
+    check(asked2() == 1 && w2.note?.contains(AccountNames.short(u1.email!)) == true && w2.note?.contains(AccountNames.short(u3.email!)) == false,
+          "moved into a clash: the note names what the header names (the profile's own u1), never the folder's u3: \(w2.note ?? "none")")
+
+    // the process itself, against the stand-in claude (Checks/quick-chat/stub-claude, which numbers its answers from 1 for
+    // each process it is): a clash's process, on the folder's u3, is kept while the folder stays there (its address in
+    // capitals included), and replaced once it moves back to u1; Other's live limits never reach the header's account
+    let stub = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("quick-chat/stub-claude").path
+    try? fm.createDirectory(atPath: expand(e.configDir), withIntermediateDirectories: true)
+    let keepSeam = FolderGuard.launchSeam
+    FolderGuard.launchSeam = nil
+    let live = QuickChatModel(); live.resolveClaude = { $0(stub) }
+    func say(_ q: String, on r: IconStatus) -> String {
+        _ = Store.writeStatus(e.id, r)
+        live.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
+        live.field = q
+        live.send()
+        let until = Date().addingTimeInterval(10)
+        while live.busy && Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        return live.turns.last?.answer ?? ""
+    }
+    let a1 = say("one", on: rec(week: nil, five: nil, login: u3.email, code: u3))
+    check(a1 == "Answer 1" && live.level?.week == nil && live.level?.full() == nil && !live.blocked,"a clash: the stand-in answers; its live limits (62 %) never reach the header's account: \(a1)")
+    let a2 = say("two", on: rec(week: nil, five: nil, login: u3.email!.uppercased(), code: u3))
+    check(a2 == "Answer 2", "still on u3 (its address in capitals): the same process goes on: \(a2)")
+    let a3 = say("three", on: rec())
+    check(a3 == "Answer 1" && abs((live.level?.week ?? 0) - 62) < 0.01,"moved back to u1: a new process (it numbers from 1 again); its live week counts here: \(a3), \(live.level?.week ?? -1)")
+    live.shutdown()
+    FolderGuard.launchSeam = keepSeam
     _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
     // Settings ▸ Accounts' Sign in… keys: the in-use box's on the profile's own account (u1), Claude Code's own row's on its
     // own (the folder's u3)

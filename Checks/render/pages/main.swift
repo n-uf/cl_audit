@@ -787,6 +787,10 @@ if ProcessInfo.processInfo.environment["CARD3B_ONLY"] != nil {
             }
         }
         snapshot(framed(panels, 760), "show3c-\(name)-panel-std", 792, 700)
+        // quick chat's header as it draws it (QCHeader): in a clash the profile's own account, never the folder's
+        let qc = QuickChatModel(); qc.target = QuickChatTarget(p, now: now)
+        snapshot(framed(QCHeader(model: qc).frame(width: QuickChatRoot.width).background(Color(white: 0.16)), QuickChatRoot.width),
+                 "show3c-\(name)-quickchat-std", QuickChatRoot.width + 32, 120)
         // the menu bar row and the Dock icon's menu, as the agent and the Dock app build them from the same value
         let show = ProfileShow.load(p, now: now)
         let dockApp = AppDelegate(); dockApp.entry = p; dockApp.show = show
@@ -897,7 +901,7 @@ MainActor.assumeIsolated {
                 Text("Card").font(.caption.bold())
                 AccountCard(row: cardRow(main), actions: acts).frame(width: min(w, 460))
                 Text("Quick chat").font(.caption.bold())
-                Text("\(main.name) · " + (QuickChatTarget(main).email ?? "no account")).font(.system(size: 12))
+                Text("\(main.name) · " + (QuickChatTarget(main).shownEmail ?? "no account")).font(.system(size: 12))
                 Text("Settings ▸ Accounts").font(.caption.bold())
                 AccountSettings(entry: .constant(main), model: model, width: w)
             }
@@ -1065,7 +1069,7 @@ MainActor.assumeIsolated {
                             Text(SwitchMenu.dockTitle(name: main.name, v, plan: rec.plan)); if let l = v.line { Text(l).foregroundStyle(.secondary) }
                         }.font(.system(size: 13)).frame(width: 300, alignment: .leading)
                         Text("Quick chat").font(.caption.bold())
-                        Text("Claude \(main.name) · " + (QuickChatTarget(main).email ?? "no account")).font(.system(size: 12)).frame(width: 300, alignment: .leading)
+                        Text("Claude \(main.name) · " + (QuickChatTarget(main).shownEmail ?? "no account")).font(.system(size: 12)).frame(width: 300, alignment: .leading)
                     }
                     VStack(alignment: .leading, spacing: 10) {
                         Text("Dock panel").font(.caption.bold())
