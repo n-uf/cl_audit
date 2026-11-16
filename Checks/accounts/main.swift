@@ -2056,15 +2056,20 @@ do {
         stand[keyO] = [standIn()]
         let dF = DefaultProfileRunner(situation: s1, model: mD)
         dF.start()
-        waitFor(15) { dF.phase == .moving || failedD(dF) }
-        let lockHeld = try? Flows.takeLock()                               // (after the backups, before the restore's own take)
+        // the lock is taken between the restore's counted plan (published on the main thread) and its start (the move's tick,
+        // also there): a fine step, so neither runs first unseen, and the plan was counted with the lock free
+        let endF = Date().addingTimeInterval(15)
+        while dF.inner?.plan == nil && !failedD(dF) && Date() < endF { _ = RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.01)) }
+        let planClean = dF.inner?.plan != nil && dF.inner?.notYet == nil && dF.inner?.phase == .ready
+        let lockHeld = try? Flows.takeLock()
         waitFor(15) { failedD(dF) || dF.phase == .done }
         lockHeld?.release()
         waitFor(3) { winOpened.count == 2 }
-        check(lockHeld != nil && failedD(dF) && dF.inner?.receipt == nil && mD.accounts.first?.desktop == .separate && !ClaudeWindow.isOpen(Account(o1))
-              && Set(winOpened) == [keyU, keyO] && winOpened.count == 2,
-              "default move: the restore failed before writing: the profile back on its own window, both windows it closed opened again (once each): \(dF.phase) \(winOpened)")
-        stand[keyU] = []; stand[keyO] = []
+        let restoreFailed: Bool = { if case .failed? = dF.inner?.phase { return true }; return false }()
+        check(planClean && lockHeld != nil && failedD(dF) && restoreFailed && dF.inner?.receipt == nil && mD.accounts.first?.desktop == .separate
+              && !ClaudeWindow.isOpen(Account(o1)) && Set(winOpened) == [keyU, keyO] && winOpened.count == 2,
+              "default move: the restore itself failed before writing: the profile back on its own window, both windows it closed opened again (once each): \(dF.phase) \(String(describing: dF.inner?.phase)) \(winOpened)")
+        for k in [keyU, keyO] { stand[k]?.forEach { if $0.isRunning { kill($0.processIdentifier, SIGKILL) } }; stand[k] = [] }
 
         // Start again, the move itself: the old window closes for it, the usual one counts as closed by the first try; when it
         // ends only the usual window opens again, the old one stays closed
