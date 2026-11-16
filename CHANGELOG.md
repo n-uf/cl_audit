@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- When cl_audit can't read how a running Claude Code was started, it now says it couldn't check which folder it uses, instead of taking it for the default folder's.
 
 ## 26.11.55 — 2026-11-19
 
@@ -18,7 +18,6 @@ Nothing pending.
 ## 26.11.54 — 2026-11-15
 
 - Cancel on a new profile now quits only the Claude window started on the window folder that setup made, and deletes the folders only once that window has quit, also when the profile had connected an existing Claude Code folder (before, that window kept running on a deleted folder). If the window doesn't quit within a few seconds (it may be asking about work under way), nothing is removed and the page says so; quit it, then Cancel again. Cancel never quits the usual Claude window.
-- When cl_audit can't read how a running Claude Code was started, it now says it couldn't check which folder it uses, instead of taking it for the default folder's.
 
 ## 26.11.53 — 2026-11-15
 
