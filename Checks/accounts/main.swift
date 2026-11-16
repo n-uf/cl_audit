@@ -1999,37 +1999,53 @@ do {
     put(entry(wdD, u4, 961), #"{"sessionId":"local_\#(uuid(961))"}"#)
     func failedD(_ r: DefaultProfileRunner) -> Bool { if case .failed = r.phase { return true }; return false }
 
-    // a window that won't close: nothing moved; the usual window this move closed opens again (the old one never closed)
-    WindowHold.stallAfter = 1
     let o1 = oldProfile("dm")
     try! Store.save([o1])
     let mD = SettingsModel()
     mD.accounts = [o1]
-    stand[keyU] = [standIn()]
-    stand[keyO] = [standIn(ignoringTerm: true)]
-    winOpened = []
     if let s1 = DefaultProfile.situation(mD.accounts), s1.kind == .windowOnly {
+        // Cancel while the windows close: nothing moved; the old window (closed) opens again at once, the usual one (still
+        // asking) once it closes by its own answer
+        winOpened = []
+        stand[keyU] = [standIn(ignoringTerm: true)]
+        stand[keyO] = [standIn()]
+        let dC = DefaultProfileRunner(situation: s1, model: mD)
+        dC.start()
+        waitFor(3) { dC.phase == .closing && !ClaudeWindow.isOpen(Account(o1)) }
+        dC.cancel()
+        check(dC.phase == .ready && dC.record == nil && winOpened == [keyO] && !SwitchMarker.blocks(Account(o1)) && !SwitchMarker.blocks(Account(usualProbe)),
+              "default move: Cancel while they close: nothing moved, both marks gone, the closed old window opened again: \(dC.phase) \(winOpened)")
+        stand[keyU]?.forEach { kill($0.processIdentifier, SIGKILL) }
+        waitFor(3) { winOpened.count == 2 }
+        check(winOpened == [keyO, keyU], "…the usual window closed later by its own answer: opened again too: \(winOpened)")
+
+        // a window that won't close: nothing moved; the old window this move closed opens again, the usual one (still open) never
+        WindowHold.stallAfter = 1
+        winOpened = []
+        stand[keyU] = [standIn(ignoringTerm: true)]
+        stand[keyO] = [standIn()]
         let d1 = DefaultProfileRunner(situation: s1, model: mD)
         d1.start()
         waitFor(5) { d1.phase == .ready && d1.note != nil }
-        check(d1.phase == .ready && d1.record == nil && winOpened == [keyU] && !SwitchMarker.blocks(Account(o1)) && !SwitchMarker.blocks(Account(usualProbe)),
-              "default move: a window didn't close: nothing moved, both marks gone, the usual window it closed opened again: \(d1.phase) \(winOpened)")
-        stand[keyO]?.forEach { kill($0.processIdentifier, SIGKILL) }
-        waitFor(2) { !ClaudeWindow.isOpen(Account(o1)) }
+        check(d1.phase == .ready && d1.record == nil && winOpened == [keyO] && !SwitchMarker.blocks(Account(o1)) && !SwitchMarker.blocks(Account(usualProbe)),
+              "default move: a window didn't close: nothing moved, both marks gone, the old window it closed opened again: \(d1.phase) \(winOpened)")
+        stand[keyU]?.forEach { kill($0.processIdentifier, SIGKILL) }      // the usual window closes by its own answer
+        waitFor(2) { !ClaudeWindow.isOpen(Account(usualProbe)) }
+        spin(0.3)
+        check(winOpened == [keyO], "…the stalled usual window closing later is not reopened by that try: \(winOpened)")
         WindowHold.stallAfter = 10
 
-        // the move itself: both windows close for it; when it ends only the usual window opens again, the old one stays closed
+        // Start again, the move itself: the old window closes for it, the usual one counts as closed by the first try; when it
+        // ends only the usual window opens again, the old one stays closed
         winOpened = []
-        stand[keyU] = [standIn()]
         stand[keyO] = [standIn()]
-        let d2 = DefaultProfileRunner(situation: s1, model: mD)
-        d2.start()
-        waitFor(30) { d2.phase == .done || failedD(d2) }
-        check(d2.phase == .done && !d2.nothingToMove && !ClaudeWindow.isOpen(Account(o1)) && fm.fileExists(atPath: entry(expand(FolderKey.standardDataDir), u4, 961)),
-              "default move: both windows closed, the entry moved into the usual window's data: \(d2.phase) \(String(describing: d2.inner?.phase))")
+        d1.start()
+        waitFor(30) { d1.phase == .done || failedD(d1) }
+        check(d1.phase == .done && !d1.nothingToMove && !ClaudeWindow.isOpen(Account(o1)) && fm.fileExists(atPath: entry(expand(FolderKey.standardDataDir), u4, 961)),
+              "default move: the old window closed, the entry moved into the usual window's data: \(d1.phase) \(String(describing: d1.inner?.phase))")
         waitFor(3) { !winOpened.isEmpty }
         spin(0.5)
-        check(winOpened == [keyU], "…only the usual window opened again (once), never the old profile's own window: \(winOpened)")
+        check(winOpened == [keyU], "…only the usual window opened again (once, the stalled first try counted), never the old profile's own window: \(winOpened)")
     } else {
         check(false, "the default move: a window-only situation: \(String(describing: DefaultProfile.situation(mD.accounts)?.kind))")
     }
