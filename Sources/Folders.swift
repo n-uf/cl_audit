@@ -205,9 +205,7 @@ struct ClaudeRun: Identifiable, Equatable {
 
 enum ClaudeRuns {
     /// Quits the Claude desktop apps (their Code-tab sessions end with them).
-    static func quitDesktopApps() {
-        Processes.claudeApps().forEach { $0.terminate() }
-    }
+    static func quitDesktopApps() { ClaudeWindow.quitAll() }
 }
 
 /// Watches what's running every 2 s while the new-account page is open.

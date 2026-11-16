@@ -197,7 +197,7 @@ final class AgentRules {
         guard let e = accounts.first(where: { $0.id == id }), e.runs.windowFollowsDock, windowOpen(e) else { return }
         agentLog.log("agent: \(id, privacy: .public): Dock icon quit, quitting its window")
         actions[id] = AgentAction(kind: .windowQuits, at: Date())
-        Processes.claudeWindows(of: Account(e)).forEach { $0.terminate() }
+        ClaudeWindow.quit(Account(e))
     }
 
     private func windowOpen(_ e: AccountEntry) -> Bool {

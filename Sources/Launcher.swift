@@ -1218,7 +1218,7 @@ final class ManagerUI {
         },
         quitWindow: { [weak self] r in
             self?.model.begin(r.id, .quitting)
-            Processes.claudeWindows(of: r.account).forEach { $0.terminate() }
+            ClaudeWindow.quit(r.account)
         },
         showClaude: { r in Launcher.openClaude(r.account) },
         startUsage: { [weak self] r in

@@ -232,9 +232,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc func quitClaudeWindow() {
-        NSRunningApplication.runningApplications(withBundleIdentifier: Launcher.claudeBundleID)
-            .filter { Launcher.isWindow(of: account, $0) }
-            .forEach { $0.terminate() }
+        ClaudeWindow.quit(account)
     }
 
     @objc func quitKeepingWindow() { quietQuit = true; NSApp.terminate(nil) }
