@@ -68,7 +68,7 @@ struct QCBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let p = model.barProblem { QCProblemView(problem: p, model: model, answered: false) }
-            else if model.blocked { QCProblemView(problem: .limitFull(model.fullNow), model: model, answered: false) }
+            else if model.blocked { QCProblemView(problem: .limitFull(model.fullNow), model: model, answered: false, live: true) }
             QCField(model: model, placeholder: "Ask anything", size: 17)
                 .padding(.horizontal, 8)
             QCControls(model: model, inBar: true)
@@ -131,8 +131,10 @@ struct QCWindow: View {
                 .frame(maxWidth: .infinity).padding(.top, 10)
         }
         // a limit filled since the last answer: said once, under the chat, with the switch
+        // the bar's own live full limit, with Switch account…; only its offer and key when the last turn says the limit
         if model.limitBubbleBelow {
-            QCProblemView(problem: .limitFull(model.fullNow), model: model, answered: false).padding(.top, 12)
+            QCProblemView(problem: .limitFull(model.fullNow), model: model, answered: false, live: true, keyOnly: model.limitRepeated)
+                .padding(.top, 12)
         }
     }
 }
@@ -371,12 +373,17 @@ struct QCProblemView: View {
     @ObservedObject var model: QuickChatModel
     var answered: Bool
     var last = true
+    /// The bar's own live full limit (in the bar, and under the chat): the only one with the offer, Switch account… and
+    /// what you typed, as they are now. A turn's bubble has none of them.
+    var live = false
+    /// Live, and the last turn's bubble already names this limit: only the offer and its key.
+    var keyOnly = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             Circle().fill(QCColor.crimson).frame(width: 8, height: 8).padding(.top, 5)
             VStack(alignment: .leading, spacing: 7) {
-                (Text(title).fontWeight(.semibold).foregroundColor(QCColor.text) + Text(more.isEmpty ? "" : " " + more))
+                (Text(title).fontWeight(.semibold).foregroundColor(QCColor.text) + Text(more.isEmpty || title.isEmpty ? more : " " + more))
                     .font(.system(size: 13)).foregroundColor(QCColor.soft).fixedSize(horizontal: false, vertical: true)
                 if let d = detail {
                     Text(d).font(.system(size: 11.5, design: .monospaced)).foregroundColor(QCColor.muted)
@@ -403,16 +410,16 @@ struct QCProblemView: View {
             // the split or a clash: the limit is the folder's account's, not one the header may name (in a clash another
             // profile's): no account named as full, never the folder's address. Else the limit as the problem keeps it
             if full.other != nil { return Self.otherLimitTitle }
+            if keyOnly { return "" }
             let f = full.limit
             return "This account's \(f?.id == "5h" ? "5-hour limit" : "week") is full" + (f?.resets.map { ", " + TimeWords.back($0) } ?? "") + "."
         }
     }
 
-    /// The offer the key may act on: the one the problem keeps, while it is still the bar's own and this is the last
-    /// bubble (an older one keeps its words, without a key).
+    /// The offer the live bubble shows and its key acts on: the bar's now, for the account in use's limit.
     private var liveOffer: QuickChatSwitchOffer? {
-        guard last, case .limitFull(let f) = problem, f.other == nil, let o = f.offer, o == model.offer else { return nil }
-        return o
+        guard live, case .limitFull(let f) = problem, f.other == nil else { return nil }
+        return model.offer
     }
 
     /// A full limit in the split or a clash.
@@ -438,9 +445,8 @@ struct QCProblemView: View {
             case .split?:
                 return ""
             case nil:
-                guard let o = full.offer else { return "" }
-                return o.lineWords(name: name)
-                    + (liveOffer == nil || model.field.isEmpty ? "" : " What you typed goes once the switch is done.")
+                guard let o = liveOffer else { return "" }
+                return o.lineWords(name: name) + (model.field.isEmpty ? "" : " What you typed goes once the switch is done.")
             }
         }
     }

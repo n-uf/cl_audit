@@ -221,14 +221,12 @@ enum QuickChatProblem: Equatable {
     var isOwnLimitFull: Bool { if case .limitFull(let f) = self { return f.other == nil }; return false }
 }
 
-/// A full limit as its bubble says it: whose it is (`other`, nil: the account in use's), and for the account in use's, which
-/// limit and until when (`limit`), the offer then (`offer`) and the profile's name. A turn keeps the words it had when it
-/// ended, or, while it is the last turn and its limit still holds the bar, the ones the bar has now (QuickChatModel.update);
-/// the bar's own bubble is always the bar's now (QuickChatModel.fullNow).
+/// A full limit as its bubble says it: whose it is (`other`, nil: the account in use's), for the account in use's which
+/// limit and until when (`limit`), and the profile's name. A turn's is fixed when the turn ends and never changes; it
+/// carries no offer and no key: only the bar's own live bubble does (QuickChatModel.fullNow, limitBubbleBelow).
 struct QuickChatFullLimit: Equatable {
     var other: QuickChatOtherLimit? = nil
     var limit: FullLimit? = nil
-    var offer: QuickChatSwitchOffer? = nil
     var profile = ""
 }
 
@@ -282,15 +280,20 @@ final class QuickChatModel: ObservableObject {
         if let n = target?.clashName { return .clash(name: n, own: target?.shownEmail != nil) }
         return inSplit ? .split : nil
     }
-    /// The chat window draws the bar's full limit under the chat: it holds the bar, and the last turn isn't a full limit of
-    /// the account in use already saying it (a split's or a clash's says nothing of the account in use).
-    var limitBubbleBelow: Bool { blocked && turns.last?.problem?.isOwnLimitFull != true }
-    /// A full limit Claude Code meets now, as its bubble says it: whose, and for the account in use's, the bar's limit and
-    /// offer as they are now.
+    /// The last turn's fixed bubble already names the limit that holds the bar now: the same limit, until the same time.
+    /// Then the bubble below says only the offer and its key (limitBubbleBelow).
+    var limitRepeated: Bool {
+        guard case .limitFull(let f)? = turns.last?.problem, f.other == nil, let said = f.limit, let now = level?.full() else { return false }
+        return said.kind == now.kind && said.resets == now.resets
+    }
+    /// The chat window draws the bar's own live full limit under the chat, the only bubble with Switch account… and what
+    /// you typed: whenever the account in use's limit holds the bar, except when it would only repeat the last turn's
+    /// bubble with no offer to add.
+    var limitBubbleBelow: Bool { blocked && !(limitRepeated && offer == nil) }
+    /// A full limit Claude Code meets now, as its bubble says it: whose, and for the account in use's, the bar's limit now.
     var fullNow: QuickChatFullLimit {
         let other = otherLimit
-        return QuickChatFullLimit(other: other, limit: other == nil ? level?.full() : nil, offer: other == nil ? offer : nil,
-                                  profile: target?.name ?? "")
+        return QuickChatFullLimit(other: other, limit: other == nil ? level?.full() : nil, profile: target?.name ?? "")
     }
     @Published var choice: QuickChatModelChoice = .haiku
     @Published var thinking: QuickChatThinking = .off
@@ -427,12 +430,6 @@ final class QuickChatModel: ObservableObject {
         // account in use)
         let offer = l?.full() == nil || !(counts || level?.full() != nil) ? nil : best()
         if offer != self.offer { self.offer = offer }
-        // the last turn's own full limit, while it still holds the bar, is the bar's bubble in the chat: its words follow
-        // the bar's (the offer comes after the turn ended). Once it no longer holds (a switch, a reset), they stay as they were
-        if blocked, otherLimit == nil, let i = turns.indices.last, turns[i].problem?.isOwnLimitFull == true {
-            let now = QuickChatProblem.limitFull(fullNow)
-            if turns[i].problem != now { turns[i].problem = now }
-        }
         guard let wait = switchWait else { return }
         if Date().timeIntervalSince(wait.since) > 600 { switchWait = nil; return }
         // moved: the folder on an account known by its id, another seat than when it was clicked (a folder signed out on
@@ -535,7 +532,8 @@ final class QuickChatModel: ObservableObject {
                         l.refusedUntil = l.refusedUntil ?? Date().addingTimeInterval(3600)
                         level = l
                     }
-                    // its words with the hold just made (which limit, until when); the offer follows while it holds (update)
+                    // its words, fixed now with the hold just made (which limit, until when); never rewritten after. The
+                    // offer and its key are the live bubble's below (limitBubbleBelow)
                     turns[i].problem = .limitFull(fullNow)
                     limitFilled()
                 }

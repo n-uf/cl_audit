@@ -2242,6 +2242,15 @@ do {
         QCProblemView(problem: m.turns.last?.problem ?? .noProfile, model: m, answered: true)
     }
     func bubble(_ m: QuickChatModel) -> String { bubbleView(m).title }
+    /// A turn's stored bubble (an older one: not the last), as QCTurnView draws it: its title and next words.
+    func stored(_ m: QuickChatModel, _ i: Int = 0) -> String {
+        let v = QCProblemView(problem: m.turns[i].problem ?? .noProfile, model: m, answered: false, last: i == m.turns.count - 1)
+        return v.title + "|" + v.more
+    }
+    /// The bar's own live bubble under the chat, as QCWindow draws it.
+    func liveBelow(_ m: QuickChatModel) -> QCProblemView {
+        QCProblemView(problem: .limitFull(m.fullNow), model: m, answered: false, live: true, keyOnly: m.limitRepeated)
+    }
     /// Whose the last turn's full limit is (nil: the account in use's, or none).
     func whose(_ m: QuickChatModel) -> QuickChatOtherLimit? {
         if case .limitFull(let f)? = m.turns.last?.problem { return f.other }
@@ -2278,9 +2287,9 @@ do {
     // last turn's bubble is the clash's, which says nothing of u1
     _ = Store.writeStatus(e.id, rec(week: 100, weekIn: 3 * 3600))
     inClash.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { cardOffer })
-    let below = QCProblemView(problem: .limitFull(inClash.fullNow), model: inClash, answered: false)
-    check(inClash.blocked && inClash.limitBubbleBelow && below.title.hasPrefix("This account's week is full")
-          && inClash.fullNow.offer == cardOffer && below.more.contains("ultra-2") && bubble(inClash) == clashBubble,
+    let below = liveBelow(inClash)
+    check(inClash.blocked && inClash.limitBubbleBelow && !inClash.limitRepeated && below.title.hasPrefix("This account's week is full")
+          && inClash.offer == cardOffer && below.more.contains("ultra-2") && bubble(inClash) == clashBubble,
           "a clash's refusal, then back on u1 with its week full: the bar's bubble shows below, with the switch: \(below.title) \(below.more)")
     _ = Store.writeStatus(e.id, rec())
     let ownLevel = QuickChatLevel(Usage.of(Store.status(for: e, now: now)))
@@ -2294,21 +2303,21 @@ do {
     check(refusedOnly.level?.full() != nil && refusedOnly.blocked && filled == 1 && ownBubble.hasPrefix("This account's ")
           && !refusedOnly.limitBubbleBelow,
           "outside a clash: a refusal holds typing, the controller looks for an offer, the bubble says this account's limit: \(ownBubble)")
-    // the offer comes after the turn ended: while the limit holds the bar, the last turn's bubble takes it, with its key.
-    // Then Switch account… with a question typed, the folder on u2: the question goes, and the old bubble keeps its words
-    // (which limit, until when, the offer then), without the key
+    // the turn's bubble is fixed as the turn ends: the limit and until when, no offer, no key. The offer comes later, in
+    // the live bubble below, which says only the offer and its key while the turn's bubble names the same hold. Then
+    // Switch account… with a question typed, the folder on u2: the question goes, the old bubble unchanged, nothing below
+    let heldWords = stored(refusedOnly)
     refusedOnly.update(target: QuickChatTarget(e, now: now), level: ownLevel, offer: { cardOffer })
-    let held = QCProblemView(problem: refusedOnly.turns[0].problem!, model: refusedOnly, answered: false)
-    let heldTitle = held.title, heldMore = held.more
-    check(refusedOnly.offer == cardOffer && heldTitle.contains("back") && heldMore.contains("ultra-2"),
-          "while it holds: the refused turn's bubble says until when and the switch: \(heldTitle) \(heldMore)")
+    let keyLine = liveBelow(refusedOnly)
+    check(refusedOnly.offer == cardOffer && heldWords.contains("back") && heldWords.hasSuffix("|") && stored(refusedOnly) == heldWords
+          && refusedOnly.limitBubbleBelow && refusedOnly.limitRepeated && keyLine.title.isEmpty && keyLine.more.contains("ultra-2"),
+          "a refusal: its bubble says until when, with no offer; the offer and its key come below, alone: \(heldWords) / \(keyLine.more)")
     refusedOnly.field = "next"
     refusedOnly.switchAccount()
     _ = Store.writeStatus(e.id, rec(week: 10, login: u2.email, code: u2))
     refusedOnly.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
-    let old = QCProblemView(problem: refusedOnly.turns[0].problem!, model: refusedOnly, answered: false, last: false)
-    check(refusedOnly.turns.count == 2 && !refusedOnly.blocked && old.title == heldTitle && old.more == heldMore,
-          "a refusal, a switch, the question sent on u2: the old bubble's words are unchanged: \(old.title) \(old.more)")
+    check(refusedOnly.turns.count == 2 && !refusedOnly.blocked && !refusedOnly.limitBubbleBelow && stored(refusedOnly) == heldWords,
+          "a refusal, a switch, the question sent on u2: the old bubble's words are unchanged, nothing below: \(stored(refusedOnly))")
     _ = Store.writeStatus(e.id, rec())
     _ = Store.writeStatus(e.id, appRec(appU2, code: u1))
     let inSplit = chat(QuickChatTarget(win, now: now), level: QuickChatLevel(nil))
@@ -2316,6 +2325,47 @@ do {
     check(inSplit.inSplit && !inSplit.blocked && filled == 1 && bubble(inSplit) == QCProblemView.otherLimitTitle
           && whose(inSplit) == .split,
           "the split: the refusal holds nothing, and the bubble names no account as full: \(bubble(inSplit))")
+
+    // a turn's bubble is never rewritten, whatever holds the bar later; the live bubble below says what holds it now:
+    // A. the 5-hour limit refused a turn; it resets, then the week fills
+    _ = Store.writeStatus(e.id, rec())
+    let otherOffer = QuickChatSwitchOffer(key: "card~k3", short: "spare", words: "")
+    var fiveFull = QuickChatLevel(nil)
+    fiveFull.fiveHour = 100; fiveFull.fiveHourResets = now.addingTimeInterval(3600); fiveFull.week = 60; fiveFull.weekResets = now.addingTimeInterval(2 * 86400)
+    let caseA = chat(QuickChatTarget(e, now: now), level: fiveFull)
+    refuse(caseA)
+    let aWords = stored(caseA)
+    var weekFull = QuickChatLevel(nil)
+    weekFull.fiveHour = 10; weekFull.fiveHourResets = now.addingTimeInterval(5 * 3600); weekFull.week = 100; weekFull.weekResets = now.addingTimeInterval(3 * 3600)
+    caseA.update(target: QuickChatTarget(e, now: now), level: weekFull, offer: { cardOffer })
+    let aBelow = liveBelow(caseA)
+    check(aWords.contains("5-hour limit is full") && stored(caseA) == aWords && caseA.level?.full()?.kind == .week
+          && caseA.limitBubbleBelow && !caseA.limitRepeated && aBelow.title.hasPrefix("This account's week is full") && aBelow.more.contains("ultra-2"),
+          "A: the 5-hour refusal's bubble stays; the week that filled since shows below, with the switch: \(aWords) / \(aBelow.title)")
+    // B. Switch account… with nothing typed; the account switched to is full too
+    let caseB = chat(QuickChatTarget(e, now: now), level: ownLevel)
+    refuse(caseB)
+    let bWords = stored(caseB)
+    caseB.update(target: QuickChatTarget(e, now: now), level: ownLevel, offer: { cardOffer })
+    caseB.switchAccount()
+    _ = Store.writeStatus(e.id, rec(week: 100, weekIn: 5 * 3600, login: u2.email, code: u2))
+    caseB.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { otherOffer })
+    let bBelow = liveBelow(caseB)
+    check(stored(caseB) == bWords && !bWords.contains("spare") && caseB.blocked && caseB.limitBubbleBelow && !caseB.limitRepeated
+          && bBelow.title.hasPrefix("This account's week is full") && bBelow.more.contains("spare") && caseB.turns.count == 1,
+          "B: switched with nothing typed to an account that is full too: the old bubble keeps u1's words; u2's limit and offer show below: \(bBelow.title) \(bBelow.more)")
+    // C. a refusal's made-up hour, then the reading's real reset
+    _ = Store.writeStatus(e.id, rec())
+    let caseC = chat(QuickChatTarget(e, now: now), level: ownLevel)
+    refuse(caseC)
+    let cWords = stored(caseC)
+    _ = Store.writeStatus(e.id, rec(week: 100, weekIn: 3 * 3600))
+    caseC.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { cardOffer })
+    let cBelow = liveBelow(caseC)
+    check(stored(caseC) == cWords && caseC.limitBubbleBelow && !caseC.limitRepeated && !cBelow.title.isEmpty
+          && cBelow.title != String(cWords.prefix { $0 != "|" }) && cBelow.more.contains("ultra-2"),
+          "C: the refusal's bubble keeps its hour; the real reset shows below, with the switch: \(cWords) / \(cBelow.title)")
+    _ = Store.writeStatus(e.id, rec())
 
     // Switch account… with a question waiting: a folder signed out on the way (no id: its address kept, or none) hasn't
     // moved, so nothing goes and no note names the old address; on another seat (u2) the question goes, the note naming
