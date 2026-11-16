@@ -5,8 +5,8 @@
 // on its command line, or as the program of a Code-tab or a terminal. All of it is read from the kernel (proc_listallpids,
 // proc_pidinfo, KERN_PROCARGS2, proc_pidpath): no `ps` or `pgrep`, so nothing waits on a helper (waiting for one ran the run loop
 // and redrew SwiftUI windows mid-update). Where the table can't be read, or a process that may be Claude Code can't be (another
-// user's `claude`, as with `sudo claude`, included), or a Claude Code's environment can't be (then its folder is unknown, never
-// taken for ~/.claude), the answer is nil, and the callers then refuse rather than guess. Of a process's environment only CLAUDE_CONFIG_DIR is kept; the rest is compared as bytes and wiped. Only `lsof`
+// user's `claude`, as with `sudo claude`, included), or, for the folder it runs on, a Claude Code's environment can't be (its
+// folder is unknown, never taken for ~/.claude), the answer is nil, and the callers then refuse rather than guess. Of a process's environment only CLAUDE_CONFIG_DIR is kept; the rest is compared as bytes and wiped. Only `lsof`
 // (which program has a file open) is still a tool, run through `run`.
 //
 // Running. `run` and `output` go through Runs (Run/), the one runner ClaudeAuth uses too: a program in the temporary folder with
@@ -47,7 +47,8 @@ enum Processes {
         var hidden = false
 
         /// It may be Claude Code and which folder it runs on can't be told: `hidden`, or a Claude Code program (`codeProgram`)
-        /// whose environment wasn't read (its CLAUDE_CONFIG_DIR may be any folder's). Whoever asks then can't tell, and says so.
+        /// whose environment wasn't read (its CLAUDE_CONFIG_DIR may be any folder's). Whoever asks which folder (codeRuns) then
+        /// can't tell, and says so; its command line, read, still counts (commandLines fails on `hidden` only).
         var unknown: Bool {
             hidden || launch.map { !$0.environmentRead && Processes.codeProgram(exe: $0.exe, args: $0.args) } == true
         }
@@ -293,16 +294,18 @@ enum Processes {
 
     /// The command lines the kernel reads (each process's arguments joined by spaces, as `ps -o command` prints them): this user's
     /// and those of any user's process that looks like Claude Code. nil when the table can't be read or a process that may be
-    /// Claude Code can't be, or its environment can't be (`Entry.unknown`): a session it holds would look free. `given`: a table
-    /// the caller read (the checks pass their own); nil reads one now.
+    /// Claude Code can't be (`Entry.hidden`): a session it holds would look free. An unread environment doesn't count here: the
+    /// arguments were read, and no answer drawn from them depends on the folder. `given`: a table the caller read (the checks
+    /// pass their own); nil reads one now.
     static func commandLines(_ given: [Entry]?? = nil) -> [String]? {
-        guard let all = given ?? settledTable(), !all.contains(where: \.unknown) else { return nil }
+        guard let all = given ?? settledTable(), !all.contains(where: \.hidden) else { return nil }
         return all.compactMap { $0.launch.map { $0.args.joined(separator: " ") } }
     }
 
     /// The session ids a running Claude Code owns (claude-transplant's workers): every id on the command line of a process whose
-    /// program is `claude`, and the sessionId of `<codeDir>/sessions/<pid>.json` for a process that runs. nil when the processes
-    /// can't be read (then nothing moves: claude-transplant's "cannot inspect running workers").
+    /// program is `claude`, and the sessionId of `<codeDir>/sessions/<pid>.json` for a process that runs (that file is only in
+    /// the folder the process really uses, so its environment isn't needed). nil when the processes can't be read (then nothing
+    /// moves: claude-transplant's "cannot inspect running workers").
     static func sessionsOwned(codeDir: String, table given: [Entry]?? = nil) -> Set<String>? {
         commandLines(given).map { owned(commands: $0, codeDir: codeDir, alive: runs) }
     }

@@ -389,10 +389,15 @@ do {
     check(Processes.codeRuns(codeDir: "~/.claude", table: [readDefault]) == true && Processes.codeRuns(codeDir: "~/.claude-p8", table: [readDefault]) == false
           && Processes.codeRuns(codeDir: "~/.claude-p8", table: [readDefault, unreadZsh, unreadApp]) == false,
           "codeRuns: env read without CLAUDE_CONFIG_DIR stays the default folder's; another program or the Claude app unread changes nothing")
-    check(Processes.sessionsOwned(codeDir: "~/.claude-p8", table: [mine, unread]) == nil && Processes.sessionsOwned(codeDir: "~/.claude", table: [unread]) == nil
-          && Processes.commandLines([readDefault, unread]) == nil && Processes.sessionsOnCommandLines(table: [unread]) == nil
-          && Processes.commandLineNames(uuid(908), table: [unread]) == nil,
-          "sessionsOwned, the command lines, restore's running sessions, the switch's pgrep -f: nil when a claude's environment wasn't read")
+    // its arguments were read: the answers drawn from command lines don't depend on the folder, so they stand
+    let ownedUnread = Processes.sessionsOwned(codeDir: "~/.claude-p8", table: [mine, unread])
+    check(ownedUnread.map { $0.isSuperset(of: [uuid(906), uuid(908)]) } == true
+          && Processes.sessionsOwned(codeDir: "~/.claude", table: [unread])?.contains(uuid(908)) == true,
+          "sessionsOwned: an env-unread claude whose arguments were read still gives its ids (\(ownedUnread.map { $0.sorted() } ?? []))")
+    check(Processes.commandLines([readDefault, unread]) == ["claude", "claude --resume \(uuid(908))"]
+          && Processes.sessionsOnCommandLines(table: [unread]) == [uuid(908)]
+          && Processes.commandLineNames(uuid(908), table: [unread]) == true,
+          "the command lines, restore's running sessions, the switch's pgrep -f: read as before when only a claude's environment wasn't")
     check(Processes.sessionsOwned(codeDir: "~/.claude-p8", table: [mine, readDefault, unreadZsh])?.contains(uuid(906)) == true,
           "sessionsOwned: unchanged with only env-read claudes (another program's unread environment doesn't matter)")
     let unknownRun = Processes.codeRun(unread), hiddenRun = Processes.codeRun(rootClaude)
