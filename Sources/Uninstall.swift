@@ -184,12 +184,13 @@ struct UninstallSheet: View {
 
     private var accounts: [AccountEntry] { model.saved }
     private var deleting: Set<String> { config.union(window) }
-    /// Claude still using a folder that's about to go.
+    /// Claude still using a folder that's about to go, each once (a Claude Code whose folder is unknown uses every profile's).
     private var running: [ClaudeRun] {
-        accounts.flatMap { e -> [ClaudeRun] in
+        var seen = Set<pid_t>()
+        return accounts.flatMap { e -> [ClaudeRun] in
             let runs = AccountRemoval.runsUsing(e, monitor.runs)
             return runs.filter { ($0.kind == .desktop && window.contains(e.id)) || ($0.kind != .desktop && config.contains(e.id)) }
-        }
+        }.filter { seen.insert($0.id).inserted }
     }
     private var ready: Bool { working == nil && (deleting.isEmpty || (monitor.checked && running.isEmpty)) }
     /// The Claude Code folders asked to go: a folder others share items from may go only together with theirs.
