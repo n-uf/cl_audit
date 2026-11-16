@@ -2049,6 +2049,23 @@ do {
         check(winOpened == [keyO], "…the stalled usual window closing later is not reopened by that try: \(winOpened)")
         WindowHold.stallAfter = 10
 
+        // the restore starts but fails before writing anything (another flow holds cl_audit's lock): the move is taken back,
+        // and each window it closed opens again: the usual one by the restore, the old profile's own one by the move
+        winOpened = []
+        stand[keyU] = [standIn()]
+        stand[keyO] = [standIn()]
+        let dF = DefaultProfileRunner(situation: s1, model: mD)
+        dF.start()
+        waitFor(15) { dF.phase == .moving || failedD(dF) }
+        let lockHeld = try? Flows.takeLock()                               // (after the backups, before the restore's own take)
+        waitFor(15) { failedD(dF) || dF.phase == .done }
+        lockHeld?.release()
+        waitFor(3) { winOpened.count == 2 }
+        check(lockHeld != nil && failedD(dF) && dF.inner?.receipt == nil && mD.accounts.first?.desktop == .separate && !ClaudeWindow.isOpen(Account(o1))
+              && Set(winOpened) == [keyU, keyO] && winOpened.count == 2,
+              "default move: the restore failed before writing: the profile back on its own window, both windows it closed opened again (once each): \(dF.phase) \(winOpened)")
+        stand[keyU] = []; stand[keyO] = []
+
         // Start again, the move itself: the old window closes for it, the usual one counts as closed by the first try; when it
         // ends only the usual window opens again, the old one stays closed
         winOpened = []
@@ -2126,6 +2143,22 @@ do {
           "no window folder made, or the usual app's: Cancel quits no window")
     NewAccountSetup.discard(dC, claude: nil)
     check(ClaudeWindow.isOpen(Account(usualProbe)), "…the usual Claude window still running")
+
+    // the window opened again while Cancel signs out (the sign-out takes a moment): its folders stay, Cancel again removes them
+    var dF = NewAccountDraft(); dF.name = "Reopen"
+    try! NewAccountSetup.createOrConnect(&dF)
+    sign(dF.configDir, u2)
+    guard let ownF = NewAccountSetup.ownWindow(dF), let madeF = dF.createdDataDir else { check(false, "the reopen profile's window folder is made"); exit(1) }
+    let keyF = Launcher.dataDirKey(of: ownF)
+    stand[keyF] = [standIn()]
+    var signOuts = 0
+    ClaudeCLI.logoutSeam = { _, _ in signOuts += 1; if signOuts == 1 { stand[keyF] = [standIn()] }; return true }
+    check(!NewAccountSetup.discard(dF, claude: "/usr/bin/true") && signOuts == 1 && ClaudeWindow.isOpen(ownF)
+          && fm.fileExists(atPath: expand(madeF)) && fm.fileExists(atPath: expand(dF.configDir)),
+          "Cancel: the window opened again during the sign-out: false, its folders kept (never deleted under it)")
+    check(NewAccountSetup.discard(dF, claude: "/usr/bin/true") && !ClaudeWindow.isOpen(ownF) && !fm.fileExists(atPath: expand(madeF)) && !fm.fileExists(atPath: expand(dF.configDir)),
+          "…Cancel again: it quits, and its folders go now")
+    ClaudeCLI.logoutSeam = nil
 
     SettingsModel.applyInstalls = installs
     ClaudeWindow.seams = .real
