@@ -601,9 +601,11 @@ final class SettingsModel: ObservableObject {
         DispatchQueue.global(qos: .userInitiated).async {
             // a full look, here: the sign-out must run with the `claude` that is really there, never with nothing
             // (that would delete the folder and orphan its sign-in in the Keychain)
-            NewAccountSetup.discard(d, claude: ClaudeCLI.find())
+            let done = NewAccountSetup.discard(d, claude: ClaudeCLI.find())
             DispatchQueue.main.async {
                 self.discarding = false
+                // its window didn't quit: nothing was removed, the new profile stays on its page to Cancel again
+                guard done else { self.message = NewAccountSetup.windowKept; return }
                 self.draft = nil
                 self.selection = self.accounts.first?.id
                 self.message = "Cancelled \(d.name.isEmpty ? "the new profile" : d.name); its folders and sign-in were removed"

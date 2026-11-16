@@ -281,23 +281,29 @@ enum NewAccountSetup {
         return first.prefix(1).uppercased() + first.dropFirst() + "." + kept
     }
 
-    /// Undoes what this setup created: the login it made, the window it opened, the folders it created.
-    /// Folders that existed before are left alone. Blocks for the sign-out; call off the main thread.
-    static func discard(_ d: NewAccountDraft, claude: String?) {
+    /// Undoes what this setup created: the window it opened, the login it made, the folders it created. Folders that existed
+    /// before are left alone. False, with nothing changed, when its window didn't quit in time (it may be asking about work
+    /// under way): its folders are never deleted under it, and Cancel can be pressed again. Blocks; call off the main thread.
+    @discardableResult
+    static func discard(_ d: NewAccountDraft, claude: String?) -> Bool {
         let fm = FileManager.default
+        // the window started on the window folder this setup made quits first, confirmed by identity (pid and start time);
+        // never another window (ownWindow)
+        if let a = ownWindow(d), !ClaudeWindow.quitAndWait(a, seconds: discardWait) { return false }
         // Never the default folder: ~/.claude's sign-in (Claude Code's own "Claude Code-credentials", which the usual Claude
         // app and `claude` in Terminal use) and its folder are never this draft's to sign out or delete, whatever it recorded.
         let ownConfig = d.createdConfigDir.flatMap { Account.isDefault(configDir: $0) ? nil : $0 }
         if let dir = ownConfig, let claude, signedInEmail(d) != nil { ClaudeCLI.logout(claude, configDir: dir) }
-        // the window started on the window folder this setup made quits before its folders go (confirmed by identity, pid
-        // and start time), 4 s at most; never another window (ownWindow)
-        if let a = ownWindow(d) { _ = ClaudeWindow.quitAndWait(a, seconds: 4) }
         if let dir = ownConfig {
             try? fm.removeItem(at: URL(fileURLWithPath: expand(dir)))      // removes the links, not what they point to
             try? fm.removeItem(at: ClaudeCLI.loginScript(dir))
         }
         if let dir = d.createdDataDir { try? fm.removeItem(at: URL(fileURLWithPath: expand(dir))) }
+        return true
     }
+    /// How long Cancel waits for the window to quit (a check's seam).
+    nonisolated(unsafe) static var discardWait: TimeInterval = 4
+    static let windowKept = "The window didn't quit; its folders are kept. Quit it, then Cancel again."
 
     /// The window Cancel quits: the one started on the window folder this setup made (by that folder, whatever the draft's name
     /// says now), or none. Never the usual Claude window (the standard data folder), which a new profile never owns here.
