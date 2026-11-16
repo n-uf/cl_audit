@@ -46,6 +46,7 @@ enum AccountResolver {
                                 numbersFor: loginEmail, differs: false, line: nil, lit: code != nil, clash: owner?.name, at: now,
                                 codeAccount: code.map { AccountID.normal($0.account) }, codeName: codeLabel, readStale: stale ? true : nil,
                                 clashID: owner?.id)
+        r.codeOrganization = code?.organization.flatMap { $0.isEmpty ? nil : AccountID.normal($0) }
         if e.claudeWindow, app.state == .known, let id = app.account.map(AccountID.normal) {
             let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { byID(id).sameAccount(known($0)) }
             r.account = id
