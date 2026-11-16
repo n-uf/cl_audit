@@ -167,13 +167,17 @@ final class DefaultProfileRunner: ObservableObject {
 
     // MARK: close both windows
 
-    /// The usual Claude window (the usual app's data, Claude Code in ~/.claude: what the profile is after the move) and the old
-    /// profile's own window (when it has its own data folder).
+    /// The usual Claude window (the usual app's data, Claude Code in ~/.claude: what the default profile has after the move; it
+    /// opens again only when that profile has its Claude window on) and the old profile's own window (when it has its own data folder).
     private func windowEntries() -> [AccountEntry] {
-        var usual = old
+        var usual = target ?? old
         usual.desktop = .standard; usual.desktopDataDir = ""; usual.configDir = "~/.claude"
         return oldDataDir.isEmpty ? [usual] : [usual, old]
     }
+
+    /// The windows a try before this one asked to quit and that didn't close in time (by data folder): if one closed by its own
+    /// answer since, it was closed for this move.
+    private var stalledKeys: Set<String> = []
 
     /// Checks only: false leaves every Claude window alone (a check on a Mac that has Claude open must never quit it).
     nonisolated(unsafe) static var closesWindows = true
@@ -191,11 +195,13 @@ final class DefaultProfileRunner: ObservableObject {
         if hs.contains(where: { !$0.isClosed }) { phase = .closing }
         var waiting = hs.count, stalled = false
         for h in hs {
-            h.close(closed: { [weak self] in
+            h.close(askedBefore: stalledKeys.contains(h.key), closed: { [weak self] in
+                self?.stalledKeys.remove(h.key)
                 waiting -= 1
                 guard waiting == 0, !stalled, let self, self.holds.first === hs.first else { return }       // (not cancelled)
                 self.backUp()
             }, stalled: { [weak self] in
+                self?.stalledKeys.insert(h.key)
                 guard !stalled else { return }
                 stalled = true
                 guard let self else { return }
@@ -290,8 +296,10 @@ final class DefaultProfileRunner: ObservableObject {
             if let why = p.refusal ?? runner.notYet?.words { self.fail(why); return true }
             if p.count == 0 { self.finishWithoutRestore(); return true }
             // the usual window this move closed stays closed for the restore, which opens it again when it ends; the old
-            // profile's own window stays closed (the profile no longer has its own data folder)
+            // profile's own window stays closed (its sessions now live in the usual window), unless the restore fails before
+            // writing anything (fail)
             if self.holds.first?.closedByUs == true { runner.windowClosedForThis() }
+            self.oldHold = self.holds.count > 1 ? self.holds[1] : nil
             self.holds = []
             runner.start()
             return true
@@ -307,6 +315,7 @@ final class DefaultProfileRunner: ObservableObject {
             if phase == .moving, runner.receipt != nil {
                 r.finished = Date(); record = r; DefaultProfile.save(r)
                 phase = .done
+                oldHold = nil
                 model?.forgetRestore()
             }
         case .failed(let why):
@@ -330,11 +339,19 @@ final class DefaultProfileRunner: ObservableObject {
         usual?.finish()
     }
 
-    /// The restore refused or couldn't start before writing anything: the window kind goes back, as it was (and before the
-    /// restore started, each window the move closed opens again; once it started, the restore opens the usual one itself).
+    /// The old profile's own window, closed by this move, while the restore runs: it opens again only if the restore fails
+    /// before writing anything.
+    private var oldHold: WindowHold?
+
+    /// The restore refused or couldn't start before writing anything: the window kind goes back, as it was, and each window the
+    /// move closed opens again (before the restore started, through the holds; once it started, the restore opens the usual
+    /// one itself and the old profile's own window opens here).
     private func fail(_ why: String) {
-        if let m = model, let r = record, DefaultProfile.restoreFor(r) == nil { m.defaultMoveUndone(r.id, quiet: true) }
+        let nothingMoved = record.map { DefaultProfile.restoreFor($0) == nil } ?? true
+        if let m = model, let r = record, nothingMoved { m.defaultMoveUndone(r.id, quiet: true) }
         endHolds()
+        if nothingMoved { oldHold?.finish() }
+        oldHold = nil
         phase = .failed(why)
     }
 
