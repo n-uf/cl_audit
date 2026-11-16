@@ -2073,21 +2073,51 @@ do {
     stand[keyA] = [standIn()]
     let dataA = expand(madeA)
     check(keyA != keyU && NewAccountSetup.discardSummary(dA).lowercased().contains("quits its claude window"), "a new profile: its own window, said in Cancel's summary: \(NewAccountSetup.discardSummary(dA))")
+    // the order: each look that finds the window gone records whether its folder was still there then
+    let findBefore = ClaudeWindow.seams.find
+    var goneWhileThere: [Bool] = []
+    var watchDir = dataA
+    ClaudeWindow.seams.find = { a in
+        let found = findBefore(a)
+        if found.isEmpty, Launcher.dataDirKey(of: a) != keyU { goneWhileThere.append(fm.fileExists(atPath: watchDir)) }
+        return found
+    }
     dA.name = "Renamed since"                                                           // (the window goes by the folder it made)
-    NewAccountSetup.discard(dA, claude: nil)
-    spin(0.2)
-    check(!ClaudeWindow.isOpen(ownA) && ClaudeWindow.isOpen(Account(usualProbe)) && !fm.fileExists(atPath: dataA) && !fm.fileExists(atPath: expand("~/.claude-discard")),
-          "Cancel: the window on the folder it made quit (even renamed since), its folders gone, the usual Claude window left running")
+    let doneA = NewAccountSetup.discard(dA, claude: nil)
+    let seenA = goneWhileThere                                              // (before this check's own looks)
+    check(doneA && !ClaudeWindow.isOpen(ownA) && ClaudeWindow.isOpen(Account(usualProbe)) && !fm.fileExists(atPath: dataA) && !fm.fileExists(atPath: expand("~/.claude-discard")),
+          "Cancel: the window on the folder it made quit (by that folder, whatever the name says), its folders gone, the usual Claude window left running")
+    check(seenA.last == true, "…its quit was confirmed while its folder was still there: the folders go only after: \(seenA)")
+
+    // a window that doesn't quit in time (asking about work under way): nothing removed, Cancel can be pressed again
+    NewAccountSetup.discardWait = 1
+    var dE = NewAccountDraft(); dE.name = "Busy"
+    try! NewAccountSetup.createOrConnect(&dE)
+    guard let ownE = NewAccountSetup.ownWindow(dE), let madeE = dE.createdDataDir else { check(false, "a busy profile's window folder is made"); exit(1) }
+    stand[Launcher.dataDirKey(of: ownE)] = [standIn(ignoringTerm: true)]
+    watchDir = expand(madeE)
+    check(!NewAccountSetup.discard(dE, claude: nil) && ClaudeWindow.isOpen(ownE) && fm.fileExists(atPath: expand(madeE)) && fm.fileExists(atPath: expand("~/.claude-busy")),
+          "Cancel: its window didn't quit in time: false, its folders kept (never deleted under it)")
+    stand[Launcher.dataDirKey(of: ownE)]?.forEach { kill($0.processIdentifier, SIGKILL) }
+    waitFor(2) { !ClaudeWindow.isOpen(ownE) }
+    goneWhileThere = []
+    check(NewAccountSetup.discard(dE, claude: nil) && !fm.fileExists(atPath: expand(madeE)) && !fm.fileExists(atPath: expand("~/.claude-busy")) && goneWhileThere.first == true,
+          "…quit by its own answer, Cancel again: its folders go now: \(goneWhileThere)")
+    NewAccountSetup.discardWait = 4
     // an existing Claude Code folder connected: its window still quits before the window folder it made goes
     try? fm.createDirectory(atPath: expand("~/.claude-dexist"), withIntermediateDirectories: true)
     var dB = NewAccountDraft(); dB.name = "Dexist"; dB.source = .existing; dB.existingDir = "~/.claude-dexist"
     try! NewAccountSetup.createOrConnect(&dB)
     guard let ownB = NewAccountSetup.ownWindow(dB) else { check(false, "the connected profile's window folder is made"); exit(1) }
     stand[Launcher.dataDirKey(of: ownB)] = [standIn()]
+    watchDir = expand(dB.createdDataDir ?? "")
+    goneWhileThere = []
     NewAccountSetup.discard(dB, claude: nil)
-    spin(0.2)
-    check(dB.createdConfigDir == nil && !ClaudeWindow.isOpen(ownB) && ClaudeWindow.isOpen(Account(usualProbe)) && fm.fileExists(atPath: expand("~/.claude-dexist")),
-          "Cancel after connecting an existing folder: its window quit too (before, it kept running on a deleted folder); the folder kept, the usual window running")
+    let seenB = goneWhileThere
+    check(dB.createdConfigDir == nil && !ClaudeWindow.isOpen(ownB) && ClaudeWindow.isOpen(Account(usualProbe)) && fm.fileExists(atPath: expand("~/.claude-dexist"))
+          && !fm.fileExists(atPath: watchDir) && seenB.last == true,
+          "Cancel after connecting an existing folder: its window quit too, before the window folder it made went (before, it kept running on a deleted folder); the Claude Code folder kept, the usual window running: \(seenB)")
+    ClaudeWindow.seams.find = findBefore
     // no window folder of its own (the window off), or one that names the usual app's data: no window to quit
     var dC = NewAccountDraft(); dC.name = "Nowin"; dC.claudeWindow = false
     try! NewAccountSetup.createOrConnect(&dC)
