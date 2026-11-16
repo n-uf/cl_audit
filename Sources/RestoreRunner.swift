@@ -294,14 +294,15 @@ final class RestoreRunner: ObservableObject {
         progress = (receipt?.back ?? 0, (receipt?.back ?? 0) + p.count)
         hold?.stopWatching()
         let closedFor = self.closedFor
-        self.closedFor = false
         // (a picked folder rewrites the session's Code-tab entry, and a move's history and trust are shared files: the window closes for
         // those too, when it has one; a window the default-profile move closed for this stays closed until it ends)
         guard closesWindow || closedFor else { hold = nil; write(); return }
-        // the window stays closed from here until the restore ends; one at a time
+        // the window stays closed from here until the restore ends; one at a time (a window handed over stays this restore's
+        // to reopen until a start claims it)
         guard claimWindow(e) else {
             note = "Another switch or restore of this Claude window is under way."; return
         }
+        self.closedFor = false
         closeWindow(askedBefore: closedFor, then: { [weak self] in self?.write() }, giveUp: { [weak self] in
             guard let self else { return }
             self.phase = self.receipt?.unfinished == true ? .stopped("The window didn't close; nothing more was written.") : .ready
