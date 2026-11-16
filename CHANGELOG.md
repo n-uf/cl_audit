@@ -22,7 +22,7 @@ Nothing pending.
 
 - Quick chat now restarts its Claude Code process when the profile's folder moves back to its own account, so it never keeps answering on another profile's account; a question waiting after Switch account… now goes as soon as Claude Code has moved.
 - When the Claude app and Claude Code in Terminal are on different accounts, quick chat's header now names Claude Code's account, the one it answers on (it named the Claude app's).
-- When Claude Code's folder is signed in to another profile's account, quick chat's header now names the profile's own account (it named the other profile's), and that other account's limit no longer shows it as full or holds what you type.
+- When Claude Code's folder is signed in to another profile's account, quick chat's header now names the profile's own account (it named the other profile's), and that other account's limit no longer shows it as full or holds what you type. When Claude Code hits a limit there, or while the Claude app and Claude Code are on different accounts, quick chat now says "Claude Code's account here has hit its limit." instead of "This account's week is full."
 - When Claude Code's folder is signed in to another profile's account (Work, say): the Dock icon's panel says "No usage: Terminal is on Work's account" instead of "Reading usage…" or "Sign-in expired", and no plan shows for it any more (the card, the Switch page, Settings ▸ Accounts, the Dock panel and menu, and the widget showed Work's). The Switch page says "Move Claude Code back to …" only before the move starts, and names the folder's address again for an old record (it said "its account").
 
 ## 26.11.51 — 2026-11-15
