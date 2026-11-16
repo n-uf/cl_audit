@@ -2064,6 +2064,39 @@ do {
         check(false, "the default move: a window-only situation: \(String(describing: DefaultProfile.situation(mD.accounts)?.kind))")
     }
 
+    // ---- Cancel on a new profile: only the window started on the window folder it made quits, never the usual one
+    stand[keyU] = [standIn()]
+    var dA = NewAccountDraft(); dA.name = "Discard"
+    try! NewAccountSetup.createOrConnect(&dA)
+    guard let ownA = NewAccountSetup.ownWindow(dA), let madeA = dA.createdDataDir else { check(false, "a new profile's window folder is made"); exit(1) }
+    let keyA = Launcher.dataDirKey(of: ownA)
+    stand[keyA] = [standIn()]
+    let dataA = expand(madeA)
+    check(keyA != keyU && NewAccountSetup.discardSummary(dA).lowercased().contains("quits its claude window"), "a new profile: its own window, said in Cancel's summary: \(NewAccountSetup.discardSummary(dA))")
+    dA.name = "Renamed since"                                                           // (the window goes by the folder it made)
+    NewAccountSetup.discard(dA, claude: nil)
+    spin(0.2)
+    check(!ClaudeWindow.isOpen(ownA) && ClaudeWindow.isOpen(Account(usualProbe)) && !fm.fileExists(atPath: dataA) && !fm.fileExists(atPath: expand("~/.claude-discard")),
+          "Cancel: the window on the folder it made quit (even renamed since), its folders gone, the usual Claude window left running")
+    // an existing Claude Code folder connected: its window still quits before the window folder it made goes
+    try? fm.createDirectory(atPath: expand("~/.claude-dexist"), withIntermediateDirectories: true)
+    var dB = NewAccountDraft(); dB.name = "Dexist"; dB.source = .existing; dB.existingDir = "~/.claude-dexist"
+    try! NewAccountSetup.createOrConnect(&dB)
+    guard let ownB = NewAccountSetup.ownWindow(dB) else { check(false, "the connected profile's window folder is made"); exit(1) }
+    stand[Launcher.dataDirKey(of: ownB)] = [standIn()]
+    NewAccountSetup.discard(dB, claude: nil)
+    spin(0.2)
+    check(dB.createdConfigDir == nil && !ClaudeWindow.isOpen(ownB) && ClaudeWindow.isOpen(Account(usualProbe)) && fm.fileExists(atPath: expand("~/.claude-dexist")),
+          "Cancel after connecting an existing folder: its window quit too (before, it kept running on a deleted folder); the folder kept, the usual window running")
+    // no window folder of its own (the window off), or one that names the usual app's data: no window to quit
+    var dC = NewAccountDraft(); dC.name = "Nowin"; dC.claudeWindow = false
+    try! NewAccountSetup.createOrConnect(&dC)
+    var dD = NewAccountDraft(); dD.name = "Forged"; dD.createdDataDir = FolderKey.standardDataDir
+    check(dC.createdDataDir == nil && NewAccountSetup.ownWindow(dC) == nil && NewAccountSetup.ownWindow(dD) == nil,
+          "no window folder made, or the usual app's: Cancel quits no window")
+    NewAccountSetup.discard(dC, claude: nil)
+    check(ClaudeWindow.isOpen(Account(usualProbe)), "…the usual Claude window still running")
+
     SettingsModel.applyInstalls = installs
     ClaudeWindow.seams = .real
     WindowHold.every = 0.5; WindowHold.stallAfter = 45; WindowHold.lateCloseFor = 60
