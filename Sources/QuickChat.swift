@@ -254,8 +254,18 @@ struct QuickChatTurn: Identifiable, Equatable {
     var thinkingSeconds: Double? = nil
     var phase: Phase = .waiting
     var problem: QuickChatProblem? = nil
+    /// What it was asked on (QuickChatModel.ask): its limit events and a refusal are judged by that, not by where the
+    /// profile is when they come.
+    var asked: QuickChatAsked? = nil
 
     var busy: Bool { phase == .waiting || phase == .streaming }
+}
+
+/// What a turn was asked on: the folder's account (QuickChatTarget.account) and whose a limit met there is
+/// (QuickChatModel.otherLimit then).
+struct QuickChatAsked: Equatable {
+    var account: AccountIdentity?
+    var other: QuickChatOtherLimit?
 }
 
 /// The chat's state, drawn by QuickChatViews and driven by its keys. Main thread only.
@@ -284,7 +294,13 @@ final class QuickChatModel: ObservableObject {
     /// Then the bubble below says only the offer and its key (limitBubbleBelow).
     var limitRepeated: Bool {
         guard case .limitFull(let f)? = turns.last?.problem, f.other == nil, let said = f.limit, let now = level?.full() else { return false }
-        return said.kind == now.kind && said.resets == now.resets
+        // (the same reset: under a minute apart, as Claude Code's event (whole seconds) and a reading (fractions) say it;
+        // a renewal is hours or days later)
+        switch (said.resets, now.resets) {
+        case (nil, nil): return said.kind == now.kind
+        case let (a?, b?): return said.kind == now.kind && abs(a.timeIntervalSince(b)) < 60
+        default: return false
+        }
     }
     /// The chat window draws the bar's own live full limit under the chat, the only bubble with Switch account… and what
     /// you typed: whenever the account in use's limit holds the bar, except when it would only repeat the last turn's
@@ -448,6 +464,8 @@ final class QuickChatModel: ObservableObject {
 
     private func ask(_ q: String) {
         guard let target else { fail(.noProfile); return }
+        // what it is asked on: its limit events and a refusal are judged by this, wherever the profile is when they come
+        if let i = turns.indices.last { turns[i].asked = QuickChatAsked(account: target.account, other: otherLimit) }
         resolveClaude { [weak self] path in
             guard let self else { return }
             guard let path else { self.fail(.notInstalled); return }
@@ -479,6 +497,11 @@ final class QuickChatModel: ObservableObject {
     /// One event from Claude Code, for the last turn (internal, not private: the checks feed it).
     func handle(_ e: QuickChatEvent) {
         guard let i = turns.indices.last else { return }
+        // whose a limit this turn meets is: what it was asked on decides (a turn not asked through `ask` goes by now). It
+        // is the account in use's only when asked outside the split and a clash, with the folder still on that account
+        let on = turns[i].asked ?? QuickChatAsked(account: target?.account, other: otherLimit)
+        let own = on.other == nil && QuickChatTarget.sameAccount(on.account, target?.account)
+        func fixed() -> QuickChatFullLimit { QuickChatFullLimit(other: on.other, limit: own ? level?.full() : nil, profile: target?.name ?? "") }
         switch e {
         case .started(let s, let model):
             session = s
@@ -499,15 +522,15 @@ final class QuickChatModel: ObservableObject {
             if error == "authentication_failed", let target {
                 turns[i].problem = .notSignedIn(profile: target.name, id: target.profileID)
             } else if QuickChatParse.isLimit(error: error, text: text) {
-                turns[i].problem = .limitFull(fullNow)
+                turns[i].problem = .limitFull(fixed())
             } else if let error, turns[i].answer.isEmpty, pending.isEmpty {
                 turns[i].problem = .refused(text: text.isEmpty ? error : text)
             }
         case .limit(let type, let used, let status, let resets):
-            // the split or a clash: Claude Code's account's limits (in a clash another profile's), nothing from them.
-            // Otherwise whether it refuses, and until when, is the chat's own sign-in's; its percents only while they count
-            // as the profile's (QuickChatTarget.liveCounts)
-            guard !inSplit && !inClash else { break }
+            // asked in the split or a clash, or on an account the folder has left: that account's limits, nothing from
+            // them. Otherwise whether it refuses, and until when, is the chat's own sign-in's; its percents only while
+            // they count as the profile's (QuickChatTarget.liveCounts)
+            guard own else { break }
             var l = level ?? QuickChatLevel(nil)
             l.apply(type: type, used: used, status: status, resets: resets, counts: liveCounts)
             level = l
@@ -516,17 +539,18 @@ final class QuickChatModel: ObservableObject {
             if !s.isEmpty { session = s }
             guard turns[i].busy else { return }
             turns[i].seconds = ms > 0 ? Double(ms) / 1000 : Date().timeIntervalSince(turns[i].started)
-            if isError, turns[i].problem == nil, QuickChatParse.isLimit(error: nil, text: text) { turns[i].problem = .limitFull(fullNow) }
-            // whose a full limit is: decided now, as the turn ends, and kept on it (its bubble never changes after a move)
-            if turns[i].problem?.isLimitFull == true { turns[i].problem = .limitFull(fullNow) }
+            if isError, turns[i].problem == nil, QuickChatParse.isLimit(error: nil, text: text) { turns[i].problem = .limitFull(fixed()) }
+            // a full limit's words: fixed now, as the turn ends, and kept on it (its bubble never changes after a move)
+            if turns[i].problem?.isLimitFull == true { turns[i].problem = .limitFull(fixed()) }
             if isError || turns[i].problem != nil {
                 turns[i].phase = .failed
                 if turns[i].problem == nil { turns[i].problem = .refused(text: text.isEmpty ? "Claude Code couldn't answer." : text) }
                 // a full limit Claude Code found before cl_audit's numbers did: the account line says so too, and the bar
                 // holds what you type (the refusal is the chat's own sign-in's, whatever the record says yet). Not in the
-                // split (SplitUsage) nor a clash: it's Claude Code's account's limit (in a clash another profile's), so
-                // the answer says it, but no level or offer. The offer itself waits for numbers that count (update)
-                if turns[i].problem?.isOwnLimitFull == true {
+                // split (SplitUsage) nor a clash, nor for an account the folder has left since it was asked: that
+                // account's limit, so the answer says it, but no level or offer. The offer itself waits for numbers that
+                // count (update)
+                if own, turns[i].problem?.isLimitFull == true {
                     if level?.full() == nil {
                         var l = level ?? QuickChatLevel(nil)
                         l.refusedUntil = l.refusedUntil ?? Date().addingTimeInterval(3600)
@@ -534,7 +558,7 @@ final class QuickChatModel: ObservableObject {
                     }
                     // its words, fixed now with the hold just made (which limit, until when); never rewritten after. The
                     // offer and its key are the live bubble's below (limitBubbleBelow)
-                    turns[i].problem = .limitFull(fullNow)
+                    turns[i].problem = .limitFull(fixed())
                     limitFilled()
                 }
             } else {

@@ -2230,7 +2230,8 @@ do {
     func chat(_ t: QuickChatTarget, level: QuickChatLevel?) -> QuickChatModel {
         let m = QuickChatModel(); m.resolveClaude = { _ in }; m.limitFilled = { filled += 1 }
         m.update(target: t, level: level, offer: { nil })
-        m.turns = [QuickChatTurn(question: "q")]
+        // (as `ask` records it: what the turn is asked on)
+        m.turns = [QuickChatTurn(question: "q", asked: QuickChatAsked(account: t.account, other: m.otherLimit))]
         return m
     }
     func refuse(_ m: QuickChatModel) {
@@ -2365,6 +2366,32 @@ do {
     check(stored(caseC) == cWords && caseC.limitBubbleBelow && !caseC.limitRepeated && !cBelow.title.isEmpty
           && cBelow.title != String(cWords.prefix { $0 != "|" }) && cBelow.more.contains("ultra-2"),
           "C: the refusal's bubble keeps its hour; the real reset shows below, with the switch: \(cWords) / \(cBelow.title)")
+    // the same reset said by Claude Code's event (whole seconds) and by a reading (fractions): the bubble below doesn't
+    // say the limit again; a renewal hours later does
+    _ = Store.writeStatus(e.id, rec())
+    let eventReset = Date(timeIntervalSince1970: (now.timeIntervalSince1970 + 2 * 3600).rounded())
+    for (shift, same) in [(0.4, true), (5 * 3600.0, false)] {
+        let m = chat(QuickChatTarget(e, now: now), level: ownLevel)
+        m.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: eventReset))
+        refuse(m)
+        var reading = QuickChatLevel(nil)
+        reading.week = 100; reading.weekResets = eventReset.addingTimeInterval(shift); reading.fiveHour = 12; reading.fiveHourResets = now.addingTimeInterval(3600)
+        m.update(target: QuickChatTarget(e, now: now), level: reading, offer: { cardOffer })
+        check(m.limitRepeated == same && liveBelow(m).title.isEmpty == same,
+              "the event's reset R, a reading's R+\(shift) s: the same limit \(same ? "(the key line alone below)" : "no more (said again below)")")
+    }
+    // a turn asked in the clash (on Other's u3) still running when the folder moves back to u1: u3's limit event and
+    // refusal are judged by what it was asked on: Other's, so u1 is neither held nor called full
+    _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
+    let lateClash = chat(QuickChatTarget(e, now: now), level: QuickChatLevel(nil))
+    _ = Store.writeStatus(e.id, rec())
+    lateClash.update(target: QuickChatTarget(e, now: now), level: ownLevel, offer: { nil })
+    let filledBefore = filled
+    lateClash.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
+    refuse(lateClash)
+    check(!lateClash.inClash && whose(lateClash) == .clash(name: "Other", own: true) && !lateClash.blocked
+          && lateClash.level?.full() == nil && filled == filledBefore && bubble(lateClash) == QCProblemView.otherLimitTitle,
+          "asked in the clash, refused after the move back: Other's limit, u1 not held nor called full: \(bubble(lateClash))")
     _ = Store.writeStatus(e.id, rec())
 
     // Switch account… with a question waiting: a folder signed out on the way (no id: its address kept, or none) hasn't
