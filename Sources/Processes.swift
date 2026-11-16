@@ -419,15 +419,19 @@ enum Processes {
     private static let environmentQueue = DispatchQueue(label: "cl_audit.processes.environment", qos: .utility)
     nonisolated(unsafe) private static var environmentTimer: DispatchSourceTimer?
     nonisolated(unsafe) private static var lastEnvironmentLine: String?
+    nonisolated(unsafe) private static var environmentReads = 0
 
-    /// The agent's diagnostic: the table read off the main thread now and every `seconds`, its line logged (subsystem
-    /// local.usage-n-uf, category processes) the first time and whenever it changes. Once per process.
-    static func watchEnvironment(every seconds: TimeInterval = 60) {
+    /// The agent's diagnostic: the table read off the main thread now and every `seconds`, `reads` times in all (the first few
+    /// minutes after the agent starts; `--probe-processes` answers later), its line logged (subsystem local.usage-n-uf,
+    /// category processes) the first time and whenever it changes. Once per process.
+    static func watchEnvironment(every seconds: TimeInterval = 60, reads: Int = 5) {
         environmentQueue.async {
             guard environmentTimer == nil else { return }
             let t = DispatchSource.makeTimerSource(queue: environmentQueue)
             t.schedule(deadline: .now(), repeating: seconds, leeway: .seconds(5))
             t.setEventHandler {
+                environmentReads += 1
+                if environmentReads >= reads { t.cancel() }                // the timer stays set: it never starts again
                 let line = environmentLine(table())
                 guard line != lastEnvironmentLine else { return }
                 lastEnvironmentLine = line
