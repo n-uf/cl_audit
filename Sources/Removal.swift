@@ -157,11 +157,8 @@ enum AccountRemoval {
         if dirs.contains(e.configDir), let claude, Account.expectedEmail(configDir: e.configDir) != nil {
             ClaudeCLI.logout(claude, configDir: e.configDir)
         }
-        let account = Account(e)
-        let apps = window && e.desktop == .separate ? Processes.claudeWindows(of: account) : []
-        apps.forEach { $0.terminate() }
-        let deadline = Date().addingTimeInterval(5)
-        while apps.contains(where: { !$0.isTerminated }) && Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
+        // its own window quits first (confirmed by identity, pid and start time), 5 s at most
+        if window && e.desktop == .separate { _ = ClaudeWindow.quitAndWait(Account(e), seconds: 5) }
         var failed: [String] = []
         for d in dirs {
             do { try fm.removeItem(at: URL(fileURLWithPath: expand(d))) } catch { failed.append(d) }
@@ -287,8 +284,7 @@ struct RemoveAccountSheet: View {
             HStack {
                 if running.contains(where: { $0.kind == .desktop }) {
                     Button("Quit its Claude window") {
-                        let account = Account(entry)
-                        Processes.claudeWindows(of: account).forEach { $0.terminate() }
+                        ClaudeWindow.quit(Account(entry))
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { monitor.refresh() }
                     }
                     .buttonStyle(.pill(.red, compact: true))

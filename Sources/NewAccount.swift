@@ -289,11 +289,8 @@ enum NewAccountSetup {
         // app and `claude` in Terminal use) and its folder are never this draft's to sign out or delete, whatever it recorded.
         if let dir = d.createdConfigDir, !Account.isDefault(configDir: dir) {
             if let claude, signedInEmail(d) != nil { ClaudeCLI.logout(claude, configDir: dir) }
-            let account = Account(d.entry)
-            let apps = Processes.claudeWindows(of: account)
-            apps.forEach { $0.terminate() }
-            let deadline = Date().addingTimeInterval(4)
-            while apps.contains(where: { !$0.isTerminated }) && Date() < deadline { Thread.sleep(forTimeInterval: 0.1) }
+            // the window it opened quits first (confirmed by identity, pid and start time), 4 s at most
+            _ = ClaudeWindow.quitAndWait(Account(d.entry), seconds: 4)
             try? fm.removeItem(at: URL(fileURLWithPath: expand(dir)))      // removes the links, not what they point to
             try? fm.removeItem(at: ClaudeCLI.loginScript(dir))
         }
