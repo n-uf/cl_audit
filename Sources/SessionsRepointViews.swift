@@ -143,7 +143,6 @@ final class RepointRunner: ObservableObject {
     @Published private(set) var last: SessionsRepoint.Receipt?
     @Published private(set) var busy = false
     @Published private(set) var note: String?
-    private var timer: Timer?
     private var frozen = false
     let markName = "repoint-" + UUID().uuidString.prefix(8).lowercased()
 
@@ -174,15 +173,15 @@ final class RepointRunner: ObservableObject {
         run(e, needsWindow: r.touchesWindow) { _, _, closed in try SessionsRepoint.undo(r.id, windowClosed: closed) }
     }
 
-    /// The window closed when needed (claimed with this runner's mark, asked to quit, watched for 45 seconds), the work done off the main
-    /// thread, the window opened again when it was closed for this.
+    /// The window closed when needed (WindowHold: claimed with this runner's mark, asked to quit, watched for 45 seconds), the work
+    /// done off the main thread, the window opened again when it was closed for this.
     private func run(_ e: AccountEntry, needsWindow: Bool, _ work: @escaping (SessionsRestore.Target, String, () -> Bool) throws -> SessionsRepoint.Receipt) {
         busy = true; note = nil
-        let window = Launcher.dataDirKey(of: Account(e)), mark = markName
-        var claimed = false, closedByUs = false
+        let mark = markName, a = Account(e)
+        let h = needsWindow ? WindowHold(e, profile: e.id, run: mark) : nil
+        hold = h
         func finish(_ result: Result<SessionsRepoint.Receipt, Error>) {
-            if claimed { SwitchMarker.release(window, profile: e.id, standby: mark) }
-            if closedByUs, e.claudeWindow { Launcher.openClaude(Account(e)) }
+            h?.finish()
             busy = false
             switch result {
             case .success(let r): note = r.problems.isEmpty ? nil : r.problems.prefix(3).joined(separator: " ")
@@ -193,30 +192,24 @@ final class RepointRunner: ObservableObject {
         func go() {
             let t = SessionsRestore.Target(e)
             DispatchQueue.global(qos: .userInitiated).async {
-                let result = Result { try work(t, mark, { SwitchRunner.windowClosed(e) }) }
+                let result = Result { try work(t, mark, { !ClaudeWindow.isOpen(a) }) }
                 DispatchQueue.main.async { finish(result) }
             }
         }
-        guard needsWindow else { go(); return }
+        guard let h else { go(); return }
         if let why = Flows.blocker(profile: e.id, for: .restoring) { busy = false; note = why; return }
-        guard SwitchMarker.claim(window, profile: e.id, standby: mark) else { busy = false; note = "A restore of this Claude window is under way; try again once it ends."; return }
-        claimed = true
-        let apps = SwitchRunner.windowApps(e)
-        if apps.isEmpty { go(); return }
-        closedByUs = true
-        apps.forEach { $0.terminate() }
-        let started = Date()
-        timer?.invalidate()
-        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] t in
-            if SwitchRunner.windowClosed(e) { t.invalidate(); self?.timer = nil; go(); return }
-            if Date().timeIntervalSince(started) > 45 {
-                t.invalidate(); self?.timer = nil
-                SwitchMarker.release(window, profile: e.id, standby: mark)
-                self?.busy = false
-                self?.note = "The window didn't close; it may be asking about work under way. Answer it, then try again. Nothing was changed."
-            }
-        }
+        guard h.claim() else { busy = false; note = "A restore of this Claude window is under way; try again once it ends."; return }
+        // (a try before this one asked the window to quit and gave up: if it closed by its own answer since, it was closed for this)
+        h.close(askedBefore: quitAsked, closed: { [weak self] in self?.quitAsked = false; go() }, stalled: { [weak self] in
+            self?.quitAsked = true
+            self?.busy = false
+            self?.note = "The window didn't close; it may be asking about work under way. Answer it, then try again. Nothing was changed."
+        })
     }
+    /// This runner's hold on the window while a re-point that writes an entry runs.
+    private var hold: WindowHold?
+    /// The last try asked the window to quit and it didn't close in time.
+    private var quitAsked = false
 
     /// Renders only.
     func preview(sessions s: [SessionsRepoint.Session], last l: SessionsRepoint.Receipt? = nil, note n: String? = nil) {
