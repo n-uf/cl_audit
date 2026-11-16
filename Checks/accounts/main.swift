@@ -1955,6 +1955,17 @@ do {
     r3.start()
     waitFor(15) { ended(r3) }
     check(r3.phase == .done && winOpened == [keyR], "restore with the window the default move closed for it: opened again at the end: \(winOpened)")
+    // … and when another run held the window at the first Start, the handed-over window is still this restore's to reopen
+    winOpened = []
+    let r3b = restoreOnce(956, closedFor: true)
+    check(SwitchMarker.claim(keyR, profile: "rwin", standby: "switch-other"), "(another run marks the window)")
+    r3b.start()
+    check(r3b.phase == .ready && r3b.note?.hasPrefix("Another switch or restore") == true && winOpened.isEmpty,
+          "restore: another run holds the window: refused, nothing opened: \(r3b.phase)")
+    SwitchMarker.release(keyR, profile: "rwin", standby: "switch-other")
+    r3b.start()
+    waitFor(15) { ended(r3b) }
+    check(r3b.phase == .done && winOpened == [keyR], "…Start again once it's free: the window the default move closed still opens again at the end: \(winOpened)")
 
     // Cancel while it closes: the window was asked to quit; it closes by its own answer later and opens again
     winOpened = []
