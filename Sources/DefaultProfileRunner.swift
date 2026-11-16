@@ -38,7 +38,8 @@ final class DefaultProfileRunner: ObservableObject {
     @Published private(set) var targetID: String?
     private var timer: Timer?
     private var cancellables: Set<AnyCancellable> = []
-    private var claimed: [String] = []
+    /// The holds on the usual window and the old profile's own window while they close and the backups are made (ClaudeWindow.swift).
+    private var holds: [WindowHold] = []
     private let markName = "default-" + UUID().uuidString.prefix(8).lowercased()
     private var seatAtAsk: Seat?
     private var signInStarted: Date?
@@ -112,7 +113,7 @@ final class DefaultProfileRunner: ObservableObject {
     func cancel() {
         timer?.invalidate(); timer = nil
         guard phase == .signingIn || phase == .closing else { return }
-        releaseMarks()
+        endHolds()
         rollbackPrepared()
         phase = .ready
         note = "Cancelled. Nothing was moved."
@@ -166,14 +167,12 @@ final class DefaultProfileRunner: ObservableObject {
 
     // MARK: close both windows
 
-    private func windowKeys() -> [(key: String, apps: () -> [NSRunningApplication], closed: () -> Bool)] {
+    /// The usual Claude window (the usual app's data, Claude Code in ~/.claude: what the profile is after the move) and the old
+    /// profile's own window (when it has its own data folder).
+    private func windowEntries() -> [AccountEntry] {
         var usual = old
-        usual.desktop = .standard; usual.desktopDataDir = ""
-        var out = [(key: String, apps: () -> [NSRunningApplication], closed: () -> Bool)]()
-        out.append((Launcher.dataDirKey(of: Account(usual)), { SwitchRunner.windowApps(usual) }, { SwitchRunner.windowClosed(usual) }))
-        let o = old
-        if !oldDataDir.isEmpty { out.append((Launcher.dataDirKey(of: Account(o)), { SwitchRunner.windowApps(o) }, { SwitchRunner.windowClosed(o) })) }
-        return out
+        usual.desktop = .standard; usual.desktopDataDir = ""; usual.configDir = "~/.claude"
+        return oldDataDir.isEmpty ? [usual] : [usual, old]
     }
 
     /// Checks only: false leaves every Claude window alone (a check on a Mac that has Claude open must never quit it).
@@ -181,37 +180,37 @@ final class DefaultProfileRunner: ObservableObject {
 
     private func closeWindows() {
         guard Self.closesWindows, let id = targetID else { return }
-        let windows = windowKeys()
         // one at a time: a switch, restore or import of either window under way holds it
-        for w in windows {
-            guard SwitchMarker.claim(w.key, profile: id, standby: markName) else {
-                releaseMarks(); rollbackPrepared()
-                phase = .failed("Another switch or restore of one of the Claude windows is under way. Wait for it, then try again."); return
-            }
-            claimed.append(w.key)
+        let hs = windowEntries().map { WindowHold($0, profile: id, run: markName) }
+        holds = hs
+        for h in hs where !h.claim() {
+            endHolds(); rollbackPrepared()
+            phase = .failed("Another switch or restore of one of the Claude windows is under way. Wait for it, then try again."); return
         }
-        if let why = Flows.busy() { releaseMarks(); rollbackPrepared(); phase = .failed(why); return }
-        let apps = windows.flatMap { $0.apps() }
-        guard !apps.isEmpty else { backUp(); return }
-        phase = .closing
-        apps.forEach { $0.terminate() }
-        let started = Date()
-        tick(every: 0.5) { [weak self] in
-            guard let self, self.phase == .closing else { return true }
-            if windows.allSatisfy({ $0.closed() }) { self.backUp(); return true }
-            if Date().timeIntervalSince(started) > 45 {
-                self.releaseMarks(); self.rollbackPrepared(); self.phase = .ready
+        if let why = Flows.busy() { endHolds(); rollbackPrepared(); phase = .failed(why); return }
+        if hs.contains(where: { !$0.isClosed }) { phase = .closing }
+        var waiting = hs.count, stalled = false
+        for h in hs {
+            h.close(closed: { [weak self] in
+                waiting -= 1
+                guard waiting == 0, !stalled, let self, self.holds.first === hs.first else { return }       // (not cancelled)
+                self.backUp()
+            }, stalled: { [weak self] in
+                guard !stalled else { return }
+                stalled = true
+                guard let self else { return }
+                self.endHolds(); self.rollbackPrepared(); self.phase = .ready
                 self.note = "A window didn't close; it may be asking about work under way. Answer it, then try again. Nothing was written."
-                return true
-            }
-            return false
+            })
         }
     }
 
-    private func releaseMarks() {
-        guard let id = targetID else { claimed = []; return }
-        for k in claimed { SwitchMarker.release(k, profile: id, standby: markName) }
-        claimed = []
+    /// The move ends before anything moved (cancelled, a window that didn't close, the backup): the marks go, and each window it
+    /// closed opens again as it was (one still closing is watched a minute more, WindowHold.cancelClosing).
+    private func endHolds() {
+        let hs = holds
+        holds = []
+        for h in hs { if h.isClosing { h.cancelClosing(busy: { [weak self] in self?.holds.isEmpty == false }) } else { h.finish() } }
     }
 
     // MARK: back up, then move
@@ -222,7 +221,7 @@ final class DefaultProfileRunner: ObservableObject {
         let place = BackupPrefs.placeURL
         let kind = situation.kind
         let oldDir = oldDataDir, oldCode = oldCodeDir
-        let windows = windowKeys()
+        let windows = holds.map(\.account)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result: Result<(String, String), Error> = Result {
                 let lock: FlowLock.Held
@@ -238,7 +237,7 @@ final class DefaultProfileRunner: ObservableObject {
                                             id: usualID, kind: .manual, window: true, transcripts: false, place: place, now: now.addingTimeInterval(1))
                 } catch { SessionsBackup.discard(profile: id, id: oldID, place: place); throw error }
                 // still closed? a window that opened meanwhile may have changed what was copied: both are taken away
-                guard windows.allSatisfy({ $0.closed() }) else {
+                guard !windows.contains(where: ClaudeWindow.isOpen) else {
                     SessionsBackup.discard(profile: id, id: oldID, place: place); SessionsBackup.discard(profile: id, id: usualID, place: place)
                     throw BackupError("A Claude window opened during the backup; nothing was moved. Close it and try again.")
                 }
@@ -249,7 +248,7 @@ final class DefaultProfileRunner: ObservableObject {
                 switch result {
                 case .success(let (oldID, usualID)): self.move(backup: oldID, usualBackup: usualID, place: place)
                 case .failure(let err):
-                    self.releaseMarks(); self.rollbackPrepared()
+                    self.endHolds(); self.rollbackPrepared()
                     self.phase = .failed("The backup couldn't be made (\(err)). Nothing moved. Backups go to \(tilde(place.path)); General ▸ Backups changes that.")
                 }
             }
@@ -273,7 +272,7 @@ final class DefaultProfileRunner: ObservableObject {
         DefaultProfile.save(r)
         record = r
         m.apply()
-        releaseMarks()                      // the restore claims the usual window itself
+        holds.forEach { $0.release() }      // the restore claims the usual window itself (the holds still know what they closed)
         // a Mac whose usual app never ran has no data folder yet: an empty one, so the entries have somewhere to go
         try? FileManager.default.createDirectory(atPath: expand(FolderKey.standardDataDir), withIntermediateDirectories: true)
         let key = RestoreKey(profile: id, backup: backup, place: place.path)
@@ -290,6 +289,10 @@ final class DefaultProfileRunner: ObservableObject {
             guard let p = runner.plan else { return false }
             if let why = p.refusal ?? runner.notYet?.words { self.fail(why); return true }
             if p.count == 0 { self.finishWithoutRestore(); return true }
+            // the usual window this move closed stays closed for the restore, which opens it again when it ends; the old
+            // profile's own window stays closed (the profile no longer has its own data folder)
+            if self.holds.first?.closedByUs == true { runner.windowClosedForThis() }
+            self.holds = []
             runner.start()
             return true
         }
@@ -321,11 +324,17 @@ final class DefaultProfileRunner: ObservableObject {
         r.finished = Date(); record = r; DefaultProfile.save(r)
         nothingToMove = true
         phase = .done
+        // the usual window opens again if the move closed it; the old profile's own window stays closed
+        let usual = holds.first
+        holds = []
+        usual?.finish()
     }
 
-    /// The restore refused or couldn't start before writing anything: the window kind goes back, as it was.
+    /// The restore refused or couldn't start before writing anything: the window kind goes back, as it was (and before the
+    /// restore started, each window the move closed opens again; once it started, the restore opens the usual one itself).
     private func fail(_ why: String) {
         if let m = model, let r = record, DefaultProfile.restoreFor(r) == nil { m.defaultMoveUndone(r.id, quiet: true) }
+        endHolds()
         phase = .failed(why)
     }
 
