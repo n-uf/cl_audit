@@ -1887,5 +1887,158 @@ do {
     WindowHold.every = 0.5; WindowHold.stallAfter = 45; WindowHold.lateCloseFor = 60
 }
 
+// ============ 22. a restore and the default-profile move hold their windows through WindowHold (stand-in processes) ============
+do {
+    var stand: [String: [Process]] = [:]                       // window key -> its stand-in "instances"
+    var winOpened: [String] = []
+    func standIn(ignoringTerm: Bool = false) -> Process {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        let ready = Pipe()
+        p.arguments = ["-c", ignoringTerm ? "trap '' TERM; echo ready; exec sleep 30" : "exec sleep 30"]
+        if ignoringTerm { p.standardOutput = ready }
+        try? p.run()
+        if ignoringTerm { _ = ready.fileHandleForReading.availableData }
+        return p
+    }
+    func spin(_ s: TimeInterval) { RunLoop.main.run(until: Date().addingTimeInterval(s)) }
+    func waitFor(_ s: TimeInterval, _ ok: () -> Bool) { let end = Date().addingTimeInterval(s); while !ok() && Date() < end { spin(0.05) } }
+    ClaudeWindow.seams = ClaudeWindow.Seams(
+        find: { a in (stand[Launcher.dataDirKey(of: a)] ?? []).filter(\.isRunning).map { .init(pid: $0.processIdentifier, started: Processes.startTime(of: $0.processIdentifier)) } },
+        quit: { pid in kill(pid, SIGTERM) },
+        open: { a, _ in winOpened.append(Launcher.dataDirKey(of: a)) },
+        isRunning: ClaudeWindow.Seams.real.isRunning)
+    WindowHold.every = 0.05; WindowHold.stallAfter = 10; WindowHold.lateCloseFor = 3
+    let installs = SettingsModel.applyInstalls
+    SettingsModel.applyInstalls = false
+    let place = BackupPrefs.placeURL
+    func entry(_ dataDir: String, _ s: Seat, _ n: Int) -> String { "\(dataDir)/claude-code-sessions/\(s.account)/\(s.organization!)/local_\(uuid(n)).json" }
+
+    // ---- a restore that writes in the window: closed for it, opened again at the end
+    let wdR = expand("~/Library/Application Support/Claude-rwin")
+    sign("~/.claude-rwin", u1)
+    var rw = profile("rwin", "~/.claude-rwin", u1)
+    rw.desktop = .separate; rw.desktopDataDir = wdR
+    try! Store.save([rw])
+    let mR = SettingsModel()
+    mR.accounts = [rw]
+    let keyR = Launcher.dataDirKey(of: Account(rw))
+    func restoreOnce(_ n: Int, closedFor: Bool = false) -> RestoreRunner {
+        put(entry(wdR, u1, n), #"{"sessionId":"local_\#(uuid(n))"}"#)
+        let b = try! SessionsBackup.make(SessionsBackup.Source(rw), kind: .manual, window: true, transcripts: false, place: place)
+        try? fm.removeItem(atPath: entry(wdR, u1, n))
+        let r = mR.restoreRunner(RestoreKey(profile: "rwin", backup: b.id, place: place.path))
+        r.refresh()
+        waitFor(10) { r.plan != nil }
+        if closedFor { r.windowClosedForThis() }
+        return r
+    }
+    func ended(_ r: RestoreRunner) -> Bool {
+        switch r.phase { case .done, .failed, .stopped, .sidebar: return true; default: return false }
+    }
+    stand[keyR] = [standIn()]
+    let r1 = restoreOnce(951)
+    check(r1.plan?.windowNeeded == true && r1.needsWindow, "a restore of a window entry needs the window closed: \(String(describing: r1.plan?.count))")
+    r1.start()
+    waitFor(15) { ended(r1) }
+    check(r1.phase == .done && fm.fileExists(atPath: entry(wdR, u1, 951)) && winOpened == [keyR] && !SwitchMarker.blocks(Account(rw)),
+          "restore: the window closed for it (WindowHold), the entry back, the mark gone, the window opened again: \(r1.phase) \(winOpened)")
+
+    // the window already closed: nothing to reopen …
+    winOpened = []
+    let r2 = restoreOnce(952)
+    r2.start()
+    waitFor(15) { ended(r2) }
+    check(r2.phase == .done && winOpened.isEmpty, "restore with the window already closed: never opened by the restore: \(winOpened)")
+    // … unless the default-profile move closed it for this restore
+    let r3 = restoreOnce(953, closedFor: true)
+    r3.start()
+    waitFor(15) { ended(r3) }
+    check(r3.phase == .done && winOpened == [keyR], "restore with the window the default move closed for it: opened again at the end: \(winOpened)")
+
+    // Cancel while it closes: the window was asked to quit; it closes by its own answer later and opens again
+    winOpened = []
+    stand[keyR] = [standIn(ignoringTerm: true)]
+    let r4 = restoreOnce(954)
+    r4.start()
+    waitFor(3) { r4.phase == .closing }
+    r4.cancel()
+    check(r4.phase == .ready && r4.note == RestoreRunner.cancelledNote && !SwitchMarker.blocks(Account(rw)),
+          "restore: Cancel while it closes: back to the preview, the mark gone, said it opens again if it closes: \(r4.phase)")
+    stand[keyR]?.forEach { kill($0.processIdentifier, SIGKILL) }
+    waitFor(3) { !winOpened.isEmpty }
+    check(winOpened == [keyR] && r4.note == nil, "…it closed later: opened again, the line gone: \(winOpened)")
+
+    // a window that won't close: stalled, nothing written, nothing reopened; it closes by that answer, and the next try counts it
+    winOpened = []
+    WindowHold.stallAfter = 1
+    stand[keyR] = [standIn(ignoringTerm: true)]
+    let r5 = restoreOnce(955)
+    r5.start()
+    waitFor(4) { r5.phase == .ready && r5.note != nil }
+    check(r5.phase == .ready && r5.receipt == nil && !fm.fileExists(atPath: entry(wdR, u1, 955)) && winOpened.isEmpty,
+          "restore: the window didn't close: nothing written, nothing opened: \(r5.phase)")
+    stand[keyR]?.forEach { kill($0.processIdentifier, SIGKILL) }
+    waitFor(2) { !ClaudeWindow.isOpen(Account(rw)) }
+    r5.start()
+    waitFor(15) { ended(r5) }
+    check(r5.phase == .done && winOpened == [keyR], "…closed by its own answer, Start again: the restore opens it again at the end: \(winOpened)")
+    WindowHold.stallAfter = 10
+
+    // ---- the default-profile move (a window-only profile on ~/.claude): both windows close; only the usual one opens again
+    let wdD = expand("~/Library/Application Support/Claude-dmwin")
+    var usualProbe = profile("probe", "~/.claude", nil)
+    usualProbe.desktop = .standard
+    let keyU = Launcher.dataDirKey(of: Account(usualProbe))
+    func oldProfile(_ id: String) -> AccountEntry {
+        var o = profile(id, "~/.claude", u4)
+        o.desktop = .separate; o.desktopDataDir = wdD
+        return o
+    }
+    let keyO = Launcher.dataDirKey(of: Account(oldProfile("dm")))
+    put(entry(wdD, u4, 961), #"{"sessionId":"local_\#(uuid(961))"}"#)
+    func failedD(_ r: DefaultProfileRunner) -> Bool { if case .failed = r.phase { return true }; return false }
+
+    // a window that won't close: nothing moved; the usual window this move closed opens again (the old one never closed)
+    WindowHold.stallAfter = 1
+    let o1 = oldProfile("dm")
+    try! Store.save([o1])
+    let mD = SettingsModel()
+    mD.accounts = [o1]
+    stand[keyU] = [standIn()]
+    stand[keyO] = [standIn(ignoringTerm: true)]
+    winOpened = []
+    if let s1 = DefaultProfile.situation(mD.accounts), s1.kind == .windowOnly {
+        let d1 = DefaultProfileRunner(situation: s1, model: mD)
+        d1.start()
+        waitFor(5) { d1.phase == .ready && d1.note != nil }
+        check(d1.phase == .ready && d1.record == nil && winOpened == [keyU] && !SwitchMarker.blocks(Account(o1)) && !SwitchMarker.blocks(Account(usualProbe)),
+              "default move: a window didn't close: nothing moved, both marks gone, the usual window it closed opened again: \(d1.phase) \(winOpened)")
+        stand[keyO]?.forEach { kill($0.processIdentifier, SIGKILL) }
+        waitFor(2) { !ClaudeWindow.isOpen(Account(o1)) }
+        WindowHold.stallAfter = 10
+
+        // the move itself: both windows close for it; when it ends only the usual window opens again, the old one stays closed
+        winOpened = []
+        stand[keyU] = [standIn()]
+        stand[keyO] = [standIn()]
+        let d2 = DefaultProfileRunner(situation: s1, model: mD)
+        d2.start()
+        waitFor(30) { d2.phase == .done || failedD(d2) }
+        check(d2.phase == .done && !d2.nothingToMove && !ClaudeWindow.isOpen(Account(o1)) && fm.fileExists(atPath: entry(expand(FolderKey.standardDataDir), u4, 961)),
+              "default move: both windows closed, the entry moved into the usual window's data: \(d2.phase) \(String(describing: d2.inner?.phase))")
+        waitFor(3) { !winOpened.isEmpty }
+        spin(0.5)
+        check(winOpened == [keyU], "…only the usual window opened again (once), never the old profile's own window: \(winOpened)")
+    } else {
+        check(false, "the default move: a window-only situation: \(String(describing: DefaultProfile.situation(mD.accounts)?.kind))")
+    }
+
+    SettingsModel.applyInstalls = installs
+    ClaudeWindow.seams = .real
+    WindowHold.every = 0.5; WindowHold.stallAfter = 45; WindowHold.lateCloseFor = 60
+    for (_, ps) in stand { ps.forEach { if $0.isRunning { kill($0.processIdentifier, SIGKILL) } } }
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)
