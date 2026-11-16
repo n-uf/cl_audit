@@ -54,11 +54,11 @@ enum Processes {
         }
     }
 
-    /// `table()`, read once more when something in it was unknown (a process caught mid-start or mid-exit), before the answer
-    /// is "can't tell".
+    /// `table()`, read once more when something in it was hidden (a process caught mid-start or mid-exit), before the answer
+    /// is "can't tell". Not for an unread environment: where macOS withholds them, a second read would only repeat it.
     static func settledTable() -> [Entry]? {
         let t = table()
-        return t?.contains(where: \.unknown) == true ? table() : t
+        return t?.contains(where: \.hidden) == true ? table() : t
     }
 
     /// Every process the kernel lists, cl_audit itself included, except those that ended meanwhile or are ended and waiting to
