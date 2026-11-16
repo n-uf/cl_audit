@@ -294,6 +294,8 @@ enum NewAccountSetup {
         // app and `claude` in Terminal use) and its folder are never this draft's to sign out or delete, whatever it recorded.
         let ownConfig = d.createdConfigDir.flatMap { Account.isDefault(configDir: $0) ? nil : $0 }
         if let dir = ownConfig, let claude, signedInEmail(d) != nil { ClaudeCLI.logout(claude, configDir: dir) }
+        // opened again meanwhile (the sign-out takes a moment): its folders stay; Cancel again quits it
+        if let a = ownWindow(d), ClaudeWindow.isOpen(a) { return false }
         if let dir = ownConfig {
             try? fm.removeItem(at: URL(fileURLWithPath: expand(dir)))      // removes the links, not what they point to
             try? fm.removeItem(at: ClaudeCLI.loginScript(dir))
@@ -1048,12 +1050,12 @@ struct NewAccountView: View {
                 Button("Sign in to Claude Code…") {
                     if let c = model.requireClaude() { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: draft.email.isEmpty ? nil : draft.email, creating: true) }
                 }
-                    .buttonStyle(.pill(tint, compact: true))
+                    .buttonStyle(.pill(tint, compact: true)).disabled(model.discarding)
             } else if draft.claudeWindow, !waiting,
                       FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) == nil {
                 // the window waits until Claude Code is on an account no other profile has
                 Button(windowOpen ? "Show Claude window" : "Open Claude window") { Launcher.openClaude(Account(draft.entry)) }
-                    .buttonStyle(.pill(tint, compact: true))
+                    .buttonStyle(.pill(tint, compact: true)).disabled(model.discarding)       // (never while Cancel removes its folders)
             }
         }
     }
