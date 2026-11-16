@@ -2242,6 +2242,12 @@ do {
         QCProblemView(problem: m.turns.last?.problem ?? .noProfile, model: m, answered: true)
     }
     func bubble(_ m: QuickChatModel) -> String { bubbleView(m).title }
+    /// Whose the last turn's full limit is (nil: the account in use's, or none).
+    func whose(_ m: QuickChatModel) -> QuickChatOtherLimit? {
+        if case .limitFull(let f)? = m.turns.last?.problem { return f.other }
+        return nil
+    }
+    let cardOffer = QuickChatSwitchOffer(key: "card~k2", short: "ultra-2", words: "")
     _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
     let inClash = chat(QuickChatTarget(e, now: now), level: QuickChatLevel(nil))
     inClash.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
@@ -2249,17 +2255,33 @@ do {
     refuse(inClash)
     inClash.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(nil), offer: { nil })
     let clashBubble = bubble(inClash), clashMore = bubbleView(inClash).more
-    check(inClash.turns.last?.problem == .limitFull(other: .clash(name: "Other")) && inClash.level?.full() == nil && !inClash.blocked
+    check(whose(inClash) == .clash(name: "Other", own: true) && inClash.level?.full() == nil && !inClash.blocked
           && inClash.offer == nil && filled == 0
           && clashBubble == QCProblemView.otherLimitTitle && !clashBubble.contains("This account") && !clashBubble.contains("@"),
           "a clash: Other's refusal is said, but nothing full, no hold, no offer, no look for one; the bubble names no account as full: \(clashBubble)")
-    check(clashMore.contains("Other's account") && clashMore.contains("move it back") && !clashMore.contains("@"),
+    check(clashMore.contains("Other's account") && clashMore.contains("Move it back to Card's own account on the Switch page")
+          && !clashMore.contains("@"),
           "a clash: the bubble's next words name whose account (Other's, no address) and the way out: \(clashMore)")
+    // with no account of its own known: no "move it back", Other's account named and the Switch page pointed to
+    let seatlessChat = chat(QuickChatTarget(seatless, now: now), level: QuickChatLevel(nil))
+    refuse(seatlessChat)
+    let seatlessMore = bubbleView(seatlessChat).more
+    check(whose(seatlessChat) == .clash(name: "Other", own: false) && seatlessMore.contains("Other's account")
+          && seatlessMore.contains("Switch page") && !seatlessMore.contains("Move it back") && !seatlessMore.contains("@"),
+          "a clash with no own account known: no move back, Other's account and the Switch page: \(seatlessMore)")
     // the folder moves back to u1 afterwards: the old bubble keeps its words (it never calls u1 full)
     _ = Store.writeStatus(e.id, rec())
     inClash.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
     check(!inClash.inClash && bubble(inClash) == clashBubble && bubbleView(inClash).more == clashMore,
           "moved back to u1 after a clash's refusal: the old bubble's words are unchanged: \(bubble(inClash))")
+    // …and u1's own week is full: the chat draws the bar's bubble below (this account's week, with the switch), since the
+    // last turn's bubble is the clash's, which says nothing of u1
+    _ = Store.writeStatus(e.id, rec(week: 100, weekIn: 3 * 3600))
+    inClash.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { cardOffer })
+    let below = QCProblemView(problem: .limitFull(inClash.fullNow), model: inClash, answered: false)
+    check(inClash.blocked && inClash.limitBubbleBelow && below.title.hasPrefix("This account's week is full")
+          && inClash.fullNow.offer == cardOffer && below.more.contains("ultra-2") && bubble(inClash) == clashBubble,
+          "a clash's refusal, then back on u1 with its week full: the bar's bubble shows below, with the switch: \(below.title) \(below.more)")
     _ = Store.writeStatus(e.id, rec())
     let ownLevel = QuickChatLevel(Usage.of(Store.status(for: e, now: now)))
     let outside = chat(QuickChatTarget(e, now: now), level: ownLevel)
@@ -2269,13 +2291,30 @@ do {
     let refusedOnly = chat(QuickChatTarget(e, now: now), level: ownLevel)
     refuse(refusedOnly)
     let ownBubble = bubble(refusedOnly)
-    check(refusedOnly.level?.full() != nil && refusedOnly.blocked && filled == 1 && ownBubble.hasPrefix("This account's "),
+    check(refusedOnly.level?.full() != nil && refusedOnly.blocked && filled == 1 && ownBubble.hasPrefix("This account's ")
+          && !refusedOnly.limitBubbleBelow,
           "outside a clash: a refusal holds typing, the controller looks for an offer, the bubble says this account's limit: \(ownBubble)")
+    // the offer comes after the turn ended: while the limit holds the bar, the last turn's bubble takes it, with its key.
+    // Then Switch account… with a question typed, the folder on u2: the question goes, and the old bubble keeps its words
+    // (which limit, until when, the offer then), without the key
+    refusedOnly.update(target: QuickChatTarget(e, now: now), level: ownLevel, offer: { cardOffer })
+    let held = QCProblemView(problem: refusedOnly.turns[0].problem!, model: refusedOnly, answered: false)
+    let heldTitle = held.title, heldMore = held.more
+    check(refusedOnly.offer == cardOffer && heldTitle.contains("back") && heldMore.contains("ultra-2"),
+          "while it holds: the refused turn's bubble says until when and the switch: \(heldTitle) \(heldMore)")
+    refusedOnly.field = "next"
+    refusedOnly.switchAccount()
+    _ = Store.writeStatus(e.id, rec(week: 10, login: u2.email, code: u2))
+    refusedOnly.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
+    let old = QCProblemView(problem: refusedOnly.turns[0].problem!, model: refusedOnly, answered: false, last: false)
+    check(refusedOnly.turns.count == 2 && !refusedOnly.blocked && old.title == heldTitle && old.more == heldMore,
+          "a refusal, a switch, the question sent on u2: the old bubble's words are unchanged: \(old.title) \(old.more)")
+    _ = Store.writeStatus(e.id, rec())
     _ = Store.writeStatus(e.id, appRec(appU2, code: u1))
     let inSplit = chat(QuickChatTarget(win, now: now), level: QuickChatLevel(nil))
     refuse(inSplit)
     check(inSplit.inSplit && !inSplit.blocked && filled == 1 && bubble(inSplit) == QCProblemView.otherLimitTitle
-          && inSplit.turns.last?.problem == .limitFull(other: .split),
+          && whose(inSplit) == .split,
           "the split: the refusal holds nothing, and the bubble names no account as full: \(bubble(inSplit))")
 
     // Switch account… with a question waiting: a folder signed out on the way (no id: its address kept, or none) hasn't

@@ -68,7 +68,7 @@ struct QCBar: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let p = model.barProblem { QCProblemView(problem: p, model: model, answered: false) }
-            else if model.blocked { QCProblemView(problem: .limitFull(other: nil), model: model, answered: false) }
+            else if model.blocked { QCProblemView(problem: .limitFull(model.fullNow), model: model, answered: false) }
             QCField(model: model, placeholder: "Ask anything", size: 17)
                 .padding(.horizontal, 8)
             QCControls(model: model, inBar: true)
@@ -131,8 +131,8 @@ struct QCWindow: View {
                 .frame(maxWidth: .infinity).padding(.top, 10)
         }
         // a limit filled since the last answer: said once, under the chat, with the switch
-        if model.blocked, model.turns.last?.problem?.isLimitFull != true {
-            QCProblemView(problem: .limitFull(other: nil), model: model, answered: false).padding(.top, 12)
+        if model.limitBubbleBelow {
+            QCProblemView(problem: .limitFull(model.fullNow), model: model, answered: false).padding(.top, 12)
         }
     }
 }
@@ -399,13 +399,20 @@ struct QCProblemView: View {
         case .stopped: return "Claude Code stopped before the answer was done."
         case .refused(let text): return text
         case .noProfile: return "There's no profile to chat on yet."
-        case .limitFull(let other):
-            // the split or a clash when the turn ended: the limit is the folder's account's, not one the header may name
-            // (in a clash another profile's): no account named as full, never the folder's address
-            if other != nil { return Self.otherLimitTitle }
-            let f = model.level?.full()
+        case .limitFull(let full):
+            // the split or a clash: the limit is the folder's account's, not one the header may name (in a clash another
+            // profile's): no account named as full, never the folder's address. Else the limit as the problem keeps it
+            if full.other != nil { return Self.otherLimitTitle }
+            let f = full.limit
             return "This account's \(f?.id == "5h" ? "5-hour limit" : "week") is full" + (f?.resets.map { ", " + TimeWords.back($0) } ?? "") + "."
         }
+    }
+
+    /// The offer the key may act on: the one the problem keeps, while it is still the bar's own and this is the last
+    /// bubble (an older one keeps its words, without a key).
+    private var liveOffer: QuickChatSwitchOffer? {
+        guard last, case .limitFull(let f) = problem, f.other == nil, let o = f.offer, o == model.offer else { return nil }
+        return o
     }
 
     /// A full limit in the split or a clash.
@@ -419,15 +426,22 @@ struct QCProblemView: View {
         case .stopped: return answered ? "What arrived is kept above." : ""
         case .refused: return ""
         case .noProfile: return "Set one up in cl_audit."
-        case .limitFull(.clash(let other)?):
-            // whose account it is, by its profile's name (never an address), and the way out
-            return "Claude Code's folder here is on \(other)'s account; move it back to this profile's own account to use its limit."
-        case .limitFull(.split?):
-            return ""
-        case .limitFull(nil):
-            guard let o = model.offer, let name = model.target?.name else { return "" }
-            return o.lineWords(name: name)
-                + (model.field.isEmpty ? "" : " What you typed goes once the switch is done.")
+        case .limitFull(let full):
+            let name = full.profile.isEmpty ? "this profile" : full.profile
+            switch full.other {
+            case .clash(let other, let own)?:
+                // whose account it is, by its profile's name (never an address), and the way out on the Switch page: back to
+                // the profile's own account, or, with none known, to one picked for it
+                let whose = "Claude Code's folder here is signed in to \(other)'s account, so this was \(other)'s limit."
+                return whose + (own ? " Move it back to \(name)'s own account on the Switch page to chat on that account."
+                                    : " Pick an account for \(name) on the Switch page to chat on it.")
+            case .split?:
+                return ""
+            case nil:
+                guard let o = full.offer else { return "" }
+                return o.lineWords(name: name)
+                    + (liveOffer == nil || model.field.isEmpty ? "" : " What you typed goes once the switch is done.")
+            }
         }
     }
 
@@ -448,8 +462,8 @@ struct QCProblemView: View {
             if last { QCButton(title: "Retry") { retry() } }
         case .noProfile:
             QCButton(title: "Open cl_audit") { Installer.openDashboard() }
-        case .limitFull(let other):
-            if other == nil, let o = model.offer { QCButton(title: o.keyTitle) { model.switchAccount() } }
+        case .limitFull:
+            if let o = liveOffer { QCButton(title: o.keyTitle) { model.switchAccount() } }
         }
     }
 

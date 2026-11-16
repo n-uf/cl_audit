@@ -212,18 +212,32 @@ enum QuickChatProblem: Equatable {
     /// Claude Code answered with an error of its own.
     case refused(text: String)
     case noProfile
-    /// A limit is full: the account in use's (`other` nil: the level says which and until when; the offer, where to switch),
-    /// or in the split or a clash the folder's account's (`other`). Decided when the turn ends, so its words never change.
-    case limitFull(other: QuickChatOtherLimit?)
+    /// A limit is full: the account in use's, or in the split or a clash the folder's account's, with what its bubble says
+    /// (QuickChatFullLimit). A turn's is decided when the turn ends, so its words never change after.
+    case limitFull(QuickChatFullLimit)
 
     var isLimitFull: Bool { if case .limitFull = self { return true }; return false }
+    /// A full limit of the account in use (not the split's or a clash's).
+    var isOwnLimitFull: Bool { if case .limitFull(let f) = self { return f.other == nil }; return false }
+}
+
+/// A full limit as its bubble says it: whose it is (`other`, nil: the account in use's), and for the account in use's, which
+/// limit and until when (`limit`), the offer then (`offer`) and the profile's name. A turn keeps the words it had when it
+/// ended, or, while it is the last turn and its limit still holds the bar, the ones the bar has now (QuickChatModel.update);
+/// the bar's own bubble is always the bar's now (QuickChatModel.fullNow).
+struct QuickChatFullLimit: Equatable {
+    var other: QuickChatOtherLimit? = nil
+    var limit: FullLimit? = nil
+    var offer: QuickChatSwitchOffer? = nil
+    var profile = ""
 }
 
 /// Whose a full limit Claude Code met is when it isn't the account in use's: Claude Code's own account's in the split, or
-/// in a clash the account of the profile it belongs to (that profile's name, never an address).
+/// in a clash the account of the profile it belongs to (that profile's name, never an address); `own`: the profile has an
+/// account of its own known to move back to.
 enum QuickChatOtherLimit: Equatable {
     case split
-    case clash(name: String)
+    case clash(name: String, own: Bool)
 }
 
 struct QuickChatTurn: Identifiable, Equatable {
@@ -264,8 +278,19 @@ final class QuickChatModel: ObservableObject {
     var inClash: Bool { target?.clash ?? false }
     /// Whose a full limit Claude Code meets now is, when it isn't the account in use's (QuickChatProblem.limitFull).
     var otherLimit: QuickChatOtherLimit? {
-        if let n = target?.clashName { return .clash(name: n) }
+        // (in a clash the header names the profile's own account when one is known: that one is there to move back to)
+        if let n = target?.clashName { return .clash(name: n, own: target?.shownEmail != nil) }
         return inSplit ? .split : nil
+    }
+    /// The chat window draws the bar's full limit under the chat: it holds the bar, and the last turn isn't a full limit of
+    /// the account in use already saying it (a split's or a clash's says nothing of the account in use).
+    var limitBubbleBelow: Bool { blocked && turns.last?.problem?.isOwnLimitFull != true }
+    /// A full limit Claude Code meets now, as its bubble says it: whose, and for the account in use's, the bar's limit and
+    /// offer as they are now.
+    var fullNow: QuickChatFullLimit {
+        let other = otherLimit
+        return QuickChatFullLimit(other: other, limit: other == nil ? level?.full() : nil, offer: other == nil ? offer : nil,
+                                  profile: target?.name ?? "")
     }
     @Published var choice: QuickChatModelChoice = .haiku
     @Published var thinking: QuickChatThinking = .off
@@ -402,6 +427,12 @@ final class QuickChatModel: ObservableObject {
         // account in use)
         let offer = l?.full() == nil || !(counts || level?.full() != nil) ? nil : best()
         if offer != self.offer { self.offer = offer }
+        // the last turn's own full limit, while it still holds the bar, is the bar's bubble in the chat: its words follow
+        // the bar's (the offer comes after the turn ended). Once it no longer holds (a switch, a reset), they stay as they were
+        if blocked, otherLimit == nil, let i = turns.indices.last, turns[i].problem?.isOwnLimitFull == true {
+            let now = QuickChatProblem.limitFull(fullNow)
+            if turns[i].problem != now { turns[i].problem = now }
+        }
         guard let wait = switchWait else { return }
         if Date().timeIntervalSince(wait.since) > 600 { switchWait = nil; return }
         // moved: the folder on an account known by its id, another seat than when it was clicked (a folder signed out on
@@ -471,7 +502,7 @@ final class QuickChatModel: ObservableObject {
             if error == "authentication_failed", let target {
                 turns[i].problem = .notSignedIn(profile: target.name, id: target.profileID)
             } else if QuickChatParse.isLimit(error: error, text: text) {
-                turns[i].problem = .limitFull(other: otherLimit)
+                turns[i].problem = .limitFull(fullNow)
             } else if let error, turns[i].answer.isEmpty, pending.isEmpty {
                 turns[i].problem = .refused(text: text.isEmpty ? error : text)
             }
@@ -488,9 +519,9 @@ final class QuickChatModel: ObservableObject {
             if !s.isEmpty { session = s }
             guard turns[i].busy else { return }
             turns[i].seconds = ms > 0 ? Double(ms) / 1000 : Date().timeIntervalSince(turns[i].started)
-            if isError, turns[i].problem == nil, QuickChatParse.isLimit(error: nil, text: text) { turns[i].problem = .limitFull(other: nil) }
+            if isError, turns[i].problem == nil, QuickChatParse.isLimit(error: nil, text: text) { turns[i].problem = .limitFull(fullNow) }
             // whose a full limit is: decided now, as the turn ends, and kept on it (its bubble never changes after a move)
-            if turns[i].problem?.isLimitFull == true { turns[i].problem = .limitFull(other: otherLimit) }
+            if turns[i].problem?.isLimitFull == true { turns[i].problem = .limitFull(fullNow) }
             if isError || turns[i].problem != nil {
                 turns[i].phase = .failed
                 if turns[i].problem == nil { turns[i].problem = .refused(text: text.isEmpty ? "Claude Code couldn't answer." : text) }
@@ -498,12 +529,16 @@ final class QuickChatModel: ObservableObject {
                 // holds what you type (the refusal is the chat's own sign-in's, whatever the record says yet). Not in the
                 // split (SplitUsage) nor a clash: it's Claude Code's account's limit (in a clash another profile's), so
                 // the answer says it, but no level or offer. The offer itself waits for numbers that count (update)
-                if turns[i].problem == .limitFull(other: nil), level?.full() == nil {
-                    var l = level ?? QuickChatLevel(nil)
-                    l.refusedUntil = l.refusedUntil ?? Date().addingTimeInterval(3600)
-                    level = l
+                if turns[i].problem?.isOwnLimitFull == true {
+                    if level?.full() == nil {
+                        var l = level ?? QuickChatLevel(nil)
+                        l.refusedUntil = l.refusedUntil ?? Date().addingTimeInterval(3600)
+                        level = l
+                    }
+                    // its words with the hold just made (which limit, until when); the offer follows while it holds (update)
+                    turns[i].problem = .limitFull(fullNow)
+                    limitFilled()
                 }
-                if turns[i].problem == .limitFull(other: nil) { limitFilled() }
             } else {
                 if turns[i].answer.isEmpty { turns[i].answer = text }
                 turns[i].phase = .done
