@@ -2013,8 +2013,11 @@ do {
         dC.start()
         waitFor(3) { dC.phase == .closing && !ClaudeWindow.isOpen(Account(o1)) }
         dC.cancel()
-        check(dC.phase == .ready && dC.record == nil && winOpened == [keyO] && !SwitchMarker.blocks(Account(o1)) && !SwitchMarker.blocks(Account(usualProbe)),
-              "default move: Cancel while they close: nothing moved, both marks gone, the closed old window opened again: \(dC.phase) \(winOpened)")
+        check(dC.phase == .ready && dC.record == nil && !SwitchMarker.blocks(Account(o1)) && !SwitchMarker.blocks(Account(usualProbe)),
+              "default move: Cancel while they close: nothing moved, both marks gone: \(dC.phase)")
+        // (the old window opens again at once, or through the late-close watch when the hold hadn't seen it close yet)
+        waitFor(3) { winOpened.contains(keyO) }
+        check(winOpened == [keyO], "…the closed old window opened again, the usual one (still asking) not: \(winOpened)")
         stand[keyU]?.forEach { kill($0.processIdentifier, SIGKILL) }
         waitFor(3) { winOpened.count == 2 }
         check(winOpened == [keyO, keyU], "…the usual window closed later by its own answer: opened again too: \(winOpened)")
