@@ -133,9 +133,10 @@ enum Processes {
 
     /// KERN_PROCARGS2's bytes: argc, the executable path, NULs up to the next 8 bytes counted from the path's start (the accounts
     /// suite proves it on started stand-ins; NUL by NUL when the layout is another), exactly argc arguments (empty ones included),
-    /// then the environment up to an empty entry (the kernel's own strings, ptr_munge= and the like, follow it). nil when cut
-    /// short, or when the first argument is empty or starts with a space. `environmentRead` only when an entry came after the
-    /// arguments that isn't one of the kernel's own strings: a buffer that ends after them, or goes on with NULs, wasn't read.
+    /// then the environment up to an empty entry or the first of the kernel's own strings (ptr_munge= and the like follow it).
+    /// nil when cut short, or when the first argument is empty or starts with a space. `environmentRead` only when an entry came
+    /// after the arguments before either: a buffer that ends after them, goes on with NULs, or goes on with the kernel's strings
+    /// (whatever follows them), wasn't read.
     static func parse(_ buf: [UInt8], size: Int) -> Launch? {
         guard size > MemoryLayout<Int32>.size, size <= buf.count else { return nil }
         let argc = Int(buf.withUnsafeBytes { $0.load(as: Int32.self) })
@@ -157,16 +158,17 @@ enum Processes {
         var configDir: String?
         var environmentRead = false
         let prefix = Array("CLAUDE_CONFIG_DIR=".utf8)
-        while i < size {                                            // the environment, up to its end (an empty entry)
+        // the environment, up to its end: an empty entry, or the first of the kernel's own strings (they always follow it, with
+        // no empty entry promised in between, so nothing after the first one is read as the environment)
+        while i < size {
             let start = i
             while i < size && buf[i] != 0 { i += 1 }
             if i == start { break }
+            if kernelStrings.contains(where: { k in i - start >= k.count && buf[start..<(start + k.count)].elementsEqual(k) }) { break }
             if i - start >= prefix.count, Array(buf[start..<(start + prefix.count)]) == prefix {
                 configDir = String(decoding: buf[(start + prefix.count)..<i], as: UTF8.self)
             }
-            if !kernelStrings.contains(where: { k in i - start >= k.count && buf[start..<(start + k.count)].elementsEqual(k) }) {
-                environmentRead = true
-            }
+            environmentRead = true
             i += 1
         }
         guard args.count == argc else { return nil }                // cut short: not read
@@ -176,8 +178,8 @@ enum Processes {
         return Launch(exe: exe, args: args, configDir: configDir, environmentRead: environmentRead)
     }
 
-    /// The kernel's own strings that follow the environment in KERN_PROCARGS2 (its "apple" strings): should one come right
-    /// after the arguments, it isn't taken for an environment that was read.
+    /// The kernel's own strings that follow the environment in KERN_PROCARGS2 (its "apple" strings): the first one ends the
+    /// environment, so neither it nor anything after it is taken for an environment that was read.
     private static let kernelStrings: [[UInt8]] = ["ptr_munge=", "main_stack=", "executable_path=", "executable_file=", "dyld_file=",
         "executable_cdhash=", "executable_boothash=", "th_port=", "security_config=", "stack_guard=", "malloc_entropy=",
         "arm64e_abi=", "has_sec_transition=", "pfz=", "dyld_flags=", "executable_TeamID=", "apple_fd="].map { Array($0.utf8) }

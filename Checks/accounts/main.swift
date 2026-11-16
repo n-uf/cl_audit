@@ -445,6 +445,13 @@ do {
           "env not read: argv then an empty entry, the buffer ending after argv, only the kernel's own strings after argv")
     check(Processes.parse(noConfig, size: noConfig.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: true),
           "env read without CLAUDE_CONFIG_DIR: read, no folder (the default folder's)")
+    // the first kernel string ends the environment, with no empty entry in between: nothing after it is read as one
+    let appleThenNew = procargs("/x/claude", ["claude"], ["executable_path=/x/claude", "subsystem_root_path=/s", "CLAUDE_CONFIG_DIR=/c"])
+    let envThenApple = procargs("/x/claude", ["claude"], ["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/c", "ptr_munge=", "main_stack=x", "some_new_key=1"])
+    check(Processes.parse(appleThenNew, size: appleThenNew.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: false),
+          "env not read: argv, a listed kernel string, then an unlisted one (and a CLAUDE_CONFIG_DIR after them, not taken)")
+    check(Processes.parse(envThenApple, size: envThenApple.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: "/c", environmentRead: true),
+          "env read: argv, the environment, then the kernel's strings with no empty entry between")
     // the padding rule on real processes: stand-ins (copies of /bin/sleep, never Claude) started at path lengths 7, 8, 15 and
     // 16 ("./" and a name, in their folder), then one with an empty argv[0]; each read back, then killed by its pid
     let standDir = home + "/standin"
