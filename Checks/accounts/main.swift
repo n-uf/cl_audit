@@ -403,6 +403,13 @@ do {
           && AccountRemoval.runsUsing(profile("rm-w", "~/.claude-p8", nil), [unknownRun]) == [unknownRun]
           && AccountRemoval.runsUsing(profile("rm-w", "~/.claude-p8", nil), [Processes.codeRun(readDefault)]).isEmpty,
           "removal: a claude whose folder is unknown keeps every profile's folders from being deleted; a default-folder one only the default's")
+    // the diagnostic: counts and yes/no only
+    let probe = Processes.probeLines([readDefault, unread, unreadZsh, unreadApp, tab, rootOther])
+    check(probe == ["claude-like processes: 3, environment read: 2", "  1: environment read: yes, CLAUDE_CONFIG_DIR: no",
+                    "  2: environment read: no, CLAUDE_CONFIG_DIR: no", "  3: environment read: yes, CLAUDE_CONFIG_DIR: yes"]
+          && Processes.environmentLine(nil) == "claude-like processes: the process table couldn't be read"
+          && Processes.environmentLine([rootClaude]) == "claude-like processes: 1, environment read: 0",
+          "the probe: claude-like count, environment read count, then yes/no per process, never a path or value: \(probe)")
     // KERN_PROCARGS2 as the kernel lays it out: argc, the path, NULs to 8 bytes from the path's start, argv, the environment
     func procargs(_ exe: String, _ args: [String], _ env: [String]) -> [UInt8] {
         var raw = [UInt8](repeating: 0, count: 4)

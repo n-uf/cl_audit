@@ -275,6 +275,8 @@ final class AgentDelegate: NSObject, NSApplicationDelegate {
         discoverTimer?.invalidate()
         discoverAccounts()
         discoverTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in self?.discoverAccounts() }
+        // whether the Claude Code processes' environments are read: counts logged now and when they change (Processes)
+        Processes.watchEnvironment()
         // the folders' .claude.json, the windows' config.json and the Claude app's logs watched: a sign-in changed in
         // Terminal or the Claude app is followed within a second, not at the next look (SignInFiles)
         signInWatch = SignInFiles(onChange: { [weak self] in

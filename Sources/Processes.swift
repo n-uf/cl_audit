@@ -17,6 +17,7 @@
 import AppKit
 import ClaudeAuth
 import Runs
+import os
 
 enum Processes {
     // MARK: the kernel's table
@@ -369,6 +370,68 @@ enum Processes {
     }
 
     private static let uuidPattern = try! NSRegularExpression(pattern: "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", options: [.caseInsensitive])
+
+    // MARK: whether environments are read (a diagnostic: counts only, never a path, pid, argument or value)
+
+    /// The processes that may be Claude Code (a Claude Code program as it was started, or one that couldn't be read whose name
+    /// looks like Claude Code's) and, of them, those whose environment was read.
+    struct EnvironmentCounts {
+        var claudeLike = 0
+        var read = 0
+        /// Per process, in table order: its environment was read, and CLAUDE_CONFIG_DIR is in it (never its value).
+        var each: [(read: Bool, configDir: Bool)] = []
+    }
+
+    static func environmentCounts(_ all: [Entry]) -> EnvironmentCounts {
+        var c = EnvironmentCounts()
+        for e in all {
+            let like = e.launch.map { codeProgram(exe: $0.exe, args: $0.args) } ?? (e.hidden && looksLikeClaude(e.name))
+            guard like else { continue }
+            let read = e.launch?.environmentRead == true
+            c.claudeLike += 1
+            if read { c.read += 1 }
+            c.each.append((read, read && e.launch?.configDir != nil))
+        }
+        return c
+    }
+
+    /// The diagnostic's one line (the agent's log, and the first line `--probe-processes` prints).
+    static func environmentLine(_ all: [Entry]?) -> String {
+        guard let all else { return "claude-like processes: the process table couldn't be read" }
+        let c = environmentCounts(all)
+        return "claude-like processes: \(c.claudeLike), environment read: \(c.read)"
+    }
+
+    /// What `UsageDock --probe-processes` prints: the line, then one line per claude-like process (yes/no only).
+    static func probeLines(_ all: [Entry]?) -> [String] {
+        guard let all else { return [environmentLine(nil)] }
+        return [environmentLine(all)] + environmentCounts(all).each.enumerated().map { k, p in
+            "  \(k + 1): environment read: \(p.read ? "yes" : "no"), CLAUDE_CONFIG_DIR: \(p.configDir ? "yes" : "no")"
+        }
+    }
+
+    private static let environmentLog = Logger(subsystem: "local.usage-n-uf", category: "processes")
+    private static let environmentQueue = DispatchQueue(label: "cl_audit.processes.environment", qos: .utility)
+    nonisolated(unsafe) private static var environmentTimer: DispatchSourceTimer?
+    nonisolated(unsafe) private static var lastEnvironmentLine: String?
+
+    /// The agent's diagnostic: the table read off the main thread now and every `seconds`, its line logged (subsystem
+    /// local.usage-n-uf, category processes) the first time and whenever it changes. Once per process.
+    static func watchEnvironment(every seconds: TimeInterval = 60) {
+        environmentQueue.async {
+            guard environmentTimer == nil else { return }
+            let t = DispatchSource.makeTimerSource(queue: environmentQueue)
+            t.schedule(deadline: .now(), repeating: seconds, leeway: .seconds(5))
+            t.setEventHandler {
+                let line = environmentLine(table())
+                guard line != lastEnvironmentLine else { return }
+                lastEnvironmentLine = line
+                environmentLog.log("\(line, privacy: .public)")
+            }
+            environmentTimer = t
+            t.resume()
+        }
+    }
 
     // MARK: running a program
 

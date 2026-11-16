@@ -165,6 +165,14 @@ if args.count >= 2, args[1] == "--agent-status" {
     exit(0)
 }
 
+if args.count >= 2, args[1] == "--probe-processes" {
+    // hidden, for checking: how many processes may be Claude Code and how many of their environments are read, then each one's
+    // yes/no (environment read, CLAUDE_CONFIG_DIR in it); counts only, never a path, pid, argument or value
+    let t = Processes.table()
+    Processes.probeLines(t).forEach { print($0) }
+    exit(t == nil ? 1 : 0)
+}
+
 if args.count >= 2, args[1] == "--agent-register" {
     do { try Agent.service.register(); print("registered: \(Agent.statusText(Agent.service.status))") }
     catch { print("couldn't register: \(error.localizedDescription) (\((error as NSError).code))") }
