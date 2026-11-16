@@ -125,12 +125,13 @@ enum AccountRemoval {
         return false
     }
 
-    /// Running Claude that uses the account's folders (they must be closed before deleting them).
+    /// Running Claude that uses the account's folders (they must be closed before deleting them); a Claude Code whose folder
+    /// is unknown may use any.
     static func runsUsing(_ e: AccountEntry, _ runs: [ClaudeRun]) -> [ClaudeRun] {
         runs.filter { r in
             switch r.kind {
             case .desktop: return e.desktop == .separate && !e.desktopDataDir.isEmpty && FolderKey.overlaps(r.folder, e.desktopDataDir)
-            case .codeTab, .terminal: return FolderKey.overlaps(r.folder, e.configDir)
+            case .codeTab, .terminal: return r.folder == ClaudeRun.unknownFolder || FolderKey.overlaps(r.folder, e.configDir)
             }
         }
     }

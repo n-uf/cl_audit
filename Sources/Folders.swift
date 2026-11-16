@@ -200,7 +200,11 @@ struct ClaudeRun: Identifiable, Equatable {
     enum Kind: Equatable { case desktop, codeTab, terminal }
     let id: pid_t
     let kind: Kind
-    let folder: String          // data folder (desktop) or Claude Code folder (sessions), with ~
+    let folder: String          // data folder (desktop) or Claude Code folder (sessions), with ~; or unknownFolder
+
+    /// A Claude Code whose folder couldn't be told (how it was started, or its environment, couldn't be read): it may use any
+    /// folder, so every folder's check counts it (AccountRemoval.runsUsing).
+    static let unknownFolder = "unknown"
 }
 
 enum ClaudeRuns {

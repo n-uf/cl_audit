@@ -5,7 +5,8 @@
 // on its command line, or as the program of a Code-tab or a terminal. All of it is read from the kernel (proc_listallpids,
 // proc_pidinfo, KERN_PROCARGS2, proc_pidpath): no `ps` or `pgrep`, so nothing waits on a helper (waiting for one ran the run loop
 // and redrew SwiftUI windows mid-update). Where the table can't be read, or a process that may be Claude Code can't be (another
-// user's `claude`, as with `sudo claude`, included), the answer is nil, and the callers then refuse rather than guess. Of a process's environment only CLAUDE_CONFIG_DIR is kept; the rest is compared as bytes and wiped. Only `lsof`
+// user's `claude`, as with `sudo claude`, included), or a Claude Code's environment can't be (then its folder is unknown, never
+// taken for ~/.claude), the answer is nil, and the callers then refuse rather than guess. Of a process's environment only CLAUDE_CONFIG_DIR is kept; the rest is compared as bytes and wiped. Only `lsof`
 // (which program has a file open) is still a tool, run through `run`.
 //
 // Running. `run` and `output` go through Runs (Run/), the one runner ClaudeAuth uses too: a program in the temporary folder with
@@ -21,11 +22,14 @@ enum Processes {
     // MARK: the kernel's table
 
     /// How a process was started: its executable, its arguments (argv, empty ones included) and its CLAUDE_CONFIG_DIR (nil when
-    /// it isn't set).
+    /// it isn't set). `environmentRead`: the kernel gave at least one environment entry after the arguments (every real process
+    /// has some: PATH, HOME…). When it didn't, a nil `configDir` says nothing: the folder is unknown, never the default one
+    /// (`Entry.unknown`). `parse` always sets it; the default is for the checks' hand-made tables.
     struct Launch: Equatable {
         var exe: String
         var args: [String]
         var configDir: String?
+        var environmentRead = true
     }
 
     /// A process of the table: its id, its effective and real user (nil when even they can't be read), its name (proc_name for
@@ -40,13 +44,19 @@ enum Processes {
         var name: String
         var launch: Launch?
         var hidden = false
+
+        /// It may be Claude Code and which folder it runs on can't be told: `hidden`, or a Claude Code program (`codeProgram`)
+        /// whose environment wasn't read (its CLAUDE_CONFIG_DIR may be any folder's). Whoever asks then can't tell, and says so.
+        var unknown: Bool {
+            hidden || launch.map { !$0.environmentRead && Processes.codeProgram(exe: $0.exe, args: $0.args) } == true
+        }
     }
 
-    /// `table()`, read once more when something in it was hidden (a process caught mid-start or mid-exit), before the answer
+    /// `table()`, read once more when something in it was unknown (a process caught mid-start or mid-exit), before the answer
     /// is "can't tell".
     static func settledTable() -> [Entry]? {
         let t = table()
-        return t?.contains(where: \.hidden) == true ? table() : t
+        return t?.contains(where: \.unknown) == true ? table() : t
     }
 
     /// Every process the kernel lists, cl_audit itself included, except those that ended meanwhile or are ended and waiting to
@@ -121,7 +131,9 @@ enum Processes {
 
     /// KERN_PROCARGS2's bytes: argc, the executable path, NULs up to the next 8 bytes counted from the path's start (the accounts
     /// suite proves it on started stand-ins; NUL by NUL when the layout is another), exactly argc arguments (empty ones included),
-    /// then the environment up to an empty entry. nil when cut short, or when the first argument is empty or starts with a space.
+    /// then the environment up to an empty entry (the kernel's own strings, ptr_munge= and the like, follow it). nil when cut
+    /// short, or when the first argument is empty or starts with a space. `environmentRead` only when an entry came after the
+    /// arguments that isn't one of the kernel's own strings: a buffer that ends after them, or goes on with NULs, wasn't read.
     static func parse(_ buf: [UInt8], size: Int) -> Launch? {
         guard size > MemoryLayout<Int32>.size, size <= buf.count else { return nil }
         let argc = Int(buf.withUnsafeBytes { $0.load(as: Int32.self) })
@@ -141,6 +153,7 @@ enum Processes {
             i += 1
         }
         var configDir: String?
+        var environmentRead = false
         let prefix = Array("CLAUDE_CONFIG_DIR=".utf8)
         while i < size {                                            // the environment, up to its end (an empty entry)
             let start = i
@@ -149,14 +162,23 @@ enum Processes {
             if i - start >= prefix.count, Array(buf[start..<(start + prefix.count)]) == prefix {
                 configDir = String(decoding: buf[(start + prefix.count)..<i], as: UTF8.self)
             }
+            if !kernelStrings.contains(where: { k in i - start >= k.count && buf[start..<(start + k.count)].elementsEqual(k) }) {
+                environmentRead = true
+            }
             i += 1
         }
         guard args.count == argc else { return nil }                // cut short: not read
         // an empty or space-led program can't be told from a misread layout (an empty argv[0] can't be told from padding): not
         // read, so the process is hidden rather than taken for "not Claude"
         if let first = args.first, first.isEmpty || first.hasPrefix(" ") { return nil }
-        return Launch(exe: exe, args: args, configDir: configDir)
+        return Launch(exe: exe, args: args, configDir: configDir, environmentRead: environmentRead)
     }
+
+    /// The kernel's own strings that follow the environment in KERN_PROCARGS2 (its "apple" strings): should one come right
+    /// after the arguments, it isn't taken for an environment that was read.
+    private static let kernelStrings: [[UInt8]] = ["ptr_munge=", "main_stack=", "executable_path=", "executable_file=", "dyld_file=",
+        "executable_cdhash=", "executable_boothash=", "th_port=", "security_config=", "stack_guard=", "malloc_entropy=",
+        "arm64e_abi=", "has_sec_transition=", "pfz=", "dyld_flags=", "executable_TeamID=", "apple_fd="].map { Array($0.utf8) }
 
     /// A process's arguments ([] when they can't be read).
     static func arguments(of pid: pid_t) -> [String] { launch(of: pid)?.args ?? [] }
@@ -208,16 +230,20 @@ enum Processes {
     }
 
     /// One `claude` process as the new-account page shows it: a Code-tab's when its program, as it was started (argv[0], what
-    /// `ps -o comm` printed), is in the Claude app's folder, else a terminal's; its folder, or ~/.claude.
+    /// `ps -o comm` printed), is in the Claude app's folder, else a terminal's; its folder, or ~/.claude when its environment was
+    /// read without CLAUDE_CONFIG_DIR. When how it was started, or its environment, couldn't be read: ClaudeRun.unknownFolder
+    /// (which every folder's check counts as using it), never ~/.claude.
     static func codeRun(_ e: Entry) -> ClaudeRun {
         let program = e.launch?.args.first ?? e.name
         let kind: ClaudeRun.Kind = program.contains("/Library/Application Support/Claude") ? .codeTab : .terminal
-        return ClaudeRun(id: e.pid, kind: kind, folder: e.launch?.configDir.map(tilde) ?? "~/.claude")
+        guard let l = e.launch, l.environmentRead else { return ClaudeRun(id: e.pid, kind: kind, folder: ClaudeRun.unknownFolder) }
+        return ClaudeRun(id: e.pid, kind: kind, folder: l.configDir.map(tilde) ?? "~/.claude")
     }
 
     /// Whether Claude Code runs for this Claude Code folder (CLAUDE_CONFIG_DIR, or ~/.claude when it isn't set), among this
     /// user's processes: nil when that can't be told (the table can't be read, a process that may be Claude Code can't be, or
-    /// another user's that looks like Claude Code, which may be on this folder, as `sudo claude` is). The Claude app itself isn't
+    /// another user's that looks like Claude Code, which may be on this folder, as `sudo claude` is, or a Claude Code whose
+    /// environment couldn't be read: `Entry.unknown`, for every folder, the default one included). The Claude app itself isn't
     /// Claude Code; the Claude Code it starts is.
     static func codeRuns(codeDir: String, table given: [Entry]?? = nil) -> Bool? {
         guard let all = given ?? settledTable() else { return nil }
@@ -226,7 +252,7 @@ enum Processes {
         let std = FolderKey.canonical(NSHomeDirectory() + "/.claude")
         var unknown = false
         for e in all where e.pid != me {
-            if e.hidden { unknown = true; continue }
+            if e.unknown { unknown = true; continue }
             guard e.uid == uid else { continue }
             switch isCode(name: e.name, exe: e.launch?.exe, args: e.launch?.args ?? [], configDir: e.launch?.configDir, want: want, std: std) {
             case true?: return true
@@ -239,9 +265,18 @@ enum Processes {
 
     /// One process: true when it is Claude Code for the folder `want`; nil when it may be Claude Code but couldn't be read (counted as
     /// running by the caller: nothing shared is written); false otherwise. The Claude app's own main program isn't Claude Code (its window
-    /// is checked apart); the Claude Code it carries, run from a terminal, is.
+    /// is checked apart); the Claude Code it carries, run from a terminal, is. `configDir` nil is the default folder's, so a process whose
+    /// environment wasn't read never comes here (codeRuns counts it as unknown first: `Entry.unknown`).
     static func isCode(name: String, exe: String?, args: [String], configDir: String?, want: String, std: String) -> Bool? {
         guard let exe else { return looksLikeClaude(name) ? nil : false }
+        guard codeProgram(exe: exe, args: args) else { return false }
+        let key = configDir.map { FolderKey.canonical(expand($0)) } ?? std
+        return key == want
+    }
+
+    /// Whether a program, as it was started, is Claude Code's: not the Claude app's own (its main program, its frameworks, a profile's
+    /// window copy), but `claude` by its executable or its first argument, the native installer's versions/, or the npm package.
+    static func codeProgram(exe: String, args: [String]) -> Bool {
         if exe.hasSuffix("/Claude.app/Contents/MacOS/Claude") || exe.contains("/Claude.app/Contents/Frameworks/") { return false }
         // a profile's own window copy (…/Claude-Work.app/Contents/MacOS/Claude): any app bundle's program that isn't Claude Code's own
         // claude.app is a window, not Claude Code
@@ -250,20 +285,17 @@ enum Processes {
             if bundle != "claude.app" { return false }
         }
         let leaf = (exe as NSString).lastPathComponent.lowercased()
-        let codeLike = leaf == "claude" || leaf == "claude.exe" || exe.contains("/claude-code/") || exe.contains("/claude/versions/")
+        return leaf == "claude" || leaf == "claude.exe" || exe.contains("/claude-code/") || exe.contains("/claude/versions/")
             || ((args.first ?? "") as NSString).lastPathComponent.lowercased() == "claude"
             || args.contains { $0.hasSuffix("/claude") || $0.contains("@anthropic-ai/claude-code") }
-        guard codeLike else { return false }
-        let key = configDir.map { FolderKey.canonical(expand($0)) } ?? std
-        return key == want
     }
 
     /// The command lines the kernel reads (each process's arguments joined by spaces, as `ps -o command` prints them): this user's
     /// and those of any user's process that looks like Claude Code. nil when the table can't be read or a process that may be
-    /// Claude Code can't be (`Entry.hidden`): a session it holds would look free. `given`: a table the caller read (the checks
-    /// pass their own); nil reads one now.
+    /// Claude Code can't be, or its environment can't be (`Entry.unknown`): a session it holds would look free. `given`: a table
+    /// the caller read (the checks pass their own); nil reads one now.
     static func commandLines(_ given: [Entry]?? = nil) -> [String]? {
-        guard let all = given ?? settledTable(), !all.contains(where: \.hidden) else { return nil }
+        guard let all = given ?? settledTable(), !all.contains(where: \.unknown) else { return nil }
         return all.compactMap { $0.launch.map { $0.args.joined(separator: " ") } }
     }
 

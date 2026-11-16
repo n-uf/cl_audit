@@ -372,6 +372,37 @@ do {
     let term = Processes.Entry(pid: 9006, uid: getuid(), ruid: getuid(), name: "claude", launch: Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: nil))
     check(Processes.codeRun(tab) == ClaudeRun(id: 9005, kind: .codeTab, folder: "/x/.claude-w") && Processes.codeRun(term) == ClaudeRun(id: 9006, kind: .terminal, folder: "~/.claude"),
           "new account: the app's claude is a Code tab's, a terminal's by name is a terminal's; the folder, or ~/.claude")
+    // a claude whose environment wasn't read: its folder is unknown, never the default folder's (fail closed)
+    let unread = Processes.Entry(pid: 9008, uid: getuid(), ruid: getuid(), name: "claude",
+                                 launch: Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude", "--resume", uuid(908)], configDir: nil, environmentRead: false))
+    let readDefault = Processes.Entry(pid: 9009, uid: getuid(), ruid: getuid(), name: "claude",
+                                      launch: Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: nil, environmentRead: true))
+    let unreadZsh = Processes.Entry(pid: 9010, uid: getuid(), ruid: getuid(), name: "zsh",
+                                    launch: Processes.Launch(exe: "/bin/zsh", args: ["-zsh"], configDir: nil, environmentRead: false))
+    let unreadApp = Processes.Entry(pid: 9011, uid: getuid(), ruid: getuid(), name: "Claude",
+                                    launch: Processes.Launch(exe: "/Applications/Claude.app/Contents/MacOS/Claude", args: ["/Applications/Claude.app/Contents/MacOS/Claude"], configDir: nil, environmentRead: false))
+    check(unread.unknown && !readDefault.unknown && !unreadZsh.unknown && !unreadApp.unknown && !mine.unknown && rootClaude.unknown,
+          "unknown: a Claude Code program whose environment wasn't read, or a hidden one; not another program, not the Claude app, not one read")
+    check(Processes.codeRuns(codeDir: "~/.claude", table: [unread]) == nil && Processes.codeRuns(codeDir: "~/.claude-p8", table: [unread]) == nil
+          && Processes.codeRuns(codeDir: "~/.claude", table: [readDefault, unread]) == true,
+          "codeRuns: an env-unread claude is can't tell for the default folder and another one; one read on the default folder still runs")
+    check(Processes.codeRuns(codeDir: "~/.claude", table: [readDefault]) == true && Processes.codeRuns(codeDir: "~/.claude-p8", table: [readDefault]) == false
+          && Processes.codeRuns(codeDir: "~/.claude-p8", table: [readDefault, unreadZsh, unreadApp]) == false,
+          "codeRuns: env read without CLAUDE_CONFIG_DIR stays the default folder's; another program or the Claude app unread changes nothing")
+    check(Processes.sessionsOwned(codeDir: "~/.claude-p8", table: [mine, unread]) == nil && Processes.sessionsOwned(codeDir: "~/.claude", table: [unread]) == nil
+          && Processes.commandLines([readDefault, unread]) == nil && Processes.sessionsOnCommandLines(table: [unread]) == nil
+          && Processes.commandLineNames(uuid(908), table: [unread]) == nil,
+          "sessionsOwned, the command lines, restore's running sessions, the switch's pgrep -f: nil when a claude's environment wasn't read")
+    check(Processes.sessionsOwned(codeDir: "~/.claude-p8", table: [mine, readDefault, unreadZsh])?.contains(uuid(906)) == true,
+          "sessionsOwned: unchanged with only env-read claudes (another program's unread environment doesn't matter)")
+    let unknownRun = Processes.codeRun(unread), hiddenRun = Processes.codeRun(rootClaude)
+    check(unknownRun == ClaudeRun(id: 9008, kind: .terminal, folder: ClaudeRun.unknownFolder) && hiddenRun.folder == ClaudeRun.unknownFolder
+          && Processes.codeRun(readDefault).folder == "~/.claude",
+          "claudeRuns: an env-unread or unreadable claude shows its folder as unknown, not ~/.claude; one read without CLAUDE_CONFIG_DIR is ~/.claude")
+    check(AccountRemoval.runsUsing(profile("rm-d", "~/.claude", nil), [unknownRun]) == [unknownRun]
+          && AccountRemoval.runsUsing(profile("rm-w", "~/.claude-p8", nil), [unknownRun]) == [unknownRun]
+          && AccountRemoval.runsUsing(profile("rm-w", "~/.claude-p8", nil), [Processes.codeRun(readDefault)]).isEmpty,
+          "removal: a claude whose folder is unknown keeps every profile's folders from being deleted; a default-folder one only the default's")
     // KERN_PROCARGS2 as the kernel lays it out: argc, the path, NULs to 8 bytes from the path's start, argv, the environment
     func procargs(_ exe: String, _ args: [String], _ env: [String]) -> [UInt8] {
         var raw = [UInt8](repeating: 0, count: 4)
@@ -389,16 +420,28 @@ do {
     check(Processes.parse(emptyFirst, size: emptyFirst.count) == nil && Processes.parse(spaceFirst, size: spaceFirst.count) == nil
           && Processes.parse(Array(raw.prefix(24)), size: 24) == nil,
           "an empty or space-led first argument, or arguments cut short: not read (so hidden, never taken for not Claude)")
+    // whether the environment was read: an entry after argv; none (the buffer ends, or NULs, or only the kernel's own strings) isn't
+    let argvOnly = procargs("/x/claude", ["claude", "-p"], [])
+    let argvEnd = Array(argvOnly.dropLast())                         // ends right after argv's last NUL
+    let argvApple = procargs("/x/claude", ["claude", "-p"], ["ptr_munge=", "main_stack=x", "executable_file=0x1,0x2"])
+    let noConfig = procargs("/x/claude", ["claude"], ["PATH=/usr/bin", "HOME=/h"])
+    check(Processes.parse(raw, size: raw.count)?.environmentRead == true,
+          "env read: argv then CLAUDE_CONFIG_DIR and A=1")
+    check(Processes.parse(argvOnly, size: argvOnly.count) == Processes.Launch(exe: "/x/claude", args: ["claude", "-p"], configDir: nil, environmentRead: false)
+          && Processes.parse(argvEnd, size: argvEnd.count) == Processes.Launch(exe: "/x/claude", args: ["claude", "-p"], configDir: nil, environmentRead: false)
+          && Processes.parse(argvApple, size: argvApple.count)?.environmentRead == false,
+          "env not read: argv then an empty entry, the buffer ending after argv, only the kernel's own strings after argv")
+    check(Processes.parse(noConfig, size: noConfig.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: true),
+          "env read without CLAUDE_CONFIG_DIR: read, no folder (the default folder's)")
     // the padding rule on real processes: stand-ins (copies of /bin/sleep, never Claude) started at path lengths 7, 8, 15 and
     // 16 ("./" and a name, in their folder), then one with an empty argv[0]; each read back, then killed by its pid
     let standDir = home + "/standin"
     try? fm.createDirectory(atPath: standDir, withIntermediateDirectories: true)
-    func spawn(_ path: String, _ argv: [String]) -> pid_t? {
+    func spawn(_ path: String, _ argv: [String], env standinEnv: [String] = ["CLAUDE_CONFIG_DIR=/x/standin", "A=1"]) -> pid_t? {
         var fa: posix_spawn_file_actions_t? = nil
         posix_spawn_file_actions_init(&fa)
         defer { posix_spawn_file_actions_destroy(&fa) }
         posix_spawn_file_actions_addchdir_np(&fa, standDir)
-        let standinEnv: [String] = ["CLAUDE_CONFIG_DIR=/x/standin", "A=1"]
         let cargv: [UnsafeMutablePointer<CChar>?] = argv.map { strdup($0) } + [nil]
         let cenv: [UnsafeMutablePointer<CChar>?] = standinEnv.map { strdup($0) } + [nil]
         defer { cargv.forEach { free($0) }; cenv.forEach { free($0) } }
@@ -406,11 +449,17 @@ do {
         return posix_spawn(&pid, path, &fa, nil, cargv, cenv) == 0 ? pid : nil
     }
     func end(_ pid: pid_t) { kill(pid, SIGKILL); var st: Int32 = 0; waitpid(pid, &st, 0) }
+    // a copy of /bin/sleep, signed ad hoc: macOS 27 kills a copied system program at its start (SIGKILL) while it keeps
+    // Apple's signature
+    func standin(_ name: String) {
+        try? fm.removeItem(atPath: standDir + "/" + name)
+        try? fm.copyItem(atPath: "/bin/sleep", toPath: standDir + "/" + name)
+        Processes.run("/usr/bin/codesign", ["-f", "-s", "-", standDir + "/" + name], timeout: 30, grace: 1)
+    }
     var standins: [String] = []
     for n in [5, 6, 13, 14] {
         let name = String(repeating: "s", count: n)
-        try? fm.removeItem(atPath: standDir + "/" + name)
-        try? fm.copyItem(atPath: "/bin/sleep", toPath: standDir + "/" + name)
+        standin(name)
         guard let pid = spawn("./" + name, ["standin", "30"]) else { standins.append("\(n + 2): not started"); continue }
         let got = Processes.launch(of: pid)
         end(pid)
@@ -422,6 +471,27 @@ do {
         end(pid)
         check(got == nil && entry?.hidden == true, "a stand-in with an empty argv[0]: not read, and hidden (\(String(describing: got)))")
     } else { check(false, "the stand-in with an empty argv[0] started") }
+    // a stand-in named `claude` (a copy of /bin/sleep, never Claude) on a throwaway folder: its environment is read, and its
+    // folder is that one; started with no environment at all, its folder is unknown, never the default one's
+    let standinCode = home + "/standin-code"
+    standin("claude")
+    if let pid = spawn("./claude", ["claude", "30"], env: ["CLAUDE_CONFIG_DIR=" + standinCode, "PATH=/usr/bin:/bin"]) {
+        let got = Processes.launch(of: pid), entry = Processes.table()?.first { $0.pid == pid }
+        end(pid)
+        check(got == Processes.Launch(exe: "./claude", args: ["claude", "30"], configDir: standinCode, environmentRead: true)
+              && entry?.unknown == false && entry.map { Processes.codeRuns(codeDir: standinCode, table: [$0]) } == true
+              && entry.map { Processes.codeRuns(codeDir: "~/.claude", table: [$0]) } == false,
+              "a started claude stand-in with CLAUDE_CONFIG_DIR: environment read, that folder, it runs there and not on ~/.claude (\(String(describing: got)))")
+    } else { check(false, "the claude stand-in started") }
+    if let pid = spawn("./claude", ["claude", "30"], env: []) {
+        let got = Processes.launch(of: pid), entry = Processes.table()?.first { $0.pid == pid }
+        end(pid)
+        check(got == Processes.Launch(exe: "./claude", args: ["claude", "30"], configDir: nil, environmentRead: false)
+              && entry?.unknown == true && entry.map { Processes.codeRuns(codeDir: "~/.claude", table: [$0]) } == .some(nil)
+              && entry.map { Processes.codeRuns(codeDir: standinCode, table: [$0]) } == .some(nil)
+              && entry.map { Processes.codeRun($0).folder } == ClaudeRun.unknownFolder,
+              "a started claude stand-in with no environment: not read, unknown, can't tell for ~/.claude and its folder (\(String(describing: got)))")
+    } else { check(false, "the claude stand-in with no environment started") }
     // this Mac's own table reads (it is only read, never signalled): "can't tell" mustn't be the answer every time (a process
     // caught mid-start may be hidden for a moment: up to 3 reads)
     var real = Processes.table()
