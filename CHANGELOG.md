@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.53 — 2026-11-15
+
 - Making the default profile now opens the usual Claude window again when the move is done, if the move closed it; the old profile's own window stays closed, since its sessions now live in the usual window. If the move stops before anything is moved, each window it closed opens again. Before, both windows stayed closed. A restore, an import's folder pick and the default-profile move now close and reopen windows the way a switch does: a window that took longer than 45 seconds to answer and then closed counts as closed for the next try, so it opens again when that try ends.
 
 ## 26.11.52 — 2026-11-15
