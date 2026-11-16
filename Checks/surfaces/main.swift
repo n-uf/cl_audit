@@ -2208,6 +2208,14 @@ do {
     let noSeatRec = QuickChatTarget(e, now: now)
     check(noSeatRec.account?.account == nil && noSeatRec.account?.organization == nil && qkey(noSeatRec).keeps(qkey(base)),
           "a record with no seat (its address only): matched by the address, any case: the process kept")
+    // a record from before codeOrganization (the gap before the agent's first write after an update): the organisation
+    // isn't known there, so it is left out of the comparison: the same key, no restart, and no "switched to" the same account
+    var noOrg = rec(); noOrg.resolved?.codeOrganization = nil
+    _ = Store.writeStatus(e.id, noOrg)
+    let oldRec = QuickChatTarget(e, now: now)
+    check(oldRec.account?.organization == nil && qkey(oldRec).keeps(qkey(base)) && qkey(base).keeps(qkey(oldRec))
+          && QuickChatTarget.sameAccount(oldRec.account, base.account),
+          "a record with no organisation for the folder's account: the same seat as with it, the process kept")
     let team = Seat(account: u1.account, organization: uuid(301), email: u1.email)
     _ = Store.writeStatus(e.id, rec(code: team))
     let teamChat = QuickChatTarget(e, now: now)
@@ -2229,17 +2237,29 @@ do {
         m.handle(.message(text: "You've hit your limit", model: "claude-haiku-5-5", error: "rate_limit"))
         m.handle(.done(isError: true, text: "You've hit your limit", ms: 5, session: "s"))
     }
-    func bubble(_ m: QuickChatModel) -> String { QCProblemView(problem: .limitFull, model: m, answered: true).title }
+    // the last turn's bubble, as QCTurnView draws it (its problem as the turn keeps it)
+    func bubbleView(_ m: QuickChatModel) -> QCProblemView {
+        QCProblemView(problem: m.turns.last?.problem ?? .noProfile, model: m, answered: true)
+    }
+    func bubble(_ m: QuickChatModel) -> String { bubbleView(m).title }
     _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
     let inClash = chat(QuickChatTarget(e, now: now), level: QuickChatLevel(nil))
     inClash.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
     check(inClash.inClash && inClash.level?.full() == nil && !inClash.blocked, "a clash: Other's limit event marks nothing full, typing stays free")
     refuse(inClash)
     inClash.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(nil), offer: { nil })
-    let clashBubble = bubble(inClash)
-    check(inClash.turns.last?.problem == .limitFull && inClash.level?.full() == nil && !inClash.blocked && inClash.offer == nil && filled == 0
+    let clashBubble = bubble(inClash), clashMore = bubbleView(inClash).more
+    check(inClash.turns.last?.problem == .limitFull(other: .clash(name: "Other")) && inClash.level?.full() == nil && !inClash.blocked
+          && inClash.offer == nil && filled == 0
           && clashBubble == QCProblemView.otherLimitTitle && !clashBubble.contains("This account") && !clashBubble.contains("@"),
           "a clash: Other's refusal is said, but nothing full, no hold, no offer, no look for one; the bubble names no account as full: \(clashBubble)")
+    check(clashMore.contains("Other's account") && clashMore.contains("move it back") && !clashMore.contains("@"),
+          "a clash: the bubble's next words name whose account (Other's, no address) and the way out: \(clashMore)")
+    // the folder moves back to u1 afterwards: the old bubble keeps its words (it never calls u1 full)
+    _ = Store.writeStatus(e.id, rec())
+    inClash.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
+    check(!inClash.inClash && bubble(inClash) == clashBubble && bubbleView(inClash).more == clashMore,
+          "moved back to u1 after a clash's refusal: the old bubble's words are unchanged: \(bubble(inClash))")
     _ = Store.writeStatus(e.id, rec())
     let ownLevel = QuickChatLevel(Usage.of(Store.status(for: e, now: now)))
     let outside = chat(QuickChatTarget(e, now: now), level: ownLevel)
@@ -2254,7 +2274,8 @@ do {
     _ = Store.writeStatus(e.id, appRec(appU2, code: u1))
     let inSplit = chat(QuickChatTarget(win, now: now), level: QuickChatLevel(nil))
     refuse(inSplit)
-    check(inSplit.inSplit && !inSplit.blocked && filled == 1 && bubble(inSplit) == QCProblemView.otherLimitTitle,
+    check(inSplit.inSplit && !inSplit.blocked && filled == 1 && bubble(inSplit) == QCProblemView.otherLimitTitle
+          && inSplit.turns.last?.problem == .limitFull(other: .split),
           "the split: the refusal holds nothing, and the bubble names no account as full: \(bubble(inSplit))")
 
     // Switch account… with a question waiting: a folder signed out on the way (no id: its address kept, or none) hasn't
@@ -2284,6 +2305,11 @@ do {
     move(w1, rec(week: 10, login: u2.email, code: u2))
     check(w1.turns.map(\.question) == ["what's typed"] && asked1() == 1 && w1.note == "Card switched to \(AccountNames.short(u2.email!)). Sending what you typed.",
           "on another seat (u2): what was typed goes, the note names u2 as the header does: \(w1.note ?? "none")")
+    // the same seat in a record with no organisation (from before codeOrganization): not a move, nothing goes
+    let (w3, asked3) = typedThenSwitch(fullWeek)
+    var sameNoOrg = rec(week: 10); sameNoOrg.resolved?.codeOrganization = nil
+    move(w3, sameNoOrg)
+    check(w3.turns.isEmpty && w3.note == nil && asked3() == 0, "the same seat, its organisation not recorded: no \"switched to\" the same account: \(w3.note ?? "none")")
     let (w2, asked2) = typedThenSwitch(fullWeek)
     move(w2, rec(week: nil, five: nil, login: u3.email, code: u3))
     check(asked2() == 1 && w2.note?.contains(AccountNames.short(u1.email!)) == true && w2.note?.contains(AccountNames.short(u3.email!)) == false,
