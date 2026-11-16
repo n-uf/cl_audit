@@ -445,13 +445,19 @@ do {
           "env not read: argv then an empty entry, the buffer ending after argv, only the kernel's own strings after argv")
     check(Processes.parse(noConfig, size: noConfig.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: true),
           "env read without CLAUDE_CONFIG_DIR: read, no folder (the default folder's)")
-    // the first kernel string ends the environment, with no empty entry in between: nothing after it is read as one
+    // the first kernel string ends what counts as read, with no empty entry in between: nothing after it makes the environment read
     let appleThenNew = procargs("/x/claude", ["claude"], ["executable_path=/x/claude", "subsystem_root_path=/s", "CLAUDE_CONFIG_DIR=/c"])
     let envThenApple = procargs("/x/claude", ["claude"], ["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/c", "ptr_munge=", "main_stack=x", "some_new_key=1"])
-    check(Processes.parse(appleThenNew, size: appleThenNew.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: false),
-          "env not read: argv, a listed kernel string, then an unlisted one (and a CLAUDE_CONFIG_DIR after them, not taken)")
+    let parsedAppleThenNew = Processes.parse(appleThenNew, size: appleThenNew.count)
+    check(parsedAppleThenNew?.environmentRead == false
+          && parsedAppleThenNew.map { Processes.Entry(pid: 9012, uid: getuid(), ruid: getuid(), name: "claude", launch: $0).unknown } == true,
+          "env not read: argv, a listed kernel string, then an unlisted one (a CLAUDE_CONFIG_DIR among them doesn't make it read): unknown")
     check(Processes.parse(envThenApple, size: envThenApple.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: "/c", environmentRead: true),
           "env read: argv, the environment, then the kernel's strings with no empty entry between")
+    // a variable named like a kernel key before CLAUDE_CONFIG_DIR doesn't hide the folder (else the default folder's: fail open)
+    let kernelNamedVar = procargs("/x/claude", ["claude"], ["PATH=/usr/bin", "pfz=1", "CLAUDE_CONFIG_DIR=/x"])
+    check(Processes.parse(kernelNamedVar, size: kernelNamedVar.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: "/x", environmentRead: true),
+          "env read: PATH=…, pfz=1, CLAUDE_CONFIG_DIR=/x keeps the folder /x")
     // the padding rule on real processes: stand-ins (copies of /bin/sleep, never Claude) started at path lengths 7, 8, 15 and
     // 16 ("./" and a name, in their folder), then one with an empty argv[0]; each read back, then killed by its pid
     let standDir = home + "/standin"
