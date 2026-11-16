@@ -125,13 +125,15 @@ final class RestoreRunner: ObservableObject {
     /// Close and import: the preview is counted again (the backup was just moved into place) and the restore starts at once.
     private var autoStart = false
     private var timer: Timer?
-    private var reopenTimer: Timer?
     private let stopLock = NSLock()
     private var stopFlag = false
-    private var closedByUs = false
-    /// This runner put its own mark on the window (SwitchMarker): only then does it take it off. A mark that is a switch's
-    /// (the same process runs both) is never ours to release.
-    private var claimedByUs = false
+    /// This runner's hold on the window (ClaudeWindow.swift): its own mark (a switch's, which the same process may hold, is never
+    /// let go here), its close, and reopening what it closed.
+    private var hold: WindowHold?
+    /// The last try asked the window to quit and it didn't close in time: if it closed by its own answer since, it was closed for this.
+    private var quitAsked = false
+    /// The default-profile move closed the usual window for this restore (windowClosedForThis): it opens again when the restore ends.
+    private var closedFor = false
     /// The window is being closed for an Undo this restore (not for a restore): Cancel then goes back to where it was.
     @Published private(set) var undoing = false
     /// Claude Code's setup that is missing here: added or left out (the preview's choice; left out unless asked).
@@ -179,17 +181,20 @@ final class RestoreRunner: ObservableObject {
     /// This runner's own name on the window's mark ("restore-<8 characters>"): two restore pages of one profile never share
     /// a mark, and the engine lets through only the mark of the runner that asks.
     let markName = "restore-" + UUID().uuidString.prefix(8).lowercased()
-    private func releaseWindow() {
-        if claimedByUs, let w = window { SwitchMarker.release(w, profile: key.profile, standby: markName) }
-        claimedByUs = false
-    }
+    private func releaseWindow() { hold?.release() }
 
-    /// The mark on the window for this runner; false when another switch or restore holds it.
-    private func claimWindow(_ w: String) -> Bool {
-        guard SwitchMarker.claim(w, profile: key.profile, standby: markName) else { return false }
-        claimedByUs = true
+    /// A new hold on the window for this runner, marked; false when another switch or restore holds it.
+    private func claimWindow(_ e: AccountEntry) -> Bool {
+        hold?.stopWatching()
+        let h = WindowHold(e, profile: key.profile, run: markName)
+        guard h.claim() else { return false }
+        hold = h
         return true
     }
+
+    /// The default-profile move closed the usual window before this restore (DefaultProfileRunner): the restore keeps it closed
+    /// and opens it again when it ends, as if it had closed it itself. Before start().
+    func windowClosedForThis() { closedFor = true }
 
     /// Between Close and restore and the end: the window is closed or being written to.
     var isRunning: Bool {
@@ -283,45 +288,37 @@ final class RestoreRunner: ObservableObject {
     func start() {
         let resuming: Bool = { if case .stopped = phase { return true }; return false }()
         // a stopped restore with nothing left to write can still be finished (it is only marked so)
-        guard phase == .ready || resuming, let e = entry, let p = plan, p.refusal == nil, p.count > 0 || resuming, notYet == nil, let w = window else { return }
+        guard phase == .ready || resuming, let e = entry, let p = plan, p.refusal == nil, p.count > 0 || resuming, notYet == nil else { return }
         note = nil; keepFailed = nil
         stopLock.lock(); stopFlag = false; stopLock.unlock()
         progress = (receipt?.back ?? 0, (receipt?.back ?? 0) + p.count)
-        reopenTimer?.invalidate(); reopenTimer = nil
+        hold?.stopWatching()
+        let closedFor = self.closedFor
+        self.closedFor = false
         // (a picked folder rewrites the session's Code-tab entry, and a move's history and trust are shared files: the window closes for
-        // those too, when it has one)
-        guard closesWindow else { write(); return }
+        // those too, when it has one; a window the default-profile move closed for this stays closed until it ends)
+        guard closesWindow || closedFor else { hold = nil; write(); return }
         // the window stays closed from here until the restore ends; one at a time
-        guard claimWindow(w) else {
+        guard claimWindow(e) else {
             note = "Another switch or restore of this Claude window is under way."; return
         }
-        let apps = SwitchRunner.windowApps(e)
-        if apps.isEmpty { write(); return }
-        closeWindow(apps, then: { [weak self] in self?.write() }, giveUp: { [weak self] in
+        closeWindow(askedBefore: closedFor, then: { [weak self] in self?.write() }, giveUp: { [weak self] in
             guard let self else { return }
             self.phase = self.receipt?.unfinished == true ? .stopped("The window didn't close; nothing more was written.") : .ready
             self.note = "The window didn't close; it may be asking about work under way. Answer it, then try again. Nothing was written."
         })
     }
 
-    /// The profile's window is asked to quit (only that one; it may ask about work under way) and watched for 45 seconds;
-    /// `then` runs once it is closed, `giveUp` (after the mark is let go) when it isn't.
-    private func closeWindow(_ apps: [NSRunningApplication], then go: @escaping () -> Void, giveUp: @escaping () -> Void) {
-        closedByUs = true
-        phase = .closing
-        apps.forEach { $0.terminate() }
-        let started = Date()
-        tick(every: 0.5) { [weak self] in
-            guard let self, let e = self.entry else { return true }
-            if SwitchRunner.windowClosed(e) { go(); return true }
-            if Date().timeIntervalSince(started) > 45 {
-                self.releaseWindow()
-                self.closedByUs = false
-                giveUp()
-                return true
-            }
-            return false
-        }
+    /// The profile's window is asked to quit (only that one; it may ask about work under way) and watched for 45 seconds
+    /// (WindowHold); `then` runs once it is closed (at once when it already is: `prepare` and the closing step only when it isn't),
+    /// `giveUp` (after the mark is let go) when it isn't.
+    private func closeWindow(askedBefore: Bool = false, prepare: () -> Void = {}, then go: @escaping () -> Void, giveUp: @escaping () -> Void) {
+        guard let h = hold else { return }
+        if !h.isClosed { prepare(); phase = .closing }
+        h.close(askedBefore: askedBefore || quitAsked, closed: { [weak self] in self?.quitAsked = false; go() }, stalled: { [weak self] in
+            self?.quitAsked = true
+            giveUp()
+        })
     }
 
     private func write() {
@@ -329,10 +326,11 @@ final class RestoreRunner: ObservableObject {
         let target = SessionsRestore.Target(e), b = backup, resume = resumeID, mark = markName, memory = key.addMemory, setup = addSetup, config = addConfig, tasks = addTasks
         let picked = picks.sorted { $0.key < $1.key }.map { SessionsRepoint.Pick(session: $0.key, folder: $0.value) }
         let sideKinds = sidePlan == nil ? SideFiles.Kinds.nothing : self.sideKinds
+        let a = Account(e)
         phase = .writing
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result {
-                try SessionsRestore.run(target, b, continuing: resume, addMemory: memory, addSetup: setup, addConfig: config, addTasks: tasks, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) },
+                try SessionsRestore.run(target, b, continuing: resume, addMemory: memory, addSetup: setup, addConfig: config, addTasks: tasks, mark: mark, windowClosed: { !ClaudeWindow.isOpen(a) },
                                         stop: { self?.stopRequested ?? true },
                                         progress: { d, t in DispatchQueue.main.async { self?.progress = (d, t) } },
                                         receiptWritten: { id in self?.onReceipt?(id) })
@@ -341,14 +339,14 @@ final class RestoreRunner: ObservableObject {
             // Undo this import takes it back first)
             var moved: Result<SessionsRepoint.Receipt, Error>?
             if case .success(let r) = result, r.finished != nil, !picked.isEmpty {
-                moved = Result { try SessionsRepoint.apply(target, picks: picked, restore: r.id, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) }) }
+                moved = Result { try SessionsRepoint.apply(target, picks: picked, restore: r.id, mark: mark, windowClosed: { !ClaudeWindow.isOpen(a) }) }
             }
             // a move's side files, last: by the folder each session resolves to here (the one just picked, or its own when it is here)
             var sided: Result<SideFiles.Receipt?, Error>?
             if case .success(let r) = result, r.finished != nil, sideKinds != .nothing {
                 var folders: [String: SideFiles.Folder] = [:]
                 if case .success(let m)? = moved { for d in m.sessions where !d.undone { folders[d.session] = (d.from, d.to) } }
-                sided = Result { try SideFiles.apply(target, b, kinds: sideKinds, restore: r.id, folders: folders, windowClosed: { SwitchRunner.windowClosed(e) }) }
+                sided = Result { try SideFiles.apply(target, b, kinds: sideKinds, restore: r.id, folders: folders, windowClosed: { !ClaudeWindow.isOpen(a) }) }
             }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
@@ -370,9 +368,7 @@ final class RestoreRunner: ObservableObject {
                     // stopped part way: the receipt is there for Finish and Undo; nothing written: back to the preview
                     let unfinished = SessionsRestore.unfinished(profile: self.key.profile).first
                     self.receipt = unfinished
-                    self.releaseWindow()
-                    if self.closedByUs, let e = self.entry, e.claudeWindow { Launcher.openClaude(Account(e)) }
-                    self.closedByUs = false
+                    self.hold?.finish()
                     if let u = unfinished { self.phase = .stopped(u.stopped ?? "\(err)"); self.refresh() }       // what is still missing
                     else { self.phase = .failed("\(err)") }
                     self.note = "\(err)"
@@ -387,11 +383,10 @@ final class RestoreRunner: ObservableObject {
     func stop() { stopLock.lock(); stopFlag = true; stopLock.unlock() }
 
     private func finish(_ r: SessionsRestore.Receipt) {
-        releaseWindow()
-        guard let e = entry else { phase = .done; return }
+        guard let e = entry else { hold?.finish(); phase = .done; return }
         let arranges = r.sidebar != nil && e.claudeWindow
-        if closedByUs || arranges, e.claudeWindow { Launcher.openClaude(Account(e)) }
-        closedByUs = false
+        // the window opens again when this closed it; for the sidebar step it opens either way
+        if arranges { releaseWindow(); hold = nil; ClaudeWindow.open(Account(e)) } else { hold?.finish() }
         guard arranges else { phase = .done; return }
         phase = .sidebar
         // a moment for the window to settle before the link reaches it
@@ -405,27 +400,16 @@ final class RestoreRunner: ObservableObject {
     func cancel() {
         timer?.invalidate()
         guard phase == .closing else { return }
-        releaseWindow()
-        closedByUs = false
         if undoing { undoing = false; phase = priorPhase } else {
             phase = receipt?.unfinished == true ? .stopped(receipt?.stopped ?? "Stopped.") : .ready
         }
-        guard let e = entry, e.claudeWindow else { return }
-        note = "Cancelled. The window was already asked to quit: if it closes, cl_audit opens it again."
-        let since = Date()
-        reopenTimer?.invalidate()
-        reopenTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] t in
-            let over: Bool = {
-                guard let self, let e = self.entry, !self.isBusy else { return true }       // a new run (or undo) under way ends the watch
-                if SwitchRunner.windowClosed(e) { Launcher.openClaude(Account(e)); return true }
-                return Date().timeIntervalSince(since) > 60
-            }()
-            guard over else { return }
-            t.invalidate()
-            if self?.reopenTimer === t { self?.reopenTimer = nil }
-            if self?.note?.hasPrefix("Cancelled. The window was already asked") == true { self?.note = nil }
-        }
+        // the window was already asked to quit: if it closes within a minute it opens again (a new run or undo ends the watch)
+        let watching = hold?.cancelClosing(busy: { [weak self] in self?.isBusy ?? true }, watched: { [weak self] in
+            if self?.note == Self.cancelledNote { self?.note = nil }
+        }) ?? false
+        if watching { note = Self.cancelledNote }
     }
+    static let cancelledNote = "Cancelled. The window was already asked to quit: if it closes, cl_audit opens it again."
 
     // MARK: Undo this restore
 
@@ -433,19 +417,18 @@ final class RestoreRunner: ObservableObject {
     /// closes first (only that one, the same quit and the same Cancel as a restore's step 1), and the same rules as a
     /// restore apply (a switch that stopped half way, another switch or restore holding the window, the locks).
     func undo() {
-        guard phase != .closing, phase != .writing, phase != .undoing, let r = receipt, r.undone == nil, let e = entry, let w = window else { return }
+        guard phase != .closing, phase != .writing, phase != .undoing, let r = receipt, r.undone == nil, let e = entry else { return }
         note = nil
         if let why = DefaultProfile.undoRefusal(receipt: r.id) { note = why; return }
         if let why = Flows.blocker(profile: key.profile, except: r.id, for: .restoring) { note = why; return }
         // (a re-point after the import changed Code-tab entries: its Undo, which runs first, needs the window closed too)
         // (and a move's history and trust, shared files, are taken back only while it is closed)
-        guard r.windowTouched || SessionsRepoint.touchesWindow(restore: r.id) || SideFiles.touchesShared(restore: r.id) else { runUndo(r.id); return }
+        guard r.windowTouched || SessionsRepoint.touchesWindow(restore: r.id) || SideFiles.touchesShared(restore: r.id) else {
+            hold?.stopWatching(); hold = nil; runUndo(r.id); return
+        }
         if let why = SessionsRestore.markerBlocker(profile: key.profile, dataDir: SessionsRestore.Target(e).dataDir, own: markName) { note = why; return }
-        guard claimWindow(w) else { note = "Another switch or restore of this Claude window is under way."; return }
-        let apps = SwitchRunner.windowApps(e)
-        if apps.isEmpty { runUndo(r.id); return }
-        priorPhase = returnPhase(phase); undoing = true
-        closeWindow(apps, then: { [weak self] in self?.runUndo(r.id) }, giveUp: { [weak self] in
+        guard claimWindow(e) else { note = "Another switch or restore of this Claude window is under way."; return }
+        closeWindow(prepare: { priorPhase = returnPhase(phase); undoing = true }, then: { [weak self] in self?.runUndo(r.id) }, giveUp: { [weak self] in
             guard let self else { return }
             self.undoing = false; self.phase = self.priorPhase
             self.note = "The window didn't close; it may be asking about work under way. Answer it, then try again. Nothing was taken back."
@@ -457,14 +440,12 @@ final class RestoreRunner: ObservableObject {
         if !undoing { priorPhase = returnPhase(phase) }
         undoing = false
         phase = .undoing
-        let mark = markName
+        let mark = markName, a = Account(e)
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            let result = Result { try SessionsRestore.undo(id, mark: mark, windowClosed: { SwitchRunner.windowClosed(e) }) }
+            let result = Result { try SessionsRestore.undo(id, mark: mark, windowClosed: { !ClaudeWindow.isOpen(a) }) }
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
-                self.releaseWindow()
-                if self.closedByUs, let e = self.entry, e.claudeWindow { Launcher.openClaude(Account(e)) }
-                self.closedByUs = false
+                self.hold?.finish()
                 switch result {
                 case .success(let u):
                     self.receipt = u
@@ -512,11 +493,11 @@ final class RestoreRunner: ObservableObject {
         guard let plan = sidebarPlan, let e = entry, let url = plan.link(folder: SidebarPlan.helperFolder) else { return }
         sidebarOpened = true; sidebarMissed = false; sidebarLinkSent = false
         note = nil
-        Launcher.openClaude(Account(e))
+        ClaudeWindow.open(Account(e))
         let started = Date()
         tick(every: 1) { [weak self] in
             guard let self, let e = self.entry else { return true }
-            guard let pid = SwitchRunner.windowApps(e).first?.processIdentifier else {
+            guard let pid = ClaudeWindow.instances(Account(e)).first?.pid else {
                 if Date().timeIntervalSince(started) < 20 { return false }
                 self.sidebarOpened = false
                 self.note = "The window didn't open. Open it, then Open the session."
@@ -534,7 +515,7 @@ final class RestoreRunner: ObservableObject {
 
     private func linkSent(_ outcome: WindowLink.Outcome, url: URL, alone: Bool, pid: pid_t, name: String) {
         let stillAlone: Bool = {
-            guard alone, let e = entry, SwitchRunner.windowApps(e).contains(where: { $0.processIdentifier == pid }) else { return false }
+            guard alone, let e = entry, ClaudeWindow.instances(Account(e)).contains(where: { $0.pid == pid }) else { return false }
             return Processes.claudeApps().allSatisfy { $0.isTerminated || $0.processIdentifier == pid }
         }()
         switch outcome {
@@ -543,7 +524,7 @@ final class RestoreRunner: ObservableObject {
         case .notAllowed where stillAlone:
             NSWorkspace.shared.open(url)
             sidebarLinkSent = true
-        case _ where entry.map({ SwitchRunner.windowApps($0).contains { $0.processIdentifier == pid } }) != true:
+        case _ where entry.map({ ClaudeWindow.instances(Account($0)).contains { $0.pid == pid } }) != true:
             sidebarOpened = false; sidebarMissed = true
             note = "\(name)'s window quit before the link reached it. Open the window, then Open the session."
         case .notAllowed:
