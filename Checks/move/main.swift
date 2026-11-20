@@ -139,13 +139,20 @@ if role == "b" {
         check(fm.fileExists(atPath: expand("~/.claude-work/projects/-w-project/\(sid(110)).jsonl")) && !fm.fileExists(atPath: expand("~/.claude-work/CLAUDE.md"))
               && !fm.fileExists(atPath: expand("~/.claude-work/settings.json")) && !fm.fileExists(atPath: expand("~/Library/Application Support/Claude-work/claude_desktop_config.json")),
               "B: the transcripts are in; setup (CLAUDE.md, settings.json) and the MCP settings are not (left out by default)")
+        check(fm.fileExists(atPath: expand("~/.claude-work/projects/-w-oauth-proxy/\(sid(113)).jsonl"))
+              && read(expand("~/.claude-work/projects/-w-oauth-proxy/\(sid(113))/tool-results/credentials-check/out.txt")) == "a tool's output, made up\n",
+              "B: a project whose folder is named like a sign-in (oauth-proxy), and a tool result's folder named like one, came in (folders are not sign-ins)")
         let archivedHere = expand("~/.claude-work/projects/-w-project/\(sid(110))/archived.json")
         check(read(archivedHere) == archivedRecord && read(expand("~/.claude-work/projects/-w-project/connector-downloads/notes/brief.txt")) == connectorFile,
               "B: the archived session stays archived (its archived.json came with it, byte for byte), and the project's connector downloads came too")
         // (the session was unarchived here since: a second import never writes over that)
         write(archivedHere, #"{"archived":false,"at":"2026-11-19T10:00:00.000Z","by":"user"}"#)
-        // no sign-in anywhere, nothing of the Keychain, no Dock
-        let signIns = everything(home).filter { let n = ($0 as NSString).lastPathComponent.lowercased(); return n.hasPrefix(".claude.json") || n.contains("credential") }
+        // no sign-in anywhere, nothing of the Keychain, no Dock (a sign-in is a file: a folder named like one, a project's or a tool's, isn't)
+        let signIns = everything(home).filter {
+            let n = ($0 as NSString).lastPathComponent.lowercased()
+            var isDir: ObjCBool = false
+            return (n.hasPrefix(".claude.json") || n.contains("credential")) && !(fm.fileExists(atPath: home + "/" + $0, isDirectory: &isDir) && isDir.boolValue)
+        }
         // (the staged backup in cl_audit's own folder keeps the image's settings.json whole, as every import's does: that is how it can be
         // added later; nothing outside that folder holds its env value)
         check(signIns.isEmpty && securityCalls == 0 && dockCalls == 0 && holds(home, settingsEnvValue).filter { !$0.hasPrefix("Library/Application Support/usage-n-uf/") }.isEmpty,
@@ -258,6 +265,9 @@ MainActor.assumeIsolated {
     write("\(wc)/projects/-w-project/\(sid(110)).jsonl", #"{"type":"user","cwd":"/w/project","text":"hello \#(a1)"}"# + "\n")
     write("\(wc)/projects/-w-project/\(sid(111)).jsonl", #"{"type":"user","cwd":"/w/project","text":"standby"}"# + "\n")
     write("\(hc)/projects/-w-home/\(sid(112)).jsonl", #"{"type":"user","cwd":"/w/home","text":"home"}"# + "\n")
+    // a project whose folder is named like a sign-in (a repo called oauth-proxy), with a tool result in a folder named like one too
+    write("\(wc)/projects/-w-oauth-proxy/\(sid(113)).jsonl", #"{"type":"user","cwd":"/w/oauth-proxy","text":"oauth"}"# + "\n")
+    write("\(wc)/projects/-w-oauth-proxy/\(sid(113))/tool-results/credentials-check/out.txt", "a tool's output, made up\n")
     // Claude Code 2.1.326's own archive record in the session's folder, and what a connector fetched for the project
     write("\(wc)/projects/-w-project/\(sid(110))/archived.json", archivedRecord)
     write("\(wc)/projects/-w-project/connector-downloads/notes/brief.txt", connectorFile)
@@ -528,6 +538,19 @@ MainActor.assumeIsolated {
         ex.profiles = ExportManifest.AppFile(path: "cl_audit.json", bytes: Int64(d.count), sha: SwitchEngine.sha(d))
     }
     check(doctored("m-ok") { _, _, _ in } == "OPENED", "(an untouched copy of the move file opens)")
+    // the sign-in rule under transcripts/ is the files' rule: a FILE named like a sign-in still refuses the whole file, also inside a
+    // folder named like one; and outside transcripts/ a folder named like one still does too
+    func put(_ root: URL, _ rel: String) throws {
+        let u = root.appendingPathComponent(rel)
+        try fm.createDirectory(at: u.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("{}".utf8).write(to: u)
+    }
+    let signInFile = doctored("m-signin-file") { root, _, _ in try put(root, "profiles/p1/transcripts/-w-project/credentials.json") }
+    check(signInFile.contains("named like a sign-in"), "hostile: a transcript-side FILE named like a sign-in still refuses the whole file: \(signInFile.prefix(90))")
+    let signInInFolder = doctored("m-signin-in-folder") { root, _, _ in try put(root, "profiles/p1/transcripts/-w-oauth-proxy/\(sid(113))/tool-results/credentials-check/oauth-token.json") }
+    check(signInInFolder.contains("named like a sign-in"), "hostile: …and inside a folder named like one: \(signInInFolder.prefix(90))")
+    let signInFolderWindow = doctored("m-signin-folder-window") { root, _, _ in try put(root, "profiles/p1/window/\(sid(1))/\(sid(2))/oauth/w.json") }
+    check(signInFolderWindow.contains("named like a sign-in"), "hostile: a folder named like a sign-in outside transcripts/ (the window's) still refuses: \(signInFolderWindow.prefix(90))")
     let zipMove = doctored("m-zip", zip: true) { root, _, _ in try? fm.removeItem(at: root.appendingPathComponent("cl_audit.json")) }
     check(zipMove.contains("never a zip") || zipMove.contains("only ever in an encrypted disk image"), "hostile: a zip that claims to be a move is refused before anything is unpacked: \(zipMove.prefix(90))")
     let notJSON = doctored("m-profiles-not-json") { root, ex, _ in try setProfiles(root, &ex, Data("not json".utf8)) }
