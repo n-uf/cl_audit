@@ -706,24 +706,71 @@ enum SessionsBackup {
         try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     }
 
-    /// The MCP servers a config names, by name, with what each runs: its `command` and how many arguments it gets (never the arguments,
-    /// env values or headers, which can hold tokens), or "a remote server" for one reached by URL (the URL can hold a token too).
-    static func mcpServers(_ d: Data) -> [(name: String, runs: String)] {
+    /// One MCP server as the Import and Restore pages list it: what "Add them" is asking the person to trust.
+    struct MCPServer: Equatable {
+        var name: String
+        var runs: String                    // its command line, one line, cut to `runsWidth` (… at the end); or "a remote server (…)"
+        var full: String = ""               // the whole command line, one line (the line's tooltip)
+        var env: [String] = []              // the names of the environment variables it sets, sorted: never a value
+        var flags: [String] = []            // why it needs a look first: a shell or interpreter, a loader or preload variable
+    }
+    static let runsWidth = 120
+
+    /// Programs that run whatever their arguments say (a shell, an interpreter, a launcher): a server that is one is flagged.
+    static let interpreters: Set<String> = ["sh", "bash", "zsh", "dash", "ksh", "mksh", "fish", "csh", "tcsh", "env", "xargs", "nohup", "sudo",
+                                            "exec", "eval", "open", "osascript", "node", "nodejs", "deno", "bun", "ruby", "irb", "perl", "php",
+                                            "lua", "tclsh", "wish", "pwsh", "powershell", "Rscript", "java", "swift", "python", "pythonw"]
+    static func isInterpreter(_ program: String) -> Bool {
+        let base = (program as NSString).lastPathComponent
+        return interpreters.contains(base) || base.hasPrefix("python") || base.hasPrefix("ruby") || base.hasPrefix("perl") || base.hasPrefix("node")
+    }
+    /// Environment variables that change what a program loads or runs before its own code: a server that sets one is flagged.
+    static func isLoaderVariable(_ name: String) -> Bool {
+        name.hasPrefix("DYLD_") || name.hasPrefix("LD_") || ["NODE_OPTIONS", "NODE_PATH", "ELECTRON_RUN_AS_NODE", "PYTHONPATH", "PYTHONSTARTUP",
+            "PYTHONHOME", "PYTHONINSPECT", "PYTHONUSERBASE", "PERL5LIB", "PERL5OPT", "PERLLIB", "RUBYOPT", "RUBYLIB", "BASH_ENV", "ENV", "ZDOTDIR",
+            "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "GEM_PATH", "GEM_HOME"].contains(name)
+    }
+
+    /// The MCP servers a config names, by name, with what each runs: its whole command line (the command and its arguments; a
+    /// NAME=value word shows as NAME=… and an argument the key scan recognises as ‹a key›), the names of the environment variables it
+    /// sets (never a value), and a flag for a shell or interpreter or a loader variable; or "a remote server" for one reached by URL
+    /// (the URL and headers can hold a token).
+    static func mcpServers(_ d: Data) -> [MCPServer] {
         guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], let s = j["mcpServers"] as? [String: Any] else { return [] }
+        /// NAME=value: an environment assignment (its value never shown).
+        func assignment(_ w: String) -> String? {
+            guard let eq = w.firstIndex(of: "="), eq != w.startIndex else { return nil }
+            let n = w[..<eq]
+            guard n.first.map({ !$0.isNumber }) == true, n.allSatisfy({ $0 == "_" || ($0.isASCII && ($0.isLetter || $0.isNumber)) }) else { return nil }
+            return String(n)
+        }
         return s.keys.sorted().map { name in
             let o = s[name] as? [String: Any]
-            // the program, and how many arguments it is given (never the arguments: a package or script name sits beside tokens there)
-            // (a command string that holds its own arguments, "npx -y pkg --token=…", shows only its first word: the rest count as arguments)
-            // (leading NAME=value words set the environment, "API_KEY=… npx …": skipped and counted with what isn't shown)
-            let all = ((o?["command"] as? String) ?? "").split(whereSeparator: { $0 == " " || $0 == "\t" || $0 == "\n" })
-            let words = all.drop(while: { w in
-                guard let eq = w.firstIndex(of: "="), eq != w.startIndex else { return false }
-                return w[..<eq].allSatisfy { $0 == "_" || ($0.isASCII && ($0.isLetter || $0.isNumber)) }
-            })
-            let args = ((o?["args"] as? [Any])?.count ?? 0) + max(0, all.count - 1)
-            let hidden = args == 0 ? "" : " (\(args) \(args == 1 ? "argument" : "arguments") not shown)"
-            let runs = words.first.map { oneLine(String($0), max: 200) + hidden } ?? (o?["url"] != nil ? "a remote server (its address isn't shown)" : "nothing it names")
-            return (oneLine(name, max: 100), runs)
+            var env = Set(((o?["env"] as? [String: Any]) ?? [:]).keys.map { oneLine($0, max: 60) })
+            // the command string's words (it may hold its own arguments), then `args`; control characters read as spaces
+            let flat: (String) -> String = { String($0.map { $0.isNewline || $0 == "\t" ? " " : $0 }) }
+            let commandWords = flat((o?["command"] as? String) ?? "").split(separator: " ").map(String.init)
+            let argWords = ((o?["args"] as? [Any]) ?? []).map { a -> String in
+                if let s = a as? String { return flat(s) }
+                if let n = a as? NSNumber { return n.stringValue }
+                return "…"
+            }
+            var program: String?
+            let shown = (commandWords + argWords).map { w -> String in
+                if let n = assignment(w) { env.insert(oneLine(n, max: 60)); return n + "=…" }
+                if program == nil, !commandWords.isEmpty { program = w }
+                if !SecretScan.scan(Data(w.utf8)).isEmpty { return "‹a key›" }
+                return w.contains(" ") || w.isEmpty ? "\"" + w + "\"" : w
+            }
+            var flags: [String] = []
+            if let p = program, isInterpreter(p) { flags.append("runs \(oneLine((p as NSString).lastPathComponent, max: 40)), a shell or interpreter: its arguments are what it runs") }
+            let loaders = env.filter(isLoaderVariable).sorted()
+            if !loaders.isEmpty { flags.append("sets \(loaders.prefix(3).joined(separator: ", "))\(loaders.count > 3 ? ", …" : ""), which \(loaders.count == 1 ? "changes" : "change") what a program loads") }
+            let full = oneLine(shown.joined(separator: " "), max: 4000)
+            let runs: String
+            if program != nil { runs = full.count > runsWidth ? String(full.prefix(runsWidth - 1)) + "…" : full }
+            else { runs = o?["url"] != nil ? "a remote server (its address isn't shown)" : "nothing it names" }
+            return MCPServer(name: oneLine(name, max: 100), runs: runs, full: program != nil ? full : runs, env: env.sorted(), flags: flags)
         }
     }
 

@@ -3,8 +3,9 @@
 //
 // - claude_desktop_config.json, its MCP servers only (SessionsBackup.configAllowlist: whatever else a backup or an older image holds,
 //   permission and consent settings and this Mac's paths among it, is never written; the sidebar part travels on its own): MCP servers run
-//   commands on their own, so it is left out unless asked ("Add them", which lists each server's name and what it runs, never an env
-//   value, a header or an argument). Create-only for the whole file: added only where the profile has no claude_desktop_config.json;
+//   commands on their own, so it is left out unless asked ("Add them", which lists each server's name, its whole command line and
+//   its env variables' names, never an env value, a header or a URL, and flags a shell, an interpreter or a loader variable:
+//   SessionsBackup.mcpServers). Create-only for the whole file: added only where the profile has no claude_desktop_config.json;
 //   one that is here stays byte for byte, and the preview lists the servers it lacks. Never merged into an existing file.
 // - scheduled-tasks.json (the window's tasks, in each account folder) and each task's prompt (<Claude Code folder>/scheduled-tasks/<id>/
 //   SKILL.md, where the window looks for it: it works the path out from the id, whatever `filePath` the task records):
@@ -23,7 +24,7 @@ import ProfileCore
 extension SessionsRestore {
     struct ConfigPlan: Equatable {
         enum Status: Equatable { case new, here, blocked(String) }
-        struct Server: Equatable { var name: String; var runs: String }
+        typealias Server = SessionsBackup.MCPServer
         var present = false                     // the backup holds one
         var leftOut = true                      // the choice: left out unless asked
         var status: Status = .new
@@ -160,7 +161,7 @@ extension SessionsRestore {
             return
         }
         let servers = SessionsBackup.mcpServers(allowed)
-        cp.servers = servers.prefix(listCap).map { ConfigPlan.Server(name: $0.name, runs: $0.runs) }
+        cp.servers = Array(servers.prefix(listCap))
         cp.moreServers = max(0, servers.count - listCap)
         // where it would go: the window's data folder, which must be there; a file of that name (or a link, or a folder) means "here"
         if t.dataDir.isEmpty { cp.status = .blocked("the profile has no Claude window folder"); return }

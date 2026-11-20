@@ -29,6 +29,25 @@ private struct RowText {
         .padding(8).frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 6).fill(face.text.opacity(0.05)))
     }
+    /// The MCP servers' list: each server's lines (WindowWords.serverLines), its whole command line on pointing at it, and the
+    /// line of what to look at in the caution colour.
+    func servers(_ list: [SessionsRestore.ConfigPlan.Server], more: Int, caution: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ForEach(Array(list.prefix(60).enumerated()), id: \.offset) { _, s in
+                VStack(alignment: .leading, spacing: 1) {
+                    ForEach(Array(WindowWords.serverLines(s).enumerated()), id: \.offset) { _, line in
+                        Text(line).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(line.hasPrefix("  look first:") ? caution : face.muted)
+                            .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .help(s.full.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+            }
+            let rest = max(0, list.count - 60) + more
+            if rest > 0 { Text("…and \(rest) more").font(.system(size: 10.5)).foregroundStyle(face.muted) }
+        }
+        .padding(8).frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 6).fill(face.text.opacity(0.05)))
+    }
 }
 
 /// The words of the two rows (so a check can read them).
@@ -66,7 +85,22 @@ enum WindowWords {
     }
 
     /// Under the open list of servers (the show key's caveat is gone once it is open).
-    static let neverShown = "Arguments, env values, headers and addresses are never shown."
+    static let neverShown = "Env values, headers and remote addresses are never shown, nor an argument that looks like a key. Point at a line for its whole command."
+
+    /// A server's lines in the open list: what it runs (home as ~), the names of its env variables, and one line of what to look at.
+    static func serverLines(_ s: SessionsRestore.ConfigPlan.Server) -> [String] {
+        var out = ["\(s.name): \(s.runs.replacingOccurrences(of: NSHomeDirectory(), with: "~"))"]
+        if !s.env.isEmpty { out.append("  env: \(s.env.prefix(8).joined(separator: ", "))\(s.env.count > 8 ? ", …" : "") (values not shown)") }
+        if !s.flags.isEmpty { out.append("  look first: " + s.flags.joined(separator: "; ")) }
+        return out
+    }
+
+    /// The row's line while the list is closed, when a server runs a shell or interpreter or sets a loader variable.
+    static func flagged(_ cp: SessionsRestore.ConfigPlan) -> String? {
+        let k = cp.servers.filter { !$0.flags.isEmpty }.count
+        guard k > 0 else { return nil }
+        return "\(n(k, "server runs", "servers run")) a shell or interpreter or \(k == 1 ? "sets" : "set") a variable that changes what a program loads: look at what \(k == 1 ? "it runs" : "they run") before adding \(k == 1 ? "it" : "them")."
+    }
 
     /// What Undo says (SessionsRestore.undo) about a config the window changed since it was added.
     static let configChangedProblem = "claude_desktop_config.json changed since; left as it is."
@@ -85,7 +119,7 @@ enum WindowWords {
     static func serversKey(_ cp: SessionsRestore.ConfigPlan, imported: Bool) -> (show: String, hide: String) {
         let whose = imported ? "file" : "backup"
         switch cp.status {
-        case .new: return ("What each server runs (the program only: arguments and env values aren't shown)", "Hide what they run")
+        case .new: return ("What each server runs (its command line and env names; env values aren't shown)", "Hide what they run")
         case .here: return ("What the \(whose)'s servers would run (not added: your claude_desktop_config.json stays)", "Hide (not added: your claude_desktop_config.json stays)")
         case .blocked: return ("What the \(whose)'s servers would run (not added: it can't be added here)", "Hide (not added: it can't be added here)")
         }
@@ -193,10 +227,11 @@ struct McpRow: View {
                     if !undone, let l = WindowWords.lacking(cp, name: name, imported: imported) { t.small(l, color: face.caution) }
                     if !undone, cp.present, !cp.unreadable, cp.status == .new, let o = WindowWords.otherKeys(cp) { t.small(o) }
                     if !cp.servers.isEmpty {
+                        if !undone, cp.status == .new, let f = WindowWords.flagged(cp) { t.small(f, color: face.caution) }
                         let k = WindowWords.serversKey(cp, imported: imported)
                         t.key(k.show, k.hide, $showServers)
                         if showServers {
-                            t.lines(cp.servers.map { "\($0.name): \($0.runs.replacingOccurrences(of: NSHomeDirectory(), with: "~"))" } + (cp.moreServers > 0 ? ["…and \(cp.moreServers) more"] : []))
+                            t.servers(cp.servers, more: cp.moreServers, caution: face.caution)
                             t.small(WindowWords.neverShown)
                         }
                     }
