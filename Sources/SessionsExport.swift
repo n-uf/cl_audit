@@ -7,7 +7,7 @@
 //     profiles/p1/backup.json          a backup's manifest, ids replaced by fingerprints, no absolute path
 //     profiles/p1/window/<fp>/<fp>/…   the Code-tab entries and scheduled tasks
 //     profiles/p1/sidebar/…            the sidebar records (epitaxyPrefs only)
-//     profiles/p1/config/…             the rest of the window's claude_desktop_config.json (MCP settings): the encrypted image only
+//     profiles/p1/config/…             the window's claude_desktop_config.json, its MCP servers only (SessionsBackup.configAllowlist): the encrypted image only
 //     profiles/p1/records/profile.json the profile's name and fingerprints
 //     profiles/p1/transcripts/…        Claude Code's transcripts
 //     profiles/p1/setup/…              Claude Code's setup, and the scheduled tasks' prompts (with their tasks)
@@ -532,7 +532,7 @@ enum SessionsExport {
         var inUse = 0
         var projects: [Project] = []
         var setup = SetupPreview()
-        /// The window's claude_desktop_config.json (its MCP servers and other settings, not the sidebar part): only the encrypted image
+        /// The window's claude_desktop_config.json, its MCP servers only (SessionsBackup.configAllowlist): only the encrypted image
         /// carries it.
         var config = ConfigPreview()
         var tasksWithPrompt = 0             // of the tasks, those whose prompt goes with them
@@ -567,8 +567,10 @@ enum SessionsExport {
         }
         guard let b = part.backup, let m = SessionsBackup.load(profile: b.profile, id: b.id, place: b.place) else { return c }
         if m.items.contains(where: { $0.role == .config }) {
-            c.present = true
-            c.servers = SafeFiles.readPlain(b.dir.appendingPathComponent(SessionsBackup.configPath).path, max: SessionsBackup.maxConfigBytes).map { SessionsBackup.mcpServers($0).map(\.name) } ?? []
+            // what the export would carry of it: its allowlisted keys (an older import's staged backup kept the whole file)
+            let j = SafeFiles.readPlain(b.dir.appendingPathComponent(SessionsBackup.configPath).path, max: SessionsBackup.maxConfigBytes).flatMap(SessionsBackup.allowlisted)
+            c.present = j.map { !$0.isEmpty } ?? true
+            c.servers = j.flatMap(SessionsBackup.configData).map { SessionsBackup.mcpServers($0).map(\.name) } ?? []
         } else { c.leftOut = m.configLeftOut; c.fromBackup = true }
         return c
     }
@@ -1274,18 +1276,22 @@ enum SessionsExport {
                 hasSidebar = true
             }
         }
-        // 2b. the rest of the window's claude_desktop_config.json (MCP servers, the window's other settings): its env values, headers and
-        // arguments can hold tokens no key scan recognises, so only the encrypted image carries it; a zip leaves it out and says so. In
-        // the image it is scrubbed like the window's other files (a known address or id becomes its fingerprint) and the leak check
-        // reads it like any of them.
+        // 2b. the window's claude_desktop_config.json, its MCP servers only: filtered by the allowlist again here, so an image made from
+        // a backup an older import staged (which kept the whole file) carries nothing else either. Their env values, headers and
+        // arguments can hold tokens no key scan recognises, so only the encrypted image carries them; a zip leaves them out and says
+        // so. In the image the file is scrubbed like the window's other files (a known address or id becomes its fingerprint) and the
+        // leak check reads it like any of them.
         var configLeftOut = m.configLeftOut
         if m.items.contains(where: { $0.role == .config }) {
-            if zip {
+            let allowed = recordData(SessionsBackup.configPath).flatMap { $0.count <= SessionsBackup.maxConfigBytes ? SessionsBackup.allowlisted($0) : nil }
+            if let j = allowed, j.isEmpty {
+                configLeftOut = nil                 // nothing on the allowlist: no config item, as for a window with none
+            } else if zip {
                 configLeftOut = "needs the encrypted disk image"; po.configLeftOut = true; leftOut += 1
-            } else if let d = recordData(SessionsBackup.configPath), d.count <= SessionsBackup.maxConfigBytes, SessionsBackup.withoutSidebar(d) != nil {
+            } else if let j = allowed, let d = SessionsBackup.configData(j) {
                 let data = scrubber.data(d)
                 try write(data, to: URL(fileURLWithPath: create(SessionsBackup.configPath)))
-                items.append(SessionsBackup.Item(role: .config, original: SessionsBackup.configPath, path: SessionsBackup.configPath, bytes: Int64(data.count), part: "all but preferences.epitaxyPrefs"))
+                items.append(SessionsBackup.Item(role: .config, original: SessionsBackup.configPath, path: SessionsBackup.configPath, bytes: Int64(data.count), part: SessionsBackup.configPart))
                 po.configCarried = true; configLeftOut = nil
             } else {
                 configLeftOut = "it can't be read"; leftOut += 1

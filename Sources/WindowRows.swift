@@ -35,9 +35,9 @@ private struct RowText {
 enum WindowWords {
     private static func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
 
-    /// "3 MCP servers and the window's other settings", "the window's settings (no MCP servers)" (the file's name is in the row's info)
+    /// "3 MCP servers" (only the servers come: SessionsBackup.configAllowlist; the file's name is in the row's info)
     static func config(_ cp: SessionsRestore.ConfigPlan) -> String {
-        cp.servers.isEmpty ? "the window's settings (no MCP servers)" : n(cp.servers.count + cp.moreServers, "MCP server", "MCP servers") + " and the window's other settings"
+        cp.servers.isEmpty ? "the window's MCP servers" : n(cp.servers.count + cp.moreServers, "MCP server", "MCP servers")
     }
 
     /// The MCP row's value before the run.
@@ -59,11 +59,10 @@ enum WindowWords {
         return cp.leftOut || cp.status == .new ? "none added (left out)" : configValue(cp, name: name, imported: imported)
     }
 
-    /// The rest of the file, which adding writes too (said as what adding would do while the servers are left out).
+    /// The rest of the file (an image made by 26.11.61 or earlier carried it), which is never written: only the servers come.
     static func otherKeys(_ cp: SessionsRestore.ConfigPlan) -> String? {
         guard !cp.otherKeys.isEmpty else { return nil }
-        let list = "the window's other settings (\(cp.otherKeys.prefix(6).joined(separator: ", "))\(cp.otherKeys.count > 6 ? ", …" : ""); values not shown)"
-        return (cp.leftOut ? "Adding them also adds, whole: " : "Also added with it, whole: ") + list
+        return "Never added: the window's other settings it holds (\(cp.otherKeys.prefix(6).joined(separator: ", "))\(cp.otherKeys.count > 6 ? ", …" : ""); values not shown). Only the MCP servers come: permission and consent settings and another Mac's paths never move."
     }
 
     /// Under the open list of servers (the show key's caveat is gone once it is open).
@@ -174,7 +173,7 @@ struct McpRow: View {
     var body: some View {
         let t = RowText(face: face)
         if let cp = runner.plan?.config, cp.present || cp.leftOutAtSource != nil {
-            SRow(label: "MCP settings", info: "The Claude window's claude_desktop_config.json in the \(imported ? "file" : "backup"), without its sidebar part: its MCP servers and the window's other settings. MCP servers run commands on their own, so they are left out unless you add them. Adding writes the whole file only where \(name) has no claude_desktop_config.json yet: one that is here stays as it is, byte for byte, and nothing is merged into it. Undo is meant to take back what was added; it may not bring everything back.", stacked: true) {
+            SRow(label: "MCP settings", info: "The MCP servers in the Claude window's claude_desktop_config.json in the \(imported ? "file" : "backup"), and nothing else of that file: the window's other settings, its permission and consent settings among them, never come. MCP servers run commands on their own, so they are left out unless you add them. Adding writes a claude_desktop_config.json that holds only those servers, and only where \(name) has none yet: one that is here stays as it is, byte for byte, and nothing is merged into it. Undo is meant to take back what was added; it may not bring everything back.", stacked: true) {
                 VStack(alignment: .leading, spacing: 6) {
                     let undone = runner.phase == .undone
                     if let r = runner.receipt, undone || runner.phase == .done || runner.phase == .sidebar {

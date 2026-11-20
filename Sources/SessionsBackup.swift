@@ -7,8 +7,8 @@
 //   window/<account>/<org>/…     the Claude window's Code-tab list: every claude-code-sessions/<account>/<org> folder
 //                                (the entries and scheduled-tasks.json), for every account that has one
 //   sidebar/epitaxyPrefs.json    the window's sidebar records: only the epitaxyPrefs part of claude_desktop_config.json
-//   config/claude_desktop_config.json   the rest of that file (format 3): MCP servers and the window's other settings, without
-//                                the sidebar part. It can hold tokens no scan recognises (env values, headers, arguments), so a plain
+//   config/claude_desktop_config.json   that file's MCP servers (format 3): only its `configAllowlist` keys, nothing else of it
+//                                (permission and consent settings, this Mac's paths). It can hold tokens no scan recognises (env values, headers, arguments), so a plain
 //                                backup (a switch's, Back up now) NEVER keeps it: only the hidden copy an export is made from does
 //                                (the encrypted disk image carries it, a zip leaves it out), and so the backup an import of that image
 //                                stages. Import adds it only when asked, only where the profile has none (SessionsRestoreWindow.swift)
@@ -541,8 +541,8 @@ enum SessionsBackup {
             items.append(Item(role: .sidebar, original: (s.dataDir as NSString).appendingPathComponent("claude_desktop_config.json"),
                               path: "sidebar/epitaxyPrefs.json", bytes: Int64(data.count), part: "preferences.epitaxyPrefs"))
         }
-        // the rest of claude_desktop_config.json (MCP servers, the window's other settings), without the sidebar part: only in the
-        // copy an export is made from (the encrypted image carries it); a plain backup never keeps it
+        // claude_desktop_config.json's MCP servers (its allowlisted keys, nothing else of it): only in the copy an export is made from
+        // (the encrypted image carries it); a plain backup never keeps it
         var configLeftOut: String?
         if window, forExport {
             switch windowConfig(dataDir: s.dataDir) {
@@ -551,7 +551,7 @@ enum SessionsBackup {
             case .data(let data):
                 try put(data, configPath, in: partial, dirFor)
                 items.append(Item(role: .config, original: (s.dataDir as NSString).appendingPathComponent("claude_desktop_config.json"),
-                                  path: configPath, bytes: Int64(data.count), part: "all but preferences.epitaxyPrefs"))
+                                  path: configPath, bytes: Int64(data.count), part: configPart))
             }
         }
         // cl_audit's records: the profile (ids only, no address), and the receipt of the switch this is for
@@ -651,16 +651,32 @@ enum SessionsBackup {
         return try? JSONSerialization.data(withJSONObject: prefs, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     }
 
-    /// Where a backup keeps the window's claude_desktop_config.json (without its sidebar part), and the most it may hold: a real one is a
-    /// few KB, and an import refuses one bigger, so a backup (and an export) never takes one bigger either.
+    /// Where a backup keeps the window's claude_desktop_config.json (its allowlisted keys only), and the most the file may hold: a real
+    /// one is a few KB, and an import refuses one bigger, so a backup (and an export) never takes one bigger either.
     static let configPath = "config/claude_desktop_config.json"
     static let maxConfigBytes = 8 << 20
 
+    /// The ONLY top-level keys of the window's claude_desktop_config.json that ever travel. Decided here, and nowhere else: an export
+    /// writes nothing else of the file (windowConfig, and SessionsExport for an image made from a backup), and a restore or an import
+    /// writes nothing else of a backup's or an image's (SessionsRestoreWindow.planConfig: one made by 26.11.61 or earlier carried the
+    /// whole file but its sidebar part, and is filtered again before anything is written). DEFAULT DENY: every key not named here, at
+    /// the top level or under `preferences`, including any key a later Claude app adds, never moves.
+    ///   mcpServers   what the person is offered as "the window's MCP settings": each server's command, arguments, env and headers.
+    ///                Safe to carry because it is gated, not because it is harmless: it runs commands, so a restore or import adds
+    ///                it only on "Add them" (which lists each server and the program it runs), only where the profile has no
+    ///                claude_desktop_config.json, read under the 8 MB cap without following a link, and only from the encrypted
+    ///                image. It holds no permission grant, consent, trusted folder or path of the window's own.
+    /// Left out on purpose: `preferences` (permission opt-ins such as bypassPermissionsGateByAccount, trusted folders, device and
+    /// network consents, this Mac's workspaces; its sidebar part, epitaxyPrefs, travels on its own as sidebar/epitaxyPrefs.json),
+    /// `coworkUserFilesPath` and every other key (this Mac's paths and device state).
+    static let configAllowlist: Set<String> = ["mcpServers"]
+    /// The config item's `part` in a backup.json: what of the file it holds.
+    static let configPart = configAllowlist.sorted().joined(separator: ", ")
+
     enum ConfigRead: Equatable { case none, leftOut(String), data(Data) }
 
-    /// The window's claude_desktop_config.json as a backup takes it: the whole JSON object without `preferences.epitaxyPrefs` (the
-    /// sidebar part, which travels as sidebar/epitaxyPrefs.json). Read without following a link and under the cap; `.none`: there is
-    /// none (or nothing but the sidebar part); `.leftOut`: why it isn't taken.
+    /// The window's claude_desktop_config.json as a backup takes it: its allowlisted keys only (`allowlisted`). Read without following
+    /// a link and under the cap; `.none`: there is none, or it holds nothing on the allowlist; `.leftOut`: why it isn't taken.
     static func windowConfig(dataDir: String) -> ConfigRead {
         guard !dataDir.isEmpty else { return .none }
         let path = (dataDir as NSString).appendingPathComponent("claude_desktop_config.json")
@@ -670,20 +686,24 @@ enum SessionsBackup {
         guard (st.st_mode & S_IFMT) == S_IFREG else { return .leftOut("it isn't a plain file") }
         guard st.st_size <= maxConfigBytes else { return .leftOut("it is over 8 MB") }
         guard let d = SafeFiles.readPlain(path, max: maxConfigBytes) else { return .leftOut("it can't be read") }
-        guard let j = withoutSidebar(d) else { return .leftOut("it isn't a JSON object") }
+        guard let j = allowlisted(d) else { return .leftOut("it isn't a JSON object") }
         if j.isEmpty { return .none }
-        guard let out = try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { return .leftOut("it can't be read") }
+        guard let out = configData(j) else { return .leftOut("it can't be read") }
         return .data(out)
     }
 
-    /// The config's object without `preferences.epitaxyPrefs` (and without `preferences` when that was all it held); nil: not a JSON object.
-    static func withoutSidebar(_ d: Data) -> [String: Any]? {
-        guard var j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return nil }
-        if var prefs = j["preferences"] as? [String: Any] {
-            prefs.removeValue(forKey: "epitaxyPrefs")
-            if prefs.isEmpty { j.removeValue(forKey: "preferences") } else { j["preferences"] = prefs }
-        }
-        return j
+    /// The config's `configAllowlist` keys and nothing else, each only as a non-empty JSON object (an empty or malformed one
+    /// carries nothing); nil: not a JSON object. Every write of the window's config, export side and restore side, goes through it.
+    static func allowlisted(_ d: Data) -> [String: Any]? {
+        guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return nil }
+        var out: [String: Any] = [:]
+        for k in configAllowlist { if let v = j[k] as? [String: Any], !v.isEmpty { out[k] = v } }
+        return out
+    }
+
+    /// The allowlisted object as the file is written (sorted keys, pretty).
+    static func configData(_ j: [String: Any]) -> Data? {
+        try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     }
 
     /// The MCP servers a config names, by name, with what each runs: its `command` and how many arguments it gets (never the arguments,

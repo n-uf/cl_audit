@@ -1029,11 +1029,11 @@ enum SessionsImport {
                     setupRels.append(rel)
                 case .config:
                     // the window's claude_desktop_config.json (format 3): one file, in one place, only from an encrypted image, at most 8 MB, a
-                    // JSON object (read only under that cap)
+                    // JSON object (read only under that cap); what of it is written is the allowlist's (SessionsRestoreWindow.planConfig)
                     guard m.version >= 3, c == ["config", "claude_desktop_config.json"] else { throw ArchiveError("A backup.json names a window settings file in a place an export doesn't keep it; refused.") }
                     guard container == "image" else { throw ArchiveError("A zip carries no MCP settings (only the encrypted disk image does); refused.") }
                     guard it.bytes <= SessionsBackup.maxConfigBytes, let d = try? readSmall(tree.appendingPathComponent("\(base)/\(it.path)").path, limit: SessionsBackup.maxConfigBytes),
-                          SessionsBackup.withoutSidebar(d) != nil else {
+                          SessionsBackup.allowlisted(d) != nil else {
                         throw ArchiveError("The export's claude_desktop_config.json is over 8 MB, isn't a plain file or isn't a JSON object; refused.")
                     }
                 }

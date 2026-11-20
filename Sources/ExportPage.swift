@@ -422,8 +422,8 @@ enum ExportWords {
         return out
     }
 
-    /// The MCP settings row: the window's claude_desktop_config.json (without its sidebar part) and, for a zip, the line that says it
-    /// needs the encrypted disk image.
+    /// The MCP settings row: the MCP servers of the window's claude_desktop_config.json (nothing else of it) and, for a zip, the line
+    /// that says they need the encrypted disk image.
     static func mcpWords(_ pv: SessionsExport.Preview?, image: Bool) -> (value: String, note: String?) {
         guard let p = pv else { return ("counting…", nil) }
         if p.windowLeftOut { return ("left out: the window is open", nil) }
@@ -434,10 +434,10 @@ enum ExportWords {
         }
         let names = c.servers.prefix(4).joined(separator: ", ") + (c.servers.count > 4 ? ", …" : "")
         if image {
-            let servers = c.servers.isEmpty ? "no MCP servers" : n(c.servers.count, "MCP server", "MCP servers") + " (" + names + ")"
-            return ("\(servers) and the window's other settings: in the encrypted disk image", nil)
+            let servers = c.servers.isEmpty ? "the window's MCP servers" : n(c.servers.count, "MCP server", "MCP servers") + " (" + names + ")"
+            return ("\(servers): in the encrypted disk image", nil)
         }
-        let which = c.servers.isEmpty ? "the window's settings" : "\(n(c.servers.count, "server", "servers")): \(names), and the window's other settings"
+        let which = c.servers.isEmpty ? "its servers" : "\(n(c.servers.count, "server", "servers")): \(names)"
         return ("left out of a zip", "A zip leaves out the window's MCP settings (\(which)): they can hold keys no scan can find. Choose the encrypted disk image to carry them.")
     }
 
@@ -685,7 +685,7 @@ struct ExportPage: View {
                     }
                 }
             }
-            SRow(label: "MCP settings", info: "The Claude window's claude_desktop_config.json without its sidebar part: its MCP servers (what each runs, with their env values, headers and arguments) and the window's other settings. Those can hold tokens no scan recognises, so only the encrypted disk image carries them; a zip leaves them out. Importing leaves them out unless you add them, and adds them only where the profile has no claude_desktop_config.json yet.", stacked: true) {
+            SRow(label: "MCP settings", info: "The MCP servers in the Claude window's claude_desktop_config.json (what each runs, with their env values, headers and arguments), and nothing else of that file: the window's other settings, its permission and consent settings and this Mac's paths among them, never go. The servers can hold tokens no scan recognises, so only the encrypted disk image carries them; a zip leaves them out. Importing leaves them out unless you add them, and adds them only where the profile has no claude_desktop_config.json yet.", stacked: true) {
                 let w = ExportWords.mcpWords(pv, image: runner.usesImage)
                 VStack(alignment: .leading, spacing: 4) {
                     value(w.value)

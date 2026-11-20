@@ -1,7 +1,8 @@
 // Window checks for cl_audit: the Claude window's own settings and scheduled tasks travel with Export, Import, Backup and Restore
 // (format version 3). Sources/SessionsBackup.swift (the config item, a backup's scheduled tasks' prompts), SessionsExport.swift (a zip
 // leaves the config out, an image carries it scrubbed), SessionsImport.swift (what a file may hold), SessionsRestoreWindow.swift (the
-// plans: MCP settings create-only for the whole file, an import's tasks paused, create-only per file, with their prompts and sessions),
+// plans: MCP settings create-only for the whole file, an import's tasks paused, create-only per file, with their prompts and sessions;
+// SessionsBackup.configAllowlist: only mcpServers of claude_desktop_config.json is ever written, on export and on restore/import),
 // WindowRows.swift and the Export page's words.
 //
 // Part 1 works on real files in a throwaway home: a profile with a window (Code-tab entries, a task file, claude_desktop_config.json
@@ -65,11 +66,32 @@ MainActor.assumeIsolated {
     let seatA = SeatID(account: sid(1), organization: sid(2))
     let dataA = w + "/Claude-a", codeA = w + "/.claude-a"
     let scopeA = "\(dataA)/claude-code-sessions/\(sid(1))/\(sid(2))"
+    // the 6.x window's file (key names as the Claude app 6.6395.1 writes them, fake values): the MCP servers, the sidebar part, the
+    // permission and consent state and this Mac's paths and device state, and keys a later app might add (at the top level and under
+    // preferences). Only the allowlist (mcpServers) ever travels
+    let foreignPrefs: [String: Any] = [
+        "bypassPermissionsGateByAccount": ["acct-fake-1": true], "bypassPermissionsOptInByAccount": ["acct-fake-1": true],
+        "localAgentModeTrustedFolders": ["/w/trusted-elsewhere"], "simulatorDeviceConsent": ["sim-fake-1": "granted"],
+        "launchPreviewLocalNetworkAccessDeclinedOrigins": ["http://192.0.2.1:3000"], "launchPreviewPersistedWorkspaces": ["/w/workspace-elsewhere"],
+        "launchPreviewStorage": ["slot": "fake"], "remoteToolsDeviceName": "fake-device-name", "menuBarEnabled": true,
+        "futurePrefKey2099": ["grantedEverything": true]]
+    let mcpFixture: [String: Any] = [
+        "github": ["command": "npx", "args": ["-y", "@example/server-github"], "env": ["GITHUB_TOKEN": envValue]],
+        "remote": ["url": "https://mcp.example.com/sse", "headers": ["Authorization": "Bearer \(headerValue)"]]]
     let config: [String: Any] = [
-        "mcpServers": ["github": ["command": "npx", "args": ["-y", "@example/server-github"], "env": ["GITHUB_TOKEN": envValue]],
-                       "remote": ["url": "https://mcp.example.com/sse", "headers": ["Authorization": "Bearer \(headerValue)"]]],
-        "globalShortcut": "Alt+Space",
-        "preferences": ["epitaxyPrefs": ["scopes": ["\(sid(1))/\(sid(2))": ["groups": []]]], "menuBarEnabled": true]]
+        "mcpServers": mcpFixture,
+        "globalShortcut": "Alt+Space", "coworkUserFilesPath": w + "/cowork-files-elsewhere", "futureTopLevelKey2099": ["grantedEverything": true],
+        "preferences": foreignPrefs.merging(["epitaxyPrefs": ["scopes": ["\(sid(1))/\(sid(2))": ["groups": []]]]]) { a, _ in a }]
+    // what never travels, by a word of each: none of these may be in a config cl_audit writes (an image's, or the window's file it adds)
+    let foreignMarks = ["bypassPermissions", "TrustedFolders", "trusted-elsewhere", "simulatorDeviceConsent", "192.0.2.1", "workspace-elsewhere",
+                        "launchPreviewStorage", "fake-device-name", "menuBarEnabled", "futurePrefKey2099", "futureTopLevelKey2099",
+                        "cowork-files-elsewhere", "globalShortcut", "preferences", "epitaxy"]
+    /// The config holds the allowlist's keys only (mcpServers, with the fixture's servers whole) and no word of what never travels.
+    func allowlistOnly(_ d: Data?) -> Bool {
+        guard let d, let j = json(d), let text = String(data: d, encoding: .utf8) else { return false }
+        return Set(j.keys) == SessionsBackup.configAllowlist && (j["mcpServers"] as? [String: Any])?.keys.sorted() == ["github", "remote"]
+            && !foreignMarks.contains { text.contains($0) }
+    }
     func plantA() {
         try? fm.removeItem(atPath: dataA); try? fm.removeItem(atPath: codeA)
         try! JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys]).write(to: URL(fileURLWithPath: dataA + "/claude_desktop_config.json").createDirs())
@@ -99,10 +121,21 @@ MainActor.assumeIsolated {
     let srcA = SessionsBackup.Source(profile: "a", dataDir: dataA, codeDir: codeA)
 
     // ---- what a backup takes
-    if case .data(let d) = SessionsBackup.windowConfig(dataDir: dataA), let j = json(d) {
-        check(j["mcpServers"] != nil && j["globalShortcut"] as? String == "Alt+Space" && (j["preferences"] as? [String: Any])?["epitaxyPrefs"] == nil && (j["preferences"] as? [String: Any])?["menuBarEnabled"] as? Bool == true,
-              "config: the window's file is taken whole but for its sidebar part (preferences.epitaxyPrefs)")
+    if case .data(let d) = SessionsBackup.windowConfig(dataDir: dataA) {
+        check(allowlistOnly(d) && ((json(d)?["mcpServers"] as? [String: Any])?["github"] as? [String: Any]).flatMap { ($0["env"] as? [String: Any])?["GITHUB_TOKEN"] as? String } == envValue,
+              "config (write side): only the allowlist is taken (mcpServers, whole); no permission or consent setting, no path of this Mac, no sidebar part, no key a later app adds")
     } else { check(false, "config: the window's file is read") }
+    check(SessionsBackup.configAllowlist == ["mcpServers"] && SessionsBackup.configPart == "mcpServers", "config: the allowlist is mcpServers alone, and the item's part says so")
+    // default deny: a file of nothing but keys off the allowlist (or an empty mcpServers) is taken as none
+    var offList = config; offList.removeValue(forKey: "mcpServers")
+    let dataOff = w + "/Claude-off"
+    for (label, body) in [("only keys off the allowlist", offList), ("an empty mcpServers", offList.merging(["mcpServers": [String: Any]()]) { a, _ in a }),
+                          ("a mcpServers that isn't an object", offList.merging(["mcpServers": "npx evil"]) { a, _ in a })] {
+        try! JSONSerialization.data(withJSONObject: body).write(to: URL(fileURLWithPath: dataOff + "/claude_desktop_config.json").createDirs())
+        check(SessionsBackup.windowConfig(dataDir: dataOff) == .none, "config (write side): a file with \(label) is taken as none: nothing written")
+    }
+    check(SessionsExport.configPreview(SessionsExport.Part(profile: "off", name: "Off", source: SessionsBackup.Source(profile: "off", dataDir: dataOff, codeDir: w + "/.claude-off"))) == SessionsExport.ConfigPreview(),
+          "export page: such a file shows as none")
     // a name that would fake another line (a newline) or turn a line around (a bidi mark) is shown as one plain line
     let faked = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": ["echo\ncalendar: python3 cal.py": ["command": "e\u{202E}cho\u{2028}x"]]]))
     check(faked.count == 1 && faked[0].name == "echocalendar: python3 cal.py" && faked[0].runs.hasPrefix("echox") && !faked[0].runs.unicodeScalars.contains { $0.value == 0x202E },
@@ -154,7 +187,7 @@ MainActor.assumeIsolated {
     check(pv.config.present && pv.config.servers == ["github", "remote"] && pv.tasks == 4 && pv.setup.taskPrompts == 4 && !pv.setup.units.contains { $0.kind == .task },
           "preview: the config with 2 MCP servers; 4 tasks with 4 prompts, which aren't in the setup row's units")
     let zw = ExportWords.mcpWords(pv, image: false), iw = ExportWords.mcpWords(pv, image: true)
-    check(zw.value == "left out of a zip" && zw.note == "A zip leaves out the window's MCP settings (2 servers: github, remote, and the window's other settings): they can hold keys no scan can find. Choose the encrypted disk image to carry them." && iw.value == "2 MCP servers (github, remote) and the window's other settings: in the encrypted disk image" && iw.note == nil && ExportWords.mcpInfo(pv, image: true) == ExportWords.fingerprintNote && ExportWords.mcpInfo(pv, image: false) == nil,
+    check(zw.value == "left out of a zip" && zw.note == "A zip leaves out the window's MCP settings (2 servers: github, remote): they can hold keys no scan can find. Choose the encrypted disk image to carry them." && iw.value == "2 MCP servers (github, remote): in the encrypted disk image" && iw.note == nil && ExportWords.mcpInfo(pv, image: true) == ExportWords.fingerprintNote && ExportWords.mcpInfo(pv, image: false) == nil,
           "export page: a zip says the MCP settings need the image; the image carries them: \(zw.value) / \(iw.value)")
     check(ExportWords.tasksNote(pv) == "4 scheduled tasks, 3 with their prompt (one without it can't be imported). An import adds them only if you pick Add them, and they come paused.", "export page: the tasks travel with their prompts and come back paused: \(ExportWords.tasksNote(pv) ?? "none")")
 
@@ -204,10 +237,12 @@ MainActor.assumeIsolated {
     var oiMaybe: SessionsImport.Opened?
     if io != nil { do { oiMaybe = try SessionsImport.open(dmgURL, password: pw, place: place) } catch { check(false, "import (image): opens: \(error)") } }
     guard let oi = oiMaybe else { print("(image export failed; stopping)"); return }
-    let imgConfig = json(fm.contents(atPath: oi.tree.path + "/profiles/p1/config/claude_desktop_config.json"))
+    let imgConfigData = fm.contents(atPath: oi.tree.path + "/profiles/p1/config/claude_desktop_config.json")
+    let imgConfig = json(imgConfigData)
+    let imgItem = oi.parts[0].manifest.items.first { $0.role == .config }
     check(((imgConfig?["mcpServers"] as? [String: Any])?["github"] as? [String: Any]).flatMap { ($0["env"] as? [String: Any])?["GITHUB_TOKEN"] as? String } == envValue
-          && (imgConfig?["preferences"] as? [String: Any])?["epitaxyPrefs"] == nil && oi.parts[0].manifest.items.first { $0.role == .config }?.original == "config/claude_desktop_config.json",
-          "export (image): claude_desktop_config.json is in it whole, env values too, but not the sidebar part, and no path of this Mac")
+          && allowlistOnly(imgConfigData) && imgItem?.original == "config/claude_desktop_config.json",
+          "export (image): claude_desktop_config.json holds the MCP servers whole, env values too, and nothing else: no permission or consent setting, no path of this Mac, no sidebar part, no key a later app adds")
     check(!(read(oi.tree.path + "/profiles/p1/config/claude_desktop_config.json") ?? sid(1)).contains(sid(1)), "export (image): a known account id in the config is its fingerprint (the leak check reads the file)")
 
     // ---- Import (image) into a profile that has nothing: left out by default
@@ -261,8 +296,8 @@ MainActor.assumeIsolated {
           && !fm.fileExists(atPath: "\(cB)/scheduled-tasks/elsewhere-task") && !fm.fileExists(atPath: "\(cB)/scheduled-tasks/nightly-digest/notes.txt") && mode("\(cB)/scheduled-tasks/nightly-digest/SKILL.md") == 0o600,
           "import: each added task's prompt is where the window looks for it, byte for byte, 0600; nothing for a task that isn't added")
     let gotConfig = fm.contents(atPath: dB + "/claude_desktop_config.json")
-    check(gotConfig != nil && gotConfig == fm.contents(atPath: bB.dir.appendingPathComponent("config/claude_desktop_config.json").path) && mode(dB + "/claude_desktop_config.json") == 0o600,
-          "import: claude_desktop_config.json is written whole, where the profile had none, 0600")
+    check(gotConfig != nil && gotConfig == fm.contents(atPath: bB.dir.appendingPathComponent("config/claude_desktop_config.json").path) && allowlistOnly(gotConfig) && mode(dB + "/claude_desktop_config.json") == 0o600,
+          "import: claude_desktop_config.json is written with the MCP servers only, where the profile had none, 0600")
     check(rB.configAdded && rB.tasksAdded == ["Nightly digest", "Weekly report"] && rB.tasksAddedCount == 2 && rB.tasksRisky == 2 && fm.fileExists(atPath: "\(dB)/claude-code-sessions/\(sid(3))/\(sid(4))/local_\(sid(11)).json"),
           "import: the receipt says the MCP settings and the 2 tasks (paused) were added; the task's session came in with it")
     let uB = try! SessionsRestore.undo(rB.id, windowClosed: { true })
@@ -780,19 +815,40 @@ MainActor.assumeIsolated {
         SessionsImport.discard(oc.work)
     }
 
-    // a crafted config that carries the sidebar part (its folder permission modes among it): "Add them" never brings that part in
-    let sidebarName = "w-config-with-sidebar"
+    // an OLD image (26.11.61 and earlier carried the whole file but its sidebar part; this crafted one even carries that part, with
+    // its folder permission modes): permission opt-ins, trusted folders, consents, this Mac's paths and keys a later app adds, at the
+    // top level and under preferences. The import plan names them as never added, and "Add them" writes the allowlist alone
+    let sidebarName = "w-config-old-image"
     let withSidebar = doctored(sidebarName) { m, _, p in
-        let j: [String: Any] = ["mcpServers": ["x": ["command": "x"]],
-                                "preferences": ["epitaxyPrefs": ["epitaxy-folder-permission-mode-v2.\(sid(3))": ["/w/project": "bypassPermissions"]], "menuBarEnabled": true]]
+        var j = config
+        j["preferences"] = foreignPrefs.merging(["epitaxyPrefs": ["epitaxy-folder-permission-mode-v2.\(sid(3))": ["/w/project": "bypassPermissions"]]]) { a, _ in a }
         try setConfig(&m, p, try JSONSerialization.data(withJSONObject: j))
+        if let i = m.items.firstIndex(where: { $0.role == .config }) { m.items[i].part = "all but preferences.epitaxyPrefs" }    // as an older build labelled it
     }
     if withSidebar == "OPENED", let os = try? SessionsImport.open(URL(fileURLWithPath: out + "/\(sidebarName).dmg"), password: pw, place: place) {
         let (tS, dS, _) = target("s")
         let stS = try! SessionsImport.materialize(os, part: os.parts[0], target: "s")
         let bS = try! SessionsImport.commit(stS)
+        let pS = SessionsRestore.plan(tS, bS, addConfig: true)
+        check(pS.config.present && pS.config.otherKeys == ["coworkUserFilesPath", "futureTopLevelKey2099", "globalShortcut", "preferences"]
+              && pS.configPieces.count == 1 && allowlistOnly(pS.configPieces[0].data) && WindowWords.config(pS.config) == "2 MCP servers"
+              && WindowWords.otherKeys(pS.config) == "Never added: the window's other settings it holds (coworkUserFilesPath, futureTopLevelKey2099, globalShortcut, preferences; values not shown). Only the MCP servers come: permission and consent settings and another Mac's paths never move.",
+              "old image (read side): the plan writes the MCP servers alone and names the rest as never added: \(pS.config.otherKeys)")
+        // an export from that backup (the staged copy keeps the old file as it came) is filtered again: the new image holds the allowlist alone
+        let fromOld = URL(fileURLWithPath: out + "/S-from-old.dmg")
+        let partS = SessionsExport.Part(profile: "s", name: "S", backup: bS)
+        check(SessionsExport.preview(partS)?.config.servers == ["github", "remote"], "old image: an export from its backup lists the 2 servers")
+        if (try? SessionsExport.run(SessionsExport.Job(parts: [partS], keys: .leaveOut, password: pw, destination: fromOld, rootName: "s-from-old", place: place))) != nil,
+           let oo = try? SessionsImport.open(fromOld, password: pw, place: place) {
+            check(allowlistOnly(fm.contents(atPath: oo.tree.path + "/profiles/p1/config/claude_desktop_config.json")),
+                  "old image: an export made from its backup carries the allowlist alone (write side filters again)")
+            SessionsImport.discard(oo.work)
+        } else { check(false, "old image: an export from its backup is made and opens") }
         let rS = try? SessionsRestore.run(tS, bS, addConfig: true, windowClosed: { true })
-        let got = json(fm.contents(atPath: dS + "/claude_desktop_config.json"))
+        let gotData = fm.contents(atPath: dS + "/claude_desktop_config.json")
+        check(rS?.configAdded == true && allowlistOnly(gotData),
+              "old image (read side): restore/import writes the MCP servers alone: no permission opt-in, trusted folder, consent, path of the other Mac, sidebar part or later key")
+        let got = json(gotData)
         defer {
             // the window rewrites the file when it opens (its sidebar step): Undo then leaves it, and says so in the words the row reads
             write(dS + "/claude_desktop_config.json", #"{"mcpServers":{"x":{"command":"x"}},"preferences":{"epitaxyPrefs":{}}}"#)
@@ -802,11 +858,28 @@ MainActor.assumeIsolated {
                       "undo: a config the window changed since is left, and the row says so: \(u.problems)")
             } else { check(false, "undo: the import with a config can be undone") }
         }
-        check(got?["mcpServers"] != nil && (got?["preferences"] as? [String: Any])?["epitaxyPrefs"] == nil && (got?["preferences"] as? [String: Any])?["menuBarEnabled"] as? Bool == true
-              && !(read(dS + "/claude_desktop_config.json") ?? "permission-mode").contains("permission-mode"),
-              "hostile (image): a config carrying the sidebar part (folder permission modes) is written without it; the rest comes")
+        check(got?["mcpServers"] != nil && got?["preferences"] == nil && !(read(dS + "/claude_desktop_config.json") ?? "permission-mode").contains("permission-mode"),
+              "hostile (image): a config carrying the sidebar part (folder permission modes) is written without it")
         SessionsImport.discard(os.work)
-    } else { check(false, "hostile (image): the config with a sidebar part opens: \(withSidebar.prefix(80))") }
+    } else { check(false, "hostile (image): the old-image config opens: \(withSidebar.prefix(80))") }
+
+    // an image whose config holds nothing on the allowlist (only keys off it, or an empty mcpServers): nothing is written, even on
+    // "Add them", and the row says the file holds no MCP servers
+    let offName = "w-config-off-list"
+    let offImage = doctored(offName) { m, _, p in try setConfig(&m, p, try JSONSerialization.data(withJSONObject: offList.merging(["mcpServers": [String: Any]()]) { a, _ in a })) }
+    if offImage == "OPENED", let oo = try? SessionsImport.open(URL(fileURLWithPath: out + "/\(offName).dmg"), password: pw, place: place) {
+        let (tO, dO, _) = target("o")
+        let stO = try! SessionsImport.materialize(oo, part: oo.parts[0], target: "o")
+        let bO = try! SessionsImport.commit(stO)
+        let pO = SessionsRestore.plan(tO, bO, addConfig: true)
+        check(!pO.config.present && pO.configPieces.isEmpty && pO.config.leftOutAtSource == "it holds no MCP servers"
+              && WindowWords.configValue(pO.config, name: "O", imported: true) == "not in the file: the file holds no MCP servers",
+              "off-list image (read side): nothing to add, and the row says so: \(WindowWords.configValue(pO.config, name: "O", imported: true))")
+        let rO = try? SessionsRestore.run(tO, bO, addConfig: true, windowClosed: { true })
+        check(rO != nil && rO?.configAdded == false && !fm.fileExists(atPath: dO + "/claude_desktop_config.json"), "off-list image: Add them writes no claude_desktop_config.json")
+        if let id = rO?.id { _ = try? SessionsRestore.undo(id, windowClosed: { true }) }
+        SessionsImport.discard(oo.work)
+    } else { check(false, "off-list image: opens: \(offImage.prefix(80))") }
 
     // a task file of 300,000 tasks and a config of 100,000 servers: the plan keeps the first 200 of each for the page (and counts the
     // rest), and is made in a moment
@@ -1023,21 +1096,22 @@ MainActor.assumeIsolated {
 MainActor.assumeIsolated {
     var cp = SessionsRestore.ConfigPlan()
     cp.present = true; cp.servers = [.init(name: "github", runs: "npx"), .init(name: "remote", runs: "a remote server")]
-    check(WindowWords.configValue(cp, name: "Work", imported: true) == "2 MCP servers and the window's other settings: left out", "rows: MCP left out by default: \(WindowWords.configValue(cp, name: "Work", imported: true))")
+    check(WindowWords.configValue(cp, name: "Work", imported: true) == "2 MCP servers: left out", "rows: MCP left out by default: \(WindowWords.configValue(cp, name: "Work", imported: true))")
     cp.leftOut = false
-    check(WindowWords.configValue(cp, name: "Work", imported: true) == "2 MCP servers and the window's other settings: added" && WindowWords.configDone(cp, added: true, undone: false, name: "Work", imported: true) == "added: 2 MCP servers and the window's other settings",
+    check(WindowWords.configValue(cp, name: "Work", imported: true) == "2 MCP servers: added" && WindowWords.configDone(cp, added: true, undone: false, name: "Work", imported: true) == "added: 2 MCP servers",
           "rows: MCP added, and the done line")
     cp.status = .here; cp.lacking = ["remote"]
     check(WindowWords.configValue(cp, name: "Work", imported: true) == "not added: Work's claude_desktop_config.json stays as it is"
           && WindowWords.configDone(cp, added: false, undone: false, name: "Work", imported: true) == "not added: Work's claude_desktop_config.json stays as it is",
           "rows: a file here stays; the done line says why it wasn't added: \(WindowWords.configDone(cp, added: false, undone: false, name: "Work", imported: true))")
-    check(WindowWords.configDone(cp, added: true, undone: true, name: "Work", imported: true) == "2 MCP servers and the window's other settings: was added, and taken away again", "rows: after Undo")
+    check(WindowWords.configDone(cp, added: true, undone: true, name: "Work", imported: true) == "2 MCP servers: was added, and taken away again", "rows: after Undo")
     cp.otherKeys = ["globalShortcut", "preferences"]
     let wasLeftOut = cp.leftOut
-    cp.leftOut = false
-    check(WindowWords.otherKeys(cp) == "Also added with it, whole: the window's other settings (globalShortcut, preferences; values not shown)", "rows: the rest of the file is said to come whole")
-    cp.leftOut = true
-    check(WindowWords.otherKeys(cp) == "Adding them also adds, whole: the window's other settings (globalShortcut, preferences; values not shown)", "rows: …said as what adding would do while the servers are left out")
+    for lo in [false, true] {
+        cp.leftOut = lo
+        check(WindowWords.otherKeys(cp) == "Never added: the window's other settings it holds (globalShortcut, preferences; values not shown). Only the MCP servers come: permission and consent settings and another Mac's paths never move.",
+              "rows: the rest of an older file is said never to come (servers \(lo ? "left out" : "added"))")
+    }
     cp.leftOut = wasLeftOut
     check(WindowWords.serversKey(cp, imported: true) == ("What the file's servers would run (not added: your claude_desktop_config.json stays)", "Hide (not added: your claude_desktop_config.json stays)"),
           "rows: with a file here, both keys of the servers' list keep the not-added caveat")

@@ -1,7 +1,8 @@
 // SessionsRestoreWindow: the Claude window's own settings and scheduled tasks in a backup (format 3), planned against what the profile
 // has now. The same rules for an import and a restore, except where said:
 //
-// - claude_desktop_config.json (its MCP servers and the window's other settings; the sidebar part travels on its own): MCP servers run
+// - claude_desktop_config.json, its MCP servers only (SessionsBackup.configAllowlist: whatever else a backup or an older image holds,
+//   permission and consent settings and this Mac's paths among it, is never written; the sidebar part travels on its own): MCP servers run
 //   commands on their own, so it is left out unless asked ("Add them", which lists each server's name and what it runs, never an env
 //   value, a header or an argument). Create-only for the whole file: added only where the profile has no claude_desktop_config.json;
 //   one that is here stays byte for byte, and the preview lists the servers it lacks. Never merged into an existing file.
@@ -27,7 +28,7 @@ extension SessionsRestore {
         var leftOut = true                      // the choice: left out unless asked
         var status: Status = .new
         var servers: [Server] = []              // what adding brings: each server's name and what it runs
-        var otherKeys: [String] = []            // the file's other top-level settings, by name
+        var otherKeys: [String] = []            // the file's top-level keys off the allowlist, by name: never written
         var lacking: [String] = []              // a file is here: the servers it doesn't have (by name; nothing is merged)
         var moreServers = 0                     // servers past the first 200 (the page lists those)
         var moreLacking = 0
@@ -147,11 +148,20 @@ extension SessionsRestore {
             if f.st.st_size <= SessionsBackup.maxConfigBytes { data = read(f.fd, size: f.st.st_size) }
             close(f.fd)
         }
-        guard let d = data, let j = SessionsBackup.withoutSidebar(d) else { cp.unreadable = true; return }
-        let servers = SessionsBackup.mcpServers(d)
+        // only its allowlisted keys are ever written (SessionsBackup.configAllowlist): an image made by 26.11.61 or earlier carried the
+        // whole file but its sidebar part (permission opt-ins, trusted folders, this Mac's paths), filtered out again here
+        guard let d = data, let j = SessionsBackup.allowlisted(d) else { cp.unreadable = true; return }
+        let whole = ((try? JSONSerialization.jsonObject(with: d)) as? [String: Any]) ?? [:]
+        cp.otherKeys = whole.keys.filter { j[$0] == nil }.sorted().prefix(200).map { SessionsBackup.oneLine($0, max: 60) }
+        // nothing on the allowlist: nothing to add, and the row says the file holds none
+        guard !j.isEmpty, let allowed = SessionsBackup.configData(j) else {
+            cp.present = false
+            if cp.leftOutAtSource == nil { cp.leftOutAtSource = "it holds no MCP servers" }
+            return
+        }
+        let servers = SessionsBackup.mcpServers(allowed)
         cp.servers = servers.prefix(listCap).map { ConfigPlan.Server(name: $0.name, runs: $0.runs) }
         cp.moreServers = max(0, servers.count - listCap)
-        cp.otherKeys = j.keys.filter { $0 != "mcpServers" }.sorted().prefix(200).map { SessionsBackup.oneLine($0, max: 60) }
         // where it would go: the window's data folder, which must be there; a file of that name (or a link, or a folder) means "here"
         if t.dataDir.isEmpty { cp.status = .blocked("the profile has no Claude window folder"); return }
         guard Tree(path: t.dataDir) != nil else { cp.status = .blocked("the window's data folder isn't there"); return }
@@ -166,10 +176,9 @@ extension SessionsRestore {
         }
         cp.status = .new
         if add {
-            // written without its sidebar part, whatever the file holds: the sidebar (and the folder permission modes it keeps) is
-            // arranged only by the sidebar step, never brought in by a file's "Add them"
-            guard let stripped = try? JSONSerialization.data(withJSONObject: j, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]) else { cp.unreadable = true; return }
-            p.configPieces = [Piece(kind: .config, rel: c, base: .window, dirs: [], leaf: "claude_desktop_config.json", bytes: Int64(stripped.count), data: stripped)]
+            // written with its allowlisted keys only, whatever the file holds: the sidebar (and the folder permission modes it keeps) is
+            // arranged only by the sidebar step, and permission and consent settings never come with a file's "Add them"
+            p.configPieces = [Piece(kind: .config, rel: c, base: .window, dirs: [], leaf: "claude_desktop_config.json", bytes: Int64(allowed.count), data: allowed)]
         }
     }
 
