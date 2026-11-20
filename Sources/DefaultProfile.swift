@@ -131,10 +131,12 @@ enum DefaultProfile {
         /// otherFolder: what became of the old profile after the move ("standby" or "removed"). From then on the move can't
         /// be undone: Undo would take a profile or a folder away that now holds the only copy of something.
         var oldHandled: String?
+        /// A stopped move closed as it stood (leaveAsIs): what it did stays, nothing was undone.
+        var leftAsIs: Date?
 
-        /// The move changed something (the window kind, a link, a new profile) or wrote a receipt, and is neither finished
-        /// nor undone: the card must say so.
-        var open: Bool { undone == nil && finished == nil && (flipped || linkedSeat || created || receipt != nil) }
+        /// The move changed something (the window kind, a link, a new profile) or wrote a receipt, and is neither finished,
+        /// undone nor left as it is: the card must say so.
+        var open: Bool { undone == nil && finished == nil && leftAsIs == nil && (flipped || linkedSeat || created || receipt != nil) }
     }
 
     static var folder: URL { Store.folder.appendingPathComponent("default-moves") }
@@ -212,6 +214,37 @@ enum DefaultProfile {
     /// The old profile was removed (the remove flow): a standing move that carried it over can't be undone any more.
     static func noteOldRemoved(profile id: String) {
         for var r in all() where r.oldProfile == id && r.undone == nil && r.oldHandled == nil { r.oldHandled = "removed"; save(r) }
+    }
+
+    /// "Leave it as it is" on a move that stopped half way (the card "The move stopped"), as on a stopped restore
+    /// (SessionsRestore.leaveAsIs) and a stopped switch: for when neither Finish nor Undo can complete (its backup is gone,
+    /// and Undo is refused once the old profile was kept as a standby account or removed, say). The record is closed as it
+    /// stands (leftAsIs), and so is its restore's receipt while that is open (SessionsRestore.closeAsIs: only the temp files
+    /// of ours a stop left go), so neither holds up a switch, restore or import any more, and Finish, Undo and Put it back no
+    /// longer apply. Nothing else is written, moved or deleted in any profile's folders or window data, no backup is
+    /// touched, and the profile's window kind and link stay as they are now. Under the one lock, and refused while the move
+    /// or its restore holds one of its windows. What stays, in words ("" when there is nothing open to close).
+    @discardableResult
+    static func leaveAsIs(_ id: String, now: Date = Date()) throws -> String {
+        let lock: FlowLock.Held
+        do { lock = try Flows.takeLock() } catch { throw RestoreError("\(error)") }
+        defer { lock.release() }
+        forgetCache()
+        guard var r = all().first(where: { $0.id == id }), r.open else { return "" }
+        let rc = restoreFor(r).flatMap { SessionsRestore.load($0.id) }
+        // the move's own holds ("default-…", while the windows close and the backups are made) and its restore's ("restore-…")
+        for w in [rc?.dataDir ?? "", FolderKey.standardDataDir, r.oldDataDir] where !w.isEmpty {
+            if let m = SwitchMarker.current(FolderKey.canonical(w)), m.profile == r.profile, m.standby.hasPrefix("restore-") || m.standby.hasPrefix("default-") {
+                throw RestoreError("The move to the default profile is under way (since \(SessionsBackup.dateWords(m.started))). Wait for it to end.")
+            }
+        }
+        if let rc, rc.unfinished { try SessionsRestore.closeAsIs(rc, now: now) }
+        r.leftAsIs = now
+        do { try store.save(r) } catch { throw RestoreError("The move's record couldn't be saved; it is still open.") }
+        forgetCache()
+        // (no count, as a restore's Leave; the backup is said only when its place can be looked at)
+        let what = "Left as it is: what the move did stays as it is; nothing is undone"
+        return what + (SessionsRestore.backupThere(profile: r.profile, backup: r.backup, place: r.backupPlace) == false ? ", and its backup isn't there any more." : ".")
     }
 
     /// The move this profile's window data came with, still standing (not undone): the import made into the old window
