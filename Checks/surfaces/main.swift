@@ -3208,8 +3208,12 @@ do {
           && shownWeekly(elseID, id: otherAcct) == nil,
           "folder {id, no address} + a reading with another id: stale, shown nowhere (another account, said as before)")
     let sameAddrOtherID = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: h2.email, loginAccount: otherAcct, names: [:], now: t0)
-    check(sameAddrOtherID.readStale == true && shownWeekly(sameAddrOtherID, id: otherAcct) == nil,
-          "folder {id, address} + a reading for that address with another id: the ids decide, never the address: stale")
+    check(sameAddrOtherID.readStale == nil && !sameAddrOtherID.differs && sameAddrOtherID.email == h2.email
+          && sameAddrOtherID.line != AccountResolver.ownerUnknownWords && shownWeekly(sameAddrOtherID, id: otherAcct) == 40,
+          "the ids' guard: folder {id, address} + a reading for that address with another id: the same address keeps it (no split)")
+    let bothOther = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: foreign, loginAccount: otherAcct, names: [:], now: t0)
+    check(bothOther.readStale == true && bothOther.codeName == h2.email && shownWeekly(bothOther, id: otherAcct) == nil,
+          "…another id and another address: stale, shown nowhere")
     let lone = AccountResolver.resolve(me, among: [me], app: .unknown, code: idOnly, loginEmail: foreign, names: [:], now: t0)
     let loneWeekly = shownWeekly(lone), loneShow = ProfileShow.load(me, now: t0)
     let (loneNote, loneMenu) = MainActor.assumeIsolated { let d = dockOf(me, loneShow); return (d.panel.activeNote, titles(d.menu)) }
@@ -3219,8 +3223,9 @@ do {
           && AccountView.of(Store.status(for: me, now: t0)).label == short8,
           "folder {id, no address} + a reading with an address and no id, no app: stale, numbers shown nowhere, never labelled with the reading's address")
     check(cardRow(me, now: t0).line == words && loneNote == words && loneMenu.contains(words)
-          && MenuBarRow.lineWords(MenuBarItems.Profile(show: loneShow)) == words && words.contains("Sign in"),
-          "…and the reason shows: on the card, in the Dock panel and menu, on the menu bar row (Sign in, the sweep's verb)")
+          && MenuBarRow.lineWords(MenuBarItems.Profile(show: loneShow)) == words && words.contains("sign in")
+          && words.count <= "Claude Code's .claude.json is too large to read: its account isn't known here.".count,
+          "…and the reason shows: on the card, in the Dock panel and menu, on the menu bar row (sign in, the sweep's verb), no longer than the too-large line those rows show")
     let loneChat = QuickChatTarget(me, now: t0)
     check(!loneChat.liveCounts && !loneChat.split && loneChat.account?.account == AccountID.normal(h2.account)
           && loneChat.email != foreign && loneChat.shownEmail != foreign,
