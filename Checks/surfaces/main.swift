@@ -2591,6 +2591,13 @@ do {
     check(a2 == "Answer 2", "still on u3 (its address in capitals): the same process goes on: \(a2)")
     let a3 = say("three", on: rec())
     check(a3 == "Answer 1" && abs((live.level?.week ?? 0) - 62) < 0.01,"moved back to u1: a new process (it numbers from 1 again); its live week counts here: \(a3), \(live.level?.week ?? -1)")
+    // one login's seat with no organisation, then its Team seat, then back: each move a new process; the same seat goes on
+    let a4 = say("four", on: rec(code: bare))
+    let a5 = say("five", on: rec(code: team))
+    let a6 = say("six", on: rec(code: team))
+    let a7 = say("seven", on: rec(code: bare))
+    check(a4 == "Answer 1" && a5 == "Answer 1" && a6 == "Answer 2" && a7 == "Answer 1",
+          "a login's seat with no organisation, its Team seat (twice), then back: a new process at each move, kept on the same seat: \([a4, a5, a6, a7])")
     live.shutdown()
     FolderGuard.launchSeam = keepSeam
     _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
