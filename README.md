@@ -1295,8 +1295,12 @@ reads the file, and shows a preview ("Preview · nothing written yet · built no
   permissions approved on the other Mac. The done page says which came paused and where to
   turn them on; cl_audit never changes a task after that), **Scheduled tasks' sessions** (a session a task ran, by the entry's
   `scheduledTaskId`, comes in with its task; when the task isn't added it is left out with its transcript, with the task's
-  name), **MCP settings** (left out unless you pick **Add them**, which lists each server's name and the program it runs with how
-  many arguments aren't shown, never an argument, an env value, a header or a URL; a `claude_desktop_config.json` holding only
+  name), **MCP settings** (left out unless you pick **Add them**, which lists each server's name and its whole command line, the
+  program and its arguments, cut to one line with the whole of it on pointing at it; an argument the key scan recognises shows
+  as ‹a key› and a NAME=value word as NAME=…; then the names of the env variables it sets, never a value, a header or a URL. A
+  server that runs a shell or interpreter (sh, bash, env, node, python, osascript …) or sets a variable that changes what a
+  program loads (DYLD_*, LD_*, NODE_OPTIONS, PYTHONPATH …) gets a line saying to look first, and the row counts them while the
+  list is closed; a `claude_desktop_config.json` holding only
   those servers is written only where the profile has none: never the window's other settings, its permission and consent
   settings among them, nor its sidebar part, which only the sidebar step arranges. An export made by an earlier version carried
   those settings too: they are never written, and the row names them by key as never added. One that is here stays byte for byte

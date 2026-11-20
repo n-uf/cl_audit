@@ -9,6 +9,7 @@ the notes before updating.
 ## Unreleased
 
 - Exports now carry only the Claude window's MCP settings. Exports made with earlier versions also hold its other settings (permission opt-ins, trusted folders, this Mac's paths); restoring or importing them now adds only the MCP settings and ignores the rest.
+- Import and Restore list each MCP server's whole command line and the names of its env variables (never a value), and flag a server that runs a shell or interpreter or sets a variable that changes what a program loads.
 
 ## 26.11.63 — 2026-11-20
 
