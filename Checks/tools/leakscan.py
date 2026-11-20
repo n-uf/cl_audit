@@ -5,8 +5,8 @@
 
 Refuses (exit 1, one line per hit) on:
   - keys and tokens: the app's own SecretScan finds them (Sources/SecretScan.swift, the engines' one secret scan: no pattern
-    lives here), through the secretscan tool that $SECRETSCAN names (Checks/run.sh builds it as
-    Checks/.work/scan/cl_audit-checks-scan). Without the tool the scan doesn't run at all (exit 2): a key check that skips
+    lives here), through the secretscan tool that $SECRETSCAN names, or, when it isn't set, the one Checks/run.sh scan builds
+    (Checks/.work/scan/cl_audit-checks-scan). Without the tool the scan doesn't run at all (exit 2): a key check that skips
     itself is worse than none. --no-keys leaves keys to a caller that has just run the tool over the same files (run.sh's scan);
   - an e-mail address whose domain is not example.com/.org/.net, *.invalid, *.test, *.example or a single word (x);
   - a UUID that is not one of the obviously synthetic fixtures (000...-4000-8000-..., aaaaaaaa-1111-..., abcdef01-...);
@@ -18,8 +18,11 @@ Refuses (exit 1, one line per hit) on:
 import os, re, subprocess, sys, tempfile
 
 def secretscan():
-    """The app's secretscan tool ($SECRETSCAN), or the scan stops here (exit 2): never a key check that quietly didn't run."""
+    """The app's secretscan tool ($SECRETSCAN; when it isn't set at all, the one Checks/run.sh scan builds), or the scan stops
+    here (exit 2): never a key check that quietly didn't run. Set but empty means no tool."""
     p = os.environ.get('SECRETSCAN')
+    if p is None:
+        p = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '.work', 'scan', 'cl_audit-checks-scan')
     if not p or not (os.path.isfile(p) and os.access(p, os.X_OK)):
         print('leak scan: the key check needs the app\'s secretscan tool: set $SECRETSCAN (Checks/run.sh scan builds '
               'Checks/.work/scan/cl_audit-checks-scan); not run')
@@ -67,7 +70,7 @@ def scan_text(text, keys=True):
     if keys:
         with tempfile.TemporaryDirectory() as d:
             p = os.path.join(d, 'text')
-            with open(p, 'w', errors='replace') as f: f.write(text)
+            with open(p, 'w', encoding='utf-8', errors='replace') as f: f.write(text)
             hits += key_hits([p]).get(p, [])
     for m in EMAIL.finditer(text):
         if not OK_DOMAIN.match(m.group(1)): hits.append((at(m.start()), f'address {m.group(0)}'))

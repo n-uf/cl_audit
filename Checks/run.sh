@@ -347,7 +347,7 @@ run_quick-chat() {
 run_scan() {
   local dir="$WORK/scan"; mkdir -p "$dir"
   # the keys are the app's own SecretScan's (Sources/SecretScan.swift): a tool that doesn't build fails the scan, never skips it
-  rm -f "$dir/cl_audit-checks-scan"
+  # (compile takes the old binary away before building, and with --no-build insists one is there)
   compile "$dir/cl_audit-checks-scan" "$HERE/tools/secretscan/main.swift" && [[ -x "$dir/cl_audit-checks-scan" ]] \
     || { echo "scan: the secretscan tool didn't build: the key check can't run (red)"; return 1; }
   local st=0
