@@ -106,7 +106,7 @@ struct RestorePage: View {
             let what = imp ? ImportWords.counts(sessions: r?.sessionsAdded ?? 0, entries: r?.entriesAdded ?? 0).map { " (\($0))" } ?? "" : ""
             return Top(text: "Undone", dim: "· \(taken)\(imp ? (taken == 1 ? " file" : " files") : "") taken away\(what)", tone: .normal)
         case .left:
-            return Top(text: "Left as it is", dim: "· \(r?.back ?? 0) \(imp ? "files added" : "back") · nothing undone", tone: .normal)
+            return Top(text: "Left as it is", dim: "· what \(imp ? "it added" : "came back") stays · nothing undone", tone: .normal)
         }
     }
 
@@ -381,7 +381,7 @@ struct RestorePage: View {
         // (short: a display never wraps, and one wider than the column pushes its card out of it; "nothing overwritten" is said above)
         case .done, .sidebar: return (imp ? "\(added) added ✓" : "\(back) back · 0 overwritten ✓", .ok)
         case .stopped: return (imp ? "\(back) \(back == 1 ? "file" : "files") added · kept" : "\(back) back · kept", .amber)
-        case .left: return (imp ? "\(back) \(back == 1 ? "file" : "files") added · left as it is" : "\(back) back · left as it is", .normal)
+        case .left: return ("left as it is · nothing undone", .normal)
         case .undone:
             let taken = r.map { r in r.steps.filter { $0.done && $0.kind != .dir }.count } ?? 0
             return (imp ? "\(taken) \(taken == 1 ? "file" : "files") taken away ✓" : "\(taken) taken away ✓", .ok)
