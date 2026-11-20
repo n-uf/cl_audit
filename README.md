@@ -526,7 +526,7 @@ the card folds to that row, whose words say what's left ("no Dock icon", "none",
     organisation's managed settings (or an error in them), HIPAA or zero data retention make `cleanupPeriodDays` apply to
     everything; the line and the note under Keep for say which case applies. While `cleanupPeriodDays` or
     `desktopSessionCleanupPeriodDays` in `settings.json` isn't a valid number (or the file can't be read), Claude Code
-    2.1.318 skips its clean-up; cl_audit adds a note and still shows what would be deleted once it's fixed. See [How cl_audit tells](#how-cl_audit-tells-what-claude-code-deletes).
+    2.1.326 skips its clean-up; cl_audit adds a note and still shows what would be deleted once it's fixed. See [How cl_audit tells](#how-cl_audit-tells-what-claude-code-deletes).
   - **Keep for:** how long Claude Code keeps the transcripts of sessions you ran in the terminal: 30 days (its default), 90 days or a year. It writes
     `cleanupPeriodDays` in the Claude Code folder's `settings.json`, changing only that number in the file's own
     text (or adding the key after the opening brace of an ordinary object); everything else stays byte for byte. A
@@ -966,7 +966,7 @@ arranged. The page then reads **Restored · 86 back · nothing overwritten · 3 
 ### How cl_audit tells what Claude Code deletes
 
 For people who want the detail (Sessions card ▸ Kept here and Keep for, and Would be deleted on the Restore, Import and
-default-profile pages). cl_audit follows the clean-up of the installed Claude Code (checked against 2.1.318) and reads,
+default-profile pages). cl_audit follows the clean-up of the installed Claude Code (checked against 2.1.326) and reads,
 never writes:
 
 - **Which sessions belong to the Claude window.** The transcript itself, never the Code tab: the `entrypoint` of its
@@ -993,7 +993,7 @@ never writes:
   JSON.parse does (a name written with escapes is the same name; nested ones don't count). Keep for refuses a file that
   has `cleanupPeriodDays` twice.
 - **A skipped clean-up is only a note.** While `cleanupPeriodDays` or `desktopSessionCleanupPeriodDays` in your own
-  `settings.json` isn't a valid number, or the file can't be read, Claude Code (2.1.318) skips its clean-up (unless
+  `settings.json` isn't a valid number, or the file can't be read, Claude Code (2.1.326) skips its clean-up (unless
   managed settings set `cleanupPeriodDays` or use a policy helper); cl_audit adds a note and still shows what would be
   deleted once it's fixed. It counts with the defaults: 30 days for an invalid `cleanupPeriodDays`, no limit for an
   invalid `desktopSessionCleanupPeriodDays`, both for a file that can't be read. Any whole number up to 2^53−1 is valid, as for Claude Code. A
@@ -1221,7 +1221,7 @@ moves:** sign-ins (Claude Code's and the window's), the Keychain, `settings.loca
 fields above), session environments, the image cache, shell snapshots, debug files, and claude.ai chats and Projects, which
 already follow the account.
 
-**Confirmed only from the programs' own text, not by running them:** how Claude Code 2.1.318 writes `history.jsonl` (appended
+**Confirmed only from the programs' own text, not by running them:** how Claude Code 2.1.326 writes `history.jsonl` (appended
 under a lock folder, read from the end per project, never sorted) and `.claude.json` (a lock folder, read again under it, a temp
 file renamed over it), which `.claude.json` fields mean trust (`hasTrustDialogAccepted`, `allowedTools`), and how Rewind finds
 its copies (by the names in the session's own lines, a file in the session's folder by a relative path, one outside it by its
