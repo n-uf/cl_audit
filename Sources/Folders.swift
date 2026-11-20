@@ -212,13 +212,21 @@ enum ClaudeRuns {
     static func quitDesktopApps() { ClaudeWindow.quitAll() }
 }
 
-/// Watches what's running every 2 s while the new-account page is open.
+/// Watches what's running every 2 s while the new-account page, Remove or Uninstall is open. `checked`: the last look read
+/// which Claude runs. `failed`: it couldn't (the process table couldn't be read): `runs` is then empty and nothing may take
+/// that for "none runs"; each page refuses to delete or set up a folder and says `failedWords`.
 final class RunsMonitor: ObservableObject {
     @Published private(set) var runs: [ClaudeRun] = []
     @Published private(set) var checked = false
+    @Published private(set) var failed = false
     private var timer: Timer?
+    /// This user's Claude Code folders (the profiles'), for another user's `claude` (Processes.codeRunList).
+    private var folders: [String] = []
 
-    func start() {
+    static let failedWords = "cl_audit couldn't check which Claude is running"
+
+    func start(folders: [String] = []) {
+        self.folders = folders
         guard timer == nil else { return }
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in self?.refresh() }
@@ -230,12 +238,21 @@ final class RunsMonitor: ObservableObject {
     static var preview: [ClaudeRun]? = nil
 
     func refresh() {
+        let folders = self.folders
         DispatchQueue.global(qos: .utility).async {
-            let r = Self.preview ?? Processes.claudeRuns()
-            DispatchQueue.main.async {
-                if r != self.runs { self.runs = r }
-                self.checked = true
-            }
+            let r = Self.preview ?? Processes.claudeRuns(folders: folders)
+            DispatchQueue.main.async { self.apply(r) }
         }
+    }
+
+    /// One look's answer: nil (it couldn't be checked) leaves nothing listed and `checked` false.
+    func apply(_ r: [ClaudeRun]?) {
+        guard let r else {
+            if !runs.isEmpty { runs = [] }
+            checked = false; failed = true
+            return
+        }
+        if r != runs { runs = r }
+        checked = true; failed = false
     }
 }

@@ -193,8 +193,11 @@ enum NewAccountSetup {
         }
     }
 
-    /// Everything the Checks card shows, in order. Any `.bad` line blocks Create/Connect and Finish.
-    static func checks(_ d: NewAccountDraft, accounts: [AccountEntry], runs: [ClaudeRun], checked: Bool) -> [SetupCheck] {
+    /// The red line while which Claude runs couldn't be checked.
+    static let failedWords = RunsMonitor.failedWords + ", so the folder isn't set up yet"
+
+    /// Everything the Checks card shows, in order. Any `.bad` line blocks Create/Connect and Finish. `failed`: which Claude runs couldn't be checked (RunsMonitor.failed): a red line, never "the desktop app is closed".
+    static func checks(_ d: NewAccountDraft, accounts: [AccountEntry], runs: [ClaudeRun], checked: Bool, failed: Bool = false) -> [SetupCheck] {
         var out: [SetupCheck] = []
         let name = d.name.trimmingCharacters(in: .whitespaces)
         // the name: only a clash is worth a line (the caption under the field says what it's for)
@@ -256,7 +259,8 @@ enum NewAccountSetup {
         // Claude Code in Terminal doesn't get in the way.
         let appRuns = runs.filter { $0.kind != .terminal }
         if foldersReady(d) || !d.claudeWindow { return out }
-        if !checked { out.append(.init(section: .running, state: .wait, text: "Checking whether the desktop app is open…")) }
+        if failed { out.append(.init(section: .running, state: .bad, text: failedWords)) }
+        else if !checked { out.append(.init(section: .running, state: .wait, text: "Checking whether the desktop app is open…")) }
         else if appRuns.isEmpty { out.append(.init(section: .running, state: .ok, text: "The desktop app is closed")) }
         else {
             let apps = appRuns.filter { $0.kind == .desktop }.count
@@ -414,7 +418,7 @@ struct NewAccountView: View {
                 if c.count == 3 { three(c, w) } else if c.count == 2 { two(c, w) } else { one(c) }
             }
         }
-        .onAppear { monitor.start() }
+        .onAppear { monitor.start(folders: model.accounts.map(\.configDir)) }
         .onDisappear { monitor.stop() }
         .alert("Cancel the new profile\(draft.name.isEmpty ? "" : " “\(draft.name)”")?", isPresented: $confirmCancel) {
             Button(draft.createdConfigDir != nil || draft.createdDataDir != nil ? "Cancel and clean up" : "Cancel setup", role: .destructive) { model.cancelNew() }
@@ -430,7 +434,7 @@ struct NewAccountView: View {
 
     /// Only the Claude desktop app (with its Code tab) gets in the way; Claude Code in Terminal doesn't.
     private var appRuns: [ClaudeRun] { monitor.runs.filter { $0.kind != .terminal } }
-    private var checks: [SetupCheck] { NewAccountSetup.checks(draft, accounts: model.accounts, runs: appRuns, checked: monitor.checked) }
+    private var checks: [SetupCheck] { NewAccountSetup.checks(draft, accounts: model.accounts, runs: appRuns, checked: monitor.checked, failed: monitor.failed) }
     private func checks(_ s: SetupCheck.Section) -> [SetupCheck] { checks.filter { $0.section == s } }
     private var blocked: Bool { checks.contains { $0.blocks } }
     /// The desktop app open while the folders don't exist yet (afterwards it can stay open).
@@ -909,11 +913,13 @@ struct NewAccountView: View {
             let ready = NewAccountSetup.foldersReady(draft)
             let n = quitStep ? 0 : -1           // without a Claude window there's no "Quit the desktop app" step
             if quitStep {
-                stepRow(1, state: ready ? .done : monitor.checked ? (appRuns.isEmpty ? .done : draft.continueAnyway ? .warn : .bad) : .todo,
+                stepRow(1, state: ready ? .done : monitor.failed ? .bad : monitor.checked ? (appRuns.isEmpty ? .done : draft.continueAnyway ? .warn : .bad) : .todo,
                         title: "Quit the desktop app",
-                        detail: ready ? "done · it can stay open now" : !monitor.checked ? "checking…" : appRuns.isEmpty ? "closed" : nil,
+                        detail: ready ? "done · it can stay open now" : monitor.failed ? NewAccountSetup.failedWords
+                            : !monitor.checked ? "checking…" : appRuns.isEmpty ? "closed" : nil,
+                        detailBad: !ready && monitor.failed,
                         connector: running) {
-                    if running { openApps }
+                    if running { openApps } else if !ready && monitor.failed { checkAgain }
                 }
             }
             stepRow(2 + n, state: folders ? .done : current == 2 ? .now : running ? .held : .todo,
@@ -1062,7 +1068,7 @@ struct NewAccountView: View {
 
     private var nextHint: String {
         switch current {
-        case 1: return monitor.checked ? "Next: quit the desktop app" : "Checking the desktop app…"
+        case 1: return monitor.failed ? "Check again: which Claude runs couldn't be checked" : monitor.checked ? "Next: quit the desktop app" : "Checking the desktop app…"
         case 2: return draft.name.isEmpty ? "Next: name the profile" : draft.source == .existing && draft.existingDir == nil ? "Next: pick a folder" : blocked ? "Fix the red lines to go on" : draft.source == .new ? "Next: create the folder and links" : "Next: connect the folder"
         case 3: return "Next: sign in to Claude Code"
         case 4: return desktop == .different ? "Its Claude window uses another account" : "Next: sign in to the Claude window"

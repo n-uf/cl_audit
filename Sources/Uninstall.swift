@@ -23,6 +23,23 @@ enum Uninstall {
                 "cl_audit itself, to the Trash"]
     }
 
+    /// Claude still using a folder that's about to go (`config`: profiles whose Claude Code folder goes, `window`: whose window
+    /// data goes), each once; a Claude Code whose folder is unknown uses every profile's.
+    static func running(_ accounts: [AccountEntry], config: Set<String>, window: Set<String>, runs: [ClaudeRun]) -> [ClaudeRun] {
+        var seen = Set<pid_t>()
+        return accounts.flatMap { e -> [ClaudeRun] in
+            AccountRemoval.runsUsing(e, runs).filter { ($0.kind == .desktop && window.contains(e.id)) || ($0.kind != .desktop && config.contains(e.id)) }
+        }.filter { seen.insert($0.id).inserted }
+    }
+
+    /// What keeps the chosen folders from being deleted now, from what RunsMonitor saw, or nil: which Claude runs couldn't be
+    /// checked (`runs` nil: never taken for "none runs"), or Claude uses one of them. Nothing chosen: nil.
+    static func runsBlock(_ accounts: [AccountEntry], config: Set<String>, window: Set<String>, runs: [ClaudeRun]?) -> String? {
+        guard !config.union(window).isEmpty else { return nil }
+        guard let runs else { return RunsMonitor.failedWords + ", so no folder is deleted" }
+        return running(accounts, config: config, window: window, runs: runs).isEmpty ? nil : "Close Claude first: it's using folders that would be deleted"
+    }
+
     /// The folders that may go for a profile when these profiles' Claude Code folders go: (Claude Code folder, window
     /// data folder), nil for one that's never deleted or isn't there, and why its Claude Code folder can't go.
     static func options(_ e: AccountEntry, accounts: [AccountEntry], deleting: Set<String>) -> (config: String?, window: String?, block: String?) {
@@ -185,14 +202,12 @@ struct UninstallSheet: View {
     private var accounts: [AccountEntry] { model.saved }
     private var deleting: Set<String> { config.union(window) }
     /// Claude still using a folder that's about to go, each once (a Claude Code whose folder is unknown uses every profile's).
-    private var running: [ClaudeRun] {
-        var seen = Set<pid_t>()
-        return accounts.flatMap { e -> [ClaudeRun] in
-            let runs = AccountRemoval.runsUsing(e, monitor.runs)
-            return runs.filter { ($0.kind == .desktop && window.contains(e.id)) || ($0.kind != .desktop && config.contains(e.id)) }
-        }.filter { seen.insert($0.id).inserted }
+    private var running: [ClaudeRun] { Uninstall.running(accounts, config: config, window: window, runs: monitor.runs) }
+    /// What RunsMonitor saw: nil when it couldn't check which Claude runs.
+    private var seen: [ClaudeRun]? { monitor.failed ? nil : monitor.runs }
+    private var ready: Bool {
+        working == nil && (deleting.isEmpty || (monitor.checked && Uninstall.runsBlock(accounts, config: config, window: window, runs: seen) == nil))
     }
-    private var ready: Bool { working == nil && (deleting.isEmpty || (monitor.checked && running.isEmpty)) }
     /// The Claude Code folders asked to go: a folder others share items from may go only together with theirs.
     private func opts(_ e: AccountEntry) -> (config: String?, window: String?, block: String?) {
         Uninstall.options(e, accounts: accounts, deleting: config)
@@ -211,7 +226,8 @@ struct UninstallSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .faceWindow(radius: 6)
             Text("Dock: cl_audit's pins go; your other pins stay as they are.").font(.system(size: 11)).foregroundStyle(.secondary)
-            if !running.isEmpty { runningBox }
+            if monitor.failed, let why = Uninstall.runsBlock(accounts, config: config, window: window, runs: nil) { failedBox(why) }
+            else if !running.isEmpty { runningBox }
             HStack(spacing: 10) {
                 Button("Cancel") { dismiss() }.buttonStyle(.plain).foregroundStyle(.secondary).keyboardShortcut(.cancelAction)
                     .disabled(working != nil)
@@ -224,7 +240,7 @@ struct UninstallSheet: View {
         .padding(20)
         .frame(width: 480)
         .onAppear {
-            monitor.start()
+            monitor.start(folders: accounts.map(\.configDir))
             let list = accounts.flatMap(AccountRemoval.folders)
             DispatchQueue.global(qos: .utility).async {
                 let s = Dictionary(list.map { ($0, AccountRemoval.size($0)) }, uniquingKeysWith: { a, _ in a })
@@ -279,6 +295,16 @@ struct UninstallSheet: View {
             Circle().fill(Color.secondary.opacity(0.6)).frame(width: 4, height: 4).alignmentGuide(.firstTextBaseline) { $0.height / 2 + 4 }
             Text(s).font(.system(size: 12)).fixedSize(horizontal: false, vertical: true)
         }
+    }
+
+    /// Which Claude runs couldn't be checked: no folder goes until it can be.
+    private func failedBox(_ why: String) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(why).font(.system(size: 12, weight: .semibold)).foregroundStyle(.red)
+            Button("Check again") { monitor.refresh() }.buttonStyle(PillButtonStyle(tint: nil, compact: true))
+        }
+        .padding(10)
+        .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
     }
 
     /// Claude still using folders that are about to go: they must be closed first.

@@ -136,6 +136,13 @@ enum AccountRemoval {
         }
     }
 
+    /// What keeps the account's folders from being deleted now, from what RunsMonitor saw, or nil: which Claude runs couldn't
+    /// be checked (`runs` nil: never taken for "none runs"), or Claude uses them (`runsUsing`).
+    static func runsBlock(_ e: AccountEntry, runs: [ClaudeRun]?) -> String? {
+        guard let runs else { return RunsMonitor.failedWords + ", so its folders aren't deleted" }
+        return runsUsing(e, runs).isEmpty ? nil : "Close Claude first: it's using these folders"
+    }
+
     /// Total size of a folder, without following links. Call off the main thread.
     static func size(_ path: String) -> Int64 {
         let url = URL(fileURLWithPath: expand(path))
@@ -190,7 +197,9 @@ struct RemoveAccountSheet: View {
     private var folders: [String] { AccountRemoval.folders(entry) }
     private var block: String? { AccountRemoval.folderBlock(entry, among: model.accounts) }
     private var running: [ClaudeRun] { deleteFolders ? AccountRemoval.runsUsing(entry, monitor.runs) : [] }
-    private var canRemove: Bool { !deleteFolders || (block == nil && monitor.checked && running.isEmpty) }
+    /// What RunsMonitor saw: nil when it couldn't check which Claude runs.
+    private var seen: [ClaudeRun]? { monitor.failed ? nil : monitor.runs }
+    private var canRemove: Bool { !deleteFolders || (block == nil && monitor.checked && AccountRemoval.runsBlock(entry, runs: seen) == nil) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -213,7 +222,7 @@ struct RemoveAccountSheet: View {
             .clipShape(RoundedRectangle(cornerRadius: 6))
             .faceWindow(radius: 6)
 
-            if deleteFolders && !running.isEmpty { runningBox }
+            if deleteFolders && monitor.failed { failedBox } else if deleteFolders && !running.isEmpty { runningBox }
 
             HStack(spacing: 10) {
                 Button("Cancel") { dismiss() }.buttonStyle(.plain).foregroundStyle(.secondary).keyboardShortcut(.cancelAction)
@@ -230,7 +239,7 @@ struct RemoveAccountSheet: View {
         .padding(20)
         .frame(width: 440)
         .onAppear {
-            monitor.start()
+            monitor.start(folders: model.accounts.map(\.configDir))
             let list = folders
             DispatchQueue.global(qos: .utility).async {
                 let s = Dictionary(uniqueKeysWithValues: list.map { ($0, AccountRemoval.size($0)) })
@@ -272,6 +281,24 @@ struct RemoveAccountSheet: View {
         .buttonStyle(.plain)
         .disabled(disabled)
         .opacity(disabled ? 0.5 : 1)
+    }
+
+    /// Which Claude runs couldn't be checked: the folders stay until it can be.
+    private var failedBox: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(AccountRemoval.runsBlock(entry, runs: nil) ?? "").font(.system(size: 12, weight: .semibold)).foregroundStyle(.red)
+            HStack {
+                Spacer()
+                Button {
+                    checking = true; monitor.refresh()
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { checking = false }
+                } label: { Text(checking ? "Checking…" : "Check again") }
+                .buttonStyle(PillButtonStyle(tint: nil, compact: true)).disabled(checking)
+            }
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.red.opacity(0.1)))
+        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color.red.opacity(0.35)))
     }
 
     /// Claude still using the folders: they must be closed first.
