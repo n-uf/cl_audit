@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- Quick chat notices a move between a login's seat with no organisation and its Team seat: it starts Claude Code again on the new seat, keeps no limit from the other one, and sends a question waiting for a switch.
 
 ## 26.11.59 — 2026-11-20
 
