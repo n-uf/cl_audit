@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.63 — 2026-11-20
+
 - When Claude Code's record names its account without an address, the numbers are now matched to it by the account's id, so its own numbers still show and another account's never pass as the profile's. Where the id isn't known either, no numbers show, and the profile says why: "Claude Code's record has no address: sign in again in Claude Code."
 
 ## 26.11.62 — 2026-11-20
