@@ -32,34 +32,16 @@ machine has one.
 | `quick-chat` | the quick chat's engine and Markdown (its own `quick-chat/run.sh`, run here under the build lock) | 95 |
 | `scan` | the app's own `SecretScan` (`Sources/SecretScan.swift`, the one place key shapes live) over every file in `Checks/` (no secret-shaped string is committed; a tool that doesn't build fails the scan, never skips it), then `tools/leakscan.py`: no real address, id, personal path, and none of the words in your local `Checks/.work/leakwords` (one per line, never committed; without it that check is skipped and says so); and leakscan.py refuses to run without the tool | 0 hits |
 | `backup` | the Sessions backup, restore, export and import on real files: a backup and its manifest (window entries, sidebar, tasks, transcripts, counts, what is kept here), the switch's backup before it moves anything; Restore's plan (missing, back, grown, changed, partial, made after, case) and its run (create-only, the journal, a crash at each point, Stop, the window opening, finishing from the receipt, Undo exactly, cl_audit's and claude-transplant's locks, running sessions, an old stopped switch no longer blocking), a second volume (`--volume`); Export to a zip and an encrypted image (keys left out, the leak check, SecretScan's shapes, the preview); Import in a second throwaway home (`BK_ROLE=import`: open, unpack as a backup, Into another profile, plan, run, Undo, a transcript and an entry appearing between the plan and the write) and the zip's times in other time zones (`BK_ROLE=tz`); hostile zips (`backup/mkzips.py`) and doctored images, zlib's inflate at every chunk size (a damaged stream refused as one), trees deeper than PATH_MAX, work folders and their sweep (a claim that can't be written, a chmod that fails, two removers racing, a cancel mid-inflate, a write error that isn't a full disk). Every line's origin: `backup/PROVENANCE.md` | 627 |
-| `signin` | the model and page logic: **not in this tree yet**, see below | – |
+| `signin` | the model and page logic: the sign-in watch (a changed account, not a signed-out one), the agent's reader end to end in the throwaway home, numbers on another account labelled with the reading's own account and no alert about them, New profile (free accounts, the address route, waiting for the sign-in, the checks by ids, the window's account), what a folder shares, the folder rules (one profile per account, standby ones included; a folder inside another profile's; two profiles on one window), what Claude Code recorded about an account, the window's sidebar counted, the switch's move inside the one folder (plan, run, receipt, the pointer line, tasks with the twin rule, Undo, the lock and claude-transplant's, the window marks, bounded checks), the sidebar plan and its link, the card's trays and the menus (Switch account ›, the full-limit item, the account in use plain), the waiting alert and its delivery, Restore's page on a world made by Back up now (and its reviews), stage E's Export and Import pages; and stage F: a switch and its Undo copy or move no sign-in, and nothing in the app writes, copies or deletes a Keychain item. Retired blocks stay fenced off with `#if RETIRED_ONEFOLDER`; `signin/PROVENANCE.md` gives every line's origin and, for each retired block, the check that covers its rule today | 348 |
 
-`run.sh` knows `signin`; while its `main.swift` is missing it says so and skips it. Since the one-folder model, the blocks of
-`signin` that tested what it removed (Use this account, the standby accounts' own folders and readers, the switch that moved
-sessions, Undo this switch, "the other account is back", Add account's sign-in states) are fenced off with `#if RETIRED_ONEFOLDER`
-in the held-back copy, each saying where its ground is covered now (mostly `accounts`). In `backup` an old unfinished switch no
-longer refuses a restore. `--volume` makes `backup` mount a small HFS+ disk image in `Checks/.work/backup/` and run the
-cross-volume checks on it.
+In `backup` an old unfinished switch no longer refuses a restore. `--volume` makes `backup` mount a small HFS+ disk image in
+`Checks/.work/backup/` and run the cross-volume checks on it.
 
-## Not recovered
-
-The suite `signin` (about 567 checks) was hand-built in a scratch folder that a restart wiped. It is rebuilt from the session
-transcripts with `tools/replay` (see its README), from recorded `Write` and `Edit` payloads, whole-file `Read`s and `cat >`
-heredoc bodies only, and nothing recorded is executed. Some of its history was made by python scripts that cut and splice a
-file by offsets computed from its text, which the rebuild does not take on trust, so this file is left out:
-
-| File | The op that could not be honoured | Why |
-|---|---|---|
-| `signin/main.swift` | a python script that replaced lines 1143 to 1195 of the stage C copy by list index (`L[start:end] = new`), then the copies and merges built from it | an offset into a file whose state is only known through the rebuild itself |
-
-An earlier rebuild did run that script and gave a `signin` suite that passes 567 of 567 against 26.11.3, but it executed
-recorded commands and is not used. It can be added back once its gap is closed (a whole-file `Read` of the file, or the
-original file), or each of its lines traced as `backup`'s were (`backup/PROVENANCE.md`: the assembled suite, compared line by
-line, as text only, with what the transcripts record).
-
-What is rebuilt (and was checked against the earlier rebuild, hunk by hunk: identical): the page renders
-(`render/pages/main.swift`, from the stage B1 render and its stage E block), the zlib probe zip generators (`backup/xz`),
-and `render/trim.py`. The first-run suite and its render come from a saved copy of the files.
+`signin` and `backup` were hand-built in a scratch folder that a restart wiped; each is the assembled suite as last run green,
+every line traced as text to what the session transcripts record (their `PROVENANCE.md`), then ported to today's app. Also
+rebuilt from the transcripts with `tools/replay` (and checked against an earlier rebuild, hunk by hunk: identical): the page
+renders (`render/pages/main.swift`, from the stage B1 render and its stage E block), the zlib probe zip generators
+(`backup/xz`), and `render/trim.py`. The first-run suite and its render come from a saved copy of the files.
 
 ## Safety
 
@@ -87,6 +69,8 @@ and `render/trim.py`. The first-run suite and its render come from a saved copy 
 ```
 run.sh                  the entry point
 accounts/main.swift     the one-folder model's suite
+signin/main.swift       the signin suite (its retired blocks fenced off with #if RETIRED_ONEFOLDER); signin/PROVENANCE.md, its lines'
+                        origin, the port, and where each retired block's rule is checked now
 firstrun/main.swift     the first-run suite
 retention/main.swift    the retention suite (its managed-settings sources are folders inside its throwaway home)
 setup/main.swift        the setup suite; setup/mkhostile.py makes its hostile variants of a good export zip (run.sh copies it next to the home)
