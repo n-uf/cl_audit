@@ -486,6 +486,62 @@ do {
     let kernelNamedVar = procargs("/x/claude", ["claude"], ["PATH=/usr/bin", "pfz=1", "CLAUDE_CONFIG_DIR=/x"])
     check(Processes.parse(kernelNamedVar, size: kernelNamedVar.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: "/x", environmentRead: true),
           "env read: PATH=…, pfz=1, CLAUDE_CONFIG_DIR=/x keeps the folder /x")
+    // CLAUDE_CONFIG_DIR set twice: the same value is that folder; different values, or one that names no folder (empty, blank,
+    // relative: Claude Code resolves it against its own working folder), are unknown, never the default nor cl_audit's cwd
+    func parsed(_ envs: [String]) -> Processes.Launch? { let b = procargs("/x/claude", ["claude"], envs); return Processes.parse(b, size: b.count) }
+    let unusable = Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: true, configDirUnusable: true)
+    check(parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/x/same", "A=1", "CLAUDE_CONFIG_DIR=/x/same"])
+          == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: "/x/same", environmentRead: true),
+          "two identical CLAUDE_CONFIG_DIR: that folder, read")
+    check(parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/x/a", "CLAUDE_CONFIG_DIR=/x/b"]) == unusable
+          && parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/x/a", "CLAUDE_CONFIG_DIR=/x/b", "CLAUDE_CONFIG_DIR=/x/a"]) == unusable
+          && parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/x/a", "CLAUDE_CONFIG_DIR="]) == unusable
+          && parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/x/\u{e9}", "CLAUDE_CONFIG_DIR=/x/e\u{301}"]) == unusable,
+          "two different CLAUDE_CONFIG_DIR (the first again last, an empty second, the same text in other bytes): unknown")
+    check(parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR="]) == unusable && parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=   "]) == unusable
+          && parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=rel/dir"]) == unusable && parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=./x"]) == unusable
+          && parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=~/.claude-w"]) == unusable && parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR= /x"]) == unusable
+          && parsed(["CLAUDE_CONFIG_DIR="]) == unusable,
+          "an empty, blank, relative, ~-led or space-led CLAUDE_CONFIG_DIR: unknown (the environment still read)")
+    check(parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/x/abs"]) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: "/x/abs", environmentRead: true)
+          && parsed(["PATH=/usr/bin"]) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: true),
+          "an absolute CLAUDE_CONFIG_DIR: that folder; none with the environment read: the default folder's (as before)")
+    let cutRel = Array(procargs("/x/claude", ["claude"], ["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=rel/long"]).dropLast(3))
+    check(Processes.parse(cutRel, size: cutRel.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: false),
+          "a cut-off CLAUDE_CONFIG_DIR stays as before: not read (unknown)")
+    // argc 0: no arguments, the environment read after the padding; a run of NULs between argv and the environment: still read
+    let argc0 = procargs("/x/claude", [], ["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/c"])
+    let nulRun = procargs("/x/claude", ["claude", "-p"], ["", "", "", "", "PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/c"])
+    let nulRunOnly = procargs("/x/claude", ["claude", "-p"], ["", "", "", "", "ptr_munge="])
+    check(Processes.parse(argc0, size: argc0.count) == Processes.Launch(exe: "/x/claude", args: [], configDir: "/c", environmentRead: true)
+          && Processes.parse(nulRun, size: nulRun.count) == Processes.Launch(exe: "/x/claude", args: ["claude", "-p"], configDir: "/c", environmentRead: true)
+          && Processes.parse(nulRunOnly, size: nulRunOnly.count) == Processes.Launch(exe: "/x/claude", args: ["claude", "-p"], configDir: nil, environmentRead: false),
+          "argc 0: no arguments, environment read; NULs between argv and PATH: read, /c; NULs then kernel strings only: not read")
+    // on stub tables: a claude with an empty, or two different, CLAUDE_CONFIG_DIR is can't tell for every folder, listed unknown
+    let emptyDir = Processes.Entry(pid: 9015, uid: getuid(), ruid: getuid(), name: "claude",
+                                   launch: parsed(["PATH=/usr/bin", "CLAUDE_CONFIG_DIR="]))
+    let twoDirs = Processes.Entry(pid: 9016, uid: getuid(), ruid: getuid(), name: "claude",
+                                  launch: Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: nil, environmentRead: true, configDirUnusable: true))
+    let relDir = Processes.Entry(pid: 9017, uid: getuid(), ruid: getuid(), name: "claude",
+                                 launch: Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: "rel/dir", environmentRead: true))
+    check(emptyDir.launch?.configDirUnusable == true && emptyDir.unknown && twoDirs.unknown && !relDir.unknown,
+          "unknown: a claude whose CLAUDE_CONFIG_DIR is empty or set twice differently")
+    check([emptyDir, twoDirs].allSatisfy { e in Processes.codeRuns(codeDir: "~/.claude", table: [e]) == nil && Processes.codeRuns(codeDir: "~/.claude-p8", table: [e]) == nil }
+          && Processes.codeRuns(codeDir: FileManager.default.currentDirectoryPath, table: [emptyDir]) == nil
+          && Processes.codeRuns(codeDir: "~/.claude", table: [readDefault, emptyDir]) == true,
+          "codeRuns: an empty or differing CLAUDE_CONFIG_DIR is can't tell for the default folder, another one and cl_audit's cwd")
+    check(Processes.codeRuns(codeDir: FileManager.default.currentDirectoryPath + "/rel/dir", table: [relDir]) == nil
+          && Processes.codeRuns(codeDir: "~/.claude", table: [relDir]) == nil,
+          "codeRuns: a relative configDir in a hand-made table is can't tell, never resolved against cl_audit's cwd")
+    let edgeRuns = Processes.codeRunList([emptyDir, twoDirs, native])
+    check(edgeRuns == [ClaudeRun(id: 9015, kind: .terminal, folder: ClaudeRun.unknownFolder), ClaudeRun(id: 9016, kind: .terminal, folder: ClaudeRun.unknownFolder),
+                       ClaudeRun(id: 9013, kind: .terminal, folder: "/x/.claude-n")]
+          && AccountRemoval.runsUsing(profile("rm-d", "~/.claude", nil), edgeRuns).map(\.id) == [9015, 9016]
+          && AccountRemoval.runsUsing(profile("rm-w", "~/.claude-p8", nil), edgeRuns).map(\.id) == [9015, 9016],
+          "claudeRuns / Removal: an empty or differing CLAUDE_CONFIG_DIR is listed once as unknown and counts against every profile: \(edgeRuns)")
+    check(Processes.probeLines([emptyDir, twoDirs]) == ["claude-like processes: 2, environment read: 2", "  1: environment read: yes, CLAUDE_CONFIG_DIR: yes",
+                                                         "  2: environment read: yes, CLAUDE_CONFIG_DIR: yes"],
+          "the probe: unchanged format; a set but unusable CLAUDE_CONFIG_DIR is present (yes), never its value")
     // the padding rule on real processes: stand-ins (copies of /bin/sleep, never Claude) started at path lengths 7, 8, 15 and
     // 16 ("./" and a name, in their folder), then one with an empty argv[0]; each read back, then killed by its pid
     let standDir = home + "/standin"

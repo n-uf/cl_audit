@@ -25,12 +25,19 @@ enum Processes {
     /// How a process was started: its executable, its arguments (argv, empty ones included) and its CLAUDE_CONFIG_DIR (nil when
     /// it isn't set). `environmentRead`: the kernel gave at least one environment entry after the arguments (every real process
     /// has some: PATH, HOME…). When it didn't, a nil `configDir` says nothing: the folder is unknown, never the default one
-    /// (`Entry.unknown`). `parse` always sets it; the default is for the checks' hand-made tables.
+    /// (`Entry.unknown`). `parse` always sets it; the default is for the checks' hand-made tables. `configDirUnusable`:
+    /// CLAUDE_CONFIG_DIR is set, but to no folder cl_audit can name: empty, blank or relative (Claude Code then works it out
+    /// from its own working folder, or takes "" for the default in some places), or set twice to different values. `configDir`
+    /// is then nil and the folder is unknown too (`folderKnown`), never the default one nor one resolved against cl_audit's.
     struct Launch: Equatable {
         var exe: String
         var args: [String]
         var configDir: String?
         var environmentRead = true
+        var configDirUnusable = false
+
+        /// Which folder it runs on can be told: the environment was read, and CLAUDE_CONFIG_DIR is absent or one absolute path.
+        var folderKnown: Bool { environmentRead && !configDirUnusable }
     }
 
     /// A process of the table: its id, its effective and real user (nil when even they can't be read), its name (proc_name for
@@ -47,9 +54,10 @@ enum Processes {
         var hidden = false
 
         /// It may be Claude Code and which folder it runs on can't be told: `hidden`, or a Claude Code program (`codeProgram`)
-        /// whose environment wasn't read (its CLAUDE_CONFIG_DIR may be any folder's). Whoever asks which folder (codeRuns) then
-        /// can't tell, and says so; its command line, read, still counts (commandLines fails on `hidden` only).
-        var unknown: Bool { hidden || launch?.environmentRead == false && claudeLike }
+        /// whose environment wasn't read (its CLAUDE_CONFIG_DIR may be any folder's) or whose CLAUDE_CONFIG_DIR names no folder
+        /// (`configDirUnusable`). Whoever asks which folder (codeRuns) then can't tell, and says so; its command line, read,
+        /// still counts (commandLines fails on `hidden` only).
+        var unknown: Bool { hidden || launch?.folderKnown == false && claudeLike }
 
         /// It may be Claude Code: its program as it was started is Claude Code's (`codeProgram`, evaluated once here), or, not
         /// read, its name looks like Claude Code's (`looksLikeClaude`: `claude…` or the native installer's 2.1.318).
@@ -141,7 +149,9 @@ enum Processes {
     /// then the environment and the kernel's own strings (ptr_munge= and the like). nil when the arguments are cut short, or
     /// when the first argument is empty or starts with a space. `environmentRead` only on positive evidence, an entry named like
     /// a variable every process has (PATH, HOME…): a buffer that ends after the arguments, goes on with NULs, or with the kernel's
-    /// strings only, wasn't read; nor was one that cuts an entry off. CLAUDE_CONFIG_DIR is taken from any whole entry.
+    /// strings only, wasn't read; nor was one that cuts an entry off. CLAUDE_CONFIG_DIR is taken from any whole entry; set
+    /// several times, only when every value is the same (which one Claude Code's runtime keeps isn't established); a value that
+    /// isn't an absolute path ("", blanks, "rel/dir"), or values that differ, make it `configDirUnusable`.
     static func parse(_ buf: [UInt8], size: Int) -> Launch? {
         guard size > MemoryLayout<Int32>.size, size <= buf.count else { return nil }
         let argc = Int(buf.withUnsafeBytes { $0.load(as: Int32.self) })
@@ -161,7 +171,8 @@ enum Processes {
             i += 1
         }
         var configDir: String?
-        var environmentRead = false, cut = false
+        var configBytes: ArraySlice<UInt8>?
+        var environmentRead = false, cut = false, differs = false
         let prefix = Array("CLAUDE_CONFIG_DIR=".utf8)
         // every entry after the arguments to the buffer's end, empty ones skipped: the environment, then the kernel's own strings
         // (ptr_munge= and the like, with or without an empty entry between). Read only on positive evidence: an entry named like
@@ -175,17 +186,25 @@ enum Processes {
             if i >= size { cut = true; break }
             let entry = buf[start..<i]
             if entry.count >= prefix.count, entry.prefix(prefix.count).elementsEqual(prefix) {
-                configDir = String(decoding: buf[(start + prefix.count)..<i], as: UTF8.self)
+                let value = buf[(start + prefix.count)..<i]
+                // set again to another value (compared as bytes): which one counts isn't known (libc's getenv takes the first)
+                if let seen = configBytes, !seen.elementsEqual(value) { differs = true }
+                configBytes = value
+                configDir = String(decoding: value, as: UTF8.self)
             }
             if everyProcess.contains(where: { n in entry.count >= n.count && entry.prefix(n.count).elementsEqual(n) }) { environmentRead = true }
             i += 1
         }
+        var unusable = false
         if cut { configDir = nil; environmentRead = false }
+        // empty, blank or relative: Claude Code resolves it against its own working folder (or takes "" for the default in
+        // places); differing values: either may count. No folder cl_audit can name: unknown
+        else if let d = configDir, differs || !d.hasPrefix("/") { configDir = nil; unusable = true }
         guard args.count == argc else { return nil }                // cut short: not read
         // an empty or space-led program can't be told from a misread layout (an empty argv[0] can't be told from padding): not
         // read, so the process is hidden rather than taken for "not Claude"
         if let first = args.first, first.isEmpty || first.hasPrefix(" ") { return nil }
-        return Launch(exe: exe, args: args, configDir: configDir, environmentRead: environmentRead)
+        return Launch(exe: exe, args: args, configDir: configDir, environmentRead: environmentRead, configDirUnusable: unusable)
     }
 
     /// Variables every real process has (one is enough), and CLAUDE_CONFIG_DIR: an entry named so is an environment that was read.
@@ -250,20 +269,21 @@ enum Processes {
 
     /// One `claude` process as the new-account page shows it: a Code-tab's when its program, as it was started (argv[0], what
     /// `ps -o comm` printed), is in the Claude app's folder, else a terminal's; its folder, or ~/.claude when its environment was
-    /// read without CLAUDE_CONFIG_DIR. When how it was started, or its environment, couldn't be read: ClaudeRun.unknownFolder
-    /// (which every folder's check counts as using it), never ~/.claude.
+    /// read without CLAUDE_CONFIG_DIR. When how it was started, or its environment, couldn't be read, or its CLAUDE_CONFIG_DIR
+    /// names no folder (`configDirUnusable`): ClaudeRun.unknownFolder (which every folder's check counts as using it), never
+    /// ~/.claude nor a folder resolved against cl_audit's own.
     static func codeRun(_ e: Entry) -> ClaudeRun {
         let program = e.launch?.args.first ?? e.name
         let kind: ClaudeRun.Kind = program.contains("/Library/Application Support/Claude") ? .codeTab : .terminal
-        guard let l = e.launch, l.environmentRead else { return ClaudeRun(id: e.pid, kind: kind, folder: ClaudeRun.unknownFolder) }
+        guard let l = e.launch, l.folderKnown else { return ClaudeRun(id: e.pid, kind: kind, folder: ClaudeRun.unknownFolder) }
         return ClaudeRun(id: e.pid, kind: kind, folder: l.configDir.map(tilde) ?? "~/.claude")
     }
 
     /// Whether Claude Code runs for this Claude Code folder (CLAUDE_CONFIG_DIR, or ~/.claude when it isn't set), among this
     /// user's processes: nil when that can't be told (the table can't be read, a process that may be Claude Code can't be, or
     /// another user's that looks like Claude Code, which may be on this folder, as `sudo claude` is, or a Claude Code whose
-    /// environment couldn't be read: `Entry.unknown`, for every folder, the default one included). The Claude app itself isn't
-    /// Claude Code; the Claude Code it starts is.
+    /// environment couldn't be read or whose CLAUDE_CONFIG_DIR names no folder: `Entry.unknown`, for every folder, the default
+    /// one included). The Claude app itself isn't Claude Code; the Claude Code it starts is.
     static func codeRuns(codeDir: String, table given: [Entry]?? = nil) -> Bool? {
         guard let all = given ?? settledTable() else { return nil }
         let me = getpid(), uid = getuid()
@@ -285,10 +305,13 @@ enum Processes {
     /// One process: true when it is Claude Code for the folder `want`; nil when it may be Claude Code but couldn't be read (counted as
     /// running by the caller: nothing shared is written); false otherwise. The Claude app's own main program isn't Claude Code (its window
     /// is checked apart); the Claude Code it carries, run from a terminal, is. `configDir` nil is the default folder's, so a process whose
-    /// environment wasn't read never comes here (codeRuns counts it as unknown first: `Entry.unknown`).
+    /// environment wasn't read, or whose CLAUDE_CONFIG_DIR names no folder, never comes here (codeRuns counts it as unknown first:
+    /// `Entry.unknown`); an empty or relative `configDir` that does (a hand-made table) is can't tell, never resolved against
+    /// cl_audit's working folder.
     static func isCode(name: String, exe: String?, args: [String], configDir: String?, want: String, std: String) -> Bool? {
         guard let exe else { return looksLikeClaude(name) ? nil : false }
         guard codeProgram(exe: exe, args: args) else { return false }
+        if let d = configDir, !d.hasPrefix("/") && !d.hasPrefix("~/") { return nil }
         let key = configDir.map { FolderKey.canonical(expand($0)) } ?? std
         return key == want
     }
@@ -410,7 +433,7 @@ enum Processes {
             let read = e.launch?.environmentRead == true
             c.claudeLike += 1
             if read { c.read += 1 }
-            c.each.append((read, read && e.launch?.configDir != nil))
+            c.each.append((read, read && (e.launch?.configDir != nil || e.launch?.configDirUnusable == true)))
         }
         return c
     }
