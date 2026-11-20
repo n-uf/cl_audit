@@ -168,7 +168,8 @@ struct ResolvedAccount: Codable, Equatable {
     /// The id of the profile `clash` names (names needn't be unique: this one says which); nil in a record from before it.
     var clashID: String? = nil
     /// Claude Code's folder account's organisation id (lower case), with `codeAccount`: one seat (a login's personal and
-    /// Team seats are two). nil: none recorded, or a record from before it.
+    /// Team seats are two). "": the folder's record names the seat with no organisation; nil: not known (no seat, or a
+    /// record from before it).
     var codeOrganization: String? = nil
 
     /// Whose the numbers are (ProfileCore's Headline.Owner): the app's account in use, when the app decided it; Claude

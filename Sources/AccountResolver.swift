@@ -46,7 +46,10 @@ enum AccountResolver {
                                 numbersFor: loginEmail, differs: false, line: nil, lit: code != nil, clash: owner?.name, at: now,
                                 codeAccount: code.map { AccountID.normal($0.account) }, codeName: codeLabel, readStale: stale ? true : nil,
                                 clashID: owner?.id)
-        r.codeOrganization = code?.organization.flatMap { $0.isEmpty ? nil : AccountID.normal($0) }
+        // the folder's organisation in three states (quick chat's key, QuickChatTarget.sameAccount): its id; "" when the
+        // record names the seat with none (no organizationUuid, null or empty: ClaudeFiles.Record keeps each as nil or "");
+        // nil only with no seat (and in a record from before this field): not known
+        r.codeOrganization = code.map { AccountID.normal($0.organization ?? "") }
         if e.claudeWindow, app.state == .known, let id = app.account.map(AccountID.normal) {
             let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { byID(id).sameAccount(known($0)) }
             r.account = id
