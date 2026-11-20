@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.61 — 2026-11-20
+
 - When a switch leaves a profile's Claude Code on another profile's account, quick chat no longer sends what you typed there; it says why and keeps it.
 
 ## 26.11.60 — 2026-11-20
