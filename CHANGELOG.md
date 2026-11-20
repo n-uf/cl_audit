@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.66 — 2026-11-20
+
 - A restore or import that stopped half way now has "Leave it as it is" on its page, as a stopped switch does: what it wrote stays, nothing is undone, the backup isn't touched, and the profile can switch, restore and import again, also when its backup is gone and neither Finish nor Undo can complete.
 - A server-managed settings cache Claude Code can't read (one being written, cut off, too big, not a plain file) is now ignored as Claude Code ignores it, so the Claude window's sessions no longer show as deleted while it's written.
 
