@@ -32,6 +32,10 @@
 // encrypted disk image. A transcript a running Claude Code session holds, or that doesn't end on a full line, is copied
 // up to its last full line. The file is made with macOS's own ditto (a zip) or hdiutil (AES-256, the password passed on
 // stdin, never in an argument, never stored or logged).
+//
+// A session travels whole: its transcript and its own folder (<id>/: subagents, tool results, and Claude Code's archive record
+// archived.json, so an archived session stays archived on the new Mac). A project's connector-downloads/ (what its connectors
+// fetched; Claude Code ages it out like the transcripts) travels too, as the project's own files, each scanned for keys alone.
 
 import CryptoKit
 import Foundation
@@ -640,8 +644,10 @@ enum SessionsExport {
     static func unit(of rel: String) -> Unit? {
         let c = rel.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
         guard c.count >= 3, c[0] == "transcripts" else { return nil }
-        // a project's memory files are not a session's: each one stands alone
-        if c.count >= 4, c[2] == "memory" { return Unit(project: c[1], id: c[2...].joined(separator: "/"), isSession: false) }
+        // a project's memory files, and what its connectors downloaded (connector-downloads/, Claude Code 2.1.326), are not a
+        // session's: each one stands alone. A session's own folder (<id>/: subagents, tool results, its archive record
+        // archived.json) goes with its transcript.
+        if c.count >= 4, c[2] == "memory" || c[2] == "connector-downloads" { return Unit(project: c[1], id: c[2...].joined(separator: "/"), isSession: false) }
         if c.count == 3 {
             if c[2].hasSuffix(".jsonl") { return Unit(project: c[1], id: String(c[2].dropLast(".jsonl".count)).lowercased(), isSession: true) }
             return Unit(project: c[1], id: c[2], isSession: false)

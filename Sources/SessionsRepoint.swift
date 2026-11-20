@@ -4,12 +4,15 @@
 // here, nothing is needed. When it isn't (missing, or cloned somewhere else), the Import page and the Sessions page list the session with
 // "Pick its folder on this Mac…", and a picked folder re-points it:
 //
-// - the transcript (projects/<old name>/<id>.jsonl) and its folder (<id>/: subagents, tool results …) are written anew under the picked
+// - the transcript (projects/<old name>/<id>.jsonl) and its folder (<id>/: subagents, tool results, its archive record archived.json,
+//   so an archived session stays archived …) are written anew under the picked
 //   folder's name, each line's top-level `cwd` that names the old folder (or a folder inside it) rewritten to the picked one, every other
 //   byte of the line as it was (a line that isn't a JSON object is copied as it is; a line over 64 MB is copied as it is and counted). The
 //   files are new (create-only, a temp name linked into place, never over a file, never through a link), with the old file's dates. Only
 //   then is each old file copied into the receipt's folder and taken away;
 // - the project's memory files (projects/<old name>/memory/) are copied to the new name where missing (the old ones stay);
+// - the project's connector-downloads/ (what its connectors fetched, the project's and not one session's) stays under the old name, with
+//   the project's other sessions; Claude Code ages it out there like the transcripts;
 // - each Code-tab entry that runs the session gets cwd and originCwd set to the picked folder. A worktree whose folder isn't on this Mac
 //   is dropped with the fields the window reads with it (worktreePath, worktreeName, worktreeLazy, branch, sourceBranch,
 //   keptDirtyWorktree), and harnessCwd when its folder isn't here, so the window runs the session in the project folder (the window spawns

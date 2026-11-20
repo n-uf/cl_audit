@@ -354,6 +354,8 @@ enum SessionsBackup {
                     g.files.append(Planned(role: .transcript, src: path, rel: "transcripts/\(rel)",
                                            original: (projects as NSString).appendingPathComponent(rel), bytes: m.size))
                     g.bytes += m.size
+                    // (every file of the tree is taken: a session's own folder with its archive record archived.json, and a
+                    // project's connector-downloads/, go with it; a restore writes each one back only where it is missing)
                     // one transcript per session: the .jsonl files directly in a project's folder
                     if rel.hasSuffix(".jsonl"), rel.split(separator: "/").count == 2 {
                         g.counts.transcripts += 1
