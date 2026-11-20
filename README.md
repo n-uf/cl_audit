@@ -811,8 +811,8 @@ ultra-2"); those stay listed and restorable. **Restore…** on a backup puts bac
 
 - **In it:** the window's Code-tab list (every `claude-code-sessions/<account>/<org>` folder, scheduled tasks
   included, for both accounts and any other found there), its sidebar records (only the `epitaxyPrefs` part of
-  `claude_desktop_config.json`, as its own file: the rest of that file, the window's **MCP settings**, is **never in a
-  backup**, since it can carry keys; it travels only in the encrypted export), each scheduled task's prompt
+  `claude_desktop_config.json`, as its own file: the window's **MCP settings** (that file's `mcpServers`) are **never in a
+  backup**, since they can carry keys; they travel only in the encrypted export), each scheduled task's prompt
   (`setup/scheduled-tasks/<id>/SKILL.md`, which the window runs),
   cl_audit's records (the profile's name and its account and standby ids, never an address; an old switch's backup also
   holds that switch's receipt) and, on by default, Claude
@@ -1020,9 +1020,11 @@ Restore page and starts as a preview ("Preview · nothing written yet"):
   A scheduled task travels with its prompt (`scheduled-tasks/<id>/SKILL.md` in the Claude Code folder, key-scanned like a
   skill; a prompt no task names stays out), also when the setup row says Leave them out: "4 scheduled tasks with their
   prompts: an import adds them only if you pick Add them, and paused".
-- **MCP settings:** the window's `claude_desktop_config.json` without its sidebar part: "2 MCP servers (github, remote) and the
-  window's other settings". Its env values, headers and arguments can hold tokens no scan recognises, so **only the encrypted
-  disk image carries it**; a zip leaves it out and says so. In the image it is scrubbed like the window's other files (a known
+- **MCP settings:** the MCP servers of the window's `claude_desktop_config.json` (its `mcpServers`) and nothing else of that
+  file: "2 MCP servers (github, remote)". The window's other settings in it never go: its permission and consent settings
+  (bypass-permissions opt-ins, trusted folders, device and network consents), this Mac's paths and device state, and any key a
+  later Claude app adds. The servers' env values, headers and arguments can hold tokens no scan recognises, so **only the encrypted
+  disk image carries them**; a zip leaves them out and says so. A file with no MCP servers carries nothing. In the image it is scrubbed like the window's other files (a known
   address or account id becomes its fingerprint) and the leak check reads it. One that is a link, over 8 MB (an import refuses
   one that big) or not a JSON object is left out at the source, and the row says why.
 - **Claude Code setup** (on by default; the menu says **Include them** or **Leave them out**): "CLAUDE.md with 2 included files,
@@ -1217,8 +1219,10 @@ scripts, the plugin list so Claude Code can reinstall the plugins); the Claude w
 with their prompts and the sessions they ran; and cl_audit's own profiles (names, looks, Dock places, accounts and which one
 is in use) and General and backup settings; each session's task list, plan, prompt history and pasted text, its folder's trust
 and allowed tools (and, if you add them, the folder's MCP servers), and Rewind's copies when you include them. **What never
-moves:** sign-ins (Claude Code's and the window's), the Keychain, `settings.local.json`, `.claude.json` itself (only the trust
-fields above), session environments, the image cache, shell snapshots, debug files, and claude.ai chats and Projects, which
+moves:** sign-ins (Claude Code's and the window's), the Keychain, the Claude window's permission and consent settings
+(bypass-permissions opt-ins, trusted folders, device and network consents) and everything else of its
+`claude_desktop_config.json` but the MCP servers (also from an export made by an earlier version, which carried them: an import
+or restore ignores them), `settings.local.json`, `.claude.json` itself (only the trust fields above), session environments, the image cache, shell snapshots, debug files, and claude.ai chats and Projects, which
 already follow the account.
 
 **Confirmed only from the programs' own text, not by running them:** how Claude Code 2.1.326 writes `history.jsonl` (appended
@@ -1292,9 +1296,11 @@ reads the file, and shows a preview ("Preview · nothing written yet · built no
   turn them on; cl_audit never changes a task after that), **Scheduled tasks' sessions** (a session a task ran, by the entry's
   `scheduledTaskId`, comes in with its task; when the task isn't added it is left out with its transcript, with the task's
   name), **MCP settings** (left out unless you pick **Add them**, which lists each server's name and the program it runs with how
-  many arguments aren't shown, never an argument, an env value, a header or a URL; the whole `claude_desktop_config.json` is
-  written only where the profile has none, and always without its sidebar part, which only the sidebar step arranges: one that
-  is here stays byte for byte and the row lists the servers it lacks; a zip has none and the row says so. The Claude window may
+  many arguments aren't shown, never an argument, an env value, a header or a URL; a `claude_desktop_config.json` holding only
+  those servers is written only where the profile has none: never the window's other settings, its permission and consent
+  settings among them, nor its sidebar part, which only the sidebar step arranges. An export made by an earlier version carried
+  those settings too: they are never written, and the row names them by key as never added. One that is here stays byte for byte
+  and the row lists the servers it lacks; a zip has none and the row says so, and so does a file with no MCP servers. The Claude window may
   rewrite the file when it opens; Undo then leaves it as it is and says so), **Folder not here** (added, shown
   once that folder exists), **Would be deleted** (only the sessions Claude Code would delete again, as on the Restore page; **Keep for 90 days** when it would keep some). Entries go into the folder of the account the target
   works on now, never a fingerprint's, without the old account's error keys and Remote Control ids, and the sidebar's groups and pins follow them through the fingerprint (one Return in a helper session). **Close and
