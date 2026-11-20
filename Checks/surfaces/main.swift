@@ -2537,14 +2537,20 @@ do {
     let (w2, asked2) = typedThenSwitch(fullWeek)
     move(w2, rec(week: nil, five: nil, login: u3.email, code: u3))
     check(unsent(w2, asked2, clashNote), "moved into a clash (the app not deciding): nothing sent, the question kept, no address: \(w2.note ?? "none")")
-    // …and the clash clearing later (back on u1 with room, then on u2) sends nothing by itself; sending again goes, the note with it
+    // still in the clash (another reading): the note stays
+    move(w2, rec(week: nil, five: nil, login: u3.email!.uppercased(), code: u3))
+    check(w2.note == clashNote && asked2() == 0, "another reading of the same clash: the note stays, nothing sent")
+    // …and the clash clearing later (back on u1 with room, then on u2): the note goes, nothing is sent by itself, the
+    // question stays; the person sending it again: it goes
     move(w2, rec())
+    check(!w2.inClash && asked2() == 0 && w2.turns.isEmpty && w2.field == "what's typed" && w2.note == nil,
+          "the clash cleared (back on u1): its note gone, nothing sent by itself, the question still there: \(w2.note ?? "none")")
     move(w2, rec(week: 10, login: u2.email, code: u2))
-    check(!w2.inClash && asked2() == 0 && w2.turns.isEmpty && w2.field == "what's typed" && w2.note == clashNote,
-          "the clash cleared later (u1, then u2): the wait is gone, nothing sent by itself, the question still there: \(w2.note ?? "none")")
+    check(asked2() == 0 && w2.turns.isEmpty && w2.field == "what's typed" && w2.note == nil,
+          "then on u2: the wait is gone, so nothing goes and no \"switched to\": \(w2.note ?? "none")")
     w2.send()
     check(asked2() == 1 && w2.turns.map(\.question) == ["what's typed"] && w2.note == nil && w2.field.isEmpty,
-          "sent again by the person: it goes, the note about the unsent question with it")
+          "sent again by the person: it goes")
     // an app-decided clash (the app on the profile's own u1, the folder on Other's u3): the same
     let (w7, asked7) = typedThenSwitch(fullWeek)
     move(w7, appRec(appU1, code: u3), as: win)
@@ -2631,6 +2637,28 @@ do {
     let a7 = say("seven", on: rec(code: bare))
     check(a4 == "Answer 1" && a5 == "Answer 1" && a6 == "Answer 2" && a7 == "Answer 1",
           "a login's seat with no organisation, its Team seat (twice), then back: a new process at each move, kept on the same seat: \([a4, a5, a6, a7])")
+    // a question waiting for a switch that lands in a clash, against the process: nothing reaches the stand-in (no turn,
+    // no process asked for); once the clash clears the note goes, and the person's send is the second answer of the
+    // process still on that seat, so it had no turn in between
+    var resolved = 0
+    live.resolveClaude = { resolved += 1; $0(stub) }
+    let turnsBefore = live.turns.count
+    _ = Store.writeStatus(e.id, rec(week: 100, weekIn: 3 * 3600, code: bare))
+    live.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { cardOffer })
+    live.field = "eight"
+    live.switchAccount()
+    _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
+    live.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
+    let pumpUntil = Date().addingTimeInterval(0.5)
+    while Date() < pumpUntil { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    check(live.inClash && resolved == 0 && live.turns.count == turnsBefore && !live.busy && live.field == "eight" && live.note == clashNote,
+          "the stand-in, a switch landing in a clash: no turn, no process asked for, the question kept: \(live.note ?? "none")")
+    _ = Store.writeStatus(e.id, rec(code: bare))
+    live.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
+    let noteAfter = live.note
+    let a8 = say("eight", on: rec(code: bare))
+    check(noteAfter == nil && resolved == 1 && a8 == "Answer 2" && live.turns.count == turnsBefore + 1,
+          "the clash cleared: the note gone; sent by the person, the process on the seat answers its second: \(a8)")
     live.shutdown()
     FolderGuard.launchSeam = keepSeam
     _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
