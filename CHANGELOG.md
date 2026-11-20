@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-- When Claude Code's record names its account without an address, numbers read for another address are no longer shown as the profile's: whose they are isn't known, so none show until the record names an address that matches them.
+- When Claude Code's record names its account without an address, the numbers are now matched to it by the account's id, so its own numbers still show and another account's never pass as the profile's. Where the id isn't known either, no numbers show, and the profile says why: "Claude Code's record names no address: cl_audit can't tell whose the numbers are. Sign in again in Claude Code."
 
 ## 26.11.62 — 2026-11-20
 
