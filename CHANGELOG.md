@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-- Importing an export, or restoring a backup, no longer refuses the whole file when a project's folder is named like a sign-in: Claude Code names a project's folder after its path, so a repo called oauth-proxy (or a tool result's folder called credentials-check) made every import and restore of that profile fail with "named like a sign-in". Among the sessions the rule is now the files' rule, as a backup and an export take them: a file named like a sign-in still refuses the whole file, everywhere, and so does any folder named like one outside the sessions.
+- Importing an export, or restoring a backup, no longer refuses the whole file when a project's folder is named like a sign-in: Claude Code names a project's folder after its path, so a repo called oauth-proxy (or a tool result's folder called credentials-check) made every import and restore of that profile fail with "named like a sign-in". Among the sessions the rule is now the files' rule, as a backup and an export take them: a file named like a sign-in still refuses the whole file, and so does a folder named like one outside the sessions (Claude Code's setup keeps its own rule: only the excluded names).
 
 ## 26.11.58 — 2026-11-19
 
