@@ -842,5 +842,100 @@ do {
     check((try? CodeCleanup.set(90, codeDir: p(c))) != nil && r().days == 90, "Keep for with the key once: still works, 90")
 }
 
+// ============ 12. the bytes as Claude Code decodes them (2.1.326): UTF-16LE after FF FE, else lossy UTF-8; one U+FEFF dropped; JSON.parse ============
+do {
+    resetHome()
+    let c = ".claude-d"
+    let fileA = "managed/ClaudeCode/managed-settings.json"
+    let term = line("cli"), win = line("claude-desktop")
+    var n = 200
+    func raw(_ rel: String, _ bytes: [UInt8]) {
+        let path = p(rel)
+        try? fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
+        try? Data(bytes).write(to: URL(fileURLWithPath: path))
+    }
+    func clean() { for d in ["managed", c] { try? fm.removeItem(atPath: p(d)) }; try? fm.createDirectory(atPath: p(c), withIntermediateDirectories: true) }
+    func u8(_ s: String) -> [UInt8] { Array(s.utf8) }
+    func u16le(_ s: String) -> [UInt8] { s.utf16.flatMap { [UInt8($0 & 0xFF), UInt8($0 >> 8)] } }
+    func u16be(_ s: String) -> [UInt8] { s.utf16.flatMap { [UInt8($0 >> 8), UInt8($0 & 0xFF)] } }
+    func u32le(_ s: String) -> [UInt8] { s.unicodeScalars.flatMap { v in (0..<4).map { UInt8((v.value >> (8 * $0)) & 0xFF) } } }
+    func u32be(_ s: String) -> [UInt8] { s.unicodeScalars.flatMap { v in (0..<4).reversed().map { UInt8((v.value >> (8 * $0)) & 0xFF) } } }
+    let doc = "{\"cleanupPeriodDays\":7}"
+    func inString(_ b: [UInt8]) -> [UInt8] { u8("{\"model\":\"") + b + u8("\",\"cleanupPeriodDays\":7}") }
+    // every case: the bytes and whether Claude Code reads cleanupPeriodDays 7 from them (false: it can't parse the file)
+    let cases: [(String, [UInt8], Bool)] = [
+        ("plain UTF-8", u8(doc), true),
+        ("an invalid UTF-8 byte (FF) inside a string: U+FFFD to Claude Code", inString([0xFF]), true),
+        ("a lone surrogate as UTF-8 bytes (ED A0 80) inside a string", inString([0xED, 0xA0, 0x80]), true),
+        ("a lone surrogate as a JSON escape (\\ud800) inside a string", inString(u8("\\ud800")), true),
+        ("a reversed pair of escapes (\\udc00\\ud800) inside a string", inString(u8("\\udc00\\ud800")), true),
+        ("a UTF-8 byte order mark", [0xEF, 0xBB, 0xBF] + u8(doc), true),
+        ("UTF-16LE with its mark", [0xFF, 0xFE] + u16le(doc), true),
+        ("UTF-16LE with its mark and a lone surrogate inside a string", [0xFF, 0xFE] + u16le("{\"model\":\"") + [0x00, 0xD8] + u16le("\",\"cleanupPeriodDays\":7}"), true),
+        ("UTF-16BE with its mark: read as UTF-8, not JSON", [0xFE, 0xFF] + u16be(doc), false),
+        ("UTF-32LE with its mark: FF FE, read as UTF-16LE, NULs", [0xFF, 0xFE, 0x00, 0x00] + u32le(doc), false),
+        ("UTF-32BE with its mark: read as UTF-8, NULs", [0x00, 0x00, 0xFE, 0xFF] + u32be(doc), false),
+        ("UTF-16LE without a mark: read as UTF-8, NULs", u16le(doc), false),
+        ("two UTF-8 byte order marks: only one is dropped", [0xEF, 0xBB, 0xBF, 0xEF, 0xBB, 0xBF] + u8(doc), false),
+        ("an invalid UTF-8 byte outside a string", u8("{\"cleanupPeriodDays\":7,") + [0xFF] + u8("}"), false),
+        ("a trailing comma (Foundation takes it, JSON.parse doesn't)", u8("{\"cleanupPeriodDays\":7,}"), false),
+        ("a no-break space between tokens", u8("{\u{00A0}\"cleanupPeriodDays\":7}"), false),
+        ("600 levels of nesting in another key (Foundation stops at 512)", u8("{\"x\":" + String(repeating: "[", count: 600) + String(repeating: "]", count: 600) + ",\"cleanupPeriodDays\":7}"), true),
+        ("a number too big for a double in another key (JSON.parse: Infinity)", u8("{\"x\":1e400,\"cleanupPeriodDays\":7}"), true),
+    ]
+    for (what, bytes, reads) in cases {
+        // the user's settings.json
+        clean(); raw("\(c)/settings.json", bytes)
+        let x = Retention.read(codeDir: p(c))
+        if reads {
+            check(x.days == 7 && x.skipped == nil && x.problem == nil && CodeCleanup.read(codeDir: p(c)).days == 7, "settings.json, \(what): 7 days: \(String(describing: x.days)) \(String(describing: x.skipped))")
+            n += 1; check(fate(transcript(c, n, term, age: 8), x) == .delete, "settings.json, \(what): a terminal session of 8 days is deleted")
+        } else {
+            check(x.days == 30 && x.skipped == .unreadable && x.problem == "settings.json isn't a JSON object." && CodeCleanup.read(codeDir: p(c)).days == nil,
+                  "settings.json, \(what): unreadable to Claude Code, a note, counted with 30 days: \(String(describing: x.days)) \(String(describing: x.skipped))")
+        }
+        // managed-settings.json, a drop-in, the server cache
+        for (src, rel) in [("managed-settings.json", fileA), ("a drop-in", "managed/ClaudeCode/managed-settings.d/10-a.json"), ("the server cache", "\(c)/remote-settings.json")] {
+            clean(); settings(c, "{\"cleanupPeriodDays\":365}"); raw(rel, bytes)
+            let m = Retention.read(codeDir: p(c))
+            if reads {
+                n += 1
+                check(m.managed && m.days == 7 && !m.managedError && fate(transcript(c, n, win, age: 8), m) == .delete, "\(src), \(what): managed 7 days, the window's too: \(String(describing: m.days))")
+            } else {
+                // a managed file Claude Code can't parse is a managed error (no exemption); a server cache it can't parse it
+                // ignores, which cl_audit still counts as an error (the safe side): the period is settings.json's 365 either way
+                check(!m.managed && m.days == 365 && (m.managedError || rel != fileA && !rel.contains("managed-settings.d")), "\(src), \(what): no managed period, settings.json's 365: \(String(describing: m.days)) \(m.managedError)")
+            }
+        }
+    }
+    // blank to JavaScript's trim(): an empty settings document (the defaults), never an error
+    for (what, bytes) in [("only a byte order mark", [0xEF, 0xBB, 0xBF] as [UInt8]), ("only no-break spaces and a line separator", u8("\u{00A0} \u{2028}\n")),
+                          ("UTF-16LE: only its mark and spaces", [0xFF, 0xFE, 0x20, 0x00, 0x0A, 0x00])] {
+        clean(); raw("\(c)/settings.json", bytes)
+        let x = Retention.read(codeDir: p(c))
+        check(x.days == 30 && x.skipped == nil && x.problem == nil, "settings.json, \(what): blank, the defaults, no note")
+        clean(); raw(fileA, bytes)
+        check(!Retention.read(codeDir: p(c)).managedError, "managed-settings.json, \(what): blank, no managed error")
+    }
+    // U+0085 isn't JavaScript whitespace: a file of it is no JSON
+    clean(); raw("\(c)/settings.json", u8("\u{0085}"))
+    check(Retention.read(codeDir: p(c)).skipped == .unreadable, "settings.json of only U+0085: not blank to trim(), unreadable")
+    // the last one counts in the decoded text too
+    clean(); raw("\(c)/settings.json", [0xFE, 0xFF] + u16be("{\"cleanupPeriodDays\":365,\"cleanupPeriodDays\":7}"))
+    check(Retention.read(codeDir: p(c)).skipped == .unreadable, "UTF-16BE with the key twice: still unreadable (no first value from Foundation)")
+    clean(); raw("\(c)/settings.json", u8("{\"cleanupPeriodDays\":365,\"m\":\"") + [0xC0] + u8("\",\"cleanupPeriodDays\":7}"))
+    check(Retention.read(codeDir: p(c)).days == 7, "an overlong UTF-8 lead byte (C0) inside a string, the key twice: 7 (the last)")
+    // the decode itself
+    check(CodeCleanup.text(Data([0xFF, 0xFE, 0x41, 0x00, 0x42])) == "\u{FEFF}A", "UTF-16LE: the mark kept as U+FEFF, a trailing odd byte dropped")
+    check(CodeCleanup.text(Data([0x41, 0xFF, 0x42])) == "A\u{FFFD}B", "UTF-8: a bad byte is U+FFFD")
+    check(CodeCleanup.text(Data([0xFE, 0xFF, 0x00, 0x41])) == "\u{FFFD}\u{FFFD}\u{0}A", "FE FF: no UTF-16BE, read as UTF-8")
+    for (j, ok) in [("{}", true), ("[]", true), ("0", true), ("-0.5e+3", true), ("\"a\\u00e9\\/\"", true), ("[1,[2,{\"a\":[]}]]", true), (" true ", true),
+                    ("01", false), ("1.", false), (".5", false), ("+1", false), ("1e", false), ("-", false), ("NaN", false), ("[1,]", false), ("{\"a\":1,}", false),
+                    ("{\"a\" 1}", false), ("{1:2}", false), ("\"\\x\"", false), ("\"\\u12\"", false), ("\"a\tb\"", false), ("True", false), ("{} {}", false),
+                    ("[1]//c", false), ("{", false), ("\"", false), ("", false)] {
+        check(CodeCleanup.valid(Array(j.utf8)) == ok, "JSON.parse's grammar: \(j.debugDescription) \(ok ? "taken" : "refused")")
+    }
+}
+
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

@@ -460,11 +460,17 @@ enum ManagedSettings {
         case .irregular, .bad: return .bad
         case .data(let d): data = d
         }
+        guard plist else {
+            // decoded and parsed as Claude Code does (CodeCleanup.parse): a name written twice holds its last value
+            switch CodeCleanup.parse(data) {
+            case .blank: return .absent
+            case .invalid, .notObject: return .bad
+            case .object(let o): return .content(o)
+            }
+        }
         if String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return .absent }
-        let any: Any? = plist ? (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) : (try? JSONSerialization.jsonObject(with: data))
-        guard let o = any as? [String: Any] else { return .bad }
-        // a JSON key written twice: the last value counts, as in Claude Code's JSON.parse (a property list can't hold one)
-        return .content(plist ? o : CodeCleanup.lastWins(o, data: data))
+        guard let o = (try? PropertyListSerialization.propertyList(from: data, options: [], format: nil)) as? [String: Any] else { return .bad }
+        return .content(o)
     }
 
     /// The managed settings as they apply, or nil when there are none and nothing is wrong.

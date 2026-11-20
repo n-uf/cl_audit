@@ -1275,11 +1275,12 @@ enum CodeCleanup {
         case .bad: s.unreadable = true; s.problem = "settings.json can't be read."; return s
         case .data(let x): d = x
         }
-        if isBlank(d) { return s }
-        guard let parsed = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else {
-            s.unreadable = true; s.problem = "settings.json isn't a JSON object."; return s
+        let j: [String: Any]
+        switch parse(d) {
+        case .blank: return s
+        case .invalid, .notObject: s.unreadable = true; s.problem = "settings.json isn't a JSON object."; return s
+        case .object(let o): j = o
         }
-        let j = lastWins(parsed, data: d)                       // a name written twice: the last one counts, as in JSON.parse
         if let v = j[key] {
             s.daysPresent = true
             if let n = whole(v) { s.days = n } else { s.daysInvalid = true; s.problem = "cleanupPeriodDays in settings.json isn't a valid number." }
@@ -1288,7 +1289,151 @@ enum CodeCleanup {
         return s
     }
 
-    private static func isBlank(_ d: Data) -> Bool { String(decoding: d, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+    // MARK: reading a settings file the way Claude Code does
+
+    /// The text Claude Code reads from a settings file's bytes (2.1.326, the same for settings.json, managed-settings.json,
+    /// managed-settings.d/*.json and remote-settings.json): UTF-16LE when the file starts with FF FE, else UTF-8, nothing
+    /// else detected (`Buffer.toString`). Decoded as Bun does, never refused: a bad UTF-8 sequence is U+FFFD, a trailing odd
+    /// byte of UTF-16LE is dropped, a byte order mark is kept (U+FEFF; `parse` drops one). A bad UTF-16 pair is U+FFFD here
+    /// where JavaScript keeps the lone half: the same to JSON.parse (valid in a string, invalid outside one).
+    static func text(_ data: Data) -> String {
+        let b = [UInt8](data)
+        guard b.count >= 2, b[0] == 0xFF, b[1] == 0xFE else { return String(decoding: b, as: UTF8.self) }
+        let units = stride(from: 0, to: b.count / 2 * 2, by: 2).map { UInt16(b[$0]) | UInt16(b[$0 + 1]) << 8 }
+        return String(decoding: units, as: UTF16.self)
+    }
+
+    /// JavaScript's `trim()` whitespace: blank text is an empty settings document to Claude Code (`e.trim()===""`).
+    /// U+FEFF is in it, U+0085 isn't.
+    private static func jsSpace(_ u: Unicode.Scalar) -> Bool {
+        switch u.value {
+        case 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x20, 0xA0, 0x1680, 0x2000...0x200A, 0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF: return true
+        default: return false
+        }
+    }
+
+    static func isBlank(_ d: Data) -> Bool { text(d).unicodeScalars.allSatisfy(jsSpace) }
+
+    /// A settings document as Claude Code reads it: blank, not JSON to JSON.parse, JSON but not an object, or the object.
+    enum Parsed { case blank, invalid, notObject, object([String: Any]) }
+
+    /// `text`, blank as above, then one leading U+FEFF dropped and `JSON.parse` (Claude Code's `JSON.parse(Ss(e))`).
+    /// Foundation's parser isn't asked whether the text is JSON: it differs from JSON.parse (it takes a trailing comma and
+    /// guesses UTF-16 and UTF-32; it refuses a \ud800 escape, a number too big for a double, more than 512 levels). `valid`
+    /// decides, and the object is its top-level members as JSON.parse keeps them: a name written twice holds its LAST value,
+    /// names compared with their escapes decoded. A value Foundation can't read (a lone surrogate, 1e400, deep nesting)
+    /// stands as a string, which is invalid for the day counts and, for a policy helper, names one (the safe side).
+    static func parse(_ data: Data) -> Parsed {
+        let t = text(data)
+        if t.unicodeScalars.allSatisfy(jsSpace) { return .blank }
+        var scalars = t.unicodeScalars[...]
+        if scalars.first == "\u{FEFF}" { scalars = scalars.dropFirst() }
+        let body = String(String.UnicodeScalarView(scalars))
+        let b = Array(body.utf8)
+        guard valid(b) else { return .invalid }
+        guard b.first(where: { ![0x20, 0x09, 0x0A, 0x0D].contains($0) }) == 0x7B else { return .notObject }
+        var out: [String: Any] = [:]
+        for m in scanKeys(body).members {
+            out[m.name] = (try? JSONSerialization.jsonObject(with: Data(body[m.value].utf8), options: .fragmentsAllowed)) ?? "unreadable"
+        }
+        return .object(out)
+    }
+
+    /// Whether JSON.parse takes these bytes (UTF-8 text) as one JSON value: ECMA-404's grammar, whitespace only space, tab,
+    /// LF and CR, no trailing comma, no comment, no depth limit. Outside strings JSON is ASCII, so any other byte there is
+    /// refused; in a string any character from U+0020 on is taken except " and \ (an escape: \" \\ \/ \b \f \n \r \t or
+    /// \u and four hex digits, a lone surrogate included).
+    static func valid(_ b: [UInt8]) -> Bool {
+        var i = 0
+        var open: [UInt8] = []                                   // the containers around i: { or [
+        func space() { while i < b.count, [0x20, 0x09, 0x0A, 0x0D].contains(b[i]) { i += 1 } }
+        func hex(_ c: UInt8) -> Bool { (0x30...0x39).contains(c) || (0x41...0x46).contains(c) || (0x61...0x66).contains(c) }
+        func digits() -> Bool {
+            let s = i
+            while i < b.count, (0x30...0x39).contains(b[i]) { i += 1 }
+            return i > s
+        }
+        func string() -> Bool {                                  // at "
+            i += 1
+            while i < b.count {
+                let c = b[i]
+                if c == 0x22 { i += 1; return true }
+                if c < 0x20 { return false }
+                if c == 0x5C {
+                    guard i + 1 < b.count else { return false }
+                    let e = b[i + 1]
+                    if e == 0x75 {
+                        guard i + 5 < b.count, (i + 2...i + 5).allSatisfy({ hex(b[$0]) }) else { return false }
+                        i += 6
+                    } else if [0x22, 0x5C, 0x2F, 0x62, 0x66, 0x6E, 0x72, 0x74].contains(e) {
+                        i += 2
+                    } else { return false }
+                } else { i += 1 }
+            }
+            return false
+        }
+        func number() -> Bool {
+            if b[i] == 0x2D { i += 1 }
+            guard i < b.count else { return false }
+            if b[i] == 0x30 { i += 1 } else if (0x31...0x39).contains(b[i]) { _ = digits() } else { return false }
+            if i < b.count, b[i] == 0x2E { i += 1; guard digits() else { return false } }
+            if i < b.count, b[i] == 0x65 || b[i] == 0x45 {
+                i += 1
+                if i < b.count, b[i] == 0x2B || b[i] == 0x2D { i += 1 }
+                guard digits() else { return false }
+            }
+            return true
+        }
+        func word(_ w: String) -> Bool {
+            let u = Array(w.utf8)
+            guard i + u.count <= b.count, Array(b[i..<i + u.count]) == u else { return false }
+            i += u.count
+            return true
+        }
+        func member() -> Bool {                                  // "name" : , ready for the value
+            space()
+            guard i < b.count, b[i] == 0x22, string() else { return false }
+            space()
+            guard i < b.count, b[i] == 0x3A else { return false }
+            i += 1
+            return true
+        }
+        var wantValue = true
+        while true {
+            space()
+            if wantValue {
+                guard i < b.count else { return false }
+                switch b[i] {
+                case 0x7B:
+                    i += 1; space()
+                    if i < b.count, b[i] == 0x7D { i += 1; wantValue = false; continue }
+                    open.append(0x7B)
+                    guard member() else { return false }
+                case 0x5B:
+                    i += 1; space()
+                    if i < b.count, b[i] == 0x5D { i += 1; wantValue = false; continue }
+                    open.append(0x5B)
+                case 0x22: guard string() else { return false }; wantValue = false
+                case 0x2D, 0x30...0x39: guard number() else { return false }; wantValue = false
+                case 0x74: guard word("true") else { return false }; wantValue = false
+                case 0x66: guard word("false") else { return false }; wantValue = false
+                case 0x6E: guard word("null") else { return false }; wantValue = false
+                default: return false
+                }
+            } else {
+                guard let top = open.last else { return i == b.count }
+                guard i < b.count else { return false }
+                if b[i] == 0x2C {
+                    i += 1
+                    if top == 0x7B { guard member() else { return false } }
+                    wantValue = true
+                } else if b[i] == (top == 0x7B ? 0x7D : 0x5D) {
+                    i += 1
+                    open.removeLast()
+                } else { return false }
+            }
+        }
+    }
 
     /// Writes the days, keeping everything else byte for byte. A settings.json that is a link is written where it points
     /// (a link to nowhere is refused). The file is replaced atomically and keeps its permissions; if it changed since it
@@ -1395,25 +1540,26 @@ enum CodeCleanup {
         }
         let k = Array(key.utf8)
         var anywhere = 0
-        /// Skips one value; counts the strings in it that equal the key.
+        /// Skips one value; counts the strings in it that equal the key. Not recursive: JSON.parse (and `parse`) take any
+        /// depth, so a nested value is skipped by counting its brackets.
         func value(_ i: inout Int) {
-            space(&i)
-            guard i < b.count else { return }
-            switch b[i] {
-            case 0x22: if string(&i) == k { anywhere += 1 }
-            case 0x7B, 0x5B:
-                let close: UInt8 = b[i] == 0x7B ? 0x7D : 0x5D
-                i += 1
-                while i < b.count {
-                    space(&i)
-                    if i >= b.count { break }
-                    if b[i] == close { i += 1; break }
-                    if b[i] == 0x2C || b[i] == 0x3A { i += 1; continue }
-                    value(&i)
+            var depth = 0
+            repeat {
+                space(&i)
+                guard i < b.count else { return }
+                switch b[i] {
+                case 0x22: if string(&i) == k { anywhere += 1 }
+                case 0x7B, 0x5B: depth += 1; i += 1
+                case 0x7D, 0x5D:
+                    if depth == 0 { return }                         // the end of the object around it: not this value's
+                    depth -= 1; i += 1
+                case 0x2C where depth > 0, 0x3A where depth > 0: i += 1
+                default:
+                    let s = i
+                    while i < b.count, ![0x2C, 0x7D, 0x5D, 0x20, 0x09, 0x0A, 0x0D].contains(b[i]) { i += 1 }
+                    if i == s { return }                             // a stray , or : at the top: nothing to skip
                 }
-            default:
-                while i < b.count, ![0x2C, 0x7D, 0x5D, 0x20, 0x09, 0x0A, 0x0D].contains(b[i]) { i += 1 }
-            }
+            } while depth > 0
         }
         /// A member name as JSON.parse reads it: the raw bytes between the quotes, escapes decoded.
         func decoded(_ raw: [UInt8]) -> String {
@@ -1449,35 +1595,6 @@ enum CodeCleanup {
             members.append((decoded(name), at(start)..<at(end)))
         }
         return (top, anywhere, open, members)
-    }
-
-    /// Claude Code reads settings with JSON.parse, where a name that appears twice in an object keeps its LAST value;
-    /// Foundation keeps the first. This puts the last top-level value of the keys that matter here (the two day counts and
-    /// the policy helpers) into the parsed object. Names are compared as JSON.parse reads them (`"cleanupPeriodDays"` is
-    /// `cleanupPeriodDays`); only the top level counts. A value that can't be read stands as a string, which is invalid
-    /// for the numbers and, for a helper, names one (the safe side).
-    static func lastWins(_ obj: [String: Any], data: Data) -> [String: Any] {
-        // decoded as Claude Code reads the file: UTF-16LE when it starts with FF FE (that mark dropped; like Node, a trailing odd
-        // byte is dropped and a bad pair can't stop the decode), else UTF-8. Anything else Foundation accepted (UTF-16BE, UTF-32)
-        // Claude Code reads as UTF-8 and can't parse.
-        let utf16LE = data.count >= 2 && data[data.startIndex] == 0xFF && data[data.startIndex + 1] == 0xFE
-        let text: String
-        if utf16LE {
-            let body = data.dropFirst(2)
-            let units = stride(from: body.startIndex, to: body.startIndex + body.count / 2 * 2, by: 2).map { UInt16(body[$0]) | UInt16(body[$0 + 1]) << 8 }
-            text = String(decoding: units, as: UTF16.self)
-        } else {
-            guard let t = String(data: data, encoding: .utf8) else { return obj }
-            text = t
-        }
-        let wanted = [key, desktopKey] + ManagedSettings.helperKeys
-        var last: [String: Range<String.Index>] = [:]
-        for m in scanKeys(text).members where wanted.contains(m.name) { last[m.name] = m.value }
-        var out = obj
-        for (name, r) in last {
-            out[name] = (try? JSONSerialization.jsonObject(with: Data(text[r].utf8), options: .fragmentsAllowed)) ?? "unreadable"
-        }
-        return out
     }
 
     /// The choices of Keep for: Claude Code's default, 90 days, a year.
