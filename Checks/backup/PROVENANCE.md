@@ -45,3 +45,14 @@ One change on purpose reached a fixture: since 26.11.18 a switch's Undo touches 
 (`SwitchEngine.undoPlaces`, read from the profiles file), so for a profile that isn't saved it skipped every step as "outside
 this switch's folders" and left the switch open. The switch block now saves its profile first (as `accounts` does) and removes
 the file after. No expectation changed and no check was removed.
+
+## Added since
+
+- Import's own seam (before, only through Restore's apply loop): a transcript and an entry that appear between the plan and the
+  write are left as they are and said, the rest comes in, and Undo leaves them.
+- The zlib property check refuses a damaged stream only as a deflate-stream problem (any refusal passed before). The old loop
+  isn't in the app any more to be shown failing; the cases it refused stay pinned by name.
+- Work folders: a folder whose chmod fails (immutable and unreadable), two removers racing, a cancel in the middle of a 50 MB
+  entry, and a write that fails with EFBIG (a file size limit) rather than ENOSPC.
+- Already in the assembled suite, so nothing to add: the stage E leak-check refusals flipped to "passes" (leak1, leak2 and the four `leakx` jobs, Nov 9), and
+  the `claimFails` seam (open and export stop and clean up when the work folder's `.owner` can't be written).

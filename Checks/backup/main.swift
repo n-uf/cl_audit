@@ -207,6 +207,25 @@ func stageEImportChild() {
     let u = try! SessionsRestore.undo(r.id, windowClosed: { true })
     check(u.undone != nil && worldTree() == preRun, "import: Undo takes back exactly what the import added (the world is as it was before the run)")
     check(SessionsRestore.finishedRestores(of: backup.id, profile: "wk", place: place.path) == 0, "(the undone import isn't counted as finished)")
+    // the import's own seam, not only through Restore: a transcript and an entry that appear between its plan and its write (here
+    // once the receipt is written, before the first file) are left as they are and said; the rest comes in; Undo leaves them
+    do {
+        let lateT = "\(appP)/\(s(6)).jsonl", lateE = "\(tscope)/local_\(sid(14)).json"           // (s6 is the new one in -app)
+        let lateEntry = #"{"sessionId":"local_\#(sid(14))","title":"made here meanwhile"}"#
+        var r2: SessionsRestore.Receipt?
+        do {
+            r2 = try SessionsRestore.run(tgt, backup, windowClosed: { true }, receiptWritten: { _ in write(lateT, "mine\n"); write(lateE, lateEntry) })
+        } catch { check(false, "import: run again with files appearing meanwhile (\(error))") }
+        if let r2 {
+            check(r2.finished != nil && read(lateT) == "mine\n" && read(lateE) == lateEntry && r2.back == r.back - 2
+                  && r2.problems.contains("\(s(6)).jsonl appeared meanwhile; left as it is.") && r2.problems.contains("local_\(sid(14)).json appeared meanwhile; left as it is."),
+                  "import: a transcript and an entry that appear between the plan and the write are left as they are and said; the other \(r2.back) come in: \(r2.problems)")
+            let u2 = try? SessionsRestore.undo(r2.id, windowClosed: { true })
+            check(u2?.undone != nil && read(lateT) == "mine\n" && read(lateE) == lateEntry, "import: ...and its Undo leaves them, taking back only what it wrote")
+            try? fm.removeItem(atPath: lateT); try? fm.removeItem(atPath: lateE)
+            check(worldTree() == preRun, "import: (with those two taken away by hand, the world is as it was before the run)")
+        }
+    }
 
     // ---- 5. a second import of the same file: nothing new once restored
     SessionsImport.discard(o.work)
@@ -2136,11 +2155,12 @@ MainActor.assumeIsolated {
             let base = run(p, 1 << 16, 1 << 18)
             for (i, o) in combos(p) {
                 let r = run(p, i, o); runs += 1
-                let okSame = isGood(f) ? (r.0 == "OK" && r.1 == base.1 && base.0 == "OK") : isSlack(f) ? r.0.contains("ends before its entry's bytes") : r.0 != "OK"
+                let okSame = isGood(f) ? (r.0 == "OK" && r.1 == base.1 && base.0 == "OK") : isSlack(f) ? r.0.contains("ends before its entry's bytes")
+                    : r.0.contains("deflate stream") && !r.0.contains("ends before")      // damaged: cut short or broken, never just any refusal
                 if !okSame { propBad.append("\(f) in=\(i) out=\(o): \(r.0.prefix(40))") }
             }
         }
-        check(runs > 2000 && propBad.isEmpty, "zlib: input chunks {1,2,3,7,64,4096,65536} x output chunks {1,2,3,7,64,4096,262144}: \(runs) runs over \(all.count) zips, every good zip accepted with the same bytes and CRC, every slack, truncated and non-final zip still refused \(propBad.prefix(3))")
+        check(runs > 2000 && propBad.isEmpty, "zlib: input chunks {1,2,3,7,64,4096,65536} x output chunks {1,2,3,7,64,4096,262144}: \(runs) runs over \(all.count) zips, every good zip accepted with the same bytes and CRC, every slack zip refused for what sits after its stream, every truncated and non-final one as a deflate-stream problem \(propBad.prefix(3))")
         // the case that failed before: a 64 KB valid entry with 4 KB chunks both ways (an input chunk ends as the output fills); also the real export
         check(run(xzDir + "/z_exact_65536.zip", 4096, 4096).0 == "OK" && run(xzDir + "/z_exact_131075.zip", 4096, 4096).0 == "OK" && run(xzDir + "/z_c_lit.zip", 1, 1).0 == "OK",
               "zlib: the cases the old loop refused as 'damaged' (a chunk ending as the output buffer fills: 4096/4096 on 64 KB and 128 KB entries, 1/1 on a literal-only stream) are accepted")
@@ -2223,6 +2243,58 @@ MainActor.assumeIsolated {
             mkdir(fresh, 0o700)                                                                                                      // empty, no owner: maybe being made now
             SessionsImport.sweep(place: URL(fileURLWithPath: deepPlace))
             check(!fm.fileExists(atPath: half) && fm.fileExists(atPath: live) && fm.fileExists(atPath: fresh), "sweep: an owner-less folder holding x/ goes at once; one with a live owner and a fresh empty one stay")
+        }
+        // follow-ups: a folder whose chmod fails (immutable and unreadable) stays, the rest goes, and the folder says whose it is
+        do {
+            let wk = deepPlace + "/.import-12345678"
+            mkdir(wk, 0o700); mkdir(wk + "/x", 0o700); mkdir(wk + "/x/sealed", 0o700)
+            fm.createFile(atPath: wk + "/x/sealed/f", contents: Data("x".utf8)); fm.createFile(atPath: wk + "/x/other", contents: Data("y".utf8))
+            try? "4000000 123\n".write(toFile: wk + "/.owner", atomically: true, encoding: .utf8)
+            chmod(wk + "/x/sealed", 0); _ = eSh("/usr/bin/chflags", ["uchg", wk + "/x/sealed"])
+            let chmodFails = chmod(wk + "/x/sealed", 0o700) != 0                              // (the premise: its mode can't be changed now)
+            var dw = stat(); lstat(wk, &dw)
+            let r = SessionsImport.removeTree(wk, dev: dw.st_dev)
+            check(chmodFails && !r && fm.fileExists(atPath: wk + "/.owner") && !fm.fileExists(atPath: wk + "/x/other"),
+                  "tree: a folder removeTree can't make readable (its chmod fails) stays, the rest goes, `.owner` stays, and it says it didn't finish")
+            _ = eSh("/usr/bin/chflags", ["nouchg", wk + "/x/sealed"]); chmod(wk + "/x/sealed", 0o700)
+            check(SessionsImport.removeTree(wk, dev: dw.st_dev) && !fm.fileExists(atPath: wk), "tree: ...and once it can be changed, the next try takes it")
+        }
+        // follow-ups: two removers racing on one tree (a quit's clean-up and the sweep): it goes, one of them says so, nothing else is touched
+        do {
+            let wr = deepPlace + "/.import-23456789", keep = deepPlace + "/keep.txt"
+            fm.createFile(atPath: keep, contents: Data("k".utf8))
+            mkdir(wr, 0o700)
+            for i in 0..<40 { mkdir(wr + "/d\(i)", 0o700); for j in 0..<50 { fm.createFile(atPath: wr + "/d\(i)/f\(j)", contents: Data("x".utf8)) } }
+            var dr = stat(); lstat(wr, &dr)
+            let results = NSLock(); var done: [Bool] = []
+            DispatchQueue.concurrentPerform(iterations: 2) { _ in
+                let ok = SessionsImport.removeTree(wr, dev: dr.st_dev)
+                results.lock(); done.append(ok); results.unlock()
+            }
+            check(!fm.fileExists(atPath: wr) && done.count == 2 && done.contains(true) && read(keep) == "k",
+                  "tree: two removers racing on one work folder: it is gone, at least one says it finished (\(done)), nothing beside it touched")
+            try? fm.removeItem(atPath: keep)
+        }
+        // follow-ups: a cancel in the middle of inflating one 50 MB entry, and a write that fails for another reason than a full disk
+        do {
+            let p = (home as NSString).deletingLastPathComponent + "/xz/z5_z50m_0.zip"
+            let outC = deepPlace + "/cancel-out", outF = deepPlace + "/efbig-out"
+            mkdir(outC, 0o700); mkdir(outF, 0o700)
+            var asked = 0, stoppedC = false
+            do { let idx = try ZipIndex.read(path: p); _ = try idx.extract(archive: p, into: URL(fileURLWithPath: outC), cap: 1 << 40, floor: 0, cancel: { asked += 1; return asked > 20 }) }
+            catch ZipIndex.Stop.stopped { stoppedC = true } catch {}
+            check(stoppedC && (21...22).contains(asked) && files(outC).isEmpty,
+                  "inflate: a cancel about 5 MB into a 50 MB entry stops it at the next look (\(asked)), and its half-written file is taken away")
+            // a file size limit (RLIMIT_FSIZE, SIGXFSZ ignored): the write fails with EFBIG, not ENOSPC (nothing is printed meanwhile)
+            var why = ""
+            signal(SIGXFSZ, SIG_IGN)
+            var oldF = rlimit(); getrlimit(RLIMIT_FSIZE, &oldF)
+            var lowF = oldF; lowF.rlim_cur = 4 << 20; setrlimit(RLIMIT_FSIZE, &lowF)
+            do { let idx = try ZipIndex.read(path: p); _ = try idx.extract(archive: p, into: URL(fileURLWithPath: outF), cap: 1 << 40, floor: 0, cancel: { false }) }
+            catch ZipIndex.Stop.refused(let w) { why = w } catch ZipIndex.Stop.diskFull { why = "diskFull" } catch { why = "\(error)" }
+            setrlimit(RLIMIT_FSIZE, &oldF); signal(SIGXFSZ, SIG_DFL)
+            check(why.contains("couldn't be written") && why.contains("too large") && files(outF).isEmpty,
+                  "unpack: a write that fails for another reason than a full disk (a file size limit: EFBIG) is told as what it is, not as a full disk, and nothing is kept: \(why)")
         }
         try? fm.removeItem(atPath: deepPlace)
     }
