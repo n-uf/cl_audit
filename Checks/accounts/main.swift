@@ -2427,6 +2427,57 @@ do {
         waitFor(3) { !winOpened.isEmpty }
         spin(0.5)
         check(winOpened == [keyU], "…only the usual window opened again (once, the stalled first try counted), never the old profile's own window: \(winOpened)")
+
+        // a move whose restore really stops part way (the usual window opens after its first file): the page stays at .moving,
+        // but nothing runs, so the card's Leave it as it is closes it in this session (DefaultProfile.leaveAsIs)
+        let wdD2 = expand("~/Library/Application Support/Claude-dmwin2")
+        var o2 = profile("dm2", "~/.claude", u4)
+        o2.desktop = .separate; o2.desktopDataDir = wdD2
+        for k in 971...973 { put(entry(wdD2, u4, k), #"{"sessionId":"local_\#(uuid(k))"}"#) }
+        try! Store.save([o2])
+        let mS = SettingsModel()
+        mS.accounts = [o2]
+        let usualDir = expand(FolderKey.standardDataDir)
+        let opener = standIn()
+        let findBefore = ClaudeWindow.seams.find
+        ClaudeWindow.seams.find = { a in
+            // the usual window "opens" once the first of these entries is back: the restore stops before the next
+            if Launcher.dataDirKey(of: a) == keyU, (971...973).contains(where: { fm.fileExists(atPath: entry(usualDir, u4, $0)) }) {
+                return [.init(pid: opener.processIdentifier, started: Processes.startTime(of: opener.processIdentifier))]
+            }
+            return findBefore(a)
+        }
+        if let s2 = DefaultProfile.situation(mS.accounts), s2.kind == .windowOnly {
+            let dS = DefaultProfileRunner(situation: s2, model: mS)
+            mS.defaultProfile = dS
+            dS.start()
+            let innerStopped: () -> Bool = { if case .stopped? = dS.inner?.phase { return true }; return false }
+            waitFor(30) { innerStopped() || failedD(dS) || dS.phase == .done }
+            ClaudeWindow.seams.find = findBefore
+            let rid = dS.record?.id ?? ""
+            let back = dS.inner?.receipt?.back ?? -1
+            check(innerStopped() && dS.phase == .moving && dS.isRunning && !dS.underWay && (1...2).contains(back) && DefaultProfile.unfinished()?.id == rid && !rid.isEmpty,
+                  "default move stopped part way: its restore stopped after its first entry (\(back) back), the page still at moving but nothing under way: \(dS.phase) \(String(describing: dS.inner?.phase))")
+            let profilesBefore = mS.accounts.map { "\($0.id) \($0.desktop) \($0.desktopDataDir)" }
+            let usualBefore = (try? fm.contentsOfDirectory(atPath: (entry(usualDir, u4, 971) as NSString).deletingLastPathComponent))?.sorted() ?? []
+            mS.defaultMoveLeft(rid)
+            DefaultProfile.forgetCache()
+            let rec = DefaultProfile.all().first { $0.id == rid }
+            let rc = rec?.receipt.flatMap(SessionsRestore.load)
+            check(mS.message == "Left as it is: what the move did stays as it is; nothing is undone." && rec?.leftAsIs != nil && rc?.leftAsIs != nil
+                  && DefaultProfile.unfinished() == nil && Flows.blocker(profile: "dm2", for: .switching) == nil && dS.inner?.phase == .left,
+                  "…Leave it as it is from the card in that session: the move and its restore closed, nothing held up, its page left: \(mS.message)")
+            check(mS.accounts.map { "\($0.id) \($0.desktop) \($0.desktopDataDir)" } == profilesBefore && mS.accounts.first?.desktop == .standard
+                  && ((try? fm.contentsOfDirectory(atPath: (entry(usualDir, u4, 971) as NSString).deletingLastPathComponent))?.sorted() ?? []) == usualBefore,
+                  "…the profile's window kind stays as the move left it, and the usual window's entries as they were")
+        } else {
+            ClaudeWindow.seams.find = findBefore
+            check(false, "the stopped default move: a window-only situation: \(String(describing: DefaultProfile.situation(mS.accounts)?.kind))")
+        }
+        opener.terminate()
+        for k in [keyU, keyO] { stand[k]?.forEach { if $0.isRunning { kill($0.processIdentifier, SIGKILL) } }; stand[k] = [] }
+        try? fm.removeItem(at: DefaultProfile.folder); DefaultProfile.forgetCache()
+        try! Store.save(mD.accounts)
     } else {
         check(false, "the default move: a window-only situation: \(String(describing: DefaultProfile.situation(mD.accounts)?.kind))")
     }

@@ -2810,7 +2810,12 @@ MainActor.assumeIsolated {
     let page = model.restoreRunner(key)
     let pageStopped: Bool = { if case .stopped = page.phase { return true }; return false }()
     check(pageStopped && !page.canLeave, "move leave: (a Restore page kept on its restore: stopped, its own Leave not offered)")
-    func everything() -> String { [world(), tree(place.path), listing(place.path)].joined(separator: "\n") }
+    model.accounts = [entry]
+    // the profiles too: each one's window kind, window data folder and link, in the model and in the profiles file
+    func profiles() -> String {
+        (model.accounts + (Store.loadChecked() ?? [])).map { "\($0.id) \($0.desktop) \($0.desktopDataDir) \(String(describing: $0.seat))" }.joined(separator: "\n")
+    }
+    func everything() -> String { [world(), tree(place.path), listing(place.path), profiles()].joined(separator: "\n") }
     let before = everything()
 
     // refused while the move runs: the one lock, the move's restore holding its window, the move's own hold, its page running
