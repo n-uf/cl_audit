@@ -811,7 +811,9 @@ ultra-2"); those stay listed and restorable. **Restore…** on a backup puts bac
 
 - **In it:** the window's Code-tab list (every `claude-code-sessions/<account>/<org>` folder, scheduled tasks
   included, for both accounts and any other found there), its sidebar records (only the `epitaxyPrefs` part of
-  `claude_desktop_config.json`, as its own file: the window's **MCP settings** (that file's `mcpServers`) are **never in a
+  `claude_desktop_config.json`, and of that only the sidebar's sections and groups, `dframe-code-sections` and
+  `dframe-group-scopes`, never a folder's permission mode or any other key; an older backup or image that holds more is
+  filtered again before a restore or an export reads it; as its own file: the window's **MCP settings** (that file's `mcpServers`) are **never in a
   backup**, since they can carry keys; they travel only in the encrypted export), each scheduled task's prompt
   (`setup/scheduled-tasks/<id>/SKILL.md`, which the window runs),
   cl_audit's records (the profile's name and its account and standby ids, never an address; an old switch's backup also
@@ -1220,8 +1222,8 @@ with their prompts and the sessions they ran; and cl_audit's own profiles (names
 is in use) and General and backup settings; each session's task list, plan, prompt history and pasted text, its folder's trust
 and allowed tools (and, if you add them, the folder's MCP servers), and Rewind's copies when you include them. **What never
 moves:** sign-ins (Claude Code's and the window's), the Keychain, the Claude window's permission and consent settings
-(bypass-permissions opt-ins, trusted folders, device and network consents) and everything else of its
-`claude_desktop_config.json` but the MCP servers (also from an export made by an earlier version, which carried them: an import
+(bypass-permissions opt-ins, trusted folders, device and network consents, each folder's permission mode) and everything
+else of its `claude_desktop_config.json` but the MCP servers and the sidebar's sections and groups (also from an export made by an earlier version, which carried them: an import
 or restore ignores them), `settings.local.json`, `.claude.json` itself (only the trust fields above), session environments, the image cache, shell snapshots, debug files, and claude.ai chats and Projects, which
 already follow the account.
 
@@ -1297,10 +1299,11 @@ reads the file, and shows a preview ("Preview · nothing written yet · built no
   `scheduledTaskId`, comes in with its task; when the task isn't added it is left out with its transcript, with the task's
   name), **MCP settings** (left out unless you pick **Add them**, which lists each server's name and its whole command line, the
   program and its arguments, cut to one line with the whole of it on pointing at it; an argument the key scan recognises shows
-  as ‹a key› and a NAME=value word as NAME=…; then the names of the env variables it sets, never a value, a header or a URL. A
-  server that runs a shell or interpreter (sh, bash, env, node, python, osascript …) or sets a variable that changes what a
-  program loads (DYLD_*, LD_*, NODE_OPTIONS, PYTHONPATH …) gets a line saying to look first, and the row counts them while the
-  list is closed; a `claude_desktop_config.json` holding only
+  as ‹a key›, and a NAME=value word before the program (which sets its environment) as NAME=…; every other argument shows in
+  full; then the names of the env variables it sets, never a value, a header or a URL. A server that runs a shell, interpreter
+  or launcher (sh, bash, env, node, python, osascript, npx, uvx, docker …, whatever the name's case or quotes), sets a variable
+  that changes what a program loads (DYLD_*, LD_*, NODE_OPTIONS, PYTHONPATH …) or holds an argument hidden as ‹a key› gets a
+  line saying to look first, and the row counts them while the list is closed; a `claude_desktop_config.json` holding only
   those servers is written only where the profile has none: never the window's other settings, its permission and consent
   settings among them, nor its sidebar part, which only the sidebar step arranges. An export made by an earlier version carried
   those settings too: they are never written, and the row names them by key as never added. One that is here stays byte for byte
