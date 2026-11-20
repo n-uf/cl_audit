@@ -2724,6 +2724,20 @@ MainActor.assumeIsolated {
     try? fm.removeItem(at: DefaultProfile.folder); DefaultProfile.forgetCache()
     check(!SessionsRestore.movesRestore(um.id), "(the move's record gone: an ordinary stopped restore again)")
 
+    // the backups place isn't there (a disk not plugged in): nothing is said about the backup, neither kept nor gone
+    let (m5, place5) = b2World()
+    var g = 0
+    _ = try? SessionsRestore.run(tgt, SessionsRestore.Backup(profile: "bk", id: m5.id, place: place5), windowClosed: { true }, stop: { g += 1; return g > 1 })
+    guard let ug = SessionsRestore.unfinished(profile: "bk").first else { check(false, "leave: (a restore stopped after 1 file)"); return }
+    let unplugged = place5.path + "-unplugged"
+    try? fm.removeItem(atPath: unplugged)
+    try! fm.moveItem(atPath: place5.path, toPath: unplugged)
+    let beforeG = world()
+    let wordsG = (try? SessionsRestore.leaveAsIs(ug.id)) ?? ""
+    check(wordsG == "Left as it is: what it put back stays as it is; nothing is undone." && world() == beforeG && SessionsRestore.load(ug.id)?.leftAsIs != nil,
+          "leave with the backups place not there: closed, and nothing said about the backup: \(wordsG)")
+    try? fm.moveItem(atPath: unplugged, toPath: place5.path)
+
     // Leave after a partial Undo: a running session holds the transcript it put back
     let (m4, place4) = b2World()
     let backup4 = SessionsRestore.Backup(profile: "bk", id: m4.id, place: place4)
