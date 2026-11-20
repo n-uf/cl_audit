@@ -233,13 +233,21 @@ MainActor.assumeIsolated {
         "l-u": ["command": "env", "args": ["-u", "X", "B=x2", "prog"]],
         "m-S": ["command": "env", "args": ["-S", "C=x3 prog --flag"]],
         "n-odd": ["command": "env", "args": ["\"D=x4\"", "a.b=x5", "A-B=x6", "prog"]],
-        "o-packed": ["command": "env", "args": ["-SE=x7 prog"]]]]))
+        "o-packed": ["command": "env", "args": ["-SE=x7 prog"]],
+        "q-S-opts": ["command": "env", "args": ["-S", "-i A=x8 -u X B=x9 prog"]],
+        "r-cluster": ["command": "env", "args": ["-vSA=y1 prog"]],
+        "s-cluster2": ["command": "env", "args": ["-iSA=y2"]],
+        "t-argv0": ["command": "env", "args": ["-a", "name", "C2=y3", "prog"]],
+        "u-quoted": ["command": "E2=\"my secret\" npx x"]]]))
     let eo = Dictionary(uniqueKeysWithValues: envOptions.map { ($0.name, $0) })
     let eoText = "\(envOptions)"
-    check(eo["k-i"]?.runs == "env -i A=… prog" && eo["l-u"]?.runs == "env -u X B=… prog" && eo["m-S"]?.runs == "env -S \"C=… prog --flag\""
+    check(eo["k-i"]?.runs == "env -i A=… prog" && eo["l-u"]?.runs == "env -u X B=… prog" && eo["m-S"]?.runs == "env -S \"…\""
           && eo["n-odd"]?.runs == "env \"D=… a.b=… A-B=… prog" && eo["o-packed"]?.runs == "env -S…"
-          && ["x1", "x2", "x3", "x4", "x5", "x6", "x7"].allSatisfy { !eoText.contains($0) }
-          && envOptions.allSatisfy { $0.flags.contains(launcherFlag("env")) },
+          && eo["q-S-opts"]?.runs == "env -S \"…\"" && eo["r-cluster"]?.runs == "env -vS…" && eo["s-cluster2"]?.runs == "env -iS…"
+          && eo["t-argv0"]?.runs == "env -a name C2=… prog" && eo["u-quoted"]?.runs == "E2=… npx x"
+          && ["x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "y1", "y2", "y3", "secret"].allSatisfy { !eoText.contains($0) }
+          && envOptions.filter { $0.name != "u-quoted" }.allSatisfy { $0.flags.contains(launcherFlag("env")) }
+          && eo["u-quoted"]?.flags == [launcherFlag("npx")] && eo["u-quoted"]?.env == ["E2"],
           "config: env -i, -u NAME, -S \"…\", a packed -S, quoted/dotted/dashed names: no value shown, env flagged: \(envOptions.map { "\($0.name): \($0.runs) \($0.flags)" })")
     let found = Setup.scan(codeDir: codeA, home: home)
     let prompts = found.files.filter { $0.unit.kind == .task }.map(\.rel).sorted()

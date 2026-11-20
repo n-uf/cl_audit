@@ -809,7 +809,18 @@ enum SessionsBackup {
             var env = Set(((o?["env"] as? [String: Any]) ?? [:]).keys.map { oneLine($0, max: 60) })
             // the command string's words (it may hold its own arguments), then `args`; control characters read as spaces
             let flat: (String) -> String = { String($0.map { $0.isNewline || $0 == "\t" ? " " : $0 }) }
-            let commandWords = flat((o?["command"] as? String) ?? "").split(separator: " ").map(String.init)
+            // split on spaces outside quotes, so A="x y" stays one word (its quotes kept) and is masked whole
+            let commandWords: [String] = {
+                var out: [String] = [], cur = "", quote: Character? = nil
+                for c in flat((o?["command"] as? String) ?? "") {
+                    if let q = quote { cur.append(c); if c == q { quote = nil } }
+                    else if c == "\"" || c == "'" { quote = c; cur.append(c) }
+                    else if c == " " { if !cur.isEmpty { out.append(cur); cur = "" } }
+                    else { cur.append(c) }
+                }
+                if !cur.isEmpty { out.append(cur) }
+                return out
+            }()
             let argWords = ((o?["args"] as? [Any]) ?? []).map { a -> String in
                 if let s = a as? String { return flat(s) }
                 if let n = a as? NSNumber { return n.stringValue }
@@ -825,30 +836,33 @@ enum SessionsBackup {
             var keyHidden = false, envArgs = program.map { programName($0) == "env" } ?? false, splitNext = false, operandNext = false
             for (k, w) in words.enumerated().dropFirst(i) {
                 // the operand of an `env` option that takes one (-u NAME, -C dir, -P path): as it is, not the program
-                if operandNext { operandNext = false; shown.append(maskKeys(w).text); continue }
+                if operandNext {
+                    operandNext = false
+                    let (m, hit) = maskKeys(w)
+                    if hit { keyHidden = true }
+                    shown.append(m); continue
+                }
                 // an `env` program's own words up to the program it runs: its options as they are, and every word with "=" (an
-                // assignment, whatever its name) as NAME=…; a -S/--split-string operand is split into words and read the same way
+                // assignment, whatever its name) as NAME=…. A -S/--split-string string is a command line of its own (assignments,
+                // options, quotes): it is never shown, only `-S "…"` (the env flag already says to look at what it runs)
                 if k > i, envArgs {
-                    if splitNext {
-                        splitNext = false
-                        let parts = w.split(separator: " ").map(String.init)
-                        var rest: [String] = []
-                        for (pi, p) in parts.enumerated() {
-                            if let m = assignmentMasked(p), !p.hasPrefix("-") {
-                                if let n = assignment(p) { env.insert(oneLine(n, max: 60)) }
-                                rest.append(m)
-                            } else { rest.append(contentsOf: parts[pi...].map { maskKeys($0).text }); break }
-                        }
-                        shown.append("\"" + rest.joined(separator: " ") + "\"")
-                        continue
+                    if splitNext { splitNext = false; shown.append("\"…\""); continue }
+                    if w.hasPrefix("--") {
+                        if w == "--split-string" { splitNext = true; shown.append(w); continue }
+                        if w.hasPrefix("--split-string=") { shown.append("--split-string=…"); continue }
+                        if ["--unset", "--chdir", "--argv0"].contains(w) { operandNext = true }
+                        shown.append(assignmentMasked(w) ?? w); continue
                     }
-                    if w.hasPrefix("-") {
-                        if w == "-S" || w == "--split-string" { splitNext = true }
-                        else if ["-u", "-C", "-P", "--unset", "--chdir"].contains(w) { operandNext = true }
-                        else if w.hasPrefix("-S") || w.hasPrefix("--split-string=") {
-                            shown.append(w.hasPrefix("-S") ? "-S…" : "--split-string=…"); continue
+                    if w.hasPrefix("-"), w.count > 1 {
+                        // a cluster of short options: one with S in it takes the rest (or the next word) as its string
+                        let opts = w.dropFirst()
+                        if let s = opts.firstIndex(of: "S") {
+                            if opts.index(after: s) == opts.endIndex { splitNext = true; shown.append(w) }
+                            else { shown.append("-" + opts[..<s] + "S…") }
+                            continue
                         }
-                        shown.append(w); continue
+                        if let last = opts.last, "uCPa".contains(last) { operandNext = true }
+                        shown.append(assignmentMasked(w) ?? w); continue
                     }
                     if let m = assignmentMasked(w) {
                         if let n = assignment(w) { env.insert(oneLine(n, max: 60)) }
