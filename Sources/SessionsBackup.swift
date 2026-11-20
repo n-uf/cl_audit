@@ -1490,32 +1490,45 @@ enum CodeCleanup {
 
     /// The old text with only the number changed, or the key added right after the opening brace: only for a JSON object
     /// with the key once at its top level as a plain whole number (or not at all, and nowhere deeper). Anything else is
-    /// refused. Checked: the result reads back as the old object with that one key set.
+    /// refused, and so is a file Claude Code can't read (`parse`: a trailing comma, UTF-16BE…) and one that isn't valid UTF-8
+    /// byte for byte (UTF-16LE, a stray byte): only UTF-8 bytes are spliced. The edit is made on the bytes: everything before
+    /// and after the number (or the insertion point) is the old file's, a byte order mark and CRLF line ends included;
+    /// checked, with the result read back as the old object with that one key set.
     static func edited(_ old: Data, days: Int) throws -> Data {
-        guard let text = String(data: old, encoding: .utf8),
-              let obj = (try? JSONSerialization.jsonObject(with: old)) as? [String: Any] else { throw BackupError("settings.json isn't a JSON object; it is left as it is.") }
+        guard case .object(let obj) = parse(old) else { throw BackupError("settings.json isn't a JSON object; it is left as it is.") }
+        let bytes = [UInt8](old)
+        let text = String(decoding: bytes, as: UTF8.self)
+        guard Array(text.utf8) == bytes, !(bytes.count >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) else { throw BackupError(byHand) }
+        func offset(_ i: String.Index) -> Int { text.utf8.distance(from: text.utf8.startIndex, to: i) }
         var expected = obj
         expected[key] = days
         let scan = scanKeys(text)
         if obj[key] != nil, scan.top.isEmpty { throw BackupError(byHand) }    // there, but not under its plain name
         if scan.members.filter({ $0.name == key }).count != scan.top.count { throw BackupError(byHand) }   // also under an escaped name
-        var out: String?
+        let span: Range<Int>, fresh: [UInt8]                                // the old bytes replaced, and what replaces them
         switch (scan.top.count, scan.anywhere) {
         case (1, 1):
             let v = scan.top[0]
-            let literal = String(text[v])
-            guard literal.range(of: #"^-?[0-9]+$"#, options: .regularExpression) != nil else { throw BackupError(byHand) }
-            out = text.replacingCharacters(in: v, with: "\(days)")
+            guard String(text[v]).range(of: #"^-?[0-9]+$"#, options: .regularExpression) != nil else { throw BackupError(byHand) }
+            span = offset(v.lowerBound)..<offset(v.upperBound)
+            fresh = Array("\(days)".utf8)
         case (0, 0):
             guard let open = scan.open else { throw BackupError(byHand) }
-            let rest = text[text.index(after: open)...]
-            let empty = rest.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("}")
-            out = String(text[...open]) + "\n  \"\(key)\": \(days)" + (empty ? "\n" : ",") + String(rest)
+            let at = offset(open) + 1
+            let empty = text[text.index(after: open)...].trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("}")
+            let nl = text.contains("\r\n") ? "\r\n" : "\n"
+            span = at..<at
+            fresh = Array((nl + "  \"\(key)\": \(days)" + (empty ? nl : ",")).utf8)
         default:
             throw BackupError(byHand)                                    // nested too, or twice at the top level
         }
-        guard let out, let d = out.data(using: .utf8),
-              ((try? JSONSerialization.jsonObject(with: d)) as? NSDictionary)?.isEqual(to: expected) == true else { throw BackupError(byHand) }
+        let out = Array(bytes[..<span.lowerBound]) + fresh + Array(bytes[span.upperBound...])
+        // the bytes around the edit are the old file's, exactly
+        guard out.count == bytes.count - span.count + fresh.count,
+              Array(out[..<span.lowerBound]) == Array(bytes[..<span.lowerBound]),
+              Array(out[(span.lowerBound + fresh.count)...]) == Array(bytes[span.upperBound...]) else { throw BackupError(byHand) }
+        let d = Data(out)
+        guard case .object(let back) = parse(d), (back as NSDictionary).isEqual(to: expected) else { throw BackupError(byHand) }
         return d
     }
 

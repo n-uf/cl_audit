@@ -925,6 +925,34 @@ do {
     check(Retention.read(codeDir: p(c)).skipped == .unreadable, "UTF-16BE with the key twice: still unreadable (no first value from Foundation)")
     clean(); raw("\(c)/settings.json", u8("{\"cleanupPeriodDays\":365,\"m\":\"") + [0xC0] + u8("\",\"cleanupPeriodDays\":7}"))
     check(Retention.read(codeDir: p(c)).days == 7, "an overlong UTF-8 lead byte (C0) inside a string, the key twice: 7 (the last)")
+    // Keep for edits the bytes: everything but the number (or the inserted line) is the old file's, byte for byte
+    let bom: [UInt8] = [0xEF, 0xBB, 0xBF]
+    for (what, before, after) in [
+        ("a UTF-8 byte order mark", bom + u8("{\"cleanupPeriodDays\": 30, \"a\": 1}"), bom + u8("{\"cleanupPeriodDays\": 90, \"a\": 1}")),
+        ("CRLF line ends", u8("{\r\n  \"cleanupPeriodDays\": 30,\r\n  \"a\": 1\r\n}\r\n"), u8("{\r\n  \"cleanupPeriodDays\": 90,\r\n  \"a\": 1\r\n}\r\n")),
+        ("a byte order mark and CRLF", bom + u8("{\r\n  \"cleanupPeriodDays\": 30\r\n}\r\n"), bom + u8("{\r\n  \"cleanupPeriodDays\": 90\r\n}\r\n")),
+        ("CRLF, the key added", u8("{\r\n  \"a\": 1\r\n}\r\n"), u8("{\r\n  \"cleanupPeriodDays\": 90,\r\n  \"a\": 1\r\n}\r\n")),
+        ("a byte order mark, the key added to an empty object", bom + u8("{}"), bom + u8("{\n  \"cleanupPeriodDays\": 90\n}")),
+    ] {
+        clean(); raw("\(c)/settings.json", before)
+        var said: String?
+        do { try CodeCleanup.set(90, codeDir: p(c)) } catch { said = "\(error)" }
+        let got = fm.contents(atPath: p("\(c)/settings.json")).map { [UInt8]($0) }
+        check(said == nil && got == after, "Keep for on \(what): only the number changes, byte for byte (\(said ?? "written"))")
+        check(Retention.read(codeDir: p(c)).days == 90, "…and it reads back 90 (\(what))")
+    }
+    for (what, bytes, words) in [
+        ("UTF-16LE with its mark (Claude Code reads it, but only UTF-8 is edited)", [0xFF, 0xFE] + u16le("{\"cleanupPeriodDays\":30}"), CodeCleanup.byHand),
+        ("an invalid UTF-8 byte inside a string", inString([0xFF]), CodeCleanup.byHand),
+        ("a trailing comma (Foundation took it, Claude Code can't read it)", u8("{\"cleanupPeriodDays\":30,}"), "settings.json isn't a JSON object; it is left as it is."),
+        ("UTF-16BE with its mark", [0xFE, 0xFF] + u16be("{\"cleanupPeriodDays\":30}"), "settings.json isn't a JSON object; it is left as it is."),
+    ] {
+        clean(); raw("\(c)/settings.json", bytes)
+        var said: String?
+        do { try CodeCleanup.set(90, codeDir: p(c)) } catch { said = "\(error)" }
+        let got = fm.contents(atPath: p("\(c)/settings.json")).map { [UInt8]($0) }
+        check(said == words && got == bytes, "Keep for on \(what): refused, the file untouched (\(said ?? "written"))")
+    }
     // the decode itself
     check(CodeCleanup.text(Data([0xFF, 0xFE, 0x41, 0x00, 0x42])) == "\u{FEFF}A", "UTF-16LE: the mark kept as U+FEFF, a trailing odd byte dropped")
     check(CodeCleanup.text(Data([0x41, 0xFF, 0x42])) == "A\u{FFFD}B", "UTF-8: a bad byte is U+FFFD")
