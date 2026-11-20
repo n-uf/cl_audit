@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.55 — 2026-11-19
+
 - When Claude Code's folder is signed in to another profile's account, quick chat's header now names the profile's own account (it named the other profile's), and that other account's limit no longer shows it as full or holds what you type. When Claude Code hits a limit there, or while the Claude app and Claude Code are on different accounts, quick chat now says "Claude Code's account here has hit its limit." instead of "This account's week is full."; in the clash it also says whose account the folder is on and to move it back to the profile's own account on the Switch page (or, when the profile has no account of its own yet, to pick one there).
 - Quick chat's older limit messages no longer carry a Switch account… key or the offer: they keep the words they had when that answer ended, and only the live message under the chat offers the switch.
 
