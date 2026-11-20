@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.65 — 2026-11-20
+
 - Keep for, Would be deleted and the clean-up notes now read settings.json and the managed settings files byte for byte as Claude Code does: a file with a stray invalid character inside a string now counts with its own period (it was "can't be read"), and one saved as UTF-16BE or UTF-32, or with a trailing comma, now counts as one Claude Code can't read (it showed the file's period).
 
 ## 26.11.64 — 2026-11-20
