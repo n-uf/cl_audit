@@ -7,7 +7,7 @@
 #   runs      Runs (Run/), compiled against it only: timeouts, SIGTERM then SIGKILL after the grace, output read while running, caps, the environment
 #   auth      ClaudeAuth (Auth/), compiled against it and ProfileCore only, with a fake Keychain tool, claude and Terminal: the folder's
 #             item names, the one answer (verified or guessed), the Keychain read, the watch, sign-in, renew, sign-out and their guards
-#   signin    the model, rules and page logic checks (sign-in, switch, backups, export and import, crimson faces ...)
+#   signin    the model, rules and page logic checks (the sign-in watch, New profile, the switch's move, menus, Restore/Export/Import pages)
 #   surfaces  the one account answer (AccountResolver) and every screen reading it alike; the Claude app's account from its log;
 #             no screen reading the sign-in files itself
 #   accounts  the one-folder model: an older profiles file's kept folders as leftovers (offered to the Trash, their Keychain item named,
@@ -223,15 +223,14 @@ run_auth() {
   run_binary "$dir" "$bin"
 }
 
+# the signin suite (its blocks whose subject left the app are fenced off; signin/PROVENANCE.md says where their rules are checked)
 run_signin() {
-  [[ -f "$HERE/signin/main.swift" ]] || { echo "signin: not in this tree yet (see 'Not recovered' in Checks/README.md)"; return 0; }
   local dir="$WORK/signin"; mkdir -p "$dir"
   compile "$dir/cl_audit-checks-signin" "$HERE/signin/main.swift" || return 1
   run_binary "$dir" "$dir/cl_audit-checks-signin"
 }
 
 run_backup() {
-  [[ -f "$HERE/backup/main.swift" ]] || { echo "backup: not in this tree yet (see 'Not recovered' in Checks/README.md)"; return 0; }
   local dir="$WORK/backup"; mkdir -p "$dir"
   # (-D CL_AUDIT_TESTING: the import's claim of its work folder can be made to fail, a seam only a test build has)
   compile "$dir/cl_audit-checks-backup" "$HERE/backup/main.swift" -D CL_AUDIT_TESTING || return 1
