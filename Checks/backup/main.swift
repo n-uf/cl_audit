@@ -2638,6 +2638,16 @@ MainActor.assumeIsolated {
 }
 
 // --- L307 --- Leave it as it is on a restore or import that stopped half way (SessionsRestore.leaveAsIs)
+/// Every entry under a folder (empty folders and links too) with its type and mode, one line each: "unchanged" means equal.
+func listing(_ dir: String) -> String {
+    var out: [String] = []
+    if let e = fm.enumerator(atPath: dir) {
+        for case let r as String in e { var st = stat(); if lstat(dir + "/" + r, &st) == 0 { out.append("\(r) \(String(st.st_mode, radix: 8))") } }
+    }
+    return out.sorted().joined(separator: "\n")
+}
+/// The profile's two folders: every file's bytes, and every entry's type and mode.
+func world() -> String { [tree(wd), tree(code), listing(wd), listing(code)].joined(separator: "\n") }
 MainActor.assumeIsolated {
     // a restore stopped after 3 files, then its backup goes: Finish can't complete
     let (m, place) = b2World()
@@ -2653,48 +2663,89 @@ MainActor.assumeIsolated {
     // a temp file of ours a stop left beside the entries, and one that isn't ours
     let ours = "\(scopeA)/.restore-\(SessionsRestore.tag(un.id))-\(UUID().uuidString).tmp", notOurs = "\(scopeA)/.restore-20000101-000000-aaaa-x.tmp"
     write(ours, "half"); write(notOurs, "someone else's")
-    let before = tree(wd) + "\n" + tree(code)
+    let before = world()
 
     // refused while a restore, import, move or switch runs (the one lock), and while a page's restore holds the window
     let held = try! Flows.takeLock()
     var busy = ""
     do { _ = try SessionsRestore.leaveAsIs(un.id) } catch { busy = "\(error)" }
     held.release()
-    check(!busy.isEmpty && SessionsRestore.load(un.id)?.unfinished == true && tree(wd) + "\n" + tree(code) == before, "leave: refused while another flow holds the lock, nothing changed: \(busy)")
+    check(!busy.isEmpty && SessionsRestore.load(un.id)?.unfinished == true && world() == before, "leave: refused while another flow holds the lock, nothing changed: \(busy)")
     let key = FolderKey.canonical(wd)
     check(SwitchMarker.claim(key, profile: "bk", standby: "restore-cccc3333"), "(a restore page holds the window)")
     var held2 = ""
     do { _ = try SessionsRestore.leaveAsIs(un.id) } catch { held2 = "\(error)" }
     SwitchMarker.release(key, profile: "bk", standby: "restore-cccc3333")
-    check(held2.contains("under way") && SessionsRestore.load(un.id)?.unfinished == true && tree(wd) + "\n" + tree(code) == before, "leave: refused while that restore runs (its page holds the window): \(held2)")
+    check(held2.contains("under way") && SessionsRestore.load(un.id)?.unfinished == true && world() == before, "leave: refused while that restore runs (its page holds the window): \(held2)")
 
     // Leave it as it is: closed as it stands
     let words = (try? SessionsRestore.leaveAsIs(un.id)) ?? ""
     let left = SessionsRestore.load(un.id)
     check(left?.leftAsIs != nil && left?.unfinished == false && left?.finished == nil && left?.undone == nil && left?.back == 3,
           "leave: the receipt is closed as it stands (left, neither finished nor undone, its 3 steps kept)")
-    check(words.contains("3 files it put back stay as they are") && words.contains("nothing is undone") && words.contains("backup isn't there any more"),
-          "leave: the words say what stays: \(words)")
+    check(words == "Left as it is: what it put back stays as it is; nothing is undone, and its backup isn't there any more.", "leave: the words say what stays: \(words)")
     check(!fm.fileExists(atPath: ours) && fm.fileExists(atPath: notOurs), "leave: our temp file goes as when a restore finishes; one with another prefix stays")
-    let afterTree = tree(wd) + "\n" + tree(code)
+    let afterTree = world()
     let beforeLessTemp = before.split(separator: "\n").filter { !$0.contains(".restore-\(SessionsRestore.tag(un.id))-") }.joined(separator: "\n")
-    check(afterTree == beforeLessTemp, "leave: nothing else in the profile's folders changed (the tree compared)")
+    check(afterTree == beforeLessTemp, "leave: nothing else in the profile's folders changed (files, empty folders, types and modes compared)")
     check(Flows.blocker(profile: "bk", for: .restoring) == nil && Flows.blocker(profile: "bk", for: .switching) == nil && SessionsRestore.unfinished(profile: "bk").isEmpty,
           "leave: it no longer holds up a restore, an import or a switch of the profile")
     var undoErr = ""
     do { _ = try SessionsRestore.undo(un.id, windowClosed: { true }) } catch { undoErr = "\(error)" }
-    check(undoErr.contains("left as it is") && tree(wd) + "\n" + tree(code) == afterTree && SessionsRestore.load(un.id)?.undone == nil,
+    check(undoErr.contains("left as it is") && world() == afterTree && SessionsRestore.load(un.id)?.undone == nil,
           "leave: Undo no longer applies, and takes nothing back: \(undoErr)")
     var finishAgain = ""
     do { _ = try SessionsRestore.run(tgt, backup, continuing: un.id, windowClosed: { true }) } catch { finishAgain = "\(error)" }
     check(!finishAgain.isEmpty && SessionsRestore.load(un.id)?.finished == nil, "leave: nor does Finish: \(finishAgain)")
     let again = (try? SessionsRestore.leaveAsIs(un.id, now: Date().addingTimeInterval(60))) ?? "threw"
-    check(again == "" && SessionsRestore.load(un.id)?.leftAsIs == left?.leftAsIs && tree(wd) + "\n" + tree(code) == afterTree, "leave: a second Leave is a no-op")
+    check(again == "" && SessionsRestore.load(un.id)?.leftAsIs == left?.leftAsIs && world() == afterTree, "leave: a second Leave is a no-op")
     check(SessionsRestore.halfUndoneRestores(of: m.id, profile: "bk", place: place.path) == 0 && SessionsRestore.finishedRestores(of: m.id, profile: "bk", place: place.path) == 0,
           "leave: it counts as neither finished nor partly undone")
     SessionsRestore.prune(profile: "bk")
-    check(SessionsRestore.load(un.id) == nil && tree(wd) + "\n" + tree(code) == afterTree, "leave: its receipt goes with its backup, as a finished one's (nothing in the folders touched)")
+    check(SessionsRestore.load(un.id) == nil && world() == afterTree, "leave: its receipt goes with its backup, as a finished one's (nothing in the folders touched)")
     try? fm.removeItem(atPath: notOurs)
+
+    // the move to the default profile's restore, found only by its backup (cl_audit stopped before the record named the
+    // receipt): refused, as when the record names it
+    let (m3, place3) = b2World()
+    let backup3 = SessionsRestore.Backup(profile: "bk", id: m3.id, place: place3)
+    var j = 0
+    _ = try? SessionsRestore.run(tgt, backup3, windowClosed: { true }, stop: { j += 1; return j > 2 })
+    guard let um = SessionsRestore.unfinished(profile: "bk").first else { check(false, "leave: (a move's restore stopped after 2 files)"); return }
+    DefaultProfile.save(DefaultProfile.Record(id: "mvL307", kind: .otherFolder, profile: "bk", oldProfile: "old", created: true, backup: m3.id,
+                                              backupPlace: place3.path, started: Date()))
+    check(DefaultProfile.record(forReceipt: um.id) == nil && DefaultProfile.all().first(where: { $0.id == "mvL307" }).flatMap(DefaultProfile.restoreFor)?.id == um.id && SessionsRestore.movesRestore(um.id),
+          "(the move's record doesn't name the receipt; its restore is found by the backup)")
+    let beforeM = world()
+    var moveErr = ""
+    do { _ = try SessionsRestore.leaveAsIs(um.id) } catch { moveErr = "\(error)" }
+    check(moveErr.contains("default profile") && SessionsRestore.load(um.id)?.unfinished == true && world() == beforeM,
+          "leave: refused on the move to the default profile's restore found only by its backup, nothing changed: \(moveErr)")
+    try? fm.removeItem(at: DefaultProfile.folder); DefaultProfile.forgetCache()
+    check(!SessionsRestore.movesRestore(um.id), "(the move's record gone: an ordinary stopped restore again)")
+
+    // Leave after a partial Undo: a running session holds the transcript it put back
+    let (m4, place4) = b2World()
+    let backup4 = SessionsRestore.Backup(profile: "bk", id: m4.id, place: place4)
+    var h = 0
+    _ = try? SessionsRestore.run(tgt, backup4, windowClosed: { true }, stop: { h += 1; return h > 3 })
+    guard let up = SessionsRestore.unfinished(profile: "bk").first, let tr = up.steps.first(where: { $0.kind == .transcript && $0.done }) else {
+        check(false, "leave: (a restore stopped after 2 entries and a transcript)"); return
+    }
+    SessionsRestore.runningSessions = { [String(((tr.path as NSString).lastPathComponent as NSString).deletingPathExtension).lowercased()] }
+    let pu = try? SessionsRestore.undo(up.id, windowClosed: { true })
+    SessionsRestore.runningSessions = { [] }
+    check(pu?.undone == nil && pu?.undoLeft == 1 && SessionsRestore.load(up.id)?.unfinished == true && fm.fileExists(atPath: tr.path)
+          && SessionsRestore.halfUndoneRestores(of: m4.id, profile: "bk", place: place4.path) == 1,
+          "(a partial Undo: the entries taken back, the held transcript left, the receipt still open)")
+    let beforeP = world()
+    let wordsP = (try? SessionsRestore.leaveAsIs(up.id)) ?? ""
+    check(wordsP == "Left as it is: what it put back stays as it is; nothing is undone, and the backup it read from is no longer kept for it."
+          && SessionsRestore.load(up.id)?.leftAsIs != nil && world() == beforeP && fm.fileExists(atPath: tr.path),
+          "leave after a partial Undo: closed, the held transcript stays, nothing in the folders changed, no count overstated: \(wordsP)")
+    check(SessionsRestore.halfUndoneRestores(of: m4.id, profile: "bk", place: place4.path) == 0 && Flows.blocker(profile: "bk", for: .restoring) == nil
+          && (try? SessionsRestore.undo(up.id, windowClosed: { true })) == nil && world() == beforeP,
+          "leave after a partial Undo: no longer partly undone, nothing held up, and Undo again no longer applies")
 
     // a stopped import, its backup still there
     let (m2, place2) = b2World()
@@ -2704,12 +2755,12 @@ MainActor.assumeIsolated {
     guard var ui = SessionsRestore.unfinished(profile: "bk").first else { check(false, "leave: (an import stopped after 1 file)"); return }
     ui.importedFrom = "cl_audit bk 2026-11-20.zip"
     try! SessionsRestore.store.save(ui)
-    let beforeI = tree(wd) + "\n" + tree(code)
+    let beforeI = world()
     let wordsI = (try? SessionsRestore.leaveAsIs(ui.id)) ?? ""
-    check(wordsI.contains("1 file it added stays as it is") && wordsI.contains("backup it read from stays as it was")
+    check(wordsI == "Left as it is: what it added stays as it is; nothing is undone, and the backup it read from is no longer kept for it."
           && fm.fileExists(atPath: place2.appendingPathComponent("bk/\(m2.id)/backup.json").path),
           "leave an import: the words say what stays, and the backup is there as it was: \(wordsI)")
-    check(tree(wd) + "\n" + tree(code) == beforeI && Flows.blocker(profile: "bk", for: .restoring) == nil && Flows.blocker(profile: "bk", for: .switching) == nil
+    check(world() == beforeI && Flows.blocker(profile: "bk", for: .restoring) == nil && Flows.blocker(profile: "bk", for: .switching) == nil
           && SessionsRestore.lastImport(of: "bk") == nil,
           "leave an import: nothing in the folders changed, nothing held up, and Undo last import isn't offered for it")
     SessionsRestore.prune(profile: "bk")
