@@ -237,16 +237,27 @@ final class RunsMonitor: ObservableObject {
     /// Offscreen renders: what counts as running, instead of this Mac's real Claude processes.
     static var preview: [ClaudeRun]? = nil
 
-    func refresh() {
-        let folders = self.folders
-        DispatchQueue.global(qos: .utility).async {
+    /// The look started last: an older look's answer, landing after it, is dropped (`apply`), so a stale "none runs" never
+    /// overwrites a newer "couldn't check".
+    private var generation = 0
+
+    /// A new look's number (the newest from now on).
+    func begin() -> Int { generation += 1; return generation }
+
+    /// Looks again, off the main thread. `done`, on the main thread, gets this look's own answer (nil: couldn't check): what a
+    /// delete or set-up decides on when it is clicked, never a look up to 2 s old.
+    func refresh(_ done: (([ClaudeRun]?) -> Void)? = nil) {
+        let folders = self.folders, g = begin()
+        DispatchQueue.global(qos: done == nil ? .utility : .userInitiated).async {
             let r = Self.preview ?? Processes.claudeRuns(folders: folders)
-            DispatchQueue.main.async { self.apply(r) }
+            DispatchQueue.main.async { self.apply(r, generation: g); done?(r) }
         }
     }
 
-    /// One look's answer: nil (it couldn't be checked) leaves nothing listed and `checked` false.
-    func apply(_ r: [ClaudeRun]?) {
+    /// One look's answer: nil (it couldn't be checked) leaves nothing listed and `checked` false. With `generation`, only the
+    /// newest look's answer is taken.
+    func apply(_ r: [ClaudeRun]?, generation g: Int? = nil) {
+        if let g, g != generation { return }
         guard let r else {
             if !runs.isEmpty { runs = [] }
             checked = false; failed = true
