@@ -504,6 +504,15 @@ final class RestoreRunner: ObservableObject {
         } catch { note = "\(error)" }
     }
 
+    /// Its receipt was left as it is from elsewhere (the move to the default profile's card, DefaultProfile.leaveAsIs): a
+    /// page that was stopped on it now says Left as it is, and offers only Back.
+    func leftElsewhere() {
+        guard case .stopped = phase, let r = receipt, let now = SessionsRestore.load(r.id), now.leftAsIs != nil else { return }
+        receipt = now
+        phase = .left
+        note = nil
+    }
+
     // MARK: Keep for 90 days
 
     /// Claude Code's own clean-up would delete restored transcripts older than its keep time again: one number in settings.json.

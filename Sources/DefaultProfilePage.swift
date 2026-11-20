@@ -63,15 +63,27 @@ struct DefaultProfileCard: View {
                 if let rc {
                     Text("\(rc.back) \(rc.back == 1 ? "file is" : "files are") already in the usual app's data. Open the restore to finish the move or undo it.")
                         .font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
-                    Button("Open the restore") { model.showRestore(finishing: rc) }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+                    HStack(spacing: 8) {
+                        Button("Open the restore") { model.showRestore(finishing: rc) }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+                        leave(r)
+                    }
                 } else {
                     Text("Nothing was moved. Put the profile back as it was, then start again if you like.")
                         .font(.system(size: 12)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
-                    Button("Put it back") { model.defaultMoveUndone(r.id) }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+                    HStack(spacing: 8) {
+                        Button("Put it back") { model.defaultMoveUndone(r.id) }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).fixedSize()
+                        leave(r)
+                    }
                 }
             }
             .padding(.vertical, 4)
         }
+    }
+
+    /// Closes the move as it stands, as a stopped restore's and a stopped switch's: nothing is written or undone, and the
+    /// profiles are no longer held up (for when Finish, Undo and Put it back can't complete).
+    private func leave(_ r: DefaultProfile.Record) -> some View {
+        Button("Leave it as it is") { model.defaultMoveLeft(r.id) }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
     }
 }
 

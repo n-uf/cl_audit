@@ -391,6 +391,13 @@ final class SettingsModel: ObservableObject {
     private var restoreLook: (at: Date, byProfile: [String: SessionsRestore.Receipt]) = (.distantPast, [:])
     func forgetRestore() { restoreLook.at = .distantPast; switchChanges += 1 }
 
+    /// A stopped restore's receipt was closed from outside its page (the default-profile move's Leave it as it is): a Restore
+    /// page kept on it shows it left, no longer stopped.
+    func restoreLeft(_ id: String) {
+        for r in restoreRunners.values where r.receipt?.id == id { r.leftElsewhere() }
+        forgetRestore()
+    }
+
     /// Opens the Restore page for a backup. One that ended (restored, undone) starts over when asked for again, unless
     /// it is in front.
     func showRestore(_ k: RestoreKey) {

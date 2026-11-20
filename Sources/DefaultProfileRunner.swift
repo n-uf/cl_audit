@@ -458,7 +458,7 @@ extension SettingsModel {
     /// The restore of a default-profile move was undone (or never started): the window kind and link go back, the profile the
     /// move made goes. Everything else about the profile is as it is.
     func defaultMoveUndone(_ recordID: String, quiet: Bool = false) {
-        guard var r = DefaultProfile.all().first(where: { $0.id == recordID }), r.undone == nil else { return }
+        guard var r = DefaultProfile.all().first(where: { $0.id == recordID }), r.undone == nil, r.leftAsIs == nil else { return }
         if DefaultProfile.undoRefusal(r) != nil { return }
         // files were written and the restore wasn't undone: the window kind stays with them (Finish or Undo on the restore's page)
         if let rc = DefaultProfile.restoreFor(r), rc.undone == nil { return }
@@ -470,5 +470,18 @@ extension SettingsModel {
         DefaultProfile.save(r)
         apply()
         if !quiet { message = "Undid the move to the default profile" }
+    }
+
+    /// "Leave it as it is" on the card "The move stopped" (DefaultProfile.leaveAsIs): refused while the move runs; a Restore
+    /// page kept on its restore then shows it left. Its words go in the message line (the card goes with the open move).
+    func defaultMoveLeft(_ recordID: String) {
+        if let d = defaultProfile, d.isRunning { message = "The move to the default profile is under way. Wait for it to end."; return }
+        let rc = DefaultProfile.all().first { $0.id == recordID }.flatMap(DefaultProfile.restoreFor)?.id
+        do {
+            let words = try DefaultProfile.leaveAsIs(recordID)
+            if let rc { restoreLeft(rc) }
+            if !words.isEmpty { message = words }
+        } catch { message = "\(error)" }
+        objectWillChange.send()
     }
 }
