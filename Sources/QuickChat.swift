@@ -329,7 +329,13 @@ final class QuickChatModel: ObservableObject {
     /// While a limit is full: the standby account offered first (SwitchMenu.best), for Switch account….
     @Published var offer: QuickChatSwitchOffer?
     /// A line between messages: "Main switched to ultra-3. Sending what you typed."
-    @Published var note: String?
+    @Published var note: String? {
+        // any other note, or none: not the clash's any more
+        didSet { noteClash = nil }
+    }
+    /// The note says what was typed wasn't sent because the folder is on this profile's (by its name) account, a clash
+    /// (update): it goes once the folder is no longer there.
+    private var noteClash: String?
 
     var isWindow: Bool { !turns.isEmpty }
     var busy: Bool { turns.last?.busy ?? false }
@@ -440,6 +446,8 @@ final class QuickChatModel: ObservableObject {
     func update(target new: QuickChatTarget?, level: QuickChatLevel?, offer best: () -> QuickChatSwitchOffer?) {
         let before = target
         if new != target { target = new }
+        // the note about a question not sent into a clash: gone once that clash is (out of it, or in another profile's)
+        if let c = noteClash, new?.clashName != c { note = nil }
         // Claude Code's own numbers after an answer are newer than the agent's last reading: kept where fuller, for the
         // same profile on the same account (the folder's seat), and only while the record's numbers are the profile's
         // (QuickChatLevel.kept). A refusal is kept neither in the split nor in a clash: it is the folder's account's there
@@ -469,6 +477,7 @@ final class QuickChatModel: ObservableObject {
             note = "\(t.name)'s Claude Code folder is now on \(other)'s account, so what you typed wasn't sent. "
                 + (t.shownEmail != nil ? "Move it back to \(t.name)'s own account on the Switch page."
                                        : "Pick an account for \(t.name) on the Switch page.")
+            noteClash = other
             return
         }
         guard !blocked else { return }
