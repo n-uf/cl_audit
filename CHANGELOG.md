@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- A restore or import that stopped half way now has "Leave it as it is" on its page, as a stopped switch does: what it wrote stays, nothing is undone, the backup stays, and the profile can switch, restore and import again, also when its backup is gone and neither Finish nor Undo can complete.
 
 ## 26.11.65 — 2026-11-20
 
