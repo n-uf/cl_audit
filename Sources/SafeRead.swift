@@ -57,4 +57,36 @@ enum SafeRead {
     static func jsonObject(_ path: String, max: Int = jsonMax) -> [String: Any]? {
         whole(path, max: max).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
     }
+
+    /// A regular file read from start to end in pieces of at most `chunk` bytes, for a reader that looks at every byte once (the
+    /// secret scan): each piece is handed to `body` behind the last `carry` bytes of what came before, so what a piece's end cuts
+    /// is seen whole, with how many bytes are new. Opened non-blocking and never through a link (unless `followsLink`); memory is
+    /// `carry + chunk`, whatever the file's size. `go` is asked before each read: false stops it. False when it isn't a regular
+    /// file, can't be read, or was stopped; true once the end is reached.
+    static func chunks(_ path: String, chunk: Int, carry: Int, followsLink: Bool = false, go: () -> Bool = { true },
+                       _ body: (_ bytes: UnsafeBufferPointer<UInt8>, _ fresh: Int) -> Void) -> Bool {
+        let fd = open(path, O_RDONLY | O_NONBLOCK | (followsLink ? 0 : O_NOFOLLOW))
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { return false }
+        let size = Int64(st.st_size)
+        var buf = [UInt8](repeating: 0, count: carry + chunk)
+        var have = 0
+        var off: Int64 = 0
+        while off < size {
+            if !go() { return false }
+            let want = Int(min(Int64(chunk), size - off))
+            let n = buf.withUnsafeMutableBytes { pread(fd, $0.baseAddress! + have, want, off_t(off)) }
+            if n < 0 { return false }
+            if n == 0 { break }
+            let total = have + n
+            buf.withUnsafeBufferPointer { body(UnsafeBufferPointer(rebasing: $0[0..<total]), n) }
+            off += Int64(n)
+            let keep = min(carry, total)
+            if keep > 0 { buf.withUnsafeMutableBytes { _ = memmove($0.baseAddress!, $0.baseAddress! + total - keep, keep) } }
+            have = keep
+        }
+        return true
+    }
 }
