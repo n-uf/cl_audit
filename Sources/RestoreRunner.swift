@@ -9,7 +9,8 @@
 //      helper session (SwitchSidebar.swift)
 //
 // Stop keeps what is back; Finish picks up from the same receipt (also after cl_audit stopped: the tile of the profile
-// shows "Restore stopped" and the page opens on it); Undo takes back exactly what the receipt says it put back.
+// shows "Restore stopped" and the page opens on it); Undo takes back exactly what the receipt says it put back; Leave it
+// as it is closes the receipt as it stands (when neither can complete), nothing written or undone.
 
 import AppKit
 
@@ -41,9 +42,10 @@ final class RestoreRunner: ObservableObject {
         case undoing                    // Undo this restore: taking back what the receipt says it put back
         case sidebar                    // back; a helper session arranges the sidebar (one Return)
         case done
-        case stopped(String)            // some are back, the receipt is unfinished: Finish or Undo
+        case stopped(String)            // some are back, the receipt is unfinished: Finish, Undo or Leave it as it is
         case failed(String)             // nothing was written
         case undone
+        case left                       // a stopped one left as it is: closed as it stands, nothing undone
     }
 
     /// Why a restore may not start yet.
@@ -169,6 +171,7 @@ final class RestoreRunner: ObservableObject {
         if let id = key.resume, let r = SessionsRestore.load(id) {
             receipt = r
             if r.undone != nil { phase = .undone }
+            else if r.leftAsIs != nil { phase = .left }
             else if r.finished != nil { phase = .done }
             else { phase = .stopped(r.stopped ?? "It stopped half way; the Mac may have stopped.") }
         }
@@ -468,6 +471,26 @@ final class RestoreRunner: ObservableObject {
                 }
             }
         }
+    }
+
+    // MARK: Leave it as it is
+
+    /// A stopped restore that is the move to the default profile's is finished or undone with the move (Settings ▸ General).
+    var canLeave: Bool { receipt.map { DefaultProfile.record(forReceipt: $0.id) == nil } ?? false }
+
+    /// "Leave it as it is" on a stopped restore or import, as on a stopped switch (the Sessions card): its receipt is closed as
+    /// it stands (SessionsRestore.leaveAsIs), nothing is written, moved or deleted, and Finish and Undo are no longer
+    /// offered. The words say what stays.
+    func leaveAsIs() {
+        guard case .stopped = phase, let r = receipt else { return }
+        do {
+            let words = try SessionsRestore.leaveAsIs(r.id)
+            let now = SessionsRestore.load(r.id) ?? r
+            receipt = now
+            // (nothing open to close: it was finished, undone or left meanwhile, elsewhere)
+            phase = now.undone != nil ? .undone : now.leftAsIs != nil ? .left : now.finished != nil ? .done : phase
+            note = words.isEmpty ? nil : words
+        } catch { note = "\(error)" }
     }
 
     // MARK: Keep for 90 days
