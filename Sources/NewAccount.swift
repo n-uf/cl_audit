@@ -97,7 +97,9 @@ struct SetupCheck: Identifiable {
     let section: Section
     let state: State
     let text: String
-    var blocks: Bool { state == .bad }
+    /// A red line blocks Create/Connect and Finish; so does the desktop-app check while it hasn't been made yet
+    /// ("Checking…"): which Claude runs is never taken for "none" before it has been read.
+    var blocks: Bool { state == .bad || section == .running && state == .wait }
 }
 
 /// What has been done so far, read from disk each time (so it stays right if things happen elsewhere).
