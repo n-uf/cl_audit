@@ -71,7 +71,10 @@ Changes on purpose reached four fixtures; their expectations stay:
   sample entries have UUID names instead of `local_1.json`.
 - The switch's tasks: since 26.11.37 a task the target already has under the same id must be the same task, whole
   (TaskRegistry's twin rule, claude-transplant's), so the source's `t2` is the target's `t2` (`"x":1` on both sides); the
-  plan still counts two tasks and the join still keeps the target's own.
+  plan still counts two tasks and the join still keeps the target's own (shown by the order: the target's `t2` first, the
+  source's `t1` after it; the two copies can no longer differ in content). The other half, a differing twin stopping the
+  move, is checked in accounts: "a differing twin is refused" (TaskRegistry) and the switch's `taskProblem` checks ("the new
+  account has a task with the same id and other settings", "…other state").
 - Numbers on another account (§4): since 26.11.24 whose numbers they are is the reading's own account, never the folder's
   `.claude.json`, so the new account's numbers are read with a key whose account the lookup returns (`finish(…, key:)`,
   `profileFound`) instead of `apply`, which names no account. The check's message now also prints what it got.
@@ -96,20 +99,21 @@ half of two tray checks whose `cardTrays` half stays. 341 checks run as ported.
 | 8b Add account's finds (`AccountDiscovery.found`) | Add account (26.11.17): the accounts are found on this Mac (AccountList) | refuse another profile's account | accounts: "never another profile's account, never the one in use"; accounts: "another profile's standby account, by its ids: that profile's, as a standby" |
 | 8b the window's accounts (`AccountDiscovery.windowSeats`) | no caller but this check (26.11.48) | – | surfaces: "folders: UUID-named real folders only, names as on disk (…)" covers the reading of the window's folders |
 | §11 the kept-folder bookkeeping (`completeSwitch`, `moveNumbers`) | kept folders: a switch signs in again on the same folder | never copy or move a sign-in or Keychain item between folders; never show one account's numbers under another | signin stage F: "a switch copies or moves no sign-in: every .claude.json and .credentials.json where it was, byte for byte, and none made (no second folder signed in)" and "…and its Undo neither: the sessions back, the sign-ins as they were"; backup: "no sign-in in the switch's backup"; surfaces: "after a switch ultra-1's numbers never show: none until a read for ultra-2 succeeds" |
-| §13 and stage C: the other account is back, Switch back | standby accounts' numbers (`BackWatch`, `SwitchBack`) | alerts never name an account | accounts: "the alert names no account"; accounts: "the waiting alert names no account"; signin (stage C, rebuilt): "the waiting alert's words never name an account (address or any part)" |
+| §13 and stage C: the other account is back, Switch back | standby accounts' numbers (`BackWatch`, `SwitchBack`) | alerts never name an account | accounts: "the alert names no account"; accounts: "the waiting alert names no account"; signin (stage C, rebuilt): "waiting alert: the body says what to finish, and no address" (the exact body; the older all-phases form of it stays in the retired §13 block) |
 | stage C (rebuilt): the card's preselected tray and its selection rule (`cardBest`, `TrayPick`) | standby accounts left the card, with its pick logic (26.11.32) | – (the menu's own pick stays) | signin: "menu: the best is the first with room"; signin: "a standby account with neither a sign-in nor an address can't be switched to, and is never the best" |
 | stage D: Add account's pop-up and a new account's states | signing in in a folder of its own (`~/.claude-ultra-4`, numbered when taken), `StandbyLook`, `SignInAttempts` | never create a second or hidden Claude Code folder; refuse another profile's account; never fill in another account's address | accounts: "a switch makes no folder"; surfaces: "only New profile, first run and the default profile's offer sign in with creating: […]"; accounts: "never another profile's account, never the one in use"; surfaces: "Settings' Sign in in a clash, no seat: the plain sign-in, no address, never Other's u3" |
 | stage D (rebuilt): `adding` and its refusals | Add account is gone (26.11.17) | refuse another profile's account | accounts: "an address typed that is another profile's standby account: refused, plainly"; accounts: "Finish: another profile's standby account (by its ids, or remembered by its address) isn't linked; a free one is" |
-| stage B2 and its three reviews (multi-folder world) | Undo this switch, the switch's marks beside a restore's, "Not yet: a switch is unfinished" | – | rebuilt in this suite on a world made by Back up now (stage B2 and its reviews, rebuilt) |
+| stage B2 and its three reviews (multi-folder world) | their world: sessions moved between account folders, and the "Undo this switch" button's words (the switch's Undo, `SwitchEngine.undo`, and its unfinished state, `SwitchEngine.unfinished`, are still in the app and checked live here: §11, stage F) | – | rebuilt in this suite on a world made by Back up now (stage B2 and its reviews, rebuilt) |
 
 The four rules the hub named, and where each is checked:
 - never fill in another account's address: surfaces, the two sign-in checks above ("…pat's address filled in, never mo's",
   "…no address, never Other's u3");
 - refuse another profile's account: accounts §3, §8 and §19 (the texts above), and New profile's own here (§6: "signed in to
   Work's account (by ids): refused, one profile per account");
-- never create a second or hidden Claude Code folder: accounts "a switch makes no folder", auth "one profile, one folder: no
-  folder was made by any of it (…)", surfaces "only New profile, first run and the default profile's offer sign in with
-  creating: […]";
+- never create a second or hidden Claude Code folder: auth "one profile, one folder: no folder was made by any of it (…)"
+  (the whole home tree, before and after), accounts "a switch makes no folder (none in home that wasn't there before it,
+  hidden or not: …)" (home's folders before and after the switch), surfaces "only New profile, first run and the default
+  profile's offer sign in with creating: […]" (a source lint, one line per call);
 - never copy or move a sign-in or Keychain item between folders: added here, stage F, as no suite checked it for the app as a
   whole: the switch's move and its Undo leave every sign-in file where it was, byte for byte, and make none; "nothing in the
   app writes, copies or deletes a Keychain item: []" and "the Keychain tool is run in one place, ClaudeAuth's read:

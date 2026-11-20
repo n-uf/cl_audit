@@ -1885,7 +1885,8 @@ do {
 
 // --- stage B2, B2 review, B2 review 2 and 3: retired by the one-folder model. Their world is made by a switch that moves
 // the sessions (SwitchEngine.plan/run) and they test Undo this switch, the switch's marks beside a restore's, and "Not yet:
-// a switch is unfinished": all gone. They are rebuilt just below on a world made by Back up now instead.
+// a switch is unfinished": that world and the button's words are gone (the switch's Undo and its unfinished state are not,
+// and are checked in §11 and stage F). They are rebuilt just below on a world made by Back up now instead.
 #if STAGE3
 // --- stage B2 (rebuilt for the one-folder model) ---
 // Restore: the Restore page's model and runner on a real throwaway world (SessionsRestore.swift, RestoreRunner.swift). The
