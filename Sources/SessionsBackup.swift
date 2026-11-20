@@ -6,7 +6,8 @@
 // A backup is a folder <backups place>/<profile id>/<backup id>/ with a backup.json that says what is in it:
 //   window/<account>/<org>/…     the Claude window's Code-tab list: every claude-code-sessions/<account>/<org> folder
 //                                (the entries and scheduled-tasks.json), for every account that has one
-//   sidebar/epitaxyPrefs.json    the window's sidebar records: only the epitaxyPrefs part of claude_desktop_config.json
+//   sidebar/epitaxyPrefs.json    the window's sidebar records: only the `sidebarAllowlist` keys of the epitaxyPrefs part of
+//                                claude_desktop_config.json (its sections and groups; never a folder permission mode)
 //   config/claude_desktop_config.json   that file's MCP servers (format 3): only its `configAllowlist` keys, nothing else of it
 //                                (permission and consent settings, this Mac's paths). It can hold tokens no scan recognises (env values, headers, arguments), so a plain
 //                                backup (a switch's, Back up now) NEVER keeps it: only the hidden copy an export is made from does
@@ -535,7 +536,7 @@ enum SessionsBackup {
             }
         }
 
-        // the window's sidebar records: only epitaxyPrefs
+        // the window's sidebar records: only epitaxyPrefs, by the sidebar allowlist
         if window, let data = sidebarRecords(dataDir: s.dataDir) {
             try put(data, "sidebar/epitaxyPrefs.json", in: partial, dirFor)
             items.append(Item(role: .sidebar, original: (s.dataDir as NSString).appendingPathComponent("claude_desktop_config.json"),
@@ -642,13 +643,38 @@ enum SessionsBackup {
         return try enc.encode(m)
     }
 
-    /// The epitaxyPrefs part of the window's claude_desktop_config.json, as its own JSON; nothing else of that file.
+    /// The sidebar records of the window's claude_desktop_config.json (its `preferences.epitaxyPrefs`), as their own JSON: only the
+    /// `sidebarAllowlist` keys of them, nothing else of that file.
     static func sidebarRecords(dataDir: String) -> Data? {
         guard !dataDir.isEmpty,
               let data = FileManager.default.contents(atPath: (dataDir as NSString).appendingPathComponent("claude_desktop_config.json")),
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let prefs = (j["preferences"] as? [String: Any])?["epitaxyPrefs"] as? [String: Any] else { return nil }
-        return try? JSONSerialization.data(withJSONObject: prefs, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+        return try? JSONSerialization.data(withJSONObject: sidebarAllowed(prefs), options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    }
+
+    /// The ONLY keys of the window's sidebar records (`preferences.epitaxyPrefs`) that sidebar/epitaxyPrefs.json ever carries or a
+    /// restore ever reads: the two the sidebar step uses (SidebarPlan.read: a scope's groups, their sessions and order, and its
+    /// sections with their order and sort). DEFAULT DENY, as for `configAllowlist`: the rest of epitaxyPrefs (the folder permission
+    /// modes, `epitaxy-folder-permission-mode-v2.<account>`, auto or bypassPermissions per folder; and any key a later Claude app adds)
+    /// never goes into a backup or an export, and an older backup's or image's file that holds them is filtered again before any use
+    /// (SessionsRestore.plan; SessionsExport for an image made from a backup).
+    ///   dframe-group-scopes    per "<account>/<organisation>": the sidebar's groups (id, name, mode), which sessions sit in each
+    ///                          and in what order. Ids and names only; the helper session's prompt carries them as data.
+    ///   dframe-code-sections   per scope: the sidebar's sections (id, kind, order, sortBy, shown). Layout only.
+    /// Neither grants a permission or holds a path of this Mac. (This Mac's own live file is read for its permission mode only by
+    /// SidebarPlan.asksBeforeMoves, never from a backup.)
+    static let sidebarAllowlist: Set<String> = ["dframe-code-sections", "dframe-group-scopes"]
+
+    /// The sidebar records' `sidebarAllowlist` keys and nothing else.
+    static func sidebarAllowed(_ prefs: [String: Any]) -> [String: Any] {
+        prefs.filter { sidebarAllowlist.contains($0.key) }
+    }
+
+    /// A sidebar/epitaxyPrefs.json file's bytes with its allowlisted keys only (sorted, pretty); nil: not a JSON object.
+    static func sidebarData(_ d: Data) -> Data? {
+        guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any] else { return nil }
+        return try? JSONSerialization.data(withJSONObject: sidebarAllowed(j), options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
     }
 
     /// Where a backup keeps the window's claude_desktop_config.json (its allowlisted keys only), and the most the file may hold: a real

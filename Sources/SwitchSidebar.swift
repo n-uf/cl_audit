@@ -59,7 +59,8 @@ struct SidebarPlan: Codable, Equatable {
         return read(prefs: prefs, scope: scope, moving: moving, pinned: pinned)
     }
 
-    /// The same, from the epitaxyPrefs records themselves (a backup keeps exactly that part: sidebar/epitaxyPrefs.json).
+    /// The same, from the epitaxyPrefs records themselves (a backup keeps that part, by SessionsBackup.sidebarAllowlist:
+    /// sidebar/epitaxyPrefs.json). Reads only those two keys.
     static func read(prefs: [String: Any], scope: String, moving: [String], pinned: [String]) -> SidebarPlan {
         let moving = moving.filter(isSessionID), pinned = pinned.filter(isSessionID)
         var plan = SidebarPlan(pinned: Array(pinned.prefix(maxPinned)))

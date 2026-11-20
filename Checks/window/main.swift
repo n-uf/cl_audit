@@ -75,13 +75,26 @@ MainActor.assumeIsolated {
         "launchPreviewLocalNetworkAccessDeclinedOrigins": ["http://192.0.2.1:3000"], "launchPreviewPersistedWorkspaces": ["/w/workspace-elsewhere"],
         "launchPreviewStorage": ["slot": "fake"], "remoteToolsDeviceName": "fake-device-name", "menuBarEnabled": true,
         "futurePrefKey2099": ["grantedEverything": true]]
+    // the window's sidebar records (preferences.epitaxyPrefs): the two keys the sidebar step uses, and what never travels beside them
+    // (a folder permission mode, and a key a later app might add)
+    let sidebarFixture: [String: Any] = [
+        "dframe-group-scopes": ["\(sid(1))/\(sid(2))": ["groups": [["id": "cg-1", "name": "Work", "mode": "code"]], "assignments": [String: Any](), "order": [String: Any]()]],
+        "dframe-code-sections": ["\(sid(1))/\(sid(2))": ["sections": [["id": "cg-1", "kind": "manual", "order": 1, "shown": true]]]],
+        "epitaxy-folder-permission-mode-v2.\(sid(1))": ["/w/project": "bypassPermissions", "/w/other": "auto"],
+        "epitaxyFutureKey2099": ["grantedEverything": true]]
+    /// A sidebar/epitaxyPrefs.json file holds the sidebar allowlist's two keys and nothing else (no permission mode, no later key).
+    func sidebarOnly(_ d: Data?) -> Bool {
+        guard let d, let j = json(d), let text = String(data: d, encoding: .utf8) else { return false }
+        return Set(j.keys) == SessionsBackup.sidebarAllowlist && !text.contains("permission-mode") && !text.contains("bypassPermissions")
+            && !text.contains("FutureKey")
+    }
     let mcpFixture: [String: Any] = [
         "github": ["command": "npx", "args": ["-y", "@example/server-github"], "env": ["GITHUB_TOKEN": envValue]],
         "remote": ["url": "https://mcp.example.com/sse", "headers": ["Authorization": "Bearer \(headerValue)"]]]
     let config: [String: Any] = [
         "mcpServers": mcpFixture,
         "globalShortcut": "Alt+Space", "coworkUserFilesPath": w + "/cowork-files-elsewhere", "futureTopLevelKey2099": ["grantedEverything": true],
-        "preferences": foreignPrefs.merging(["epitaxyPrefs": ["scopes": ["\(sid(1))/\(sid(2))": ["groups": []]]]]) { a, _ in a }]
+        "preferences": foreignPrefs.merging(["epitaxyPrefs": sidebarFixture]) { a, _ in a }]
     // what never travels, by a word of each: none of these may be in a config cl_audit writes (an image's, or the window's file it adds)
     let foreignMarks = ["bypassPermissions", "TrustedFolders", "trusted-elsewhere", "simulatorDeviceConsent", "192.0.2.1", "workspace-elsewhere",
                         "launchPreviewStorage", "fake-device-name", "menuBarEnabled", "futurePrefKey2099", "futureTopLevelKey2099",
@@ -126,6 +139,8 @@ MainActor.assumeIsolated {
               "config (write side): only the allowlist is taken (mcpServers, whole); no permission or consent setting, no path of this Mac, no sidebar part, no key a later app adds")
     } else { check(false, "config: the window's file is read") }
     check(SessionsBackup.configAllowlist == ["mcpServers"] && SessionsBackup.configPart == "mcpServers", "config: the allowlist is mcpServers alone, and the item's part says so")
+    check(SessionsBackup.sidebarAllowlist == ["dframe-code-sections", "dframe-group-scopes"] && sidebarOnly(SessionsBackup.sidebarRecords(dataDir: dataA)),
+          "sidebar (write side): the records taken are the sections and groups alone: no folder permission mode, no key a later app adds")
     // default deny: a file of nothing but keys off the allowlist (or an empty mcpServers) is taken as none
     var offList = config; offList.removeValue(forKey: "mcpServers")
     let dataOff = w + "/Claude-off"
@@ -209,6 +224,7 @@ MainActor.assumeIsolated {
     check(bA.version == 3 && !bA.items.contains { $0.role == .config } && bA.configLeftOut == nil && !fm.fileExists(atPath: bAdir + "/config")
           && bA.items.filter { $0.role == .setup && $0.path.hasPrefix("setup/scheduled-tasks/") }.count == 4,
           "backup (plain): format 3, the 4 prompts, and no claude_desktop_config.json (only the encrypted export carries it)")
+    check(sidebarOnly(fm.contents(atPath: bAdir + "/sidebar/epitaxyPrefs.json")), "backup (plain): sidebar/epitaxyPrefs.json holds the sections and groups alone")
     check(holds(bAdir, envValue).isEmpty && holds(bAdir, headerValue).isEmpty && holds(bAdir, "mcpServers").isEmpty && !SessionsBackup.summary(bA).contains("MCP"),
           "backup (plain): no MCP env value, header or server list in any of its files: \(holds(bAdir, envValue))")
     let bAsettings = json(fm.contents(atPath: bAdir + "/setup/settings.json"))
@@ -291,6 +307,7 @@ MainActor.assumeIsolated {
     check(((imgConfig?["mcpServers"] as? [String: Any])?["github"] as? [String: Any]).flatMap { ($0["env"] as? [String: Any])?["GITHUB_TOKEN"] as? String } == envValue
           && allowlistOnly(imgConfigData) && imgItem?.original == "config/claude_desktop_config.json",
           "export (image): claude_desktop_config.json holds the MCP servers whole, env values too, and nothing else: no permission or consent setting, no path of this Mac, no sidebar part, no key a later app adds")
+    check(sidebarOnly(fm.contents(atPath: oi.tree.path + "/profiles/p1/sidebar/epitaxyPrefs.json")), "export (image): the sidebar records hold the sections and groups alone")
     check(!(read(oi.tree.path + "/profiles/p1/config/claude_desktop_config.json") ?? sid(1)).contains(sid(1)), "export (image): a known account id in the config is its fingerprint (the leak check reads the file)")
 
     // ---- Import (image) into a profile that has nothing: left out by default
@@ -872,12 +889,24 @@ MainActor.assumeIsolated {
         j["preferences"] = foreignPrefs.merging(["epitaxyPrefs": ["epitaxy-folder-permission-mode-v2.\(sid(3))": ["/w/project": "bypassPermissions"]]]) { a, _ in a }
         try setConfig(&m, p, try JSONSerialization.data(withJSONObject: j))
         if let i = m.items.firstIndex(where: { $0.role == .config }) { m.items[i].part = "all but preferences.epitaxyPrefs" }    // as an older build labelled it
+        // and its sidebar records whole, as an older build carried them: folder permission modes and a later key beside the two
+        let sb = p.appendingPathComponent("sidebar/epitaxyPrefs.json")
+        var old = (try? JSONSerialization.jsonObject(with: Data(contentsOf: sb))) as? [String: Any] ?? [:]
+        old["epitaxy-folder-permission-mode-v2.\(sid(3))"] = ["/w/project": "bypassPermissions"]; old["epitaxyFutureKey2099"] = ["grantedEverything": true]
+        let oldData = try JSONSerialization.data(withJSONObject: old)
+        try oldData.write(to: sb)
+        if let i = m.items.firstIndex(where: { $0.role == .sidebar }) { m.items[i].bytes = Int64(oldData.count) }
     }
     if withSidebar == "OPENED", let os = try? SessionsImport.open(URL(fileURLWithPath: out + "/\(sidebarName).dmg"), password: pw, place: place) {
         let (tS, dS, _) = target("s")
         let stS = try! SessionsImport.materialize(os, part: os.parts[0], target: "s")
         let bS = try! SessionsImport.commit(stS)
         let pS = SessionsRestore.plan(tS, bS, addConfig: true)
+        // the staged backup keeps the old sidebar file as it came; what a restore reads of it is the two keys alone
+        let oldSidebar = json(fm.contents(atPath: bS.dir.appendingPathComponent("sidebar/epitaxyPrefs.json").path)) ?? [:]
+        check(oldSidebar.keys.contains { $0.hasPrefix("epitaxy-folder-permission-mode") } && Set(SessionsBackup.sidebarAllowed(oldSidebar).keys) == SessionsBackup.sidebarAllowlist
+              && sidebarOnly(SessionsBackup.sidebarData(fm.contents(atPath: bS.dir.appendingPathComponent("sidebar/epitaxyPrefs.json").path) ?? Data())),
+              "old image (read side): its sidebar records with permission modes and a later key give the sections and groups alone: \(oldSidebar.keys.sorted())")
         check(pS.config.present && pS.config.otherKeys == ["coworkUserFilesPath", "futureTopLevelKey2099", "globalShortcut", "preferences"]
               && pS.configPieces.count == 1 && allowlistOnly(pS.configPieces[0].data) && WindowWords.config(pS.config) == "2 MCP servers"
               && WindowWords.otherKeys(pS.config) == "Never added: the window's other settings it holds (coworkUserFilesPath, futureTopLevelKey2099, globalShortcut, preferences; values not shown). Only the MCP servers come: permission and consent settings and another Mac's paths never move.",
@@ -890,6 +919,8 @@ MainActor.assumeIsolated {
            let oo = try? SessionsImport.open(fromOld, password: pw, place: place) {
             check(allowlistOnly(fm.contents(atPath: oo.tree.path + "/profiles/p1/config/claude_desktop_config.json")),
                   "old image: an export made from its backup carries the allowlist alone (write side filters again)")
+            check(sidebarOnly(fm.contents(atPath: oo.tree.path + "/profiles/p1/sidebar/epitaxyPrefs.json")),
+                  "old image: an export made from its backup carries the sidebar's sections and groups alone (its permission modes filtered again)")
             SessionsImport.discard(oo.work)
         } else { check(false, "old image: an export from its backup is made and opens") }
         let rS = try? SessionsRestore.run(tS, bS, addConfig: true, windowClosed: { true })

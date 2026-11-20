@@ -437,8 +437,9 @@ enum SessionsRestore {
         // 4. the sidebar: where the restored entries sat, from the backup's own records
         if !restoredIDs.isEmpty, sidebarItem != nil, let f = reader.file(["sidebar", "epitaxyPrefs.json"]) {
             defer { close(f.fd) }
+            // only the sidebar allowlist's keys are read: an older backup or image kept the whole epitaxyPrefs (folder permission modes too)
             if let prefs = (try? JSONSerialization.jsonObject(with: read(f.fd, size: f.st.st_size) ?? Data())) as? [String: Any] {
-                p.sidebar = sidebarPlan(prefs: prefs, restored: restoredIDs, imported: imported)
+                p.sidebar = sidebarPlan(prefs: SessionsBackup.sidebarAllowed(prefs), restored: restoredIDs, imported: imported)
             }
         }
         return p

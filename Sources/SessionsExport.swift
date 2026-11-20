@@ -6,7 +6,7 @@
 //     export.json                      what it is: format, version, when, the profiles in it, the size
 //     profiles/p1/backup.json          a backup's manifest, ids replaced by fingerprints, no absolute path
 //     profiles/p1/window/<fp>/<fp>/…   the Code-tab entries and scheduled tasks
-//     profiles/p1/sidebar/…            the sidebar records (epitaxyPrefs only)
+//     profiles/p1/sidebar/…            the sidebar records (epitaxyPrefs, its sections and groups only: SessionsBackup.sidebarAllowlist)
 //     profiles/p1/config/…             the window's claude_desktop_config.json, its MCP servers only (SessionsBackup.configAllowlist): the encrypted image only
 //     profiles/p1/records/profile.json the profile's name and fingerprints
 //     profiles/p1/transcripts/…        Claude Code's transcripts
@@ -1166,7 +1166,8 @@ enum SessionsExport {
             for s in rec.standby { if let q = s.seat { ids.insert(q.account.lowercased()); ids.insert(q.organization.lowercased()) } }
         }
         var sidebarText: String?
-        if let d = recordData("sidebar/epitaxyPrefs.json") {
+        // the sidebar records by the sidebar allowlist only, also from a backup an older import staged (which kept the whole epitaxyPrefs)
+        if let d = recordData("sidebar/epitaxyPrefs.json").flatMap(SessionsBackup.sidebarData) {
             sidebarText = String(decoding: d, as: UTF8.self)
             // a scope key is "<account>/<organisation>"
             if let re = try? NSRegularExpression(pattern: "([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})"),
