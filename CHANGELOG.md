@@ -8,13 +8,12 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- When Claude Code's folder is signed in to another profile's account, quick chat's header now names the profile's own account (it named the other profile's), and that other account's limit no longer shows it as full or holds what you type. When Claude Code hits a limit there, or while the Claude app and Claude Code are on different accounts, quick chat now says "Claude Code's account here has hit its limit." instead of "This account's week is full."; in the clash it also says whose account the folder is on and to move it back to the profile's own account on the Switch page (or, when the profile has no account of its own yet, to pick one there).
+- Quick chat's older limit messages no longer carry a Switch account… key or the offer: they keep the words they had when that answer ended, and only the live message under the chat offers the switch.
 
 ## 26.11.54 — 2026-11-15
 
 - Cancel on a new profile now quits only the Claude window started on the window folder that setup made, and deletes the folders only once that window has quit, also when the profile had connected an existing Claude Code folder (before, that window kept running on a deleted folder). If the window doesn't quit within a few seconds (it may be asking about work under way), nothing is removed and the page says so; quit it, then Cancel again. Cancel never quits the usual Claude window.
-- When Claude Code's folder is signed in to another profile's account, quick chat's header now names the profile's own account (it named the other profile's), and that other account's limit no longer shows it as full or holds what you type. When Claude Code hits a limit there, or while the Claude app and Claude Code are on different accounts, quick chat now says "Claude Code's account here has hit its limit." instead of "This account's week is full."; in the clash it also says whose account the folder is on and to move it back to the profile's own account on the Switch page (or, when the profile has no account of its own yet, to pick one there).
-- Quick chat's older limit messages no longer carry a Switch account… key or the offer: they keep the words they had when that answer ended, and only the live message under the chat offers the switch.
 
 ## 26.11.53 — 2026-11-15
 
