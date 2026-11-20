@@ -233,7 +233,8 @@ run_signin() {
 run_backup() {
   [[ -f "$HERE/backup/main.swift" ]] || { echo "backup: not in this tree yet (see 'Not recovered' in Checks/README.md)"; return 0; }
   local dir="$WORK/backup"; mkdir -p "$dir"
-  compile "$dir/cl_audit-checks-backup" "$HERE/backup/main.swift" || return 1
+  # (-D CL_AUDIT_TESTING: the import's claim of its work folder can be made to fail, a seam only a test build has)
+  compile "$dir/cl_audit-checks-backup" "$HERE/backup/main.swift" -D CL_AUDIT_TESTING || return 1
   # the suite reads the hostile-zip maker and the zlib probe zips next to its home
   cp "$HERE/backup/mkzips.py" "$dir/mkzips.py"
   fresh_home "$dir/other/backup-test/home"; fresh_home "$dir/other-tz/backup-test/home"   # the child roles' homes (under .work only)

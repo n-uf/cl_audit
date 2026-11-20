@@ -1,4 +1,5 @@
 import AppKit
+import ProfileCore
 // Checks for the sessions backups (SessionsBackup.swift) and the switch that makes one. Runs in a throwaway home
 // (CFFIXED_USER_HOME); made-up profiles, example.com addresses, made-up ids. Never touches real data.
 
@@ -492,13 +493,16 @@ MainActor.assumeIsolated {
 // backup first whenever it moves something. `owned: []`: no running Claude Code owns a session here.
 MainActor.assumeIsolated {
     fixture()
+    // Undo checks the receipt's folders against the profile's own (SwitchEngine.undoPlaces, since 26.11.18): the profile is saved
+    try! Store.save([entry])
+    defer { try? fm.removeItem(at: Store.configURL) }
     let p3 = URL(fileURLWithPath: home + "/bk-switch")
     guard case .success(let plan) = SwitchEngine.plan(entry, standby: standby, owned: []) else { check(false, "plan"); return }
     check(plan.backupTranscripts && plan.moves && plan.entry == entry, "the plan moves something, takes the transcripts in its backup, and carries the profile's record")
     let entriesBefore = tree(scopeA)
     let tasksBefore = read("\(scopeA)/scheduled-tasks.json")
     let r = try! SwitchEngine.run(plan, windowClosed: { true }, backups: p3)
-    check(r.backup != nil && SwitchEngine.load(r.id)?.backup == r.backup, "the receipt names the backup, and it is saved")
+    check(r.backup != nil && SwitchEngine.store.load(r.id)?.backup == r.backup, "the receipt names the backup, and it is saved")
     let m = SessionsBackup.load(profile: "bk", id: r.backup ?? "", place: p3)
     check(m?.kind == .beforeSwitch(r.id), "the backup names the switch's receipt")
     let root = p3.appendingPathComponent("bk/\(r.backup ?? "-")").path
@@ -548,7 +552,7 @@ MainActor.assumeIsolated {
           "...nothing moved, no receipt left, nothing to undo")
 
     // the receipt records where the backup is
-    check(r.backupPlace == p3.path && SwitchEngine.load(r.id)?.backupPlace == p3.path, "the receipt records the backup's place")
+    check(r.backupPlace == p3.path && SwitchEngine.store.load(r.id)?.backupPlace == p3.path, "the receipt records the backup's place")
 
     // reported to the page before the first move
     var told: (String, String)?
@@ -1037,7 +1041,7 @@ MainActor.assumeIsolated {
     var un = SessionsRestore.unfinished(profile: "bk")
     check(err.contains("opened") && un.count == 1 && un[0].back == 1 && un[0].stopped?.contains("opened") == true && un[0].finished == nil,
           "window opens mid-restore: stops, 1 entry back kept, the receipt says the window opened: \(err)")
-    check(SessionsRestore.blocker(profile: "bk") != nil && (try? SessionsRestore.run(tgt, backup, windowClosed: { true })) == nil,
+    check(Flows.blocker(profile: "bk", for: .restoring) != nil && (try? SessionsRestore.run(tgt, backup, windowClosed: { true })) == nil,
           "an unfinished restore blocks a second one (finish or undo first)")
     // finished from its receipt (the next start of cl_audit): the rest comes back, the receipt is the same one
     let fin = try! SessionsRestore.run(tgt, backup, continuing: un[0].id, windowClosed: { true })
@@ -1137,25 +1141,25 @@ MainActor.assumeIsolated {
     var rc = SwitchReceipt(id: SwitchEngine.receiptID(Date(), "bk"), profile: "bk", standby: "sb", dataDir: wd, from: SeatID(a), to: SeatID(b), started: Date())
     rc.steps = [SwitchReceipt.Step(kind: .entry, path: "/x", sha: nil, parked: nil, original: nil)]
     saveSwitchReceipt(rc)
-    check(SessionsRestore.blocker(profile: "bk") == nil && SwitchEngine.unfinished(profile: "bk").count == 1,
+    check(Flows.blocker(profile: "bk", for: .restoring) == nil && SwitchEngine.unfinished(profile: "bk").count == 1,
           "an old switch of the profile that stopped half way: read, and no reason to refuse a restore any more")
     try? fm.removeItem(at: SwitchEngine.root.appendingPathComponent(rc.id))
     // the lock held: one switch, restore or import at a time
-    let lock = try! SwitchEngine.Lock.take()
-    check((try? SessionsRestore.run(tgt, backup, windowClosed: { true })) == nil && SessionsRestore.busy() != nil && tree(wd) + "\n" + tree(code) == before, "the switch lock held: restore refused, nothing written")
+    let lock = try! Flows.takeLock()
+    check((try? SessionsRestore.run(tgt, backup, windowClosed: { true })) == nil && Flows.busy() != nil && tree(wd) + "\n" + tree(code) == before, "the switch lock held: restore refused, nothing written")
     lock.release()
-    check(SessionsRestore.busy() == nil, "(the lock released: free)")
+    check(Flows.busy() == nil, "(the lock released: free)")
     // claude-transplant's lock held by another process: refused. /usr/bin/lockf holds its flock the way claude-transplant does.
     let ct = expand("~/Library/Application Support/claude-transplant")
     try? fm.createDirectory(atPath: ct, withIntermediateDirectories: true)
     let holder = Process(); holder.executableURL = URL(fileURLWithPath: "/usr/bin/lockf")
     holder.arguments = ["-k", "-s", "-t", "0", ct + "/lock", "/bin/sleep", "6"]
     try! holder.run(); usleep(700_000)
-    let busyWords = SessionsRestore.busy() ?? ""
+    let busyWords = Flows.busy() ?? ""
     check(busyWords.contains("claude-transplant") && (try? SessionsRestore.run(tgt, backup, windowClosed: { true })) == nil && tree(wd) + "\n" + tree(code) == before,
           "claude-transplant holding its lock: restore refused with its name, nothing written: \(busyWords)")
     holder.terminate(); holder.waitUntilExit()
-    check(SessionsRestore.busy() == nil, "(claude-transplant done: free)")
+    check(Flows.busy() == nil, "(claude-transplant done: free)")
 
     // projects is a link: the transcripts aren't written, the entries still are
     let realProjects = home + "/projects-elsewhere"
@@ -1216,7 +1220,11 @@ MainActor.assumeIsolated {
     // exclusive create: a name that exists is never replaced
     let d = open(scopeA, O_RDONLY | O_DIRECTORY)
     write("\(scopeA)/there.json", "mine")
-    if case .exists = SessionsRestore.createNew(d, "there.json", Data("theirs".utf8)) { check(read("\(scopeA)/there.json") == "mine", "createNew: a name that exists is refused and the file is not changed") } else { check(false, "createNew over an existing file") }
+    // (the restore's create-only writer is CreateOnly.write since every flow writes through SafeFiles; the restore names its temp so)
+    func createNew(_ dir: Int32, _ name: String, _ data: Data) -> CreateOnly.Wrote {
+        CreateOnly.write(data, as: name, in: dir, temp: ".restore-x-\(UUID().uuidString).tmp", sync: true)
+    }
+    if case .exists = createNew(d, "there.json", Data("theirs".utf8)) { check(read("\(scopeA)/there.json") == "mine", "createNew: a name that exists is refused and the file is not changed") } else { check(false, "createNew over an existing file") }
     check(names(scopeA).filter { $0.hasSuffix(".tmp") } == [".local_x.json.TMP-UUID.tmp"], "createNew: no temp file left behind (only the fixture's own)")
     let fdSrc = open("\(place.path)/bk/\(m.id)/transcripts/-p/\(c2).jsonl", O_RDONLY)
     var sst = stat(); fstat(fdSrc, &sst)
@@ -1227,7 +1235,7 @@ MainActor.assumeIsolated {
     try? fm.removeItem(atPath: "\(scopeA)/dangling.json")
     try! fm.createSymbolicLink(atPath: "\(scopeA)/dangling.json", withDestinationPath: home + "/dangle-target")
     var refusedDangling = false
-    if case .exists = SessionsRestore.createNew(d, "dangling.json", Data("x".utf8)) { refusedDangling = true }
+    if case .exists = createNew(d, "dangling.json", Data("x".utf8)) { refusedDangling = true }
     check(refusedDangling && !fm.fileExists(atPath: home + "/dangle-target"), "createNew onto a dangling link: refused, nothing made where it points")
     try? fm.removeItem(atPath: "\(code)/projects/-p/dangling2.jsonl")
     try! fm.createSymbolicLink(atPath: "\(code)/projects/-p/dangling2.jsonl", withDestinationPath: home + "/dangle-target2")
@@ -1315,7 +1323,7 @@ MainActor.assumeIsolated {
     let (m2, place2) = b2World()
     let b2 = SessionsRestore.Backup(profile: "bk", id: m2.id, place: place2)
     let full = try! SessionsRestore.run(tgt, b2, windowClosed: { true })
-    var h = SessionsRestore.load(full.id)!; h.finished = nil; try! SessionsRestore.save(h)
+    var h = SessionsRestore.load(full.id)!; h.finished = nil; try! SessionsRestore.store.save(h)
     check(SessionsRestore.unfinished(profile: "bk").count == 1 && (try? SessionsBackup.delete(profile: "bk", id: m2.id, place: place2)) == nil, "a restore marked unfinished after its last write: found, and its backup is protected")
     check((try? SessionsRestore.run(tgt, b2, windowClosed: { true })) == nil, "...a new restore is refused meanwhile")
     let closed = try? SessionsRestore.run(tgt, b2, continuing: full.id, windowClosed: { true })
@@ -1529,9 +1537,9 @@ MainActor.assumeIsolated {
     check(SessionsRestore.load(rr.id) == nil, "...and goes after 30 days")
     var alive = SessionsRestore.Receipt(id: SessionsRestore.receiptID(Date(), "bk"), profile: "bk", dataDir: wd, codeDir: code, backup: m.id,
                                         backupPlace: place.path, target: nil, started: Date(), finished: Date())
-    try! SessionsRestore.save(alive)
+    try! SessionsRestore.store.save(alive)
     var dead = alive; dead.id = SessionsRestore.receiptID(Date().addingTimeInterval(-3), "bk"); dead.backup = "20200101-000000-dead"
-    try! SessionsRestore.save(dead)
+    try! SessionsRestore.store.save(dead)
     SessionsRestore.prune(profile: "bk")
     check(SessionsRestore.load(alive.id) != nil && SessionsRestore.load(dead.id) == nil, "a finished restore's receipt goes when its backup is gone, and stays while it is there")
     try! SessionsBackup.delete(profile: "bk", id: m.id, place: place)
@@ -1576,7 +1584,7 @@ MainActor.assumeIsolated {
     let b = SessionsRestore.Backup(profile: "bk", id: m.id, place: place)
     let before = tree(wd) + "\n" + tree(code)
     let full = try! SessionsRestore.run(tgt, b, windowClosed: { true })
-    var h = SessionsRestore.load(full.id)!; h.finished = nil; try! SessionsRestore.save(h)
+    var h = SessionsRestore.load(full.id)!; h.finished = nil; try! SessionsRestore.store.save(h)
     dropDone(full.id, path: entryA1)
     let tmp = "\(scopeA)/.restore-\(SessionsRestore.tag(full.id))-LOST.tmp"
     try! fm.linkItem(atPath: entryA1, toPath: tmp)
@@ -1595,12 +1603,12 @@ MainActor.assumeIsolated {
     // N2: a place that can't be looked at says nothing about its backups
     let live = SessionsRestore.Receipt(id: SessionsRestore.receiptID(Date(), "bk"), profile: "bk", dataDir: wd, codeDir: code, backup: "20200101-000000-feed",
                                        backupPlace: home + "/unplugged-disk/backups", target: nil, started: Date(), finished: Date())
-    try! SessionsRestore.save(live)
+    try! SessionsRestore.store.save(live)
     var noProfile = live; noProfile.id = SessionsRestore.receiptID(Date().addingTimeInterval(-2), "bk"); noProfile.backupPlace = home + "/b2-empty-place"
     try? fm.createDirectory(atPath: home + "/b2-empty-place", withIntermediateDirectories: true)
-    try! SessionsRestore.save(noProfile)
+    try! SessionsRestore.store.save(noProfile)
     var inPlace = live; inPlace.id = SessionsRestore.receiptID(Date().addingTimeInterval(-4), "bk"); inPlace.backupPlace = place.path
-    try! SessionsRestore.save(inPlace)
+    try! SessionsRestore.store.save(inPlace)
     SessionsRestore.prune(profile: "bk")
     check(SessionsRestore.load(live.id) != nil && SessionsRestore.load(noProfile.id) != nil, "a place that isn't there (an unplugged disk), or one with no folder for the profile: the receipts are kept")
     check(SessionsRestore.load(inPlace.id) == nil, "...a place that can be looked at, with the backup not in it: the receipt goes")
@@ -1719,7 +1727,7 @@ MainActor.assumeIsolated {
     var obj = try! JSONSerialization.jsonObject(with: Data(contentsOf: rj)) as! [String: Any]
     for k in ["partialCount", "undoLeft", "afterSwitch", "planned", "problems", "changed", "changedCount", "inUse", "inUseCount", "deletedCount"] { obj.removeValue(forKey: k) }
     try! JSONSerialization.data(withJSONObject: obj).write(to: rj)
-    let old = SessionsRestore.header(r4.id)
+    let old = SessionsRestore.store.load(r4.id)                // the header alone, as the old `header` read it
     check(old != nil && old?.partialCount == 0 && old?.undoLeft == 0 && old?.problems == [] && old?.planned == 0 && old?.backup == m4.id && old?.finished != nil,
           "a receipt written before partialCount and undoLeft (and the other defaulted keys) still reads, with them defaulted")
     check(SessionsRestore.load(r4.id)?.steps.isEmpty == false, "...with its journal")
@@ -1730,9 +1738,9 @@ MainActor.assumeIsolated {
     var halfR = SessionsRestore.Receipt(id: SessionsRestore.receiptID(Date().addingTimeInterval(-40 * 86400), "bk"), profile: "bk", dataDir: wd, codeDir: code, backup: m5.id,
                                         backupPlace: p5.path, target: nil, started: Date().addingTimeInterval(-40 * 86400), finished: Date().addingTimeInterval(-40 * 86400))
     halfR.undoLeft = 2
-    try! SessionsRestore.save(halfR)
+    try! SessionsRestore.store.save(halfR)
     var goneBackup = halfR; goneBackup.id = SessionsRestore.receiptID(Date().addingTimeInterval(-41 * 86400), "bk"); goneBackup.backup = "20200101-000000-dead"; goneBackup.undoLeft = 1
-    try! SessionsRestore.save(goneBackup)
+    try! SessionsRestore.store.save(goneBackup)
     SessionsRestore.prune(profile: "bk")
     check(SessionsRestore.load(halfR.id) != nil && SessionsRestore.load(goneBackup.id) != nil, "a half-undone receipt is not pruned after 30 days, nor when its backup is gone (Undo doesn't need the backup)")
     check(SessionsRestore.finishedRestores(of: m5.id, profile: "bk", place: p5.path) == 0 && SessionsRestore.halfUndoneRestores(of: m5.id, profile: "bk", place: p5.path) == 1,
@@ -2434,7 +2442,7 @@ MainActor.assumeIsolated {
         }
         let me = getpid()
         mkWork(".import-aaaaaaa1", owner: "999999 0\n", ageDays: 0)                                       // owner gone
-        mkWork(".import-aaaaaaa2", owner: "\(me) \(SessionsImport.startTime(of: me) ?? 0)\n", ageDays: 0)    // owner is this process
+        mkWork(".import-aaaaaaa2", owner: "\(me) \(Processes.startTime(of: me) ?? 0)\n", ageDays: 0)    // owner is this process
         mkWork(".export-aaaaaaa3", owner: nil, ageDays: 0)                                                // no owner file, holds x/ (half removed): at once
         mkWork(".export-aaaaaaa7", owner: nil, ageDays: 0, empty: true)                                   // no owner file, empty and fresh (maybe being made now): kept
         mkWork(".export-aaaaaaa4", owner: nil, ageDays: 2)                                                // no owner file, a day old

@@ -31,3 +31,17 @@ Nothing was left out for want of an explanation: every one of the 133 lines is p
 - Two fake keys the recovery's split missed (an OpenSSH private-key header and a JWT) are cut by an empty interpolation too.
 - Two made-up ids (`aaaaaaaa-1111-…`, `bbbbbbbb-1111-…`) are zero-pattern ids now (`00000000-0000-4000-8000-0000000000a1`,
   `…a2`). `abcdef01-0000-4000-8000-000000000051` stays: the check needs hex letters to change case.
+
+## Ported to 26.11.60
+
+Every flow writes through SafeFiles since then (no behaviour, wording or layout change), so only the calls moved:
+`SwitchEngine.load` and `SessionsRestore.save` are their receipt stores' (`store.load`, `store.save`), `SessionsRestore.header` is
+`store.load` (the header alone), `SessionsRestore.blocker` is `Flows.blocker(…, for: .restoring)`, the lock and its words are
+`Flows.takeLock` and `Flows.busy`, the restore's `createNew` is `CreateOnly.write` (with the restore's temp name), and
+`SessionsImport.startTime` is `Processes.startTime`. `import ProfileCore` is added, and run.sh builds the suite with
+`-D CL_AUDIT_TESTING` (the import's claim seam, `claimFails`) as the held-back run did.
+
+One change on purpose reached a fixture: since 26.11.18 a switch's Undo touches only the profile's own places
+(`SwitchEngine.undoPlaces`, read from the profiles file), so for a profile that isn't saved it skipped every step as "outside
+this switch's folders" and left the switch open. The switch block now saves its profile first (as `accounts` does) and removes
+the file after. No expectation changed and no check was removed.
