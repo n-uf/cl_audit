@@ -1354,19 +1354,20 @@ enum SessionsRestore {
 
     /// "Leave it as it is" on a restore or import that stopped half way (or was only partly undone), as on a switch
     /// (SwitchEngine.leaveAsIs): for when neither Finish nor Undo can complete (its backup is gone, say). Nothing is written,
-    /// moved or deleted in the profile's folders: what it wrote stays as it is, and the backup isn't touched. The receipt is
-    /// closed as it stands, so it no longer holds up a switch, restore or import of the profile, and Finish and Undo no
-    /// longer apply to it. The temp files of ours a stop left beside the window's entries (only names with this receipt's
-    /// prefix) go, as when a restore finishes. Under the one lock (refused while a restore, import, move or switch runs),
-    /// and refused while a page's restore or Undo holds the window for it. The move to the default profile's own restore
-    /// is finished or undone with the move. What stays, in words ("" when there is nothing open to close).
+    /// moved or deleted in the profile's folders: what it wrote stays as it is, and the backup isn't touched now (it is no
+    /// longer kept for this receipt, so Retention may take it later). The receipt is closed as it stands, so it no longer
+    /// holds up a switch, restore or import of the profile, and Finish and Undo no longer apply to it. The temp files of
+    /// ours a stop left beside the window's entries (only names with this receipt's prefix) go, as when a restore
+    /// finishes. Under the one lock (refused while a restore, import, move or switch runs), and refused while a page's
+    /// restore or Undo holds the window for it. The move to the default profile's own restore is finished or undone with
+    /// the move (movesRestore). What stays, in words ("" when there is nothing open to close).
     @discardableResult
     static func leaveAsIs(_ id: String, now: Date = Date()) throws -> String {
         let lock: FlowLock.Held
         do { lock = try Flows.takeLock() } catch { throw RestoreError("\(error)") }
         defer { lock.release() }
         guard var r = load(id), r.unfinished else { return "" }
-        if DefaultProfile.record(forReceipt: id) != nil {
+        if movesRestore(id) {
             throw RestoreError("This restore is the move to the default profile's: finish or undo the move in Settings ▸ General.")
         }
         if !r.dataDir.isEmpty, let m = SwitchMarker.current(FolderKey.canonical(r.dataDir)), m.profile == r.profile, m.standby.hasPrefix("restore-") {
@@ -1375,11 +1376,16 @@ enum SessionsRestore {
         r.leftAsIs = now
         do { try store.save(r) } catch { throw RestoreError("The receipt couldn't be saved; nothing changed.") }
         sweepTemps(r)
-        let imp = r.importedFrom != nil, n = r.back
-        let files = "\(n) \(n == 1 ? "file" : "files") it \(imp ? "added" : "put back") \(n == 1 ? "stays" : "stay") as \(n == 1 ? "it is" : "they are")"
+        // (no count: unchecked window steps and an earlier partial Undo make any number of files there a guess)
         let here = SessionsBackup.folder(profile: r.profile, place: URL(fileURLWithPath: r.backupPlace)).appendingPathComponent(r.backup).path
-        let backup = FileManager.default.fileExists(atPath: here) ? "the backup it read from stays as it was" : "its backup isn't there any more"
-        return "Left as it is: the \(files); nothing is undone, and \(backup)."
+        let backup = FileManager.default.fileExists(atPath: here) ? "the backup it read from is no longer kept for it" : "its backup isn't there any more"
+        return "Left as it is: what it \(r.importedFrom != nil ? "added" : "put back") stays as it is; nothing is undone, and \(backup)."
+    }
+
+    /// Whether this restore is the move to the default profile's: the one a move's record names, or, for a crash between the
+    /// engine's first write and the record's (attachReceipt), the one an open move finds by its backup (DefaultProfile.restoreFor).
+    static func movesRestore(_ id: String) -> Bool {
+        DefaultProfile.record(forReceipt: id) != nil || DefaultProfile.all().contains { $0.open && DefaultProfile.restoreFor($0)?.id == id }
     }
 
     /// What Undo says, once per folder, when the folder a restore wrote into isn't there any more: usually the profile's

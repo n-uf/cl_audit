@@ -476,7 +476,7 @@ final class RestoreRunner: ObservableObject {
     // MARK: Leave it as it is
 
     /// A stopped restore that is the move to the default profile's is finished or undone with the move (Settings ▸ General).
-    var canLeave: Bool { receipt.map { DefaultProfile.record(forReceipt: $0.id) == nil } ?? false }
+    var canLeave: Bool { receipt.map { !SessionsRestore.movesRestore($0.id) } ?? false }
 
     /// "Leave it as it is" on a stopped restore or import, as on a stopped switch (the Sessions card): its receipt is closed as
     /// it stands (SessionsRestore.leaveAsIs), nothing is written, moved or deleted, and Finish and Undo are no longer
