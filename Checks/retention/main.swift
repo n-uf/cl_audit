@@ -418,18 +418,50 @@ do {
     try? fm.createDirectory(atPath: p("managed/ClaudeCode"), withIntermediateDirectories: true)
     try? fm.createSymbolicLink(atPath: p(fileA), withDestinationPath: p("elsewhere.json"))
     check(r().managed && r().days == 4 && !r().managedError, "managed-settings.json that is a link to a good file: read where it points")
-    // the other sources, bad: an error too, and the sources that are fine are still read
-    clean(); settings(c, "{}")
-    put(sCache, "{ nope")
-    check(r().managedError && !r().managed && r().skipped == nil && fate(transcript(c, 53, win, age: 400), r()) == .delete, "a server cache that isn't JSON: a managed error, no exemption")
-    put(fileA, "{\"cleanupPeriodDays\":4}")
-    check(r().managedError && r().managed && r().days == 4, "…and the file's own cleanupPeriodDays is still read (4)")
-    clean(); settings(c, "{}")
-    put(sCache, "{\"cleanupPeriodDays\":6,\"pad\":\"\(String(repeating: "x", count: 8 * 1024 * 1024))\"}")
-    check(r().managedError && !r().managed, "a server cache over 8 MiB: a managed error")
-    clean(); settings(c, "{}")
-    put(sCache, "[]")
-    check(r().managedError, "a server cache that is an array: a managed error")
+    // the server cache Claude Code can't use: ignored, as Claude Code ignores it (2.1.326 `db()` returns null), never an error
+    let realCache = "{\"permissions\":{\"allow\":[\"Bash(ls)\"]},\"cleanupPeriodDays\":14,\"model\":\"sample-model\"}"
+    var n53 = 5300
+    func ignored(_ what: String) {
+        settings(c, "{}")
+        let x = r()
+        n53 += 1
+        check(!x.managedError && !x.managed && x.source == nil && x.exempts && x.days == 30 && fate(transcript(c, n53, win, age: 400), x) == .keep,
+              "a server cache \(what): ignored, no managed error, the window's sessions kept per settings.json: \(x.managedError) \(String(describing: x.source))")
+    }
+    for cut in [1, 20, realCache.count / 2, realCache.count - 1] {
+        clean(); put(sCache, String(realCache.prefix(cut)))
+        ignored("cut off after \(cut) of \(realCache.count) characters (being written)")
+    }
+    clean(); put(sCache, "{ nope"); ignored("that isn't JSON")
+    clean(); put(sCache, "[]"); ignored("that is an array")
+    clean(); put(sCache, "7"); ignored("that is a number")
+    clean(); put(sCache, "null"); ignored("that is null")
+    clean(); put(sCache, "{\"cleanupPeriodDays\":6,\"pad\":\"\(String(repeating: "x", count: 8 * 1024 * 1024))\"}"); ignored("over 8 MiB")
+    clean(); try? fm.createDirectory(atPath: p(sCache), withIntermediateDirectories: true); ignored("that is a folder")
+    clean(); _ = mkfifo(p(sCache), 0o600); ignored("that is a FIFO (never opened to wait)")
+    clean(); put(sCache, "{\"cleanupPeriodDays\":6}"); try? fm.setAttributes([.posixPermissions: 0], ofItemAtPath: p(sCache)); ignored("that can't be opened (mode 000)")
+    try? fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: p(sCache))
+    clean(); try? fm.createSymbolicLink(atPath: p(sCache), withDestinationPath: p("nowhere.json")); ignored("that is a link to nowhere")
+    clean(); try? fm.createSymbolicLink(atPath: p(sCache), withDestinationPath: p(c)); ignored("that is a link to a folder")
+    clean(); put(sCache, "{\"cleanupPeriodDays\":6,}"); ignored("with a trailing comma")
+    clean(); put(sCache, "{ nope"); settings(c, "{\"desktopSessionCleanupPeriodDays\":90}")
+    check(!r().managedError && r().desktopDays == 90 && fate(transcript(c, 5390, win, age: 100), r()) == .delete && fate(transcript(c, 5391, win, age: 60), r()) == .keep,
+          "a half-written server cache with the user's cap 90: the cap applies, no managed error")
+    // a cache Claude Code reads still counts: its cleanupPeriodDays ends the exemption, a link to a good file is followed
+    clean(); settings(c, "{}"); put(sCache, realCache)
+    check(r().managed && r().days == 14 && r().source == .server && !r().exempts && fate(transcript(c, 5392, win, age: 15), r()) == .delete, "the whole cache: managed 14 days, no exemption")
+    clean(); settings(c, "{}"); put("elsewhere-cache.json", realCache); try? fm.createSymbolicLink(atPath: p(sCache), withDestinationPath: p("elsewhere-cache.json"))
+    check(r().managed && r().days == 14 && r().source == .server, "a cache that is a link to a good file: read where it points (Claude Code follows it)")
+    // the wrong shape inside a cache it reads: a bad value for one of the two keys is still a managed error, as for the files
+    clean(); settings(c, "{}"); put(sCache, "{\"cleanupPeriodDays\":\"x\"}")
+    check(r().managedError && !r().managed && !r().exempts, "a cache with cleanupPeriodDays \"x\": a managed error (the schema refuses it), no exemption")
+    clean(); settings(c, "{}"); put(sCache, "{\"desktopSessionCleanupPeriodDays\":-1}")
+    check(r().managedError && !r().exempts, "a cache with desktopSessionCleanupPeriodDays -1: a managed error")
+    // the other sources, bad: an error, and the sources that are fine are still read
+    clean(); settings(c, "{}"); put(fileA, "{ nope")
+    check(r().managedError && !r().managed && r().skipped == nil && fate(transcript(c, 53, win, age: 400), r()) == .delete, "a managed-settings.json that isn't JSON: a managed error, no exemption")
+    put("managed/ClaudeCode/managed-settings.d/10-a.json", "{\"cleanupPeriodDays\":4}")
+    check(r().managedError && r().managed && r().days == 4, "…and a drop-in's own cleanupPeriodDays is still read (4)")
     clean(); settings(c, "{}")
     try? fm.createDirectory(atPath: p("managed/Managed Preferences/sample/com.anthropic.claudecode.plist"), withIntermediateDirectories: true)
     check(r().managedError, "an MDM plist that is a folder: a managed error")
@@ -448,7 +480,7 @@ do {
     check(r().managedError && r().skipped == nil, "a drop-in folder that can't be listed (mode 000): an error")
     try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: p("managed/ClaudeCode/managed-settings.d"))
     // a managed error with a settings.json that sets the cap, not the days: still skipped; with managed days: runs
-    clean(); settings(c, "{\"desktopSessionCleanupPeriodDays\":90}"); put(sCache, "{ nope")
+    clean(); settings(c, "{\"desktopSessionCleanupPeriodDays\":90}"); put("managed/ClaudeCode/managed-settings.d/10-bad.json", "{ nope")
     check(r().skipped == nil && r().managedError && fate(transcript(c, 54, win, age: 400), r()) == .delete, "a managed error and desktopSessionCleanupPeriodDays in settings.json: said as deleted, no exemption (the safe side)")
     put(fileA, "{\"cleanupPeriodDays\":10}")
     check(r().skipped == nil && r().managed && fate(transcript(c, 55, win, age: 400), r()) == .delete, "…but with managed cleanupPeriodDays Claude Code always runs it")
@@ -903,8 +935,9 @@ do {
                 check(m.managed && m.days == 7 && !m.managedError && fate(transcript(c, n, win, age: 8), m) == .delete, "\(src), \(what): managed 7 days, the window's too: \(String(describing: m.days))")
             } else {
                 // a managed file Claude Code can't parse is a managed error (no exemption); a server cache it can't parse it
-                // ignores, which cl_audit still counts as an error (the safe side): the period is settings.json's 365 either way
-                check(!m.managed && m.days == 365 && (m.managedError || rel != fileA && !rel.contains("managed-settings.d")), "\(src), \(what): no managed period, settings.json's 365: \(String(describing: m.days)) \(m.managedError)")
+                // ignores: no error. The period is settings.json's 365 either way
+                let isCache = rel.hasSuffix("remote-settings.json")
+                check(!m.managed && m.days == 365 && m.managedError != isCache, "\(src), \(what): no managed period, settings.json's 365, \(isCache ? "ignored" : "a managed error"): \(String(describing: m.days)) \(m.managedError)")
             }
         }
     }

@@ -395,7 +395,9 @@ extension Retention {
 /// The cap `desktopSessionCleanupPeriodDays` is likewise taken from every source: the smallest positive one, a 0 (no cap)
 /// only when no source caps. A document that is there but can't be used (not readable, not a plain file, too big, not an
 /// object, a drop-in folder that can't be listed, a bad value for one of the two keys) is a managed settings ERROR, which
-/// ends the exemption too; only a missing file (ENOENT) is "not there". A source that names a policy helper
+/// ends the exemption too; only a missing file (ENOENT) is "not there". Except the server cache: one Claude Code can't
+/// read or parse (or that isn't an object) it ignores (2.1.326), so it is "not there"; a bad value for one of the two keys
+/// in a cache it reads is still an error. A source that names a policy helper
 /// (`policyHelper` / `policyHelpers`, a program that computes managed settings at start) may set `cleanupPeriodDays`
 /// unseen: then the exemption is taken as off (the safe side) and the clean-up as running.
 enum ManagedSettings {
@@ -484,8 +486,12 @@ enum ManagedSettings {
             case .content(let o): if !o.isEmpty { docs.append((s, o)) }
             }
         }
-        // 1. the server-managed cache
-        if useServerCache, !codeDir.isEmpty { take(.server, load((codeDir as NSString).appendingPathComponent("remote-settings.json"), max: maxServerBytes)) }
+        // 1. the server-managed cache. One Claude Code can't use it ignores, as if it weren't there (2.1.326 `db()`: a read
+        // that throws — missing, not a plain file, over 8 MiB, unreadable — JSON.parse failing, or not an object: null), so it
+        // is never an error here: a cache being written (half a JSON text) changes nothing. Read, its values keep the rules.
+        if useServerCache, !codeDir.isEmpty, case .content(let o) = load((codeDir as NSString).appendingPathComponent("remote-settings.json"), max: maxServerBytes) {
+            take(.server, .content(o))
+        }
         // 2. MDM: the per-user managed preferences first, then the device-level ones (the first that holds anything)
         var mdmDoc: [String: Any]?
         for p in [(mdmDir as NSString).appendingPathComponent("\(mdmUser)/\(domain).plist"), (mdmDir as NSString).appendingPathComponent("\(domain).plist")] {
