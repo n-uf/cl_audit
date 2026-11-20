@@ -1,5 +1,7 @@
 import AppKit
 import UserNotifications
+import ProfileCore
+import ClaudeAuth
 // Checks for "the agent notices a changed sign-in" and the profile's accounts. Runs in a throwaway home
 // (CFFIXED_USER_HOME); throwaway profiles and fake .claude.json files only. Never touches a real profile.
 // Laid out as one block per stage (a `// MARK:` or `// --- stage X ---` line, then a `do { … }`, inside `#if STAGE3` where it
@@ -31,7 +33,7 @@ do {
     var w = SignInWatch()
     var parsed = 0
     func look(_ stamp: Int, _ s: Seat?) -> Bool {
-        w.look(stamp: [.size: stamp]) { parsed += 1; return s }
+        w.look(stamp: RecordStamp(size: UInt64(stamp))) { parsed += 1; return s }
     }
     check(!look(1, seat("A", "a@x")), "first look is not a change")
     check(!look(1, seat("B", "b@x")) && parsed == 1, "same date and size: the file isn't parsed again")
@@ -141,10 +143,15 @@ do {
     Thread.sleep(forTimeInterval: 1.1)
     writeClaudeJSON(dir, new)
     r.tick()
-    r.apply(usage(95)); r.tick()                  // the new account's numbers arrive
+    // the new account's numbers arrive: read with its sign-in's key, whose account comes back from the lookup (since 26.11.24
+    // whose numbers they are is the reading's own account, never the folder's .claude.json: a reading that names none says none)
+    let reply95 = Data(#"{"five_hour":{"utilization":10,"resets_at":"2099-01-01T00:00:00Z"},"seven_day":{"utilization":95,"resets_at":"2099-01-02T00:00:00Z"}}"#.utf8)
+    let ok200 = HTTPURLResponse(url: URL(string: "https://example.com")!, statusCode: 200, httpVersion: nil, headerFields: nil)
+    r.finish(data: reply95, response: ok200, error: nil, asked: Date(), gen: r.generation, key: "k-new")
+    r.profileFound(new.email!, key: "k-new"); r.tick()
     let s = Store.status(e.id)
     check(s?.weekly == 95 && s?.state == "ok" && s?.resolved?.numbersFor?.lowercased() == new.email?.lowercased(),   // release A: no otherAccount state; the numbers stay, labelled with the account they were read for
-          "folder on another account: its numbers are labelled with that account, not held back")
+          "folder on another account: its numbers are labelled with that account, not held back (got \(String(describing: s?.weekly)) \(s?.state ?? "-") \(s?.resolved?.numbersFor ?? "-"))")
     check(posted.isEmpty && d.object(forKey: "nwk.\(e.id)") == nil, "and no alerts about them (95% weekly, alerts at 90%)")
     var linked = e; linked.seat = new
     r.update(linked)                              // Use this account
@@ -246,23 +253,25 @@ MainActor.assumeIsolated {
         if let account { j["lastKnownAccountUuid"] = account }
         try! JSONSerialization.data(withJSONObject: j).write(to: URL(fileURLWithPath: expand(dir) + "/config.json"))
     }
-    writeClaudeJSON(d.configDir, other)
+    // (the window's account id is read only when it is a real id, a UUID, since 26.11.39: the ids here are UUID-shaped)
+    let othID = "00000000-0000-4000-8000-0000000000b1", labID = "00000000-0000-4000-8000-0000000000b2"
+    writeClaudeJSON(d.configDir, Seat(account: othID, organization: "org-oth", email: other.email))
     check(d.window == .separate, "a folder other than ~/.claude: its own window")
-    windowConfig(d.dataDir, "oth")
+    windowConfig(d.dataDir, othID)
     check(NewAccountSetup.desktopSignIn(d) == .same, "own window on the same account id: same")
-    windowConfig(d.dataDir, "lab")
+    windowConfig(d.dataDir, labID)
     check(NewAccountSetup.desktopSignIn(d) == .different, "own window on another account id: different")
-    windowConfig(d.dataDir, "oth", token: false)
+    windowConfig(d.dataDir, othID, token: false)
     check(NewAccountSetup.desktopSignIn(d) == .notSignedIn, "own window without a stored sign-in: not signed in")
     var s = NewAccountDraft(); s.name = "NP Std"; s.source = .existing; s.existingDir = "~/.claude"; s.connected = true; s.claudeWindow = true
     writeClaudeJSON(expand("~/.claude"), other)
     // ~/.claude keeps its account in ~/.claude.json, beside the folder
-    try! JSONSerialization.data(withJSONObject: ["oauthAccount": ["accountUuid": "oth", "organizationUuid": "org-oth", "emailAddress": other.email!]])
+    try! JSONSerialization.data(withJSONObject: ["oauthAccount": ["accountUuid": othID, "organizationUuid": "org-oth", "emailAddress": other.email!]])
         .write(to: URL(fileURLWithPath: expand("~/.claude.json")))
     check(s.window == .standard, "~/.claude: the usual Claude app")
-    windowConfig(FolderKey.standardDataDir, "lab")
+    windowConfig(FolderKey.standardDataDir, labID)
     check(NewAccountSetup.desktopSignIn(s) == .different, "the usual Claude app is checked too: another account, different")
-    windowConfig(FolderKey.standardDataDir, "oth")
+    windowConfig(FolderKey.standardDataDir, othID)
     check(NewAccountSetup.desktopSignIn(s) == .same, "the usual Claude app on the same account: same")
     s.claudeWindow = false
     check(NewAccountSetup.desktopSignIn(s) == .notChecked, "no Claude window: not checked")
@@ -519,7 +528,7 @@ MainActor.assumeIsolated {
     var p1 = AccountEntry(id: "a", name: "A", label: "A", configDir: home + "/.claude-acc-a"); p1.seat = seat("s1", "s1@example.com")
     p1.standby = [StandbyAccount(email: "s2@example.com", seat: seat("s2", "s2@example.com"), id: "k2")]
     let p2 = AccountEntry(id: "b", name: "B", label: "B", configDir: home + "/.claude-acc-b")
-    check(FolderRules.seatOwner(seat("s2", "s2@example.com"), among: [p1, p2])?.id == "a", "a standby account belongs to its profile")
+    check(FolderRules.seatOwner(seat("s2", "s2@example.com"), among: [p1, p2])?.profile.id == "a", "a standby account belongs to its profile")
     check(FolderRules.seatOwner(seat("s2", "s2@example.com"), among: [p1, p2], except: "a") == nil, "its own profile isn't another owner")
     check(FolderRules.configOwner(home + "/.claude-acc-a/inner", among: [p1, p2], except: "b")?.id == "a", "a folder inside a profile's is that profile's")
     check(FolderRules.configOwner(home + "/.claude-acc-s2", among: [p1, p2]) == nil, "no folder is a standby account's")
@@ -539,8 +548,13 @@ MainActor.assumeIsolated {
     check(AccountFacts.orgWords(type: "claude_max", name: "x@example.com's Organization") == "Personal", "a personal plan: Personal")
     check(AccountFacts.orgWords(type: "claude_team", name: "Acme") == "Acme", "a team: its name")
     check(AccountFacts.orgWords(type: nil, name: "Acme") == "Acme", "no type: the name")
-    let f = AccountFacts.of(oauthAccount: ["accountUuid": "u9", "organizationUuid": "o9", "emailAddress": "u9@example.com",
-                                           "planDisplayName": "Ultra", "organizationType": "claude_max"])
+    // (the facts are read from a folder's record since AccountFacts reads it through Account.record: the same block, in a file)
+    let factsDir = home + "/.claude-facts"
+    try? fm.createDirectory(atPath: factsDir, withIntermediateDirectories: true)
+    try! JSONSerialization.data(withJSONObject: ["oauthAccount": ["accountUuid": "u9", "organizationUuid": "o9", "emailAddress": "u9@example.com",
+                                                                  "planDisplayName": "Ultra", "organizationType": "claude_max"]])
+        .write(to: URL(fileURLWithPath: factsDir + "/.claude.json"))
+    let f = AccountFacts.of(configDir: factsDir)
     check(f?.seat.account == "u9" && f?.plan == "Ultra" && f?.org == "Personal", "facts from an oauthAccount block")
 
     // Add account: what it finds, in what order, in what words. Retired (2026-11-10): Add account is gone; the accounts
@@ -602,11 +616,13 @@ MainActor.assumeIsolated {
     let odir = "\(wd)/claude-code-sessions/\(acct)/\(org)"
     try? fm.createDirectory(atPath: odir, withIntermediateDirectories: true)
     try? fm.createDirectory(atPath: "\(wd)/claude-code-sessions/\(acct)/\(org2)", withIntermediateDirectories: true)
-    fm.createFile(atPath: "\(odir)/local_1.json", contents: Data(#"{"title":"x","isArchived":false}"#.utf8))
-    fm.createFile(atPath: "\(odir)/local_2.json", contents: Data(#"{"title":"y","isArchived":true}"#.utf8))
-    fm.createFile(atPath: "\(odir)/local_3.json", contents: Data(#"{"title":"z"}"#.utf8))
+    // (an entry is a local_<UUID>.json since every lister reads through ClaudeFiles: the names are UUIDs here)
+    func entryName() -> String { "local_\(UUID().uuidString.lowercased()).json" }
+    fm.createFile(atPath: "\(odir)/\(entryName())", contents: Data(#"{"title":"x","isArchived":false}"#.utf8))
+    fm.createFile(atPath: "\(odir)/\(entryName())", contents: Data(#"{"title":"y","isArchived":true}"#.utf8))
+    fm.createFile(atPath: "\(odir)/\(entryName())", contents: Data(#"{"title":"z"}"#.utf8))
     fm.createFile(atPath: "\(odir)/scheduled-tasks.json", contents: Data(#"{"scheduledTasks":[{"id":"t1"},{"id":"t2"}]}"#.utf8))
-    for i in 0..<5 { fm.createFile(atPath: "\(wd)/claude-code-sessions/\(acct)/\(org2)/local_o\(i).json", contents: Data("{}".utf8)) }
+    for _ in 0..<5 { fm.createFile(atPath: "\(wd)/claude-code-sessions/\(acct)/\(org2)/\(entryName())", contents: Data("{}".utf8)) }
     let prefs: [String: Any] = ["mcpServers": ["x": ["env": ["TOKEN": "not-read"]]],
                                 "preferences": ["epitaxyPrefs": [
                                     "dframe-code-sections": ["\(acct)/\(org)": ["sections": [["shown": true], ["shown": false], ["id": "p"]]]],
@@ -643,7 +659,9 @@ MainActor.assumeIsolated {
     entry(i1, ["cliSessionId": c1]); entry(i2, ["cliSessionId": c2, "isStarred": true]); entry(i3); entry(i4)
     fm.createFile(atPath: "\(dst)/local_\(i3).json", contents: Data("{}".utf8))          // the target has it already
     fm.createFile(atPath: "\(dst)/deleted_\(i4)", contents: Data())                       // the target deleted it
-    let tasksSrc = Data(#"{"scheduledTasks":[{"id":"t1"},{"id":"t2"}],"keep":true}"#.utf8), tasksDst = Data(#"{"scheduledTasks":[{"id":"t2","x":1}]}"#.utf8)
+    // (a task the target has under the same id must be the same task, whole: the twin rule, TaskRegistry's since 26.11.37; so
+    // t2 is the same on both sides here, as claude-transplant requires)
+    let tasksSrc = Data(#"{"scheduledTasks":[{"id":"t1"},{"id":"t2","x":1}],"keep":true}"#.utf8), tasksDst = Data(#"{"scheduledTasks":[{"id":"t2","x":1}]}"#.utf8)
     fm.createFile(atPath: "\(src)/scheduled-tasks.json", contents: tasksSrc)
     fm.createFile(atPath: "\(dst)/scheduled-tasks.json", contents: tasksDst)
     // the window's mirror: session 1 sits in one group (another account's groups are elsewhere in the same file)
@@ -708,23 +726,23 @@ MainActor.assumeIsolated {
     check(try! String(contentsOfFile: t2Path) == t2Before, "an empty pointer: the transcript untouched")
     let receiptText = try! String(contentsOf: SwitchEngine.root.appendingPathComponent("\(r.id)/receipt.json"))
     check(!receiptText.contains("@") && !receiptText.contains("email"), "the receipt names accounts by id only")
-    check(SwitchEngine.load(r.id)?.finished != nil && SwitchEngine.receipts(profile: "eng").first?.id == r.id && SwitchEngine.unfinished(profile: "eng").count == 1,
+    check(SwitchEngine.store.load(r.id)?.finished != nil && SwitchEngine.receipts(profile: "eng").first?.id == r.id && SwitchEngine.unfinished(profile: "eng").count == 1,
           "the receipt is saved; moved and not linked: unfinished")
     check(r.sidebar == nil && r.backup != nil, "the receipt names its backup; no sidebar is noted (claude-transplant doesn't carry it)")
     check((try? SwitchEngine.writeNew("\(dst)/local_\(i1).json", Data("x".utf8))) == nil, "a write never goes over an existing file")
 
     // one switch at a time, and none while claude-transplant holds its lock (a flock)
-    let held = try! SwitchEngine.Lock.take()
-    check((try? SwitchEngine.Lock.take()) == nil, "a second switch waits for the first")
+    let held = try! Flows.takeLock()
+    check((try? Flows.takeLock()) == nil, "a second switch waits for the first")
     held.release()
     let ctDir = home + "/Library/Application Support/claude-transplant"
     try? fm.createDirectory(atPath: ctDir, withIntermediateDirectories: true)
     fm.createFile(atPath: ctDir + "/lock", contents: Data())
     let ct = open(ctDir + "/lock", O_RDWR)
     _ = flock(ct, LOCK_EX)
-    check((try? SwitchEngine.Lock.take()) == nil, "claude-transplant running (its flock held): no switch")
+    check((try? Flows.takeLock()) == nil, "claude-transplant running (its flock held): no switch")
     _ = flock(ct, LOCK_UN); close(ct)
-    if let l = try? SwitchEngine.Lock.take() { check(true, "claude-transplant done: the switch may go"); l.release() } else { check(false, "lock after claude-transplant") }
+    if let l = try? Flows.takeLock() { check(true, "claude-transplant done: the switch may go"); l.release() } else { check(false, "lock after claude-transplant") }
 
     // Undo: back as it was, the pointer line off again
     _ = try! SwitchEngine.undo(r.id, windowClosed: { true })
@@ -768,7 +786,7 @@ MainActor.assumeIsolated {
     // linked: Claude Code on u2, the way back is a switch (Undo refused)
     let r4 = try! SwitchEngine.run(plan, windowClosed: { true })
     SwitchEngine.markLinked(r4.id)
-    check(SwitchEngine.load(r4.id)?.linked != nil && (try? SwitchEngine.undo(r4.id, windowClosed: { true })) == nil && SwitchEngine.unfinished(profile: "eng").isEmpty,
+    check(SwitchEngine.store.load(r4.id)?.linked != nil && (try? SwitchEngine.undo(r4.id, windowClosed: { true })) == nil && SwitchEngine.unfinished(profile: "eng").isEmpty,
           "linked: never undone, not unfinished")
     // the profile after (the kept-folder bookkeeping): retired with the kept folders
     #if RETIRED_ONEFOLDER
@@ -805,7 +823,7 @@ MainActor.assumeIsolated {
     SwitchMarker.release(win)
     check(!SwitchMarker.blocks(Account(e)), "released: the window may open")
     let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
-    let me = SwitchMarker.executable(of: getpid()) ?? ""
+    let me = Processes.executable(of: getpid()) ?? ""
     try! enc.encode(SwitchMarker.Mark(pid: 99_999_9, exe: me, profile: "eng", standby: "sb", started: Date())).write(to: SwitchMarker.url(win))
     check(!SwitchMarker.blocks(Account(e)) && SwitchMarker.claim(win, profile: "eng", standby: "other"), "a mark left by a cl_audit that's gone holds nothing")
     SwitchMarker.release(win)
@@ -817,13 +835,17 @@ MainActor.assumeIsolated {
     check(!fm.fileExists(atPath: SwitchMarker.url(win).path), "cl_audit's start sweeps stale marks")
 
     // the checks on a transcript never wait long: a command past its limit is stopped and counts as unknown (busy)
+    // (the switch's checks run through Processes since 26.11.35: Processes.run's status read as Processes.fileOpen reads it)
+    func probe(_ exe: String, _ args: [String], limit: TimeInterval = 5) -> Processes.Probe {
+        switch Processes.run(exe, args, timeout: limit, grace: 1) { case nil: return .unknown; case 0?: return .found; default: return .none }
+    }
     let t0 = Date()
-    check(SwitchEngine.probe("/bin/sleep", ["30"], limit: 0.5) == .unknown && Date().timeIntervalSince(t0) < 5, "a check past its limit: stopped, unknown")
-    check(SwitchEngine.probe("/usr/bin/true", []) == .found && SwitchEngine.probe("/usr/bin/false", []) == .none, "a check's answer: found or none")
+    check(probe("/bin/sleep", ["30"], limit: 0.5) == .unknown && Date().timeIntervalSince(t0) < 5, "a check past its limit: stopped, unknown")
+    check(probe("/usr/bin/true", []) == .found && probe("/usr/bin/false", []) == .none, "a check's answer: found or none")
 
     // claude-transplant never used here: its lock file is made, so its first run waits for a switch too
     try? fm.removeItem(atPath: home + "/Library/Application Support/claude-transplant")
-    if let l = try? SwitchEngine.Lock.take() {
+    if let l = try? Flows.takeLock() {
         check(fm.fileExists(atPath: home + "/Library/Application Support/claude-transplant/lock"), "claude-transplant's lock file made and held")
         l.release()
     } else { check(false, "lock without claude-transplant's folder") }
@@ -856,19 +878,19 @@ MainActor.assumeIsolated {
     e.desktop = .separate; e.desktopDataDir = wd
 
     // one writer at a time, and none while claude-transplant holds its lock (a flock)
-    let held = try! SwitchEngine.Lock.take()
-    check((try? SwitchEngine.Lock.take()) == nil, "a second restore, import or move waits for the first")
+    let held = try! Flows.takeLock()
+    check((try? Flows.takeLock()) == nil, "a second restore, import or move waits for the first")
     held.release()
     let ctDir = home + "/Library/Application Support/claude-transplant"
     try? fm.createDirectory(atPath: ctDir, withIntermediateDirectories: true)
     fm.createFile(atPath: ctDir + "/lock", contents: Data())
     let ct = open(ctDir + "/lock", O_RDWR)
     _ = flock(ct, LOCK_EX)
-    check((try? SwitchEngine.Lock.take()) == nil, "claude-transplant running (its flock held): nothing writes")
+    check((try? Flows.takeLock()) == nil, "claude-transplant running (its flock held): nothing writes")
     _ = flock(ct, LOCK_UN); close(ct)
-    if let l = try? SwitchEngine.Lock.take() { check(true, "claude-transplant done: the lock may be taken"); l.release() } else { check(false, "lock after claude-transplant") }
+    if let l = try? Flows.takeLock() { check(true, "claude-transplant done: the lock may be taken"); l.release() } else { check(false, "lock after claude-transplant") }
     try? fm.removeItem(atPath: ctDir)
-    if let l = try? SwitchEngine.Lock.take() {
+    if let l = try? Flows.takeLock() {
         check(fm.fileExists(atPath: ctDir + "/lock"), "claude-transplant never used here: its lock file is made and held, so its first run waits too")
         l.release()
     } else { check(false, "lock without claude-transplant's folder") }
@@ -894,7 +916,7 @@ MainActor.assumeIsolated {
     SwitchMarker.release(win, profile: "mk", standby: "restore-aaaa")
     check(!SwitchMarker.blocks(Account(e)), "released by its own name: the window may open")
     let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601
-    let me = SwitchMarker.executable(of: getpid()) ?? ""
+    let me = Processes.executable(of: getpid()) ?? ""
     try! fm.createDirectory(at: SwitchEngine.root, withIntermediateDirectories: true)
     try! enc.encode(SwitchMarker.Mark(pid: 99_999_9, exe: me, profile: "mk", standby: "restore-aaaa", started: Date())).write(to: SwitchMarker.url(win))
     check(!SwitchMarker.blocks(Account(e)) && SwitchMarker.claim(win, profile: "mk", standby: "repoint-bbbb"), "a mark left by a cl_audit that's gone holds nothing")
@@ -1610,8 +1632,9 @@ do {
     var blank = cm; blank.standby = [StandbyAccount(email: "", seat: nil, id: "k9")]
     check(SwitchMenu.lines(blank, now: now).first?.canSwitch == false && SwitchMenu.best(SwitchMenu.lines(blank, now: now)) == nil,
           "a standby account with neither a sign-in nor an address can't be switched to, and is never the best")
-    check(SwitchMenu.inUseLine(cmView) == "\(sh(u1.email!)) · in use", "under the profile's name: 'ultra-1 · in use'")   // release A: AccountView
-    check(SwitchMenu.dockTitle(name: "Main", cmView, plan: "Ultra") == "Claude Main · \(sh(u1.email!)) in use", "Dock menu top: 'Claude Main · ultra-1 in use'")
+    // (26.11.32: no "in use" text outside the card; the lamp and the menus' checkmark say it, so the lines show the account plain)
+    check(SwitchMenu.inUseLine(cmView) == "\(sh(u1.email!))", "under the profile's name: 'ultra-1'")   // release A: AccountView
+    check(SwitchMenu.dockTitle(name: "Main", cmView, plan: "Ultra") == "Claude Main · \(sh(u1.email!))", "Dock menu top: 'Claude Main · ultra-1'")
     var unlinked = cm; unlinked.seat = nil
     check(SwitchMenu.inUseLine(noView) == nil && SwitchMenu.dockTitle(name: "Main", noView, plan: "Ultra") == "Claude Main · Ultra"   // release A: AccountView
           && SwitchMenu.dockTitle(name: "Main", noView, plan: nil) == "Claude Main", "no account known: the usual top line")
@@ -1619,16 +1642,20 @@ do {
           "the account in use's numbers in the menu: 'week 12%', '5-hour 8%', 'no numbers'")
     let sub = SwitchMenu.submenuItem(cmView, lines: lines, inUseUsed: 40, inUseWeek: true, target: NSObject(), action: Selector(("x:")))
     let subTitles = sub?.submenu?.items.map(\.title) ?? []
-    check(sub?.title == "Switch account" && subTitles == ["\(sh(u1.email!))  in use · week 40%", "\(sh(u3.email!))…  2 h ago",
-                                                          "\(sh(u2.email!))…  3 days ago", "\(sh("new-4@example.com"))…"],
-          "Switch account ›: the account in use, then every standby account with when it was last in use (got \(subTitles))")
-    check(sub?.submenu?.items.first?.state == .on && sub?.submenu?.items.first?.isEnabled == false
-          && sub?.submenu?.items.dropFirst().allSatisfy({ $0.isEnabled && $0.action != nil }) == true,
-          "Switch account ›: the account in use ticked and disabled, the standby accounts enabled")
-    check((sub?.submenu?.items.dropFirst().map { $0.representedObject as? String } ?? []) == ["cm~k3", "cm~k2", "cm~k4"], "each item names its Switch page")
+    // (26.11.21: the submenu opens with the Experimental warning and a line; 26.11.32: the account in use ticked and enabled,
+    // choosing it does nothing, and the standby accounts by address only)
+    let subItems = Array(sub?.submenu?.items.dropFirst(2) ?? [])
+    check(sub?.title == "Switch account" && subTitles == [ExperimentalPanel.title, "", "\(sh(u1.email!)) · week 40%", "\(sh(u3.email!))…",
+                                                          "\(sh(u2.email!))…", "\(sh("new-4@example.com"))…"],
+          "Switch account ›: the Experimental warning, the account in use, then every standby account in the offer order (got \(subTitles))")
+    check(sub?.submenu?.items.first?.isEnabled == false && sub?.submenu?.items[1].isSeparatorItem == true
+          && subItems.first?.state == .on && subItems.first?.isEnabled == true && subItems.first?.action == nil
+          && subItems.dropFirst().allSatisfy({ $0.isEnabled && $0.action != nil }),
+          "Switch account ›: the warning disabled, the account in use ticked (choosing it does nothing), the standby accounts enabled")
+    check(subItems.dropFirst().map { $0.representedObject as? String } == ["cm~k3", "cm~k2", "cm~k4"], "each item names its Switch page")
     let blankSub = SwitchMenu.submenuItem(cmView, lines: SwitchMenu.lines(blank, now: now), inUseUsed: nil, inUseWeek: true, target: NSObject(), action: Selector(("x:")))
-    check(blankSub?.submenu?.items.first?.title == "\(sh(u1.email!))  in use" && blankSub?.submenu?.items.last?.isEnabled == false
-          && blankSub?.submenu?.items.last?.action == nil, "no numbers for the account in use: just 'in use'; one that can't be switched to is disabled")
+    check(blankSub?.submenu?.items.dropFirst(2).first?.title == "\(sh(u1.email!))" && blankSub?.submenu?.items.last?.isEnabled == false
+          && blankSub?.submenu?.items.last?.action == nil, "no numbers for the account in use: just its name; one that can't be switched to is disabled")
     check(SwitchMenu.submenuItem(cmView, lines: [], inUseUsed: 40, inUseWeek: true, target: NSObject(), action: Selector(("x:"))) == nil
           && SwitchMenu.group(cmView, lines: [], inUseUsed: 40, inUseWeek: true, target: NSObject(), action: Selector(("x:"))).isEmpty,
           "a profile with one account: no Switch account ›")
@@ -1928,7 +1955,7 @@ do {
     ny.refresh()
     check(settle("not yet") { ny.plan != nil } && ny.notYet == nil, "an old switch that stopped half way: no Not yet")
     try? fm.removeItem(at: hdir)
-    let lock = try! SwitchEngine.Lock.take()
+    let lock = try! Flows.takeLock()
     ny.refresh()
     check(settle("busy") { ny.notYet?.title.contains("under way") == true }, "Not yet: another restore, import or move under way")
     lock.release()

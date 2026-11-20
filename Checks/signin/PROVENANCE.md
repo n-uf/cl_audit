@@ -48,3 +48,35 @@ here. Nothing was left out for want of an explanation: every one of the 54 lines
 
 - Two sample account ids the recovery's substitution left beside the neutral addresses are `acct1` and `acct2` now, with the
   variables named after them (11 lines).
+
+## Ported to 26.11.62
+
+Only the calls moved; no expectation changed:
+- `import ProfileCore` (Seat and StandbyAccount live there) and `import ClaudeAuth` (the watch's `RecordStamp`).
+- SignInWatch takes ClaudeAuth's `RecordStamp` (date, size, file) instead of a dictionary of attributes: the same sizes, as
+  `RecordStamp(size:)`.
+- The one lock is `Flows.takeLock()` (was `SwitchEngine.Lock.take()`), a switch's receipt is read through its store
+  (`SwitchEngine.store.load`), and a process's program is `Processes.executable(of:)` (was `SwitchMarker.executable`), as in
+  `backup`.
+- `FolderRules.seatOwner` answers the owner with whether it is a standby account: the profile's id is `.profile.id`.
+- `AccountFacts` reads a folder's record (`AccountFacts.of(configDir:)`, through `Account.record`) instead of a dictionary:
+  the same oauthAccount block is written to a throwaway folder's `.claude.json` and read from there.
+- The switch's bounded checks run through `Processes` since 26.11.35: `SwitchEngine.probe` is a three-line helper in the suite
+  that reads `Processes.run`'s status the way `Processes.fileOpen` does (none in time: unknown; 0: found; else none).
+
+Changes on purpose reached four fixtures; their expectations stay:
+- New profile's window check: since 26.11.39 the window's `lastKnownAccountUuid` counts only when it is a real id (a UUID),
+  so the window and the folder carry UUID-shaped ids (`…00b1`, `…00b2`) instead of three-letter ones.
+- The window's sidebar counts: every lister reads entries through ClaudeFiles, which takes only `local_<UUID>.json`, so the
+  sample entries have UUID names instead of `local_1.json`.
+- The switch's tasks: since 26.11.37 a task the target already has under the same id must be the same task, whole
+  (TaskRegistry's twin rule, claude-transplant's), so the source's `t2` is the target's `t2` (`"x":1` on both sides); the
+  plan still counts two tasks and the join still keeps the target's own.
+- Numbers on another account (§4): since 26.11.24 whose numbers they are is the reading's own account, never the folder's
+  `.claude.json`, so the new account's numbers are read with a key whose account the lookup returns (`finish(…, key:)`,
+  `profileFound`) instead of `apply`, which names no account. The check's message now also prints what it got.
+
+And one change on purpose reached the words: the menus' account in use is shown plain since 26.11.32 ("No "in use" text
+outside the card": `ultra-1`, `Claude Main · ultra-1`; in Switch account › it is ticked and enabled, choosing it does
+nothing, and standby accounts are listed by address only), and Switch account › opens with the Experimental warning and a
+line since 26.11.21. Those checks expect today's words and still check every item, its state and its page.
