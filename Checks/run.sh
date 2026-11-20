@@ -346,12 +346,27 @@ run_quick-chat() {
 }
 run_scan() {
   local dir="$WORK/scan"; mkdir -p "$dir"
-  compile "$dir/cl_audit-checks-scan" "$HERE/tools/secretscan/main.swift" || return 1
+  # the keys are the app's own SecretScan's (Sources/SecretScan.swift): a tool that doesn't build fails the scan, never skips it
+  rm -f "$dir/cl_audit-checks-scan"
+  compile "$dir/cl_audit-checks-scan" "$HERE/tools/secretscan/main.swift" && [[ -x "$dir/cl_audit-checks-scan" ]] \
+    || { echo "scan: the secretscan tool didn't build: the key check can't run (red)"; return 1; }
   local st=0
   (cd "$HERE" && find . -path ./.work -prune -o -type f -print0 | xargs -0 "$dir/cl_audit-checks-scan") || st=1
   clean_prefs "$dir/cl_audit-checks-scan"
-  # real addresses, ids, personal paths and names too (quick-chat/ is the quick chat's own, with its sample home-folder paths)
-  python3 -I -B "$HERE/tools/leakscan.py" "$HERE" --skip quick-chat || st=1
+  # real addresses, ids, personal paths and names too (quick-chat/ is the quick chat's own, with its sample home-folder paths);
+  # the keys of these same files were the pass above's
+  python3 -I -B "$HERE/tools/leakscan.py" "$HERE" --skip quick-chat --no-keys || st=1
+  # leakscan without the tool refuses to run (exit 2), and with it finds a key the engine knows (made here, never committed)
+  local probe="$dir/probe"; rm -rf "$probe"; mkdir -p "$probe"
+  printf 'token: %s\n' "ghp_$(printf 'a%.0s' {1..36})" > "$probe/k.txt"
+  local without=0; SECRETSCAN= python3 -I -B "$HERE/tools/leakscan.py" "$probe" >/dev/null 2>&1 || without=$?
+  local with=0; SECRETSCAN="$dir/cl_audit-checks-scan" python3 -I -B "$HERE/tools/leakscan.py" "$probe" >"$probe.out" 2>&1 || with=$?
+  if [[ $without -eq 2 && $with -eq 1 ]] && grep -q 'secret (github)' "$probe.out"; then
+    echo "scan: leakscan.py refuses to run without the secretscan tool, and finds the engine's keys through it"
+  else
+    echo "scan: leakscan.py's key check is wrong (without the tool: exit $without, want 2; with it: exit $with, want 1)"; st=1
+  fi
+  rm -rf "$probe" "$probe.out"
   return $st
 }
 

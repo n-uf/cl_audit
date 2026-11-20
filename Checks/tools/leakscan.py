@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 """Looks for what must never be committed to this public repo: secrets, real addresses, real ids, personal paths and names.
 
-  python3 -I -B leakscan.py ROOT [--skip DIR]...
+  python3 -I -B leakscan.py ROOT [--skip DIR]... [--no-keys]
 
 Refuses (exit 1, one line per hit) on:
-  - keys and tokens: the shapes the app's own SecretScan looks for (GitHub, AWS, private keys, Anthropic, OpenAI, Slack,
-    Google, Stripe, npm, Supabase, GitLab, Hugging Face) and JWTs;
+  - keys and tokens: the app's own SecretScan finds them (Sources/SecretScan.swift, the engines' one secret scan: no pattern
+    lives here), through the secretscan tool that $SECRETSCAN names (Checks/run.sh builds it as
+    Checks/.work/scan/cl_audit-checks-scan). Without the tool the scan doesn't run at all (exit 2): a key check that skips
+    itself is worse than none. --no-keys leaves keys to a caller that has just run the tool over the same files (run.sh's scan);
   - an e-mail address whose domain is not example.com/.org/.net, *.invalid, *.test, *.example or a single word (x);
   - a UUID that is not one of the obviously synthetic fixtures (000...-4000-8000-..., aaaaaaaa-1111-..., abcdef01-...);
   - a path /Users/<anyone>;
@@ -13,21 +15,33 @@ Refuses (exit 1, one line per hit) on:
     Checks/.work/leakwords (the folder git ignores). Without that file the word check is skipped, and the first line of the
     output says so.
 """
-import os, re, sys
+import os, re, subprocess, sys, tempfile
 
-A = '[A-Za-z0-9]'
-SECRETS = [
-    ('github', r'gh[pousr]_' + A + '{36}'), ('github', r'github_pat_[A-Za-z0-9_]{22}'),
-    ('aws', r'(?:AKIA|ASIA)[A-Z0-9]{16}(?![A-Za-z0-9])'),
-    ('private key', r'-----BEGIN [^\n]{0,48}PRIVATE KEY(?: BLOCK)?-----'),
-    ('anthropic', r'sk-ant-[A-Za-z0-9_-]{20}'),
-    ('openai', r'sk-(?!ant-)(?=[A-Za-z0-9_-]{0,39}[0-9])[A-Za-z0-9_-]{40}'),
-    ('slack', r'xox[baprse]-[A-Za-z0-9-]{10}'), ('slack', r'xoxe\.xox[A-Za-z0-9.-]{10}'),
-    ('google', r'AIza[A-Za-z0-9_-]{35}'), ('stripe', r'[sr]k_live_' + A + '{16}'),
-    ('npm', r'npm_' + A + '{36}'), ('supabase', r'sbp_' + A + '{30}'), ('gitlab', r'glpat-[A-Za-z0-9_-]{20}'),
-    ('huggingface', r'hf_' + A + '{30}'),
-    ('jwt', r'eyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}'),
-]
+def secretscan():
+    """The app's secretscan tool ($SECRETSCAN), or the scan stops here (exit 2): never a key check that quietly didn't run."""
+    p = os.environ.get('SECRETSCAN')
+    if not p or not (os.path.isfile(p) and os.access(p, os.X_OK)):
+        print('leak scan: the key check needs the app\'s secretscan tool: set $SECRETSCAN (Checks/run.sh scan builds '
+              'Checks/.work/scan/cl_audit-checks-scan); not run')
+        sys.exit(2)
+    return p
+
+def key_hits(paths):
+    """{path: [(line, what)]}: the keys the app's own SecretScan finds in these files, a line at a time."""
+    out = {}
+    tool = secretscan()
+    for i in range(0, len(paths), 400):
+        r = subprocess.run([tool, '--lines', *paths[i:i + 400]], capture_output=True, text=True, errors='replace')
+        if r.returncode not in (0, 1): print(f'leak scan: the secretscan tool failed ({r.returncode})'); sys.exit(2)
+        for l in r.stdout.splitlines():
+            if l.startswith('HIT '):
+                where, kinds = l[4:].rsplit(': ', 1)
+                path, line = where.rsplit(':', 1)
+                out.setdefault(path, []).append((int(line), f'secret ({kinds})'))
+            elif l.startswith('UNREAD '):
+                out.setdefault(l[7:], []).append((0, 'secret (not readable by the key check)'))
+    return out
+
 EMAIL = re.compile(r'[A-Za-z0-9._%+-]+@([A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)')
 OK_DOMAIN = re.compile(r'^(?:example\.(?:com|org|net)|[a-z0-9.-]*\.(?:invalid|test|example)|[A-Za-z0-9-]+)$')
 UUID = re.compile(r'\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b')
@@ -46,13 +60,15 @@ def load_words(here):
 
 NAMES = None
 
-def scan_text(text):
+def scan_text(text, keys=True):
+    """The hits in a text: (line, what). Keys through the app's own SecretScan (the text goes to it as a file of its own)."""
     hits = []
     def at(i): return text.count('\n', 0, i) + 1
-    for kind, p in SECRETS:
-        for m in re.finditer(p, text):
-            i = m.start(); before = text[i - 1] if i else ' '
-            if not re.match(r'[A-Za-z0-9_-]', before): hits.append((at(i), f'secret ({kind}) {m.group(0)[:10]}...'))
+    if keys:
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'text')
+            with open(p, 'w', errors='replace') as f: f.write(text)
+            hits += key_hits([p]).get(p, [])
     for m in EMAIL.finditer(text):
         if not OK_DOMAIN.match(m.group(1)): hits.append((at(m.start()), f'address {m.group(0)}'))
     for m in UUID.finditer(text):
@@ -68,20 +84,29 @@ def main(argv):
     it = iter(argv)
     NAMES = load_words(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
     if NAMES is None: print('leak scan: no word list (Checks/.work/leakwords or $LEAKWORDS): the word check is SKIPPED')
+    keys = True
     for a in it:
         if a == '--skip': skip.append(next(it))
+        elif a == '--no-keys': keys = False
         else: roots.append(a)
+    if keys: secretscan()                               # (before anything is read: no tool, no scan)
+    else: print('leak scan: keys are left to the caller (--no-keys): it ran the app\'s secretscan tool over these files')
     total = files = 0
     for root in roots:
+        found = []
         for d, dirs, fs in os.walk(root):
             dirs[:] = [x for x in dirs if x not in ('.work', '.git') and os.path.relpath(os.path.join(d, x), root) not in skip]
             for f in sorted(fs):
                 p = os.path.join(d, f)
                 try: text = open(p, errors='replace').read()
                 except OSError: continue
+                found.append(p)
                 files += 1
-                for line, what in scan_text(text):
+                for line, what in scan_text(text, keys=False):
                     total += 1; print(f'{os.path.relpath(p, root)}:{line}: {what}')
+        if keys:
+            for p, hs in key_hits(found).items():
+                for line, what in hs: total += 1; print(f'{os.path.relpath(p, root)}:{line}: {what}')
     print(f'leak scan: {files} files, {total} hits' + (f' (skipped: {", ".join(skip)})' if skip else ''))
     return 1 if total else 0
 

@@ -10,7 +10,9 @@ rows x surfaces grid ("—" where a surface has nothing to show), then the findi
 "table"}, written by whoever looked at the pictures).
 
 Every embedded picture is run through the leak scan's own text check (Checks/tools/leakscan.py) as base64, and encoded
-again at another quality until it is clean, so the page passes the scan as a whole. Needs Pillow.
+again at another quality until it is clean, so the page passes the scan as a whole. Needs Pillow, and the app's secretscan
+tool for the keys ($SECRETSCAN, built by Checks/run.sh scan as Checks/.work/scan/cl_audit-checks-scan): without it nothing is
+made.
 """
 import base64, html, importlib.util, io, json, os, sys
 
@@ -23,6 +25,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 spec = importlib.util.spec_from_file_location('leakscan', os.path.join(HERE, '..', 'tools', 'leakscan.py'))
 leakscan = importlib.util.module_from_spec(spec); spec.loader.exec_module(leakscan)
 leakscan.NAMES = leakscan.load_words(os.path.join(HERE, '..'))
+leakscan.secretscan()                                   # (the keys are the app's own SecretScan's: without its tool, no atlas)
 
 COLUMNS = [('menubar', 'Menu bar menu'), ('dock', 'Dock icon, menu and panel'), ('card', 'Dashboard card'),
            ('settings', 'Settings ▸ the profile (Accounts, Sessions)'), ('switch', 'Switch page'), ('alert', 'Alert')]
