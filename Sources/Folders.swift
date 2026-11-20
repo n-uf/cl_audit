@@ -212,6 +212,34 @@ enum ClaudeRuns {
     static func quitDesktopApps() { ClaudeWindow.quitAll() }
 }
 
+/// A delete's or set-up's click-time look (Remove, Uninstall, New profile): one at a time, and called off by Cancel, Esc or
+/// leaving the page. Its answer acts only while this gate still holds that very look, so a look that lands after a cancel,
+/// or a second click's, never deletes or makes a folder.
+final class ClickGate: ObservableObject {
+    @Published private(set) var token: UUID?
+
+    /// A look is under way (the click's button is disabled meanwhile).
+    var busy: Bool { token != nil }
+
+    /// Calls the look under way off: when it lands, its answer does nothing.
+    func cancel() { if token != nil { token = nil } }
+
+    /// Starts a look made now through `monitor`; `act` gets its answer (nil: couldn't check) only if this gate still holds
+    /// that look when it lands. False, with nothing started, while one is under way already.
+    @discardableResult
+    func look(_ monitor: RunsMonitor, then act: @escaping ([ClaudeRun]?) -> Void) -> Bool {
+        guard token == nil else { return false }
+        let t = UUID()
+        token = t
+        monitor.refresh { [weak self] fresh in
+            guard let self, self.token == t else { return }
+            self.token = nil
+            act(fresh)
+        }
+        return true
+    }
+}
+
 /// Watches what's running every 2 s while the new-account page, Remove or Uninstall is open. `checked`: the last look read
 /// which Claude runs. `failed`: it couldn't (the process table couldn't be read): `runs` is then empty and nothing may take
 /// that for "none runs"; each page refuses to delete or set up a folder and says `failedWords`.

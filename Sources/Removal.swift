@@ -193,7 +193,7 @@ struct RemoveAccountSheet: View {
     @State private var deleteFolders = false
     @State private var sizes: [String: Int64] = [:]
     @State private var checking = false
-    @State private var confirming = false         // the click-time look is under way
+    @StateObject private var gate = ClickGate()    // the click-time look; Cancel, Esc and closing call it off
     @Environment(\.dismiss) private var dismiss
 
     private var folders: [String] { AccountRemoval.folders(entry) }
@@ -227,22 +227,22 @@ struct RemoveAccountSheet: View {
             if deleteFolders && monitor.failed { failedBox } else if deleteFolders && !running.isEmpty { runningBox }
 
             HStack(spacing: 10) {
-                Button("Cancel") { dismiss() }.buttonStyle(.plain).foregroundStyle(.secondary).keyboardShortcut(.cancelAction)
+                Button("Cancel") { gate.cancel(); dismiss() }.buttonStyle(.plain).foregroundStyle(.secondary).keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(deleteFolders ? "Remove and delete folders" : "Remove") {
+                    guard !gate.busy else { return }
                     let e = entry
                     guard deleteFolders else { dismiss(); model.removeAccount(e, deleteFolders: false); return }
-                    // the folders go only on a look made now: couldn't check, or Claude using them, keeps them (the box says why)
-                    confirming = true
-                    monitor.refresh { fresh in
-                        confirming = false
+                    // the folders go only on a look made now: couldn't check, or Claude using them, keeps them (the box says
+                    // why); a cancel or closing meanwhile drops the look, and nothing is deleted
+                    gate.look(monitor) { fresh in
                         guard deleteFolders, AccountRemoval.runsBlock(e, runs: fresh) == nil else { return }
                         dismiss()
                         model.removeAccount(e, deleteFolders: true)
                     }
                 }
                 .buttonStyle(.pill(.red, compact: true))
-                .disabled(!canRemove || confirming)
+                .disabled(!canRemove || gate.busy)
             }
         }
         .padding(20)
@@ -255,7 +255,7 @@ struct RemoveAccountSheet: View {
                 DispatchQueue.main.async { sizes = s }
             }
         }
-        .onDisappear { monitor.stop() }
+        .onDisappear { gate.cancel(); monitor.stop() }
     }
 
     /// "~/.claude-work (632 MB)", or "its Claude window's data (455 MB)" for the window's data folder.

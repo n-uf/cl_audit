@@ -388,7 +388,7 @@ struct NewAccountView: View {
     @State private var confirmQuit = false
     @State private var customFolders: [String] = []
     @State private var checking = false
-    @State private var confirming = false               // the click-time look before a folder is made is under way
+    @StateObject private var gate = ClickGate()         // the click-time look before a folder is made; Cancel and leaving call it off
     @State private var addressProblem: String?      // why Sign in (the address route) can't go yet
     @Environment(\.face) private var face
 
@@ -429,7 +429,7 @@ struct NewAccountView: View {
             }
         }
         .onAppear { monitor.start(folders: model.accounts.map(\.configDir)) }
-        .onDisappear { monitor.stop() }
+        .onDisappear { gate.cancel(); monitor.stop() }
         .alert("Cancel the new profile\(draft.name.isEmpty ? "" : " “\(draft.name)”")?", isPresented: $confirmCancel) {
             Button(draft.createdConfigDir != nil || draft.createdDataDir != nil ? "Cancel and clean up" : "Cancel setup", role: .destructive) { model.cancelNew() }
             Button("Keep setting up", role: .cancel) {}
@@ -652,7 +652,7 @@ struct NewAccountView: View {
     @ViewBuilder private var accountValue: some View {
         if draft.asking {
             AddressRow(email: $draft.email, canSignIn: true,        // never greyed: without Claude Code the click says why
-                       signIn: { startAddressSignIn() }, cancel: { draft.asking = false; addressProblem = nil })
+                       signIn: { startAddressSignIn() }, cancel: { gate.cancel(); draft.asking = false; addressProblem = nil })
                 .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
         } else if waiting {
             HStack(spacing: 8) {
@@ -766,6 +766,7 @@ struct NewAccountView: View {
     /// for it with the address filled in. The result is checked afterwards, by account and organisation ids.
     /// `confirmed`: a look made at the click found nothing in the way (the folder is made only then).
     private func startAddressSignIn(confirmed: Bool = false) {
+        guard !gate.busy else { return }
         if let p = NewAccountSetup.addressProblem(draft.email, among: model.accounts) { addressProblem = p; return }
         let e = draft.email.trimmingCharacters(in: .whitespaces)
         // a folder connected as it was is never signed in again from here; the folder this setup made can be
@@ -776,9 +777,8 @@ struct NewAccountView: View {
             if running { addressProblem = "Quit the desktop app first (step 1)."; return }
             if blocked { addressProblem = "Fix the red lines first."; return }
             guard confirmed else {
-                confirming = true
-                monitor.refresh { fresh in
-                    confirming = false
+                // Cancel, the address row's cancel or leaving the page meanwhile drops the look: no folder is made
+                gate.look(monitor) { fresh in
                     if let why = NewAccountSetup.runsBlock(draft, accounts: model.accounts, runs: fresh) { addressProblem = why; return }
                     startAddressSignIn(confirmed: true)
                 }
@@ -1048,7 +1048,7 @@ struct NewAccountView: View {
     }
 
     private var cancelButton: some View {
-        Button(model.discarding ? "Cancelling…" : "Cancel") { confirmCancel = true }
+        Button(model.discarding ? "Cancelling…" : "Cancel") { gate.cancel(); confirmCancel = true }
             .buttonStyle(.plain).foregroundStyle(.secondary).disabled(model.discarding).fixedSize()
     }
 
@@ -1062,16 +1062,16 @@ struct NewAccountView: View {
     @ViewBuilder private var actionButtons: some View {
         if !NewAccountSetup.foldersReady(draft) {
             Button(createTitle) {
-                // the folder is made or connected only on a look made now (couldn't check, or the desktop app open, holds it)
-                confirming = true
-                monitor.refresh { fresh in
-                    confirming = false
+                guard !gate.busy else { return }
+                // the folder is made or connected only on a look made now (couldn't check, or the desktop app open, holds it);
+                // Cancel or leaving the page meanwhile drops the look, and nothing is made
+                gate.look(monitor) { fresh in
                     if let why = NewAccountSetup.runsBlock(draft, accounts: model.accounts, runs: fresh) { self.error = why; return }
                     do { try NewAccountSetup.createOrConnect(&draft); error = nil; model.tick += 1 }
                     catch { self.error = error.localizedDescription }
                 }
             }
-            .buttonStyle(.primaryKey(compact: true)).disabled(blocked || confirming || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
+            .buttonStyle(.primaryKey(compact: true)).disabled(blocked || gate.busy || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
         } else if current == 5 {
             Button(draft.usageInDock ? "Finish" : "Start reading usage") { model.finishNew() }.buttonStyle(.primaryKey(compact: true)).disabled(blocked || model.discarding)
         } else {

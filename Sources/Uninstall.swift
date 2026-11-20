@@ -192,6 +192,7 @@ final class UninstallUI: ObservableObject {
 struct UninstallSheet: View {
     @ObservedObject var model: SettingsModel
     @StateObject private var monitor = RunsMonitor()
+    @StateObject private var gate = ClickGate()    // the click-time look; closing the sheet calls it off
     @State private var config: Set<String> = []
     @State private var window: Set<String> = []
     @State private var sizes: [String: Int64] = [:]
@@ -247,7 +248,7 @@ struct UninstallSheet: View {
                 DispatchQueue.main.async { sizes = s }
             }
         }
-        .onDisappear { monitor.stop() }
+        .onDisappear { gate.cancel(); monitor.stop() }
     }
 
     @ViewBuilder private func profileRow(_ e: AccountEntry) -> some View {
@@ -324,10 +325,12 @@ struct UninstallSheet: View {
     /// Folders chosen: they go only on a look made now (couldn't check, or Claude using one, keeps them all; the box says why).
     /// The choices can't change meanwhile (`working` disables them).
     private func confirmThenGo() {
+        guard !gate.busy, working == nil else { return }
         guard !deleting.isEmpty else { go(); return }
         let c = config, w = window
         working = "Checking which Claude is running…"
-        monitor.refresh { fresh in
+        // closing the sheet meanwhile drops the look, and nothing is uninstalled or deleted
+        gate.look(monitor) { fresh in
             working = nil
             guard Uninstall.runsBlock(accounts, config: c, window: w, runs: fresh) == nil else { return }
             go()
