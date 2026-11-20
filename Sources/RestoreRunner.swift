@@ -61,12 +61,12 @@ final class RestoreRunner: ObservableObject {
     private weak var model: SettingsModel?
     /// Each change may end or start a restore that stopped half way: the tile beside the profile looks again at once (not
     /// while the runner is made, which happens while a page is being drawn).
-    @Published private(set) var phase: Phase = .ready { didSet { if started { model?.forgetRestore() } } }
+    @Published private(set) var phase: Phase = .ready { didSet { if started { model?.forgetRestore() }; if phase != oldValue { updateCanLeave() } } }
     private var started = false
     private var frozen = false          // renders only: a preview's numbers are not counted again
     @Published private(set) var plan: SessionsRestore.Plan?          // nil: still counting
     @Published private(set) var notYet: NotYet?
-    @Published private(set) var receipt: SessionsRestore.Receipt?
+    @Published private(set) var receipt: SessionsRestore.Receipt? { didSet { if receipt?.id != oldValue?.id { updateCanLeave() } } }
     @Published private(set) var progress: (done: Int, total: Int) = (0, 0)
     @Published private(set) var note: String?
     @Published private(set) var manifest: SessionsBackup.Manifest?
@@ -175,6 +175,7 @@ final class RestoreRunner: ObservableObject {
             else if r.finished != nil { phase = .done }
             else { phase = .stopped(r.stopped ?? "It stopped half way; the Mac may have stopped.") }
         }
+        updateCanLeave()                    // (the observers don't run in init)
         started = true
     }
 
@@ -476,7 +477,13 @@ final class RestoreRunner: ObservableObject {
     // MARK: Leave it as it is
 
     /// A stopped restore that is the move to the default profile's is finished or undone with the move (Settings ▸ General).
-    var canLeave: Bool { receipt.map { !SessionsRestore.movesRestore($0.id) } ?? false }
+    /// Worked out when the phase or the receipt changes, not on each render (movesRestore reads the receipts' headers).
+    @Published private(set) var canLeave = false
+    private func updateCanLeave() {
+        guard case .stopped = phase, let r = receipt else { if canLeave { canLeave = false }; return }
+        let can = !SessionsRestore.movesRestore(r.id)
+        if can != canLeave { canLeave = can }
+    }
 
     /// "Leave it as it is" on a stopped restore or import, as on a stopped switch (the Sessions card): its receipt is closed as
     /// it stands (SessionsRestore.leaveAsIs), nothing is written, moved or deleted, and Finish and Undo are no longer
