@@ -1366,27 +1366,39 @@ enum SessionsRestore {
         let lock: FlowLock.Held
         do { lock = try Flows.takeLock() } catch { throw RestoreError("\(error)") }
         defer { lock.release() }
-        guard var r = load(id), r.unfinished else { return "" }
+        guard let r = load(id), r.unfinished else { return "" }
         if movesRestore(id) {
             throw RestoreError("This restore is the move to the default profile's: finish or undo the move in Settings ▸ General.")
         }
         if !r.dataDir.isEmpty, let m = SwitchMarker.current(FolderKey.canonical(r.dataDir)), m.profile == r.profile, m.standby.hasPrefix("restore-") {
             throw RestoreError("A restore of this Claude window is under way (since \(SessionsBackup.dateWords(m.started))). Wait for it to end.")
         }
+        try closeAsIs(r, now: now)
+        // (no count: unchecked window steps and an earlier partial Undo make any number of files there a guess)
+        // the backup is said only when its place can be looked at; a place on a disk that isn't plugged in says nothing
+        let what = "Left as it is: what it \(r.importedFrom != nil ? "added" : "put back") stays as it is; nothing is undone"
+        guard let there = backupThere(profile: r.profile, backup: r.backup, place: r.backupPlace) else { return what + "." }
+        return what + ", and " + (there ? "the backup it read from is no longer kept for it." : "its backup isn't there any more.")
+    }
+
+    /// Closes an open receipt as it stands, under the caller's lock (leaveAsIs here, and the default-profile move's own Leave
+    /// it as it is, DefaultProfile.leaveAsIs): marked left, and only the temp files of ours a stop left (this receipt's prefix)
+    /// go, as when a restore finishes. Nothing else is written, moved or deleted.
+    static func closeAsIs(_ r: Receipt, now: Date) throws {
+        var r = r
         r.leftAsIs = now
         do { try store.save(r) } catch { throw RestoreError("The receipt couldn't be saved; nothing changed.") }
         sweepTemps(r)
-        // (no count: unchecked window steps and an earlier partial Undo make any number of files there a guess)
-        // the backup is said only when its place can be looked at (as prune: its folder for this profile is there); a place on
-        // a disk that isn't plugged in says nothing
+    }
+
+    /// Whether a backup is there, or nil when its place can't be looked at (as prune: its folder for this profile isn't there,
+    /// a disk that isn't plugged in, say).
+    static func backupThere(profile: String, backup: String, place: String) -> Bool? {
         let fm = FileManager.default
-        let profileDir = SessionsBackup.folder(profile: r.profile, place: URL(fileURLWithPath: r.backupPlace)).path
+        let profileDir = SessionsBackup.folder(profile: profile, place: URL(fileURLWithPath: place)).path
         var isDir: ObjCBool = false
-        let reachable = fm.fileExists(atPath: profileDir, isDirectory: &isDir) && isDir.boolValue
-        let what = "Left as it is: what it \(r.importedFrom != nil ? "added" : "put back") stays as it is; nothing is undone"
-        guard reachable else { return what + "." }
-        let there = fm.fileExists(atPath: (profileDir as NSString).appendingPathComponent(r.backup))
-        return what + ", and " + (there ? "the backup it read from is no longer kept for it." : "its backup isn't there any more.")
+        guard fm.fileExists(atPath: profileDir, isDirectory: &isDir), isDir.boolValue else { return nil }
+        return fm.fileExists(atPath: (profileDir as NSString).appendingPathComponent(backup))
     }
 
     /// Whether this restore is the move to the default profile's: the one a move's record names, or, for a crash between the
