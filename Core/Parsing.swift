@@ -122,4 +122,11 @@ public enum UsageParser {
         }
         return (try? JSONSerialization.jsonObject(with: data)).flatMap(find)
     }
+
+    /// The account's id in the profile reply (account.uuid), or nil when it names none (or an empty one).
+    public static func accountID(_ data: Data) -> String? {
+        let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        guard let id = (reply?["account"] as? [String: Any])?["uuid"] as? String, !id.isEmpty else { return nil }
+        return id
+    }
 }

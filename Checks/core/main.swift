@@ -225,6 +225,9 @@ do {
     let profile = #"{"account":{"uuid":"x","email_address":"ann@example.com"},"organization":{"name":"o"}}"#
     check(UsageParser.email(Data(profile.utf8)) == "ann@example.com" && UsageParser.email(Data(#"{"a":[{"email":"no-at"}]}"#.utf8)) == nil,
           "the profile reply's address, wherever it sits")
+    check(UsageParser.accountID(Data(profile.utf8)) == "x" && UsageParser.accountID(Data(#"{"account":{"uuid":""}}"#.utf8)) == nil
+          && UsageParser.accountID(Data(#"{"organization":{"uuid":"o"}}"#.utf8)) == nil,
+          "the profile reply's account id: account.uuid only (never the organisation's), none when empty")
     let keys = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(Credits(enabled: true, used: 1, cap: nil, currency: "USD", out: false))) as? [String: Any])?.keys.sorted()
     check(keys == ["currency", "enabled", "out", "used"], "Credits' JSON keys: \(keys ?? [])")
 }
@@ -634,12 +637,23 @@ do {
     // the status line file: taken when newer (the model limits and credits kept), no account named
     var line = machine()
     var withScoped = use(week: 20, at: t0); withScoped.scoped = [ScopedLimit(name: "Fable", percent: 10, resets: nil)]
-    _ = line.handle(.accountFound(email: "mo@example.com", key: "k1", expected: nil, now: t0))
+    _ = line.handle(.accountFound(email: "mo@example.com", key: "k1", expected: nil, now: t0, account: "acct-mo"))
     _ = line.handle(.usageAnswer(endpoint(withScoped), key: "k1", asked: t0, generation: 0, now: t0))
-    check(line.numbersOwner == "mo@example.com", "(read with a key whose account is known: its account's)")
+    check(line.numbersOwner == "mo@example.com" && line.numbersAccount == "acct-mo",
+          "(read with a key whose account is known: its account's, with its id when the reply gave one)")
     _ = tick(&line, t0.addingTimeInterval(5), line: use(five: 3, week: 25, at: t0.addingTimeInterval(4), source: "line"))
-    check(line.usage?.weekly == 25 && line.usage?.scoped.first?.percent == 10 && line.numbersOwner == nil,
-          "a newer status line: its two limits, the model limit kept, no account")
+    check(line.usage?.weekly == 25 && line.usage?.scoped.first?.percent == 10 && line.numbersOwner == nil && line.numbersAccount == nil,
+          "a newer status line: its two limits, the model limit kept, no account (nor its id)")
+    var noID = machine()
+    _ = noID.handle(.accountFound(email: "mo@example.com", key: "k1", expected: nil, now: t0))
+    _ = noID.handle(.usageAnswer(endpoint(withScoped), key: "k1", asked: t0, generation: 0, now: t0))
+    var adopted = machine()
+    _ = adopted.handle(.adopt(usage: withScoped, loginEmail: "mo@example.com", owner: "mo@example.com", plan: nil, renewNote: nil, ownerAccount: "acct-mo"))
+    var adoptedNoOwner = machine()
+    _ = adoptedNoOwner.handle(.adopt(usage: withScoped, loginEmail: "mo@example.com", owner: nil, plan: nil, renewNote: nil, ownerAccount: "acct-mo"))
+    check(noID.numbersOwner == "mo@example.com" && noID.numbersAccount == nil && adopted.numbersAccount == "acct-mo"
+          && adoptedNoOwner.numbersAccount == nil,
+          "a reply without an id: the address only, as before; a saved record's id adopted only with its owner")
     _ = tick(&line, t0.addingTimeInterval(6), line: use(week: 90, at: t0.addingTimeInterval(1), source: "line"))
     check(line.usage?.weekly == 25, "an older status line: not taken")
 
