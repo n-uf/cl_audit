@@ -2221,6 +2221,51 @@ do {
     let teamChat = QuickChatTarget(e, now: now)
     check(teamChat.email == base.email && !qkey(teamChat).keeps(qkey(base)) && !QuickChatTarget.sameAccount(teamChat.account, base.account),
           "one login's personal and Team seats: two keys, the process replaced")
+    // the organisation in three states: an id, none ("": the folder's record names the seat with no organisation) and not
+    // known (nil: a record from before codeOrganization). A seat with none and the same login's Team seat are two keys both
+    // ways; none and none one (an empty organisation as none, any case); an id and another id two; not known with either one
+    let bare = Seat(account: u1.account, organization: nil, email: u1.email)
+    _ = Store.writeStatus(e.id, rec(code: bare))
+    let bareChat = QuickChatTarget(e, now: now)
+    check(Store.status(e.id)?.resolved?.codeOrganization == "" && bareChat.account?.organization == "" && bareChat.account?.account == u1.account.lowercased(),
+          "a seat its record names with no organisation: the record keeps \"\" (none, known), quick chat's key takes it: \(Store.status(e.id)?.resolved?.codeOrganization ?? "nil")")
+    check(!qkey(bareChat).keeps(qkey(teamChat)) && !qkey(teamChat).keeps(qkey(bareChat))
+          && !QuickChatTarget.sameAccount(bareChat.account, teamChat.account) && !QuickChatTarget.sameAccount(teamChat.account, bareChat.account),
+          "one login's seat with no organisation and its Team seat: two keys both ways, the process replaced")
+    let emptyOrg = Seat(account: u1.account.uppercased(), organization: "", email: u1.email!.uppercased())
+    _ = Store.writeStatus(e.id, rec(login: emptyOrg.email, code: emptyOrg))
+    let emptyChat = QuickChatTarget(e, now: now)
+    check(emptyChat.account?.organization == "" && qkey(emptyChat).keeps(qkey(bareChat)) && qkey(bareChat).keeps(qkey(emptyChat))
+          && QuickChatTarget.sameAccount(emptyChat.account, bareChat.account),
+          "no organisation and an empty one (the id and address in capitals): one seat, the process kept")
+    check(qkey(oldRec).keeps(qkey(bareChat)) && qkey(bareChat).keeps(qkey(oldRec)) && qkey(oldRec).keeps(qkey(teamChat)) && qkey(teamChat).keeps(qkey(oldRec))
+          && QuickChatTarget.sameAccount(oldRec.account, bareChat.account) && QuickChatTarget.sameAccount(teamChat.account, oldRec.account),
+          "a record from before codeOrganization with a seat of none or a Team seat: one seat, as before")
+    check(!qkey(teamChat).keeps(qkey(base)) && !qkey(base).keeps(qkey(teamChat)), "two organisation ids: two keys both ways")
+    // the status record's bytes keep none ("") apart from not known (nil: the key left out)
+    let noneRec = rec(code: bare)
+    let noneBytes = StatusCodec.encode(noneRec)
+    var unknownRec = noneRec; unknownRec.resolved?.codeOrganization = nil
+    let unknownBytes = StatusCodec.encode(unknownRec)
+    check(noneBytes.flatMap(StatusCodec.decode)?.resolved?.codeOrganization == ""
+          && unknownBytes.flatMap(StatusCodec.decode).map { $0.resolved != nil && $0.resolved?.codeOrganization == nil } == true
+          && unknownBytes.map { !String(decoding: $0, as: UTF8.self).contains("codeOrganization") } == true,
+          "the status JSON round trip: none stays \"\", not known stays nil (no key)")
+    // the resolver over the folder's own .claude.json: no organizationUuid, null and "" are none (""), an id is that id
+    // (lower case), no record is not known (nil)
+    func orgFromFile(_ name: String, _ org: String) -> String? {
+        let path = expand("~/.claude-orgs/\(name).json")
+        put(path, #"{"oauthAccount":{"accountUuid":"\#(u1.account)",\#(org)"emailAddress":"\#(u1.email!)"}}"#)
+        let seat = ClaudeFiles.record(at: path)?.seat
+        return AccountResolver.resolve(e, among: [e, other], app: .unknown, code: seat, loginEmail: u1.email, names: [:], now: now).codeOrganization
+    }
+    let fromAbsent = orgFromFile("absent", ""), fromNull = orgFromFile("null", #""organizationUuid":null,"#)
+    let fromEmpty = orgFromFile("empty", #""organizationUuid":"","#)
+    let fromID = orgFromFile("id", #""organizationUuid":"\#(uuid(301).uppercased())","#)
+    let fromNone = AccountResolver.resolve(e, among: [e, other], app: .unknown, code: ClaudeFiles.record(at: expand("~/.claude-orgs/missing.json"))?.seat,
+                                           loginEmail: u1.email, names: [:], now: now).codeOrganization
+    check(fromAbsent == "" && fromNull == "" && fromEmpty == "" && fromID == uuid(301).lowercased() && fromNone == nil,
+          "the resolver over .claude.json: absent, null and \"\" are none, an id is the id, no record not known: \([fromAbsent, fromNull, fromEmpty, fromID, fromNone].map { $0.map { "\"\($0)\"" } ?? "nil" })")
 
     // the model, as the agent drives it (update) and as Claude Code's events reach it (handle). In a clash, Other's limit
     // event and refusal never mark the header's account full or hold typing, and the bubble names no account as full;
@@ -2486,6 +2531,41 @@ do {
     move(w2, rec(week: nil, five: nil, login: u3.email, code: u3))
     check(asked2() == 1 && w2.note?.contains(AccountNames.short(u1.email!)) == true && w2.note?.contains(AccountNames.short(u3.email!)) == false,
           "moved into a clash: the note names what the header names (the profile's own u1), never the folder's u3: \(w2.note ?? "none")")
+    // one login's seat with no organisation (the record says none) and its Team seat: a move either way is a move (the
+    // question goes, the note says it), never "the organisation not known"; the same seat with none, or a record from
+    // before codeOrganization, isn't one
+    let switchedNote = "Card switched to \(AccountNames.short(u1.email!)). Sending what you typed."
+    let (w4, asked4) = typedThenSwitch(rec(week: 100, weekIn: 3 * 3600, code: bare))
+    check(w4.blocked && w4.offer != nil && w4.target?.account?.organization == "", "a seat with no organisation, its week full: the bar holds and offers the switch")
+    move(w4, rec(week: 10, code: team))
+    check(asked4() == 1 && w4.turns.map(\.question) == ["what's typed"] && w4.note == switchedNote,
+          "from a login's seat with no organisation to its Team seat: a move, what was typed goes: \(w4.note ?? "none")")
+    let (w5, asked5) = typedThenSwitch(rec(week: 100, weekIn: 3 * 3600, code: team))
+    move(w5, rec(week: 10, code: bare))
+    check(asked5() == 1 && w5.note == switchedNote, "from a login's Team seat to its seat with no organisation: a move, what was typed goes: \(w5.note ?? "none")")
+    let (w6, asked6) = typedThenSwitch(rec(week: 100, weekIn: 3 * 3600, code: bare))
+    move(w6, rec(week: 10, login: emptyOrg.email, code: emptyOrg))
+    var bareNoOrg = rec(week: 10, code: bare); bareNoOrg.resolved?.codeOrganization = nil
+    move(w6, bareNoOrg)
+    check(asked6() == 0 && w6.note == nil && w6.turns.isEmpty,
+          "a seat with no organisation, then an empty one, then a record from before codeOrganization: not a move, nothing goes: \(w6.note ?? "none")")
+    // the kept level: Claude Code's refusal on the seat with no organisation stays for it, never for the Team seat
+    _ = Store.writeStatus(e.id, rec(week: 10, code: bare))
+    let tenPct = QuickChatLevel(Usage.of(Store.status(for: e, now: now)))
+    let keptOn = chat(QuickChatTarget(e, now: now), level: tenPct)
+    refuse(keptOn)
+    keptOn.update(target: QuickChatTarget(e, now: now), level: tenPct, offer: { nil })
+    let heldOnBare = keptOn.blocked
+    _ = Store.writeStatus(e.id, rec(week: 10, code: team))
+    keptOn.update(target: QuickChatTarget(e, now: now), level: tenPct, offer: { nil })
+    _ = Store.writeStatus(e.id, rec(week: 10, code: bare))
+    let keptOld = chat(QuickChatTarget(e, now: now), level: tenPct)
+    refuse(keptOld)
+    _ = Store.writeStatus(e.id, bareNoOrg)
+    keptOld.update(target: QuickChatTarget(e, now: now), level: tenPct, offer: { nil })
+    check(heldOnBare && keptOld.blocked && !keptOn.blocked && keptOn.level?.refusedUntil == nil,
+          "a refusal on a seat with no organisation: kept for it (and over a record from before codeOrganization), dropped on the Team seat")
+    _ = Store.writeStatus(e.id, rec())
 
     // the process itself, against the stand-in claude (Checks/quick-chat/stub-claude, which numbers its answers from 1 for
     // each process it is): a clash's process, on the folder's u3, is kept while the folder stays there (its address in
