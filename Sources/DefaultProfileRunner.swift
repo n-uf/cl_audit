@@ -64,6 +64,18 @@ final class DefaultProfileRunner: ObservableObject {
         }
     }
 
+    /// Something of the move runs now (Leave it as it is waits for it): a running phase, except a move whose restore stopped
+    /// (its page's Stop, a failed write, the window opening): this page stays at .moving then, and only that restore's
+    /// Finish (its own run, under the lock and its window mark) goes on.
+    var underWay: Bool {
+        guard isRunning else { return false }
+        guard phase == .moving, let i = inner else { return true }
+        switch i.phase {
+        case .stopped, .left: return false
+        default: return true
+        }
+    }
+
     // MARK: the entries
 
     private var old: AccountEntry { model?.accounts.first { $0.id == situation.old.id } ?? situation.old }
@@ -475,7 +487,7 @@ extension SettingsModel {
     /// "Leave it as it is" on the card "The move stopped" (DefaultProfile.leaveAsIs): refused while the move runs; a Restore
     /// page kept on its restore then shows it left. Its words go in the message line (the card goes with the open move).
     func defaultMoveLeft(_ recordID: String) {
-        if let d = defaultProfile, d.isRunning { message = "The move to the default profile is under way. Wait for it to end."; return }
+        if let d = defaultProfile, d.underWay { message = "The move to the default profile is under way. Wait for it to end."; return }
         let rc = DefaultProfile.all().first { $0.id == recordID }.flatMap(DefaultProfile.restoreFor)?.id
         do {
             let words = try DefaultProfile.leaveAsIs(recordID)
