@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.64 — 2026-11-20
+
 - Exports now carry only the Claude window's MCP settings, and the sidebar records carry only the sidebar's sections and groups. Exports made with earlier versions also hold its other settings (permission opt-ins, trusted folders, folder permission modes, this Mac's paths); restoring or importing them now adds only the MCP settings and ignores the rest.
 - Import and Restore list each MCP server's whole command line and the names of its env variables (never a value), and flag a server that runs a shell, interpreter or launcher, sets a variable that changes what a program loads, or holds an argument that looks like a key.
 
