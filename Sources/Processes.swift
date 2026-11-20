@@ -49,8 +49,13 @@ enum Processes {
         /// It may be Claude Code and which folder it runs on can't be told: `hidden`, or a Claude Code program (`codeProgram`)
         /// whose environment wasn't read (its CLAUDE_CONFIG_DIR may be any folder's). Whoever asks which folder (codeRuns) then
         /// can't tell, and says so; its command line, read, still counts (commandLines fails on `hidden` only).
-        var unknown: Bool {
-            hidden || launch.map { !$0.environmentRead && Processes.codeProgram(exe: $0.exe, args: $0.args) } == true
+        var unknown: Bool { hidden || launch?.environmentRead == false && claudeLike }
+
+        /// It may be Claude Code: its program as it was started is Claude Code's (`codeProgram`, evaluated once here), or, not
+        /// read, its name looks like Claude Code's (`looksLikeClaude`: `claude…` or the native installer's 2.1.318).
+        var claudeLike: Bool {
+            guard let l = launch else { return Processes.looksLikeClaude(name) }
+            return Processes.codeProgram(exe: l.exe, args: l.args)
         }
     }
 
@@ -224,7 +229,7 @@ enum Processes {
     // MARK: Claude Code
 
     /// Every Claude app and Claude Code session of this user, for the new-account page: the app by its data folder, Claude Code
-    /// (a process named `claude`) as a Code-tab's or a terminal's, by its folder. Call off the main thread.
+    /// (`codeRunList`) as a Code-tab's or a terminal's, by its folder. Call off the main thread.
     static func claudeRuns() -> [ClaudeRun] {
         var runs: [ClaudeRun] = []
         for app in claudeApps() {
@@ -232,9 +237,15 @@ enum Processes {
             let folder = dir.map { tilde(String($0.dropFirst("--user-data-dir=".count))) } ?? FolderKey.standardDataDir
             runs.append(ClaudeRun(id: app.processIdentifier, kind: .desktop, folder: folder))
         }
-        let uid = getuid()
-        for e in table() ?? [] where e.name == "claude" && e.ruid == uid { runs.append(codeRun(e)) }
+        runs += codeRunList(table() ?? [])
         return runs
+    }
+
+    /// This user's processes that may be Claude Code (`Entry.claudeLike`: a native installer's `2.1.318` too, not only one named
+    /// `claude`), as the new-account page, Remove and Uninstall list them (`codeRun`).
+    static func codeRunList(_ all: [Entry]) -> [ClaudeRun] {
+        let uid = getuid()
+        return all.filter { $0.ruid == uid && $0.claudeLike }.map(codeRun)
     }
 
     /// One `claude` process as the new-account page shows it: a Code-tab's when its program, as it was started (argv[0], what

@@ -408,6 +408,17 @@ do {
           && AccountRemoval.runsUsing(profile("rm-w", "~/.claude-p8", nil), [unknownRun]) == [unknownRun]
           && AccountRemoval.runsUsing(profile("rm-w", "~/.claude-p8", nil), [Processes.codeRun(readDefault)]).isEmpty,
           "removal: a claude whose folder is unknown keeps every profile's folders from being deleted; a default-folder one only the default's")
+    // the list Remove and Uninstall read: every claude-like process of this user, a native installer's `2.1.318` included
+    let native = Processes.Entry(pid: 9013, uid: getuid(), ruid: getuid(), name: "2.1.318",
+                                 launch: Processes.Launch(exe: home + "/.local/share/claude/versions/2.1.318", args: ["2.1.318"], configDir: "/x/.claude-n", environmentRead: true))
+    let nativeUnread = Processes.Entry(pid: 9014, uid: getuid(), ruid: getuid(), name: "2.1.318",
+                                       launch: Processes.Launch(exe: home + "/.local/share/claude/versions/2.1.318", args: ["2.1.318"], configDir: nil, environmentRead: false))
+    let listed = Processes.codeRunList([native, nativeUnread, readDefault, unreadZsh, unreadApp, rootClaude, rootOther])
+    check(listed == [ClaudeRun(id: 9013, kind: .terminal, folder: "/x/.claude-n"), ClaudeRun(id: 9014, kind: .terminal, folder: ClaudeRun.unknownFolder),
+                     ClaudeRun(id: 9009, kind: .terminal, folder: "~/.claude")]
+          && nativeUnread.unknown && !native.unknown
+          && AccountRemoval.runsUsing(profile("rm-n", "/x/.claude-n", nil), listed).map(\.id) == [9013, 9014],
+          "claudeRuns: a native installer's 2.1.318 is listed with its folder (unknown when its environment wasn't read); not zsh, the Claude app or another user's: \(listed)")
     // the diagnostic: counts and yes/no only
     let probe = Processes.probeLines([readDefault, unread, unreadZsh, unreadApp, tab, rootOther])
     check(probe == ["claude-like processes: 3, environment read: 2", "  1: environment read: yes, CLAUDE_CONFIG_DIR: no",
