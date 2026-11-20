@@ -249,7 +249,11 @@ enum SessionsRestore {
                 guard m.version >= 3, c == ["config", "claude_desktop_config.json"] else { return refuse("backup.json names a window settings file in a place it doesn't keep it.") }
                 configItem = it
             }
-            if it.role == .window || it.role == .transcript, c.dropFirst().contains(where: SessionsBackup.isSignIn) {
+            // a window file by every part of its path; a transcript's file by its own name, as a backup takes them (its folders are a
+            // project's or a session's: a repo called oauth-proxy is the project folder "-…-oauth-proxy")
+            let signInNamed = it.role == .window ? c.dropFirst().contains(where: SessionsBackup.isSignIn)
+                : it.role == .transcript ? SessionsBackup.isSignIn(c.last ?? "") : false
+            if signInNamed {
                 return refuse("The backup holds something named like a sign-in (\((c.last ?? "").prefix(40))). A backup never holds one, so nothing is restored from it.")
             }
         }

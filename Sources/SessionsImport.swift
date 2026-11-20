@@ -899,15 +899,19 @@ enum SessionsImport {
                 guard SessionsRestore.plainName(n), n.utf8.count <= 255 else { throw ArchiveError("The export holds a name that isn't a plain one; refused.") }
                 // Claude Code's setup (profiles/pN/setup/…) is the operator's own files: `auth.py`, `token-counter.md` and
                 // `credentials-guide.md` are legitimate there, so only the exact excluded names are refused (.claude.json*, .credentials*,
-                // settings.local.json, a settings.json that isn't the top one); everywhere else the sign-in-like rule stands
-                let parent = rel.split(separator: "/")
-                if parent.count >= 3, parent[0] == "profiles", parent[2] == "setup" {
-                    if Setup.excludedName(n, top: parent.count == 3) { throw ArchiveError("The export holds a file with a sign-in name in its setup (\(n.prefix(40))). An export never does; refused.") }
-                } else if SessionsBackup.isSignIn(n) { throw ArchiveError("The export holds something named like a sign-in (\(n.prefix(40))). An export never holds one; refused.") }
+                // settings.local.json, a settings.json that isn't the top one); everywhere else the sign-in-like rule stands. Under
+                // transcripts/ it is the files' rule, as a backup and an export take them (by the file's own name): a folder there is a
+                // project's or a session's (a repo called oauth-proxy is the project folder "-…-oauth-proxy", a tool result's folder is
+                // the tool's), and every file in it is still held to the rule
                 let child = (path as NSString).appendingPathComponent(n)
                 let r = rel.isEmpty ? n : rel + "/" + n
                 var st = stat()
                 guard lstat(child, &st) == 0 else { throw ArchiveError("A file in the export vanished; refused.") }
+                let parent = rel.split(separator: "/")
+                let transcriptFolder = parent.count >= 3 && parent[0] == "profiles" && parent[2] == "transcripts" && (st.st_mode & S_IFMT) == S_IFDIR
+                if parent.count >= 3, parent[0] == "profiles", parent[2] == "setup" {
+                    if Setup.excludedName(n, top: parent.count == 3) { throw ArchiveError("The export holds a file with a sign-in name in its setup (\(n.prefix(40))). An export never does; refused.") }
+                } else if !transcriptFolder, SessionsBackup.isSignIn(n) { throw ArchiveError("The export holds something named like a sign-in (\(n.prefix(40))). An export never holds one; refused.") }
                 if (st.st_mode & S_IFMT) == S_IFDIR || (st.st_mode & S_IFMT) == S_IFREG, let why = attributeProblem(child, st) {
                     throw ArchiveError("The export holds a file or folder with \(why) (\(n.prefix(40))); an export never does. Refused.")
                 }
