@@ -2389,9 +2389,21 @@ do {
     let filledBefore = filled
     lateClash.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
     refuse(lateClash)
-    check(!lateClash.inClash && whose(lateClash) == .clash(name: "Other", own: true) && !lateClash.blocked
-          && lateClash.level?.full() == nil && filled == filledBefore && bubble(lateClash) == QCProblemView.otherLimitTitle,
-          "asked in the clash, refused after the move back: Other's limit, u1 not held nor called full: \(bubble(lateClash))")
+    // (its words are decided as they're fixed: the folder is back on u1 by then, so no "move it back")
+    check(!lateClash.inClash && whose(lateClash) == .moved && !lateClash.blocked && lateClash.level?.full() == nil
+          && filled == filledBefore && bubble(lateClash) == QCProblemView.otherLimitTitle && bubbleView(lateClash).more.isEmpty,
+          "asked in the clash, refused after the move back: not u1's, u1 not held nor called full, no move back: \(bubble(lateClash))")
+    // asked on u1, the folder moving to Other's u3 (a clash) before the turn ends: the turn ran on u1, so not "Other's limit"
+    _ = Store.writeStatus(e.id, rec())
+    let intoClash = chat(QuickChatTarget(e, now: now), level: ownLevel)
+    _ = Store.writeStatus(e.id, rec(week: nil, five: nil, login: u3.email, code: u3))
+    intoClash.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(nil), offer: { nil })
+    let filledInto = filled
+    intoClash.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
+    refuse(intoClash)
+    check(intoClash.inClash && whose(intoClash) == .moved && !intoClash.blocked && filled == filledInto
+          && bubble(intoClash) == QCProblemView.otherLimitTitle && !bubbleView(intoClash).more.contains("Other"),
+          "asked on u1, a clash started before it ended: no one's limit here, never \"Other's limit\", no hold: \(bubbleView(intoClash).more)")
     // asked outside the split, the split starting mid-turn (the folder stays on u1): no hold, no block
     _ = Store.writeStatus(e.id, appRec(appU1, code: u1))
     let lateSplit = chat(QuickChatTarget(win, now: now), level: QuickChatLevel(nil))
