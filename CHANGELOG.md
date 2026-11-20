@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.56 — 2026-11-19
+
 - When cl_audit can't read how a running Claude Code was started, it now says it couldn't check which folder it uses, instead of taking it for the default folder's.
 
 ## 26.11.55 — 2026-11-19
