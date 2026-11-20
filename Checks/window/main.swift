@@ -198,7 +198,7 @@ MainActor.assumeIsolated {
           && byName["b-node"]?.flags == [launcherFlag("node")]
           && byName["c-preload"]?.flags == [launcherFlag("npx"), "sets DYLD_INSERT_LIBRARIES, NODE_OPTIONS, which change what a program loads"]
           && byName["c-preload"]?.env == ["DYLD_INSERT_LIBRARIES", "NODE_OPTIONS"] && !"\(risky)".contains("/tmp/x.dylib") && !"\(risky)".contains("/tmp/y.js")
-          && byName["d-env"]?.runs == "env LD_PRELOAD=/tmp/z.so python3.12 -m srv" && byName["d-env"]?.env == ["LD_PRELOAD"]
+          && byName["d-env"]?.runs == "env LD_PRELOAD=… python3.12 -m srv" && byName["d-env"]?.env == ["LD_PRELOAD"] && !"\(risky)".contains("/tmp/z.so")
           && byName["d-env"]?.flags == [launcherFlag("env"), "sets LD_PRELOAD, which changes what a program loads"]
           && byName["e-long"]?.runs.count == SessionsBackup.runsWidth && byName["e-long"]?.runs.hasSuffix("…") == true && byName["e-long"]?.full.count == 304
           && byName["f-plain"]?.flags.isEmpty == true
@@ -212,6 +212,20 @@ MainActor.assumeIsolated {
                                                                "  look first: \(launcherFlag("npx")); sets DYLD_INSERT_LIBRARIES, NODE_OPTIONS, which change what a program loads"]
           && WindowWords.serverLines(byName["f-plain"]!) == ["f-plain: /opt/mcp/bin/server-files --root /w/files"],
           "rows: the closed row says how many servers need a look; each server's lines: its command line, its env names, what to look at")
+    // an `env` program's own NAME=value words are masked up to the program it runs (whose arguments then show whole); a key inside an
+    // argument is hidden in place, the rest of the argument readable; more loader names
+    let envMasked = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": [
+        "h-env": ["command": "env", "args": ["API_KEY=hunter2", "npx", "x", "MODE=fast"]],
+        "i-inline": ["command": "/opt/mcp/bin/srv", "args": ["--auth=Bearer:" + fakeKey + ",scope=read"]],
+        "j-loaders": ["command": "/opt/mcp/bin/srv", "env": ["PROMPT_COMMAND": "x", "GIT_SSH_COMMAND": "x", "BASH_FUNC_ls%%": "x", "NODE_EXTRA_CA_CERTS": "x"]]]]))
+    let em = Dictionary(uniqueKeysWithValues: envMasked.map { ($0.name, $0) })
+    check(em["h-env"]?.runs == "env API_KEY=… npx x MODE=fast" && em["h-env"]?.full == em["h-env"]?.runs && em["h-env"]?.env == ["API_KEY"]
+          && !"\(envMasked)".contains("hunter2") && em["h-env"]?.flags == [launcherFlag("env")]
+          && em["i-inline"]?.runs == "/opt/mcp/bin/srv --auth=Bearer:‹a key›,scope=read" && em["i-inline"]?.flags == [keyFlag] && !"\(envMasked)".contains(fakeKey)
+          && em["j-loaders"]?.flags == ["sets BASH_FUNC_ls%%, GIT_SSH_COMMAND, NODE_EXTRA_CA_CERTS, …, which change what a program loads"]
+          && SessionsBackup.isLoaderVariable("PERL5OPT") && SessionsBackup.isLoaderVariable("PERL5LIB") && SessionsBackup.isLoaderVariable("RUBYOPT")
+          && SessionsBackup.isLoaderVariable("PROMPT_COMMAND"),
+          "config: env API_KEY=hunter2 npx x shows API_KEY=…, the program env runs and its arguments whole; a key inside an argument hidden in place; PROMPT_COMMAND, GIT_SSH_COMMAND, BASH_FUNC_*, NODE_EXTRA_CA_CERTS flagged: \(envMasked.map { "\($0.name): \($0.runs) \($0.flags)" })")
     let found = Setup.scan(codeDir: codeA, home: home)
     let prompts = found.files.filter { $0.unit.kind == .task }.map(\.rel).sorted()
     check(prompts == ["scheduled-tasks/elsewhere-task/SKILL.md", "scheduled-tasks/nightly-digest/SKILL.md", "scheduled-tasks/orphan-prompt/SKILL.md", "scheduled-tasks/weekly-report/SKILL.md"],

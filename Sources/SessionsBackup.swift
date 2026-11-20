@@ -763,12 +763,30 @@ enum SessionsBackup {
     static func isLoaderVariable(_ name: String) -> Bool {
         name.hasPrefix("DYLD_") || name.hasPrefix("LD_") || ["NODE_OPTIONS", "NODE_PATH", "ELECTRON_RUN_AS_NODE", "PYTHONPATH", "PYTHONSTARTUP",
             "PYTHONHOME", "PYTHONINSPECT", "PYTHONUSERBASE", "PERL5LIB", "PERL5OPT", "PERLLIB", "RUBYOPT", "RUBYLIB", "BASH_ENV", "ENV", "ZDOTDIR",
-            "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "GEM_PATH", "GEM_HOME"].contains(name)
+            "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "GEM_PATH", "GEM_HOME", "PROMPT_COMMAND", "GIT_SSH_COMMAND",
+            "NODE_EXTRA_CA_CERTS"].contains(name) || name.hasPrefix("BASH_FUNC_")
+    }
+
+    /// An argument with each key the scan recognises in it as ‹a key›, the rest as it is (a key sits in a run of letters, digits,
+    /// "_", "-" and "."; a key the runs can't isolate hides the whole argument). `hit`: something was hidden.
+    static func maskKeys(_ w: String) -> (text: String, hit: Bool) {
+        guard !SecretScan.scan(Data(w.utf8)).isEmpty else { return (w, false) }
+        var out = "", run = "", hit = false
+        func flush() {
+            guard !run.isEmpty else { return }
+            if SecretScan.scan(Data(run.utf8)).isEmpty { out += run } else { out += "‹a key›"; hit = true }
+            run = ""
+        }
+        for c in w {
+            if c.isASCII && (c.isLetter || c.isNumber || c == "_" || c == "-" || c == ".") { run.append(c) } else { flush(); out.append(c) }
+        }
+        flush()
+        return hit ? (out, true) : ("‹a key›", true)
     }
 
     /// The MCP servers a config names, by name, with what each runs: its whole command line (the command and its arguments, each in
-    /// full, but for the NAME=value words before the program, which set its environment and show as NAME=…, and an argument the key
-    /// scan recognises, ‹a key›), the names of the environment variables it sets (never a value), and a flag for a shell, interpreter
+    /// full, but for the NAME=value words before the program, or after an `env` program up to the program it runs, which set the
+    /// environment and show as NAME=…, and a key the scan recognises inside an argument, ‹a key›), the names of the environment variables it sets (never a value), and a flag for a shell, interpreter
     /// or launcher, a loader variable or a hidden key; or "a remote server" for one reached by URL (the URL and headers can hold a token).
     static func mcpServers(_ d: Data) -> [MCPServer] {
         guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], let s = j["mcpServers"] as? [String: Any] else { return [] }
@@ -799,9 +817,14 @@ enum SessionsBackup {
             // every other word in full (an `env` program's own NAME=value arguments too, counted by name), but a key the scan recognises
             var keyHidden = false, envArgs = program.map { programName($0) == "env" } ?? false
             for (k, w) in words.enumerated().dropFirst(i) {
-                if k > i, envArgs { if let n = assignment(w) { env.insert(oneLine(n, max: 60)) } else { envArgs = false } }
-                if !SecretScan.scan(Data(w.utf8)).isEmpty { keyHidden = true; shown.append("‹a key›"); continue }
-                shown.append(w.contains(" ") || w.isEmpty ? "\"" + w + "\"" : w)
+                // an `env` program's own NAME=value words set the environment too, up to the program it runs: NAME=…, as before the program
+                if k > i, envArgs {
+                    if let n = assignment(w) { env.insert(oneLine(n, max: 60)); shown.append(n + "=…"); continue }
+                    envArgs = false
+                }
+                let (masked, hit) = maskKeys(w)
+                if hit { keyHidden = true }
+                shown.append(masked.contains(" ") || masked.isEmpty ? "\"" + masked + "\"" : masked)
             }
             var flags: [String] = []
             if let p = program, isInterpreter(p) { flags.append("runs \(oneLine(programName(p), max: 40)), a shell, interpreter or launcher: its arguments are what it runs") }
