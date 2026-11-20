@@ -10,6 +10,8 @@ import ClaudeAuth
 // The one-folder model (a profile is one Claude Code folder, its standby accounts signed out; a switch signs in again on the
 // same folder and moves nothing) retired the blocks that tested what it removed: they stay below, fenced off with
 // `#if RETIRED_ONEFOLDER` (never defined), each with why and where its ground is covered now (Checks/accounts in the repo).
+// signin/PROVENANCE.md maps every retired block whose safety rule still holds to the check, by suite and text, that covers
+// it today; stage F (last) checks the two rules no other suite did.
 
 let home = NSHomeDirectory()
 guard home.hasSuffix("/Checks/.work/signin/home") else { print("refusing: home is \(home)"); exit(1) }
@@ -599,7 +601,10 @@ MainActor.assumeIsolated {
     check(FoundAccount.whenUsed(now, now: now) == "today", "used today")
     #endif
 
-    // the window's accounts, read from its folder: ids and dates only
+    // the window's accounts, read from its folder: ids and dates only. Retired (26.11.48): AccountDiscovery went, windowSeats
+    // had no caller but this check; the window's session folders are read through ClaudeFiles.sessionScopes, checked in
+    // Checks/surfaces ("folders: UUID-named real folders only, …").
+    #if RETIRED_ONEFOLDER
     let wdir = home + "/Library/Application Support/Claude-acct-test"
     let a1 = UUID().uuidString.lowercased(), o1 = UUID().uuidString.lowercased(), o2 = UUID().uuidString.lowercased()
     try? fm.createDirectory(atPath: "\(wdir)/claude-code-sessions/\(a1)/\(o1)", withIntermediateDirectories: true)
@@ -609,6 +614,7 @@ MainActor.assumeIsolated {
     let ws = AccountDiscovery.windowSeats(dataDir: wdir)
     check(ws.count == 1 && ws[0].seat.account == a1 && ws[0].seat.organization == o1 && ws[0].used != nil,
           "window: one account where a session was filed; empty and odd folders skipped")
+    #endif
 
     // the window's sidebar, counted from its folder (ids and counts only; the default-profile move uses it)
     let wd = home + "/Library/Application Support/Claude-counts-test"
@@ -1597,18 +1603,24 @@ do {
     // the card: the trays in the order a full limit offers them; the best is the first that can be switched to and has room
     let trays = cm.cardTrays(now: now)
     check(trays.map(\.id) == ["cm~k3", "cm~k2", "cm~k4"], "card trays: room first, then the one that left full, then the address without a sign-in")
+    // Retired (26.11.32): standby accounts left the card, with the card's preselected tray (cardBest) and its selection rule
+    // (TrayPick); the trays are the card's Switch account menu's order now, and its best is SwitchMenu.best below ("the best is
+    // the first with room", "…never the best").
+    #if RETIRED_ONEFOLDER
     check(cm.cardBest(trays, now: now) == "cm~k3", "full: the one with room is preselected")
     var allFull = cm; allFull.standby = [k2, k4]
     check(allFull.cardBest(allFull.cardTrays(now: now), now: now) == nil, "full and no standby account has room: nothing preselected")
+    #endif
     var reset = cm; reset.standby = [k4, k2]; reset.standby[1].lastWeekResets = now.addingTimeInterval(-60)
-    check(reset.cardTrays(now: now).map(\.id) == ["cm~k2", "cm~k4"] && reset.cardBest(reset.cardTrays(now: now), now: now) == "cm~k2",
+    check(reset.cardTrays(now: now).map(\.id) == ["cm~k2", "cm~k4"],
           "a week that started again since it left: no longer known full, offered first")
     var none = cm; none.standby = []
-    check(none.cardTrays(now: now).isEmpty && none.cardBest([], now: now) == nil, "no standby accounts: no trays")
+    check(none.cardTrays(now: now).isEmpty, "no standby accounts: no trays")
     check(trays.first?.offer.lineWords(now: now) == "Ultra · last in use 2 h ago" && trays.last?.offer.lineWords(now: now) == "on standby",
           "a tray's line: its plan and when it was last in use, else 'on standby' (never a level: it isn't read)")
 
-    // the selection rule
+    // the selection rule (retired with cardBest, above)
+    #if RETIRED_ONEFOLDER
     let keys = ["cm~k3", "cm~k2"]
     check(TrayPick.selected(picked: nil, full: true, best: "cm~k3", keys: keys) == "cm~k3", "limit full, nothing clicked: the best is selected already")
     check(TrayPick.selected(picked: "cm~k2", full: true, best: "cm~k3", keys: keys) == "cm~k2", "limit full, another tray clicked: it is picked instead")
@@ -1621,6 +1633,7 @@ do {
     check(TrayPick.tapped("cm~k3", selected: "cm~k2", full: false) == "cm~k3", "room left: another tray moves the selection")
     check(TrayPick.tapped("cm~k3", selected: "cm~k3", full: true) == "cm~k3", "limit full: the selected tray stays selected (never deselects)")
     check(TrayPick.tapped("cm~k2", selected: "cm~k3", full: true) == "cm~k2", "limit full: another tray is picked instead")
+    #endif
 
     // the menus: words and order
     let lines = SwitchMenu.lines(cm, now: now)
@@ -2733,6 +2746,75 @@ do {
     try? fm.removeItem(at: SessionsRestore.root)
     try? fm.removeItem(atPath: eRoot)
     BackupPrefs.shared.place = ""
+}
+#endif
+
+#if STAGE3
+// --- stage F: the one-folder model's safety rules that no other suite checked ---
+// The retired blocks tested sign-ins kept in folders of their own and moved between them (PROVENANCE.md, "Retired, and where
+// their rules are checked now"). Two of their rules still hold and had no check of their own left: a switch never copies or
+// moves a sign-in between folders (its move of the window's sessions inside the one folder, and its Undo, leave every
+// .claude.json and .credentials.json where it is, byte for byte, and make none), and nothing in the app writes, copies or
+// deletes a Keychain item (the one Keychain call is ClaudeAuth's read).
+MainActor.assumeIsolated {
+    let wd = home + "/Library/Application Support/Claude-safety-test"
+    let code = home + "/.claude-safety", other = home + "/.claude-safety-other"
+    let a = Seat(account: sid(901), organization: sid(902), email: "u1@example.com")
+    let b = Seat(account: sid(903), organization: sid(904), email: "u2@example.com")
+    let src = SwitchEngine.scopeDir(wd, SeatID(a)), dst = SwitchEngine.scopeDir(wd, SeatID(b))
+    for d in [src, dst, code + "/projects/-p", other] { try? fm.createDirectory(atPath: d, withIntermediateDirectories: true) }
+    writeClaudeJSON(code, a); writeClaudeJSON(other, b)
+    fm.createFile(atPath: code + "/.credentials.json", contents: Data(#"{"claudeAiOauth":{"accessToken":"sample-a"}}"#.utf8))
+    fm.createFile(atPath: other + "/.credentials.json", contents: Data(#"{"claudeAiOauth":{"accessToken":"sample-b"}}"#.utf8))
+    for n in 1...2 {
+        fm.createFile(atPath: "\(src)/local_\(sid(910 + n)).json", contents: Data(#"{"sessionId":"local_\#(sid(910 + n))","title":"t"}"#.utf8))
+    }
+    // every file under the throwaway home named like a sign-in (the app's own rule), with its bytes
+    func signIns() -> [String: Data] {
+        var out: [String: Data] = [:]
+        let en = fm.enumerator(atPath: home)
+        while let rel = en?.nextObject() as? String {
+            guard SessionsBackup.isSignIn((rel as NSString).lastPathComponent) else { continue }
+            var st = stat()
+            guard lstat(home + "/" + rel, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { continue }
+            out[rel] = fm.contents(atPath: home + "/" + rel)
+        }
+        return out
+    }
+    let before = signIns()
+    check(before[".claude-safety/.claude.json"] != nil && before[".claude-safety-other/.credentials.json"] != nil, "stage F: the world's sign-ins are there")
+
+    var e = AccountEntry(id: "saf", name: "Safety", label: "SF", configDir: code); e.seat = a
+    e.desktop = .separate; e.desktopDataDir = wd
+    let s = StandbyAccount(email: "u2@example.com", seat: b, id: "sb")
+    e.standby = [s]
+    let saved = (try? Data(contentsOf: Store.configURL))
+    try! Store.save([e])
+    defer { if let saved { try? saved.write(to: Store.configURL) } else { try? fm.removeItem(at: Store.configURL) } }
+    guard case .success(let plan) = SwitchEngine.plan(e, standby: s, owned: []), plan.move.count == 2 else { check(false, "stage F: plan"); return }
+    guard let r = try? SwitchEngine.run(plan, windowClosed: { true }) else { check(false, "stage F: the switch's move runs"); return }
+    check(r.moved == 2 && fm.fileExists(atPath: "\(dst)/local_\(sid(911)).json"), "stage F: the switch moved the window's 2 sessions to the new account")
+    check(signIns() == before,
+          "a switch copies or moves no sign-in: every .claude.json and .credentials.json where it was, byte for byte, and none made (no second folder signed in)")
+    _ = try? SwitchEngine.undo(r.id, windowClosed: { true })
+    check(fm.fileExists(atPath: "\(src)/local_\(sid(911)).json") && signIns() == before, "…and its Undo neither: the sessions back, the sign-ins as they were")
+
+    // the Keychain: written, copied or deleted nowhere; read only by ClaudeAuth's KeychainSignIn
+    let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    var sources: [String: String] = [:]
+    for dir in ["Sources", "Core", "Run", "Auth", "Launcher", "Widget"] {
+        let d = repo.appendingPathComponent(dir)
+        for f in (try? fm.contentsOfDirectory(atPath: d.path)) ?? [] where f.hasSuffix(".swift") {
+            sources["\(dir)/\(f)"] = (try? String(contentsOf: d.appendingPathComponent(f), encoding: .utf8)) ?? ""
+        }
+    }
+    check(sources.count > 50 && sources["Auth/Keychain.swift"] != nil, "stage F: the app's sources found (\(sources.count))")
+    let writes = ["add-generic-password", "delete-generic-password", "add-internet-password", "delete-internet-password",
+                  "SecItemAdd", "SecItemUpdate", "SecItemDelete", "SecKeychainItemCreate", "SecKeychainItemModify", "SecKeychainItemDelete", "export -k", "import -k"]
+    let writers = sources.filter { _, t in writes.contains { t.contains($0) } }.keys.sorted()
+    check(writers.isEmpty, "nothing in the app writes, copies or deletes a Keychain item: \(writers)")
+    let callers = sources.filter { _, t in t.contains("\"/usr/bin/security\"") || t.contains("find-generic-password") }.keys.sorted()
+    check(callers == ["Auth/Keychain.swift"], "the Keychain tool is run in one place, ClaudeAuth's read: \(callers)")
 }
 #endif
 
