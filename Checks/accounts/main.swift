@@ -1925,7 +1925,8 @@ do {
     waitFor(15) { rS.phase == .waiting || failed(rS) }
     check(rS.phase == .waiting && rS.receipt?.closedWindow == true && !ClaudeWindow.isOpen(Account(sw)) && winOpened.isEmpty,
           "a switch that moves: the window closed for it, the receipt says so: \(rS.phase)")
-    check((try? String(contentsOfFile: archivedS, encoding: .utf8)) == archivedBody,
+    check((try? String(contentsOfFile: archivedS, encoding: .utf8)) == archivedBody
+          && (try? String(contentsOfFile: expand("~/.claude-swwin/projects/-sw/\(uuid(901)).jsonl"), encoding: .utf8)) == #"{"type":"user","cwd":"/sw","sessionId":"\#(uuid(901))"}"# + "\n",
           "…the profile's archived session stays archived: a switch moves the window's entries only, its transcripts and their folders stay where they are")
     sign("~/.claude-swwin", u3)
     waitFor(5) { rS.look(); return rS.phase != .waiting }
