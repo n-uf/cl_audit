@@ -252,6 +252,11 @@ do {
     try? fm.setAttributes([.posixPermissions: 0o755], ofItemAtPath: home + "/fakebin/claude")
     ClaudeLocator.current = ClaudeLocator.Lookup(candidates: { [home + "/fakebin/claude"] }, npmPrefix: { nil }, shell: { nil }, appCopy: { nil })
     sign("~/.claude", u1)
+    // every folder in home before the switch, hidden ones included: the switch may make none (not even a known name)
+    func homeDirs() -> Set<String> {
+        Set(((try? fm.contentsOfDirectory(atPath: home)) ?? []).filter { var d: ObjCBool = false; return fm.fileExists(atPath: home + "/" + $0, isDirectory: &d) && d.boolValue })
+    }
+    let dirsBefore = homeDirs()
     let k2 = StandbyAccount(email: u2.email!, seat: u2, id: "k2")
     let main = profile("main", "~/.claude", u1, standby: [k2])
     try! Store.save([main])
@@ -279,8 +284,9 @@ do {
     check(r.phase == .other(u3.email!), "the browser signed in as ultra-3: another account, said")
     r.reset(); r.start(k2); r.cancel()
     check(r.phase == .ready && !fm.fileExists(atPath: SwitchRunner.marker(for: "main").path), "Cancel stops waiting; nothing to put back")
-    check(((try? fm.contentsOfDirectory(atPath: home)) ?? []).allSatisfy { !$0.hasPrefix(".claude-") || ["claude-ultra-1", "claude-ultra-2", "claude-ultra-3", "claude-work", "claude-linked", "claude-file"].contains(String($0.dropFirst())) },
-          "a switch makes no folder")
+    check(((try? fm.contentsOfDirectory(atPath: home)) ?? []).allSatisfy { !$0.hasPrefix(".claude-") || ["claude-ultra-1", "claude-ultra-2", "claude-ultra-3", "claude-work", "claude-linked", "claude-file"].contains(String($0.dropFirst())) }
+          && homeDirs().subtracting(dirsBefore).isEmpty,
+          "a switch makes no folder (none in home that wasn't there before it, hidden or not: \(homeDirs().subtracting(dirsBefore).sorted()))")
     sign("~/.claude", u1)
 }
 
