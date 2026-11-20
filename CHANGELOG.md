@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- A running Claude Code started with an empty or relative CLAUDE_CONFIG_DIR, or with two different ones, now counts as "couldn't check which folder it uses", not as another folder's.
 
 ## 26.11.57 — 2026-11-19
 
