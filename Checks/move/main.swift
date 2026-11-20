@@ -149,9 +149,10 @@ if role == "b" {
         write(archivedHere, #"{"archived":false,"at":"2026-11-19T10:00:00.000Z","by":"user"}"#)
         // no sign-in anywhere, nothing of the Keychain, no Dock (a sign-in is a file: a folder named like one, a project's or a tool's, isn't)
         let signIns = everything(home).filter {
-            let n = ($0 as NSString).lastPathComponent.lowercased()
-            var isDir: ObjCBool = false
-            return (n.hasPrefix(".claude.json") || n.contains("credential")) && !(fm.fileExists(atPath: home + "/" + $0, isDirectory: &isDir) && isDir.boolValue)
+            // (by the app's own rule; a folder by lstat, so a link named like a sign-in still counts)
+            var st = stat()
+            let folder = lstat(home + "/" + $0, &st) == 0 && (st.st_mode & S_IFMT) == S_IFDIR
+            return SessionsBackup.isSignIn(($0 as NSString).lastPathComponent) && !folder
         }
         // (the staged backup in cl_audit's own folder keeps the image's settings.json whole, as every import's does: that is how it can be
         // added later; nothing outside that folder holds its env value)
@@ -587,6 +588,29 @@ MainActor.assumeIsolated {
     check(!(v4 <= 3) && SessionsBackup.backupVersion == 4 && SessionsBackup.neededVersion([], move: true) == 4 && SessionsBackup.neededVersion([]) == 2,
           "format: a file with cl_audit's profiles or a move is version 4, which 26.11.9's guard (<= 3) refuses; everything else stays 2 or 3")
     check(!Fingerprint.isValid(sid(1)), "format: …and a move's real-id folder is never a fingerprint, so 26.11.9's own rule would refuse it too")
+
+    // ---- a backup's own restore (no import in the way): the sign-in rule for transcripts is the files' rule there too
+    do {
+        let oauthT = "\(wc)/projects/-w-oauth-proxy/\(sid(113)).jsonl", oauthTool = "\(wc)/projects/-w-oauth-proxy/\(sid(113))/tool-results/credentials-check/out.txt"
+        let lb = try! SessionsBackup.make(SessionsBackup.Source(work), kind: .manual, window: false, transcripts: true, place: bplace)
+        let b = SessionsRestore.Backup(profile: work.id, id: lb.id, place: bplace)
+        try? fm.removeItem(atPath: oauthT); try? fm.removeItem(atPath: (oauthTool as NSString).deletingLastPathComponent)
+        let p = SessionsRestore.plan(SessionsRestore.Target(work), b)
+        check(p.refusal == nil && p.count >= 2, "restore: a backup of the oauth-proxy project (and its credentials-check tool folder) can be restored: \(p.refusal ?? "") \(p.count)")
+        _ = try? SessionsRestore.run(SessionsRestore.Target(work), b, windowClosed: { true })
+        check(fm.fileExists(atPath: oauthT) && read(oauthTool) == "a tool's output, made up\n", "restore: …and it is back, the tool's folder with it")
+        // the same backup naming a FILE like a sign-in among its transcripts: refused whole, as before
+        let mURL = b.dir.appendingPathComponent("backup.json")
+        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
+        let enc = JSONEncoder(); enc.dateEncodingStrategy = .iso8601; enc.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
+        var m = try! dec.decode(SessionsBackup.Manifest.self, from: Data(contentsOf: mURL))
+        write(b.dir.path + "/transcripts/-w-oauth-proxy/credentials.json", "{}")
+        m.items.append(SessionsBackup.Item(role: .transcript, original: "\(wc)/projects/-w-oauth-proxy/credentials.json", path: "transcripts/-w-oauth-proxy/credentials.json", bytes: 2))
+        m.bytes += 2
+        try! enc.encode(m).write(to: mURL)
+        let refused = SessionsRestore.plan(SessionsRestore.Target(work), b).refusal ?? ""
+        check(refused.contains("named like a sign-in"), "restore: a backup naming a transcript-side FILE like a sign-in is still refused whole: \(refused.prefix(90))")
+    }
 
     // ---- the done page's steps and the rows' words
     let made = SessionsMove.Made(id: "work", name: "Work", part: "p1", entry: work, place: 0, signIns: [a1, a2], inDock: true)
