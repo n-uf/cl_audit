@@ -236,6 +236,8 @@ struct QuickChatFullLimit: Equatable {
 enum QuickChatOtherLimit: Equatable {
     case split
     case clash(name: String, own: Bool)
+    /// The folder moved to another account since the turn was asked: the limit is the one it was asked on.
+    case moved
 }
 
 struct QuickChatTurn: Identifiable, Equatable {
@@ -497,11 +499,14 @@ final class QuickChatModel: ObservableObject {
     /// One event from Claude Code, for the last turn (internal, not private: the checks feed it).
     func handle(_ e: QuickChatEvent) {
         guard let i = turns.indices.last else { return }
-        // whose a limit this turn meets is: what it was asked on decides (a turn not asked through `ask` goes by now). It
-        // is the account in use's only when asked outside the split and a clash, with the folder still on that account
+        // whose a limit this turn meets is: what it was asked on and where the profile is now (a turn not asked through
+        // `ask` goes by now). It is the account in use's only when it is so both ways: asked outside the split and a
+        // clash, still outside them, and the folder still on the account it was asked on
         let on = turns[i].asked ?? QuickChatAsked(account: target?.account, other: otherLimit)
-        let own = on.other == nil && QuickChatTarget.sameAccount(on.account, target?.account)
-        func fixed() -> QuickChatFullLimit { QuickChatFullLimit(other: on.other, limit: own ? level?.full() : nil, profile: target?.name ?? "") }
+        let own = on.other == nil && otherLimit == nil && QuickChatTarget.sameAccount(on.account, target?.account)
+        func fixed() -> QuickChatFullLimit {
+            QuickChatFullLimit(other: own ? nil : on.other ?? otherLimit ?? .moved, limit: own ? level?.full() : nil, profile: target?.name ?? "")
+        }
         switch e {
         case .started(let s, let model):
             session = s

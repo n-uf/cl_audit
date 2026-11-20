@@ -2392,6 +2392,40 @@ do {
     check(!lateClash.inClash && whose(lateClash) == .clash(name: "Other", own: true) && !lateClash.blocked
           && lateClash.level?.full() == nil && filled == filledBefore && bubble(lateClash) == QCProblemView.otherLimitTitle,
           "asked in the clash, refused after the move back: Other's limit, u1 not held nor called full: \(bubble(lateClash))")
+    // asked outside the split, the split starting mid-turn (the folder stays on u1): no hold, no block
+    _ = Store.writeStatus(e.id, appRec(appU1, code: u1))
+    let lateSplit = chat(QuickChatTarget(win, now: now), level: QuickChatLevel(nil))
+    _ = Store.writeStatus(e.id, appRec(appU2, code: u1))
+    lateSplit.update(target: QuickChatTarget(win, now: now), level: QuickChatLevel(nil), offer: { nil })
+    let filledSplit = filled
+    lateSplit.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
+    refuse(lateSplit)
+    check(lateSplit.inSplit && !lateSplit.blocked && lateSplit.level?.full() == nil && filled == filledSplit
+          && whose(lateSplit) == .split && bubble(lateSplit) == QCProblemView.otherLimitTitle,
+          "asked outside the split, the split started mid-turn: the limit event and refusal hold nothing: \(bubble(lateSplit))")
+    // asked on u1, the folder on u2 (its own standby, no clash) before the turn ends: u1's limit, said as no one's here
+    _ = Store.writeStatus(e.id, rec())
+    let lateMove = chat(QuickChatTarget(e, now: now), level: ownLevel)
+    _ = Store.writeStatus(e.id, rec(week: 10, login: u2.email, code: u2))
+    lateMove.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
+    let filledMove = filled
+    lateMove.handle(.limit(type: "seven_day", used: 1, status: "rejected", resets: soon))
+    refuse(lateMove)
+    check(!lateMove.inClash && !lateMove.inSplit && whose(lateMove) == .moved && !lateMove.blocked && filled == filledMove
+          && bubble(lateMove) == QCProblemView.otherLimitTitle && bubbleView(lateMove).more.isEmpty,
+          "asked on u1, the folder on u2 before it ended: no account called full, no address, no hold: \(bubble(lateMove))")
+    // another limit with a reset under a minute apart: not the same (said again below)
+    _ = Store.writeStatus(e.id, rec())
+    let kindReset = now.addingTimeInterval(2 * 3600)
+    var fiveAt = QuickChatLevel(nil)
+    fiveAt.fiveHour = 100; fiveAt.fiveHourResets = kindReset; fiveAt.week = 60; fiveAt.weekResets = now.addingTimeInterval(2 * 86400)
+    let otherKind = chat(QuickChatTarget(e, now: now), level: fiveAt)
+    refuse(otherKind)
+    var weekAt = QuickChatLevel(nil)
+    weekAt.fiveHour = 10; weekAt.fiveHourResets = now.addingTimeInterval(9 * 3600); weekAt.week = 100; weekAt.weekResets = kindReset.addingTimeInterval(0.4)
+    otherKind.update(target: QuickChatTarget(e, now: now), level: weekAt, offer: { cardOffer })
+    check(otherKind.level?.full()?.kind == .week && !otherKind.limitRepeated && !liveBelow(otherKind).title.isEmpty,
+          "the 5-hour limit said, then the week with a reset 0.4 s apart: another limit, said again below")
     _ = Store.writeStatus(e.id, rec())
 
     // Switch account… with a question waiting: a folder signed out on the way (no id: its address kept, or none) hasn't

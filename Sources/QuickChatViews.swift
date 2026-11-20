@@ -406,8 +406,8 @@ struct QCProblemView: View {
         case .refused(let text): return text
         case .noProfile: return "There's no profile to chat on yet."
         case .limitFull(let full):
-            // the split or a clash: the limit is the folder's account's, not one the header may name (in a clash another
-            // profile's): no account named as full, never the folder's address. Else the limit as the problem keeps it
+            // the split, a clash, or an account the folder has left: not one the header may name (in a clash another
+            // profile's): no account named as full, never an address. Else the limit as the problem keeps it
             if full.other != nil { return Self.otherLimitTitle }
             if keyOnly { return "" }
             let f = full.limit
@@ -421,7 +421,7 @@ struct QCProblemView: View {
         return model.offer
     }
 
-    /// A full limit in the split or a clash.
+    /// A full limit in the split, a clash, or on an account the folder has left since the turn was asked.
     static let otherLimitTitle = "Claude Code's account here has hit its limit."
 
     /// The words after the title (internal: the checks read them).
@@ -441,7 +441,7 @@ struct QCProblemView: View {
                 let whose = "Claude Code's folder here is signed in to \(other)'s account, so this was \(other)'s limit."
                 return whose + (own ? " Move it back to \(name)'s own account on the Switch page to chat on that account."
                                     : " Pick an account for \(name) on the Switch page to chat on it.")
-            case .split?:
+            case .split?, .moved?:
                 return ""
             case nil:
                 guard let o = liveOffer else { return "" }
