@@ -133,10 +133,10 @@ enum Processes {
 
     /// KERN_PROCARGS2's bytes: argc, the executable path, NULs up to the next 8 bytes counted from the path's start (the accounts
     /// suite proves it on started stand-ins; NUL by NUL when the layout is another), exactly argc arguments (empty ones included),
-    /// then the environment up to an empty entry (the kernel's own strings, ptr_munge= and the like, follow it, maybe with no
-    /// empty entry between). nil when cut short, or when the first argument is empty or starts with a space. `environmentRead`
-    /// only when an entry came after the arguments before the first kernel string: a buffer that ends after them, goes on with
-    /// NULs, or goes on with the kernel's strings (whatever follows them), wasn't read. CLAUDE_CONFIG_DIR is taken from any entry.
+    /// then the environment and the kernel's own strings (ptr_munge= and the like). nil when the arguments are cut short, or
+    /// when the first argument is empty or starts with a space. `environmentRead` only on positive evidence, an entry named like
+    /// a variable every process has (PATH, HOME…): a buffer that ends after the arguments, goes on with NULs, or with the kernel's
+    /// strings only, wasn't read; nor was one that cuts an entry off. CLAUDE_CONFIG_DIR is taken from any whole entry.
     static func parse(_ buf: [UInt8], size: Int) -> Launch? {
         guard size > MemoryLayout<Int32>.size, size <= buf.count else { return nil }
         let argc = Int(buf.withUnsafeBytes { $0.load(as: Int32.self) })
@@ -156,24 +156,26 @@ enum Processes {
             i += 1
         }
         var configDir: String?
-        var environmentRead = false
+        var environmentRead = false, cut = false
         let prefix = Array("CLAUDE_CONFIG_DIR=".utf8)
-        // the environment, up to an empty entry or the buffer's end. Whether it was read is decided by the entries before the
-        // first of the kernel's own strings (they always follow it, with no empty entry promised in between, so nothing after
-        // the first one counts as read); CLAUDE_CONFIG_DIR is looked for in every entry (no kernel string carries that key, and
-        // a variable named like one, pfz=1 say, mustn't hide it)
-        var kernelSeen = false
+        // every entry after the arguments to the buffer's end, empty ones skipped: the environment, then the kernel's own strings
+        // (ptr_munge= and the like, with or without an empty entry between). Read only on positive evidence: an entry named like
+        // a variable every real process has (`everyProcess`), a name no kernel string uses, so a withheld environment followed by
+        // any kernel string, listed or new, isn't read. CLAUDE_CONFIG_DIR from any entry (no kernel string carries that key).
         while i < size {
             let start = i
             while i < size && buf[i] != 0 { i += 1 }
-            if i == start { break }
-            if i - start >= prefix.count, Array(buf[start..<(start + prefix.count)]) == prefix {
+            if i == start { i += 1; continue }
+            // an entry the buffer cuts off: a CLAUDE_CONFIG_DIR may be cut, or lost after it, so the folder is unknown
+            if i >= size { cut = true; break }
+            let entry = buf[start..<i]
+            if entry.count >= prefix.count, entry.prefix(prefix.count).elementsEqual(prefix) {
                 configDir = String(decoding: buf[(start + prefix.count)..<i], as: UTF8.self)
             }
-            if kernelStrings.contains(where: { k in i - start >= k.count && buf[start..<(start + k.count)].elementsEqual(k) }) { kernelSeen = true }
-            if !kernelSeen { environmentRead = true }
+            if everyProcess.contains(where: { n in entry.count >= n.count && entry.prefix(n.count).elementsEqual(n) }) { environmentRead = true }
             i += 1
         }
+        if cut { configDir = nil; environmentRead = false }
         guard args.count == argc else { return nil }                // cut short: not read
         // an empty or space-led program can't be told from a misread layout (an empty argv[0] can't be told from padding): not
         // read, so the process is hidden rather than taken for "not Claude"
@@ -181,11 +183,10 @@ enum Processes {
         return Launch(exe: exe, args: args, configDir: configDir, environmentRead: environmentRead)
     }
 
-    /// The kernel's own strings that follow the environment in KERN_PROCARGS2 (its "apple" strings): neither the first one nor
-    /// anything after it is taken for an environment that was read.
-    private static let kernelStrings: [[UInt8]] = ["ptr_munge=", "main_stack=", "executable_path=", "executable_file=", "dyld_file=",
-        "executable_cdhash=", "executable_boothash=", "th_port=", "security_config=", "stack_guard=", "malloc_entropy=",
-        "arm64e_abi=", "has_sec_transition=", "pfz=", "dyld_flags=", "executable_TeamID=", "apple_fd="].map { Array($0.utf8) }
+    /// Variables every real process has (one is enough), and CLAUDE_CONFIG_DIR: an entry named so is an environment that was read.
+    /// None is a name of the kernel's own strings that follow the environment (ptr_munge=, executable_path=, th_port=…).
+    private static let everyProcess: [[UInt8]] = ["PATH=", "HOME=", "USER=", "LOGNAME=", "SHELL=", "TMPDIR=", "LANG=",
+                                                  "CLAUDE_CONFIG_DIR="].map { Array($0.utf8) }
 
     /// A process's arguments ([] when they can't be read).
     static func arguments(of pid: pid_t) -> [String] { launch(of: pid)?.args ?? [] }

@@ -432,7 +432,8 @@ do {
     check(Processes.parse(emptyFirst, size: emptyFirst.count) == nil && Processes.parse(spaceFirst, size: spaceFirst.count) == nil
           && Processes.parse(Array(raw.prefix(24)), size: 24) == nil,
           "an empty or space-led first argument, or arguments cut short: not read (so hidden, never taken for not Claude)")
-    // whether the environment was read: an entry after argv; none (the buffer ends, or NULs, or only the kernel's own strings) isn't
+    // whether the environment was read: an entry after argv named like PATH, HOME…; none (the buffer ends, NULs, only the kernel's
+    // own strings) isn't
     let argvOnly = procargs("/x/claude", ["claude", "-p"], [])
     let argvEnd = Array(argvOnly.dropLast())                         // ends right after argv's last NUL
     let argvApple = procargs("/x/claude", ["claude", "-p"], ["ptr_munge=", "main_stack=x", "executable_file=0x1,0x2"])
@@ -445,15 +446,31 @@ do {
           "env not read: argv then an empty entry, the buffer ending after argv, only the kernel's own strings after argv")
     check(Processes.parse(noConfig, size: noConfig.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: true),
           "env read without CLAUDE_CONFIG_DIR: read, no folder (the default folder's)")
-    // the first kernel string ends what counts as read, with no empty entry in between: nothing after it makes the environment read
-    let appleThenNew = procargs("/x/claude", ["claude"], ["executable_path=/x/claude", "subsystem_root_path=/s", "CLAUDE_CONFIG_DIR=/c"])
+    // read only on positive evidence (a variable every process has): kernel strings, listed or new, never make it read
+    let unlistedOnly = procargs("/x/claude", ["claude"], ["subsystem_root_path=/s"])
+    let appleThenNew = procargs("/x/claude", ["claude"], ["executable_path=/x/claude", "subsystem_root_path=/s"])
+    let parsedUnlisted = Processes.parse(unlistedOnly, size: unlistedOnly.count)
+    check(parsedUnlisted == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: false)
+          && Processes.parse(appleThenNew, size: appleThenNew.count)?.environmentRead == false
+          && parsedUnlisted.map { Processes.Entry(pid: 9012, uid: getuid(), ruid: getuid(), name: "claude", launch: $0).unknown } == true,
+          "env not read: argv then one unlisted key only, or a listed kernel string then an unlisted one: unknown, never the default folder")
     let envThenApple = procargs("/x/claude", ["claude"], ["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/c", "ptr_munge=", "main_stack=x", "some_new_key=1"])
-    let parsedAppleThenNew = Processes.parse(appleThenNew, size: appleThenNew.count)
-    check(parsedAppleThenNew?.environmentRead == false
-          && parsedAppleThenNew.map { Processes.Entry(pid: 9012, uid: getuid(), ruid: getuid(), name: "claude", launch: $0).unknown } == true,
-          "env not read: argv, a listed kernel string, then an unlisted one (a CLAUDE_CONFIG_DIR among them doesn't make it read): unknown")
-    check(Processes.parse(envThenApple, size: envThenApple.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: "/c", environmentRead: true),
-          "env read: argv, the environment, then the kernel's strings with no empty entry between")
+    let pathThenKernel = procargs("/x/claude", ["claude"], ["PATH=/usr/bin", "ptr_munge=", "main_stack=x"])
+    let pfzThenPath = procargs("/x/claude", ["claude"], ["pfz=1", "PATH=/usr/bin"])
+    check(Processes.parse(envThenApple, size: envThenApple.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: "/c", environmentRead: true)
+          && Processes.parse(pathThenKernel, size: pathThenKernel.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: true)
+          && Processes.parse(pfzThenPath, size: pfzThenPath.count)?.environmentRead == true,
+          "env read: the environment then kernel strings (no empty entry between); PATH then kernel strings; pfz=1 then PATH")
+    // an empty entry inside the environment doesn't end it
+    let emptyInside = procargs("/x/claude", ["claude"], ["PATH=/usr/bin", "", "CLAUDE_CONFIG_DIR=/x"])
+    check(Processes.parse(emptyInside, size: emptyInside.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: "/x", environmentRead: true),
+          "env read: PATH, an empty entry, CLAUDE_CONFIG_DIR=/x keeps the folder /x")
+    // a buffer that cuts an entry off: the folder is unknown (a cut CLAUDE_CONFIG_DIR isn't taken, nor its absence)
+    let whole = procargs("/x/claude", ["claude"], ["PATH=/usr/bin", "CLAUDE_CONFIG_DIR=/x/long"])
+    let cutValue = Array(whole.dropLast(4))                          // ends inside the value, at "/x/lo", no NUL
+    check(Processes.parse(whole, size: whole.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: "/x/long", environmentRead: true)
+          && Processes.parse(cutValue, size: cutValue.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: false),
+          "a CLAUDE_CONFIG_DIR cut off by the buffer's end: not taken, the environment counts as not read (folder unknown)")
     // a variable named like a kernel key before CLAUDE_CONFIG_DIR doesn't hide the folder (else the default folder's: fail open)
     let kernelNamedVar = procargs("/x/claude", ["claude"], ["PATH=/usr/bin", "pfz=1", "CLAUDE_CONFIG_DIR=/x"])
     check(Processes.parse(kernelNamedVar, size: kernelNamedVar.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: "/x", environmentRead: true),
