@@ -710,19 +710,28 @@ enum SessionsBackup {
     struct MCPServer: Equatable {
         var name: String
         var runs: String                    // its command line, one line, cut to `runsWidth` (… at the end); or "a remote server (…)"
-        var full: String = ""               // the whole command line, one line (the line's tooltip)
+        var full: String = ""               // the whole command line, one line (the line's tooltip), cut at 4000 characters with …
         var env: [String] = []              // the names of the environment variables it sets, sorted: never a value
-        var flags: [String] = []            // why it needs a look first: a shell or interpreter, a loader or preload variable
+        var flags: [String] = []            // why it needs a look first: a shell, interpreter or launcher, a loader variable, a hidden key
     }
     static let runsWidth = 120
 
-    /// Programs that run whatever their arguments say (a shell, an interpreter, a launcher): a server that is one is flagged.
+    /// Programs that run whatever their arguments say (a shell, an interpreter, a launcher that runs another program or package): a
+    /// server that is one is flagged. Lowercase: the disk is case-insensitive, so /bin/SH and Python3 are the same programs.
     static let interpreters: Set<String> = ["sh", "bash", "zsh", "dash", "ksh", "mksh", "fish", "csh", "tcsh", "env", "xargs", "nohup", "sudo",
-                                            "exec", "eval", "open", "osascript", "node", "nodejs", "deno", "bun", "ruby", "irb", "perl", "php",
-                                            "lua", "tclsh", "wish", "pwsh", "powershell", "Rscript", "java", "swift", "python", "pythonw"]
+                                            "exec", "eval", "open", "osascript", "node", "nodejs", "deno", "bun", "bunx", "ruby", "irb", "perl", "php",
+                                            "lua", "tclsh", "wish", "pwsh", "powershell", "rscript", "java", "swift", "python", "pythonw",
+                                            "npx", "npm", "pnpm", "yarn", "uv", "uvx", "pipx", "docker", "arch", "caffeinate", "nice", "time",
+                                            "timeout", "command", "xcrun", "script", "stdbuf", "setsid"]
+    /// A command word as a program's name: surrounding quotes off, its last path part, lowercased.
+    static func programName(_ word: String) -> String {
+        var w = Substring(word)
+        while let f = w.first, let l = w.last, w.count >= 2, f == l, f == "\"" || f == "'" { w = w.dropFirst().dropLast() }
+        return (String(w) as NSString).lastPathComponent.lowercased()
+    }
     static func isInterpreter(_ program: String) -> Bool {
-        let base = (program as NSString).lastPathComponent
-        return interpreters.contains(base) || base.hasPrefix("python") || base.hasPrefix("ruby") || base.hasPrefix("perl") || base.hasPrefix("node")
+        let base = programName(program)
+        return interpreters.contains(base) || ["python", "ruby", "perl", "node"].contains { base.hasPrefix($0) }
     }
     /// Environment variables that change what a program loads or runs before its own code: a server that sets one is flagged.
     static func isLoaderVariable(_ name: String) -> Bool {
@@ -731,10 +740,10 @@ enum SessionsBackup {
             "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS", "CLASSPATH", "GEM_PATH", "GEM_HOME"].contains(name)
     }
 
-    /// The MCP servers a config names, by name, with what each runs: its whole command line (the command and its arguments; a
-    /// NAME=value word shows as NAME=… and an argument the key scan recognises as ‹a key›), the names of the environment variables it
-    /// sets (never a value), and a flag for a shell or interpreter or a loader variable; or "a remote server" for one reached by URL
-    /// (the URL and headers can hold a token).
+    /// The MCP servers a config names, by name, with what each runs: its whole command line (the command and its arguments, each in
+    /// full, but for the NAME=value words before the program, which set its environment and show as NAME=…, and an argument the key
+    /// scan recognises, ‹a key›), the names of the environment variables it sets (never a value), and a flag for a shell, interpreter
+    /// or launcher, a loader variable or a hidden key; or "a remote server" for one reached by URL (the URL and headers can hold a token).
     static func mcpServers(_ d: Data) -> [MCPServer] {
         guard let j = (try? JSONSerialization.jsonObject(with: d)) as? [String: Any], let s = j["mcpServers"] as? [String: Any] else { return [] }
         /// NAME=value: an environment assignment (its value never shown).
@@ -755,18 +764,26 @@ enum SessionsBackup {
                 if let n = a as? NSNumber { return n.stringValue }
                 return "…"
             }
-            var program: String?
-            let shown = (commandWords + argWords).map { w -> String in
-                if let n = assignment(w) { env.insert(oneLine(n, max: 60)); return n + "=…" }
-                if program == nil, !commandWords.isEmpty { program = w }
-                if !SecretScan.scan(Data(w.utf8)).isEmpty { return "‹a key›" }
-                return w.contains(" ") || w.isEmpty ? "\"" + w + "\"" : w
+            let words = commandWords + argWords
+            var shown: [String] = []
+            // only the command string's leading NAME=value words set the environment ("API_KEY=… npx …"): name shown, value never
+            var i = 0
+            while i < commandWords.count, let n = assignment(words[i]) { env.insert(oneLine(n, max: 60)); shown.append(n + "=…"); i += 1 }
+            let program: String? = commandWords.isEmpty || i >= words.count ? nil : words[i]
+            // every other word in full (an `env` program's own NAME=value arguments too, counted by name), but a key the scan recognises
+            var keyHidden = false, envArgs = program.map { programName($0) == "env" } ?? false
+            for (k, w) in words.enumerated().dropFirst(i) {
+                if k > i, envArgs { if let n = assignment(w) { env.insert(oneLine(n, max: 60)) } else { envArgs = false } }
+                if !SecretScan.scan(Data(w.utf8)).isEmpty { keyHidden = true; shown.append("‹a key›"); continue }
+                shown.append(w.contains(" ") || w.isEmpty ? "\"" + w + "\"" : w)
             }
             var flags: [String] = []
-            if let p = program, isInterpreter(p) { flags.append("runs \(oneLine((p as NSString).lastPathComponent, max: 40)), a shell or interpreter: its arguments are what it runs") }
+            if let p = program, isInterpreter(p) { flags.append("runs \(oneLine(programName(p), max: 40)), a shell, interpreter or launcher: its arguments are what it runs") }
             let loaders = env.filter(isLoaderVariable).sorted()
             if !loaders.isEmpty { flags.append("sets \(loaders.prefix(3).joined(separator: ", "))\(loaders.count > 3 ? ", …" : ""), which \(loaders.count == 1 ? "changes" : "change") what a program loads") }
-            let full = oneLine(shown.joined(separator: " "), max: 4000)
+            if keyHidden { flags.append("an argument looks like a key (shown as ‹a key›): check where it came from") }
+            let whole = oneLine(shown.joined(separator: " "), max: 4001)
+            let full = whole.count > 4000 ? String(whole.prefix(3999)) + "…" : whole
             let runs: String
             if program != nil { runs = full.count > runsWidth ? String(full.prefix(runsWidth - 1)) + "…" : full }
             else { runs = o?["url"] != nil ? "a remote server (its address isn't shown)" : "nothing it names" }

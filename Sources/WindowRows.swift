@@ -95,11 +95,14 @@ enum WindowWords {
         return out
     }
 
-    /// The row's line while the list is closed, when a server runs a shell or interpreter or sets a loader variable.
+    /// The row's line while the list is closed, when a server runs a shell, interpreter or launcher, sets a loader variable or holds
+    /// an argument that looks like a key.
     static func flagged(_ cp: SessionsRestore.ConfigPlan) -> String? {
         let k = cp.servers.filter { !$0.flags.isEmpty }.count
         guard k > 0 else { return nil }
-        return "\(n(k, "server runs", "servers run")) a shell or interpreter or \(k == 1 ? "sets" : "set") a variable that changes what a program loads: look at what \(k == 1 ? "it runs" : "they run") before adding \(k == 1 ? "it" : "them")."
+        return k == 1
+            ? "1 server needs a look before you add it: it runs a shell, interpreter or launcher, sets a loader variable, or holds an argument that looks like a key."
+            : "\(k) servers need a look before you add them: each runs a shell, interpreter or launcher, sets a loader variable, or holds an argument that looks like a key."
     }
 
     /// What Undo says (SessionsRestore.undo) about a config the window changed since it was added.
