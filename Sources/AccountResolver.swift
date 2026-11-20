@@ -36,13 +36,17 @@ enum AccountResolver {
         // stale: its numbers are dropped (Store.status) until a read for the folder's account, and the folder's account is
         // the one Claude Code is on (for the rows and lines)
         // (every "the same account" below is the one owner rule, AccountIdentity.sameAccount: a reading is known by its
-        // address only, so its address decides; the Claude app's account by its id only, `byID`)
-        let stale = loginEmail.map { l in code?.email.map { !sameAddress($0, l) } ?? false } ?? false
+        // address only, so its address decides; the Claude app's account by its id only, `byID`).
+        // A folder record with an id but no address (nil, as with an empty one) can't be compared with a reading's address:
+        // whose the numbers are isn't known, so the reading is stale too (never the profile's numbers), and a stale reading's
+        // address never names the folder's account (`readName`)
+        let stale = loginEmail.map { l in code.map { !sameAddress($0.email ?? "", l) } ?? false } ?? false
+        let readName = stale ? nil : loginEmail
         let codeLabel = (stale ? code?.email : loginEmail) ?? code?.email ?? code.map { "account \($0.account.prefix(8))" }
         let owner = code.flatMap { c in accounts.first { $0.id != e.id && ($0.seat.map { c.sameAccount($0) } ?? false) } }
         // without the app: Claude Code's folder account is the active one (its address from its record, else the numbers')
         // (ids as AccountID keeps them: one normal form, one comparison)
-        var r = ResolvedAccount(account: code.map { AccountID.normal($0.account) }, email: code?.email ?? loginEmail, fromApp: false,
+        var r = ResolvedAccount(account: code.map { AccountID.normal($0.account) }, email: code?.email ?? readName, fromApp: false,
                                 numbersFor: loginEmail, differs: false, line: nil, lit: code != nil, clash: owner?.name, at: now,
                                 codeAccount: code.map { AccountID.normal($0.account) }, codeName: codeLabel, readStale: stale ? true : nil,
                                 clashID: owner?.id)
@@ -53,7 +57,7 @@ enum AccountResolver {
         if e.claudeWindow, app.state == .known, let id = app.account.map(AccountID.normal) {
             let mine = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { byID(id).sameAccount(known($0)) }
             r.account = id
-            r.email = mine?.email ?? (code.map { byID(id).sameAccount(known($0)) } == true ? (code?.email ?? loginEmail) : nil) ?? names[id]
+            r.email = mine?.email ?? (code.map { byID(id).sameAccount(known($0)) } == true ? (code?.email ?? readName) : nil) ?? names[id]
             r.fromApp = true
             r.lit = true
         }

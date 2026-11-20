@@ -3185,6 +3185,37 @@ do {
     check(oneEmpty.readStale == true, "one address empty, the other not: stale, as before")
     check(AccountResolver.sameAddress("", "") && !AccountResolver.sameAddress("", "x@example.com") && AccountResolver.sameAddress("X@example.com", "x@example.com"),
           "sameAddress: empty ones by the plain comparison, else the address-only rule")
+    // Claude Code's record names an id but no address (ClaudeFiles.Record.seat keeps a missing emailAddress as nil), and the
+    // reading names only its address (the profile endpoint's, ReaderMachine.numbersOwner): whose the numbers are isn't
+    // known, so they are stale (shown nowhere), never the profile's, and the reading's address never names the folder's account
+    let idOnly = Seat(account: h2.account, organization: h2.organization, email: nil), foreign = "hex-9@example.com"
+    func shownWeekly(_ r: ResolvedAccount) -> Double? {
+        var rec = IconStatus(state: "ok"); rec.loginEmail = r.numbersFor; rec.numbersOwner = r.numbersFor; rec.weekly = 40
+        rec.updatedAt = t0; rec.resolved = r
+        _ = Store.writeStatus(me.id, rec)
+        return Store.status(for: me, now: t0)?.weekly
+    }
+    let lone = AccountResolver.resolve(me, among: [me], app: .unknown, code: idOnly, loginEmail: foreign, names: [:], now: t0)
+    check(lone.readStale == true && !lone.differs && lone.email == nil && lone.account == h2.account && lone.numbersFor == foreign
+          && lone.codeName == "account \(h2.account.prefix(8))" && shownWeekly(lone) == nil
+          && AccountView.of(Store.status(for: me, now: t0)).label == "account \(h2.account.prefix(8))",
+          "folder {id, no address} + another account's reading, no app: stale, numbers shown nowhere, never labelled with the reading's address")
+    let appOnIt = AccountResolver.resolve(me, among: [me], app: appH2, code: idOnly, loginEmail: foreign, names: [:], now: t0)
+    check(appOnIt.readStale == true && !appOnIt.differs && appOnIt.fromApp && appOnIt.email == h2.email && shownWeekly(appOnIt) == nil,
+          "…the Claude app on the folder's account: stale too, no split with the reading's numbers, numbers shown nowhere")
+    let mute = AccountResolver.resolve(me, among: [me], app: .unknown, code: idOnly, loginEmail: nil, names: [:], now: t0)
+    check(mute.readStale == nil && mute.email == nil && mute.codeName == "account \(h2.account.prefix(8))",
+          "folder {id, no address} + a reading that names no account (the status line): not stale, as before")
+    // unchanged: ids and addresses on the folder's side (the reading's address decides), and no folder seat at all
+    let both = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: "HEX-2@example.com", names: [:], now: t0)
+    check(both.readStale == nil && !both.differs && both.email == h2.email && shownWeekly(both) == 40,
+          "folder {id, address} + a reading for that address: the profile's numbers, as before")
+    let moved = AccountResolver.resolve(me, among: [me], app: .unknown, code: h2, loginEmail: foreign, names: [:], now: t0)
+    check(moved.readStale == true && moved.email == h2.email && moved.codeName == h2.email && shownWeekly(moved) == nil,
+          "folder {id, address} + another address's reading: stale, as before")
+    let noSeat = AccountResolver.resolve(me, among: [me], app: .unknown, code: nil, loginEmail: foreign, names: [:], now: t0)
+    check(noSeat.readStale == nil && noSeat.email == foreign && noSeat.numbersFor == foreign && shownWeekly(noSeat) == 40,
+          "no folder seat, a reading's address only: the reading names the account, as before")
     // the lists' helpers: the record names ids and addresses, no organisation
     let v = AccountView(label: h1.email, numbersOwner: h2.email, line: nil, lit: true, clash: nil, account: h1.account, differs: true, codeAccount: h2.account)
     check(v.isActive(StandbyAccount(email: "", seat: upper(h1), id: "a")) && v.isActive(StandbyAccount(email: "HEX-1@example.com", id: "b"))
