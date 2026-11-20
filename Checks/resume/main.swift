@@ -157,6 +157,10 @@ if role == "b" {
         check(oldText != newText && r.sessions.first?.lines == 4, "B (3): 4 lines re-pointed (3 in the transcript, 1 in its subagent's): \(r.sessions.first?.lines ?? -1)")
         check(read(newDir + "/\(S3)/subagents/agent-a1.jsonl") == oldSub.replacingOccurrences(of: wt, with: new) && fm.contents(atPath: newDir + "/\(S3)/tool-results/toolu_01.txt") == oldTool,
               "B (3): its subagent's cwd rewritten; a tool result copied as it is")
+        check(read(newDir + "/\(S3)/archived.json") == #"{"archived":true,"at":"2026-11-18T09:00:00.000Z","by":"user"}"#,
+              "B (3): its archive record went with it (the import carried it, the pick moved it): the session stays archived")
+        check(read(proj + "/" + enc(wt) + "/connector-downloads/brief.txt") == "A connector's download, made up.\n" && !fm.fileExists(atPath: newDir + "/connector-downloads"),
+              "B (3): the project's connector downloads came with the import and stay under the old name (the project's, not the session's)")
         check(mtime(newDir + "/\(S3).jsonl") == oldMtime, "B (3): the new transcript keeps the old one's date (Claude Code's clean-up sees its real age)")
         check(read(newDir + "/memory/MEMORY.md") == "# garden notes\n" && fm.fileExists(atPath: proj + "/" + enc(wt) + "/memory/MEMORY.md"), "B (3): the project's memory copied to the new name (the old stays)")
         let ej = json(fm.contents(atPath: entryPath))
@@ -372,6 +376,9 @@ MainActor.assumeIsolated {
     write("\(cc)/projects/\(enc(wt))/\(S3).jsonl", s3Lines(wt, old).joined(separator: "\n") + "\n")
     write("\(cc)/projects/\(enc(wt))/\(S3)/subagents/agent-a1.jsonl", #"{"type":"user","isSidechain":true,"cwd":"\#(wt)","message":{"content":"sub"}}"# + "\n")
     write("\(cc)/projects/\(enc(wt))/\(S3)/tool-results/toolu_01.txt", "output naming \(wt)\n")
+    // Claude Code 2.1.326: the session's archive record, and what a connector fetched for the project
+    write("\(cc)/projects/\(enc(wt))/\(S3)/archived.json", #"{"archived":true,"at":"2026-11-18T09:00:00.000Z","by":"user"}"#)
+    write("\(cc)/projects/\(enc(wt))/connector-downloads/brief.txt", "A connector's download, made up.\n")
     write("\(cc)/projects/\(enc(wt))/memory/MEMORY.md", "# garden notes\n")
     write("\(scope)/local_\(sid(13)).json", #"{"sessionId":"local_\#(sid(13))","cliSessionId":"\#(S3)","title":"Fix the sign-up form","cwd":"\#(wt)","originCwd":"\#(old)","worktreePath":"\#(wt)","worktreeName":"wt-forms","branch":"claude/wt-forms","sourceBranch":"feature/forms","model":"opus","isArchived":false}"#)
     // (over 200 characters: Claude Code's own shortened name, or the file name would be too long to make)

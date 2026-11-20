@@ -1906,6 +1906,11 @@ do {
     let wdS = expand("~/Library/Application Support/Claude-swwin")
     put("\(wdS)/claude-code-sessions/\(u1.account)/\(u1.organization!)/local_\(uuid(901)).json", #"{"sessionId":"local_\#(uuid(901))"}"#)
     sign("~/.claude-swwin", u1)
+    // an archived session of the profile's folder (Claude Code 2.1.326's archive record beside its transcript)
+    let archivedS = expand("~/.claude-swwin/projects/-sw/\(uuid(901))/archived.json")
+    let archivedBody = #"{"archived":true,"at":"2026-11-18T09:00:00.000Z","by":"user"}"#
+    put(expand("~/.claude-swwin/projects/-sw/\(uuid(901)).jsonl"), #"{"type":"user","cwd":"/sw","sessionId":"\#(uuid(901))"}"# + "\n")
+    put(archivedS, archivedBody)
     let kS = StandbyAccount(email: u2.email!, seat: u2, id: "k2")
     var sw = profile("swwin", "~/.claude-swwin", u1, standby: [kS])
     sw.desktop = .separate; sw.desktopDataDir = wdS
@@ -1920,6 +1925,8 @@ do {
     waitFor(15) { rS.phase == .waiting || failed(rS) }
     check(rS.phase == .waiting && rS.receipt?.closedWindow == true && !ClaudeWindow.isOpen(Account(sw)) && winOpened.isEmpty,
           "a switch that moves: the window closed for it, the receipt says so: \(rS.phase)")
+    check((try? String(contentsOfFile: archivedS, encoding: .utf8)) == archivedBody,
+          "…the profile's archived session stays archived: a switch moves the window's entries only, its transcripts and their folders stay where they are")
     sign("~/.claude-swwin", u3)
     waitFor(5) { rS.look(); return rS.phase != .waiting }
     spin(0.3)

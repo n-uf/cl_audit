@@ -48,11 +48,15 @@ func write(_ path: String, _ text: String) {
     try? fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
     fm.createFile(atPath: path, contents: Data(text.utf8))
 }
+/// A session's archive record (Claude Code 2.1.326: archived, at, by) and a file a connector fetched for a project: made-up values.
+let archivedRecord = #"{"archived":true,"at":"2026-11-18T09:00:00.000Z","by":"user"}"#
+let connectorFile = "A connector's download, made up.\n"
 func files(_ dir: String) -> [String] {
     var out: [String] = []
     if let e = fm.enumerator(atPath: dir) { for case let r as String in e { var isDir: ObjCBool = false; if fm.fileExists(atPath: dir + "/" + r, isDirectory: &isDir), !isDir.boolValue { out.append(r) } } }
     return out.sorted()
 }
+func read(_ path: String) -> String? { fm.contents(atPath: path).map { String(decoding: $0, as: UTF8.self) } }
 func everything(_ dir: String) -> [String] { ((fm.enumerator(atPath: dir)?.allObjects as? [String]) ?? []).sorted() }
 func json(_ d: Data?) -> [String: Any]? { d.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } }
 func holds(_ dir: String, _ s: String) -> [String] { files(dir).filter { (fm.contents(atPath: dir + "/" + $0) ?? Data()).range(of: Data(s.utf8)) != nil } }
@@ -135,6 +139,11 @@ if role == "b" {
         check(fm.fileExists(atPath: expand("~/.claude-work/projects/-w-project/\(sid(110)).jsonl")) && !fm.fileExists(atPath: expand("~/.claude-work/CLAUDE.md"))
               && !fm.fileExists(atPath: expand("~/.claude-work/settings.json")) && !fm.fileExists(atPath: expand("~/Library/Application Support/Claude-work/claude_desktop_config.json")),
               "B: the transcripts are in; setup (CLAUDE.md, settings.json) and the MCP settings are not (left out by default)")
+        let archivedHere = expand("~/.claude-work/projects/-w-project/\(sid(110))/archived.json")
+        check(read(archivedHere) == archivedRecord && read(expand("~/.claude-work/projects/-w-project/connector-downloads/notes/brief.txt")) == connectorFile,
+              "B: the archived session stays archived (its archived.json came with it, byte for byte), and the project's connector downloads came too")
+        // (the session was unarchived here since: a second import never writes over that)
+        write(archivedHere, #"{"archived":false,"at":"2026-11-19T10:00:00.000Z","by":"user"}"#)
         // no sign-in anywhere, nothing of the Keychain, no Dock
         let signIns = everything(home).filter { let n = ($0 as NSString).lastPathComponent.lowercased(); return n.hasPrefix(".claude.json") || n.contains("credential") }
         // (the staged backup in cl_audit's own folder keeps the image's settings.json whole, as every import's does: that is how it can be
@@ -154,10 +163,16 @@ if role == "b" {
                 let st = try! SessionsImport.materialize(o2, part: part, target: id)
                 let p = SessionsRestore.plan(SessionsRestore.Target(e), st.backup, addTasks: true)
                 check(p.count == 0 && p.backEntries > 0 && (!p.taskPlan.present || p.taskPlan.status == .here), "B: \(e.name): nothing to write the second time (entries back, task files here)")
+                if e.name == "Work" {
+                    check(p.changed.contains { $0.hasSuffix("\(sid(110))/archived.json") }, "B: Work: the archive record that changed here is listed as changed, not written: \(p.changed)")
+                }
             }
             SessionsImport.discard(o2.work)
         } else { check(false, "B: the move file opens a second time") }
-        check(everything(home).filter { !$0.contains("usage-n-uf") } == before2, "B: …and nothing outside cl_audit's own folder changed")
+        check(everything(home).filter { !$0.contains("usage-n-uf") } == before2 && read(archivedHere)?.contains("\"archived\":false") == true,
+              "B: …and nothing outside cl_audit's own folder changed (the session unarchived here stays so)")
+        // (Undo takes back only what is as the import wrote it: a record changed since would stay, so the import's bytes go back first)
+        write(archivedHere, archivedRecord)
 
         // Undo: the profiles stay while their sessions' import is in place; then everything goes, exactly
         let early = try! SessionsMove.undo(r.id)
@@ -243,6 +258,9 @@ MainActor.assumeIsolated {
     write("\(wc)/projects/-w-project/\(sid(110)).jsonl", #"{"type":"user","cwd":"/w/project","text":"hello \#(a1)"}"# + "\n")
     write("\(wc)/projects/-w-project/\(sid(111)).jsonl", #"{"type":"user","cwd":"/w/project","text":"standby"}"# + "\n")
     write("\(hc)/projects/-w-home/\(sid(112)).jsonl", #"{"type":"user","cwd":"/w/home","text":"home"}"# + "\n")
+    // Claude Code 2.1.326's own archive record in the session's folder, and what a connector fetched for the project
+    write("\(wc)/projects/-w-project/\(sid(110))/archived.json", archivedRecord)
+    write("\(wc)/projects/-w-project/connector-downloads/notes/brief.txt", connectorFile)
     for f in files(wc + "/projects") { try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3 * 86400)], ofItemAtPath: wc + "/projects/" + f) }
     for f in files(hc + "/projects") { try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-3 * 86400)], ofItemAtPath: hc + "/projects/" + f) }
     // this Mac's settings: Silver, emails hidden, 7 backups kept, backups in a folder of the home
@@ -281,8 +299,16 @@ MainActor.assumeIsolated {
               "export (move): no fingerprint anywhere; the MCP settings as they are (in the image)")
         let rec = json(fm.contents(atPath: "\(t)/profiles/p1/records/profile.json"))
         check((rec?["seat"] as? [String: Any])?["account"] as? String == sid(1), "export (move): the profile's record keeps its real account id")
+        check(read("\(t)/profiles/p1/transcripts/-w-project/\(sid(110))/archived.json") == archivedRecord
+              && read("\(t)/profiles/p1/transcripts/-w-project/connector-downloads/notes/brief.txt") == connectorFile,
+              "export (move): the session's archive record goes with it, and the project's connector downloads are in it")
         SessionsImport.discard(o.work)
     } else { check(false, "export (move): its own import opens it") }
+    // which files go together: a session's own folder (its archive record) with the session; connector downloads are the project's
+    check(SessionsExport.unit(of: "transcripts/-w-project/\(sid(110))/archived.json") == SessionsExport.Unit(project: "-w-project", id: sid(110), isSession: true)
+          && SessionsExport.unit(of: "transcripts/-w-project/connector-downloads/notes/brief.txt")
+             == SessionsExport.Unit(project: "-w-project", id: "connector-downloads/notes/brief.txt", isSession: false),
+          "export: archived.json is its session's; a connector download is a file of its project, each standing alone (never taken for a session)")
 
     // ---- every other export: as before (fingerprints, the leak check), and cl_audit's profiles only in an image, fingerprinted
     var plainJob = SessionsExport.Job(parts: [part(work)], keys: .keep, password: pw, destination: URL(fileURLWithPath: out + "/plain.dmg"), rootName: "plain-image", place: bplace)
