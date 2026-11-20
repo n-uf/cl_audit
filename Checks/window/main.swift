@@ -241,7 +241,8 @@ MainActor.assumeIsolated {
         "u-quoted": ["command": "E2=\"my secret\" npx x"],
         "v-attached": ["command": "env", "args": ["-P/data", "F2=z1", "prog"]],
         "w-escaped": ["command": "G2=\"a\\\" z2\" H2=b\\ z3 npx x"],
-        "x-abbrev": ["command": "env", "args": ["--unse", "X", "I2=z4", "--spl", "J2=z5 prog"]]]]))
+        "x-abbrev": ["command": "env", "args": ["--unse", "X", "I2=z4", "--spl", "J2=z5 prog"]],
+        "y-dash": ["command": "env", "args": ["-", "K2=z6", "prog"]]]]))
     let eo = Dictionary(uniqueKeysWithValues: envOptions.map { ($0.name, $0) })
     let eoText = "\(envOptions)"
     check(eo["k-i"]?.runs == "env -i A=… prog" && eo["l-u"]?.runs == "env -u X B=… prog" && eo["m-S"]?.runs == "env -S \"…\""
@@ -249,8 +250,8 @@ MainActor.assumeIsolated {
           && eo["q-S-opts"]?.runs == "env -S \"…\"" && eo["r-cluster"]?.runs == "env -vS…" && eo["s-cluster2"]?.runs == "env -iS…"
           && eo["t-argv0"]?.runs == "env -a name C2=… prog" && eo["u-quoted"]?.runs == "E2=… npx x"
           && eo["v-attached"]?.runs == "env -P/data F2=… prog" && eo["w-escaped"]?.runs == "G2=… H2=… npx x"
-          && eo["x-abbrev"]?.runs == "env --unse X I2=… --spl \"…\""
-          && ["x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "y1", "y2", "y3", "secret", "z1", "z2", "z3", "z4", "z5"].allSatisfy { !eoText.contains($0) }
+          && eo["x-abbrev"]?.runs == "env --unse X I2=… --spl \"…\"" && eo["y-dash"]?.runs == "env - K2=… prog"
+          && ["x1", "x2", "x3", "x4", "x5", "x6", "x7", "x8", "x9", "y1", "y2", "y3", "secret", "z1", "z2", "z3", "z4", "z5", "z6"].allSatisfy { !eoText.contains($0) }
           && envOptions.filter { !["u-quoted", "w-escaped"].contains($0.name) }.allSatisfy { $0.flags.contains(launcherFlag("env")) }
           && eo["u-quoted"]?.flags == [launcherFlag("npx")] && eo["u-quoted"]?.env == ["E2"],
           "config: env -i, -u NAME, -S \"…\", a packed -S, quoted/dotted/dashed names: no value shown, env flagged: \(envOptions.map { "\($0.name): \($0.runs) \($0.flags)" })")

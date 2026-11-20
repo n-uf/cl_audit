@@ -861,6 +861,8 @@ enum SessionsBackup {
                         if name == w, abbrev("--unset") || abbrev("--chdir") || abbrev("--argv0") { operandNext = true }
                         shown.append(assignmentMasked(w) ?? w); continue
                     }
+                    // a bare "-" is env's old spelling of -i: an option like the rest (masking goes on)
+                    if w == "-" { shown.append(w); continue }
                     if w.hasPrefix("-"), w.count > 1 {
                         // a cluster of short options, read left to right: the first that takes a value (S its string; u, C, P, a
                         // a name or path) takes the rest of the word, or the next word when nothing is left
