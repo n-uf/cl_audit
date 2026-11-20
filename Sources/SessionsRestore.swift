@@ -27,7 +27,8 @@
 //   profile is unfinished;
 // - a receipt (restores/<id>/receipt.json) and a journal beside it (journal.jsonl, one line appended before a file is
 //   written and one after) say what was put back; Undo takes back exactly that, only files unchanged since, and
-//   finishing a stopped run starts from the same receipt.
+//   finishing a stopped run starts from the same receipt. Leave it as it is closes a stopped run's receipt as it stands,
+//   writing nothing, for when neither can complete.
 
 import CryptoKit
 import Foundation
@@ -813,6 +814,9 @@ enum SessionsRestore {
         var planned = 0                     // files to write when it started (more when it was finished later)
         var finished: Date?
         var undone: Date?
+        /// "Leave it as it is": the person closed it as it stands (nothing written, moved or deleted; Finish and Undo no
+        /// longer apply).
+        var leftAsIs: Date?
         var stopped: String?                // why it stopped, when it did
         var problems: [String] = []
         var sidebar: SidebarPlan?
@@ -834,13 +838,13 @@ enum SessionsRestore {
         var steps: [Step] = []              // from the journal
 
         private enum CodingKeys: String, CodingKey {
-            case id, profile, dataDir, codeDir, backup, backupPlace, target, started, planned, finished, undone, stopped, problems,
+            case id, profile, dataDir, codeDir, backup, backupPlace, target, started, planned, finished, undone, leftAsIs, stopped, problems,
                  sidebar, changed, changedCount, inUse, inUseCount, deletedCount, partialCount, undoLeft, importedFrom, sessionsAdded, entriesAdded,
                  setupAdded, configAdded, tasksAdded, tasksAddedCount, tasksRisky
         }
 
-        /// Wrote something and neither finished nor was undone: Undo applies, and so does finishing it.
-        var unfinished: Bool { undone == nil && finished == nil && !steps.isEmpty }
+        /// Wrote something and neither finished, was undone nor was left as it is: Undo applies, and so does finishing it.
+        var unfinished: Bool { undone == nil && finished == nil && leftAsIs == nil && !steps.isEmpty }
         var back: Int { steps.filter { $0.done && $0.kind != .dir }.count }
         /// Written down but not marked done and not checked (a window file while the window was open): probably there, and
         /// Undo takes it back if it is exactly what the step says; not counted in `back`.
@@ -897,11 +901,12 @@ enum SessionsRestore {
         store.ids().compactMap(load).sorted { $0.started > $1.started }
     }
 
-    /// Restores that wrote something and neither finished nor were undone, newest first (every profile's, or one's). Only
-    /// the headers of the others are read: the journal of a long finished restore is never folded for this.
+    /// Restores that wrote something and neither finished, were undone nor were left as they are, newest first (every
+    /// profile's, or one's). Only the headers of the others are read: the journal of a long finished restore is never folded
+    /// for this.
     static func unfinished(profile: String? = nil) -> [Receipt] {
         store.ids().compactMap(store.load)
-            .filter { $0.finished == nil && $0.undone == nil && (profile == nil || $0.profile == profile) }
+            .filter { $0.finished == nil && $0.undone == nil && $0.leftAsIs == nil && (profile == nil || $0.profile == profile) }
             .compactMap { load($0.id) }.filter(\.unfinished).sorted { $0.started > $1.started }
     }
 
@@ -996,7 +1001,7 @@ enum SessionsRestore {
         if let why = Flows.blocker(profile: t.profile, except: continuing, for: .restoring) { throw RestoreError(why) }
         var old: Receipt?
         if let cid = continuing {
-            guard let o = load(cid), o.profile == t.profile, o.backup == b.id, o.undone == nil else {
+            guard let o = load(cid), o.profile == t.profile, o.backup == b.id, o.undone == nil, o.leftAsIs == nil else {
                 throw RestoreError("The stopped restore's receipt isn't there, or isn't for this backup.")
             }
             // what the stop left: temp files of ours (only names with this receipt's prefix: always safe to take away, also
@@ -1231,6 +1236,8 @@ enum SessionsRestore {
         defer { lock.release() }
         guard var r = load(id) else { throw RestoreError("No receipt for that restore.") }
         guard r.undone == nil else { return r }
+        // left as it is: closed as it stands, so Undo no longer applies (as a switch left as it is)
+        if let left = r.leftAsIs { throw RestoreError("It was left as it is on \(SessionsBackup.dateWords(left)), so Undo no longer applies.") }
         // a default-profile move whose old profile was kept as a standby account or removed: not undone any more
         if let why = DefaultProfile.undoRefusal(receipt: id) { throw RestoreError(why) }
         if let why = Flows.blocker(profile: r.profile, except: r.id, for: .restoring) { throw RestoreError(why) }
@@ -1343,6 +1350,38 @@ enum SessionsRestore {
         return out
     }
 
+    // MARK: Leave it as it is
+
+    /// "Leave it as it is" on a restore or import that stopped half way (or was only partly undone), as on a switch
+    /// (SwitchEngine.leaveAsIs): for when neither Finish nor Undo can complete (its backup is gone, say). Nothing is written,
+    /// moved or deleted in the profile's folders: what it wrote stays as it is, and the backup isn't touched. The receipt is
+    /// closed as it stands, so it no longer holds up a switch, restore or import of the profile, and Finish and Undo no
+    /// longer apply to it. The temp files of ours a stop left beside the window's entries (only names with this receipt's
+    /// prefix) go, as when a restore finishes. Under the one lock (refused while a restore, import, move or switch runs),
+    /// and refused while a page's restore or Undo holds the window for it. The move to the default profile's own restore
+    /// is finished or undone with the move. What stays, in words ("" when there is nothing open to close).
+    @discardableResult
+    static func leaveAsIs(_ id: String, now: Date = Date()) throws -> String {
+        let lock: FlowLock.Held
+        do { lock = try Flows.takeLock() } catch { throw RestoreError("\(error)") }
+        defer { lock.release() }
+        guard var r = load(id), r.unfinished else { return "" }
+        if DefaultProfile.record(forReceipt: id) != nil {
+            throw RestoreError("This restore is the move to the default profile's: finish or undo the move in Settings ▸ General.")
+        }
+        if !r.dataDir.isEmpty, let m = SwitchMarker.current(FolderKey.canonical(r.dataDir)), m.profile == r.profile, m.standby.hasPrefix("restore-") {
+            throw RestoreError("A restore of this Claude window is under way (since \(SessionsBackup.dateWords(m.started))). Wait for it to end.")
+        }
+        r.leftAsIs = now
+        do { try store.save(r) } catch { throw RestoreError("The receipt couldn't be saved; nothing changed.") }
+        sweepTemps(r)
+        let imp = r.importedFrom != nil, n = r.back
+        let files = "\(n) \(n == 1 ? "file" : "files") it \(imp ? "added" : "put back") \(n == 1 ? "stays" : "stay") as \(n == 1 ? "it is" : "they are")"
+        let here = SessionsBackup.folder(profile: r.profile, place: URL(fileURLWithPath: r.backupPlace)).appendingPathComponent(r.backup).path
+        let backup = FileManager.default.fileExists(atPath: here) ? "the backup it read from stays as it was" : "its backup isn't there any more"
+        return "Left as it is: the \(files); nothing is undone, and \(backup)."
+    }
+
     /// What Undo says, once per folder, when the folder a restore wrote into isn't there any more: usually the profile's
     /// Claude Code folder was moved or renamed after the restore (the receipt names the path it had then).
     static func goneWords(_ folder: String, files n: Int) -> String {
@@ -1380,24 +1419,25 @@ enum SessionsRestore {
     /// receipts, and Undo again can finish them; they don't need the backup.
     static func halfUndoneRestores(of backup: String, profile: String, place: String) -> Int {
         let here = FolderKey.canonical(place)
-        return headers().filter { $0.backup == backup && $0.profile == profile && $0.undone == nil && $0.undoLeft > 0
+        return headers().filter { $0.backup == backup && $0.profile == profile && $0.undone == nil && $0.leftAsIs == nil && $0.undoLeft > 0
             && FolderKey.canonical($0.backupPlace) == here }.count
     }
 
     // MARK: old receipts
 
-    /// Finished and undone restores' receipts go when their backup is gone or after 30 days, whichever first. One that
-    /// wrote something and neither finished nor was undone is never taken away; nor one started in the last hour (it may
-    /// be running).
+    /// Finished, undone and left-as-it-is restores' receipts go when their backup is gone or after 30 days, whichever first.
+    /// One that wrote something and neither finished, was undone nor was left as it is is never taken away; nor one started
+    /// in the last hour (it may be running).
     static func prune(profile: String? = nil, now: Date = Date()) {
         let fm = FileManager.default
         for n in store.ids() {
             guard let h = store.load(n), profile == nil || h.profile == profile else { continue }
-            if h.finished == nil && h.undone == nil {
+            if h.finished == nil && h.undone == nil && h.leftAsIs == nil {
                 if !(load(n)?.steps.isEmpty ?? true) || now.timeIntervalSince(h.started) < 3600 { continue }
             }
-            if h.undone == nil, h.undoLeft > 0 { continue }          // half undone: Undo again still has files to take back (it needs no backup)
-            let end = h.finished ?? h.undone ?? h.started
+            // half undone: Undo again still has files to take back (it needs no backup); not once it was left as it is
+            if h.undone == nil, h.leftAsIs == nil, h.undoLeft > 0 { continue }
+            let end = h.finished ?? h.undone ?? h.leftAsIs ?? h.started
             // gone only when the place can be looked at (its folder for this profile is there) and the backup's own isn't: a
             // place on a disk that isn't plugged in says nothing
             let profileDir = SessionsBackup.folder(profile: h.profile, place: URL(fileURLWithPath: h.backupPlace)).path
@@ -1426,6 +1466,7 @@ extension SessionsRestore.Receipt {
         planned = try c.decodeIfPresent(Int.self, forKey: .planned) ?? 0
         finished = try c.decodeIfPresent(Date.self, forKey: .finished)
         undone = try c.decodeIfPresent(Date.self, forKey: .undone)
+        leftAsIs = try c.decodeIfPresent(Date.self, forKey: .leftAsIs)
         stopped = try c.decodeIfPresent(String.self, forKey: .stopped)
         problems = try c.decodeIfPresent([String].self, forKey: .problems) ?? []
         sidebar = try c.decodeIfPresent(SidebarPlan.self, forKey: .sidebar)

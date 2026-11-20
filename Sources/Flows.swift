@@ -6,7 +6,8 @@
 //
 // Who holds whom back:
 //   - a restore or import (and its Undo, and the folder pick that follows it) waits for another restore or import of the
-//     profile that stopped half way: its words stay as they were;
+//     profile that stopped half way: its words stay as they were; one left as it is (SessionsRestore.leaveAsIs, the
+//     Restore page) holds nothing back any more, for a switch either;
 //   - a switch waits for a restore or import of the profile that stopped half way, and for the move to the default profile
 //     when the profile is the new default or the one it came from, and says which one and where to finish or undo it;
 //   - a switch that stopped half way holds no restore or import back (an old one can't be finished or undone, and a new
