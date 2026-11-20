@@ -2508,9 +2508,9 @@ do {
         m.switchAccount()
         return (m, { asked })
     }
-    func move(_ m: QuickChatModel, _ r: IconStatus) {
+    func move(_ m: QuickChatModel, _ r: IconStatus, as p: AccountEntry? = nil) {
         _ = Store.writeStatus(e.id, r)
-        m.update(target: QuickChatTarget(e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
+        m.update(target: QuickChatTarget(p ?? e, now: now), level: QuickChatLevel(Usage.of(Store.status(for: e, now: now))), offer: { nil })
     }
     let fullWeek = rec(week: 100, weekIn: 3 * 3600)
     let (w1, asked1) = typedThenSwitch(fullWeek)
@@ -2527,10 +2527,43 @@ do {
     var sameNoOrg = rec(week: 10); sameNoOrg.resolved?.codeOrganization = nil
     move(w3, sameNoOrg)
     check(w3.turns.isEmpty && w3.note == nil && asked3() == 0, "the same seat, its organisation not recorded: no \"switched to\" the same account: \(w3.note ?? "none")")
+    // moved into a clash: Claude Code would answer on Other's u3 under a header naming u1, so nothing goes (the stand-in
+    // claude gets no turn), the wait ends, what was typed stays in the field, and the note names no account as answering
+    let clashNote = "Card's Claude Code folder is now on Other's account, so what you typed wasn't sent. Move it back to Card's own account on the Switch page."
+    func unsent(_ m: QuickChatModel, _ asked: () -> Int, _ words: String) -> Bool {
+        m.inClash && asked() == 0 && m.turns.isEmpty && m.field == "what's typed" && m.note == words
+            && m.note?.contains(AccountNames.short(u1.email!)) == false && m.note?.contains(AccountNames.short(u3.email!)) == false
+    }
     let (w2, asked2) = typedThenSwitch(fullWeek)
     move(w2, rec(week: nil, five: nil, login: u3.email, code: u3))
-    check(asked2() == 1 && w2.note?.contains(AccountNames.short(u1.email!)) == true && w2.note?.contains(AccountNames.short(u3.email!)) == false,
-          "moved into a clash: the note names what the header names (the profile's own u1), never the folder's u3: \(w2.note ?? "none")")
+    check(unsent(w2, asked2, clashNote), "moved into a clash (the app not deciding): nothing sent, the question kept, no address: \(w2.note ?? "none")")
+    // …and the clash clearing later (back on u1 with room, then on u2) sends nothing by itself; sending again goes, the note with it
+    move(w2, rec())
+    move(w2, rec(week: 10, login: u2.email, code: u2))
+    check(!w2.inClash && asked2() == 0 && w2.turns.isEmpty && w2.field == "what's typed" && w2.note == clashNote,
+          "the clash cleared later (u1, then u2): the wait is gone, nothing sent by itself, the question still there: \(w2.note ?? "none")")
+    w2.send()
+    check(asked2() == 1 && w2.turns.map(\.question) == ["what's typed"] && w2.note == nil && w2.field.isEmpty,
+          "sent again by the person: it goes, the note about the unsent question with it")
+    // an app-decided clash (the app on the profile's own u1, the folder on Other's u3): the same
+    let (w7, asked7) = typedThenSwitch(fullWeek)
+    move(w7, appRec(appU1, code: u3), as: win)
+    check(w7.target?.shownEmail == u1.email && unsent(w7, asked7, clashNote),
+          "moved into an app-decided clash: nothing sent, the question kept, the note as above: \(w7.note ?? "none")")
+    move(w7, appRec(appU1, code: u1), as: win)
+    check(asked7() == 0 && w7.turns.isEmpty && w7.field == "what's typed", "the app-decided clash cleared: nothing sent by itself")
+    // a clash with no account of its own known: no "move it back", an account to pick on the Switch page
+    let (w8, asked8) = typedThenSwitch(fullWeek)
+    move(w8, rec(week: nil, five: nil, login: u3.email, code: u3), as: seatless)
+    check(unsent(w8, asked8, "Card's Claude Code folder is now on Other's account, so what you typed wasn't sent. Pick an account for Card on the Switch page."),
+          "moved into a clash with no own account known: nothing sent, the Switch page to pick one: \(w8.note ?? "none")")
+    // the split (the app on u1, Claude Code moved to u2, no clash): as before, it goes on u2, and the note names u2, the
+    // account that answers there
+    let (w9, asked9) = typedThenSwitch(fullWeek)
+    move(w9, appRec(appU1, code: u2), as: win)
+    check(w9.inSplit && !w9.inClash && asked9() == 1 && w9.turns.map(\.question) == ["what's typed"] && w9.target?.email == u2.email
+          && w9.note == "Card switched to \(AccountNames.short(u2.email!)). Sending what you typed.",
+          "moved into the split: what was typed goes on u2, the note naming u2 (the account answering): \(w9.note ?? "none")")
     // one login's seat with no organisation (the record says none) and its Team seat: a move either way is a move (the
     // question goes, the note says it), never "the organisation not known"; the same seat with none, or a record from
     // before codeOrganization, isn't one
