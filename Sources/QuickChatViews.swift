@@ -69,6 +69,12 @@ struct QCBar: View {
         VStack(alignment: .leading, spacing: 12) {
             if let p = model.barProblem { QCProblemView(problem: p, model: model, answered: false) }
             else if model.blocked { QCProblemView(problem: .limitFull(model.fullNow), model: model, answered: false, live: true) }
+            // the line the window draws between messages, before there are any (what was typed wasn't sent, say)
+            if let n = model.note {
+                Text(n).font(.system(size: 11.5)).foregroundColor(QCColor.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8)
+            }
             QCField(model: model, placeholder: "Ask anything", size: 17)
                 .padding(.horizontal, 8)
             QCControls(model: model, inBar: true)

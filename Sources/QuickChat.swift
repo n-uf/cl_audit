@@ -348,7 +348,8 @@ final class QuickChatModel: ObservableObject {
     /// A limit filled during the chat: the controller looks for an account to offer.
     var limitFilled: () -> Void = {}
     /// Switch account… was clicked with a question in the field: it goes once the profile is on another account with
-    /// room, if that comes within 10 minutes and the question wasn't changed, the chat not hidden or started anew. `from`:
+    /// room, if that comes within 10 minutes and the question wasn't changed, the chat not hidden or started anew. A move
+    /// into a clash ends the wait instead: nothing goes, the question stays in the field and the note says why. `from`:
     /// the folder's account when it was clicked (QuickChatTarget.account).
     private var switchWait: (from: AccountIdentity?, since: Date)?
     private var sendingWaiting = false
@@ -374,6 +375,9 @@ final class QuickChatModel: ObservableObject {
         guard target != nil else { barProblem = .noProfile; return }
         field = ""
         barProblem = nil
+        // a line between messages is about the moment before this one (why what was typed wasn't sent, say): it goes with
+        // the next message, except the note saying this one goes
+        if !sendingWaiting { note = nil }
         turns.append(QuickChatTurn(question: q, thinkingTitle: thinking.effort == nil ? nil : thinking.title))
         scrollTick += 1
         ask(q)
@@ -455,8 +459,19 @@ final class QuickChatModel: ObservableObject {
         if Date().timeIntervalSince(wait.since) > 600 { switchWait = nil; return }
         // moved: the folder on an account known by its id, another seat than when it was clicked (a folder signed out on
         // the way, no id, hasn't moved yet). The note names what the header names
-        guard !blocked, !busy, let t = target, let here = t.account, here.account != nil,
+        guard !busy, let t = target, let here = t.account, here.account != nil,
               !QuickChatTarget.sameAccount(wait.from, here) else { return }
+        // moved into a clash: Claude Code would answer on another profile's account (its limits, its history) under a header
+        // naming this profile's own. Nothing goes: the wait ends, what was typed stays in the field, and the note names no
+        // account as the one answering, only the way out. A later move out of the clash sends nothing by itself
+        if let other = t.clashName {
+            switchWait = nil
+            note = "\(t.name)'s Claude Code folder is now on \(other)'s account, so what you typed wasn't sent. "
+                + (t.shownEmail != nil ? "Move it back to \(t.name)'s own account on the Switch page."
+                                       : "Pick an account for \(t.name) on the Switch page.")
+            return
+        }
+        guard !blocked else { return }
         switchWait = nil
         let who = t.shownEmail.map(AccountNames.short) ?? "another account"
         note = "\(t.name) switched to \(who). Sending what you typed."
