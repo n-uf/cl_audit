@@ -202,8 +202,8 @@ struct ClaudeRun: Identifiable, Equatable {
     let kind: Kind
     let folder: String          // data folder (desktop) or Claude Code folder (sessions), with ~; or unknownFolder
 
-    /// A Claude Code whose folder couldn't be told (how it was started, or its environment, couldn't be read): it may use any
-    /// folder, so every folder's check counts it (AccountRemoval.runsUsing).
+    /// A Claude Code whose folder couldn't be told (how it was started, or its environment, couldn't be read), or a Claude app
+    /// whose arguments couldn't be: it may use any folder, so every folder's check counts it (AccountRemoval.runsUsing).
     static let unknownFolder = "unknown"
 }
 

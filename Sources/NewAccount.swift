@@ -1104,6 +1104,7 @@ struct NewAccountView: View {
     private var runGroups: [(title: String, items: [String], note: String?)] {
         var out: [(String, [String], String?)] = []
         let apps = appRuns.filter { $0.kind == .desktop }.map { r -> String in
+            if r.folder == ClaudeRun.unknownFolder { return "a window whose folder couldn't be read" }
             let key = FolderKey.canonical(r.folder)
             let owner = model.accounts.first { FolderRules.windowKey($0.desktop, $0.desktopDataDir) == key }
             let which = key == FolderKey.canonical(FolderKey.standardDataDir) ? "standard window" : "separate window"

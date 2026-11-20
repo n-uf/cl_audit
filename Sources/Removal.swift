@@ -130,7 +130,8 @@ enum AccountRemoval {
     static func runsUsing(_ e: AccountEntry, _ runs: [ClaudeRun]) -> [ClaudeRun] {
         runs.filter { r in
             switch r.kind {
-            case .desktop: return e.desktop == .separate && !e.desktopDataDir.isEmpty && FolderKey.overlaps(r.folder, e.desktopDataDir)
+            case .desktop: return e.desktop == .separate && !e.desktopDataDir.isEmpty
+                && (r.folder == ClaudeRun.unknownFolder || FolderKey.overlaps(r.folder, e.desktopDataDir))
             case .codeTab, .terminal: return r.folder == ClaudeRun.unknownFolder || FolderKey.overlaps(r.folder, e.configDir)
             }
         }

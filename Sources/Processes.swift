@@ -265,16 +265,23 @@ enum Processes {
     /// Uninstall: the app by its data folder, Claude Code (`codeRunList`) as a Code-tab's or a terminal's, by its folder.
     /// `folders`: this user's Claude Code folders (the profiles'; ~/.claude always counts), for another user's `claude`. nil
     /// when the process table can't be read: which Claude Code runs couldn't be checked, never "none runs" (RunsMonitor.failed).
-    /// Call off the main thread.
-    static func claudeRuns(folders: [String] = [], table given: [Entry]?? = nil) -> [ClaudeRun]? {
+    /// `apps`: the checks' stand-in for the Claude app's instances (`appRuns`). Call off the main thread.
+    static func claudeRuns(folders: [String] = [], table given: [Entry]?? = nil, apps: [(pid: pid_t, args: [String]?)]? = nil) -> [ClaudeRun]? {
         guard let all = given ?? settledTable() else { return nil }
-        var runs: [ClaudeRun] = []
-        for app in claudeApps() {
-            let dir = arguments(of: app.processIdentifier).first { $0.hasPrefix("--user-data-dir=") }
+        let seen = apps ?? claudeApps().map { (pid: $0.processIdentifier, args: launch(of: $0.processIdentifier)?.args) }
+        return appRuns(seen) + codeRunList(all, folders: folders)
+    }
+
+    /// The Claude app's instances by their data folder (--user-data-dir, or the standard one without it); one whose arguments
+    /// couldn't be read (`args` nil) is on ClaudeRun.unknownFolder, which every profile's window check counts, never the
+    /// standard folder's.
+    static func appRuns(_ apps: [(pid: pid_t, args: [String]?)]) -> [ClaudeRun] {
+        apps.map { app in
+            guard let args = app.args else { return ClaudeRun(id: app.pid, kind: .desktop, folder: ClaudeRun.unknownFolder) }
+            let dir = args.first { $0.hasPrefix("--user-data-dir=") }
             let folder = dir.map { tilde(String($0.dropFirst("--user-data-dir=".count))) } ?? FolderKey.standardDataDir
-            runs.append(ClaudeRun(id: app.processIdentifier, kind: .desktop, folder: folder))
+            return ClaudeRun(id: app.pid, kind: .desktop, folder: folder)
         }
-        return runs + codeRunList(all, folders: folders)
     }
 
     /// The processes that may be Claude Code on this user's folders, as the new-account page, Remove and Uninstall list them
