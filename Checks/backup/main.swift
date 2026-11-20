@@ -2783,5 +2783,118 @@ MainActor.assumeIsolated {
     resetRestores()
 }
 
+// --- Leave it as it is on a move to the default profile that stopped half way (DefaultProfile.leaveAsIs, the card "The move stopped")
+MainActor.assumeIsolated {
+    func freshMoves() { try? fm.removeItem(at: DefaultProfile.folder); DefaultProfile.forgetCache() }
+    // the move's restore stopped after 3 files, its backup then went, and the old profile was removed: stuck for good before
+    freshMoves()
+    let (m, place) = b2World()
+    let backup = SessionsRestore.Backup(profile: "bk", id: m.id, place: place)
+    var n = 0
+    _ = try? SessionsRestore.run(tgt, backup, windowClosed: { true }, stop: { n += 1; return n > 3 })
+    guard let un = SessionsRestore.unfinished(profile: "bk").first, un.back == 3 else { check(false, "move leave: (the move's restore stopped after 3 files)"); return }
+    DefaultProfile.save(DefaultProfile.Record(id: "mvLeave", kind: .otherFolder, profile: "bk", oldProfile: "old", created: true, backup: m.id,
+                                              backupPlace: place.path, started: Date(), receipt: un.id, oldHandled: "removed"))
+    try? fm.removeItem(at: place.appendingPathComponent("bk/\(m.id)"))
+    var finishErr = "", undoErr = "", restoreLeave = ""
+    do { _ = try SessionsRestore.run(tgt, backup, continuing: un.id, windowClosed: { true }) } catch { finishErr = "\(error)" }
+    do { _ = try SessionsRestore.undo(un.id, windowClosed: { true }) } catch { undoErr = "\(error)" }
+    do { _ = try SessionsRestore.leaveAsIs(un.id) } catch { restoreLeave = "\(error)" }
+    check(!finishErr.isEmpty && undoErr.contains("can't be undone") && restoreLeave.contains("default profile") && SessionsRestore.load(un.id)?.unfinished == true,
+          "move leave: (before it: Finish can't complete, Undo is refused, the restore's own Leave sends to the move)")
+    check(DefaultProfile.unfinished()?.id == "mvLeave" && Flows.blocker(profile: "bk", for: .switching)?.contains("default profile") == true
+          && Flows.blocker(profile: "old", for: .switching) != nil && Flows.blocker(profile: "bk", for: .restoring) != nil,
+          "move leave: (before it: the card shows, and both profiles are held up)")
+    let model = SettingsModel()
+    let key = RestoreKey(profile: "bk", backup: m.id, place: place.path, resume: un.id)
+    let page = model.restoreRunner(key)
+    let pageStopped: Bool = { if case .stopped = page.phase { return true }; return false }()
+    check(pageStopped && !page.canLeave, "move leave: (a Restore page kept on its restore: stopped, its own Leave not offered)")
+    func everything() -> String { [world(), tree(place.path), listing(place.path)].joined(separator: "\n") }
+    let before = everything()
+
+    // refused while the move runs: the one lock, the move's restore holding its window, the move's own hold, its page running
+    let held = try! Flows.takeLock()
+    var busy = ""
+    do { _ = try DefaultProfile.leaveAsIs("mvLeave") } catch { busy = "\(error)" }
+    held.release()
+    check(!busy.isEmpty && DefaultProfile.unfinished()?.id == "mvLeave" && SessionsRestore.load(un.id)?.unfinished == true && everything() == before,
+          "move leave: refused while another flow holds the lock, nothing changed: \(busy)")
+    for (window, mark) in [(wd, "restore-dddd4444"), (FolderKey.standardDataDir, "default-eeee5555")] {
+        let k = FolderKey.canonical(window)
+        check(SwitchMarker.claim(k, profile: "bk", standby: mark), "(\(mark) holds the window)")
+        var why = ""
+        do { _ = try DefaultProfile.leaveAsIs("mvLeave") } catch { why = "\(error)" }
+        SwitchMarker.release(k, profile: "bk", standby: mark)
+        check(why.contains("under way") && DefaultProfile.unfinished()?.id == "mvLeave" && SessionsRestore.load(un.id)?.unfinished == true && everything() == before,
+              "move leave: refused while the move runs (\(mark)), nothing changed: \(why)")
+    }
+    let running = DefaultProfileRunner(situation: DefaultProfile.Situation(kind: .otherFolder, old: entry, target: nil), model: model)
+    running.preview(.moving)
+    model.defaultProfile = running
+    model.defaultMoveLeft("mvLeave")
+    check(model.message.contains("under way") && DefaultProfile.unfinished()?.id == "mvLeave" && everything() == before,
+          "move leave: refused from the card while the move's page runs: \(model.message)")
+    model.defaultProfile = nil; model.message = ""
+
+    // Leave it as it is, from the card: the move and its restore closed as they stand
+    model.defaultMoveLeft("mvLeave")
+    DefaultProfile.forgetCache()
+    let rec = DefaultProfile.all().first { $0.id == "mvLeave" }
+    let rc = SessionsRestore.load(un.id)
+    check(model.message == "Left as it is: what the move did stays as it is; nothing is undone, and its backup isn't there any more.",
+          "move leave: the words say what stays: \(model.message)")
+    check(rec?.leftAsIs != nil && rec?.open == false && rec?.finished == nil && rec?.undone == nil && rec?.oldHandled == "removed" && rec?.created == true,
+          "move leave: the move's record is closed as it stands (left, neither finished nor undone)")
+    check(rc?.leftAsIs != nil && rc?.unfinished == false && rc?.finished == nil && rc?.undone == nil && rc?.back == 3,
+          "move leave: its restore's receipt is closed with it (left, its 3 steps kept)")
+    check(everything() == before, "move leave: nothing in the profile's folders or the backups place changed (files, empty folders, types and modes compared)")
+    check(Flows.blocker(profile: "bk", for: .switching) == nil && Flows.blocker(profile: "old", for: .switching) == nil
+          && Flows.blocker(profile: "bk", for: .restoring) == nil && SessionsRestore.unfinished(profile: "bk").isEmpty,
+          "move leave: it no longer holds up a switch of either profile, nor a restore or import")
+    check(DefaultProfile.unfinished() == nil, "move leave: the card \"The move stopped\" goes")
+    check(page.phase == .left && model.restoreRunner(key).phase == .left && RestoreRunner(key: key, model: model).phase == .left,
+          "move leave: the Restore page no longer shows its receipt as stopped (the one kept open, and one opened again)")
+    model.defaultMoveUndone("mvLeave")
+    var undoAgain = ""
+    do { _ = try SessionsRestore.undo(un.id, windowClosed: { true }) } catch { undoAgain = "\(error)" }
+    check(DefaultProfile.all().first { $0.id == "mvLeave" }?.undone == nil && !undoAgain.isEmpty && everything() == before,
+          "move leave: neither Put it back nor Undo applies after it: \(undoAgain)")
+    let again = (try? DefaultProfile.leaveAsIs("mvLeave", now: Date().addingTimeInterval(60))) ?? "threw"
+    check(again == "" && DefaultProfile.all().first { $0.id == "mvLeave" }?.leftAsIs == rec?.leftAsIs && SessionsRestore.load(un.id)?.leftAsIs == rc?.leftAsIs
+          && everything() == before, "move leave: a second Leave is a no-op")
+
+    // a move that stopped before its restore wrote anything (the card's Put it back), kept as standby: Leave closes the record
+    freshMoves()
+    let (m2, place2) = b2World()
+    DefaultProfile.save(DefaultProfile.Record(id: "mvLeave2", kind: .otherFolder, profile: "bk", oldProfile: "old", created: true, backup: m2.id,
+                                              backupPlace: place2.path, started: Date(), oldHandled: "standby"))
+    model.defaultMoveUndone("mvLeave2")
+    check(DefaultProfile.unfinished()?.id == "mvLeave2" && DefaultProfile.restoreFor(DefaultProfile.all()[0]) == nil, "(a move with no restore, Put it back refused once the old profile stands by)")
+    let before2 = [world(), tree(place2.path), listing(place2.path)].joined(separator: "\n")
+    let words2 = (try? DefaultProfile.leaveAsIs("mvLeave2")) ?? ""
+    check(words2 == "Left as it is: what the move did stays as it is; nothing is undone." && DefaultProfile.unfinished() == nil
+          && Flows.blocker(profile: "bk", for: .switching) == nil && [world(), tree(place2.path), listing(place2.path)].joined(separator: "\n") == before2,
+          "move leave with no restore: closed, its backup there so nothing said about it, nothing changed: \(words2)")
+
+    // an ordinary stopped move (its backup there, Undo not refused): still offers Finish and Undo, and Finish completes it
+    freshMoves()
+    let (m3, place3) = b2World()
+    let backup3 = SessionsRestore.Backup(profile: "bk", id: m3.id, place: place3)
+    var j = 0
+    _ = try? SessionsRestore.run(tgt, backup3, windowClosed: { true }, stop: { j += 1; return j > 2 })
+    guard let u3 = SessionsRestore.unfinished(profile: "bk").first else { check(false, "move leave: (an ordinary move's restore stopped after 2 files)"); return }
+    DefaultProfile.save(DefaultProfile.Record(id: "mvLeave3", kind: .otherFolder, profile: "bk", oldProfile: "old", created: true, backup: m3.id,
+                                              backupPlace: place3.path, started: Date(), receipt: u3.id))
+    let r3 = DefaultProfile.unfinished()
+    check(r3?.id == "mvLeave3" && r3.flatMap { DefaultProfile.undoRefusal($0) } == nil && r3.flatMap(DefaultProfile.restoreFor)?.id == u3.id,
+          "move leave: an ordinary stopped move still offers its restore (Finish and Undo), Undo not refused")
+    check((try? SessionsRestore.run(tgt, backup3, continuing: u3.id, windowClosed: { true }))?.finished != nil && DefaultProfile.unfinished() == nil
+          && DefaultProfile.all().first?.finished != nil && DefaultProfile.all().first?.leftAsIs == nil,
+          "move leave: and Finish still completes it (the record catches up as finished, not left)")
+    freshMoves()
+    resetRestores()
+}
+
 print("\(checks - failures) of \(checks) checks passed")
 exit(failures == 0 ? 0 : 1)
