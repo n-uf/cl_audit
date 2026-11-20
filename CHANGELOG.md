@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.62 — 2026-11-20
+
 - Remove, Uninstall and New profile no longer delete or set up a folder when cl_audit can't see which Claude Code is running: they say they couldn't check. A Claude Code it can't read, or another user's (as with `sudo claude`) on one of your folders, now keeps those folders from being deleted. They decide on a fresh look at the moment you click, and a Cancel during that look calls it off.
 
 ## 26.11.61 — 2026-11-20
