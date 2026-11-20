@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- When Claude Code's record names its account without an address, numbers read for another address are no longer shown as the profile's: whose they are isn't known, so none show until the record names an address that matches them.
 
 ## 26.11.62 — 2026-11-20
 
