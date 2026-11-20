@@ -2438,6 +2438,16 @@ do {
     otherKind.update(target: QuickChatTarget(e, now: now), level: weekAt, offer: { cardOffer })
     check(otherKind.level?.full()?.kind == .week && !otherKind.limitRepeated && !liveBelow(otherKind).title.isEmpty,
           "the 5-hour limit said, then the week with a reset 0.4 s apart: another limit, said again below")
+    // the same limit and reset on another account (the folder on u2 since): not the same, said again below
+    _ = Store.writeStatus(e.id, rec())
+    var weekAtR = QuickChatLevel(nil)
+    weekAtR.week = 100; weekAtR.weekResets = kindReset; weekAtR.fiveHour = 10; weekAtR.fiveHourResets = now.addingTimeInterval(3600)
+    let otherSeat = chat(QuickChatTarget(e, now: now), level: weekAtR)
+    refuse(otherSeat)
+    _ = Store.writeStatus(e.id, rec(week: 10, login: u2.email, code: u2))
+    otherSeat.update(target: QuickChatTarget(e, now: now), level: weekAtR, offer: { cardOffer })
+    check(otherSeat.blocked && otherSeat.level?.full()?.resets == kindReset && !otherSeat.limitRepeated && !liveBelow(otherSeat).title.isEmpty,
+          "the same week and reset, but on u2 since: another account's limit, said again below")
     _ = Store.writeStatus(e.id, rec())
 
     // Switch account… with a question waiting: a folder signed out on the way (no id: its address kept, or none) hasn't
