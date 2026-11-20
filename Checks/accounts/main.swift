@@ -567,6 +567,53 @@ do {
     check(failedLines.map(\.text) == ["cl_audit couldn't check which Claude is running, so the folder isn't set up yet"] && failedLines.allSatisfy(\.blocks)
           && closedLines.map(\.text) == ["The desktop app is closed"] && !closedLines.contains(where: \.blocks),
           "New profile: Create is blocked by a red line when which Claude runs couldn't be checked, never \"the desktop app is closed\"")
+    // not checked yet blocks New profile too ("Checking…", never taken for closed)
+    let waitLines = NewAccountSetup.checks(runsDraft, accounts: [rmD], runs: [], checked: false).filter { $0.section == .running }
+    check(waitLines.map(\.text) == ["Checking whether the desktop app is open…"] && waitLines.allSatisfy(\.blocks),
+          "New profile: before the first look lands, the desktop-app line is Checking… and blocks Create/Connect")
+    // a stale look landing after a newer one is dropped: a late "none runs" never overwrites a newer "couldn't check"
+    let mon2 = RunsMonitor()
+    let g1 = mon2.begin(), g2 = mon2.begin()
+    mon2.apply(nil, generation: g2)
+    mon2.apply([], generation: g1)
+    let afterStale = (checked: mon2.checked, failed: mon2.failed)
+    let g3 = mon2.begin()
+    mon2.apply([], generation: g3)
+    check(!afterStale.checked && afterStale.failed && mon2.checked && !mon2.failed,
+          "RunsMonitor: an older look's ok, landing after a newer look's failure, is dropped; the newest look's answer is taken")
+    // the click-time look: Remove, Uninstall and New profile decide on a look made at the click, not the monitor's last one
+    let pathRun = Processes.Entry(pid: 9031, uid: getuid(), ruid: getuid(), name: "claude",
+                                  launch: Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: home + "/.claude-p8", environmentRead: true))
+    let freshFailed = Processes.claudeRuns(folders: [rmW.configDir], table: .some(nil), apps: [])
+    let freshRun = Processes.claudeRuns(folders: [rmW.configDir], table: [pathRun], apps: [])
+    let freshNone = Processes.claudeRuns(folders: [rmW.configDir], table: [], apps: [])
+    var tabDraft = runsDraft; tabDraft.name = "Runstab"
+    let tabRun = Processes.Entry(pid: 9032, uid: getuid(), ruid: getuid(), name: "claude", launch: Processes.Launch(exe: appClaude, args: [appClaude], configDir: nil, environmentRead: true))
+    check(mon.checked == false && freshNone == [] && AccountRemoval.runsBlock(rmW, runs: freshNone) == nil
+          && AccountRemoval.runsBlock(rmW, runs: freshFailed) == "cl_audit couldn't check which Claude is running, so its folders aren't deleted"
+          && AccountRemoval.runsBlock(rmW, runs: freshRun) == "Close Claude first: it's using these folders",
+          "Remove at the click: the table failing now, or a claude on the folder now, keeps the folders; nothing running lets them go")
+    check(Uninstall.runsBlock([rmD, rmW], config: [rmW.id], window: [], runs: freshFailed) == "cl_audit couldn't check which Claude is running, so no folder is deleted"
+          && Uninstall.runsBlock([rmD, rmW], config: [rmW.id], window: [], runs: freshRun) == "Close Claude first: it's using folders that would be deleted"
+          && Uninstall.runsBlock([rmD, rmW], config: [rmW.id], window: [], runs: freshNone) == nil,
+          "Uninstall at the click: the table failing now, or a claude on a chosen folder now, keeps every folder")
+    check(NewAccountSetup.runsBlock(tabDraft, accounts: [rmD], runs: freshFailed) == "cl_audit couldn't check which Claude is running, so the folder isn't set up yet"
+          && NewAccountSetup.runsBlock(tabDraft, accounts: [rmD], runs: Processes.claudeRuns(table: [tabRun], apps: [])) == "The desktop app is open (0 windows)"
+          && NewAccountSetup.runsBlock(tabDraft, accounts: [rmD], runs: freshNone) == nil,
+          "New profile at the click: the table failing now, or a Code tab now, holds Create/Connect; nothing open lets it go")
+    // "/" holds every folder
+    check(FolderKey.overlaps("/", "~/.claude-p8") && FolderKey.overlaps("~/.claude-p8", "/") && FolderKey.overlaps("/", "/")
+          && !FolderKey.overlaps("~/.claude", "~/.claude-p8"),
+          "FolderKey.overlaps: \"/\" overlaps any folder; siblings still don't")
+    // the Claude app whose arguments couldn't be read: its window folder is unknown, never the standard one
+    let apps = Processes.appRuns([(pid: 9040, args: nil), (pid: 9041, args: ["/A/Claude", "--user-data-dir=" + home + "/Library/Application Support/Claude-w"]),
+                                  (pid: 9042, args: ["/A/Claude"])])
+    var sep = profile("rm-s", "~/.claude-s", nil); sep.desktop = .separate; sep.desktopDataDir = "~/Library/Application Support/Claude-s"
+    check(apps == [ClaudeRun(id: 9040, kind: .desktop, folder: ClaudeRun.unknownFolder),
+                   ClaudeRun(id: 9041, kind: .desktop, folder: "~/Library/Application Support/Claude-w"),
+                   ClaudeRun(id: 9042, kind: .desktop, folder: FolderKey.standardDataDir)]
+          && AccountRemoval.runsUsing(sep, apps).map(\.id) == [9040],
+          "claudeRuns: a Claude app whose arguments couldn't be read is on an unknown folder, which every own-window profile's check counts: \(apps)")
     // a hidden entry (its facts unreadable): unknown, counted against every profile's folders
     let hiddenListed = Processes.codeRunList([unreadable, readDefault])
     check(hiddenListed == [ClaudeRun(id: 9004, kind: .terminal, folder: ClaudeRun.unknownFolder), ClaudeRun(id: 9009, kind: .terminal, folder: "~/.claude")]
