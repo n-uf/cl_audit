@@ -601,6 +601,37 @@ do {
           && NewAccountSetup.runsBlock(tabDraft, accounts: [rmD], runs: Processes.claudeRuns(table: [tabRun], apps: [])) == "The desktop app is open (0 windows)"
           && NewAccountSetup.runsBlock(tabDraft, accounts: [rmD], runs: freshNone) == nil,
           "New profile at the click: the table failing now, or a Code tab now, holds Create/Connect; nothing open lets it go")
+    // the click's gate: one look at a time; a cancel (Cancel, Esc, leaving the page) drops the look, so its answer acts on
+    // nothing; a second click while one is under way starts no second look (looks answered by `preview`, never this Mac's)
+    let savedPreview = RunsMonitor.preview
+    RunsMonitor.preview = []
+    func settle(_ gate: ClickGate, _ more: Double = 0.3) {
+        let end = Date().addingTimeInterval(3)
+        while gate.busy, Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        RunLoop.main.run(until: Date().addingTimeInterval(more))          // any late answer lands too
+    }
+    let gateMon = RunsMonitor()
+    let twice = ClickGate()
+    var removed = 0
+    let firstStarted = twice.look(gateMon) { fresh in if AccountRemoval.runsBlock(rmW, runs: fresh) == nil { removed += 1 } }
+    let secondStarted = twice.look(gateMon) { fresh in if AccountRemoval.runsBlock(rmW, runs: fresh) == nil { removed += 1 } }
+    let busyMeanwhile = twice.busy
+    settle(twice)
+    check(firstStarted && !secondStarted && busyMeanwhile && !twice.busy && removed == 1,
+          "the click's gate: a second click while the look is under way starts nothing; one answer, one removeAccount (\(removed))")
+    let cancelled = ClickGate()
+    var made = 0
+    cancelled.look(gateMon) { _ in made += 1 }
+    cancelled.cancel()                                                     // Cancel or Esc mid-look
+    settle(cancelled)
+    let left = ClickGate()
+    left.look(gateMon) { _ in made += 1 }
+    left.cancel()                                                          // onDisappear mid-look: the same call
+    let afterLeaving = left.look(gateMon) { _ in made += 10 }              // the page opened again, clicked again
+    settle(left)
+    check(made == 10 && afterLeaving && !cancelled.busy && !left.busy,
+          "the click's gate: a look landing after Cancel/Esc or leaving the page deletes or makes nothing; a later click's look still acts once (\(made))")
+    RunsMonitor.preview = savedPreview
     // "/" holds every folder
     check(FolderKey.overlaps("/", "~/.claude-p8") && FolderKey.overlaps("~/.claude-p8", "/") && FolderKey.overlaps("/", "/")
           && !FolderKey.overlaps("~/.claude", "~/.claude-p8"),
