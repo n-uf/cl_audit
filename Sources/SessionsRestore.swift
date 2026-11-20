@@ -1377,9 +1377,16 @@ enum SessionsRestore {
         do { try store.save(r) } catch { throw RestoreError("The receipt couldn't be saved; nothing changed.") }
         sweepTemps(r)
         // (no count: unchecked window steps and an earlier partial Undo make any number of files there a guess)
-        let here = SessionsBackup.folder(profile: r.profile, place: URL(fileURLWithPath: r.backupPlace)).appendingPathComponent(r.backup).path
-        let backup = FileManager.default.fileExists(atPath: here) ? "the backup it read from is no longer kept for it" : "its backup isn't there any more"
-        return "Left as it is: what it \(r.importedFrom != nil ? "added" : "put back") stays as it is; nothing is undone, and \(backup)."
+        // the backup is said only when its place can be looked at (as prune: its folder for this profile is there); a place on
+        // a disk that isn't plugged in says nothing
+        let fm = FileManager.default
+        let profileDir = SessionsBackup.folder(profile: r.profile, place: URL(fileURLWithPath: r.backupPlace)).path
+        var isDir: ObjCBool = false
+        let reachable = fm.fileExists(atPath: profileDir, isDirectory: &isDir) && isDir.boolValue
+        let what = "Left as it is: what it \(r.importedFrom != nil ? "added" : "put back") stays as it is; nothing is undone"
+        guard reachable else { return what + "." }
+        let there = fm.fileExists(atPath: (profileDir as NSString).appendingPathComponent(r.backup))
+        return what + ", and " + (there ? "the backup it read from is no longer kept for it." : "its backup isn't there any more.")
     }
 
     /// Whether this restore is the move to the default profile's: the one a move's record names, or, for a crash between the
