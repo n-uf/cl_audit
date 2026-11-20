@@ -35,6 +35,9 @@ struct IconStatus: Codable {
     /// The account these numbers were read for, from that very reading (the token's own profile, looked up for the token
     /// the numbers were read with); nil when the reading doesn't say (the status line file) or before it's known.
     var numbersOwner: String? = nil
+    /// That account's id, when the reading's lookup gave one (nil in a record from before it): the resolver compares it
+    /// with Claude Code's folder account by the id, the one owner rule.
+    var numbersAccount: String? = nil
     /// The numbers' account couldn't be confirmed (the token's lookup keeps failing): shown as read, with their age, but
     /// never full, alerted, offering a switch or deciding the split (Store.status(for:)).
     var ownerUnconfirmed: Bool? = nil
@@ -43,6 +46,8 @@ struct IconStatus: Codable {
     /// `numbersOwner`, else the sign-in's own address (the token's profile; a record from before `numbersOwner`, or the
     /// status line's numbers, which name none).
     var readingOwner: String? { numbersOwner ?? loginEmail }
+    /// `readingOwner`'s account id: only with `numbersOwner` (the sign-in's own address names no id here).
+    var readingAccount: String? { numbersOwner == nil ? nil : numbersAccount }
 
     /// The account these numbers were read for: the sign-in's address, else the one its folder names.
     var readFor: String? { (loginEmail ?? expectedEmail).map { $0.lowercased() } }

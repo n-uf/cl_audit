@@ -24,23 +24,29 @@ import ProfileCore
 enum AccountResolver {
     /// The answer for one profile. `app`: the Claude app's sign-in (AppSignIn); `code`: Claude Code's folder account;
     /// `loginEmail`: the account the numbers were read for, from that very reading (the token's own profile), or nil when
-    /// the reading doesn't say (the status line file); `names`: addresses by account id (AccountList).
+    /// the reading doesn't say (the status line file); `loginAccount`: that account's id, when the reading's lookup gave
+    /// one (nil in a record from before it); `names`: addresses by account id (AccountList).
     /// `recordTooLarge`: Claude Code's .claude.json is there but too large to read (Account.recordTooLarge).
     /// `newestSwitch`: the profile's newest switch receipt (SwitchEngine.receipts), for a split that is a switch waiting
     /// for the Claude app (`switchWaits`).
     static func resolve(_ e: AccountEntry, among accounts: [AccountEntry], app: AppSignIn.Login, code: Seat?, loginEmail: String?,
-                        names: [String: String], recordTooLarge: Bool = false, newestSwitch: SwitchReceipt? = nil,
-                        now: Date = Date()) -> ResolvedAccount {
+                        loginAccount: String? = nil, names: [String: String], recordTooLarge: Bool = false,
+                        newestSwitch: SwitchReceipt? = nil, now: Date = Date()) -> ResolvedAccount {
         // whose the numbers are: only ever the account the reading itself was for (never .claude.json, never a cached
         // answer). When Claude Code's folder has since signed in to another account (a switch, a log-in), the reading is
         // stale: its numbers are dropped (Store.status) until a read for the folder's account, and the folder's account is
         // the one Claude Code is on (for the rows and lines)
-        // (every "the same account" below is the one owner rule, AccountIdentity.sameAccount: a reading is known by its
-        // address only, so its address decides; the Claude app's account by its id only, `byID`).
-        // A folder record with an id but no address (nil, as with an empty one) can't be compared with a reading's address:
-        // whose the numbers are isn't known, so the reading is stale too (never the profile's numbers), and a stale reading's
-        // address never names the folder's account (`readName`)
-        let stale = loginEmail.map { l in code.map { !sameAddress($0.email ?? "", l) } ?? false } ?? false
+        // (every "the same account" below is the one owner rule, AccountIdentity.sameAccount: a reading with its account's
+        // id is known by the id, and then the ids decide, never the addresses; a reading without one by its address; the
+        // Claude app's account by its id only, `byID`).
+        // A folder record with an id but no address (nil, as with an empty one) can't be compared with a reading known by
+        // its address only: whose the numbers are isn't known (`ownerUnknown`, said so), so the reading is stale too (never
+        // the profile's numbers), and a stale reading's address never names the folder's account (`readName`)
+        let readID = loginAccount.flatMap { $0.isEmpty ? nil : $0 }
+        let stale: Bool
+        if loginEmail != nil, let c = code, let id = readID { stale = !byID(id).sameAccount(known(c)) }
+        else { stale = loginEmail.map { l in code.map { !sameAddress($0.email ?? "", l) } ?? false } ?? false }
+        let ownerUnknown = stale && readID == nil && (code?.email ?? "").isEmpty && !(loginEmail ?? "").isEmpty
         let readName = stale ? nil : loginEmail
         let codeLabel = (stale ? code?.email : loginEmail) ?? code?.email ?? code.map { "account \($0.account.prefix(8))" }
         let owner = code.flatMap { c in accounts.first { $0.id != e.id && ($0.seat.map { c.sameAccount($0) } ?? false) } }
@@ -61,12 +67,17 @@ enum AccountResolver {
             r.fromApp = true
             r.lit = true
         }
-        // in every case: the numbers' own address decides when both are known; else the folder's id
-        if let n = stale ? code?.email : loginEmail, let a = r.email { r.differs = !sameAddress(n, a) }
+        // in every case: the reading's own id against the active account's when both are known (the reading is the
+        // folder's then); else the numbers' own address when both are known; else the folder's id
+        if !stale, let n = readID, let a = r.account { r.differs = !byID(a).sameAccount(byID(n)) }
+        else if let n = stale ? code?.email : loginEmail, let a = r.email { r.differs = !sameAddress(n, a) }
         else if r.fromApp, let id = r.account { r.differs = code.map { !byID(id).sameAccount(known($0)) } ?? false }
         if let o = owner {
             r.line = "Claude Code's folder is signed in to \(o.name)'s account: its numbers show on \(o.name)."
             r.lit = r.fromApp
+        } else if ownerUnknown {
+            // the numbers are hidden (stale) and nothing else says why: the one line, on every surface that shows it
+            r.line = ownerUnknownWords
         } else if r.differs, let c = codeLabel {
             r.line = "Usage: Claude Code on " + Privacy.masked(c)
         } else if e.claudeWindow, !r.fromApp, code != nil {
@@ -88,6 +99,10 @@ enum AccountResolver {
         }
         return r
     }
+
+    /// The line while Claude Code's record names its account without an address and the reading by its address only: the
+    /// numbers are hidden, and this says why and what fixes it (a sign-in writes the address again).
+    static let ownerUnknownWords = "Claude Code's record names no address: cl_audit can't tell whose the numbers are. Sign in again in Claude Code."
 
     /// Two addresses (a reading's, an account's) name one account: the one owner rule's address-only part; with either
     /// empty, the plain comparison as before (two empty addresses are not "another account", so nothing goes stale).
