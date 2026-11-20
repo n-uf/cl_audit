@@ -226,6 +226,21 @@ MainActor.assumeIsolated {
           && SessionsBackup.isLoaderVariable("PERL5OPT") && SessionsBackup.isLoaderVariable("PERL5LIB") && SessionsBackup.isLoaderVariable("RUBYOPT")
           && SessionsBackup.isLoaderVariable("PROMPT_COMMAND"),
           "config: env API_KEY=hunter2 npx x shows API_KEY=…, the program env runs and its arguments whole; a key inside an argument hidden in place; PROMPT_COMMAND, GIT_SSH_COMMAND, BASH_FUNC_*, NODE_EXTRA_CA_CERTS flagged: \(envMasked.map { "\($0.name): \($0.runs) \($0.flags)" })")
+    // env's options don't end the masking: -i, -u NAME, -C dir as they are; -S's string split and read the same way; any name with
+    // "=" (quoted, dotted, dashed) masked
+    let envOptions = SessionsBackup.mcpServers(try! JSONSerialization.data(withJSONObject: ["mcpServers": [
+        "k-i": ["command": "env", "args": ["-i", "A=x1", "prog"]],
+        "l-u": ["command": "env", "args": ["-u", "X", "B=x2", "prog"]],
+        "m-S": ["command": "env", "args": ["-S", "C=x3 prog --flag"]],
+        "n-odd": ["command": "env", "args": ["\"D=x4\"", "a.b=x5", "A-B=x6", "prog"]],
+        "o-packed": ["command": "env", "args": ["-SE=x7 prog"]]]]))
+    let eo = Dictionary(uniqueKeysWithValues: envOptions.map { ($0.name, $0) })
+    let eoText = "\(envOptions)"
+    check(eo["k-i"]?.runs == "env -i A=… prog" && eo["l-u"]?.runs == "env -u X B=… prog" && eo["m-S"]?.runs == "env -S \"C=… prog --flag\""
+          && eo["n-odd"]?.runs == "env \"D=… a.b=… A-B=… prog" && eo["o-packed"]?.runs == "env -S…"
+          && ["x1", "x2", "x3", "x4", "x5", "x6", "x7"].allSatisfy { !eoText.contains($0) }
+          && envOptions.allSatisfy { $0.flags.contains(launcherFlag("env")) },
+          "config: env -i, -u NAME, -S \"…\", a packed -S, quoted/dotted/dashed names: no value shown, env flagged: \(envOptions.map { "\($0.name): \($0.runs) \($0.flags)" })")
     let found = Setup.scan(codeDir: codeA, home: home)
     let prompts = found.files.filter { $0.unit.kind == .task }.map(\.rel).sorted()
     check(prompts == ["scheduled-tasks/elsewhere-task/SKILL.md", "scheduled-tasks/nightly-digest/SKILL.md", "scheduled-tasks/orphan-prompt/SKILL.md", "scheduled-tasks/weekly-report/SKILL.md"],

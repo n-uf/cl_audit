@@ -781,7 +781,9 @@ enum SessionsBackup {
             if c.isASCII && (c.isLetter || c.isNumber || c == "_" || c == "-" || c == ".") { run.append(c) } else { flush(); out.append(c) }
         }
         flush()
-        return hit ? (out, true) : ("‹a key›", true)
+        // a key the runs split (one with "+" or "/" in it) can leave part of it showing: if the result still holds one, hide it all
+        guard hit, SecretScan.scan(Data(out.utf8)).isEmpty else { return ("‹a key›", true) }
+        return (out, true)
     }
 
     /// The MCP servers a config names, by name, with what each runs: its whole command line (the command and its arguments, each in
@@ -796,6 +798,11 @@ enum SessionsBackup {
             let n = w[..<eq]
             guard n.first.map({ !$0.isNumber }) == true, n.allSatisfy({ $0 == "_" || ($0.isASCII && ($0.isLetter || $0.isNumber)) }) else { return nil }
             return String(n)
+        }
+        /// Any word with "=" after its first character, as `env` reads one (any name, quoted or odd): NAME=… (never its value).
+        func assignmentMasked(_ w: String) -> String? {
+            guard let eq = w.firstIndex(of: "="), eq != w.startIndex else { return nil }
+            return String(w[..<eq]) + "=…"
         }
         return s.keys.sorted().map { name in
             let o = s[name] as? [String: Any]
@@ -815,16 +822,44 @@ enum SessionsBackup {
             while i < commandWords.count, let n = assignment(words[i]) { env.insert(oneLine(n, max: 60)); shown.append(n + "=…"); i += 1 }
             let program: String? = commandWords.isEmpty || i >= words.count ? nil : words[i]
             // every other word in full (an `env` program's own NAME=value arguments too, counted by name), but a key the scan recognises
-            var keyHidden = false, envArgs = program.map { programName($0) == "env" } ?? false
+            var keyHidden = false, envArgs = program.map { programName($0) == "env" } ?? false, splitNext = false, operandNext = false
             for (k, w) in words.enumerated().dropFirst(i) {
-                // an `env` program's own NAME=value words set the environment too, up to the program it runs: NAME=…, as before the program
+                // the operand of an `env` option that takes one (-u NAME, -C dir, -P path): as it is, not the program
+                if operandNext { operandNext = false; shown.append(maskKeys(w).text); continue }
+                // an `env` program's own words up to the program it runs: its options as they are, and every word with "=" (an
+                // assignment, whatever its name) as NAME=…; a -S/--split-string operand is split into words and read the same way
                 if k > i, envArgs {
-                    if let n = assignment(w) { env.insert(oneLine(n, max: 60)); shown.append(n + "=…"); continue }
+                    if splitNext {
+                        splitNext = false
+                        let parts = w.split(separator: " ").map(String.init)
+                        var rest: [String] = []
+                        for (pi, p) in parts.enumerated() {
+                            if let m = assignmentMasked(p), !p.hasPrefix("-") {
+                                if let n = assignment(p) { env.insert(oneLine(n, max: 60)) }
+                                rest.append(m)
+                            } else { rest.append(contentsOf: parts[pi...].map { maskKeys($0).text }); break }
+                        }
+                        shown.append("\"" + rest.joined(separator: " ") + "\"")
+                        continue
+                    }
+                    if w.hasPrefix("-") {
+                        if w == "-S" || w == "--split-string" { splitNext = true }
+                        else if ["-u", "-C", "-P", "--unset", "--chdir"].contains(w) { operandNext = true }
+                        else if w.hasPrefix("-S") || w.hasPrefix("--split-string=") {
+                            shown.append(w.hasPrefix("-S") ? "-S…" : "--split-string=…"); continue
+                        }
+                        shown.append(w); continue
+                    }
+                    if let m = assignmentMasked(w) {
+                        if let n = assignment(w) { env.insert(oneLine(n, max: 60)) }
+                        shown.append(m); continue
+                    }
                     envArgs = false
                 }
                 let (masked, hit) = maskKeys(w)
                 if hit { keyHidden = true }
-                shown.append(masked.contains(" ") || masked.isEmpty ? "\"" + masked + "\"" : masked)
+                // quoted when the argument itself holds a space (not for the space in ‹a key›)
+                shown.append(w.contains(" ") || w.isEmpty ? "\"" + masked + "\"" : masked)
             }
             var flags: [String] = []
             if let p = program, isInterpreter(p) { flags.append("runs \(oneLine(programName(p), max: 40)), a shell, interpreter or launcher: its arguments are what it runs") }
