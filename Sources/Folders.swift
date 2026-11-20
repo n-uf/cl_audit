@@ -17,10 +17,10 @@ enum FolderKey {
         return p.lowercased()
     }
 
-    /// The same folder, or one inside the other.
+    /// The same folder, or one inside the other ("/" holds every folder).
     static func overlaps(_ a: String, _ b: String) -> Bool {
         let x = canonical(a), y = canonical(b)
-        return x == y || x.hasPrefix(y + "/") || y.hasPrefix(x + "/")
+        return x == y || x == "/" || y == "/" || x.hasPrefix(y + "/") || y.hasPrefix(x + "/")
     }
 
     static let standardDataDir = "~/Library/Application Support/Claude"
