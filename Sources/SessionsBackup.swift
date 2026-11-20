@@ -78,7 +78,7 @@ enum SessionsBackup {
     }
 
     /// The format of backup.json (and of an export's export.json). 2 added `setup` items (Claude Code's CLAUDE.md, skills, agents …);
-    /// 3 added the `config` item (the Claude window's claude_desktop_config.json without its sidebar part) and scheduled tasks' prompts
+    /// 3 added the `config` item (the Claude window's claude_desktop_config.json, its `configAllowlist` keys only) and scheduled tasks' prompts
     /// (setup/scheduled-tasks/<id>/SKILL.md). 4 added cl_audit's own profiles and settings (an export's cl_audit.json, SessionsMove.swift)
     /// and the move: a part whose window folders are the real account and organisation ids (`move`), only ever in an encrypted image.
     /// 5 added a move's code checklist (an export's code.json, CodeChecklist.swift): only an export.json says 5, and only when it holds

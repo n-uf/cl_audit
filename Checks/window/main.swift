@@ -881,6 +881,40 @@ MainActor.assumeIsolated {
         SessionsImport.discard(oo.work)
     } else { check(false, "off-list image: opens: \(offImage.prefix(80))") }
 
+    // read side, crafted JSON text: a duplicate key, an escaped key name, a value that isn't an object. Whatever the parser makes of
+    // them, what "Add them" writes is the allowlist alone, and the servers the row lists are exactly the ones written
+    /// The servers the plan lists and the file "Add them" writes, for an image whose config is `text` (an image the import refuses
+    /// as not a JSON object writes nothing: listed none, written nil).
+    func craftedRead(_ name: String, _ text: String) -> (listed: [String], written: Data?)? {
+        let opened = doctored(name, edit: { m, _, p in try setConfig(&m, p, Data(text.utf8)) })
+        if opened.contains("isn't a JSON object") { return ([], nil) }
+        guard opened == "OPENED", let o = try? SessionsImport.open(URL(fileURLWithPath: out + "/\(name).dmg"), password: pw, place: place) else { return nil }
+        defer { SessionsImport.discard(o.work) }
+        let (tC, dC, _) = target("c-\(name)")
+        guard let st = try? SessionsImport.materialize(o, part: o.parts[0], target: "c-\(name)"), let b = try? SessionsImport.commit(st) else { return nil }
+        let listed = SessionsRestore.plan(tC, b, addConfig: true).config.servers.map(\.name)
+        let r = try? SessionsRestore.run(tC, b, addConfig: true, windowClosed: { true })
+        let written = fm.contents(atPath: dC + "/claude_desktop_config.json")
+        if let id = r?.id { _ = try? SessionsRestore.undo(id, windowClosed: { true }) }
+        return (listed, written)
+    }
+    func onlyServers(_ d: Data?) -> [String]? {
+        guard let d, let j = json(d), Set(j.keys) == SessionsBackup.configAllowlist, let text = String(data: d, encoding: .utf8),
+              !foreignMarks.contains(where: { text.contains($0) }), !text.contains("evil") else { return nil }
+        return (j["mcpServers"] as? [String: Any])?.keys.sorted()
+    }
+    if let dup = craftedRead("w-config-dup", #"{"mcpServers":{"a":{"command":"x"}},"preferences":{"bypassPermissionsGateByAccount":{"k":true}},"mcpServers":{"b":{"command":"y"}},"preferences":"evil"}"#) {
+        check(dup.written == nil ? dup.listed.isEmpty : onlyServers(dup.written).map { $0 == dup.listed && ($0 == ["a"] || $0 == ["b"]) } == true,
+              "crafted (read side): a duplicate mcpServers or preferences key: one server object at most is written, the one listed, and nothing else: \(dup.listed)")
+    } else { check(false, "crafted (read side): the duplicate-key image opens and stages") }
+    if let esc = craftedRead("w-config-escaped", #"{"mcpServers":{"esc":{"command":"x"}},"preferences":{"bypassPermissionsOptInByAccount":{"k":true}},"evil":1}"#) {
+        check(onlyServers(esc.written) == ["esc"] && esc.listed == ["esc"],
+              "crafted (read side): an escaped key name is the key it spells: mcpServers comes, an escaped preferences or other key never does")
+    } else { check(false, "crafted (read side): the escaped-key image opens and stages") }
+    if let notObject = craftedRead("w-config-not-object", #"{"mcpServers":["npx evil"],"preferences":{"localAgentModeTrustedFolders":["/w/x"]}}"#) {
+        check(notObject.written == nil && notObject.listed.isEmpty, "crafted (read side): a mcpServers that isn't an object writes nothing and lists nothing")
+    } else { check(false, "crafted (read side): the non-object image opens and stages") }
+
     // a task file of 300,000 tasks and a config of 100,000 servers: the plan keeps the first 200 of each for the page (and counts the
     // rest), and is made in a moment
     let hugeName = "w-huge-lists"

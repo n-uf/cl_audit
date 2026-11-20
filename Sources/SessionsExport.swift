@@ -1286,6 +1286,8 @@ enum SessionsExport {
             let allowed = recordData(SessionsBackup.configPath).flatMap { $0.count <= SessionsBackup.maxConfigBytes ? SessionsBackup.allowlisted($0) : nil }
             if let j = allowed, j.isEmpty {
                 configLeftOut = nil                 // nothing on the allowlist: no config item, as for a window with none
+            } else if allowed == nil {
+                configLeftOut = "it can't be read"; leftOut += 1    // over the cap or not a JSON object: so whichever the container
             } else if zip {
                 configLeftOut = "needs the encrypted disk image"; po.configLeftOut = true; leftOut += 1
             } else if let j = allowed, let d = SessionsBackup.configData(j) {
