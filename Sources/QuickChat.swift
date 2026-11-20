@@ -153,11 +153,13 @@ struct QuickChatTarget: Equatable {
 
     /// Two readings of the folder's account are one seat: by the ids and organisations when both have an id, else by the
     /// address in any case (AccountIdentity.sameAccount, as AccountView.isCodeRow matches Claude Code's own row); none on
-    /// either side is the same only as none on the other. An organisation one side doesn't know (a record from before
-    /// codeOrganization) isn't "none": then both are compared without it (AccountResolver.known's rule).
+    /// either side is the same only as none on the other. The organisation has three states (ResolvedAccount.codeOrganization):
+    /// an id, "" (the record says the seat has none: a personal seat and the same login's Team seat are two) and nil (not
+    /// known: a record from before codeOrganization, or no id). Only an unknown one, on either side, is left out: then both
+    /// are compared without it (AccountResolver.known's rule).
     static func sameAccount(_ a: AccountIdentity?, _ b: AccountIdentity?) -> Bool {
         guard let a, let b else { return a == nil && b == nil }
-        if (a.organization ?? "").isEmpty || (b.organization ?? "").isEmpty {
+        if a.organization == nil || b.organization == nil {
             return a.withoutOrganization.sameAccount(b.withoutOrganization)
         }
         return a.sameAccount(b)
