@@ -415,10 +415,10 @@ do {
                                        launch: Processes.Launch(exe: home + "/.local/share/claude/versions/2.1.318", args: ["2.1.318"], configDir: nil, environmentRead: false))
     let codeListed = Processes.codeRunList([native, nativeUnread, readDefault, unreadZsh, unreadApp, rootClaude, rootOther])
     check(codeListed == [ClaudeRun(id: 9013, kind: .terminal, folder: "/x/.claude-n"), ClaudeRun(id: 9014, kind: .terminal, folder: ClaudeRun.unknownFolder),
-                         ClaudeRun(id: 9009, kind: .terminal, folder: "~/.claude")]
+                         ClaudeRun(id: 9009, kind: .terminal, folder: "~/.claude"), ClaudeRun(id: 9001, kind: .terminal, folder: ClaudeRun.unknownFolder)]
           && nativeUnread.unknown && !native.unknown
-          && AccountRemoval.runsUsing(profile("rm-n", "/x/.claude-n", nil), codeListed).map(\.id) == [9013, 9014],
-          "claudeRuns: a native installer's 2.1.318 is listed with its folder (unknown when its environment wasn't read); not zsh, the Claude app or another user's: \(codeListed)")
+          && AccountRemoval.runsUsing(profile("rm-n", "/x/.claude-n", nil), codeListed).map(\.id) == [9013, 9014, 9001],
+          "claudeRuns: a native installer's 2.1.318 is listed with its folder (unknown when its environment wasn't read), another user's unreadable claude as unknown; not zsh, the Claude app or another user's other program: \(codeListed)")
     // the diagnostic: counts and yes/no only
     let probe = Processes.probeLines([readDefault, unread, unreadZsh, unreadApp, tab, rootOther])
     check(probe == ["claude-like processes: 3, environment read: 2", "  1: environment read: yes, CLAUDE_CONFIG_DIR: no",
@@ -455,8 +455,8 @@ do {
           && Processes.parse(argvEnd, size: argvEnd.count) == Processes.Launch(exe: "/x/claude", args: ["claude", "-p"], configDir: nil, environmentRead: false)
           && Processes.parse(argvApple, size: argvApple.count)?.environmentRead == false,
           "env not read: argv then an empty entry, the buffer ending after argv, only the kernel's own strings after argv")
-    check(Processes.parse(noConfig, size: noConfig.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: true),
-          "env read without CLAUDE_CONFIG_DIR: read, no folder (the default folder's)")
+    check(Processes.parse(noConfig, size: noConfig.count) == Processes.Launch(exe: "/x/claude", args: ["claude"], configDir: nil, environmentRead: true, home: "/h"),
+          "env read without CLAUDE_CONFIG_DIR: read, no folder (the default folder's), its HOME kept")
     // read only on positive evidence (a variable every process has): kernel strings, listed or new, never make it read
     let unlistedOnly = procargs("/x/claude", ["claude"], ["subsystem_root_path=/s"])
     let appleThenNew = procargs("/x/claude", ["claude"], ["executable_path=/x/claude", "subsystem_root_path=/s"])
@@ -542,6 +542,68 @@ do {
     check(Processes.probeLines([emptyDir, twoDirs]) == ["claude-like processes: 2, environment read: 2", "  1: environment read: yes, CLAUDE_CONFIG_DIR: yes",
                                                          "  2: environment read: yes, CLAUDE_CONFIG_DIR: yes"],
           "the probe: unchanged format; a set but unusable CLAUDE_CONFIG_DIR is present (yes), never its value")
+    // the list Remove, Uninstall and New profile read fails closed: no table is "couldn't check", never "nothing runs"
+    let rmD = profile("rm-d", "~/.claude", nil), rmW = profile("rm-w", "~/.claude-p8", nil)
+    check(Processes.claudeRuns(table: .some(nil)) == nil, "claudeRuns: the process table unreadable is couldn't check (nil), not an empty list")
+    let mon = RunsMonitor()
+    mon.apply(nil)
+    let monFailed = (checked: mon.checked, failed: mon.failed, runs: mon.runs)
+    mon.apply([])
+    let monEmpty = (checked: mon.checked, failed: mon.failed)
+    mon.apply(nil)
+    check(!monFailed.checked && monFailed.failed && monFailed.runs.isEmpty && monEmpty.checked && !monEmpty.failed && !mon.checked && mon.failed,
+          "RunsMonitor: a look that couldn't read the table isn't checked (failed); one that could is checked; failing again unchecks it")
+    check(AccountRemoval.runsBlock(rmW, runs: nil) == "cl_audit couldn't check which Claude is running, so its folders aren't deleted"
+          && AccountRemoval.runsBlock(rmW, runs: []) == nil
+          && AccountRemoval.runsBlock(rmW, runs: [ClaudeRun(id: 9030, kind: .terminal, folder: "~/.claude-p8")]) == "Close Claude first: it's using these folders",
+          "Remove: deleting the folders is blocked, and says so, when which Claude runs couldn't be checked; free with nothing running")
+    check(Uninstall.runsBlock([rmD, rmW], config: [rmW.id], window: [], runs: nil) == "cl_audit couldn't check which Claude is running, so no folder is deleted"
+          && Uninstall.runsBlock([rmD, rmW], config: [], window: [], runs: nil) == nil
+          && Uninstall.runsBlock([rmD, rmW], config: [rmW.id], window: [], runs: []) == nil,
+          "Uninstall: deleting folders is blocked, and says so, when which Claude runs couldn't be checked; nothing chosen to delete isn't")
+    var runsDraft = NewAccountDraft(); runsDraft.name = "Runsdraft"
+    let failedLines = NewAccountSetup.checks(runsDraft, accounts: [rmD], runs: [], checked: false, failed: true).filter { $0.section == .running }
+    let closedLines = NewAccountSetup.checks(runsDraft, accounts: [rmD], runs: [], checked: true).filter { $0.section == .running }
+    check(failedLines.map(\.text) == ["cl_audit couldn't check which Claude is running, so the folder isn't set up yet"] && failedLines.allSatisfy(\.blocks)
+          && closedLines.map(\.text) == ["The desktop app is closed"] && !closedLines.contains(where: \.blocks),
+          "New profile: Create is blocked by a red line when which Claude runs couldn't be checked, never \"the desktop app is closed\"")
+    // a hidden entry (its facts unreadable): unknown, counted against every profile's folders
+    let hiddenListed = Processes.codeRunList([unreadable, readDefault])
+    check(hiddenListed == [ClaudeRun(id: 9004, kind: .terminal, folder: ClaudeRun.unknownFolder), ClaudeRun(id: 9009, kind: .terminal, folder: "~/.claude")]
+          && AccountRemoval.runsUsing(rmD, hiddenListed).map(\.id) == [9004, 9009] && AccountRemoval.runsUsing(rmW, hiddenListed).map(\.id) == [9004]
+          && AccountRemoval.runsBlock(rmW, runs: hiddenListed) != nil,
+          "claudeRuns: a process whose facts couldn't be read is listed once as unknown and keeps every profile's folders: \(hiddenListed)")
+    // another user's claude (as with `sudo claude`): its folder counts only when it is one of this user's; unread, unknown
+    func otherUser(_ pid: pid_t, _ l: Processes.Launch?, hidden: Bool = false) -> Processes.Entry {
+        Processes.Entry(pid: pid, uid: 0, ruid: 0, name: "claude", launch: l, hidden: hidden)
+    }
+    let otherOnProfile = otherUser(9021, Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: home + "/.claude-p8", environmentRead: true, home: "/var/root"))
+    let otherHomeMine = otherUser(9022, Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: nil, environmentRead: true, home: home))
+    let otherHomeElse = otherUser(9023, Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: nil, environmentRead: true, home: "/var/root"))
+    let otherDirElse = otherUser(9024, Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: "/var/root/.claude-x", environmentRead: true, home: home))
+    let otherUnread = otherUser(9025, Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: nil, environmentRead: false))
+    let otherNoHome = otherUser(9026, Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: nil, environmentRead: true))
+    let otherUnusable = otherUser(9027, Processes.Launch(exe: "/opt/homebrew/bin/claude", args: ["claude"], configDir: nil, environmentRead: true, configDirUnusable: true, home: home))
+    let otherApp = otherUser(9028, Processes.Launch(exe: "/Applications/Claude.app/Contents/MacOS/Claude", args: ["/Applications/Claude.app/Contents/MacOS/Claude"], configDir: nil, environmentRead: true, home: home))
+    let others = Processes.codeRunList([otherOnProfile, otherHomeMine, otherHomeElse, otherDirElse, otherUnread, otherNoHome, otherUnusable, otherApp, rootClaude],
+                                       folders: [rmD.configDir, rmW.configDir])
+    check(others == [ClaudeRun(id: 9021, kind: .terminal, folder: "~/.claude-p8"), ClaudeRun(id: 9022, kind: .terminal, folder: "~/.claude"),
+                     ClaudeRun(id: 9025, kind: .terminal, folder: ClaudeRun.unknownFolder), ClaudeRun(id: 9026, kind: .terminal, folder: ClaudeRun.unknownFolder),
+                     ClaudeRun(id: 9027, kind: .terminal, folder: ClaudeRun.unknownFolder), ClaudeRun(id: 9001, kind: .terminal, folder: ClaudeRun.unknownFolder)],
+          "another user's claude: on a profile's folder or its HOME this user's, listed with that folder; HOME or folder elsewhere, or the Claude app, not; environment unread, no HOME, an unusable CLAUDE_CONFIG_DIR or unreadable: unknown: \(others)")
+    check(AccountRemoval.runsUsing(rmW, others).map(\.id) == [9021, 9025, 9026, 9027, 9001]
+          && AccountRemoval.runsUsing(rmD, others).map(\.id) == [9022, 9025, 9026, 9027, 9001]
+          && AccountRemoval.runsUsing(rmW, Processes.codeRunList([otherHomeElse, otherDirElse], folders: [rmW.configDir])).isEmpty
+          && !others.contains { $0.folder.contains("/var/root") },
+          "Remove / Uninstall: another user's claude on a profile's folder keeps that one; elsewhere none; unread every one; its own folder never shown")
+    // this user's: unchanged (listed with its folder, a profile's or not)
+    check(Processes.codeRunList([native, readDefault], folders: [rmW.configDir]) == [ClaudeRun(id: 9013, kind: .terminal, folder: "/x/.claude-n"), ClaudeRun(id: 9009, kind: .terminal, folder: "~/.claude")],
+          "claudeRuns: this user's claude is listed as before, whatever the profiles' folders")
+    // HOME read by the CLAUDE_CONFIG_DIR rules
+    check(parsed(["PATH=/usr/bin", "HOME=/h"])?.home == "/h" && parsed(["HOME=/h", "PATH=/usr/bin", "HOME=/h"])?.home == "/h"
+          && parsed(["PATH=/usr/bin", "HOME=/a", "HOME=/b"])?.home == nil && parsed(["PATH=/usr/bin", "HOME="])?.home == nil
+          && parsed(["PATH=/usr/bin", "HOME=rel/h"])?.home == nil && parsed(["PATH=/usr/bin"])?.home == nil,
+          "HOME: one absolute path (set again the same) kept; differing, empty, relative or none: nil")
     // the padding rule on real processes: stand-ins (copies of /bin/sleep, never Claude) started at path lengths 7, 8, 15 and
     // 16 ("./" and a name, in their folder), then one with an empty argv[0]; each read back, then killed by its pid
     let standDir = home + "/standin"
