@@ -39,6 +39,8 @@ for fn in files:
                 if t=='tool_use':
                     n=b['name']; i=b['input']
                     if n in('Write','Edit','Read'):
+                        # a call without its file (a malformed one the tool refused) wrote and read nothing
+                        if not isinstance(i,dict) or 'file_path' not in i or (n=='Write' and 'content' not in i): continue
                         uses[b['id']]=(n,i,ts)
                         if n=='Write': rows.append(dict(ts=ts,src=os.path.basename(fn),ln=ln,k='Write',path=i['file_path'],content=i['content']))
                         elif n=='Edit': rows.append(dict(ts=ts,src=os.path.basename(fn),ln=ln,k='Edit',path=i['file_path'],old=i.get('old_string',''),new=i.get('new_string',''),all=i.get('replace_all',False)))

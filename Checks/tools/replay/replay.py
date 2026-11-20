@@ -460,7 +460,9 @@ def python_literal(args, hds, ts, st):
         if isinstance(n, ast.Name) and texts.get(n.id) is not None: return texts[n.id]
         if isinstance(n, ast.Subscript) and isinstance(n.value, ast.Attribute) and n.value.attr == 'argv' and isinstance(n.slice, ast.Constant):
             return argv[n.slice.value]
-        if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add): return val(n.left) + val(n.right)
+        if isinstance(n, ast.BinOp) and isinstance(n.op, ast.Add):
+            l, r = val(n.left), val(n.right)
+            return None if l is None or r is None else l + r      # (an offset found in a text not held: unknown)
         raise Unsupported('python value')
     def text(n):
         """The text an expression stands for; None for a file we don't hold (a repository file): its edits are not ours."""
@@ -476,7 +478,10 @@ def python_literal(args, hds, ts, st):
         if ALLOW_SLICES and isinstance(n, ast.Subscript) and isinstance(n.slice, ast.Slice):
             base = text(n.value)
             lo = val(n.slice.lower) if n.slice.lower else None; hi = val(n.slice.upper) if n.slice.upper else None
-            return None if base is None else base[lo:hi]
+            if base is None: return None
+            # a text we hold, cut at an offset we can't know (found in a text not held): a gap, never a guess
+            if (n.slice.lower and lo is None) or (n.slice.upper and hi is None): raise Unsupported('python slice at an offset not known')
+            return base[lo:hi]
         raise Unsupported('python expression: ' + ast.unparse(n)[:90])
     def target(n):
         p = val(n); return resolve(p, cwd)
@@ -490,7 +495,10 @@ def python_literal(args, hds, ts, st):
         elif isinstance(v, ast.Constant): names[t] = v.value
         elif isinstance(v, ast.Call) and isinstance(v.func, ast.Attribute) and v.func.attr in ('index', 'find'):
             if not ALLOW_SLICES: raise Unsupported('python offset computed from the text')
-            base = text(v.func.value); names[t] = None if base is None else getattr(base, v.func.attr)(val(v.args[0]))
+            base = text(v.func.value)
+            try: names[t] = None if base is None else getattr(base, v.func.attr)(val(v.args[0]))
+            # the text isn't there: the file we hold isn't the one the script saw (or the script failed there): a gap
+            except ValueError: raise Unsupported('python offset: its text is not in the file as rebuilt')
         elif isinstance(v, ast.Call) and isinstance(v.func, ast.Attribute) and v.func.attr == 'replace':
             texts[t] = text(v)
         elif isinstance(v, ast.Name) and v.id in texts: texts[t] = texts[v.id]
