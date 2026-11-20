@@ -193,6 +193,7 @@ struct RemoveAccountSheet: View {
     @State private var deleteFolders = false
     @State private var sizes: [String: Int64] = [:]
     @State private var checking = false
+    @State private var confirming = false         // the click-time look is under way
     @Environment(\.dismiss) private var dismiss
 
     private var folders: [String] { AccountRemoval.folders(entry) }
@@ -229,12 +230,19 @@ struct RemoveAccountSheet: View {
                 Button("Cancel") { dismiss() }.buttonStyle(.plain).foregroundStyle(.secondary).keyboardShortcut(.cancelAction)
                 Spacer()
                 Button(deleteFolders ? "Remove and delete folders" : "Remove") {
-                    let e = entry, del = deleteFolders
-                    dismiss()
-                    model.removeAccount(e, deleteFolders: del)
+                    let e = entry
+                    guard deleteFolders else { dismiss(); model.removeAccount(e, deleteFolders: false); return }
+                    // the folders go only on a look made now: couldn't check, or Claude using them, keeps them (the box says why)
+                    confirming = true
+                    monitor.refresh { fresh in
+                        confirming = false
+                        guard deleteFolders, AccountRemoval.runsBlock(e, runs: fresh) == nil else { return }
+                        dismiss()
+                        model.removeAccount(e, deleteFolders: true)
+                    }
                 }
                 .buttonStyle(.pill(.red, compact: true))
-                .disabled(!canRemove)
+                .disabled(!canRemove || confirming)
             }
         }
         .padding(20)

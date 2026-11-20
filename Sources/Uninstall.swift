@@ -233,7 +233,7 @@ struct UninstallSheet: View {
                     .disabled(working != nil)
                 Spacer()
                 if let w = working { ProgressView().controlSize(.small); Text(w).font(.system(size: 11.5)).foregroundStyle(.secondary) }
-                Button(deleting.isEmpty ? "Uninstall" : "Uninstall and delete folders") { go() }
+                Button(deleting.isEmpty ? "Uninstall" : "Uninstall and delete folders") { confirmThenGo() }
                     .buttonStyle(.pill(.red, compact: true)).disabled(!ready)
             }
         }
@@ -319,6 +319,19 @@ struct UninstallSheet: View {
         }
         .padding(10)
         .background(Color.red.opacity(0.08), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    /// Folders chosen: they go only on a look made now (couldn't check, or Claude using one, keeps them all; the box says why).
+    /// The choices can't change meanwhile (`working` disables them).
+    private func confirmThenGo() {
+        guard !deleting.isEmpty else { go(); return }
+        let c = config, w = window
+        working = "Checking which Claude is running…"
+        monitor.refresh { fresh in
+            working = nil
+            guard Uninstall.runsBlock(accounts, config: c, window: w, runs: fresh) == nil else { return }
+            go()
+        }
     }
 
     private func go() {

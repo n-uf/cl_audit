@@ -198,6 +198,13 @@ enum NewAccountSetup {
     /// The red line while which Claude runs couldn't be checked.
     static let failedWords = RunsMonitor.failedWords + ", so the folder isn't set up yet"
 
+    /// What keeps Create/Connect (and the address sign-in's folder) from going on a look made at the click, or nil: the
+    /// desktop-app line when it blocks. `runs` nil: which Claude runs couldn't be checked.
+    static func runsBlock(_ d: NewAccountDraft, accounts: [AccountEntry], runs: [ClaudeRun]?) -> String? {
+        checks(d, accounts: accounts, runs: (runs ?? []).filter { $0.kind != .terminal }, checked: runs != nil, failed: runs == nil)
+            .first { $0.section == .running && $0.blocks }?.text
+    }
+
     /// Everything the Checks card shows, in order. Any `.bad` line blocks Create/Connect and Finish. `failed`: which Claude runs couldn't be checked (RunsMonitor.failed): a red line, never "the desktop app is closed".
     static func checks(_ d: NewAccountDraft, accounts: [AccountEntry], runs: [ClaudeRun], checked: Bool, failed: Bool = false) -> [SetupCheck] {
         var out: [SetupCheck] = []
@@ -381,6 +388,7 @@ struct NewAccountView: View {
     @State private var confirmQuit = false
     @State private var customFolders: [String] = []
     @State private var checking = false
+    @State private var confirming = false               // the click-time look before a folder is made is under way
     @State private var addressProblem: String?      // why Sign in (the address route) can't go yet
     @Environment(\.face) private var face
 
@@ -644,7 +652,7 @@ struct NewAccountView: View {
     @ViewBuilder private var accountValue: some View {
         if draft.asking {
             AddressRow(email: $draft.email, canSignIn: true,        // never greyed: without Claude Code the click says why
-                       signIn: startAddressSignIn, cancel: { draft.asking = false; addressProblem = nil })
+                       signIn: { startAddressSignIn() }, cancel: { draft.asking = false; addressProblem = nil })
                 .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
         } else if waiting {
             HStack(spacing: 8) {
@@ -756,7 +764,8 @@ struct NewAccountView: View {
 
     /// Sign in (the address route): the new folder is made if it isn't yet, then Terminal runs Claude Code's sign-in
     /// for it with the address filled in. The result is checked afterwards, by account and organisation ids.
-    private func startAddressSignIn() {
+    /// `confirmed`: a look made at the click found nothing in the way (the folder is made only then).
+    private func startAddressSignIn(confirmed: Bool = false) {
         if let p = NewAccountSetup.addressProblem(draft.email, among: model.accounts) { addressProblem = p; return }
         let e = draft.email.trimmingCharacters(in: .whitespaces)
         // a folder connected as it was is never signed in again from here; the folder this setup made can be
@@ -766,6 +775,15 @@ struct NewAccountView: View {
         if !NewAccountSetup.foldersReady(draft) {
             if running { addressProblem = "Quit the desktop app first (step 1)."; return }
             if blocked { addressProblem = "Fix the red lines first."; return }
+            guard confirmed else {
+                confirming = true
+                monitor.refresh { fresh in
+                    confirming = false
+                    if let why = NewAccountSetup.runsBlock(draft, accounts: model.accounts, runs: fresh) { addressProblem = why; return }
+                    startAddressSignIn(confirmed: true)
+                }
+                return
+            }
             do { try NewAccountSetup.createOrConnect(&draft) } catch { addressProblem = error.localizedDescription; return }
         }
         guard let claude = model.requireClaude() else { addressProblem = model.noClaudeWhy; return }
@@ -1044,10 +1062,16 @@ struct NewAccountView: View {
     @ViewBuilder private var actionButtons: some View {
         if !NewAccountSetup.foldersReady(draft) {
             Button(createTitle) {
-                do { try NewAccountSetup.createOrConnect(&draft); error = nil; model.tick += 1 }
-                catch { self.error = error.localizedDescription }
+                // the folder is made or connected only on a look made now (couldn't check, or the desktop app open, holds it)
+                confirming = true
+                monitor.refresh { fresh in
+                    confirming = false
+                    if let why = NewAccountSetup.runsBlock(draft, accounts: model.accounts, runs: fresh) { self.error = why; return }
+                    do { try NewAccountSetup.createOrConnect(&draft); error = nil; model.tick += 1 }
+                    catch { self.error = error.localizedDescription }
+                }
             }
-            .buttonStyle(.primaryKey(compact: true)).disabled(blocked || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
+            .buttonStyle(.primaryKey(compact: true)).disabled(blocked || confirming || draft.name.trimmingCharacters(in: .whitespaces).isEmpty)
         } else if current == 5 {
             Button(draft.usageInDock ? "Finish" : "Start reading usage") { model.finishNew() }.buttonStyle(.primaryKey(compact: true)).disabled(blocked || model.discarding)
         } else {
