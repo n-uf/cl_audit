@@ -809,11 +809,14 @@ enum SessionsBackup {
             var env = Set(((o?["env"] as? [String: Any]) ?? [:]).keys.map { oneLine($0, max: 60) })
             // the command string's words (it may hold its own arguments), then `args`; control characters read as spaces
             let flat: (String) -> String = { String($0.map { $0.isNewline || $0 == "\t" ? " " : $0 }) }
-            // split on spaces outside quotes, so A="x y" stays one word (its quotes kept) and is masked whole
+            // split on spaces outside quotes, so A="x y" stays one word (its quotes kept) and is masked whole; a backslash keeps the
+            // next character in the word (an escaped quote or space), as a shell reads it, but inside '…'
             let commandWords: [String] = {
-                var out: [String] = [], cur = "", quote: Character? = nil
+                var out: [String] = [], cur = "", quote: Character? = nil, escaped = false
                 for c in flat((o?["command"] as? String) ?? "") {
-                    if let q = quote { cur.append(c); if c == q { quote = nil } }
+                    if escaped { cur.append(c); escaped = false }
+                    else if c == "\\", quote != "'" { cur.append(c); escaped = true }
+                    else if let q = quote { cur.append(c); if c == q { quote = nil } }
                     else if c == "\"" || c == "'" { quote = c; cur.append(c) }
                     else if c == " " { if !cur.isEmpty { out.append(cur); cur = "" } }
                     else { cur.append(c) }
@@ -847,21 +850,33 @@ enum SessionsBackup {
                 // options, quotes): it is never shown, only `-S "…"` (the env flag already says to look at what it runs)
                 if k > i, envArgs {
                     if splitNext { splitNext = false; shown.append("\"…\""); continue }
-                    if w.hasPrefix("--") {
-                        if w == "--split-string" { splitNext = true; shown.append(w); continue }
-                        if w.hasPrefix("--split-string=") { shown.append("--split-string=…"); continue }
-                        if ["--unset", "--chdir", "--argv0"].contains(w) { operandNext = true }
+                    if w.hasPrefix("--"), w.count > 2 {
+                        // a long option, or any prefix of one that getopt would take (--unse, --split): by its name before "="
+                        let name = w.split(separator: "=", maxSplits: 1).first.map(String.init) ?? w
+                        let abbrev = { (full: String) in name.count >= 3 && full.hasPrefix(name) }
+                        if abbrev("--split-string") {
+                            if name == w { splitNext = true; shown.append(w) } else { shown.append(name + "=…") }
+                            continue
+                        }
+                        if name == w, abbrev("--unset") || abbrev("--chdir") || abbrev("--argv0") { operandNext = true }
                         shown.append(assignmentMasked(w) ?? w); continue
                     }
                     if w.hasPrefix("-"), w.count > 1 {
-                        // a cluster of short options: one with S in it takes the rest (or the next word) as its string
+                        // a cluster of short options, read left to right: the first that takes a value (S its string; u, C, P, a
+                        // a name or path) takes the rest of the word, or the next word when nothing is left
                         let opts = w.dropFirst()
-                        if let s = opts.firstIndex(of: "S") {
-                            if opts.index(after: s) == opts.endIndex { splitNext = true; shown.append(w) }
-                            else { shown.append("-" + opts[..<s] + "S…") }
+                        if let o = opts.firstIndex(where: { "SuCPa".contains($0) }) {
+                            let rest = opts[opts.index(after: o)...]
+                            if opts[o] == "S" {
+                                if rest.isEmpty { splitNext = true; shown.append(w) } else { shown.append("-" + opts[..<o] + "S…") }
+                            } else if rest.isEmpty { operandNext = true; shown.append(w) }
+                            else {
+                                let (m, hit) = maskKeys(w)
+                                if hit { keyHidden = true }
+                                shown.append(m)
+                            }
                             continue
                         }
-                        if let last = opts.last, "uCPa".contains(last) { operandNext = true }
                         shown.append(assignmentMasked(w) ?? w); continue
                     }
                     if let m = assignmentMasked(w) {
