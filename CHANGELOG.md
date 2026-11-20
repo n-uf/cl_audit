@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.57 — 2026-11-19
+
 - Claude Code 2.1.326's archive record for a session (archived.json, in the session's own folder) travels with its session, so an archived session stays archived: a switch leaves it in place, a backup and an export take it with the session, and Pick its folder moves it with the session (checked for a switch, a move to another Mac and Pick its folder). A restore or import adds it only where it is missing, and never over one that changed here. A project's connector-downloads/ (what its connectors fetched) goes into backups and exports as the project's own files: a key found in one now leaves out only that file, where before it left out all of the project's downloads and counted them as a session. Pick its folder leaves them with the project.
 
 ## 26.11.56 — 2026-11-19
