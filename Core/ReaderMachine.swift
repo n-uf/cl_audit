@@ -426,6 +426,12 @@ public struct ReaderMachine: Equatable {
             if local.noFiveHour { local.fiveHour = nil; local.fiveHourResets = nil }
             usage = local
             numbersOwner = nil; numbersAccount = nil; numbersOrganization = nil; numbersKey = nil    // the status line names no account: whose these are isn't known
+            // the kept sign-in expired (or was rejected), and Claude Code wrote its status line since it was read: Claude
+            // Code is working, so it has renewed its own sign-in. Read it now (at most every `signInRetry`) rather than
+            // after `keptSignInRetry`, so "expired" (which shows no numbers) doesn't outlast the renewal
+            if state == .expired, local.fetchedAt > lastLoginRead, now.timeIntervalSince(lastLoginRead) >= timing.signInRetry {
+                forceLoginRead = true; nextFetch = .distantPast
+            }
         }
         if let u = usage, Self.resetPassed(u, now: now), !failing, now.timeIntervalSince(lastAsked) >= timing.resetRereadFloor {
             nextFetch = .distantPast

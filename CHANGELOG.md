@@ -11,6 +11,7 @@ the notes before updating.
 - Right after Claude Code moves between one login's personal and Team seats, numbers read from the seat it left (the Keychain can keep the old sign-in for a moment) no longer show as the new seat's: the reading's organisation is now compared too, and the line says the numbers are another account's until the next read.
 - A sign-in change is now followed within seconds also in a Claude Code folder that was deleted and made again, and in one (or the Claude app's logs folder) that wasn't there yet when cl_audit started.
 - The Claude app signed out and then back in to the same account now shows as signed in again as soon as its log says its sessions started for that account, not only after a newer sign-in transition or settings write.
+- When Claude Code renews its own expired sign-in while it runs, the numbers come back within about a minute (its status line says it works, so the sign-in is read again), not after up to 10 minutes of "sign-in expired".
 
 ## 26.11.69 — 2026-11-20
 

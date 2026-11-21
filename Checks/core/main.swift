@@ -504,6 +504,24 @@ do {
     check(tick(&exp, t0.addingTimeInterval(301)) == [.save, .considerRenew, .save] && exp.state == .expired,
           "within 10 minutes: no Keychain read, still expired")
     check(tick(&exp, t0.addingTimeInterval(601))  == [.readSignIn(generation: 0), .save], "10 minutes on: the sign-in read again")
+    // Claude Code renews its own sign-in: its status line written after the expired one was read says it works, so the
+    // sign-in is read again at once (at most once a minute), not after 10 minutes
+    var renewed = machine()
+    _ = tick(&renewed, t0)
+    _ = renewed.handle(.signInRead(.token(key: "k9", expiresAt: t0.addingTimeInterval(-1), plan: nil), generation: 0, now: t0))
+    let early = tick(&renewed, t0.addingTimeInterval(30), line: use(week: 20, at: t0.addingTimeInterval(20), source: "line"))
+    check(!early.contains(.readSignIn(generation: 0)) && renewed.state == .expired, "a status line within a minute of the read: not read again yet")
+    let later = tick(&renewed, t0.addingTimeInterval(90), line: use(week: 21, at: t0.addingTimeInterval(80), source: "line"))
+    check(later.contains(.readSignIn(generation: 0)), "a newer status line a minute on, the sign-in expired: read again now (\(later))")
+    _ = renewed.handle(.signInRead(.token(key: "k10", expiresAt: t0.addingTimeInterval(8 * 3600), plan: nil), generation: 0, now: t0.addingTimeInterval(90)))
+    check(renewed.handle(.usageAnswer(endpoint(use(week: 22, at: t0.addingTimeInterval(91))), key: "k10", asked: t0.addingTimeInterval(90), generation: 0,
+                                      now: t0.addingTimeInterval(91))).contains(.save) && renewed.state == .ok,
+          "…the renewed sign-in reads: ok again")
+    var oldLine = machine()
+    _ = tick(&oldLine, t0)
+    _ = oldLine.handle(.signInRead(.token(key: "k9", expiresAt: t0.addingTimeInterval(-1), plan: nil), generation: 0, now: t0.addingTimeInterval(100)))
+    check(!tick(&oldLine, t0.addingTimeInterval(200), line: use(week: 20, at: t0.addingTimeInterval(50), source: "line")).contains(.readSignIn(generation: 0)),
+          "a status line written before the expired sign-in was read: no read again")
     // rejected by the endpoint (401/403): expired too, the same 10 minutes
     var rej = machine()
     _ = tick(&rej, t0); _ = rej.handle(.signInRead(token, generation: 0, now: t0))
