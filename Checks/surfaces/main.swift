@@ -1467,9 +1467,12 @@ do {
     check((try? String(contentsOfFile: elsewhere, encoding: .utf8)) == "kept\n", "consent.log a link: never written through")
     try? fm.removeItem(at: log)
     // a hard link to another file of this user's: O_NOFOLLOW doesn't see it, the link count does
-    _ = link(elsewhere, log.path)
+    let linked = link(elsewhere, log.path) == 0
+    var lst = stat()
+    let twoNames = linked && lstat(log.path, &lst) == 0 && lst.st_nlink == 2
     ConsentLog.accepted("Import")
-    check((try? String(contentsOfFile: elsewhere, encoding: .utf8)) == "kept\n", "consent.log a hard link: never appended to")
+    check(twoNames && (try? String(contentsOfFile: elsewhere, encoding: .utf8)) == "kept\n",
+          "consent.log a hard link (made: \(twoNames)): never appended to")
     try? fm.removeItem(at: log); try? fm.removeItem(atPath: elsewhere)
     rc.reset()
 }
