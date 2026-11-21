@@ -1881,12 +1881,14 @@ struct AccountSettings: View {
     /// id `codeAccount`), linked or still open, that account (the finish line: only the Claude app is left); when it is
     /// still open and went to another, that one, by the standby entry it names, else by its account ("didn't finish").
     /// nil otherwise: an older switch never names it, a closed one to another account neither, and a sign-in by hand has
-    /// none.
+    /// none. A linked switch says it for a day after it was linked (the resolver's split keeps the same day): after that the
+    /// Claude app left on the other account is no longer "the finish line" of that switch.
     static func switchTarget(goal: SwitchRunner.Goal?, newest: SwitchReceipt?, standby: [StandbyAccount],
-                             code: String?, codeAccount: String?) -> String? {
+                             code: String?, codeAccount: String?, now: Date = Date()) -> String? {
         if let g = goal { return g.standby == nil || g.wantedEmail.isEmpty ? nil : g.wantedEmail }
         guard let r = newest, r.undone == nil, r.leftAsIs == nil else { return nil }
-        if let c = code, let id = codeAccount, AccountID.same(r.to.account, id), r.linked != nil || r.unfinished { return c }
+        let linkedLately = r.linked.map { now.timeIntervalSince($0) <= 24 * 3600 } ?? false
+        if let c = code, let id = codeAccount, AccountID.same(r.to.account, id), linkedLately || r.unfinished { return c }
         guard r.unfinished else { return nil }
         let s = standby.first { $0.id == r.standby } ?? standby.first { s in s.seat.map { r.to.same($0) } ?? false }
         return s.map { $0.seat?.email ?? $0.email }

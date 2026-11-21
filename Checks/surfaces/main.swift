@@ -1207,15 +1207,17 @@ do {
     var linkedNew = newer; linkedNew.linked = t0
     let newestOf = { (rs: [SwitchReceipt]) in rs.sorted { $0.started > $1.started }.first }
     /// The row's words after a restart (no runner goal), Claude Code on `code`.
-    func words(_ newest: SwitchReceipt?, _ standby: [StandbyAccount], code: Seat, goal: SwitchRunner.Goal? = nil) -> String {
+    func words(_ newest: SwitchReceipt?, _ standby: [StandbyAccount], code: Seat, goal: SwitchRunner.Goal? = nil, now: Date = t0) -> String {
         AccountView.codeRowWords(code: code.email!, target: AccountSettings.switchTarget(goal: goal, newest: newest, standby: standby,
-                                                                                       code: code.email, codeAccount: code.account.lowercased()))
+                                                                                       code: code.email, codeAccount: code.account.lowercased(), now: now))
     }
     let finish = "Claude Code is on it; sign the Claude app in to finish.", onIt = "Claude Code is on it."
     let notBen = "Claude Code signed in as dan, not ben: the switch didn't finish. Sign Claude Code in as ben from the Switch page, or Undo it."
     // 05 after a restart: the switch reached ben (its receipt linked), the app still on ann: the finish line
     let annOnly = [StandbyAccount(email: ann.email!, seat: ann, id: "ka")]
     check(words(linkedNew, annOnly, code: ben) == finish, "05 after a restart, the receipt linked: ben's row keeps the finish line: \(words(linkedNew, annOnly, code: ben))")
+    check(words(linkedNew, annOnly, code: ben, now: t0.addingTimeInterval(2 * 86400)) == onIt,
+          "a switch linked two days ago no longer decides the row: \(words(linkedNew, annOnly, code: ben, now: t0.addingTimeInterval(2 * 86400)))")
     check(words(newestOf([older, linkedNew]), withCat, code: dan) == onIt,
           "the newest switch linked to ben, an older one still open, Claude Code on dan by hand: never the older one's cat, no finish: \(words(newestOf([older, linkedNew]), withCat, code: dan))")
     // 07 after a restart: the switch to ben still open, Claude Code on dan
