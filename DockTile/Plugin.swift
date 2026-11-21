@@ -50,15 +50,16 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
         // again when the agent saves this profile's record or the profiles or apps change, and every 30 s (the age turns
         // grey, the countdown runs), as the Dock icon app does
         let center = DistributedNotificationCenter.default()
+        // (a burst of notices is one redraw, half a second after its first: a storm never reaches the Dock's process)
         observers.append(center.addObserver(forName: Store.statusChanged, object: nil, queue: .main) { [weak self] note in
             guard let self, note.object == nil || note.object as? String == self.id else { return }
-            self.redraw("record")
+            self.soon("record")
         })
-        observers.append(center.addObserver(forName: Store.changed, object: nil, queue: .main) { [weak self] _ in self?.redraw("profiles") })
-        observers.append(center.addObserver(forName: Installer.appsChangedNote, object: nil, queue: .main) { [weak self] _ in self?.redraw("apps") })
+        observers.append(center.addObserver(forName: Store.changed, object: nil, queue: .main) { [weak self] _ in self?.soon("profiles") })
+        observers.append(center.addObserver(forName: Installer.appsChangedNote, object: nil, queue: .main) { [weak self] _ in self?.soon("apps") })
         observers.append(center.addObserver(forName: DockTile.windowNote, object: nil, queue: .main) { [weak self] note in
             guard let self, note.object as? String == self.id else { return }
-            self.redraw("window")
+            self.soon("window")
         })
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.redraw("timer") }
     }
@@ -126,6 +127,17 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
         guard Date().timeIntervalSince(seen.seen) >= 10 else { return }
         log("the copy is now build \(now): leaving so the Dock loads it")
         exit(0)
+    }
+
+    /// A redraw for a notice, half a second from the first of a burst: the ones after it within that time join it.
+    private var redrawSoon = false
+    private func soon(_ why: String) {
+        guard !redrawSoon else { return }
+        redrawSoon = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.redrawSoon = false
+            self?.redraw(why)
+        }
     }
 
     /// A new face from the saved record (the notices and the timer; the docktile checks call it for the timer).

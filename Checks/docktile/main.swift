@@ -13,6 +13,9 @@
 // Runs only with HOME and CFFIXED_USER_HOME = .../Checks/.work/docktile/home (Checks/run.sh sets and guards it). Fake data
 // only: example.com addresses, made-up sign-in files in the throwaway home. The real home's sign-in paths are named in the
 // sandbox only as more tripwires; nothing here reads them, opens an app, the Dock or Terminal, or touches the Keychain.
+// The suite's own saves tell no running cl_audit (Store.announce silenced). The children post the plug-in's notices
+// themselves, which the Mac's cl_audit hears too: a few per run, naming no real profile (a redraw, a reload of the real
+// file, nothing more).
 
 import AppKit
 import ProfileCore
@@ -65,6 +68,13 @@ if args.count >= 3, args[1] == "--child" {
     }
     p.setDockTile(NSApp.dockTile)
     let dn = DistributedNotificationCenter.default()
+    if scenario == "burst" {
+        // a storm of profile notices: one redraw for it
+        for _ in 0..<20 { dn.postNotificationName(Store.changed, object: nil, userInfo: nil, deliverImmediately: true) }
+        RunLoop.main.run(until: Date().addingTimeInterval(1.5))
+        p.setDockTile(nil)
+        print("done burst"); exit(0)
+    }
     for n in [Store.statusChanged, Store.changed, Installer.appsChangedNote, DockTile.windowNote] {
         dn.postNotificationName(n, object: n == Store.statusChanged || n == DockTile.windowNote ? id : nil, userInfo: nil, deliverImmediately: true)
         RunLoop.main.run(until: Date().addingTimeInterval(0.6))
@@ -105,6 +115,8 @@ if args.count >= 3, args[1] == "--child" {
 }
 
 // ============ the parent: the throwaway home, the sandbox, the scenarios ============
+// a throwaway home: its saves tell no running cl_audit or agent (they read the real file)
+Store.announce = {}; Store.announceStatus = { _ in }
 var passed = 0, failed = 0
 func check(_ ok: Bool, _ what: String, line: Int = #line) {
     if ok { passed += 1 } else { failed += 1; print("FAIL (line \(line)): \(what)") }
@@ -206,6 +218,11 @@ check(DockTile.plainID("café") == "café" && DockTile.plainID("привет-2")
       "profile ids: any letters (as Store.newID makes them), never a folder step, a hidden name, a control character or >200 bytes")
 let stamp = DockTile.lastBeat(id)
 check(stamp.map { abs($0.timeIntervalSinceNow) < 60 } == true && DockTile.lastBeat("nobody") == nil, "lastBeat: the heartbeat's time; none for another profile")
+
+// a storm of notices is one redraw (the Dock's process never redraws per notice)
+let burst = child("burst")
+let burstDraws = log().components(separatedBy: "\n").filter { $0.contains("drew (profiles)") }.count
+check(clean(burst, "burst") && burstDraws == 1, "20 profile notices at once: one redraw (got \(burstDraws))")
 
 // 2. nothing it reads makes it trap: a broken record, absurd numbers, a broken or empty profile list, no bundle
 put(Store.statusFolder.appendingPathComponent("\(id).json").path, "{ not json")
