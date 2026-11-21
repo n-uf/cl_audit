@@ -229,6 +229,8 @@ final class StatsModel: ObservableObject {
     @Published var totalCost: Double = 0        // the period at API list prices (Pricing.swift), models with a price
     @Published var unpriced = 0                 // replies of models without a published price, left out of it
     var accounts: [AccountEntry] = []
+    /// Each shown profile's chart colour (ProfileLED.seriesColors over the whole list), set with `accounts`.
+    private(set) var seriesColors: [String: Color] = [:]
     var hidden: Set<String> = []            // accounts the dashboard leaves out
     private var generation = 0
     /// One scan at a time: a reload asked for while one is under way runs once it's done. On a busy Mac a scan takes
@@ -239,7 +241,7 @@ final class StatsModel: ObservableObject {
     private(set) var asked = Date.distantPast
 
     /// A profile's chart colour (ProfileLED.seriesColors: its own, else a neutral grey).
-    func color(_ account: String) -> Color { ProfileLED.seriesColors(accounts)[account] ?? .gray }
+    func color(_ account: String) -> Color { seriesColors[account] ?? .gray }
 
     func reload() {
         generation += 1
@@ -250,7 +252,9 @@ final class StatsModel: ObservableObject {
         scanning = true
         // The accounts change together with the bars (on the main thread, below): a bar for an account the
         // chart doesn't list makes Swift Charts crash.
-        let entries = Store.load().filter { !hidden.contains($0.id) }, range = self.range
+        let all = Store.load()
+        let entries = all.filter { !hidden.contains($0.id) }, range = self.range
+        let colours = ProfileLED.seriesColors(entries, among: all)
         let gen = generation
         DispatchQueue.global(qos: .utility).async {
             let replies = StatsScanner.replies(for: entries, since: range.since)
@@ -262,6 +266,7 @@ final class StatsModel: ObservableObject {
                 if self.again { self.again = false; self.reload(); return }     // asked again meanwhile: this one is out of date
                 guard gen == self.generation else { return }
                 self.accounts = entries
+                self.seriesColors = colours
                 self.bars = result.bars
                 self.heat = result.heat
                 self.heatDays = result.days
@@ -349,12 +354,13 @@ final class WeekSummary: ObservableObject {
     /// `wait` computes on the spot (for rendering to an image).
     func reload(hidden: Set<String>, wait: Bool = false) {
         guard StatsScanner.enabled else { generation += 1; result = Result(); loaded = false; return }   // Usage history off
-        let entries = Store.load().filter { !hidden.contains($0.id) }
-        if wait { result = Self.compute(entries); loaded = true; return }
+        let all = Store.load()
+        let entries = all.filter { !hidden.contains($0.id) }
+        if wait { result = Self.compute(entries, among: all); loaded = true; return }
         generation += 1
         let gen = generation
         DispatchQueue.global(qos: .utility).async {
-            let r = Self.compute(entries)
+            let r = Self.compute(entries, among: all)
             DispatchQueue.main.async {
                 guard gen == self.generation else { return }
                 self.result = r
@@ -363,7 +369,7 @@ final class WeekSummary: ObservableObject {
         }
     }
 
-    static func compute(_ entries: [AccountEntry]) -> Result {
+    static func compute(_ entries: [AccountEntry], among all: [AccountEntry]) -> Result {
         let since = StatsRange.week.since
         let replies = StatsScanner.replies(for: entries, since: since)
         let cal = Calendar.current
@@ -374,7 +380,7 @@ final class WeekSummary: ObservableObject {
             let parts = entries.map { Part(account: $0.id, tokens: m[$0.id] ?? 0) }.filter { $0.tokens > 0 }
             return Day(id: d, parts: parts, total: parts.reduce(0) { $0 + $1.tokens })
         }
-        let colors = ProfileLED.seriesColors(entries)                         // each profile's own, else a neutral grey
+        let colors = ProfileLED.seriesColors(entries, among: all)             // each profile's own, else a neutral grey
         return Result(days: days, replies: replies.count, tokens: days.reduce(0) { $0 + $1.total }, colors: colors)
     }
 }

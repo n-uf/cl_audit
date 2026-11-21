@@ -3945,7 +3945,7 @@ do {
     check(usage == nil && graphite == nil && tile == .teal && picked == .pink && !ProfileLED.lamp(usage).lit && ProfileLED.lamp(picked).lit,
           "the profile's own colour: its pick, else its Dock icon's colour; none (unlit) for a Dock icon by usage or graphite")
     e.accent = nil; e.color = .usage
-    check(e.accentColor == .orange, "accentColor keeps its orange for the places that need a colour (charts, keys)")
+    check(e.accentColor == .orange, "accentColor keeps its orange for the places that must draw a colour (the menu bar icon's style, the picker)")
     // a profile's colour reads the same everywhere: every dot before a profile's name is its light (ProfileLED), never a
     // flat dot in accentColor (orange for a profile with none) — the tile bar, the card, the launcher palette, the menu bar's
     // menu, the Dock panels
@@ -3953,7 +3953,7 @@ do {
     var flat: [String] = [], lights: [String: Int] = [:]
     for f in ["Launcher.swift", "MenuBar.swift", "Details.swift", "Settings.swift"] {
         let lines = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? ["(missing \(f))"]
-        for (i, l) in lines.enumerated() where l.contains("Circle().fill") && (l.contains("accent") || l.contains("info.accent")) {
+        for (i, l) in lines.enumerated() where l.contains("Circle().fill") && l.contains("accent") {
             flat.append("\(f):\(i + 1)")
         }
         lights[f] = lines.filter { $0.contains("ProfileLED(color:") && $0.contains("ownColor") }.count
@@ -3970,17 +3970,27 @@ do {
           "the Dock panel's light: the profile's own colour (pink lit), unlit for a profile with none, never orange")
     // keys and charts that stand for a profile (the hub's ruling): its own colour; none: a plain key, an unlit strip, a
     // neutral grey series (a shade of its own each); never an orange that isn't the profile's
-    let orange = Color(nsColor: Painter.orange)
-    check(ProfileLED.keyTint(.teal) == Color(nsColor: TileColor.teal.color(fiveHour: nil, stale: false)) && ProfileLED.keyTint(nil) == nil
-          && ProfileLED.keyTint(.graphite) == nil && ProfileLED.neutral != orange,
+    // (compared by their sRGB hex, never by Color's own equality)
+    func hex(_ c: Color?) -> String? {
+        guard let c, let n = NSColor(c).usingColorSpace(.sRGB) else { return nil }
+        return String(format: "%02x%02x%02x", Int((n.redComponent * 255).rounded()), Int((n.greenComponent * 255).rounded()), Int((n.blueComponent * 255).rounded()))
+    }
+    let orange = hex(Color(nsColor: Painter.orange))
+    check(hex(ProfileLED.keyTint(.teal)) == "14b8a6" && ProfileLED.keyTint(nil) == nil && ProfileLED.keyTint(.graphite) == nil
+          && hex(ProfileLED.neutral) != orange && orange != nil,
           "a profile's key: its own colour, none (a plain key) for a profile with none; the state light's neutral isn't orange")
     var pinkE = e; pinkE.id = "s-pink"; pinkE.accent = .pink
     var noneA = e; noneA.id = "s-none-a"; noneA.accent = nil; noneA.color = .usage
     var noneB = e; noneB.id = "s-none-b"; noneB.accent = nil; noneB.color = .graphite
-    let series = ProfileLED.seriesColors([pinkE, noneA, noneB])
-    check(series["s-pink"] == ProfileLED.keyTint(.pink) && series["s-none-a"] != nil && series["s-none-b"] != nil
-          && series["s-none-a"] != series["s-none-b"] && !series.values.contains(orange),
-          "a chart's series: the profile's own colour, a grey of its own each for profiles with none, never orange")
+    let all = [noneB, pinkE, noneA]
+    let series = ProfileLED.seriesColors(all, among: all).mapValues { hex($0) }
+    let shownOnlyB = ProfileLED.seriesColors([noneB], among: all).mapValues { hex($0) }
+    let reordered = ProfileLED.seriesColors(all.reversed(), among: all.reversed()).mapValues { hex($0) }
+    check(series["s-pink"] == "ec4899" && series["s-none-a"].map { $0 != nil } == true && series["s-none-a"] != series["s-none-b"]
+          && !series.values.contains(orange),
+          "a chart's series: the profile's own colour, a grey of its own each for profiles with none, never orange: \(series)")
+    check(shownOnlyB["s-none-b"] == series["s-none-b"] && reordered == series,
+          "…the greys stay put when another profile is hidden or the profiles are reordered")
     // only the menu bar icon's "Profile colour" style and the colour picker keep accentColor's orange
     var accentUses: [String] = []
     for f in (try? fm.contentsOfDirectory(atPath: src.path)) ?? [] where f.hasSuffix(".swift") && f != "Config.swift" {

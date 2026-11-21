@@ -610,8 +610,11 @@ struct AccountChips: View {
             ForEach(model.rows) { row in
                 let on = !model.hidden.contains(row.id)
                 Button { model.toggle(row.id) } label: {
-                    // its strip lit in the profile's own colour; unlit (the face's off colour) for a profile with none
-                    KeyLook(latched: on, lamp: ProfileLED.keyTint(row.entry.ownColor) ?? face.ledOff, height: TopStrip.height, hPad: 11) { Text(row.entry.name) }
+                    // its strip lit in the profile's own colour; dark with no glow for a profile with none (on a light face the
+                    // deeper off colour ProfileLED's bezel uses, so it reads as off, not grey-lit)
+                    let own = ProfileLED.keyTint(row.entry.ownColor)
+                    KeyLook(latched: on, lamp: own ?? (face.light ? .hex(0x4a4744) : face.ledOff), lampLit: own != nil,
+                            height: TopStrip.height, hPad: 11) { Text(row.entry.name) }
                 }
                 .buttonStyle(PressableKey())
                 .help(on ? "Hide \(row.entry.name) from the dashboard" : "Show \(row.entry.name) on the dashboard")

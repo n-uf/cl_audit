@@ -126,6 +126,11 @@ struct StatsSection: View {
                 ForEach(stats.accounts) { e in
                     HStack(spacing: 6) {
                         ProfileLED(color: e.ownColor)
+                        // a profile with no colour of its own: its light is unlit, so its grey in the charts is keyed here
+                        if e.ownColor == nil {
+                            RoundedRectangle(cornerRadius: 1.5).fill(stats.color(e.id)).frame(width: 10, height: 6)
+                                .help("\(e.name)'s grey in the charts")
+                        }
                         Text(e.name).foregroundStyle(face.soft)
                     }
                 }

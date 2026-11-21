@@ -346,10 +346,12 @@ struct SurfaceShape: View {
 /// The orange light strip along the top edge of a latched key (or another colour: a profile's).
 struct LampStrip: View {
     var color: Color = FaceTheme.led
+    /// false: the strip is there but dark (a profile with no colour of its own): no glow.
+    var lit = true
     var body: some View {
         Capsule().fill(color).frame(height: 2)
-            .shadow(color: color.opacity(0.8), radius: 1.5)
-            .shadow(color: color.opacity(0.45), radius: 4)
+            .shadow(color: lit ? color.opacity(0.8) : .clear, radius: 1.5)
+            .shadow(color: lit ? color.opacity(0.45) : .clear, radius: 4)
             .padding(.horizontal, 5).padding(.top, 3)
             .frame(maxHeight: .infinity, alignment: .top)
             .allowsHitTesting(false)
@@ -389,12 +391,19 @@ struct ProfileLED: View {
     static let neutral = Color.hex(0xd4d4d8)
 
     /// A chart's colour per profile, where a chart needs one (labelled by name): its own colour; a profile with none a
-    /// neutral grey, a shade of its own when several have none. Never an orange that isn't the profile's.
-    static func seriesColors(_ entries: [AccountEntry]) -> [String: Color] {
-        let greys: [UInt32] = [0x9ca3af, 0x6b7280, 0xd1d5db, 0x4b5563]
-        var n = 0, out: [String: Color] = [:]
+    /// neutral grey, a shade of its own when several have none. The shade follows the profile's id among all profiles with
+    /// none (`all`: the whole list, not the chart's shown ones; by id, not by place), so hiding or reordering one doesn't
+    /// move the others' greys. Mid
+    /// greys, legible on the dark and the light faces; a seventh profile with none repeats the first's. Never an orange
+    /// that isn't the profile's.
+    static let greys: [UInt32] = [0x9ca3af, 0x78716c, 0xa8a29e, 0x71717a, 0x8b8b94, 0xb4b4bc]
+    static func seriesColors(_ entries: [AccountEntry], among all: [AccountEntry]) -> [String: Color] {
+        let noColour = all.filter { $0.ownColor == nil }.map(\.id).sorted()
+        var out: [String: Color] = [:]
         for e in entries {
-            if let c = keyTint(e.ownColor) { out[e.id] = c } else { out[e.id] = Color(nsColor: TileColor.hex(greys[n % greys.count])); n += 1 }
+            if let c = keyTint(e.ownColor) { out[e.id] = c; continue }
+            let i = noColour.firstIndex(of: e.id) ?? noColour.count
+            out[e.id] = Color(nsColor: TileColor.hex(greys[i % greys.count]))
         }
         return out
     }
@@ -476,6 +485,8 @@ struct KeyLook<Content: View>: View {
     var latched = false
     var held = false              // the down face without a strip (an on/off key with its own LED)
     var lamp: Color = FaceTheme.led
+    /// false: a latched key's strip is dark, no glow (a profile key for a profile with no colour of its own).
+    var lampLit = true
     var height: CGFloat = 24
     var radius: CGFloat = 3
     var hPad: CGFloat = 10
@@ -503,7 +514,7 @@ struct KeyLook<Content: View>: View {
             .padding(.top, kind == .primary ? 2.5 : 0)     // a latched key's legend stays centred, like its neighbours
             .frame(height: height)
             .background(RaisedShape(finish: finish, radius: radius, pressed: down))
-            .overlay { if latched { LampStrip(color: lamp) } else if kind == .primary { LampStrip(color: lamp).padding(.horizontal, 1) } }
+            .overlay { if latched { LampStrip(color: lamp, lit: lampLit) } else if kind == .primary { LampStrip(color: lamp).padding(.horizontal, 1) } }
             // only a key being pressed moves; a latched key stays level (its darker face and lit strip say "on"),
             // so keys, displays and strips in a row keep one centre line. The hard edge is drawn outside the frame.
             .offset(y: pressed ? 1 : 0)
