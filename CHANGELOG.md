@@ -13,6 +13,7 @@ the notes before updating.
 - The Claude app signed out and then back in to the same account now shows as signed in again as soon as its log says its sessions started for that account, not only after a newer sign-in transition or settings write.
 - When Claude Code renews its own expired sign-in while it runs, the numbers come back within about a minute (its status line says it works, so the sign-in is read again), not after up to 10 minutes of "sign-in expired".
 - A standby account remembered without its organisation (found only by its id, or kept from an older list) now gets it as soon as cl_audit finds it on this Mac, so it can be switched to.
+- The widget decides whose numbers it shows from the profile's record alone, as the card does: a reading of the profile's account under a changed address no longer leaves the widget empty.
 
 ## 26.11.69 — 2026-11-20
 

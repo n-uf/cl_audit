@@ -1560,6 +1560,23 @@ do {
     _ = Store.writeStatus("spm", record(app: .unknown, code: mo, reading: mo.email, weekly: 100, age: 20 * 60))
     w = AgentFiles.load(from: Store.folder, now: now)
     check(w.first { $0.id == "spm" }.map { $0.week == nil && $0.full(now: now) == nil } == true, "the widget: 20-minute-old numbers never full")
+    // whose the numbers are is the record's answer only (the resolver's, through Headline), never the profile's seat
+    // address: a reading of the seat's id under another address shows in the widget as on the card
+    var renamedRec = IconStatus(state: "ok"); renamedRec.weekly = 40; renamedRec.updatedAt = now
+    renamedRec.loginEmail = "mo-renamed@example.com"; renamedRec.numbersOwner = renamedRec.loginEmail; renamedRec.numbersAccount = mo.account
+    renamedRec.resolved = AccountResolver.resolve(same, among: [same], app: .unknown, code: mo, loginEmail: renamedRec.loginEmail,
+                                                  loginAccount: mo.account, names: [:], now: now)
+    _ = Store.writeStatus("spm", renamedRec)
+    w = AgentFiles.load(from: Store.folder, now: now)
+    check(renamedRec.resolved?.readStale == nil && Store.status(for: same, now: now)?.weekly == 40 && w.first { $0.id == "spm" }?.week == 40,
+          "the widget: the seat's id read under another address shows, as on the card (no seat address of its own)")
+    var otherRec = renamedRec
+    otherRec.resolved = AccountResolver.resolve(same, among: [same], app: .unknown, code: mo, loginEmail: "else@example.com", names: [:], now: now)
+    otherRec.loginEmail = "else@example.com"; otherRec.numbersOwner = otherRec.loginEmail; otherRec.numbersAccount = nil
+    _ = Store.writeStatus("spm", otherRec)
+    w = AgentFiles.load(from: Store.folder, now: now)
+    check(otherRec.resolved?.readStale == true && Store.status(for: same, now: now)?.weekly == nil && w.first { $0.id == "spm" }?.week == nil,
+          "…and another account's reading (stale) shows in neither")
 
     // the owner arrives later: numbers read with a token whose account isn't known yet are held (none shown, no alert);
     // when its account comes back they are taken, with their alerts (spm: no split, Claude Code's account in use)

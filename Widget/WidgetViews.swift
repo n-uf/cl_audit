@@ -75,9 +75,8 @@ enum AgentFiles {
 
     private struct Accounts: Decodable { let accounts: [Entry] }
     private struct Entry: Decodable {
-        let id: String; let name: String; let accent: String?; let showFable: Bool?; let seat: SeatEmail?; let pollMinutes: Int?
+        let id: String; let name: String; let accent: String?; let showFable: Bool?; let pollMinutes: Int?
     }
-    private struct SeatEmail: Decodable { let email: String? }
 
     /// `dir`: cl_audit's folder (a check passes its own throwaway one).
     static func load(from dir: URL = folder, now: Date = Date()) -> [WidgetProfile] {
@@ -93,12 +92,13 @@ enum AgentFiles {
             // (Store.status(for:)): no numbers past a reset or for a sign-in that is expired or gone, none in the split or for
             // another reading than the label's, and none full when old (the app's thresholds, StatusAges: the read
             // interval, 5 minutes at least, plus a minute) or when their account couldn't be confirmed. Numbers read for
-            // another account than the profile's (the one it was on before a switch) never show.
+            // another account than the profile's (the one it was on before a switch) never show: the record's own answer
+            // says so (the resolver's stale reading), never the profile's seat address read here.
             if let d = try? Data(contentsOf: dir.appendingPathComponent("status/\(e.id).json")),
-               let raw = StatusCodec.decode(d)?.current(now: now), !raw.readForAnother(than: e.seat?.email) {
+               let raw = StatusCodec.decode(d)?.current(now: now) {
                 let ages = StatusAges.of(pollMinutes: e.pollMinutes ?? 5)
                 let s = raw.shown(raw.headline(now: now, ages: ages), now: now)
-                p.updated = raw.updatedAt
+                p.updated = s.updatedAt
                 p.noFive = s.noFiveHour ?? false
                 p.plan = s.plan
                 p.five = s.fiveHour; p.fiveResets = s.fiveHourResets
