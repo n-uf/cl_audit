@@ -1,6 +1,6 @@
 // ProfileCore · display: one "what to show" value per profile, derived once from what the caller read (the numbers, the
-// sign-in's state, the account in use) and the headline's answer. Every place that draws a profile's headline (its icon,
-// its menu, its panels) draws this value and decides nothing itself: the numbers or why there are none, how old they are
+// sign-in's state, the account in use) and the headline's answer. Every place that draws a profile's headline (an icon,
+// a list, a panel) draws this value and decides nothing itself: the numbers or why there are none, how old they are
 // (fresh, last known, grey), the full limit that holds the profile back, the lamp, the one key, the line of state and the
 // profile whose account it clashes with. Pure: the clock and the thresholds are parameters, and no words: each app says
 // the value in its own.

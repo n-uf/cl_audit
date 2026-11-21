@@ -251,8 +251,8 @@ do {
             for bad in ["reset time unknown", "\"in \"", "\"5-hour\"", "\"Week\"", "\"Anthropic\""] where code.contains(bad) {
                 found.append("\(f):\(i + 1) \(bad)")
             }
-            // nor do comments name an app's screens or files
-            for bad in ["▸", "receipt", "Dock", "Settings"] where l.contains(bad) { found.append("\(f):\(i + 1) \(bad) (comment)") }
+            // nor do comments name an app's screens or files ("alert" stays allowed: whether numbers call for one is Core's data)
+            for bad in ["▸", "receipt", "Dock", "Settings", "card", "Card", "menu", "Menu"] where l.contains(bad) { found.append("\(f):\(i + 1) \(bad) (comment)") }
         }
     }
     check(files.count >= 5 && found.isEmpty, "Core/ (\(files.count) files): Foundation only, no app paths, files, wording or global state: \(found)")

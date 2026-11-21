@@ -109,7 +109,7 @@ public enum AccountBook {
     }
 
     /// The one rule for the standby account offered while a limit is full (wherever an app offers one: preselected, in a
-    /// menu, in an alert): the first in `offerOrder` that has a seat and isn't known to be full, or nil.
+    /// list, in an alert): the first in `offerOrder` that has a seat and isn't known to be full, or nil.
     /// An account remembered by its address only (no seat yet) is never the one offered: whether it has room isn't known,
     /// and switching to it moves nothing (only a sign-in), so it is listed, and picked by hand, but never offered first.
     public static func best(_ list: [StandbyAccount], now: Date = Date()) -> StandbyAccount? {
