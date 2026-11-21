@@ -1,0 +1,38 @@
+#!/bin/bash
+# A stand-in for `claude`, for Checks/claudesignin. Named `claude` so the process table takes it for Claude Code's program.
+#   claude auth login [--claudeai] [--email ADDRESS]   Claude Code's sign-in, as $CL_LOGIN_CONF says (below)
+#   anything else                                      nothing: ends with 64 (the checks ask for no other run)
+# $CL_LOGIN_CONF lines:
+#   login=ok (default)   after `delay` seconds (0.3) writes $CLAUDE_CONFIG_DIR/.claude.json for `email`, `uuid`, `org`,
+#                        `orgName`, then ends with 0 (after `hold` more seconds, when given: the record is there and the
+#                        login still runs, so the sign-in's status doesn't exist yet)
+#   login=declined       Claude Code's words for a sign-in refused in the browser, on its errors; ends with 1
+#   login=declinedwait   the same words, then it waits (a login still at its paste prompt)
+#   login=fail           another error; ends with 2
+#   login=hang           waits until it is ended (no sign-in comes)
+# It writes its pid to $CL_LOGIN_CONF.pid and how it was called to $CL_LOGIN_CONF.args. Sample addresses only; nothing
+# outside the folders the checks give it.
+if [ "${1:-}" != auth ] || [ "${2:-}" != login ]; then exit 64; fi
+conf="${CL_LOGIN_CONF:?}"
+val() { sed -n "s/^$1=//p" "$conf" 2>/dev/null | head -1; }
+mode="$(val login)"; mode="${mode:-ok}"
+# how it was called first, whole (written aside, then moved in), and its pid last: the checks read the args once the pid is up
+{ printf 'ARG [%s]\n' "$@"; printf 'ENV CLAUDE_CONFIG_DIR=%s\n' "${CLAUDE_CONFIG_DIR-<unset>}"; printf 'ENV KEY=%s\n' "${ANTHROPIC_API_KEY-<unset>}"; } > "$conf.args.new"
+mv "$conf.args.new" "$conf.args"
+printf '%s\n' "$$" > "$conf.pid.new"; mv "$conf.pid.new" "$conf.pid"
+wait_forever() { while :; do sleep 0.1; done; }
+case "$mode" in
+  ok)
+    sleep "$(val delay || true)" 2>/dev/null || sleep 0.3
+    email="$(val email)"; uuid="$(val uuid)"; org="$(val org)"; orgName="$(val orgName)"
+    printf '{"oauthAccount":{"accountUuid":"%s","emailAddress":"%s","organizationUuid":"%s","organizationName":"%s"},"projects":{}}\n' \
+      "$uuid" "$email" "$org" "$orgName" > "$CLAUDE_CONFIG_DIR/.claude.json.new"
+    mv "$CLAUDE_CONFIG_DIR/.claude.json.new" "$CLAUDE_CONFIG_DIR/.claude.json"
+    hold="$(val hold)"; [ -z "$hold" ] || sleep "$hold"
+    echo "Login successful."
+    exit 0 ;;
+  declined) echo "Login failed: OAuth error: access_denied - The user denied the request" >&2; exit 1 ;;
+  declinedwait) echo "Login failed: OAuth error: access_denied - The user denied the request" >&2; wait_forever ;;
+  fail) echo "Login failed: sample error" >&2; exit 2 ;;
+  hang) wait_forever ;;
+esac

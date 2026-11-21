@@ -1,3 +1,5 @@
 build/
 .DS_Store
 dist/
+# the vendored cl_kit's suites' throwaway homes (Checks/run.sh kit)
+Vendor/cl_kit-*/Checks/.work/
