@@ -8,7 +8,8 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- New profile's Sign in, and the sign-in keys in Settings (Sign in with another account, the plain Sign in, signing back in to the profile's own account), now follow Claude Code's sign-in window to its end: it closes itself once you are signed in, declined, timed out or replaced by another sign-in, and the page says which. A sign-in cl_audit couldn't confirm is no longer shown as signed in, another profile's account is refused in words, and only the address you typed is ever filled in.
+- Terminal no longer collects a leftover profile for every sign-in window cl_audit opened: they are removed when cl_audit starts and quits, and when it is uninstalled.
 
 ## 26.11.78 — 2026-11-21
 
