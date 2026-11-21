@@ -712,7 +712,7 @@ do {
         Processes.run("/usr/bin/codesign", ["-f", "-s", "-", standDir + "/" + name], timeout: 30, grace: 1)
     }
     var standins: [String] = []
-    for n in [5, 6, 13, 14] {
+    for n in 5...14 {
         let name = String(repeating: "s", count: n)
         standin(name)
         guard let pid = spawn("./" + name, ["standin", "30"]) else { standins.append("\(n + 2): not started"); continue }
@@ -720,7 +720,7 @@ do {
         end(pid)
         if got != Processes.Launch(exe: "./" + name, args: ["standin", "30"], configDir: "/x/standin") { standins.append("\(n + 2): \(String(describing: got))") }
     }
-    check(standins.isEmpty, "a started stand-in reads back exactly at path lengths 7, 8, 15 and 16: \(standins)")
+    check(standins.isEmpty, "a started stand-in reads back exactly at path lengths 7 to 16: \(standins)")
     if let pid = spawn("./sssss", ["", "30"]) {
         let got = Processes.launch(of: pid), entry = Processes.table()?.first { $0.pid == pid }
         end(pid)
@@ -1228,6 +1228,18 @@ do {
     check(undoneW.problems.contains("\(placedName) changed since; left as it is") && undoneW.left?.contains(placedName) == true && undoneW.undone == nil && undoneW.partlyUndone != nil,
           "…and Undo says it left it, and stays open: \(undoneW.problems)")
     check(fm.fileExists(atPath: parkedOriginal), "…its parked original is not moved over it")
+    // Leave it as it is after that partial Undo: only what it left where the switch put it counts (the rest is back already). One
+    // Code-tab entry left: said in the singular; none left (only a file that isn't an entry): the words for none, never "0 Code-tab sessions"
+    if var partial = SwitchEngine.store.load(rw.id), partial.partlyUndone != nil {
+        let noEntry = (try? SwitchEngine.leaveAsIs(rw.id)) ?? "threw"
+        check(noEntry == "Left as it is: 1 Code-tab session stays under the account the switch went to, the rest under the one it came from.",
+              "Leave it as it is after a partial Undo that left one entry: the singular, only what is left there: \(noEntry)")
+        partial.leftAsIs = nil; partial.left = ["settings.json"]
+        try! SwitchEngine.store.save(partial)
+        let none = (try? SwitchEngine.leaveAsIs(rw.id)) ?? "threw"
+        check(none == "Left as it is: no Code-tab session stays under the account the switch went to; they're under the one it came from." && !none.contains("0 Code-tab"),
+              "Leave it as it is after a partial Undo that left no Code-tab entry: the words for none, never 0 sessions: \(none)")
+    } else { check(false, "(the partly undone switch for Leave it as it is is there)") }
     try? fm.removeItem(at: SwitchEngine.root.appendingPathComponent(rw.id))
 
     // SHOULD 1: the window opening during Undo stops it before the next step
@@ -2325,6 +2337,44 @@ do {
     r3b.start()
     waitFor(15) { ended(r3b) }
     check(r3b.phase == .done && winOpened == [keyR], "…Start again once it's free: the window the default move closed still opens again at the end: \(winOpened)")
+
+    // the Restore page's window line after an Undo (RestoreRunner.undoClosesWindow, which RestorePage reads before the receipt's own
+    // steps): set true when this Undo closes the window (window files among what it put back, a re-point or shared files), false when it
+    // goes ahead with the window as it is; nil before any Undo. A restore of a window entry, its window open again: Undo closes it
+    check(r1.undoClosesWindow == nil, "(before any Undo the runner doesn't say: nil)")
+    winOpened = []
+    stand[keyR] = [standIn()]
+    r1.undo()
+    waitFor(15) { r1.phase == .undone || r1.note != nil }
+    check(r1.phase == .undone && r1.undoClosesWindow == true && !fm.fileExists(atPath: entry(wdR, u1, 951)),
+          "Undo of a restore that wrote a window entry: the window closed for it (undoClosesWindow true), the entry gone: \(r1.phase) \(r1.note ?? "")")
+    stand[keyR]?.forEach { kill($0.processIdentifier, SIGKILL) }
+    waitFor(3) { !ClaudeWindow.isOpen(Account(rw)) }
+    // a restore of a transcript only (no window file, no re-point, no shared file): Undo goes ahead with the window as it is: false
+    stand[keyR] = [standIn()]
+    let codeFile = expand("~/.claude-rwin/projects/-x-code-only/\(uuid(960)).jsonl")
+    put(codeFile, #"{"type":"summary"}"# + "\n")
+    let keepRunning = SessionsRestore.runningSessions
+    SessionsRestore.runningSessions = { [] }          // (no Claude Code session runs here: the machine's own process list isn't asked)
+    let bCode = try! SessionsBackup.make(SessionsBackup.Source(rw), kind: .manual, window: false, transcripts: true, place: place)
+    try? fm.removeItem(atPath: codeFile)
+    let rCode = mR.restoreRunner(RestoreKey(profile: "rwin", backup: bCode.id, place: place.path))
+    rCode.refresh()
+    waitFor(10) { rCode.plan != nil }
+    check(rCode.plan?.windowNeeded == false && (rCode.plan?.count ?? 0) > 0, "(the transcript-only restore needs no window: \(String(describing: rCode.plan?.windowNeeded)), \(rCode.plan?.count ?? -1) entries)")
+    rCode.start()
+    waitFor(15) { ended(rCode) }
+    check(rCode.phase == .done && fm.fileExists(atPath: codeFile) && rCode.receipt?.windowTouched == false, "(the transcript-only restore ran: \(rCode.phase))")
+    // (a transcript written a moment ago is left as a running session's own, so it is aged first, as a restore from an earlier day is)
+    try? fm.setAttributes([.modificationDate: Date().addingTimeInterval(-86400)], ofItemAtPath: codeFile)
+    rCode.undo()
+    waitFor(15) { rCode.phase == .undone || rCode.note != nil }
+    check(rCode.phase == .undone && rCode.undoClosesWindow == false && !fm.fileExists(atPath: codeFile) && ClaudeWindow.isOpen(Account(rw)),
+          "Undo of a restore with no window file, re-point or shared file: the window is not touched (undoClosesWindow false, still open): \(rCode.phase) \(rCode.note ?? "")")
+    SessionsRestore.runningSessions = keepRunning
+    stand[keyR]?.forEach { kill($0.processIdentifier, SIGKILL) }
+    waitFor(3) { !ClaudeWindow.isOpen(Account(rw)) }
+    winOpened = []
 
     // Cancel while it closes: the window was asked to quit; it closes by its own answer later and opens again
     winOpened = []
