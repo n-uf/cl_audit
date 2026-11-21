@@ -5,7 +5,7 @@
 //   account the folder is signed in to as a guess (AccountIdentity, source `guessed`): Claude Code writes it at another moment
 //   than the sign-in itself. Read bounded (`recordMax`, SafeFiles.readPlain), never blocking (a FIFO or a device named like the
 //   file returns at once), through a link named by the path itself (~/.claude.json may be one to the real file), and parsed
-//   again only when the file changed (its size, date and inode).
+//   again only when the file changed (its size, date, status-change time and inode).
 // - The Claude app's sessions: claude-code-sessions/<account>/<organisation>/local_<id>.json in a window's data folder, by one
 //   rule (`sessionScopes`, `sessionEntries`).
 //
@@ -70,7 +70,9 @@ enum ClaudeFiles {
     static func record(at path: String) -> Record? {
         var st = stat()
         guard stat(path, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { return nil }
-        let key = Stamp(size: Int64(st.st_size), sec: Int(st.st_mtimespec.tv_sec), nsec: Int(st.st_mtimespec.tv_nsec), inode: UInt64(st.st_ino))
+        // (the status-change time too: an edit in place that keeps the size and puts the date back still changes it)
+        let key = Stamp(size: Int64(st.st_size), sec: Int(st.st_mtimespec.tv_sec), nsec: Int(st.st_mtimespec.tv_nsec), inode: UInt64(st.st_ino),
+                        csec: Int(st.st_ctimespec.tv_sec), cnsec: Int(st.st_ctimespec.tv_nsec))
         lock.lock()
         if let c = memo[path], c.stamp == key { lock.unlock(); return c.record }
         lock.unlock()
@@ -97,7 +99,7 @@ enum ClaudeFiles {
         return stat(path, &st) == 0 && (st.st_mode & S_IFMT) == S_IFREG && Int(st.st_size) > recordMax
     }
 
-    private struct Stamp: Equatable { var size: Int64; var sec: Int; var nsec: Int; var inode: UInt64 }
+    private struct Stamp: Equatable { var size: Int64; var sec: Int; var nsec: Int; var inode: UInt64; var csec: Int; var cnsec: Int }
     nonisolated(unsafe) private static var memo: [String: (stamp: Stamp, record: Record?)] = [:]
     private static let lock = NSLock()
 

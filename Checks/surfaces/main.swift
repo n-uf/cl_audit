@@ -2024,6 +2024,16 @@ do {
     put(rec, #"{"oauthAccount":{"accountUuid":"\#(u2.account)","emailAddress":"\#(u2.email!)","planDisplayName":"  "}}"#)
     let again = ClaudeFiles.record(at: rec)
     check(again?.seat?.account == u2.account && again?.plan == nil && again?.planDisplayName == "  ", "read again once the file changed; a blank plan is none (the field kept as written)")
+    // an edit in place that keeps the size, the inode and the date (put back): read again too (its status-change time moved)
+    let kept = (try? fm.attributesOfItem(atPath: rec))?[.modificationDate] as? Date
+    let inode = (try? fm.attributesOfItem(atPath: rec))?[.systemFileNumber] as? Int
+    let sameSize = #"{"oauthAccount":{"accountUuid":"\#(u3.account)","emailAddress":"\#(u3.email!)","planDisplayName":"  "}}"#
+    if let h = FileHandle(forWritingAtPath: rec) { h.write(Data(sameSize.utf8)); h.closeFile() }
+    if let kept { try? fm.setAttributes([.modificationDate: kept], ofItemAtPath: rec) }
+    let inPlace = ClaudeFiles.record(at: rec)
+    check(u3.email!.count == u2.email!.count && (try? fm.attributesOfItem(atPath: rec))?[.systemFileNumber] as? Int == inode
+          && inPlace?.seat?.account == u3.account, "an edit in place keeping its size, inode and date: read again (by its status-change time)")
+    put(rec, #"{"oauthAccount":{"accountUuid":"\#(u2.account)","emailAddress":"\#(u2.email!)","planDisplayName":"  "}}"#)
     try? fm.createDirectory(atPath: dir + "/linked", withIntermediateDirectories: true)
     try? fm.createSymbolicLink(atPath: dir + "/linked/.claude.json", withDestinationPath: rec)
     check(ClaudeFiles.record(at: dir + "/linked/.claude.json")?.seat?.account == u2.account, "a .claude.json that is a link to the real one: read")
