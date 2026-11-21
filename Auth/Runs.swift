@@ -118,14 +118,15 @@ public enum SignInScript {
         public static let declinedText = "OAuth error: access_denied"
     }
 
-    /// Writes a file that holds an address or a command: made new, owner only (0700) from the start, never through a link;
-    /// one left from before is removed first (removeItem doesn't follow a link at the end). False when it couldn't be.
-    public static func write(_ data: Data, to url: URL) -> Bool {
+    /// Writes a file that holds an address or a command: made new, owner only (`mode`: 0700 for a script that runs, 0600 for
+    /// one that is only read) from the start, never through a link; one left from before is removed first (removeItem doesn't
+    /// follow a link at the end). False when it couldn't be.
+    public static func write(_ data: Data, to url: URL, mode: mode_t = 0o700) -> Bool {
         try? FileManager.default.removeItem(at: url)
-        let fd = open(url.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o700)
+        let fd = open(url.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, mode)
         guard fd >= 0 else { return false }
         let h = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
-        return fchmod(fd, 0o700) == 0 && (try? h.write(contentsOf: data)) != nil && (try? h.close()) != nil
+        return fchmod(fd, mode) == 0 && (try? h.write(contentsOf: data)) != nil && (try? h.close()) != nil
     }
 
     public static let doneWords = "Done. The new sign-in is picked up by itself within seconds."

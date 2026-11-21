@@ -168,10 +168,11 @@ final class Case {
 
     @discardableResult
     func start(wanted: SignedInAccount?, timeout: TimeInterval = 20, startGrace: TimeInterval = 10, lateSweep: TimeInterval = 0.3,
+               processTable: (() -> [ProcessTable.Entry]?)? = nil,
                confirm: @escaping ClaudeSignIn.Confirm = { _ in nil }) -> ClaudeSignIn {
         signIn = ClaudeSignIn(folder: authFolder, wanted: wanted, timeout: timeout, tools: tools(), claude: claude, confirm: confirm,
                               work: work, title: "Sample app", startGrace: startGrace, terminalProfiles: prefs.tool, lateSweep: lateSweep,
-                              locks: locks, poll: 0.2)
+                              locks: locks, poll: 0.2, processTable: processTable ?? { ProcessTable.settledTable() })
         signIn.start(onState: { [weak self] in self?.states.append($0) }, onEnd: { [weak self] in self?.outcome = $0 })
         return signIn
     }
@@ -281,6 +282,22 @@ do {
     let lock = open(locks.appendingPathComponent("signin-\(AuthFolder.sha8(c.folder.resolvingSymlinksInPath().path)).lock").path, O_RDWR)
     check("stop: the folder's lock is free again", lock >= 0 && flock(lock, LOCK_EX | LOCK_NB) == 0)
     if lock >= 0 { close(lock) }
+    c.cleanUp()
+}
+
+// the files' modes: the settings file is only read (0600), the script runs (0700); both owner only. A Terminal that never runs
+// the script leaves it, so it can be looked at.
+do {
+    let c = Case("modes", login: ["login": "hang"])
+    c.terminal.neverStarts = true
+    c.start(wanted: wantedID(uuid(1)), startGrace: 20)
+    spin(until: { c.states.contains(.waitingForBrowser) })
+    func mode(_ u: URL) -> Int? { ((try? fm.attributesOfItem(atPath: u.path))?[.posixPermissions] as? NSNumber)?.intValue }
+    let settings = c.work.appendingPathComponent("Sample app sign-in.terminal")
+    let script = c.work.appendingPathComponent("sign-in-\(ClaudeSignIn.lockKey(c.authFolder)).command")
+    check("files: the Terminal settings file is owner read and write only (0600; it isn't run)", mode(settings) == 0o600, "\(String(describing: mode(settings)))")
+    check("files: …the script stays executable, owner only (0700)", mode(script) == 0o700, "\(String(describing: mode(script)))")
+    c.signIn.stop(); c.waitEnd()
     c.cleanUp()
 }
 
@@ -772,16 +789,59 @@ do {
           "\(String(describing: d.outcome))")
     d.signIn.stop(); d.waitEnd()
     endOther(other)
-    // a bare login run by a platform binary (the bash stand-in): the kernel gives no environment for it and there is no
-    // ClaudeSignIn script above it, so its folder can't be told: it refuses rather than guesses (any folder)
+    // a bare login whose environment the kernel doesn't give (and no ClaudeSignIn script above it): its folder can't be told, so
+    // it refuses rather than guesses (any folder). Whether the kernel gives a platform binary's environment (/bin/bash, the
+    // stand-in's shell) is a fact of the Mac and its OS (it doesn't on this one's, it does on GitHub's macOS 26 runner), so
+    // it is said, not checked; the guard itself is checked on a table of our own, below, whatever this Mac gives.
     let bare = otherLogin(c, viaScript: false)
-    check("the bash stand-in's environment isn't readable (a platform binary)",
-          ProcessTable.launch(of: bare.login).map { !$0.environmentRead } == true)
-    let e = Case("guard-bare", login: ["login": "hang"])
-    e.start(wanted: wantedID(uuid(1)))
-    check("process guard: a login whose folder can't be told: refused", e.waitEnd() == .failed(.alreadySigningIn), "\(String(describing: e.outcome))")
+    let platformEnv = ProcessTable.launch(of: bare.login)?.environmentRead
+    print("note: the kernel \(platformEnv == true ? "gives" : "does not give") a platform binary's (/bin/bash) environment on this Mac")
+    if platformEnv == false {
+        let e = Case("guard-bare", login: ["login": "hang"])
+        e.start(wanted: wantedID(uuid(1)))
+        check("process guard: a real login whose environment the kernel doesn't give: refused", e.waitEnd() == .failed(.alreadySigningIn), "\(String(describing: e.outcome))")
+        e.cleanUp()
+    }
     endOther(bare)
-    c.cleanUp(); d.cleanUp(); e.cleanUp()
+    c.cleanUp(); d.cleanUp()
+}
+do {
+    // the login guard on a process table of our own: what a login whose environment can't be read looks like, on any Mac
+    let me = getuid()
+    func login(pid: pid_t, parent: pid_t = 1, readable: Bool, configDir: String? = nil) -> ProcessTable.Entry {
+        ProcessTable.Entry(pid: pid, ppid: parent, uid: me, ruid: me, name: "claude", launch: ProcessTable.Launch(
+            exe: "/sample/bin/claude", args: ["claude", "auth", "login", "--claudeai"], configDir: configDir, environmentRead: readable))
+    }
+    func shell(pid: pid_t, script: String) -> ProcessTable.Entry {
+        ProcessTable.Entry(pid: pid, ppid: 1, uid: me, ruid: me, name: "zsh", launch: ProcessTable.Launch(
+            exe: "/bin/zsh", args: ["/bin/zsh", script], configDir: nil, environmentRead: false))
+    }
+    func outcome(_ name: String, _ table: @escaping (Case) -> [ProcessTable.Entry]) -> ClaudeSignIn.Outcome? {
+        let c = Case(name, login: ["login": "hang"])
+        c.start(wanted: wantedID(uuid(1)), processTable: { table(c) })
+        spin(until: { c.states.contains(.waitingForBrowser) || c.outcome != nil })
+        let o = c.outcome
+        if o == nil { c.signIn.stop(); c.waitEnd() }
+        c.cleanUp()
+        return o
+    }
+    check("process guard (table): a login whose environment can't be read and no script above it: refused (the folder can't be told)",
+          outcome("tbl-bare") { _ in [login(pid: 424_242, readable: false)] } == .failed(.alreadySigningIn))
+    check("process guard (table): …even under a shell that runs no sign-in script",
+          outcome("tbl-shell") { _ in [shell(pid: 424_241, script: "/sample/other.sh"), login(pid: 424_242, parent: 424_241, readable: false)] } == .failed(.alreadySigningIn))
+    check("process guard (table): …under another folder's sign-in script it is that folder's, and doesn't refuse this one",
+          outcome("tbl-other") { _ in [shell(pid: 424_241, script: "/sample/work/sign-in-abcdef01.command"), login(pid: 424_242, parent: 424_241, readable: false)] } == nil)
+    check("process guard (table): …under this folder's own sign-in script, it refuses",
+          outcome("tbl-own") { c in [shell(pid: 424_241, script: "/sample/work/sign-in-\(ClaudeSignIn.lockKey(c.authFolder)).command"), login(pid: 424_242, parent: 424_241, readable: false)] } == .failed(.alreadySigningIn))
+    check("process guard (table): a login whose environment is read and names another folder doesn't refuse this one",
+          outcome("tbl-env-other") { _ in [login(pid: 424_242, readable: true, configDir: "/sample/elsewhere/.claude-x")] } == nil)
+    check("process guard (table): …one that names this folder does",
+          outcome("tbl-env-same") { c in [login(pid: 424_242, readable: true, configDir: c.folder.path)] } == .failed(.alreadySigningIn))
+    check("process guard (table): …one whose environment is read but names no CLAUDE_CONFIG_DIR is the default folder's (not this one's)",
+          outcome("tbl-env-unset") { _ in [login(pid: 424_242, readable: true)] } == nil)
+    check("process guard (table): a table with a process that can't be read at all: the processes can't be told, nothing starts",
+          outcome("tbl-hidden") { _ in [ProcessTable.Entry(pid: 424_243, uid: nil, ruid: nil, name: "", launch: nil, hidden: true)] } == .failed(.processesUnreadable))
+    check("process guard (table): no login in the table: it starts", outcome("tbl-none") { _ in [] } == nil)
 }
 // the environment branch: an ad-hoc built stand-in `claude` (not a platform binary: the kernel gives its environment), started
 // bare with CLAUDE_CONFIG_DIR as given

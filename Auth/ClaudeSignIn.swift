@@ -144,11 +144,15 @@ public final class ClaudeSignIn {
     /// "<title> sign-in". `terminalProfiles`: how Terminal's kept profiles are looked at and removed (the real preferences
     /// unless an app or a check gives its own); `lateSweep`: how long after a sign-in ended its profiles are swept once more,
     /// for a window that closed itself after it. `locks`, `poll` (how often the folder is looked at) and `confirmTries` (how
-    /// often the word is asked after the login ended) are parameters for the checks.
+    /// often the word is asked after the login ended) are parameters for the checks, and so is `processTable` (the processes
+    /// the login guard looks through: the kernel's table unless a check hands in one of its own, to say what a process whose
+    /// environment can't be read looks like, whatever this Mac gives).
     public init(folder: AuthFolder, wanted: SignedInAccount?, timeout: TimeInterval = 600, tools: AuthTools, claude: String,
                 confirm: @escaping Confirm, work: URL, window: Window = .settingsFile, title: String = "Claude Code",
                 shown: String? = nil, startGrace: TimeInterval = 25, terminalProfiles: TerminalProfiles = .system,
-                lateSweep: TimeInterval = 6, locks: URL = ClaudeSignIn.sharedLocks, poll: TimeInterval = 2, confirmTries: Int = 3) {
+                lateSweep: TimeInterval = 6, locks: URL = ClaudeSignIn.sharedLocks, poll: TimeInterval = 2, confirmTries: Int = 3,
+                processTable: @escaping () -> [ProcessTable.Entry]? = { ProcessTable.settledTable() }) {
+        self.processTable = processTable
         self.folder = folder; self.wanted = wanted; self.timeout = timeout
         self.claude = claude; self.confirm = confirm; self.work = work; self.window = window; self.title = title
         self.shown = shown; self.startGrace = startGrace; self.locks = locks; self.poll = poll; self.confirmTries = confirmTries
@@ -176,6 +180,7 @@ public final class ClaudeSignIn {
     /// Whether this sign-in got as far as making its own script (the pid file in the work folder is then its window's).
     private var ownsScript = false
     private let confirmTries: Int
+    private let processTable: () -> [ProcessTable.Entry]?
     /// The verified word: being asked (on its own queue), how often after the login ended, and the generation a late answer
     /// is checked against (it moves on every ask and at the end, so an answer for an older ask or a finished sign-in is
     /// dropped).
@@ -378,6 +383,8 @@ public final class ClaudeSignIn {
         AuthFolder.sha8(URL(fileURLWithPath: folder.path).resolvingSymlinksInPath().path)
     }
 
+    /// The folder's sign-in lock: an `flock` on `signin-<key>.lock`, one file per profile folder, never one per run. It is never
+    /// unlinked (unlinking a lock file races with a concurrent locker: one can lock the old file, one the new).
     private func takeLock() -> Bool {
         guard (try? FileManager.default.createDirectory(at: locks, withIntermediateDirectories: true)) != nil else { return false }
         let fd = open(lockURL.path, O_RDWR | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0o600)
@@ -395,7 +402,7 @@ public final class ClaudeSignIn {
     /// A `claude auth login` running on this folder, whoever started it, or one whose folder can't be told (refused rather
     /// than guessed); nil when the processes can't be read.
     func loginRuns() -> Bool? {
-        guard let all = ProcessTable.settledTable(), !all.contains(where: \.hidden) else { return nil }
+        guard let all = processTable(), !all.contains(where: \.hidden) else { return nil }
         let me = getuid()
         return all.contains { $0.uid == me && isLogin($0, in: all) != false }
     }
@@ -487,7 +494,7 @@ public final class ClaudeSignIn {
     private func openWindow(_ script: URL) -> Bool {
         switch window {
         case .settingsFile:
-            guard let data = settings(), SignInScript.write(data, to: settingsURL) else { return false }
+            guard let data = settings(), SignInScript.write(data, to: settingsURL, mode: 0o600) else { return false }
             return auth.tools.openTerminal(settingsURL)
         case .scripted:
             guard let r = Runner.run(Program("/usr/bin/osascript", ["-e", openScript], timeout: 30, keepOutput: true)), r.ok else { return false }
