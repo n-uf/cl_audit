@@ -403,8 +403,16 @@ MainActor.assumeIsolated {
     job.move = true; job.profiles = SessionsMove.make(all, parts: ["studio": "p1"], all: all, move: true); job.known = Identities.of(accounts: all)
     job.side = .movePreset
     // (one retry: the app's own hdiutil create can fail with no message when another run creates an image at the same moment)
-    var mo = try? SessionsExport.run(job)
-    if mo == nil { try? fm.removeItem(atPath: moveFile); mo = try? SessionsExport.run(job) }
+    // (only hdiutil's own failure is retried: any other error from the engine is red at once, with its words)
+    var mo: SessionsExport.Outcome?
+    for attempt in 0..<2 {
+        do { mo = try SessionsExport.run(job); break } catch {
+            try? fm.removeItem(atPath: moveFile)
+            let said = "\(error)"
+            let imageFailed = said.contains("The disk image couldn't be made") || said.contains("hdiutil couldn't start")
+            if attempt == 1 || !imageFailed { check(false, "export: the move is made: \(error)"); break }
+        }
+    }
     check(mo?.side?.historyLines == 4 && mo?.side?.hits.count == 1, "export: the move carries the side files, the key's line left out and listed: \(String(describing: mo?.side?.hits))")
     guard let o = try? SessionsImport.open(URL(fileURLWithPath: moveFile), password: pw, place: bplace) else { check(false, "export: the move opens"); return }
     let tree = o.tree.path

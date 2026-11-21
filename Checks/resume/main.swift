@@ -241,8 +241,9 @@ if role == "b" {
         refused = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: code + "/gone2/app")], windowClosed: { true })
         check(refused.problems.first?.contains("couldn't be checked") == true, "refused: when running sessions can't be told")
         let treeAfter = homeTree()
-        // (apply writes its own receipt first, in cl_audit's repoints folder, so the page can show what it refused: that one folder is
-        // cl_audit's bookkeeping, the receipt holds no session; everything else, Claude's folders and the project's, stays byte for byte)
+        // (today a refused apply still leaves an empty, finished receipt in cl_audit's repoints folder: a known bug, reported for a fix
+        // (it can hide the last real re-point's Undo on the Sessions page), not a design; this check only pins that nothing outside that
+        // folder, Claude's folders and the project's, changes byte for byte)
         let own = "Library/Application Support/usage-n-uf/repoints/"
         let changedPaths = Set(treeUnread.keys).union(treeAfter.keys).filter { treeAfter[$0] != treeUnread[$0] }
         let outside = changedPaths.filter { !$0.hasPrefix(own) }
@@ -499,8 +500,16 @@ MainActor.assumeIsolated {
     job.move = true; job.profiles = SessionsMove.make(all, parts: ["studio": "p1"], all: all, move: true); job.known = Identities.of(accounts: all)
     job.checklist = CodeChecklist.encode(cl)
     // (one retry: the app's own hdiutil create can fail with no message when another run creates an image at the same moment)
-    var mo = try? SessionsExport.run(job)
-    if mo == nil { try? fm.removeItem(atPath: moveFile); mo = try? SessionsExport.run(job) }
+    // (only hdiutil's own failure is retried: any other error from the engine is red at once, with its words)
+    var mo: SessionsExport.Outcome?
+    for attempt in 0..<2 {
+        do { mo = try SessionsExport.run(job); break } catch {
+            try? fm.removeItem(atPath: moveFile)
+            let said = "\(error)"
+            let imageFailed = said.contains("The disk image couldn't be made") || said.contains("hdiutil couldn't start")
+            if attempt == 1 || !imageFailed { check(false, "export: the move is made: \(error)"); break }
+        }
+    }
     check(mo?.checklistCarried == true, "export: the move carries the checklist")
     if let o = try? SessionsImport.open(URL(fileURLWithPath: moveFile), password: pw, place: bplace) {
         check(o.export.version == 5 && fm.fileExists(atPath: o.tree.path + "/code.json") && o.checklist?.projects.count == 4 && !(read(o.tree.path + "/code.json") ?? "").contains(tok),

@@ -299,10 +299,13 @@ MainActor.assumeIsolated {
     var mo: SessionsExport.Outcome?
     // (one retry: the app's own hdiutil create can fail with no message when another run creates an image at the same moment; the
     // half-made image is removed first. The engine's own volume name isn't this suite's to change)
+    // (only hdiutil's own failure is retried: any other error from the engine is red at once)
     for attempt in 0..<2 {
         do { mo = try SessionsExport.run(job); break } catch {
             try? fm.removeItem(atPath: moveFile)
-            if attempt == 1 { check(false, "export (move): \(error)") }
+            let said = "\(error)"
+            let imageFailed = said.contains("The disk image couldn't be made") || said.contains("hdiutil couldn't start")
+            if attempt == 1 || !imageFailed { check(false, "export (move): \(error)"); break }
         }
     }
     check(mo?.move == true && mo?.profilesCarried == true && mo?.profilesLeftOut == false, "export (move): made, with cl_audit's profiles")
