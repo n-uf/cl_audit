@@ -3297,6 +3297,18 @@ do {
         pause(1.5)
         term.killAll()
 
+        // …launched as the SAVED entry spells the folder (the agent's spelling), not the edited spelling of the same folder
+        var spelled = ea; spelled.configDir = pa.path + "/"
+        m.accounts = [spelled, eb]                          // edited in the window, not saved
+        let ca = conf(["login": "hang"])
+        m.startSignIn(fakeClaude, entry: spelled, email: nil)
+        spin({ alive(pid(ca)) })
+        check(guarded.last == "login \(pa.path)" && args(ca).contains("ENV CLAUDE_CONFIG_DIR=\(pa.path)\n"),
+              "stage G: Settings: a listed profile is launched with the saved entry's spelling of its folder, not the edited one's: \(guarded.last ?? "-")")
+        m.cancelSignIn(ea.id)
+        pause(1.5)
+        term.killAll()
+
         // New profile: a draft with no folder yet, at `~`, or at another saved profile's folder: refused, nothing starts
         let opened = term.count, asked = guarded.count
         for (what, dir) in [("no folder (an existing folder not picked)", nil), ("`~`", "~"), ("another saved profile's folder", pa.path)] as [(String, String?)] {

@@ -135,7 +135,9 @@ enum SignInWindow {
     /// `refused` or `failed`). Start from the main thread.
     static func start(_ claude: String, profile: AccountEntry, saved: [AccountEntry], listed: Bool, wanted: SignedInAccount?, creating: Bool = false,
                       onState: @escaping (ClaudeSignIn.State) -> Void = { _ in }, onEnd: @escaping (End) -> Void) {
-        let account = Account(profile)
+        // a listed profile is launched as the SAVED entry spells its folder (the one the agent reads: the Keychain item's name
+        // hashes the path), never the edited spelling of the same folder
+        let account = Account(listed ? (saved.first { $0.id == profile.id } ?? profile) : profile)
         guard let dir = folder(of: profile, saved: saved, listed: listed), FolderKey.canonical(account.configDir) == FolderKey.canonical(dir) else {
             DispatchQueue.main.async { onEnd(.refused) }
             return
