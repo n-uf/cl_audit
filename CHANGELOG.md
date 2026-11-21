@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.82 — 2026-11-21
+
 - A Dock icon's right-click menu now works while its app isn't running: the profile's usage, Quick chat, Open or Quit Claude window, Refresh now, Dashboard and Profile settings (done by cl_audit's agent, which normally always runs). A Dock icon app you start (a click, or macOS reopening it) quits by itself a minute or two after you leave it, while the Dock draws its icon, its Claude window left as it is.
 
 ## 26.11.81 — 2026-11-21
