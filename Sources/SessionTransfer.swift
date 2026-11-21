@@ -232,6 +232,12 @@ enum SessionTransfer {
             throw SwitchError.failed("a scheduled-tasks.json isn't a plain file")
         }
         func object(_ d: Data?) -> [String: Any]? { d.flatMap { (try? JSONSerialization.jsonObject(with: $0)) as? [String: Any] } }
+        // the twin rule again, on the very bytes joined below: a twin the target got since the plan (made before the window
+        // closed) would otherwise drop the source's task for the target's; nothing of the tasks is written then
+        if let b = TaskRegistry.twinCheck(source: object(srcBytes), sourceThere: srcBytes != nil,
+                                          target: object(dstBytes), targetThere: dstBytes != nil) {
+            throw SwitchError.failed("the scheduled tasks stay where they were: \(b.words)")
+        }
         let joined = TaskRegistry.joined(source: object(srcBytes) ?? [:], target: object(dstBytes) ?? ["scheduledTasks": [[String: Any]]()])
         var writes: [(file: String, data: Data, expected: Data?, step: Int)] = []
         for (file, json, was, tag) in [(srcFile, joined.source, srcBytes, "source"), (dstFile, joined.target, dstBytes, "target")] {

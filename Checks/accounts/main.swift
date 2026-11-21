@@ -888,6 +888,47 @@ do {
     put("\(none.dst)/scheduled-tasks.json", "{ not json")
     guard case .success(let pn) = SwitchEngine.plan(none.e, standby: none.e.standby[0], dataDir: none.wd, owned: []) else { check(false, "plan none"); exit(1) }
     check(pn.taskStay == nil && SwitchRunner.stayWords(pn) == nil && pn.tasks == 0, "no task on the old account: no word about tasks")
+    // JSON true and 1 are other settings (compared exactly, not as NSDictionary's isEqual, where true == 1)
+    let truthy = taskSwitch("tc8", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"x","flag":true}"#, dstTask: #"{"id":"t1","cron":"x","flag":1}"#)
+    check(SwitchEngine.taskProblem(source: truthy.src, target: truthy.dst) == "the new account has a task with the same id and other settings",
+          "true and 1 are not the same task setting")
+    // a paused twin that differs only in its run-time fields (switched off, another notified session, a last run) is the same
+    // task: it moves, and the source's copy, the one in use, takes the target's place
+    let runTime = taskSwitch("tc9", from: tA, to: tB,
+                             srcTask: #"{"id":"t1","cron":"0 9 * * *","enabled":true,"notifySessionId":"local_a"}"#,
+                             dstTask: #"{"id":"t0","cron":"1 1 * * *"},{"id":"t1","cron":"0 9 * * *","enabled":false,"notifySessionId":"local_b","lastRunAt":"2026-01-01T00:00:00Z"}"#)
+    check(SwitchEngine.taskProblem(source: runTime.src, target: runTime.dst) == nil, "a paused twin differing only in run-time fields: no blocker")
+    guard case .success(let pr) = SwitchEngine.plan(runTime.e, standby: runTime.e.standby[0], dataDir: runTime.wd, owned: []) else { check(false, "plan tc9"); exit(1) }
+    check(pr.tasks == 1 && pr.taskStay == nil && pr.held.isEmpty, "…the plan moves the task and its session")
+    let rr = try! SwitchEngine.run(pr, windowClosed: { true }, backups: URL(fileURLWithPath: home + "/bk-tc9"))
+    let rd = ((try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: runTime.dst + "/scheduled-tasks.json")))) as? [String: Any])?["scheduledTasks"] as? [[String: Any]] ?? []
+    check(rd.compactMap { $0["id"] as? String } == ["t0", "t1"] && rd[1]["enabled"] as? Bool == true && rd[1]["notifySessionId"] as? String == "local_a",
+          "…one t1 in its place, the source's copy (switched on, its own notified session)")
+    SwitchEngine.markLinked(rr.id)
+    // the same twin switched on: both would run, so it is refused as a twin (removing one of the two settles it)
+    let onTwin = taskSwitch("tc10", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"0 9 * * *","enabled":true}"#,
+                            dstTask: #"{"id":"t1","cron":"0 9 * * *","enabled":true,"lastRunAt":"2026-01-01T00:00:00Z"}"#)
+    check(SwitchEngine.taskProblem(source: onTwin.src, target: onTwin.dst) == "the new account has the same task, switched on", "a twin switched on is refused")
+    guard case .success(let po) = SwitchEngine.plan(onTwin.e, standby: onTwin.e.standby[0], dataDir: onTwin.wd, owned: []) else { check(false, "plan tc10"); exit(1) }
+    check(po.tasks == 0 && po.taskStayTwin && (SwitchRunner.stayWords(po) ?? "").contains("Remove one of the two, then switch again."),
+          "…the way out is picked by the reason, not by its words")
+    // the old account's own file can't be read: said (its tasks count as none), with the general way out
+    let broken = taskSwitch("tc11", from: tA, to: tB, srcTask: "", dstTask: #"{"id":"t1","cron":"x"}"#)
+    put("\(broken.src)/scheduled-tasks.json", "{ not json")
+    guard case .success(let pk) = SwitchEngine.plan(broken.e, standby: broken.e.standby[0], dataDir: broken.wd, owned: []) else { check(false, "plan tc11"); exit(1) }
+    let brokenWords = SwitchRunner.stayWords(pk) ?? ""
+    check(pk.tasks == 0 && pk.taskStay == "the old account's scheduled tasks file can't be read" && !pk.taskStayTwin
+          && brokenWords.contains("Fix that, then switch again."), "a broken source task file is said, with Fix that: \(brokenWords)")
+    // a twin the target gets after the plan: the move checks the bytes it joins, and both task files stay as they were
+    let late = taskSwitch("tc12", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"0 9 * * *"}"#, dstTask: "")
+    guard case .success(let pl) = SwitchEngine.plan(late.e, standby: late.e.standby[0], dataDir: late.wd, owned: []) else { check(false, "plan tc12"); exit(1) }
+    check(pl.tasks == 1, "tc12: the plan moves the task")
+    put("\(late.dst)/scheduled-tasks.json", #"{"scheduledTasks":[{"id":"t1","cron":"0 10 * * *"}],"recordedSkips":{"t1":{"n":1}}}"#)
+    let lateBefore = (bytes(late.src + "/scheduled-tasks.json"), bytes(late.dst + "/scheduled-tasks.json"))
+    var lateWhy = ""
+    do { _ = try SwitchEngine.run(pl, windowClosed: { true }, backups: URL(fileURLWithPath: home + "/bk-tc12")) } catch { lateWhy = "\(error)" }
+    check(lateWhy.contains("other settings") && bytes(late.src + "/scheduled-tasks.json") == lateBefore.0 && bytes(late.dst + "/scheduled-tasks.json") == lateBefore.1,
+          "a twin made after the plan: the run stops, both scheduled-tasks.json byte for byte (\(lateWhy))")
     // an entry that can't be read whole (too large here): held like an owned one, but said apart, never "Claude Code is running"
     let big = taskSwitch("tc7", from: tA, to: tB, srcTask: "", dstTask: "")
     put("\(big.src)/scheduled-tasks.json", #"{"scheduledTasks":[]}"#)
