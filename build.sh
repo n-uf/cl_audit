@@ -37,11 +37,19 @@ swiftc -O -swift-version 5 -parse-as-library -module-name ClaudeAuth -target arm
   -emit-module -emit-module-path "$out/ClaudeAuth.swiftmodule" -emit-library -static -o "$out/libClaudeAuth.a" \
   "$here"/Auth/*.swift
 echo "compiling…"
-swiftc -O -swift-version 5 -target arm64-apple-macos13.0 \
-  -o "$out/UsageDock" "$here"/Sources/*.swift "$here/Widget/WidgetViews.swift" \
-  -I "$out" -L "$out" -lProfileCore -lClaudeAuth -lRuns \
-  -framework AppKit -framework SwiftUI -framework Charts -framework Security -framework ServiceManagement -framework UserNotifications \
-  -framework WidgetKit
+# One compile for the app and its Dock tile plug-in (DockTile/): the same objects linked twice, so the plug-in draws a
+# tile with the app's own code. The plug-in's load-time function (docktile_load.c) goes into the plug-in only.
+mkdir -p "$out/obj"
+(cd "$out/obj" && swiftc -O -swift-version 5 -target arm64-apple-macos13.0 -module-name UsageDock -c \
+  "$here"/Sources/*.swift "$here/Widget/WidgetViews.swift" "$here/DockTile/Plugin.swift" -I "$out")
+frameworks=(-framework AppKit -framework SwiftUI -framework Charts -framework Security -framework ServiceManagement
+  -framework UserNotifications -framework WidgetKit)
+swiftc -target arm64-apple-macos13.0 -o "$out/UsageDock" "$out"/obj/*.o \
+  -L "$out" -lProfileCore -lClaudeAuth -lRuns "${frameworks[@]}"
+echo "linking the Dock tile plug-in…"
+clang -O2 -arch arm64 -mmacosx-version-min=13.0 -c -o "$out/docktile_load.o" "$here/DockTile/docktile_load.c"
+swiftc -target arm64-apple-macos13.0 -emit-library -module-name DockTile -o "$out/DockTile" "$out"/obj/*.o "$out/docktile_load.o" \
+  -L "$out" -lProfileCore -lClaudeAuth -lRuns "${frameworks[@]}"
 
 app="$out/$name.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
@@ -145,6 +153,29 @@ cat > "$wx/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 codesign --force --sign - --entitlements "$here/Widget/widget.entitlements" "$wx" 2>/dev/null
+
+# The Dock tile plug-in (DockTile/Plugin.swift): the Dock draws a profile's tile with it while its Dock icon app isn't
+# running. Unused in cl_audit.app (which names no Dock tile plug-in); each Dock icon app gets its own copy, named for
+# its profile (Installer.installTile). Signed before cl_audit.app, which seals it.
+tile="$app/Contents/PlugIns/Dock Tile.docktileplugin"
+mkdir -p "$tile/Contents/MacOS"
+cp "$out/DockTile" "$tile/Contents/MacOS/DockTile"
+cat > "$tile/Contents/Info.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleIdentifier</key><string>local.usage-n-uf.docktile</string>
+  <key>CFBundleName</key><string>Dock Tile</string>
+  <key>CFBundleExecutable</key><string>DockTile</string>
+  <key>CFBundlePackageType</key><string>BNDL</string>
+  <key>CFBundleShortVersionString</key><string>$version</string>
+  <key>CFBundleVersion</key><string>$build</string>
+  <key>NSPrincipalClass</key><string>ClAuditDockTileBase</string>
+</dict>
+</plist>
+PLIST
+codesign --force --sign - "$tile" 2>/dev/null
 codesign --force --sign - "$app" 2>/dev/null
 echo "built $name $version ($build)"
 

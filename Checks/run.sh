@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The one entry point for cl_audit's check suites.
 #
-#   Checks/run.sh [core|runs|auth|signin|backup|surfaces|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
+#   Checks/run.sh [core|runs|auth|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
 #
 #   core      ProfileCore's rules (Core/), compiled against the library only: ids, standby, limits, times, levels, parsing
 #   runs      Runs (Run/), compiled against it only: timeouts, SIGTERM then SIGKILL after the grace, output read while running, caps, the environment
@@ -10,6 +10,8 @@
 #   signin    the model, rules and page logic checks (the sign-in watch, New profile, the switch's move, menus, Restore/Export/Import pages)
 #   surfaces  the one account answer (AccountResolver) and every screen reading it alike; the Claude app's account from its log;
 #             no screen reading the sign-in files itself
+#   docktile  the Dock tile plug-in (DockTile/) in a sandbox that kills it on a sign-in, Keychain, program, network or standby
+#             read: every entry point, broken and absurd records, a broken profile list, no bundle, an update (it leaves)
 #   accounts  the one-folder model: an older profiles file's kept folders as leftovers (offered to the Trash, their Keychain item named,
 #             never touched), the folder's account followed by itself, the account book, the switch's watch, the sign-in script,
 #             Add account, the menus' lines, the old standby files cleaned, old switches read only
@@ -31,7 +33,7 @@
 #   render  pictures of the pages (switch, backups, restore, export, import, setup row, first run) into Checks/.work/render
 #   quick-chat  the quick chat's own checks (Checks/quick-chat/run.sh, run here under the build lock)
 #   scan      the app's own SecretScan over every file in Checks/ (zero hits expected)
-#   all       core, runs, auth, signin, backup, surfaces, accounts, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
+#   all       core, runs, auth, signin, backup, surfaces, docktile, accounts, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
 #
 #   --volume    backup: mount a small HFS+ disk image and run the cross-volume checks on it (it is unmounted again)
 #   --no-build  run the binaries built by the last run
@@ -56,15 +58,15 @@ LOCK=/private/tmp/cl_audit-build.lock
 suites=(); volume=0; build=1
 for a in "$@"; do
   case "$a" in
-    core|runs|auth|signin|backup|surfaces|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
-    all) suites+=(core runs auth signin backup surfaces accounts firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
+    core|runs|auth|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
+    all) suites+=(core runs auth signin backup surfaces docktile accounts firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
     --volume) volume=1 ;;
     --no-build) build=0 ;;
     -h|--help) sed -n '2,46p' "$0"; exit 0 ;;
     *) echo "unknown argument: $a" >&2; exit 64 ;;
   esac
 done
-[[ ${#suites[@]} -gt 0 ]] || suites=(core runs auth signin backup surfaces accounts firstrun retention setup window move render quick-chat scan)
+[[ ${#suites[@]} -gt 0 ]] || suites=(core runs auth signin backup surfaces docktile accounts firstrun retention setup window move render quick-chat scan)
 
 # the app's sources without its own main.swift, plus the widget views the app compiles in
 srcs=()
@@ -146,7 +148,7 @@ fresh_home() {
 # The checks' preference suites land in the real ~/Library/Preferences whatever CFFIXED_USER_HOME says (cfprefsd writes them,
 # sometimes a moment after the run ends). Only these names are ever removed, and only when no run of ours is alive:
 #  - cl-audit-{signin,hide,switch,plan,surfaces}-test-<pid>.plist, when that pid is dead (the suites' own domains, pid in the name);
-#  - <binary name>.plist for the binaries this script builds (cl_audit-checks-signin, -backup, -surfaces, -accounts, -firstrun, -retention, -setup, -window, -move, -resume, -sidefiles, -render-pages,
+#  - <binary name>.plist for the binaries this script builds (cl_audit-checks-signin, -backup, -surfaces, -docktile, -accounts, -firstrun, -retention, -setup, -window, -move, -resume, -sidefiles, -render-pages,
 #    -render-firstrun, -scan): a process's name is its preference domain, and these names belong to no other program;
 #  - cl_audit-backwatch-test.plist and cl_audit-reader-switch-test.plist (named by the suites' own code, no pid), only when
 #    they were not there before this run.
@@ -258,6 +260,13 @@ run_surfaces() {
   local dir="$WORK/surfaces"; mkdir -p "$dir"
   compile "$dir/cl_audit-checks-surfaces" "$HERE/surfaces/main.swift" || return 1
   run_binary "$dir" "$dir/cl_audit-checks-surfaces"
+}
+
+# the Dock tile plug-in, its scenarios each in a sandboxed child of the suite (Checks/docktile/main.swift)
+run_docktile() {
+  local dir="$WORK/docktile"; mkdir -p "$dir"
+  compile "$dir/cl_audit-checks-docktile" "$HERE/docktile/main.swift" "$APP/DockTile/Plugin.swift" || return 1
+  run_binary "$dir" "$dir/cl_audit-checks-docktile"
 }
 
 run_accounts() {

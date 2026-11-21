@@ -814,6 +814,10 @@ enum Installer {
               i["UsageStyle"] as? String == e.style.rawValue,
               i["CFBundleName"] as? String == dst.deletingPathExtension().lastPathComponent,
               i["CFBundleIdentifier"] as? String == bundleID(e) else { return true }
+        // a copy whose Dock tile plug-in went missing (or that never had one while cl_audit.app has it)
+        let tile = "Contents/PlugIns/\(DockTile.bundleName)"
+        if FileManager.default.fileExists(atPath: source.appendingPathComponent(tile).path),
+           i["NSDockTilePlugIn"] == nil || !FileManager.default.fileExists(atPath: dst.appendingPathComponent(tile).path) { return true }
         // Signing a copy changes its executable, so copies are matched by the build they were made from.
         return i["UsageBuild"] as? String != buildStamp(source)
     }
@@ -855,8 +859,10 @@ enum Installer {
         // The agent lives only in cl_audit.app: a Dock icon copy doesn't carry it (it's signed again below).
         try? fm.removeItem(at: dst.appendingPathComponent("Contents/Library"))
         try? fm.removeItem(at: dst.appendingPathComponent("Contents/Helpers"))
-        // nor the widget: one in cl_audit.app is enough (each copy would add one more to the widget gallery)
+        // nor the widget: one in cl_audit.app is enough (each copy would add one more to the widget gallery); the Dock
+        // tile plug-in comes back as the copy's own
         try? fm.removeItem(at: dst.appendingPathComponent("Contents/PlugIns"))
+        let tile = installTile(e, at: dst, source: source)
         // A downloaded cl_audit carries macOS's download mark, and the copy would too: every Dock icon app
         // would then ask to be allowed in Privacy & Security. The copy is made here, so it isn't a download.
         run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", dst.path])
@@ -873,6 +879,7 @@ enum Installer {
         plist["UsageFrame"] = e.frame?.rawValue ?? "none"
         plist["UsageStyle"] = e.style.rawValue
         plist["UsageBuild"] = buildStamp(source)
+        plist["NSDockTilePlugIn"] = tile ? DockTile.bundleName : nil
         try plist.write(to: plistURL)
 
         let tmp = fm.temporaryDirectory.appendingPathComponent("usage-n-uf-\(e.id).iconset")
@@ -884,6 +891,33 @@ enum Installer {
         // The copy's Info.plist changed, so its signature must be redone (ad hoc, like the build).
         if run("/usr/bin/codesign", ["--force", "--sign", "-", dst.path]) != 0 { throw CocoaError(.fileWriteUnknown) }
         forgetOldIcon(dst)
+    }
+
+    /// The Dock tile plug-in (DockTile/) from `source` into the copy's PlugIns, its Info.plist naming the copy's profile,
+    /// build and class (DockTile.className), signed before the copy is. False when `source` has none (an older build) or
+    /// it couldn't be placed: the copy then names no plug-in and draws its tile only while it runs.
+    static func installTile(_ e: AccountEntry, at dst: URL, source: URL) -> Bool {
+        let fm = FileManager.default
+        let from = source.appendingPathComponent("Contents/PlugIns/\(DockTile.bundleName)")
+        guard fm.fileExists(atPath: from.path) else { return false }
+        let plugIns = dst.appendingPathComponent("Contents/PlugIns"), to = plugIns.appendingPathComponent(DockTile.bundleName)
+        let build = buildStamp(source)
+        do {
+            try fm.createDirectory(at: plugIns, withIntermediateDirectories: true)
+            try fm.copyItem(at: from, to: to)
+            let url = to.appendingPathComponent("Contents/Info.plist")
+            guard let p = NSMutableDictionary(contentsOf: url) else { throw CocoaError(.fileReadCorruptFile) }
+            p["CFBundleIdentifier"] = bundleID(e) + ".docktile"
+            p["UsageAccountID"] = e.id
+            p["UsageBuild"] = build
+            p["NSPrincipalClass"] = DockTile.className(e.id, build: build)
+            try p.write(to: url)
+            guard run("/usr/bin/codesign", ["--force", "--sign", "-", to.path]) == 0 else { throw CocoaError(.fileWriteUnknown) }
+            return true
+        } catch {
+            try? fm.removeItem(at: plugIns)
+            return false
+        }
     }
 
     /// macOS keeps showing an app's old icon after the file changed: a new date on the bundle and registering it
