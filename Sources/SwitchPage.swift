@@ -479,8 +479,8 @@ struct SwitchPage: View {
             }
             SRow(label: "Stayed", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
             if !appBehind { SRowLine(text: "\(from) stands by on \(name) now: nothing read, switch back any time.") }
-            if let n = Self.noteLine(runner.moveNote, runner.leftNote) { SRowLine(text: n) }
-            if let w = runner.windowNote { SRowLine(text: w) }
+            if let n = Self.noteLine(runner.moveText, runner.leftText) { SRowLine(text: n) }
+            if let w = runner.windowText { SRowLine(text: w) }
         }
     }
 
@@ -496,7 +496,7 @@ struct SwitchPage: View {
                     value((w.isEmpty ? "Part of the move" : w.prefix(1).uppercased() + w.dropFirst()) + " moved to \(to) already. Sign in as \(to) again, or Undo the move to put them back under \(from).")
                 }
             }
-            if let w = runner.windowNote { SRowLine(text: w) }
+            if let w = runner.windowText { SRowLine(text: w) }
         }
     }
 
@@ -517,10 +517,10 @@ struct SwitchPage: View {
                 }
             }
             // (stopped before the move: nothing was left behind, so the note says nothing of it)
-            if let n = Self.noteLine(runner.moveNote, Self.leftShown(runner.leftNote, movedNothing: runner.receipt == nil && runner.phase != .undone)) {
+            if let n = Self.noteLine(runner.moveText, Self.leftShown(runner.leftText, movedNothing: runner.receipt == nil && runner.phase != .undone)) {
                 SRowLine(text: n)
             }
-            if let w = runner.windowNote { SRowLine(text: w) }
+            if let w = runner.windowText { SRowLine(text: w) }
         }
     }
 
@@ -545,8 +545,8 @@ struct SwitchPage: View {
             SRow(label: "Stays", stacked: true) { value("\(name)'s name, Dock icon, look, folder and settings") }
             SRowLine(text: Self.staysLine(from: from, name: name, moveBack: movesBack,
                                           owner: backNote == nil ? view.clash : backNote?.owner))
-            if let n = Self.noteLine(runner.moveNote, Self.leftInPlan(left: runner.leftNote, moved: Self.movedForPlanLine(receipt: runner.receipt, phase: runner.phase), plan: plan)) { SRowLine(text: n) }
-            if let w = runner.windowNote { SRowLine(text: w) }               // (a Cancel's late-close watch, said here too)
+            if let n = Self.noteLine(runner.moveText, Self.leftInPlan(left: runner.leftText, moved: Self.movedForPlanLine(receipt: runner.receipt, phase: runner.phase), plan: plan)) { SRowLine(text: n) }
+            if let w = runner.windowText { SRowLine(text: w) }               // (a Cancel's late-close watch, said here too)
         }
     }
 
@@ -681,9 +681,9 @@ struct SwitchPage: View {
         case .timedOut:
             return runner.canUndo ? "No sign-in came in 10 minutes: Claude Code is still on \(from)." : "Nothing changed: \(name) is still on \(from)."
         case .failed(let why):
-            return why
+            return runner.said(why)                       // (a stopped switch names its account by a marker, filled now)
         case .undone:
-            return runner.moveNote
+            return runner.moveText
         }
     }
 

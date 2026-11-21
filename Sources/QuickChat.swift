@@ -347,10 +347,16 @@ final class QuickChatModel: ObservableObject {
     /// While a limit is full: the standby account offered first (SwitchMenu.best), for Switch account….
     @Published var offer: QuickChatSwitchOffer?
     /// A line between messages: "Main switched to ultra-3. Sending what you typed."
+    /// A template (`noteText` is what is drawn): where it names the account switched to it holds `whoMark`, and the address is
+    /// kept apart (`noteWho`, set after the note), so the line follows Show emails as it is when drawn.
     @Published var note: String? {
-        // any other note, or none: not the clash's any more
-        didSet { noteClash = nil }
+        // any other note, or none: not the clash's any more, and no account's
+        didSet { noteClash = nil; noteWho = nil }
     }
+    static let whoMark = "{who}"
+    private(set) var noteWho: String?
+    /// The note as drawn now.
+    var noteText: String? { note.map { $0.replacingOccurrences(of: Self.whoMark, with: noteWho.map(AccountNames.short) ?? "another account") } }
     /// The note says what was typed wasn't sent because the folder is on this profile's (its id, and its name) account, a
     /// clash (update): it goes once the folder is no longer there.
     private var noteClash: (id: String?, name: String)?
@@ -500,8 +506,8 @@ final class QuickChatModel: ObservableObject {
         }
         guard !blocked else { return }
         switchWait = nil
-        let who = t.shownEmail.map(AccountNames.short) ?? "another account"
-        note = "\(t.name) switched to \(who). Sending what you typed."
+        note = "\(t.name) switched to \(Self.whoMark). Sending what you typed."
+        noteWho = t.shownEmail
         sendingWaiting = true
         send()
         sendingWaiting = false

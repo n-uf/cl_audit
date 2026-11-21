@@ -65,13 +65,14 @@ struct QuickChatRoot: View {
 
 struct QCBar: View {
     @ObservedObject var model: QuickChatModel
+    @ObservedObject private var privacy = AddressPrivacy.shared      // (the note names an account: drawn again when Show emails changes)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let p = model.barProblem { QCProblemView(problem: p, model: model, answered: false) }
             else if model.blocked { QCProblemView(problem: .limitFull(model.fullNow), model: model, answered: false, live: true) }
             // the line the window draws between messages, before there are any (what was typed wasn't sent, say)
-            if let n = model.note {
+            if let n = model.noteText {
                 Text(n).font(.system(size: 11.5)).foregroundColor(QCColor.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8)
@@ -90,6 +91,7 @@ struct QCBar: View {
 
 struct QCWindow: View {
     @ObservedObject var model: QuickChatModel
+    @ObservedObject private var privacy = AddressPrivacy.shared      // (the note names an account: drawn again when Show emails changes)
     @Environment(\.qcRendering) private var rendering
 
     var body: some View {
@@ -133,7 +135,7 @@ struct QCWindow: View {
         ForEach(Array(model.turns.enumerated()), id: \.element.id) { i, t in
             QCTurnView(turn: t, last: i == model.turns.count - 1, model: model)
         }
-        if let n = model.note {
+        if let n = model.noteText {
             Text(n).font(.system(size: 11.5)).foregroundColor(QCColor.muted)
                 .frame(maxWidth: .infinity).padding(.top, 10)
         }

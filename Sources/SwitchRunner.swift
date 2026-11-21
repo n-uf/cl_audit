@@ -92,14 +92,37 @@ final class SwitchRunner: ObservableObject {
         }
     }
 
-    /// What the move said: sessions held (a running Claude Code owns them), entries that didn't move, why tasks stayed.
+    // The notes below are kept as TEMPLATES: where a sentence names an account it holds a marker (`oldMark`, `toMark`) and the
+    // runner keeps the address apart (`oldAccount`, `toAddress`). The page asks for the sentence (`moveText`, `leftText`,
+    // `windowText`, `said`) when it draws, so it follows Show emails as it is then, never as it was when the note was made.
+    /// The account a plan leaves things with: the one the profile was on before the switch, named by address.
+    private(set) var oldAccount: String?
+    /// The account an earlier stopped switch went for (showStopped), by address; else the goal's, else the target's.
+    private(set) var stoppedTo: String?
+    static let oldMark = "{old}", toMark = "{to}"
+    /// The address of the account the switch went for, nil when it has none.
+    var toAddress: String? {
+        stoppedTo ?? [goal?.wantedEmail, targetSnapshot?.email].compactMap { $0 }.first { !$0.isEmpty }
+    }
+    /// A template as the page says it now: the accounts named as Show emails lets them be named.
+    func said(_ template: String) -> String {
+        template
+            .replacingOccurrences(of: Self.oldMark, with: oldAccount.map(AccountNames.short) ?? "the old account")
+            .replacingOccurrences(of: Self.toMark, with: toAddress.map(AccountNames.short) ?? "the account it went for")
+    }
+    var moveText: String? { moveNote.map(said) }
+    var leftText: String? { leftNote.map(said) }
+    var windowText: String? { windowNote.map(said) }
+
+    /// What the move said (a template: `moveText`): sessions held (a running Claude Code owns them), entries that didn't move,
+    /// why tasks stayed.
     @Published private(set) var moveNote: String?
-    /// What the old account keeps because it isn't a session entry ("Left with ann: …", leftWords), apart from moveNote so a
-    /// page can leave it out when nothing moved: the switch stopped before the move, so nothing was left behind.
+    /// What the old account keeps because it isn't a session entry ("Left with ann: …", leftWords; a template: `leftText`), apart
+    /// from moveNote so a page can leave it out when nothing moved: the switch stopped before the move, so nothing was left behind.
     @Published private(set) var leftNote: String?
     /// Where the profile's Claude window stands once the switch let go of it: closed until the switch is settled (moved
     /// sessions not linked yet: windowStaysClosed), open again (windowOpenAgain), or watched after a Cancel (windowLateClose).
-    /// nil: nothing to say (it wasn't closed by this switch).
+    /// nil: nothing to say (it wasn't closed by this switch). A template: `windowText`.
     @Published private(set) var windowNote: String?
     /// The plan before it ran: how many sessions and tasks move (the page's steps say it).
     @Published private(set) var planned: SwitchPlan?
@@ -179,6 +202,7 @@ final class SwitchRunner: ObservableObject {
     func start(_ s: StandbyAccount) {
         guard !isRunning, let e = entry else { return }
         targetSnapshot = s; receipt = nil; moveNote = nil; leftNote = nil; windowNote = nil; planned = nil; failedStep = nil
+        oldAccount = nil; stoppedTo = nil
         let g = Goal(standby: s.id, wantedSeat: s.seat, wantedEmail: s.email,
                      from: Account.signedInSeat(configDir: e.configDir) ?? e.seat, started: Date())
         // the profile's folder deleted: nothing closes, moves or signs in (a sign-in would make it again), said instead
@@ -197,6 +221,7 @@ final class SwitchRunner: ObservableObject {
         case .failure(let why): goal = g; fail(.notStarted, why.description)
         case .success(let p):
             planned = p
+            oldAccount = p.from.email
             moveNote = Self.stayWords(p); leftNote = Self.leftBehind(p)
             // the finish line: the folder is on the target already; the switch goes from the Claude app's account
             var g = g
@@ -229,10 +254,9 @@ final class SwitchRunner: ObservableObject {
         if owned > 0 { parts.append(heldWords(owned)) }
         if !p.unreadable.isEmpty { parts.append(unreadableWords(p.unreadable.count)) }
         if let why = p.taskStay {
-            // named by address: after the sign-in "the account in use" is the new one
-            let old = p.from.email.map(AccountNames.short) ?? "the old account"
+            // named by address (the marker, filled when drawn): after the sign-in "the account in use" is the new one
             let out = p.taskStayTwin ? "Remove one of the two, then switch again." : "Fix that, then switch again."
-            parts.append("The scheduled tasks stay with \(old), and so do their sessions: \(why). \(out)")
+            parts.append("The scheduled tasks stay with \(oldMark), and so do their sessions: \(why). \(out)")
         }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
@@ -240,7 +264,7 @@ final class SwitchRunner: ObservableObject {
     /// What the plan leaves with the old account: its odd names, said in the past tense ("Left with ann: …"), kept in
     /// `leftNote` apart from stayWords. nil when none.
     static func leftBehind(_ p: SwitchPlan) -> String? {
-        leftWords(p.odd, old: p.from.email.map(AccountNames.short) ?? "the old account")
+        leftWords(p.odd, old: oldMark)
     }
 
     /// The names in the old account's folder shaped like a Code-tab session that aren't one: never moved, said (with the
@@ -308,6 +332,7 @@ final class SwitchRunner: ObservableObject {
                 switch result {
                 case .success(let r):
                     self.receipt = r
+                    self.oldAccount = p.from.email
                     let notes = (Self.stayWords(p).map { [$0] } ?? []) + r.problems
                     self.moveNote = notes.isEmpty ? nil : notes.joined(separator: " ")
                     self.leftNote = Self.leftBehind(p)
@@ -333,7 +358,7 @@ final class SwitchRunner: ObservableObject {
         guard let h else { return }
         if let r = receipt, r.closedWindow == true || h.closedByUs {
             h.release()
-            if r.unfinished { windowNote = Self.windowStaysClosed(targetShort ?? "the account it went for") }
+            if r.unfinished { windowNote = Self.windowStaysClosed(Self.toMark) }
             else if entry?.claudeWindow == true { windowNote = Self.windowOpenAgain }       // settled: opened by its settle
             return
         }
@@ -461,7 +486,7 @@ final class SwitchRunner: ObservableObject {
 
     /// Back to the start, for another switch from the page.
     func reset() { cancel(); guard phase != .moving else { return }; phase = .ready; goal = nil; moveNote = nil; leftNote = nil; planned = nil; failedStep = nil
-        quitAsked = false
+        quitAsked = false; oldAccount = nil; stoppedTo = nil
         if windowNote != Self.windowLateClose { windowNote = nil }          // (a Cancel's late-close watch still says its line)
         if !canUndo { receipt = nil }
         // a switch of this profile that moved sessions, closed the window and isn't settled holds the window closed: the page
@@ -479,7 +504,9 @@ final class SwitchRunner: ObservableObject {
     private func showStopped(_ u: SwitchReceipt, _ e: AccountEntry) {
         receipt = u
         // never for good: Undo puts it back, and signing in as the account it went for finishes it (linkReached)
-        let to = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { u.to.same($0) }?.email.map(AccountNames.short) ?? "its account"
+        // (the account it went for is kept by address; the failure text and the window's line hold its marker, `said` at draw time)
+        stoppedTo = ([e.seat] + e.standby.map(\.seat)).compactMap { $0 }.first { u.to.same($0) }?.email
+        let to = Self.toMark
         if Self.halfDoneFinishLine(u) {
             fail(.notStarted, "An earlier switch of \(e.name) stopped half way. \(Self.finishLineStopped) Then switch again.")
             if u.closedWindow == true { windowNote = Self.windowStaysClosed(to) }
@@ -544,8 +571,10 @@ final class SwitchRunner: ObservableObject {
 
     /// Renders only: the page as it looks in a phase.
     func preview(_ p: Phase, goal g: Goal?, target: StandbyAccount? = nil, planned plan: SwitchPlan? = nil, receipt r: SwitchReceipt? = nil,
-                 note: String? = nil, left: String? = nil, seen s: Seat? = nil, failedAt f: FailedStep? = nil) {
+                 note: String? = nil, left: String? = nil, seen s: Seat? = nil, failedAt f: FailedStep? = nil,
+                 window: String? = nil, old: String? = nil, stoppedTo to: String? = nil) {
         phase = p; goal = g; targetSnapshot = target ?? targetSnapshot
         planned = plan; receipt = r; moveNote = note; leftNote = left; seen = s; failedStep = f
+        windowNote = window; oldAccount = old; stoppedTo = to
     }
 }

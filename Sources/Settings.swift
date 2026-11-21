@@ -1868,7 +1868,7 @@ struct AccountSettings: View {
             case .reached: BoxNote(text: "Signed in.", size: 10.5)
             case .timedOut: BoxNote(text: "No sign-in came in 10 minutes; nothing changed.", tone: .caution)
             case .other(let e): BoxNote(text: "Signed in as \(AddressSettings.words(e)): that's the account in use now.", tone: .caution)
-            case .failed(let why): BoxNote(text: why, tone: .danger)
+            case .failed(let why): BoxNote(text: r.said(why), tone: .danger)
             case .ready, .closing, .moving, .undone: EmptyView()     // a sign-in again moves nothing
             }
         } else if let shown = model.signIns[entry.id] {
