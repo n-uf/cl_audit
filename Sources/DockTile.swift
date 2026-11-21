@@ -18,10 +18,12 @@ enum DockTile {
         "ClAuditDockTile_" + Data(id.utf8).map { String(format: "%02x", $0) }.joined() + "_" + build
     }
 
-    /// A profile id as a file name may carry it (letters, digits, - and _ only), else nil: the plug-in reads it from a copy's
-    /// Info.plist, and names its heartbeat and log by it.
+    /// A profile id as a file name may carry it, else nil: the plug-in reads it from a copy's Info.plist and names its
+    /// heartbeat and log by it. Any letters (Store.newID keeps a name's own, "café" included); never a folder step, a
+    /// hidden name, a control character or more than 200 bytes.
     static func plainID(_ id: String) -> String? {
-        !id.isEmpty && id.count <= 128 && id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) ? id : nil
+        !id.isEmpty && id.utf8.count <= 200 && !id.hasPrefix(".") && !id.contains("/")
+            && !id.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7f }) ? id : nil
     }
 
     static var folder: URL { Store.folder.appendingPathComponent("docktile") }

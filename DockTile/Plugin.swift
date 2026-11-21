@@ -64,7 +64,9 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
     /// and still do 10 s later (an install writes the plug-in's Info.plist before the app's and signs both after). A copy
     /// that's gone or half-written doesn't count.
     private func leaveIfUpdated() {
-        guard let loaded = Self.loadedBuild, let bundle = Self.bundle else { return }
+        // (loaded while an install was writing the copy: no build then; the finished copy's build makes it leave)
+        guard let bundle = Self.bundle else { return }
+        let loaded = Self.loadedBuild ?? ""
         let app = bundle.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
         func build(_ url: URL) -> String? {
             SafeRead.whole(url.appendingPathComponent("Contents/Info.plist").path, max: SafeRead.recordMax)
@@ -104,7 +106,7 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
     /// (SafeRead: a FIFO, a device or a huge file is no answer), never a wait.
     private func face() -> TileModel? {
         guard let id,
-              let list = SafeRead.whole(Store.configURL.path, max: SafeRead.jsonMax).flatMap({ try? JSONDecoder().decode(ConfigFile.self, from: $0) }),
+              let list = SafeRead.whole(Store.configURL.path, max: 4 << 20).flatMap({ try? JSONDecoder().decode(ConfigFile.self, from: $0) }),
               let e = list.accounts.first(where: { $0.id == id }) else { return nil }
         let record = SafeRead.whole(Store.statusFolder.appendingPathComponent("\(id).json").path, max: SafeRead.recordMax)
             .flatMap(StatusCodec.decode)
@@ -124,7 +126,7 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
             try? fm.removeItem(at: old)
             try? fm.moveItem(at: url, to: old)
         }
-        let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_NONBLOCK, 0o644)
+        let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_NONBLOCK | O_NOCTTY, 0o644)
         guard fd >= 0 else { return }
         defer { close(fd) }
         var st = stat()

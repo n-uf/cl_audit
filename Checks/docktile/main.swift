@@ -183,6 +183,10 @@ check(goodLog.contains("loaded build b1 in ") && goodLog.contains("drew (load) #
       "the log: loaded, drawn on load, on the agent's notice, the profiles' and the apps' notice, the timer; released")
 check(beat().contains("build b1") && beat().contains("draw 5"), "the heartbeat: written on each draw, with the build (\(beat()))")
 check(!goodLog.contains("@") && !beat().contains("@"), "no address in the plug-in's log or heartbeat")
+check(DockTile.plainID("café") == "café" && DockTile.plainID("привет-2") == "привет-2" && DockTile.plainID("a_b-c") == "a_b-c"
+      && [String(repeating: "é", count: 101), "", ".hidden", "../x", "a/b", "a\u{0}b", "a\nb"].allSatisfy { DockTile.plainID($0) == nil }
+      && DockTile.className("café", build: "b1").allSatisfy { $0.isASCII },
+      "profile ids: any letters (as Store.newID makes them), never a folder step, a hidden name, a control character or >200 bytes")
 let stamp = DockTile.lastBeat(id)
 check(stamp.map { abs($0.timeIntervalSinceNow) < 60 } == true && DockTile.lastBeat("nobody") == nil, "lastBeat: the heartbeat's time; none for another profile")
 
