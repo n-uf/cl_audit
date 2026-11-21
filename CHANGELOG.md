@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.78 — 2026-11-21
+
 - Settings ▸ Claude window: a window that's on but whose data folder was deleted outside cl_audit shows that folder as missing, not "none yet".
 - Each profile's tile in Settings and its card header on the dashboard now show a small light in the profile's colour, before its name (dark for a profile with no colour of its own: none picked and its Dock icon coloured by usage or graphite). The card header's flat dot becomes that light.
 
