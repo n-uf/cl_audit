@@ -154,10 +154,12 @@ struct DefaultProfilePage: View {
         case .closing: return Top(text: "Moving ●", dim: "· step \(kind == .windowOnly ? 1 : 2) of \(stepCount) · the windows close", tone: .mint)
         case .backingUp: return Top(text: "Moving ●", dim: "· step \(kind == .windowOnly ? 1 : 2) of \(stepCount) · the backups", tone: .mint)
         case .moving:
-            // (the page stays at .moving when its restore stopped or was left as it is: say that, not "Moving")
+            // (the page stays at .moving when its restore stopped, is being undone or was left as it is: say that, not
+            // "Moving"; never "nothing undone": a partial Undo (transcripts held by a running session) also lands here)
             switch runner.inner?.phase {
-            case .left?: return Top(text: "Left as it is", dim: "· what the move did stays · nothing undone", tone: .normal)
-            case .stopped?: return Top(text: "Stopped", dim: "· part way · nothing undone", tone: .warn)
+            case .left?: return Top(text: "Left as it is", dim: "· what the move did stays as it is", tone: .normal)
+            case .stopped?: return Top(text: "Stopped", dim: "· part way · what came back is kept", tone: .warn)
+            case .undoing?: return Top(text: "Undoing ●", dim: "· taking back what came back", tone: .mint)
             default: break
             }
             let p: (done: Int, total: Int) = runner.inner?.progress ?? (0, 0)
