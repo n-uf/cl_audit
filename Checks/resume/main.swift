@@ -27,7 +27,7 @@ let code = work + "/code"                         // the projects, at the same p
 
 BackupPrefs.store = MemoryPrefs()
 SessionsMove.prefs = MemoryPrefs()
-Store.announce = {}
+Store.announce = {}; Store.announceStatus = { _ in }
 SettingsModel.applyInstalls = false
 SettingsModel.followsDock = false
 var dockCalls = 0, securityCalls = 0

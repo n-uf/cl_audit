@@ -27,7 +27,7 @@ let code = work + "/code"
 
 BackupPrefs.store = MemoryPrefs()
 SessionsMove.prefs = MemoryPrefs()
-Store.announce = {}
+Store.announce = {}; Store.announceStatus = { _ in }
 SettingsModel.applyInstalls = false
 SettingsModel.followsDock = false
 var dockCalls = 0, securityCalls = 0

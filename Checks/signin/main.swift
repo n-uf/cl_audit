@@ -14,6 +14,8 @@ import Runs
 // signin/PROVENANCE.md maps every retired block whose safety rule still holds to the check, by suite and text, that covers
 // it today; stage F (last) checks the two rules no other suite did.
 
+// a throwaway home: no running cl_audit or agent is told (a distributed notice isn't home-scoped; a check build stops if unset)
+Store.announce = {}; Store.announceStatus = { _ in }
 let home = NSHomeDirectory()
 guard home.hasSuffix("/Checks/.work/signin/home") else { print("refusing: home is \(home)"); exit(1) }
 let fm = FileManager.default

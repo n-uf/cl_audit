@@ -9,6 +9,8 @@ import SwiftUI
 setbuf(stdout, nil)
 BackupPrefs.store = MemoryPrefs()          // never the real ~/Library/Preferences
 let out = CommandLine.arguments[1]
+// a throwaway home: no running cl_audit or agent is told (a distributed notice isn't home-scoped; a check build stops if unset)
+Store.announce = {}; Store.announceStatus = { _ in }
 let home = NSHomeDirectory()
 guard home.hasSuffix("/Checks/.work/render/pages/home"), expand("~") == home else { print("refusing: home is \(home)"); exit(1) }
 let fm = FileManager.default

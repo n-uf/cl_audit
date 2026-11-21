@@ -16,6 +16,8 @@ import Runs
 import SwiftUI
 
 setbuf(stdout, nil)
+// a throwaway home: no running cl_audit or agent is told (a distributed notice isn't home-scoped; a check build stops if unset)
+Store.announce = {}; Store.announceStatus = { _ in }
 let home = NSHomeDirectory()
 guard home.hasSuffix("/Checks/.work/surfaces/home"), expand("~") == home else { print("refusing: HOME is \(home)"); exit(2) }
 let fm = FileManager.default

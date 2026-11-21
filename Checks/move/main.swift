@@ -30,7 +30,7 @@ let sharedDir = role == "a" ? (home as NSString).deletingLastPathComponent + "/s
 // the seams: no real preferences, no Dock, no Keychain, nobody told about the profiles file
 BackupPrefs.store = MemoryPrefs()
 SessionsMove.prefs = MemoryPrefs()
-Store.announce = {}
+Store.announce = {}; Store.announceStatus = { _ in }
 SettingsModel.applyInstalls = false
 SettingsModel.followsDock = false
 var dockCalls = 0, securityCalls = 0

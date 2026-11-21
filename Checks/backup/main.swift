@@ -9,6 +9,8 @@ import ProfileCore
 //  - a CHILD ROLE is this same binary started by the parent in another throwaway home (BK_ROLE=<name>): it runs one stage's
 //    other half and exits. The roles are dispatched in one place, under "child roles" below; a new role adds its home to
 //    `allowedHomes` here and its `if BK_ROLE == "<name>"` block there.
+// a throwaway home: no running cl_audit or agent is told (a distributed notice isn't home-scoped; a check build stops if unset)
+Store.announce = {}; Store.announceStatus = { _ in }
 let home = NSHomeDirectory()
 let allowedHomes = ["/Checks/.work/backup/home",                       // the parent run
                     "/Checks/.work/backup/other/backup-test/home",     // stage E: the import half (BK_ROLE=import)
