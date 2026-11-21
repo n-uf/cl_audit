@@ -69,6 +69,9 @@ if args.count >= 3, args[1] == "--child" {
         dn.postNotificationName(n, object: n == Store.statusChanged || n == DockTile.windowNote ? id : nil, userInfo: nil, deliverImmediately: true)
         RunLoop.main.run(until: Date().addingTimeInterval(0.6))
     }
+    // another profile's window notice: not this tile's (no draw; the heartbeat's count says so)
+    dn.postNotificationName(DockTile.windowNote, object: "other", userInfo: nil, deliverImmediately: true)
+    RunLoop.main.run(until: Date().addingTimeInterval(0.6))
     p.redraw("timer")
     if scenario == "update" {
         // an update replaced the copy: seen, then still there 10 s later, the plug-in leaves (its own redraw at 11 s)
@@ -251,27 +254,59 @@ check(clean(windowNoDot, "window-no-dot") && !log().contains("· window"), "the 
 DockTile.setWindowOpen(id, false)
 saveProfiles()
 
-// 3. the agent's rule while the Dock draws the tiles (TileRule): quit what it started once drawn, open once, then as before
-func facts(pinned: Bool = true, running: Bool = false, ours: Bool = false, beat: TimeInterval? = nil, waited: TimeInterval = 0,
-           failed: Bool = false) -> TileRule.Facts {
-    TileRule.Facts(pinned: pinned, running: running, ours: ours, beatAge: beat, waited: waited, failed: failed)
+// 3. the agent's rule while the Dock draws the tiles (TileTracker), tick by tick (every 30 s): quit what it started once
+// drawn, open a copy once in a run, then as before until a heartbeat comes back; a minute's patience after sleep
+let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+func at(_ s: TimeInterval) -> Date { t0.addingTimeInterval(s) }
+func facts(pinned: Bool = true, running: Bool = false, ours: Bool = false, front: Bool = false, beat: Date? = nil) -> TileTracker.Facts {
+    TileTracker.Facts(pinned: pinned, running: running, ours: ours, inFront: front, lastBeat: beat)
 }
-let table: [(TileRule.Facts, TileRule.Act, String)] = [
-    (facts(running: true, ours: true, beat: 10), .quit, "drawn, the agent's app running: it quits"),
-    (facts(running: true, ours: false, beat: 10), .none, "drawn, an app you started: it stays"),
-    (facts(running: true, ours: true, beat: nil, waited: 30), .none, "running, no tile yet, under a minute: wait"),
-    (facts(running: true, ours: true, beat: nil, waited: 61), .asBefore, "running, no tile for a minute after it was opened: as before"),
-    (facts(running: true, ours: true, beat: 200, waited: 61), .asBefore, "running, the last tile long ago: as before"),
-    (facts(running: true, ours: false, beat: nil, waited: 600), .none, "an app you started, no tile: left alone"),
-    (facts(beat: 10, waited: 600), .none, "not running, drawn: nothing to do"),
-    (facts(beat: nil, waited: 30), .none, "not running, no tile yet, under a minute: wait"),
-    (facts(beat: nil, waited: 61), .openOnce, "not running, no tile for a minute: opened once"),
-    (facts(beat: 91, waited: 61), .openOnce, "not running, the tile stopped (91 s): opened once"),
-    (facts(running: true, ours: true, beat: 10, failed: true), .none, "no tile earlier in this run: as before, nothing changes"),
-    (facts(pinned: false, running: true, ours: true, beat: 10), .none, "not in the Dock: nothing changes"),
-    (facts(pinned: false, beat: nil, waited: 600), .none, "not in the Dock, no tile: not opened"),
-]
-for (f, want, what) in table { check(TileRule.decide(f) == want, "TileRule: \(what) (got \(TileRule.decide(f)))") }
+/// Ticks of one profile: (seconds, its facts then) → what the tracker said at each.
+func run(_ ticks: [(TimeInterval, TileTracker.Facts)], _ t: inout TileTracker) -> [TileTracker.Act] {
+    ticks.map { s, f in t.tick(now: at(s)); return t.step("p", f, now: at(s)) }
+}
+do {
+    var t = TileTracker(now: t0)
+    check(run([(30, facts(running: true, ours: true, beat: at(20)))], &t) == [.quit], "drawn, the agent's app running: it quits")
+    t = TileTracker(now: t0)
+    check(run([(30, facts(running: true, beat: at(20))), (60, facts(running: true, ours: true, front: true, beat: at(50)))], &t) == [.none, .none],
+          "drawn, but an app you started, or the agent's while it's in front: it stays")
+    t = TileTracker(now: t0)
+    // no tile, not running: patience for a minute and two stale ticks, then opened once; running and still none: as before
+    let opened = run([(30, facts()), (60, facts()), (90, facts(running: true, ours: true)), (120, facts(running: true, ours: true)),
+                      (150, facts(running: true, ours: true))], &t)
+    check(opened == [.none, .openOnce, .none, .asBefore, .none], "no tile: opened once after a minute, as before a minute later (got \(opened))")
+    check(t.asBefore("p"), "as before is remembered: the rules start its Dock icon app again")
+    let back = run([(180, facts(running: true, ours: true, beat: at(175)))], &t)
+    check(back == [.quit] && !t.asBefore("p"), "a heartbeat comes back (Dock Tiles on again): the app the agent ran quits")
+    t = TileTracker(now: t0)
+    // once in a run: opened, then quit (by you, or its window's rule) with still no tile: as before, not opened again
+    _ = run([(30, facts()), (60, facts())], &t)
+    t.ready("p", now: at(70))
+    let again = run([(90, facts()), (120, facts()), (150, facts())], &t)
+    check(again == [.none, .none, .asBefore], "opened once in a run: no tile after it quit means as before, never opened again (got \(again))")
+    t = TileTracker(now: t0)
+    // after sleep (a tick long after the last one) every heartbeat is old: a minute's patience, not a launch of every copy
+    _ = run([(30, facts(beat: at(25))), (60, facts(beat: at(55)))], &t)
+    let woke = run([(700, facts(beat: at(55))), (730, facts(beat: at(55))), (760, facts(beat: at(55)))], &t)
+    check(woke == [.none, .none, .openOnce], "after a 10-minute gap: patience again, opened only a minute later (got \(woke))")
+    t = TileTracker(now: t0)
+    _ = run([(30, facts(beat: at(25)))], &t)
+    t.woke(now: at(40))
+    check(run([(70, facts(beat: at(-100))), (90, facts(beat: at(-100))), (100, facts(beat: at(-100)))], &t) == [.none, .none, .openOnce],
+          "the wake notice: patience again from it (a minute after the wake, not after the last heartbeat)")
+    t = TileTracker(now: t0)
+    check(run([(30, facts(beat: at(3600))), (60, facts(beat: at(3600))), (90, facts(beat: at(3600)))], &t) == [.none, .openOnce, .none],
+          "a heartbeat in the future (a clock change) counts as none")
+    t = TileTracker(now: t0)
+    check(run([(30, facts(pinned: false)), (60, facts(pinned: false)), (90, facts(pinned: false))], &t) == [.none, .none, .none],
+          "not in the Dock: never opened for a tile")
+    t = TileTracker(now: t0)
+    check(run([(30, facts(running: true)), (60, facts(running: true)), (90, facts(running: true))], &t) == [.none, .none, .none],
+          "an app you started, no tile: left alone")
+    t = TileTracker(now: t0)
+    check(run([(60, facts(beat: at(-31)))], &t) == [.none], "one stale tick after a minute isn't enough (two in a row)")
+}
 
 // 4. an update: the copy is now another build, so the old code leaves and the Dock loads the new one; not mid-install
 plugInfo(build: "b1")

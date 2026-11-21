@@ -30,6 +30,13 @@ enum DockTile {
     static func beatURL(_ id: String) -> URL { folder.appendingPathComponent("\(id).beat") }
     static func logURL(_ id: String) -> URL { folder.appendingPathComponent("\(id).log") }
 
+    /// A profile's heartbeat, log and window word go with its Dock icon app (or the profile): an old heartbeat would
+    /// otherwise read as the Dock drawing a new copy's tile.
+    static func forget(_ id: String) {
+        guard plainID(id) != nil else { return }
+        for u in [beatURL(id), logURL(id), logURL(id).appendingPathExtension("1"), windowURL(id)] { try? FileManager.default.removeItem(at: u) }
+    }
+
     /// When the Dock last drew the profile's tile through the plug-in, or nil.
     static func lastBeat(_ id: String) -> Date? {
         (try? FileManager.default.attributesOfItem(atPath: beatURL(id).path))?[.modificationDate] as? Date
@@ -59,40 +66,82 @@ enum DockTile {
 
 // MARK: - the agent's rule for a Dock icon app while the Dock draws its tile
 
-/// Whether a profile's Dock icon app should run, now that the Dock draws its tile through the plug-in (the heartbeat says
-/// it does): the app no longer runs to show the usage, only when you start it. Without a heartbeat it is opened once
-/// (macOS lets the Dock use a copy's plug-in once the copy has run), and if the Dock still draws no tile (Dock Tiles turned
-/// off in System Settings ▸ Login Items & Extensions, an older macOS, a plug-in that fails) the profile's Dock icon app
-/// runs as before, for the rest of the agent's run. The agent (Rules.swift) asks this every 30 s.
-enum TileRule {
-    /// A heartbeat this recent: the Dock draws the tile (the plug-in draws at least every 30 s).
+/// Whether a profile's Dock icon app should run, now that the Dock draws its tile through the plug-in (its heartbeat says
+/// it does), across the agent's 30 s ticks (Rules.swift). The app no longer runs to show the usage, only when you start it:
+/// one the agent started quits once the tile is drawn (never while it's the app in front). Without a heartbeat for a
+/// minute (and two ticks in a row) the copy is opened once in the agent's run (macOS lets the Dock use a copy's plug-in once
+/// the copy has run); still none (Dock Tiles turned off in System Settings ▸ Login Items & Extensions, an older macOS, a
+/// plug-in that fails), its Dock icon app runs as before, until a heartbeat comes back. After sleep, or a tick that came
+/// late, every heartbeat is old: everyone gets a minute's patience again rather than being opened at once.
+struct TileTracker {
+    /// A heartbeat this recent (and not in the future): the Dock draws the tile (the plug-in draws at least every 30 s).
     static let fresh: TimeInterval = 90
-    /// No heartbeat this long after the copy was ready (the agent started, it was pinned, opened or quit): the Dock doesn't.
+    /// No heartbeat this long after the copy was ready (the agent started or woke, it was pinned, opened or quit).
     static let patience: TimeInterval = 60
+    /// A tick this long after the one before: the Mac slept or the agent stalled (ticks come every 30 s).
+    static let gap: TimeInterval = 45
 
     struct Facts: Equatable {
         var pinned: Bool                // in the Dock
         var running: Bool
-        var ours: Bool                  // running because the agent started it (or it ran when the agent started), not a click
-        var beatAge: TimeInterval?      // since its last heartbeat; nil: none
-        var waited: TimeInterval        // since the copy was last ready to be drawn
-        var failed: Bool                // the Dock drew no tile for it in this run of the agent
+        var ours: Bool                  // running because the agent started it (its --no-follow), not a click
+        var inFront: Bool               // it's the app in front: you're using it
+        var lastBeat: Date?
     }
     enum Act: Equatable {
         case none
         case quit           // the Dock draws the tile: the app the agent started quits (its window left alone)
         case openOnce       // no tile yet: opened once (in the background, its window left alone) so the Dock may use it
-        case asBefore       // still no tile: the Dock icon app runs as it did before tiles, for this run of the agent
+        case asBefore       // still no tile: the Dock icon app runs as it did before tiles, until a heartbeat comes back
     }
 
-    static func decide(_ f: Facts) -> Act {
-        guard !f.failed, f.pinned else { return .none }
-        let drawn = (f.beatAge ?? .infinity) < fresh
-        if f.running {
-            if drawn { return f.ours ? .quit : .none }
-            return f.ours && f.waited >= patience ? .asBefore : .none
+    private struct State { var readyAt: Date; var stale = 0; var tried = false; var failed = false }
+    private var states: [String: State] = [:]
+    private var baseline: Date
+    private var lastTick: Date?
+
+    init(now: Date = Date()) { baseline = now }
+
+    /// The Dock drew no tile for it lately: its Dock icon app runs by the rules, as before.
+    func asBefore(_ id: String) -> Bool { states[id]?.failed ?? false }
+
+    /// The copy is ready to be drawn from `now` (pinned, quit): a minute's patience again.
+    mutating func ready(_ id: String, now: Date = Date()) {
+        var s = states[id] ?? State(readyAt: now); s.readyAt = now; s.stale = 0; states[id] = s
+    }
+
+    /// The Mac woke (or ticks stalled): every heartbeat is old, so everyone's patience starts again.
+    mutating func woke(now: Date = Date()) {
+        baseline = now
+        for id in states.keys { states[id]?.readyAt = now; states[id]?.stale = 0 }
+    }
+
+    /// Call once per tick, before `step`: a late tick counts as a wake.
+    mutating func tick(now: Date = Date()) {
+        if let last = lastTick, now.timeIntervalSince(last) > Self.gap { woke(now: now) }
+        lastTick = now
+    }
+
+    /// A profile's Dock icon app at this tick.
+    mutating func step(_ id: String, _ f: Facts, now: Date = Date()) -> Act {
+        var s = states[id] ?? State(readyAt: baseline)
+        defer { states[id] = s }
+        guard f.pinned else { s.stale = 0; return .none }
+        let age = f.lastBeat.map { now.timeIntervalSince($0) }
+        if let age, age >= 0, age < Self.fresh {
+            s.stale = 0; s.failed = false
+            return f.running && f.ours && !f.inFront ? .quit : .none
         }
-        if drawn || f.waited < patience { return .none }
+        guard !s.failed else { return .none }
+        s.stale += 1
+        guard now.timeIntervalSince(s.readyAt) >= Self.patience, s.stale >= 2 else { return .none }
+        if f.running {
+            guard f.ours else { return .none }          // one you started: left alone
+            s.failed = true
+            return .asBefore
+        }
+        if s.tried { s.failed = true; return .asBefore }
+        s.tried = true; s.readyAt = now; s.stale = 0
         return .openOnce
     }
 }

@@ -16,10 +16,10 @@
 // None of this touches the usage: the agent reads it for every profile, always. Starting or quitting a Dock icon
 // never restarts the Dock; only a pin or unpin does, once, through DockWriter.
 //
-// While the Dock draws a profile's tile itself (its Dock tile plug-in's heartbeat, TileRule in DockTile.swift), the rules
-// above start no Dock icon app: the tile shows the usage, and the app runs only when you start it (a click). One the agent
-// started quits once the tile is drawn. With no tile for a minute the copy is opened once; still none (Dock Tiles turned
-// off in System Settings, say), its Dock icon app runs by the rules above, as before, for the rest of the agent's run.
+// While the Dock draws a profile's tile itself (its Dock tile plug-in's heartbeat, TileTracker in DockTile.swift), the
+// rules above start no Dock icon app: the tile shows the usage, and the app runs only when you start it (a click). One the
+// agent started quits once the tile is drawn. With no tile for a minute the copy is opened once; still none (Dock Tiles
+// turned off in System Settings, say), its Dock icon app runs by the rules above, as before, until a heartbeat comes back.
 
 import AppKit
 
@@ -43,13 +43,8 @@ final class AgentRules {
     private var pinning: Set<String> = []
     private var quietAt: [String: Date] = [:]           // a Dock icon asked to quit without its window
     private var seeded = false
-    // The Dock draws the tiles (TileRule, DockTile.swift): the profiles whose Dock drew no tile in this run (their Dock
-    // icon apps run as before), when each copy was last ready to be drawn, and the Dock icon apps that ran when the
-    // agent started (an older build started them; they quit once the Dock draws their tiles).
-    private var tileFailed: Set<String> = []
-    private var readyAt: [String: Date] = [:]
-    private var ranAtStart: Set<String> = []
-    private let startedAt = Date()
+    /// The Dock draws the tiles: each Dock icon app by its tile's heartbeat (DockTile.swift).
+    private var tiles = TileTracker()
     /// What it's doing now, for the dashboard (written into the agent's mark).
     private(set) var actions: [String: AgentAction] = [:] { didSet { if actions != oldValue { onChange?() } } }
     var onChange: (() -> Void)?
@@ -72,6 +67,10 @@ final class AgentRules {
                 self?.appChanged(app, launched: name == NSWorkspace.didLaunchApplicationNotification)
             })
         }
+        // after sleep every tile's heartbeat is old: a minute's patience before any Dock icon app is opened for it
+        observers.append(ws.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) { [weak self] _ in
+            self?.tiles.woke()
+        })
         let dn = DistributedNotificationCenter.default()
         observers.append(dn.addObserver(forName: Installer.iconQuitNote, object: nil, queue: .main) { [weak self] note in
             if let id = note.object as? String { self?.iconQuit(id) }
@@ -109,8 +108,7 @@ final class AgentRules {
             let behind = e.runs.dockIcon && FileManager.default.fileExists(atPath: app.path) && !DockManager.isPinned(app)
             lastDock[e.id] = behind ? false : e.runs.dockIcon
             if behind { DockManager.markChange(app) }
-            if Installer.isRunning(e) { ranAtStart.insert(e.id) }
-            DockTile.setWindowOpen(e.id, lastOpen[e.id] ?? false)
+            if e.runs.dockIcon { DockTile.setWindowOpen(e.id, lastOpen[e.id] ?? false) }
         }
     }
 
@@ -122,10 +120,7 @@ final class AgentRules {
         let fresh = list.filter { lastOpen[$0.id] == nil }
         if !fresh.isEmpty {
             let acts = Launcher.activity(for: fresh.map(Account.init))
-            for e in fresh {
-                lastOpen[e.id] = acts[Account(e).configDir]?.desktopOpen ?? false
-                DockTile.setWindowOpen(e.id, lastOpen[e.id] ?? false)
-            }
+            for e in fresh { lastOpen[e.id] = acts[Account(e).configDir]?.desktopOpen ?? false }
         }
         applyDockSwitches()
     }
@@ -135,7 +130,8 @@ final class AgentRules {
         adoptDock()
         rememberPlaces()
         tidy()
-        tiles()
+        windowsChanged()            // the window dot's word, kept right even when a window's notice came too early
+        drawTiles()
         let now = Date()
         actions = actions.filter { _, a in a.kind == .dockQuits ? a.at > now - 2 : now.timeIntervalSince(a.at) < 30 }
     }
@@ -164,8 +160,8 @@ final class AgentRules {
                   let e = accounts.first(where: { Installer.bundleID($0) == bid }) {
             if launched { dockStarted(e, app) } else {
                 if actions[e.id]?.kind == .dockQuits { actions[e.id] = nil }
-                // quit: the Dock draws its tile again (from now on); a later start is yours unless the agent starts it
-                startedByAgent[e.id] = nil; ranAtStart.remove(e.id); readyAt[e.id] = Date()
+                // quit: the Dock draws its tile again from now on
+                tiles.ready(e.id)
             }
         }
     }
@@ -176,7 +172,7 @@ final class AgentRules {
             let open = acts[Account(e).configDir]?.desktopOpen ?? false
             let was = lastOpen[e.id]
             lastOpen[e.id] = open
-            DockTile.setWindowOpen(e.id, open)
+            if e.runs.dockIcon { DockTile.setWindowOpen(e.id, open) }
             if actions[e.id]?.kind == .windowOpens && open { actions[e.id] = nil }
             if actions[e.id]?.kind == .windowQuits && !open { actions[e.id] = nil }
             guard let was, was != open, e.runs.withWindow else { continue }
@@ -227,12 +223,13 @@ final class AgentRules {
         Launcher.activity(for: [Account(e)])[Account(e).configDir]?.desktopOpen ?? false
     }
 
-    /// Starts a Dock icon app (in the background, its window left alone). While the Dock draws the tile, the rules (at
-    /// login, with its window, Usage in the Dock on) start none: only `force` (TileRule's open once) does.
+    /// Starts a Dock icon app (in the background, its window left alone). While the Dock draws a pinned copy's tile, the
+    /// rules (at login, with its window) start none: only `force` (the tracker's open once or as before) does. A copy not
+    /// in the Dock (yet) starts as before: macOS lets the Dock use its plug-in once it has run.
     private func startDock(_ e: AccountEntry, reason: String, force: Bool = false) {
         let app = Installer.appURL(e)
         guard e.runs.dockIcon, FileManager.default.fileExists(atPath: app.path), !Installer.isRunning(e) else { return }
-        guard force || tileFailed.contains(e.id) else {
+        guard force || tiles.asBefore(e.id) || !DockManager.isPinned(app) else {
             agentLog.log("agent: \(e.id, privacy: .public): not starting its Dock icon (\(reason, privacy: .public)): the Dock draws its tile")
             return
         }
@@ -244,33 +241,33 @@ final class AgentRules {
 
     // MARK: the Dock draws the tiles
 
-    /// Every 30 s: each Dock icon app by the Dock's heartbeat for its tile (TileRule). The app the agent started quits once
-    /// the Dock draws the tile; with no tile for a minute the copy is opened once; still none, it runs as before.
-    private func tiles() {
+    /// Every 30 s: each Dock icon app by the Dock's heartbeat for its tile (TileTracker). The app the agent started quits
+    /// once the Dock draws the tile; with no tile for a minute the copy is opened once; still none, it runs as before.
+    private func drawTiles() {
         let now = Date()
+        tiles.tick(now: now)
         for e in accounts where e.runs.dockIcon && !removing.contains(e.id) && !pinning.contains(e.id) {
             let app = Installer.appURL(e)
             guard FileManager.default.fileExists(atPath: app.path) else { continue }
-            let facts = TileRule.Facts(pinned: DockManager.isPinned(app), running: Installer.isRunning(e),
-                                       ours: ranAtStart.contains(e.id) || startedByAgent[e.id] != nil,
-                                       beatAge: DockTile.lastBeat(e.id).map { now.timeIntervalSince($0) },
-                                       waited: now.timeIntervalSince(readyAt[e.id] ?? startedAt), failed: tileFailed.contains(e.id))
-            switch TileRule.decide(facts) {
+            let running = Installer.running(e)
+            // the agent's own start carries --no-follow (startDock, Installer.sync); a click doesn't
+            let facts = TileTracker.Facts(pinned: DockManager.isPinned(app), running: !running.isEmpty,
+                                          ours: running.contains { Processes.arguments(of: $0.processIdentifier).contains("--no-follow") },
+                                          inFront: running.contains(where: \.isActive), lastBeat: DockTile.lastBeat(e.id))
+            switch tiles.step(e.id, facts, now: now) {
             case .none: break
             case .quit:
                 agentLog.log("agent: \(e.id, privacy: .public): the Dock draws its tile, quitting its Dock icon app")
-                ranAtStart.remove(e.id); startedByAgent[e.id] = nil; readyAt[e.id] = now
                 quitQuietly(e) {}
             case .openOnce:
                 agentLog.log("agent: \(e.id, privacy: .public): no tile from the Dock for a minute, opening its Dock icon app once")
-                readyAt[e.id] = now
                 startDock(e, reason: "once, so the Dock may draw its tile", force: true)
             case .asBefore:
                 agentLog.log("agent: \(e.id, privacy: .public): the Dock draws no tile for it, its Dock icon app runs as before")
-                tileFailed.insert(e.id)
-                // as before: it runs only when its rule says so (at login, or with its window open)
-                let r = e.runs
-                if !(r.atLogin || (r.withWindow && lastOpen[e.id] == true)) { quitDock(e, reason: "its rule doesn't run it") }
+                // as before: it runs when its rule says so (at login, or with its window open), else not
+                let r = e.runs, wants = r.atLogin || (r.withWindow && lastOpen[e.id] == true)
+                if wants { startDock(e, reason: "the Dock draws no tile", force: true) }
+                else { quitDock(e, reason: "the Dock draws no tile, and its rule doesn't run it") }
             }
         }
     }
@@ -314,7 +311,7 @@ final class AgentRules {
                 let place = defaults.object(forKey: "dockPlace.\(e.id)") as? String
                 agentLog.log("agent: \(e.id, privacy: .public): Usage in the Dock on, pinning \(place == nil ? "after the other icons" : "in its place", privacy: .public) and starting")
                 pinning.insert(e.id)
-                DockManager.pinInBackground(app, after: place) { [weak self] in self?.pinning.remove(e.id) }
+                DockManager.pinInBackground(app, after: place) { [weak self] in self?.pinning.remove(e.id); self?.tiles.ready(e.id) }
                 startDock(e, reason: "Usage in the Dock on")
             } else {
                 lastDock[e.id] = false

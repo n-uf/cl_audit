@@ -24,6 +24,7 @@ enum AccountRemoval {
     static func purgeApp(id: String, app: URL) {
         purgeFiles(id)
         Store.removeStatus(id)
+        DockTile.forget(id)
         unpinFromDock(app)
         Installer.run(lsregister, ["-u", app.path])
     }
@@ -57,6 +58,7 @@ enum AccountRemoval {
         Installer.run(lsregister, ["-u", app.path])
         Installer.run("/usr/bin/defaults", ["delete", "\(Installer.managerID).\(id)"])
         for u in leftovers(id) where fm.fileExists(atPath: u.path) { try? fm.removeItem(at: u) }
+        DockTile.forget(id)
     }
 
     /// Ids that still have files in ~/Library but no account (left by older versions); cleaned on each sync.
