@@ -97,7 +97,8 @@ struct ExperimentalConsent: View {
     let flow: String
     var plural = false
     let onCancel: () -> Void
-    let onContinue: () -> Void
+    /// Continue, with the box's state as it was clicked (the request checks it again).
+    let onContinue: (_ understood: Bool) -> Void
     @State var understood = false
     @Environment(\.face) private var face
 
@@ -130,7 +131,7 @@ struct ExperimentalConsent: View {
                 Button("", action: onCancel).keyboardShortcut(.cancelAction).frame(width: 0, height: 0).opacity(0).accessibilityHidden(true)
                 Button("Cancel", action: onCancel).keyboardShortcut(.defaultAction)
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-                Button("Continue", action: onContinue).disabled(!understood)
+                Button("Continue") { onContinue(understood) }.disabled(!understood)
                     .buttonStyle(.pill(FaceTheme.ledAmber, compact: true)).fixedSize()
             }
         }
@@ -159,7 +160,7 @@ private struct ConsentSheet: View {
     var body: some View {
         ExperimentalConsent(flow: request.flow, plural: request.plural,
                             onCancel: close,
-                            onContinue: { close(); request.proceed(understood: true) })
+                            onContinue: { ticked in close(); request.proceed(understood: ticked) })
             .frame(width: width)
     }
 }

@@ -884,7 +884,7 @@ MainActor.assumeIsolated {
         }
         // the consent sheet before a risky run: the box off (Continue dimmed), then ticked
         for (tag, on) in [("unticked", false), ("ticked", true)] { for w in [CGFloat(460), 708] {
-            snapshot(framed(ExperimentalConsent(flow: "Account switching", onCancel: {}, onContinue: {}, understood: on).frame(width: w), .std, w),
+            snapshot(framed(ExperimentalConsent(flow: "Account switching", onCancel: {}, onContinue: { _ in }, understood: on).frame(width: w), .std, w),
                      "xcs-consent-\(tag)-std-w\(Int(w))", w + 32, 900)
         } }
     }
