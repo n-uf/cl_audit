@@ -16,6 +16,12 @@ Nothing pending.
 - A switch now settles the scheduled tasks before any session moves. When they can't move at that moment (the new account got a differing copy since you pressed Switch, or its tasks file can't be written, or the old account's file changed), they stay together with their sessions, the other sessions move, and the switch goes on to the sign-in and says why the tasks stayed; it used to stop part way, with those tasks' sessions already moved. What changed now counts what actually moved. A switch stopped part way (the Claude window opened) may now have moved the tasks already: Undo puts them back, as before.
 - New profile with the Claude window off: Create (or Connect, for an existing folder) no longer stops after its first click and says nothing; it goes on to sign-in, and when it can't go on it says why. The Create key reads "Checking…" while it looks, and the Claude window switch, locked once the folder is made, says so and that Cancel starts over.
 - In Settings ▸ Accounts, the row of the account Claude Code in Terminal is signed in to (while the Claude app is on another) now also selects when its account isn't on the standby list (Claude Code was switched to it elsewhere, for example in cl_quick): Switch account then closes the profile's Claude window, moves its sessions to that account (from the Claude app's own account and organisation) and opens no sign-in, since Claude Code is on it already. The window opens again with only its own sign-in left, and the Switch page says so. A finished move of this kind has no Undo (the backup made first keeps a copy); one that stops part way can be undone as usual.
+- Picking a folder for a moved session that cl_audit refuses (nothing written) no longer hides the Undo of the last real re-point on the Sessions page.
+- When a move to the default profile stopped part way, is being undone or was left as it is, its steps and Result now say so too, as the line at the top does: no spinner on the move step and no "working…" while nothing runs.
+- When Claude Code in Terminal is signed out, the card's heading says "signed out, last on …'s account" instead of "signed in to …'s account".
+- Remove and Uninstall name a process cl_audit can't read as "A process cl_audit can't read (it may be Claude Code)" instead of a Terminal session.
+- Quick chat's wait after a switch now also sees a move between one login's personal seat and its Team seat (same address), so the question goes on; an organisation it can't read still holds it back.
+- In the MCP servers list, an `env` option cl_audit doesn't know hides the rest of that command line and flags the server, so nothing after it can show.
 
 ## 26.11.75 — 2026-11-21
 
@@ -33,8 +39,6 @@ Nothing pending.
 ## 26.11.72 — 2026-11-21
 
 - The note under the account on the Dock icon's details panel ("Usage: Claude Code on …", or why Claude Code's account is shown) is drawn in the normal secondary grey instead of the faint one, so it reads on every face.
-- Picking a folder for a moved session that cl_audit refuses (nothing written) no longer hides the Undo of the last real re-point on the Sessions page.
-- When a move to the default profile stopped part way, is being undone or was left as it is, its steps and Result now say so too, as the line at the top does: no spinner on the move step and no "working…" while nothing runs.
 
 ## 26.11.71 — 2026-11-20
 
