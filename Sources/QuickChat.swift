@@ -187,7 +187,8 @@ struct QuickChatTarget: Equatable {
         // very address (the profile reply's organization.uuid), so a login's personal and Team seats are two there too; nil
         // when the reading doesn't say, or was for another address: then the address alone is matched)
         let id = view.codeAccount
-        let readingOrg = raw.flatMap { r in r.numbersOwner?.lowercased() == email?.lowercased() ? r.readingOrganization : nil }
+        let address = view.numbersOwner?.lowercased()
+        let readingOrg = raw?.numbersOwner?.lowercased() == address ? raw?.readingOrganization : nil
         account = id == nil && email == nil ? nil
             : AccountIdentity(account: id, email: email, organization: id == nil ? readingOrg : raw?.resolved?.codeOrganization, source: .guessed)
         clashName = raw?.resolved?.clash
