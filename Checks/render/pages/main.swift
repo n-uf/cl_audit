@@ -65,6 +65,22 @@ MainActor.assumeIsolated {
     var bad: [String] = []
     var treeExposed = false
     func title(_ a: String) -> some View { AccountBoxTitle(text: a) }
+    /// The title in its real control, as Settings builds it (the account box's address pop-up): a Menu with the plain button look.
+    func menuTitle(_ a: String) -> some View {
+        Menu { Button("Switch to it…") {} } label: { AccountBoxTitle(text: a) }
+            .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
+    }
+    /// How many pixels in the address's own region (x from 16 to 96 pt: after the host's padding, before the chevron, which sits
+    /// after a stand-in's width) are lit (brighter than the dark background): a title whose address is missing has none, and the
+    /// chevron alone can't pass it.
+    func lit(inAddressRegion h: NSView) -> Int {
+        guard let rep = h.bitmapImageRepForCachingDisplay(in: h.bounds) else { return 0 }
+        h.cacheDisplay(in: h.bounds, to: rep)
+        let k = CGFloat(rep.pixelsWide) / h.bounds.width
+        var n = 0
+        for y in 0..<rep.pixelsHigh { for x in Int(16 * k)..<min(rep.pixelsWide, Int(96 * k)) where (rep.colorAt(x: x, y: y)?.brightnessComponent ?? 0) > 0.4 { n += 1 } }
+        return n
+    }
     func override(_ a: String, _ blur: Bool) -> some View {
         BlurredAddress(address: a, size: 13, blur: blur).font(.system(size: 13, weight: .semibold)).foregroundStyle(Color.white).lineLimit(1)
     }
@@ -107,7 +123,62 @@ MainActor.assumeIsolated {
         if !said.isEmpty, parts(a).contains(where: { said.joined(separator: " | ").localizedCaseInsensitiveContains($0) }) { bad.append("VoiceOver reads part of a hidden title: \(said)") }
         if !said.isEmpty, !said.contains("hidden address") { bad.append("VoiceOver doesn't read \"hidden address\" in a title (read: \(said))") }
     }
+    // the address region alone (the chevron can't pass for it): the stand-in is drawn there, whatever the address
+    if lit(inAddressRegion: t1) == 0 || lit(inAddressRegion: t1) != lit(inAddressRegion: t3) { bad.append("hidden title: the address's region is blank, or differs with the address (\(lit(inAddressRegion: t1)) \(lit(inAddressRegion: t3)))") }
+    // (2b) the same title inside its real control, a Menu with the plain button look (the pixels are checked here; VoiceOver's
+    // walk stays the declared labels, as above: the control's own accessibility tree is built for an assistive client only)
+    let mt1 = host(menuTitle(short)), mt2 = host(menuTitle(usual)), mt3 = host(menuTitle(long))
+    let ma = png(mt1, "pa-menu-title-hidden-short"), mb = png(mt2, "pa-menu-title-hidden-usual"), mc = png(mt3, "pa-menu-title-hidden-long")
+    if ma == nil || ma != mb || ma != mc { bad.append("hidden title in its Menu: a short, a usual and a much longer address draw different pixels") }
+    if ma == empty { bad.append("hidden title in its Menu: the picture is blank") }
+    if lit(inAddressRegion: mt1) == 0 || lit(inAddressRegion: mt1) != lit(inAddressRegion: mt3) { bad.append("hidden title in its Menu: the address's region is blank, or differs with the address") }
+
+    // (3) the dashboard card's Switch account menu (an NSMenu, SwitchAccountMenu): hidden, every account row draws the identical
+    // stand-in and a highlighted row shows its address; shown, the rows draw the addresses. Pictures pa-switch-menu-<case>.
+    func switchMenu() -> NSMenu {
+        SwitchAccountMenu(label: usual, ownKey: nil, plan: "max",
+                          standby: [.init(key: "pa~k2", address: short), .init(key: "pa~k3", address: long)], pick: { _ in }, newAccount: {}).menu()
+    }
+    func addressRows(_ m: NSMenu) -> [AddressMenuRow] { m.items.compactMap { $0.view as? AddressMenuRow } }
+    func rowPicture(_ r: AddressMenuRow, _ name: String) -> Data? {
+        guard let rep = r.bitmapImageRepForCachingDisplay(in: r.bounds) else { return nil }
+        r.cacheDisplay(in: r.bounds, to: rep)
+        let d = rep.representation(using: .png, properties: [:])
+        try? d?.write(to: URL(fileURLWithPath: out + "/\(name).png")); print(name)
+        return d
+    }
+    func rowInked(_ r: AddressMenuRow) -> Bool {
+        guard let rep = r.bitmapImageRepForCachingDisplay(in: r.bounds) else { return false }
+        r.cacheDisplay(in: r.bounds, to: rep)
+        for y in 0..<rep.pixelsHigh { for x in 0..<rep.pixelsWide where (rep.colorAt(x: x, y: y)?.alphaComponent ?? 0) > 0.02 { return true } }
+        return false
+    }
+    AddressPrivacy.shared.apply(blur: true)
+    let hm = switchMenu(), hr = addressRows(hm)
+    if hr.count != 2 { bad.append("hidden Switch account menu: expected two account rows, got \(hr.count)") }
+    else {
+        for r in hr { r.frame.size.width = r.naturalWidth }
+        let h1 = rowPicture(hr[0], "pa-switch-menu-hidden-short"), h2 = rowPicture(hr[1], "pa-switch-menu-hidden-long")
+        if h1 == nil || h1 != h2 { bad.append("hidden Switch account menu: two accounts' rows draw different pixels") }
+        if !rowInked(hr[0]) { bad.append("hidden Switch account menu: the row is blank") }
+        let said = hm.items.flatMap { [$0.title, ($0.view as? AddressMenuRow)?.accessibilityLabel() ?? ""] }
+        if [short, usual, long].contains(where: { a in parts(a).contains(where: { p in said.joined(separator: " | ").localizedCaseInsensitiveContains(p) }) }) {
+            bad.append("hidden Switch account menu: a title or accessibility label holds part of an address: \(said)")
+        }
+        hr[0].highlighted = true; hr[1].highlighted = true
+        let l1 = rowPicture(hr[0], "pa-switch-menu-lit-short"), l2 = rowPicture(hr[1], "pa-switch-menu-lit-long")
+        if l1 == nil || l1 == l2 || l1 == h1 || l2 == h2 { bad.append("hidden Switch account menu: a highlighted row doesn't show its own address") }
+        if hr[0].drawnAddress != short || hr[1].drawnAddress != long { bad.append("hidden Switch account menu: a highlighted row doesn't draw its address") }
+    }
     AddressPrivacy.shared.apply(blur: false)
+    let sr = addressRows(switchMenu())
+    if sr.count != 2 { bad.append("shown Switch account menu: expected two account rows, got \(sr.count)") }
+    else {
+        for r in sr { r.frame.size.width = r.naturalWidth }
+        let s1 = rowPicture(sr[0], "pa-switch-menu-shown-short"), s2 = rowPicture(sr[1], "pa-switch-menu-shown-long")
+        if s1 == nil || s1 == s2 { bad.append("shown Switch account menu: two accounts' rows draw alike") }
+        if sr[0].drawnAddress != short || sr[1].drawnAddress != long || sr[0].title != short { bad.append("shown Switch account menu: a row doesn't draw its address") }
+    }
     let u1h = host(title(short)), u2h = host(title(long))
     let v1 = png(u1h, "pa-title-shown-short"), v2 = png(u2h, "pa-title-shown-long")
     if v1 == v2 || v1 == r1 { bad.append("shown title: the addresses draw alike, or as the stand-in") }
