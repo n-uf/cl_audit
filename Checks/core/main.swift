@@ -533,6 +533,25 @@ do {
     check(renewed.handle(.usageAnswer(endpoint(use(week: 22, at: t0.addingTimeInterval(91))), key: "k10", asked: t0.addingTimeInterval(90), generation: 0,
                                       now: t0.addingTimeInterval(91))).contains(.save) && renewed.state == .ok,
           "…the renewed sign-in reads: ok again")
+    // a line taken within that minute and no newer one after it: still read again once the minute is up, not at 10 minutes
+    var lone = machine()
+    _ = tick(&lone, t0)
+    _ = lone.handle(.signInRead(.token(key: "k9", expiresAt: t0.addingTimeInterval(-1), plan: nil), generation: 0, now: t0))
+    let loneLine = use(week: 20, at: t0.addingTimeInterval(20), source: "line")
+    let loneEarly = tick(&lone, t0.addingTimeInterval(30), line: loneLine)
+    let loneOn = tick(&lone, t0.addingTimeInterval(61), line: loneLine)
+    check(!loneEarly.contains(.readSignIn(generation: 0)) && loneOn.contains(.readSignIn(generation: 0)),
+          "a status line within a minute of the read, none newer: read again once the minute is up (\(loneOn))")
+    _ = lone.handle(.signInRead(.token(key: "k9", expiresAt: t0.addingTimeInterval(-1), plan: nil), generation: 0, now: t0.addingTimeInterval(61)))
+    check(!tick(&lone, t0.addingTimeInterval(200), line: loneLine).contains(.readSignIn(generation: 0)),
+          "…read once: still expired with no newer line, not read again before 10 minutes")
+    var okLine = machine()
+    _ = tick(&okLine, t0); _ = okLine.handle(.signInRead(token, generation: 0, now: t0))
+    let okTaken = use(week: 20, at: t0.addingTimeInterval(20), source: "line")
+    _ = tick(&okLine, t0.addingTimeInterval(30), line: okTaken)
+    _ = okLine.handle(.usageFailed(.signInRejected, asked: t0, generation: 0, now: t0.addingTimeInterval(40)))
+    check(okLine.state == .expired && !tick(&okLine, t0.addingTimeInterval(120), line: okTaken).contains(.readSignIn(generation: 0)),
+          "a status line taken before the sign-in was rejected: no renewal to read")
     var oldLine = machine()
     _ = tick(&oldLine, t0)
     _ = oldLine.handle(.signInRead(.token(key: "k9", expiresAt: t0.addingTimeInterval(-1), plan: nil), generation: 0, now: t0.addingTimeInterval(100)))

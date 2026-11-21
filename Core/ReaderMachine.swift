@@ -229,6 +229,8 @@ public struct ReaderMachine: Equatable {
     // the sign-in and the schedule
     public private(set) var kept: SignInRead?
     public private(set) var lastLoginRead = Date.distantPast
+    /// When the newest status line taken while the sign-in was expired was written (Claude Code working: it has renewed it).
+    public private(set) var expiredLineAt = Date.distantPast
     public private(set) var loginRejected = false
     public private(set) var forceLoginRead = false
     public private(set) var nextFetch: Date
@@ -426,12 +428,14 @@ public struct ReaderMachine: Equatable {
             if local.noFiveHour { local.fiveHour = nil; local.fiveHourResets = nil }
             usage = local
             numbersOwner = nil; numbersAccount = nil; numbersOrganization = nil; numbersKey = nil    // the status line names no account: whose these are isn't known
-            // the kept sign-in expired (or was rejected), and Claude Code wrote its status line since it was read: Claude
-            // Code is working, so it has renewed its own sign-in. Read it now (at most every `signInRetry`) rather than
-            // after `keptSignInRetry`, so "expired" (which shows no numbers) doesn't outlast the renewal
-            if state == .expired, local.fetchedAt > lastLoginRead, now.timeIntervalSince(lastLoginRead) >= timing.signInRetry {
-                forceLoginRead = true; nextFetch = .distantPast
-            }
+            if state == .expired { expiredLineAt = local.fetchedAt }
+        }
+        // the kept sign-in expired (or was rejected), and Claude Code wrote its status line since it was read: Claude
+        // Code is working, so it has renewed its own sign-in. Read it now (at most every `signInRetry`) rather than
+        // after `keptSignInRetry`, so "expired" (which shows no numbers) doesn't outlast the renewal. Asked at every tick,
+        // not only at the line's: a line taken within `signInRetry` of the read still calls for it once that minute is up
+        if state == .expired, expiredLineAt > lastLoginRead, now.timeIntervalSince(lastLoginRead) >= timing.signInRetry, !forceLoginRead {
+            forceLoginRead = true; nextFetch = .distantPast
         }
         if let u = usage, Self.resetPassed(u, now: now), !failing, now.timeIntervalSince(lastAsked) >= timing.resetRereadFloor {
             nextFetch = .distantPast
