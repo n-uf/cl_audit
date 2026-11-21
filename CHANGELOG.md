@@ -8,12 +8,11 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- A move to the default profile that stopped half way now has "Leave it as it is" on its card in Settings ▸ General, as a stopped restore and a stopped switch do: what the move did stays, nothing is undone, and both profiles can switch again, also when its backup is gone and Undo no longer applies.
 
 ## 26.11.67 — 2026-11-20
 
 - Clearer words in many places: the Restore page's steps no longer say the window opens when it stays as it is, and it no longer says "0 entries"; a move's restore says the sign-ins never travel; a reading for another account says "sign in to read again"; a signed-out Claude Code no longer reads as "signed in to" its last account; the Claude window and Terminal say why they don't open when the profile's folder is gone; a switch says which sessions it held because their record couldn't be read, says a part-way Undo by kind and count, and no longer promises what its backup keeps; the scheduled tasks reasons name whose file it is; and the busy line no longer guesses which run holds the lock.
-- A move to the default profile that stopped half way now has "Leave it as it is" on its card in Settings ▸ General, as a stopped restore and a stopped switch do: what the move did stays, nothing is undone, and both profiles can switch again, also when its backup is gone and Undo no longer applies.
 
 ## 26.11.66 — 2026-11-20
 
