@@ -3425,14 +3425,18 @@ do {
     seatModel.accounts = [seatNow, seatAway]
     seatModel.resolveNow("hseatnow")
     let nowAnswer = Store.status("hseatnow")?.resolved
+    // (section 4 ran the agent in this very process: its mark names this pid with a fresh beat, so the window would rightly
+    // leave the answer to it. Gone, the agent is away as resolveWithoutAgent expects)
+    try? fm.removeItem(at: Agent.markURL)
+    let agentAway = !Agent.isAlive(Agent.readMark())
     seatModel.resolveWithoutAgent()
     let awayAnswer = Store.status("hseataway")?.resolved
     check(Store.isHeld("hseatnow") && nowAnswer?.readStale == true && nowAnswer?.line == AccountResolver.staleWords
           && Store.status(for: seatNow)?.weekly == nil,
           "resolveNow, a record read on the other seat (Team organisation): stale, its numbers shown nowhere")
-    check(Store.isHeld("hseataway") && awayAnswer?.readStale == true && awayAnswer?.line == AccountResolver.staleWords
+    check(agentAway && Store.isHeld("hseataway") && awayAnswer?.readStale == true && awayAnswer?.line == AccountResolver.staleWords
           && Store.status(for: seatAway)?.weekly == nil,
-          "resolveWithoutAgent, a record read on the other seat: stale, its numbers shown nowhere (held \(Store.isHeld("hseataway")), first run \(seatModel.isFirstRun), \(String(describing: awayAnswer?.readStale)))")
+          "resolveWithoutAgent, a record read on the other seat: stale, its numbers shown nowhere (agent away \(agentAway), held \(Store.isHeld("hseataway")), first run \(seatModel.isFirstRun), \(String(describing: awayAnswer?.readStale)))")
     seatRecord("hseatnow", org: h2.organization!.uppercased())
     seatModel.resolveNow("hseatnow")
     let sameAnswer = Store.status("hseatnow")?.resolved
