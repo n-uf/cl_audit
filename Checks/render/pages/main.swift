@@ -427,6 +427,15 @@ MainActor.assumeIsolated {
         }
         model.accounts = [limeP]; model.selection = nil
         snapshot(framedL(ProfileTiles(model: model), 300), "pl-tiles-lime-\(f.rawValue)", 332, 110)
+        // the dashboard's top strip (every profile shown: latched keys, the strip in the profile's colour, dark for one with
+        // none) and the charts' legend with two profiles with no colour of their own (each keyed by its grey)
+        let lab2 = ledProfile("ledlab2", "Lab 2", accent: nil, color: .graphite)
+        let strip = [mainP, workP, studioP, labP, lab2]
+        let lm = LauncherModel()                    // (its hidden set: none in the throwaway home's preferences)
+        lm.rows = strip.map { cardRow($0) }
+        snapshot(framedL(AccountChips(model: lm), 620), "pl-chips-\(f.rawValue)", 652, 70)
+        let greys = ProfileLED.seriesColors(strip, among: strip)
+        snapshot(framedL(StatsLegend(entries: strip, color: { greys[$0] ?? .gray }), 620), "pl-legend-\(f.rawValue)", 652, 60)
     }
 }
 if ProcessInfo.processInfo.environment["PROFILE_LED_ONLY"] != nil { print("done"); exit(0) }

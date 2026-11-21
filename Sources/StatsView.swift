@@ -123,17 +123,7 @@ struct StatsSection: View {
             }
             }
             HStack(spacing: 14) {
-                ForEach(stats.accounts) { e in
-                    HStack(spacing: 6) {
-                        ProfileLED(color: e.ownColor)
-                        // a profile with no colour of its own: its light is unlit, so its grey in the charts is keyed here
-                        if e.ownColor == nil {
-                            RoundedRectangle(cornerRadius: 1.5).fill(stats.color(e.id)).frame(width: 10, height: 6)
-                                .help("\(e.name)'s grey in the charts")
-                        }
-                        Text(e.name).foregroundStyle(face.soft)
-                    }
-                }
+                StatsLegend(entries: stats.accounts, color: stats.color)
                 Spacer()
                 Text("From the session files on this Mac (terminal, desktop Code tab, VS Code, SDK apps). ≈ cost: at API list prices, not your bill.")
                     .help(costHelp)
@@ -143,6 +133,29 @@ struct StatsSection: View {
         // the period is remembered between launches
         .onAppear { if stats.range != prefs.range { stats.range = prefs.range } }
         .onChange(of: prefs.range) { r in if stats.range != r { stats.range = r } }
+    }
+}
+
+/// The charts' legend: each shown profile's own light and name; a profile with no colour of its own (its light unlit)
+/// also gets a swatch of its grey in the charts, so its series is told by name.
+struct StatsLegend: View {
+    let entries: [AccountEntry]
+    let color: (String) -> Color
+    @Environment(\.face) private var face
+
+    var body: some View {
+        HStack(spacing: 14) {
+            ForEach(entries) { e in
+                HStack(spacing: 6) {
+                    ProfileLED(color: e.ownColor)
+                    if e.ownColor == nil {
+                        RoundedRectangle(cornerRadius: 1.5).fill(color(e.id)).frame(width: 10, height: 6)
+                            .help("\(e.name)'s grey in the charts")
+                    }
+                    Text(e.name).foregroundStyle(face.soft)
+                }
+            }
+        }
     }
 }
 
