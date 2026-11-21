@@ -434,6 +434,20 @@ struct SwitchPage: View {
         return parts.joined(separator: " and ")
     }
 
+    /// What a switch moved, in sessionWords' words, from its receipt (what was written down, not the plan: tasks that stayed
+    /// at the move, and their sessions, aren't counted); "" when nothing moved. The plan's words without a receipt.
+    private var movedWords: String {
+        guard let r = runner.receipt else { return sessionWords(plan) }
+        return Self.receiptWords(r)
+    }
+
+    static func receiptWords(_ r: SwitchReceipt) -> String {
+        func n(_ k: Int, _ one: String, _ many: String) -> String { "\(k) \(k == 1 ? one : many)" }
+        let s = r.moved, t = r.steps.contains { $0.kind == .tasks && $0.done } ? (r.tasksMoved ?? 1) : 0
+        return [s > 0 ? n(s, "Code-tab session", "Code-tab sessions") : nil, t > 0 ? n(t, "scheduled task", "scheduled tasks") : nil]
+            .compactMap { $0 }.joined(separator: " and ")
+    }
+
     /// Once it reached the account: what is true now, in the past tense.
     private var switchDone: some View {
         SCard(title: "What changed", info: changesInfo) {
@@ -441,9 +455,10 @@ struct SwitchPage: View {
                 value("Terminal and editors on \(entry.configDir) work on \(to) now, sessions that were running included.")
             }
             SRow(label: "Sessions", stacked: true) {
-                value(runner.receipt != nil
-                      ? "\(sessionWords(plan).prefix(1).uppercased() + sessionWords(plan).dropFirst()) moved to \(to), with a backup made first. Claude Code's transcripts stayed in \(entry.configDir)."
-                      : "Nothing moved: none of the Claude window's sessions were on \(from).")
+                let w = movedWords
+                value(runner.receipt == nil ? "Nothing moved: none of the Claude window's sessions were on \(from)."
+                      : w.isEmpty ? "Nothing moved to \(to); a backup was made first."
+                      : "\(w.prefix(1).uppercased() + w.dropFirst()) moved to \(to), with a backup made first. Claude Code's transcripts stayed in \(entry.configDir).")
             }
             if appBehind {
                 SRow(label: "Claude window", stacked: true) {
@@ -469,7 +484,8 @@ struct SwitchPage: View {
             }
             if runner.canUndo {
                 SRow(label: "Sessions", stacked: true) {
-                    value("\(sessionWords(plan).prefix(1).uppercased() + sessionWords(plan).dropFirst()) moved to \(to) already. Sign in as \(to) again, or Undo the move to put them back under \(from).")
+                    let w = movedWords
+                    value("\(w.prefix(1).uppercased() + w.dropFirst()) moved to \(to) already. Sign in as \(to) again, or Undo the move to put them back under \(from).")
                 }
             }
             if let w = runner.windowNote { SRowLine(text: w) }

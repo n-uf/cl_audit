@@ -367,7 +367,8 @@ struct AtlasMenu: View {
     let late = SwitchRunner.Goal(standby: "kb", wantedSeat: ben, wantedEmail: ben.email!, from: ann, started: Date().addingTimeInterval(-11 * 60))
     r.preview(.timedOut, goal: late, target: benStandby, planned: p8, receipt: moved8, seen: ann)
     draw("08", page: true)
-    // 09 stopped part way: the window opened during the move after two sessions (the engine stops; its receipt is open)
+    // 09 stopped part way: the window opened during the move, after the scheduled tasks (they go first) and a session (the
+    // engine stops; its receipt is open)
     base()
     let p9 = plan()
     let stopped = move(closedFor: 4)

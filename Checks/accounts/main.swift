@@ -942,9 +942,21 @@ do {
     check(fm.fileExists(atPath: "\(late.src)/local_\(uuid(962)).json") && !fm.fileExists(atPath: "\(late.dst)/local_\(uuid(962)).json")
           && fm.fileExists(atPath: "\(late.dst)/local_\(uuid(961)).json") && !fm.fileExists(atPath: "\(late.src)/local_\(uuid(961)).json"),
           "…the task's session stays with its task, the free one moves")
-    check(lateR?.problems.contains { $0.contains("scheduled tasks stay where they were, and so do their sessions") && $0.contains("other settings") } == true,
-          "…and the receipt says why: \(lateR?.problems ?? [])")
+    check(lateR?.problems.contains { $0.contains("scheduled tasks stay where they were, and so do their sessions") && $0.contains("other settings")
+                                     && $0.contains("Remove one of the two") } == true,
+          "…and the receipt says why, with the way out: \(lateR?.problems ?? [])")
     if let lateR { SwitchEngine.markLinked(lateR.id) }
+    // the old account's task file emptied after the plan: the plan's tasks can't be read now, so every task's session stays
+    let gone = taskSwitch("tc14", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"0 9 * * *"}"#, dstTask: "")
+    guard case .success(let pg) = SwitchEngine.plan(gone.e, standby: gone.e.standby[0], dataDir: gone.wd, owned: []) else { check(false, "plan tc14"); exit(1) }
+    put("\(gone.src)/scheduled-tasks.json", #"{"scheduledTasks":[]}"#)
+    let goneR = try? SwitchEngine.run(pg, windowClosed: { true }, backups: URL(fileURLWithPath: home + "/bk-tc14"))
+    check(goneR?.finished != nil && goneR?.steps.contains { $0.kind == .tasks } == false
+          && fm.fileExists(atPath: "\(gone.src)/local_\(uuid(962)).json") && !fm.fileExists(atPath: "\(gone.dst)/local_\(uuid(962)).json")
+          && fm.fileExists(atPath: "\(gone.dst)/local_\(uuid(961)).json")
+          && goneR?.problems.contains { $0.contains("changed since the switch was planned") } == true,
+          "the old account's task file emptied after the plan: the task's session stays, the free one moves, said: \(goneR?.problems ?? [])")
+    if let goneR { SwitchEngine.markLinked(goneR.id) }
     // an entry that can't be read whole (too large here): held like an owned one, but said apart, never "Claude Code is running"
     let big = taskSwitch("tc7", from: tA, to: tB, srcTask: "", dstTask: "")
     put("\(big.src)/scheduled-tasks.json", #"{"scheduledTasks":[]}"#)

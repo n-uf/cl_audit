@@ -768,7 +768,8 @@ MainActor.assumeIsolated {
     check(try! String(contentsOfFile: t1Path) == t1Before, "Undo: the pointer line comes off, the transcript as it was")
     check(SwitchEngine.unfinished(profile: "eng").isEmpty, "undone: nothing unfinished")
 
-    // a stop half way: the window opens after the entries, before the tasks; Undo from the receipt puts it all back
+    // a stop half way: the window opens after the tasks and the first session (the tasks go first); Undo from the receipt
+    // puts it all back, the tasks' steps (written before the entries') included
     for p in [t1Path, t2Path] { try? fm.setAttributes([.modificationDate: old], ofItemAtPath: p) }
     var calls = 0
     check((try? SwitchEngine.run(plan, windowClosed: { calls += 1; return calls < 5 })) == nil, "the window opening mid-switch stops it")
@@ -783,11 +784,15 @@ MainActor.assumeIsolated {
               && ((try? fm.contentsOfDirectory(atPath: src))?.sorted() ?? []) == treeBefore, "...no receipt, no backup, nothing moved")
     }
     let stopped = SwitchEngine.unfinished(profile: "eng").first
-    check(stopped?.moved == 2 && stopped?.finished == nil && fm.contents(atPath: "\(src)/scheduled-tasks.json") == tasksSrc,
-          "stopped: its receipt is unfinished with the two moves; the tasks not touched")
+    check(stopped?.moved == 1 && stopped?.finished == nil
+          && stopped.map { r in r.steps.firstIndex { $0.kind == .tasks }.map { t in r.steps.firstIndex { $0.kind == .entry }.map { t < $0 } ?? false } ?? false } == true
+          && stopped?.steps.contains { $0.kind == .tasks && !$0.done } == false && fm.contents(atPath: "\(src)/scheduled-tasks.json") != tasksSrc,
+          "stopped: its receipt is unfinished with the tasks moved first and one session")
     _ = try? SwitchEngine.undo(stopped?.id ?? "", windowClosed: { true })
     check(fm.fileExists(atPath: "\(src)/local_\(i1).json") && !fm.fileExists(atPath: "\(dst)/local_\(i1).json") && SwitchEngine.unfinished(profile: "eng").isEmpty,
           "Undo after the stop: the sessions are back")
+    check(fm.contents(atPath: "\(src)/scheduled-tasks.json") == tasksSrc && fm.contents(atPath: "\(dst)/scheduled-tasks.json") == tasksDst,
+          "Undo after the stop: both task files as before (tasks undone ahead of the entries)")
     // a pointer line written to since stays; the receipt says so
     let r2 = try! SwitchEngine.run(plan, windowClosed: { true })
     let fh = FileHandle(forWritingAtPath: t1Path)!; try! fh.seekToEnd(); fh.write(Data((#"{"type":"user"}"# + "\n").utf8)); try! fh.close()

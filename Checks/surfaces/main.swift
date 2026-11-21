@@ -1000,9 +1000,9 @@ do {
     func settle(_ done: () -> Bool) { let end = Date().addingTimeInterval(20); while !done() && Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) } }
     func failedPhase() -> Bool { if case .failed = rf.phase { return true }; return false }
 
-    // a tasks-only stop inside the tasks' step: the new account's file can't be written. Since TaskRegistry the old account's
-    // file is put back as it was (the tasks are never in neither account), so nothing changed and the receipt has nothing to
-    // undo (it blocks no other flow)
+    // a tasks-only switch whose new account's file can't be written: the old account's file is put back as it was (the
+    // tasks are never in neither account) and the tasks stay, said in the move's note; the move step finishes with nothing
+    // to undo, and the switch goes on to the sign-in (which can't start here: no claude)
     let srcTasks = #"{"scheduledTasks":[{"id":"t1"},{"id":"t2"},{"id":"t3"}]}"#
     put("\(srcF)/scheduled-tasks.json", srcTasks)
     try? fm.createDirectory(atPath: dstF, withIntermediateDirectories: true)
@@ -1010,10 +1010,11 @@ do {
     rf.start(ef.standby[0])
     settle(failedPhase)
     try? fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dstF)
-    check(failedPhase() && rf.failedStep == .move && rf.receipt == nil && SwitchEngine.unfinished(profile: "ff").isEmpty
-          && SwitchRunner.failedWords(rf.receipt) == ("Not started", "nothing changed")
+    check(failedPhase() && rf.failedStep == .signIn && rf.receipt?.finished != nil && rf.receipt?.steps.isEmpty == true
+          && SwitchEngine.unfinished(profile: "ff").isEmpty
+          && rf.moveNote?.contains("scheduled tasks stay where they were") == true
           && fm.contents(atPath: "\(srcF)/scheduled-tasks.json") == Data(srcTasks.utf8) && !fm.fileExists(atPath: "\(dstF)/scheduled-tasks.json"),
-          "a stop inside the tasks' step: the move step failed, the old account's tasks put back as they were, nothing changed: \(rf.phase) \(SwitchRunner.failedWords(rf.receipt))")
+          "the new account's task file can't be written: the old account's tasks put back as they were, said, nothing to undo: \(rf.phase) \(rf.moveNote ?? "-")")
     if let r = rf.receipt { _ = try? SwitchEngine.undo(r.id, windowClosed: { true }) }
     rf.reset()
 
