@@ -83,6 +83,12 @@ struct AccountFacts: Equatable {
     static func orgWords(type: String?, name: String?) -> String? {
         if let t = type?.lowercased(), !t.isEmpty, !t.contains("team"), !t.contains("enterprise") { return "Personal" }
         guard let n = name.flatMap({ $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }) else { return nil }
-        return n.split(whereSeparator: { $0 == " " }).contains(where: { AddressSettings.hides(String($0)) }) || AddressSettings.hides(n) ? "Personal" : n
+        // (a word's possessive, "<id>'s", is taken off first: "<id>'s Organization" names an account by its id)
+        func bare(_ w: Substring) -> String {
+            var s = String(w)
+            for tail in ["'s", "\u{2019}s"] where s.hasSuffix(tail) { s.removeLast(tail.count) }
+            return s
+        }
+        return n.split(whereSeparator: { $0 == " " }).contains(where: { AddressSettings.hides(bare($0)) }) || AddressSettings.hides(n) ? "Personal" : n
     }
 }
