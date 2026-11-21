@@ -3397,6 +3397,47 @@ do {
           "isActive: ids in any case; an address only by the address; the record names no organisation; another id never by the address")
     check(v.isCodeRow(id: h2.account.uppercased(), email: nil) && v.isCodeRow(id: nil, email: "HEX-2@example.com") && !v.isCodeRow(id: otherID.account, email: h2.email),
           "isCodeRow: by the id in any case, else the address; another id never by the address")
+
+    // the window's own answers (Settings.resolveNow right after a switch or log-in, resolveWithoutAgent while the agent is
+    // away) with a record read on the login's other seat (the same id and address, the Team organisation) while the folder
+    // is on its own: stale in both, as in the agent's; on the folder's own organisation, the numbers stand
+    let keepAnnounce = Store.announce, keepAnnounceStatus = Store.announceStatus
+    Store.announce = {}; Store.announceStatus = { _ in }        // a throwaway home: no running cl_audit is told
+    defer { Store.announce = keepAnnounce; Store.announceStatus = keepAnnounceStatus }
+    func folderOn(_ dir: String, _ s: Seat) {
+        put(expand(dir + "/.claude.json"),
+            #"{"oauthAccount":{"accountUuid":"\#(s.account)","organizationUuid":"\#(s.organization!)","emailAddress":"\#(s.email!)"}}"#)
+    }
+    func seatRecord(_ id: String, org: String) {
+        var r = IconStatus(state: "ok"); r.loginEmail = h2.email; r.numbersOwner = h2.email; r.numbersAccount = h2.account
+        r.numbersOrganization = org; r.weekly = 40; r.updatedAt = Date()
+        _ = Store.writeStatus(id, r)
+    }
+    var seatNow = profile("hseatnow", "~/.claude-hseatnow", h2); seatNow.claudeWindow = false
+    var seatAway = profile("hseataway", "~/.claude-hseataway", h1); seatAway.claudeWindow = false
+    folderOn("~/.claude-hseatnow", h2); folderOn("~/.claude-hseataway", h1)
+    seatRecord("hseatnow", org: teamOrg)
+    var awayRec = IconStatus(state: "ok"); awayRec.loginEmail = h1.email; awayRec.numbersOwner = h1.email; awayRec.numbersAccount = h1.account
+    awayRec.numbersOrganization = otherOrg.organization; awayRec.weekly = 40; awayRec.updatedAt = Date()
+    _ = Store.writeStatus("hseataway", awayRec)
+    try! Store.save([seatNow, seatAway])                        // (profiles on file: not the first run, which answers nothing)
+    let seatModel = SettingsModel()
+    seatModel.accounts = [seatNow, seatAway]
+    seatModel.resolveNow("hseatnow")
+    let nowAnswer = Store.status("hseatnow")?.resolved
+    seatModel.resolveWithoutAgent()
+    let awayAnswer = Store.status("hseataway")?.resolved
+    check(Store.isHeld("hseatnow") && nowAnswer?.readStale == true && nowAnswer?.line == AccountResolver.staleWords
+          && Store.status(for: seatNow)?.weekly == nil,
+          "resolveNow, a record read on the other seat (Team organisation): stale, its numbers shown nowhere")
+    check(Store.isHeld("hseataway") && awayAnswer?.readStale == true && awayAnswer?.line == AccountResolver.staleWords
+          && Store.status(for: seatAway)?.weekly == nil,
+          "resolveWithoutAgent, a record read on the other seat: stale, its numbers shown nowhere (held \(Store.isHeld("hseataway")), first run \(seatModel.isFirstRun), \(String(describing: awayAnswer?.readStale)))")
+    seatRecord("hseatnow", org: h2.organization!.uppercased())
+    seatModel.resolveNow("hseatnow")
+    let sameAnswer = Store.status("hseatnow")?.resolved
+    check(sameAnswer?.readStale == nil && Store.status(for: seatNow)?.weekly == 40,
+          "resolveNow, the record read on the folder's own organisation (any case): the profile's numbers")
 }
 
 print("checks: \(passed) passed, \(failed) failed")
