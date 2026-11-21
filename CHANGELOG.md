@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.68 — 2026-11-20
+
 - A move to the default profile that stopped half way now has "Leave it as it is" on its card in Settings ▸ General, as a stopped restore and a stopped switch do: what the move did stays, nothing is undone, and both profiles can switch again, also when its backup is gone and Undo no longer applies.
 
 ## 26.11.67 — 2026-11-20
