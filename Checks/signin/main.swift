@@ -208,10 +208,10 @@ MainActor.assumeIsolated {
     check(list.count == 1 && list.first?.path == dFree && list.first?.email == free.email, "free accounts: only a signed-in folder no profile uses (not Work's, not inside it, not one without a sign-in)")
     // NewAccountSetup.wellText, the Account pop-up's label: hidden, no more of the address than the
     // mask form (first letter, dots, domain); shown, the address; the words that aren't an address as they are
-    let wellAddr = "zedekiah@sample.org"
+    let wellAddr = "zedekiah@example.org"
     let wellHidden = NewAccountSetup.wellText(wellAddr, show: false)
     check(wellHidden == Privacy.mask(wellAddr) && !wellHidden.contains("zedekiah") && !wellHidden.contains("edekiah")
-          && wellHidden.hasPrefix("z") && wellHidden.hasSuffix("@sample.org"),
+          && wellHidden.hasPrefix("z") && wellHidden.hasSuffix("@example.org"),
           "wellText (Account pop-up), emails hidden: the mask form only, never the address itself under the blur")
     check(NewAccountSetup.wellText(wellAddr, show: true) == wellAddr && NewAccountSetup.wellText("Choose an account", show: false) == "Choose an account"
           && NewAccountSetup.wellText("not signed in yet", show: false) == "not signed in yet",
