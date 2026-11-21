@@ -42,6 +42,8 @@ _ = NSApplication.shared
     let d = AppDelegate(); d.entry = e; d.show = s
     return (d.model(), d.detailsInfo(), d.profileMenu())
 }
+/// The Dock panel of a profile as the Dock icon builds it (IconApp's detailsInfo), for the blocks that aren't main-actor isolated.
+func dockPanelOf(_ e: AccountEntry, _ s: ProfileShow) -> DetailsInfo { MainActor.assumeIsolated { dockOf(e, s).panel } }
 /// The menu bar icon's menu of a profile, as the agent builds it (MenuBarItems.menuNeedsUpdate).
 @MainActor func menuBarMenu(_ s: ProfileShow) -> NSMenu {
     let items = MenuBarItems(profiles: { [MenuBarItems.Profile(show: s)] }, refresh: { _ in })
@@ -323,7 +325,7 @@ do {
             ("Switch page", SwitchPage(entry: main, standby: main.standby[0], model: model, runner: model.runner(of: main.id)).view)]
         for (s, v) in views { check(v == want, "\(name): \(s) agrees on the account, the numbers' owner and the line") }
         // the Dock panel from the one value (each case here is signed in and readable: the lamp is the record's)
-        let panel = DetailsInfo.of(ProfileShow.load(main), name: "x", icon: NSImage(), problem: nil)
+        let panel = dockPanelOf(main, ProfileShow.load(main))         // (through the Dock app's own detailsInfo, as the Dock icon builds it)
         let splitHere = ProfileShow.load(main).display.split != nil
         // (in a clash the app didn't decide, every surface names the profile's own account, never the folder's: step 3c)
         let named = want.clash != nil && Store.status("main")?.resolved?.fromApp != true ? main.seat?.email : want.label
@@ -705,7 +707,7 @@ do {
         check(row.limits.allSatisfy { $0.p == nil } && row.full == nil && row.needsLogin && row.subtitle == "sign-in expired",
               "\(what): the card (and Settings' in-use box, which draws its limits) says sign-in expired, no bars, Sign in…")
         check(previewShowsNone(p, rec) && panelShowsNone(p, rec), "\(what): the Dock icon's preview and Settings' panel preview have no numbers, never the samples")
-        let panel = DetailsInfo.of(show, name: p.name, icon: NSImage(), problem: rec?.problem)
+        let panel = dockPanelOf(p, show)         // (through the Dock app's own detailsInfo, as the Dock icon builds it)
         check(panel.weekly == nil && panel.fiveHour == nil && panel.needsLogin && !panel.activeLit, "\(what): the Dock panel has no numbers, Sign in…, the lamp off")
         check(panel.noNumbers == "Sign-in expired", "\(what): the Dock panel's age line says Sign-in expired, never Reading usage…")
         let target = QuickChatTarget(p), level = QuickChatLevel(Usage.of(rec), now: now)
@@ -846,6 +848,7 @@ do {
     var reads: [String] = []
     for f in surfaceFiles {
         let lines = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? ["(missing \(f))"]
+        if lines == ["(missing \(f))"] { reads.append(lines[0]) }      // a surface file that isn't there is a finding of its own (no pattern matches the placeholder)
         for (i, l) in lines.enumerated() where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") && !l.contains("Seat(account: \"sample\"") {
             for p in forbidden where l.contains(p) { reads.append("\(f):\(i + 1) \(p)") }
         }
@@ -909,6 +912,14 @@ do {
     }
     check(launchSites.allSatisfy { s in ["Config.swift", "Launcher.swift", "QuickChatEngine.swift"].contains { s.hasPrefix($0) } },
           "every place that hands a folder to claude is one of the guarded launchers: \(launchSites)")
+    // the plan beside the account in use is the value's (ProfileShow.plan: none in a clash) on the card's Switch menu and the Switch page's
+    // in-use box: the helpers are checked on their own (tickedTitle, inUseDetail); this holds the wiring, which a headless run can't draw
+    let cardTick = body("Launcher.swift", from: "private var switchMenu: some View", until: "if !standby.isEmpty")
+    let pageBox = body("SwitchPage.swift", from: "private var inUseBox: some View", until: "} content: {")
+    check(cardTick.contains("Self.tickedTitle(label: Privacy.masked(label), plan: row.show.plan)") && !cardTick.contains("entry.plan") && !cardTick.contains("status?.plan"),
+          "the card's Switch menu ticks the account with ProfileShow.plan (tickedTitle), never the record's or the profile's plan itself")
+    check(pageBox.contains("Self.inUseDetail(plan: row.show.plan)") && pageBox.contains("detail: detail") && !pageBox.contains("entry.plan") && !pageBox.contains("status?.plan"),
+          "the Switch page's in-use box draws inUseDetail(ProfileShow.plan) as its detail, never the record's or the profile's plan itself")
     let script = body("Launcher.swift", from: "private static func openTerminal(", until: "exec \\(q(claude))")
     check(script.contains("[ -d \\\"$CLAUDE_CONFIG_DIR\\\" ] && [ ! -L \\\"$CLAUDE_CONFIG_DIR\\\" ]"), "the Terminal script checks the folder again itself before exec claude")
 
@@ -1378,7 +1389,7 @@ do {
           && split?.shortLine == "Can't read \(Privacy.masked(pat.email!))'s usage\nTerminal: \(Privacy.masked(mo.email!))",
           "the line under it and the short form: \(split?.numbersHint ?? "-") / \(split?.shortLine ?? "-")")
     let splitShow = ProfileShow.load(e, now: now)
-    let panelInfo = DetailsInfo.of(splitShow, name: "x", icon: NSImage(), problem: nil)
+    let panelInfo = dockPanelOf(e, splitShow)         // (through the Dock app's own detailsInfo)
     check(split?.shortKey == "Sign in to \(Privacy.masked(pat.email!)) in Terminal…"
           && panelInfo.activeNote == split?.shortLine && panelInfo.splitKey == split?.shortKey && panelInfo.activeLit && !panelInfo.needsLogin,
           "the Dock panel takes the short line and the short key, the lamp lit (pat is in use): \(split?.shortKey ?? "-")")
@@ -1429,6 +1440,23 @@ do {
     RunLoop.main.run(until: Date().addingTimeInterval(1.0))
     check(launches == ["login \(Account(e).configDir)"] && scripts.count == 1 && scripts[0].contains(pat.email!) && !scripts[0].contains(mo.email!),
           "Sign in from the menus in the split: launched once through the guard, pat's address filled in, never mo's: \(launches)")
+    // the Dock icon's Sign in (its menu item's action and its panel's key) and the same through the Dock app's own delegate: the same
+    // launch as the menu path, through the guard, pat's address, never mo's (the card's key is the same ClaudeCLI.logIn, its closure
+    // lives in the launcher's window code, which a headless run can't build)
+    MainActor.assumeIsolated {
+    let dockApp = AppDelegate(); dockApp.entry = e; dockApp.show = ProfileShow.load(e)
+    let dockKey = dockApp.profileMenu().items.first { $0.action == #selector(AppDelegate.logIn) }
+    check(dockKey?.title == ProfileShow.load(e).keyWords(short: false) && dockKey?.target === dockApp, "(the Dock menu has the Sign in key in the split: \(dockKey?.title ?? "none"))")
+    let dockPresses: [(String, () -> Void)] = [("the Dock menu's Sign in", { if let k = dockKey, let a = k.action { _ = dockApp.perform(a) } }),
+                                               ("the Dock panel's Sign in", { dockApp.detailsActions().logIn() })]
+    for (what, press) in dockPresses {
+        launches.removeAll(); scripts.removeAll()
+        press()
+        RunLoop.main.run(until: Date().addingTimeInterval(1.0))
+        check(launches == ["login \(Account(e).configDir)"] && scripts.count == 1 && scripts[0].contains(pat.email!) && !scripts[0].contains(mo.email!),
+              "\(what), in the split: launched once through the guard, pat's address filled in, never mo's: \(launches)")
+    }
+    }
     let anon = AppSignIn.Login(account: uuid(34), org: uuid(74), state: .known, source: "log", at: now)
     var anonRec = record(app: anon, code: mo, reading: mo.email, weekly: 100)
     anonRec.resolved = AccountResolver.resolve(e, among: [e], app: anon, code: mo, loginEmail: mo.email, names: [:], now: now)
@@ -2078,6 +2106,48 @@ do {
     check(ClaudeFiles.sessionScopes(dataDir: data, account: a).count == 1 && ClaudeFiles.sessionScopes(dataDir: data, account: uuid(99)).isEmpty
           && ClaudeFiles.sessionScopes(dataDir: data, limit: 1).isEmpty, "one account's folders; at most `limit` names looked at in each folder")
     check(AppSignIn.sessionsOrg(dataDir: data, account: a) == o.lowercased(), "the Claude app's organisation from the sessions folder: the newest, lower case")
+    // the cap on a folder's listing (AppSignIn.maxListed): a folder of very many names is read to its first 256 (the "." and ".." the
+    // disk gives first count among them), never to the end; the answer is one of those organisations, whichever the disk gives first
+    let big = dir + "/bigwindow", bigAccount = uuid(14)
+    let bigCount = AppSignIn.maxListed + 44
+    for i in 0..<bigCount { try? fm.createDirectory(atPath: big + "/claude-code-sessions/\(bigAccount)/\(uuid(4000 + i))", withIntermediateDirectories: true) }
+    let capped = ClaudeFiles.sessionScopes(dataDir: big, account: bigAccount, limit: AppSignIn.maxListed)
+    let uncapped = ClaudeFiles.sessionScopes(dataDir: big, account: bigAccount)
+    check(uncapped.count == bigCount && capped.count <= AppSignIn.maxListed && capped.count >= AppSignIn.maxListed - 2 && Set(capped.map(\.organization)).isSubset(of: Set(uncapped.map(\.organization))),
+          "the listing cap: \(bigCount) organisation folders, at most \(AppSignIn.maxListed) looked at (the dot entries among them): \(capped.count) of \(uncapped.count)")
+    check(AppSignIn.sessionsOrg(dataDir: big, account: bigAccount).map { o in uncapped.contains { $0.organization.lowercased() == o } } == true
+          && Set(ClaudeFiles.sessionScopes(dataDir: big, account: bigAccount, limit: AppSignIn.maxListed).map(\.organization)).count == capped.count,
+          "the Claude app's organisation from a folder past the cap: one of the folders there, no folder twice")
+    try? fm.removeItem(atPath: big)
+    // the sign-out line against config.json's time (AppSignIn.scan, configSlack 2 s: a sign-out logged just before config.json is
+    // rewritten still counts): the edges at 2 s, in the same second (a stamp without milliseconds), and across a clock change (the
+    // stamps are local time: the comparison is of instants, never of the wall clock's numbers). The formatters' zone is set per case
+    func signOutCounts(_ stamp: String, config: String, zone: String = "GMT") -> Bool? {
+        guard let tz = TimeZone(identifier: zone) else { return nil }
+        let keep = (AppSignIn.timeFormat.timeZone, AppSignIn.timeFormatShort.timeZone)
+        AppSignIn.timeFormat.timeZone = tz; AppSignIn.timeFormatShort.timeZone = tz
+        defer { (AppSignIn.timeFormat.timeZone, AppSignIn.timeFormatShort.timeZone) = keep }
+        guard let at = AppSignIn.timeFormat.date(from: config) else { return nil }
+        var s = AppSignIn.Scan()
+        let lines = ["\(stamp) [info] [LocalSessionManager] Account logged out", ""].map { Substring($0) }
+        AppSignIn.scan(lines: lines, into: &s, launched: at.addingTimeInterval(-3 * 86400), account: u1.account, configTime: at, now: at.addingTimeInterval(86400))
+        return s.loggedOut != nil
+    }
+    let signOut = "2026-11-15 12:00:00.000"
+    check(signOutCounts(signOut, config: "2026-11-15 12:00:01.999") == true && signOutCounts(signOut, config: "2026-11-15 12:00:02.000") == false
+          && signOutCounts(signOut, config: "2026-11-15 12:00:00.000") == true && signOutCounts(signOut, config: "2026-11-15 11:59:00.000") == true
+          && signOutCounts(signOut, config: "2026-11-15 12:00:10.000") == false,
+          "a sign-out line against config.json: before it by less than 2 s, with it, after it: signed out; 2 s before it or more: not")
+    check(signOutCounts("2026-11-15 12:00:00", config: "2026-11-15 12:00:01.900") == true && signOutCounts("2026-11-15 12:00:00", config: "2026-11-15 12:00:02.100") == false
+          && signOutCounts("2026-11-15 12:00:00", config: "2026-11-15 12:00:00.800") == true,
+          "a stamp without milliseconds (the same second as config.json's time): counts while config.json is less than 2 s later")
+    check(signOutCounts("2026-03-08 01:59:59.000", config: "2026-03-08 03:00:00.999", zone: "America/New_York") == true
+          && signOutCounts("2026-03-08 01:59:59.000", config: "2026-03-08 03:00:01.000", zone: "America/New_York") == false,
+          "the clock springing forward (01:59:59 then 03:00:00 local): 2 s apart in real time, so the same edge, never an hour")
+    check(signOutCounts("2026-11-01 02:00:00.000", config: "2026-11-01 02:00:01.500", zone: "America/New_York") == true
+          && signOutCounts("2026-11-01 01:30:00.000", config: "2026-11-01 01:30:01.000", zone: "America/New_York") == true
+          && signOutCounts("2026-11-01 00:30:00.000", config: "2026-11-01 02:30:00.000", zone: "America/New_York") == false,
+          "the clock falling back (01:00 to 02:00 local twice): a sign-out just before config.json counts, one an hour or more before doesn't")
     // the listers that use it agree
     check(DefaultProfile.entryNames(data).keys.sorted() == want.map { $0.lowercased() }.sorted(), "the default move's preview: the same entries, keyed lower case")
     let counts = SidebarCounts.read(dataDir: data, account: a)
@@ -2207,7 +2277,7 @@ do {
     // a clash has no numbers (the Reader drops a clash record's): the Dock panel's age line says there are none, never
     // "Reading usage…" (they aren't on their way)
     let clashNone = card(rec(week: nil, five: nil, login: u3.email, code: u3), nil, "clash, no numbers")
-    let clashPanel = DetailsInfo.of(clashNone.row.show, name: e.name, icon: NSImage(), problem: nil)
+    let clashPanel = dockPanelOf(e, clashNone.row.show)         // (through the Dock app's own detailsInfo)
     check(clashNone.row.show.display.usage == nil && clashPanel.noNumbers == "No usage: Terminal is on Other's account",
           "a clash with no numbers: the Dock panel's age line says no usage here and whose account, never Reading usage…: \(clashPanel.noNumbers ?? "-")")
     // quick chat in a clash: its header names the profile's own account (u1), never the folder's (u3); its `claude` process,
@@ -2311,6 +2381,30 @@ do {
           && QuickChatTarget.sameAccount(oldRec.account, bareChat.account) && QuickChatTarget.sameAccount(teamChat.account, oldRec.account),
           "a record from before codeOrganization with a seat of none or a Team seat: one seat, as before")
     check(!qkey(teamChat).keeps(qkey(base)) && !qkey(base).keeps(qkey(teamChat)), "two organisation ids: two keys both ways")
+    // the whole table of the organisation's three states (an id, "" none, nil not known) for one login (u1's id and address), both
+    // ways: only an id against another id, or an id against none, is two seats; not known is left out whichever side it is on (so it
+    // matches none, an id and itself), and none matches none. Another login (another id, another address) is never the same, and a
+    // missing account matches only a missing one
+    do {
+        func ident(_ org: String?, id: String? = u1.account, address: String? = u1.email) -> AccountIdentity {
+            AccountIdentity(account: id, email: address, organization: org, source: .guessed)
+        }
+        let orgA = uuid(301).lowercased(), orgB = uuid(302).lowercased()
+        let states: [(String, String?)] = [("an id", orgA), ("another id", orgB), ("none", ""), ("not known", nil)]
+        // (the rows' own diagonal and the not-known row and column are same; an id against another id, and an id against none, are not)
+        var wrong: [String] = []
+        for (an, a) in states { for (bn, b) in states {
+            let want = !(a != nil && b != nil && (a ?? "") != (b ?? ""))
+            if QuickChatTarget.sameAccount(ident(a), ident(b)) != want { wrong.append("\(an) / \(bn): want \(want)") }
+        } }
+        check(wrong.isEmpty, "the organisation's states against each other, one login, both ways: \(wrong)")
+        var strangers: [String] = []
+        for (an, a) in states { for (bn, b) in states
+            where QuickChatTarget.sameAccount(ident(a), ident(b, id: uuid(9).lowercased(), address: "zed@example.com")) { strangers.append("\(an) / \(bn)") } }
+        check(strangers.isEmpty, "another login (another id and address) is never the same, whatever the organisation: \(strangers)")
+        check(QuickChatTarget.sameAccount(nil, nil) && !QuickChatTarget.sameAccount(nil, ident("")) && !QuickChatTarget.sameAccount(ident(nil), nil)
+              && !QuickChatTarget.sameAccount(nil, ident(nil)), "no account is the same only as none on the other side")
+    }
     // the status record's bytes keep none ("") apart from not known (nil: the key left out)
     let noneRec = rec(code: bare)
     let noneBytes = StatusCodec.encode(noneRec)
@@ -2657,6 +2751,24 @@ do {
     move(w6, bareNoOrg)
     check(asked6() == 0 && w6.note == nil && w6.turns.isEmpty,
           "a seat with no organisation, then an empty one, then a record from before codeOrganization: not a move, nothing goes: \(w6.note ?? "none")")
+    // a wait started from an address-only reading (the record has no seat: its address only, no id, no organisation) and a move to
+    // the same login's Team seat: the wait's own seat is known by its address, so the Team seat of that address is the same account
+    // as far as the wait can tell, and the question isn't sent (the fail-safe: no "switched to", the question stays typed). A
+    // change here is deliberate, so it fails this check
+    let (w10, asked10) = typedThenSwitch(rec(week: 100, weekIn: 3 * 3600, login: u1.email, code: nil))
+    check(w10.target?.account?.account == nil && w10.target?.account?.organization == nil && w10.offer != nil,
+          "(the wait starts from an address-only reading, with the switch on offer: account \(w10.target?.account?.account ?? "nil"), org \(w10.target?.account?.organization ?? "nil"))")
+    move(w10, rec(week: 10, code: team))
+    check(w10.target?.account?.organization == team.organization?.lowercased() && asked10() == 0 && w10.turns.isEmpty && w10.note == nil && w10.field == "what's typed",
+          "a wait from an address-only reading, then the same login's Team seat: not a move as far as it can tell, nothing sent, no note, the question kept: \(w10.note ?? "none")")
+    // …and the same from a seat with no organisation ("") and from a record that doesn't know it (nil), into another profile's
+    // account: a clash never sends, whichever way the wait started
+    for (what, from) in [("a seat with no organisation", rec(week: 100, weekIn: 3 * 3600, code: bare)), ("an address-only reading", rec(week: 100, weekIn: 3 * 3600, login: u1.email, code: nil)),
+                         ("a record that doesn't know the organisation", { var r = rec(week: 100, weekIn: 3 * 3600); r.resolved?.codeOrganization = nil; return r }())] {
+        let (wc, askedC) = typedThenSwitch(from)
+        move(wc, rec(week: nil, five: nil, login: u3.email, code: u3))
+        check(unsent(wc, askedC, clashNote), "a wait from \(what), moved into a clash: nothing sent, the question kept, the clash's note: \(wc.note ?? "none")")
+    }
     // the kept level: Claude Code's refusal on the seat with no organisation stays for it, never for the Team seat
     _ = Store.writeStatus(e.id, rec(week: 10, code: bare))
     let tenPct = QuickChatLevel(Usage.of(Store.status(for: e, now: now)))
@@ -2742,11 +2854,11 @@ do {
     check(clashPlanShow.record?.plan == "Max" && clashPlanShow.plan == nil && clashPanel.plan == nil
           && SwitchPage.inUseDetail(plan: clashPlanShow.plan) == "" && SwitchPage.inUseDetail(plan: "max") == Account.planWords("max"),
           "a clash: no plan beside the account (the record's Max is Other's account's) in the Dock panel and the Switch page's in-use box")
-    check(fresh.row.show.plan == "Max" && DetailsInfo.of(fresh.row.show, name: e.name, icon: NSImage(), problem: nil).plan == "Max",
+    check(fresh.row.show.plan == "Max" && dockPanelOf(e, fresh.row.show).plan == "Max",
           "outside a clash: the record's plan, in the Dock panel too")
     // a clash whose sign-in is also expired: the panel's age line agrees with the card's notice (the clash), in its long and short form
     let clashExpired = card(rec("expired", week: nil, five: nil, login: u3.email, code: u3), nil, "clash, expired")
-    let clashExpiredPanel = DetailsInfo.of(clashExpired.row.show, name: e.name, icon: NSImage(), problem: nil)
+    let clashExpiredPanel = dockPanelOf(e, clashExpired.row.show)         // (through the Dock app's own detailsInfo)
     check(clashExpired.notice?.heading == "Terminal is signed in to Other's account"
           && clashExpiredPanel.noNumbers == "No usage: Terminal is on Other's account" && clashExpiredPanel.noNumbersShort == "No usage here",
           "a clash with the sign-in expired: the panel's age line says the clash like the card, not Sign-in expired: \(clashExpiredPanel.noNumbers ?? "-")")
@@ -2867,6 +2979,37 @@ do {
               && c.row.display.key == .logIn && !c.terminalInRow,
               "a switch waiting, Terminal's sign-in \(what): still the switch's notice, with Sign in…")
     }
+    // which notice shows when several apply at once (UsageNotice.of's order, pinned as it is): the split (while Terminal is signed in,
+    // or a switch waits for the app), then the sign-in on another account than the folder's, then another profile's account (the
+    // clash), then expired, then signed out, then not readable (only without numbers). Every pair that can co-occur in a record:
+    let anotherAccount = "Terminal is signed in to another account", otherProfile = "Terminal is signed in to Other's account"
+    let expiredHead = "Terminal's sign-in has expired", outHead = "Terminal is signed out"
+    let ownMo = "Terminal is signed in to \(Privacy.masked(mo.email!))"
+    try! Store.save([e, other, s])
+    let precedence: [(String, IconStatus, AccountEntry?, String?)] = [
+        // (the profile `card`: Claude Code on u1; Other's account is u3)
+        ("expired + the sign-in on another account", rec("expired", week: nil, five: nil, login: u2.email, code: u1), nil, anotherAccount),
+        ("signed out + the sign-in on another account", rec("noLogin", week: nil, five: nil, login: u2.email, code: u1), nil, outHead),
+        ("not readable (denied, no numbers) + another account", rec("denied", week: nil, five: nil, login: u2.email, code: u1), nil, anotherAccount),
+        ("not readable (unreadable, no numbers) + another account", rec("unreadable", week: nil, five: nil, login: u2.email, code: u1), nil, anotherAccount),
+        ("expired + another profile's account", rec("expired", week: nil, five: nil, login: u3.email, code: u3), nil, otherProfile),
+        ("signed out + another profile's account (the folder's record names Other's u3)", rec("noLogin", week: nil, five: nil, login: nil, code: u3), nil, otherProfile),
+        ("not readable (denied, no numbers) + another profile's account", rec("denied", week: nil, five: nil, login: u3.email, code: u3), nil, otherProfile),
+        ("not readable (unreadable, no numbers) + another profile's account", rec("unreadable", week: nil, five: nil, login: u3.email, code: u3), nil, otherProfile),
+        ("another account + another profile's account (the sign-in on u2, the folder on Other's u3)", rec(login: u2.email, code: u3), nil, anotherAccount),
+        // (the profile `csp`: the Claude app on pat, Claude Code on mo)
+        ("the split + expired", { var r = splitRec(app: appPat); r.state = "expired"; return r }(), s, expiredHead),
+        ("the split + signed out", { var r = splitRec(app: appPat); r.state = "noLogin"; r.loginEmail = nil; return r }(), s, outHead),
+        ("the split + not readable (denied)", { var r = splitRec(app: appPat); r.state = "denied"; return r }(), s, ownMo),
+        ("the split + not readable (unreadable)", { var r = splitRec(app: appPat); r.state = "unreadable"; return r }(), s, ownMo),
+        ("the split + the sign-in on another account", { var r = splitRec(app: appPat); r.expectedEmail = "zed@example.com"; return r }(), s, ownMo),
+    ]
+    var order: [String] = []
+    for (what, r, p, want) in precedence {
+        let got = card(r, p, what).notice?.heading
+        if got != want { order.append("\(what): shows \(got.map { "\"\($0)\"" } ?? "nothing"), pinned \(want.map { "\"\($0)\"" } ?? "nothing")") }
+    }
+    check(order.isEmpty, "the notice's order when several apply (the split, another account, another profile's, expired, signed out, not readable): \(order)")
     Store.removeStatus("card"); Store.removeStatus("csp")
     try? Store.save([])
 }
@@ -2969,8 +3112,8 @@ MainActor.assumeIsolated {
           "the Reader's clash record: no plan nor numbers, the problem the line; the status JSON only loses those keys: \(keys(before).symmetricDifference(keys(asRead)).sorted())")
     // …with no seat: no account named anywhere (the card says the line instead), never the sign-in's u3
     var noSeat = e; noSeat.seat = nil
-    let noSeatShow = ProfileShow.load(noSeat, now: now), noSeatPanel = DetailsInfo.of(noSeatShow, name: "x", icon: NSImage(), problem: nil)
-    let noSeatDock = dockOf(noSeat, noSeatShow)
+    let noSeatShow = ProfileShow.load(noSeat, now: now)
+    let noSeatDock = dockOf(noSeat, noSeatShow), noSeatPanel = noSeatDock.panel          // (through the Dock app's own detailsInfo)
     check(noSeatShow.inUseLabel == nil && noSeatShow.inUseUnknown && noSeatPanel.login == u3.email && noSeatPanel.accountLine == nil
           && noSeatShow.named.inUseLine == nil && !naming(noSeatDock.menu).contains { $0.contains(u3Short) }
           && !titles(menuBarMenu(noSeatShow)).contains { $0.contains(u3Short) },
