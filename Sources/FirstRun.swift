@@ -80,11 +80,13 @@ enum FirstRun {
         }
     }
 
-    /// A team's name (the organisation), else the address's name part; names can't hold / or :.
-    static func suggestedName(folder: String) -> String {
+    /// A team's name (the organisation), else the address's name part (only while addresses are shown: a hidden address gives no
+    /// part of itself, not as a name either); names can't hold / or :. An organisation name that holds an address or an id
+    /// (AccountFacts.orgWords: "Personal") is never proposed. `blur`: a test override of the setting.
+    static func suggestedName(folder: String, blur: Bool? = nil) -> String {
         let facts = AccountFacts.of(configDir: folder)
-        var name = facts?.org.flatMap { $0 == "Personal" ? nil : $0 } ?? ""
-        if name.isEmpty, let email = facts?.seat.email ?? Account.expectedEmail(configDir: folder) {
+        var name = facts?.org.flatMap { $0 == "Personal" || AddressSettings.hides($0) ? nil : $0 } ?? ""
+        if name.isEmpty, !(blur ?? AddressPrivacy.shared.blur), let email = facts?.seat.email ?? Account.expectedEmail(configDir: folder) {
             name = String(email.split(separator: "@").first ?? "")
         }
         name = name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")

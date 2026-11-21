@@ -77,9 +77,12 @@ struct AccountFacts: Equatable {
         return AccountFacts(seat: seat, plan: r.plan, org: orgWords(type: r.organizationType, name: r.organizationName))
     }
 
-    /// A personal plan's organisation is "Personal" (Claude names it after the address); a team's has its own name.
+    /// A personal plan's organisation is "Personal" (Claude names it after the address); a team's has its own name. A name
+    /// that holds an address or an account id (a personal organisation whose type isn't recorded: "<address>'s Organization")
+    /// is a personal one too: never shown, and never proposed as a profile name (AddressSettings.hides, word by word).
     static func orgWords(type: String?, name: String?) -> String? {
         if let t = type?.lowercased(), !t.isEmpty, !t.contains("team"), !t.contains("enterprise") { return "Personal" }
-        return name.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+        guard let n = name.flatMap({ $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }) else { return nil }
+        return n.split(whereSeparator: { $0 == " " }).contains(where: { AddressSettings.hides(String($0)) }) || AddressSettings.hides(n) ? "Personal" : n
     }
 }
