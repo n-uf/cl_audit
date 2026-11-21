@@ -87,6 +87,10 @@ enum AccountResolver {
             r.line = ownerUnknownWords
         } else if r.differs, let c = codeLabel {
             r.line = "Usage: Claude Code on " + Privacy.masked(c)
+        } else if stale {
+            // the numbers are hidden (read for another account than the folder's record names: just after a switch, or the
+            // Keychain's sign-in on another account) and nothing else says why: the way back, on every surface that shows the line
+            r.line = staleWords
         } else if e.claudeWindow, !r.fromApp, code != nil {
             // short enough for the card at 340; only when Claude Code has an account to show
             r.line = "Claude app signed out: Claude Code's account shows."
@@ -110,6 +114,11 @@ enum AccountResolver {
     /// The line while Claude Code's record names its account without an address and the reading by its address only: the
     /// numbers are hidden, and this says why and what fixes it (a sign-in writes the address again).
     static let ownerUnknownWords = "Claude Code's record has no address: sign in again in Claude Code."
+
+    /// The line while the reading is for another account than the one Claude Code's record names (stale): the numbers are
+    /// hidden, and this says the way back. True both right after a switch (the new sign-in's first read is on its way) and
+    /// when the Keychain's sign-in stays on another account (only a sign-in helps then).
+    static let staleWords = "Read for another account: if this stays, sign in to read again."
 
     /// Two addresses (a reading's, an account's) name one account: the one owner rule's address-only part; with either
     /// empty, the plain comparison as before (two empty addresses are not "another account", so nothing goes stale).

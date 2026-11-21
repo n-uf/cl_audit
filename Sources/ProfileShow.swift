@@ -51,7 +51,11 @@ struct ProfileShow {
         switch display.line {
         case .none: return nil
         case .unconfirmed: return Store.unconfirmedWords
-        case .split: return (short ? splitWords?.shortLine : splitWords?.line) ?? record?.resolved?.line
+        // (signed out or expired: a split by hand's "signed in to M" names the last reading's account, no sign-in now; the
+        // age line and the key say it instead. A switch waiting for the app keeps its words: they stay true)
+        case .split:
+            if display.sign == .signedOut || display.sign == .expired, splitWords?.switched != true { return nil }
+            return (short ? splitWords?.shortLine : splitWords?.line) ?? record?.resolved?.line
         case .given(let s): return s
         }
     }
@@ -76,6 +80,9 @@ struct ProfileShow {
         if let other = display.clash, display.usage == nil { return "No usage: Terminal is on \(other.name)'s account" }
         if display.none == .expired { return "Sign-in expired" }
         if display.none == .signedOut { return "Signed out" }
+        // with no read time to show: in the split the numbers read are never this account's, and a reading for another
+        // account than the folder's isn't either (its line says the way back), so never "Reading usage…" for good
+        if display.readAt == nil, display.none == .split || display.none == .otherReading { return "Not read for this account" }
         return nil
     }
 
