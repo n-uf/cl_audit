@@ -38,7 +38,8 @@ enum Flows {
             return try lock.take()
         } catch let busy as FlowLock.Busy {
             switch busy {
-            case .held: throw SwitchError.busy("Another restore, import or move is under way.")
+            // (the lock doesn't say who holds it: every flow that writes or copies sessions takes it, so it names them all)
+            case .held: throw SwitchError.busy("Another backup, export, restore, import, move or switch is under way.")
             case .unopenable: throw SwitchError.busy("Couldn't take cl_audit's lock.")
             case .otherUnopenable: throw SwitchError.busy("Couldn't check claude-transplant's lock.")
             case .otherHeld: throw SwitchError.busy("claude-transplant is moving sessions; wait for it to finish.")

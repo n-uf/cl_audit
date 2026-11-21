@@ -251,7 +251,7 @@ final class RestoreRunner: ObservableObject {
                     not = NotYet(title: "\(e.name)'s window is held closed", words: "An import's folder pick or the default-profile move is writing its files. Wait for it to end.")
                 }
             } else if let why = Flows.busy() {
-                not = NotYet(title: why.contains("claude-transplant") ? "claude-transplant is moving sessions" : "Another restore, import or move is under way",
+                not = NotYet(title: why.contains("claude-transplant") ? "claude-transplant is moving sessions" : "Something else is under way",
                              words: why)
             }
             let folders = p.isImport && p.refusal == nil ? SessionsImport.foldersMissing(p, backup: b) : 0
