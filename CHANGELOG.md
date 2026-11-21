@@ -15,7 +15,7 @@ the notes before updating.
 ## 26.11.75 — 2026-11-21
 
 - In Settings ▸ Accounts, the row of the account Claude Code in Terminal is signed in to (while the Claude app is on another) now selects on a click like every standby account, and its Switch account key opens the Switch page, when that account is on the profile's standby list. It did nothing on a click.
-- That row also selects when its account isn't on the standby list (Claude Code was switched to it elsewhere, for example in cl_quick): Switch account then moves the Claude window's sessions to it and opens no sign-in, since Claude Code is on it already. Only the Claude app's own sign-in is left, and the Switch page says so.
+- That row also selects when its account isn't on the standby list (Claude Code was switched to it elsewhere, for example in cl_quick): Switch account then closes the profile's Claude window, moves its sessions to that account (from the Claude app's own account and organisation) and opens no sign-in, since Claude Code is on it already. The window opens again with only its own sign-in left, and the Switch page says so. A finished move of this kind has no Undo (the backup made first keeps a copy); one that stops part way can be undone as usual.
 
 ## 26.11.74 — 2026-11-21
 

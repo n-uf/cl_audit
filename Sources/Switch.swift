@@ -51,15 +51,24 @@ extension AccountEntry {
     /// (then that entry is the target). A switch to it moves the Claude app's sessions to it; there is no sign-in to open.
     func codeTarget(_ v: AccountView) -> StandbyAccount? {
         guard let code = v.codeRow, let s = seat, s.organization != nil, AccountID.same(v.codeAccount, s.account),
-              !standby.contains(where: { ($0.seat?.email ?? $0.email).lowercased() == code.lowercased() || ($0.seat.map { $0.same(s) } ?? false) })
+              !standby.contains(where: { ($0.seat?.email ?? $0.email).lowercased() == code.lowercased() || ($0.seat.map { $0.same(s) } ?? false) }),
+              // only when the switch can go: the Claude app's account known (with its organisation) and not this one
+              appSeat(v).map({ !$0.same(s) }) == true
         else { return nil }
         return StandbyAccount(email: s.email ?? code, seat: s, addedAt: nil, id: Self.codeStandbyID)
     }
 
-    /// The Claude app's account, the active one the record names, as a seat with its organisation (a standby entry the record
-    /// names active); nil when it isn't known.
+    /// How the Claude app's sign-in is read for a profile (its window's account and organisation); checks give their own.
+    nonisolated(unsafe) static var appLogin: (AccountEntry) -> AppSignIn.Login = { AppSignIn.cached(for: $0) }
+
+    /// The Claude app's account as a seat, the sessions' folder its window uses: the app's own sign-in (its account and
+    /// organisation, never a standby entry's last organisation), when it is the active account the record names and one of
+    /// the profile's standby accounts. nil when any of that isn't known.
     func appSeat(_ v: AccountView) -> Seat? {
-        standby.first { v.isActive($0) }?.seat.flatMap { $0.organization == nil ? nil : $0 }
+        let l = Self.appLogin(self)
+        guard l.state == .known, let a = l.account, let o = l.org, AccountID.same(v.account, a),
+              let s = standby.first(where: { v.isActive($0) }) else { return nil }
+        return Seat(account: a, organization: o, email: s.seat?.email ?? s.email)
     }
 
     /// Its standby accounts in the order a full limit offers them (AccountBook.offerOrder: not known to be full first, the

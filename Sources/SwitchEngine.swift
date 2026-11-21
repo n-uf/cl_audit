@@ -117,6 +117,9 @@ struct SwitchReceipt: StoredReceipt, Equatable {
     /// The switch closed the profile's Claude window for its move (nil: it was closed already, or an older receipt). It stays
     /// closed while the moved sessions aren't linked, and opens again once the switch is settled (SwitchEngine.settled).
     var closedWindow: Bool?
+    /// A finish line (SwitchPlan.finishLine): the folder was on `to` before the move, so the folder being on it says nothing
+    /// about the move; linkReached never links one that hasn't finished (a stop keeps Undo), the run's own end links it.
+    var finishLine: Bool?
 
     /// What this switch still has moved now: its placed session entries still where it put them, unchanged, and its
     /// scheduled tasks while the new account's task file is still as it wrote it. (Undo takes them back; after a partial
@@ -273,6 +276,7 @@ enum SwitchEngine {
         r.held = p.held.isEmpty ? nil : p.held
         r.leftInPlace = p.odd.isEmpty ? nil : p.odd.count
         r.closedWindow = closedWindow ? true : nil
+        r.finishLine = p.finishLine ? true : nil
         let place = backups ?? BackupPrefs.placeURL
         if p.moves {
             let id = SessionsBackup.newID(now)
@@ -548,6 +552,8 @@ enum SwitchEngine {
         func reached(_ want: SeatID, _ s: Seat?) -> Bool { want.sameIgnoringCase(s) }      // (case doesn't count here, as before)
         var linked: [String] = []
         for r in open {
+            // a finish line's folder was on `to` from the start: linked only once its move finished (a stop keeps Undo)
+            if r.finishLine == true, r.finished == nil { continue }
             guard let e = accounts.first(where: { $0.id == r.profile }),
                   reached(r.to, e.seat) || reached(r.to, signedIn(e.configDir)) else { continue }
             markLinked(r.id, now: now)

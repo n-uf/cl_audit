@@ -605,11 +605,15 @@ struct SwitchPage: View {
         return SCard(title: "Steps", info: "When the switch moves sessions: the profile's Claude window closes, a backup is made, the sessions and scheduled tasks move (with a receipt, for Undo). Then Claude Code's own sign-in, and a check of the account it signed in. cl_audit never sees a password or a token. cl_audit itself never reads or writes Keychain items during a switch; Claude Code's own sign-in updates its own item.") {
             ClaudeMissingLine(model: model)
             VStack(alignment: .leading, spacing: 0) {
+                let finishLine = plan?.finishLine == true
                 if moves {
-                    step(1, "\(name)'s Claude window closes", "Only that window, by its own quit; it stays closed until the sign-in ends.")
-                    step(2, "Its sessions move to \(to)", "A backup first, then \(moved), each checked; a receipt keeps Undo possible.")
+                    step(1, "\(name)'s Claude window closes", finishLine ? "Only that window, by its own quit; it opens again once the sessions have moved."
+                                                                        : "Only that window, by its own quit; it stays closed until the sign-in ends.")
+                    step(2, "Its sessions move to \(to)", finishLine
+                         ? "A backup first, then \(moved), each checked. Undo only if the move stops part way: Claude Code is on \(to) already, so a finished move stays (the backup keeps a copy)."
+                         : "A backup first, then \(moved), each checked; a receipt keeps Undo possible.")
                 }
-                if plan?.finishLine == true {
+                if finishLine {
                     // the finish line: Claude Code signed in to it elsewhere; only the Claude app's sign-in is left
                     step(k + 1, "Claude Code is on \(to) already", "It signed in elsewhere, so no sign-in opens for \(entry.configDir).")
                     step(k + 2, "Sign the Claude app in to \(to)", "In \(name)'s Claude window, once it opens again: its sessions are there.")
@@ -618,7 +622,7 @@ struct SwitchPage: View {
                     step(k + 2, "Finish it in the browser as \(to)", "If the browser is signed in to claude.ai as someone else, switch its account there first.")
                 }
                 step(k + 3, again ? "cl_audit checks Claude Code's sign-in ended well" : "cl_audit checks the account",
-                     "The folder is looked at every 2 seconds, for up to 10 minutes.", check: check)
+                     finishLine ? "At once: Claude Code is on it already." : "The folder is looked at every 2 seconds, for up to 10 minutes.", check: check)
             }
             // the keys, then the line under them: one under the other, never side by side
             VStack(alignment: .leading, spacing: 8) {

@@ -1195,6 +1195,11 @@ do {
     // no sign-in opens (the folder is on ben already), only the Claude app's sign-in is left
     do {
         let e5 = r5.e
+        // the Claude app's own sign-in (its window's account and organisation), as AppSignIn reads it
+        var appLogin = AppSignIn.Login(account: ann.account, org: ann.organization, state: .known, source: "log", at: t0)
+        let keepLogin = AccountEntry.appLogin
+        AccountEntry.appLogin = { _ in appLogin }
+        defer { AccountEntry.appLogin = keepLogin }
         check(e5.seat?.same(ben) == true && !e5.standby.contains { $0.seat?.same(ben) == true } && e5.standby.contains { $0.seat?.same(ann) == true },
               "05 followed: the seat is ben's, ann on standby, ben has no standby entry")
         var rec = IconStatus(state: "ok"); rec.loginEmail = ben.email; rec.weekly = 12
@@ -1235,6 +1240,34 @@ do {
         let g = SwitchRunner.Goal(standby: AccountEntry.codeStandbyID, wantedSeat: ben, wantedEmail: ben.email!, from: ann, started: t0)
         check(SwitchRunner.reached(g, ben) && SwitchRunner.judge(g, now: ben, markerDone: false, at: t0) == .reached,
               "05 followed: the folder on ben reaches the finish line's goal")
+        // the app on ann's other organisation (its Team seat): the sessions go from the app's own folder, never the standby
+        // entry's last organisation
+        let annTeam = uuid(61)
+        appLogin.org = annTeam
+        if case .success(let pt) = SwitchEngine.plan(e5, standby: target!, dataDir: wd, owned: []) {
+            check(pt.finishLine && pt.from.account == ann.account && pt.from.organization == annTeam,
+                  "05 followed: the app on ann's other organisation: the sessions go from that one (\(pt.from.organization ?? "-"))")
+        } else { check(false, "05 followed: the plan with the app on ann's other organisation failed") }
+        // the app on an account that is no standby of the profile (or not known): nothing to switch from, so no key at all
+        appLogin = AppSignIn.Login(account: uuid(14), org: uuid(54), state: .known, source: "log", at: t0)
+        let vOther = AccountView.of(rec)
+        check(e5.codeTarget(vOther) == nil, "05 followed: the app's own sign-in not the record's active standby: no finish-line target")
+        appLogin = AppSignIn.Login(account: nil, org: nil, state: .unknown, source: "unknown", at: nil)
+        check(e5.codeTarget(v) == nil && e5.appSeat(v) == nil, "05 followed: the app's sign-in unknown: no finish-line target")
+        appLogin = AppSignIn.Login(account: ann.account, org: ann.organization, state: .known, source: "log", at: t0)
+        // the agent never links a finish line's receipt before its move finished (a stop keeps Undo); once finished it may
+        var fr = SwitchReceipt(id: SwitchEngine.receiptID(t0, e5.id), profile: e5.id, standby: AccountEntry.codeStandbyID, dataDir: wd,
+                               from: SeatID(ann), to: SeatID(ben), started: t0)
+        fr.finishLine = true
+        try! SwitchEngine.store.save(fr)
+        let linkedEarly = SwitchEngine.linkReached([e5], signedIn: { _ in ben })
+        check(linkedEarly.isEmpty && SwitchEngine.store.load(fr.id)?.linked == nil,
+              "05 followed: a finish line's receipt mid-move (not finished) is never linked by the folder being on ben")
+        fr.finished = t0
+        try! SwitchEngine.store.save(fr)
+        let linkedLate = SwitchEngine.linkReached([e5], signedIn: { _ in ben })
+        check(linkedLate == [fr.id], "05 followed: once its move finished, it is linked")
+        try? fm.removeItem(at: SwitchEngine.root.appendingPathComponent(fr.id))
         Store.removeStatus(e5.id)
     }
 
