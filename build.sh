@@ -18,24 +18,15 @@ version="$(tr -d '[:space:]' < "$here/VERSION")"
 build="$(git -C "$here" rev-list --count HEAD 2>/dev/null || echo 1)"
 
 rm -rf "$out"; mkdir -p "$out"
-# ProfileCore (Core/): cl_audit's rules, Foundation only, built first into a small static library that the app, the
-# widget and the checks import. Built as an app extension may use it, so the widget can link it too.
-echo "compiling ProfileCore…"
-swiftc -O -swift-version 5 -parse-as-library -module-name ProfileCore -application-extension -target arm64-apple-macos13.0 \
-  -emit-module -emit-module-path "$out/ProfileCore.swiftmodule" -emit-library -static -o "$out/libProfileCore.a" \
-  "$here"/Core/*.swift
-# Runs (Run/): the one runner (timeout, SIGTERM, a grace, SIGKILL; output read while it runs) and the cleaned environment of
-# a `claude` run. Foundation only; below ClaudeAuth and the app's Processes. ProfileCore never imports it; the widget doesn't.
-echo "compiling Runs…"
-swiftc -O -swift-version 5 -parse-as-library -module-name Runs -target arm64-apple-macos13.0 \
-  -emit-module -emit-module-path "$out/Runs.swiftmodule" -emit-library -static -o "$out/libRuns.a" \
-  "$here"/Run/*.swift
-# ClaudeAuth (Auth/): a profile's one folder's Claude Code sign-in (its Keychain item, the watch, sign-in, renew,
-# sign-out, which account it is). Above ProfileCore, which never imports it; the app links it, the widget doesn't.
-echo "compiling ClaudeAuth…"
-swiftc -O -swift-version 5 -parse-as-library -module-name ClaudeAuth -target arm64-apple-macos13.0 -I "$out" \
-  -emit-module -emit-module-path "$out/ClaudeAuth.swiftmodule" -emit-library -static -o "$out/libClaudeAuth.a" \
-  "$here"/Auth/*.swift
+# The shared modules, from the vendored cl_kit tag (Vendor/CL_KIT; scripts/vendor.sh copies a tag), built first as static
+# libraries in their layers by cl_kit's own recipe (scripts/modules.sh): ProfileCore (Core/: the rules, Foundation only,
+# built as an app extension may use it, so the widget links it too), Runs (Run/: the one runner and the cleaned environment
+# of a `claude` run; the widget doesn't link it) and ClaudeAuth (Auth/: a profile's one folder's Claude Code sign-in, with
+# Auth/Keychain.swift, the read-only Keychain read; the app and the Dock tile plug-in link it, the widget doesn't).
+repo="$here"
+. "$here/scripts/modules.sh"
+echo "compiling the shared modules (cl_kit $modules_tag)…"
+build_modules "$out" keychain -O
 echo "compiling…"
 # One compile for the app and its Dock tile plug-in (DockTile/): the same objects linked twice, so the plug-in draws a
 # tile with the app's own code. The plug-in's load-time function (docktile_load.c) goes into the plug-in only, and the

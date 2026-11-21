@@ -2819,8 +2819,12 @@ MainActor.assumeIsolated {
     // the Keychain: written, copied or deleted nowhere; read only by ClaudeAuth's KeychainSignIn
     let repo = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     var sources: [String: String] = [:]
+    // Core, Run and Auth are the vendored cl_kit tag's (Vendor/CL_KIT names it)
+    let kitTag = ((try? String(contentsOf: repo.appendingPathComponent("Vendor/CL_KIT"), encoding: .utf8)) ?? "")
+        .split(whereSeparator: { $0 == " " || $0 == "\n" }).first.map(String.init) ?? "missing"
+    let kit = repo.appendingPathComponent("Vendor/cl_kit-\(kitTag)")
     for dir in ["Sources", "Core", "Run", "Auth", "Launcher", "Widget"] {
-        let d = repo.appendingPathComponent(dir)
+        let d = (["Core", "Run", "Auth"].contains(dir) ? kit : repo).appendingPathComponent(dir)
         for f in (try? fm.contentsOfDirectory(atPath: d.path)) ?? [] where f.hasSuffix(".swift") {
             sources["\(dir)/\(f)"] = (try? String(contentsOf: d.appendingPathComponent(f), encoding: .utf8)) ?? ""
         }
@@ -2839,12 +2843,15 @@ MainActor.assumeIsolated {
 // --- stage G: SignInWindow, ClaudeAuth's ClaudeSignIn in New profile and Settings' sign-in keys ---
 // The words of every way a sign-in ends, the account wanted (the organisation cl_audit knows), and the wiring against a stand-in
 // Terminal (it runs the window's settings file's command with /bin/sh, as Terminal's login shell would) and a stand-in
-// `claude auth login` (Checks/claudesignin/bin/claude, which the claudesignin suite shares). Terminal's preferences are in memory
-// (SignInWindow.terminalProfiles: never this Mac's), the app's verified word is a seam (never the Keychain or Anthropic), the
-// folders, locks and work folder are under the throwaway home, and nothing opens a real Terminal. Sample addresses only.
+// `claude auth login` (the vendored cl_kit's Checks/claudesignin/bin/claude, which its claudesignin suite uses). Terminal's
+// preferences are in memory (SignInWindow.terminalProfiles: never this Mac's), the app's verified word is a seam (never the
+// Keychain or Anthropic), the folders, locks and work folder are under the throwaway home, and nothing opens a real Terminal.
+// Sample addresses only.
 do {
-    let fakeClaude = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
-        .appendingPathComponent("claudesignin/bin/claude").path
+    let repoRoot = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let kitTag = ((try? String(contentsOf: repoRoot.appendingPathComponent("Vendor/CL_KIT"), encoding: .utf8)) ?? "")
+        .split(whereSeparator: { $0 == " " || $0 == "\n" }).first.map(String.init) ?? "missing"
+    let fakeClaude = repoRoot.appendingPathComponent("Vendor/cl_kit-\(kitTag)/Checks/claudesignin/bin/claude").path
     check(fm.isExecutableFile(atPath: fakeClaude), "stage G: the stand-in claude auth login is there")
 
     // ── the stand-ins ──

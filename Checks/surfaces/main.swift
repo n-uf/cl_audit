@@ -525,8 +525,12 @@ do {
     // no one but the agent's reader writes a record: every Swift file of the app, the widget, the launcher and the libraries
     let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     var writers: [String] = [], nearWrites: [String] = []
+    // Core and Auth are the vendored cl_kit tag's (Vendor/CL_KIT names it)
+    let kitTag = ((try? String(contentsOf: root.appendingPathComponent("Vendor/CL_KIT"), encoding: .utf8)) ?? "")
+        .split(whereSeparator: { $0 == " " || $0 == "\n" }).first.map(String.init) ?? "missing"
+    let kit = root.appendingPathComponent("Vendor/cl_kit-\(kitTag)")
     for dir in ["Sources", "Widget", "Launcher", "Core", "Auth"] {
-        let base = root.appendingPathComponent(dir)
+        let base = (["Core", "Auth"].contains(dir) ? kit : root).appendingPathComponent(dir)
         let files = (fm.enumerator(atPath: base.path)?.allObjects as? [String] ?? []).filter { $0.hasSuffix(".swift") }.sorted()
         for f in files {
             var text = (try? String(contentsOf: base.appendingPathComponent(f), encoding: .utf8)) ?? ""
@@ -954,7 +958,12 @@ do {
           "the log-in wording rule catches the old words and lets the new words and the exemptions through")
     var oldWords: [String] = [], scanned = 0
     let literalRe = try! NSRegularExpression(pattern: #""((?:[^"\\]|\\.)*)""#)
-    for dir in [src, widgetSrc, src.deletingLastPathComponent().appendingPathComponent("Core")] {
+    // Core is the vendored cl_kit tag's (Vendor/CL_KIT names it)
+    let kitTag = ((try? String(contentsOf: src.deletingLastPathComponent().appendingPathComponent("Vendor/CL_KIT"), encoding: .utf8)) ?? "")
+        .split(whereSeparator: { $0 == " " || $0 == "\n" }).first.map(String.init) ?? "missing"
+    let kitCore = src.deletingLastPathComponent().appendingPathComponent("Vendor/cl_kit-\(kitTag)/Core")
+    check(fm.fileExists(atPath: kitCore.path), "the vendored cl_kit's Core/ found: \(kitCore.path)")
+    for dir in [src, widgetSrc, kitCore] {
         for f in ((try? fm.subpathsOfDirectory(atPath: dir.path)) ?? []).sorted() where f.hasSuffix(".swift") {
             guard let text = try? String(contentsOf: dir.appendingPathComponent(f), encoding: .utf8) else { oldWords.append("(unreadable \(f))"); continue }
             for (i, l) in text.components(separatedBy: "\n").enumerated() where !l.trimmingCharacters(in: .whitespaces).hasPrefix("//") {

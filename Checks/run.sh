@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
 # The one entry point for cl_audit's check suites.
 #
-#   Checks/run.sh [core|runs|auth|claudesignin|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
+#   Checks/run.sh [kit|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
 #
-#   core      ProfileCore's rules (Core/), compiled against the library only: ids, standby, limits, times, levels, parsing
-#   runs      Runs (Run/), compiled against it only: timeouts, SIGTERM then SIGKILL after the grace, output read while running, caps, the environment
-#   auth      ClaudeAuth (Auth/), compiled against it and ProfileCore only, with a fake Keychain tool, claude and Terminal: the folder's
-#             item names, the one answer (verified or guessed), the Keychain read, the watch, sign-in, renew, sign-out and their guards
-#   claudesignin  ClaudeSignIn (Auth/ClaudeSignIn.swift), compiled against ClaudeAuth, Runs and ProfileCore only: a stand-in Terminal and a
-#             stand-in `claude auth login` (Checks/claudesignin/bin), Terminal's preferences in memory; each outcome, the wrong account,
-#             stop, the lock and the process guard, Terminal's kept profiles swept. Lints first: no Keychain, no real Terminal preferences
+#   kit       the shared modules' own suites (ProfileCore, Runs, ClaudeAuth, ClaudeSignIn, ClaudeAuth without the Keychain): the
+#             vendored cl_kit tag's Checks/run.sh, on Vendor/cl_kit-<tag>/ itself (Vendor/CL_KIT names the tag)
 #   signin    the model, rules and page logic checks (the sign-in watch, New profile, the switch's move, menus, Restore/Export/Import pages)
 #   surfaces  the one account answer (AccountResolver) and every screen reading it alike; the Claude app's account from its log;
 #             no screen reading the sign-in files itself
@@ -36,7 +31,7 @@
 #   render  pictures of the pages (switch, backups, restore, export, import, setup row, first run) into Checks/.work/render
 #   quick-chat  the quick chat's own checks (Checks/quick-chat/run.sh, run here under the build lock)
 #   scan      the app's own SecretScan over every file in Checks/ (zero hits expected)
-#   all       core, runs, auth, claudesignin, signin, backup, surfaces, docktile, accounts, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
+#   all       kit, signin, backup, surfaces, docktile, accounts, firstrun, retention, setup, window, move, resume, sidefiles, render, quick-chat, scan (the default)
 #
 #   --volume    backup: mount a small HFS+ disk image and run the cross-volume checks on it (it is unmounted again)
 #   --no-build  run the binaries built by the last run
@@ -61,15 +56,15 @@ LOCK=/private/tmp/cl_audit-build.lock
 suites=(); volume=0; build=1
 for a in "$@"; do
   case "$a" in
-    core|runs|auth|claudesignin|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
-    all) suites+=(core runs auth claudesignin signin backup surfaces docktile accounts firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
+    kit|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan) suites+=("$a") ;;
+    all) suites+=(kit signin backup surfaces docktile accounts firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
     --volume) volume=1 ;;
     --no-build) build=0 ;;
     -h|--help) sed -n '2,49p' "$0"; exit 0 ;;
     *) echo "unknown argument: $a" >&2; exit 64 ;;
   esac
 done
-[[ ${#suites[@]} -gt 0 ]] || suites=(core runs auth claudesignin signin backup surfaces docktile accounts firstrun retention setup window move render quick-chat scan)
+[[ ${#suites[@]} -gt 0 ]] || suites=(kit signin backup surfaces docktile accounts firstrun retention setup window move render quick-chat scan)
 
 # the app's sources without its own main.swift, plus the widget views the app compiles in
 srcs=()
@@ -78,47 +73,22 @@ srcs+=("$APP/Widget/WidgetViews.swift")
 frameworks=(-framework AppKit -framework SwiftUI -framework Charts -framework Security -framework ServiceManagement
             -framework UserNotifications -framework WidgetKit)
 
-# ProfileCore (Core/), built once per run like build.sh does, but with testing on: a suite may `@testable import ProfileCore`
-CORE="$WORK/core-module"
-core_lib=(-I "$CORE" -L "$CORE" -lProfileCore)
-build_core() {
-  [[ $build -eq 1 ]] || { [[ -f "$CORE/libProfileCore.a" ]] || { echo "no ProfileCore at $CORE (run without --no-build)" >&2; return 1; }; return 0; }
-  rm -rf "$CORE"; mkdir -p "$CORE"
-  /usr/bin/lockf -k "$LOCK" swiftc -Onone -enable-testing -swift-version 5 -parse-as-library -module-name ProfileCore \
-    -application-extension -target arm64-apple-macos13.0 \
-    -emit-module -emit-module-path "$CORE/ProfileCore.swiftmodule" -emit-library -static -o "$CORE/libProfileCore.a" \
-    "$APP"/Core/*.swift 2>&1 | grep -E "error" || true
-  [[ -f "$CORE/libProfileCore.a" ]] || { echo "compile failed: ProfileCore" >&2; return 1; }
+# The shared modules (ProfileCore, Runs, ClaudeAuth with Auth/Keychain.swift) from the vendored cl_kit tag (scripts/modules.sh),
+# built once per run like build.sh does, but with testing on, into one folder every app suite links
+repo="$APP"
+. "$APP/scripts/modules.sh" || exit 1
+MODS="$WORK/kit-modules"
+core_lib=(-I "$MODS" -L "$MODS" -lProfileCore)
+runs_lib=(-I "$MODS" -L "$MODS" -lRuns)
+auth_lib=(-I "$MODS" -L "$MODS" -lClaudeAuth "${runs_lib[@]}")
+build_kit() {
+  [[ $build -eq 1 ]] || { [[ -f "$MODS/libClaudeAuth.a" ]] || { echo "no modules at $MODS (run without --no-build)" >&2; return 1; }; return 0; }
+  rm -rf "$MODS"
+  /usr/bin/lockf -k "$LOCK" bash -c '. "$1/scripts/modules.sh"; kit_build "$2" keychain -Onone -enable-testing' _ "$modules_kit" "$MODS" 2>&1 \
+    | grep -E "error" || true
+  [[ -f "$MODS/libProfileCore.a" && -f "$MODS/libRuns.a" && -f "$MODS/libClaudeAuth.a" ]] || { echo "compile failed: the shared modules" >&2; return 1; }
 }
-build_core || exit 1
-
-# Runs (Run/), the one runner, built the same way (testing on); ClaudeAuth and the app's suites link it
-RUNS="$WORK/runs-module"
-runs_lib=(-I "$RUNS" -L "$RUNS" -lRuns)
-build_runs() {
-  [[ $build -eq 1 ]] || { [[ -f "$RUNS/libRuns.a" ]] || { echo "no Runs at $RUNS (run without --no-build)" >&2; return 1; }; return 0; }
-  rm -rf "$RUNS"; mkdir -p "$RUNS"
-  /usr/bin/lockf -k "$LOCK" swiftc -Onone -enable-testing -swift-version 5 -parse-as-library -module-name Runs \
-    -target arm64-apple-macos13.0 \
-    -emit-module -emit-module-path "$RUNS/Runs.swiftmodule" -emit-library -static -o "$RUNS/libRuns.a" \
-    "$APP"/Run/*.swift 2>&1 | grep -E "error" || true
-  [[ -f "$RUNS/libRuns.a" ]] || { echo "compile failed: Runs" >&2; return 1; }
-}
-build_runs || exit 1
-
-# ClaudeAuth (Auth/), built after ProfileCore the same way (testing on: the auth suite may `@testable import ClaudeAuth`)
-AUTH="$WORK/auth-module"
-auth_lib=(-I "$AUTH" -L "$AUTH" -lClaudeAuth "${runs_lib[@]}")
-build_auth() {
-  [[ $build -eq 1 ]] || { [[ -f "$AUTH/libClaudeAuth.a" ]] || { echo "no ClaudeAuth at $AUTH (run without --no-build)" >&2; return 1; }; return 0; }
-  rm -rf "$AUTH"; mkdir -p "$AUTH"
-  /usr/bin/lockf -k "$LOCK" swiftc -Onone -enable-testing -swift-version 5 -parse-as-library -module-name ClaudeAuth \
-    -target arm64-apple-macos13.0 -I "$CORE" -I "$RUNS" \
-    -emit-module -emit-module-path "$AUTH/ClaudeAuth.swiftmodule" -emit-library -static -o "$AUTH/libClaudeAuth.a" \
-    "$APP"/Auth/*.swift 2>&1 | grep -E "error" || true
-  [[ -f "$AUTH/libClaudeAuth.a" ]] || { echo "compile failed: ClaudeAuth" >&2; return 1; }
-}
-build_auth || exit 1
+build_kit || exit 1
 
 # compile BIN MAIN...: through the build lock; a failed compile must not leave the last binary to run
 compile() {
@@ -151,7 +121,7 @@ fresh_home() {
 # The checks' preference suites land in the real ~/Library/Preferences whatever CFFIXED_USER_HOME says (cfprefsd writes them,
 # sometimes a moment after the run ends). Only these names are ever removed, and only when no run of ours is alive:
 #  - cl-audit-{signin,hide,switch,plan,surfaces}-test-<pid>.plist, when that pid is dead (the suites' own domains, pid in the name);
-#  - <binary name>.plist for the binaries this script builds (cl_audit-checks-claudesignin, -signin, -backup, -surfaces, -docktile, -accounts, -firstrun, -retention, -setup, -window, -move, -resume, -sidefiles, -render-pages,
+#  - <binary name>.plist for the binaries this script builds (cl_audit-checks-signin, -backup, -surfaces, -docktile, -accounts, -firstrun, -retention, -setup, -window, -move, -resume, -sidefiles, -render-pages,
 #    -render-firstrun, -scan): a process's name is its preference domain, and these names belong to no other program;
 #  - cl_audit-backwatch-test.plist and cl_audit-reader-switch-test.plist (named by the suites' own code, no pid), only when
 #    they were not there before this run.
@@ -190,86 +160,13 @@ run_binary() {  # run_binary SUITE-DIR BIN [args...]: in the throwaway home, wit
   return $status
 }
 
-# the core suite: compiled against ProfileCore ONLY (no app sources, no AppKit or SwiftUI): the rules need nothing else
-run_core() {
-  local dir="$WORK/core"; mkdir -p "$dir"
-  local bin="$dir/cl_audit-checks-core"
-  if [[ $build -eq 1 ]]; then
-    rm -f "$bin"
-    /usr/bin/lockf -k "$LOCK" swiftc -Onone -swift-version 5 -target arm64-apple-macos13.0 \
-      -o "$bin" "$HERE/core/main.swift" "${core_lib[@]}" 2>&1 | grep -E "error" || true
-  fi
-  [[ -x "$bin" ]] || { echo "compile failed: $bin" >&2; return 1; }
-  run_binary "$dir" "$bin"
-}
-
-# the runs suite: compiled against Runs ONLY (Foundation): its programs are harmless stand-ins (sh, sleep, true, false)
-run_runs() {
-  local dir="$WORK/runs"; mkdir -p "$dir"
-  local bin="$dir/cl_audit-checks-runs"
-  if [[ $build -eq 1 ]]; then
-    rm -f "$bin"
-    /usr/bin/lockf -k "$LOCK" swiftc -Onone -swift-version 5 -target arm64-apple-macos13.0 \
-      -o "$bin" "$HERE/runs/main.swift" "${runs_lib[@]}" 2>&1 | grep -E "error" || true
-  fi
-  [[ -x "$bin" ]] || { echo "compile failed: $bin" >&2; return 1; }
-  run_binary "$dir" "$bin"
-}
-
-# the auth suite: compiled against ClaudeAuth and ProfileCore ONLY, with fakes for the Keychain tool, claude and Terminal
-run_auth() {
-  local dir="$WORK/auth"; mkdir -p "$dir"
-  local bin="$dir/cl_audit-checks-auth"
-  if [[ $build -eq 1 ]]; then
-    rm -f "$bin"
-    /usr/bin/lockf -k "$LOCK" swiftc -Onone -swift-version 5 -target arm64-apple-macos13.0 \
-      -o "$bin" "$HERE/auth/main.swift" "${auth_lib[@]}" "${core_lib[@]}" 2>&1 | grep -E "error" || true
-  fi
-  [[ -x "$bin" ]] || { echo "compile failed: $bin" >&2; return 1; }
-  run_binary "$dir" "$bin"
-}
-
-# the claudesignin suite: ClaudeSignIn against a stand-in Terminal and a stand-in `claude auth login`, compiled against ClaudeAuth, Runs
-# and ProfileCore ONLY. Its lints come first (a lint that fails makes the suite red, the checks still run):
-#  - the Keychain: ClaudeSignIn.swift and the suite name no Keychain and carry no stored sign-in reader (Auth/Keychain.swift is the only
-#    Auth file that may; the auth suite lints the rest of Auth/);
-#  - Terminal's preferences: every ClaudeSignIn the suite makes is handed an in-memory stand-in, and the suite names no real
-#    preference domain (a sign-in sweeps Terminal's kept profiles at its start and its end: the real ones are only for the app).
-run_claudesignin() {
-  local dir="$WORK/claudesignin"; mkdir -p "$dir"
-  local main="$HERE/claudesignin/main.swift" lint=0 n
-  local keys='KeychainSignIn|/usr/bin/security|find-generic-password|SecItem|SecKeychain|kSecClass|import Security|StoredSignInReader|systemWithKeychain|KeychainSignInReader|stored:'
-  for f in "$APP/Auth/ClaudeSignIn.swift" "$main"; do
-    if grep -n -E "$keys" "$f" | grep -v -E '^[0-9]+: *//' | grep -q .; then
-      echo "FAIL keychain lint: $f names the Keychain or a stored sign-in reader: $(grep -n -E "$keys" "$f" | grep -v -E '^[0-9]+: *//' | head -2)"; lint=1
-    fi
-  done
-  [[ $lint -ne 0 ]] || echo "keychain lint: ClaudeSignIn.swift and its suite name no Keychain and pass no stored reader"
-  local made handed
-  made="$(grep -c 'ClaudeSignIn(' "$main" || true)"
-  handed="$(grep -c 'terminalProfiles: prefs.tool' "$main" || true)"
-  if [[ "$made" != "$handed" || "$made" == 0 ]]; then
-    echo "FAIL terminal lint: $made ClaudeSignIn(...) in the suite, $handed with a stand-in for Terminal's preferences"; lint=1
-  elif grep -n -E 'com\.apple\.Terminal|TerminalProfiles\.system|\.system\b.*terminalProfiles' "$main" | grep -v -E '^[0-9]+: *//' | grep -q .; then
-    echo "FAIL terminal lint: the suite names Terminal's real preferences"; lint=1
-  else
-    echo "terminal lint: $made/$made sign-ins in the suite are handed Terminal-preferences stand-ins"
-  fi
-  local bin="$dir/cl_audit-checks-claudesignin"
-  if [[ $build -eq 1 ]]; then
-    rm -f "$bin"
-    /usr/bin/lockf -k "$LOCK" swiftc -Onone -swift-version 5 -target arm64-apple-macos13.0 \
-      -o "$bin" "$main" "${auth_lib[@]}" "${core_lib[@]}" 2>&1 | grep -E "error" || true
-    # the ad-hoc stand-in for the environment branch (bash, a platform binary, shows the kernel no environment)
-    mkdir -p "$dir/adhoc"; rm -f "$dir/adhoc/claude"
-    clang -O0 -o "$dir/adhoc/claude" "$HERE/claudesignin/adhoc.c" 2>&1 | grep -E "error" || true
-  fi
-  [[ -x "$bin" && -x "$dir/adhoc/claude" ]] || { echo "compile failed: $bin or its stand-in claude" >&2; return 1; }
-  [[ -x "$HERE/claudesignin/bin/claude" ]] || chmod +x "$HERE/claudesignin/bin/claude"
-  local status=0
-  CL_SIGNIN_CLAUDE="$HERE/claudesignin/bin/claude" CL_SIGNIN_ADHOC="$dir/adhoc/claude" run_binary "$dir" "$bin" || status=$?
-  [[ $lint -eq 0 ]] || status=1
-  return $status
+# the kit suite: the shared modules' own suites, cl_kit's Checks/run.sh in the vendored copy (core, runs, auth, claudesignin,
+# nokeychain). It takes its own build lock and throwaway homes (Vendor/cl_kit-<tag>/Checks/.work, git-ignored)
+run_kit() {
+  local args=(all)
+  [[ $build -eq 1 ]] || args+=(--no-build)
+  echo "cl_kit $modules_tag (Vendor/cl_kit-$modules_tag)"
+  "$modules_kit/Checks/run.sh" "${args[@]}"
 }
 
 # the signin suite (its blocks whose subject left the app are fenced off; signin/PROVENANCE.md says where their rules are checked)
