@@ -315,7 +315,8 @@ run_backup() {
 
 run_surfaces() {
   local dir="$WORK/surfaces"; mkdir -p "$dir"
-  compile "$dir/cl_audit-checks-surfaces" "$HERE/surfaces/main.swift" || return 1
+  # (-D CL_AUDIT_TESTING: the sign-in window's login guard can be given a process table of the suite's own, a seam only a test build has)
+  compile "$dir/cl_audit-checks-surfaces" "$HERE/surfaces/main.swift" -D CL_AUDIT_TESTING || return 1
   run_binary "$dir" "$dir/cl_audit-checks-surfaces"
 }
 

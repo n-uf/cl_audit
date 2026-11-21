@@ -20,6 +20,7 @@
 import ClaudeAuth
 import Foundation
 import ProfileCore
+import Runs
 
 enum SignInWindow {
     /// The window's title: Terminal's settings file (and the profile it keeps) is "cl_audit sign-in".
@@ -43,6 +44,18 @@ enum SignInWindow {
     /// (Checks/.work/…: cfprefsd writes the real file whatever CFFIXED_USER_HOME says), where it reads nothing and writes nothing.
     nonisolated(unsafe) static var terminalProfiles: TerminalProfiles =
         NSHomeDirectory().contains("/Checks/.work/") ? TerminalProfiles(read: { nil }, write: { _ in }) : .system
+    #if CL_AUDIT_TESTING
+    /// The processes ClaudeSignIn's login guard looks through, for a check that must not depend on what else runs on this Mac
+    /// (another session's stand-in `claude auth login` whose folder can't be told refuses every sign-in). A seam only a test
+    /// build has (-D CL_AUDIT_TESTING): the shipped app always reads the kernel's table.
+    nonisolated(unsafe) static var processTable: (() -> [ProcessTable.Entry]?)?
+    #endif
+    private static var guardTable: () -> [ProcessTable.Entry]? {
+        #if CL_AUDIT_TESTING
+        if let seam = processTable { return seam }
+        #endif
+        return { ProcessTable.settledTable() }
+    }
     /// Replaces the app's verified word (a check never asks the Keychain or Anthropic).
     nonisolated(unsafe) static var wordSeam: ClaudeSignIn.Confirm?
 
@@ -141,7 +154,7 @@ enum SignInWindow {
         let run = ClaudeSignIn(folder: account.authFolder, wanted: wanted, timeout: t.timeout, tools: tools, claude: claude,
                                confirm: wordSeam ?? { word($0) }, work: work, title: title, shown: tilde(account.configDir),
                                startGrace: t.startGrace, terminalProfiles: terminalProfiles, lateSweep: t.lateSweep,
-                               locks: locks, poll: t.poll)
+                               locks: locks, poll: t.poll, processTable: guardTable)
         let mine = Active(profile: profile.id, folder: dir, run: run)
         lock.lock(); active = mine; lock.unlock()
         run.start(onState: onState) { outcome in

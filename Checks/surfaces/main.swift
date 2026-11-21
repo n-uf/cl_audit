@@ -3076,12 +3076,13 @@ do {
         return true
     }
     // Terminal's kept profiles: this suite's own in-memory stand-in, set here and not left to SignInWindow's guess from the home folder
-    // (never this Mac's real preferences). The window's guard reads the REAL process table (ClaudeSignIn has no injectable one): it
-    // refuses while another session's stand-in `claude auth login` whose folder can't be told runs at the same moment, which
-    // would fail this check (it waits 10 s) until that one ends.
+    // (never this Mac's real preferences). The window's login guard looks through an empty process table of this suite's own
+    // (SignInWindow.processTable, a seam of the -D CL_AUDIT_TESTING build): the real one holds other sessions' stand-in
+    // `claude auth login`s whose folder can't be told, which refuse every sign-in on this Mac while they run.
     let keepProfiles = SignInWindow.terminalProfiles
     SignInWindow.terminalProfiles = TerminalProfiles(read: { nil }, write: { _ in })
-    defer { SignInWindow.terminalProfiles = keepProfiles }
+    SignInWindow.processTable = { [] }
+    defer { SignInWindow.terminalProfiles = keepProfiles; SignInWindow.processTable = nil }
     let clashModel = SettingsModel(); clashModel.accounts = [noSeat, other]
     AccountSettings(entry: .constant(noSeat), model: clashModel).signInAgain(email: settingsAddress)
     let opened = Date().addingTimeInterval(10)
