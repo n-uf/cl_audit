@@ -283,7 +283,7 @@ do {
     let same = res(main, appU1, code: u1, numbers: u1.email)
     check(same.email == u1.email && !same.differs && same.line == nil && same.lit && same.fromApp, "the app and Claude Code on the same account: one account, no line")
     let diff = res(main, appU2, code: u1, numbers: u1.email)
-    check(diff.email == u2.email && diff.differs && diff.numbersFor == u1.email && diff.line?.hasPrefix("Usage: Claude Code on ") == true && diff.lit,
+    check(diff.email == u2.email && diff.differs && diff.numbersFor == u1.email && diff.line == nil && diff.codeUsageLine == true && diff.lineText()?.hasPrefix("Usage: Claude Code on ") == true && diff.lit,
           "the app on u2 (a standby account), Claude Code on u1: u2 in use, the numbers say they are Claude Code's on u1")
     let out = res(main, appOut, code: u1, numbers: u1.email)
     check(!out.fromApp && out.email == u1.email && out.line?.contains("signed out") == true, "the app signed out: Claude Code's account, with a muted line")
@@ -931,9 +931,11 @@ do {
           "every place that hands a folder to claude is one of the guarded launchers: \(launchSites)")
     // the plan beside the account in use is the value's (ProfileShow.plan: none in a clash) on the card's Switch menu and the Switch page's
     // in-use box: the helpers are checked on their own (tickedTitle, inUseDetail); this holds the wiring, which a headless run can't draw
-    let cardTick = body("Launcher.swift", from: "private var switchMenu: some View", until: "if !standby.isEmpty")
+    let cardTick = body("Launcher.swift", from: "var switchAccountMenu: SwitchAccountMenu", until: "pick:")
     let pageBox = body("SwitchPage.swift", from: "private var inUseBox: some View", until: "} content: {")
-    check(cardTick.contains("Self.tickedTitle(label: AddressSettings.words(label), plan: row.show.plan)") && !cardTick.contains("entry.plan") && !cardTick.contains("status?.plan"),
+    let tickedBody = body("SwitchAccountMenu.swift", from: "if let label {", until: "m.addItem(i)")
+    check(cardTick.contains("plan: row.show.plan") && !cardTick.contains("entry.plan") && !cardTick.contains("status?.plan")
+          && tickedBody.contains("AccountCard.tickedTitle(label: words, plan: plan)") && tickedBody.contains("AddressSettings.words(label)"),
           "the card's Switch menu ticks the account with ProfileShow.plan (tickedTitle), never the record's or the profile's plan itself")
     check(pageBox.contains("Self.inUseDetail(plan: row.show.plan)") && pageBox.contains("detail: detail") && !pageBox.contains("entry.plan") && !pageBox.contains("status?.plan"),
           "the Switch page's in-use box draws inUseDetail(ProfileShow.plan) as its detail, never the record's or the profile's plan itself")
@@ -1834,7 +1836,7 @@ do {
     // ownerUnconfirmed; a resolver answer from before its newer keys, with a clash, expired and unconfirmed
     let fixtures: [(String, String)] = [
         ("full", #"{"credits":{"cap":50,"currency":"USD","enabled":true,"out":false,"spentAt":1799999400,"used":4.2},"expectedEmail":"ultra-1@example.com","fiveHour":37.5,"fiveHourResets":1800003600,"loginEmail":"ultra-1@example.com","numbersOwner":"ultra-1@example.com","plan":"Ultra","renewNote":"Renewed 09:12","renewing":false,"resolved":{"account":"00000000-0000-4000-8000-000000000001","at":1800000000,"codeAccount":"00000000-0000-4000-8000-000000000001","codeName":"ultra-1@example.com","differs":false,"email":"ultra-1@example.com","fromApp":true,"lit":true,"numbersFor":"ultra-1@example.com"},"scoped":[{"name":"Fable","percent":12,"resets":1800259200}],"source":"Anthropic","state":"ok","updatedAt":1800000000.25,"weekly":64,"weeklyResets":1800259200}"#),
-        ("split", #"{"expectedEmail":"mo@example.com","loginEmail":"mo@example.com","noFiveHour":true,"numbersOwner":"mo@example.com","plan":"max","resolved":{"account":"00000000-0000-4000-8000-000000000002","at":1800000000,"codeAccount":"00000000-0000-4000-8000-000000000003","codeName":"mo@example.com","differs":true,"email":"pat@example.com","fromApp":true,"line":"Usage: Claude Code on m…@example.com","lit":true,"numbersFor":"mo@example.com","readStale":true,"switchWaits":true},"state":"ok","updatedAt":1800000000,"weekly":100,"weeklyResets":1800007200}"#),
+        ("split", #"{"expectedEmail":"mo@example.com","loginEmail":"mo@example.com","noFiveHour":true,"numbersOwner":"mo@example.com","plan":"max","resolved":{"account":"00000000-0000-4000-8000-000000000002","at":1800000000,"codeAccount":"00000000-0000-4000-8000-000000000003","codeName":"mo@example.com","codeUsageLine":true,"differs":true,"email":"pat@example.com","fromApp":true,"lit":true,"numbersFor":"mo@example.com","readStale":true,"switchWaits":true},"state":"ok","updatedAt":1800000000,"weekly":100,"weeklyResets":1800007200}"#),
         ("old", #"{"fiveHour":5,"loginEmail":"free@example.com","source":"Claude Code status line","state":"ok","updatedAt":1800000000,"weekly":33}"#),
         ("mid", #"{"expectedEmail":"ultra-2@example.com","loginEmail":"ultra-2@example.com","ownerUnconfirmed":true,"plan":"pro","problem":"Sign-in expired","resolved":{"at":1799999970,"clash":"Home","differs":false,"fromApp":false,"line":"Claude Code's folder is signed in to Home's account: its numbers show on Home.","lit":false,"numbersFor":"account 00000000","recordTooLarge":true},"state":"expired"}"#)]
     var decoded: [String: IconStatus] = [:]
@@ -4100,6 +4102,50 @@ MainActor.assumeIsolated {
     check(store.blurAddresses == false, "the setting: showEmails wins over the older key")
     check(AddressSettings.key == "showEmails" && Installer.managerID == "local.usage-n-uf", "the setting: the key and the domain the Settings app and every process share")
 
+    // D1, the default settled once at the settings app's first start of this version: an install already set up (its profiles file is
+    // there) keeps showing addresses, a fresh one stays hidden; a stored key, of either sense, is never overwritten
+    do {
+        let noteName = Notification.Name(rawValue: "local.usage-n-uf.privacy-changed")
+        var posted = 0
+        let obs = DistributedNotificationCenter.default().addObserver(forName: noteName, object: nil, queue: .main) { _ in posted += 1 }
+        defer { DistributedNotificationCenter.default().removeObserver(obs) }
+        func settle(_ start: [String: Bool], setUp: Bool) -> (wrote: Bool?, prefs: [String: Bool], blur: Bool) {
+            let p = Dict(); p.d = start
+            let s = AddressSettings.makeStore(prefs: p)
+            let w = AddressSettings.settleDefault(prefs: p, store: s, setUp: setUp)
+            return (w, p.d, s.blurAddresses)
+        }
+        let existing = settle([:], setUp: true)
+        check(existing.wrote == true && existing.prefs == ["showEmails": true] && existing.blur == false,
+              "D1: an existing install (profiles file there) with no key: showEmails true is written once, addresses shown: \(existing)")
+        let fresh = settle([:], setUp: false)
+        check(fresh.wrote == false && fresh.prefs == ["showEmails": false] && fresh.blur == true,
+              "D1: a fresh install (no profiles file): hidden, written as showEmails false so it stays so: \(fresh)")
+        let kept1 = settle(["showEmails": false], setUp: true), kept2 = settle(["showEmails": true], setUp: false)
+        check(kept1.wrote == nil && kept1.prefs == ["showEmails": false] && kept1.blur
+              && kept2.wrote == nil && kept2.prefs == ["showEmails": true] && !kept2.blur,
+              "D1: a set key is never overwritten, either way, whether or not the install was set up")
+        let legacy1 = settle(["blurEmails": true], setUp: true), legacy2 = settle(["blurEmails": false], setUp: false)
+        check(legacy1.wrote == nil && legacy1.prefs == ["blurEmails": true] && legacy1.blur
+              && legacy2.wrote == nil && legacy2.prefs == ["blurEmails": false] && !legacy2.blur,
+              "D1: the older blurEmails alone is respected (hidden stays hidden on an existing install, shown stays shown on a fresh one), nothing written")
+        let again = Dict(); again.d = [:]
+        let againStore = AddressSettings.makeStore(prefs: again)
+        _ = AddressSettings.settleDefault(prefs: again, store: againStore, setUp: true)
+        againStore.blurAddresses = true                // the person hides them
+        check(AddressSettings.settleDefault(prefs: again, store: againStore, setUp: true) == nil && againStore.blurAddresses,
+              "D1: settled once: a later start never turns them on again")
+        let until = Date().addingTimeInterval(3)
+        while posted < 4 && Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+        check(posted >= 4, "D1: each write of the default posts the change note, so the other processes follow (\(posted) notes)")
+        // the wiring: only the settings app settles it, in start(), from the profiles file's presence
+        let settingsSrc = (try? String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+            .appendingPathComponent("Sources/AddressSettings.swift"), encoding: .utf8)) ?? ""
+        let settleCalls = settingsSrc.components(separatedBy: "settleDefault(prefs:").count - 1
+        check(settingsSrc.contains("if isSettingsApp { settleDefault(prefs: UserDefaults.standard, store: store, setUp: Store.exists) }") && settleCalls == 2,
+              "D1: start() settles it in the settings app only, from Store.exists (the profiles file), and nowhere else")
+    }
+
     // what is an address to hide: an address, an account id, an id prefix label; a phrase is no address
     check(["zedekiah@example.com", "account 1a2b3c4d", "1a2b3c4d", "1a2b3c4d-5e6f-4a7b"].allSatisfy(AddressSettings.hides)
           && !["another account", "Choose an account", "the sign-in", "its account", ""].contains(where: AddressSettings.hides),
@@ -4200,6 +4246,194 @@ MainActor.assumeIsolated {
     let off = AddressMenuRow(prefix: "", address: "wu@example.com", suffix: "", enabled: false) {}
     check(!off.lit && AddressMenuRow.item(address: a1, enabled: false) {}.action == nil && AddressMenuRow.item(address: a1) {}.isEnabled,
           "AddressMenuRow: a dimmed row is never lit and has no action")
+
+    // ---- S4, the hidden pass: the suites above read addresses in clear (the setting is applied "shown" at the top), and many of
+    // their expectations are written "…\(AddressSettings.words(x))…", which reads the address back while shown: a raw address in
+    // such a sentence passes them. Here the setting is hidden and every sentence maker below goes through `clean`, with its
+    // words asserted too (so a sentence that is simply empty doesn't pass).
+    // M1: the one line "Usage: Claude Code on …": the record keeps only the fact (the account is codeName), the sentence is built
+    // when a surface shows it, so it follows the setting both ways
+    do {
+        var pm = profile("pm", "~/.claude-pm", seat(61, a1)); pm.claudeWindow = true
+        pm.standby = [StandbyAccount(email: a2, seat: seat(62, a2), id: "k2", plan: "Max", lastInUse: now.addingTimeInterval(-86400))]
+        try! Store.save([pm])
+        let appIn = AppSignIn.Login(account: uuid(61), org: uuid(161), state: .known, source: "log", at: now)
+        AddressPrivacy.shared.apply(blur: false)
+        let resolved = AccountResolver.resolve(pm, among: [pm], app: appIn, code: seat(63, a3), loginEmail: a3, names: [:], now: now)
+        check(resolved.differs && resolved.line == nil && resolved.codeUsageLine == true && resolved.codeName == a3
+              && resolved.lineText() == "Usage: Claude Code on \(a3)" && resolved.lineText(blur: true) == "Usage: Claude Code on hidden address",
+              "M1: resolved while shown: the record holds the fact and the account, no sentence; the sentence is built per setting")
+        var rec = IconStatus(state: "ok"); rec.loginEmail = a3; rec.expectedEmail = a1; rec.weekly = 40; rec.fiveHour = 12
+        rec.weeklyResets = now.addingTimeInterval(2 * 86400); rec.fiveHourResets = now.addingTimeInterval(3600); rec.updatedAt = now.addingTimeInterval(-60)
+        rec.source = "Anthropic"; rec.plan = "Max"; rec.resolved = resolved
+        _ = Store.writeStatus("pm", rec)
+        let onDisk = (try? String(contentsOf: Store.statusFolder.appendingPathComponent("pm.json"), encoding: .utf8)) ?? ""
+        check(!onDisk.isEmpty && !onDisk.contains("Usage: Claude Code on") && onDisk.contains("codeUsageLine"), "M1: the written record holds no \"Usage: Claude Code on …\" text")
+        let shownLine = AccountView.of(Store.status("pm")).line
+        check(shownLine == "Usage: Claude Code on \(a3)", "M1: shown, the line names the account: \(shownLine ?? "nil")")
+        AddressPrivacy.shared.apply(blur: true)          // the setting changes after the record was written
+        let hiddenLine = AccountView.of(Store.status("pm")).line
+        let pmShow = ProfileShow.load(pm, now: now)
+        check(hiddenLine == "Usage: Claude Code on hidden address" && clean(hiddenLine ?? ""), "M1: hidden since the record was written: the same record now reads \"hidden address\": \(hiddenLine ?? "nil")")
+        // a record from before (the sentence stored with its address) is turned into the fact when it is read
+        var legacy = rec; legacy.resolved?.line = "Usage: Claude Code on \(a3)"; legacy.resolved?.codeUsageLine = nil
+        let legacyRead = StatusCodec.encode(legacy).flatMap(StatusCodec.decode)
+        check(legacyRead?.resolved?.line == nil && legacyRead?.resolved?.codeUsageLine == true && legacyRead?.resolved?.lineText() == hiddenLine,
+              "M1: an older record that stored the sentence reads as the fact, hidden")
+        // every surface that shows it
+        let words = [pmShow.lineWords(short: false) ?? "", pmShow.lineWords(short: true) ?? ""] + titles(dockOf(pm, pmShow).menu) + titles(menuBarMenu(pmShow))
+        check(words.allSatisfy(clean) && words.contains { $0.contains("hidden address") }, "M1: the Dock menu, the menu bar and the one line say \"hidden address\" and hold nothing of any address: \(words)")
+        // N3: the menu bar's top row is a hosted SwiftUI view (MenuBarRow), which titles() can't read: its texts are read from what it
+        // draws them from (the in-use line, the one line of state, the numbers' hint)
+        let barRow = [pmShow.named.inUseLine ?? "", MenuBarRow.lineWords(MenuBarItems.Profile(show: pmShow)) ?? "", pmShow.numbersHint ?? ""]
+        check(menuBarMenu(pmShow).items.first?.view is NSHostingView<MenuBarRow> && barRow[0] == "hidden address" && barRow.allSatisfy(clean),
+              "N3: the menu bar's top row (a hosted view): its in-use line says \"hidden address\", it and its other lines hold nothing of any address: \(barRow)")
+        let panel = dockPanelOf(pm, pmShow)
+        // (the panel's account line holds the address itself: its view leaves the line out entirely while addresses are hidden
+        // (`hidesEmail`, which asks AddressText.needsHiding about this very text), so the check is that the text is one it hides)
+        let panelWords = [panel.activeNote ?? "", panel.splitKey ?? ""]
+        let panelLine = panel.accountLine?.text ?? ""
+        check(panelWords.allSatisfy(clean) && (clean(panelLine) || AddressText.needsHiding(panelLine)),
+              "M1: the Dock panel's note and key hold nothing of any address, and its account line is one its view leaves out: \(panelWords) \(panel.accountLine?.text ?? "nil")")
+
+        // the dashboard card: its notice, line, terminal and sign-in words, and the Switch account menu
+        let acts = LauncherActions(open: { _ in }, terminal: { _ in }, logIn: { _ in }, mainScreen: {}, settings: {})
+        let row = cardRow(pm, now: now)
+        let card = AccountCard(row: row, actions: acts)
+        let cardWords = [row.line ?? "", card.terminalWords, card.signInHelp, UsageNotice.of(row)?.heading ?? "", UsageNotice.of(row)?.line ?? "", row.subtitle == a1 ? "" : row.subtitle]
+        check(cardWords.allSatisfy(clean), "hidden: the card's line, Terminal and Sign in words, notice hold nothing of any address: \(cardWords)")
+        let cardMenu = card.switchAccountMenu.menu()
+        check(titles(cardMenu).allSatisfy(clean) && titles(cardMenu).contains("Sign in to another account…"), "hidden: the card's Switch account menu titles: \(titles(cardMenu))")
+
+        // D2: the card's Switch account menu is an NSMenu: the ticked account, a divider, its standby accounts as AddressMenuRows, a
+        // divider, "Sign in to another account…", in that order, each doing what it did
+        var chosen: [String] = [], signIns = 0
+        func perform(_ i: NSMenuItem?) { if let i, let a = i.action { NSApp.sendAction(a, to: i.target, from: i) } }
+        let dm = SwitchAccountMenu(label: a1, ownKey: nil, plan: "max", standby: [.init(key: "pm~k2", address: a2), .init(key: "pm~k3", address: a3)],
+                                   pick: { chosen.append($0) }, newAccount: { signIns += 1 })
+        let dmenu = dm.menu()
+        let dRows = dmenu.items.compactMap { i in (i.view as? AddressMenuRow).map { (i, $0) } }
+        check(dmenu.items.count == 6 && dmenu.items[0].state == .on && dmenu.items[0].title == "hidden address  " + Account.planWords("max") && dmenu.items[1].isSeparatorItem
+              && dRows.count == 2 && dmenu.items[2].view is AddressMenuRow && dmenu.items[3].view is AddressMenuRow && dmenu.items[4].isSeparatorItem
+              && dmenu.items[5].title == "Sign in to another account…",
+              "D2: the Switch account menu: the ticked account with its plan, a divider, the standby accounts (AddressMenuRows), a divider, Sign in to another account…: \(dmenu.items.map(\.title))")
+        check(titles(dmenu).allSatisfy(clean) && dRows.allSatisfy { $0.1.accessibilityLabel() == "hidden address" && $0.0.title == "hidden address" && $0.1.drawnAddress == AddressText.standIn }
+              && Set(dRows.map { $0.1.naturalWidth }).count == 1,
+              "D2: hidden, no title or accessibility label holds any part of any address, both rows draw the same stand-in at the same width: \(titles(dmenu))")
+        dRows[1].1.highlighted = true
+        check(dRows[1].1.drawnAddress == a3 && dRows[0].1.drawnAddress == AddressText.standIn, "D2: only a highlighted row shows its address")
+        dRows[0].1.fire(); dRows[1].1.fire(); perform(dmenu.items[5])
+        check(chosen == ["pm~k2", "pm~k3"] && signIns == 1, "D2: a row picks its Switch page key, Sign in to another account… signs in: \(chosen) \(signIns)")
+        // the clash: the ticked row is the way back (it acts), and it holds no address either
+        // (the menu object stays alive in `backMenu`: an item's target is weak)
+        let backMenu = SwitchAccountMenu(label: a1, ownKey: "pm~k1", plan: nil, standby: [], pick: { chosen.append($0) }, newAccount: {})
+        let back = backMenu.menu()
+        perform(back.items[0])
+        check(back.items.count == 3 && back.items[0].state == .on && back.items[0].action != nil && clean(back.items[0].title) && back.items[0].title.hasPrefix("hidden address")
+              && chosen.last == "pm~k1", "D2: a clash's ticked row says \"hidden address · …\" and moves Claude Code back: \(back.items[0].title)")
+        AddressPrivacy.shared.apply(blur: false)
+        let shownMenu = dm.menu()
+        check(shownMenu.items[0].title == a1 + "  " + Account.planWords("max") && (shownMenu.items[2].view as? AddressMenuRow)?.title == a2 && (shownMenu.items[3].view as? AddressMenuRow)?.drawnAddress == a3,
+              "D2: shown, the same menu holds the addresses: \(shownMenu.items.map(\.title))")
+        AddressPrivacy.shared.apply(blur: true)
+
+        // an expired sign-in on the card: the notice names "hidden address"
+        var px = profile("px", "~/.claude-px", seat(71, a1)); px.claudeWindow = false
+        try! Store.save([pm, px])
+        var exp = IconStatus(state: "expired"); exp.loginEmail = a1; exp.expectedEmail = a1; exp.updatedAt = now
+        exp.resolved = AccountResolver.resolve(px, among: [px], app: .unknown, code: seat(71, a1), loginEmail: a1, names: [:], now: now)
+        _ = Store.writeStatus("px", exp)
+        let notice = UsageNotice.of(cardRow(px, now: now))
+        check(notice != nil && clean(notice!.heading) && clean(notice!.line) && notice!.line.contains("hidden address") && notice!.line.hasPrefix("Sign in as hidden address"),
+              "hidden: the card's expired-sign-in notice says \"Sign in as hidden address…\": \(notice?.line ?? "nil")")
+        Store.removeStatus("px")
+
+        // M3: the switch engine's errors reach the Switch page as they were made: no name in them
+        var pe = profile("pe", "~/.claude-pe", seat(81, a1))
+        pe.standby = [StandbyAccount(email: a2, seat: Seat(account: uuid(82), organization: nil, email: a2), id: "k9")]
+        let plan = SwitchEngine.plan(pe, standby: pe.standby[0])
+        var planWhy = ""
+        if case .failure(let why) = plan { planWhy = why.description }
+        check(!planWhy.isEmpty && clean(planWhy) && !planWhy.contains("@"), "M3: the switch's \"not signed in here yet\" error names no account: \(planWhy)")
+        let errorWords = [SwitchRunner.windowStaysClosed(AccountNames.short(a2)),
+                          SwitchPage.phaseTitle(.other(a2), name: "Pm", to: AccountNames.short(a3), moveBack: false),
+                          SwitchPage.boxWords(pe.standby[0], back: false, name: "Pm", moveCount: nil),
+                          AccountBook.switchWords(folder: "~/.claude-pe", email: AddressSettings.words(a2), isDefault: false),
+                          SwitchPage.inUseName(pmShow, expected: a1)]
+        check(errorWords.dropLast().allSatisfy(clean) && errorWords.dropLast().contains { $0.contains("hidden address") },
+              "hidden: the Switch page's title, standby box words, what a switch affects and the window note hold nothing of any address: \(errorWords)")
+        check(AddressSettings.hides(errorWords.last ?? ""), "hidden: the in-use box's title is an address, drawn by AccountValue (never as text)")
+
+        // Settings: the Account pop-up's lines, the linked line, the Forget… question
+        let sm = SettingsModel(); sm.accounts = [pm]
+        let settingsView = AccountSettings(entry: .constant(pm), model: sm)
+        let popUp = settingsView.loginItems.map(\.title)
+        let linked = String(settingsView.linkedWords(was: a2, at: now).characters)
+        check(popUp.allSatisfy(clean) && clean(linked) && linked.contains("hidden address"), "hidden: Settings' Account pop-up and linked line hold nothing of any address: \(popUp) \(linked)")
+
+        // New profile: the sign-in checks and the folder pop-up rows; first run's found folder and line; the sign-in window's lines
+        let found = [FolderChoice(path: "~/.claude-x", detail: a1).title, FolderChoice(path: "~/.claude-y", detail: nil).title, NewAccountSetup.folderWho("~/.claude-none"),
+                     AccountNote(kind: .came, email: a3, profile: "Work", at: now).words, AccountNote(kind: .left, email: a3, profile: "Work", at: now).words,
+                     AccountNote(kind: .standsBy, email: a3, profile: "Work", at: now).words]
+        check(found.allSatisfy(clean), "hidden: New profile's folder rows and the account notes hold nothing of any address: \(found)")
+        let wrongSaid = SignInSaid(.wrongAccount(signedIn: server(seat(8, a1)), wanted: server(seat(9, a2))), configDir: "~/.claude-x", owner: nil)
+        let unconfirmed = SignInSaid(.unverified(server(seat(8, a1))), configDir: "~/.claude-x", previous: a2)
+        let signInLines = [wrongSaid?.text ?? "", unconfirmed?.text ?? ""]
+        check(signInLines.allSatisfy { !$0.isEmpty && clean($0) } && signInLines.contains { $0.contains("hidden address") },
+              "hidden: the sign-in window's lines say \"hidden address\" and hold nothing of any address: \(signInLines)")
+        let ws = SplitUsage(app: a1, code: a2, switched: false)
+        check([ws.line, ws.shortLine, ws.key ?? "", ws.shortKey ?? "", ws.numbersHint ?? ""].allSatisfy(clean), "hidden: the split's sentences and keys")
+        Store.removeStatus("pm")
+    }
+
+    // S4, the source scan: a user-facing interpolation of an email, label, address, account id or Claude Code's account name that is not
+    // wrapped in AddressSettings.words, AccountNames.short, AddressText or BlurredAddress is flagged. The allow-list is short and each
+    // entry says why it is fine. (A value first held in a variable and interpolated later is beyond a scan; the hidden pass above
+    // covers the sentence makers it can reach.) Sessions*.swift files (but SessionsMove and SessionsCard, which are scanned) name
+    // sessions, folders and settings by a `label`, never an account.
+    do {
+        let srcDir = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
+        let identifier = try! NSRegularExpression(pattern: #"\b(email|emailAddress|address|codeName|numbersFor|numbersOwner|loginEmail|expectedEmail|wantedEmail|accountID|label|\w+Email|\w+Address)\b"#)
+        let wrapped = ["AddressSettings.words", "AccountNames.short", "AccountNames.shortName", "AddressText.", "AddressPrivacy.", "BlurredAddress", ".short(", "shortName("]
+        let skipFiles: Set<String> = ["SessionsBackup.swift", "SessionsExport.swift", "SessionsRepoint.swift", "SessionsSide.swift", "SessionsSideApply.swift", "SessionsSetup.swift"]
+        // (file, a snippet of the line, why it is fine)
+        let allowed: [(String, String, String)] = [
+            ("Accounts.swift", "move to \\(email)", "switchWords' parameter: its one caller hands AddressSettings.words (SwitchPage), as its comment says"),
+            ("AppIcon.swift", ".help(\"\\(label): ", "the profile's icon label (\"MAIN\") in the icon designs' picker, not an account"),
+            ("ExportPage.swift", "\\($0.label) points to", "a linked setup folder's label (a path), not an account"),
+            ("SessionsMove.swift", "\\(k.label): changed since", "a setting's label (\"Emails\"), not an account"),
+            ("SessionsMove.swift", "\\(d.label): \\(d.hereWords)", "a setting's label and its words (\"hidden\"/\"shown\"), not an account"),
+            ("Settings.swift", "\\($0.id)|\\($0.name)|\\($0.label)", "a change-detection key of the profiles (id, name, icon label), never drawn"),
+            ("SetupRow.swift", "out.append(label + \":\")", "a setup row's label (\"Skills\"), not an account"),
+            ("SignInWindow.swift", "\\(who(address)) is \\(owner)", "who() is AddressSettings.words of the address (defined at the top of that function)"),
+        ]
+        var flagged: [String] = [], usedAllow = Set<Int>()
+        for f in ((try? FileManager.default.contentsOfDirectory(atPath: srcDir.path)) ?? []).filter({ $0.hasSuffix(".swift") && !skipFiles.contains($0) }).sorted() {
+            let lines = (try? String(contentsOf: srcDir.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? []
+            for (i, l) in lines.enumerated() {
+                let t = l.trimmingCharacters(in: .whitespaces)
+                if t.hasPrefix("//") { continue }
+                // every \( … ) of the line, and every  "…" + name / name + "…"  concatenation
+                var exprs: [String] = []
+                var rest = Substring(l)
+                while let r = rest.range(of: "\\(") {
+                    var depth = 1, k = r.upperBound
+                    while k < rest.endIndex, depth > 0 { if rest[k] == "(" { depth += 1 } else if rest[k] == ")" { depth -= 1 }; k = rest.index(after: k) }
+                    exprs.append(String(rest[r.upperBound..<rest.index(before: k)]))
+                    rest = rest[k...]
+                }
+                for m in (try! NSRegularExpression(pattern: #""\s*\+\s*([A-Za-z_.?!]+)|([A-Za-z_.?!]+)\s*\+\s*""#)).matches(in: l, range: NSRange(l.startIndex..., in: l)) {
+                    for g in 1...2 where m.range(at: g).location != NSNotFound { exprs.append((l as NSString).substring(with: m.range(at: g))) }
+                }
+                for x in exprs where identifier.firstMatch(in: x, range: NSRange(x.startIndex..., in: x)) != nil && !wrapped.contains(where: { x.contains($0) }) {
+                    if let n = allowed.firstIndex(where: { $0.0 == f && l.contains($0.1) }) { usedAllow.insert(n); continue }
+                    flagged.append("\(f):\(i + 1) [\(x)]")
+                }
+            }
+        }
+        check(flagged.isEmpty, "no user-facing interpolation or concatenation of an email, label, address or account name outside words/short/BlurredAddress: \(flagged)")
+        check(usedAllow.count == allowed.count, "the scan's allow-list holds only lines that still exist: \(allowed.indices.filter { !usedAllow.contains($0) }.map { allowed[$0].1 })")
+    }
 
     // no first-letter-and-dots mask left anywhere in the app's sources
     let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
