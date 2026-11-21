@@ -748,6 +748,7 @@ final class SettingsModel: ObservableObject {
     /// keeps for it. Then its Terminal scripts go and, if asked, its folders (signed out first). Other changes
     /// waiting for Apply are applied with it.
     func removeAccount(_ e: AccountEntry, deleteFolders: Bool) {
+        cancelSignIn(e.id)                                   // its sign-in window ends and its line goes, as cancelling New profile does
         remove(e.id)
         DefaultProfile.noteOldRemoved(profile: e.id)         // a default-profile move that carried it over can't be undone now
         var hidden = UserDefaults.standard.stringArray(forKey: "dashboardHidden") ?? []
@@ -756,6 +757,7 @@ final class SettingsModel: ObservableObject {
         apply {
             self.message = deleteFolders ? "Removed \(e.name); deleting its folders…" : "Removed \(e.name)"
             DispatchQueue.global(qos: .userInitiated).async {
+                SignInWindow.stopNow(profile: e.id)          // ended before its folder and sign-in are removed (a login never runs on them)
                 // a full look, here: the sign-out must run with the `claude` that is really there (see cancelNew)
                 let failed = deleteFolders ? AccountRemoval.deleteFolders(e, claude: ClaudeCLI.find()) : []
                 AccountRemoval.removeScripts(e.configDir)

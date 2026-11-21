@@ -3373,6 +3373,13 @@ do {
         check(others.allSatisfy { f in !lines(f).contains { $0.contains("SignInWindow") } },
               "stage G: the agent and the sign-ins left on ClaudeCLI.openLogin (menus, launcher, quick chat, the switch, first run, the default profile) don't use the sign-in window")
         check(lines("Uninstall.swift").contains { $0.contains("SignInWindow.sweepNow()") }, "stage G: Uninstall sweeps Terminal's kept profiles before it removes the work folder")
+        // removing a profile ends its sign-in window first (removeAccount applies installs, so it isn't run here: its text is read)
+        let settings = lines("Settings.swift")
+        if let a = settings.firstIndex(where: { $0.contains("func removeAccount(") }), let b = settings.indices.first(where: { $0 > a && settings[$0].contains("func remove(_ id") }) {
+            let body = settings[a..<b].joined(separator: "\n")
+            check(body.contains("cancelSignIn(e.id)") && body.contains("SignInWindow.stopNow(profile: e.id)") && body.range(of: "SignInWindow.stopNow")!.lowerBound < body.range(of: "AccountRemoval.deleteFolders")!.lowerBound,
+                  "stage G: removing a profile stops its sign-in window and clears its line, before its folders are deleted")
+        } else { check(false, "stage G: removeAccount found in Settings.swift") }
     }
     SignInWindow.wordSeam = nil
     ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = keepSeam
