@@ -358,6 +358,7 @@ final class SettingsModel: ObservableObject {
     /// else the address alone; nil: whoever signs in (a plain sign-in). The folder must be there (a deleted folder is never
     /// made again). The words land in `signIns`.
     func startSignIn(_ claude: String, entry e: AccountEntry, email: String?) {
+        if case .waiting? = signIns[e.id] { return }          // its window is open: no second sign-in on the folder
         let id = e.id, folder = e.configDir
         let previous = e.seat?.email.flatMap { $0.isEmpty ? nil : $0 }       // the account in use now: standby once another is followed
         let generation = (signInGenerations[id] ?? 0) + 1
@@ -1829,7 +1830,16 @@ struct AccountSettings: View {
     /// said here while it runs and when it ended.
     @ViewBuilder var signInAgainLine: some View {
         let r = model.runner(of: entry.id)
-        if r.goal?.again == true {
+        if signingIn {
+            // this profile's sign-in window is open (SignInWindow): its line and Cancel come first, whatever an earlier switch's
+            // line (ended, or never reset) says
+            HStack(spacing: 8) {
+                BoxNote(text: "Signing in: finish it in Terminal and the browser.", tone: .caution).lineLimit(1)
+                Spacer(minLength: 6)
+                Button("Cancel") { model.cancelSignIn(entry.id) }
+                    .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+            }
+        } else if r.goal?.again == true {
             switch r.phase {
             case .waiting:
                 HStack(spacing: 8) {
@@ -1846,13 +1856,7 @@ struct AccountSettings: View {
         } else if let shown = model.signIns[entry.id] {
             // a sign-in window of Settings' own keys (SignInWindow), in the same words and tones as the one above
             switch shown {
-            case .waiting:
-                HStack(spacing: 8) {
-                    BoxNote(text: "Signing in: finish it in Terminal and the browser.", tone: .caution).lineLimit(1)
-                    Spacer(minLength: 6)
-                    Button("Cancel") { model.cancelSignIn(entry.id) }
-                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
-                }
+            case .waiting: EmptyView()          // (above)
             case .said(let said):
                 BoxNote(text: said.text, size: said.kind == .signedIn ? 10.5 : 11.5,
                         tone: said.danger ? .danger : said.kind == .signedIn ? .muted : .caution)
@@ -2013,6 +2017,7 @@ struct AccountSettings: View {
             else if let claude = model.requireClaude() { model.startSignIn(claude, entry: entry, email: nil) }
         }
         .buttonStyle(.link).font(.system(size: 12)).fixedSize()      // a link, not a big key (approved sketch)
+        .disabled(signingIn)                                         // one sign-in at a time on a folder
         .help("Claude Code's sign-in in Terminal on \(entry.configDir), no address filled in. The account that signs in becomes the one \(entry.name.isEmpty ? "this profile" : entry.name) works on; the one before goes on standby.")
     }
 
@@ -2083,11 +2088,17 @@ struct AccountSettings: View {
     func logInKey(email: String?) -> some View {
         Button("Sign in…") { signInAgain(email: email) }
             .buttonStyle(FaceKeyStyle(tint: .red))
+            .disabled(signingIn)
     }
+
+    /// This profile's sign-in window (SignInWindow) is open: its other sign-in keys wait for it (one sign-in at a time on a
+    /// folder; its own line below has Cancel).
+    var signingIn: Bool { model.signIns[entry.id] == .waiting }
 
     /// `email`: the address to sign in to, as given (the in-use box's: ProfileShow.loginAddress, in a clash the profile's own
     /// account, never the folder's); nil: the plain sign-in with no address filled in, as the card's.
     func signInAgain(email: String?) {
+        guard !signingIn else { return }          // its window is open: no second sign-in on the folder
         // a folder that is gone is never made again: nothing starts, the line says so (A4)
         if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why; return }
         if let email { model.runner(of: entry.id).signInAgain(email: email); return }
@@ -2218,7 +2229,7 @@ struct AccountSettings: View {
         if move != nil {
             // the profile's own account (the one value's address: the app's when it decided, else the seat's), as every Sign in
             if let back = show.loginAddress {
-                items.append(LoginItem(id: "back", title: line(back, ["\(name)'s account", "sign in…"]), enabled: canSignIn) {
+                items.append(LoginItem(id: "back", title: line(back, ["\(name)'s account", "sign in…"]), enabled: canSignIn && !signingIn) {
                     if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why }
                     else if let claude = model.requireClaude() { model.startSignIn(claude, entry: entry, email: back) }
                 })
@@ -2229,7 +2240,7 @@ struct AccountSettings: View {
         // without Claude Code the items that need it are greyed; this one, right above them, says why
         if !canSignIn { items.append(LoginItem(id: "install", title: ClaudeInstall.missingInstall) { model.showInstallHelp() }) }
         if move == nil {
-            items.append(LoginItem(id: "again", title: "Sign in…", enabled: canSignIn) { signInAgain(email: popUpSignInAddress) })
+            items.append(LoginItem(id: "again", title: "Sign in…", enabled: canSignIn && !signingIn) { signInAgain(email: popUpSignInAddress) })
         }
         items.append(LoginItem(id: "renew", title: "Renew sign-in by itself", enabled: canSignIn, kind: .toggle(entry.autoRenew)) {
             entry.autoRenew.toggle()

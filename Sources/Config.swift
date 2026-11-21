@@ -308,6 +308,9 @@ enum ClaudeCLI {
     /// already in use, where the folder's account doesn't change and so says nothing (SwitchRunner.swift).
     @discardableResult
     static func openLogin(_ claude: String, account: Account, email: String?, marker: URL? = nil, creating: Bool = false) -> Bool {
+        // one sign-in at a time on a folder: refused while this app's sign-in window (SignInWindow) runs there, or the
+        // kernel shows a `claude auth login` on it (any starter's), or the processes can't be read: false, nothing opened
+        guard !loginRuns(on: account.configDir) else { return false }
         // never through a link; a brand-new folder is made here (FolderGuard), never by ClaudeAuth
         guard FolderGuard.mayLaunch("login", account.configDir, creating: creating) else { return false }
         // ClaudeAuth writes the script (owner only from the start, never through a link) and opens it; the guard above
@@ -318,6 +321,27 @@ enum ClaudeCLI {
         return Authenticator(account.authFolder, tools: tools)
             .startSignIn(claude: claude, email: email, script: loginScript(account.configDir), marker: marker,
                          shown: tilde(account.configDir), done: doneWords, failed: failedWords) == .done
+    }
+
+    /// A sign-in is already open on this folder: this app's sign-in window (SignInWindow) or a `claude auth login` the kernel
+    /// shows on it; also true when the processes can't be read (fail closed).
+    static func loginRuns(on configDir: String) -> Bool {
+        if SignInWindow.runs(on: configDir) { return true }
+        guard let table = ProcessTable.table() else { return true }
+        return loginOn(table, folder: configDir)
+    }
+
+    /// A `claude auth login` of the table that is on this folder: by its CLAUDE_CONFIG_DIR where the kernel gave the
+    /// environment (unset: the default folder; an absolute path: compared as a folder). One whose folder can't be told (no
+    /// environment, a relative or empty value) isn't taken for this one here; ClaudeSignIn refuses the other way round.
+    static func loginOn(_ table: [ProcessTable.Entry], folder configDir: String, me: uid_t = getuid()) -> Bool {
+        let here = FolderKey.canonical(configDir), standard = FolderKey.canonical("~/.claude")
+        return table.contains { e in
+            guard e.uid == me, let l = e.launch, l.environmentRead, ProcessTable.isClaudeCode(l),
+                  zip(l.args, l.args.dropFirst()).contains(where: { $0 == "auth" && $1 == "login" }) else { return false }
+            if let dir = l.configDir { return dir.hasPrefix("/") && FolderKey.canonical(dir) == here }
+            return here == standard
+        }
     }
 
     /// Log in… in the agent's surfaces (the menu bar, quick chat): Claude Code's own sign-in in Terminal for the profile's

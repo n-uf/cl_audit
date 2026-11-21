@@ -2,6 +2,7 @@ import AppKit
 import UserNotifications
 import ProfileCore
 import ClaudeAuth
+import Runs
 // Checks for "the agent notices a changed sign-in" and the profile's accounts. Runs in a throwaway home
 // (CFFIXED_USER_HOME); throwaway profiles and fake .claude.json files only. Never touches a real profile.
 // Laid out as one block per stage (a `// MARK:` or `// --- stage X ---` line, then a `do { … }`, inside `#if STAGE3` where it
@@ -3299,6 +3300,45 @@ do {
                   "stage G: New profile: a draft with \(what): refused with a plain error, no window, the guard never asked")
         }
         m.draft = nil
+    }
+
+    // ── one sign-in at a time on a folder: openLogin fails closed, and Settings' other keys wait ──
+    do {
+        // the process table's test, on hand-made tables (a real table would hold other sessions' stand-ins)
+        let me = getuid()
+        func fakeLogin(_ dir: String?, args: [String] = ["claude", "auth", "login", "--claudeai"], read: Bool = true, uid: uid_t? = nil) -> ProcessTable.Entry {
+            ProcessTable.Entry(pid: 900, uid: uid ?? me, ruid: uid ?? me, name: "claude",
+                               launch: ProcessTable.Launch(exe: "/usr/local/bin/claude", args: args, configDir: dir, environmentRead: read))
+        }
+        let f = home + "/.claude-sg-one"
+        check(ClaudeCLI.loginOn([fakeLogin(f)], folder: f) && ClaudeCLI.loginOn([fakeLogin(f + "/")], folder: f),
+              "stage G: a `claude auth login` with this folder as its CLAUDE_CONFIG_DIR is a sign-in already open on it")
+        check(!ClaudeCLI.loginOn([fakeLogin(home + "/.claude-sg-other")], folder: f) && !ClaudeCLI.loginOn([fakeLogin("rel/x"), fakeLogin("")], folder: f)
+              && !ClaudeCLI.loginOn([fakeLogin(f, read: false)], folder: f) && !ClaudeCLI.loginOn([fakeLogin(f, uid: me &+ 1)], folder: f)
+              && !ClaudeCLI.loginOn([fakeLogin(f, args: ["claude", "-p", "hi"])], folder: f),
+              "stage G: …another folder's, one whose folder can't be told, another user's and a claude that isn't a login are not")
+        check(ClaudeCLI.loginOn([fakeLogin(nil)], folder: "~/.claude") && !ClaudeCLI.loginOn([fakeLogin(nil)], folder: f),
+              "stage G: …a login with no CLAUDE_CONFIG_DIR is on the default folder only")
+
+        // this app's own window: openLogin refuses on that folder, other folders go on, Settings' keys wait
+        let po = folder("one-a"), pq = folder("one-b"), eo = po.entry(ann), eq = pq.entry(bob)
+        setList([eo, eq])
+        SignInWindow.wordSeam = { _ in server(ann) }
+        let c = conf(["login": "hang"])
+        m.startSignIn(fakeClaude, entry: eo, email: nil)
+        spin({ alive(pid(c)) })
+        let opened = term.count
+        check(!ClaudeCLI.openLogin(fakeClaude, account: Account(eo), email: nil) && term.count == opened,
+              "stage G: openLogin fails closed while this app's sign-in window runs on the folder (no second Terminal)")
+        let keys = AccountSettings(entry: .constant(eo), model: m)
+        check(keys.signingIn && !AccountSettings(entry: .constant(eq), model: m).signingIn, "stage G: Settings: the profile's sign-in keys wait while its window is open (not another profile's)")
+        keys.signInAgain(email: nil)
+        m.startSignIn(fakeClaude, entry: eo, email: ann.email)
+        check(term.count == opened, "stage G: Settings: a second sign-in on that profile starts nothing")
+        m.cancelSignIn(eo.id)
+        spin({ !alive(pid(c)) }, 8); pause(1)
+        check(!keys.signingIn, "stage G: Settings: after Cancel the keys are back")
+        term.killAll()
     }
 
     // ── the sweep, and what Terminal keeps ──
