@@ -124,6 +124,22 @@ do {
     check(tidy.changed && tidy.accounts[0].standby.map(\.id) == ["k2"] && tidy.accounts[0].accountNote?.kind == .tidied
           && tidy.accounts[0].standby[0].lastInUse == now, "tidied: one entry per account (any case), not another profile's in use; the newest last use kept")
     check(!StandbyTidy.apply([P(seat: nil, name: "x", standby: [light, heavy], accountNote: nil)], now: now).changed, "a tidy list stays as it is")
+    // two entries of one account, one with an organisation and one without: the merge never swaps the known one for none
+    // (no record organisation, nil == nil), whichever is newer; a newer one with another organisation still wins
+    func merged(_ a: StandbyAccount, _ b: StandbyAccount, orgs: [String: String] = [:]) -> Seat? {
+        StandbyTidy.apply([P(seat: nil, name: "x", standby: [a, b], accountNote: nil)], recordOrgs: { orgs }, now: now).accounts[0].standby.first?.seat
+    }
+    func entry(_ id: String, org: String?, used: TimeInterval) -> StandbyAccount {
+        StandbyAccount(email: "m@example.com", seat: Seat(account: uuid(40), organization: org, email: "m@example.com"), id: id,
+                       lastInUse: now.addingTimeInterval(-used))
+    }
+    let withOrgOld = entry("a", org: uuid(41), used: 600), noOrgNew = entry("b", org: nil, used: 60), emptyOrgNew = entry("c", org: "", used: 60)
+    check(merged(withOrgOld, noOrgNew)?.organization == uuid(41) && merged(withOrgOld, emptyOrgNew)?.organization == uuid(41)
+          && merged(noOrgNew, withOrgOld)?.organization == uuid(41),
+          "a newer entry with no organisation (nil or \"\") never takes the place of a known one; an older known one replaces none")
+    check(merged(withOrgOld, entry("d", org: uuid(42), used: 60))?.organization == uuid(42)
+          && merged(entry("e", org: uuid(42), used: 60), withOrgOld, orgs: [uuid(40): uuid(41)])?.organization == uuid(41),
+          "a newer one with another organisation still wins; the record's organisation wins over any")
 }
 
 // ============ 3. limits: fresh, full, the blocker, the countdown face ============

@@ -178,10 +178,13 @@ public enum StandbyTidy {
                 // a second entry of the same account: one stays, with the newest last use and its record's organisation
                 var one = kept[k]
                 if orgs == nil { orgs = recordOrgs() }
-                let want = account.flatMap { orgs?[$0] }
+                let want = account.flatMap { orgs?[$0] }.flatMap { $0.isEmpty ? nil : $0.lowercased() }
                 let newer = (s.lastInUse ?? .distantPast) > (one.lastInUse ?? .distantPast)
-                if s.seat?.organization?.lowercased() == want, one.seat?.organization?.lowercased() != want || newer { one.seat = s.seat }
-                else if want == nil, newer { one.seat = s.seat }
+                // (an organisation not known, nil or "", never matches the record's; with no record's, a known one beats one
+                // not known, and between two alike the newer stays)
+                func org(_ x: StandbyAccount) -> String? { x.seat?.organization.flatMap { $0.isEmpty ? nil : $0.lowercased() } }
+                if let w = want, org(s) == w, org(one) != w || newer { one.seat = s.seat }
+                else if want == nil, (org(s) != nil) != (org(one) != nil) ? org(s) != nil : newer { one.seat = s.seat }
                 if newer { one.lastInUse = s.lastInUse; one.lastWeek = s.lastWeek; one.lastWeekResets = s.lastWeekResets; one.plan = s.plan ?? one.plan }
                 if one.email.isEmpty { one.email = s.email }
                 kept[k] = one
