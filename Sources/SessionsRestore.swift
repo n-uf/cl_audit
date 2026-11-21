@@ -896,18 +896,25 @@ enum SessionsRestore {
     /// The journal beside a receipt, opened to append (one line written down before each file).
     private static func openJournal(_ id: String) -> Journal<Event>? { store.journal(id, of: Event.self) }
 
-    /// Every restore, newest first.
+    /// Every restore, newest first (the store's order: two started in one second in the order they were made).
     static func receipts() -> [Receipt] {
-        store.ids().compactMap(load).sorted { $0.started > $1.started }
+        store.list().map(withSteps)
     }
 
     /// Restores that wrote something and neither finished, were undone nor were left as they are, newest first (every
     /// profile's, or one's). Only the headers of the others are read: the journal of a long finished restore is never folded
     /// for this.
     static func unfinished(profile: String? = nil) -> [Receipt] {
-        store.ids().compactMap(store.load)
+        store.list()
             .filter { $0.finished == nil && $0.undone == nil && $0.leftAsIs == nil && (profile == nil || $0.profile == profile) }
-            .compactMap { load($0.id) }.filter(\.unfinished).sorted { $0.started > $1.started }
+            .map(withSteps).filter(\.unfinished)
+    }
+
+    /// A header with its steps from the journal (what `load` reads).
+    private static func withSteps(_ h: Receipt) -> Receipt {
+        var r = h
+        r.steps = steps(h.id)
+        return r
     }
 
     // MARK: whether one may start

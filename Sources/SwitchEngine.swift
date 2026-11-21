@@ -513,7 +513,7 @@ enum SwitchEngine {
 
     /// A receipt file as last read: its inode, size and modification time (a save replaces the file whole, so any change
     /// shows here), and what it decoded to.
-    private struct Cached { let ino: UInt64; let size: Int64; let mtime: timespec; let receipt: SwitchReceipt? }
+    private struct Cached { let ino: UInt64; let size: Int64; let mtime: timespec; let receipt: ReceiptStore<SwitchReceipt>.Ordered? }
     private static let cacheLock = NSLock()
     nonisolated(unsafe) private static var cache: [String: Cached] = [:]
     #if CL_AUDIT_TESTING
@@ -529,7 +529,7 @@ enum SwitchEngine {
         let ids = s.ids(include)
         cacheLock.lock(); defer { cacheLock.unlock() }
         cache = cache.filter { ids.contains($0.key) || !include($0.key) }
-        var out: [SwitchReceipt] = []
+        var out: [ReceiptStore<SwitchReceipt>.Ordered] = []
         for id in ids {
             var st = stat()
             guard lstat(s.url(id).path, &st) == 0 else { cache[id] = nil; continue }
@@ -538,11 +538,12 @@ enum SwitchEngine {
                 if let r = c.receipt { out.append(r) }
                 continue
             }
-            let r = s.load(id)
+            let r = s.loadOrdered(id)
             cache[id] = Cached(ino: st.st_ino, size: st.st_size, mtime: st.st_mtimespec, receipt: r)
             if let r { out.append(r) }
         }
-        return out.sorted { $0.started > $1.started }
+        // (the store's own order: two switches started in one second in the order they were made)
+        return out.sorted(by: ReceiptStore<SwitchReceipt>.newestFirst).map(\.receipt)
     }
 
     /// A profile's switches that moved something and were neither linked nor undone, newest first.

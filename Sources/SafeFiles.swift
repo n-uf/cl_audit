@@ -165,9 +165,37 @@ protocol StoredReceipt: Codable {
     var started: Date { get }
 }
 
+/// The order receipts were made in, finer than their dates: a receipt's `started` is saved to the whole second (ISO 8601, the
+/// format older versions read), so two started in one second would tie. A store writes one more key into a receipt the first
+/// time it saves it, `firstSavedNs`: the wall clock in nanoseconds since 1970, strictly increasing within this process (one
+/// more than the last one given when the clock hasn't moved past it), so another process's receipts fall in by the clock.
+/// Later saves carry it over from the file; older versions ignore it (JSONDecoder skips keys it doesn't know).
+enum ReceiptOrder {
+    static let key = "firstSavedNs"
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var last: Int64 = 0
+
+    /// The next value: now, or one more than the last one given.
+    static func next() -> Int64 {
+        let now = Int64(clamping: clock_gettime_nsec_np(CLOCK_REALTIME))
+        lock.lock(); defer { lock.unlock() }
+        last = max(now, last + 1)
+        return last
+    }
+
+    struct Key: CodingKey {
+        var stringValue: String
+        var intValue: Int? { nil }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
+        static let firstSaved = Key(stringValue: ReceiptOrder.key)!
+    }
+}
+
 /// The receipts of one kind, under `root`: each in a folder of its own (`<root>/<id>/<file>`, with the flow's other files beside
 /// it) or flat (`<root>/<id>.json`). Saved whole as pretty-printed JSON with sorted keys and ISO 8601 dates, replaced atomically
-/// (the format every receipt has always had: old receipts load, and these load in older versions).
+/// (the format every receipt has always had: old receipts load, and these load in older versions), plus the key `firstSavedNs`
+/// (ReceiptOrder) on a receipt this version first saved.
 struct ReceiptStore<R: StoredReceipt> {
     enum Layout: Equatable {
         case folders(file: String)
@@ -206,31 +234,80 @@ struct ReceiptStore<R: StoredReceipt> {
         }
     }
 
-    /// A receipt as it is saved.
-    func encoded(_ r: R) throws -> Data {
+    /// A receipt with its place in the order receipts were made: `firstSaved` is its `firstSavedNs` (ReceiptOrder), nil on one
+    /// an older version wrote (or saved again: it drops the key).
+    struct Ordered {
+        let receipt: R
+        let firstSaved: Int64?
+    }
+
+    /// Newest first: by `started`, then (two in one second) by `firstSaved`, one without it before every one with it, then by id.
+    static func newestFirst(_ a: Ordered, _ b: Ordered) -> Bool {
+        if a.receipt.started != b.receipt.started { return a.receipt.started > b.receipt.started }
+        let x = a.firstSaved ?? 0, y = b.firstSaved ?? 0
+        if x != y { return x > y }
+        return a.receipt.id > b.receipt.id
+    }
+
+    /// The receipt's own keys, then `firstSavedNs` beside them (none: the receipt's keys only).
+    private struct Saved: Encodable {
+        let receipt: R
+        let firstSaved: Int64?
+        func encode(to encoder: Encoder) throws {
+            try receipt.encode(to: encoder)
+            guard let firstSaved else { return }
+            var c = encoder.container(keyedBy: ReceiptOrder.Key.self)
+            try c.encode(firstSaved, forKey: .firstSaved)
+        }
+    }
+
+    private struct Read: Decodable {
+        let ordered: Ordered
+        init(from decoder: Decoder) throws {
+            let r = try R(from: decoder)
+            // (a value that isn't a whole number counts as none: the receipt still reads)
+            let first = try? decoder.container(keyedBy: ReceiptOrder.Key.self).decodeIfPresent(Int64.self, forKey: .firstSaved)
+            ordered = Ordered(receipt: r, firstSaved: first ?? nil)
+        }
+    }
+
+    /// A receipt as it is saved (`firstSaved`: with that `firstSavedNs`; nil: in the format older versions wrote, byte for byte).
+    func encoded(_ r: R, firstSaved: Int64? = nil) throws -> Data {
         let enc = JSONEncoder()
         enc.dateEncodingStrategy = .iso8601
         enc.outputFormatting = escapeSlashes ? [.prettyPrinted, .sortedKeys] : [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
-        return try enc.encode(r)
+        return try enc.encode(Saved(receipt: r, firstSaved: firstSaved))
     }
 
+    /// Saves a receipt whole. The first save of an id (no file there yet) gives it its `firstSavedNs`; a later one carries over
+    /// what the file has (none on one an older version wrote: it stays as that version left it).
     func save(_ r: R) throws {
         let dir = folder(r.id)
         try FileManager.default.createDirectory(at: inner.map { dir.appendingPathComponent($0) } ?? dir, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: 0o700])
         let u = url(r.id)
-        try encoded(r).write(to: u, options: .atomic)
+        var st = stat()
+        let first = lstat(u.path, &st) == 0 ? read(u).flatMap(decoded)?.firstSaved : ReceiptOrder.next()
+        try encoded(r, firstSaved: first).write(to: u, options: .atomic)
         if let fileMode { chmod(u.path, fileMode) }
     }
 
-    func load(_ id: String) -> R? {
-        guard validID(id) else { return nil }
-        let u = url(id)
-        let data = readCap.map { SafeFiles.readPlain(u.path, max: $0) } ?? (try? Data(contentsOf: u))
+    private func read(_ u: URL) -> Data? {
+        readCap.map { SafeFiles.readPlain(u.path, max: $0) } ?? (try? Data(contentsOf: u))
+    }
+
+    private func decoded(_ data: Data) -> Ordered? {
         let dec = JSONDecoder()
         dec.dateDecodingStrategy = .iso8601
-        guard let r = data.flatMap({ try? dec.decode(R.self, from: $0) }), !idMustMatch || r.id == id else { return nil }
-        return r
+        return (try? dec.decode(Read.self, from: data))?.ordered
+    }
+
+    func load(_ id: String) -> R? { loadOrdered(id)?.receipt }
+
+    /// A receipt with its place in the order receipts were made.
+    func loadOrdered(_ id: String) -> Ordered? {
+        guard validID(id), let o = read(url(id)).flatMap(decoded), !idMustMatch || o.receipt.id == id else { return nil }
+        return o
     }
 
     /// The ids in the root that `include` takes (default: `validID`). `.flat`: the files' ids, in the order of their names.
@@ -242,9 +319,10 @@ struct ReceiptStore<R: StoredReceipt> {
         }
     }
 
-    /// The receipts `include` takes (default: every valid one), newest first.
+    /// The receipts `include` takes (default: every valid one), newest first (`newestFirst`: two started in one second in the
+    /// order they were made).
     func list(_ include: ((String) -> Bool)? = nil) -> [R] {
-        ids(include).compactMap(load).sorted { $0.started > $1.started }
+        ids(include).compactMap(loadOrdered).sorted(by: Self.newestFirst).map(\.receipt)
     }
 
     /// The journal beside a receipt, opened to append (its folder made first).
