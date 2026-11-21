@@ -350,6 +350,8 @@ final class SettingsModel: ObservableObject {
     /// Bumped by every start and Cancel: an end of an earlier sign-in (replaced, cancelled) never takes a newer one's state away.
     private var signInGenerations: [String: Int] = [:]
     private var newSignInGeneration = 0
+    /// The id the draft's sign-in was started for (the draft's name may change after).
+    private var newSignInProfile: String?
 
     /// Claude Code's sign-in on a profile's folder in Terminal, followed to its end. `email`: the address filled in (a
     /// profile's own account, never another's); the account wanted is that seat of the profile (its ids and organisation),
@@ -360,9 +362,9 @@ final class SettingsModel: ObservableObject {
         let generation = (signInGenerations[id] ?? 0) + 1
         signInGenerations[id] = generation
         signIns[id] = .waiting
-        // the folder is the picked profile's own (SignInWindow.folder): it must be the one this list holds for that profile
-        let listed = accounts.first { $0.id == id }?.configDir ?? ""
-        SignInWindow.start(claude, profile: e, expecting: listed, wanted: SignInWindow.wanted(for: e, email: email)) { [weak self] end in
+        // the folder is the picked profile's own (SignInWindow.folder): the SAVED list must hold this profile with this folder
+        // (never the list being edited), and no other profile may own it
+        SignInWindow.start(claude, profile: e, saved: saved, listed: true, wanted: SignInWindow.wanted(for: e, email: email)) { [weak self] end in
             guard let self, self.signInGenerations[id] == generation else { return }
             // another profile's account that signed in is refused in words (one profile per account), never taken
             var owner: String?
@@ -381,10 +383,10 @@ final class SettingsModel: ObservableObject {
     }
 
     /// Cancel on "Signing in": the window and its login end, the line goes.
-    func cancelSignIn(_ id: String, folder: String) {
+    func cancelSignIn(_ id: String) {
         signInGenerations[id] = (signInGenerations[id] ?? 0) + 1
         signIns[id] = nil
-        SignInWindow.stop(folder: folder)
+        SignInWindow.stop(profile: id)           // by the profile it was started for, whatever its folder says now
     }
 
     /// Claude Code's sign-in for the new profile's folder (SignInWindow), followed to its end: "signing in…" until then,
@@ -396,9 +398,10 @@ final class SettingsModel: ObservableObject {
         d.signInSaid = nil; d.seatAtAsk = Account.signedInSeat(configDir: d.configDir)     // signing in again waits for another account
         d.asking = false; d.signInAsked = Date(); d.signInRunning = true
         let picked = d.entry
+        newSignInProfile = picked.id
         draft = d; tick += 1
-        // the draft's own folder, and no other (SignInWindow.folder: none, or another's, starts nothing)
-        SignInWindow.start(claude, profile: picked, expecting: folder, wanted: email.map { SignedInAccount(email: $0, origin: .record) }, creating: true) { [weak self] end in
+        // the draft's own folder, and no other: not another saved profile's, `~`, a relative path… (SignInWindow.folder)
+        SignInWindow.start(claude, profile: picked, saved: saved, listed: false, wanted: email.map { SignedInAccount(email: $0, origin: .record) }, creating: true) { [weak self] end in
             self?.newSignInEnded(end, generation: generation, folder: folder)
         }
     }
@@ -419,7 +422,7 @@ final class SettingsModel: ObservableObject {
         newSignInGeneration += 1
         d.signInRunning = false; d.signInAsked = nil; d.seatAtAsk = nil; d.signInSaid = nil
         draft = d
-        SignInWindow.stop(folder: d.configDir)
+        if let id = newSignInProfile { SignInWindow.stop(profile: id) }      // the one it was started for, not the draft's folder now
     }
 
     func runner(of profile: String) -> SwitchRunner {
@@ -691,8 +694,10 @@ final class SettingsModel: ObservableObject {
         guard d.started else { draft = nil; selection = accounts.first?.id; return }
         discarding = true
         newSignInGeneration += 1                       // a sign-in window of this setup ends with it (below), its end is ignored
+        let started = newSignInProfile
         DispatchQueue.global(qos: .userInitiated).async {
-            SignInWindow.stopNow(folder: d.configDir)  // before its folder and sign-in are removed (never while a login runs on it)
+            // before its folder and sign-in are removed (never while a login runs on it): the one this setup started
+            if let started { SignInWindow.stopNow(profile: started) }
             // a full look, here: the sign-out must run with the `claude` that is really there, never with nothing
             // (that would delete the folder and orphan its sign-in in the Keychain)
             let done = NewAccountSetup.discard(d, claude: ClaudeCLI.find())
@@ -1838,7 +1843,7 @@ struct AccountSettings: View {
                 HStack(spacing: 8) {
                     BoxNote(text: "Signing in: finish it in Terminal and the browser.", tone: .caution).lineLimit(1)
                     Spacer(minLength: 6)
-                    Button("Cancel") { model.cancelSignIn(entry.id, folder: entry.configDir) }
+                    Button("Cancel") { model.cancelSignIn(entry.id) }
                         .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
                 }
             case .said(let said):

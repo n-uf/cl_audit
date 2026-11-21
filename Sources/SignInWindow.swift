@@ -81,39 +81,49 @@ enum SignInWindow {
     // MARK: starting and stopping
 
     private final class Active {
+        let profile: String
         let folder: String
         let run: ClaudeSignIn
         var cancelled = false
-        init(folder: String, run: ClaudeSignIn) { self.folder = folder; self.run = run }
+        init(profile: String, folder: String, run: ClaudeSignIn) { self.profile = profile; self.folder = folder; self.run = run }
     }
     private static let lock = NSLock()
     nonisolated(unsafe) private static var active: Active?
 
-    /// The folder a sign-in is for: the picked profile's own, expanded, and nothing else. Pure. nil (refused) when the profile
-    /// names no folder (an empty one would fall back to ~/.claude: never), or when `expecting` (the folder the call site
-    /// itself holds for that profile: the draft's, the profile list's) is empty or isn't the same folder. The default
-    /// folder comes out only for the profile whose own folder it is.
-    static func folder(of picked: AccountEntry, expecting: String? = nil) -> String? {
+    /// The folder a sign-in is for: the picked profile's own, expanded, and nothing else. Pure. nil (refused) when:
+    /// - the profile names no folder (an empty one would fall back to ~/.claude), or one that isn't an absolute path or
+    ///   `~/…` (relative, `~user`, with a `.` or `..` part);
+    /// - it is `/`, the home folder or one that holds it (`~` alone would run Claude Code with CLAUDE_CONFIG_DIR=$HOME);
+    /// - another saved profile owns it, holds it or sits inside it (FolderRules.configOwner: one profile, one folder);
+    /// - `listed` (a profile of the Settings list) and the SAVED list (never the one being edited) doesn't hold this profile
+    ///   with this very folder. A draft (`listed` false) is no profile of the list yet: its folder is its own when nobody
+    ///   else's. The default ~/.claude therefore comes out only for the profile whose own saved folder it is, or a draft
+    ///   no other profile has it.
+    static func folder(of picked: AccountEntry, saved: [AccountEntry], listed: Bool, home: String = NSHomeDirectory()) -> String? {
         let own = picked.configDir.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !own.isEmpty else { return nil }
+        guard own == "~" || own.hasPrefix("~/") || own.hasPrefix("/") else { return nil }
         let dir = expand(own)
-        if let expected = expecting {
-            let e = expected.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !e.isEmpty, FolderKey.canonical(e) == FolderKey.canonical(dir) else { return nil }
+        guard dir.hasPrefix("/"), !dir.split(separator: "/").contains(where: { $0 == ".." || $0 == "." }) else { return nil }
+        let key = FolderKey.canonical(dir), homeKey = FolderKey.canonical(home)
+        guard key != "/", key != homeKey, !homeKey.hasPrefix(key + "/") else { return nil }
+        if listed {
+            guard let s = saved.first(where: { $0.id == picked.id }), !s.configDir.trimmingCharacters(in: .whitespaces).isEmpty,
+                  FolderKey.canonical(s.configDir) == key else { return nil }
         }
+        guard FolderRules.configOwner(dir, among: saved, except: listed ? picked.id : nil) == nil else { return nil }
         return dir
     }
 
     /// Claude Code's sign-in for the picked profile's folder in a Terminal window, followed to its end. The folder is
-    /// `folder(of:expecting:)`: a profile with none, or one that isn't the call site's, starts nothing (`refused`), and the
-    /// guard is never asked. `wanted`: the account it should end on (nil: whoever signs in). `creating`: only for a brand-new
-    /// folder the person just chose (New profile), which the guard makes first (owner only); any other sign-in needs its
-    /// folder there, and a folder the person deleted never comes back. `onState` and `onEnd` come on the main queue, `onEnd`
-    /// once and always (a refused start ends `refused` or `failed`). Start from the main thread.
-    static func start(_ claude: String, profile: AccountEntry, expecting: String?, wanted: SignedInAccount?, creating: Bool = false,
+    /// `folder(of:saved:listed:)`: one that fails it starts nothing (`refused`), and the guard is never asked. `wanted`: the
+    /// account it should end on (nil: whoever signs in). `creating`: only for a brand-new folder the person just chose (New
+    /// profile), which the guard makes first (owner only); any other sign-in needs its folder there, and a folder the person
+    /// deleted never comes back. `onState` and `onEnd` come on the main queue, `onEnd` once and always (a refused start ends
+    /// `refused` or `failed`). Start from the main thread.
+    static func start(_ claude: String, profile: AccountEntry, saved: [AccountEntry], listed: Bool, wanted: SignedInAccount?, creating: Bool = false,
                       onState: @escaping (ClaudeSignIn.State) -> Void = { _ in }, onEnd: @escaping (End) -> Void) {
         let account = Account(profile)
-        guard let dir = folder(of: profile, expecting: expecting), FolderKey.canonical(account.configDir) == FolderKey.canonical(dir) else {
+        guard let dir = folder(of: profile, saved: saved, listed: listed), FolderKey.canonical(account.configDir) == FolderKey.canonical(dir) else {
             DispatchQueue.main.async { onEnd(.refused) }
             return
         }
@@ -123,14 +133,16 @@ enum SignInWindow {
             return
         }
         var tools = ClaudeCLI.authTools
-        tools.mayLaunch = { _, _ in true }
+        // ClaudeSignIn asks again when it begins, later on its own queue (the folder may have gone since): the same folder, still
+        // a plain folder there (never created by this ask, and never recorded as a launch: that was asked once, above)
+        tools.mayLaunch = { _, f in FolderKey.canonical(f.path) == FolderKey.canonical(dir) && FolderGuard.folderReady(f.path) }
         tools.openTerminal = { ClaudeCLI.openTerminal($0) }
         let t = timing
         let run = ClaudeSignIn(folder: account.authFolder, wanted: wanted, timeout: t.timeout, tools: tools, claude: claude,
                                confirm: wordSeam ?? { word($0) }, work: work, title: title, shown: tilde(account.configDir),
                                startGrace: t.startGrace, terminalProfiles: terminalProfiles, lateSweep: t.lateSweep,
                                locks: locks, poll: t.poll)
-        let mine = Active(folder: account.configDir, run: run)
+        let mine = Active(profile: profile.id, folder: dir, run: run)
         lock.lock(); active = mine; lock.unlock()
         run.start(onState: onState) { outcome in
             lock.lock(); if active === mine { active = nil }; let cancelled = mine.cancelled; lock.unlock()
@@ -138,18 +150,33 @@ enum SignInWindow {
         }
     }
 
-    /// Ends the app's sign-in on this folder (the login in its window, and the window), asking nothing: the person's Cancel.
-    /// Nothing for another folder's sign-in.
-    static func stop(folder configDir: String) {
-        guard let a = take(configDir) else { return }
+    /// Ends the app's sign-in of this profile (the login in its window, and the window), asking nothing: the person's Cancel.
+    /// By the profile the sign-in was started for, never by a folder read again (it may have changed since). Nothing for
+    /// another profile's sign-in.
+    static func stop(profile id: String) {
+        guard let a = take(profile: id) else { return }
         a.run.stop()
     }
 
     /// The same, done before it returns (a few seconds at most; never waits for the verified word): for what removes the
-    /// folder next (cancelling New profile) and for quitting. Never on the main thread's critical path but those.
-    static func stopNow(folder configDir: String) {
-        guard let a = take(configDir) else { return }
+    /// folder next (cancelling New profile, removing a profile) and for quitting. Never on the main thread's critical path
+    /// but those.
+    static func stopNow(profile id: String) {
+        guard let a = take(profile: id) else { return }
         a.run.stopNow()
+    }
+
+    /// This app's sign-in window is open (or being opened) on this folder: another sign-in there waits for it.
+    static func runs(on configDir: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        guard let a = active else { return false }
+        return FolderKey.canonical(a.folder) == FolderKey.canonical(configDir)
+    }
+
+    /// This app's sign-in window is open for this profile.
+    static func runs(profile id: String) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        return active?.profile == id
     }
 
     /// cl_audit is quitting: the app's sign-in ends (window and login) and Terminal's kept profiles of cl_audit's sign-ins go.
@@ -159,9 +186,9 @@ enum SignInWindow {
         sweepNow()
     }
 
-    private static func take(_ configDir: String) -> Active? {
+    private static func take(profile id: String) -> Active? {
         lock.lock(); defer { lock.unlock() }
-        guard let a = active, FolderKey.canonical(a.folder) == FolderKey.canonical(configDir) else { return nil }
+        guard let a = active, a.profile == id else { return nil }
         a.cancelled = true
         return a
     }

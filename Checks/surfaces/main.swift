@@ -3078,7 +3078,7 @@ do {
     check(settingsAddress == nil && launched == ["login \(Account(noSeat).configDir)"] && sawScripts == 2 && said.contains("auth login")
           && !said.contains(u3.email!) && !said.contains("--email") && clashModel.runner(of: e.id).goal == nil,
           "Settings' Sign in in a clash, no seat: the plain sign-in (the sign-in window), no address, never Other's u3: \(launched) \(sawScripts)")
-    clashModel.cancelSignIn(e.id, folder: noSeat.configDir)          // the stand-in Terminal never runs it: the window's sign-in ends here
+    clashModel.cancelSignIn(e.id)        // the stand-in Terminal never runs it: the window's sign-in ends here
     RunLoop.main.run(until: Date().addingTimeInterval(0.5))
     ClaudeLocator.current = keepLocator; ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = nil
     // the address pop-up's Sign in… on a profile with no seat whose sign-in is on another account (u2; the folder names
