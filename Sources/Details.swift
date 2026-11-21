@@ -171,7 +171,7 @@ struct DetailsView: View {
                         }
                     }
                     if let n = info.activeNote {
-                        Text(n).font(.caption2).foregroundStyle(.tertiary).fixedSize(horizontal: false, vertical: true)
+                        Text(n).font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                     if let plan = info.plan {
                         Text(Account.planWords(plan) + " plan").font(.caption2.weight(.medium))

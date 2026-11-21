@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- The note under the account on the Dock icon's details panel ("Usage: Claude Code on …", or why Claude Code's account is shown) is drawn in the normal secondary grey instead of the faint one, so it reads on every face.
 
 ## 26.11.71 — 2026-11-20
 
