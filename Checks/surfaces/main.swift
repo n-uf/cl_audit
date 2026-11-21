@@ -2484,9 +2484,11 @@ do {
     var noOrg = rec(); noOrg.resolved?.codeOrganization = nil
     _ = Store.writeStatus(e.id, noOrg)
     let oldRec = QuickChatTarget(e, now: now)
-    check(oldRec.account?.organization == nil && qkey(oldRec).keeps(qkey(base)) && qkey(base).keeps(qkey(oldRec))
+    // (H2: a process started on such a record isn't kept once the organisation is known again: it is asked again, fail closed;
+    // one started on the known seat is kept through the record that doesn't know it)
+    check(oldRec.account?.organization == nil && qkey(oldRec).keeps(qkey(base)) && !qkey(base).keeps(qkey(oldRec))
           && QuickChatTarget.sameAccount(oldRec.account, base.account),
-          "a record with no organisation for the folder's account: the same seat as with it, the process kept")
+          "a record with no organisation for the folder's account: the same seat as with it; a process started on it isn't kept for the known seat, one started on the known seat is")
     let team = Seat(account: u1.account, organization: uuid(301), email: u1.email)
     _ = Store.writeStatus(e.id, rec(code: team))
     let teamChat = QuickChatTarget(e, now: now)
@@ -2509,9 +2511,9 @@ do {
     check(emptyChat.account?.organization == "" && qkey(emptyChat).keeps(qkey(bareChat)) && qkey(bareChat).keeps(qkey(emptyChat))
           && QuickChatTarget.sameAccount(emptyChat.account, bareChat.account),
           "no organisation and an empty one (the id and address in capitals): one seat, the process kept")
-    check(qkey(oldRec).keeps(qkey(bareChat)) && qkey(bareChat).keeps(qkey(oldRec)) && qkey(oldRec).keeps(qkey(teamChat)) && qkey(teamChat).keeps(qkey(oldRec))
+    check(qkey(oldRec).keeps(qkey(bareChat)) && !qkey(bareChat).keeps(qkey(oldRec)) && qkey(oldRec).keeps(qkey(teamChat)) && !qkey(teamChat).keeps(qkey(oldRec))
           && QuickChatTarget.sameAccount(oldRec.account, bareChat.account) && QuickChatTarget.sameAccount(teamChat.account, oldRec.account),
-          "a record from before codeOrganization with a seat of none or a Team seat: one seat, as before")
+          "a record from before codeOrganization with a seat of none or a Team seat: one seat; a process started on the unknown one isn't kept for none (\"\") nor the Team id (H2, fail closed), the other way it is")
     check(!qkey(teamChat).keeps(qkey(base)) && !qkey(base).keeps(qkey(teamChat)), "two organisation ids: two keys both ways")
     // the whole table of the organisation's three states (an id, "" none, nil not known) for one login (u1's id and address), both
     // ways: only an id against another id, or an id against none, is two seats; not known is left out whichever side it is on (so it

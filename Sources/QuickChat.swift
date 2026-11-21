@@ -212,9 +212,12 @@ struct QuickChatProcessKey: Equatable {
     var account: AccountIdentity?
 
     /// A process started with key `old` may answer for this one: the same claude, folder, model and thinking, and the
-    /// folder still on the same seat (QuickChatTarget.sameAccount).
+    /// folder still on the same seat (QuickChatTarget.sameAccount). A process started while the seat's organisation wasn't known
+    /// (nil) never stands for a seat whose organisation is known now ("" none, or an id): unknown isn't a match there, so a new
+    /// `claude` is started on the next message (fail closed). The other way (known then, not known now) it is kept.
     func keeps(_ old: QuickChatProcessKey?) -> Bool {
         guard let old else { return false }
+        if old.account?.organization == nil, account?.organization != nil { return false }
         return claude == old.claude && configDir == old.configDir && model == old.model && effort == old.effort
             && QuickChatTarget.sameAccount(account, old.account)
     }
