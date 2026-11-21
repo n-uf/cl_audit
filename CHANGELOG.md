@@ -10,11 +10,11 @@ the notes before updating.
 
 - Dock icons no longer run as apps just to show the usage: the Dock now draws each profile's usage itself, so a Dock icon has no running dot and no ⌘-Tab entry until you click it, and a click opens it as before. Its open dot for the Claude window stays. After an update, or for a new profile, a Dock icon app may start once for about a minute so the Dock can use it. If the Dock still can't draw it (Dock Tiles turned off under Login Items & Extensions in System Settings, say), the Dock icon app runs as before, about two minutes after cl_audit starts, until the Dock draws it again.
 - A switch now settles the scheduled tasks before any session moves. When they can't move at that moment (the new account got a differing copy since you pressed Switch, or its tasks file can't be written, or the old account's file changed), they stay together with their sessions, the other sessions move, and the switch goes on to the sign-in and says why the tasks stayed; it used to stop part way, with those tasks' sessions already moved. What changed now counts what actually moved. A switch stopped part way (the Claude window opened) may now have moved the tasks already: Undo puts them back, as before.
+- New profile with the Claude window off: Create (or Connect, for an existing folder) no longer stops after its first click and says nothing; it goes on to sign-in, and when it can't go on it says why. The Create key reads "Checking…" while it looks, and the Claude window switch, locked once the folder is made, says so and that Cancel starts over.
 
 ## 26.11.75 — 2026-11-21
 
 - In Settings ▸ Accounts, the row of the account Claude Code in Terminal is signed in to (while the Claude app is on another) now selects on a click like every standby account, and its Switch account key opens the Switch page, when that account is on the profile's standby list. It did nothing on a click.
-- New profile with the Claude window off: Create (or Connect, for an existing folder) no longer stops after its first click and says nothing; it goes on to sign-in, and when it can't go on it says why. The Create key reads "Checking…" while it looks, and the Claude window switch, locked once the folder is made, says so and that Cancel starts over.
 
 ## 26.11.74 — 2026-11-21
 
