@@ -10,7 +10,8 @@
 // - with the app signed out or not readable (or no Claude window), Claude Code's folder account is the active one, and for
 //   a profile with a window a muted line says why;
 // - the numbers are Claude Code's (they are read through its sign-in), and say whose when that isn't the active account
-//   ("Usage: Claude Code on b…@example.com");
+//   ("Usage: Claude Code on <account>": the record keeps only the fact and the account, `codeUsageLine` and `codeName`, and
+//   ResolvedAccount.lineText builds the sentence when a surface shows it, so it follows Show emails);
 // - Claude Code's folder on another profile's account in use: that profile has those numbers (one profile per account);
 //   the line says so and the lamp is off.
 // - The numbers are labelled with the address they were read for (`loginEmail`), and "differs" compares that reading's
@@ -97,8 +98,10 @@ enum AccountResolver {
         } else if ownerUnknown {
             // the numbers are hidden (stale) and nothing else says why: the one line, on every surface that shows it
             r.line = ownerUnknownWords
-        } else if r.differs, let c = codeLabel {
-            r.line = "Usage: Claude Code on " + AddressSettings.words(c)
+        } else if r.differs, codeLabel != nil {
+            // (the sentence is built when a surface shows it, ResolvedAccount.lineText: the record holds no address text and
+            // the line follows Show emails; codeName is the account)
+            r.codeUsageLine = true
         } else if stale {
             // the numbers are hidden (read for another account than the folder's record names: just after a switch, or the
             // Keychain's sign-in on another account) and nothing else says why: the way back, on every surface that shows the line
@@ -144,6 +147,16 @@ enum AccountResolver {
 
     /// A seat as compared with an account named by its id only: its organisation left out (one not known there isn't "none").
     static func known(_ s: Seat) -> AccountIdentity { AccountIdentity(s).withoutOrganization }
+}
+
+extension ResolvedAccount {
+    /// The one line of state as a surface says it now: `line`, else, when the numbers are another account's, "Usage: Claude Code
+    /// on" and Claude Code's account (hidden while addresses are hidden: AddressSettings.words). `blur`: a test override.
+    func lineText(blur: Bool? = nil) -> String? {
+        if let line { return line }
+        guard codeUsageLine == true, let name = codeName else { return nil }
+        return Self.usageOnPrefix + AddressSettings.words(name, blur: blur)
+    }
 }
 
 /// The split's words: the Claude app (the account in use) on one account, Claude Code, whose sign-in reads the numbers, on
@@ -220,7 +233,7 @@ struct AccountView: Equatable {
         guard let s else { return AccountView(label: nil, numbersOwner: nil, line: nil, lit: false, clash: nil) }
         if let r = s.resolved {
             return AccountView(label: r.email ?? r.account.map { "account \($0.prefix(8))" }, numbersOwner: r.codeName ?? r.numbersFor,
-                               line: r.line, lit: r.lit, clash: r.clash, account: r.account, recordTooLarge: r.recordTooLarge == true,
+                               line: r.lineText(), lit: r.lit, clash: r.clash, account: r.account, recordTooLarge: r.recordTooLarge == true,
                                differs: r.differs, codeAccount: r.codeAccount)
         }
         // a record from before the resolver (or none written yet): the sign-in it was read for

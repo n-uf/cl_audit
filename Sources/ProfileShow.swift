@@ -34,7 +34,7 @@ struct ProfileShow {
         let r = raw.resolved
         var d = ProfileDisplay.make(raw.headline(now: now, ages: ages), read: Usage.of(raw), sign: sign, otherAccount: raw.mismatch,
                                     inUse: view.lit, clash: r?.clash.map { ProfileDisplay.Clash(id: r?.clashID, name: $0) },
-                                    note: r?.line, splitTo: r?.email.flatMap { $0.contains("@") ? $0 : nil }, ages: ages, now: now)
+                                    note: r?.lineText(), splitTo: r?.email.flatMap { $0.contains("@") ? $0 : nil }, ages: ages, now: now)
         // a record from before the resolver has no line to say it in (Store.shown neither): no "account not confirmed" there
         if r == nil, d.line == .unconfirmed { d.line = nil }
         return ProfileShow(entry: e, display: d, record: shown, view: view, splitWords: SplitUsage.words(raw, d.split))
@@ -55,7 +55,7 @@ struct ProfileShow {
         // age line and the key say it instead. A switch waiting for the app keeps its words: they stay true)
         case .split:
             if display.sign == .signedOut || display.sign == .expired, splitWords?.switched != true { return nil }
-            return (short ? splitWords?.shortLine : splitWords?.line) ?? record?.resolved?.line
+            return (short ? splitWords?.shortLine : splitWords?.line) ?? record?.resolved?.lineText()
         case .given(let s): return s
         }
     }

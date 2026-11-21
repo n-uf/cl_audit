@@ -181,6 +181,13 @@ struct ResolvedAccount: Codable, Equatable {
     /// Team seats are two). "": the folder's record names the seat with no organisation; nil: not known (no seat, or a
     /// record from before it).
     var codeOrganization: String? = nil
+    /// The one line is "Usage: Claude Code on <codeName>" (the numbers are another account's than the one in use). Only the fact
+    /// is stored, not the sentence: `lineText` builds it when a surface shows it, so it follows Show emails and never holds an
+    /// address in the record (a record from before it holds the sentence in `line`: StatusCodec.drawable turns it into this).
+    var codeUsageLine: Bool? = nil
+
+    static let usageOnPrefix = "Usage: Claude Code on "
+    // (`lineText`, the sentence, is in AccountResolver.swift: this file is the widget's too, which has no AddressSettings)
 
     /// Whose the numbers are (ProfileCore's Headline.Owner): the app's account in use, when the app decided it; Claude
     /// Code's account (its name, else the numbers'); the label `numbersFor` when it is an address; `reading`: the
@@ -233,6 +240,13 @@ enum StatusCodec {
         s.fiveHour = percent(s.fiveHour); s.weekly = percent(s.weekly)
         s.fiveHourResets = time(s.fiveHourResets); s.weeklyResets = time(s.weeklyResets); s.updatedAt = time(s.updatedAt)
         s.scoped = s.scoped?.map { ScopedLimit(name: $0.name, percent: percent($0.percent), resets: time($0.resets)) }
+        // an older record holds "Usage: Claude Code on <account>" as text, an address in it as it was written: only the fact is
+        // kept, the sentence is built when a surface shows it (ResolvedAccount.lineText)
+        // (with no name to build it from, the line is dropped: the agent writes the record again with its next read)
+        if var r = s.resolved, r.line?.hasPrefix(ResolvedAccount.usageOnPrefix) == true {
+            r.line = nil; r.codeUsageLine = r.codeName == nil ? nil : true
+            s.resolved = r
+        }
         return s
     }
 
