@@ -3937,6 +3937,24 @@ do {
           "the profile's own colour: its pick, else its Dock icon's colour; none (unlit) for a Dock icon by usage or graphite")
     e.accent = nil; e.color = .usage
     check(e.accentColor == .orange, "accentColor keeps its orange for the places that need a colour (charts, keys)")
+    // a profile's colour reads the same everywhere: every dot before a profile's name is its light (ProfileLED), never a
+    // flat dot in accentColor (orange for a profile with none) — the tile bar, the card, the launcher palette, the menu bar's
+    // menu, the Dock panels
+    let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
+    var flat: [String] = [], lights: [String: Int] = [:]
+    for f in ["Launcher.swift", "MenuBar.swift", "Details.swift", "Settings.swift"] {
+        let lines = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? ["(missing \(f))"]
+        for (i, l) in lines.enumerated() where l.contains("Circle().fill") && (l.contains("accent") || l.contains("info.accent")) {
+            flat.append("\(f):\(i + 1)")
+        }
+        lights[f] = lines.filter { $0.contains("ProfileLED(color:") && $0.contains("ownColor") }.count
+    }
+    check(flat.isEmpty && lights["Launcher.swift", default: 0] >= 2 && lights["MenuBar.swift", default: 0] >= 1
+          && lights["Details.swift", default: 0] >= 2 && lights["Settings.swift", default: 0] >= 1,
+          "every dot before a profile's name is its own light (ownColor, unlit for none), never an orange fallback: flat \(flat), lights \(lights)")
+    let info = DetailsInfo(name: "x", icon: NSImage(), login: nil, expected: nil, mismatch: false, plan: nil, fiveHour: nil, fiveHourResets: nil,
+                           weekly: nil, weeklyResets: nil, updated: nil, source: nil, problem: nil, renewNote: nil, needsLogin: false)
+    check(info.ownColor == nil && !ProfileLED.lamp(info.ownColor).lit, "a Dock panel told nothing of the profile's colour shows the unlit light, not orange")
 }
 
 // why Claude Code's sign-in didn't open (ClaudeCLI.startLogin), each said in the switch's step (SwitchRunner.loginWords):

@@ -24,6 +24,8 @@ struct DetailsInfo {
     var needsLogin: Bool
     var design: PanelDesign = .glow
     var accent: NSColor = Painter.orange
+    /// The profile's own colour for its light before the name (ProfileLED); nil: none of its own, the light unlit.
+    var ownColor: TileColor? = nil
     var refreshing = false
     var scoped: [ScopedLimit] = []
     var credits: Credits? = nil
@@ -65,7 +67,7 @@ extension DetailsInfo {
             name: name, icon: icon, login: s.record?.loginEmail, expected: s.record?.expectedEmail, mismatch: d.otherAccount,
             plan: s.plan, fiveHour: u?.fiveHour, fiveHourResets: u?.fiveHourResets, weekly: u?.weekly,
             weeklyResets: u?.weeklyResets, updated: d.readAt, source: u?.source, problem: problem, renewNote: s.record?.renewNote,
-            needsLogin: d.needsLogin, design: e.panelDesign, accent: e.accentNSColor, refreshing: refreshing,
+            needsLogin: d.needsLogin, design: e.panelDesign, accent: e.accentNSColor, ownColor: e.ownColor, refreshing: refreshing,
             scoped: e.showFable ? u?.scoped ?? [] : [], credits: u?.credits, noFiveHour: s.record?.noFiveHour == true,
             noNumbers: s.noNumbersWords, noNumbersShort: s.noNumbersShort, stale: d.tier == .stale)
         // (in a clash the app didn't decide, the profile's own account, as on the card: never the folder's, the other profile's;
@@ -152,7 +154,7 @@ struct DetailsView: View {
                     .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
-                        Circle().fill(Color(nsColor: info.accent)).frame(width: 8, height: 8)
+                        ProfileLED(color: info.ownColor)
                         Text("Claude \(info.name)").font(.system(size: 15, weight: .semibold))
                     }
                     // (accountLine: the account in use with its lamp; else the sign-in's line; none in a clash with no
@@ -238,7 +240,7 @@ struct CompactView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 7) {
-                Circle().fill(Color(nsColor: info.accent)).frame(width: 8, height: 8)
+                ProfileLED(color: info.ownColor)
                 Text("Claude \(info.name)").font(.system(size: 13, weight: .semibold))
                 Spacer()
                 if let plan = info.plan { Text(Account.planWords(plan)).font(.caption).foregroundStyle(.secondary) }

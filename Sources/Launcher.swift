@@ -720,7 +720,7 @@ struct PaletteView: View {
                     Image(nsImage: row.icon).resizable().frame(width: 42, height: 42)
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
-                            Circle().fill(row.accent).frame(width: 7, height: 7)
+                            ProfileLED(color: row.entry.ownColor)
                             Text(row.entry.name).font(.system(size: 13, weight: .semibold))
                             if row.activity.desktopOpen { OpenBadge() }
                             Text(row.subtitle).font(.caption2).lineLimit(1)

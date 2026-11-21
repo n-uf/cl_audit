@@ -434,7 +434,7 @@ struct MenuBarRow: View {
         let full = d.full(now: now), lit = d.lamp, stale = d.tier == .stale
         VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 6) {
-                Circle().fill(Color(nsColor: profile.entry.accentNSColor)).frame(width: 7, height: 7)
+                ProfileLED(color: profile.entry.ownColor)
                 Text("Claude \(profile.entry.name)").font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
                 Spacer(minLength: 8)
                 if let full {
