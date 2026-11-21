@@ -9,14 +9,14 @@ the notes before updating.
 ## Unreleased
 
 - Settings ▸ Dock icon ▸ Runs now says it has no effect while the Dock draws the icon itself, and applies only when the Dock can't (Dock Tiles turned off, say); the line under it says which is the case now.
+- Settings ▸ Claude window: an older profile's window that's on with no data folder named says "none named yet", not "none yet (made when the window is turned on)".
+- Switch account keeps the scheduled tasks (and their sessions) with the old account, and says why, when the new account's tasks file, or the old one's while it has tasks to move, holds task state it can't read (anything but an object or null), or the new account has the same task with `enabled` set to anything but `false` (a `0` used to count as paused and was replaced).
 
 ## 26.11.79 — 2026-11-21
 
 - New profile's Sign in, and the sign-in keys in Settings (Sign in with another account, the plain Sign in, signing back in to the profile's own account), now follow Claude Code's sign-in window to its end: it closes itself once you are signed in, declined, timed out or replaced by another sign-in, and the page says which. A sign-in cl_audit couldn't confirm is no longer shown as signed in, another profile's account is refused in words, and only the address you typed is ever filled in.
 - After a sign-in ends on another account than the one wanted, or one cl_audit couldn't confirm, Settings says what happened: Claude Code is now on that account, the profile uses it, and the account before is on standby to switch back to. A second sign-in on a folder waits for the one that is open (also the switch's and the menus'), and a profile's folder that is `~`, the home folder, relative or another profile's is refused.
 - Terminal no longer collects a leftover profile for every sign-in window cl_audit opened: they are removed when cl_audit starts and quits, and when it is uninstalled.
-- Settings ▸ Claude window: an older profile's window that's on with no data folder named says "none named yet", not "none yet (made when the window is turned on)".
-- Switch account keeps the scheduled tasks (and their sessions) with the old account, and says why, when the new account's tasks file, or the old one's while it has tasks to move, holds task state it can't read (anything but an object or null), or the new account has the same task with `enabled` set to anything but `false` (a `0` used to count as paused and was replaced).
 
 ## 26.11.78 — 2026-11-21
 
