@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.73 — 2026-11-21
+
 - Two backups of one profile made in the same second (a switch right after Back up now, say) no longer fail now and then (with "couldn't start a backup" or "a backup with that name is there already"): each gets a name of its own.
 
 ## 26.11.72 — 2026-11-21
