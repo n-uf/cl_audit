@@ -27,6 +27,11 @@ repo="$here"
 . "$here/scripts/modules.sh"
 echo "compiling the shared modules (cl_kit $modules_tag)…"
 build_modules "$out" keychain -O
+# and AddressPrivacy (cl_kit's Privacy/: how an account address is hidden on screen), a fourth, standalone one: the app links
+# it, and so does the Dock tile plug-in, which is the same objects (the plug-in itself draws no address); the widget doesn't
+echo "compiling AddressPrivacy…"
+build_privacy "$out" -O
+privacy=(); while IFS= read -r f; do privacy+=("$f"); done < <(privacy_link "$out")
 echo "compiling…"
 # One compile for the app and its Dock tile plug-in (DockTile/): the same objects linked twice, so the plug-in draws a
 # tile with the app's own code. The plug-in's load-time function (docktile_load.c) goes into the plug-in only, and the
@@ -37,13 +42,13 @@ mkdir -p "$out/obj"
 frameworks=(-framework AppKit -framework SwiftUI -framework Charts -framework Security -framework ServiceManagement
   -framework UserNotifications -framework WidgetKit)
 swiftc -target arm64-apple-macos13.0 -o "$out/UsageDock" "$out"/obj/*.o \
-  -L "$out" -lProfileCore -lClaudeAuth -lRuns "${frameworks[@]}"
+  -L "$out" -lProfileCore -lClaudeAuth -lRuns "${privacy[@]}" "${frameworks[@]}"
 echo "linking the Dock tile plug-in…"
 clang -O2 -arch arm64 -mmacosx-version-min=13.0 -c -o "$out/docktile_load.o" "$here/DockTile/docktile_load.c"
 objs=()
 for o in "$out"/obj/*.o; do [[ "$(basename "$o")" == main.o ]] || objs+=("$o"); done
 swiftc -target arm64-apple-macos13.0 -emit-library -module-name DockTile -o "$out/DockTile" "${objs[@]}" "$out/docktile_load.o" \
-  -L "$out" -lProfileCore -lClaudeAuth -lRuns "${frameworks[@]}" -Xlinker -dead_strip -Xlinker -dead_strip_dylibs
+  -L "$out" -lProfileCore -lClaudeAuth -lRuns "${privacy[@]}" "${frameworks[@]}" -Xlinker -dead_strip -Xlinker -dead_strip_dylibs
 
 app="$out/$name.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"

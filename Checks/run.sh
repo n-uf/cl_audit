@@ -3,8 +3,9 @@
 #
 #   Checks/run.sh [kit|signin|backup|surfaces|docktile|accounts|firstrun|retention|setup|window|move|resume|sidefiles|render|quick-chat|scan|all] [--volume] [--no-build]
 #
-#   kit       the shared modules' own suites (ProfileCore, Runs, ClaudeAuth, ClaudeSignIn, ClaudeAuth without the Keychain): the
-#             vendored cl_kit tag's Checks/run.sh, on Vendor/cl_kit-<tag>/ itself (Vendor/CL_KIT names the tag)
+#   kit       the shared modules' own suites (ProfileCore, Runs, ClaudeAuth, ClaudeSignIn, ClaudeAuth without the Keychain, and
+#             AddressPrivacy: how a hidden address is drawn, spoken and put in a sentence): the vendored cl_kit tag's
+#             Checks/run.sh, on Vendor/cl_kit-<tag>/ itself (Vendor/CL_KIT names the tag)
 #   signin    the model, rules and page logic checks (the sign-in watch, New profile, the switch's move, menus, Restore/Export/Import pages)
 #   surfaces  the one account answer (AccountResolver) and every screen reading it alike; the Claude app's account from its log;
 #             no screen reading the sign-in files itself
@@ -60,7 +61,7 @@ for a in "$@"; do
     all) suites+=(kit signin backup surfaces docktile accounts firstrun retention setup window move resume sidefiles render quick-chat scan) ;;
     --volume) volume=1 ;;
     --no-build) build=0 ;;
-    -h|--help) sed -n '2,49p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,50p' "$0"; exit 0 ;;
     *) echo "unknown argument: $a" >&2; exit 64 ;;
   esac
 done
@@ -73,20 +74,24 @@ srcs+=("$APP/Widget/WidgetViews.swift")
 frameworks=(-framework AppKit -framework SwiftUI -framework Charts -framework Security -framework ServiceManagement
             -framework UserNotifications -framework WidgetKit)
 
-# The shared modules (ProfileCore, Runs, ClaudeAuth with Auth/Keychain.swift) from the vendored cl_kit tag (scripts/modules.sh),
-# built once per run like build.sh does, but with testing on, into one folder every app suite links
+# The shared modules (ProfileCore, Runs, ClaudeAuth with Auth/Keychain.swift) and AddressPrivacy from the vendored cl_kit tag
+# (scripts/modules.sh), built once per run like build.sh does, but with testing on, into one folder every app suite links
 repo="$APP"
 . "$APP/scripts/modules.sh" || exit 1
 MODS="$WORK/kit-modules"
 core_lib=(-I "$MODS" -L "$MODS" -lProfileCore)
 runs_lib=(-I "$MODS" -L "$MODS" -lRuns)
 auth_lib=(-I "$MODS" -L "$MODS" -lClaudeAuth "${runs_lib[@]}")
+addr_lib=(); while IFS= read -r f; do addr_lib+=("$f"); done < <(privacy_link "$MODS")      # (with its frameworks)
 build_kit() {
-  [[ $build -eq 1 ]] || { [[ -f "$MODS/libClaudeAuth.a" ]] || { echo "no modules at $MODS (run without --no-build)" >&2; return 1; }; return 0; }
+  [[ $build -eq 1 ]] || { [[ -f "$MODS/libClaudeAuth.a" && -f "$MODS/libAddressPrivacy.a" ]] || { echo "no modules at $MODS (run without --no-build)" >&2; return 1; }; return 0; }
   rm -rf "$MODS"
   /usr/bin/lockf -k "$LOCK" bash -c '. "$1/scripts/modules.sh"; kit_build "$2" keychain -Onone -enable-testing' _ "$modules_kit" "$MODS" 2>&1 \
     | grep -E "error" || true
   [[ -f "$MODS/libProfileCore.a" && -f "$MODS/libRuns.a" && -f "$MODS/libClaudeAuth.a" ]] || { echo "compile failed: the shared modules" >&2; return 1; }
+  /usr/bin/lockf -k "$LOCK" bash -c 'repo="$1"; . "$1/scripts/modules.sh"; build_privacy "$2" -Onone -enable-testing' _ "$APP" "$MODS" 2>&1 \
+    | grep -E "error" || true
+  [[ -f "$MODS/libAddressPrivacy.a" ]] || { echo "compile failed: AddressPrivacy" >&2; return 1; }
 }
 build_kit || exit 1
 
@@ -98,7 +103,7 @@ compile() {
   [[ $build -eq 1 ]] || { [[ -x "$bin" ]] || { echo "no binary at $bin (run without --no-build)" >&2; return 1; }; return 0; }
   rm -f "$bin"
   /usr/bin/lockf -k "$LOCK" swiftc -Onone -swift-version 5 -target arm64-apple-macos14.0 \
-    -o "$bin" -D STAGE3 -D CL_AUDIT_CHECKS "${srcs[@]}" "$@" "${core_lib[@]}" "${auth_lib[@]}" "${frameworks[@]}" 2>&1 | grep -E "error" || true
+    -o "$bin" -D STAGE3 -D CL_AUDIT_CHECKS "${srcs[@]}" "$@" "${core_lib[@]}" "${auth_lib[@]}" "${addr_lib[@]}" "${frameworks[@]}" 2>&1 | grep -E "error" || true
   [[ -x "$bin" ]] || { echo "compile failed: $bin" >&2; return 1; }
 }
 

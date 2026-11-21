@@ -22,7 +22,8 @@
 // - The account: the record is a guess until the app's word confirms it. A login still running is never ended on a guess
 //   or on two sources that disagree; once it ended, the word is asked again a few times, and a sign-in it never confirms
 //   ends `unverified`, never `signedIn`.
-// - The window closes on a sign-in, a wrong account, a stop and a timeout. One that was declined or failed stays open to be
+// - The window closes on a sign-in, a wrong account, a stop and a timeout; one whose script Terminal was still starting
+//   when it ended closes as soon as its script shows (`endLateScript`). One that was declined or failed stays open to be
 //   read, until Return, the next start or a stop.
 // - The window: a Terminal settings file (`.terminal`: the command, run inside the login shell with `exec`, and "close if the
 //   shell exited cleanly"), opened like any document, which needs no permission to control Terminal. `.scripted` (Terminal's
@@ -131,9 +132,13 @@ public final class ClaudeSignIn {
     /// The settings file is named after the app ("<title> sign-in.terminal"): Terminal keeps the profile under the file's
     /// name, so a leftover is recognisable in its list.
     var settingsURL: URL { work.appendingPathComponent(profileName + ".terminal") }
-    var pidURL: URL { work.appendingPathComponent("sign-in.pid") }
-    var statusURL: URL { work.appendingPathComponent("sign-in.status") }
-    var declinedURL: URL { work.appendingPathComponent("sign-in.declined") }
+    /// The files the script writes (its pid, the login's status, the refusal's mark) are this sign-in's own: named after
+    /// `run`, 8 random hex made with it, so a script that starts after its sign-in ended (Terminal was slow) never writes into
+    /// the next sign-in's. Public for an app's checks (a stand-in window that writes them itself).
+    public var pidURL: URL { work.appendingPathComponent("sign-in-\(run).pid") }
+    public var statusURL: URL { work.appendingPathComponent("sign-in-\(run).status") }
+    public var declinedURL: URL { work.appendingPathComponent("sign-in-\(run).declined") }
+    private let run = String(format: "%08x", UInt32.random(in: .min ... .max))
     var lockURL: URL { locks.appendingPathComponent("signin-\(Self.lockKey(folder)).lock") }
 
     /// `folder`: the profile's one folder (made by the app beforehand when it is new). `wanted`: the account it should end on
@@ -201,15 +206,31 @@ public final class ClaudeSignIn {
 
     /// `stop()`, done before it returns: for an app that is quitting (its main queue won't run `onEnd`). Blocks for as long
     /// as ending the login takes (a few seconds at most); never waits for the verified word.
-    public func stopNow() { Self.queue.sync { self.end(.stopped) } }
+    /// A script Terminal was still starting (`endLateScript`) is waited for here too, 3 s at most, and ended.
+    public func stopNow() {
+        Self.queue.sync {
+            self.end(.stopped)
+            guard lateEnd else { return }
+            let until = Date().addingTimeInterval(3)
+            while Date() < until, scriptPid() == nil || !loginStarted() { usleep(50_000) }
+            endLate()
+        }
+    }
 
     private func end(_ outcome: Outcome) {
         switch phase {
         case .idle: return
         case .running: finish(outcome)
         case .ended:                                                       // a window left open to be read
+            // a late script that just showed: once its login runs (2 s at most), so the login isn't left behind
+            let late = lateEnd && scriptPid() != nil
+            if late {
+                let until = Date().addingTimeInterval(2)
+                while Date() < until, !loginStarted() { usleep(50_000) }
+            }
             endScript(shell: true)
-            if !windowIsOpen { sweepProfiles(late: true) }                 // swept only once it is gone (a shell that outlived the wait keeps its profile)
+            if late, scriptPid() == nil { lateEnd = false; removeRunFiles() }
+            if !Self.workBusy(work) { sweepProfiles(late: true) }          // swept only once it is gone (a shell that outlived the wait keeps its profile)
         }
     }
 
@@ -218,10 +239,18 @@ public final class ClaudeSignIn {
         phase = .running
         self.onState = onState; self.onEnd = onEnd
         // one window per app: the earlier sign-in ends, and whatever an earlier run of the app left in its work folder
-        var ended = false                                                  // the earlier sign-in of this work folder already ended its script
-        if let earlier = Self.current, earlier !== self { earlier.end(.stopped); ended = earlier.work.standardizedFileURL.path == work.standardizedFileURL.path }
+        var ended: URL?                                                    // the earlier sign-in's pid file: it ended its own script
+        if let earlier = Self.current, earlier !== self { earlier.end(.stopped); ended = earlier.pidURL.standardizedFileURL }
         Self.current = self
-        if !ended { endScript(shell: true) }
+        // any other run's script (an earlier run of the app, a sign-in whose window started after it ended), by its pid file
+        // (one whose sign-in still waits for it, `endLateScript`, once its login runs: 2 s at most)
+        for f in Self.pidFiles(in: work) where f.standardizedFileURL != ended {
+            if Self.pendingLate.contains(f.standardizedFileURL.path) {
+                let until = Date().addingTimeInterval(2)
+                while Date() < until, !loginStarted(f) { usleep(50_000) }
+            }
+            endScript(shell: true, pidFile: f)
+        }
         // a shell that outlived the wait (it ignored the TERM) is a window still open: its pid file stays its only handle (no
         // sweep, no second window: one per app), and nothing is started on top of it
         if Self.scriptRuns(in: work) { return finish(.failed(.windowStillOpen)) }
@@ -245,7 +274,7 @@ public final class ClaudeSignIn {
         let watched = SignInScript.Watch(pid: pidURL, status: statusURL, declined: declinedURL)
         switch Authenticator(folder, tools: tools).startSignIn(claude: claude, email: wanted?.email, script: scriptURL,
                                                                removesItself: true, shown: shown, watch: watched) {
-        case .done: break
+        case .done: opened = true
         case .folderNotReady: return finish(.failed(.folderNotReady))
         case .otherAccount, .failed: return finish(.failed(.notOpened))
         }
@@ -348,20 +377,23 @@ public final class ClaudeSignIn {
         phase = .ended
         generation += 1                                                    // a word still on its way is dropped
         timer?.cancel(); timer = nil
-        // a start refused before it made its own script has no window to end: the pid file is an earlier window's, whose
-        // shell and login are none of its business (a later stop ends that window: `end` on the sign-in that has it)
+        // a start refused before it made its own script has no window to end (an earlier window's shell and login are none
+        // of its business: a later stop ends that window, `end` on the sign-in that has it)
         if ownsScript {
+            let unstarted = scriptPid() == nil                             // the script hasn't written its pid (yet)
             switch outcome {
             case .signedIn, .wrongAccount, .unverified, .stopped, .timedOut: endScript(shell: true)
             // left open to be read: only the login ends (one still waiting after a decline), the script then holds its window
             case .declined, .failed: endScript(shell: false)
             }
+            // Terminal may still be starting it (a stop or a timeout before its pid, or `notOpened` at the grace's end)
+            if unstarted, opened { lateEnd = true; endLateScript(until: max(started.addingTimeInterval(startGrace), Date().addingTimeInterval(5))) }
         }
         releaseLock()
         for u in [statusURL, declinedURL, settingsURL, scriptURL] { try? FileManager.default.removeItem(at: u) }
         // Terminal's kept profile goes once the window is gone; a window left open to be read keeps it until it is closed
         // (a stop, the next start)
-        if !windowIsOpen { sweepProfiles(late: true) }
+        if !Self.workBusy(work) { sweepProfiles(late: true) }
         let done = onEnd
         DispatchQueue.main.async { done(outcome) }
     }
@@ -505,21 +537,32 @@ public final class ClaudeSignIn {
 
     // MARK: ending it
 
-    /// The script's shell, from the pid it wrote: only while that pid still runs this script.
-    private func scriptPid() -> pid_t? {
-        guard let s = try? String(contentsOf: pidURL, encoding: .utf8), let pid = pid_t(s.trimmingCharacters(in: .whitespacesAndNewlines)),
+    /// The script's shell, from the pid it wrote (this sign-in's own pid file, or another run's).
+    private func scriptPid(_ file: URL? = nil) -> pid_t? { Self.pid(in: file ?? pidURL) }
+
+    private static func pid(in file: URL) -> pid_t? {
+        guard let s = try? String(contentsOf: file, encoding: .utf8), let pid = pid_t(s.trimmingCharacters(in: .whitespacesAndNewlines)),
               pid > 0 else { return nil }
         return pid
     }
 
+    /// The pid files of the work folder: every run's (`sign-in-<run>.pid`), and an older app's `sign-in.pid`.
+    private static func pidFiles(in work: URL) -> [URL] {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: work.path)) ?? []
+        return names.filter { $0.hasPrefix("sign-in") && $0.hasSuffix(".pid") }.sorted().map { work.appendingPathComponent($0) }
+    }
+
     /// Ends the login running in the script's window (and what it started), and the script itself when `shell`: asked first
     /// (SIGTERM; the script ends cleanly and its window closes), killed after 3 seconds (never the script's shell, whose
-    /// unclean end would leave its window open). Only processes of this app's own script, found by the pid it wrote and
-    /// checked by its command line; nothing else is signalled.
-    private func endScript(shell: Bool) {
-        guard let pid = scriptPid() else { return }
+    /// unclean end would leave its window open). Only processes of this app's own script, found by the pid it wrote
+    /// (`pidFile`: this sign-in's unless another run's is named) and checked by its command line; nothing else is
+    /// signalled. A pid file whose pid runs no script of the work folder goes, with that run's other files.
+    private func endScript(shell: Bool, pidFile: URL? = nil) {
+        let pidURL = pidFile ?? self.pidURL
+        guard let pid = scriptPid(pidURL) else { return }
         guard let l = ProcessTable.launch(of: pid), isOwnScript(l), ProcessTable.runs(pid) else {
-            try? FileManager.default.removeItem(at: pidURL)
+            let base = pidURL.deletingPathExtension()
+            for ext in ["pid", "status", "declined"] { try? FileManager.default.removeItem(at: base.appendingPathExtension(ext)) }
             closeWindow()
             return
         }
@@ -540,6 +583,63 @@ public final class ClaudeSignIn {
         }
     }
 
+    /// A script whose sign-in ended before it wrote its pid (a stop or a timeout while Terminal was still starting it, or
+    /// `notOpened` at the grace's end: its shell may already have the script open, so removing the file doesn't keep it from
+    /// running) ends as soon as it shows: its own pid file is looked at every `poll` (half a second at most) until `until`
+    /// (`startGrace` after the start, and at least 5 s after the end), also once a later sign-in has started (the files are
+    /// this one's alone). Once its `claude auth login` runs (2 s at most after the pid showed): asked to end between its pid
+    /// and its login, the script's shell would end and leave the login it was just starting behind, not among the children
+    /// asked to end. Ended, window and all, its profile is swept (and late). A shell that outlives the ask is asked again, a
+    /// few times.
+    private func endLateScript(until: Date, seen: Date? = nil, tries: Int = 3) {
+        Self.queue.asyncAfter(deadline: .now() + min(poll, 0.5)) { [self] in
+            guard lateEnd, phase == .ended else { return }
+            guard scriptPid() != nil else {
+                if Date() < until { endLateScript(until: until, tries: tries) } else { lateEnd = false }
+                return
+            }
+            let since = seen ?? Date()
+            if !loginStarted(), Date().timeIntervalSince(since) < 2 { return endLateScript(until: until, seen: since, tries: tries) }
+            if !endLate(), tries > 1 { endLateScript(until: until, seen: since, tries: tries - 1) }
+        }
+    }
+
+    /// A script Terminal started after its sign-in ended (`endLateScript`): pending until it is ended or the wait is over.
+    /// Its pid file is in `pendingLate` meanwhile (a start that ends it for it waits for its login too).
+    private var lateEnd = false {
+        didSet { if lateEnd { Self.pendingLate.insert(pidURL.standardizedFileURL.path) } else { Self.pendingLate.remove(pidURL.standardizedFileURL.path) } }
+    }
+    private static var pendingLate: Set<String> = []
+    /// The window was asked of Terminal (`startSignIn` opened it): only then can a script start late.
+    private var opened = false
+
+    /// The script's `claude auth login` runs (among its shell's children); `file`: another run's pid file.
+    private func loginStarted(_ file: URL? = nil) -> Bool {
+        guard let pid = scriptPid(file) else { return false }
+        let table = ProcessTable.table() ?? []
+        return Self.descendants(of: pid, in: table).contains { p in
+            table.first { $0.pid == p }?.launch.map(ProcessTable.isClaudeCode) == true
+        }
+    }
+
+    /// Ends the late script, if it showed: true once it is gone (then its profile is swept, unless another window of the work
+    /// folder is in use).
+    @discardableResult
+    private func endLate() -> Bool {
+        guard scriptPid() != nil else { return false }
+        endScript(shell: true)
+        guard scriptPid() == nil else { return false }
+        lateEnd = false
+        removeRunFiles()
+        if !Self.workBusy(work) { sweepProfiles(late: true) }
+        return true
+    }
+
+    /// The status and refusal mark a late script may have written after `finish` removed them.
+    private func removeRunFiles() {
+        for u in [statusURL, declinedURL] { try? FileManager.default.removeItem(at: u) }
+    }
+
     /// Terminal's kept profiles whose command runs in this app's work folder go (`TerminalProfiles`). `late`: once more after
     /// `lateSweep` seconds, for a window that closed itself after the script ended (not while the app's next sign-in runs: its
     /// profile is in use). Only for the settings-file window: `.scripted` leaves no profile.
@@ -548,11 +648,14 @@ public final class ClaudeSignIn {
         let work = self.work.path, profiles = terminalProfiles
         profiles.remove(commandsRunningIn: work)
         guard late, lateSweep > 0 else { return }
-        Self.queue.asyncAfter(deadline: .now() + lateSweep) {
-            if Self.current?.windowIsOpen == true { return }
-            profiles.remove(commandsRunningIn: work)
+        Self.queue.asyncAfter(deadline: .now() + lateSweep) { [work = self.work] in
+            if Self.workBusy(work) { return }
+            profiles.remove(commandsRunningIn: work.path)
         }
     }
+
+    /// A window of `work` is in use: the app's sign-in is under way, or a script of the work folder runs (any run's).
+    private static func workBusy(_ work: URL) -> Bool { current?.phase == .running || scriptRuns(in: work) }
 
     /// Sweeps Terminal's kept profiles of the sign-ins in `work`, with no sign-in of the caller's in hand: for an app that is
     /// starting (what earlier runs left) or quitting (a declined or failed window left open and closed by hand since, which
@@ -563,23 +666,20 @@ public final class ClaudeSignIn {
     /// itself and does nothing for that window).
     public static func sweep(work: URL, terminalProfiles: TerminalProfiles = .system) {
         queue.sync {
-            if current?.windowIsOpen == true || scriptRuns(in: work) { return }
+            if workBusy(work) { return }
             terminalProfiles.remove(commandsRunningIn: work.path)
         }
     }
 
-    /// A sign-in script of `work` (any app run's, any folder's) still runs: the pid in the work folder's `sign-in.pid` is
-    /// alive and its command line names `<work>/sign-in-<key>.command`. Its window is open and its profile in use. The one
-    /// test for a window no sign-in of this process holds (at start-up, or an earlier run's).
+    /// A sign-in script of `work` (any app run's, any folder's) still runs: a pid in one of the work folder's pid files
+    /// (`pidFiles`) is alive and its command line names `<work>/sign-in-<key>.command`. Its window is open and its profile
+    /// in use. The one test for a window no sign-in of this process holds (at start-up, or an earlier run's).
     private static func scriptRuns(in work: URL) -> Bool {
-        guard let s = try? String(contentsOf: work.appendingPathComponent("sign-in.pid"), encoding: .utf8),
-              let pid = pid_t(s.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 0, ProcessTable.runs(pid),
-              let l = ProcessTable.launch(of: pid) else { return false }
-        return l.args.contains { $0.hasPrefix(work.path + "/sign-in-") && $0.hasSuffix(".command") }
+        pidFiles(in: work).contains { f in
+            guard let pid = pid(in: f), ProcessTable.runs(pid), let l = ProcessTable.launch(of: pid) else { return false }
+            return l.args.contains { $0.hasPrefix(work.path + "/sign-in-") && $0.hasSuffix(".command") }
+        }
     }
-
-    /// The sign-in is under way, or its script still runs in a window left open to be read: its profile is in use.
-    private var windowIsOpen: Bool { phase == .running || (scriptPid().map { ProcessTable.runs($0) } ?? false) }
 
     /// The `.scripted` window, once its shell has ended (a settings-file window closes by itself).
     private func closeWindow() {

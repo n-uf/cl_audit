@@ -6,9 +6,15 @@
 #   ClaudeAuth   Auth/*.swift   imports ProfileCore and Runs: one folder's Claude Code sign-in, ClaudeSignIn.
 #                               Auth/Keychain.swift is optional: an app that never reads the Keychain builds without it
 #
+# and on its own, apart from the layers (it imports none of them, and they never import it):
+#
+#   AddressPrivacy  Privacy/*.swift  Foundation, AppKit, CoreImage, Combine, SwiftUI: an account address hidden on screen
+#
 #   kit_build OUT keychain|no-keychain [swiftc flags...]   builds the three into OUT (-O, -Onone, -enable-testing are the caller's)
 #   kit_link OUT                                           prints the flags that link them, one per line
-#   kit_sources Core|Run|Auth [left-out file names...]     prints a module's source files, one per line
+#   kit_build_privacy OUT [swiftc flags...]                builds AddressPrivacy into OUT
+#   kit_privacy_link OUT                                   prints the flags that link it (with its frameworks), one per line
+#   kit_sources Core|Run|Auth|Privacy [left-out names...]  prints a module's source files, one per line
 #
 # Every module: Swift 5 language mode, macOS 13, arm64. Needs $kit_root only if this file isn't in <kit>/scripts/.
 
@@ -49,3 +55,18 @@ kit_build() {
 }
 
 kit_link() { printf '%s\n' -I "$1" -L "$1" -lClaudeAuth -lRuns -lProfileCore; }
+
+kit_build_privacy() {
+  local out="$1"; shift
+  local srcs=() f
+  while IFS= read -r f; do srcs+=("$f"); done < <(kit_sources Privacy)
+  mkdir -p "$out"
+  rm -f "$out"/libAddressPrivacy.a
+  swiftc -swift-version 5 -parse-as-library -target "$kit_target" "$@" -module-name AddressPrivacy \
+    -emit-module -emit-module-path "$out/AddressPrivacy.swiftmodule" -emit-library -static -o "$out/libAddressPrivacy.a" \
+    "${srcs[@]}" || return 1
+}
+
+kit_privacy_link() {
+  printf '%s\n' -I "$1" -L "$1" -lAddressPrivacy -framework AppKit -framework SwiftUI -framework CoreImage -framework Combine
+}

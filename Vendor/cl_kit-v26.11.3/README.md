@@ -9,8 +9,8 @@
 > newer tag.
 
 The Swift modules shared by [cl_audit](https://github.com/n-uf/cl_audit) and [cl_quick](https://github.com/n-uf/cl_quick):
-the rules for reading Claude Code's accounts and usage, the one way to run a program, and one folder's Claude Code
-sign-in. Source only: each app copies a tagged release into its own repository, builds it in with `swiftc` and ships it in
+the rules for reading Claude Code's accounts and usage, the one way to run a program, one folder's Claude Code sign-in,
+and an account address hidden on screen. Source only: each app copies a tagged release into its own repository, builds it in with `swiftc` and ships it in
 its own release. Nothing here is a product of its own, and no prebuilt binaries are published.
 
 | Folder | Module | What it holds | Imports |
@@ -18,10 +18,12 @@ its own release. Nothing here is a product of its own, and no prebuilt binaries 
 | [`Core/`](Core/README.md) | ProfileCore | the account, usage and reading rules: ids, standby accounts, limits, headlines, what to show, times, parsing, the reader's state machine | Foundation |
 | [`Run/`](Run/README.md) | Runs | the one runner (timeout, SIGTERM, a grace, SIGKILL; output read while it runs), a program kept running, the cleaned environment of a `claude` run, the process table | Foundation |
 | [`Auth/`](Auth/README.md) | ClaudeAuth | one folder's Claude Code sign-in: which account, verified or guessed; the watch; renew and sign-out; ClaudeSignIn, the sign-in in a Terminal window followed to its outcome | Foundation, CryptoKit, ProfileCore, Runs |
+| [`Privacy/`](Privacy/README.md) | AddressPrivacy | an account address on screen: the one fixed stand-in or "hidden address" in its place, never the real address blurred or masked; views, labels and plain text; the setting as a value the app passes in | Foundation, AppKit, CoreImage, Combine, SwiftUI |
 
 The layers are ProfileCore → Runs → ClaudeAuth: ProfileCore never imports the others, Runs imports nothing of ours, and
-ClaudeAuth sits on both. Every module is Foundation only (no AppKit or SwiftUI), carries no app's paths, words or global
-state, and never logs. The suites' lints hold that.
+ClaudeAuth sits on both. They are Foundation only (no AppKit or SwiftUI), carry no app's paths, words or global state, and
+never log. AddressPrivacy stands apart: it draws, so it uses Apple's UI frameworks, but it imports no module of ours, no
+layer imports it, it names no app and never logs. The suites' lints hold all of that.
 
 ## The Keychain is optional
 
@@ -36,17 +38,17 @@ macOS 13 or later on Apple silicon, Xcode's Swift toolchain (Swift 5 language mo
 modules are static libraries built with `swiftc`, as both apps build them.
 
 ```bash
-scripts/build.sh                 # build/libProfileCore.a, libRuns.a, libClaudeAuth.a and their .swiftmodule
+scripts/build.sh                 # build/libProfileCore.a, libRuns.a, libClaudeAuth.a, libAddressPrivacy.a and their .swiftmodule
 scripts/build.sh --no-keychain   # the same without Auth/Keychain.swift
 ```
 
 An app's own build sources `scripts/modules.sh` from its vendored copy and calls `kit_build OUT keychain|no-keychain [flags]`
-and `kit_link OUT` (see the file's header).
+and `kit_link OUT`, and for AddressPrivacy `kit_build_privacy OUT [flags]` and `kit_privacy_link OUT` (see the file's header).
 
 ## Checks
 
 ```bash
-Checks/run.sh            # all suites: core, runs, auth, claudesignin, nokeychain
+Checks/run.sh            # all suites: core, runs, auth, claudesignin, nokeychain, addressprivacy
 Checks/run.sh auth       # one suite
 ```
 

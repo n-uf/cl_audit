@@ -2,7 +2,7 @@
 # The one entry point for cl_kit's check suites. Run here, or on an app's vendored copy (Vendor/cl_kit-<tag>/Checks/run.sh):
 # it always checks the tree it is in.
 #
-#   Checks/run.sh [core|runs|auth|claudesignin|nokeychain|all] [--no-build]
+#   Checks/run.sh [core|runs|auth|claudesignin|nokeychain|addressprivacy|all] [--no-build]
 #
 #   core          ProfileCore (Core/), compiled against it only: ids, standby, limits, times, levels, parsing, the reader;
 #                 its lint: Foundation only, no app's paths, files, words or global state
@@ -16,6 +16,9 @@
 #                 preferences
 #   nokeychain    ClaudeAuth built without Auth/Keychain.swift, as an app that never reads the Keychain builds it: it
 #                 compiles, and the libraries name no Security API and no `security` tool
+#   addressprivacy  AddressPrivacy (Privacy/) built on its own and its suite against it alone: a hidden address is the fixed
+#                 stand-in or "hidden address", never part of the real one, in every form; the reveal; the setting as a value.
+#                 Its lint first: Apple's frameworks only, no logging, no app named, imported by no layer
 #   all           all of them (the default)
 #
 #   --no-build    run the binaries built by the last run
@@ -36,14 +39,14 @@ LOCK=/private/tmp/cl_kit-build.lock
 suites=(); build=1
 for a in "$@"; do
   case "$a" in
-    core|runs|auth|claudesignin|nokeychain) suites+=("$a") ;;
-    all) suites+=(core runs auth claudesignin nokeychain) ;;
+    core|runs|auth|claudesignin|nokeychain|addressprivacy) suites+=("$a") ;;
+    all) suites+=(core runs auth claudesignin nokeychain addressprivacy) ;;
     --no-build) build=0 ;;
-    -h|--help) sed -n '2,28p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,30p' "$0"; exit 0 ;;
     *) echo "unknown argument: $a" >&2; exit 64 ;;
   esac
 done
-[[ ${#suites[@]} -gt 0 ]] || suites=(core runs auth claudesignin nokeychain)
+[[ ${#suites[@]} -gt 0 ]] || suites=(core runs auth claudesignin nokeychain addressprivacy)
 
 # swiftc through one lock, so parallel runs (this tree and a vendored copy) take turns
 locked() { /usr/bin/lockf -k "$LOCK" "$@"; }
@@ -141,12 +144,50 @@ run_nokeychain() {
   return $bad
 }
 
+# the addressprivacy suite: AddressPrivacy (Privacy/) built on its own, and Checks/addressprivacy/main.swift against it alone.
+# Its lint first (a failed lint makes the suite red, the checks still run): Privacy/ imports Apple's Foundation, AppKit,
+# CoreImage, Combine and SwiftUI only (no module of ours), never logs, names no app; and no layer module imports it.
+run_addressprivacy() {
+  local lint=0 n=0 f bad
+  for f in "$kit_root"/Privacy/*.swift; do
+    n=$((n + 3))
+    # every import, attributed ones too (@testable, @_exported, @preconcurrency); only the plain form of the five is allowed
+    bad="$(grep -n -E '^[[:space:]]*(@[A-Za-z_]+(\([^)]*\))?[[:space:]]+)*import[[:space:]]' "$f" \
+      | grep -v -E '^[0-9]+:[[:space:]]*import (Foundation|AppKit|CoreImage|Combine|SwiftUI)[[:space:]]*$' || true)"
+    [[ -z "$bad" ]] || { echo "FAIL privacy lint: $f imports more than Apple's UI frameworks: $bad"; lint=1; }
+    bad="$(grep -n -E '\b(NSLog|os_log|Logger\(|print\()' "$f" | grep -v -E '^[0-9]+: *//' || true)"
+    [[ -z "$bad" ]] || { echo "FAIL privacy lint: $f logs: $(printf '%s' "$bad" | head -2)"; lint=1; }
+    bad="$(grep -n -i -E 'cl_audit|cl_quick|cl-audit|cl-quick|usage-n-uf' "$f" || true)"
+    [[ -z "$bad" ]] || { echo "FAIL privacy lint: $f names an app: $(printf '%s' "$bad" | head -2)"; lint=1; }
+  done
+  n=$((n + 1))
+  bad="$(grep -n -E '^[[:space:]]*(@[A-Za-z_]+(\([^)]*\))?[[:space:]]+)*import[[:space:]]+([a-z]+[[:space:]]+)?AddressPrivacy([^A-Za-z0-9_]|$)' \
+    "$kit_root"/Core/*.swift "$kit_root"/Run/*.swift "$kit_root"/Auth/*.swift || true)"
+  [[ -z "$bad" ]] || { echo "FAIL privacy lint: a layer module imports AddressPrivacy: $bad"; lint=1; }
+  [[ $lint -ne 0 ]] || echo "privacy lint: $n/$n (Apple's frameworks only, no logging, no app named, imported by no layer)"
+  local mods="$WORK/addressprivacy/modules" bin="$WORK/addressprivacy/cl_kit-checks-addressprivacy" plink=()
+  mkdir -p "$WORK/addressprivacy"
+  if [[ $build -eq 1 ]]; then
+    rm -rf "$mods" "$bin"
+    locked bash -c '. "$1/scripts/modules.sh"; kit_build_privacy "$2" -Onone' _ "$kit_root" "$mods" \
+      || { echo "compile failed: AddressPrivacy" >&2; return 1; }
+    while IFS= read -r f; do plink+=("$f"); done < <(kit_privacy_link "$mods")
+    locked swiftc -Onone -swift-version 5 -target "$kit_target" -o "$bin" "$HERE/addressprivacy/main.swift" "${plink[@]}" || true
+  fi
+  [[ -x "$bin" ]] || { echo "compile failed: $bin" >&2; return 1; }
+  local status=0
+  run_binary addressprivacy "$bin" || status=$?
+  [[ $lint -eq 0 ]] || status=1
+  return $status
+}
+
 status=0; failed=()
 for s in "${suites[@]}"; do
   echo "── $s"
   case "$s" in
     claudesignin) run_claudesignin ;;
     nokeychain) run_nokeychain ;;
+    addressprivacy) run_addressprivacy ;;
     *) run_simple "$s" ;;
   esac
   [[ $? -eq 0 ]] || { status=1; failed+=("$s"); }
