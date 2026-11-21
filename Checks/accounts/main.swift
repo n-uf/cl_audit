@@ -919,6 +919,12 @@ do {
     let brokenWords = SwitchRunner.stayWords(pk) ?? ""
     check(pk.tasks == 0 && pk.taskStay == "the old account's scheduled tasks file can't be read" && !pk.taskStayTwin
           && brokenWords.contains("Fix that, then switch again."), "a broken source task file is said, with Fix that: \(brokenWords)")
+    // the target has one of their ids twice: refused (joined would put the source's task in both places, and the target's
+    // second copy would leave the file)
+    let dupe = taskSwitch("tc13", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"0 9 * * *"}"#,
+                          dstTask: #"{"id":"t1","cron":"0 9 * * *","enabled":false},{"id":"t1","cron":"other"}"#)
+    check(SwitchEngine.taskProblem(source: dupe.src, target: dupe.dst) == "two of the new account's scheduled tasks share an id",
+          "an id twice in the new account's file: refused")
     // a twin the target gets after the plan: the move checks the bytes it joins, and both task files stay as they were
     let late = taskSwitch("tc12", from: tA, to: tB, srcTask: #"{"id":"t1","cron":"0 9 * * *"}"#, dstTask: "")
     guard case .success(let pl) = SwitchEngine.plan(late.e, standby: late.e.standby[0], dataDir: late.wd, owned: []) else { check(false, "plan tc12"); exit(1) }

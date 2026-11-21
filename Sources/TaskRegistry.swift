@@ -113,6 +113,12 @@ enum TaskRegistry {
         // a task the target has under the same id must be the same task: otherwise the move would drop one for the other,
         // and it would survive only in the backup
         let have = dst["scheduledTasks"] as? [[String: Any]] ?? []
+        // one of their ids twice in the target: joined would put the source's task in both places, and the second copy would
+        // leave the file (kept only in the backup)
+        let haveIDs = have.compactMap { $0["id"] as? String }
+        if ids.contains(where: { id in haveIDs.filter { $0 == id }.count > 1 }) {
+            return TwinProblem(side: .target, words: "two of the new account's scheduled tasks share an id")
+        }
         for task in list {
             guard let id = task["id"] as? String, let mine = have.first(where: { $0["id"] as? String == id }) else { continue }
             if same(task, mine) { continue }
