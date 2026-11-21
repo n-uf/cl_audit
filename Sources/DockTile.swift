@@ -98,8 +98,9 @@ enum DockTileMenu {
         case action(String, Act)
     }
 
-    /// The menu's rows for a profile and its value now; `windowOpen`: the agent's word on its Claude window.
-    static func rows(_ e: AccountEntry, _ show: ProfileShow, windowOpen: Bool, now: Date = Date()) -> [Row] {
+    /// The menu's rows for a profile and its value now; `windowOpen`: the agent's word on its Claude window. The actions
+    /// are the agent's to do: with no agent running, the menu says so instead of offering them.
+    static func rows(_ e: AccountEntry, _ show: ProfileShow, windowOpen: Bool, agentRuns: Bool = true, now: Date = Date()) -> [Row] {
         let d = show.display, u = show.usage
         var rows: [Row] = [.info(e.name.isEmpty ? Account.label(e) : e.name)]
         if let full = d.full(now: now) { rows.append(.full("\(full.title) · \(full.both())")) }
@@ -115,6 +116,7 @@ enum DockTileMenu {
             rows.append(.info("No usage read yet"))
         }
         rows.append(.separator)
+        guard agentRuns else { rows.append(.info("cl_audit's agent isn't running: open cl_audit")); return rows }
         rows.append(.action("Quick chat", .quickChat))
         if e.claudeWindow {
             rows.append(.action(windowOpen ? "Show Claude window" : "Open Claude window", .openWindow))
@@ -145,6 +147,16 @@ enum DockTileMenu {
 extension DockTile {
     /// The Dock tile plug-in's menu asks the agent (DockTileMenu.object).
     static let menuNote = Notification.Name("local.usage-n-uf.docktile-menu")
+
+    /// The agent's mark says it runs: written within three of its beats (a capped read; the plug-in asks it in the Dock's
+    /// process, where it can't look at other processes).
+    static func agentRuns(now: Date = Date()) -> Bool {
+        guard let data = SafeRead.whole(Agent.markURL.path, max: SafeRead.recordMax) else { return false }
+        let dec = JSONDecoder(); dec.dateDecodingStrategy = .secondsSince1970
+        guard let m = try? dec.decode(AgentMark.self, from: data) else { return false }
+        let age = now.timeIntervalSince(m.beat)
+        return age >= 0 && age < Agent.beatSeconds * 3
+    }
 
     /// A Dock icon app you started (a click) quits by itself once it's been left for a minute while the Dock draws its
     /// icon: no window shown, not the app in front. One the agent started is the agent's to quit (TileTracker).

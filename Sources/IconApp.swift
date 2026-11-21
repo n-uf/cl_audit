@@ -415,16 +415,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         quitIfLeft()
     }
 
-    /// When this Dock icon app was last in use: in front, or a panel or window of it shown.
+    /// When this Dock icon app was last in use: in front, or a panel or window of it shown; the moment you left it (it
+    /// stopped being the app in front), and after the Mac wakes.
     var lastBusy = Date()
+    /// The Dock drew its tile when this app started (a fresh heartbeat then): the Dock may stop drawing it while the app
+    /// runs, so this counts as drawn too.
+    lazy var drawnAtStart: Bool = accountID.map { DockTile.drawn($0) } ?? false
+    private var leftObservers: [NSObjectProtocol] = []
 
-    /// Started by you (a click on its tile) while the Dock draws the icon itself: once you've left it for a minute (no
-    /// panel shown, not in front) it quits, its Claude window left alone, and the Dock draws the tile again (DockTile).
+    /// Started by you (a click on its tile, or reopened by macOS) while the Dock draws the icon itself: once you've left it
+    /// for a minute (no panel shown, not in front) it quits at its next 30 s tick, its Claude window left alone, and the
+    /// Dock draws the tile again (DockTile).
     func quitIfLeft() {
         guard !isSettingsApp, let id = accountID else { return }
+        _ = drawnAtStart
+        if leftObservers.isEmpty {
+            let busy: (Notification) -> Void = { [weak self] _ in self?.lastBusy = Date() }
+            leftObservers.append(NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main, using: busy))
+            leftObservers.append(NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main, using: busy))
+        }
         let inFront = NSApp.isActive, shown = NSApp.windows.contains { $0.isVisible }
         if inFront || shown { lastBusy = Date() }
-        guard DockTile.quitsWhenIdle(agentStarted: DockTile.agentStarted(CommandLine.arguments), drawn: DockTile.drawn(id),
+        guard DockTile.quitsWhenIdle(agentStarted: DockTile.agentStarted(CommandLine.arguments), drawn: drawnAtStart || DockTile.drawn(id),
                                      inFront: inFront, windowShown: shown, idleFor: Date().timeIntervalSince(lastBusy)) else { return }
         quietQuit = true
         NSApp.terminate(nil)

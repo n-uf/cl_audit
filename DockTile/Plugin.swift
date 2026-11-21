@@ -72,7 +72,8 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
         let record = SafeRead.whole(Store.statusFolder.appendingPathComponent("\(id).json").path, max: SafeRead.recordMax)
             .flatMap(StatusCodec.decode)
         let m = NSMenu(); m.autoenablesItems = false
-        for row in DockTileMenu.rows(e, ProfileShow.of(e, raw: record?.current()), windowOpen: DockTile.windowOpen(id)) {
+        for row in DockTileMenu.rows(e, ProfileShow.of(e, raw: record?.current()), windowOpen: DockTile.windowOpen(id),
+                                     agentRuns: DockTile.agentRuns()) {
             switch row {
             case .separator: m.addItem(.separator())
             case .info(let s):

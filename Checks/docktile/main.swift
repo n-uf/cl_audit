@@ -357,6 +357,20 @@ do {
         switch r { case .info(let s), .full(let s), .action(let s, _): return s; case .separator: return "" }
     }
     check(!all.contains { $0.contains("@") }, "the menu never shows an address")
+    let noAgent = DockTileMenu.rows(win, show, windowOpen: false, agentRuns: false, now: now)
+    check(noAgent.contains(.info("cl_audit's agent isn't running: open cl_audit"))
+          && !noAgent.contains { if case .action = $0 { return true } else { return false } },
+          "no agent running: the menu says so and offers no action (none would happen)")
+    // the agent's mark (a capped read): written within three beats counts as running; none, old or in the future: not
+    try? fm.removeItem(at: Agent.markURL)
+    check(!DockTile.agentRuns(), "no agent mark: not running")
+    func mark(_ beat: Date) { Agent.writeMark(AgentMark(pid: getpid(), started: beat, beat: beat, version: "check", build: "check", path: "/check")) }
+    mark(Date())
+    check(DockTile.agentRuns(), "a mark just written: running")
+    mark(Date().addingTimeInterval(-200))
+    check(!DockTile.agentRuns(), "a mark 200 s old (three beats are 90 s): not running")
+    mark(Date().addingTimeInterval(3600))
+    check(!DockTile.agentRuns(), "a mark in the future: not running")
     check(DockTileMenu.parse(DockTileMenu.object(.openWindow, "dt1")).map { "\($0.0.rawValue) \($0.1)" } == "openWindow dt1"
           && DockTileMenu.parse(DockTileMenu.object(.settings, "a:b")).map { $0.1 } == "a:b"
           && DockTileMenu.parse("nonsense:dt1") == nil && DockTileMenu.parse("openWindow:") == nil && DockTileMenu.parse(nil) == nil,
@@ -372,6 +386,7 @@ do {
 }
 plugInfo(build: "b1")
 _ = Store.writeStatus(id, record())
+Agent.writeMark(AgentMark(pid: getpid(), started: Date(), beat: Date(), version: "check", build: "check", path: "/check"))
 let menu = child("menu")
 check(clean(menu, "menu") && menu.out.contains("menu: Dock | ") && menu.out.contains("Open Claude window")
       && menu.out.contains("heard: openWindow:\(id)") && !menu.out.contains("@") && log().contains("menu: openWindow"),

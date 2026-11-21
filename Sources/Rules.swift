@@ -46,6 +46,8 @@ final class AgentRules {
     /// The Dock draws the tiles: each Dock icon app by its tile's heartbeat (DockTile.swift), and the build of each copy
     /// it was asked about (a new one starts over).
     private var tiles = TileTracker()
+    /// The Dock tile menu's last asks ("<action>:<id>"), so a repeat within 2 s does nothing.
+    private var menuAsked: [String: Date] = [:]
     private var copyBuilds: [String: String] = [:]
     /// What it's doing now, for the dashboard (written into the agent's mark).
     private(set) var actions: [String: AgentAction] = [:] { didSet { if actions != oldValue { onChange?() } } }
@@ -81,12 +83,23 @@ final class AgentRules {
             self?.applyDockSwitches()
         })
         // the Dock tile's own menu (its app not running): what it asks, the agent does (DockTileMenu)
+        // (only for a profile with a Dock icon; the same ask twice in 2 s once; the window opened or quit only as it can be)
         observers.append(dn.addObserver(forName: DockTile.menuNote, object: nil, queue: .main) { [weak self] note in
-            guard let self, let (act, id) = DockTileMenu.parse(note.object), let e = self.accounts.first(where: { $0.id == id }) else { return }
+            guard let self, let (act, id) = DockTileMenu.parse(note.object),
+                  let e = self.accounts.first(where: { $0.id == id }), e.runs.dockIcon else { return }
+            let key = DockTileMenu.object(act, id), now = Date()
+            if let last = self.menuAsked[key], now.timeIntervalSince(last) < 2 { return }
+            self.menuAsked[key] = now
             agentLog.log("agent: \(id, privacy: .public): Dock tile menu: \(act.rawValue, privacy: .public)")
             switch act {
-            case .openWindow: if e.claudeWindow { Launcher.openClaude(Account(e)) }
-            case .quitWindow: _ = ClaudeWindow.quit(Account(e))
+            case .openWindow:
+                guard e.claudeWindow else { return }
+                self.actions[id] = AgentAction(kind: .windowOpens, at: now)
+                Launcher.openClaude(Account(e))
+            case .quitWindow:
+                guard e.claudeWindow, self.windowOpen(e) else { return }
+                self.actions[id] = AgentAction(kind: .windowQuits, at: now)
+                _ = ClaudeWindow.quit(Account(e))
             case .dashboard: Installer.openDashboard()
             case .settings: Installer.openSettings(account: id)
             case .quickChat, .refresh: break        // (the plug-in posts their own notices)
@@ -269,7 +282,8 @@ final class AgentRules {
             copyBuilds[e.id] = build
             let running = Installer.running(e)
             // the agent's own start carries --no-follow (startDock; an update's restart of one you started also says
-            // it's yours); a click carries nothing. A copy macOS reopens at login counts as yours: it stays
+            // it's yours); a click carries nothing. A copy macOS reopens at login counts as yours: it quits by itself
+            // once left (IconApp.quitIfLeft), not here
             let facts = TileTracker.Facts(pinned: DockManager.isPinned(app), running: !running.isEmpty,
                                           ours: running.contains { DockTile.agentStarted(Processes.arguments(of: $0.processIdentifier)) },
                                           inFront: running.contains(where: \.isActive), lastBeat: DockTile.lastBeat(e.id))
