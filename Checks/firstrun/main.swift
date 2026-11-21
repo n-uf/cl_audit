@@ -304,6 +304,22 @@ do {
     fakeAccount(dir: "~/.claude-me", uuid: "00000000-0000-4000-8000-000000000002", email: "x@example.invalid", orgType: "team", orgName: "A/B: Team")
     check(FirstRun.suggestedName(folder: "~/.claude-me") == "A-B- Team", "a name can't hold / or :")
     check(FirstRun.suggestedName(folder: "~/.claude-none") == "Claude", "no account: a plain fallback")
+    // S5: a personal organisation named after the address ("<address>'s Organization") whose type isn't recorded (or is a team's) is
+    // "Personal": shown so on the page, never proposed as the profile's name, and no part of a hidden address is proposed either
+    let selfNamed = "jane.doe@example.invalid's Organization"
+    check(AccountFacts.orgWords(type: nil, name: selfNamed) == "Personal" && AccountFacts.orgWords(type: "team", name: selfNamed) == "Personal"
+          && AccountFacts.orgWords(type: "team", name: "Acme Test") == "Acme Test" && AccountFacts.orgWords(type: nil, name: "1a2b3c4d-1111-4222-8333-444455556666's Organization") == "Personal",
+          "S5: an organisation named after an address or an id is Personal, a team's own name stays")
+    for type in ["", "team"] {
+        fakeAccount(dir: "~/.claude-me", uuid: "00000000-0000-4000-8000-000000000002", email: "jane.doe@example.invalid", orgType: type, orgName: selfNamed)
+        check(AccountFacts.of(configDir: "~/.claude-me")?.org == "Personal" && FirstRun.suggestedName(folder: "~/.claude-me", blur: false) == "jane.doe",
+              "S5: type \"\(type)\": the organisation reads Personal, the name proposed is the address's name part, never the organisation's: \(FirstRun.suggestedName(folder: "~/.claude-me", blur: false))")
+        check(FirstRun.suggestedName(folder: "~/.claude-me", blur: true) == "Claude", "S5: type \"\(type)\": hidden, nothing of the address is proposed as a name")
+    }
+    fakeAccount(dir: "~/.claude", uuid: "00000000-0000-4000-8000-000000000009", email: "jane.doe@example.invalid", orgType: "", orgName: selfNamed)
+    let selfFound = FirstRun.foundFolders()
+    check(selfFound.first?.detail.contains("Personal") == true && selfFound.first?.detail.contains("@") == false && selfFound.first?.detail.contains("jane") == false,
+          "S5: the first-run page's detail line reads Personal, not the self-named organisation: \(selfFound.first?.detail ?? "nil")")
 
     // refusals
     resetHome()
