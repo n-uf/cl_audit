@@ -375,16 +375,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// The address the folder names, as the record has it (the agent's reader wrote it): the icon never reads .claude.json.
     var expectedEmail: String? { status?.expectedEmail }
 
-    /// The face, from the one value: grey for old numbers or none (ProfileDisplay.grey: the one threshold, StatusAges), the
-    /// warning for a sign-in on another account, the countdown for the full limit that holds the profile back.
+    /// The face, from the one value (TileModel.face: the Dock tile plug-in draws the same).
     func model() -> TileModel {
-        let d = display
-        return TileModel(label: account.label, fiveHour: usage?.fiveHour, weekly: usage?.weekly,
-                         stale: d.grey, style: style, warn: d.otherAccount,
-                         tint: entry.color, frame: entry.frame,
-                         fiveHourElapsed: windowElapsed(usage?.fiveHourResets, 5 * 3600),
-                         weeklyElapsed: windowElapsed(usage?.weeklyResets, 7 * 86400), windowOpen: claudeOpen && entry.windowDot,
-                         countdown: AtLimit.tileCountdown(d.full(now: Date())))   // (none once its reset has passed)
+        TileModel.face(entry, show ?? ProfileShow.of(entry, raw: nil), windowOpen: claudeOpen)
     }
 
     func redraw() {

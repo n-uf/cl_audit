@@ -1824,6 +1824,18 @@ MainActor.assumeIsolated {
     check(fullOld.display.full == nil && dockOf(e, fullOld).face.countdown == nil && !titles(dockOf(e, fullOld).menu).contains("Switch to \(u2Short)…")
           && !titles(menuBarMenu(fullOld)).contains("Switch to \(u2Short)…"), "the same full week read 10 minutes ago: nothing full, no offer")
 
+    // the Dock tile plug-in (DockTile/Plugin.swift) draws the Dock icon app's own face from the same value, fresh, grey and full
+    func pic(_ m: TileModel) -> Data? { Painter.image(m, pixels: 128).tiffRepresentation }
+    check([ok, old, full, fullOld].allSatisfy { s in
+        let a = pic(dockOf(e, s).face), b = pic(TileModel.face(e, s, windowOpen: false))
+        return a != nil && a == b
+    }, "the Dock tile plug-in's face is the Dock icon app's: fresh, grey, full and full but old")
+    // each profile's copy registers its own class, per build: copies in one Dock process never stand for each other
+    let names = [DockTile.className("a", build: "0011"), DockTile.className("b", build: "0011"), DockTile.className("a", build: "0022"),
+                 DockTile.className("a-b", build: "0011"), DockTile.className("a_b", build: "0011")]
+    check(Set(names).count == names.count && names.allSatisfy { NSClassFromString($0) == nil && $0.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "_") } }
+          && !names.contains(DockTile.baseClass), "Dock tile classes: one per profile and build, plain names, none the base class")
+
     // a reset that has passed: that limit has no percent; both passed: no numbers at all
     let pastReset = show(rec(week: 100, weekIn: -60))
     check(pastReset.display.usage?.weekly == nil && pastReset.display.usage?.weeklyResets == nil && pastReset.display.usage?.fiveHour == 12
