@@ -8,7 +8,7 @@ the notes before updating.
 
 ## Unreleased
 
-Nothing pending.
+- Settings ▸ Claude window: a window that's on but whose data folder was deleted outside cl_audit shows that folder as missing, not "none yet".
 
 ## 26.11.77 — 2026-11-21
 
