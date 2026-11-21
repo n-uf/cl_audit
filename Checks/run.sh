@@ -275,8 +275,19 @@ run_claudesignin() {
 # the signin suite (its blocks whose subject left the app are fenced off; signin/PROVENANCE.md says where their rules are checked)
 run_signin() {
   local dir="$WORK/signin"; mkdir -p "$dir"
+  # Terminal lint: the sign-in window (stage G) sweeps Terminal's kept profiles; the real ones are only ever named by
+  # Auth/ClaudeSignIn.swift (TerminalProfiles.system), handed in once by Sources/SignInWindow.swift, never by a suite
+  local lint=0 hits
+  hits="$(grep -n -E 'com\.apple\.Terminal|TerminalProfiles\.system' "$HERE/signin/main.swift" | grep -v -E '^[0-9]+: *//' || true)"
+  if [[ -n "$hits" ]]; then echo "FAIL terminal lint: Checks/signin/main.swift names Terminal's real preferences: $hits"; lint=1; fi
+  hits="$(grep -n -E 'TerminalProfiles\.system|com\.apple\.Terminal' "$APP"/Sources/*.swift | grep -v -E ':[0-9]+: *//' | grep -v 'SignInWindow.swift' || true)"
+  if [[ -n "$hits" ]]; then echo "FAIL terminal lint: the app names Terminal's real preferences outside SignInWindow.swift: $hits"; lint=1; fi
+  [[ $lint -ne 0 ]] || echo "terminal lint: Terminal's real preferences are named in the app only by SignInWindow.swift, and in no suite"
   compile "$dir/cl_audit-checks-signin" "$HERE/signin/main.swift" || return 1
-  run_binary "$dir" "$dir/cl_audit-checks-signin"
+  local status=0
+  run_binary "$dir" "$dir/cl_audit-checks-signin" || status=$?
+  [[ $lint -eq 0 ]] || status=1
+  return $status
 }
 
 run_backup() {

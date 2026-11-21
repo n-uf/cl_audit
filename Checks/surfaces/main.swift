@@ -648,9 +648,11 @@ do {
     let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
     for f in (try? fm.contentsOfDirectory(atPath: src.path)) ?? [] where f.hasSuffix(".swift") {
         let t = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8)) ?? ""
-        for l in t.components(separatedBy: "\n") where l.contains("openLogin(") && l.contains("creating: true") { creators.append(f) }
+        // (openLogin, and the sign-in window ClaudeSignIn runs: SignInWindow.start)
+        for l in t.components(separatedBy: "\n") where (l.contains("openLogin(") || l.contains("SignInWindow.start(")) && l.contains("creating: true") { creators.append(f) }
     }
-    check(Set(creators) == ["NewAccount.swift", "FirstRun.swift", "DefaultProfileRunner.swift"] && creators.count == 4,
+    // (New profile's two Sign in keys are SettingsModel.startNewSignIn's one call, in Settings.swift)
+    check(Set(creators) == ["Settings.swift", "FirstRun.swift", "DefaultProfileRunner.swift"] && creators.count == 3,
           "only New profile, first run and the default profile's offer sign in with creating: \(creators)")
     FolderGuard.launchSeam = nil
 }
@@ -887,6 +889,7 @@ do {
     }
     let launchers: [(String, String, String, String)] = [
         ("Config.swift", "static func openLogin(", ".startSignIn(", "login"),
+        ("SignInWindow.swift", "static func start(", "run.start(", "the sign-in window"),            // (ClaudeSignIn: the guard once, then its own)
         ("Launcher.swift", "static func openClaude(", "openApplication(", "the Claude window"),
         ("Launcher.swift", "private static func openTerminal(", "Installer.run(", "Terminal"),
         ("QuickChatEngine.swift", "func start(environment", "r.start(", "quick chat")]          // (its claude: Runs' RunningProgram)
@@ -3055,12 +3058,28 @@ do {
     let keepLocator = ClaudeLocator.current, keepTerminal = ClaudeCLI.openTerminal
     ClaudeLocator.current = ClaudeLocator.Lookup(candidates: { ["/usr/bin/false"] }, npmPrefix: { nil }, shell: { nil }, appCopy: { nil })
     FolderGuard.launchSeam = { what, dir in launched.append("\(what) \(dir)"); return true }
-    ClaudeCLI.openTerminal = { u in scripts.append((try? String(contentsOf: u, encoding: .utf8)) ?? ""); return true }
+    // (the plain sign-in is ClaudeSignIn's window: Terminal is handed its settings file, and the script it runs is a file of
+    // cl_audit's own work folder beside it, both read when Terminal is asked; the window opens on the sign-in's own queue)
+    let scriptsLock = NSLock()
+    ClaudeCLI.openTerminal = { u in
+        scriptsLock.lock(); defer { scriptsLock.unlock() }
+        scripts.append((try? String(contentsOf: u, encoding: .utf8)) ?? "")
+        let work = SignInWindow.work.path
+        for f in ((try? fm.contentsOfDirectory(atPath: work)) ?? []) where f.hasSuffix(".command") {
+            scripts.append((try? String(contentsOfFile: work + "/" + f, encoding: .utf8)) ?? "")
+        }
+        return true
+    }
     let clashModel = SettingsModel(); clashModel.accounts = [noSeat, other]
     AccountSettings(entry: .constant(noSeat), model: clashModel).signInAgain(email: settingsAddress)
-    check(settingsAddress == nil && launched == ["login \(Account(noSeat).configDir)"] && scripts.count == 1
-          && !scripts[0].contains(u3.email!) && !scripts[0].contains("--email") && clashModel.runner(of: e.id).goal == nil,
-          "Settings' Sign in in a clash, no seat: the plain sign-in, no address, never Other's u3: \(launched)")
+    let opened = Date().addingTimeInterval(10)
+    while Date() < opened, { scriptsLock.lock(); defer { scriptsLock.unlock() }; return scripts.count < 2 }() { RunLoop.main.run(until: Date().addingTimeInterval(0.05)) }
+    scriptsLock.lock(); let said = scripts.joined(separator: "\n"); let sawScripts = scripts.count; scriptsLock.unlock()
+    check(settingsAddress == nil && launched == ["login \(Account(noSeat).configDir)"] && sawScripts == 2 && said.contains("auth login")
+          && !said.contains(u3.email!) && !said.contains("--email") && clashModel.runner(of: e.id).goal == nil,
+          "Settings' Sign in in a clash, no seat: the plain sign-in (the sign-in window), no address, never Other's u3: \(launched) \(sawScripts)")
+    clashModel.cancelSignIn(e.id, folder: noSeat.configDir)          // the stand-in Terminal never runs it: the window's sign-in ends here
+    RunLoop.main.run(until: Date().addingTimeInterval(0.5))
     ClaudeLocator.current = keepLocator; ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = nil
     // the address pop-up's Sign in… on a profile with no seat whose sign-in is on another account (u2; the folder names
     // u1): the folder's u1, never the account the sign-in is on (the pop-up's ticked line, u2)

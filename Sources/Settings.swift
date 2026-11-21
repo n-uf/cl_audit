@@ -3,6 +3,7 @@
 // label, or adding and removing accounts, needs Apply (that installs, renames or removes icon apps).
 
 import AppKit
+import ClaudeAuth
 import Combine
 import ProfileCore
 import SwiftUI
@@ -341,6 +342,83 @@ final class SettingsModel: ObservableObject {
     /// One switch per profile (SwitchRunner.swift): a profile's folder holds one sign-in at a time.
     private var runners: [String: SwitchRunner] = [:]
 
+    // MARK: sign-in windows (SignInWindow: ClaudeAuth's ClaudeSignIn)
+
+    /// What a profile's sign-in window is doing, or how it ended (its line in the in-use box). Keyed by profile id.
+    enum SignInShown: Equatable { case waiting, said(SignInSaid) }
+    @Published private(set) var signIns: [String: SignInShown] = [:]
+    /// Bumped by every start and Cancel: an end of an earlier sign-in (replaced, cancelled) never takes a newer one's state away.
+    private var signInGenerations: [String: Int] = [:]
+    private var newSignInGeneration = 0
+
+    /// Claude Code's sign-in on a profile's folder in Terminal, followed to its end. `email`: the address filled in (a
+    /// profile's own account, never another's); the account wanted is that seat of the profile (its ids and organisation),
+    /// else the address alone; nil: whoever signs in (a plain sign-in). The folder must be there (a deleted folder is never
+    /// made again). The words land in `signIns`.
+    func startSignIn(_ claude: String, entry e: AccountEntry, email: String?) {
+        let id = e.id, folder = e.configDir
+        let generation = (signInGenerations[id] ?? 0) + 1
+        signInGenerations[id] = generation
+        signIns[id] = .waiting
+        SignInWindow.start(claude, account: Account(e), wanted: SignInWindow.wanted(for: e, email: email)) { [weak self] end in
+            guard let self, self.signInGenerations[id] == generation else { return }
+            // another profile's account that signed in is refused in words (one profile per account), never taken
+            var owner: String?
+            if case .wrongAccount(let a, _) = end,
+               let o = FolderRules.seatOwner(a.identity, among: self.accounts, except: id) { owner = NewAccountSetup.ownerWords(o) }
+            self.signIns[id] = SignInSaid(end, configDir: folder, owner: owner).map { .said($0) }
+            self.tick += 1
+            // "Signed in." is only for the moment: the box's own lines say who is signed in from then on (never a stale one)
+            if case .signedIn = end {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
+                    guard let self, self.signInGenerations[id] == generation, case .said(let s)? = self.signIns[id], s.kind == .signedIn else { return }
+                    self.signIns[id] = nil
+                }
+            }
+        }
+    }
+
+    /// Cancel on "Signing in": the window and its login end, the line goes.
+    func cancelSignIn(_ id: String, folder: String) {
+        signInGenerations[id] = (signInGenerations[id] ?? 0) + 1
+        signIns[id] = nil
+        SignInWindow.stop(folder: folder)
+    }
+
+    /// Claude Code's sign-in for the new profile's folder (SignInWindow), followed to its end: "signing in…" until then,
+    /// whatever the folder's record says meanwhile.
+    func startNewSignIn(_ claude: String, email: String?) {
+        guard var d = draft else { return }
+        newSignInGeneration += 1
+        let generation = newSignInGeneration, folder = d.configDir
+        d.signInSaid = nil; d.seatAtAsk = Account.signedInSeat(configDir: d.configDir)     // signing in again waits for another account
+        d.asking = false; d.signInAsked = Date(); d.signInRunning = true
+        let account = Account(d.entry)
+        draft = d; tick += 1
+        SignInWindow.start(claude, account: account, wanted: email.map { SignedInAccount(email: $0, origin: .record) }, creating: true) { [weak self] end in
+            self?.newSignInEnded(end, generation: generation, folder: folder)
+        }
+    }
+
+    /// The sign-in window of the draft ended. An unconfirmed, declined or failed end says so under Account; a signed-in or
+    /// wrong-account one says nothing here: the folder's own account is read as it always was (the other profile's account
+    /// is the red line, another address than the one typed the amber one).
+    func newSignInEnded(_ end: SignInWindow.End, generation: Int, folder: String) {
+        guard generation == newSignInGeneration, var d = draft, d.configDir == folder else { return }
+        d.signInRunning = false; d.signInAsked = nil; d.seatAtAsk = nil
+        d.signInSaid = SignInSaid(end, configDir: folder)
+        draft = d; tick += 1
+    }
+
+    /// Cancel on "signing in…": the window and its login end.
+    func cancelNewSignIn() {
+        guard var d = draft else { return }
+        newSignInGeneration += 1
+        d.signInRunning = false; d.signInAsked = nil; d.seatAtAsk = nil; d.signInSaid = nil
+        draft = d
+        SignInWindow.stop(folder: d.configDir)
+    }
+
     func runner(of profile: String) -> SwitchRunner {
         if let r = runners[profile] { return r }
         let r = SwitchRunner(profile: profile, model: self)
@@ -609,14 +687,20 @@ final class SettingsModel: ObservableObject {
         guard let d = draft else { return }
         guard d.started else { draft = nil; selection = accounts.first?.id; return }
         discarding = true
+        newSignInGeneration += 1                       // a sign-in window of this setup ends with it (below), its end is ignored
         DispatchQueue.global(qos: .userInitiated).async {
+            SignInWindow.stopNow(folder: d.configDir)  // before its folder and sign-in are removed (never while a login runs on it)
             // a full look, here: the sign-out must run with the `claude` that is really there, never with nothing
             // (that would delete the folder and orphan its sign-in in the Keychain)
             let done = NewAccountSetup.discard(d, claude: ClaudeCLI.find())
             DispatchQueue.main.async {
                 self.discarding = false
                 // its window didn't quit: nothing was removed, the new profile stays on its page to Cancel again
-                guard done else { self.message = NewAccountSetup.windowKept; return }
+                guard done else {
+                    // nothing was removed and its sign-in window was ended: the page isn't waiting for it any more
+                    if var cur = self.draft { cur.signInRunning = false; cur.signInAsked = nil; cur.seatAtAsk = nil; self.draft = cur }
+                    self.message = NewAccountSetup.windowKept; return
+                }
                 self.draft = nil
                 self.selection = self.accounts.first?.id
                 self.message = "Cancelled \(d.name.isEmpty ? "the new profile" : d.name); its folders and sign-in were removed"
@@ -1744,6 +1828,21 @@ struct AccountSettings: View {
             case .failed(let why): BoxNote(text: why, tone: .danger)
             case .ready, .closing, .moving, .undone: EmptyView()     // a sign-in again moves nothing
             }
+        } else if let shown = model.signIns[entry.id] {
+            // a sign-in window of Settings' own keys (SignInWindow), in the same words and tones as the one above
+            switch shown {
+            case .waiting:
+                HStack(spacing: 8) {
+                    BoxNote(text: "Signing in: finish it in Terminal and the browser.", tone: .caution).lineLimit(1)
+                    Spacer(minLength: 6)
+                    Button("Cancel") { model.cancelSignIn(entry.id, folder: entry.configDir) }
+                        .buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                }
+            case .said(let said):
+                BoxNote(text: said.text, size: said.kind == .signedIn ? 10.5 : 11.5,
+                        tone: said.danger ? .danger : said.kind == .signedIn ? .muted : .caution)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 
@@ -1896,7 +1995,7 @@ struct AccountSettings: View {
         Button("+ Sign in with another account…") {
             // a folder that is gone is never made again: nothing starts, the line says so (A4)
             if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why }
-            else if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: nil) }
+            else if let claude = model.requireClaude() { model.startSignIn(claude, entry: entry, email: nil) }
         }
         .buttonStyle(.link).font(.system(size: 12)).fixedSize()      // a link, not a big key (approved sketch)
         .help("Claude Code's sign-in in Terminal on \(entry.configDir), no address filled in. The account that signs in becomes the one \(entry.name.isEmpty ? "this profile" : entry.name) works on; the one before goes on standby.")
@@ -1977,7 +2076,7 @@ struct AccountSettings: View {
         // a folder that is gone is never made again: nothing starts, the line says so (A4)
         if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why; return }
         if let email { model.runner(of: entry.id).signInAgain(email: email); return }
-        if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: nil) }
+        if let claude = model.requireClaude() { model.startSignIn(claude, entry: entry, email: nil) }
     }
 
     /// The folders an earlier cl_audit made for this profile's accounts (Leftovers.swift), each still there: Move to
@@ -2106,7 +2205,7 @@ struct AccountSettings: View {
             if let back = show.loginAddress {
                 items.append(LoginItem(id: "back", title: line(back, ["\(name)'s account", "sign in…"]), enabled: canSignIn) {
                     if let why = ClaudeCLI.goneLine(entry.configDir) { model.message = why }
-                    else if let claude = model.requireClaude() { ClaudeCLI.openLogin(claude, account: Account(entry), email: back) }
+                    else if let claude = model.requireClaude() { model.startSignIn(claude, entry: entry, email: back) }
                 })
             }
         }

@@ -2834,5 +2834,370 @@ MainActor.assumeIsolated {
 }
 #endif
 
+#if STAGE3
+// --- stage G: SignInWindow, ClaudeAuth's ClaudeSignIn in New profile and Settings' sign-in keys ---
+// The words of every way a sign-in ends, the account wanted (the organisation cl_audit knows), and the wiring against a stand-in
+// Terminal (it runs the window's settings file's command with /bin/sh, as Terminal's login shell would) and a stand-in
+// `claude auth login` (Checks/claudesignin/bin/claude, which the claudesignin suite shares). Terminal's preferences are in memory
+// (SignInWindow.terminalProfiles: never this Mac's), the app's verified word is a seam (never the Keychain or Anthropic), the
+// folders, locks and work folder are under the throwaway home, and nothing opens a real Terminal. Sample addresses only.
+do {
+    let fakeClaude = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent()
+        .appendingPathComponent("claudesignin/bin/claude").path
+    check(fm.isExecutableFile(atPath: fakeClaude), "stage G: the stand-in claude auth login is there")
+
+    // ── the stand-ins ──
+    final class Prefs {
+        private let lock = NSLock()
+        private var profiles: [String: Any] = [:]
+        private(set) var reads = 0, writes = 0
+        var tool: TerminalProfiles {
+            TerminalProfiles(read: { [self] in lock.lock(); defer { lock.unlock() }; reads += 1; return (profiles, []) },
+                             write: { [self] in lock.lock(); defer { lock.unlock() }; writes += 1; profiles = $0 })
+        }
+        func put(_ name: String, command: String) {
+            lock.lock(); defer { lock.unlock() }
+            profiles[name] = ["type": "Window Settings", "name": name, "CommandString": command]
+        }
+        /// What Terminal keeps for a settings file it opens: the profile, under the file's base name (" 1", " 2"… added).
+        func keep(file: URL, plist: [String: Any]) {
+            lock.lock(); defer { lock.unlock() }
+            let base = file.deletingPathExtension().lastPathComponent
+            var name = base, n = 0
+            while profiles[name] != nil { n += 1; name = "\(base) \(n)" }
+            profiles[name] = plist
+        }
+        var names: [String] { lock.lock(); defer { lock.unlock() }; return profiles.keys.sorted() }
+    }
+    let prefs = Prefs()
+    final class Term {
+        private let lock = NSLock()
+        private(set) var opened: [URL] = []
+        private(set) var shells: [Process] = []
+        var conf = ""                         // the stand-in login's settings for the next window
+        let home: String, prefs: Prefs
+        init(home: String, prefs: Prefs) { self.home = home; self.prefs = prefs }
+        func open(_ url: URL) -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            opened.append(url)
+            guard let d = try? Data(contentsOf: url),
+                  let p = (try? PropertyListSerialization.propertyList(from: d, format: nil)) as? [String: Any],
+                  let cmd = p["CommandString"] as? String else { return false }
+            prefs.keep(file: url, plist: p)
+            let sh = Process()
+            sh.executableURL = URL(fileURLWithPath: "/bin/sh"); sh.arguments = ["-c", cmd]
+            sh.environment = ["PATH": "/usr/bin:/bin", "HOME": home, "TERM": "dumb", "CL_LOGIN_CONF": conf, "ANTHROPIC_API_KEY": "made-up-key"]
+            sh.standardInput = Pipe(); sh.standardOutput = FileHandle.nullDevice; sh.standardError = FileHandle.nullDevice
+            guard (try? sh.run()) != nil else { return false }
+            shells.append(sh)
+            return true
+        }
+        var count: Int { lock.lock(); defer { lock.unlock() }; return opened.count }
+        var last: URL? { lock.lock(); defer { lock.unlock() }; return opened.last }
+        func killAll() { lock.lock(); let all = shells; lock.unlock(); for s in all where s.isRunning { kill(s.processIdentifier, SIGKILL) } }
+    }
+    let term = Term(home: home, prefs: prefs)
+    func spin(_ done: () -> Bool, _ max: TimeInterval = 20) {
+        let end = Date().addingTimeInterval(max)
+        while !done(), Date() < end { RunLoop.current.run(until: Date().addingTimeInterval(0.02)) }
+    }
+    func pause(_ s: TimeInterval) { RunLoop.current.run(until: Date().addingTimeInterval(s)) }
+    func alive(_ pid: pid_t) -> Bool { pid > 0 && kill(pid, 0) == 0 }
+    var confN = 0
+    /// A stand-in login's settings file (what it does, whom it signs in as); the window it opens gets its path.
+    func conf(_ lines: [String: String]) -> String {
+        confN += 1
+        let p = home + "/conf-signin-\(confN)"
+        try? lines.map { "\($0.key)=\($0.value)" }.joined(separator: "\n").appending("\n").write(toFile: p, atomically: true, encoding: .utf8)
+        term.conf = p
+        return p
+    }
+    func pid(_ conf: String) -> pid_t {
+        (try? String(contentsOfFile: conf + ".pid", encoding: .utf8)).flatMap { pid_t($0.trimmingCharacters(in: .whitespacesAndNewlines)) } ?? -1
+    }
+    func args(_ conf: String) -> String { (try? String(contentsOfFile: conf + ".args", encoding: .utf8)) ?? "" }
+    let ann = Seat(account: sid(1), organization: sid(51), email: "ann@example.com")
+    let bob = Seat(account: sid(2), organization: sid(51), email: "bob@example.com")
+    /// The app's word, as Anthropic's profile reply would give it.
+    func server(_ s: Seat) -> SignedInAccount { SignedInAccount(accountID: s.account, email: s.email, organizationID: s.organization, origin: .server) }
+    func folder(_ name: String) -> (path: String, entry: (Seat?) -> AccountEntry) {
+        let dir = home + "/.claude-sg-" + name
+        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        return (dir, { s in var e = AccountEntry(id: "sg-" + name, name: name, label: "SG", configDir: dir); e.seat = s; return e })
+    }
+    func login(as s: Seat, _ more: [String: String] = [:]) -> [String: String] {
+        ["login": "ok", "email": s.email!, "uuid": s.account, "org": s.organization!, "orgName": "Sample Org"].merging(more) { $1 }
+    }
+
+    // ── the seams: nothing real ──
+    SignInWindow.terminalProfiles = prefs.tool
+    SignInWindow.locks = URL(fileURLWithPath: home + "/locks")
+    SignInWindow.timing = .init(timeout: 25, poll: 0.2, startGrace: 10, lateSweep: 0.3)
+    let keepTerminal = ClaudeCLI.openTerminal, keepSeam = FolderGuard.launchSeam
+    ClaudeCLI.openTerminal = { term.open($0) }
+    var guarded: [String] = []
+    FolderGuard.launchSeam = { what, dir in guarded.append("\(what) \(dir)"); return true }
+
+    // ── cl_audit's own work folder, and the sweep that reads nothing before there is one ──
+    try? fm.removeItem(at: SignInWindow.work)
+    check(SignInWindow.work.path == home + "/Library/Application Support/usage-n-uf/sign-in",
+          "stage G: the sign-in's files are in cl_audit's own folder (Application Support/usage-n-uf/sign-in): \(SignInWindow.work.path)")
+    let never = Prefs()
+    never.put("cl_audit sign-in", command: "exec '\(SignInWindow.work.path)/sign-in-12345678.command'")
+    SignInWindow.terminalProfiles = never.tool
+    SignInWindow.sweepNow()
+    check(never.reads == 0 && never.names == ["cl_audit sign-in"], "stage G: the sweep reads nothing of Terminal's for a Mac that never opened a sign-in window")
+    SignInWindow.terminalProfiles = prefs.tool
+
+    // ── the words: every way a sign-in ends has its own, an unconfirmed one is never a sign-in ──
+    do {
+        let dir = home + "/.claude-sg-words"
+        try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+        func said(_ e: SignInWindow.End, owner: String? = nil) -> SignInSaid? { SignInSaid(e, configDir: dir, owner: owner) }
+        let a = server(ann), b = server(bob)
+        let ends: [(SignInWindow.End, SignInSaid.Kind)] = [
+            (.signedIn(a), .signedIn), (.unverified(a), .unverified), (.wrongAccount(signedIn: b, wanted: a), .wrongAccount), (.declined, .declined),
+            (.timedOut, .timedOut), (.replaced, .replaced), (.failed(.notOpened), .failed)]
+        check(ends.allSatisfy { said($0.0)?.kind == $0.1 }, "stage G: each outcome has its kind (signed in, unconfirmed, wrong account, declined, timed out, replaced, failed)")
+        check(said(.cancelled) == nil, "stage G: the person's Cancel says nothing")
+        let lines = ends.map { said($0.0)!.text }
+        check(Set(lines).count == lines.count && lines.allSatisfy { !$0.isEmpty }, "stage G: each ends in words of its own: \(lines)")
+        let u = said(.unverified(a))!.text
+        check(!u.hasPrefix("Signed in") && !u.contains("Signed in.") && u.contains("couldn't confirm") && said(.signedIn(a))!.text == "Signed in.",
+              "stage G: an unconfirmed sign-in is never worded as signed in: \(u)")
+        let failures: [ClaudeSignIn.Failure] = [.folderNotReady, .locked, .alreadySigningIn, .processesUnreadable, .notOpened, .windowStillOpen,
+                                                .loginFailed(status: 2), .noAccount, .windowClosed]
+        let fl = failures.map { said(.failed($0))!.text }
+        check(Set(fl).count == failures.count && failures.allSatisfy { said(.failed($0))!.danger } && fl.allSatisfy { !$0.isEmpty },
+              "stage G: every failure has its own words, in red: \(fl)")
+        check(said(.failed(.notOpened))!.text == "Terminal didn't open." && fl[5] == "An earlier Claude Code sign-in window is still open. Close it, then try again.",
+              "stage G: Terminal not opening and a window still open say what they always said")
+        let wrong = said(.wrongAccount(signedIn: b, wanted: a))!
+        let refused = said(.wrongAccount(signedIn: b, wanted: a), owner: "the account of “Other”")!
+        check(!wrong.danger && wrong.text.hasPrefix("Signed in as ") && wrong.text.contains("not ")
+              && refused.danger && refused.text.hasSuffix("is the account of “Other”: one profile per account."),
+              "stage G: another account signed in: said as the browser's choice; another profile's account: refused in red, one profile per account: \(refused.text)")
+        check(said(.failed(.folderNotReady))!.text.contains("isn't there as a plain folder"), "stage G: a folder that isn't a plain folder says so: \(said(.failed(.folderNotReady))!.text)")
+    }
+
+    // ── the account wanted: the seat's ids and organisation, else the address alone ──
+    do {
+        var e = AccountEntry(id: "w", name: "W", label: "W", configDir: "~/.claude-sg-wanted"); e.seat = ann
+        e.standby = [StandbyAccount(email: bob.email!, seat: bob, id: "sb")]
+        let w = SignInWindow.wanted(for: e, email: "ANN@example.com")
+        check(w?.accountID == ann.account && w?.organizationID == ann.organization && w?.email == ann.email,
+              "stage G: the account wanted is the seat with that address, its ids and organisation: \(String(describing: w))")
+        check(SignInWindow.wanted(for: e, email: bob.email)?.accountID == bob.account, "stage G: …a standby account's seat too")
+        let free = SignInWindow.wanted(for: e, email: "pat@example.com")
+        check(free?.accountID == nil && free?.organizationID == nil && free?.email == "pat@example.com",
+              "stage G: an address no seat has is wanted by the address alone (no organisation): \(String(describing: free))")
+        check(SignInWindow.wanted(for: e, email: nil) == nil && SignInWindow.wanted(for: e, email: "  ") == nil, "stage G: no address: whoever signs in")
+    }
+
+    // ── Settings' sign-in keys ──
+    let m = SettingsModel()
+    func shown(_ id: String) -> SignInSaid? { if case .said(let s)? = m.signIns[id] { return s } else { return nil } }
+    func settle(_ id: String) { spin({ if case .waiting? = m.signIns[id] { return false } else { return m.signIns[id] != nil } }) }
+    do {
+        // signed in to the account wanted, the seat's address filled in
+        let f = folder("set-ok"), e = f.entry(ann)
+        m.accounts = [e]
+        SignInWindow.wordSeam = { _ in server(ann) }
+        let c = conf(login(as: ann))
+        let before = term.count
+        m.startSignIn(fakeClaude, entry: e, email: ann.email)
+        check(m.signIns[e.id] == .waiting, "stage G: Settings: the key's sign-in is waiting at once")
+        settle(e.id)
+        check(shown(e.id)?.kind == .signedIn && shown(e.id)?.text == "Signed in.", "stage G: Settings: the account wanted signed in, confirmed: Signed in.: \(String(describing: m.signIns[e.id]))")
+        check(term.count == before + 1 && term.last?.lastPathComponent == "cl_audit sign-in.terminal" && guarded.last == "login \(f.path)",
+              "stage G: Settings: one window, its settings file named after cl_audit, the guard asked once for the folder: \(String(describing: term.last)) \(guarded)")
+        check(args(c).contains("ARG [--email]\nARG [ann@example.com]") && args(c).contains("ENV CLAUDE_CONFIG_DIR=\(f.path)") && args(c).contains("ENV KEY=<unset>"),
+              "stage G: Settings: Claude Code's own sign-in on the profile's folder, the address filled in, no key from the shell")
+        check(!(((try? fm.contentsOfDirectory(atPath: f.path)) ?? []).contains { $0.hasPrefix("sign-in") }),
+              "stage G: Settings: nothing of the sign-in is written into the Claude Code folder")
+        term.killAll()
+
+        // another profile's account signed in: refused in words, and the other account's address was never filled in
+        let g = folder("set-clash"), eg = g.entry(ann)
+        var owner = folder("set-owner").entry(bob); owner.name = "Other"
+        m.accounts = [eg, owner]
+        let c2 = conf(login(as: bob))
+        SignInWindow.wordSeam = { _ in server(bob) }
+        m.startSignIn(fakeClaude, entry: eg, email: ann.email)
+        settle(eg.id)
+        check(shown(eg.id)?.kind == .wrongAccount && shown(eg.id)?.danger == true && shown(eg.id)?.owner == "the account of “Other”"
+              && shown(eg.id)?.text.contains("one profile per account") == true,
+              "stage G: Settings: the browser signed in as another profile's account: refused, one profile per account: \(String(describing: shown(eg.id)?.text))")
+        check(args(c2).contains("ann@example.com") && !args(c2).contains("bob@example.com"), "stage G: Settings: the other account's address was never filled in")
+        term.killAll()
+
+        // an account nobody has: the browser's choice, said, not refused
+        let h = folder("set-wrong"), eh = h.entry(ann)
+        m.accounts = [eh]
+        _ = conf(login(as: bob))
+        m.startSignIn(fakeClaude, entry: eh, email: ann.email)
+        settle(eh.id)
+        check(shown(eh.id)?.kind == .wrongAccount && shown(eh.id)?.danger == false && shown(eh.id)?.owner == nil, "stage G: Settings: an account nobody has signed in: the browser decided, said in amber")
+        term.killAll()
+
+        // the word never confirms: unconfirmed, never signed in
+        let i = folder("set-unv"), ei = i.entry(ann)
+        m.accounts = [ei]
+        SignInWindow.wordSeam = { _ in nil }
+        _ = conf(login(as: ann))
+        m.startSignIn(fakeClaude, entry: ei, email: nil)
+        settle(ei.id)
+        check(shown(ei.id)?.kind == .unverified && shown(ei.id)?.text.hasPrefix("Signed in") == false,
+              "stage G: Settings: no word from Anthropic: unconfirmed, never worded as signed in: \(String(describing: shown(ei.id)?.text))")
+        term.killAll()
+        SignInWindow.wordSeam = { _ in server(ann) }
+
+        // declined in the browser
+        let j = folder("set-declined"), ej = j.entry(ann)
+        m.accounts = [ej]
+        _ = conf(["login": "declined"])
+        m.startSignIn(fakeClaude, entry: ej, email: nil)
+        settle(ej.id)
+        check(shown(ej.id)?.kind == .declined && shown(ej.id)?.text.hasPrefix("The sign-in was declined") == true, "stage G: Settings: declined in the browser: its own line")
+        term.killAll()
+
+        // a folder that isn't there: nothing starts, nothing is made, the words say so
+        let k = folder("set-gone"), ek = k.entry(ann)
+        try? fm.removeItem(atPath: k.path)
+        m.accounts = [ek]
+        let openedBefore = term.count
+        m.startSignIn(fakeClaude, entry: ek, email: ann.email)
+        settle(ek.id)
+        check(shown(ek.id)?.kind == .failed && shown(ek.id)?.text == ClaudeCLI.goneLine(k.path) && term.count == openedBefore && !fm.fileExists(atPath: k.path),
+              "stage G: Settings: a deleted folder: refused, no window, never made again: \(String(describing: shown(ek.id)?.text))")
+
+        // no sign-in comes in time
+        SignInWindow.timing.timeout = 1.5
+        let l = folder("set-time"), el = l.entry(ann)
+        m.accounts = [el]
+        let c3 = conf(["login": "hang"])
+        m.startSignIn(fakeClaude, entry: el, email: nil)
+        settle(el.id)
+        check(shown(el.id)?.kind == .timedOut, "stage G: Settings: nothing came in time: its own line")
+        check({ spin({ !alive(pid(c3)) }, 8); return !alive(pid(c3)) }(), "stage G: Settings: …and the login in the window was ended")
+        SignInWindow.timing.timeout = 25
+        term.killAll()
+
+        // Cancel ends the login and takes the line away, and the end that follows says nothing
+        let n = folder("set-cancel"), en = n.entry(ann)
+        m.accounts = [en]
+        let c4 = conf(["login": "hang"])
+        m.startSignIn(fakeClaude, entry: en, email: nil)
+        spin({ alive(pid(c4)) })
+        let running = pid(c4)
+        m.cancelSignIn(en.id, folder: en.configDir)
+        check(m.signIns[en.id] == nil, "stage G: Settings: Cancel takes the line away at once")
+        spin({ !alive(running) }, 8); pause(1)
+        check(!alive(running) && m.signIns[en.id] == nil, "stage G: Settings: …its login is ended, and its late end says nothing")
+        term.killAll()
+
+        // one window per app: another profile's sign-in ends this one, said
+        let o = folder("set-first"), eo = o.entry(ann), p = folder("set-second"), ep = p.entry(bob)
+        m.accounts = [eo, ep]
+        let c5 = conf(["login": "hang"])
+        m.startSignIn(fakeClaude, entry: eo, email: nil)
+        spin({ alive(pid(c5)) })
+        _ = conf(["login": "hang"])
+        m.startSignIn(fakeClaude, entry: ep, email: nil)
+        settle(eo.id)
+        check(shown(eo.id)?.kind == .replaced && m.signIns[ep.id] == .waiting, "stage G: Settings: another profile's sign-in ends the first (said), and goes on itself")
+        m.cancelSignIn(ep.id, folder: ep.configDir)
+        pause(1.5)
+        term.killAll()
+    }
+
+    // ── New profile: the page's draft ──
+    do {
+        func draftWith(_ name: String) -> (NewAccountDraft, String) {
+            var d = NewAccountDraft()
+            d.name = name; d.source = .new
+            d.createdConfigDir = d.newConfigDir
+            let dir = expand(d.newConfigDir)
+            try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
+            return (d, dir)
+        }
+        // a wrong address signs in: the page's own account lines say so, nothing is added here; waiting ends
+        var (d, dir) = draftWith("Sg nw")
+        m.draft = d
+        SignInWindow.wordSeam = { _ in server(bob) }
+        let c = conf(login(as: bob))
+        m.startNewSignIn(fakeClaude, email: ann.email)
+        check(m.draft?.signInRunning == true && m.draft?.signInAsked != nil && guarded.last == "login \(dir)",
+              "stage G: New profile: signing in… at once, the guard asked for the folder: \(guarded.last ?? "-")")
+        spin({ m.draft?.signInRunning == false })
+        check(m.draft?.signInRunning == false && m.draft?.signInAsked == nil && m.draft?.signInSaid?.kind == .wrongAccount && m.draft?.unconfirmed == false,
+              "stage G: New profile: another account than the typed address signed in: waiting ends, the page's own lines say it (a wrong account)")
+        check(args(c).contains("ARG [ann@example.com]") && !args(c).contains("bob@example.com"), "stage G: New profile: only the typed address was filled in")
+        term.killAll()
+
+        // unconfirmed: the page doesn't take the folder for signed in
+        (d, dir) = draftWith("Sg nu")
+        m.draft = d
+        SignInWindow.wordSeam = { _ in nil }
+        _ = conf(login(as: ann))
+        m.startNewSignIn(fakeClaude, email: nil)
+        spin({ m.draft?.signInRunning == false })
+        check(m.draft?.unconfirmed == true && m.draft?.signInSaid?.kind == .unverified && m.draft?.signInAsked == nil,
+              "stage G: New profile: an unconfirmed sign-in: the page's signed-in state is off (unconfirmed)")
+        term.killAll()
+
+        // confirmed on the same account again: waiting ends (it used to wait for another account)
+        (d, dir) = draftWith("Sg ns")
+        m.draft = d
+        SignInWindow.wordSeam = { _ in server(ann) }
+        try? #"{"oauthAccount":{"accountUuid":"\#(ann.account)","emailAddress":"ann@example.com","organizationUuid":"\#(ann.organization!)"}}"#
+            .write(toFile: dir + "/.claude.json", atomically: true, encoding: .utf8)
+        _ = conf(login(as: ann))
+        m.startNewSignIn(fakeClaude, email: "ann@example.com")
+        spin({ m.draft?.signInRunning == false })
+        check(m.draft?.signInSaid?.kind == .signedIn && m.draft?.unconfirmed == false && m.draft?.signInAsked == nil,
+              "stage G: New profile: the same account signed in again, confirmed: no longer waiting")
+        term.killAll()
+
+        // Cancel, and a later start's state is never taken by an earlier one's end
+        (d, dir) = draftWith("Sg nc")
+        m.draft = d
+        let c6 = conf(["login": "hang"])
+        m.startNewSignIn(fakeClaude, email: nil)
+        spin({ alive(pid(c6)) })
+        let first = pid(c6)
+        _ = conf(["login": "hang"])
+        m.startNewSignIn(fakeClaude, email: nil)            // ends the first (replaced): its end is older, ignored
+        spin({ !alive(first) }, 8); pause(1)
+        check(m.draft?.signInRunning == true && m.draft?.signInAsked != nil && m.draft?.signInSaid == nil,
+              "stage G: New profile: an earlier sign-in's end doesn't take the newer one's waiting away")
+        m.cancelNewSignIn()
+        check(m.draft?.signInRunning == false && m.draft?.signInAsked == nil && m.draft?.seatAtAsk == nil, "stage G: New profile: Cancel ends the waiting")
+        pause(1.5)
+        check(m.draft?.signInSaid == nil && m.draft?.signInRunning == false, "stage G: New profile: …and the end that follows it says nothing")
+        term.killAll()
+        m.draft = nil
+    }
+
+    // ── the sweep, and what Terminal keeps ──
+    do {
+        let work = SignInWindow.work.path
+        let sweepPrefs = Prefs()
+        sweepPrefs.put("cl_audit sign-in", command: "exec '\(work)/sign-in-aaaaaaaa.command'")
+        sweepPrefs.put("cl_audit sign-in 1", command: "exec '\(work)/sign-in-bbbbbbbb.command'")
+        sweepPrefs.put("Basic", command: "/bin/zsh -l")
+        sweepPrefs.put("Other app sign-in", command: "exec '\(home)/other/sign-in-cccccccc.command'")
+        SignInWindow.terminalProfiles = sweepPrefs.tool
+        SignInWindow.sweepNow()
+        check(sweepPrefs.names == ["Basic", "Other app sign-in"], "stage G: the sweep takes Terminal's kept profiles of cl_audit's sign-ins (its work folder only): \(sweepPrefs.names)")
+        SignInWindow.terminalProfiles = prefs.tool
+        check(prefs.names.allSatisfy { $0.hasPrefix("cl_audit sign-in") }, "stage G: every profile Terminal kept in these checks is named after cl_audit's settings file: \(prefs.names)")
+    }
+    SignInWindow.wordSeam = nil
+    ClaudeCLI.openTerminal = keepTerminal; FolderGuard.launchSeam = keepSeam
+    term.killAll()
+}
+#endif
+
 print("\(checks - failures) of \(checks) checks passed")
 exit(failures == 0 ? 0 : 1)

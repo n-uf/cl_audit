@@ -45,6 +45,14 @@ struct NewAccountDraft: Equatable {
     /// The account the folder was signed in to when Sign in was pressed (nil: none), so signing in again in the
     /// folder this setup made waits for another account, not just any sign-in.
     var seatAtAsk: Seat?
+    /// How the last sign-in window ended, until the next Sign in (SignInWindow): its line under Account. A signed-in or
+    /// wrong-account end says nothing here (the folder's own account tells, below), and an unconfirmed one is never
+    /// taken for a sign-in (`unconfirmed`).
+    var signInSaid: SignInSaid?
+    var unconfirmed: Bool { signInSaid?.kind == .unverified }
+    /// The sign-in window is open and followed (SignInWindow): "signing in…" until it ends, whatever the folder's record
+    /// says meanwhile (a record that names an account is not yet a confirmed sign-in).
+    var signInRunning = false
     /// What this setup did; Cancel undoes exactly this (an existing folder is never deleted or signed out).
     var createdConfigDir: String?
     var createdDataDir: String?
@@ -479,7 +487,9 @@ struct NewAccountView: View {
     private var needsDesktop: Bool { draft.claudeWindow }
     private var desktopDone: Bool { !needsDesktop || desktop == .same || desktop == .unknown }
     private var folders: Bool { NewAccountSetup.foldersReady(draft) && NewAccountSetup.linksReady(draft) }
-    private var signedIn: String? { checks(.folder).contains { $0.blocks } ? nil : NewAccountSetup.signedInEmail(draft) }
+    /// Who Claude Code in the folder is signed in to; nobody while its last sign-in ended unconfirmed (the folder's record
+    /// alone is a guess: Sign in again, or Refresh now in Settings once the profile is made).
+    private var signedIn: String? { checks(.folder).contains { $0.blocks } || draft.unconfirmed ? nil : NewAccountSetup.signedInEmail(draft) }
     private var windowOpen: Bool { NewAccountSetup.foldersReady(draft) && NewAccountSetup.windowOpen(draft) }
     private var tint: Color { Color(nsColor: draft.color.color(fiveHour: nil, stale: false)) }
     private var createTitle: String { draft.source == .new ? "Create" : "Connect" }
@@ -642,7 +652,7 @@ struct NewAccountView: View {
     private var freeAccounts: [(email: String, path: String)] { NewAccountSetup.freeAccounts(among: model.accounts) }
 
     /// Sign in was pressed and the folder doesn't name a new account yet.
-    private var waiting: Bool { NewAccountSetup.waiting(draft) }
+    private var waiting: Bool { draft.signInRunning || NewAccountSetup.waiting(draft) }
 
     /// The folder was made by this setup, so signing in there again (another address) is allowed; a folder that
     /// existed before is never signed in again from here.
@@ -685,7 +695,7 @@ struct NewAccountView: View {
                 }
                 Text("signing in…").font(.system(size: 12)).foregroundStyle(face.caution).lineLimit(1)
                 Spacer(minLength: 6)
-                Button("Cancel") { draft.signInAsked = nil; draft.seatAtAsk = nil }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
+                Button("Cancel") { model.cancelNewSignIn() }.buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
             }
             .alignmentGuide(.rowLine) { d in d[VerticalAlignment.center] }
         } else {
@@ -720,6 +730,11 @@ struct NewAccountView: View {
     /// One grey line under Account: what the choice does, or what's happening.
     @ViewBuilder private var accountLine: some View {
         let text: (String, Color?)? = {
+            // how the last sign-in window ended, when the folder's own account doesn't say it (below): unconfirmed, declined,
+            // failed, no sign-in in time, replaced by another sign-in
+            if !draft.asking, !waiting, let s = draft.signInSaid, s.kind != .signedIn, s.kind != .wrongAccount {
+                return (s.text, s.danger ? face.danger : face.caution)
+            }
             if draft.asking {
                 if let p = addressProblem { return (p, face.danger) }
                 if let dir = NewAccountSetup.freeFolder(for: draft.email, among: model.accounts), !draft.started {
@@ -812,11 +827,10 @@ struct NewAccountView: View {
             do { try NewAccountSetup.createOrConnect(&draft) } catch { addressProblem = error.localizedDescription; return }
         }
         guard let claude = model.requireClaude() else { addressProblem = model.noClaudeWhy; return }
-        guard ClaudeCLI.openLogin(claude, account: Account(draft.entry), email: e, creating: true) else {
-            addressProblem = "Terminal didn't open."; return
-        }
-        draft.seatAtAsk = Account.signedInSeat(configDir: draft.configDir)     // signing in again waits for another account
-        draft.asking = false; draft.signInAsked = Date(); addressProblem = nil; model.tick += 1
+        // Claude Code's sign-in in Terminal with the address filled in, followed to its end (SignInWindow): the sign-in
+        // window ending any other way than on an account says so under Account (a refused start included)
+        addressProblem = nil
+        model.startNewSignIn(claude, email: e)
     }
 
     /// "Sign in to another account…": the one-line address row, in place of the pop-up. Before any folder is made it
@@ -1105,9 +1119,10 @@ struct NewAccountView: View {
                 .help("Sign-in can be finished later from Settings")
             if signedIn == nil {
                 Button("Sign in to Claude Code…") {
-                    if let c = model.requireClaude() { ClaudeCLI.openLogin(c, account: Account(draft.entry), email: draft.email.isEmpty ? nil : draft.email, creating: true) }
+                    // the same sign-in as the address route's, followed to its end (the address typed before, if any, filled in)
+                    if let c = model.requireClaude() { model.startNewSignIn(c, email: draft.email.isEmpty ? nil : draft.email) }
                 }
-                    .buttonStyle(.pill(tint, compact: true)).disabled(model.discarding)
+                    .buttonStyle(.pill(tint, compact: true)).disabled(model.discarding || waiting)
             } else if draft.claudeWindow, !waiting,
                       FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) == nil {
                 // the window waits until Claude Code is on an account no other profile has
