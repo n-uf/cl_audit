@@ -1339,6 +1339,10 @@ do {
     check(words(linkedNew, annOnly, code: ben) == finish, "05 after a restart, the receipt linked: ben's row keeps the finish line: \(words(linkedNew, annOnly, code: ben))")
     check(words(linkedNew, annOnly, code: ben, now: t0.addingTimeInterval(2 * 86400)) == onIt,
           "a switch linked two days ago no longer decides the row: \(words(linkedNew, annOnly, code: ben, now: t0.addingTimeInterval(2 * 86400)))")
+    // the clock set back after the link: a link a day ahead of now is no finish line; a minute ahead still is
+    check(words(linkedNew, annOnly, code: ben, now: t0.addingTimeInterval(-86400)) == onIt
+          && words(linkedNew, annOnly, code: ben, now: t0.addingTimeInterval(-60)) == finish,
+          "a link dated a day ahead (clock set back) no longer decides the row, one a minute ahead still does: \(words(linkedNew, annOnly, code: ben, now: t0.addingTimeInterval(-86400)))")
     check(words(newestOf([older, linkedNew]), withCat, code: dan) == onIt,
           "the newest switch linked to ben, an older one still open, Claude Code on dan by hand: never the older one's cat, no finish: \(words(newestOf([older, linkedNew]), withCat, code: dan))")
     // 07 after a restart: the switch to ben still open, Claude Code on dan

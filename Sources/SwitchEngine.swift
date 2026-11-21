@@ -135,6 +135,10 @@ struct SwitchReceipt: StoredReceipt, Equatable {
 
     /// Something was moved, and the switch was neither linked nor undone: Undo still applies.
     var unfinished: Bool { undone == nil && linked == nil && leftAsIs == nil && !steps.isEmpty }
+    /// Linked within the last day (nil: not linked): how long a switch's finish line lasts (AccountSettings.switchTarget,
+    /// the resolver's split). A link dated ahead of `now` (the clock was set back) counts only within five minutes of it,
+    /// so it never keeps the finish line until the clock catches up.
+    func linkedLately(now: Date) -> Bool? { linked.map { (-300 ... 24 * 3600).contains(now.timeIntervalSince($0)) } }
     /// "Leave it as it is": the person closed it as it stands (Undo no longer applies; nothing is moved).
     var leftAsIs: Date?
     var moved: Int { steps.filter { $0.kind == .entry && $0.done }.count }

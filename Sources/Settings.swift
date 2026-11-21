@@ -1978,7 +1978,7 @@ struct AccountSettings: View {
                              code: String?, codeAccount: String?, now: Date = Date()) -> String? {
         if let g = goal { return g.standby == nil || g.wantedEmail.isEmpty ? nil : g.wantedEmail }
         guard let r = newest, r.undone == nil, r.leftAsIs == nil else { return nil }
-        let linkedLately = r.linked.map { now.timeIntervalSince($0) <= 24 * 3600 } ?? false
+        let linkedLately = r.linkedLately(now: now) ?? false
         if let c = code, let id = codeAccount, AccountID.same(r.to.account, id), linkedLately || r.unfinished { return c }
         guard r.unfinished else { return nil }
         let s = standby.first { $0.id == r.standby } ?? standby.first { s in s.seat.map { r.to.same($0) } ?? false }

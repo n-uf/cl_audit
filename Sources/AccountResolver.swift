@@ -116,8 +116,8 @@ enum AccountResolver {
         // rule as Settings' Claude Code row, AccountSettings.switchTarget), and the app is still on the account it left
         // (a switch linked more than a day ago waits no more: then it's a split by hand)
         if r.fromApp, r.differs, r.clash == nil, let n = newestSwitch, let id = r.account,
-           AccountSettings.switchTarget(goal: nil, newest: n, standby: [], code: codeLabel, codeAccount: code.map { AccountID.normal($0.account) }) != nil,
-           byID(id).sameAccount(byID(n.from.account)), n.linked.map({ now.timeIntervalSince($0) <= 24 * 3600 }) ?? true {
+           AccountSettings.switchTarget(goal: nil, newest: n, standby: [], code: codeLabel, codeAccount: code.map { AccountID.normal($0.account) }, now: now) != nil,
+           byID(id).sameAccount(byID(n.from.account)), n.linkedLately(now: now) ?? true {
             r.switchWaits = true
         }
         return r
