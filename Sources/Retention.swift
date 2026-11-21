@@ -128,7 +128,13 @@ struct Retention: Equatable {
 
     /// The Kept here row's info text.
     static let keptHereInfo = "Claude Code's session transcripts, the entries of the Claude window's Code tab (for every account it has used), and how much room they take. "
-        + "The last sentence says when Claude Code deletes them; since Claude Code 2.1.248 that depends on where the session ran (see Keep for)."
+        + "The last sentence says when Claude Code deletes them; since Claude Code 2.1.248 that depends on where the session ran (see Keep for). "
+        + connectorNote
+
+    /// One sentence for the Kept here and Would be deleted info: what Claude Code also deletes after cleanupPeriodDays with no
+    /// exception for the Claude window (a project's connector-downloads folder, 2.1.326). Only said: nothing counts it.
+    static let connectorNote = "Claude Code (2.1.326) also deletes the files connectors downloaded into a project after cleanupPeriodDays, "
+        + "for every session, the Claude window's too; cl_audit doesn't count them."
 
     /// The keep-for value the Keep for menu shows: nil (unknown) when settings.json's cleanupPeriodDays can't be told, though
     /// the counts take it as 30.
@@ -176,10 +182,10 @@ struct Retention: Equatable {
     }
 
     /// The info text of the Would be deleted row of Restore (`comes` is "comes back") and Import ("comes in"), and of the
-    /// default-profile move (`comes` is "moves", `moving`: the sentence says "once it is moved", not "again"). A skipped
-    /// clean-up adds its note at the end.
+    /// default-profile move (`comes` is "moves", `moving`: the sentence says "once it is moved", not "again"), then the
+    /// connector files' sentence. A skipped clean-up adds its note at the end.
     func wouldDeleteInfo(file: String, comes: String, moving: Bool = false) -> String {
-        [ruleInfo(file: file, comes: comes, moving: moving), skipNote].compactMap { $0 }.joined(separator: " ")
+        [ruleInfo(file: file, comes: comes, moving: moving), Self.connectorNote, skipNote].compactMap { $0 }.joined(separator: " ")
     }
 
     private func ruleInfo(file: String, comes: String, moving: Bool) -> String {
