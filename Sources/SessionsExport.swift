@@ -1130,9 +1130,11 @@ enum SessionsExport {
             }
             var r = try make(String(rootName.prefix(27)))
             if r.status != 0 {
+                let first = r.err                       // (kept when the second try says nothing)
                 try? fm.removeItem(at: tmp)
                 if cancel() { throw ArchiveError("Stopped.") }
                 r = try make(String(rootName.prefix(22)) + " " + String(tag.prefix(4)))
+                if r.status != 0, r.err.isEmpty { r.err = first }
             }
             guard r.status == 0 else {
                 throw ArchiveError("The disk image couldn't be made (\(r.err.isEmpty ? "hdiutil gave no reason, status \(r.status)" : String(r.err.prefix(200)))).")
