@@ -29,16 +29,41 @@ enum AddressSettings {
     /// Whether this process is the settings app (the domain's own process).
     static var isSettingsApp: Bool { Bundle.main.bundleIdentifier == Installer.managerID }
 
+    /// The change note every process reloads on. A check build (Checks/run.sh's compile, CL_AUDIT_CHECKS) names one of its own:
+    /// a distributed note isn't scoped to a home, so the real one would reach the operator's running cl_audit and agent.
+    static let changeNote: String = {
+        #if CL_AUDIT_CHECKS
+        return "local.usage-n-uf.privacy-changed.checks-\(getpid())"
+        #else
+        return "local.usage-n-uf.privacy-changed"
+        #endif
+    }()
+
     /// Where the setting lives. The settings app is the domain's own process, so it reads and writes its standard defaults (the
     /// same domain; an app asking for a suite named like itself is not guaranteed one); every other process reads the suite.
+    /// A check build keeps it in memory: no suite reads or writes the operator's own Show emails.
+    #if CL_AUDIT_CHECKS
+    static let store = makeStore(prefs: CheckPrefs())
+    #else
     static let store = makeStore(prefs: isSettingsApp ? UserDefaults.standard : nil)
+    #endif
 
     /// The setting's store: `showEmails` in the `local.usage-n-uf` domain (true = shown), the older inverted `blurEmails`, the
     /// change note. `prefs`: where the booleans live, nil: that domain (a check passes a dictionary of its own).
     static func makeStore(prefs: AddressPrefs?) -> AddressDefaultsStore {
         AddressDefaultsStore(suite: Installer.managerID, key: key, valueMeansShown: true,
-                             legacyKey: legacyKey, changeNote: "local.usage-n-uf.privacy-changed", prefs: prefs)
+                             legacyKey: legacyKey, changeNote: changeNote, prefs: prefs)
     }
+
+    #if CL_AUDIT_CHECKS
+    /// A check build's setting: in memory, empty at start (hidden), never the `local.usage-n-uf` domain.
+    final class CheckPrefs: AddressPrefs {
+        private var d: [String: Bool] = [:]
+        func addressBool(_ key: String) -> Bool? { d[key] }
+        func setAddressBool(_ value: Bool, _ key: String) { d[key] = value }
+        func removeAddressKey(_ key: String) { d[key] = nil }
+    }
+    #endif
 
     /// The default, settled once. Neither `showEmails` nor `blurEmails` is stored (the first start of the version that has the
     /// setting): an install that was already set up (`setUp`: its profiles file is there) keeps what it saw before, the addresses

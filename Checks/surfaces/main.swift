@@ -4105,7 +4105,10 @@ MainActor.assumeIsolated {
     // D1, the default settled once at the settings app's first start of this version: an install already set up (its profiles file is
     // there) keeps showing addresses, a fresh one stays hidden; a stored key, of either sense, is never overwritten
     do {
-        let noteName = Notification.Name(rawValue: "local.usage-n-uf.privacy-changed")
+        // a check build's own note (AddressSettings.changeNote): never the real one, which would reach the operator's cl_audit
+        check(AddressSettings.changeNote.hasPrefix("local.usage-n-uf.privacy-changed.checks-"),
+              "the setting: a check build posts its own change note, never the real one (\(AddressSettings.changeNote))")
+        let noteName = Notification.Name(rawValue: AddressSettings.changeNote)
         var posted = 0
         let obs = DistributedNotificationCenter.default().addObserver(forName: noteName, object: nil, queue: .main) { _ in posted += 1 }
         defer { DistributedNotificationCenter.default().removeObserver(obs) }
