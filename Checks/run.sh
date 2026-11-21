@@ -281,7 +281,9 @@ run_retention() {
 # the setup suite: Claude Code's setup in Export, Import, Backup and Restore; the hostile-zip maker is read next to its home
 run_setup() {
   local dir="$WORK/setup"; mkdir -p "$dir"
-  compile "$dir/cl_audit-checks-setup" "$HERE/setup/main.swift" || return 1
+  # (-D CL_AUDIT_TESTING: an export's setup file can be made to go missing at its copy, and hdiutil be a stand-in: seams only
+  # a test build has)
+  compile "$dir/cl_audit-checks-setup" "$HERE/setup/main.swift" -D CL_AUDIT_TESTING || return 1
   cp "$HERE/setup/mkhostile.py" "$dir/mkhostile.py"
   run_binary "$dir" "$dir/cl_audit-checks-setup"
 }

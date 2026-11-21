@@ -446,11 +446,18 @@ enum EntryConnections {
 enum SessionsExport {
     enum Keys { case leaveOut, keep }
 
-    /// A check's seam: called with each setup file's copy (in the backup the export is made from) just before it is copied
-    /// in, so a check can make one go missing there. Never set in the app.
+    // Two checks' seams. Only a test build (compiled with -D CL_AUDIT_TESTING) has them as variables; in the shipped app they
+    // are constants (no hook, the system's hdiutil: the export password only ever goes to it).
+    // `beforeSetupCopy`: called with each setup file's copy (in the backup the export is made from) just before it is copied
+    // in, so a check can make one go missing there. `hdiutilPath`: the hdiutil an encrypted export runs (a stand-in that
+    // fails the first try).
+    #if CL_AUDIT_TESTING
     nonisolated(unsafe) static var beforeSetupCopy: ((String) -> Void)? = nil
-    /// The hdiutil an encrypted export runs: a check's seam (a stand-in that fails the first try). Never changed in the app.
     nonisolated(unsafe) static var hdiutilPath = "/usr/bin/hdiutil"
+    #else
+    static let beforeSetupCopy: ((String) -> Void)? = nil
+    static let hdiutilPath = "/usr/bin/hdiutil"
+    #endif
 
     /// One profile to export: from where it is now (`source`), or from a backup of it.
     struct Part {
