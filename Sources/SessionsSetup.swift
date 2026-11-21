@@ -482,14 +482,16 @@ enum Setup {
     /// The carried paths that a command of this settings.json names: the in-folder tail of a path in a hook or status-line command
     /// (`~`, `$HOME` and `${HOME}` expanded, the folder's own name not needed: the tail after it is what is compared).
     static func namedPaths(in settings: Data, among rels: [String]) -> Set<String> {
-        // every tail of every path, once (a path's tails are as many as its parts): then each carried file is one lookup, so a
-        // crafted settings.json of many paths against a folder of many files stays quick (no paths × files)
+        // the tails of every path, once, only as deep as the deepest carried file (a deeper tail can't be one): then each carried
+        // file is one lookup, so a crafted settings.json of many paths, or of one very deep path, against a folder of many files
+        // stays quick (no paths × files, no path × its own length)
+        let depth = rels.map { $0.split(separator: "/").count }.max() ?? 0
         var tails = Set<String>()
         for p in commandPaths(inSettings: settings, home: "/~home").map(normalize) {
-            var i = p.endIndex
-            while let slash = p[..<i].lastIndex(of: "/") {
+            var i = p.endIndex, n = 0
+            while n < depth, let slash = p[..<i].lastIndex(of: "/") {
                 tails.insert(String(p[p.index(after: slash)...]))
-                i = slash
+                i = slash; n += 1
             }
         }
         return Set(rels.filter(tails.contains))
