@@ -1316,7 +1316,7 @@ do {
     check(!sb.contains { $0.seat?.account == S } && added[1].standby.isEmpty, "S, Work's account in use, nowhere on Main, whatever the organisation")
     check(AccountList.adding(found, to: added, now: t0) == added, "found again: nothing added twice")
     // an entry already there with no organisation yet (a transcript's id alone, an older list): filled in once it is known,
-    // by the same rule (its record's, else its newest-used session folder's); one recorded as none ("") is left as it is
+    // by the same rule (its record's, else its newest-used session folder's); "" is not known too (as StandbyTidy reads it)
     var orgless = mainB
     orgless.standby = [StandbyAccount(email: "", seat: Seat(account: P, organization: nil, email: nil), id: "op"),
                        StandbyAccount(email: "", seat: Seat(account: M, organization: nil, email: nil), id: "om")]
@@ -1324,9 +1324,11 @@ do {
     check(filled.map(\.id) == ["op", "om"] && filled[0].seat?.organization == o4 && filled[1].seat?.organization == o5,
           "org-less entries: P gets its record's organisation (o4), M its newest-used folder's (o5); nothing added twice")
     var noneOrg = mainB
-    noneOrg.standby = [StandbyAccount(email: "", seat: Seat(account: P, organization: "", email: nil), id: "on")]
-    check(AccountList.adding(found, to: [noneOrg, workB], now: t0)[0].standby.first?.seat?.organization == "",
-          "an entry recorded with no organisation (\"\") is left as it is")
+    noneOrg.standby = [StandbyAccount(email: "", seat: Seat(account: P, organization: "", email: nil), id: "on"),
+                       StandbyAccount(email: "", seat: Seat(account: M, organization: o3, email: nil), id: "ok")]
+    let noneFilled = AccountList.adding(found, to: [noneOrg, workB], now: t0)[0].standby
+    check(noneFilled.map(\.id) == ["on", "ok"] && noneFilled[0].seat?.organization == o4 && noneFilled[1].seat?.organization == o3,
+          "an entry recorded with \"\" is not known either (as StandbyTidy reads it): P gets o4; a known one (M under o3) is left as it is")
     let m13 = SettingsModel(); m13.accounts = added
     let page13 = SwitchPage(entry: added[0], standby: sb[0], model: m13, runner: m13.runner(of: "b2main"))
     check(!page13.pickList.contains { $0.seat?.account == S } && !SwitchMenu.lines(added[0]).contains { $0.key.contains(S) },

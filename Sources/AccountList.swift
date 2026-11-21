@@ -222,13 +222,14 @@ enum AccountList {
         }
         // a standby entry whose organisation isn't known yet (added from a transcript's id alone, or remembered before it
         // was): filled in once it is, by the same rule (its record's, else its newest-used session folder's in this
-        // profile's window). Only a missing one (nil); one known, or recorded as none (""), is never changed
+        // profile's window). Only a missing one, nil or "" (not known, as StandbyTidy reads it); a known one is never changed
         for i in out.indices {
             let window = found.window[out[i].id] ?? [:]
             for j in out[i].standby.indices {
-                guard let s = out[i].standby[j].seat, s.organization == nil else { continue }
+                guard let s = out[i].standby[j].seat, (s.organization ?? "").isEmpty else { continue }
                 let a = s.account.lowercased()
-                guard let org = recordOrg[a] ?? window.filter({ $0.key.account == a }).max(by: { $0.value < $1.value })?.key.organization else { continue }
+                guard let org = recordOrg[a] ?? window.filter({ $0.key.account == a }).max(by: { $0.value < $1.value })?.key.organization,
+                      !org.isEmpty else { continue }
                 out[i].standby[j].seat?.organization = org
             }
         }
