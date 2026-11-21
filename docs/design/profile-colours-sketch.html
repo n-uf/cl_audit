@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile colours: where they show</title>
+<style>
+/* Tokens are the app sketches' own (strip-display-sketch.html, ui-fixes-2026-11.html): Std dark face and Silver light face. */
+:root { --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.face-std, .face-silver {
+  --text: #ececee; --muted: #9a9aa0; --print: rgba(255,255,255,.5);
+  --green: #22c55e; --amber: #f59e0b; --red: #ef4444; --led-on: 74, 222, 128; --glow: 127, 249, 234;
+  --alu: repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #74746f, #52524e);
+  --alu-down: repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #6a6a65, #4a4a46);
+  --key-up: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #2e2e2c, 0 2px 0 #121211, 0 3px 7px rgba(0,0,0,.45);
+  --key-down: inset 0 1px 0 rgba(255,255,255,.2), inset 0 -1px 0 rgba(0,0,0,.3), 0 0 0 1px #2e2e2c, 0 1px 0 #121211, 0 2px 4px rgba(0,0,0,.45);
+  --legend: #f1f1f0; --legend-shadow: 0 -1px 0 rgba(0,0,0,.35);
+  --chassis: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #232325, #1b1b1d 30%, #19191b);
+  --chassis-shadow: 0 0 0 1px #000, 0 0 0 2px rgba(255,255,255,.07);
+  --module: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #29292b, #222224);
+  --module-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #0c0c0d, 0 4px 12px rgba(0,0,0,.25);
+  --strip: rgba(0,0,0,.3);
+  --strip-shadow: inset 0 1px 3px rgba(0,0,0,.75), inset 0 0 0 1px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.05);
+  --disp-bg: linear-gradient(180deg, #030607, #0a1113 70%, #0c1517);
+  --disp-shadow: inset 0 1px 3px rgba(0,0,0,.9), inset 0 0 0 1px rgba(255,255,255,.035), 0 0 0 1px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.07);
+  --disp-text: rgb(var(--glow)); --disp-glow: 0 0 3px rgba(var(--glow), .75), 0 0 9px rgba(var(--glow), .35);
+  --seg-off: rgba(0,0,0,.38); --seg-lit: brightness(1);
+  --mark-ring: rgba(0,0,0,.4);          /* a hairline round every colour mark, so a pale colour still has an edge */
+  color: var(--text);
+}
+/* the profile colour as drawn on this face (set where --c is, so it resolves there) */
+.tile, .card, .mh, .qh { --cm: var(--c); }
+.face-silver .tile, .face-silver .card, .face-silver .mh, .face-silver .qh { --cm: color-mix(in srgb, var(--c) 60%, #000); }   /* darkened so every colour reaches 3:1 on the light plate */
+.face-silver {
+  --text: #1c1c1e; --muted: #46464b; --print: rgba(20,20,20,.62);
+  --green: #13803a; --amber: #b25f00; --red: #c0271b; --led-on: 19, 128, 58; --glow: 28, 30, 32;
+  --alu: repeating-linear-gradient(90deg, rgba(255,255,255,.14) 0 1px, rgba(0,0,0,.03) 1px 2px), linear-gradient(180deg, #ededeb, #c8c8c3);
+  --alu-down: repeating-linear-gradient(90deg, rgba(255,255,255,.12) 0 1px, rgba(0,0,0,.03) 1px 2px), linear-gradient(180deg, #dadad6, #bababa);
+  --key-up: inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(0,0,0,.18), 0 0 0 1px #6d6d69, 0 2px 0 #4c4c49, 0 3px 6px rgba(0,0,0,.22);
+  --key-down: inset 0 1px 0 rgba(255,255,255,.6), inset 0 -1px 0 rgba(0,0,0,.15), 0 0 0 1px #6d6d69, 0 1px 0 #4c4c49;
+  --legend: #232323; --legend-shadow: 0 1px 0 rgba(255,255,255,.55);
+  --chassis: repeating-linear-gradient(0deg, rgba(255,255,255,.2) 0 1px, rgba(0,0,0,.025) 1px 2px), linear-gradient(180deg, #d0d2d3, #c2c4c5 45%, #b9bbbc);
+  --chassis-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 0 0 1px rgba(0,0,0,.2);
+  --module: repeating-linear-gradient(0deg, rgba(255,255,255,.24) 0 1px, rgba(0,0,0,.025) 1px 2px), linear-gradient(180deg, #e0e2e3 0%, #d0d2d3 55%, #c6c8c9 100%);
+  --module-shadow: inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.32), 0 3px 10px rgba(0,0,0,.16);
+  --strip: repeating-linear-gradient(0deg, rgba(255,255,255,.14) 0 1px, rgba(0,0,0,.03) 1px 2px), linear-gradient(180deg, #a9a9a4, #b9b9b4);
+  --strip-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 1px rgba(0,0,0,.12), 0 1px 0 rgba(255,255,255,.6);
+  --disp-bg: linear-gradient(180deg, #fbfcfc, #eef0f1);
+  --disp-shadow: inset 0 0 0 1px rgba(0,0,0,.2), inset 0 2px 4px rgba(0,0,0,.14), inset 0 -2px 0 rgba(255,255,255,.9), 0 1px 0 rgba(255,255,255,.7);
+  --disp-text: #1c1e20; --disp-glow: none;
+  --seg-off: rgba(0,0,0,.11); --seg-lit: brightness(.86) saturate(1.1);
+  --mark-ring: rgba(0,0,0,.45);
+}
+
+/* ── the page ─────────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html { color-scheme: dark; }
+body { margin: 0; font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; background: #101012; color: #ececee; }
+.page { max-width: 1260px; margin: 0 auto; padding: 24px 16px 70px; }
+h1 { margin: 0 0 2px; font-size: 21px; letter-spacing: -.01em; }
+.meta { margin: 0 0 12px; color: #9a9aa0; font-size: 12.5px; }
+.meta b { color: #e8a07f; font-weight: 600; }
+h2 { margin: 40px 0 4px; font-size: 18px; letter-spacing: -.01em; }
+h2 .tag { display: inline-block; margin-left: 8px; padding: 2px 7px; border-radius: 3px; vertical-align: 2px; font: 600 10px var(--mono); letter-spacing: .12em; text-transform: uppercase; background: #2b2b30; color: #b4b4ba; }
+h3 { margin: 22px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #9a9aa0; }
+p { margin: 0 0 8px; }
+.lead { max-width: 92ch; color: #c4c4ca; }
+.sub { max-width: 100ch; color: #9a9aa0; font-size: 13.5px; }
+.sub b, .lead b { color: #ececef; font-weight: 600; }
+.box { max-width: 100ch; margin: 12px 0 0; padding: 10px 14px; border-radius: 9px; background: #1b1b1e; color: #b4b4ba; font-size: 13px; line-height: 1.55; }
+.box b { color: #ececef; font-weight: 600; }
+.box.warn { background: #1a1407; box-shadow: inset 0 0 0 1px #3d2f12; color: #d9c6a0; }
+code { font: 12px var(--mono); padding: 1px 5px; border-radius: 4px; background: rgba(127,127,127,.18); }
+
+/* the colours */
+.sw-row { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 8px; margin: 10px 0 0; }
+.swc { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 1px 8px; align-items: center; padding: 6px 8px; border-radius: 7px; background: #1b1b1e; min-width: 0; }
+.swc i { grid-row: 1 / 3; width: 22px; height: 22px; border-radius: 5px; background: var(--c); box-shadow: 0 0 0 1px rgba(255,255,255,.12); }
+.swc b { font-size: 12px; font-weight: 600; text-transform: capitalize; }
+.swc small { font: 10.5px var(--mono); color: #9a9aa0; white-space: nowrap; }
+.swc.neutral b { text-transform: none; }
+.swc.neutral i { box-shadow: 0 0 0 1px rgba(255,255,255,.3); }
+.rules { margin: 12px 0 0; padding: 0 0 0 18px; max-width: 100ch; color: #b4b4ba; font-size: 13px; }
+.rules li { margin: 3px 0; }
+.rules b { color: #ececef; }
+
+/* an option */
+.opt-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr)); gap: 18px 16px; margin-top: 14px; align-items: start; }
+.cell { min-width: 0; }
+.cell > .what { margin: 7px 2px 0; color: #9a9aa0; font-size: 12px; line-height: 1.45; }
+.cell > .what b { color: #d4d4da; font-weight: 600; }
+.dev { min-width: 0; padding: 10px 12px 12px; border-radius: 10px; background: var(--chassis); box-shadow: var(--chassis-shadow); color: var(--text); }
+.dev .lbl { margin: 0 0 8px; font: 600 9.5px/1.2 var(--font); letter-spacing: .16em; text-transform: uppercase; color: var(--print); }
+.notes { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; max-width: 110ch; }
+.notes li { display: grid; grid-template-columns: 9.5em minmax(0, 1fr); gap: 10px; padding: 8px 12px; border-radius: 8px; background: #1b1b1e; color: #b4b4ba; font-size: 12.5px; line-height: 1.5; }
+.notes li b { color: #ececef; font-weight: 600; }
+@media (max-width: 640px) { .notes li { grid-template-columns: 1fr; gap: 0; } }
+.cell.wide { grid-column: 1 / -1; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(330px, 100%), 1fr)); gap: 16px; }
+.strip.ten { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); }
+.ten .tile { padding: 4px 9px 8px; }
+
+/* by usage table */
+.tbl { width: 100%; max-width: 110ch; border-collapse: collapse; margin: 10px 0 0; font-size: 12.5px; }
+.tbl th, .tbl td { padding: 6px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid #26262a; }
+.tbl th { font: 600 10px var(--font); letter-spacing: .14em; text-transform: uppercase; color: #9a9aa0; }
+.tbl td:first-child { color: #ececef; font-weight: 600; white-space: nowrap; }
+.tbl td { color: #b4b4ba; }
+@media (max-width: 640px) { .tbl, .tbl tbody, .tbl tr, .tbl td, .tbl th { display: block; } .tbl thead { display: none; } .tbl tr { padding: 6px 0; border-bottom: 1px solid #26262a; } .tbl td { border: 0; padding: 1px 0; } }
+
+/* ── mock: the dashboard tile bar ─────────────────────────────────────── */
+.strip { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; border-radius: 7px; background: var(--strip); box-shadow: var(--strip-shadow); }
+.tile { position: relative; display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 4px 11px 8px; border-radius: 4px; flex: 1 1 auto; min-width: 0;
+  color: var(--legend); text-shadow: var(--legend-shadow); background: var(--alu); box-shadow: var(--key-up); }
+.tile b { display: block; font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; }
+.tile small { display: block; margin-top: 3px; padding: 1px 5px; border-radius: 2px; font: 700 9.5px var(--mono); text-shadow: none; white-space: nowrap; background: var(--disp-bg); box-shadow: var(--disp-shadow); }
+.tile small s { text-decoration: none; }
+.tile.sel { transform: translateY(1px); padding-top: 7px; background: var(--alu-down); box-shadow: var(--key-down); }
+.tile.sel::before { content: ""; position: absolute; left: 5px; right: 5px; top: 3px; height: 2px; border-radius: 2px;
+  background: linear-gradient(180deg, #ffb08a, #ff7a3d 60%, #f0612a); box-shadow: 0 0 3px rgba(255,122,61,.8), 0 0 8px rgba(255,122,61,.45); }
+.g { color: var(--green); } .a { color: var(--amber); } .r { color: var(--red); }
+
+/* the colour mark: a dot on the name line (hidden until an option shows it) */
+.dotc { display: none; flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--cm); box-shadow: 0 0 0 1px var(--mark-ring); }
+.byu .dotc { background: #3f3f46; box-shadow: 0 0 0 1px rgba(255,255,255,.28); }
+.face-silver .byu .dotc { box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+
+/* ── mock: the profile card header (the card's 340 pt column, drawn from ui-fixes-2026-11.html) ─── */
+.card { position: relative; overflow: hidden; border-radius: 10px; padding: 12px; background: var(--module); box-shadow: var(--module-shadow); }
+.chead { position: relative; display: flex; align-items: center; gap: 10px; margin: -12px -12px 8px; padding: 12px; }
+.cname { min-width: 0; flex: 1 1 auto; display: grid; gap: 2px; }
+.nm { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 14.5px; white-space: nowrap; }
+.inuse { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; min-width: 0; }
+.inuse i { width: 6px; height: 6px; border-radius: 50%; flex: none; background: rgb(var(--led-on)); box-shadow: 0 0 5px rgba(var(--led-on), .8); }
+.inuse span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.plan { flex: none; display: grid; justify-items: center; gap: 2px; padding: 4px 9px; border-radius: 4px; background: var(--disp-bg); box-shadow: var(--disp-shadow); font: 700 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--disp-text); text-shadow: var(--disp-glow); }
+.plan small { font-size: 7.5px; opacity: .6; letter-spacing: .12em; }
+.lim { display: grid; gap: 3px; margin-top: 8px; }
+.lim-row { display: flex; align-items: baseline; gap: 6px; font-size: 13px; font-weight: 600; }
+.lim-row small { color: var(--muted); font-weight: 400; font-size: 11.5px; }
+.lim-row .pct { margin-left: auto; font: 700 12.5px var(--mono); }
+.segs { display: grid; grid-template-columns: repeat(12, 1fr); gap: 3px; height: 7px; }
+.segs i { border-radius: 1.5px; background: var(--seg-off); }
+.segs i.l { background: currentColor; filter: var(--seg-lit); box-shadow: 0 0 4px color-mix(in srgb, currentColor 50%, transparent); }
+.face-silver .segs i.l { box-shadow: inset 0 1px 0 rgba(255,255,255,.3); }
+
+/* ── mock: the Dock icon, drawn (dark tile, label, two level bars, the numbers) ─── */
+.ico2 { width: 52px; height: 52px; flex: none; border-radius: 12px; background: linear-gradient(#2a2c2e, #141516); box-shadow: inset 0 0 0 1px #ffffff14, 0 1px 3px #0009;
+  display: grid; grid-template-columns: 7px 1fr; grid-template-rows: 12px 1fr 1fr; column-gap: 4px; padding: 5px 7px 6px 6px; font: 700 8px/1 var(--mono); color: #d8d8d8; }
+.ico2 .lb { grid-column: 1 / 3; text-align: center; letter-spacing: .06em; font-size: 7.5px; color: #cfcfcf; }
+.ico2 i { grid-column: 1; border-radius: 3px; background: #2f3133; align-self: stretch; margin: 2px 0; }
+.ico2 i.g { background: #22c55e; box-shadow: 0 0 4px #22c55e99; }
+.ico2 i.a { background: #f59e0b; box-shadow: 0 0 4px #f59e0b99; }
+.ico2 i.r { background: #ef4444; box-shadow: 0 0 4px #ef444499; }
+.ico2 b { grid-column: 2; display: flex; justify-content: space-between; align-items: center; font-size: 7px; color: #9a9a9a; }
+.ico2 b span { font-size: 15px; color: #fff; font-weight: 700; }
+.wall { position: relative; overflow: hidden; border-radius: 8px; padding: 10px; background: radial-gradient(110% 90% at 25% 0%, #33405e 0%, #1c2236 52%, #0d0f17 100%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); }
+.dock { display: grid; grid-template-columns: repeat(3, 1fr); justify-items: center; gap: 6px; max-width: 330px; margin: 0 auto; padding: 9px 8px 7px; border-radius: 16px; background: rgba(255,255,255,.13); box-shadow: inset 0 0 0 1px rgba(255,255,255,.2); }
+.dock .ico2 { width: 58px; height: 58px; }
+.dk { display: grid; justify-items: center; gap: 4px; }
+.dk em { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.75); }
+.caps { display: grid; grid-template-columns: repeat(3, 1fr); justify-items: center; gap: 6px; max-width: 330px; margin: 6px auto 0; font-size: 10.5px; color: rgba(255,255,255,.75); text-align: center; line-height: 1.25; }
+
+/* ── mock: the menu bar icon and its menu (MenuBarRow: dot, name, address and lamp, the limits) ─── */
+.mbar { display: flex; align-items: center; justify-content: flex-end; gap: 10px; height: 24px; margin: -10px -10px 8px; padding: 0 10px; background: rgba(18,20,28,.6); font-size: 11.5px; color: #f2f2f2; }
+.mbar .sp { margin-right: auto; font-weight: 700; }
+.gl { position: relative; display: inline-flex; align-items: center; gap: 3px; padding: 2px 5px; border-radius: 4px; font: 700 9px/1 var(--font); letter-spacing: .04em; color: #fff; }
+.gl.open { box-shadow: inset 0 0 0 20px rgba(255,255,255,.18); }
+.gl i { width: 3px; height: 10px; border-radius: 1px; background: #22c55e; } .gl i.a { background: #f59e0b; } .gl i.r { background: #ef4444; }
+.nmenu { width: min(280px, 100%); margin: 0 0 0 auto; padding: 5px; border-radius: 10px; background: #2a2a2dfa; box-shadow: 0 10px 28px #000a, inset 0 0 0 1px #ffffff1f; font: 13px var(--font); color: #ececef; }
+.mh { position: relative; overflow: hidden; display: grid; gap: 5px; padding: 7px 10px 8px 12px; border-radius: 6px; }
+.mh .top { display: flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; }
+.mh .top .st { margin-left: auto; font-size: 11px; color: #ff8a80; font-weight: 600; white-space: nowrap; }
+.mh .who { display: flex; align-items: center; gap: 6px; font-size: 11.5px; color: #a1a1a8; }
+.mh .who i { width: 6px; height: 6px; border-radius: 50%; background: #4ade80; box-shadow: 0 0 5px #4ade80cc; flex: none; }
+.mh .ml { display: grid; grid-template-columns: 44px 1fr 32px; align-items: center; gap: 8px; font-size: 11px; color: #c8c8ce; }
+.mh .ml .segs { height: 5px; gap: 2px; }
+.mh .ml .segs i.l { filter: none; }
+.mh .ml b { text-align: right; font: 700 11px var(--mono); }
+.nmenu .info { padding: 2px 12px 4px; font-size: 11px; color: #8a8a92; }
+.nmenu hr { border: 0; border-top: 1px solid #ffffff21; margin: 4px 8px; }
+.ni { display: grid; grid-template-columns: 18px 1fr auto; gap: 8px; align-items: center; padding: 3px 10px 3px 6px; border-radius: 5px; font-size: 12.5px; }
+.ni .ck { text-align: center; color: #4ade80; font-size: 11px; }
+.ni .nd { color: #a1a1a8; font-size: 11.5px; white-space: nowrap; }
+.ni.dim { color: #b4b4ba; }
+
+/* ── mock: quick chat's account line (QCHeader), Claude's dark colours ─── */
+.qwall { padding: 12px; border-radius: 8px; background: radial-gradient(110% 90% at 25% 0%, #33405e 0%, #1c2236 52%, #0d0f17 100%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); }
+.qc { position: relative; overflow: hidden; border-radius: 18px; background: rgba(38,38,36,.97); box-shadow: 0 0 0 1px rgba(222,220,209,.2), 0 18px 40px rgba(0,0,0,.5); color: #faf9f5; --cl-muted: #9c9aa2; }
+.qh { position: relative; display: flex; align-items: center; flex-wrap: wrap; gap: 3px 9px; padding: 10px 10px 8px 18px; font-size: 12px; color: var(--cl-muted); }
+.qh .nm { font-size: 12.5px; color: #faf9f5; }
+.qh .mail { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.qh .lv { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+.qh .lv b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.qh .meter { position: relative; width: 34px; height: 4px; border-radius: 2px; overflow: hidden; background: rgba(250,249,245,.13); }
+.qh .meter i { position: absolute; inset: 0 auto 0 0; border-radius: 2px; background: currentColor; }
+.qh .ic { margin-left: auto; display: flex; gap: 12px; color: var(--cl-muted); font-size: 13px; }
+.qb { padding: 4px 18px 16px; display: grid; gap: 8px; }
+.qb .u { justify-self: end; padding: 7px 12px; border-radius: 14px; background: #141413; font-size: 13px; }
+.qb .ans { display: grid; gap: 5px; } .qb .ans i { height: 6px; border-radius: 3px; background: rgba(250,249,245,.16); }
+
+/* ══ OPTION A: a dot ══════════════════════════════════════════════════════
+   a 7 px dot on the name line wherever a profile is named; By usage = a graphite dot (same place, so rows line up) */
+.opA .dotc { display: block; }
+.opA .ico2 .lb { color: var(--c); }
+.opA .byu .ico2 .lb, .opA .ico2.byu .lb { color: #cfcfcf; }
+
+/* ══ OPTION B: an edge ════════════════════════════════════════════════════
+   a 3-4 px line on one edge of each surface, never a fill; By usage = no edge (the surface looks as today) */
+.opB .tile::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 3px; height: 3px; border-radius: 2px; background: var(--cm); box-shadow: 0 0 0 .5px var(--mark-ring); }
+.opB .tile.byu::after { display: none; }
+.opB .card::before { content: ""; position: absolute; z-index: 1; left: 0; top: 0; bottom: 0; width: 4px; background: var(--cm); }
+.opB .card.byu::before { display: none; }
+.opB .ico2 { box-shadow: inset 0 0 0 1.5px var(--c), 0 1px 3px #0009; }
+.opB .ico2.byu { box-shadow: inset 0 0 0 1px #ffffff14, 0 1px 3px #0009; }
+.opB .gl::after { content: ""; position: absolute; left: 5px; right: 5px; bottom: -1px; height: 2px; border-radius: 1px; background: var(--c); }
+.opB .gl.byu::after { display: none; }
+.opB .mh::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 3px; border-radius: 2px; background: var(--c); }
+.opB .mh.byu::before { display: none; }
+.opB .mh .dotc { display: block; }          /* the menu's dot is there today, so it stays */
+.opB .qh::after { content: ""; position: absolute; left: 18px; right: 10px; bottom: 0; height: 2px; border-radius: 1px; background: var(--c); }
+.opB .qh.byu::after { display: none; }
+
+/* ══ OPTION C: edge + wash ════════════════════════════════════════════════
+   B's edges, plus a soft tint of the colour behind the profile's own header, face or band, and the dot;
+   text stays the face's own colour (never coloured text); By usage = a graphite wash (close to today's grey) */
+.opC .dotc { display: block; }
+.opC .tile { background: linear-gradient(180deg, color-mix(in srgb, var(--cm) 30%, transparent), color-mix(in srgb, var(--cm) 14%, transparent)), var(--alu); }
+.opC .tile.sel { background: linear-gradient(180deg, color-mix(in srgb, var(--cm) 42%, transparent), color-mix(in srgb, var(--cm) 22%, transparent)), var(--alu-down); }
+.opC .tile::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 3px; height: 3px; border-radius: 2px; background: var(--cm); box-shadow: 0 0 0 .5px var(--mark-ring); }
+.opC .tile .dotc { display: none; }
+.opC .card::before { content: ""; position: absolute; z-index: 1; left: 0; top: 0; bottom: 0; width: 4px; background: var(--cm); }
+.opC .chead { background: linear-gradient(90deg, color-mix(in srgb, var(--cm) 26%, transparent), color-mix(in srgb, var(--cm) 6%, transparent) 75%, transparent); }
+.opC .ico2 { background: linear-gradient(color-mix(in srgb, var(--c) 42%, #2a2c2e), color-mix(in srgb, var(--c) 14%, #141516)); box-shadow: inset 0 0 0 1.5px var(--c), 0 1px 3px #0009; }
+.opC .ico2.byu { background: linear-gradient(#34353a, #1c1d20); box-shadow: inset 0 0 0 1px #ffffff14, 0 1px 3px #0009; }
+.opC .gl { box-shadow: inset 0 0 0 20px color-mix(in srgb, var(--c) 45%, transparent); }
+.opC .gl.open { box-shadow: inset 0 0 0 20px color-mix(in srgb, var(--c) 45%, transparent), inset 0 0 0 1px rgba(255,255,255,.55); }
+.opC .mh { background: linear-gradient(90deg, color-mix(in srgb, var(--c) 30%, transparent), color-mix(in srgb, var(--c) 7%, transparent) 80%); }
+.opC .mh::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); }
+.opC .qh { background: linear-gradient(90deg, color-mix(in srgb, var(--c) 28%, transparent), color-mix(in srgb, var(--c) 5%, transparent) 80%); }
+.opC .qh::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); }
+.opC .byu.tile::after, .opC .card.byu::before, .opC .mh.byu::before, .opC .qh.byu::before { background: #3f3f46; box-shadow: none; }
+.opC .byu .dotc { background: #3f3f46; }
+.face-silver.opC .byu.tile::after, .face-silver.opC .card.byu::before { background: #8d8f91; }
+
+@media (max-width: 640px) { .page { padding: 18px 16px 50px; } .dock .ico2 { width: 52px; height: 52px; } }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>Profile colours: where they show</h1>
+<p class="meta">cl_audit design proposal · 2026-11-21 · <b>nothing is built</b></p>
+<p class="lead">Each profile already has a colour, picked in Settings ▸ Profile ▸ Colour from ten swatches. Today it shows in only a few places: the Dock icon (in the icon styles that use it), the dot at the head of the menu bar menu, and the usage-history chart. It does not show on the dashboard's tile bar, on the profile card's header, or in quick chat. These are three ways to carry it, from a dot to a tint. <b>Samples only:</b> profiles Main, Work and Studio, with example.com addresses.</p>
+
+<h2>The colours, and the rules every option keeps</h2>
+<div class="sw-row" id="swatches"><div class="swc" style="--c:#d97757"><i></i><b>orange</b><small>4.6 · 4.8</small></div><div class="swc" style="--c:#eab308"><i></i><b>yellow</b><small>7.5 · 3.3</small></div><div class="swc" style="--c:#84cc16"><i></i><b>lime</b><small>7.2 · 3.3</small></div><div class="swc" style="--c:#14b8a6"><i></i><b>teal</b><small>5.7 · 4.0</small></div><div class="swc" style="--c:#06b6d4"><i></i><b>cyan</b><small>5.9 · 3.9</small></div><div class="swc" style="--c:#3b82f6"><i></i><b>blue</b><small>3.9 · 5.3</small></div><div class="swc" style="--c:#6366f1"><i></i><b>indigo</b><small>3.2 · 6.1</small></div><div class="swc" style="--c:#8b5cf6"><i></i><b>purple</b><small>3.4 · 5.9</small></div><div class="swc" style="--c:#d946ef"><i></i><b>fuchsia</b><small>4.1 · 5.2</small></div><div class="swc" style="--c:#ec4899"><i></i><b>pink</b><small>4.1 · 5.2</small></div><div class="swc neutral" style="--c:#3f3f46"><i></i><b>By usage</b><small>graphite #3f3f46</small></div></div>
+<p class="sub" style="margin-top:8px">Each chip: the colour, then its contrast against the Std dark card (#2a2a2d) and, after the Silver darkening described below, against the Silver plate (#d0d2d3). Raw on Silver, none of the ten reaches 3:1 (yellow and lime sit at 1.3).</p>
+<ul class="rules">
+  <li><b>Red, green and amber stay usage levels.</b> The ten colours are chosen so none is plain red, green or amber; the usage bars, percentages and the full countdown keep their level colours in every option.</li>
+  <li><b>Colour is a mark, never the text.</b> Names, addresses and numbers keep the face's own text colour. Indigo (3.2:1), purple (3.4:1) and blue (3.9:1) would fail as small text on the dark card, so no option colours text.</li>
+  <li><b>The colour sits on the name line; state sits on the address line.</b> The mint and green lamps (in use, signed in) stay under the name, so a teal or cyan profile mark never reads as a lamp.</li>
+  <li><b>On the Silver face</b> the colour is drawn darkened to 60% (every one then reaches 3.3:1 or more) with a dark hairline; on dark faces it is drawn as picked.</li>
+</ul>
+
+<h3>"By usage" in each option</h3>
+<table class="tbl">
+  <thead><tr><th>Option</th><th>A · Dot</th><th>B · Edge</th><th>C · Edge and wash</th></tr></thead>
+  <tbody>
+    <tr><td>A profile on "By usage"</td>
+      <td>A graphite dot (#3f3f46) in the same place, with a pale ring so it shows. Rows stay aligned and it reads as "no colour of its own".</td>
+      <td>No edge at all: the surface looks as it does today. The usage bars already say how full it is.</td>
+      <td>A graphite edge and wash, which is close to today's grey face; the Dock icon keeps its plain dark tile.</td></tr>
+  </tbody>
+</table>
+<p class="sub" style="margin-top:8px">Studio is on "By usage" in every mock below. The Dock icon of such a profile keeps following the 5-hour level, as it does today.</p>
+
+<!-- ───────────────────────────── A ───────────────────────────── -->
+<h2>A · Dot <span class="tag">small</span></h2>
+<p class="sub">A 7 px dot in the profile colour wherever the profile is named: before the label on its tile, before the name on the card, in the menu head (it is there today) and in quick chat's account line. The Dock icon's label letters take the colour. Nothing else changes.</p>
+<div class="opt-grid optA" id="optA"><div class="cell"><div class="dev face-std opA"><div class="lbl">Dashboard tile bar</div><div class="strip"><div class="tile sel" style="--c:#d97757"><span class="dotc"></span><span><b>MAIN</b><small><s class="a">77%</s> · <s class="g">47%</s></small></span></div><div class="tile" style="--c:#14b8a6"><span class="dotc"></span><span><b>WORK</b><small><s class="r">100%</s> · <s class="a">61%</s></small></span></div><div class="tile byu" style="--c:#3f3f46"><span class="dotc"></span><span><b>STUDIO</b><small><s class="g">12%</s> · <s class="g">8%</s></small></span></div></div></div><p class="what"><b>A dot before the label.</b> Studio (By usage): graphite dot.</p></div><div class="cell"><div class="dev face-std opA"><div class="lbl">Profile card header</div><div class="card" style="--c:#d97757"><div class="chead"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="a"></i><b>5h<span>77</span></b><i class="g"></i><b>wk<span>47</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div><div class="plan">Ultra<small>1 min ago</small></div></div>
+  <div class="lim"><div class="lim-row">5-hour<small>· in 2 h 45 min</small><span class="pct a">77%</span></div><span class="a"><span class="segs a"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i></span></span></div>
+  <div class="lim"><div class="lim-row">Week<small>· in 5 days</small><span class="pct g">47%</span></div><span class="g"><span class="segs g"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span></div></div></div><p class="what"><b>A dot before the name.</b> Mint lamp and display unchanged.</p></div><div class="cell"><div class="dev face-std opA"><div class="lbl">Dock icons</div><div class="wall"><div class="dock"><div class="dk"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="a"></i><b>5h<span>77</span></b><i class="g"></i><b>wk<span>47</span></b></div><em></em></div><div class="dk"><div class="ico2" style="--c:#14b8a6"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><em></em></div><div class="dk"><div class="ico2 byu" style="--c:#3f3f46"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><em></em></div></div><div class="caps"><span>Main<br>orange</span><span>Work<br>teal</span><span>Studio<br>By usage</span></div></div></div><p class="what"><b>Label letters in the profile colour.</b> Studio keeps its grey label.</p></div><div class="cell"><div class="dev face-std opA"><div class="lbl">Menu bar icon and menu</div><div class="wall"><div class="mbar"><span class="sp">cl_audit</span><span class="gl open" style="--c:#d97757">MAIN<i class="a"></i><i class="g"></i></span><span class="gl" style="--c:#14b8a6">WORK<i class="r"></i><i class="a"></i></span><span class="gl byu" style="--c:#3f3f46">STUDIO<i class="g"></i><i class="g"></i></span><span>Sat 14:05</span></div>
+  <div class="nmenu"><div class="mh" style="--c:#d97757"><div class="top"><span class="dotc"></span>Claude Main</div><div class="who"><i></i>ann@example.com</div>
+    <div class="ml">5-hour<span class="a"><span class="segs a"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i></span></span><b class="a">77%</b></div><div class="ml">Week<span class="g"><span class="segs g"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><b class="g">47%</b></div></div>
+    <div class="info">Updated 1 min ago · API</div><hr>
+    <div class="ni"><span class="ck">✓</span><span>ann@example.com</span><span class="nd">in use</span></div>
+    <div class="ni dim"><span></span><span>ben@example.com</span><span class="nd">standby</span></div><hr>
+    <div class="ni"><span></span><span>Quick chat</span><span class="nd">⌃⌥K</span></div><div class="ni"><span></span><span>Open Claude window</span><span></span></div><div class="ni"><span></span><span>Refresh now</span><span></span></div></div></div></div><p class="what"><b>The dot is as today.</b> Nothing added to the menu bar icon.</p></div><div class="cell"><div class="dev face-std opA"><div class="lbl">Quick chat account line</div><div class="qwall"><div class="qc"><div class="qh" style="--c:#d97757"><span class="nm" style="display:flex;align-items:center;gap:7px"><span class="dotc"></span><b>Main</b></span><span class="mail">ann@example.com</span>
+  <span class="lv"><span class="a">5h <b>77%</b></span><span class="meter a"><i style="width:77%"></i></span><span class="g">wk <b>47%</b></span><span class="meter g"><i style="width:47%"></i></span></span><span class="ic"><span>✎</span><span>✕</span></span></div>
+  <div class="qb"><div class="u">What did I change in the build script?</div><div class="ans"><i style="width:92%"></i><i style="width:78%"></i><i style="width:55%"></i></div></div></div></div></div><p class="what"><b>A dot before the name.</b> Address stays muted.</p></div><div class="cell"><div class="dev face-silver opA"><div class="lbl">Tile bar · Silver face</div><div class="strip"><div class="tile sel" style="--c:#d97757"><span class="dotc"></span><span><b>MAIN</b><small><s class="a">77%</s> · <s class="g">47%</s></small></span></div><div class="tile" style="--c:#14b8a6"><span class="dotc"></span><span><b>WORK</b><small><s class="r">100%</s> · <s class="a">61%</s></small></span></div><div class="tile byu" style="--c:#3f3f46"><span class="dotc"></span><span><b>STUDIO</b><small><s class="g">12%</s> · <s class="g">8%</s></small></span></div></div></div><p class="what">Dot darkened to 60% and ringed: yellow reads as olive, still 3.3:1.</p></div><div class="cell"><div class="dev face-silver opA"><div class="lbl">Card header · Silver face</div><div class="card" style="--c:#d97757"><div class="chead"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="a"></i><b>5h<span>77</span></b><i class="g"></i><b>wk<span>47</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div><div class="plan">Ultra<small>1 min ago</small></div></div>
+  <div class="lim"><div class="lim-row">5-hour<small>· in 2 h 45 min</small><span class="pct a">77%</span></div><span class="a"><span class="segs a"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i></span></span></div>
+  <div class="lim"><div class="lim-row">Week<small>· in 5 days</small><span class="pct g">47%</span></div><span class="g"><span class="segs g"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span></div></div></div><p class="what">The card on the light face: the same mark and the same rule.</p></div><div class="cell wide"><div class="pair"><div class="dev face-std opA"><div class="lbl">All ten colours · Std dark</div><div class="strip ten"><div class="tile" style="--c:#d97757"><span class="dotc"></span><span><b>orange</b><small><s class="g">34%</s></small></span></div><div class="tile" style="--c:#eab308"><span class="dotc"></span><span><b>yellow</b><small><s class="a">77%</s></small></span></div><div class="tile" style="--c:#84cc16"><span class="dotc"></span><span><b>lime</b><small><s class="g">12%</s></small></span></div><div class="tile sel" style="--c:#14b8a6"><span class="dotc"></span><span><b>teal</b><small><s class="g">47%</s></small></span></div><div class="tile" style="--c:#06b6d4"><span class="dotc"></span><span><b>cyan</b><small><s class="a">61%</s></small></span></div><div class="tile" style="--c:#3b82f6"><span class="dotc"></span><span><b>blue</b><small><s class="g">34%</s></small></span></div><div class="tile" style="--c:#6366f1"><span class="dotc"></span><span><b>indigo</b><small><s class="a">77%</s></small></span></div><div class="tile" style="--c:#8b5cf6"><span class="dotc"></span><span><b>purple</b><small><s class="g">12%</s></small></span></div><div class="tile" style="--c:#d946ef"><span class="dotc"></span><span><b>fuchsia</b><small><s class="g">47%</s></small></span></div><div class="tile" style="--c:#ec4899"><span class="dotc"></span><span><b>pink</b><small><s class="a">61%</s></small></span></div></div></div><div class="dev face-silver opA"><div class="lbl">All ten colours · Silver</div><div class="strip ten"><div class="tile" style="--c:#d97757"><span class="dotc"></span><span><b>orange</b><small><s class="g">34%</s></small></span></div><div class="tile" style="--c:#eab308"><span class="dotc"></span><span><b>yellow</b><small><s class="a">77%</s></small></span></div><div class="tile" style="--c:#84cc16"><span class="dotc"></span><span><b>lime</b><small><s class="g">12%</s></small></span></div><div class="tile sel" style="--c:#14b8a6"><span class="dotc"></span><span><b>teal</b><small><s class="g">47%</s></small></span></div><div class="tile" style="--c:#06b6d4"><span class="dotc"></span><span><b>cyan</b><small><s class="a">61%</s></small></span></div><div class="tile" style="--c:#3b82f6"><span class="dotc"></span><span><b>blue</b><small><s class="g">34%</s></small></span></div><div class="tile" style="--c:#6366f1"><span class="dotc"></span><span><b>indigo</b><small><s class="a">77%</s></small></span></div><div class="tile" style="--c:#8b5cf6"><span class="dotc"></span><span><b>purple</b><small><s class="g">12%</s></small></span></div><div class="tile" style="--c:#d946ef"><span class="dotc"></span><span><b>fuchsia</b><small><s class="g">47%</s></small></span></div><div class="tile" style="--c:#ec4899"><span class="dotc"></span><span><b>pink</b><small><s class="a">61%</s></small></span></div></div></div></div></div></div>
+<ul class="notes">
+  <li><b>Legibility</b> The dot is a mark, not text: all ten reach 3.2:1 or more on the dark card; on Silver it is darkened and ringed. At 7 px two near hues (teal and cyan, blue and indigo) are hard to tell apart.</li>
+  <li><b>Usage levels</b> A dot is too small to be mistaken for a bar. It never touches the bars, percentages or the red full display.</li>
+  <li><b>Selected, in use</b> The selected tile keeps its pressed key and orange slot; the in-use account keeps its mint plan display and green lamp, one line below the dot. Cleanest of the three, and the weakest at a glance: three small dots do not say which card is which.</li>
+</ul>
+
+<!-- ───────────────────────────── B ───────────────────────────── -->
+<h2>B · Edge <span class="tag">middle</span></h2>
+<p class="sub">One thin line on one edge of each surface: under the label on a tile, down the left of the card, a frame on the Dock icon, an underline on the menu bar icon, a bar down the menu head, a rule under quick chat's account line. No fills, no dots (the menu's existing dot stays).</p>
+<div class="opt-grid optB" id="optB"><div class="cell"><div class="dev face-std opB"><div class="lbl">Dashboard tile bar</div><div class="strip"><div class="tile sel" style="--c:#d97757"><span class="dotc"></span><span><b>MAIN</b><small><s class="a">77%</s> · <s class="g">47%</s></small></span></div><div class="tile" style="--c:#14b8a6"><span class="dotc"></span><span><b>WORK</b><small><s class="r">100%</s> · <s class="a">61%</s></small></span></div><div class="tile byu" style="--c:#3f3f46"><span class="dotc"></span><span><b>STUDIO</b><small><s class="g">12%</s> · <s class="g">8%</s></small></span></div></div></div><p class="what"><b>A 3 px line under the label.</b> The orange slot stays on top; Studio has no line.</p></div><div class="cell"><div class="dev face-std opB"><div class="lbl">Profile card header</div><div class="card" style="--c:#d97757"><div class="chead"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="a"></i><b>5h<span>77</span></b><i class="g"></i><b>wk<span>47</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div><div class="plan">Ultra<small>1 min ago</small></div></div>
+  <div class="lim"><div class="lim-row">5-hour<small>· in 2 h 45 min</small><span class="pct a">77%</span></div><span class="a"><span class="segs a"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i></span></span></div>
+  <div class="lim"><div class="lim-row">Week<small>· in 5 days</small><span class="pct g">47%</span></div><span class="g"><span class="segs g"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span></div></div></div><p class="what"><b>A 4 px bar down the card's left edge.</b> Studio has none.</p></div><div class="cell"><div class="dev face-std opB"><div class="lbl">Dock icons</div><div class="wall"><div class="dock"><div class="dk"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="a"></i><b>5h<span>77</span></b><i class="g"></i><b>wk<span>47</span></b></div><em></em></div><div class="dk"><div class="ico2" style="--c:#14b8a6"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><em></em></div><div class="dk"><div class="ico2 byu" style="--c:#3f3f46"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><em></em></div></div><div class="caps"><span>Main<br>orange</span><span>Work<br>teal</span><span>Studio<br>By usage</span></div></div></div><p class="what"><b>A 1.5 px frame on the icon tile.</b> Level bars unchanged.</p></div><div class="cell"><div class="dev face-std opB"><div class="lbl">Menu bar icon and menu</div><div class="wall"><div class="mbar"><span class="sp">cl_audit</span><span class="gl open" style="--c:#d97757">MAIN<i class="a"></i><i class="g"></i></span><span class="gl" style="--c:#14b8a6">WORK<i class="r"></i><i class="a"></i></span><span class="gl byu" style="--c:#3f3f46">STUDIO<i class="g"></i><i class="g"></i></span><span>Sat 14:05</span></div>
+  <div class="nmenu"><div class="mh" style="--c:#d97757"><div class="top"><span class="dotc"></span>Claude Main</div><div class="who"><i></i>ann@example.com</div>
+    <div class="ml">5-hour<span class="a"><span class="segs a"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i></span></span><b class="a">77%</b></div><div class="ml">Week<span class="g"><span class="segs g"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><b class="g">47%</b></div></div>
+    <div class="info">Updated 1 min ago · API</div><hr>
+    <div class="ni"><span class="ck">✓</span><span>ann@example.com</span><span class="nd">in use</span></div>
+    <div class="ni dim"><span></span><span>ben@example.com</span><span class="nd">standby</span></div><hr>
+    <div class="ni"><span></span><span>Quick chat</span><span class="nd">⌃⌥K</span></div><div class="ni"><span></span><span>Open Claude window</span><span></span></div><div class="ni"><span></span><span>Refresh now</span><span></span></div></div></div></div><p class="what"><b>A 2 px underline on the menu bar icon, a 3 px bar down the menu head</b>; today's dot stays.</p></div><div class="cell"><div class="dev face-std opB"><div class="lbl">Quick chat account line</div><div class="qwall"><div class="qc"><div class="qh" style="--c:#d97757"><span class="nm" style="display:flex;align-items:center;gap:7px"><span class="dotc"></span><b>Main</b></span><span class="mail">ann@example.com</span>
+  <span class="lv"><span class="a">5h <b>77%</b></span><span class="meter a"><i style="width:77%"></i></span><span class="g">wk <b>47%</b></span><span class="meter g"><i style="width:47%"></i></span></span><span class="ic"><span>✎</span><span>✕</span></span></div>
+  <div class="qb"><div class="u">What did I change in the build script?</div><div class="ans"><i style="width:92%"></i><i style="width:78%"></i><i style="width:55%"></i></div></div></div></div></div><p class="what"><b>A 2 px rule under the account line.</b> Name and address stay light.</p></div><div class="cell"><div class="dev face-silver opB"><div class="lbl">Tile bar · Silver face</div><div class="strip"><div class="tile sel" style="--c:#d97757"><span class="dotc"></span><span><b>MAIN</b><small><s class="a">77%</s> · <s class="g">47%</s></small></span></div><div class="tile" style="--c:#14b8a6"><span class="dotc"></span><span><b>WORK</b><small><s class="r">100%</s> · <s class="a">61%</s></small></span></div><div class="tile byu" style="--c:#3f3f46"><span class="dotc"></span><span><b>STUDIO</b><small><s class="g">12%</s> · <s class="g">8%</s></small></span></div></div></div><p class="what">Line darkened to 60%; the hairline keeps pale colours from vanishing.</p></div><div class="cell"><div class="dev face-silver opB"><div class="lbl">Card header · Silver face</div><div class="card" style="--c:#d97757"><div class="chead"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="a"></i><b>5h<span>77</span></b><i class="g"></i><b>wk<span>47</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div><div class="plan">Ultra<small>1 min ago</small></div></div>
+  <div class="lim"><div class="lim-row">5-hour<small>· in 2 h 45 min</small><span class="pct a">77%</span></div><span class="a"><span class="segs a"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i></span></span></div>
+  <div class="lim"><div class="lim-row">Week<small>· in 5 days</small><span class="pct g">47%</span></div><span class="g"><span class="segs g"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span></div></div></div><p class="what">The card on the light face: the same mark and the same rule.</p></div><div class="cell wide"><div class="pair"><div class="dev face-std opB"><div class="lbl">All ten colours · Std dark</div><div class="strip ten"><div class="tile" style="--c:#d97757"><span class="dotc"></span><span><b>orange</b><small><s class="g">34%</s></small></span></div><div class="tile" style="--c:#eab308"><span class="dotc"></span><span><b>yellow</b><small><s class="a">77%</s></small></span></div><div class="tile" style="--c:#84cc16"><span class="dotc"></span><span><b>lime</b><small><s class="g">12%</s></small></span></div><div class="tile sel" style="--c:#14b8a6"><span class="dotc"></span><span><b>teal</b><small><s class="g">47%</s></small></span></div><div class="tile" style="--c:#06b6d4"><span class="dotc"></span><span><b>cyan</b><small><s class="a">61%</s></small></span></div><div class="tile" style="--c:#3b82f6"><span class="dotc"></span><span><b>blue</b><small><s class="g">34%</s></small></span></div><div class="tile" style="--c:#6366f1"><span class="dotc"></span><span><b>indigo</b><small><s class="a">77%</s></small></span></div><div class="tile" style="--c:#8b5cf6"><span class="dotc"></span><span><b>purple</b><small><s class="g">12%</s></small></span></div><div class="tile" style="--c:#d946ef"><span class="dotc"></span><span><b>fuchsia</b><small><s class="g">47%</s></small></span></div><div class="tile" style="--c:#ec4899"><span class="dotc"></span><span><b>pink</b><small><s class="a">61%</s></small></span></div></div></div><div class="dev face-silver opB"><div class="lbl">All ten colours · Silver</div><div class="strip ten"><div class="tile" style="--c:#d97757"><span class="dotc"></span><span><b>orange</b><small><s class="g">34%</s></small></span></div><div class="tile" style="--c:#eab308"><span class="dotc"></span><span><b>yellow</b><small><s class="a">77%</s></small></span></div><div class="tile" style="--c:#84cc16"><span class="dotc"></span><span><b>lime</b><small><s class="g">12%</s></small></span></div><div class="tile sel" style="--c:#14b8a6"><span class="dotc"></span><span><b>teal</b><small><s class="g">47%</s></small></span></div><div class="tile" style="--c:#06b6d4"><span class="dotc"></span><span><b>cyan</b><small><s class="a">61%</s></small></span></div><div class="tile" style="--c:#3b82f6"><span class="dotc"></span><span><b>blue</b><small><s class="g">34%</s></small></span></div><div class="tile" style="--c:#6366f1"><span class="dotc"></span><span><b>indigo</b><small><s class="a">77%</s></small></span></div><div class="tile" style="--c:#8b5cf6"><span class="dotc"></span><span><b>purple</b><small><s class="g">12%</s></small></span></div><div class="tile" style="--c:#d946ef"><span class="dotc"></span><span><b>fuchsia</b><small><s class="g">47%</s></small></span></div><div class="tile" style="--c:#ec4899"><span class="dotc"></span><span><b>pink</b><small><s class="a">61%</s></small></span></div></div></div></div></div></div>
+<ul class="notes">
+  <li><b>Legibility</b> A 3 to 4 px line is read at a glance, and no text sits on it, so contrast depends only on the line against the face: 3.2:1 or more on dark, 3.3:1 or more on Silver once darkened.</li>
+  <li><b>Usage levels</b> The edges run along the foot or side of a surface; the level colours live inside it as bars and numbers, so an amber bar never touches a yellow edge. Colours close to a level (lime beside green, orange beside amber) are still separated by position.</li>
+  <li><b>Selected, in use</b> The selected tile's orange slot is on its top, the profile colour at its foot: for an orange profile that is orange at both ends, the one clash (Main below). The mint lamp and display are untouched, away from the edge.</li>
+</ul>
+
+<!-- ───────────────────────────── C ───────────────────────────── -->
+<h2>C · Edge and wash <span class="tag">fuller</span></h2>
+<p class="sub">B's edges, plus a soft tint of the colour behind the profile's own tile face, card header, menu head and chat header, and a tinted Dock icon face. Text keeps the face colour; the tint never goes under the usage bars.</p>
+<div class="opt-grid optC" id="optC"><div class="cell"><div class="dev face-std opC"><div class="lbl">Dashboard tile bar</div><div class="strip"><div class="tile sel" style="--c:#d97757"><span class="dotc"></span><span><b>MAIN</b><small><s class="a">77%</s> · <s class="g">47%</s></small></span></div><div class="tile" style="--c:#14b8a6"><span class="dotc"></span><span><b>WORK</b><small><s class="r">100%</s> · <s class="a">61%</s></small></span></div><div class="tile byu" style="--c:#3f3f46"><span class="dotc"></span><span><b>STUDIO</b><small><s class="g">12%</s> · <s class="g">8%</s></small></span></div></div></div><p class="what"><b>Tinted key face and the foot line.</b> The selected key is tinted more.</p></div><div class="cell"><div class="dev face-std opC"><div class="lbl">Profile card header</div><div class="card" style="--c:#d97757"><div class="chead"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="a"></i><b>5h<span>77</span></b><i class="g"></i><b>wk<span>47</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div><div class="plan">Ultra<small>1 min ago</small></div></div>
+  <div class="lim"><div class="lim-row">5-hour<small>· in 2 h 45 min</small><span class="pct a">77%</span></div><span class="a"><span class="segs a"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i></span></span></div>
+  <div class="lim"><div class="lim-row">Week<small>· in 5 days</small><span class="pct g">47%</span></div><span class="g"><span class="segs g"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span></div></div></div><p class="what"><b>A wash across the header and the left bar.</b> It stops above the usage bars.</p></div><div class="cell"><div class="dev face-std opC"><div class="lbl">Dock icons</div><div class="wall"><div class="dock"><div class="dk"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="a"></i><b>5h<span>77</span></b><i class="g"></i><b>wk<span>47</span></b></div><em></em></div><div class="dk"><div class="ico2" style="--c:#14b8a6"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><em></em></div><div class="dk"><div class="ico2 byu" style="--c:#3f3f46"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><em></em></div></div><div class="caps"><span>Main<br>orange</span><span>Work<br>teal</span><span>Studio<br>By usage</span></div></div></div><p class="what"><b>A tinted icon tile and the frame.</b> Studio stays plain dark.</p></div><div class="cell"><div class="dev face-std opC"><div class="lbl">Menu bar icon and menu</div><div class="wall"><div class="mbar"><span class="sp">cl_audit</span><span class="gl open" style="--c:#d97757">MAIN<i class="a"></i><i class="g"></i></span><span class="gl" style="--c:#14b8a6">WORK<i class="r"></i><i class="a"></i></span><span class="gl byu" style="--c:#3f3f46">STUDIO<i class="g"></i><i class="g"></i></span><span>Sat 14:05</span></div>
+  <div class="nmenu"><div class="mh" style="--c:#d97757"><div class="top"><span class="dotc"></span>Claude Main</div><div class="who"><i></i>ann@example.com</div>
+    <div class="ml">5-hour<span class="a"><span class="segs a"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i></span></span><b class="a">77%</b></div><div class="ml">Week<span class="g"><span class="segs g"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span><b class="g">47%</b></div></div>
+    <div class="info">Updated 1 min ago · API</div><hr>
+    <div class="ni"><span class="ck">✓</span><span>ann@example.com</span><span class="nd">in use</span></div>
+    <div class="ni dim"><span></span><span>ben@example.com</span><span class="nd">standby</span></div><hr>
+    <div class="ni"><span></span><span>Quick chat</span><span class="nd">⌃⌥K</span></div><div class="ni"><span></span><span>Open Claude window</span><span></span></div><div class="ni"><span></span><span>Refresh now</span><span></span></div></div></div></div><p class="what"><b>A tinted chip behind the menu bar icon, a tinted menu head with its bar.</b></p></div><div class="cell"><div class="dev face-std opC"><div class="lbl">Quick chat account line</div><div class="qwall"><div class="qc"><div class="qh" style="--c:#d97757"><span class="nm" style="display:flex;align-items:center;gap:7px"><span class="dotc"></span><b>Main</b></span><span class="mail">ann@example.com</span>
+  <span class="lv"><span class="a">5h <b>77%</b></span><span class="meter a"><i style="width:77%"></i></span><span class="g">wk <b>47%</b></span><span class="meter g"><i style="width:47%"></i></span></span><span class="ic"><span>✎</span><span>✕</span></span></div>
+  <div class="qb"><div class="u">What did I change in the build script?</div><div class="ans"><i style="width:92%"></i><i style="width:78%"></i><i style="width:55%"></i></div></div></div></div></div><p class="what"><b>A tinted account line and a left bar.</b> Text stays light.</p></div><div class="cell"><div class="dev face-silver opC"><div class="lbl">Tile bar · Silver face</div><div class="strip"><div class="tile sel" style="--c:#d97757"><span class="dotc"></span><span><b>MAIN</b><small><s class="a">77%</s> · <s class="g">47%</s></small></span></div><div class="tile" style="--c:#14b8a6"><span class="dotc"></span><span><b>WORK</b><small><s class="r">100%</s> · <s class="a">61%</s></small></span></div><div class="tile byu" style="--c:#3f3f46"><span class="dotc"></span><span><b>STUDIO</b><small><s class="g">12%</s> · <s class="g">8%</s></small></span></div></div></div><p class="what">Light tint on the aluminium; the dark legend stays at full contrast.</p></div><div class="cell"><div class="dev face-silver opC"><div class="lbl">Card header · Silver face</div><div class="card" style="--c:#d97757"><div class="chead"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="a"></i><b>5h<span>77</span></b><i class="g"></i><b>wk<span>47</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div><div class="plan">Ultra<small>1 min ago</small></div></div>
+  <div class="lim"><div class="lim-row">5-hour<small>· in 2 h 45 min</small><span class="pct a">77%</span></div><span class="a"><span class="segs a"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i></span></span></div>
+  <div class="lim"><div class="lim-row">Week<small>· in 5 days</small><span class="pct g">47%</span></div><span class="g"><span class="segs g"><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i class="l"></i><i></i><i></i><i></i><i></i><i></i><i></i></span></span></div></div></div><p class="what">The card on the light face: the same mark and the same rule.</p></div><div class="cell wide"><div class="pair"><div class="dev face-std opC"><div class="lbl">All ten colours · Std dark</div><div class="strip ten"><div class="tile" style="--c:#d97757"><span class="dotc"></span><span><b>orange</b><small><s class="g">34%</s></small></span></div><div class="tile" style="--c:#eab308"><span class="dotc"></span><span><b>yellow</b><small><s class="a">77%</s></small></span></div><div class="tile" style="--c:#84cc16"><span class="dotc"></span><span><b>lime</b><small><s class="g">12%</s></small></span></div><div class="tile sel" style="--c:#14b8a6"><span class="dotc"></span><span><b>teal</b><small><s class="g">47%</s></small></span></div><div class="tile" style="--c:#06b6d4"><span class="dotc"></span><span><b>cyan</b><small><s class="a">61%</s></small></span></div><div class="tile" style="--c:#3b82f6"><span class="dotc"></span><span><b>blue</b><small><s class="g">34%</s></small></span></div><div class="tile" style="--c:#6366f1"><span class="dotc"></span><span><b>indigo</b><small><s class="a">77%</s></small></span></div><div class="tile" style="--c:#8b5cf6"><span class="dotc"></span><span><b>purple</b><small><s class="g">12%</s></small></span></div><div class="tile" style="--c:#d946ef"><span class="dotc"></span><span><b>fuchsia</b><small><s class="g">47%</s></small></span></div><div class="tile" style="--c:#ec4899"><span class="dotc"></span><span><b>pink</b><small><s class="a">61%</s></small></span></div></div></div><div class="dev face-silver opC"><div class="lbl">All ten colours · Silver</div><div class="strip ten"><div class="tile" style="--c:#d97757"><span class="dotc"></span><span><b>orange</b><small><s class="g">34%</s></small></span></div><div class="tile" style="--c:#eab308"><span class="dotc"></span><span><b>yellow</b><small><s class="a">77%</s></small></span></div><div class="tile" style="--c:#84cc16"><span class="dotc"></span><span><b>lime</b><small><s class="g">12%</s></small></span></div><div class="tile sel" style="--c:#14b8a6"><span class="dotc"></span><span><b>teal</b><small><s class="g">47%</s></small></span></div><div class="tile" style="--c:#06b6d4"><span class="dotc"></span><span><b>cyan</b><small><s class="a">61%</s></small></span></div><div class="tile" style="--c:#3b82f6"><span class="dotc"></span><span><b>blue</b><small><s class="g">34%</s></small></span></div><div class="tile" style="--c:#6366f1"><span class="dotc"></span><span><b>indigo</b><small><s class="a">77%</s></small></span></div><div class="tile" style="--c:#8b5cf6"><span class="dotc"></span><span><b>purple</b><small><s class="g">12%</s></small></span></div><div class="tile" style="--c:#d946ef"><span class="dotc"></span><span><b>fuchsia</b><small><s class="g">47%</s></small></span></div><div class="tile" style="--c:#ec4899"><span class="dotc"></span><span><b>pink</b><small><s class="a">61%</s></small></span></div></div></div></div></div></div>
+<ul class="notes">
+  <li><b>Legibility</b> Tint at 14 to 30% behind text keeps the legend readable on all ten on the dark face. On Silver the tint is light and the dark legend wins. The ten-colour row above shows it; yellow and lime make the brightest tints, still readable.</li>
+  <li><b>Usage levels</b> The wash is the risk: an orange or yellow wash behind an amber bar, or a lime one behind a green bar, blurs "this is the profile" with "this is the level". That is why the wash stops at the header and never covers the bars.</li>
+  <li><b>Selected, in use</b> The selected tile's wash is stronger (42% against 30%), so selected and colour stack on one key; the pressed look, orange slot and mint display still show. Teal and cyan washes sit close to the mint display next to them.</li>
+</ul>
+
+<h2>My pick</h2>
+<p class="lead"><b>B · Edge.</b> It makes the colour visible on every surface listed, at the size where a profile can be told from its neighbours at a glance, and it does it without touching what the other colours already mean.</p>
+<ul class="rules">
+  <li>The usage colours (red, amber, green) and the mint in-use treatment live inside a surface, as bars, numbers, lamps and displays. An edge sits on the outside, so the two never overlap, which a wash (C) cannot promise for yellow, orange or lime profiles.</li>
+  <li>A dot (A) is the safest, but at 7 px it does not carry colour across a dashboard of three or more profiles, and it reads like the status lamps beside it.</li>
+  <li>It is cheap and consistent: one rule, "a thin line in the profile colour", and a profile on "By usage" simply has none.</li>
+  <li>The one known clash is an orange profile selected on the tile bar: orange slot above, orange edge below. If that looks like too much in the app, the slot is the part to move to the face's mint, not the profile colour.</li>
+</ul>
+<p class="sub" style="margin-top:10px">Not drawn: the menu, Dock and chat on macOS's light appearance; the Silver face for them is the same marks, darkened as above. To check in the app: all ten colours on both faces, and the Dock icon edge in each of the icon styles.</p>
+
+</div>
+
+
+
+</body></html>

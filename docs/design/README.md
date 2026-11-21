@@ -26,6 +26,8 @@ A sketch shows what was proposed at the time. The app and the CHANGELOG say what
 - [app-icon-sketch.html](app-icon-sketch.html), [alpha-mark-sketch.html](alpha-mark-sketch.html): the app icon and
   mark.
 - [login-security-badge-sketch.html](login-security-badge-sketch.html): the sign-in security badge.
+- [profile-colours-sketch.html](profile-colours-sketch.html): where a profile's colour shows (dot, edge, edge and wash);
+  not decided yet.
 - [settings-sidebar-1A.html](settings-sidebar-1A.html): the Settings sidebar, kept for later.
 
 ## Architecture
