@@ -649,11 +649,11 @@ do {
     let src = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("Sources")
     for f in (try? fm.contentsOfDirectory(atPath: src.path)) ?? [] where f.hasSuffix(".swift") {
         let t = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8)) ?? ""
-        // (openLogin, and the sign-in window ClaudeSignIn runs: SignInWindow.start, named with the function it is in)
+        // (openLogin or startLogin, and the sign-in window ClaudeSignIn runs: SignInWindow.start, named with the function it is in)
         var inFunc = ""
         for l in t.components(separatedBy: "\n") {
             if let r = l.range(of: #"func (\w+)"#, options: .regularExpression) { inFunc = String(l[r].dropFirst(5)) }
-            if l.contains("openLogin(") && l.contains("creating: true") { creators.append(f) }
+            if (l.contains("openLogin(") || l.contains("startLogin(")) && l.contains("creating: true") { creators.append(f) }
             if l.contains("SignInWindow.start(") && l.contains("creating: true") { creators.append("\(f):\(inFunc)") }
         }
     }
