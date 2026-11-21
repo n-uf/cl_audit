@@ -202,10 +202,14 @@ struct DefaultProfilePage: View {
     private var whyCard: some View {
         SCard(title: "Why", info: "The default profile is the one on ~/.claude with the usual Claude app: what Claude shows when it is opened from the Dock or Applications, and what the claude command in Terminal uses. Profiles you add later get their own folders and windows.") {
             VStack(alignment: .leading, spacing: 8) {
-                Text(DefaultProfile.why(s)).font(.system(size: 12.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
+                // (after the move, what was so is said in the past tense)
+                let done = runner.phase == .done
+                Text(DefaultProfile.why(s, done: done)).font(.system(size: 12.5)).foregroundStyle(face.soft).fixedSize(horizontal: false, vertical: true)
                 SRowLine(text: kind == .windowOnly
-                         ? "\(name) is already on ~/.claude, so there is no sign-in step and no transcript to move: only the window's data."
-                         : "Claude Code is signed into ~/.claude first (its own sign-in, in Terminal). cl_audit never moves or copies a sign-in.")
+                         ? (done ? "\(name) was already on ~/.claude, so there was no sign-in step and no transcript to move: only the window's data."
+                                 : "\(name) is already on ~/.claude, so there is no sign-in step and no transcript to move: only the window's data.")
+                         : (done ? "Claude Code was signed into ~/.claude first (its own sign-in, in Terminal). cl_audit never moves or copies a sign-in."
+                                 : "Claude Code is signed into ~/.claude first (its own sign-in, in Terminal). cl_audit never moves or copies a sign-in."))
             }
             .padding(.vertical, 4)
         }

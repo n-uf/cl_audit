@@ -282,13 +282,18 @@ enum DefaultProfile {
 
     static let title = "Make the default profile what Claude opens"
 
-    /// The offer's explanation, one short paragraph per kind.
-    static func why(_ s: Situation) -> String {
+    /// The offer's explanation, one short paragraph per kind. `done`: the move has finished, so what was so is said in the
+    /// past tense, and where the sessions are now.
+    static func why(_ s: Situation, done: Bool = false) -> String {
         let name = s.old.name.isEmpty ? "Your profile" : s.old.name
-        switch s.kind {
-        case .windowOnly:
+        switch (s.kind, done) {
+        case (.windowOnly, true):
+            return "\(name) had its own Claude window, with its own sessions, apart from the usual Claude app. Its sessions are in the usual Claude app now, which the default profile shows and the claude command in Terminal uses."
+        case (.otherFolder, true):
+            return "\(name) had its own folder and its own Claude window, so opening Claude from the Dock or Applications showed other sessions. Its sessions are in the default profile now, on ~/.claude, which the usual Claude app and claude in Terminal use."
+        case (.windowOnly, false):
             return "\(name) opens its own Claude window, with its own sessions. Opening Claude from the Dock or Applications starts the usual Claude app instead, which shows other sessions. The default profile is the one the usual Claude app shows and the claude command in Terminal uses."
-        case .otherFolder:
+        case (.otherFolder, false):
             return "\(name) uses its own folder and its own Claude window, so opening Claude from the Dock or Applications shows other sessions. The default profile uses ~/.claude, which the usual Claude app and claude in Terminal use."
         }
     }
