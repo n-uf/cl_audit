@@ -238,10 +238,8 @@ final class StatsModel: ObservableObject {
     /// When the history was last asked for (the window reads it again after a minute while it can be seen).
     private(set) var asked = Date.distantPast
 
-    func color(_ account: String) -> Color {
-        guard let e = accounts.first(where: { $0.id == account }) else { return .gray }
-        return Color(nsColor: e.accentNSColor)
-    }
+    /// A profile's chart colour (ProfileLED.seriesColors: its own, else a neutral grey).
+    func color(_ account: String) -> Color { ProfileLED.seriesColors(accounts)[account] ?? .gray }
 
     func reload() {
         generation += 1
@@ -376,8 +374,7 @@ final class WeekSummary: ObservableObject {
             let parts = entries.map { Part(account: $0.id, tokens: m[$0.id] ?? 0) }.filter { $0.tokens > 0 }
             return Day(id: d, parts: parts, total: parts.reduce(0) { $0 + $1.tokens })
         }
-        var colors: [String: Color] = [:]
-        for e in entries { colors[e.id] = Color(nsColor: e.accentNSColor) }   // the dashboard's account colours
+        let colors = ProfileLED.seriesColors(entries)                         // each profile's own, else a neutral grey
         return Result(days: days, replies: replies.count, tokens: days.reduce(0) { $0 + $1.total }, colors: colors)
     }
 }

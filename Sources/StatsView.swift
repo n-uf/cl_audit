@@ -125,7 +125,7 @@ struct StatsSection: View {
             HStack(spacing: 14) {
                 ForEach(stats.accounts) { e in
                     HStack(spacing: 6) {
-                        LED(color: stats.color(e.id))
+                        ProfileLED(color: e.ownColor)
                         Text(e.name).foregroundStyle(face.soft)
                     }
                 }

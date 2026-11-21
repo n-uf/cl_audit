@@ -249,8 +249,9 @@ struct AccountEntry: Codable, Identifiable, Equatable, Hashable {
     /// The profile's own colour, or nil when it has none: no colour picked and its Dock icon coloured by usage or graphite
     /// (a neutral, not a colour of its own). Its light (ProfileLED) is unlit then.
     var ownColor: TileColor? { accent ?? ([.usage, .graphite].contains(color) ? nil : color) }
-    /// The account's colour in the launcher, the dashboard (chips, cards, charts) and the panels.
-    /// Unset: the icon colour when it's a plain one, else orange.
+    /// A colour that must be one even for a profile with none of its own (orange then): only the menu bar icon's "Profile
+    /// colour" style, which has to draw some colour, and the colour picker's selected swatch. Everything that names or
+    /// stands for a profile uses ownColor instead (ProfileLED, its keyTint and seriesColors).
     var accentColor: TileColor { ownColor ?? .orange }
     var accentNSColor: NSColor { accentColor.color(fiveHour: nil, stale: false) }
 

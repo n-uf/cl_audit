@@ -3968,6 +3968,27 @@ do {
     let nonePanel = DetailsInfo.of(ProfileShow.of(e, raw: nil), name: e.name, icon: NSImage(), problem: nil)
     check(pinkPanel.ownColor == .pink && ProfileLED.lamp(pinkPanel.ownColor).lit && nonePanel.ownColor == nil && !ProfileLED.lamp(nonePanel.ownColor).lit,
           "the Dock panel's light: the profile's own colour (pink lit), unlit for a profile with none, never orange")
+    // keys and charts that stand for a profile (the hub's ruling): its own colour; none: a plain key, an unlit strip, a
+    // neutral grey series (a shade of its own each); never an orange that isn't the profile's
+    let orange = Color(nsColor: Painter.orange)
+    check(ProfileLED.keyTint(.teal) == Color(nsColor: TileColor.teal.color(fiveHour: nil, stale: false)) && ProfileLED.keyTint(nil) == nil
+          && ProfileLED.keyTint(.graphite) == nil && ProfileLED.neutral != orange,
+          "a profile's key: its own colour, none (a plain key) for a profile with none; the state light's neutral isn't orange")
+    var pinkE = e; pinkE.id = "s-pink"; pinkE.accent = .pink
+    var noneA = e; noneA.id = "s-none-a"; noneA.accent = nil; noneA.color = .usage
+    var noneB = e; noneB.id = "s-none-b"; noneB.accent = nil; noneB.color = .graphite
+    let series = ProfileLED.seriesColors([pinkE, noneA, noneB])
+    check(series["s-pink"] == ProfileLED.keyTint(.pink) && series["s-none-a"] != nil && series["s-none-b"] != nil
+          && series["s-none-a"] != series["s-none-b"] && !series.values.contains(orange),
+          "a chart's series: the profile's own colour, a grey of its own each for profiles with none, never orange")
+    // only the menu bar icon's "Profile colour" style and the colour picker keep accentColor's orange
+    var accentUses: [String] = []
+    for f in (try? fm.contentsOfDirectory(atPath: src.path)) ?? [] where f.hasSuffix(".swift") && f != "Config.swift" {
+        let lines = (try? String(contentsOf: src.appendingPathComponent(f), encoding: .utf8))?.components(separatedBy: "\n") ?? []
+        for (i, l) in lines.enumerated() where l.contains("accentNSColor") || l.contains("accentColor") { accentUses.append("\(f):\(i + 1)") }
+    }
+    check(Set(accentUses.map { String($0.prefix { $0 != ":" }) }) == ["MenuBar.swift", "Settings.swift"] && accentUses.count == 3,
+          "accentColor's orange only in the menu bar icon's colour style and the colour picker: \(accentUses)")
 }
 
 // why Claude Code's sign-in didn't open (ClaudeCLI.startLogin), each said in the switch's step (SwitchRunner.loginWords):

@@ -2770,7 +2770,7 @@ func samplePanel(_ entry: AccountEntry, status s: IconStatus?, sample: Bool = fa
         fiveHour: 23, fiveHourResets: now.addingTimeInterval(3 * 3600 + 20 * 60),
         weekly: 58, weeklyResets: now.addingTimeInterval(2 * 86400 + 5 * 3600),
         updated: nil, source: nil, problem: nil, renewNote: nil, needsLogin: false,
-        design: entry.panelDesign, accent: entry.accentNSColor, ownColor: entry.ownColor)
+        design: entry.panelDesign, ownColor: entry.ownColor)
 }
 
 /// Settings is a page of the one cl_audit window, not a window of its own.

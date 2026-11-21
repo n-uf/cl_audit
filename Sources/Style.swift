@@ -43,7 +43,7 @@ struct PillButtonStyle: ButtonStyle {
 
 extension ButtonStyle where Self == PillButtonStyle {
     static var pill: PillButtonStyle { PillButtonStyle() }
-    static func pill(_ tint: Color, compact: Bool = false, lit: Bool = true) -> PillButtonStyle {
+    static func pill(_ tint: Color?, compact: Bool = false, lit: Bool = true) -> PillButtonStyle {
         PillButtonStyle(tint: tint, compact: compact, lit: lit)
     }
     /// The one primary action on a page (Apply).

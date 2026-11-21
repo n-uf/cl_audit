@@ -170,7 +170,6 @@ struct AccountRow: Identifiable {
     var weekly: Double? { usage?.weekly }
     /// How close the account is to any limit (the higher of the two).
     var worst: Double? { (fiveHour == nil && weekly == nil) ? nil : max(fiveHour ?? 0, weekly ?? 0) }
-    var accent: Color { Color(nsColor: entry.accentNSColor) }
     /// The green lamp by the account in use (the value's: off while the sign-in needs the person, can't be read, or is on
     /// another account than the folder's or another profile's).
     var lit: Bool { display.lamp }
@@ -611,7 +610,8 @@ struct AccountChips: View {
             ForEach(model.rows) { row in
                 let on = !model.hidden.contains(row.id)
                 Button { model.toggle(row.id) } label: {
-                    KeyLook(latched: on, lamp: row.accent, height: TopStrip.height, hPad: 11) { Text(row.entry.name) }
+                    // its strip lit in the profile's own colour; unlit (the face's off colour) for a profile with none
+                    KeyLook(latched: on, lamp: ProfileLED.keyTint(row.entry.ownColor) ?? face.ledOff, height: TopStrip.height, hPad: 11) { Text(row.entry.name) }
                 }
                 .buttonStyle(PressableKey())
                 .help(on ? "Hide \(row.entry.name) from the dashboard" : "Show \(row.entry.name) on the dashboard")
@@ -1042,7 +1042,7 @@ struct AccountCard: View {
                 if windowInRow {
                     // on this card a lit LED means running: the key's LED lights only while the window is open
                     Button(row.activity.desktopOpen ? "Show window" : "Open window") { actions.open(row) }
-                        .buttonStyle(.pill(row.accent, lit: row.activity.desktopOpen))
+                        .buttonStyle(.pill(ProfileLED.keyTint(row.entry.ownColor) ?? ProfileLED.neutral, lit: row.activity.desktopOpen))
                 }
                 if terminalInRow { Button("Terminal") { actions.terminal(row) }.buttonStyle(.pill) }
                 moreMenu

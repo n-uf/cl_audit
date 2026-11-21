@@ -381,6 +381,24 @@ struct ProfileLED: View {
     let color: TileColor?
     static let size: CGFloat = 7
 
+    /// A key that stands for a profile (its Claude or Open window key): the LED in the profile's own colour, nil for none
+    /// (a plain key, never an orange that isn't the profile's).
+    static func keyTint(_ c: TileColor?) -> Color? { lamp(c).color.map { Color(nsColor: $0) } }
+    /// A key whose LED says a state (the card's Open window: lit while the window is open) for a profile with no colour of
+    /// its own: a neutral light, so the state still shows.
+    static let neutral = Color.hex(0xd4d4d8)
+
+    /// A chart's colour per profile, where a chart needs one (labelled by name): its own colour; a profile with none a
+    /// neutral grey, a shade of its own when several have none. Never an orange that isn't the profile's.
+    static func seriesColors(_ entries: [AccountEntry]) -> [String: Color] {
+        let greys: [UInt32] = [0x9ca3af, 0x6b7280, 0xd1d5db, 0x4b5563]
+        var n = 0, out: [String: Color] = [:]
+        for e in entries {
+            if let c = keyTint(e.ownColor) { out[e.id] = c } else { out[e.id] = Color(nsColor: TileColor.hex(greys[n % greys.count])); n += 1 }
+        }
+        return out
+    }
+
     /// The light a profile colour gives: its colour and lit, or unlit for none.
     static func lamp(_ c: TileColor?) -> (color: NSColor?, lit: Bool) {
         guard let c, ![.usage, .graphite].contains(c) else { return (nil, false) }     // no colour of its own (as ownColor)

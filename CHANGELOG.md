@@ -26,6 +26,7 @@ Nothing pending.
 
 - When Claude Code's sign-in can't open (in a switch, the default profile's page or first run), cl_audit now says why: a sign-in already open for that folder (finish or close it first), or cl_audit couldn't tell whether one is open, instead of always "Terminal didn't open."
 - The same light now stands before a profile's name in the launcher, the menu bar's menu and the Dock icon's panels, so a profile's colour reads the same everywhere; a profile with no colour of its own shows it dark there too, where those places used to show orange.
+- The dashboard's profile keys, the usage chart's legend and series, the Dock panel's Claude key and the card's Open window key take the profile's own colour too. A profile with none gets an unlit strip, an unlit legend light, a plain key (Open window keeps a neutral light for "window open") and a grey series in the charts (a shade of its own for each such profile), never orange.
 
 ## 26.11.80 — 2026-11-21
 

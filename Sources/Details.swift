@@ -23,7 +23,6 @@ struct DetailsInfo {
     var renewNote: String?
     var needsLogin: Bool
     var design: PanelDesign = .glow
-    var accent: NSColor = Painter.orange
     /// The profile's own colour for its light before the name (ProfileLED); nil: none of its own, the light unlit.
     var ownColor: TileColor? = nil
     var refreshing = false
@@ -67,7 +66,7 @@ extension DetailsInfo {
             name: name, icon: icon, login: s.record?.loginEmail, expected: s.record?.expectedEmail, mismatch: d.otherAccount,
             plan: s.plan, fiveHour: u?.fiveHour, fiveHourResets: u?.fiveHourResets, weekly: u?.weekly,
             weeklyResets: u?.weeklyResets, updated: d.readAt, source: u?.source, problem: problem, renewNote: s.record?.renewNote,
-            needsLogin: d.needsLogin, design: e.panelDesign, accent: e.accentNSColor, ownColor: e.ownColor, refreshing: refreshing,
+            needsLogin: d.needsLogin, design: e.panelDesign, ownColor: e.ownColor, refreshing: refreshing,
             scoped: e.showFable ? u?.scoped ?? [] : [], credits: u?.credits, noFiveHour: s.record?.noFiveHour == true,
             noNumbers: s.noNumbersWords, noNumbersShort: s.noNumbersShort, stale: d.tier == .stale)
         // (in a clash the app didn't decide, the profile's own account, as on the card: never the folder's, the other profile's;
@@ -209,7 +208,7 @@ struct DetailsView: View {
                 Button(k, action: actions.logIn).buttonStyle(PillButtonStyle(tint: nil, compact: true)).fixedSize()
             }
             HStack(spacing: 8) {
-                Button("Claude", action: actions.openClaude).buttonStyle(.pill(Color(nsColor: info.accent), compact: true))
+                Button("Claude", action: actions.openClaude).buttonStyle(.pill(ProfileLED.keyTint(info.ownColor), compact: true))
                     .keyboardShortcut(.defaultAction).help("Open Claude for this profile")
                 Button("Dashboard", action: actions.dashboard).buttonStyle(PillButtonStyle(tint: nil, compact: true))
                 if info.needsLogin { Button("Sign in…", action: actions.logIn).buttonStyle(.pill(.red, compact: true)) }
@@ -347,7 +346,7 @@ extension DetailsController {
                                fiveHourResets: Date().addingTimeInterval(3 * 3600 + 57 * 60),
                                weekly: 58, weeklyResets: Date().addingTimeInterval(2 * 3600 + 7 * 60), updated: Date(),
                                source: "Anthropic", problem: nil, renewNote: nil, needsLogin: false,
-                               design: design, accent: Painter.orange, ownColor: .orange)
+                               design: design, ownColor: .orange)
         let actions = DetailsActions(openClaude: {}, refresh: {}, settings: {}, logIn: {})
         let view = Group {
             if large { DetailsView(info: info, actions: actions) } else { CompactView(info: info) }
