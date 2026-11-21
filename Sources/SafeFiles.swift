@@ -241,7 +241,8 @@ struct ReceiptStore<R: StoredReceipt> {
         let firstSaved: Int64?
     }
 
-    /// Newest first: by `started`, then (two in one second) by `firstSaved`, one without it before every one with it, then by id.
+    /// Newest first: by `started`, then (two in one second) by `firstSaved`, one without it older than every one with it, then by
+    /// id (the last word between two without it).
     static func newestFirst(_ a: Ordered, _ b: Ordered) -> Bool {
         if a.receipt.started != b.receipt.started { return a.receipt.started > b.receipt.started }
         let x = a.firstSaved ?? 0, y = b.firstSaved ?? 0
