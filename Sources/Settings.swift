@@ -230,7 +230,8 @@ final class SettingsModel: ObservableObject {
             let stamp = Store.stamp(e.id)            // before the read: a write landing meanwhile is the agent's, newer
             let s = Store.status(e.id)
             var r = AccountResolver.resolve(e, among: list, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
-                                            loginEmail: s?.readingOwner, loginAccount: s?.readingAccount, names: AccountList.names(),
+                                            loginEmail: s?.readingOwner, loginAccount: s?.readingAccount,
+                                            loginOrganization: s?.readingOrganization, names: AccountList.names(),
                                             recordTooLarge: Account.recordTooLarge(configDir: e.configDir),
                                             newestSwitch: SwitchEngine.receipts(profile: e.id).first)
             if var old = s?.resolved { old.at = r.at; if old == r { continue } }
@@ -248,7 +249,8 @@ final class SettingsModel: ObservableObject {
         let stamp = Store.stamp(id)                  // before the read: a write landing meanwhile is the agent's, newer
         let s = Store.status(id)
         var r = AccountResolver.resolve(e, among: accounts, app: AppSignIn.cached(for: e), code: Account.signedInSeat(configDir: e.configDir),
-                                        loginEmail: s?.readingOwner, loginAccount: s?.readingAccount, names: AccountList.names(),
+                                        loginEmail: s?.readingOwner, loginAccount: s?.readingAccount,
+                                        loginOrganization: s?.readingOrganization, names: AccountList.names(),
                                         recordTooLarge: Account.recordTooLarge(configDir: e.configDir),
                                         newestSwitch: SwitchEngine.receipts(profile: e.id).first)
         r.at = Date()
