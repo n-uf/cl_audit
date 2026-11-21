@@ -102,6 +102,17 @@ h3 { margin: 18px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .14e
 .byu .dotc { background: #3f3f46; box-shadow: 0 0 0 1px rgba(255,255,255,.28); }
 .face-silver .byu .dotc { box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
 
+/* V4: an LED like the app's own (struct LED, Sources/Faces.swift): 5 px, lit in the profile colour with a soft glow and a dark bezel;
+   unlit (By usage) it is the face's own off colour, no glow, an inner shadow. The in-use lamp is 6 px, green, on the address line. */
+.face-std { --ledoff: #3a3532; }
+.face-silver { --ledoff: #4a4744; }   /* the app's Silver off colour is #8c8c88; drawn darker here so it reads as unlit, not grey-lit */
+.led { flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--c);
+  box-shadow: 0 0 0 1px rgba(0,0,0,.55), 0 0 3px color-mix(in srgb, var(--c) 85%, transparent), inset 0 .5px .5px rgba(0,0,0,.25); }
+.led.off { background: var(--ledoff); box-shadow: 0 0 0 1px rgba(0,0,0,.55), inset 0 .5px .5px rgba(0,0,0,.5); }
+.limes { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.limes .tile { flex: 0 1 215px; }
+.limes .card { flex: 1 1 200px; }
+
 /* V1, V2, V3: the key face takes the tint (By usage keeps today's face) */
 .v1 .tile:not(.byu), .v2 .tile:not(.byu), .v3 .tile:not(.byu) {
   background: linear-gradient(color-mix(in srgb, var(--ts) var(--ta), transparent), color-mix(in srgb, var(--ts) var(--ta), transparent)), var(--alu); }
@@ -150,7 +161,69 @@ h3 { margin: 18px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .14e
 <div class="page">
 
 <h1>Profile colours, round 2: coloured tiles</h1>
-<p class="subtitle">A proposal, 2026-11-21, nothing built: today's Settings tile bar with a dot before the name, and the key face tinted in the profile colour.</p>
+<p class="subtitle">A proposal, 2026-11-21, nothing built: today's Settings tile bar with an LED or a dot before the name, and optionally the key face tinted in the profile colour.</p>
+
+<!-- ═══════════════════ V4 ═══════════════════ -->
+<div class="variant v4">
+<p class="cap"><b>V4 · LED only.</b> Today's key, unchanged, plus a 5 px LED before the name; the in-use lamp is 6 px, always green, and sits on the address line.</p>
+<div class="pair">
+
+<div class="dev face-std">
+<div class="lbl">Std dark · tile bar</div>
+<div class="strip">
+<div class="tile sel" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><span class="tt"><b><span class="led"></span>Main</b><span class="sb">~/.claude · ann</span></span></div>
+<div class="tile" style="--c:#14b8a6"><div class="ico2"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><span class="tt"><b><span class="led"></span>Work</b><span class="sb">~/.claude-work · ben</span></span></div>
+<div class="tile" style="--c:#ec4899"><div class="ico2"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><span class="tt"><b><span class="led"></span>Studio</b><span class="sb">~/.claude-studio · cat</span></span></div>
+<div class="tile byu" style="--c:#3f3f46"><div class="ico2"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><span class="tt"><b><span class="led off"></span>Lab</b><span class="sb">~/.claude-lab · dan</span></span></div>
+</div>
+<div class="lbl">Card header</div>
+<div class="hdrs">
+<div class="card"><div class="hdr" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><div class="cname"><div class="nm"><span class="led"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div></div></div>
+<div class="card"><div class="hdr byu" style="--c:#3f3f46"><div class="ico2 byu"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><div class="cname"><div class="nm"><span class="led off"></span>Claude Lab</div><div class="inuse"><i></i><span>dan@example.com</span></div></div></div></div>
+</div>
+<div class="lbl">Dock icon · unchanged (no LED on it)</div>
+<div class="wall"><div class="dock4">
+<div class="dk"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><em></em></div>
+<div class="dk"><div class="ico2"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><em></em></div>
+<div class="dk"><div class="ico2"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><em></em></div>
+<div class="dk"><div class="ico2"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><em></em></div>
+</div><div class="caps4"><span>Main</span><span>Work</span><span>Studio</span><span>Lab</span></div></div>
+<div class="lbl">Lime check · a lime profile's LED beside the in-use green lamp</div>
+<div class="limes">
+<div class="tile" style="--c:#84cc16"><div class="ico2"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><span class="tt"><b><span class="led"></span>Studio</b><span class="sb">~/.claude-studio · cat</span></span></div>
+<div class="card"><div class="hdr" style="--c:#84cc16"><div class="cname"><div class="nm"><span class="led"></span>Claude Studio</div><div class="inuse"><i></i><span>cat@example.com</span></div></div></div></div>
+</div>
+</div>
+
+<div class="dev face-silver">
+<div class="lbl">Silver · tile bar</div>
+<div class="strip">
+<div class="tile sel" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><span class="tt"><b><span class="led"></span>Main</b><span class="sb">~/.claude · ann</span></span></div>
+<div class="tile" style="--c:#14b8a6"><div class="ico2"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><span class="tt"><b><span class="led"></span>Work</b><span class="sb">~/.claude-work · ben</span></span></div>
+<div class="tile" style="--c:#ec4899"><div class="ico2"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><span class="tt"><b><span class="led"></span>Studio</b><span class="sb">~/.claude-studio · cat</span></span></div>
+<div class="tile byu" style="--c:#3f3f46"><div class="ico2"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><span class="tt"><b><span class="led off"></span>Lab</b><span class="sb">~/.claude-lab · dan</span></span></div>
+</div>
+<div class="lbl">Card header</div>
+<div class="hdrs">
+<div class="card"><div class="hdr" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><div class="cname"><div class="nm"><span class="led"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div></div></div>
+<div class="card"><div class="hdr byu" style="--c:#3f3f46"><div class="ico2 byu"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><div class="cname"><div class="nm"><span class="led off"></span>Claude Lab</div><div class="inuse"><i></i><span>dan@example.com</span></div></div></div></div>
+</div>
+<div class="lbl">Dock icon · unchanged (no LED on it)</div>
+<div class="wall"><div class="dock4">
+<div class="dk"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><em></em></div>
+<div class="dk"><div class="ico2"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><em></em></div>
+<div class="dk"><div class="ico2"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><em></em></div>
+<div class="dk"><div class="ico2"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><em></em></div>
+</div><div class="caps4"><span>Main</span><span>Work</span><span>Studio</span><span>Lab</span></div></div>
+<div class="lbl">Lime check · a lime profile's LED beside the in-use green lamp</div>
+<div class="limes">
+<div class="tile" style="--c:#84cc16"><div class="ico2"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><span class="tt"><b><span class="led"></span>Studio</b><span class="sb">~/.claude-studio · cat</span></span></div>
+<div class="card"><div class="hdr" style="--c:#84cc16"><div class="cname"><div class="nm"><span class="led"></span>Claude Studio</div><div class="inuse"><i></i><span>cat@example.com</span></div></div></div></div>
+</div>
+</div>
+
+</div>
+</div>
 
 <!-- ═══════════════════ V1 ═══════════════════ -->
 <div class="variant v1">
