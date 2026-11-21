@@ -114,7 +114,7 @@ final class UsageReader {
                       scoped: s.scoped ?? [], credits: s.credits, noFiveHour: s.noFiveHour ?? false)
         // (the saved numbers' own reading is their account)
         send(.adopt(usage: u, loginEmail: s.loginEmail, owner: s.readingOwner, plan: s.plan, renewNote: s.renewNote,
-                    ownerAccount: s.numbersOwner == nil ? nil : s.numbersAccount))
+                    ownerAccount: s.readingAccount, ownerOrganization: s.readingOrganization))
     }
 
     /// The profile's settings changed: another account (a switch), another folder to read, or another interval reads
@@ -308,10 +308,12 @@ final class UsageReader {
             let email = ok ? data.flatMap(UsageParser.email) : nil
             // (the reply's account id too: whose the numbers are, known by the id where the folder's record has no address)
             let account = ok ? data.flatMap(UsageParser.accountID) : nil
+            // (and its organisation's: one login's personal and Team seats are told apart by it)
+            let organization = ok ? data.flatMap(UsageParser.organizationID) : nil
             DispatchQueue.main.async {
                 guard let self else { return }
                 self.send(.lookupAnswer(email: email, key: req.key, asked: req.asked, generation: req.generation,
-                                        expected: self.expectedEmail, now: Date(), account: account))
+                                        expected: self.expectedEmail, now: Date(), account: account, organization: organization))
             }
         }.resume()
     }
@@ -321,9 +323,9 @@ final class UsageReader {
     /// Once the account is back, the numbers shown as "account not confirmed" are its own, and the usual rules (alerts
     /// included) apply to them. (Right after a sign-in change, a token whose account isn't the folder's is read again
     /// soon: the Keychain can still hold the old sign-in for a moment.)
-    /// (`account`: the account's id, when the reply gave one.)
-    func profileFound(_ email: String, key: String, account: String? = nil) {
-        send(.accountFound(email: email, key: key, expected: expectedEmail, now: Date(), account: account))
+    /// (`account`: the account's id, when the reply gave one; `organization`: its organisation's id.)
+    func profileFound(_ email: String, key: String, account: String? = nil, organization: String? = nil) {
+        send(.accountFound(email: email, key: key, expected: expectedEmail, now: Date(), account: account, organization: organization))
     }
 
     /// The token's account couldn't be looked up: tried again later, a little later each time (1, 2, 4… minutes, at most 30).
@@ -645,6 +647,7 @@ final class UsageReader {
         status = status.current()
         status.numbersOwner = m.numbersOwner
         status.numbersAccount = m.numbersAccount
+        status.numbersOrganization = m.numbersOrganization
         status.ownerUnconfirmed = m.unconfirmed ? true : nil
         // the one answer about the account (AccountResolver), written here once for every surface to read: the numbers
         // stay, labelled with the account they were read for (no "otherAccount" state for the profile's own folder)
@@ -668,7 +671,7 @@ final class UsageReader {
         let me = list.first { $0.id == id } ?? entry
         return AccountResolver.resolve(me, among: list, app: AppSignIn.cached(for: me),
                                        code: Account.signedInSeat(configDir: me.configDir), loginEmail: machine.numbersOwner,
-                                       loginAccount: machine.numbersAccount,
+                                       loginAccount: machine.numbersAccount, loginOrganization: machine.numbersOrganization,
                                        names: AccountList.names(), recordTooLarge: Account.recordTooLarge(configDir: me.configDir),
                                        newestSwitch: SwitchEngine.receipts(profile: me.id).first)
     }

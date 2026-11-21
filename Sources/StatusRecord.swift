@@ -38,6 +38,9 @@ struct IconStatus: Codable {
     /// That account's id, when the reading's lookup gave one (nil in a record from before it): the resolver compares it
     /// with Claude Code's folder account by the id, the one owner rule.
     var numbersAccount: String? = nil
+    /// That account's organisation id (the profile reply's organization.uuid), when the reply gave one: the resolver tells
+    /// one login's personal and Team seats apart by it (nil: not known, never "none").
+    var numbersOrganization: String? = nil
     /// The numbers' account couldn't be confirmed (the token's lookup keeps failing): shown as read, with their age, but
     /// never full, alerted, offering a switch or deciding the split (Store.status(for:)).
     var ownerUnconfirmed: Bool? = nil
@@ -48,6 +51,8 @@ struct IconStatus: Codable {
     var readingOwner: String? { numbersOwner ?? loginEmail }
     /// `readingOwner`'s account id: only with `numbersOwner` (the sign-in's own address names no id here).
     var readingAccount: String? { numbersOwner == nil ? nil : numbersAccount }
+    /// `readingAccount`'s organisation id: only with it.
+    var readingOrganization: String? { readingAccount == nil ? nil : numbersOrganization }
 
     /// The account these numbers were read for: the sign-in's address, else the one its folder names.
     var readFor: String? { (loginEmail ?? expectedEmail).map { $0.lowercased() } }

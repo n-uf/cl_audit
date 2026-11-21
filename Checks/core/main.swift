@@ -228,6 +228,10 @@ do {
     check(UsageParser.accountID(Data(profile.utf8)) == "x" && UsageParser.accountID(Data(#"{"account":{"uuid":""}}"#.utf8)) == nil
           && UsageParser.accountID(Data(#"{"organization":{"uuid":"o"}}"#.utf8)) == nil,
           "the profile reply's account id: account.uuid only (never the organisation's), none when empty")
+    check(UsageParser.organizationID(Data(#"{"account":{"uuid":"x"},"organization":{"uuid":"o-1","name":"o"}}"#.utf8)) == "o-1"
+          && UsageParser.organizationID(Data(profile.utf8)) == nil && UsageParser.organizationID(Data(#"{"organization":{"uuid":""}}"#.utf8)) == nil
+          && UsageParser.organizationID(Data(#"{"account":{"uuid":"a"}}"#.utf8)) == nil,
+          "the profile reply's organisation id: organization.uuid only (never the account's), none when empty or missing")
     let keys = (try? JSONSerialization.jsonObject(with: JSONEncoder().encode(Credits(enabled: true, used: 1, cap: nil, currency: "USD", out: false))) as? [String: Any])?.keys.sorted()
     check(keys == ["currency", "enabled", "out", "used"], "Credits' JSON keys: \(keys ?? [])")
 }
@@ -569,6 +573,17 @@ do {
     _ = late.handle(.folderLooked(changed: true, seen: pat, now: t0))
     check(late.handle(.accountFound(email: "mo@example.com", key: "k1", expected: "pat@example.com", now: t0.addingTimeInterval(301))) == [],
           "more than 5 minutes after the change: no read again")
+    // one login's other seat (personal vs Team: the same address and account id): told by the reply's organisation against
+    // the one the folder's record named; one not known on either side is never another seat
+    func seatRetry(_ org: String?, seen: Seat) -> [ReaderMachine.Action] {
+        var x = machine()
+        _ = x.handle(.folderLooked(changed: true, seen: seen, now: t0))
+        return x.handle(.accountFound(email: "mo@example.com", key: "k1", expected: "mo@example.com", now: t0, account: mo.account, organization: org))
+    }
+    let moNoOrg = Seat(account: mo.account, organization: nil, email: mo.email), moEmptyOrg = Seat(account: mo.account, organization: "", email: mo.email)
+    check(seatRetry(uuid(72), seen: mo) == [.signInNotThereYet] && seatRetry(uuid(71).uppercased(), seen: mo) == []
+          && seatRetry(nil, seen: mo) == [] && seatRetry(uuid(72), seen: moNoOrg) == [] && seatRetry(uuid(72), seen: moEmptyOrg) == [],
+          "the folder on the login's other seat, the sign-in's organisation another: read again; the same (any case) or one not known: not")
 
     // the one "is it another account" rule
     let r = machine(mo)
@@ -656,6 +671,26 @@ do {
     check(noID.numbersOwner == "mo@example.com" && noID.numbersAccount == nil && adopted.numbersAccount == "acct-mo"
           && adoptedNoOwner.numbersAccount == nil,
           "a reply without an id: the address only, as before; a saved record's id adopted only with its owner")
+    // the reply's organisation: kept with the account's id only, adopted with it, gone with a status line
+    var withOrg = machine()
+    _ = withOrg.handle(.accountFound(email: "mo@example.com", key: "k1", expected: nil, now: t0, account: "acct-mo", organization: "org-team"))
+    _ = withOrg.handle(.usageAnswer(endpoint(withScoped), key: "k1", asked: t0, generation: 0, now: t0))
+    var orgNoID = machine()
+    _ = orgNoID.handle(.accountFound(email: "mo@example.com", key: "k1", expected: nil, now: t0, organization: "org-team"))
+    _ = orgNoID.handle(.usageAnswer(endpoint(withScoped), key: "k1", asked: t0, generation: 0, now: t0))
+    var orgEmpty = machine()
+    _ = orgEmpty.handle(.accountFound(email: "mo@example.com", key: "k1", expected: nil, now: t0, account: "acct-mo", organization: ""))
+    _ = orgEmpty.handle(.usageAnswer(endpoint(withScoped), key: "k1", asked: t0, generation: 0, now: t0))
+    var orgAdopted = machine(), orgAdoptedNoID = machine()
+    _ = orgAdopted.handle(.adopt(usage: withScoped, loginEmail: "mo@example.com", owner: "mo@example.com", plan: nil, renewNote: nil,
+                                 ownerAccount: "acct-mo", ownerOrganization: "org-team"))
+    _ = orgAdoptedNoID.handle(.adopt(usage: withScoped, loginEmail: "mo@example.com", owner: "mo@example.com", plan: nil, renewNote: nil,
+                                     ownerAccount: nil, ownerOrganization: "org-team"))
+    check(withOrg.numbersOrganization == "org-team" && withOrg.loginOrganization == "org-team" && orgNoID.numbersOrganization == nil
+          && orgEmpty.numbersOrganization == nil && orgAdopted.numbersOrganization == "org-team" && orgAdoptedNoID.numbersOrganization == nil,
+          "the reply's organisation: kept with the account's id (never alone, never empty), adopted only with the id")
+    _ = tick(&withOrg, t0.addingTimeInterval(5), line: use(week: 26, at: t0.addingTimeInterval(4), source: "line"))
+    check(withOrg.numbersOrganization == nil && withOrg.numbersAccount == nil, "a newer status line: no organisation either")
     _ = tick(&line, t0.addingTimeInterval(6), line: use(week: 90, at: t0.addingTimeInterval(1), source: "line"))
     check(line.usage?.weekly == 25, "an older status line: not taken")
 

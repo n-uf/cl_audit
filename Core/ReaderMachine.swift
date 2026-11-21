@@ -98,8 +98,9 @@ public struct ReaderMachine: Equatable {
         /// Refresh now: read the sign-in again and fetch now, and write the record, changed or not.
         case refreshRequested
         /// What was saved last, adopted at the start (numbers, address, their reading's account, plan, renewal note).
-        /// (`ownerAccount`: the reading's account id, when the record kept one.)
-        case adopt(usage: Usage, loginEmail: String?, owner: String?, plan: String?, renewNote: String?, ownerAccount: String? = nil)
+        /// (`ownerAccount`: the reading's account id, when the record kept one; `ownerOrganization`: its organisation's id.)
+        case adopt(usage: Usage, loginEmail: String?, owner: String?, plan: String?, renewNote: String?, ownerAccount: String? = nil,
+                   ownerOrganization: String? = nil)
         /// The sign-in read for generation `generation` came back.
         case signInRead(SignInRead, generation: Int, now: Date)
         /// The folder's sign-in record changed while no sign-in could be read: read it now, at most every `floor`.
@@ -108,10 +109,12 @@ public struct ReaderMachine: Equatable {
         case usageAnswer(UsageAnswer, key: String?, asked: Date, generation: Int, now: Date)
         case usageFailed(Failure, asked: Date, generation: Int, now: Date)
         /// The account lookup's answer for `key` (`email` nil: it failed); `expected` is the address the folder's record names;
-        /// `account`: the account's id, when the reply gave one.
-        case lookupAnswer(email: String?, key: String, asked: Date, generation: Int, expected: String?, now: Date, account: String? = nil)
+        /// `account`: the account's id, when the reply gave one; `organization`: its organisation's id (organization.uuid),
+        /// when the reply gave one.
+        case lookupAnswer(email: String?, key: String, asked: Date, generation: Int, expected: String?, now: Date, account: String? = nil,
+                          organization: String? = nil)
         /// The token `key`'s account is known (as a lookup's return).
-        case accountFound(email: String, key: String, expected: String?, now: Date, account: String? = nil)
+        case accountFound(email: String, key: String, expected: String?, now: Date, account: String? = nil, organization: String? = nil)
         case lookupFailed(now: Date)
         /// Numbers to take (as a good reading's): what alerts they call for is the app's.
         case numbers(Usage, now: Date)
@@ -193,6 +196,8 @@ public struct ReaderMachine: Equatable {
     public private(set) var loginEmail: String?
     /// The id of `loginEmail`'s account, when the lookup's reply gave one.
     public private(set) var loginAccount: String?
+    /// The id of its organisation, when the lookup's reply gave one.
+    public private(set) var loginOrganization: String?
     /// The key the address was looked up for.
     public private(set) var profileFor: String?
     /// The account the numbers were read for: the one looked up for the key they were read with (`numbersKey`); nil while
@@ -201,6 +206,9 @@ public struct ReaderMachine: Equatable {
     /// The id of `numbersOwner`'s account, when the lookup's reply gave one (nil whenever `numbersOwner` is, and when the
     /// reply named no id): with it, whose the numbers are is known by the id, not only the address.
     public private(set) var numbersAccount: String?
+    /// The id of `numbersAccount`'s organisation (the reply's organization.uuid), when the reply gave one: one login's
+    /// personal and Team seats share the account id and the address, and only this tells them apart.
+    public private(set) var numbersOrganization: String?
     public private(set) var numbersKey: String?
     public private(set) var held: Held?
     /// Readings in a row held for the key being held.
@@ -211,6 +219,8 @@ public struct ReaderMachine: Equatable {
     public private(set) var ownerByKey: [String: String] = [:]
     /// Their accounts' ids, where the lookup's reply gave one.
     public private(set) var accountByKey: [String: String] = [:]
+    /// Their organisations' ids, where the lookup's reply gave one.
+    public private(set) var organizationByKey: [String: String] = [:]
     public private(set) var lookupFails = 0
     public private(set) var nextLookup = Date.distantPast
     /// The account refused (cl_quick's rules; always nil with cl_audit's).
@@ -333,8 +343,8 @@ public struct ReaderMachine: Equatable {
             if !readsNewAlready { out += startOver(now: now) + [.lookAfresh] }
             return out + [.tick]
         case let .folderMoved(now):
-            loginEmail = nil; loginAccount = nil; profileFor = nil; nextFetch = .distantPast; kept = nil
-            numbersOwner = nil; numbersAccount = nil; numbersKey = nil; held = nil; heldReads = 0; unconfirmed = false
+            loginEmail = nil; loginAccount = nil; loginOrganization = nil; profileFor = nil; nextFetch = .distantPast; kept = nil
+            numbersOwner = nil; numbersAccount = nil; numbersOrganization = nil; numbersKey = nil; held = nil; heldReads = 0; unconfirmed = false
             generation += 1
             signInChangedAt = now
             return [.forgetSignIn]
@@ -344,9 +354,10 @@ public struct ReaderMachine: Equatable {
         case .refreshRequested:
             nextFetch = .distantPast; forceLoginRead = true; rewriteDue = true
             return []
-        case let .adopt(u, email, owner, p, note, ownerAccount):
+        case let .adopt(u, email, owner, p, note, ownerAccount, ownerOrganization):
             usage = u; loginEmail = email; numbersOwner = owner; plan = p; renewNote = note
             numbersAccount = owner == nil ? nil : ownerAccount
+            numbersOrganization = numbersAccount == nil ? nil : ownerOrganization
             return []
         case let .signInRead(read, gen, now):
             guard gen == generation else { inFlight = false; nextFetch = .distantPast; return [.tick] }
@@ -360,14 +371,15 @@ public struct ReaderMachine: Equatable {
             return answered(.answer(answer), key: key, asked: asked, generation: gen, now: now)
         case let .usageFailed(failure, asked, gen, now):
             return answered(.failed(failure), key: nil, asked: asked, generation: gen, now: now)
-        case let .lookupAnswer(email, key, asked, gen, expected, now, account):
+        case let .lookupAnswer(email, key, asked, gen, expected, now, account, organization):
             guard gen == generation else { return [] }
             if let at = signInChangedAt, asked < at { return [] }
             let out: [Action]
-            if let email { out = found(email, account: account, key: key, expected: expected, now: now) } else { lookupFailed(now: now); out = [] }
+            if let email { out = found(email, account: account, organization: organization, key: key, expected: expected, now: now) }
+            else { lookupFailed(now: now); out = [] }
             return out + [.save]
-        case let .accountFound(email, key, expected, now, account):
-            return found(email, account: account, key: key, expected: expected, now: now)
+        case let .accountFound(email, key, expected, now, account, organization):
+            return found(email, account: account, organization: organization, key: key, expected: expected, now: now)
         case let .lookupFailed(now):
             lookupFailed(now: now)
             return []
@@ -413,7 +425,7 @@ public struct ReaderMachine: Equatable {
             local.noFiveHour = usage?.noFiveHour ?? false
             if local.noFiveHour { local.fiveHour = nil; local.fiveHourResets = nil }
             usage = local
-            numbersOwner = nil; numbersAccount = nil; numbersKey = nil    // the status line names no account: whose these are isn't known
+            numbersOwner = nil; numbersAccount = nil; numbersOrganization = nil; numbersKey = nil    // the status line names no account: whose these are isn't known
         }
         if let u = usage, Self.resetPassed(u, now: now), !failing, now.timeIntervalSince(lastAsked) >= timing.resetRereadFloor {
             nextFetch = .distantPast
@@ -426,9 +438,9 @@ public struct ReaderMachine: Equatable {
     /// The folder signed in to another account: the kept sign-in, the numbers and the alert marks are the old account's.
     private mutating func startOver(now: Date) -> [Action] {
         kept = nil; forceLoginRead = true; loginRejected = false
-        loginEmail = nil; loginAccount = nil; profileFor = nil; plan = nil; renewNote = nil
+        loginEmail = nil; loginAccount = nil; loginOrganization = nil; profileFor = nil; plan = nil; renewNote = nil
         usage = nil; state = .idle; backoff = 0; refusal = nil
-        numbersOwner = nil; numbersAccount = nil; numbersKey = nil; held = nil; heldReads = 0; unconfirmed = false
+        numbersOwner = nil; numbersAccount = nil; numbersOrganization = nil; numbersKey = nil; held = nil; heldReads = 0; unconfirmed = false
         signInChangedAt = now; signInRetries = 0
         generation += 1                           // answers under way are the old account's
         nextFetch = .distantPast
@@ -505,6 +517,7 @@ public struct ReaderMachine: Equatable {
         if let key, let known = profileFor == key ? loginEmail : ownerByKey[key] {
             held = nil; heldReads = 0; unconfirmed = false
             numbersKey = key; numbersOwner = known; numbersAccount = profileFor == key ? loginAccount : accountByKey[key]
+            numbersOrganization = profileFor == key ? loginOrganization : organizationByKey[key]
             return take(u, now: now)
         } else if let key {
             // (a key already shown as not confirmed stays shown so, read after read)
@@ -513,11 +526,11 @@ public struct ReaderMachine: Equatable {
                 guard heldReads >= 2 else { held = Held(usage: u, key: key); state = .ok; return [] }
             }
             held = nil
-            numbersKey = key; numbersOwner = nil; numbersAccount = nil; unconfirmed = true
+            numbersKey = key; numbersOwner = nil; numbersAccount = nil; numbersOrganization = nil; unconfirmed = true
             return take(u, now: now)
         } else {
             held = nil
-            numbersKey = nil; numbersOwner = nil; numbersAccount = nil; unconfirmed = false
+            numbersKey = nil; numbersOwner = nil; numbersAccount = nil; numbersOrganization = nil; unconfirmed = false
             return take(u, now: now)
         }
     }
@@ -534,28 +547,34 @@ public struct ReaderMachine: Equatable {
 
     /// The account of the key came back: it is the sign-in's address, and the account of the numbers read with that key. A
     /// reading held for it is taken now; numbers shown as "account not confirmed" are its own from now on.
-    /// (`account`: the account's id, when the reply gave one.)
-    private mutating func found(_ email: String, account: String?, key: String, expected: String?, now: Date) -> [Action] {
+    /// (`account`: the account's id, when the reply gave one; `organization`: its organisation's id, kept only with it.)
+    private mutating func found(_ email: String, account: String?, organization: String? = nil, key: String, expected: String?,
+                                now: Date) -> [Action] {
         let account = account.flatMap { $0.isEmpty ? nil : $0 }
-        loginEmail = email; loginAccount = account; profileFor = key
-        var out = checkNewSignIn(email, expected: expected, now: now)
-        ownerByKey[key] = email; accountByKey[key] = account; lookupFails = 0; nextLookup = .distantPast
+        let organization = account == nil ? nil : organization.flatMap { $0.isEmpty ? nil : $0 }
+        loginEmail = email; loginAccount = account; loginOrganization = organization; profileFor = key
+        var out = checkNewSignIn(email, organization: organization, expected: expected, now: now)
+        ownerByKey[key] = email; accountByKey[key] = account; organizationByKey[key] = organization
+        lookupFails = 0; nextLookup = .distantPast
         if let h = held, h.key == key {
             held = nil; heldReads = 0
-            numbersKey = key; numbersOwner = email; numbersAccount = account
+            numbersKey = key; numbersOwner = email; numbersAccount = account; numbersOrganization = organization
             out += take(h.usage, now: now)
         } else if numbersKey == key {
-            numbersOwner = email; numbersAccount = account    // the numbers read with this key: its account's
+            numbersOwner = email; numbersAccount = account; numbersOrganization = organization    // the numbers read with this key: its account's
             if unconfirmed, let u = usage { unconfirmed = false; out += take(u, now: now) }
         }
         return out
     }
 
     /// Right after the folder signed in to another account, the store can still hold the old sign-in: when the sign-in's
-    /// account isn't the one the folder's record names, it is read again a few times.
-    private mutating func checkNewSignIn(_ email: String, expected: String?, now: Date) -> [Action] {
+    /// account isn't the one the folder's record names, it is read again a few times. Another account is another address,
+    /// or (one login's personal and Team seats share the address) another organisation than the one the folder's record
+    /// named last (`seen`), when both are known.
+    private mutating func checkNewSignIn(_ email: String, organization: String? = nil, expected: String?, now: Date) -> [Action] {
+        let otherSeat = organization.map { o in (seen?.organization).map { !$0.isEmpty && !AccountID.sameOrganization(o, $0) } ?? false } ?? false
         guard let at = signInChangedAt, now.timeIntervalSince(at) < timing.newSignInWindow, signInRetries < timing.newSignInRetries,
-              belongs(.address(email), expected: expected) == .other else { return [] }
+              belongs(.address(email), expected: expected) == .other || otherSeat else { return [] }
         signInRetries += 1
         forceLoginRead = true
         nextFetch = now.addingTimeInterval(timing.newSignInStep * TimeInterval(signInRetries))

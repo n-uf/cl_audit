@@ -129,4 +129,12 @@ public enum UsageParser {
         guard let id = (reply?["account"] as? [String: Any])?["uuid"] as? String, !id.isEmpty else { return nil }
         return id
     }
+
+    /// The account's organisation id in the profile reply (organization.uuid, what Claude Code writes into .claude.json as
+    /// organizationUuid), or nil when it names none (or an empty one).
+    public static func organizationID(_ data: Data) -> String? {
+        let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        guard let id = (reply?["organization"] as? [String: Any])?["uuid"] as? String, !id.isEmpty else { return nil }
+        return id
+    }
 }

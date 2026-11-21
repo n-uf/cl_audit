@@ -3285,6 +3285,36 @@ do {
     let noSeat = AccountResolver.resolve(me, among: [me], app: .unknown, code: nil, loginEmail: foreign, names: [:], now: t0)
     check(noSeat.readStale == nil && noSeat.email == foreign && noSeat.numbersFor == foreign && shownWeekly(noSeat) == 40,
           "no folder seat, a reading's address only: the reading names the account, as before")
+    // the seat by the reading's organisation (the profile reply's organization.uuid): one login's personal and Team seats share
+    // the account id and the address, so another organisation, both known, is another seat: stale, whatever the address
+    // says; the id proof stays as it was; one organisation not known on either side never makes a mismatch
+    let teamOrg = "00000000-0000-4000-8000-0000000000c2"
+    func orgRead(_ code: Seat?, _ org: String?, account: String? = h2.account) -> ResolvedAccount {
+        AccountResolver.resolve(me, among: [me], app: .unknown, code: code, loginEmail: h2.email, loginAccount: account, loginOrganization: org,
+                                names: [:], now: t0)
+    }
+    let otherSeatRead = orgRead(h2, teamOrg)
+    check(otherSeatRead.readStale == true && !otherSeatRead.differs && otherSeatRead.line == AccountResolver.staleWords
+          && otherSeatRead.email == h2.email && shownWeekly(otherSeatRead, id: h2.account) == nil,
+          "folder {id, org, address} + a reading with that id and address on another organisation: stale (the other seat), shown nowhere, the way back said")
+    let sameSeat = orgRead(h2, h2.organization!.uppercased())
+    check(sameSeat.readStale == nil && !sameSeat.differs && shownWeekly(sameSeat, id: h2.account) == 40,
+          "…on the folder's organisation (any case): the profile's numbers")
+    let noOrgFolder = orgRead(Seat(account: h2.account, organization: nil, email: h2.email), teamOrg)
+    let emptyOrgFolder = orgRead(Seat(account: h2.account, organization: "", email: h2.email), teamOrg)
+    let noOrgRead = orgRead(h2, nil), emptyOrgRead = orgRead(h2, "")
+    check([noOrgFolder, emptyOrgFolder, noOrgRead, emptyOrgRead].allSatisfy { $0.readStale == nil && !$0.differs },
+          "an organisation not known on either side (nil or empty): never a mismatch")
+    let orgWithoutID = orgRead(h2, teamOrg, account: nil)
+    check(orgWithoutID.readStale == nil && !orgWithoutID.differs, "an organisation without the reading's account id: not taken (kept only with the id)")
+    let guardKept = orgRead(h2, h2.organization, account: otherAcct)
+    check(guardKept.readStale == nil && !guardKept.differs, "the ids' guard unchanged: another id, the folder's organisation and address keep the reading")
+    var withOrgRec = IconStatus(state: "ok"); withOrgRec.numbersOwner = h2.email; withOrgRec.numbersAccount = h2.account; withOrgRec.numbersOrganization = teamOrg
+    let orgBack = StatusCodec.encode(withOrgRec).flatMap(StatusCodec.decode)
+    var orgNoAcct = withOrgRec; orgNoAcct.numbersAccount = nil
+    check(orgBack?.readingOrganization == teamOrg && orgNoAcct.readingOrganization == nil
+          && StatusCodec.decode(Data(#"{"state":"ok","numbersOwner":"hex-2@example.com","numbersAccount":"x"}"#.utf8))?.readingOrganization == nil,
+          "status record: the reading's organisation kept with its id; none without it, none in an older record")
     // the record's new field: an older record (no numbersAccount) decodes, with no id; a new one keeps it
     let olderRec = StatusCodec.decode(Data(#"{"state":"ok","numbersOwner":"hex-2@example.com","weekly":40}"#.utf8))
     var withID = IconStatus(state: "ok"); withID.numbersOwner = h2.email; withID.numbersAccount = h2.account

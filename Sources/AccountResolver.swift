@@ -25,12 +25,13 @@ enum AccountResolver {
     /// The answer for one profile. `app`: the Claude app's sign-in (AppSignIn); `code`: Claude Code's folder account;
     /// `loginEmail`: the account the numbers were read for, from that very reading (the token's own profile), or nil when
     /// the reading doesn't say (the status line file); `loginAccount`: that account's id, when the reading's lookup gave
-    /// one (nil in a record from before it); `names`: addresses by account id (AccountList).
+    /// one (nil in a record from before it); `loginOrganization`: its organisation's id, when the reply gave one with the
+    /// account's (nil: not known); `names`: addresses by account id (AccountList).
     /// `recordTooLarge`: Claude Code's .claude.json is there but too large to read (Account.recordTooLarge).
     /// `newestSwitch`: the profile's newest switch receipt (SwitchEngine.receipts), for a split that is a switch waiting
     /// for the Claude app (`switchWaits`).
     static func resolve(_ e: AccountEntry, among accounts: [AccountEntry], app: AppSignIn.Login, code: Seat?, loginEmail: String?,
-                        loginAccount: String? = nil, names: [String: String], recordTooLarge: Bool = false,
+                        loginAccount: String? = nil, loginOrganization: String? = nil, names: [String: String], recordTooLarge: Bool = false,
                         newestSwitch: SwitchReceipt? = nil, now: Date = Date()) -> ResolvedAccount {
         // whose the numbers are: only ever the account the reading itself was for (never .claude.json, never a cached
         // answer). When Claude Code's folder has since signed in to another account (a switch, a log-in), the reading is
@@ -45,10 +46,18 @@ enum AccountResolver {
         // A guard on the ids: should the profile reply's account.uuid ever differ from .claude.json's accountUuid for one
         // account, every reading would go stale; so two ids that differ over two known addresses that are the same keep
         // the reading (the address, the proof before the ids). Another id and another address: stale.
+        // The seat too: one login's personal and Team seats share the account id and the address, so only the organisation
+        // tells them apart (the Keychain still on the old seat for a moment after a switch between them). The reading's
+        // organisation (the profile reply's organization.uuid, kept with its account id) and the folder's (.claude.json's
+        // organizationUuid, which Claude Code writes from that same reply) both known and not the same: stale, whatever the
+        // address says. Either one not known (nil or empty): never a mismatch.
         let readID = loginAccount.flatMap { $0.isEmpty ? nil : $0 }
+        let readOrg = readID == nil ? nil : loginOrganization.flatMap { $0.isEmpty ? nil : $0 }
+        let otherSeat = readOrg.map { o in (code?.organization).map { !$0.isEmpty && !AccountID.sameOrganization(o, $0) } ?? false } ?? false
         let idMatch = code.flatMap { c in readID.map { byID($0).sameAccount(known(c)) } }
         let stale: Bool
-        if loginEmail != nil, let match = idMatch {
+        if otherSeat { stale = true }
+        else if loginEmail != nil, let match = idMatch {
             let addressMatch = loginEmail.map { l in !l.isEmpty && !(code?.email ?? "").isEmpty && sameAddress(code?.email ?? "", l) } ?? false
             stale = !match && !addressMatch
         } else { stale = loginEmail.map { l in code.map { !sameAddress($0.email ?? "", l) } ?? false } ?? false }
