@@ -424,8 +424,17 @@ do {
               "\(f): imports only Foundation, CryptoKit, ProfileCore and Runs (the one runner): \(imports)")
         check(!s.contains("Process()"), "\(f): starts no process of its own (Runs' Runner does)")
         for bad in ["print(", "NSLog", "Logger(", "os_log", "debugPrint", "dump("] { check(!s.contains(bad), "\(f): never logs or prints (\(bad))") }
-        for bad in ["add-generic-password", "delete-generic-password", "SecItemAdd", "SecItemUpdate", "SecItemDelete", "UserDefaults"] {
-            check(!s.contains(bad), "\(f): never writes the Keychain or keeps anything (\(bad))")
+        for bad in ["add-generic-password", "delete-generic-password", "SecItemAdd", "SecItemUpdate", "SecItemDelete"] {
+            check(!s.contains(bad), "\(f): never writes the Keychain (\(bad))")
+        }
+        // ClaudeAuth keeps nothing of its own in the preferences: the one use is ClaudeSignIn's look at (and removal from)
+        // Terminal's kept window profiles, in Terminal's own domain, through the preferences system
+        let defaults = s.components(separatedBy: "UserDefaults").count - 1
+        if f == "ClaudeSignIn.swift" {
+            check(defaults == s.components(separatedBy: "UserDefaults(suiteName: \"com.apple.Terminal\")").count - 1,
+                  "\(f): its only use of the preferences is Terminal's own domain (com.apple.Terminal)")
+        } else {
+            check(defaults == 0, "\(f): keeps nothing in the preferences (UserDefaults)")
         }
         // the Keychain read is Keychain.swift's alone (an app that never reads it leaves that file out and still builds)
         if f != "Keychain.swift" {
