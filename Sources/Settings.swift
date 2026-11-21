@@ -360,7 +360,9 @@ final class SettingsModel: ObservableObject {
         let generation = (signInGenerations[id] ?? 0) + 1
         signInGenerations[id] = generation
         signIns[id] = .waiting
-        SignInWindow.start(claude, account: Account(e), wanted: SignInWindow.wanted(for: e, email: email)) { [weak self] end in
+        // the folder is the picked profile's own (SignInWindow.folder): it must be the one this list holds for that profile
+        let listed = accounts.first { $0.id == id }?.configDir ?? ""
+        SignInWindow.start(claude, profile: e, expecting: listed, wanted: SignInWindow.wanted(for: e, email: email)) { [weak self] end in
             guard let self, self.signInGenerations[id] == generation else { return }
             // another profile's account that signed in is refused in words (one profile per account), never taken
             var owner: String?
@@ -393,9 +395,10 @@ final class SettingsModel: ObservableObject {
         let generation = newSignInGeneration, folder = d.configDir
         d.signInSaid = nil; d.seatAtAsk = Account.signedInSeat(configDir: d.configDir)     // signing in again waits for another account
         d.asking = false; d.signInAsked = Date(); d.signInRunning = true
-        let account = Account(d.entry)
+        let picked = d.entry
         draft = d; tick += 1
-        SignInWindow.start(claude, account: account, wanted: email.map { SignedInAccount(email: $0, origin: .record) }, creating: true) { [weak self] end in
+        // the draft's own folder, and no other (SignInWindow.folder: none, or another's, starts nothing)
+        SignInWindow.start(claude, profile: picked, expecting: folder, wanted: email.map { SignedInAccount(email: $0, origin: .record) }, creating: true) { [weak self] end in
             self?.newSignInEnded(end, generation: generation, folder: folder)
         }
     }

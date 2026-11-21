@@ -62,6 +62,8 @@ enum SignInWindow {
         case cancelled
         /// Another sign-in of cl_audit started: one window per app.
         case replaced
+        /// The folder to sign in couldn't be worked out from the profile picked (`folder(of:expecting:)`): nothing started.
+        case refused
 
         init(_ o: ClaudeSignIn.Outcome, cancelled: Bool) {
             switch o {
@@ -87,13 +89,34 @@ enum SignInWindow {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var active: Active?
 
-    /// Claude Code's sign-in for the account's folder in a Terminal window, followed to its end. `wanted`: the account it
-    /// should end on (nil: whoever signs in). `creating`: only for a brand-new folder the person just chose (New profile),
-    /// which the guard makes first (owner only); any other sign-in needs its folder there, and a folder the person deleted never
-    /// comes back. `onState` and `onEnd` come on the main queue, `onEnd` once and always (a refused start ends `failed`).
-    /// Start from the main thread.
-    static func start(_ claude: String, account: Account, wanted: SignedInAccount?, creating: Bool = false,
+    /// The folder a sign-in is for: the picked profile's own, expanded, and nothing else. Pure. nil (refused) when the profile
+    /// names no folder (an empty one would fall back to ~/.claude: never), or when `expecting` (the folder the call site
+    /// itself holds for that profile: the draft's, the profile list's) is empty or isn't the same folder. The default
+    /// folder comes out only for the profile whose own folder it is.
+    static func folder(of picked: AccountEntry, expecting: String? = nil) -> String? {
+        let own = picked.configDir.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !own.isEmpty else { return nil }
+        let dir = expand(own)
+        if let expected = expecting {
+            let e = expected.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !e.isEmpty, FolderKey.canonical(e) == FolderKey.canonical(dir) else { return nil }
+        }
+        return dir
+    }
+
+    /// Claude Code's sign-in for the picked profile's folder in a Terminal window, followed to its end. The folder is
+    /// `folder(of:expecting:)`: a profile with none, or one that isn't the call site's, starts nothing (`refused`), and the
+    /// guard is never asked. `wanted`: the account it should end on (nil: whoever signs in). `creating`: only for a brand-new
+    /// folder the person just chose (New profile), which the guard makes first (owner only); any other sign-in needs its
+    /// folder there, and a folder the person deleted never comes back. `onState` and `onEnd` come on the main queue, `onEnd`
+    /// once and always (a refused start ends `refused` or `failed`). Start from the main thread.
+    static func start(_ claude: String, profile: AccountEntry, expecting: String?, wanted: SignedInAccount?, creating: Bool = false,
                       onState: @escaping (ClaudeSignIn.State) -> Void = { _ in }, onEnd: @escaping (End) -> Void) {
+        let account = Account(profile)
+        guard let dir = folder(of: profile, expecting: expecting), FolderKey.canonical(account.configDir) == FolderKey.canonical(dir) else {
+            DispatchQueue.main.async { onEnd(.refused) }
+            return
+        }
         // the guard is asked once, here (a brand-new folder is made by it, never by ClaudeAuth); ClaudeAuth's own ask is then yes
         guard FolderGuard.mayLaunch("login", account.configDir, creating: creating) else {
             DispatchQueue.main.async { onEnd(.failed(.folderNotReady)) }
@@ -195,7 +218,7 @@ enum SignInWindow {
 /// How a sign-in ended, in cl_audit's words (the pages show this in place of their own lines). Fields, not text, so the
 /// addresses are blurred as the page is drawn (Privacy.masked) and follow the Blur setting.
 struct SignInSaid: Equatable {
-    enum Kind: Equatable { case signedIn, unverified, wrongAccount, declined, failed, timedOut, replaced }
+    enum Kind: Equatable { case signedIn, unverified, wrongAccount, declined, failed, timedOut, replaced, refused }
     var kind: Kind
     var configDir: String
     /// The account that signed in (unverified, wrong account) and the one wanted.
@@ -217,6 +240,7 @@ struct SignInSaid: Equatable {
         case .failed(let f): kind = .failed; failure = f
         case .timedOut: kind = .timedOut
         case .replaced: kind = .replaced
+        case .refused: kind = .refused
         case .cancelled: return nil
         }
     }
@@ -235,6 +259,7 @@ struct SignInSaid: Equatable {
         case .declined: return "The sign-in was declined in the browser; nothing changed."
         case .timedOut: return "No sign-in came in 10 minutes; nothing changed."
         case .replaced: return "Another sign-in started, so this one ended; nothing changed."
+        case .refused: return "cl_audit couldn't tell which folder this profile signs in to, so it didn't open a sign-in."
         case .failed:
             switch failure ?? .notOpened {
             case .folderNotReady: return ClaudeCLI.goneLine(configDir) ?? "\(folder) isn't there as a plain folder: nothing was signed in."
@@ -251,5 +276,5 @@ struct SignInSaid: Equatable {
     }
 
     /// Red: a refusal or a failure. Amber: the rest but "Signed in.".
-    var danger: Bool { kind == .failed || (kind == .wrongAccount && owner != nil) }
+    var danger: Bool { kind == .failed || kind == .refused || (kind == .wrongAccount && owner != nil) }
 }

@@ -2957,7 +2957,7 @@ do {
         let a = server(ann), b = server(bob)
         let ends: [(SignInWindow.End, SignInSaid.Kind)] = [
             (.signedIn(a), .signedIn), (.unverified(a), .unverified), (.wrongAccount(signedIn: b, wanted: a), .wrongAccount), (.declined, .declined),
-            (.timedOut, .timedOut), (.replaced, .replaced), (.failed(.notOpened), .failed)]
+            (.timedOut, .timedOut), (.replaced, .replaced), (.refused, .refused), (.failed(.notOpened), .failed)]
         check(ends.allSatisfy { said($0.0)?.kind == $0.1 }, "stage G: each outcome has its kind (signed in, unconfirmed, wrong account, declined, timed out, replaced, failed)")
         check(said(.cancelled) == nil, "stage G: the person's Cancel says nothing")
         let lines = ends.map { said($0.0)!.text }
@@ -3176,6 +3176,67 @@ do {
         pause(1.5)
         check(m.draft?.signInSaid == nil && m.draft?.signInRunning == false, "stage G: New profile: …and the end that follows it says nothing")
         term.killAll()
+        m.draft = nil
+    }
+
+    // ── the folder is the picked profile's own, never a fallback (SignInWindow.folder, used at every call site) ──
+    do {
+        func pick(_ id: String, _ dir: String) -> AccountEntry { AccountEntry(id: id, name: id, label: "PK", configDir: dir) }
+        let own = SignInWindow.folder(of: pick("a", "~/.claude-pk-a"))
+        check(own == expand("~/.claude-pk-a") && own != expand("~/.claude"), "stage G: the folder is the picked profile's own, expanded, never the default's")
+        check(SignInWindow.folder(of: pick("a", "")) == nil && SignInWindow.folder(of: pick("a", "  \n")) == nil,
+              "stage G: a profile with no folder is refused (an empty one would fall back to ~/.claude)")
+        check(SignInWindow.folder(of: pick("d", "~/.claude")) == expand("~/.claude"),
+              "stage G: the default folder comes out only for the profile whose own folder it is")
+        check(SignInWindow.folder(of: pick("a", "~/.claude-pk-a"), expecting: "~/.claude") == nil
+              && SignInWindow.folder(of: pick("a", "~/.claude-pk-a"), expecting: "~/.claude-pk-b") == nil
+              && SignInWindow.folder(of: pick("a", "~/.claude-pk-a"), expecting: "") == nil
+              && SignInWindow.folder(of: pick("a", "~/.claude-pk-a"), expecting: "~/.claude-pk-a/") != nil,
+              "stage G: the folder the call site holds must be the picked profile's (another's, the default or an empty one: refused)")
+
+        // Settings: a profile with no folder, one the list holds with another folder, one the list doesn't hold: nothing starts
+        let startsBefore = term.count, askedBefore = guarded.count
+        let blank = pick("sg-blank", "")
+        m.accounts = [blank]
+        m.startSignIn(fakeClaude, entry: blank, email: nil)
+        settle(blank.id)
+        check(shown(blank.id)?.kind == .refused && shown(blank.id)?.danger == true && shown(blank.id)?.text.contains("couldn't tell which folder") == true,
+              "stage G: Settings: a profile with no folder: refused with a plain error, no sign-in (never ~/.claude)")
+        let listedOther = folder("pick-listed"), shownEntry = listedOther.entry(ann)
+        var held = shownEntry; held.configDir = home + "/.claude-sg-pick-held"
+        m.accounts = [held]
+        m.startSignIn(fakeClaude, entry: shownEntry, email: nil)
+        settle(shownEntry.id)
+        check(shown(shownEntry.id)?.kind == .refused, "stage G: Settings: a profile whose folder isn't the one the list holds for it: refused")
+        m.accounts = []
+        m.startSignIn(fakeClaude, entry: shownEntry, email: nil)
+        settle(shownEntry.id)
+        check(shown(shownEntry.id)?.kind == .refused, "stage G: Settings: a profile the list doesn't hold: refused")
+        check(term.count == startsBefore && guarded.count == askedBefore, "stage G: …none of them opened a window or asked the guard: \(guarded.dropFirst(askedBefore))")
+
+        // Settings: each call passes the picked profile's folder, not another's and not the default
+        let pa = folder("pick-a"), pb = folder("pick-b"), ea = pa.entry(ann), eb = pb.entry(bob)
+        m.accounts = [ea, eb]
+        let cb = conf(["login": "hang"])
+        let defaultDir = expand("~/.claude")
+        m.startSignIn(fakeClaude, entry: eb, email: nil)
+        spin({ alive(pid(cb)) })
+        check(guarded.last == "login \(pb.path)" && args(cb).contains("ENV CLAUDE_CONFIG_DIR=\(pb.path)") && !args(cb).contains(pa.path)
+              && !args(cb).contains("CLAUDE_CONFIG_DIR=\(defaultDir)\n"),
+              "stage G: Settings: the sign-in is on the picked profile's own folder: \(guarded.last ?? "-")")
+        m.cancelSignIn(eb.id, folder: eb.configDir)
+        pause(1.5)
+        term.killAll()
+
+        // New profile: a draft with no folder yet (an existing folder not picked): refused, nothing starts
+        var d = NewAccountDraft()
+        d.name = "Sg none"; d.source = .existing; d.existingDir = nil
+        m.draft = d
+        let opened = term.count, asked = guarded.count
+        m.startNewSignIn(fakeClaude, email: nil)
+        spin({ m.draft?.signInRunning == false })
+        check(d.configDir == "" && m.draft?.signInSaid?.kind == .refused && m.draft?.unconfirmed == false && term.count == opened && guarded.count == asked,
+              "stage G: New profile: a draft with no folder: refused with a plain error, no window, the guard never asked")
         m.draft = nil
     }
 
