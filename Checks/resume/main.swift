@@ -222,6 +222,9 @@ if role == "b" {
               && ProjectName.encoded("/srv/code/garden-app") == "-srv-code-garden-app" && ProjectName.encoded("/a/é.b") == "-a---b",
               "names: known values (an accented letter is one unit, '-')")
         // S3 again, later, and the import's Undo takes the re-point back first
+        // (a receipt's date is saved to the whole second and the newest goes by it: r2 a second later, so L353's "last re-point"
+        // below is r2 for sure, never the first one by the luck of their names' random part)
+        Thread.sleep(forTimeInterval: 1.1)
         let r2 = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S3, folder: new)], restore: rr.id, windowClosed: { true })
         check(r2.problems.isEmpty && SessionsRepoint.linked(restore: rr.id).count == 1 && SessionsRepoint.touchesWindow(restore: rr.id), "later: S3 re-pointed again, linked to the import")
         // the hostile and refused cases, before the import's Undo
