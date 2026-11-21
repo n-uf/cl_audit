@@ -685,12 +685,16 @@ enum Setup {
             return t.hasPrefix("/") && t.count > 1 ? t : nil
         }
         for cmd in commands(inSettings: data) {
-            var cwd: String? = nil, afterCd = false
+            // the folder a `cd` goes to, normalised once (nil: one it can't tell, or longer than any real path); each relative token
+            // after it is resolved once (a crafted `cd /<long path> && ./a ./a …` stays quick)
+            var cwd: String? = nil, afterCd = false, resolved = Set<String>()
             for raw in cmd.components(separatedBy: seps) where !raw.isEmpty {
-                if afterCd { afterCd = false; cwd = absolute(raw) }             // the folder a `cd` goes to (nil: one it can't tell)
+                if afterCd { afterCd = false; cwd = raw.utf8.count <= 1024 ? absolute(raw).map(normalize) : nil; resolved = [] }
                 if raw == "cd" { afterCd = true; continue }
                 var t = absolute(raw)
-                if t == nil, let d = cwd, raw.hasPrefix("./") || raw.hasPrefix("../") { t = normalize(d + "/" + raw) }
+                if t == nil, let d = cwd, raw.hasPrefix("./") || raw.hasPrefix("../"), raw.utf8.count <= 1024, resolved.insert(raw).inserted {
+                    t = normalize(d + "/" + raw)
+                }
                 guard let p = t else { continue }
                 if seen.insert(p).inserted { out.append(p) }
             }
