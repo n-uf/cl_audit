@@ -2897,8 +2897,13 @@ do {
     check(w1.turns.isEmpty && w1.note == nil && asked1() == 0 && w1.field == "what's typed",
           "the folder signed out on the way (its address kept, then none): not moved, nothing sent, no note: \(w1.note ?? "none")")
     move(w1, rec(week: 10, login: u2.email, code: u2))
-    check(w1.turns.map(\.question) == ["what's typed"] && asked1() == 1 && w1.note == "Card switched to \(AccountNames.short(u2.email!)). Sending what you typed.",
-          "on another seat (u2): what was typed goes, the note names u2 as the header does: \(w1.note ?? "none")")
+    check(w1.turns.map(\.question) == ["what's typed"] && asked1() == 1 && w1.noteText == "Card switched to \(AccountNames.short(u2.email!)). Sending what you typed.",
+          "on another seat (u2): what was typed goes, the note names u2 as the header does: \(w1.noteText ?? "none")")
+    // the note is a template kept with the address: the setting flipped AFTER it was made, the drawn text holds nothing of the address
+    check(w1.note?.contains(u2.email!) == false && w1.note?.contains(AccountNames.short(u2.email!)) == false, "the stored note holds no address: \(w1.note ?? "none")")
+    AddressPrivacy.shared.apply(blur: true)
+    check(w1.noteText == "Card switched to hidden address. Sending what you typed.", "the note, hidden since it was made: \(w1.noteText ?? "none")")
+    AddressPrivacy.shared.apply(blur: false)
     // the same seat in a record with no organisation (from before codeOrganization): not a move, nothing goes
     let (w3, asked3) = typedThenSwitch(fullWeek)
     var sameNoOrg = rec(week: 10); sameNoOrg.resolved?.codeOrganization = nil
@@ -2956,8 +2961,8 @@ do {
     let (w9, asked9) = typedThenSwitch(fullWeek)
     move(w9, appRec(appU1, code: u2), as: win)
     check(w9.inSplit && !w9.inClash && asked9() == 1 && w9.turns.map(\.question) == ["what's typed"] && w9.target?.email == u2.email
-          && w9.note == "Card switched to \(AccountNames.short(u2.email!)). Sending what you typed.",
-          "moved into the split: what was typed goes on u2, the note naming u2 (the account answering): \(w9.note ?? "none")")
+          && w9.noteText == "Card switched to \(AccountNames.short(u2.email!)). Sending what you typed.",
+          "moved into the split: what was typed goes on u2, the note naming u2 (the account answering): \(w9.noteText ?? "none")")
     // one login's seat with no organisation (the record says none) and its Team seat: a move either way is a move (the
     // question goes, the note says it), never "the organisation not known"; the same seat with none, or a record from
     // before codeOrganization, isn't one
@@ -2965,11 +2970,11 @@ do {
     let (w4, asked4) = typedThenSwitch(rec(week: 100, weekIn: 3 * 3600, code: bare))
     check(w4.blocked && w4.offer != nil && w4.target?.account?.organization == "", "a seat with no organisation, its week full: the bar holds and offers the switch")
     move(w4, rec(week: 10, code: team))
-    check(asked4() == 1 && w4.turns.map(\.question) == ["what's typed"] && w4.note == switchedNote,
-          "from a login's seat with no organisation to its Team seat: a move, what was typed goes: \(w4.note ?? "none")")
+    check(asked4() == 1 && w4.turns.map(\.question) == ["what's typed"] && w4.noteText == switchedNote,
+          "from a login's seat with no organisation to its Team seat: a move, what was typed goes: \(w4.noteText ?? "none")")
     let (w5, asked5) = typedThenSwitch(rec(week: 100, weekIn: 3 * 3600, code: team))
     move(w5, rec(week: 10, code: bare))
-    check(asked5() == 1 && w5.note == switchedNote, "from a login's Team seat to its seat with no organisation: a move, what was typed goes: \(w5.note ?? "none")")
+    check(asked5() == 1 && w5.noteText == switchedNote, "from a login's Team seat to its seat with no organisation: a move, what was typed goes: \(w5.noteText ?? "none")")
     let (w6, asked6) = typedThenSwitch(rec(week: 100, weekIn: 3 * 3600, code: bare))
     move(w6, rec(week: 10, login: emptyOrg.email, code: emptyOrg))
     var bareNoOrg = rec(week: 10, code: bare); bareNoOrg.resolved?.codeOrganization = nil
@@ -2990,8 +2995,8 @@ do {
     check(w10.target?.account?.account == nil && w10.target?.account?.organization == u1.organization && w10.offer != nil,
           "(the wait starts from an address-only reading that names its organisation, with the switch on offer: account \(w10.target?.account?.account ?? "nil"), org \(w10.target?.account?.organization ?? "nil"))")
     move(w10, rec(week: 10, code: team))
-    check(w10.target?.account?.organization == team.organization?.lowercased() && asked10() == 1 && w10.turns.map(\.question) == ["what's typed"] && w10.note == switchedNote,
-          "a wait from an address-only reading of the personal seat, then the same login's Team seat: a move, what was typed goes: \(w10.note ?? "none")")
+    check(w10.target?.account?.organization == team.organization?.lowercased() && asked10() == 1 && w10.turns.map(\.question) == ["what's typed"] && w10.noteText == switchedNote,
+          "a wait from an address-only reading of the personal seat, then the same login's Team seat: a move, what was typed goes: \(w10.noteText ?? "none")")
     for (what, from) in [("the reading naming no organisation (not known)", addressOnly(org: nil)), ("no reading's own account (a record from before it)", addressOnly(org: u1.organization, owner: nil)),
                          ("the reading's organisation the Team seat's own", addressOnly(org: team.organization))] {
         let (wn, askedN) = typedThenSwitch(from)
@@ -3591,7 +3596,9 @@ do {
     check(SwitchPage.leftBefore(p, started: true) == nil && SwitchPage.leftBefore(nil, started: false) == nil
           && SwitchPage.leftBefore(none, started: false) == nil, "once started the runner's leftNote says it; no plan or none left: no line")
     // the runner keeps them apart from the rest of its note: "Left with …" in the past tense, never in stayWords
-    check(SwitchRunner.leftBehind(p) == left && SwitchRunner.stayWords(p) == nil && SwitchRunner.leftBehind(none) == nil,
+    // (kept as a template, the old account a marker, said when drawn)
+    check(SwitchRunner.leftBehind(p)?.replacingOccurrences(of: SwitchRunner.oldMark, with: p.from.email.map(AccountNames.short) ?? "the old account") == left
+          && SwitchRunner.leftBehind(p)?.contains(SwitchRunner.oldMark) == true && SwitchRunner.stayWords(p) == nil && SwitchRunner.leftBehind(none) == nil,
           "the runner's leftNote is the past tense, apart from its other note: \(SwitchRunner.leftBehind(p) ?? "nil")")
     // after a switch that moved nothing: no left-behind line (a flag, not a string match); after a move, as it is
     check(SwitchPage.leftShown(left, movedNothing: true) == nil && SwitchPage.leftShown(left, movedNothing: false) == left && SwitchPage.leftShown(nil, movedNothing: false) == nil,
@@ -3599,17 +3606,17 @@ do {
     // the plan card's line: "Will stay with" until something moved (a receipt), also while closing and after a Cancel back
     // to Ready (during Closing, and while waiting when the plan moved nothing); "Left with" once it moved
     let rr = SwitchRunner(profile: "sw", model: SettingsModel())
-    func cardLeft() -> String? { SwitchPage.leftInPlan(left: rr.leftNote, moved: SwitchPage.movedForPlanLine(receipt: rr.receipt, phase: rr.phase), plan: rr.planned) }
-    rr.preview(.closing, goal: nil, planned: p, left: SwitchRunner.leftBehind(p))
+    func cardLeft() -> String? { SwitchPage.leftInPlan(left: rr.leftText, moved: SwitchPage.movedForPlanLine(receipt: rr.receipt, phase: rr.phase), plan: rr.planned) }
+    rr.preview(.closing, goal: nil, planned: p, left: SwitchRunner.leftBehind(p), old: p.from.email)
     check(cardLeft() == will, "closing: the card still says Will stay with: \(cardLeft() ?? "nil")")
     rr.cancel()
     check(rr.phase == .ready && cardLeft() == will, "Cancel during Closing: back at Ready, Will stay with (nothing moved)")
-    rr.preview(.waiting, goal: nil, planned: p, left: SwitchRunner.leftBehind(p))
+    rr.preview(.waiting, goal: nil, planned: p, left: SwitchRunner.leftBehind(p), old: p.from.email)
     rr.cancel()
     check(rr.phase == .ready && cardLeft() == will, "Cancel while waiting, the plan moved nothing: Will stay with")
     var receipt = SwitchReceipt(id: SwitchEngine.receiptID(Date(), "sw"), profile: "sw", standby: "k2", dataDir: "/x", from: SeatID(u1), to: SeatID(u2), started: Date())
     receipt.steps = []
-    rr.preview(.waiting, goal: nil, planned: p, receipt: receipt, left: SwitchRunner.leftBehind(p))
+    rr.preview(.waiting, goal: nil, planned: p, receipt: receipt, left: SwitchRunner.leftBehind(p), old: p.from.email)
     check(cardLeft() == left, "after a move: Left with: \(cardLeft() ?? "nil")")
     // back at Ready with an unfinished receipt kept (a reset): the card describes the next switch's plan again
     check(SwitchPage.movedForPlanLine(receipt: receipt, phase: .ready) == false && SwitchPage.movedForPlanLine(receipt: receipt, phase: .waiting)
@@ -3803,7 +3810,7 @@ do {
           && back?.numbersAccount == h2.account && back?.readingAccount == h2.account && noOwner.readingAccount == nil,
           "status record: an older one decodes without the reading's id; a new one keeps it; no id without the reading's owner")
     // the lists' helpers: the record names ids and addresses, no organisation
-    let v = AccountView(label: h1.email, numbersOwner: h2.email, line: nil, lit: true, clash: nil, account: h1.account, differs: true, codeAccount: h2.account)
+    let v = AccountView(label: h1.email, numbersOwner: h2.email, lit: true, clash: nil, account: h1.account, differs: true, codeAccount: h2.account)
     check(v.isActive(StandbyAccount(email: "", seat: upper(h1), id: "a")) && v.isActive(StandbyAccount(email: "HEX-1@example.com", id: "b"))
           && v.isActive(StandbyAccount(email: h1.email!, seat: otherOrg, id: "c")) && !v.isActive(StandbyAccount(email: h1.email!, seat: otherID, id: "d")),
           "isActive: ids in any case; an address only by the address; the record names no organisation; another id never by the address")
@@ -4145,8 +4152,9 @@ MainActor.assumeIsolated {
         let settingsSrc = (try? String(contentsOf: URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
             .appendingPathComponent("Sources/AddressSettings.swift"), encoding: .utf8)) ?? ""
         let settleCalls = settingsSrc.components(separatedBy: "settleDefault(prefs:").count - 1
-        check(settingsSrc.contains("if isSettingsApp { settleDefault(prefs: UserDefaults.standard, store: store, setUp: Store.exists) }") && settleCalls == 2,
-              "D1: start() settles it in the settings app only, from Store.exists (the profiles file), and nowhere else")
+        check(settingsSrc.contains("if isSettingsApp, let prefs { settleDefault(prefs: prefs, store: store, setUp: Store.exists) }") && settleCalls == 2
+              && settingsSrc.contains("static let store = makeStore(prefs: prefs)"),
+              "D1: start() settles it in the settings app only, from Store.exists (the profiles file), through the store's own prefs, and nowhere else")
     }
 
     // what is an address to hide: an address, an account id, an id prefix label; a phrase is no address
@@ -4436,6 +4444,90 @@ MainActor.assumeIsolated {
         }
         check(flagged.isEmpty, "no user-facing interpolation or concatenation of an email, label, address or account name outside words/short/BlurredAddress: \(flagged)")
         check(usedAllow.count == allowed.count, "the scan's allow-list holds only lines that still exist: \(allowed.indices.filter { !usedAllow.contains($0) }.map { allowed[$0].1 })")
+    }
+
+    // ---- S5, the setting turned off AFTER a value was built. The scan above reads the source's text, and the blocks above build
+    // their values with the setting already off; a value that holds a finished sentence (the one line "Usage: Claude Code on …",
+    // a switch's notes, quick chat's note) passes both and still shows the address once Show emails goes off. Each case here is
+    // built while addresses are SHOWN, the setting is turned off, and the same value (or its holder) is read again.
+    do {
+        let wasBlur = AddressPrivacy.shared.blur
+        defer { AddressPrivacy.shared.apply(blur: wasBlur) }
+        func spinFor(_ s: TimeInterval) { RunLoop.current.run(until: Date().addingTimeInterval(s)) }
+        func hexRun(_ s: String) -> Bool { s.range(of: "[0-9a-fA-F]{8,}", options: .regularExpression) != nil }
+
+        // F1: "Usage: Claude Code on <address>" in every holder that kept the value: ProfileShow (the menu bar's, the Dock menu's
+        // and panel's line), the dashboard card's row, the account view, the Dock icon's panel and menu
+        var pf = profile("pf", "~/.claude-pf", seat(71, a1)); pf.claudeWindow = true
+        try! Store.save([pf])
+        let appIn = AppSignIn.Login(account: uuid(71), org: uuid(171), state: .known, source: "log", at: now)
+        AddressPrivacy.shared.apply(blur: false)
+        let resolvedF = AccountResolver.resolve(pf, among: [pf], app: appIn, code: seat(73, a3), loginEmail: a3, names: [:], now: now)
+        var recF = IconStatus(state: "ok"); recF.loginEmail = a3; recF.expectedEmail = a1; recF.weekly = 40; recF.fiveHour = 12
+        recF.weeklyResets = now.addingTimeInterval(2 * 86400); recF.fiveHourResets = now.addingTimeInterval(3600); recF.updatedAt = now.addingTimeInterval(-60)
+        recF.source = "Anthropic"; recF.plan = "Max"; recF.resolved = resolvedF
+        _ = Store.writeStatus("pf", recF)
+        // (this record reads as the split, whose words are built live already; the value kept here is the one ProfileShow.of made for
+        // a record that is not the split, whose line was `.given("Usage: Claude Code on …")`, the sentence fixed when it was made)
+        var givenDisplay = ProfileShow.load(pf, now: now).display
+        givenDisplay.line = .given("Usage: Claude Code on \(a3)")
+        let held = ProfileShow(entry: pf, display: givenDisplay, record: recF, view: AccountView.of(recF), splitWords: nil)
+        let heldRow = AccountRow(entry: pf, show: held)
+        let heldView = AccountView.of(Store.status("pf"))
+        let icon = AppDelegate(); icon.entry = pf; icon.show = held; icon.watchPrivacy()
+        let manager = ManagerUI()
+        func holderTexts() -> [String] {
+            MainActor.assumeIsolated {
+                [held.lineWords(short: false), held.lineWords(short: true), heldRow.line, heldView.line, icon.detailsInfo().activeNote,
+                 MenuBarRow.lineWords(MenuBarItems.Profile(show: held))].compactMap { $0 }
+                    + titles(icon.profileMenu()) + titles(dockOf(pf, held).menu) + titles(menuBarMenu(held))
+            }
+        }
+        let shownTexts = holderTexts()
+        check(shownTexts.filter { $0 == "Usage: Claude Code on \(a3)" }.count >= 6 && heldView.line == "Usage: Claude Code on \(a3)",
+              "S5/F1: built shown, every holder says the account: \(shownTexts.filter { $0.hasPrefix("Usage") })")
+        AddressPrivacy.shared.apply(blur: true)          // …and the setting goes off, the values kept
+        let hiddenTexts = holderTexts()
+        icon.show = nil; manager.model.rows = []         // (what is left of them to be made again only by the subscriptions, below)
+        check(hiddenTexts.allSatisfy(clean) && hiddenTexts.filter { $0 == "Usage: Claude Code on hidden address" }.count >= 6 && heldRow.view.line == "Usage: Claude Code on hidden address",
+              "S5/F1: the same ProfileShow, card row, account view, Dock panel and menus read again: nothing of the address: \(hiddenTexts.filter { $0.contains("Usage") })")
+        // the holders that rebuild on the change (IconApp's loadStatus, the dashboard's model.reload) did, with no timer
+        spinFor(0.3)
+        check(icon.show != nil && !manager.model.rows.isEmpty && clean(icon.show?.lineWords(short: false) ?? "")
+              && manager.model.rows.compactMap(\.line).allSatisfy(clean),
+              "S5/F1: the Dock icon (loadStatus) and the dashboard (model.reload) made their values again when Show emails went off")
+        AddressPrivacy.shared.apply(blur: false)
+
+        // F2: a switch's finished notes (SwitchRunner) and the failure text of a switch that stopped
+        let planF = SwitchPlan(profile: "pf", standby: "k2", dataDir: "/tmp/cl-audit-s5-data", codeDir: "/tmp/cl-audit-s5-code", from: seat(81, a1), to: seat(82, a2))
+        var planNotes = planF; planNotes.held = ["local_1"]; planNotes.taskStay = "the new account has the same task, switched on"; planNotes.odd = [.link, .unknownName]
+        let runner = SwitchRunner(profile: "pf", model: SettingsModel())
+        let stoppedWords = "An earlier switch of Pf stopped half way. Undo it, sign in as \(SwitchRunner.toMark) to finish it, or Leave it as it is; then switch again."
+        runner.preview(.failed(stoppedWords), goal: nil, note: SwitchRunner.stayWords(planNotes), left: SwitchRunner.leftBehind(planNotes), failedAt: .notStarted,
+                       window: SwitchRunner.windowStaysClosed(SwitchRunner.toMark), old: a1, stoppedTo: a2)
+        func runnerTexts() -> [String] { [runner.moveText, runner.leftText, runner.windowText, runner.said(stoppedWords)].compactMap { $0 } }
+        let shownNotes = runnerTexts()
+        check(shownNotes.count == 4 && shownNotes[0].contains("stay with \(AccountNames.short(a1))") && shownNotes[1].contains("Left with \(AccountNames.short(a1))")
+              && shownNotes[2].contains("sign in as \(AccountNames.short(a2))") && shownNotes[3].contains("sign in as \(AccountNames.short(a2))"),
+              "S5/F2: built shown, the switch's notes name the two accounts: \(shownNotes)")
+        check([runner.moveNote, runner.leftNote, runner.windowNote].compactMap { $0 }.allSatisfy(clean), "S5/F2: the notes the runner keeps hold no address")
+        AddressPrivacy.shared.apply(blur: true)
+        let hiddenNotes = runnerTexts()
+        check(hiddenNotes.count == 4 && hiddenNotes.allSatisfy(clean) && hiddenNotes.allSatisfy { $0.contains("hidden address") },
+              "S5/F2: the same runner read again: nothing of either address: \(hiddenNotes)")
+        AddressPrivacy.shared.apply(blur: false)
+
+        // F3: what is thrown holds no folder under claude-code-sessions and no id (the account's and the organisation's are the folder names)
+        let gone = expand("~/cl-audit-s5/claude-code-sessions/\(uuid(91))/\(uuid(191))/never-made")
+        var thrown = ""
+        do { try SwitchEngine.writeNew(gone + "/local_x.json", Data("{}".utf8)) } catch { thrown = "\(error)" }
+        var swapped = ""
+        if case .failed(let why) = TaskRegistry.swap(Data("[]".utf8), at: gone + "/scheduled-tasks.json", expected: nil) { swapped = why }
+        check(thrown == "couldn't write in the account's sessions folder" && swapped == "couldn't write in the account's sessions folder"
+              && ![thrown, swapped].contains(where: { hexRun($0) || $0.contains("claude-code-sessions") }),
+              "S5/F3: the thrown texts of a failed write name no folder and no id: \(thrown) | \(swapped)")
+        let said = tildeNoIds(gone + "/local_x.json")
+        check(!hexRun(said) && said.hasSuffix("/claude-code-sessions/…/never-made/local_x.json"), "S5/F3: a path in a sentence leaves the account and organisation folders out: \(said)")
     }
 
     // no first-letter-and-dots mask left anywhere in the app's sources

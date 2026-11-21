@@ -792,7 +792,7 @@ do {
     let r = try! SwitchEngine.run(p, windowClosed: { true }, backups: place)
     check(r.held == [h] && r.backup != nil && SessionsBackup.load(profile: "mv", id: r.backup!, place: place)?.kind == .beforeSwitch(r.id), "a backup first, naming the receipt; the held one noted")
     check(p.odd == [.unknownName] && r.leftInPlace == 1 && fm.fileExists(atPath: "\(src)/local_oddname.json") && !fm.fileExists(atPath: "\(dst)/local_oddname.json")
-          && SwitchRunner.leftBehind(p) == "Left with \(AccountNames.short(u1.email!)): 1 file named like a Code-tab session that isn't one (a file not named by an id)."
+          && SwitchRunner.leftBehind(p) == "Left with \(SwitchRunner.oldMark): 1 file named like a Code-tab session that isn't one (a file not named by an id)."
           && SwitchRunner.stayWords(p)?.contains("Left with") == false,
           "the odd name: left in place, counted in the receipt, said in the runner's leftNote, apart from its other note (\(String(describing: r.leftInPlace)))")
     let moved = (try? JSONSerialization.jsonObject(with: Data(contentsOf: URL(fileURLWithPath: dst + "/" + a)))) as? [String: Any]
@@ -894,7 +894,9 @@ do {
     blocked(both, "tc5", held: ["local_\(uuid(962)).json"], problem: "the new account has a task with the same id and other settings")
     // what the user reads: the old account by name, and the way out
     let words = SwitchRunner.stayWords(pc) ?? ""
-    check(words.contains("stay with task-a") && words.contains("Remove one of the two, then switch again."), "the words name the old account and say what to do: \(words)")
+    // (the words are a template: the old account is a marker, filled when the page draws it, so it follows Show emails)
+    check(words.contains("stay with \(SwitchRunner.oldMark)") && pc.from.email.map { words.replacingOccurrences(of: SwitchRunner.oldMark, with: $0) }?.contains("stay with task-a") == true
+          && words.contains("Remove one of the two, then switch again."), "the words name the old account and say what to do: \(words)")
     // a source with no task says nothing about tasks, whatever the target's file is
     let none = taskSwitch("tc6", from: tA, to: tB, srcTask: "", dstTask: "")
     put("\(none.src)/scheduled-tasks.json", #"{"scheduledTasks":[]}"#)
@@ -1433,7 +1435,7 @@ do {
     let run12 = m12.runner(of: "r3")
     run12.start(e.standby[0])
     if case .failed(let why) = run12.phase {
-        check(why.contains("Undo it") && why.contains("sign in as ultra-2 to finish it"), "a switch that stopped half way: Undo it, or sign in to finish it: \(why)")
+        check(run12.said(why).contains("Undo it") && run12.said(why).contains("sign in as ultra-2 to finish it") && why.contains("sign in as \(SwitchRunner.toMark) to finish it"), "a switch that stopped half way: Undo it, or sign in to finish it: \(why)")
     } else { check(false, "an unfinished switch is said before a new one") }
     // Leave it as it is: closed as it stands, nothing moved, and no longer holding up the next switch
     let open12 = SwitchEngine.unfinished(profile: "r3")
@@ -1569,7 +1571,7 @@ do {
         let m = SettingsModel(); m.accounts = [e]
         let r = m.runner(of: "xf")
         r.start(e.standby[0])
-        if case .failed(let why) = r.phase { return why }
+        if case .failed(let why) = r.phase { return r.said(why) }            // (as the page draws it: the account's marker filled)
         let end = Date().addingTimeInterval(8)
         func busy() -> Bool { switch r.phase { case .closing, .moving: return true; default: return false } }
         while busy(), Date() < end { RunLoop.main.run(until: Date().addingTimeInterval(0.1)) }
@@ -2466,12 +2468,27 @@ do {
     sign("~/.claude-swwin", u3)
     waitFor(5) { rS.look(); return rS.phase != .waiting }
     spin(0.3)
-    check(rS.phase == .other(u3.email!) && rS.windowNote == SwitchRunner.windowStaysClosed("ultra-2") && winOpened.isEmpty && !SwitchMarker.blocks(Account(sw)),
-          "another account signed in: the moved sessions aren't linked, so the window stays closed, and the page says why: \(rS.windowNote ?? "nil")")
+    check(rS.phase == .other(u3.email!) && rS.windowText == SwitchRunner.windowStaysClosed("ultra-2") && rS.windowNote == SwitchRunner.windowStaysClosed(SwitchRunner.toMark)
+          && winOpened.isEmpty && !SwitchMarker.blocks(Account(sw)),
+          "another account signed in: the moved sessions aren't linked, so the window stays closed, and the page says why: \(rS.windowText ?? "nil")")
     check(SwitchEngine.keepsClosed(Account(sw))?.id == rS.receipt?.id, "…and no opener starts it meanwhile (Launcher.openClaude asks keepsClosed)")
     rS.reset()                                                           // (a click on the window opens this page afresh)
-    check(rS.failedStep == .notStarted && rS.canUndo && rS.windowNote == SwitchRunner.windowStaysClosed("ultra-2"),
+    check(rS.failedStep == .notStarted && rS.canUndo && rS.windowText == SwitchRunner.windowStaysClosed("ultra-2"),
           "the page opened afresh shows the switch that holds the window closed, with its Undo and why")
+    // the stopped switch's failure text and the window's line name the account by a marker, said when drawn: built shown, then
+    // the setting goes off, the same runner read again holds nothing of the address
+    if case .failed(let stoppedWhy) = rS.phase {
+        let said1 = [rS.said(stoppedWhy), rS.windowText ?? ""]
+        check(said1.allSatisfy { $0.contains("sign in as ultra-2") } && !stoppedWhy.contains("ultra-2") && !(rS.windowNote ?? "").contains("ultra-2"),
+              "a stopped switch (showStopped): its text keeps a marker, not the address, and says the account while shown: \(said1)")
+        AddressPrivacy.shared.apply(blur: true)
+        let said2 = [rS.said(stoppedWhy), rS.windowText ?? ""]
+        check(said2.allSatisfy { $0.contains("sign in as hidden address") && !$0.contains("ultra") },
+              "…and with Show emails off since, the same runner reads \"hidden address\": \(said2)")
+        AddressPrivacy.shared.apply(blur: false)
+    } else {
+        check(false, "the page opened afresh holds a stopped switch: \(rS.phase)")
+    }
     rS.undo()
     waitFor(15) { rS.phase == .undone && !winOpened.isEmpty }
     spin(0.3)
