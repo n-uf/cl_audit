@@ -138,6 +138,9 @@ final class RestoreRunner: ObservableObject {
     private var closedFor = false
     /// The window is being closed for an Undo this restore (not for a restore): Cancel then goes back to where it was.
     @Published private(set) var undoing = false
+    /// Whether this runner's Undo closes the window (also for a re-point or a move's shared files, not only the receipt's
+    /// window steps); nil when no Undo ran here (an undone receipt opened later: the page goes by the receipt's steps).
+    @Published private(set) var undoClosesWindow: Bool? = nil
     /// Claude Code's setup that is missing here: added or left out (the preview's choice; left out unless asked).
     @Published private(set) var addSetup = false
 
@@ -429,11 +432,12 @@ final class RestoreRunner: ObservableObject {
         // (a re-point after the import changed Code-tab entries: its Undo, which runs first, needs the window closed too)
         // (and a move's history and trust, shared files, are taken back only while it is closed)
         guard r.windowTouched || SessionsRepoint.touchesWindow(restore: r.id) || SideFiles.touchesShared(restore: r.id) else {
+            undoClosesWindow = false
             hold?.stopWatching(); hold = nil; runUndo(r.id); return
         }
         if let why = SessionsRestore.markerBlocker(profile: key.profile, dataDir: SessionsRestore.Target(e).dataDir, own: markName) { note = why; return }
         guard claimWindow(e) else { note = "Another switch or restore of this Claude window is under way."; return }
-        closeWindow(prepare: { priorPhase = returnPhase(phase); undoing = true }, then: { [weak self] in self?.runUndo(r.id) }, giveUp: { [weak self] in
+        closeWindow(prepare: { priorPhase = returnPhase(phase); undoing = true; undoClosesWindow = true }, then: { [weak self] in self?.runUndo(r.id) }, giveUp: { [weak self] in
             guard let self else { return }
             self.undoing = false; self.phase = self.priorPhase
             self.note = "The window didn't close; it may be asking about work under way. Answer it, then try again. Nothing was taken back."

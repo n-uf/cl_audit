@@ -341,7 +341,8 @@ struct RestorePage: View {
         let undoneNow = runner.phase == .undone
         // after an Undo the plan is the old one (or none): the receipt says whether window files were among what it took away
         // (an Undo under way, too: its steps are the receipt's, not the preview's)
-        let needsWindow = undoneNow || undoMode ? (runner.receipt?.steps.contains { $0.inWindow } ?? true) : (plan.map { _ in runner.closesWindow } ?? true)
+        // (the runner knows when its own Undo closed the window for a re-point or shared files too: RestoreRunner.undo)
+        let needsWindow = undoneNow || undoMode ? (runner.undoClosesWindow ?? runner.receipt?.steps.contains { $0.inWindow } ?? true) : (plan.map { _ in runner.closesWindow } ?? true)
         // the window opens at the end when it was closed, or for the sidebar step (RestoreRunner.finish); otherwise it isn't touched
         let opens = needsWindow || (sidebarPlanNow != nil && entry.claudeWindow)
         // (the window closes only for a picked folder: that session's Code-tab entry changes)
