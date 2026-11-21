@@ -2741,6 +2741,26 @@ do {
     NewAccountSetup.discard(dC, claude: nil)
     check(ClaudeWindow.isOpen(Account(usualProbe)), "…the usual Claude window still running")
 
+    // a new separate-window folder with the Claude window off: ready once the Claude Code folder is there (no window folder is
+    // made for it, so none is waited for); Create then goes on to sign-in, and never stops silently
+    var dN = NewAccountDraft(); dN.name = "Nowinready"; dN.claudeWindow = false
+    check(dN.window == .separate && !NewAccountSetup.foldersReady(dN) && !(NewAccountSetup.notReadyWhy(dN) ?? "").isEmpty,
+          "window off, folder not made yet: not ready, and the reason is said: \(NewAccountSetup.notReadyWhy(dN) ?? "nil")")
+    try! NewAccountSetup.createOrConnect(&dN)
+    check(NewAccountSetup.foldersReady(dN) && NewAccountSetup.notReadyWhy(dN) == nil && dN.createdDataDir == nil && !fm.fileExists(atPath: expand(dN.dataDir)),
+          "window off, Claude Code folder made: ready without a window folder")
+    check(NewAccountSetup.linksReady(dN) && NewAccountSetup.signedInEmail(dN) == nil && !NewAccountSetup.checks(dN, accounts: [], runs: [], checked: true).contains { $0.blocks },
+          "…the next step is signing in (folders done, not signed in, nothing blocks), not Create again")
+    check(NewAccountSetup.lockedNote(dN).contains("Cancel and clean up"), "…its locked switches say Cancel and clean up starts over")
+    NewAccountSetup.discard(dN, claude: nil)
+    // the same with the window on: the window folder is still needed
+    var dW = NewAccountDraft(); dW.name = "Winready"
+    try! NewAccountSetup.createOrConnect(&dW)
+    check(NewAccountSetup.foldersReady(dW), "window on, both folders made: ready")
+    try? fm.removeItem(atPath: expand(dW.dataDir))
+    check(!NewAccountSetup.foldersReady(dW) && NewAccountSetup.notReadyWhy(dW)?.contains(dW.dataDir) == true, "window on, its data folder missing: not ready, and the reason names it")
+    NewAccountSetup.discard(dW, claude: nil)
+
     // the window opened again while Cancel signs out (the sign-out takes a moment): its folders stay, Cancel again removes them
     var dF = NewAccountDraft(); dF.name = "Reopen"
     try! NewAccountSetup.createOrConnect(&dF)
