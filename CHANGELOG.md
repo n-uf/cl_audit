@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.83 — 2026-11-21
+
 - Clicking an item of a Dock icon's right-click menu while its app isn't running (new in 26.11.82) no longer crashes the macOS process that draws the Dock's third-party icons, which made them all redraw; the item now does what it says.
 
 ## 26.11.82 — 2026-11-21
