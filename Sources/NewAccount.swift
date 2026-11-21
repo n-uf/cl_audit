@@ -121,6 +121,15 @@ enum NewAccountSetup {
         return config && (d.window != .separate || !d.claudeWindow || exists(d.dataDir))
     }
 
+    /// Why Create/Connect can't go on when it ran and the folders still aren't ready, or nil when they are: said, never silent.
+    static func notReadyWhy(_ d: NewAccountDraft) -> String? {
+        guard !foldersReady(d) else { return nil }
+        var missing: [String] = []
+        if d.source == .existing ? !d.connected : !exists(d.configDir) { missing.append(d.configDir) }
+        if d.window == .separate, d.claudeWindow, !exists(d.dataDir) { missing.append(d.dataDir) }
+        return "The folder isn't ready yet: " + (missing.isEmpty ? "something is missing" : missing.joined(separator: " and ") + " isn't there") + ". Cancel and start over."
+    }
+
     static func linksReady(_ d: NewAccountDraft) -> Bool {
         d.source == .existing || d.share.allSatisfy { item in
             !FileManager.default.fileExists(atPath: shared(d).appendingPathComponent(item.rawValue).path)
@@ -1069,13 +1078,13 @@ struct NewAccountView: View {
     /// The one next action ("Finish now" stays next to it once the folder exists).
     @ViewBuilder private var actionButtons: some View {
         if !NewAccountSetup.foldersReady(draft) {
-            Button(createTitle) {
+            Button(gate.busy ? "Checking…" : createTitle) {
                 guard !gate.busy else { return }
                 // the folder is made or connected only on a look made now (couldn't check, or the desktop app open, holds it);
                 // Cancel or leaving the page meanwhile drops the look, and nothing is made
                 gate.look(monitor) { fresh in
                     if let why = NewAccountSetup.runsBlock(draft, accounts: model.accounts, runs: fresh) { self.error = why; return }
-                    do { try NewAccountSetup.createOrConnect(&draft); error = nil; model.tick += 1 }
+                    do { try NewAccountSetup.createOrConnect(&draft); error = NewAccountSetup.notReadyWhy(draft); model.tick += 1 }
                     catch { self.error = error.localizedDescription }
                 }
             }
