@@ -418,9 +418,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// When this Dock icon app was last in use: in front, or a panel or window of it shown; the moment you left it (it
     /// stopped being the app in front), and after the Mac wakes.
     var lastBusy = Date()
-    /// The Dock drew its tile when this app started (a fresh heartbeat then): the Dock may stop drawing it while the app
-    /// runs, so this counts as drawn too.
-    lazy var drawnAtStart: Bool = accountID.map { DockTile.drawn($0) } ?? false
+    /// The Dock was seen drawing its tile while this app ran (a fresh heartbeat at a tick, its start included): the Dock
+    /// may stop drawing it while the app runs, so this counts as drawn too.
+    var drawnSeen = false
     private var leftObservers: [NSObjectProtocol] = []
 
     /// Started by you (a click on its tile, or reopened by macOS) while the Dock draws the icon itself: once you've left it
@@ -428,7 +428,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Dock draws the tile again (DockTile).
     func quitIfLeft() {
         guard !isSettingsApp, let id = accountID else { return }
-        _ = drawnAtStart
+        let drawn = DockTile.drawn(id)
+        if drawn { drawnSeen = true }
         if leftObservers.isEmpty {
             let busy: (Notification) -> Void = { [weak self] _ in self?.lastBusy = Date() }
             leftObservers.append(NotificationCenter.default.addObserver(forName: NSApplication.didResignActiveNotification, object: nil, queue: .main, using: busy))
@@ -436,7 +437,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         let inFront = NSApp.isActive, shown = NSApp.windows.contains { $0.isVisible }
         if inFront || shown { lastBusy = Date() }
-        guard DockTile.quitsWhenIdle(agentStarted: DockTile.agentStarted(CommandLine.arguments), drawn: drawnAtStart || DockTile.drawn(id),
+        guard DockTile.quitsWhenIdle(agentStarted: DockTile.agentStarted(CommandLine.arguments), drawn: drawnSeen || drawn,
                                      inFront: inFront, windowShown: shown, idleFor: Date().timeIntervalSince(lastBusy)) else { return }
         quietQuit = true
         NSApp.terminate(nil)

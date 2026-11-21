@@ -148,14 +148,15 @@ extension DockTile {
     /// The Dock tile plug-in's menu asks the agent (DockTileMenu.object).
     static let menuNote = Notification.Name("local.usage-n-uf.docktile-menu")
 
-    /// The agent's mark says it runs: written within three of its beats (a capped read; the plug-in asks it in the Dock's
-    /// process, where it can't look at other processes).
+    /// The agent's mark says it runs and listens: written within three of its beats (a few seconds' clock step allowed),
+    /// not paused after crashes (it hears nothing then). A capped read: the plug-in asks it in the Dock's process, where it
+    /// can't look at other processes.
     static func agentRuns(now: Date = Date()) -> Bool {
         guard let data = SafeRead.whole(Agent.markURL.path, max: SafeRead.recordMax) else { return false }
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .secondsSince1970
         guard let m = try? dec.decode(AgentMark.self, from: data) else { return false }
         let age = now.timeIntervalSince(m.beat)
-        return age >= 0 && age < Agent.beatSeconds * 3
+        return age >= -5 && age < Agent.beatSeconds * 3 && (m.pausedUntil.map { $0 <= now } ?? true)
     }
 
     /// A Dock icon app you started (a click) quits by itself once it's been left for a minute while the Dock draws its

@@ -88,7 +88,7 @@ final class AgentRules {
             guard let self, let (act, id) = DockTileMenu.parse(note.object),
                   let e = self.accounts.first(where: { $0.id == id }), e.runs.dockIcon else { return }
             let key = DockTileMenu.object(act, id), now = Date()
-            if let last = self.menuAsked[key], now.timeIntervalSince(last) < 2 { return }
+            if let last = self.menuAsked[key], case let d = now.timeIntervalSince(last), d >= 0, d < 2 { return }
             self.menuAsked[key] = now
             agentLog.log("agent: \(id, privacy: .public): Dock tile menu: \(act.rawValue, privacy: .public)")
             switch act {

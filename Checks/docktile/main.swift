@@ -370,7 +370,13 @@ do {
     mark(Date().addingTimeInterval(-200))
     check(!DockTile.agentRuns(), "a mark 200 s old (three beats are 90 s): not running")
     mark(Date().addingTimeInterval(3600))
-    check(!DockTile.agentRuns(), "a mark in the future: not running")
+    check(!DockTile.agentRuns(), "a mark an hour in the future: not running")
+    mark(Date().addingTimeInterval(3))
+    check(DockTile.agentRuns(), "a mark 3 s ahead (a small clock step): running")
+    var paused = AgentMark(pid: getpid(), started: Date(), beat: Date(), version: "check", build: "check", path: "/check")
+    paused.pausedUntil = Date().addingTimeInterval(300)
+    Agent.writeMark(paused)
+    check(!DockTile.agentRuns(), "a fresh mark of an agent paused after crashes: not listening, so not running")
     check(DockTileMenu.parse(DockTileMenu.object(.openWindow, "dt1")).map { "\($0.0.rawValue) \($0.1)" } == "openWindow dt1"
           && DockTileMenu.parse(DockTileMenu.object(.settings, "a:b")).map { $0.1 } == "a:b"
           && DockTileMenu.parse("nonsense:dt1") == nil && DockTileMenu.parse("openWindow:") == nil && DockTileMenu.parse(nil) == nil,
