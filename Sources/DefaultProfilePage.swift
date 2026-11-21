@@ -154,6 +154,12 @@ struct DefaultProfilePage: View {
         case .closing: return Top(text: "Moving ●", dim: "· step \(kind == .windowOnly ? 1 : 2) of \(stepCount) · the windows close", tone: .mint)
         case .backingUp: return Top(text: "Moving ●", dim: "· step \(kind == .windowOnly ? 1 : 2) of \(stepCount) · the backups", tone: .mint)
         case .moving:
+            // (the page stays at .moving when its restore stopped or was left as it is: say that, not "Moving")
+            switch runner.inner?.phase {
+            case .left?: return Top(text: "Left as it is", dim: "· what the move did stays · nothing undone", tone: .normal)
+            case .stopped?: return Top(text: "Stopped", dim: "· part way · nothing undone", tone: .warn)
+            default: break
+            }
             let p: (done: Int, total: Int) = runner.inner?.progress ?? (0, 0)
             return Top(text: "Moving ●", dim: "· step \(kind == .windowOnly ? 3 : 3) of \(stepCount) · \(p.done) of \(p.total) files", tone: .mint)
         case .done:
