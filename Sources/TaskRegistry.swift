@@ -223,7 +223,7 @@ enum TaskRegistry {
         let dir = (file as NSString).deletingLastPathComponent
         let temp = (dir as NSString).appendingPathComponent(tempPrefix + UUID().uuidString + ".tmp")
         let t: CreateOnly.Temp
-        do { t = try CreateOnly.Temp(temp, mode: 0o666) } catch { return .failed("couldn't write in \(tilde(dir))") }
+        do { t = try CreateOnly.Temp(temp, mode: 0o666) } catch { return .failed("couldn't write in the account's sessions folder") }   // (never its path: it holds the account's ids)
         defer { t.discard() }
         if let keep { guard fchmod(t.fd, keep) == 0 else { return .failed("couldn't write \(fileName)") } }
         guard CreateOnly.writeAll(t.fd, data) else { return .failed("couldn't write \(fileName)") }

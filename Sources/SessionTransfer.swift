@@ -153,7 +153,7 @@ enum SessionTransfer {
             for n in (try? FileManager.default.contentsOfDirectory(atPath: projects)) ?? [] { parts.append((projects as NSString).appendingPathComponent(n)) }
         }
         guard let bad = parts.first(where: isLink) else { return nil }
-        return "\(tilde(bad)) isn't a plain folder (a link or a file): cl_audit never writes through one, so nothing is moved."
+        return "\(tildeNoIds(bad)) isn't a plain folder (a link or a file): cl_audit never writes through one, so nothing is moved."
     }
 
     // MARK: moving

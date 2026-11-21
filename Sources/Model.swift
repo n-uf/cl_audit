@@ -21,6 +21,19 @@ func tilde(_ path: String) -> String {
     return path == home ? "~" : path.hasPrefix(home + "/") ? "~" + path.dropFirst(home.count) : path
 }
 
+/// A path as a sentence may say it: `tilde`, and the account and organisation folders under a window's sessions folder
+/// (`claude-code-sessions/<account id>/<organisation id>`, the same in `local-agent-mode-sessions`) left out: they are ids of
+/// the account, which nothing shown may hold while addresses are hidden. "…/claude-code-sessions/…/local_x.json".
+func tildeNoIds(_ path: String) -> String {
+    var parts = tilde(path).split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+    for kind in ["claude-code-sessions", "local-agent-mode-sessions"] {
+        guard let at = parts.firstIndex(of: kind) else { continue }
+        let ids = parts[(at + 1)...].prefix(2).filter { UUID(uuidString: $0) != nil }
+        if !ids.isEmpty { parts.replaceSubrange((at + 1)..<(at + 1 + ids.count), with: ["…"]) }
+    }
+    return parts.joined(separator: "/")
+}
+
 // MARK: - Account
 
 // (Seat and its one comparison are ProfileCore's: Core/Identity.swift)

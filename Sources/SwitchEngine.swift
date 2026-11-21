@@ -203,7 +203,8 @@ enum SwitchEngine {
         switch CreateOnly.write(data, as: path, temp: tmp, sync: false) {
         case .created: return
         case .exists: throw SwitchError.failed("\(leaf) is already there")
-        case .notMade, .notWhole: throw SwitchError.failed("couldn't write in \(tilde(dir))")
+        // (never the folder's path: it holds the account's and the organisation's ids, which nothing shown may name)
+        case .notMade, .notWhole: throw SwitchError.failed("couldn't write in the account's sessions folder")
         case .failed: throw SwitchError.failed("couldn't place \(leaf)")
         }
     }

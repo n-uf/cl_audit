@@ -1102,7 +1102,7 @@ enum SessionsRestore {
             madeDirs(tree, since: before)
             guard case .dir(let dfd) = opened else {
                 // the window's backlog or waiting input made a link or a file since the plan: that one file is left, the run goes on
-                if piece.kind == .file { r.problems.append("\(piece.dirs.last ?? "")/\(piece.leaf): its folder is a link or can't be made; left as it is."); continue }
+                if piece.kind == .file { r.problems.append("\(piece.leaf): its folder is a link or can't be made; left as it is."); continue }
                 throw stopped("A folder in the window's data is a link or can't be made; stopped. What is back is kept.")
             }
             defer { close(dfd) }
