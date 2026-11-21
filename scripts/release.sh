@@ -73,14 +73,16 @@ echo "released $next (commit and tag v$next)"
 
 if [ $push = 1 ]; then
   # The app is built, packed and checked FIRST: main and the tag are pushed only once the files to publish are ready, so a
-  # failed build, zip or disk image leaves nothing pushed (the commit and tag stay local: fix it, then
-  # `git tag -d v$next && git reset --hard HEAD~1` and run this again, or push and publish by hand once it builds).
+  # failed build, zip or disk image leaves nothing pushed (the commit and tag stay local; the trap below says how to take
+  # them back, or push and publish by hand once it builds).
 
   # The ready-built app for direct download. The file name never changes, so
   # https://github.com/n-uf/cl_audit/releases/latest/download/cl_audit.zip always gets the newest.
   stage="$(mktemp -d)"
-  # whatever fails from here on, no image stays mounted and no temp folder stays behind
-  trap 'hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"' EXIT
+  # whatever fails from here on, no image stays mounted and no temp folder stays behind; a failure before the push says how to
+  # take back the release commit and tag, at that moment only: the tree was clean before the release commit (checked above),
+  # so a hard reset then drops nothing else, while one run after a fix would drop the fix too
+  trap 'rc=$?; hdiutil detach -quiet -force "$stage/mnt" 2>/dev/null || true; rm -rf "$stage"; [ $rc = 0 ] || echo "nothing was pushed; the release commit and the tag v$next are local only. Take them back now, before any fix: git tag -d v$next && git reset --hard HEAD~1  then fix it and run this again" >&2' EXIT
   # One build at a time on this Mac: the build lock installs and checks take too, held from the build until the app is
   # copied out of build/, so the zip and the disk image always hold the app this build made (never another's).
   /usr/bin/lockf -k /private/tmp/cl_audit-build.lock bash -c './build.sh --no-install >/dev/null && ditto build/cl_audit.app "$1/cl_audit.app"' _ "$stage"
