@@ -348,6 +348,43 @@ MainActor.assumeIsolated {
           && ExportWords.profilesWords(count: 2, names: ["Work", "Home"], on: true, image: true).value.hasPrefix("2 profiles (Work, Home)"),
           "export page: the profiles row: left out of a zip, in the image")
 
+    // ---- a Code-tab entry and task file in UTF-16 (ids and keys hide in it): an encrypted image that isn't a move leaves both out
+    // and counts them; a move keeps both as they are (it keeps the real ids)
+    do {
+        var u16 = AccountEntry(id: "u16", name: "U16", label: "U16", configDir: "~/.claude-u16")
+        u16.desktop = .separate; u16.desktopDataDir = "~/Library/Application Support/Claude-u16"
+        u16.seat = Seat(account: sid(60), organization: sid(61), email: "u16@example.com")
+        let ud = "\(expand(u16.desktopDataDir))/claude-code-sessions/\(sid(60))/\(sid(61))"
+        func utf16(_ s: String) -> Data { Data([0xFF, 0xFE]) + s.data(using: .utf16LittleEndian)! }
+        let entryName = "local_\(sid(62)).json"
+        let entryBytes = utf16(#"{"sessionId":"local_\#(sid(62))","cliSessionId":"\#(sid(162))","title":"utf-16","cwd":"/w/u16","isArchived":false}"#)
+        let taskBytes = utf16(#"{"scheduledTasks":[{"id":"u16-task","displayName":"U16","cronExpression":"0 4 * * *","enabled":true,"cwd":"/w/u16"}]}"#)
+        try! fm.createDirectory(atPath: ud, withIntermediateDirectories: true)
+        fm.createFile(atPath: "\(ud)/\(entryName)", contents: entryBytes)
+        fm.createFile(atPath: "\(ud)/scheduled-tasks.json", contents: taskBytes)
+        write("\(expand(u16.configDir))/CLAUDE.md", "# u16\n")
+        func windowFiles(_ t: String) -> [String: Data] {
+            Dictionary(uniqueKeysWithValues: files(t + "/profiles/p1/window").map { (($0 as NSString).lastPathComponent, fm.contents(atPath: t + "/profiles/p1/window/" + $0) ?? Data()) })
+        }
+        var imgJob = SessionsExport.Job(parts: [part(u16)], keys: .keep, password: pw, destination: URL(fileURLWithPath: out + "/u16.dmg"), rootName: "u16-image", place: bplace)
+        imgJob.known = Identities.of(accounts: [u16])
+        if let io = try? SessionsExport.run(imgJob), let o = try? SessionsImport.open(io.file, password: pw, place: bplace) {
+            let w = windowFiles(o.tree.path)
+            check(io.unreadableLeftOut == 2 && w[entryName] == nil && w["scheduled-tasks.json"] == nil,
+                  "export (image, not a move): the UTF-16 entry and task file are left out and counted (\(io.unreadableLeftOut)): \(w.keys.sorted())")
+            SessionsImport.discard(o.work)
+        } else { check(false, "export (image, UTF-16 window files): made and opens") }
+        var mvJob = imgJob; mvJob.move = true; mvJob.destination = URL(fileURLWithPath: out + "/u16-move.dmg"); mvJob.rootName = "u16-move"
+        mvJob.profiles = SessionsMove.make([u16], parts: ["u16": "p1"], all: [u16], move: true)
+        if let mo = try? SessionsExport.run(mvJob), let o = try? SessionsImport.open(mo.file, password: pw, place: bplace) {
+            let w = windowFiles(o.tree.path)
+            check(mo.unreadableLeftOut == 0 && w[entryName] == entryBytes && w["scheduled-tasks.json"] == taskBytes,
+                  "export (move): the UTF-16 entry and task file are kept as they are, none counted (\(mo.unreadableLeftOut)): \(w.keys.sorted())")
+            SessionsImport.discard(o.work)
+        } else { check(false, "export (move, UTF-16 window files): made and opens") }
+        try? fm.removeItem(atPath: expand(u16.configDir)); try? fm.removeItem(atPath: expand(u16.desktopDataDir))
+    }
+
     // ---- the new Mac: role B, in its own fresh home
     let bHome = (home as NSString).deletingLastPathComponent + "/b/home"
     let p = Process()
