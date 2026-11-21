@@ -65,8 +65,8 @@ if args.count >= 3, args[1] == "--child" {
     }
     p.setDockTile(NSApp.dockTile)
     let dn = DistributedNotificationCenter.default()
-    for n in [Store.statusChanged, Store.changed, Installer.appsChangedNote] {
-        dn.postNotificationName(n, object: n == Store.statusChanged ? id : nil, userInfo: nil, deliverImmediately: true)
+    for n in [Store.statusChanged, Store.changed, Installer.appsChangedNote, DockTile.windowNote] {
+        dn.postNotificationName(n, object: n == Store.statusChanged || n == DockTile.windowNote ? id : nil, userInfo: nil, deliverImmediately: true)
         RunLoop.main.run(until: Date().addingTimeInterval(0.6))
     }
     p.redraw("timer")
@@ -143,7 +143,8 @@ try! profile.write(to: profileURL, atomically: true, encoding: .utf8)
 /// One scenario in the sandbox: how it ended (exit code, or the signal that ended it) and what it printed. A trap's own
 /// words (its standard error) are printed here, so a failure says where.
 func child(_ scenario: String, prepare: () -> Void = {}) -> (code: Int32, signal: Bool, out: String) {
-    try? fm.removeItem(at: DockTile.folder)
+    // a fresh log and heartbeat (the agent's word on the window, in the same folder, stays)
+    for u in [DockTile.logURL(id), DockTile.beatURL(id), DockTile.logURL(id).appendingPathExtension("1")] { try? fm.removeItem(at: u) }
     prepare()
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/usr/bin/sandbox-exec")
@@ -181,7 +182,8 @@ check(clean(good, "draw"), "a good record: the plug-in ran every entry point and
 check(goodLog.contains("loaded build b1 in ") && goodLog.contains("drew (load) #1: numbers") && goodLog.contains("drew (record)")
       && goodLog.contains("drew (profiles)") && goodLog.contains("drew (apps)") && goodLog.contains("drew (timer)") && goodLog.contains("released"),
       "the log: loaded, drawn on load, on the agent's notice, the profiles' and the apps' notice, the timer; released")
-check(beat().contains("build b1") && beat().contains("draw 5"), "the heartbeat: written on each draw, with the build (\(beat()))")
+check(goodLog.contains("drew (window)") && !goodLog.contains("· window"), "the agent's window notice redraws it; no word on the window: no open dot")
+check(beat().contains("build b1") && beat().contains("draw 6"), "the heartbeat: written on each draw, with the build (\(beat()))")
 check(!goodLog.contains("@") && !beat().contains("@"), "no address in the plug-in's log or heartbeat")
 check(DockTile.plainID("café") == "café" && DockTile.plainID("привет-2") == "привет-2" && DockTile.plainID("a_b-c") == "a_b-c"
       && [String(repeating: "é", count: 101), "", ".hidden", "../x", "a/b", "a\u{0}b", "a\nb"].allSatisfy { DockTile.plainID($0) == nil }
@@ -233,9 +235,45 @@ let fifoLog = child("fifo-log") {
     try? fm.createDirectory(at: DockTile.folder, withIntermediateDirectories: true)
     mkfifo(DockTile.logURL(id).path, 0o644)
 }
-check(clean(fifoLog, "fifo-log") && beat().contains("draw 5"), "a FIFO for the log: never opened, the heartbeat still written")
+check(clean(fifoLog, "fifo-log") && beat().contains("draw 6"), "a FIFO for the log: never opened, the heartbeat still written")
+// the window dot: the agent's word on the profile's Claude window (DockTile.setWindowOpen), drawn when the profile shows it
+DockTile.setWindowOpen(id, true)
+let window = child("window")
+check(clean(window, "window") && log().contains("drew (load) #1: numbers · window") && DockTile.windowOpen(id),
+      "the agent says the window is open: the tile draws the open dot")
+DockTile.setWindowOpen(id, false)
+check(!DockTile.windowOpen(id), "the agent says it closed: no dot")
+var noDot = e; noDot.windowDot = false
+try! JSONEncoder().encode(ConfigFile(accounts: [noDot])).write(to: Store.configURL)
+DockTile.setWindowOpen(id, true)
+let windowNoDot = child("window-no-dot")
+check(clean(windowNoDot, "window-no-dot") && !log().contains("· window"), "the profile shows no window dot: none drawn")
+DockTile.setWindowOpen(id, false)
+saveProfiles()
 
-// 3. an update: the copy is now another build, so the old code leaves and the Dock loads the new one; not mid-install
+// 3. the agent's rule while the Dock draws the tiles (TileRule): quit what it started once drawn, open once, then as before
+func facts(pinned: Bool = true, running: Bool = false, ours: Bool = false, beat: TimeInterval? = nil, waited: TimeInterval = 0,
+           failed: Bool = false) -> TileRule.Facts {
+    TileRule.Facts(pinned: pinned, running: running, ours: ours, beatAge: beat, waited: waited, failed: failed)
+}
+let table: [(TileRule.Facts, TileRule.Act, String)] = [
+    (facts(running: true, ours: true, beat: 10), .quit, "drawn, the agent's app running: it quits"),
+    (facts(running: true, ours: false, beat: 10), .none, "drawn, an app you started: it stays"),
+    (facts(running: true, ours: true, beat: nil, waited: 30), .none, "running, no tile yet, under a minute: wait"),
+    (facts(running: true, ours: true, beat: nil, waited: 61), .asBefore, "running, no tile for a minute after it was opened: as before"),
+    (facts(running: true, ours: true, beat: 200, waited: 61), .asBefore, "running, the last tile long ago: as before"),
+    (facts(running: true, ours: false, beat: nil, waited: 600), .none, "an app you started, no tile: left alone"),
+    (facts(beat: 10, waited: 600), .none, "not running, drawn: nothing to do"),
+    (facts(beat: nil, waited: 30), .none, "not running, no tile yet, under a minute: wait"),
+    (facts(beat: nil, waited: 61), .openOnce, "not running, no tile for a minute: opened once"),
+    (facts(beat: 91, waited: 61), .openOnce, "not running, the tile stopped (91 s): opened once"),
+    (facts(running: true, ours: true, beat: 10, failed: true), .none, "no tile earlier in this run: as before, nothing changes"),
+    (facts(pinned: false, running: true, ours: true, beat: 10), .none, "not in the Dock: nothing changes"),
+    (facts(pinned: false, beat: nil, waited: 600), .none, "not in the Dock, no tile: not opened"),
+]
+for (f, want, what) in table { check(TileRule.decide(f) == want, "TileRule: \(what) (got \(TileRule.decide(f)))") }
+
+// 4. an update: the copy is now another build, so the old code leaves and the Dock loads the new one; not mid-install
 plugInfo(build: "b1")
 let half = child("half-install")
 check(clean(half, "half-install") && !log().contains("leaving"), "an install half done (the app still on b1): the plug-in stays")

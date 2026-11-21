@@ -56,6 +56,10 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
         })
         observers.append(center.addObserver(forName: Store.changed, object: nil, queue: .main) { [weak self] _ in self?.redraw("profiles") })
         observers.append(center.addObserver(forName: Installer.appsChangedNote, object: nil, queue: .main) { [weak self] _ in self?.redraw("apps") })
+        observers.append(center.addObserver(forName: DockTile.windowNote, object: nil, queue: .main) { [weak self] note in
+            guard let self, note.object as? String == self.id else { return }
+            self.redraw("window")
+        })
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.redraw("timer") }
     }
 
@@ -99,7 +103,7 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
         let line = "\(ISO8601DateFormatter().string(from: Date())) build \(build) pid \(getpid()) draw \(draws)\n"
         try? FileManager.default.createDirectory(at: DockTile.folder, withIntermediateDirectories: true)
         try? Data(line.utf8).write(to: DockTile.beatURL(id), options: .atomic)
-        log("drew (\(why)) #\(draws): \(view.map { $0.model.fiveHour == nil && $0.model.weekly == nil ? "no numbers" : $0.model.stale ? "grey" : "numbers" } ?? "-")")
+        log("drew (\(why)) #\(draws): \(view.map { ($0.model.fiveHour == nil && $0.model.weekly == nil ? "no numbers" : $0.model.stale ? "grey" : "numbers") + ($0.model.windowOpen ? " · window" : "") } ?? "-")")
     }
 
     /// The profile's face now, or nil when its entry can't be read (the last face stays). Capped reads of regular files only
@@ -110,7 +114,8 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
               let e = list.accounts.first(where: { $0.id == id }) else { return nil }
         let record = SafeRead.whole(Store.statusFolder.appendingPathComponent("\(id).json").path, max: SafeRead.recordMax)
             .flatMap(StatusCodec.decode)
-        return TileModel.face(e, ProfileShow.of(e, raw: record?.current()), windowOpen: false)
+        // (the open dot from the agent's word on the window: DockTile.windowOpen)
+        return TileModel.face(e, ProfileShow.of(e, raw: record?.current()), windowOpen: DockTile.windowOpen(id))
     }
 
     private static let unknown = TileModel(label: "?", fiveHour: nil, weekly: nil, stale: true, style: .bars)
