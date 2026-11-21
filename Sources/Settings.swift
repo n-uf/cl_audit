@@ -1873,7 +1873,10 @@ struct AccountSettings: View {
             let id = entry.id
             // another profile shown: the last one's switch goes at once, not on the next load
             if let n = newestSwitch, n.profile != id { newestSwitch = nil }
-            newestSwitch = await Task.detached(priority: .utility) { SwitchEngine.receipts(profile: id).first }.value
+            let found = await Task.detached(priority: .utility) { SwitchEngine.receipts(profile: id).first }.value
+            // a load for a profile no longer shown (the task was cancelled meanwhile) never lands on the new one
+            guard !Task.isCancelled, found.map({ $0.profile == id }) ?? true else { return }
+            newestSwitch = found
         }
     }
     @State private var newestSwitch: SwitchReceipt?
