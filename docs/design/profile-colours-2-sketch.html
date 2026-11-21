@@ -1,0 +1,339 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile colours, round 2: coloured tiles</title>
+<style>
+/* Static page: no script. The tile is today's AccountTile (Sources/Settings.swift): a wide key, the profile's Dock-icon picture at 32 pt,
+   a bold name and a sub line ("~/.claude · ann"), the chosen one latched down with its strip lit.
+   Face tokens are the app's own (Sources/Faces.swift): Std gunmetal keys, Silver keys. */
+:root { --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", system-ui, sans-serif; --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+.face-std, .face-silver {
+  --text: #ececee; --muted: #9a9aa0; --print: rgba(255,255,255,.5);
+  --green: #22c55e; --amber: #f59e0b; --red: #ef4444; --led-on: 74, 222, 128;
+  --alu: repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #74746f, #52524e);
+  --alu-down: repeating-linear-gradient(90deg, rgba(255,255,255,.05) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #6a6a65, #4a4a46);
+  --key-up: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #2e2e2c, 0 2px 0 #121211, 0 3px 7px rgba(0,0,0,.45);
+  --key-down: inset 0 1px 0 rgba(255,255,255,.2), inset 0 -1px 0 rgba(0,0,0,.3), 0 0 0 1px #2e2e2c, 0 1px 0 #121211, 0 2px 4px rgba(0,0,0,.45);
+  --legend: #f1f1f0; --legend-shadow: 0 -1px 0 rgba(0,0,0,.35);
+  --chassis: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #232325, #1b1b1d 30%, #19191b);
+  --chassis-shadow: 0 0 0 1px #000, 0 0 0 2px rgba(255,255,255,.07);
+  --module: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px), linear-gradient(180deg, #29292b, #222224);
+  --module-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #0c0c0d, 0 4px 12px rgba(0,0,0,.25);
+  --strip: rgba(0,0,0,.3);
+  --strip-shadow: inset 0 1px 3px rgba(0,0,0,.75), inset 0 0 0 1px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.05);
+  --mark-ring: rgba(0,0,0,.4);
+  color: var(--text);
+}
+.face-silver {
+  --text: #1c1c1e; --muted: #46464b; --print: rgba(20,20,20,.62);
+  --green: #13803a; --amber: #b25f00; --red: #c0271b; --led-on: 19, 128, 58;
+  --alu: repeating-linear-gradient(0deg, rgba(255,255,255,.14) 0 1px, rgba(0,0,0,.03) 1px 2px), linear-gradient(180deg, #ededeb, #c8c8c3);
+  --alu-down: repeating-linear-gradient(0deg, rgba(255,255,255,.12) 0 1px, rgba(0,0,0,.03) 1px 2px), linear-gradient(180deg, #dadad6, #bababa);
+  --key-up: inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(0,0,0,.18), 0 0 0 1px #6d6d69, 0 2px 0 #4c4c49, 0 3px 6px rgba(0,0,0,.22);
+  --key-down: inset 0 1px 0 rgba(255,255,255,.6), inset 0 -1px 0 rgba(0,0,0,.15), 0 0 0 1px #6d6d69, 0 1px 0 #4c4c49;
+  --legend: #232323; --legend-shadow: 0 1px 0 rgba(255,255,255,.55);
+  --chassis: repeating-linear-gradient(0deg, rgba(255,255,255,.2) 0 1px, rgba(0,0,0,.025) 1px 2px), linear-gradient(180deg, #d0d2d3, #c2c4c5 45%, #b9bbbc);
+  --chassis-shadow: inset 0 1px 0 rgba(255,255,255,.85), 0 0 0 1px rgba(0,0,0,.2);
+  --module: repeating-linear-gradient(0deg, rgba(255,255,255,.24) 0 1px, rgba(0,0,0,.025) 1px 2px), linear-gradient(180deg, #e0e2e3 0%, #d0d2d3 55%, #c6c8c9 100%);
+  --module-shadow: inset 0 1px 0 rgba(255,255,255,.95), inset 0 -1px 0 rgba(0,0,0,.18), 0 0 0 1px rgba(0,0,0,.32), 0 3px 10px rgba(0,0,0,.16);
+  --strip: repeating-linear-gradient(0deg, rgba(255,255,255,.14) 0 1px, rgba(0,0,0,.03) 1px 2px), linear-gradient(180deg, #a9a9a4, #b9b9b4);
+  --strip-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 1px rgba(0,0,0,.12), 0 1px 0 rgba(255,255,255,.6);
+  --mark-ring: rgba(0,0,0,.45);
+}
+
+/* The tint. On Std the profile colour is deepened to 50% brightness before it is laid over the gunmetal (so the white legend keeps its contrast);
+   on Silver the colour is laid over the key as it is. --ta is how much; V1 is light, V2 stronger. */
+.tile, .hdr { --ts: color-mix(in srgb, var(--c) 50%, #000); --cm: var(--c); }
+.face-silver .tile, .face-silver .hdr { --ts: var(--c); --cm: color-mix(in srgb, var(--c) 60%, #000); }
+.dock4 .ico2 { --tsd: color-mix(in srgb, var(--c) 50%, #000); }
+.v1 .face-std, .v3 .face-std { --ta: 45%; --ha: 45%; --da: 45%; }
+.v2 .face-std { --ta: 80%; --ha: 55%; --da: 60%; }
+.v1 .face-silver, .v3 .face-silver { --ta: 22%; --ha: 22%; --da: 45%; }
+.v2 .face-silver { --ta: 42%; --ha: 42%; --da: 60%; }
+
+/* ── the page ─────────────────────────────────────────────────────────── */
+* { box-sizing: border-box; }
+html { color-scheme: dark; }
+body { margin: 0; font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; background: #101012; color: #ececee; }
+.page { max-width: 1260px; margin: 0 auto; padding: 20px 16px 60px; }
+h1 { margin: 0 0 2px; font-size: 20px; letter-spacing: -.01em; }
+.subtitle { margin: 0 0 6px; color: #9a9aa0; font-size: 13px; }
+h2 { margin: 36px 0 6px; font-size: 17px; }
+h3 { margin: 18px 0 6px; font-size: 11px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: #9a9aa0; }
+.variant { margin-top: 18px; }
+.cap { margin: 0 0 8px; color: #b4b4ba; font-size: 13px; }
+.cap b { color: #ececef; font-weight: 600; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; }
+@media (max-width: 980px) { .pair { grid-template-columns: minmax(0, 1fr); } }
+.pick { margin: 22px 0 0; font-size: 15px; }
+.pick b { color: #e8a07f; }
+.sub { max-width: 100ch; color: #9a9aa0; font-size: 13px; }
+.rules { margin: 6px 0 0; padding: 0 0 0 18px; max-width: 100ch; color: #b4b4ba; font-size: 13px; }
+.rules li { margin: 3px 0; }
+.rules b { color: #ececef; }
+.tbl { width: 100%; max-width: 120ch; border-collapse: collapse; margin: 8px 0 0; font-size: 12.5px; }
+.tbl th, .tbl td { padding: 5px 10px; text-align: left; vertical-align: top; border-bottom: 1px solid #26262a; }
+.tbl th { font: 600 10px var(--font); letter-spacing: .12em; text-transform: uppercase; color: #9a9aa0; }
+.tbl td { color: #b4b4ba; font-variant-numeric: tabular-nums; }
+.tbl td:first-child { color: #ececef; font-weight: 600; }
+.tbl-wrap { overflow-x: auto; max-width: 100%; }
+.tbl-wrap .tbl { min-width: 640px; }
+
+.dev { min-width: 0; padding: 9px 11px 11px; border-radius: 10px; background: var(--chassis); box-shadow: var(--chassis-shadow); color: var(--text); display: grid; gap: 9px; }
+.dev .lbl { margin: 0 0 -3px; font: 600 9.5px/1.2 var(--font); letter-spacing: .16em; text-transform: uppercase; color: var(--print); }
+
+/* ── the tile bar: ProfileTiles / AccountTile / TileKey / TileText ──────── */
+.strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 8px; border-radius: 7px; background: var(--strip); box-shadow: var(--strip-shadow); }
+@media (max-width: 460px) { .strip { grid-template-columns: minmax(0, 1fr); } }
+.tile { position: relative; display: flex; align-items: center; gap: 9px; min-height: 42px; padding: 0 12px 0 5px; border-radius: 4px; min-width: 0;
+  color: var(--legend); text-shadow: var(--legend-shadow); background: var(--alu); box-shadow: var(--key-up); }
+.tile.sel { transform: translateY(1px); background: var(--alu-down); box-shadow: var(--key-down); }
+.tile.sel::before { content: ""; position: absolute; left: 5px; right: 5px; top: 3px; height: 2px; border-radius: 2px;
+  background: #ff7a3d; box-shadow: 0 0 1.5px rgba(255,122,61,.8), 0 0 4px rgba(255,122,61,.45); }
+.tile .ico2 { zoom: .615; }                 /* the 52 px drawing as the 32 pt picture */
+.tt { display: grid; gap: 2px; min-width: 0; }
+.tt b { display: flex; align-items: center; gap: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; white-space: nowrap; }
+.tt .sb { font-size: 10.5px; opacity: .65; white-space: nowrap; }
+
+/* the dot: before the name */
+.dotc { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--cm); box-shadow: 0 0 0 1px var(--mark-ring); }
+.byu .dotc { background: #3f3f46; box-shadow: 0 0 0 1px rgba(255,255,255,.28); }
+.face-silver .byu .dotc { box-shadow: 0 0 0 1px rgba(0,0,0,.5); }
+
+/* V1, V2, V3: the key face takes the tint (By usage keeps today's face) */
+.v1 .tile:not(.byu), .v2 .tile:not(.byu), .v3 .tile:not(.byu) {
+  background: linear-gradient(color-mix(in srgb, var(--ts) var(--ta), transparent), color-mix(in srgb, var(--ts) var(--ta), transparent)), var(--alu); }
+.v1 .tile.sel:not(.byu), .v2 .tile.sel:not(.byu), .v3 .tile.sel:not(.byu) {
+  background: linear-gradient(color-mix(in srgb, var(--ts) var(--ta), transparent), color-mix(in srgb, var(--ts) var(--ta), transparent)), var(--alu-down); }
+/* V3: and a thin foot line (inside the key, under the 32 pt picture's bottom edge) */
+.v3 .tile:not(.byu)::after { content: ""; position: absolute; left: 5px; right: 5px; bottom: 2px; height: 2px; border-radius: 1px; background: var(--cm); box-shadow: 0 0 0 .5px var(--mark-ring); }
+
+/* ── the Dock icon, drawn (dark tile, label, two level bars, the numbers) ─── */
+.ico2 { width: 52px; height: 52px; flex: none; border-radius: 12px; background: linear-gradient(#2a2c2e, #141516); box-shadow: inset 0 0 0 1px #ffffff14, 0 1px 3px #0009;
+  display: grid; grid-template-columns: 7px 1fr; grid-template-rows: 12px 1fr 1fr; column-gap: 4px; padding: 5px 7px 6px 6px; font: 700 8px/1 var(--mono); color: #d8d8d8; }
+.ico2 .lb { grid-column: 1 / 3; text-align: center; letter-spacing: .06em; font-size: 7.5px; color: #cfcfcf; }
+.ico2 i { grid-column: 1; border-radius: 3px; background: #2f3133; align-self: stretch; margin: 2px 0; }
+.ico2 i.g { background: #22c55e; box-shadow: 0 0 4px #22c55e99; }
+.ico2 i.a { background: #f59e0b; box-shadow: 0 0 4px #f59e0b99; }
+.ico2 i.r { background: #ef4444; box-shadow: 0 0 4px #ef444499; }
+.ico2 b { grid-column: 2; display: flex; justify-content: space-between; align-items: center; font-size: 7px; color: #9a9a9a; }
+.ico2 b span { font-size: 15px; color: #fff; font-weight: 700; }
+.wall { position: relative; overflow: hidden; border-radius: 8px; padding: 9px 10px 7px; background: radial-gradient(110% 90% at 25% 0%, #33405e 0%, #1c2236 52%, #0d0f17 100%); box-shadow: inset 0 0 0 1px rgba(255,255,255,.05); }
+.dock4 { display: grid; grid-template-columns: repeat(4, 1fr); justify-items: center; gap: 4px; max-width: 360px; margin: 0 auto; padding: 8px 6px 6px; border-radius: 16px; background: rgba(255,255,255,.13); box-shadow: inset 0 0 0 1px rgba(255,255,255,.2); }
+.dk { display: grid; justify-items: center; gap: 4px; }
+.dk em { width: 4px; height: 4px; border-radius: 50%; background: rgba(255,255,255,.75); }
+.caps4 { display: grid; grid-template-columns: repeat(4, 1fr); justify-items: center; gap: 4px; max-width: 360px; margin: 5px auto 0; font-size: 10.5px; color: rgba(255,255,255,.75); }
+.dock4 .ico2 { position: relative; }
+.v1 .dock4 .ico2:not(.byu), .v2 .dock4 .ico2:not(.byu), .v3 .dock4 .ico2:not(.byu) {
+  background: linear-gradient(color-mix(in srgb, var(--tsd) var(--da), transparent), color-mix(in srgb, var(--tsd) var(--da), transparent)), linear-gradient(#2a2c2e, #141516); }
+.v3 .dock4 .ico2:not(.byu)::after { content: ""; position: absolute; left: 7px; right: 7px; bottom: 3px; height: 2px; border-radius: 1px; background: var(--c); }
+
+/* ── the card header (drawn from ui-fixes-2026-11.html), compact ─── */
+.hdrs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+@media (max-width: 460px) { .hdrs { grid-template-columns: minmax(0, 1fr); } }
+.card { position: relative; overflow: hidden; border-radius: 10px; background: var(--module); box-shadow: var(--module-shadow); min-width: 0; }
+.hdr { position: relative; display: flex; align-items: center; gap: 9px; padding: 9px 11px; }
+.hdr .ico2 { zoom: .85; }
+.cname { min-width: 0; display: grid; gap: 2px; }
+.nm { display: flex; align-items: center; gap: 7px; font-weight: 600; font-size: 13.5px; white-space: nowrap; color: var(--text); }
+.inuse { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11.5px; min-width: 0; }
+.inuse i { width: 6px; height: 6px; border-radius: 50%; flex: none; background: rgb(var(--led-on)); box-shadow: 0 0 5px rgba(var(--led-on), .8); }
+.inuse span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.v1 .hdr:not(.byu), .v2 .hdr:not(.byu), .v3 .hdr:not(.byu) {
+  background: linear-gradient(color-mix(in srgb, var(--ts) var(--ha), transparent), color-mix(in srgb, var(--ts) var(--ha), transparent)); }
+.v3 .hdr:not(.byu)::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--cm); }
+</style>
+</head>
+<body>
+<div class="page">
+
+<h1>Profile colours, round 2: coloured tiles</h1>
+<p class="subtitle">A proposal, 2026-11-21, nothing built: today's Settings tile bar with a dot before the name, and the key face tinted in the profile colour.</p>
+
+<!-- ═══════════════════ V1 ═══════════════════ -->
+<div class="variant v1">
+<p class="cap"><b>V1 · Dot + light tint.</b> A 7 px dot before the name; the key face takes a light tint. Icon, name and folder line stay as they are.</p>
+<div class="pair">
+
+<div class="dev face-std">
+<div class="lbl">Std dark · tile bar</div>
+<div class="strip">
+<div class="tile sel" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><span class="tt"><b><span class="dotc"></span>Main</b><span class="sb">~/.claude · ann</span></span></div>
+<div class="tile" style="--c:#14b8a6"><div class="ico2"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><span class="tt"><b><span class="dotc"></span>Work</b><span class="sb">~/.claude-work · ben</span></span></div>
+<div class="tile" style="--c:#ec4899"><div class="ico2"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><span class="tt"><b><span class="dotc"></span>Studio</b><span class="sb">~/.claude-studio · cat</span></span></div>
+<div class="tile byu" style="--c:#3f3f46"><div class="ico2"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><span class="tt"><b><span class="dotc"></span>Lab</b><span class="sb">~/.claude-lab · dan</span></span></div>
+</div>
+<div class="lbl">Card header</div>
+<div class="hdrs">
+<div class="card"><div class="hdr" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div></div></div>
+<div class="card"><div class="hdr byu" style="--c:#3f3f46"><div class="ico2 byu"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Lab</div><div class="inuse"><i></i><span>dan@example.com</span></div></div></div></div>
+</div>
+<div class="lbl">Dock icon</div>
+<div class="wall"><div class="dock4">
+<div class="dk"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><em></em></div>
+<div class="dk"><div class="ico2" style="--c:#14b8a6"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><em></em></div>
+<div class="dk"><div class="ico2" style="--c:#ec4899"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><em></em></div>
+<div class="dk"><div class="ico2 byu" style="--c:#3f3f46"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><em></em></div>
+</div><div class="caps4"><span>Main</span><span>Work</span><span>Studio</span><span>Lab</span></div></div>
+</div>
+
+<div class="dev face-silver">
+<div class="lbl">Silver · tile bar</div>
+<div class="strip">
+<div class="tile sel" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><span class="tt"><b><span class="dotc"></span>Main</b><span class="sb">~/.claude · ann</span></span></div>
+<div class="tile" style="--c:#14b8a6"><div class="ico2"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><span class="tt"><b><span class="dotc"></span>Work</b><span class="sb">~/.claude-work · ben</span></span></div>
+<div class="tile" style="--c:#ec4899"><div class="ico2"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><span class="tt"><b><span class="dotc"></span>Studio</b><span class="sb">~/.claude-studio · cat</span></span></div>
+<div class="tile byu" style="--c:#3f3f46"><div class="ico2"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><span class="tt"><b><span class="dotc"></span>Lab</b><span class="sb">~/.claude-lab · dan</span></span></div>
+</div>
+<div class="lbl">Card header</div>
+<div class="hdrs">
+<div class="card"><div class="hdr" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div></div></div>
+<div class="card"><div class="hdr byu" style="--c:#3f3f46"><div class="ico2 byu"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Lab</div><div class="inuse"><i></i><span>dan@example.com</span></div></div></div></div>
+</div>
+<div class="lbl">Dock icon</div>
+<div class="wall"><div class="dock4">
+<div class="dk"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><em></em></div>
+<div class="dk"><div class="ico2" style="--c:#14b8a6"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><em></em></div>
+<div class="dk"><div class="ico2" style="--c:#ec4899"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><em></em></div>
+<div class="dk"><div class="ico2 byu" style="--c:#3f3f46"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><em></em></div>
+</div><div class="caps4"><span>Main</span><span>Work</span><span>Studio</span><span>Lab</span></div></div>
+</div>
+
+</div>
+</div>
+
+<!-- ═══════════════════ V2 ═══════════════════ -->
+<div class="variant v2">
+<p class="cap"><b>V2 · Dot + stronger tint.</b> The same dot; the key face carries the colour more strongly, like the swatch grid in round 1.</p>
+<div class="pair">
+
+<div class="dev face-std">
+<div class="lbl">Std dark · tile bar</div>
+<div class="strip">
+<div class="tile sel" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><span class="tt"><b><span class="dotc"></span>Main</b><span class="sb">~/.claude · ann</span></span></div>
+<div class="tile" style="--c:#14b8a6"><div class="ico2"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><span class="tt"><b><span class="dotc"></span>Work</b><span class="sb">~/.claude-work · ben</span></span></div>
+<div class="tile" style="--c:#ec4899"><div class="ico2"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><span class="tt"><b><span class="dotc"></span>Studio</b><span class="sb">~/.claude-studio · cat</span></span></div>
+<div class="tile byu" style="--c:#3f3f46"><div class="ico2"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><span class="tt"><b><span class="dotc"></span>Lab</b><span class="sb">~/.claude-lab · dan</span></span></div>
+</div>
+<div class="lbl">Card header</div>
+<div class="hdrs">
+<div class="card"><div class="hdr" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div></div></div>
+<div class="card"><div class="hdr byu" style="--c:#3f3f46"><div class="ico2 byu"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Lab</div><div class="inuse"><i></i><span>dan@example.com</span></div></div></div></div>
+</div>
+<div class="lbl">Dock icon</div>
+<div class="wall"><div class="dock4">
+<div class="dk"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><em></em></div>
+<div class="dk"><div class="ico2" style="--c:#14b8a6"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><em></em></div>
+<div class="dk"><div class="ico2" style="--c:#ec4899"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><em></em></div>
+<div class="dk"><div class="ico2 byu" style="--c:#3f3f46"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><em></em></div>
+</div><div class="caps4"><span>Main</span><span>Work</span><span>Studio</span><span>Lab</span></div></div>
+</div>
+
+<div class="dev face-silver">
+<div class="lbl">Silver · tile bar</div>
+<div class="strip">
+<div class="tile sel" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><span class="tt"><b><span class="dotc"></span>Main</b><span class="sb">~/.claude · ann</span></span></div>
+<div class="tile" style="--c:#14b8a6"><div class="ico2"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><span class="tt"><b><span class="dotc"></span>Work</b><span class="sb">~/.claude-work · ben</span></span></div>
+<div class="tile" style="--c:#ec4899"><div class="ico2"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><span class="tt"><b><span class="dotc"></span>Studio</b><span class="sb">~/.claude-studio · cat</span></span></div>
+<div class="tile byu" style="--c:#3f3f46"><div class="ico2"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><span class="tt"><b><span class="dotc"></span>Lab</b><span class="sb">~/.claude-lab · dan</span></span></div>
+</div>
+<div class="lbl">Card header</div>
+<div class="hdrs">
+<div class="card"><div class="hdr" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div></div></div>
+<div class="card"><div class="hdr byu" style="--c:#3f3f46"><div class="ico2 byu"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Lab</div><div class="inuse"><i></i><span>dan@example.com</span></div></div></div></div>
+</div>
+<div class="lbl">Dock icon</div>
+<div class="wall"><div class="dock4">
+<div class="dk"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><em></em></div>
+<div class="dk"><div class="ico2" style="--c:#14b8a6"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><em></em></div>
+<div class="dk"><div class="ico2" style="--c:#ec4899"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><em></em></div>
+<div class="dk"><div class="ico2 byu" style="--c:#3f3f46"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><em></em></div>
+</div><div class="caps4"><span>Main</span><span>Work</span><span>Studio</span><span>Lab</span></div></div>
+</div>
+
+</div>
+</div>
+
+<!-- ═══════════════════ V3 ═══════════════════ -->
+<div class="variant v3">
+<p class="cap"><b>V3 · Dot + tint + foot line.</b> V1's light tint and dot, plus option B's thin line along the foot of the key, the header and the Dock icon.</p>
+<div class="pair">
+
+<div class="dev face-std">
+<div class="lbl">Std dark · tile bar</div>
+<div class="strip">
+<div class="tile sel" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><span class="tt"><b><span class="dotc"></span>Main</b><span class="sb">~/.claude · ann</span></span></div>
+<div class="tile" style="--c:#14b8a6"><div class="ico2"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><span class="tt"><b><span class="dotc"></span>Work</b><span class="sb">~/.claude-work · ben</span></span></div>
+<div class="tile" style="--c:#ec4899"><div class="ico2"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><span class="tt"><b><span class="dotc"></span>Studio</b><span class="sb">~/.claude-studio · cat</span></span></div>
+<div class="tile byu" style="--c:#3f3f46"><div class="ico2"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><span class="tt"><b><span class="dotc"></span>Lab</b><span class="sb">~/.claude-lab · dan</span></span></div>
+</div>
+<div class="lbl">Card header</div>
+<div class="hdrs">
+<div class="card"><div class="hdr" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div></div></div>
+<div class="card"><div class="hdr byu" style="--c:#3f3f46"><div class="ico2 byu"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Lab</div><div class="inuse"><i></i><span>dan@example.com</span></div></div></div></div>
+</div>
+<div class="lbl">Dock icon</div>
+<div class="wall"><div class="dock4">
+<div class="dk"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><em></em></div>
+<div class="dk"><div class="ico2" style="--c:#14b8a6"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><em></em></div>
+<div class="dk"><div class="ico2" style="--c:#ec4899"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><em></em></div>
+<div class="dk"><div class="ico2 byu" style="--c:#3f3f46"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><em></em></div>
+</div><div class="caps4"><span>Main</span><span>Work</span><span>Studio</span><span>Lab</span></div></div>
+</div>
+
+<div class="dev face-silver">
+<div class="lbl">Silver · tile bar</div>
+<div class="strip">
+<div class="tile sel" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><span class="tt"><b><span class="dotc"></span>Main</b><span class="sb">~/.claude · ann</span></span></div>
+<div class="tile" style="--c:#14b8a6"><div class="ico2"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><span class="tt"><b><span class="dotc"></span>Work</b><span class="sb">~/.claude-work · ben</span></span></div>
+<div class="tile" style="--c:#ec4899"><div class="ico2"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><span class="tt"><b><span class="dotc"></span>Studio</b><span class="sb">~/.claude-studio · cat</span></span></div>
+<div class="tile byu" style="--c:#3f3f46"><div class="ico2"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><span class="tt"><b><span class="dotc"></span>Lab</b><span class="sb">~/.claude-lab · dan</span></span></div>
+</div>
+<div class="lbl">Card header</div>
+<div class="hdrs">
+<div class="card"><div class="hdr" style="--c:#d97757"><div class="ico2"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Main</div><div class="inuse"><i></i><span>ann@example.com</span></div></div></div></div>
+<div class="card"><div class="hdr byu" style="--c:#3f3f46"><div class="ico2 byu"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><div class="cname"><div class="nm"><span class="dotc"></span>Claude Lab</div><div class="inuse"><i></i><span>dan@example.com</span></div></div></div></div>
+</div>
+<div class="lbl">Dock icon</div>
+<div class="wall"><div class="dock4">
+<div class="dk"><div class="ico2" style="--c:#d97757"><span class="lb">MAIN</span><i class="g"></i><b>5h<span>34</span></b><i class="g"></i><b>wk<span>26</span></b></div><em></em></div>
+<div class="dk"><div class="ico2" style="--c:#14b8a6"><span class="lb">WORK</span><i class="r"></i><b>5h<span>100</span></b><i class="a"></i><b>wk<span>61</span></b></div><em></em></div>
+<div class="dk"><div class="ico2" style="--c:#ec4899"><span class="lb">STUDIO</span><i class="g"></i><b>5h<span>12</span></b><i class="g"></i><b>wk<span>8</span></b></div><em></em></div>
+<div class="dk"><div class="ico2 byu" style="--c:#3f3f46"><span class="lb">LAB</span><i class="g"></i><b>5h<span>22</span></b><i class="g"></i><b>wk<span>15</span></b></div><em></em></div>
+</div><div class="caps4"><span>Main</span><span>Work</span><span>Studio</span><span>Lab</span></div></div>
+</div>
+
+</div>
+</div>
+
+<p class="pick"><b>My pick: V2 · Dot + stronger tint.</b> The colour reads at a glance, as in the swatch grid you liked, and no key's shape or text changes; the name stays at 5.6:1 or more.</p>
+
+<h2>Notes</h2>
+<ul class="rules">
+  <li><b>Tint, not fill.</b> On Std the colour is deepened to 50% brightness before it is laid over the gunmetal key, so the white legend keeps its contrast; on Silver the colour is laid over the key as it is. Strength: V1 and V3 45% on Std, 22% on Silver; V2 80% on Std, 42% on Silver (the card header and Dock icon take a little less on Std: V2 55% and 60%).</li>
+  <li><b>By usage</b> (Lab) keeps today's plain key, header and icon: only a graphite dot (#3f3f46, pale ring) so the name lines up with its neighbours; no tint, no foot line.</li>
+  <li><b>The selected tile</b> stays latched down with its orange strip on top, over the tinted face; in V3 an orange profile has an orange strip above and an orange foot line below.</li>
+  <li><b>The picture in each tile is the Dock icon's.</b> The tile pictures are drawn as today; if the Dock icon takes a tint (bottom rows), the tile picture would take it too.</li>
+</ul>
+
+<h3>Contrast on the tinted faces (worst point across the key's gradient, selected and unselected, all ten colours checked)</h3>
+<div class="tbl-wrap"><table class="tbl">
+  <thead><tr><th>Face</th><th>Text</th><th>Orange</th><th>Teal</th><th>Pink</th><th>Lowest of ten</th></tr></thead>
+  <tbody>
+    <tr><td>Std key, today (no tint)</td><td>name · sub line</td><td colspan="4">4.6 · 2.9 at the top of the text; lower than the targets already, so the tint also deepens it</td></tr>
+    <tr><td>Std key, V1 and V3 (45%)</td><td>name · sub line</td><td>6.0 · 3.6</td><td>5.7 · 3.4</td><td>6.4 · 3.8</td><td>5.2 · 3.2</td></tr>
+    <tr><td>Std key, V2 (80%)</td><td>name · sub line</td><td>7.2 · 4.1</td><td>6.5 · 3.8</td><td>8.0 · 4.4</td><td>5.6 · 3.4</td></tr>
+    <tr><td>Silver key, V1 and V3 (22%)</td><td>name · sub line</td><td>7.6 · 3.6</td><td>7.9 · 3.6</td><td>7.2 · 3.5</td><td>7.1 · 3.4</td></tr>
+    <tr><td>Silver key, V2 (42%)</td><td>name · sub line</td><td>6.8 · 3.4</td><td>7.3 · 3.5</td><td>6.2 · 3.2</td><td>6.0 · 3.1</td></tr>
+    <tr><td>Std card header, V1 · V2</td><td>name · address</td><td colspan="3"></td><td>8.8 · 3.7 · 8.1 · 3.4</td></tr>
+    <tr><td>Silver card header, V1 · V2</td><td>name · address</td><td colspan="3"></td><td>9.0 · 5.0 · 7.3 · 4.0</td></tr>
+    <tr><td>Dock icon, V1 · V2 (45% · 60%)</td><td>numbers · label · "5h" "wk"</td><td colspan="3"></td><td>10.2 · 6.5 · 3.6 · 9.0 · 5.8 · 3.2</td></tr>
+  </tbody>
+</table></div>
+<p class="sub" style="margin-top:8px">Name must reach 4.5:1 and the sub line 3:1. The sub line is the legend at 65% opacity, as in TileText. Figures are computed from the app's key gradients (Sources/Faces.swift) with the tint laid over them; not measured in the running app. Silver's lightest colour, yellow, was among the ten and still passes.</p>
+
+</div>
+</body>
+</html>

@@ -28,6 +28,8 @@ A sketch shows what was proposed at the time. The app and the CHANGELOG say what
 - [login-security-badge-sketch.html](login-security-badge-sketch.html): the sign-in security badge.
 - [profile-colours-sketch.html](profile-colours-sketch.html): where a profile's colour shows (dot, edge, edge and wash);
   not decided yet.
+- [profile-colours-2-sketch.html](profile-colours-2-sketch.html): round 2, on today's Settings tile bar: a dot before the
+  name plus a light or stronger tint of the key face, with or without a foot line; not decided yet.
 - [settings-sidebar-1A.html](settings-sidebar-1A.html): the Settings sidebar, kept for later.
 
 Older sketches (earlier rounds, kept for the record):
