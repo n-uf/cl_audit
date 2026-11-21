@@ -252,7 +252,9 @@ do {
                 found.append("\(f):\(i + 1) \(bad)")
             }
             // nor do comments name an app's screens or files ("alert" stays allowed: whether numbers call for one is Core's data)
-            for bad in ["▸", "receipt", "Dock", "Settings", "card", "Card", "menu", "Menu"] where l.contains(bad) { found.append("\(f):\(i + 1) \(bad) (comment)") }
+            for bad in ["▸", "receipt", "Dock", "Settings"] where l.contains(bad) { found.append("\(f):\(i + 1) \(bad) (comment)") }
+            // (card and menu as whole words: "@discardableResult" or "discard" are no screen)
+            if l.range(of: #"\b[Cc]ards?\b|\b[Mm]enus?\b"#, options: .regularExpression) != nil { found.append("\(f):\(i + 1) card or menu (comment)") }
         }
     }
     check(files.count >= 5 && found.isEmpty, "Core/ (\(files.count) files): Foundation only, no app paths, files, wording or global state: \(found)")
