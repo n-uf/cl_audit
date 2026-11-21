@@ -1268,18 +1268,21 @@ enum SessionsExport {
                 if name.hasPrefix("local_") { po.notEntriesLeftOut += 1; leftOut += 1 }
                 continue
             }
-            guard let f = reader.file(c), let raw = SessionsRestore.read(f.fd, size: f.st.st_size) else { leftOut += 1; continue }
+            guard let f = reader.file(c) else { leftOut += 1; continue }
+            // (one of 64 MB or more is never read: left out and counted like one it can't read, as the preview says)
+            guard let raw = SessionsRestore.read(f.fd, size: f.st.st_size) else { close(f.fd); po.unreadableLeftOut += 1; leftOut += 1; continue }
             close(f.fd)
             var body = raw
-            if zip, ClaudeFiles.isEntryName(name) {
+            if ClaudeFiles.isEntryName(name) {
                 // a zip leaves out an entry's connection settings (the encrypted image keeps them); the keys are looked for in what stays
                 if let r = EntryConnections.without(raw) {
-                    body = r.data
-                    if r.held > 0 { po.connectionsLeftOut += 1 }
-                } else {
-                    po.unreadableLeftOut += 1; leftOut += 1; continue       // an entry this can't read (UTF-16, a byte-order mark, not an object): it can't be vouched for
+                    if zip { body = r.data; if r.held > 0 { po.connectionsLeftOut += 1 } }
+                } else if !move {
+                    // an entry this can't read (UTF-16, a byte-order mark, not an object): it can't be vouched for, and in the image too
+                    // its ids couldn't be replaced or its keys found (UTF-16 text hides both); a move keeps it as it is
+                    po.unreadableLeftOut += 1; leftOut += 1; continue
                 }
-            } else if zip, name == "scheduled-tasks.json", EntryConnections.top([UInt8](raw)) == nil {
+            } else if !move, name == "scheduled-tasks.json", EntryConnections.top([UInt8](raw)) == nil {
                 po.unreadableLeftOut += 1; leftOut += 1; continue           // the same for a task file it can't read
             }
             if !SecretScan.scan(body).isEmpty {

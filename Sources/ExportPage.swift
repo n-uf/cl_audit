@@ -698,9 +698,11 @@ struct ExportPage: View {
                     }
                 }
             }
-            if !runner.usesImage, let p = pv, p.connections > 0 || p.unreadable > 0 {
-                let settings = p.connections > 0 ? "Connection settings in \(n(p.connections, "Code-tab entry", "Code-tab entries")) need the encrypted disk image: left out of a zip." : ""
-                let unread = p.unreadable > 0 ? "\(n(p.unreadable, "Code-tab file", "Code-tab files")) it can't read \(p.unreadable == 1 ? "is" : "are") left out of a zip too." : ""
+            // (a Code-tab file it can't read, or one too big to read, is left out of the encrypted image too: its ids couldn't be
+            // replaced; a move keeps it as it is)
+            if let p = pv, (!runner.usesImage && p.connections > 0) || (!runner.move && p.unreadable > 0) {
+                let settings = !runner.usesImage && p.connections > 0 ? "Connection settings in \(n(p.connections, "Code-tab entry", "Code-tab entries")) need the encrypted disk image: left out of a zip." : ""
+                let unread = !runner.move && p.unreadable > 0 ? "\(n(p.unreadable, "Code-tab file", "Code-tab files")) it can't read \(p.unreadable == 1 ? "is" : "are") left out." : ""
                 SRowLine(text: [settings, unread].filter { !$0.isEmpty }.joined(separator: " "), color: face.caution)
             }
             SRow(label: "Claude Code setup", info: "Claude Code's own setup, from \(tilde(entry.configDir)): CLAUDE.md and the .md files it includes (its @ lines), skills, agents, commands, output styles, keybindings, settings.json (with the scripts its hooks and status line point to) and the plugin list, so a move to another Mac brings them. Never the plugins themselves, settings.local.json or a sign-in. A link is never followed: a skill that is one, or holds one, is left out and listed. settings.json, its scripts and the plugin marketplaces can hold tokens no scan recognises, so only the encrypted disk image carries them; a zip leaves them out. Importing leaves them out unless you add them.", stacked: true) {

@@ -12,6 +12,7 @@ the notes before updating.
 - An encrypted export no longer fails when two exports of the same name are made at once: it tries once more under a name of its own, and when hdiutil gives no reason the message says so.
 - An export no longer stops when two of a session's file names become the same once an address in them is replaced: the second gets a free name beside it.
 - Export's key count for an encrypted disk image now includes Code-tab entries whose keys sit in their connection settings (the image keeps those settings; a zip leaves them out).
+- An encrypted export now leaves out a Code-tab file cl_audit can't read (UTF-16 text, say), as a zip already did: the ids in it couldn't be replaced. A move keeps it as it is. The Export page says how many.
 
 ## 26.11.68 — 2026-11-20
 
