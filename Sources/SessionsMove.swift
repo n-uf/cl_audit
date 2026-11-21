@@ -284,7 +284,7 @@ enum SessionsMove {
     /// its backup settings. None holds a secret.
     static let known: [Known] = [
         Known(key: "face", label: "Face", store: .general, kind: .choice(Face.allCases.map { ($0.rawValue, $0.title) }), def: Face.std.rawValue),
-        Known(key: Privacy.key, label: "Emails", store: .general, kind: .bool(on: "shown", off: "hidden"), def: "true"),
+        Known(key: AddressSettings.key, label: "Emails", store: .general, kind: .bool(on: "shown", off: "hidden"), def: "true"),
         Known(key: DashboardPrefs.historyKey, label: "Usage history", store: .general, kind: .bool(on: "on", off: "off"), def: "true"),
         Known(key: "dashboardCardStyle", label: "Dashboard cards", store: .general, kind: .choice(PanelDesign.allCases.map { ($0.rawValue, $0.title) }), def: PanelDesign.segments.rawValue),
         Known(key: "dashboardRange", label: "History period", store: .general, kind: .choice(StatsRange.allCases.map { ($0.rawValue, $0.title) }), def: StatsRange.week.rawValue),

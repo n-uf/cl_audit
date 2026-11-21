@@ -12,6 +12,7 @@
 // Done adds the profile like New profile does (NewAccountDraft, NewAccountSetup.createOrConnect, finishNew's seat link),
 // and takes the implicit "main" out of the list in the same save, which removes its icon app.
 
+import AddressPrivacy
 import AppKit
 import ProfileCore
 import SwiftUI
@@ -338,7 +339,7 @@ struct FirstRunPage: View {
     @ObservedObject var model: SettingsModel
     var width: CGFloat = 708
     @Environment(\.face) private var face
-    @ObservedObject private var privacy = Privacy.shared
+    @ObservedObject private var privacy = AddressPrivacy.shared
     @State private var finishing: String?
 
     private var step: FirstRun.Step { FirstRun.step(claude: model.claude != nil, draft: model.firstRun) }
@@ -408,7 +409,7 @@ struct FirstRunPage: View {
         Button { model.firstRunPick(f.path) } label: {
             HStack(spacing: 8) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(Privacy.masked(f.email)).font(.system(size: 12.5, weight: .medium)).foregroundStyle(face.text).settingsEmail(true)
+                    AccountValue(text: f.email).font(.system(size: 12.5, weight: .medium)).foregroundStyle(face.text)
                     Text(([f.detail].filter { !$0.isEmpty } + ["in \(f.path)"]).joined(separator: " · "))
                         .font(.system(size: 10.5)).foregroundStyle(face.muted)
                 }
@@ -427,7 +428,7 @@ struct FirstRunPage: View {
         return HStack(spacing: 8) {
             Image(systemName: "checkmark.circle.fill").foregroundStyle(FaceTheme.ledOn).font(.system(size: 14))
             VStack(alignment: .leading, spacing: 1) {
-                Text(Privacy.masked(email)).font(.system(size: 12.5, weight: .medium)).foregroundStyle(face.text).settingsEmail(true)
+                AccountValue(text: email).font(.system(size: 12.5, weight: .medium)).foregroundStyle(face.text)
                     .lineLimit(1).truncationMode(.middle)
                 Text("in \(folder)").font(.system(size: 10.5)).foregroundStyle(face.muted)
             }
@@ -469,7 +470,7 @@ struct FirstRunPage: View {
                 HStack(spacing: 8) { state; Spacer(minLength: 6); keys }
                 VStack(alignment: .leading, spacing: 6) { state; keys }
             }
-            SRowLine(text: "Finish in the browser\(model.firstRun.email.isEmpty ? "" : " as \(Privacy.masked(model.firstRun.email))"); cl_audit goes on by itself once the account shows up.")
+            SRowLine(text: "Finish in the browser\(model.firstRun.email.isEmpty ? "" : " as \(AddressSettings.words(model.firstRun.email))"); cl_audit goes on by itself once the account shows up.")
         }
     }
 

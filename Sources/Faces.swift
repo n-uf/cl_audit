@@ -5,6 +5,7 @@
 //           takes the Mac's light appearance
 // Views read the chosen face from the environment (`\.face`). The Dock icons and their panels keep their own look.
 
+import AddressPrivacy
 import AppKit
 import ProfileCore
 import SwiftUI
@@ -765,12 +766,19 @@ struct MenuWell: View {
     /// Where a value too long for its well is cut, as a last resort: at the end, so the start of an account state,
     /// an address or a path stays readable ("not sig…d in yet" or "~/.cl…-main" from a cut in the middle read badly).
     var truncation: Text.TruncationMode = .tail
+    /// The value is this REAL address (or an account id): while addresses are hidden it is drawn as AddressPrivacy's blurred
+    /// stand-in (the address only while the pointer is on it) and read as "hidden address"; the other views of the well, its
+    /// status sign, stay readable. `text` is then ignored.
+    var address: String? = nil
     @Environment(\.face) private var face
     var body: some View {
         HStack(spacing: 7) {
-            Text(text).font(mono ? .system(size: 11.5, design: .monospaced) : .system(size: 12)).lineLimit(1)
-                .truncationMode(truncation)
-                .foregroundStyle(tint ?? Color.hex(0xececee))
+            Group {
+                if let address { BlurredAddress(address: address, size: 12) } else { Text(text) }
+            }
+            .font(mono ? .system(size: 11.5, design: .monospaced) : .system(size: 12)).lineLimit(1)
+            .truncationMode(truncation)
+            .foregroundStyle(tint ?? Color.hex(0xececee))
             if fill { Spacer(minLength: 0) }
             if let icon { Image(systemName: icon).font(.system(size: 10)).foregroundStyle(tint ?? Color.hex(0xececee)) }
             Image(systemName: "chevron.up.chevron.down").font(.system(size: 7.5, weight: .semibold)).opacity(0.8)

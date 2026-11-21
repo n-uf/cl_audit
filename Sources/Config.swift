@@ -801,7 +801,7 @@ enum Store {
 struct FolderChoice: Hashable {
     var path: String       // as stored, with ~
     var detail: String?    // e.g. the account e-mail
-    var title: String { detail.map { "\(path)  ·  \(Privacy.masked($0))" } ?? path }
+    var title: String { detail.map { "\(path)  ·  \(AddressSettings.words($0))" } ?? path }
 }
 
 enum Detect {

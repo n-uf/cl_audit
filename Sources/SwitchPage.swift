@@ -12,6 +12,7 @@
 // Display colours, one meaning each: green = in use; mint = switching and the account switched to; amber = waiting for
 // you, or a warning; red = something failed. Only the account in use is lit.
 
+import AddressPrivacy
 import AppKit
 import ProfileCore
 import SwiftUI
@@ -182,7 +183,7 @@ struct SwitchPage: View {
             if !again, let back = cameFrom {
                 Button("Switch back…") { model.showSwitch(AccountEntry.switchKey(entry.id, back.id)) }
                     .buttonStyle(PillButtonStyle(tint: nil, compact: true))
-                    .help("Switch back to \(Privacy.masked(back.email))")
+                    .help("Switch back to \(AddressSettings.words(back.email))")
             }
             Button("‹ Back") { leave() }.buttonStyle(.pill(FaceTheme.ledOn, compact: true)).help("Back to \(name)'s settings")
         case .other(let e):
@@ -292,8 +293,7 @@ struct SwitchPage: View {
         // so only one box is dark
         return AccountBox(lamp: row.lit ? FaceTheme.ledOn : nil, badge: "In use", badgeTone: row.lit ? .ok : .warn, detail: detail,
                           inUse: true, rest: !again && runner.phase != .reached) {
-            Text(Privacy.masked(Self.inUseName(row.show, expected: row.status?.expectedEmail))).font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
+            BoxText(text: Self.inUseName(row.show, expected: row.status?.expectedEmail), role: .title)
         } content: {
             if let n = row.line { BoxText(text: n, role: .note) }
             if limits.contains(where: { $0.p != nil }) {
@@ -312,10 +312,16 @@ struct SwitchPage: View {
         let text: String
         let role: Role
         @Environment(\.face) private var face
+        /// A title is the REAL address (or an account id's label): while addresses are hidden it is drawn as AddressPrivacy's
+        /// stand-in and read as "hidden address", never as a mask of itself (a title that is no address is plain).
+        @ViewBuilder private func title(_ color: Color) -> some View {
+            AccountValue(text: text, size: 13)
+            .font(.system(size: 13, weight: .semibold)).foregroundStyle(color).lineLimit(1).truncationMode(.tail)
+        }
         var body: some View {
             switch role {
-            case .title: Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(face.text).lineLimit(1).truncationMode(.tail).settingsEmail()
-            case .softTitle: Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(face.soft).lineLimit(1).truncationMode(.tail).settingsEmail()
+            case .title: title(face.text)
+            case .softTitle: title(face.soft)
             case .note: Text(text).font(.system(size: 11.5)).foregroundStyle(face.muted).fixedSize(horizontal: false, vertical: true)
             }
         }
@@ -329,7 +335,7 @@ struct SwitchPage: View {
         func box(_ lit: String?) -> some View {
             AccountBox(lamp: nil, badge: back ? "Move back" : "Standby", detail: s.plan.map(Account.planWords),
                        unlit: !selected, selected: selected, litBadge: lit) {
-                BoxText(text: Privacy.masked(s.label), role: selected ? .title : .softTitle)
+                BoxText(text: s.label, role: selected ? .title : .softTitle)
             } content: {
                 BoxText(text: Self.boxWords(s, back: back, name: name, moveCount: selected && plan?.moves == true ? sessionWords(plan) : nil), role: .note)
             }
@@ -520,7 +526,7 @@ struct SwitchPage: View {
         let isDefault = Account(entry).isDefaultDir
         return SCard(title: "What changes", info: changesInfo) {
             SRow(label: "Claude Code", first: true, stacked: true) {
-                value(AccountBook.switchWords(folder: entry.configDir, email: Privacy.masked(runner.goal?.wantedEmail ?? standby.email), isDefault: isDefault))
+                value(AccountBook.switchWords(folder: entry.configDir, email: AddressSettings.words(runner.goal?.wantedEmail ?? standby.email), isDefault: isDefault))
             }
             SRow(label: "Sessions", stacked: true) {
                 value(moves
@@ -618,7 +624,7 @@ struct SwitchPage: View {
                     step(k + 1, "Claude Code is on \(to) already", "It signed in elsewhere, so no sign-in opens for \(entry.configDir).")
                     step(k + 2, "Sign the Claude app in to \(to)", "In \(name)'s Claude window, once it opens again: its sessions are there.")
                 } else {
-                    step(k + 1, "Claude Code's sign-in opens in Terminal", "For \(entry.configDir), with \(Privacy.masked(runner.goal?.wantedEmail ?? standby.email)) filled in.")
+                    step(k + 1, "Claude Code's sign-in opens in Terminal", "For \(entry.configDir), with \(AddressSettings.words(runner.goal?.wantedEmail ?? standby.email)) filled in.")
                     step(k + 2, "Finish it in the browser as \(to)", "If the browser is signed in to claude.ai as someone else, switch its account there first.")
                 }
                 step(k + 3, again ? "cl_audit checks Claude Code's sign-in ended well" : "cl_audit checks the account",
@@ -667,7 +673,7 @@ struct SwitchPage: View {
             return entry.claudeWindow ? "Open \(name)'s Claude window and sign it in to \(to): cl_audit doesn't sign the app in or out." : nil
         case .other(let e):
             if let c = clash {
-                return "\(Privacy.masked(e)) is \(c.owner)'s account, so \(name) doesn't take it: its numbers wait until you sign in as \(to) (or another of \(name)'s accounts)."
+                return "\(AddressSettings.words(e)) is \(c.owner)'s account, so \(name) doesn't take it: its numbers wait until you sign in as \(to) (or another of \(name)'s accounts)."
             }
             return "\(name) works on \(AccountNames.short(e)) now, and \(from) is on standby. To get \(to), switch the browser's claude.ai account first, then sign in again."
         case .timedOut:

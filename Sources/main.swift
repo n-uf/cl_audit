@@ -18,6 +18,10 @@ import WidgetKit
 
 let args = CommandLine.arguments
 
+// Every role below that shows an address (the settings app, a Dock icon app, the agent, and the renders) takes the "Show emails"
+// setting first: hidden unless it says shown (AddressSettings).
+AddressSettings.start()
+
 if args.count >= 2, args[1] == "--sync" {
     guard Store.exists else {
         print("No accounts yet: open “cl_audit” to add them.")

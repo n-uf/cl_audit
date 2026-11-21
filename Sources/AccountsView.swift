@@ -2,6 +2,7 @@
 // a lamp, the address (a pop-up for what can be done with it), its plan and organisation, IN USE or STANDBY, and under
 // them its limits as bars, the dashboard's, or one line saying why there are none.
 
+import AddressPrivacy
 import SwiftUI
 
 struct AccountBox<Header: View, Content: View>: View {
@@ -169,7 +170,7 @@ struct SwitchStripLine: View {
 }
 
 /// The address at the top of an account box, as a pop-up: the address, then ⌃⌄. Shortened at the end ("…") rather
-/// than widening the card.
+/// than widening the card. `text` is the real address (never a mask): while addresses are hidden it draws as a stand-in.
 struct AccountBoxTitle: View {
     let text: String
     var tint: Color? = nil
@@ -179,9 +180,12 @@ struct AccountBoxTitle: View {
     var body: some View {
         HStack(spacing: 5) {
             if let icon { Image(systemName: icon).font(.system(size: 10)).foregroundStyle(tint ?? face.text) }
-            Text(text).font(.system(size: 13, weight: .semibold)).foregroundStyle(tint ?? face.text)
-                .lineLimit(1).truncationMode(.tail)
-                .settingsEmail(text.contains("@"))
+            // the REAL address goes in: AddressPrivacy decides what is drawn (one fixed blurred stand-in, as wide as itself
+            // whatever the address, so the chevron never moves with the address's length; the address while the pointer is
+            // on it or Show emails is on) and what is spoken ("hidden address"). A title that is no address or id is plain.
+            AccountValue(text: text, size: 13)
+            .font(.system(size: 13, weight: .semibold)).foregroundStyle(tint ?? face.text)
+            .lineLimit(1).truncationMode(.tail)
             Image(systemName: "chevron.up.chevron.down").font(.system(size: 8, weight: .semibold)).foregroundStyle(face.muted)
         }
         .contentShape(Rectangle())

@@ -8,8 +8,12 @@
 //     it has no week); picking one opens the Switch page with it picked
 //   - while a limit is full, the one offered first also on the top level: "Switch to ultra-3…"
 //
-// Names are short names (AccountNames.short), which follow Settings ▸ General ▸ Emails.
+// Names are short names (AccountNames.short), which follow Settings ▸ General ▸ Emails: the part before the @ while addresses
+// are shown, "hidden address" while they are hidden. The rows that must tell several accounts apart ("Switch to …", the
+// standby accounts) are drawn by AddressMenuRow while hidden: one blurred stand-in, the real address only while the menu
+// highlights the row; their titles and accessibility labels say "hidden address" for every account.
 
+import AddressPrivacy
 import AppKit
 import ProfileCore
 
@@ -18,6 +22,8 @@ enum SwitchMenu {
     struct Line: Equatable {
         let key: String             // "<profile>~<standby account>": the Switch page's
         let short: String
+        /// The account's address (or its "account 1a2b3c4d" label), for a row drawn by AddressMenuRow; never in a title.
+        var address = ""
         let words: String           // "3 days ago", or "" when it was never in use here
         /// Not known to be full: it may be offered while a limit is full.
         let room: Bool
@@ -57,7 +63,7 @@ enum SwitchMenu {
         return offers.map { o in
             let full = o.knownFull(now: now)          // orders and picks the offer only; never shown
             let words = o.standby.lastInUse.map { AccountBook.ago($0, now: now) } ?? ""
-            return Line(key: o.key, short: o.short, words: words, room: !full, canSwitch: o.standby.seat != nil || !o.standby.email.isEmpty,
+            return Line(key: o.key, short: o.short, address: o.standby.label, words: words, room: !full, canSwitch: o.standby.seat != nil || !o.standby.email.isEmpty,
                         offered: o.standby.id == best?.id, own: o.standby.id == own)
         }
     }
@@ -70,8 +76,26 @@ enum SwitchMenu {
 
     /// "Switch to ultra-3…": on the top level, only while a limit is full.
     static func bestItem(_ l: Line, target: AnyObject, action: Selector) -> NSMenuItem {
-        let i = NSMenuItem(title: l.own ? SwitchOffer.moveBackTitle(l.short) : "Switch to \(l.short)…", action: action, keyEquivalent: "")
-        i.target = target; i.representedObject = l.key
+        accountItem(l, prefix: l.own ? SwitchOffer.moveBackPrefix : "Switch to ", suffix: "…", enabled: true, target: target, action: action)
+    }
+
+    /// A row for one account: a native item with its short name while that tells the accounts apart (an address that is
+    /// shown), else an AddressMenuRow (the blurred stand-in, the address while the menu highlights the row), so several hidden
+    /// accounts stay distinguishable. Either way its action sends `action` to `target` from an item that holds the Switch
+    /// page's key, and its title is the words ("hidden address" while hidden).
+    private static func accountItem(_ l: Line, prefix: String, suffix: String, enabled: Bool, target: AnyObject, action: Selector) -> NSMenuItem {
+        let i: NSMenuItem
+        if AddressSettings.hides(l.address) && AddressPrivacy.shared.blur {
+            let key = l.key
+            i = AddressMenuRow.item(prefix: prefix, address: l.address, suffix: suffix, enabled: enabled) { [weak target] in
+                let sender = NSMenuItem(); sender.representedObject = key      // what the action reads
+                NSApp.sendAction(action, to: target, from: sender)
+            }
+        } else {
+            i = NSMenuItem(title: prefix + l.short + suffix, action: enabled ? action : nil, keyEquivalent: "")
+            i.target = target; i.isEnabled = enabled
+        }
+        i.representedObject = l.key
         return i
     }
 
@@ -97,9 +121,7 @@ enum SwitchMenu {
         }
         for l in lines where !l.own || inUseShort(v) == nil {
             // standby accounts plain, by address only
-            let i = NSMenuItem(title: "\(l.short)…", action: l.canSwitch ? action : nil, keyEquivalent: "")
-            i.target = target; i.representedObject = l.key; i.isEnabled = l.canSwitch
-            sub.addItem(i)
+            sub.addItem(accountItem(l, prefix: "", suffix: "…", enabled: l.canSwitch, target: target, action: action))
         }
         let top = NSMenuItem(title: "Switch account", action: nil, keyEquivalent: "")
         top.submenu = sub

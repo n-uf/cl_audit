@@ -46,7 +46,7 @@ enum MoveLive {
     static func reload() {
         guard let d = SessionsMove.prefs as? UserDefaults, d === UserDefaults.standard else { return }
         FacePrefs.shared.face = Face(rawValue: d.string(forKey: "face") ?? "") ?? .std
-        if d.object(forKey: Privacy.key) != nil, d.bool(forKey: Privacy.key) != Privacy.shared.show { Privacy.shared.set(show: d.bool(forKey: Privacy.key)) }
+        if d.object(forKey: AddressSettings.key) != nil { AddressSettings.take(shown: d.bool(forKey: AddressSettings.key)) }   // (through the store: it tells the other processes)
         let dash = DashboardPrefs.shared
         dash.cardStyle = PanelDesign(rawValue: d.string(forKey: "dashboardCardStyle") ?? "") ?? .segments
         dash.range = StatsRange(rawValue: d.string(forKey: "dashboardRange") ?? "") ?? .week

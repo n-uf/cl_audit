@@ -17,6 +17,7 @@
 // One sign-in window per app: starting one ends the earlier (`replaced`). Only the settings app starts them (the agent and
 // the Dock icons keep ClaudeCLI.openLogin's script), so the work folder has one owner.
 
+import AddressPrivacy
 import ClaudeAuth
 import Foundation
 import ProfileCore
@@ -258,7 +259,7 @@ enum SignInWindow {
 }
 
 /// How a sign-in ended, in cl_audit's words (the pages show this in place of their own lines). Fields, not text, so the
-/// addresses are blurred as the page is drawn (Privacy.masked) and follow the Blur setting.
+/// addresses are hidden as the page is drawn (AddressSettings.words: "hidden address") and follow the Show emails setting.
 struct SignInSaid: Equatable {
     enum Kind: Equatable { case signedIn, unverified, wrongAccount, declined, failed, timedOut, replaced, refused }
     var kind: Kind
@@ -297,13 +298,13 @@ struct SignInSaid: Equatable {
     }
 
     /// The line. Never "Signed in." for an unconfirmed sign-in; no address is ever filled in by it.
-    var text: String { text(emailsShown: Privacy.shared.show) }
+    var text: String { text(emailsShown: !AddressPrivacy.shared.blur) }
 
     /// The same for a given "Show emails" setting (what a check hands in: never the real preference). The amber lines name
-    /// accounts by their short names only; the red one (another profile's) by the address, masked while emails are hidden.
+    /// accounts by their short names only; the red one (another profile's) by the address, "hidden address" while emails are hidden.
     func text(emailsShown shown: Bool) -> String {
         let folder = tilde(configDir)
-        func who(_ a: String?) -> String { a.map { shown ? $0 : Privacy.mask($0) } ?? "another account" }
+        func who(_ a: String?) -> String { a.map { AddressSettings.words($0, blur: !shown) } ?? "another account" }
         switch kind {
         case .signedIn: return "Signed in."
         case .unverified:
@@ -334,8 +335,8 @@ struct SignInSaid: Equatable {
     }
 
     /// What happened after a wrong or unconfirmed account (not another profile's): the profile follows its folder to it, and
-    /// the account before is on standby (none before: nothing to go back to). Short names only, masked while emails are hidden
-    /// (AccountNames.short).
+    /// the account before is on standby (none before: nothing to go back to). Short names only, "hidden address" while emails
+    /// are hidden (AccountNames.short).
     private func followWords(_ address: String?, shown: Bool) -> String {
         let now = address.map { AccountNames.shortName($0, shown: shown) } ?? "another account"
         var s = "Claude Code here is now signed in to \(now), so this profile uses it."

@@ -6,6 +6,7 @@
 // holds for an account, counted read-only from the window's own files (no session, title or group name is kept; the
 // default-profile move uses it).
 
+import AddressPrivacy
 import Foundation
 import ProfileCore
 
@@ -18,7 +19,8 @@ struct SwitchOffer {
     /// How every surface says that switching to the profile's own account moves Claude Code back to it.
     static let moveBackWords = "move Claude Code back here"
     /// The menus' full-limit item for the profile's own account in a clash: "Move Claude Code back to ann…".
-    static func moveBackTitle(_ short: String) -> String { "Move Claude Code back to \(short)…" }
+    static func moveBackTitle(_ short: String) -> String { moveBackPrefix + short + "…" }
+    static let moveBackPrefix = "Move Claude Code back to "
 
     /// "<profile>~<standby>": names the page, the alert's action and the menu items.
     var key: String { AccountEntry.switchKey(profile, standby.id) }
@@ -94,13 +96,15 @@ extension AccountEntry {
 }
 
 enum AccountNames {
-    /// An account's short name: its address before the @ ("ultra-2"), the first letter only while addresses are hidden.
-    static func short(_ email: String) -> String { shortName(email, shown: Privacy.shared.show) }
+    /// An account's short name: its address before the @ ("ultra-2") while addresses are shown, and "hidden address" while they
+    /// are hidden, the same for every account (AddressPrivacy.short: nothing of the address, not its first letter). A text that
+    /// is no address or id ("its account", "another account") is as it is. A menu row that must tell hidden accounts apart is
+    /// drawn with AddressMenuRow instead of from this text.
+    static func short(_ email: String) -> String { AddressSettings.hides(email) ? AddressPrivacy.short(address: email) : email }
 
     /// The same for a given "Show emails" setting (what a check hands in: never the real preference).
     static func shortName(_ email: String, shown: Bool) -> String {
-        let local = email.split(separator: "@").first.map(String.init) ?? email
-        return shown ? local : String(local.prefix(1)) + "•••"
+        AddressSettings.hides(email) ? AddressText.short(address: email, blur: !shown) : email
     }
 }
 

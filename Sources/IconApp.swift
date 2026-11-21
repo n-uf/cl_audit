@@ -1,3 +1,4 @@
+import AddressPrivacy
 import AppKit
 import ProfileCore
 import ServiceManagement
@@ -522,9 +523,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if let usage { m.addItem(info("Updated \(Self.ago(usage.fetchedAt)) · \(usage.source)")) }
         if let why = problem { m.addItem(info(why)) }
         if let note = status?.renewNote { m.addItem(info(note)) }
-        if Privacy.shared.show || loginEmail == nil { m.addItem(info("Sign-in: \(loginEmail ?? "checking…")")) }
+        if !AddressPrivacy.shared.blur || loginEmail == nil { m.addItem(info("Sign-in: \(loginEmail ?? "checking…")")) }
         if d.otherAccount, let want = expectedEmail {
-            m.addItem(info(Privacy.shared.show ? "⚠︎ This folder is set up for \(want)" : "⚠︎ This folder is set up for a different account"))
+            m.addItem(info(AddressPrivacy.shared.blur ? "⚠︎ This folder is set up for a different account" : "⚠︎ This folder is set up for \(want)"))
         }
         // the one key: Sign in…, or in the split Claude Code's own sign-in to the Claude app's account (the same Sign in,
         // its address filled in)

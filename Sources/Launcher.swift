@@ -728,7 +728,7 @@ struct PaletteView: View {
                             if row.activity.desktopOpen { OpenBadge() }
                             Text(row.subtitle).font(.caption2).lineLimit(1)
                                 .foregroundStyle(row.needsLogin ? Color.red : Color.secondary)
-                                .hidesEmail(row.subtitle.contains("@"))
+                                .hidesEmail(AddressSettings.hides(row.subtitle))
                             Spacer(minLength: 0)
                             // while a limit is full, one value: how long until it's back
                             if let full = row.full {
@@ -996,7 +996,7 @@ struct AccountCard: View {
                             Circle().fill(out ? face.danger : row.lit ? FaceTheme.ledOn : face.muted.opacity(0.4)).frame(width: 6, height: 6)
                             Text(label).font(.system(size: 12)).lineLimit(1).truncationMode(.middle)
                                 .foregroundStyle(out ? face.danger : face.muted)
-                                .hidesEmail(label.contains("@"))
+                                .hidesEmail(AddressSettings.hides(label))
                         }
                         if let n = row.line, notice == nil {          // (a notice says it once, in the limits' place)
                             Text(n).font(.system(size: 10.5)).foregroundStyle(face.muted.opacity(0.8)).lineLimit(2)
@@ -1005,7 +1005,7 @@ struct AccountCard: View {
                     } else {
                         Text(row.subtitle).font(.system(size: 12)).lineLimit(1)
                             .foregroundStyle(row.needsLogin ? face.danger : face.muted)
-                            .hidesEmail(row.subtitle.contains("@"))
+                            .hidesEmail(AddressSettings.hides(row.subtitle))
                     }
                 }
                 Spacer(minLength: 0)
@@ -1074,7 +1074,7 @@ struct AccountCard: View {
     /// Terminal in ⋯, saying whose sign-in it opens on.
     private var terminalWords: String {
         if notice?.signedOut == true { return "Terminal (asks to sign in first)" }
-        if let s = row.show.splitWords, !s.switched { return "Terminal (signed in as \(Privacy.masked(s.code)))" }
+        if let s = row.show.splitWords, !s.switched { return "Terminal (signed in as \(AddressSettings.words(s.code)))" }
         if let other = row.display.clash { return "Terminal (on \(other.name)'s account)" }
         return "Terminal"
     }
@@ -1082,7 +1082,7 @@ struct AccountCard: View {
         guard let a = row.show.loginAddress, a.contains("@") else {
             return "Sign Claude Code in Terminal in, on \(row.entry.name)'s folder"
         }
-        return "Sign Claude Code in Terminal in to \(Privacy.masked(a))"
+        return "Sign Claude Code in Terminal in to \(AddressSettings.words(a))"
     }
 
     /// The ticked account's row: its address and plan (ProfileShow.plan: none in a clash).
@@ -1101,18 +1101,18 @@ struct AccountCard: View {
             if let label = row.show.named.label {
                 if let own {
                     Toggle(isOn: Binding(get: { true }, set: { _ in actions.switchAccount(AccountEntry.switchKey(row.entry.id, own)) })) {
-                        Text(SwitchMenu.backTitle(Privacy.masked(label)))
+                        Text(SwitchMenu.backTitle(AddressSettings.words(label)))
                     }
                 } else {
                     Toggle(isOn: .constant(true)) {
-                        Text(Self.tickedTitle(label: Privacy.masked(label), plan: row.show.plan))
+                        Text(Self.tickedTitle(label: AddressSettings.words(label), plan: row.show.plan))
                     }
                 }
             }
             if !standby.isEmpty {
                 Divider()
                 ForEach(standby, id: \.id) { s in
-                    Button(Privacy.masked(s.label)) { actions.switchAccount(AccountEntry.switchKey(row.entry.id, s.id)) }
+                    Button(AddressSettings.words(s.label)) { actions.switchAccount(AccountEntry.switchKey(row.entry.id, s.id)) }
                 }
             }
             Divider()

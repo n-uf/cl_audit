@@ -3,6 +3,7 @@
 // into a chat window: the account line on top, the chat, and the field at the bottom. Answers are Markdown in a serif,
 // code blocks have Copy, and each answer says which model gave it.
 
+import AddressPrivacy
 import AppKit
 import ProfileCore
 import SwiftUI
@@ -145,18 +146,18 @@ struct QCWindow: View {
 }
 
 /// The account line: the profile and the address of the account quick chat answers on, its folder's, except in a clash,
-/// where that is another profile's: then the profile's own (QuickChatTarget.shownEmail; masked unless Privacy shows
-/// addresses), then New chat and Hide.
+/// where that is another profile's: then the profile's own (QuickChatTarget.shownEmail; "hidden address" unless AddressPrivacy
+/// shows addresses), then New chat and Hide.
 struct QCHeader: View {
     @ObservedObject var model: QuickChatModel
-    @ObservedObject private var privacy = Privacy.shared
+    @ObservedObject private var privacy = AddressPrivacy.shared
 
     var body: some View {
         HStack(spacing: 8) {
             if let t = model.target {
                 Text(t.name).font(.system(size: 12.5, weight: .semibold)).foregroundColor(QCColor.text)
                 if let e = t.shownEmail {
-                    Text(Privacy.masked(e)).font(.system(size: 12)).foregroundColor(QCColor.muted).lineLimit(1).truncationMode(.middle)
+                    Text(AddressSettings.words(e)).font(.system(size: 12)).foregroundColor(QCColor.muted).lineLimit(1).truncationMode(.middle)
                 }
             }
             if let t = model.target, let w = t.loginWords {

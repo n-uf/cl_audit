@@ -2,6 +2,7 @@
 // the history period (the dashboard's 24 h / 7 d / 30 d switch is the same setting), and which history
 // charts to show, and the Dock (Dock.swift). Edited on Settings ▸ Dashboard.
 
+import AddressPrivacy
 import SwiftUI
 import UserNotifications
 
@@ -62,7 +63,7 @@ struct DashboardSettings: View {
     }
 
     @Environment(\.face) private var face
-    @ObservedObject private var privacy = Privacy.shared
+    @ObservedObject private var privacy = AddressPrivacy.shared
 
     // Usage in the background: is usage being read, do alerts reach you (the dashboard display opens this when
     // reading stops). A key only when something needs you.
@@ -166,8 +167,8 @@ struct DashboardSettings: View {
     // Privacy: what cl_audit shows (Show emails, for screen sharing and screenshots) and what it reads (Usage history)
     var emailsCard: some View {
         SCard(title: "Privacy", info: "What cl_audit shows and what it reads on this Mac.") {
-            SRow(label: "Show emails", info: "Off: email addresses are left out of the dashboard's account lines, the launcher and the usage panels, masked like y•••@example.com in menus and sentences, and blurred in Settings (hover one to see it). For screen sharing and screenshots.", first: true) {
-                SSwitch(isOn: Binding(get: { privacy.show }, set: { privacy.set(show: $0) }), on: "shown", off: "hidden")
+            SRow(label: "Show emails", info: "Off: email addresses are left out of the dashboard's account lines, the launcher and the usage panels, written as “hidden address” in menus and sentences, and drawn as one fixed blurred stand-in in Settings (point at one to see it). For screen sharing and screenshots.", first: true) {
+                SSwitch(isOn: Binding(get: { !privacy.blur }, set: { privacy.setBlur(!$0) }), on: "shown", off: "hidden")
             }
             SRow(label: "Usage history", info: "The dashboard's history (when you use Claude, tokens per day, where they go), the cost estimate, the CSV export and the launcher's 7-day row. Read from the session files Claude Code keeps on this Mac: only the time, model, token counts, project folder and surface of each reply, never the messages. Off: no session file is read, and those are hidden. The limits come from Anthropic either way.") {
                 SSwitch(isOn: $prefs.history, on: "tokens, cost, CSV", off: "limits only")

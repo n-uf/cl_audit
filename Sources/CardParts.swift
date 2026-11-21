@@ -27,7 +27,7 @@ struct UsageNotice: Equatable {
         let name = row.entry.name.isEmpty ? "this profile" : row.entry.name
         func signIn(_ address: String?) -> String {
             guard let a = address, a.contains("@") else { return "Sign in to read \(name)'s usage." }
-            return "Sign in as \(Privacy.masked(a)) to read \(name)'s usage."
+            return "Sign in as \(AddressSettings.words(a)) to read \(name)'s usage."
         }
         let address = show.loginAddress
         let key: Key = d.key != nil ? .signIn : .none
@@ -36,12 +36,12 @@ struct UsageNotice: Equatable {
         let signedIn = d.sign != .signedOut && d.sign != .expired
         if d.split != nil, let split = show.splitWords, signedIn || split.switched {
             if split.switched {
-                let to = Privacy.masked(split.code)
+                let to = AddressSettings.words(split.code)
                 return UsageNotice(tone: .amber, heading: SplitUsage.switchingHead(split.code),
                                   line: "Sign the Claude app in to \(to) to finish.", key: key)
             }
             // (no key when the app's account is known by its id only: the key only fills in the app's own address)
-            return UsageNotice(tone: .red, heading: "Terminal is signed in to \(Privacy.masked(split.code))",
+            return UsageNotice(tone: .red, heading: "Terminal is signed in to \(AddressSettings.words(split.code))",
                               line: d.key == nil ? split.hint.map { $0 + "." } ?? signIn(nil) : signIn(address), key: key)
         }
         if d.otherAccount {

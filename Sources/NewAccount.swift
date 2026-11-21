@@ -6,6 +6,7 @@
 // "Sign in to another account…" with the address filled in, in a new folder. Folders stay where they are.
 // Steps: quit the desktop app → create or connect the folder → sign in (Claude Code, then the Claude window) → add the Dock icon.
 
+import AddressPrivacy
 import AppKit
 import ProfileCore
 import SwiftUI
@@ -114,11 +115,10 @@ struct SetupCheck: Identifiable {
 enum NewAccountSetup {
     static func shared(_ d: NewAccountDraft) -> URL { URL(fileURLWithPath: expand(d.shareFrom)) }
 
-    /// The Account pop-up's label as drawn: while emails are hidden, an address in the mask form every other place in
-    /// Settings shows (hovering lifts the blur off that form, as elsewhere), never the address itself under the blur.
-    static func wellText(_ text: String, show: Bool = Privacy.shared.show) -> String {
-        show || !text.contains("@") ? text : Privacy.mask(text)
-    }
+    /// The address the Account pop-up's label holds, when it holds one (or an account id): the label draws it through
+    /// AddressPrivacy (one fixed blurred stand-in while emails are hidden, the address itself while the pointer is on it),
+    /// never the address under a blur or a mask of it. Its other words ("Choose an account", "not signed in yet") are plain.
+    static func wellAddress(_ text: String) -> String? { AddressSettings.hides(text) ? text : nil }
 
     static func exists(_ path: String) -> Bool { !path.isEmpty && FileManager.default.fileExists(atPath: expand(path)) }
 
@@ -203,7 +203,7 @@ enum NewAccountSetup {
     /// Who is signed in in a folder, for the Folder pop-ups (New profile and Settings ▸ a profile ▸ Claude Code).
     static func folderWho(_ p: String) -> String {
         switch FolderKind.of(p) {
-        case .claudeCode(let e): return e.map { Privacy.masked($0) } ?? "not signed in"
+        case .claudeCode(let e): return e.map { AddressSettings.words($0) } ?? "not signed in"
         case .empty: return "empty"
         case .missing: return "doesn't exist"
         case .other: return "not a Claude Code folder"
@@ -285,11 +285,11 @@ enum NewAccountSetup {
         // .claude.json), in use or standing by; the address typed only filled in the sign-in, so another one is said, not refused
         if let email = signedInEmail(d) {
             if let owner = FolderRules.seatOwner(Account.signedInSeat(configDir: d.configDir), among: accounts) {
-                out.append(.init(section: .signIn, state: .bad, text: "Signed in as \(Privacy.masked(email)), \(ownerWords(owner, inUse: "the Claude account of")): one profile per account"))
+                out.append(.init(section: .signIn, state: .bad, text: "Signed in as \(AddressSettings.words(email)), \(ownerWords(owner, inUse: "the Claude account of")): one profile per account"))
             } else if !d.email.isEmpty, d.email.lowercased() != email.lowercased() {
-                out.append(.init(section: .signIn, state: .warn, text: "Signed in as \(Privacy.masked(email)), not \(Privacy.masked(d.email)): the browser's claude.ai account decided"))
+                out.append(.init(section: .signIn, state: .warn, text: "Signed in as \(AddressSettings.words(email)), not \(AddressSettings.words(d.email)): the browser's claude.ai account decided"))
             } else {
-                out.append(.init(section: .signIn, state: .ok, text: "Signed in as \(Privacy.masked(email))"))
+                out.append(.init(section: .signIn, state: .ok, text: "Signed in as \(AddressSettings.words(email))"))
             }
         }
 
@@ -316,7 +316,7 @@ enum NewAccountSetup {
             return d.connected ? "\(d.configDir) stays as it is; nothing was created." : "Nothing has been created yet."
         }
         var parts: [String] = []
-        if d.createdConfigDir != nil, let e = signedInEmail(d) { parts.append("signs out the Claude Code sign-in (\(Privacy.masked(e)))") }
+        if d.createdConfigDir != nil, let e = signedInEmail(d) { parts.append("signs out the Claude Code sign-in (\(AddressSettings.words(e)))") }
         if let a = ownWindow(d), ClaudeWindow.isOpen(a) { parts.append("quits its Claude window") }
         let dirs = [d.createdConfigDir, d.createdDataDir.map { _ in "its desktop data folder" }].compactMap { $0 }
         if !dirs.isEmpty { parts.append("deletes " + dirs.joined(separator: " and ")) }
@@ -413,7 +413,7 @@ struct NewAccountView: View {
     @Binding var draft: NewAccountDraft
     @ObservedObject var model: SettingsModel
     @StateObject private var monitor = RunsMonitor()
-    @ObservedObject private var privacy = Privacy.shared
+    @ObservedObject private var privacy = AddressPrivacy.shared
     @State private var error: String?
     @State private var confirmCancel = false
     @State private var confirmQuit = false
@@ -662,7 +662,7 @@ struct NewAccountView: View {
     private var freeAccountLines: [(title: String, path: String, picked: Bool)] {
         freeAccounts.map { a in
             let picked = draft.source == .existing && (draft.existingDir.map { FolderKey.canonical($0) == FolderKey.canonical(a.path) } ?? false)
-            return (Privacy.masked(a.email) + "   in " + a.path, a.path, picked)
+            return (AddressSettings.words(a.email) + "   in " + a.path, a.path, picked)
         }
     }
 
@@ -674,7 +674,7 @@ struct NewAccountView: View {
             var detail: [String] = []
             if let plan = Store.status(o.id)?.plan { detail.append(Account.planWords(plan)) }
             detail.append(o.name + "'s")
-            out.append(Privacy.masked(e) + "   " + detail.joined(separator: " · "))
+            out.append(AddressSettings.words(e) + "   " + detail.joined(separator: " · "))
         }
         return out
     }
@@ -718,8 +718,7 @@ struct NewAccountView: View {
                 Button("Sign in to another account…") { askAddress() }
                     .disabled(model.claudeKnownMissing)      // greyed, with the line above saying why
             } label: {
-                MenuWell(text: NewAccountSetup.wellText(shown.text), tint: shown.tint, icon: shown.icon, fill: true)
-                    .settingsEmail(shown.text.contains("@"))
+                MenuWell(text: shown.text, tint: shown.tint, icon: shown.icon, fill: true, address: NewAccountSetup.wellAddress(shown.text))
             }
             .faceMenuFill()
             .disabled(draft.started && !canSignInAgain)
@@ -738,12 +737,12 @@ struct NewAccountView: View {
             if draft.asking {
                 if let p = addressProblem { return (p, face.danger) }
                 if let dir = NewAccountSetup.freeFolder(for: draft.email, among: model.accounts), !draft.started {
-                    return ("\(Privacy.masked(draft.email)) is signed in in \(dir) already: pick it in the pop-up to use that folder as it is.", nil)
+                    return ("\(AddressSettings.words(draft.email)) is signed in in \(dir) already: pick it in the pop-up to use that folder as it is.", nil)
                 }
                 return ("Claude Code signs in through Terminal; the browser's claude.ai account decides.", nil)
             }
             if waiting {
-                return ("Finish in the browser as \(Privacy.masked(draft.email)); switch its claude.ai account first if needed.", nil)
+                return ("Finish in the browser as \(AddressSettings.words(draft.email)); switch its claude.ai account first if needed.", nil)
             }
             // a free account picked: say what Connect does before it's done (its sign-in is already there)
             if draft.source == .existing, !draft.started, let dir = draft.existingDir,
@@ -752,10 +751,10 @@ struct NewAccountView: View {
             }
             if let email = signedIn {
                 if let owner = FolderRules.seatOwner(Account.signedInSeat(configDir: draft.configDir), among: model.accounts) {
-                    return ("\(Privacy.masked(email)) is \(NewAccountSetup.ownerWords(owner)). One profile per account: Sign in to another account… in the pop-up.", face.danger)
+                    return ("\(AddressSettings.words(email)) is \(NewAccountSetup.ownerWords(owner)). One profile per account: Sign in to another account… in the pop-up.", face.danger)
                 }
                 if !draft.email.isEmpty, draft.email.lowercased() != email.lowercased() {
-                    return ("Signed in as \(Privacy.masked(email)), not \(Privacy.masked(draft.email)): the browser's claude.ai account decided. Keep it, or sign in again from the pop-up after switching the browser.", face.caution)
+                    return ("Signed in as \(AddressSettings.words(email)), not \(AddressSettings.words(draft.email)): the browser's claude.ai account decided. Keep it, or sign in again from the pop-up after switching the browser.", face.caution)
                 }
                 return nil
             }
@@ -873,10 +872,10 @@ struct NewAccountView: View {
             part(signedIn == nil ? (current == 3 ? .now : .todo) : owner != nil ? .warn : .done, current: current == 3,
                  title: "a · Claude Code") {
                 if waiting {
-                    sub("Waiting for \(Privacy.masked(draft.email.isEmpty ? "the sign-in" : draft.email)) in the browser")
+                    sub("Waiting for \(AddressSettings.words(draft.email.isEmpty ? "the sign-in" : draft.email)) in the browser")
                 } else if let email = signedIn {
                     if let o = owner {
-                        Text("\(Privacy.masked(email)) is \(NewAccountSetup.ownerWords(o)): one profile per account")
+                        Text("\(AddressSettings.words(email)) is \(NewAccountSetup.ownerWords(o)): one profile per account")
                             .font(.system(size: 11.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true)
                         if canSignInAgain {
                             // signing in again in the folder this setup made replaces its sign-in; no sign-out first
@@ -884,11 +883,11 @@ struct NewAccountView: View {
                                 .buttonStyle(.link).font(.system(size: 12)).fixedSize().padding(.top, 3)     // a link, not a big key
                         }
                     } else {
-                        sub(Privacy.masked(email) + (draft.source == .existing && !draft.started ? ", already in the folder" : ""))
+                        sub(AddressSettings.words(email) + (draft.source == .existing && !draft.started ? ", already in the folder" : ""))
                     }
                 } else {
                     sub(draft.email.isEmpty ? "Terminal opens; approve in the browser"
-                        : "Terminal opens with \(Privacy.masked(draft.email)) filled in; approve in the browser, switching its claude.ai account there first if it shows another one")
+                        : "Terminal opens with \(AddressSettings.words(draft.email)) filled in; approve in the browser, switching its claude.ai account there first if it shows another one")
                 }
             }
             if !draft.claudeWindow {
@@ -905,12 +904,12 @@ struct NewAccountView: View {
                             .fixedSize(horizontal: false, vertical: true)
                         case .unknown: sub("Signed in")
                         case .different:
-                            Text("The Claude window is signed in to another account: in that window, Settings ▸ Sign out, then sign in as \(Privacy.masked(signedIn ?? ""))")
+                            Text("The Claude window is signed in to another account: in that window, Settings ▸ Sign out, then sign in as \(AddressSettings.words(signedIn ?? ""))")
                                 .font(.system(size: 11.5)).foregroundStyle(face.caution).fixedSize(horizontal: false, vertical: true)
                         default:
                             HStack(spacing: 5) {
                                 if windowOpen { ProgressView().controlSize(.mini) }
-                                sub("Sign in to it as \(Privacy.masked(signedIn ?? "")): the window has its own sign-in")
+                                sub("Sign in to it as \(AddressSettings.words(signedIn ?? "")): the window has its own sign-in")
                             }
                         }
                     }

@@ -2,6 +2,7 @@
 // settings in three columns of compact cards. Changes are saved as you make them; only a new name or
 // label, or adding and removing accounts, needs Apply (that installs, renames or removes icon apps).
 
+import AddressPrivacy
 import AppKit
 import ClaudeAuth
 import Combine
@@ -213,7 +214,7 @@ final class SettingsModel: ObservableObject {
         storeWatch = DistributedNotificationCenter.default().addObserver(forName: Store.changed, object: nil, queue: .main) { [weak self] _ in
             self?.takeInOutsideChanges()
         }
-        emailsWatch = Privacy.shared.$show.dropFirst().removeDuplicates()
+        emailsWatch = AddressPrivacy.shared.$blur.map { !$0 }.dropFirst().removeDuplicates()
             .receive(on: DispatchQueue.main)
             .sink { [weak self] on in self?.showNote(SettingNotes.emails(on)) }
     }
@@ -1706,7 +1707,7 @@ struct AccountSettings: View {
         }
         // one grey line, worded like New profile's and short enough for one line in a 460 pt column
         if let move {
-            rowLine("Signed in as \(Privacy.masked(move.seat.email ?? "another account")), the account of “\(move.owner.name)”. One profile per account: \(name)'s numbers wait until its folder is on one of its own.", color: face.danger)
+            rowLine("Signed in as \(AddressSettings.words(move.seat.email ?? "another account")), the account of “\(move.owner.name)”. One profile per account: \(name)'s numbers wait until its folder is on one of its own.", color: face.danger)
         } else if mismatch {
             rowLine("The Keychain's sign-in is another account than the folder's .claude.json names.")
         } else if status?.state == "denied" {
@@ -1764,7 +1765,7 @@ struct AccountSettings: View {
                         else { Button(it.title, action: it.action).disabled(!it.enabled) }
                     }
                 }
-            } label: { AccountBoxTitle(text: Privacy.masked(shown), tint: tint, icon: icon) }
+            } label: { AccountBoxTitle(text: shown, tint: tint, icon: icon) }
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
         } content: {
             if red, let notice {
@@ -1786,7 +1787,7 @@ struct AccountSettings: View {
                 }
             } else if switching, let code = v.codeRow {
                 // a switch waits for the Claude app: this account stays in use until then (Claude Code's row is lit below)
-                BoxNote(text: "In use until the switch to \(Privacy.masked(code)) finishes.", size: 11.5)
+                BoxNote(text: "In use until the switch to \(AddressSettings.words(code)) finishes.", size: 11.5)
                     .fixedSize(horizontal: false, vertical: true)
             } else {
                 // signed out or expired: that one line, in the box only, with Log in… (never "no numbers yet")
@@ -1864,7 +1865,7 @@ struct AccountSettings: View {
                 }
             case .reached: BoxNote(text: "Signed in.", size: 10.5)
             case .timedOut: BoxNote(text: "No sign-in came in 10 minutes; nothing changed.", tone: .caution)
-            case .other(let e): BoxNote(text: "Signed in as \(Privacy.masked(e)): that's the account in use now.", tone: .caution)
+            case .other(let e): BoxNote(text: "Signed in as \(AddressSettings.words(e)): that's the account in use now.", tone: .caution)
             case .failed(let why): BoxNote(text: why, tone: .danger)
             case .ready, .closing, .moving, .undone: EmptyView()     // a sign-in again moves nothing
             }
@@ -1897,7 +1898,7 @@ struct AccountSettings: View {
                 Button("Switch to it…") { model.showSwitch(AccountEntry.switchKey(entry.id, s.id)) }
                 Divider()
                 Button("Forget…") { forgetStandby(s) }
-            } label: { AccountBoxTitle(text: Privacy.masked(s.label)) }
+            } label: { AccountBoxTitle(text: s.label) }
             // hugs the address (a long one shortens with "…" rather than pushing the badge out)
             .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true)
         } content: {
@@ -1940,7 +1941,7 @@ struct AccountSettings: View {
                           marks: (app: false, terminal: !["expired", "noLogin"].contains(own?.state ?? "")),
                           tap: switching ? nil : pick.map { p in { toggle(p) } },
                           tapHelp: switching || pick == nil ? nil : chosen ? "Click to deselect" : "Click to select, then Switch account") {
-            AccountBoxTitle(text: Privacy.masked(code))
+            AccountBoxTitle(text: code)
         } content: {
             // its sign-in signed out or expired: that one line (A3), with its key; else the numbers (they are its)
             limitsOrWhy(own, entry: entry, none: own?.state == "noLogin" ? noSignInWords
@@ -2039,17 +2040,26 @@ struct AccountSettings: View {
     /// Forget… on a standby account: asks first, then takes it off this profile, and the accounts found on this Mac don't
     /// bring it back. Nothing on disk changes; it is the account in use again whenever it signs in to this profile's folder.
     func forgetStandby(_ s: StandbyAccount) {
-        let a = NSAlert()
-        a.messageText = "Forget \(Privacy.masked(s.label))?"
-        a.informativeText = "\(entry.name.isEmpty ? "This profile" : entry.name) stops listing it. Nothing on this Mac changes; signing in to it in this profile's folder brings it back."
-        a.addButton(withTitle: "Forget"); a.addButton(withTitle: "Cancel")
-        guard a.runModal() == .alertFirstButtonReturn else { return }
+        guard Self.forgetAlert(s, profile: entry.name).runModal() == .alertFirstButtonReturn else { return }
         entry.standby.removeAll { $0.id == s.id }
         if let seat = s.seat {
             let k = AccountList.key(seat)
             if !entry.forgotten.contains(k) { entry.forgotten.append(k) }
         }
         if picked == s.id { picked = nil }
+    }
+
+    /// The Forget… question for a standby account. An alert's text can't blur, so while addresses are hidden it says "hidden
+    /// address" and the address itself sits in an accessory view that shows it only while the pointer is on it (AddressLabel,
+    /// which follows Show emails); with Show emails on the address is in the text. `blur`: a test override of the setting.
+    static func forgetAlert(_ s: StandbyAccount, profile: String, blur: Bool? = nil) -> NSAlert {
+        let a = NSAlert()
+        let hidden = AddressSettings.hides(s.label) && (blur ?? AddressPrivacy.shared.blur)
+        a.messageText = AddressText.sentence("Forget {}?", addresses: [s.label], blur: hidden)
+        if hidden { a.accessoryView = AddressLabel(address: s.label, blur: blur) }
+        a.informativeText = "\(profile.isEmpty ? "This profile" : profile) stops listing it. Nothing on this Mac changes; signing in to it in this profile's folder brings it back."
+        a.addButton(withTitle: "Forget"); a.addButton(withTitle: "Cancel")
+        return a
     }
 
     /// Login's (i): what it is, the pop-up, and Renew sign-in (now an item in the pop-up).
@@ -2194,7 +2204,7 @@ struct AccountSettings: View {
     /// "Linked today 14:32 · was …. Stays with …: …, and the window's earlier Code sessions (how-to). To watch … again,
     /// give it a profile with New profile."
     func linkedWords(was: String, at: Date) -> AttributedString {
-        let w = Privacy.masked(was)
+        let w = AddressSettings.words(was)
         var a = AttributedString("Switched \(Self.when(at)) · was \(w), now on standby. Stays with \(w): a CI token from claude setup-token, connectors, cloud sessions, and the sessions it ran (")
         var howTo = AttributedString("how-to")
         howTo.link = URL(string: "https://github.com/n-uf/cl_audit#moving-a-profile-to-another-account")
@@ -2235,7 +2245,7 @@ struct AccountSettings: View {
         let plan = show.plan.map(Account.planWords)            // (none in a clash: ProfileShow.plan)
         let canSignIn = !model.claudeKnownMissing
         func line(_ email: String, _ detail: [String?]) -> String {
-            ([Privacy.masked(email)] + [detail.compactMap { $0 }.joined(separator: " · ")].filter { !$0.isEmpty }).joined(separator: "   ")
+            ([AddressSettings.words(email)] + [detail.compactMap { $0 }.joined(separator: " · ")].filter { !$0.isEmpty }).joined(separator: "   ")
         }
         var items: [LoginItem] = []
         if let here {

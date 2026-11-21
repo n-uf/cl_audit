@@ -98,7 +98,7 @@ enum AccountResolver {
             // the numbers are hidden (stale) and nothing else says why: the one line, on every surface that shows it
             r.line = ownerUnknownWords
         } else if r.differs, let c = codeLabel {
-            r.line = "Usage: Claude Code on " + Privacy.masked(c)
+            r.line = "Usage: Claude Code on " + AddressSettings.words(c)
         } else if stale {
             // the numbers are hidden (read for another account than the folder's record names: just after a switch, or the
             // Keychain's sign-in on another account) and nothing else says why: the way back, on every surface that shows the line
@@ -173,27 +173,27 @@ struct SplitUsage: Equatable {
     /// is on M); a switch waiting for the app, the card's words on every surface (Settings, menu bar, widget, Dock panel,
     /// quick chat): "Switching to M@…: one step left. Sign the Claude app in to M@… to finish."
     var line: String {
-        switched ? "\(Self.switchingHead(code)). Sign the Claude app in to \(Privacy.masked(code)) to finish."
-                 : "cl_audit can't read \(Privacy.masked(app))'s usage: Claude Code in Terminal is signed in to \(Privacy.masked(code))."
+        switched ? "\(Self.switchingHead(code)). Sign the Claude app in to \(AddressSettings.words(code)) to finish."
+                 : "cl_audit can't read \(AddressSettings.words(app))'s usage: Claude Code in Terminal is signed in to \(AddressSettings.words(code))."
     }
     /// The short form where space is short: "Can't read P@…'s usage" over "Terminal: M@…"; a switch waiting for the app:
     /// its first clause, "Switching to M@…: one step left".
     var shortLine: String {
-        switched ? Self.switchingHead(code) : "Can't read \(Privacy.masked(app))'s usage\nTerminal: \(Privacy.masked(code))"
+        switched ? Self.switchingHead(code) : "Can't read \(AddressSettings.words(app))'s usage\nTerminal: \(AddressSettings.words(code))"
     }
     /// The after-switch heading, the same on the card (UsageNotice) and every other surface.
-    static func switchingHead(_ to: String) -> String { "Switching to \(Privacy.masked(to)): one step left" }
+    static func switchingHead(_ to: String) -> String { "Switching to \(AddressSettings.words(to)): one step left" }
     /// Under the line, in place of "No numbers yet": what gives the numbers. Nil while a switch waits for the app (nothing
     /// to sign in to then).
     var numbersHint: String? {
-        switched ? nil : "Sign Claude Code in Terminal in to \(loginEmail.map { Privacy.masked($0) } ?? "the Claude app's account") to see its numbers."
+        switched ? nil : "Sign Claude Code in Terminal in to \(loginEmail.map { AddressSettings.words($0) } ?? "the Claude app's account") to see its numbers."
     }
     /// The key: the existing Sign in (Claude Code's own sign-in in Terminal, with the app's address filled in). Not a switch.
     /// None while a switch waits for the app, and none when the app's account is known by its id only: the key only ever
     /// names and fills in the app's own address (never Claude Code's), so then `hint` says what to do instead.
-    var key: String? { loginEmail.map { "Sign Claude Code in Terminal in to \(Privacy.masked($0))…" } }
+    var key: String? { loginEmail.map { "Sign Claude Code in Terminal in to \(AddressSettings.words($0))…" } }
     /// The key where space is short (the Dock panel's fixed width): "Sign in to P@… in Terminal", as long as the old key.
-    var shortKey: String? { loginEmail.map { "Sign in to \(Privacy.masked($0)) in Terminal…" } }
+    var shortKey: String? { loginEmail.map { "Sign in to \(AddressSettings.words($0)) in Terminal…" } }
     /// The address the login fills in: the app's own, when it is known (not while a switch waits for the app).
     var loginEmail: String? { !switched && app.contains("@") ? app : nil }
     /// In place of the key when the app's address isn't known.

@@ -2,6 +2,7 @@
 // (double-click, ⌥-click, long press) with both limits, reset times, the login and buttons. The large
 // one closes on Escape, on a click elsewhere, or on a second click. Designs: PanelDesigns.swift.
 
+import AddressPrivacy
 import AppKit
 import ProfileCore
 import SwiftUI
@@ -193,7 +194,7 @@ struct DetailsView: View {
             if info.mismatch || info.problem != nil || info.renewNote != nil {
                 VStack(alignment: .leading, spacing: 4) {
                     if info.mismatch, let want = info.expected {
-                        Label(Privacy.shared.show ? "This folder is set up for \(want)" : "This folder is set up for a different account", systemImage: "exclamationmark.triangle.fill")
+                        Label(AddressPrivacy.shared.blur ? "This folder is set up for a different account" : "This folder is set up for \(want)", systemImage: "exclamationmark.triangle.fill")
                             .foregroundStyle(.red)
                     }
                     if let p = info.problem { Label(p, systemImage: "info.circle").foregroundStyle(.orange) }

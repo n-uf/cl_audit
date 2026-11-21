@@ -18,7 +18,7 @@ extension AccountEntry: StandbyHolder {}
 extension AccountBook {
     /// What a switch affects, for the Switch page: Claude Code in Terminal and editors on the folder (for any folder but
     /// ~/.claude, those that use it through CLAUDE_CONFIG_DIR), sessions running now included; not the Claude app, which
-    /// runs its own claude with its own sign-in. `email` as it should be shown (masked where the caller masks).
+    /// runs its own claude with its own sign-in. `email` as it should be shown ("hidden address" where the caller hides it: AddressSettings.words).
     static func switchWords(folder: String, email: String, isDefault: Bool) -> String {
         (isDefault ? "Terminal and editors on \(folder)" : "Terminal and editors using \(folder)")
             + " move to \(email), sessions running now included; the Claude app keeps its own sign-in."
@@ -30,7 +30,7 @@ extension AccountNote {
     /// "ultra-3 came from Work's standby accounts: it signed in to this profile's folder." / "ultra-3 left for Main: it
     /// signed in to Main's folder, so it's Main's account now."
     var words: String {
-        let a = Privacy.masked(email.isEmpty ? "An account" : email)
+        let a = AddressSettings.words(email.isEmpty ? "An account" : email)
         switch kind {
         case .came: return "\(a) came from \(profile)'s standby accounts: it signed in to this profile's folder."
         case .left: return "\(a) left for \(profile): it signed in to \(profile)'s folder, so it's \(profile)'s account now."
