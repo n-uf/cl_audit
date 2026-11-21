@@ -74,7 +74,9 @@ enum Processes {
     /// is "can't tell". Not for an unread environment: where macOS withholds them, a second read would only repeat it.
     static func settledTable() -> [Entry]? {
         let t = table()
-        return t?.contains(where: \.hidden) == true ? table() : t
+        guard t?.contains(where: \.hidden) == true else { return t }
+        usleep(40_000)   // a moment for the process caught mid-start to finish starting, before the second read
+        return table()
     }
 
     /// Every process the kernel lists, cl_audit itself included, except those that ended meanwhile or are ended and waiting to
