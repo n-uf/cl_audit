@@ -1000,7 +1000,11 @@ do {
           "the source emptied and not put back: the switch stops for Undo, the new account's file as it was (\(stuckWhy))")
     check(fm.fileExists(atPath: "\(stuck.src)/local_\(uuid(961)).json") && fm.fileExists(atPath: "\(stuck.src)/local_\(uuid(962)).json")
           && stuckR?.moved == 0, "…no session moved (the tasks go first)")
+    // Undo checks the receipt's folders against the profile's own (SwitchEngine.undoPlaces): the profile listed meanwhile
+    let keepList = Store.load()
+    try! Store.save([stuck.e])
     _ = try? SwitchEngine.undo(stuckR?.id ?? "", windowClosed: { true })
+    try! Store.save(keepList)
     check(bytes(stuck.src + "/scheduled-tasks.json") == stBefore.0 && stBefore.0 != nil && bytes(stuck.dst + "/scheduled-tasks.json") == stBefore.1
           && SwitchEngine.unfinished(profile: "tc16").isEmpty,
           "…Undo puts the old account's task file back from the backup byte for byte, nothing left unfinished")
