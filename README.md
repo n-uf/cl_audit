@@ -399,7 +399,7 @@ and follows a switch.
   chat, and New chat goes back to the defaults in General. With thinking on, "Thought for 5 s" sits above the answer;
   it opens to show the thinking when Claude Code passes it on (for Haiku 5.5 it reports only that it thought).
   A model may still answer at once when it judges the question needs no thinking.
-- **The account line:** the profile, the address of its account in use (masked unless Privacy shows addresses) and its
+- **The account line:** the profile, the address of its account in use ("hidden address" unless Show emails is on) and its
   week, in the level colours; the bar shows the profile and the week. When a limit is full, it says so before you
   send and offers **Switch account…** for the standby account offered first (not known to be full, the least used by
   the week it left with), through the Switch page; what you
@@ -421,8 +421,9 @@ Settings is a page of the same window as the dashboard (switch at the top, or �
 the top, with **General** first and **New profile** last. Changes are saved as you make them and the
 icons follow at once; a profile's name or icon label is saved when you press Return or click elsewhere (Esc puts it back),
 because that renames its Dock icon app; the top strip says when it's done. **Show emails** (General settings) off leaves email addresses out of the launcher, the dashboard's
-account lines and the panels, masks them like y•••@example.com in menus and sentences, and blurs them in Settings (hover one
-to see it), for screen sharing.
+account lines and the panels, writes "hidden address" in their place in menus and sentences, and draws one fixed blurred
+stand-in in Settings (the address only while the pointer is on it), for screen sharing: nothing of a hidden address shows, not its
+first letter, its length or its domain. An unset setting means hidden.
 
 **Profile order:** drag a profile's tile left or right along the top (General stays first, ＋ last), or its card on
 the dashboard (by the card itself, not one of its keys); the others move aside and a lit socket shows where it lands. It's saved when you let go ("Saved · order"); VoiceOver has Move left and
