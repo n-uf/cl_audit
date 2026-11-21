@@ -814,10 +814,10 @@ enum Installer {
               i["UsageStyle"] as? String == e.style.rawValue,
               i["CFBundleName"] as? String == dst.deletingPathExtension().lastPathComponent,
               i["CFBundleIdentifier"] as? String == bundleID(e) else { return true }
-        // a copy whose Dock tile plug-in went missing (or that never had one while cl_audit.app has it)
-        let tile = "Contents/PlugIns/\(DockTile.bundleName)"
-        if FileManager.default.fileExists(atPath: source.appendingPathComponent(tile).path),
-           i["NSDockTilePlugIn"] == nil || !FileManager.default.fileExists(atPath: dst.appendingPathComponent(tile).path) { return true }
+        // a copy that names a Dock tile plug-in it no longer has (a copy that couldn't get one names none: installing it
+        // again on every sync wouldn't help; the next build tries again)
+        if i["NSDockTilePlugIn"] != nil,
+           !FileManager.default.fileExists(atPath: dst.appendingPathComponent("Contents/PlugIns/\(DockTile.bundleName)").path) { return true }
         // Signing a copy changes its executable, so copies are matched by the build they were made from.
         return i["UsageBuild"] as? String != buildStamp(source)
     }

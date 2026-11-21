@@ -202,9 +202,11 @@ struct ResolvedAccount: Codable, Equatable {
 enum StatusAges {
     /// How old numbers may be and still act (a full limit is full): the read interval, 5 minutes at least, plus a minute for
     /// the read itself (6 minutes by default).
-    static func freshFor(pollMinutes: Int) -> TimeInterval { TimeInterval(max(pollMinutes, 5) * 60 + 60) }
+    static func freshFor(pollMinutes: Int) -> TimeInterval { TimeInterval(max(minutes(pollMinutes), 5) * 60 + 60) }
     /// Older than this, numbers are drawn grey: three missed reads, 30 minutes at least (the Dock icon's rule, now everyone's).
-    static func greyAfter(pollMinutes: Int) -> TimeInterval { max(TimeInterval(max(pollMinutes, 1) * 60 * 3), 30 * 60) }
+    static func greyAfter(pollMinutes: Int) -> TimeInterval { max(TimeInterval(minutes(pollMinutes) * 60 * 3), 30 * 60) }
+    /// The read interval as the formula takes it: 1 minute to a day (a broken profiles file's number never overflows).
+    private static func minutes(_ m: Int) -> Int { min(max(m, 1), 1440) }
     /// The headline's and the display's thresholds: never hidden by age; a last-known full limit is left out.
     static func of(pollMinutes: Int) -> Headline.Ages {
         Headline.Ages(freshFor: freshFor(pollMinutes: pollMinutes), hiddenAfter: nil, datedFullStays: false,

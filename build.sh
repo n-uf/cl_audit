@@ -38,7 +38,8 @@ swiftc -O -swift-version 5 -parse-as-library -module-name ClaudeAuth -target arm
   "$here"/Auth/*.swift
 echo "compiling…"
 # One compile for the app and its Dock tile plug-in (DockTile/): the same objects linked twice, so the plug-in draws a
-# tile with the app's own code. The plug-in's load-time function (docktile_load.c) goes into the plug-in only.
+# tile with the app's own code. The plug-in's load-time function (docktile_load.c) goes into the plug-in only, and the
+# app's entry file (main.swift: its command line and start) stays out of it; what the plug-in never reaches is stripped.
 mkdir -p "$out/obj"
 (cd "$out/obj" && swiftc -O -swift-version 5 -target arm64-apple-macos13.0 -module-name UsageDock -c \
   "$here"/Sources/*.swift "$here/Widget/WidgetViews.swift" "$here/DockTile/Plugin.swift" -I "$out")
@@ -48,8 +49,10 @@ swiftc -target arm64-apple-macos13.0 -o "$out/UsageDock" "$out"/obj/*.o \
   -L "$out" -lProfileCore -lClaudeAuth -lRuns "${frameworks[@]}"
 echo "linking the Dock tile plug-in…"
 clang -O2 -arch arm64 -mmacosx-version-min=13.0 -c -o "$out/docktile_load.o" "$here/DockTile/docktile_load.c"
-swiftc -target arm64-apple-macos13.0 -emit-library -module-name DockTile -o "$out/DockTile" "$out"/obj/*.o "$out/docktile_load.o" \
-  -L "$out" -lProfileCore -lClaudeAuth -lRuns "${frameworks[@]}"
+objs=()
+for o in "$out"/obj/*.o; do [[ "$(basename "$o")" == main.o ]] || objs+=("$o"); done
+swiftc -target arm64-apple-macos13.0 -emit-library -module-name DockTile -o "$out/DockTile" "${objs[@]}" "$out/docktile_load.o" \
+  -L "$out" -lProfileCore -lClaudeAuth -lRuns "${frameworks[@]}" -Xlinker -dead_strip -Xlinker -dead_strip_dylibs
 
 app="$out/$name.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"

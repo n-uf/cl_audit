@@ -23,18 +23,23 @@ guard home.hasSuffix("/Checks/.work/docktile/home"), expand("~") == home else { 
 let fm = FileManager.default
 let args = CommandLine.arguments
 let id = "dt1", standbyID = "k9"
-let bundle = URL(fileURLWithPath: home).appendingPathComponent("plug/\(DockTile.bundleName)")
+// a Dock icon copy as Installer.install lays it out: the app, its plug-in in PlugIns
+let app = URL(fileURLWithPath: home).appendingPathComponent("cl_audit Dock.app")
+let bundle = app.appendingPathComponent("Contents/PlugIns/\(DockTile.bundleName)")
 let profileDir = "\(home)/profile-dt1"
 
 func put(_ path: String, _ text: String) {
     try? fm.createDirectory(atPath: (path as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
     fm.createFile(atPath: path, contents: Data(text.utf8))
 }
-func plugInfo(build: String) {
+/// The copy's two Info.plists: the plug-in's (its profile, build and class) and the app's (its build), each as an install
+/// writes them.
+func plugInfo(build: String, appBuild: String? = nil) {
     let p: NSDictionary = ["CFBundleIdentifier": "local.usage-n-uf.check.docktile", "UsageAccountID": id, "UsageBuild": build,
                            "NSPrincipalClass": DockTile.className(id, build: build)]
     try? fm.createDirectory(at: bundle.appendingPathComponent("Contents"), withIntermediateDirectories: true)
     try? p.write(to: bundle.appendingPathComponent("Contents/Info.plist"))
+    try? (["UsageAccountID": id, "UsageBuild": appBuild ?? build] as NSDictionary).write(to: app.appendingPathComponent("Contents/Info.plist"))
 }
 
 // ============ the child: one scenario in the sandbox ============
@@ -42,14 +47,22 @@ if args.count >= 3, args[1] == "--child" {
     let scenario = args[2]
     switch scenario {
     case "trip-signin": _ = try? Data(contentsOf: URL(fileURLWithPath: "\(profileDir)/.credentials.json")); print("not killed"); exit(4)
+    case "trip-stat": _ = try? fm.attributesOfItem(atPath: "\(home)/.claude/.credentials.json"); print("not killed"); exit(4)
     case "trip-run": let p = Process(); p.executableURL = URL(fileURLWithPath: "/usr/bin/true"); try? p.run(); p.waitUntilExit(); print("not killed"); exit(4)
     case "trip-standby": _ = Store.status(standbyID); print("not killed"); exit(4)
     default: break
     }
     _ = NSApplication.shared
-    DockTilePlugIn.bundle = scenario == "no-bundle" ? nil : bundle
-    DockTilePlugIn.loadedBuild = "b1"
-    let p = DockTilePlugIn()
+    // loaded as the Dock loads a copy: its load-time function with its executable's path registers the copy's class, which
+    // is then the one made (no bundle: nothing registered, the plug-in's own class)
+    var p = DockTilePlugIn()
+    if scenario != "no-bundle" {
+        docktileLoaded(bundle.appendingPathComponent("Contents/MacOS/DockTile").path)
+        guard let cls = NSClassFromString(DockTile.className(id, build: "b1")) as? NSObject.Type, cls != DockTilePlugIn.self,
+              let made = cls.init() as? DockTilePlugIn,
+              DockTilePlugIn.profileID == id, DockTilePlugIn.loadedBuild == "b1" else { print("no class"); exit(5) }
+        p = made
+    }
     p.setDockTile(NSApp.dockTile)
     let dn = DistributedNotificationCenter.default()
     for n in [Store.statusChanged, Store.changed, Installer.appsChangedNote] {
@@ -58,9 +71,18 @@ if args.count >= 3, args[1] == "--child" {
     }
     p.redraw("timer")
     if scenario == "update" {
-        plugInfo(build: "b2")        // an update replaced the copy: the next redraw leaves
+        // an update replaced the copy: seen, then still there 10 s later, the plug-in leaves (its own redraw at 11 s)
+        plugInfo(build: "b2")
         p.redraw("timer")
+        RunLoop.main.run(until: Date().addingTimeInterval(12))
         print("still here"); exit(3)
+    }
+    if scenario == "half-install" {
+        // an install half done: the plug-in's Info.plist says b2, the app's not yet: it stays
+        plugInfo(build: "b2", appBuild: "b1")
+        p.redraw("timer")
+        RunLoop.main.run(until: Date().addingTimeInterval(12))
+        p.redraw("timer")
     }
     p.setDockTile(nil)
     print("done \(scenario)")
@@ -97,27 +119,32 @@ put(Store.statusFolder.appendingPathComponent("\(standbyID).prev").path, "{}")
 
 let real = String(cString: getpwuid(getuid())!.pointee.pw_dir)
 func q(_ s: String) -> String { "\"" + s.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") + "\"" }
-var reads = ["(subpath \(q(profileDir)))", "(literal \(q(Store.statusFolder.appendingPathComponent("\(standbyID).json").path)))",
-             "(literal \(q(Store.statusFolder.appendingPathComponent("\(standbyID).prev").path)))", "(subpath \"/Library/Keychains\")"]
+// the sign-ins: not even looked at (no stat, no extended attributes), never written
+var signIns = ["(subpath \(q(profileDir)))", "(subpath \"/Library/Keychains\")"]
 for h in [home, real] {
-    reads += ["(subpath \(q("\(h)/.claude")))", "(literal \(q("\(h)/.claude.json")))",
-              "(subpath \(q("\(h)/Library/Application Support/Claude")))", "(subpath \(q("\(h)/Library/Keychains")))"]
+    signIns += ["(subpath \(q("\(h)/.claude")))", "(literal \(q("\(h)/.claude.json")))",
+                "(subpath \(q("\(h)/Library/Application Support/Claude")))", "(subpath \(q("\(h)/Library/Keychains")))"]
 }
+// the agent's records: only the profile's own is read (the last matching rule wins), none written
 let profile = """
 (version 1)
 (allow default)
-(deny file-read-data file-write* \(reads.joined(separator: " ")) (with send-signal SIGKILL))
+(deny file-read-data file-read-metadata file-read-xattr file-write* \(signIns.joined(separator: " ")) (with send-signal SIGKILL))
+(deny file-read-data file-write* (subpath \(q(Store.statusFolder.path))) (with send-signal SIGKILL))
+(allow file-read-data (literal \(q(Store.statusFolder.appendingPathComponent("\(id).json").path))))
 (deny process-fork (with send-signal SIGKILL))
 (deny network-outbound (remote ip) (with send-signal SIGKILL))
-(deny mach-lookup (global-name "com.apple.securityd") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc") (with send-signal SIGKILL))
+(deny mach-lookup (global-name "com.apple.securityd") (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc")
+      (global-name "com.apple.secd") (with send-signal SIGKILL))
 """
 let profileURL = URL(fileURLWithPath: home).appendingPathComponent("tripwires.sb")
 try! profile.write(to: profileURL, atomically: true, encoding: .utf8)
 
 /// One scenario in the sandbox: how it ended (exit code, or the signal that ended it) and what it printed. A trap's own
 /// words (its standard error) are printed here, so a failure says where.
-func child(_ scenario: String) -> (code: Int32, signal: Bool, out: String) {
+func child(_ scenario: String, prepare: () -> Void = {}) -> (code: Int32, signal: Bool, out: String) {
     try? fm.removeItem(at: DockTile.folder)
+    prepare()
     let p = Process()
     p.executableURL = URL(fileURLWithPath: "/usr/bin/sandbox-exec")
     p.arguments = ["-f", profileURL.path, Bundle.main.executablePath!, "--child", scenario]
@@ -140,8 +167,8 @@ func clean(_ r: (code: Int32, signal: Bool, out: String), _ scenario: String) ->
     !r.signal && r.code == 0 && r.out.contains("done \(scenario)")
 }
 
-// the tripwires are armed: a sign-in read, a program started, a standby record read each end the child at once
-for t in ["trip-signin", "trip-run", "trip-standby"] {
+// the tripwires are armed: a sign-in read or looked at, a program started, a standby record read each end the child at once
+for t in ["trip-signin", "trip-stat", "trip-run", "trip-standby"] {
     let r = child(t)
     check(r.signal && r.code == SIGKILL && !r.out.contains("not killed"), "tripwire \(t): the sandbox kills the child (got \(r.code), signal \(r.signal))")
 }
@@ -186,12 +213,32 @@ saveProfiles()
 _ = Store.writeStatus(id, record())
 let noBundle = child("no-bundle")
 check(clean(noBundle, "no-bundle") && log().isEmpty && beat().isEmpty, "no bundle (no profile id): nothing drawn or written, no trap")
+var huge = e; huge.pollMinutes = .max
+try! JSONEncoder().encode(ConfigFile(accounts: [huge])).write(to: Store.configURL)
+let poll = child("poll")
+check(clean(poll, "poll") && log().contains("drew (load) #1: numbers"), "an absurd read interval in the profile list: drawn, no overflow")
+saveProfiles()
+// a FIFO where the record or the log is: never waited on (the Dock's thread would hang), drawn without it
+let recordPath = Store.statusFolder.appendingPathComponent("\(id).json").path
+try? fm.removeItem(atPath: recordPath); mkfifo(recordPath, 0o644)
+let fifoRecord = child("fifo-record")
+check(clean(fifoRecord, "fifo-record") && log().contains("drew (load) #1: no numbers"), "a FIFO for the record: no numbers, no wait")
+try? fm.removeItem(atPath: recordPath)
+_ = Store.writeStatus(id, record())
+let fifoLog = child("fifo-log") {
+    try? fm.createDirectory(at: DockTile.folder, withIntermediateDirectories: true)
+    mkfifo(DockTile.logURL(id).path, 0o644)
+}
+check(clean(fifoLog, "fifo-log") && beat().contains("draw 5"), "a FIFO for the log: never opened, the heartbeat still written")
 
-// 3. an update: the copy is now another build, so the old code leaves and the Dock loads the new one
+// 3. an update: the copy is now another build, so the old code leaves and the Dock loads the new one; not mid-install
+plugInfo(build: "b1")
+let half = child("half-install")
+check(clean(half, "half-install") && !log().contains("leaving"), "an install half done (the app still on b1): the plug-in stays")
 plugInfo(build: "b1")
 let update = child("update")
 check(!update.signal && update.code == 0 && !update.out.contains("still here") && log().contains("the copy is now build b2: leaving"),
-      "an update to build b2: the plug-in leaves on its next redraw (got \(update.code), signal \(update.signal))")
+      "an update to build b2: the plug-in leaves once the copy says b2 for 10 s (got \(update.code), signal \(update.signal))")
 
 print("checks: \(passed) passed, \(failed) failed")
 exit(failed == 0 ? 0 : 1)

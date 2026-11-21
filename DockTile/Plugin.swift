@@ -3,27 +3,34 @@ import ProfileCore
 
 // A profile's Dock icon drawn by the Dock itself (an NSDockTilePlugIn, macOS's Dock tile plug-in), from what the cl_audit
 // agent saved for the profile. It only draws: it reads the profile list (accounts.json, not tidied or saved) and this
-// profile's own record (status/<id>.json); never a sign-in, the Keychain, the network or a standby account's record.
-// Each time it draws it writes the profile's heartbeat (DockTile.beatURL), so the agent can tell the Dock draws the tile.
+// profile's own record (status/<id>.json), each a capped read of a regular file; never a sign-in, the Keychain, the network,
+// a program or a standby account's record. Each time it draws it writes the profile's heartbeat (DockTile.beatURL), so the
+// agent can tell the Dock draws the tile.
 //
-// Every Dock icon app carries its own copy (Installer.install), and the Dock may load several into one process, where
-// one class name would stand for all of them. So each copy registers its own subclass when it is loaded (docktile_load.c
-// calls `cl_audit_docktile_loaded`), under the name its Info.plist gives (DockTile.className: per profile and build).
+// The Dock runs every third-party plug-in in one shared process (com.apple.dock.external.extra): nothing here may trap or
+// block, or the other apps' tiles go down with it. And one class name would stand for every copy there, so each copy
+// registers its own subclass when it is loaded (docktile_load.c calls `cl_audit_docktile_loaded`), under the name its
+// Info.plist gives (DockTile.className: per profile and build), and keeps its profile and build in its own statics.
 
 @objc(ClAuditDockTileBase)
 class DockTilePlugIn: NSObject, NSDockTilePlugIn {
     /// This copy's plug-in bundle (each loaded copy has its own), from the path dyld loaded it from.
     nonisolated(unsafe) static var bundle: URL?
-    /// The build this copy was loaded as (its Info.plist's UsageBuild then): the code running is that build's.
+    /// The profile and the build this copy was loaded as (its Info.plist then): the code running is that build's, for that
+    /// profile, wherever the copy is moved or whatever replaces it later.
+    nonisolated(unsafe) static var profileID: String?
     nonisolated(unsafe) static var loadedBuild: String?
 
     private var tile: NSDockTile?
     private var view: TileView?
     private var timer: Timer?
     private var observers: [NSObjectProtocol] = []
-    private var id: String?
-    private var build = "?"
     private var draws = 0
+    /// Another build seen in the copy, and when first: it must still be there 10 s later (an install is done by then).
+    private var newBuild: (build: String, seen: Date)?
+
+    private var id: String? { Self.profileID }
+    private var build: String { Self.loadedBuild ?? "?" }
 
     func setDockTile(_ dockTile: NSDockTile?) {
         timer?.invalidate(); timer = nil
@@ -34,17 +41,14 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
             return
         }
         tile = dockTile
-        let info = Self.bundle.flatMap { NSDictionary(contentsOf: $0.appendingPathComponent("Contents/Info.plist")) }
-        id = info?["UsageAccountID"] as? String
-        build = Self.loadedBuild ?? "?"
-        log("loaded build \(build) in \(ProcessInfo.processInfo.processName) pid \(getpid()), tile \(Int(dockTile.size.width))×\(Int(dockTile.size.height))")
+        log("loaded build \(build) in \(ProcessInfo.processInfo.processName) pid \(getpid()), tile \(dockTile.size)")
         let v = TileView(model: face() ?? Self.unknown)
         v.frame = NSRect(origin: .zero, size: dockTile.size)
         view = v
         dockTile.contentView = v
         draw("load")
-        // again when the agent saves this profile's record or the profiles change, and every 30 s (the age turns grey,
-        // the countdown runs), as the Dock icon app does
+        // again when the agent saves this profile's record or the profiles or apps change, and every 30 s (the age turns
+        // grey, the countdown runs), as the Dock icon app does
         let center = DistributedNotificationCenter.default()
         observers.append(center.addObserver(forName: Store.statusChanged, object: nil, queue: .main) { [weak self] note in
             guard let self, note.object == nil || note.object as? String == self.id else { return }
@@ -55,12 +59,24 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in self?.redraw("timer") }
     }
 
-    /// An update replaced the copy with another build: the code running here is the old one, and the Dock loads the new
-    /// one only in a new process. So this one ends (the Dock starts it again); a copy that's gone or half-written doesn't.
+    /// An update replaced the copy with another build: the code running here is the old one, and the Dock loads the new one
+    /// only in a new process. So this one ends (the Dock starts it again), once the copy and its app both say the new build
+    /// and still do 10 s later (an install writes the plug-in's Info.plist before the app's and signs both after). A copy
+    /// that's gone or half-written doesn't count.
     private func leaveIfUpdated() {
-        guard let loaded = Self.loadedBuild, let bundle = Self.bundle,
-              let now = NSDictionary(contentsOf: bundle.appendingPathComponent("Contents/Info.plist"))?["UsageBuild"] as? String,
-              now != loaded else { return }
+        guard let loaded = Self.loadedBuild, let bundle = Self.bundle else { return }
+        let app = bundle.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        func build(_ url: URL) -> String? {
+            SafeRead.whole(url.appendingPathComponent("Contents/Info.plist").path, max: SafeRead.recordMax)
+                .flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] }?["UsageBuild"] as? String
+        }
+        guard let now = build(bundle), now != loaded, build(app) == now else { newBuild = nil; return }
+        guard let seen = newBuild, seen.build == now else {
+            newBuild = (now, Date())
+            DispatchQueue.main.asyncAfter(deadline: .now() + 11) { [weak self] in self?.redraw("update") }
+            return
+        }
+        guard Date().timeIntervalSince(seen.seen) >= 10 else { return }
         log("the copy is now build \(now): leaving so the Dock loads it")
         exit(0)
     }
@@ -84,15 +100,21 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
         log("drew (\(why)) #\(draws): \(view.map { $0.model.fiveHour == nil && $0.model.weekly == nil ? "no numbers" : $0.model.stale ? "grey" : "numbers" } ?? "-")")
     }
 
-    /// The profile's face now, or nil when its entry can't be read (the last face stays).
+    /// The profile's face now, or nil when its entry can't be read (the last face stays). Capped reads of regular files only
+    /// (SafeRead: a FIFO, a device or a huge file is no answer), never a wait.
     private func face() -> TileModel? {
-        guard let id, let e = Store.loadRaw()?.first(where: { $0.id == id }) else { return nil }
-        return TileModel.face(e, ProfileShow.load(e), windowOpen: false)
+        guard let id,
+              let list = SafeRead.whole(Store.configURL.path, max: SafeRead.jsonMax).flatMap({ try? JSONDecoder().decode(ConfigFile.self, from: $0) }),
+              let e = list.accounts.first(where: { $0.id == id }) else { return nil }
+        let record = SafeRead.whole(Store.statusFolder.appendingPathComponent("\(id).json").path, max: SafeRead.recordMax)
+            .flatMap(StatusCodec.decode)
+        return TileModel.face(e, ProfileShow.of(e, raw: record?.current()), windowOpen: false)
     }
 
     private static let unknown = TileModel(label: "?", fiveHour: nil, weekly: nil, stale: true, style: .bars)
 
-    /// One line in the profile's plug-in log (DockTile.logURL), kept under 256 KB (the older half goes to <id>.log.1).
+    /// One line in the profile's plug-in log (DockTile.logURL), kept under 256 KB (the older part goes to <id>.log.1).
+    /// Written with plain calls on a regular file opened non-blocking (never a FIFO or a link, never an exception).
     private func log(_ s: String) {
         guard let id else { return }
         let url = DockTile.logURL(id), fm = FileManager.default
@@ -102,23 +124,30 @@ class DockTilePlugIn: NSObject, NSDockTilePlugIn {
             try? fm.removeItem(at: old)
             try? fm.moveItem(at: url, to: old)
         }
-        let line = Data("\(ISO8601DateFormatter().string(from: Date())) \(s)\n".utf8)
-        if let h = try? FileHandle(forWritingTo: url) { h.seekToEndOfFile(); h.write(line); try? h.close() }
-        else { try? line.write(to: url) }
+        let fd = open(url.path, O_WRONLY | O_APPEND | O_CREAT | O_NOFOLLOW | O_NONBLOCK, 0o644)
+        guard fd >= 0 else { return }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG else { return }
+        let line = Array("\(ISO8601DateFormatter().string(from: Date())) \(s)\n".utf8)
+        _ = line.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
     }
 }
 
 /// Called once per loaded copy, by its load-time function (docktile_load.c), with the path of its executable: notes the
-/// copy's bundle and registers the subclass its Info.plist names, so macOS creates this copy's class and no other's.
+/// copy's bundle, profile and build, and registers the subclass its Info.plist names, so macOS creates this copy's class and
+/// no other's.
 @_cdecl("cl_audit_docktile_loaded")
 func docktileLoaded(_ image: UnsafePointer<CChar>) {
     // <bundle>/Contents/MacOS/<executable>
     let bundle = URL(fileURLWithPath: String(cString: image)).deletingLastPathComponent().deletingLastPathComponent()
         .deletingLastPathComponent()
     DockTilePlugIn.bundle = bundle
-    let info = NSDictionary(contentsOf: bundle.appendingPathComponent("Contents/Info.plist"))
+    let info = SafeRead.whole(bundle.appendingPathComponent("Contents/Info.plist").path, max: SafeRead.recordMax)
+        .flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? [String: Any] }
+    DockTilePlugIn.profileID = (info?["UsageAccountID"] as? String).flatMap(DockTile.plainID)
     DockTilePlugIn.loadedBuild = info?["UsageBuild"] as? String
-    guard let info, let name = info["NSPrincipalClass"] as? String, name != DockTile.baseClass, NSClassFromString(name) == nil,
+    guard let name = info?["NSPrincipalClass"] as? String, name != DockTile.baseClass, NSClassFromString(name) == nil,
           let cls = objc_allocateClassPair(DockTilePlugIn.self, name, 0) else { return }
     objc_registerClassPair(cls)
 }

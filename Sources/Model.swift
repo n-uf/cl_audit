@@ -38,8 +38,12 @@ struct Account {
     let claudeUserDataDir: String? // separate desktop window's data folder (expanded); nil = standard window
     let hasWindow: Bool            // the profile has a Claude window (off: nothing opens one)
 
+    /// The profile's label as its icons show it: its own, else its name's first six letters. Reads nothing (the Dock tile
+    /// plug-in draws with it; `init` looks at the folder too).
+    static func label(_ e: AccountEntry) -> String { e.label.isEmpty ? String(e.name.uppercased().prefix(6)) : e.label }
+
     init(_ e: AccountEntry) {
-        label = e.label.isEmpty ? String(e.name.uppercased().prefix(6)) : e.label
+        label = Self.label(e)
         name = e.name
         configDir = expand(e.configDir.isEmpty ? "~/.claude" : e.configDir)
         isDefaultDir = Self.isDefault(configDir: configDir)

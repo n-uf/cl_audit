@@ -18,6 +18,12 @@ enum DockTile {
         "ClAuditDockTile_" + Data(id.utf8).map { String(format: "%02x", $0) }.joined() + "_" + build
     }
 
+    /// A profile id as a file name may carry it (letters, digits, - and _ only), else nil: the plug-in reads it from a copy's
+    /// Info.plist, and names its heartbeat and log by it.
+    static func plainID(_ id: String) -> String? {
+        !id.isEmpty && id.count <= 128 && id.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-" || $0 == "_") }) ? id : nil
+    }
+
     static var folder: URL { Store.folder.appendingPathComponent("docktile") }
     static func beatURL(_ id: String) -> URL { folder.appendingPathComponent("\(id).beat") }
     static func logURL(_ id: String) -> URL { folder.appendingPathComponent("\(id).log") }
@@ -34,7 +40,7 @@ extension TileModel {
     /// for the full limit that holds the profile back (none once its reset has passed).
     static func face(_ e: AccountEntry, _ show: ProfileShow, windowOpen: Bool, now: Date = Date()) -> TileModel {
         let d = show.display, u = show.usage
-        return TileModel(label: Account(e).label, fiveHour: u?.fiveHour, weekly: u?.weekly,
+        return TileModel(label: Account.label(e), fiveHour: u?.fiveHour, weekly: u?.weekly,
                          stale: d.grey, style: e.style, warn: d.otherAccount,
                          tint: e.color, frame: e.frame,
                          fiveHourElapsed: windowElapsed(u?.fiveHourResets, 5 * 3600),
