@@ -2256,7 +2256,7 @@ struct AccountSettings: View {
     var windowCard: some View {
         let name = entry.name.isEmpty ? "this profile" : entry.name
         return SCard(title: "Claude window", info: "\(name)'s Claude window: the usual Claude app, or its own (own sign-in, chats and settings). Whether it goes with the Dock icon and what may open it; the cl_audit agent does this, whether or not cl_audit is open.") {
-            SRow(label: "Claude window", info: DesktopMode.switchInfo(name: name, mode: entry.desktop, dataDir: entry.desktopDataDir), first: true) {
+            SRow(label: "Claude window", info: DesktopMode.switchInfo(name: name, mode: entry.desktop, dataDir: entry.desktopDataDir, windowOn: entry.claudeWindow), first: true) {
                 SSwitch(isOn: Binding(get: { entry.claudeWindow }, set: { model.setClaudeWindow(entry.id, $0) }),
                         on: entry.desktop == .standard ? "the usual Claude app" : "its own window", off: "none",
                         onShort: entry.desktop == .standard ? "the usual app" : nil)

@@ -3765,9 +3765,14 @@ do {
     check(!DesktopMode.hasKept(.separate, dataDir: neverDir), "hasKept: an own window whose folder was never made")
     check(!DesktopMode.hasKept(.separate, dataDir: ""), "hasKept: an own window with no folder named")
 
-    let keptInfo = DesktopMode.switchInfo(name: "Ann", mode: .separate, dataDir: madeTilde)
-    let neverInfo = DesktopMode.switchInfo(name: "Ann", mode: .separate, dataDir: neverDir)
-    let stdInfo = DesktopMode.switchInfo(name: "Ann", mode: .standard, dataDir: "")
+    let keptInfo = DesktopMode.switchInfo(name: "Ann", mode: .separate, dataDir: madeTilde, windowOn: false)
+    let neverInfo = DesktopMode.switchInfo(name: "Ann", mode: .separate, dataDir: neverDir, windowOn: false)
+    let stdInfo = DesktopMode.switchInfo(name: "Ann", mode: .standard, dataDir: "", windowOn: true)
+    let goneInfo = DesktopMode.switchInfo(name: "Ann", mode: .separate, dataDir: neverDir, windowOn: true)
+    check(goneInfo.contains("Its data folder: \(neverDir), missing (deleted outside cl_audit?).") && !goneInfo.contains("none yet"),
+          "Claude window row help, window on but its folder gone: the path, said missing, never \"none yet\"")
+    check(DesktopMode.switchInfo(name: "Ann", mode: .separate, dataDir: madeTilde, windowOn: true) == DesktopMode.switchInfo(name: "Ann", mode: .separate, dataDir: madeTilde, windowOn: false),
+          "Claude window row help, folder exists: the same words whether the window is on or off")
     check(keptInfo.contains("its folder and sign-in are kept, so turning it back on needs no new sign-in")
           && keptInfo.contains("Its data folder: \(madeTilde).") && !keptInfo.contains("none yet"),
           "Claude window row help, folder exists: kept words and the folder's path")

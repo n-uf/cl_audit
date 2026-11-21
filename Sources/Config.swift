@@ -80,10 +80,14 @@ enum DesktopMode: String, Codable, Identifiable {
     }
 
     /// The Claude window row's help on the profile's Settings card.
-    static func switchInfo(name: String, mode: DesktopMode, dataDir: String) -> String {
+    static func switchInfo(name: String, mode: DesktopMode, dataDir: String, windowOn: Bool) -> String {
+        let kept = hasKept(mode, dataDir: dataDir)
+        // on with its folder gone (deleted outside cl_audit): say so, never "none yet"
         let folder = mode == .standard ? FolderKey.standardDataDir
-            : (hasKept(mode, dataDir: dataDir) ? dataDir : "none yet (made when the window is turned on)")
-        return "On: a Claude window signed in to \(name)'s account; open it from the dashboard, the Dock icon or the menu bar icon. Off: none, and nothing opens one; \(offKeptWords(kept: hasKept(mode, dataDir: dataDir))). Its data folder: \(folder)."
+            : kept ? dataDir
+            : windowOn && !dataDir.isEmpty ? "\(dataDir), missing (deleted outside cl_audit?)"
+            : "none yet (made when the window is turned on)"
+        return "On: a Claude window signed in to \(name)'s account; open it from the dashboard, the Dock icon or the menu bar icon. Off: none, and nothing opens one; \(offKeptWords(kept: kept)). Its data folder: \(folder)."
     }
 
     /// One plain line on the profile's Claude window card, under its switch.
