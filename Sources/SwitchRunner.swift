@@ -61,7 +61,25 @@ final class SwitchRunner: ObservableObject {
     /// showing it from this copy.
     private(set) var targetSnapshot: StandbyAccount?
     /// The move's receipt (SwitchEngine): what moved, for Undo until Claude Code is on the new account.
-    @Published private(set) var receipt: SwitchReceipt?
+    @Published private(set) var receipt: SwitchReceipt? { didSet { countStillMoved() } }
+    /// What the receipt still has moved ("41 sessions, 3 tasks", movedWords), counted off the main thread whenever the
+    /// receipt changes, never on a render: the tile and the What changed card read it.
+    @Published private(set) var stillMovedWords = ""
+    private var countGeneration = 0
+
+    private func countStillMoved() {
+        countGeneration += 1
+        let gen = countGeneration
+        guard let r = receipt else { stillMovedWords = ""; return }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let w = Self.movedWords(r)
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.countGeneration == gen else { return }
+                self.stillMovedWords = w
+            }
+        }
+    }
+
     /// What the move said: sessions held (a running Claude Code owns them), entries that didn't move, why tasks stayed.
     @Published private(set) var moveNote: String?
     /// What the old account keeps because it isn't a session entry ("Left with ann: …", leftWords), apart from moveNote so a
@@ -82,10 +100,10 @@ final class SwitchRunner: ObservableObject {
 
     /// The tile's two lines for a switch that stopped: "nothing changed" only when nothing did; a switch that moved
     /// sessions before it stopped says how many, and that Undo puts them back.
-    static func failedWords(_ r: SwitchReceipt?) -> (l1: String, l2: String) {
+    static func failedWords(_ r: SwitchReceipt?, moved: String? = nil) -> (l1: String, l2: String) {
         // changed: the receipt still has something to undo (sessions, tasks, a pointer line)
         guard let r, r.unfinished else { return ("Not started", "nothing changed") }
-        let w = movedWords(r)
+        let w = moved ?? movedWords(r)                         // (the runner's count, when it has one: no file reads here)
         return ("Stopped part way", (w.isEmpty ? "changed" : w + " moved") + " · Undo puts them back")
     }
 
