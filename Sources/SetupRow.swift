@@ -146,7 +146,16 @@ struct SetupRow: View {
     }
 
     /// A command as the person reads it: this Mac's home folder as `~`.
-    private func home(_ s: String) -> String { s.replacingOccurrences(of: NSHomeDirectory(), with: "~") }
+    private func home(_ s: String) -> String { Self.tildeHome(s, home: NSHomeDirectory()) }
+
+    /// `home` as `~` where it is a whole path's start: followed by `/`, the end, a space or a quote (never `/Users/ann` inside
+    /// `/Users/anna/x`), and not in the middle of a longer word.
+    static func tildeHome(_ s: String, home: String) -> String {
+        guard !home.isEmpty, home != "/" else { return s }
+        let pattern = "(?<![\\w/.~-])" + NSRegularExpression.escapedPattern(for: home) + "(?=/|$|[\\s\"'`;|&)])"
+        guard let re = try? NSRegularExpression(pattern: pattern) else { return s }
+        return re.stringByReplacingMatches(in: s, range: NSRange(s.startIndex..., in: s), withTemplate: "~")
+    }
 
     var body: some View {
         let p = runner.plan
