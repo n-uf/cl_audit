@@ -121,6 +121,13 @@ enum NewAccountSetup {
         return config && (d.window != .separate || !d.claudeWindow || exists(d.dataDir))
     }
 
+    /// The line under a switch that is locked once the folder is made (Name and Folder lock the same way).
+    static func lockedNote(_ d: NewAccountDraft) -> String {
+        d.createdConfigDir != nil || d.createdDataDir != nil
+            ? "Set when the folder was made. Cancel and clean up starts over."
+            : "Set when the folder was connected. Cancel setup starts over."
+    }
+
     /// Why Create/Connect can't go on when it ran and the folders still aren't ready, or nil when they are: said, never silent.
     static func notReadyWhy(_ d: NewAccountDraft) -> String? {
         guard !foldersReady(d) else { return nil }
@@ -575,6 +582,7 @@ struct NewAccountView: View {
                 SSwitch(isOn: $draft.claudeWindow, on: draft.window == .standard ? "the usual Claude app" : "its own window", off: "none")
                     .disabled(draft.started)
             }
+            if draft.started { SRowLine(text: NewAccountSetup.lockedNote(draft)) }
             if draft.claudeWindow, let clash = checks(.window).first(where: { $0.state != .ok }) {
                 SRowLine(text: clash.text, color: clash.state == .bad ? face.danger : face.caution)
             }
