@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.71 — 2026-11-20
+
 - With emails hidden, New profile's Account pop-up now shows the address in the same short form as the rest of Settings (first letter, dots, domain) under the blur. It used to blur the full address, which can be read back from a picture: screenshots or recordings of that pop-up taken with earlier versions may show the whole address.
 - A standby account brought over by a move with no organisation recorded now also gets it as soon as cl_audit finds it on this Mac, so it can be switched to.
 - When Claude Code renews its own expired sign-in, the numbers now also come back within about a minute when its only status line since came in that first minute (it waited up to 10 minutes then).
