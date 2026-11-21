@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.81 — 2026-11-21
+
 - When Claude Code's sign-in can't open (in a switch, the default profile's page or first run), cl_audit now says why: a sign-in already open for that folder (finish or close it first), or cl_audit couldn't tell whether one is open, instead of always "Terminal didn't open."
 - The same light now stands before a profile's name in the launcher, the menu bar's menu and the Dock icon's panels, so a profile's colour reads the same everywhere; a profile with no colour of its own shows it dark there too, where those places used to show orange.
 
