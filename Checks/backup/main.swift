@@ -2901,5 +2901,54 @@ MainActor.assumeIsolated {
     resetRestores()
 }
 
+// --- backup names: never two alike, also for many backups of one profile in one second (a switch, Back up now, an import's)
+MainActor.assumeIsolated {
+    let idCode = home + "/bkid-code", idPlace = URL(fileURLWithPath: home + "/bkid-place")
+    let dir = idPlace.appendingPathComponent("bkid")
+    try? fm.removeItem(atPath: idCode); try? fm.removeItem(at: idPlace)
+    write("\(idCode)/projects/-p/\(sid(901)).jsonl", #"{"type":"user"}"# + "\n")
+    let idSrc = SessionsBackup.Source(profile: "bkid", dataDir: "", codeDir: idCode)
+    let second = Date(timeIntervalSince1970: 1_767_225_600)          // one fixed second
+    // (4 random hex characters alone: 3000 names in one second would share one about 68 times)
+    let ids = (0..<3000).map { _ in SessionsBackup.newID(second) }
+    check(Set(ids).count == ids.count && ids.allSatisfy(SessionsBackup.validID) && Set(ids.map { $0.prefix(15) }).count == 1,
+          "3000 names for one second: all different, all in the usual form, all of that second")
+    // as a switch does (the name taken first and written down) and as Back up now does (make picks it), in one second
+    var made: [SessionsBackup.Manifest] = [], failed: [String] = []
+    for i in 0..<80 {
+        do {
+            made.append(i < 40 ? try SessionsBackup.make(idSrc, id: SessionsBackup.newID(second), kind: .manual, window: false, place: idPlace, now: second)
+                               : try SessionsBackup.make(idSrc, kind: .manual, window: false, place: idPlace, now: second))
+        } catch { failed.append("\(error)") }
+    }
+    let folders = names(dir.path)
+    check(failed.isEmpty && Set(made.map(\.id)).count == 80 && Set(folders) == Set(made.map(\.id))
+          && SessionsBackup.list(profile: "bkid", place: idPlace).count == 80,
+          "80 backups of one profile in one second: none fails, each in a folder of its own, all listed: \(failed.first ?? "")")
+    check(made.allSatisfy { SessionsBackup.load(profile: "bkid", id: $0.id, place: idPlace) == $0 }, "...each manifest names its own folder")
+
+    // the name already there (another process, an earlier run, in the same second): make picks another one; a name a caller
+    // wrote down first is refused, never changed; whose folders they are is never touched
+    let x = "20260101-000000-0a0a", y = "20260101-000000-0b0b", z = "20260101-000000-0c0c"
+    try! fm.createDirectory(at: dir.appendingPathComponent(x), withIntermediateDirectories: true)               // a backup's
+    try! fm.createDirectory(at: dir.appendingPathComponent(".\(y).partial"), withIntermediateDirectories: true)  // one being made
+    SessionsBackup.nextIDs = [x, y, z]
+    let picked = try? SessionsBackup.make(idSrc, kind: .manual, window: false, place: idPlace, now: second)
+    check(picked?.id == z && SessionsBackup.load(profile: "bkid", id: z, place: idPlace) == picked && SessionsBackup.nextIDs.isEmpty,
+          "a name taken by a backup, then one by a backup being made: make picks the next, and the manifest says which")
+    check(names(dir.appendingPathComponent(x).path).isEmpty && fm.fileExists(atPath: dir.appendingPathComponent(".\(y).partial").path),
+          "...the other backups' folders are left as they were")
+    check((try? SessionsBackup.make(idSrc, id: x, kind: .manual, window: false, place: idPlace)) == nil
+          && (try? SessionsBackup.make(idSrc, id: y, kind: .manual, window: false, place: idPlace)) == nil
+          && names(dir.appendingPathComponent(x).path).isEmpty && fm.fileExists(atPath: dir.appendingPathComponent(".\(y).partial").path),
+          "a name the caller gave is refused when it is taken (by a backup, or one being made), and the folder there is not touched")
+    let before = Set(names(dir.path))
+    SessionsBackup.nextIDs = Array(repeating: x, count: 8)
+    check((try? SessionsBackup.make(idSrc, kind: .manual, window: false, place: idPlace)) == nil && SessionsBackup.nextIDs.isEmpty
+          && Set(names(dir.path)) == before, "eight taken names in a row: refused, nothing left behind")
+    SessionsBackup.nextIDs = []
+    try? fm.removeItem(atPath: idCode); try? fm.removeItem(at: idPlace)
+}
+
 print("\(checks - failures) of \(checks) checks passed")
 exit(failures == 0 ? 0 : 1)

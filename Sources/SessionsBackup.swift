@@ -217,10 +217,42 @@ enum SessionsBackup {
 
     // MARK: names
 
+    /// A backup's name: the second it is for and 4 random hex characters. Never one this run of cl_audit gave before (`Issued`),
+    /// so two backups of one profile in one second never share a name, also when the caller writes the name down before the
+    /// backup is made (a switch's receipt). The form stays the one `validID` reads: older backups list, sort and age out as before.
     static func newID(_ d: Date = Date()) -> String {
+        #if CL_AUDIT_TESTING
+        if !nextIDs.isEmpty { return nextIDs.removeFirst() }
+        #endif
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyyMMdd-HHmmss"
-        return "\(f.string(from: d))-\(UUID().uuidString.prefix(4).lowercased())"
+        let stamp = f.string(from: d)
+        while true {
+            let id = "\(stamp)-\(UUID().uuidString.prefix(4).lowercased())"
+            if Issued.take(id) { return id }
+        }
     }
+
+    /// The names newID gave in this run: the last `cap` of them (a clash needs the same second, so older ones don't matter).
+    private enum Issued {
+        private static let lock = NSLock()
+        private static var taken = Set<String>()
+        private static var order: [String] = []
+        private static let cap = 4096
+        /// True when `id` wasn't given before; it counts as given from now on.
+        static func take(_ id: String) -> Bool {
+            lock.lock(); defer { lock.unlock() }
+            guard taken.insert(id).inserted else { return false }
+            order.append(id)
+            if order.count > cap { taken.remove(order.removeFirst()) }
+            return true
+        }
+    }
+
+    #if CL_AUDIT_TESTING
+    /// A check's seam: newID returns these first, whatever it gave before (as another process, or an earlier run, would). Only a
+    /// test build (compiled with -D CL_AUDIT_TESTING) has it.
+    nonisolated(unsafe) static var nextIDs: [String] = []
+    #endif
 
     static func validID(_ s: String) -> Bool {
         s.range(of: #"^[0-9]{8}-[0-9]{6}-[0-9a-f]{4}$"#, options: .regularExpression) != nil
@@ -411,21 +443,35 @@ enum SessionsBackup {
     /// out a hook script, a unit holding one, or the plugin marketplaces that hold a key (`secretLeftOut`): those travel only in the
     /// encrypted export. `forExport`: the hidden copy an export
     /// is made from (and taken away again), which keeps both whole for the image (a zip leaves them out).
+    /// `id`: the name a caller wrote down first (a switch's receipt names it): refused when a backup, or one being made, has it.
+    /// nil: make picks it, and picks another while the name is taken (by another process, or an earlier run, in the same second);
+    /// the name used is the returned manifest's `id`.
     @discardableResult
-    static func make(_ s: Source, id: String = newID(), kind: Kind, window: Bool = true, transcripts: Bool = true, setup: Bool = true,
+    static func make(_ s: Source, id given: String? = nil, kind: Kind, window: Bool = true, transcripts: Bool = true, setup: Bool = true,
                      receipt: SwitchReceipt? = nil, place: URL, now: Date = Date(), forExport: Bool = false) throws -> Manifest {
-        guard validProfile(s.profile), validID(id) else { throw BackupError("the profile or backup name isn't a plain one") }
+        guard validProfile(s.profile), given.map(validID) ?? true else { throw BackupError("the profile or backup name isn't a plain one") }
         if let why = placeProblem(place, for: [s]) { throw BackupError(why) }
         let started = Date()
         let fm = FileManager.default
         let profileDir = folder(profile: s.profile, place: place)
-        let final = profileDir.appendingPathComponent(id)
-        let partial = profileDir.appendingPathComponent(".\(id).partial")
         do {
             try fm.createDirectory(at: profileDir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         } catch { throw BackupError("the backups folder \(tilde(place.path)) can't be written") }
-        guard !fm.fileExists(atPath: final.path) else { throw BackupError("a backup with that name is there already") }
-        guard mkdir(partial.path, 0o700) == 0 else { throw BackupError("couldn't start a backup in \(tilde(place.path))") }
+        let tries = given == nil ? 8 : 1
+        var id = "", final = profileDir, partial = profileDir
+        for attempt in 1...tries {
+            id = given ?? newID()
+            final = profileDir.appendingPathComponent(id)
+            partial = profileDir.appendingPathComponent(".\(id).partial")
+            if fm.fileExists(atPath: final.path) {
+                if given != nil { throw BackupError("a backup with that name is there already") }
+            } else if mkdir(partial.path, 0o700) == 0 {
+                break
+            } else if errno != EEXIST {
+                throw BackupError("couldn't start a backup in \(tilde(place.path))")
+            }
+            if attempt == tries { throw BackupError("couldn't start a backup in \(tilde(place.path))") }
+        }
         var done = false
         defer { if !done { try? fm.removeItem(at: partial) } }
 
