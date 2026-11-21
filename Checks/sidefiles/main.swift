@@ -402,7 +402,9 @@ MainActor.assumeIsolated {
                                  destination: URL(fileURLWithPath: moveFile), rootName: "side move", place: bplace)
     job.move = true; job.profiles = SessionsMove.make(all, parts: ["studio": "p1"], all: all, move: true); job.known = Identities.of(accounts: all)
     job.side = .movePreset
-    let mo = try? SessionsExport.run(job)
+    // (one retry: the app's own hdiutil create can fail with no message when another run creates an image at the same moment)
+    var mo = try? SessionsExport.run(job)
+    if mo == nil { try? fm.removeItem(atPath: moveFile); mo = try? SessionsExport.run(job) }
     check(mo?.side?.historyLines == 4 && mo?.side?.hits.count == 1, "export: the move carries the side files, the key's line left out and listed: \(String(describing: mo?.side?.hits))")
     guard let o = try? SessionsImport.open(URL(fileURLWithPath: moveFile), password: pw, place: bplace) else { check(false, "export: the move opens"); return }
     let tree = o.tree.path
@@ -556,8 +558,15 @@ MainActor.assumeIsolated {
         } catch { return "doctoring failed: \(error)" }
         let file = URL(fileURLWithPath: home + "/\(name).dmg")
         try? fm.removeItem(at: file)
-        let r = Tool.run("/usr/bin/hdiutil", ["create", "-srcfolder", dir, "-volname", "side-\(name)-\(getpid())", "-fs", "APFS", "-format", "UDZO", "-encryption", "AES-256", "-stdinpass", "-quiet", file.path], stdin: Data(pw.utf8), secret: pw)
-        guard r?.status == 0 else { return "file not made: \(r?.err ?? "")" }
+        // a volume name per image and per process, and one retry on a failure (hdiutil create can fail with status 1 and no message when
+        // another run creates an image at the same moment), the half-made image removed first
+        var r: Tool.Output?
+        for _ in 0..<2 {
+            r = Tool.run("/usr/bin/hdiutil", ["create", "-srcfolder", dir, "-volname", "side-\(name)-\(getpid())", "-fs", "APFS", "-format", "UDZO", "-encryption", "AES-256", "-stdinpass", "-quiet", file.path], stdin: Data(pw.utf8), secret: pw)
+            if r?.status == 0 { break }
+            try? fm.removeItem(at: file)
+        }
+        guard r?.status == 0 else { return "file not made (status \(r.map { String($0.status) } ?? "none")): \(r?.err ?? "") \(r?.out ?? "")" }
         do { let x = try SessionsImport.open(file, password: pw, place: bplace); SessionsImport.discard(x.work); return "OPENED" } catch { return "\(error)" }
     }
     /// side.json rewritten (its hash in export.json too)
@@ -597,7 +606,7 @@ MainActor.assumeIsolated {
     let huge = doctored("side-huge") { _, ex in ex.sideBytes = 1 << 62 }
     check(huge.contains("can't be right"), "hostile image: a huge stated size: refused: \(huge.prefix(100))")
     let v7 = doctored("v7") { _, ex in ex.version = 7 }
-    check(v7.contains("newer cl_audit"), "format: version 7 is refused with the newer-cl_audit words")
+    check(v7.contains("newer cl_audit"), "format: version 7 is refused with the newer-cl_audit words (saw: \(v7.prefix(200)); want \"newer cl_audit\", and a \"file not made\" is the image tool failing, not the refusal)")
     SessionsImport.discard(o.work)
 
     // ---- the new Mac: role B, in its own fresh home. old/garden-app is "cloned" to new/garden-app there

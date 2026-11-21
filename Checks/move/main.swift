@@ -297,7 +297,14 @@ MainActor.assumeIsolated {
     catch { check("\(error)".contains("never a zip") && !fm.fileExists(atPath: out + "/move.zip"), "export: a move is never a zip (refused in the engine): \(error)") }
     job.password = pw; job.destination = URL(fileURLWithPath: moveFile); job.rootName = "cl_audit all profiles move"
     var mo: SessionsExport.Outcome?
-    do { mo = try SessionsExport.run(job) } catch { check(false, "export (move): \(error)") }
+    // (one retry: the app's own hdiutil create can fail with no message when another run creates an image at the same moment; the
+    // half-made image is removed first. The engine's own volume name isn't this suite's to change)
+    for attempt in 0..<2 {
+        do { mo = try SessionsExport.run(job); break } catch {
+            try? fm.removeItem(atPath: moveFile)
+            if attempt == 1 { check(false, "export (move): \(error)") }
+        }
+    }
     check(mo?.move == true && mo?.profilesCarried == true && mo?.profilesLeftOut == false, "export (move): made, with cl_audit's profiles")
     if mo != nil, let o = try? SessionsImport.open(URL(fileURLWithPath: moveFile), password: pw, place: bplace) {
         let t = o.tree.path

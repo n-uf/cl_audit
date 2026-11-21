@@ -237,8 +237,17 @@ if role == "b" {
         refused = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: code + "/gone2/app")], windowClosed: { true })
         check(refused.problems.first?.contains("running Claude Code session") == true, "refused: a running session holds it")
         SessionsRestore.runningSessions = { nil }
+        let treeUnread = homeTree()        // the whole home, every path with its bytes: the refused apply must leave it as it is (as the Undo case above)
         refused = try! SessionsRepoint.apply(t, picks: [SessionsRepoint.Pick(session: S2, folder: code + "/gone2/app")], windowClosed: { true })
         check(refused.problems.first?.contains("couldn't be checked") == true, "refused: when running sessions can't be told")
+        let treeAfter = homeTree()
+        // (apply writes its own receipt first, in cl_audit's repoints folder, so the page can show what it refused: that one folder is
+        // cl_audit's bookkeeping, the receipt holds no session; everything else, Claude's folders and the project's, stays byte for byte)
+        let own = "Library/Application Support/usage-n-uf/repoints/"
+        let changedPaths = Set(treeUnread.keys).union(treeAfter.keys).filter { treeAfter[$0] != treeUnread[$0] }
+        let outside = changedPaths.filter { !$0.hasPrefix(own) }
+        check(refused.sessions.isEmpty && outside.isEmpty && treeUnread.count > 10 && changedPaths.allSatisfy { $0.hasPrefix(own) },
+              "refused: when running sessions can't be told, nothing outside cl_audit's own repoint receipt was written in the home (\(treeUnread.count) paths; sessions \(refused.sessions.count); changed outside it: \(outside.sorted().prefix(12)))")
         SessionsRestore.runningSessions = { [] }
         // a link in its folder
         try! fm.createDirectory(atPath: proj + "/" + enc(gone) + "/\(S2)", withIntermediateDirectories: true)
@@ -489,7 +498,9 @@ MainActor.assumeIsolated {
     var job = SessionsExport.Job(parts: [part(studio)], keys: .keep, password: pw, destination: URL(fileURLWithPath: moveFile), rootName: "resume move", place: bplace)
     job.move = true; job.profiles = SessionsMove.make(all, parts: ["studio": "p1"], all: all, move: true); job.known = Identities.of(accounts: all)
     job.checklist = CodeChecklist.encode(cl)
-    let mo = try? SessionsExport.run(job)
+    // (one retry: the app's own hdiutil create can fail with no message when another run creates an image at the same moment)
+    var mo = try? SessionsExport.run(job)
+    if mo == nil { try? fm.removeItem(atPath: moveFile); mo = try? SessionsExport.run(job) }
     check(mo?.checklistCarried == true, "export: the move carries the checklist")
     if let o = try? SessionsImport.open(URL(fileURLWithPath: moveFile), password: pw, place: bplace) {
         check(o.export.version == 5 && fm.fileExists(atPath: o.tree.path + "/code.json") && o.checklist?.projects.count == 4 && !(read(o.tree.path + "/code.json") ?? "").contains(tok),
@@ -567,8 +578,15 @@ MainActor.assumeIsolated {
         } catch { return "doctoring failed: \(error)" }
         let file = URL(fileURLWithPath: home + "/\(name).dmg")
         try? fm.removeItem(at: file)
-        let r = Tool.run("/usr/bin/hdiutil", ["create", "-srcfolder", dir, "-volname", "resume-\(name)-\(getpid())", "-fs", "APFS", "-format", "UDZO", "-encryption", "AES-256", "-stdinpass", "-quiet", file.path], stdin: Data(pw.utf8), secret: pw)
-        guard r?.status == 0 else { return "file not made: \(r?.err ?? "")" }
+        // a volume name per image and per process, and one retry on a failure (hdiutil create can fail with status 1 and no message when
+        // another run creates an image at the same moment), the half-made image removed first
+        var r: Tool.Output?
+        for _ in 0..<2 {
+            r = Tool.run("/usr/bin/hdiutil", ["create", "-srcfolder", dir, "-volname", "resume-\(name)-\(getpid())", "-fs", "APFS", "-format", "UDZO", "-encryption", "AES-256", "-stdinpass", "-quiet", file.path], stdin: Data(pw.utf8), secret: pw)
+            if r?.status == 0 { break }
+            try? fm.removeItem(at: file)
+        }
+        guard r?.status == 0 else { return "file not made (status \(r.map { String($0.status) } ?? "none")): \(r?.err ?? "") \(r?.out ?? "")" }
         do { let x = try SessionsImport.open(file, password: pw, place: bplace); SessionsImport.discard(x.work); return "OPENED" } catch { return "\(error)" }
     }
     func setCode(_ root: URL, _ ex: inout ExportManifest, _ d: Data) throws {
