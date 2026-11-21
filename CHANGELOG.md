@@ -8,6 +8,10 @@ the notes before updating.
 
 ## Unreleased
 
+Nothing pending.
+
+## 26.11.77 — 2026-11-21
+
 - Settings ▸ Claude window, for a profile made with the window off, no longer says its sign-in is kept or shows a data folder that doesn't exist: turned on, the window gets its own folder and asks for a sign-in on its first start.
 - Picking a folder for a moved session that cl_audit refuses (nothing written) no longer hides the Undo of the last real re-point on the Sessions page.
 - When a move to the default profile stopped part way, is being undone or was left as it is, its steps and Result now say so too, as the line at the top does: no spinner on the move step and no "working…" while nothing runs.
