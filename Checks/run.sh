@@ -38,7 +38,8 @@
 #   APP=<worktree>  check another tree than the one this file is in
 #
 # Every compile goes through the shared build lock. The suites are heavy: wrap the whole call in a heavy-work queue if your
-# machine has one.
+# machine has one. Never wrap run.sh itself in an outer lockf: its compiles take the lock themselves, so the outer one would hold it
+# and every compile would wait on it for ever.
 #
 # Safety: each suite runs with HOME and CFFIXED_USER_HOME at Checks/.work/<suite>/home, a throwaway folder it empties and
 # fills with sample accounts and sessions. Nothing here opens the app, the Dock or Terminal, and nothing reads the real
