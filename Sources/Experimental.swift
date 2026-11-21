@@ -83,7 +83,8 @@ enum ConsentLog {
         guard fd >= 0 else { Logger(subsystem: "local.usage-n-uf", category: "consent").error("consent.log not written: \(errno, privacy: .public)"); return }
         defer { close(fd) }
         var st = stat()
-        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_uid == getuid() else { return }
+        // one name only: a hard link made to another of this user's files would have it appended to
+        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_uid == getuid(), st.st_nlink == 1 else { return }
         _ = fchmod(fd, 0o600)
         let data = Array(line(flow, now: now).utf8)
         _ = data.withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }

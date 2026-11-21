@@ -1340,6 +1340,11 @@ do {
     try? fm.createSymbolicLink(atPath: log.path, withDestinationPath: elsewhere)
     ConsentLog.accepted("Import")
     check((try? String(contentsOfFile: elsewhere, encoding: .utf8)) == "kept\n", "consent.log a link: never written through")
+    try? fm.removeItem(at: log)
+    // a hard link to another file of this user's: O_NOFOLLOW doesn't see it, the link count does
+    _ = link(elsewhere, log.path)
+    ConsentLog.accepted("Import")
+    check((try? String(contentsOfFile: elsewhere, encoding: .utf8)) == "kept\n", "consent.log a hard link: never appended to")
     try? fm.removeItem(at: log); try? fm.removeItem(atPath: elsewhere)
     rc.reset()
 }
