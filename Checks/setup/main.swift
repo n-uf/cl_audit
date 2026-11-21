@@ -714,19 +714,34 @@ MainActor.assumeIsolated {
         check(named == ["p/7"] && took1 < 5, "scripts: 200,000 named paths against 20,000 files, matched by their tails quickly (\(named.count) in \(String(format: "%.2f", took1)) s)")
         // a `cd` to a folder, then ./ (or ../) in the same command: that file is named; a bare relative word and one without a cd aren't
         let cdj = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"cd ~/.claude/skills/guard && ./run.sh --x ../shared/lib.sh"}]},{"hooks":[{"type":"command","command":"./other.sh run.sh"}]}]}}"#.utf8)
-        check(Setup.namedPaths(in: cdj, among: ["skills/guard/run.sh", "skills/shared/lib.sh", "skills/guard/other.sh", "run.sh"]) == ["skills/guard/run.sh", "skills/shared/lib.sh"],
-              "scripts: cd ~/.claude/skills/guard && ./run.sh names run.sh (and ../shared/lib.sh); a ./ with no cd before it, or a bare word, names nothing: \(Setup.namedPaths(in: cdj, among: ["skills/guard/run.sh", "skills/shared/lib.sh", "skills/guard/other.sh", "run.sh"]).sorted())")
+        let cdNamed = Setup.namedPaths(in: cdj, among: ["skills/guard/run.sh", "skills/shared/lib.sh", "skills/guard/other.sh"])
+        check(cdNamed == ["skills/guard/run.sh", "skills/shared/lib.sh"],
+              "scripts: cd ~/.claude/skills/guard && ./run.sh names run.sh (and ../shared/lib.sh); a ./ with no cd before it, or a bare word, names nothing: \(cdNamed.sorted())")
+        // a crafted settings.json of one very deep path, and a cd to a very long one followed by many ./ tokens: both quick
+        let deep = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"/\#(String(repeating: "a/", count: 400_000))x.sh"}]}]}}"#.utf8)
+        let longCd = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"cd /\#(String(repeating: "b", count: 2_000_000)) && \#(String(repeating: "./a ", count: 200_000))"}]}]}}"#.utf8)
+        let t2 = Date()
+        let deepNamed = Setup.namedPaths(in: deep, among: rels + ["a/x.sh"])
+        let longNamed = Setup.namedPaths(in: longCd, among: rels)
+        let took2 = Date().timeIntervalSince(t2)
+        check(deepNamed == ["a/x.sh"] && longNamed.isEmpty && took2 < 5,
+              "scripts: one path 400,000 folders deep, and a cd to a 2 MB path followed by 200,000 ./ tokens, read quickly (\(String(format: "%.2f", took2)) s)")
         // the setup row's ~: only where the home folder is a whole path's start
         check(SetupRow.tildeHome("node /Users/ann/a.js --log /Users/ann", home: "/Users/ann") == "node ~/a.js --log ~"
               && SetupRow.tildeHome("node /Users/anna/a.js /x/Users/ann/b", home: "/Users/ann") == "node /Users/anna/a.js /x/Users/ann/b"
-              && SetupRow.tildeHome("sh \"/Users/ann/x y.sh\"", home: "/Users/ann") == "sh \"~/x y.sh\"",
+              && SetupRow.tildeHome("sh \"/Users/ann/x y.sh\"", home: "/Users/ann") == "sh \"~/x y.sh\""
+              && SetupRow.tildeHome("PATH=/Users/ann:/usr/bin x --dir=/Users/ann,y", home: "/Users/ann") == "PATH=~:/usr/bin x --dir=~,y",
               "setup row: the home folder becomes ~ only as a path's start, never inside /Users/anna or another path")
-        // an export's names: one that two of the backup's names become once an address in them is replaced gets a free name
-        var taken = Set<String>()
-        let names = ["transcripts/p/s1/tool-results/ab12.txt", "transcripts/p/s1/tool-results/AB12.txt", "transcripts/p/s1/tool-results/ab12.txt", "transcripts/p/s2.jsonl"]
-            .map { SessionsExport.uniqueName($0, taken: &taken) }
-        check(names == ["transcripts/p/s1/tool-results/ab12.txt", "transcripts/p/s1/tool-results/AB12 2.txt", "transcripts/p/s1/tool-results/ab12 3.txt", "transcripts/p/s2.jsonl"],
-              "export names: a name taken (in any case) gets the next free one beside it, never a refusal: \(names)")
+        // an export's names: two of the backup's names that become the same once an address is replaced get free names, one
+        // folder level at a time; the same backup name always gets the same name (a session's transcript and folder stay together)
+        var names = SessionsExport.Names()
+        let given = [("transcripts/-ann/s1.jsonl", "transcripts/-fp/s1.jsonl"),           // a project folder named for an address …
+                     ("transcripts/-fp/s9.jsonl", "transcripts/-fp/s9.jsonl"),            // … beside one already named for its fingerprint
+                     ("transcripts/-ann/s1/tool-results/ann.txt", "transcripts/-fp/s1/tool-results/fp.txt"),
+                     ("transcripts/-ann/s1/tool-results/FP.txt", "transcripts/-fp/s1/tool-results/FP.txt")]
+            .map { names.path(original: $0.0, scrubbed: $0.1) }
+        check(given == ["transcripts/-fp/s1.jsonl", "transcripts/-fp 2/s9.jsonl", "transcripts/-fp/s1/tool-results/fp.txt", "transcripts/-fp/s1/tool-results/FP 2.txt"],
+              "export names: a project folder or file that another backup name already took gets the next free one, its files follow it, never a refusal: \(given)")
         let c5 = e2 + "/.claude-e2m"
         w(c5, "settings.json", #"{"mcpServers":{"x":{"command":"\#(c5)/bin/mcp.sh"}},"hooks":{"Stop":[{"hooks":[{"type":"command","command":"\#(c5)/bin/x.sh"}]}]}}"#)
         w(c5, "bin/x.sh", "#!/bin/sh\n", exec: true); w(c5, "bin/mcp.sh", "#!/bin/sh\n", exec: true)
