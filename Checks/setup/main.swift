@@ -734,6 +734,15 @@ MainActor.assumeIsolated {
         let took3 = Date().timeIntervalSince(t3)
         check(manyPaths.count == 2_001 && took3 < 5,
               "scripts: after one cd, at most 2,000 different relative tokens are resolved, in a moment (\(manyPaths.count) paths in \(String(format: "%.2f", took3)) s)")
+        // the same with a cd before every 2,000 (a cap per cd alone wouldn't bound it): at most 20,000 in all, in a moment
+        let dir = "/" + String(repeating: "c/", count: 499)
+        let cds = (0..<150).map { k in "cd \(dir)\(k) && " + (0..<2_000).map { "./\(k)-\($0)" }.joined(separator: " ") }.joined(separator: " && ")
+        let manyCds = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"\#(cds)"}]}]}}"#.utf8)
+        let t4 = Date()
+        let cdsPaths = Setup.commandPaths(inSettings: manyCds, home: home)
+        let took4 = Date().timeIntervalSince(t4)
+        check(cdsPaths.count == 20_000 + 150 && took4 < 5,
+              "scripts: 150 cds of 2,000 different relative tokens each: 20,000 resolved in all, in a moment (\(cdsPaths.count) paths in \(String(format: "%.2f", took4)) s)")
         // the setup row's ~: only where the home folder is a whole path's start
         check(SetupRow.tildeHome("node /Users/ann/a.js --log /Users/ann", home: "/Users/ann") == "node ~/a.js --log ~"
               && SetupRow.tildeHome("node /Users/anna/a.js /x/Users/ann/b", home: "/Users/ann") == "node /Users/anna/a.js /x/Users/ann/b"

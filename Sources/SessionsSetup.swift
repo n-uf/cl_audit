@@ -684,18 +684,21 @@ enum Setup {
             else if t.hasPrefix("${HOME}/") { t = home + String(t.dropFirst(7)) }
             return t.hasPrefix("/") && t.count > 1 ? t : nil
         }
+        // relative tokens resolved in all (each resolution re-reads its cd's folder, so their number is what is capped: a crafted
+        // settings.json of a million `./1 ./2 …`, or of many cds each followed by thousands, stays quick; a real one names a handful)
+        let perCd = 2_000, inAll = 20_000
+        var resolvedInAll = 0
         for cmd in commands(inSettings: data) {
             // the folder a `cd` goes to, normalised once (nil: one it can't tell, or longer than any real path); each relative token
-            // after it is resolved once, and at most `perCd` of them (a crafted `cd /<long path> && ./1 ./2 … ./1000000` stays quick:
-            // each resolution re-reads the folder, so their number is what is capped; a real command names a handful)
-            let perCd = 2_000
+            // after it resolved once, at most `perCd` of them per cd and `inAll` for the whole file
             var cwd: String? = nil, afterCd = false, resolved = Set<String>()
             for raw in cmd.components(separatedBy: seps) where !raw.isEmpty {
                 if afterCd { afterCd = false; cwd = raw.utf8.count <= 1024 ? absolute(raw).map(normalize) : nil; resolved = [] }
                 if raw == "cd" { afterCd = true; continue }
                 var t = absolute(raw)
                 if t == nil, let d = cwd, raw.hasPrefix("./") || raw.hasPrefix("../"), raw.utf8.count <= 1024,
-                   resolved.count < perCd, resolved.insert(raw).inserted {
+                   resolved.count < perCd, resolvedInAll < inAll, resolved.insert(raw).inserted {
+                    resolvedInAll += 1
                     t = normalize(d + "/" + raw)
                 }
                 guard let p = t else { continue }
