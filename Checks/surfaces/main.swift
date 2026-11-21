@@ -1343,6 +1343,11 @@ do {
     check(words(linkedNew, annOnly, code: ben, now: t0.addingTimeInterval(-86400)) == onIt
           && words(linkedNew, annOnly, code: ben, now: t0.addingTimeInterval(-60)) == finish,
           "a link dated a day ahead (clock set back) no longer decides the row, one a minute ahead still does: \(words(linkedNew, annOnly, code: ben, now: t0.addingTimeInterval(-86400)))")
+    // the one rule both Settings' row and AccountResolver's switchWaits go through (the resolver passes ?? true for no link)
+    check(newer.linkedLately(now: t0) == nil
+          && linkedNew.linkedLately(now: t0.addingTimeInterval(-300)) == true && linkedNew.linkedLately(now: t0.addingTimeInterval(-301)) == false
+          && linkedNew.linkedLately(now: t0.addingTimeInterval(86400)) == true && linkedNew.linkedLately(now: t0.addingTimeInterval(86401)) == false,
+          "linkedLately: nil with no link; true from 5 minutes ahead to a day after the link, false past either end")
     check(words(newestOf([older, linkedNew]), withCat, code: dan) == onIt,
           "the newest switch linked to ben, an older one still open, Claude Code on dan by hand: never the older one's cat, no finish: \(words(newestOf([older, linkedNew]), withCat, code: dan))")
     // 07 after a restart: the switch to ben still open, Claude Code on dan
