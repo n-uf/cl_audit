@@ -1541,6 +1541,11 @@ enum SessionsExport {
                             }
                             unlink(path)
                             landed.remove(String(it.path.dropFirst(6)))
+                            // its folders, emptied now, go too (an import refuses a folder no manifest names), up to setup/; a
+                            // folder that still holds something stays (rmdir refuses it)
+                            var dir = (path as NSString).deletingLastPathComponent
+                            let setupDir = (out.path as NSString).appendingPathComponent("setup")
+                            while dir.hasPrefix(setupDir + "/"), rmdir(dir) == 0 { made.remove(dir); dir = (dir as NSString).deletingLastPathComponent }
                         }
                         po.setupUnits.removeAll { $0 == u }
                         setupNames.append("\(SetupRow.title(u)) (left out with what includes it)"); leftOut += list.count
