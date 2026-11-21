@@ -167,7 +167,8 @@ extension SessionsRestore {
             // (the same parse as the scripts the import accepts and makes executable: hooks and the status line's command only)
             sp.hooks = Setup.commands(inSettings: d).prefix(30).map { String($0.prefix(200)) }
             if status[Setup.Unit(kind: .settings, name: "settings.json")] == .different {
-                // (read with the same 8 MB cap as an export's: a crafted settings.json here is never read whole)
+                // (read with the same 8 MB cap as an export's: a crafted settings.json here is never read whole; one over it gives no
+                // differences, which is fine: an import refuses a settings.json that size anyway)
                 let here = SafeFiles.readPlain((t.codeDir as NSString).appendingPathComponent("settings.json"), max: 8 << 20, followsLink: true)
                 sp.settingsDiffer = here.map { Setup.settingsDifferences(here: $0, there: d) } ?? []
             }
