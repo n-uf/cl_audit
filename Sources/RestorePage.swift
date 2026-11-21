@@ -192,7 +192,10 @@ struct RestorePage: View {
                 SRow(label: "Refused", first: true, stacked: true) { Text(why).font(.system(size: 12.5)).foregroundStyle(face.danger).fixedSize(horizontal: false, vertical: true) }
             } else if let p = plan {
                 SRow(label: "Back where it was", first: true, stacked: true) {
-                    value("\(n(p.backEntries, "entry", "entries"))\(fromSwitch ? " the switch moved" : ""), unchanged since · \(n(p.backTranscripts, "transcript", "transcripts")) (nothing to do)")
+                    // (only what there is: no "0 entries" line)
+                    let back = [p.backEntries > 0 ? n(p.backEntries, "entry", "entries") + (fromSwitch ? " the switch moved" : "") : nil,
+                                p.backTranscripts > 0 ? n(p.backTranscripts, "transcript", "transcripts") : nil].compactMap { $0 }
+                    value(back.isEmpty ? "none" : back.joined(separator: " · ") + ", unchanged since (nothing to do)")
                 }
                 SRow(label: "Missing, restored", stacked: true) {
                     value(missingWords(p))
@@ -272,8 +275,14 @@ struct RestorePage: View {
 
     private var staysCard: some View {
         SCard(title: "Stays as it is", info: "Restore only adds what is missing. The account, the sign-ins and claude.ai are not part of it; a file that is here (MCP settings, settings.json, a task file) is built not to be replaced or merged into.") {
-            SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): a switch changes that") }
-            SRow(label: "Sign-ins") { rowValue(imp ? "Never in an export, never written" : "Never in a backup, never written") }
+            if imp, plan?.isMove == true {
+                // (as the Import page says it for a move)
+                SRow(label: "Account", first: true) { rowValue("\(name) keeps the accounts it has; the import doesn't change them") }
+                SRow(label: "Sign-ins") { rowValue("Never travel: sign in again on this Mac") }
+            } else {
+                SRow(label: "Account", first: true) { rowValue("\(name) stays on \(inUse): a switch changes that") }
+                SRow(label: "Sign-ins") { rowValue(imp ? "Never in an export, never written" : "Never in a backup, never written") }
+            }
             SRow(label: "MCP") { rowValue(imp ? "Yours stay; the file's are added only if none is here and you pick Add them"
                                           : "Not in this Mac's backups: the window's MCP settings travel only in the encrypted export. Yours stay as they are") }
             SRow(label: "settings.json") { rowValue("Yours stay; one is added only if none is here and you pick Add them") }
@@ -331,7 +340,10 @@ struct RestorePage: View {
         let back = runner.receipt?.back ?? 0
         let undoneNow = runner.phase == .undone
         // after an Undo the plan is the old one (or none): the receipt says whether window files were among what it took away
-        let needsWindow = undoneNow ? (runner.receipt?.steps.contains { $0.inWindow } ?? true) : (plan.map { _ in runner.closesWindow } ?? true)
+        // (an Undo under way, too: its steps are the receipt's, not the preview's)
+        let needsWindow = undoneNow || undoMode ? (runner.receipt?.steps.contains { $0.inWindow } ?? true) : (plan.map { _ in runner.closesWindow } ?? true)
+        // the window opens at the end when it was closed, or for the sidebar step (RestoreRunner.finish); otherwise it isn't touched
+        let opens = needsWindow || (sidebarPlanNow != nil && entry.claudeWindow)
         // (the window closes only for a picked folder: that session's Code-tab entry changes)
         let forPicks = !undoneNow && !(plan?.windowNeeded ?? true) && runner.windowForPicks
         let verb = imp ? "added" : "put back"
@@ -352,7 +364,10 @@ struct RestorePage: View {
                         ? (imp ? "\(grown) grown on both sides: \(name)'s copy stayed as it was." : "\(grown) changed since stayed as they were.")
                         : "Merged by the rules on the left; nothing overwritten.",
                      check: stepTwoCheck(back))
-                step(3, undoMode ? "The window opens again" : undoneNow ? (needsWindow ? "The window is open again" : "The window stayed as it was") : state(3) == .done ? "The window is open; the sidebar, as before" : "The window opens; the sidebar, as before",
+                step(3, undoMode ? (needsWindow ? "The window opens again" : "The window stays as it is")
+                        : undoneNow ? (needsWindow ? "The window is open again" : "The window stayed as it was")
+                        : !opens ? "The window stays as it is"
+                        : state(3) == .done ? "The window is open; the sidebar, as before" : "The window opens; the sidebar, as before",
                      undoMode ? "Only what the receipt names was taken back; anything changed since stays."
                      : undoneNow ? ""            // (step 2 has said what was taken away: nothing is repeated here)
                      : sidebarPlanNow?.isEmpty == false ? "Press Return in the session that opens, so the sidebar is arranged as before." : "Nothing to arrange.")
@@ -435,7 +450,7 @@ struct RestorePage: View {
 
     private var firstCard: some View {
         let nyt = runner.notYet
-        return SCard(title: "First", info: "A restore waits for what is under way: a restore that stopped half way, another restore, import or move, and claude-transplant while it moves sessions. Nothing is written until then.") {
+        return SCard(title: "First", info: "A restore waits for what is under way: a restore that stopped half way, another backup, export, restore, import, move or switch, and claude-transplant while it moves sessions. Nothing is written until then.") {
             HStack(alignment: .top, spacing: 10) {
                 ZStack {
                     Circle().stroke(FaceTheme.ledAmber, lineWidth: 1.2)
