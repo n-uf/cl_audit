@@ -1739,6 +1739,101 @@ do {
     DefaultProfile.forgetCache()
 }
 
+// ============ 15b. receipts started in one second go in the order they were made (ReceiptOrder), old ones as before ============
+// A receipt's date is saved to the whole second: the store's `firstSavedNs` decides between two of one second, never the
+// random part of their names (each id below is chosen so the names' order is another than the order they were made in).
+do {
+    let kinds = ["switches", "restores", "repoints"]
+    for k in kinds { try? fm.removeItem(at: Store.folder.appendingPathComponent(k)) }
+    let t = t0                                                     // a whole second: what every receipt reads back
+    let plain = JSONDecoder(); plain.dateDecodingStrategy = .iso8601       // what an older cl_audit reads with
+    func text(_ u: URL) -> String { (try? String(contentsOf: u, encoding: .utf8)) ?? "" }
+    func repoint(_ id: String, _ profile: String, started: Date = t0) -> SessionsRepoint.Receipt {
+        var r = SessionsRepoint.Receipt(id: id, profile: profile, codeDir: "/c", dataDir: "/d", restore: nil, started: started)
+        r.finished = started
+        r.sessions = [SessionsRepoint.Done(session: "s-\(id.suffix(4))", title: nil, from: "/a", to: "/b")]
+        return r
+    }
+    let rp = SessionsRepoint.store
+
+    // three re-points of one profile in one second: the Sessions page's Undo (SessionsRepoint.last) is the third
+    let a = "20270101-000000-ffff-ord", b = "20270101-000000-0000-ord", c = "20270101-000000-8888-ord"
+    for id in [a, b, c] { try! rp.save(repoint(id, "ord")) }
+    check(SessionsRepoint.last(profile: "ord")?.id == c && rp.list { $0.hasSuffix("-ord") }.map(\.id) == [c, b, a],
+          "one second: the last re-point is the one made last, the list in the order made (\(rp.list { $0.hasSuffix("-ord") }.map(\.id)))")
+    // saved again (a step, Undo): the order stays the one they were made in, not their last save
+    var ra = rp.load(a)!; ra.problems = ["x"]; try! rp.save(ra)
+    let keyA = text(rp.url(a)).components(separatedBy: "\"firstSavedNs\" : ").dropFirst().first?.prefix(while: \.isNumber) ?? ""
+    try! rp.save(ra)
+    check(rp.list { $0.hasSuffix("-ord") }.map(\.id) == [c, b, a] && SessionsRepoint.last(profile: "ord")?.id == c && keyA.count >= 18
+          && text(rp.url(a)).contains("\"firstSavedNs\" : \(keyA)"), "saved again: the order made, its firstSavedNs carried over (\(keyA))")
+    // an older cl_audit reads it: its own decoder, dates to the whole second, the extra key skipped
+    let old = (try? Data(contentsOf: rp.url(c))).flatMap { try? plain.decode(SessionsRepoint.Receipt.self, from: $0) }
+    check(old == repoint(c, "ord") && text(rp.url(c)).contains("\"started\" : \"\(ISO8601DateFormatter().string(from: t))\""),
+          "a new receipt decodes with a plain .iso8601 JSONDecoder (an older cl_audit), its date as before")
+    // every run, not by luck: twenty rounds of three with random names, each in the order made
+    var rounds = 0
+    for n in 0..<20 {
+        var ids: [String] = []
+        while ids.count < 3 { let id = SwitchEngine.receiptID(t, "rnd\(n)"); if !ids.contains(id) { ids.append(id) } }
+        for id in ids { try! rp.save(repoint(id, "rnd\(n)")) }
+        if rp.list { $0.hasSuffix("-rnd\(n)") }.map(\.id) == ids.reversed() && SessionsRepoint.last(profile: "rnd\(n)")?.id == ids[2] { rounds += 1 }
+    }
+    check(rounds == 20, "twenty rounds of three in one second, random names: each in the order made (\(rounds) of 20)")
+    var strictly = true, last: Int64 = 0
+    for _ in 0..<10_000 { let v = ReceiptOrder.next(); if v <= last { strictly = false }; last = v }
+    check(strictly, "ReceiptOrder: strictly increasing within the process")
+
+    // switches (the cached list) and restores (the headers, and with their journals) alike
+    let seat = SeatID(account: "acc-1", organization: "")
+    let s1 = "20270101-000000-ffff-ordsw", s2 = "20270101-000000-0000-ordsw"
+    for id in [s1, s2] { try! SwitchEngine.store.save(SwitchReceipt(id: id, profile: "ordsw", standby: "k", dataDir: "/x", from: seat, to: seat, started: t)) }
+    check(SwitchEngine.receipts(profile: "ordsw").map(\.id) == [s2, s1] && SwitchEngine.receipts(profile: "ordsw").first?.id == s2,
+          "switches in one second: the newest is the one made last (also read again from the cache)")
+    let e1 = "20270101-000000-ffff-ordrs", e2 = "20270101-000000-0000-ordrs"
+    for id in [e1, e2] {
+        try! SessionsRestore.store.save(SessionsRestore.Receipt(id: id, profile: "ordrs", dataDir: "/d", codeDir: "/c", backup: "20270101-000000-aaaa",
+                                                                backupPlace: "/b", target: nil, started: t))
+    }
+    check(SessionsRestore.receipts().map(\.id) == [e2, e1] && SessionsRestore.headers().map(\.id) == [e2, e1],
+          "restores in one second: the newest is the one made last, in receipts() and headers()")
+
+    // old receipts (no firstSavedNs: what earlier versions wrote) load and sort as before, and mixed with new ones
+    func writeOld(_ r: SessionsRepoint.Receipt) {
+        try! fm.createDirectory(at: rp.folder(r.id), withIntermediateDirectories: true)
+        try! rp.encoded(r).write(to: rp.url(r.id))
+    }
+    let o1 = "20270101-000000-1111-mix", o2 = "20270101-000000-eeee-mix", oLater = "20270101-000001-0000-mix", n1 = "20270101-000000-0000-mix"
+    writeOld(repoint(o1, "mix")); writeOld(repoint(o2, "mix")); writeOld(repoint(oLater, "mix", started: t.addingTimeInterval(1)))
+    try! rp.save(repoint(n1, "mix"))
+    check(!text(rp.url(o1)).contains("firstSavedNs") && text(rp.url(n1)).contains("firstSavedNs"), "an old receipt has no firstSavedNs, a new one has")
+    check(rp.list { $0.hasSuffix("-mix") }.map(\.id) == [oLater, n1, o2, o1] && SessionsRepoint.last(profile: "mix")?.id == oLater,
+          "mixed: a later second first, then in one second the new one before the old ones, the old ones by name (\(rp.list { $0.hasSuffix("-mix") }.map(\.id)))")
+    // an old one saved by this version stays as the old version left it (byte for byte), so its place doesn't change
+    let before = try? Data(contentsOf: rp.url(o1))
+    try! rp.save(rp.load(o1)!)
+    check((try? Data(contentsOf: rp.url(o1))) == before && rp.list { $0.hasSuffix("-mix") }.map(\.id) == [oLater, n1, o2, o1],
+          "an old receipt saved again: the same bytes, the same place")
+    // an older cl_audit saves a new receipt again (dropping the key): it still reads, sorts with the old ones, and this version
+    // doesn't make up a new firstSavedNs for it (it would jump ahead of ones made after it)
+    writeOld(rp.load(a)!)
+    check(rp.load(a) != nil && rp.list { $0.hasSuffix("-ord") }.map(\.id) == [c, b, a], "a new receipt an older version saved again: still read, in place")
+    try! rp.save(rp.load(a)!)
+    check(!text(rp.url(a)).contains("firstSavedNs") && rp.list { $0.hasSuffix("-ord") }.map(\.id) == [c, b, a], "…and saved by this version: no new firstSavedNs")
+    writeOld(rp.load(c)!)
+    check(rp.list { $0.hasSuffix("-ord") }.map(\.id) == [b, a, c] && SessionsRepoint.last(profile: "ord")?.id == b,
+          "the newest one saved again by an older version: sorted with the old ones of its second, by name (sane, every run)")
+
+    // a flat store (default-profile moves) alike
+    struct T: StoredReceipt { var id: String; var started: Date }
+    let flat = ReceiptStore<T>(root: URL(fileURLWithPath: home + "/order-flat"), layout: .flat)
+    try? fm.removeItem(at: flat.root)
+    for id in ["f9", "f1", "f5"] { try! flat.save(T(id: id, started: t)) }
+    check(flat.list().map(\.id) == ["f5", "f1", "f9"], "a flat store: one second, the order made (\(flat.list().map(\.id)))")
+    try? fm.removeItem(at: flat.root)
+    for k in kinds { try? fm.removeItem(at: Store.folder.appendingPathComponent(k)) }
+}
+
 // ============ 16. SafeFiles: create-only writes and the one lock ============
 do {
     let dir = home + "/safefiles"
