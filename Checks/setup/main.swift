@@ -785,19 +785,22 @@ MainActor.assumeIsolated {
         let mcp = Data(#"{"mcpServers":{"x":{"command":"~/.claude/bin/mcp.sh"}},"hooks":{"Stop":[{"hooks":[{"type":"command","command":"~/.claude/bin/x.sh"}]}]},"statusLine":{"type":"command"}}"#.utf8)
         check(Setup.commands(inSettings: mcp) == ["~/.claude/bin/x.sh"] && Setup.namedPaths(in: mcp, among: ["bin/x.sh", "bin/mcp.sh"]) == ["bin/x.sh"],
               "scripts: hooks and the status line's command only; an MCP server's command and a status line without one are not scripts: \(Setup.commands(inSettings: mcp))")
+        // (the timing checks below catch a quadratic blow-up, which takes minutes; a -Onone build on a loaded Mac, waiting on other
+        // heavy work, can take several seconds for the linear work itself (7.4 s on main once), so the limit is 30 s, not 5)
+        let quick: TimeInterval = 30
         // a crafted settings.json naming 200,000 different paths in one hook: read in a moment (a list searched for each one would take minutes)
         let many = (0..<200_000).map { "/p/\($0)" }.joined(separator: " ")
         let big = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"\#(many) /p/0"}]}]}}"#.utf8)
         let t0 = Date()
         let paths = Setup.commandPaths(inSettings: big, home: home)
         let took = Date().timeIntervalSince(t0)
-        check(paths.count == 200_000 && paths.first == "/p/0" && took < 5, "scripts: 200,000 paths in one hook command are read once each, in order, quickly (\(paths.count) in \(String(format: "%.2f", took)) s)")
+        check(paths.count == 200_000 && paths.first == "/p/0" && took < quick, "scripts: 200,000 paths in one hook command are read once each, in order, quickly (\(paths.count) in \(String(format: "%.2f", took)) s)")
         // the same crafted settings.json against a folder of 20,000 files: each file one lookup (paths × files would take minutes)
         let rels = (0..<20_000).map { "skills/s\($0)/run.sh" } + ["p/7"]
         let t1 = Date()
         let named = Setup.namedPaths(in: big, among: rels)
         let took1 = Date().timeIntervalSince(t1)
-        check(named == ["p/7"] && took1 < 5, "scripts: 200,000 named paths against 20,000 files, matched by their tails quickly (\(named.count) in \(String(format: "%.2f", took1)) s)")
+        check(named == ["p/7"] && took1 < quick, "scripts: 200,000 named paths against 20,000 files, matched by their tails quickly (\(named.count) in \(String(format: "%.2f", took1)) s)")
         // a `cd` to a folder, then ./ (or ../) in the same command: that file is named; a bare relative word and one without a cd aren't
         let cdj = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"cd ~/.claude/skills/guard && ./run.sh --x ../shared/lib.sh"}]},{"hooks":[{"type":"command","command":"./other.sh run.sh"}]}]}}"#.utf8)
         // (other/run.sh: no path of the first command ends in it; only the bare word "run.sh" of the second could name it, and it doesn't)
@@ -827,7 +830,7 @@ MainActor.assumeIsolated {
         let tParens = Date()
         let manyOpens = cdPaths(String(repeating: "(", count: 200_000) + "cd /e && ./z.sh")
         let tookParens = Date().timeIntervalSince(tParens)
-        check(cdPaths(deepParens) == ["/o", "/d", "/d/x.sh", "/o/y.sh"] && manyOpens == ["/e", "/e/z.sh"] && tookParens < 5,
+        check(cdPaths(deepParens) == ["/o", "/d", "/d/x.sh", "/o/y.sh"] && manyOpens == ["/e", "/e/z.sh"] && tookParens < quick,
               "scripts: 70 subshells deep the cd inside still counts and the folder before them comes back; 200,000 opens in \(String(format: "%.2f", tookParens)) s: \(cdPaths(deepParens))")
         check(cdPaths(#"cd "$HOME/.claude/skills/a b" && ./q.sh"#) == [sk + "/a b", sk + "/a b/q.sh"]
               && cdPaths("cd '/opt/x y/z' && ./q.sh") == ["/opt/x y/z", "/opt/x y/z/q.sh"],
@@ -844,14 +847,14 @@ MainActor.assumeIsolated {
         let deepNamed = Setup.namedPaths(in: deep, among: rels + ["a/x.sh"])
         let longNamed = Setup.namedPaths(in: longCd, among: rels)
         let took2 = Date().timeIntervalSince(t2)
-        check(deepNamed == ["a/x.sh"] && longNamed.isEmpty && took2 < 5,
+        check(deepNamed == ["a/x.sh"] && longNamed.isEmpty && took2 < quick,
               "scripts: one path 400,000 folders deep, and a cd to a 2 MB path followed by 200,000 ./ tokens, read quickly (\(String(format: "%.2f", took2)) s)")
         // a cd to a 1000-character path of short folders, then 300,000 DIFFERENT ./ tokens: at most 2,000 are resolved, quickly
         let manyCd = Data(#"{"hooks":{"Stop":[{"hooks":[{"type":"command","command":"cd /\#(String(repeating: "c/", count: 499)) && \#((0..<300_000).map { "./\($0)" }.joined(separator: " "))"}]}]}}"#.utf8)
         let t3 = Date()
         let manyPaths = Setup.commandPaths(inSettings: manyCd, home: home)
         let took3 = Date().timeIntervalSince(t3)
-        check(manyPaths.count == 2_001 && took3 < 5,
+        check(manyPaths.count == 2_001 && took3 < quick,
               "scripts: after one cd, at most 2,000 different relative tokens are resolved, in a moment (\(manyPaths.count) paths in \(String(format: "%.2f", took3)) s)")
         // the same with a cd before every 2,000 (a cap per cd alone wouldn't bound it): at most 20,000 in all, in a moment
         let dir = "/" + String(repeating: "c/", count: 499)
@@ -860,7 +863,7 @@ MainActor.assumeIsolated {
         let t4 = Date()
         let cdsPaths = Setup.commandPaths(inSettings: manyCds, home: home)
         let took4 = Date().timeIntervalSince(t4)
-        check(cdsPaths.count == 20_000 + 150 && took4 < 5,
+        check(cdsPaths.count == 20_000 + 150 && took4 < quick,
               "scripts: 150 cds of 2,000 different relative tokens each: 20,000 resolved in all, in a moment (\(cdsPaths.count) paths in \(String(format: "%.2f", took4)) s)")
         // the setup row's ~: only where the home folder is a whole path's start
         check(SetupRow.tildeHome("node /Users/ann/a.js --log /Users/ann", home: "/Users/ann") == "node ~/a.js --log ~"
