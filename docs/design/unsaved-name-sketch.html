@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Unsaved name sketch</title>
+<style>
+  :root {
+    --page: #f2f2f0; --page-fg: #1d1d1f; --page-muted: #5f6368; --page-line: #d9d9d6; --page-card: #fff;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --page: #141415; --page-fg: #ececec; --page-muted: #a1a1a6; --page-line: #2e2e30; --page-card: #1c1c1e; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--page-fg); font: 15px/1.5 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 6px; }
+  .lead { color: var(--page-muted); margin: 0 0 8px; }
+  .try { margin: 0 0 22px; color: var(--page-muted); font-size: 14px; }
+  .try b { color: var(--page-fg); }
+  .faces { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+
+  /* ---- a face: the app's chassis, display, tiles and the Profile card ---- */
+  .face { border-radius: 12px; padding: 18px; }
+  .face h2 { margin: 0 0 12px; font-size: 11px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; }
+  .std { --chassis: linear-gradient(#232325, #1b1b1d 30%, #19191b); --module: linear-gradient(#29292b, #222224);
+         --text: #ececee; --soft: rgba(236,236,238,.82); --muted: #9a9aa0; --faint: #6e6e74;
+         --rule: rgba(0,0,0,.45); --ruleHi: rgba(255,255,255,.035); --caution: #f59e0b; --danger: #f87171; --ok: #4ade80;
+         --line: rgba(0,0,0,.5); --lineHi: rgba(255,255,255,.04);
+         --disp: linear-gradient(#0c1112, #0a0e0f); --dispText: #7ef0dc; --dispGlow: 0 0 6px rgba(126,240,220,.55);
+         --key: linear-gradient(#5b5b5e, #48484b); --keyText: #ececee; --edge: rgba(0,0,0,.6); --radius: 10px; }
+  .silver { --chassis: linear-gradient(#d0d2d3, #c2c4c5 45%, #b9bbbc); --module: linear-gradient(#e0e2e3, #d0d2d3 55%, #c6c8c9);
+            --text: #1c1c1e; --soft: #2c2c2f; --muted: #46464b; --faint: #5e5e63;
+            --rule: rgba(0,0,0,.22); --ruleHi: rgba(255,255,255,.45); --caution: #8a4f00; --danger: #b42318; --ok: #11743a;
+            --line: rgba(0,0,0,.35); --lineHi: rgba(255,255,255,.6);
+            --disp: linear-gradient(#fbfcfc, #eef0f1); --dispText: #1c1e20; --dispGlow: none;
+            --key: linear-gradient(#f3f4f5, #d9dbdc); --keyText: #1c1c1e; --edge: rgba(0,0,0,.28); --radius: 4px; }
+  .face { background: var(--chassis); color: var(--text); }
+  .face h2 { color: var(--muted); }
+
+  .strip { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
+  .display { flex: 0 1 260px; min-width: 200px; height: 26px; border-radius: 4px; background: var(--disp);
+             box-shadow: inset 0 1px 2px rgba(0,0,0,.45); display: flex; align-items: center; padding: 0 10px;
+             font: 600 10.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .16em; text-transform: uppercase;
+             color: var(--dispText); text-shadow: var(--dispGlow); white-space: nowrap; overflow: hidden; }
+  .display .dim { opacity: .55; margin-left: .6em; }
+  .display.warn { color: var(--danger); text-shadow: none; }
+  .display.ok { color: var(--ok); text-shadow: none; }
+  .tabs { display: flex; gap: 6px; }
+  .tab { height: 26px; padding: 0 12px; border-radius: 3px; border: 0; background: var(--key); color: var(--keyText);
+         font: 700 10px/26px -apple-system, system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase;
+         box-shadow: 0 1px 0 var(--edge), 0 2px 3px rgba(0,0,0,.35); cursor: pointer; position: relative; }
+  .tab[aria-selected="true"] { box-shadow: inset 0 1px 2px rgba(0,0,0,.45); transform: translateY(1px); }
+  .tab[aria-selected="true"]::before { content: ""; position: absolute; left: 6px; right: 6px; top: 3px; height: 2px; border-radius: 1px;
+         background: #f2742b; box-shadow: 0 0 4px rgba(242,116,43,.7); }
+
+  .card { background: var(--module); border-radius: var(--radius); padding: 14px 16px 6px;
+          box-shadow: 0 1px 0 var(--ruleHi) inset, 0 0 0 1px var(--edge), 0 2px 6px rgba(0,0,0,.35); }
+  .card-title { display: flex; align-items: center; gap: 10px; font-size: 10.5px; font-weight: 700; letter-spacing: .16em;
+                color: var(--muted); text-transform: uppercase; margin-bottom: 4px; }
+  .card-title::after { content: ""; flex: 1; height: 1px; background: var(--rule); box-shadow: 0 1px 0 var(--ruleHi); }
+  .row { display: flex; align-items: flex-start; gap: 10px; min-height: 36px; padding: 7px 0 6px; }
+  .row + .row { border-top: 1px solid var(--rule); box-shadow: inset 0 1px 0 var(--ruleHi); }
+  .label { width: 112px; flex: none; display: flex; align-items: center; gap: 5px; font-size: 13px; color: var(--soft); height: 23px; }
+  .info { width: 12px; height: 12px; border-radius: 50%; border: 1px solid var(--faint); color: var(--faint);
+          font: 600 8px/10px Georgia, serif; text-align: center; }
+  .field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .field input { width: 170px; max-width: 100%; border: 0; outline: 0; background: transparent; color: var(--text);
+                 font: 13px -apple-system, system-ui, sans-serif; padding: 3px 0;
+                 border-bottom: 1px solid var(--line); box-shadow: 0 1px 0 var(--lineHi); caret-color: #3b82f6; }
+  .field input.mono { width: 80px; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .field input.pending { border-bottom-color: var(--caution); }
+  .field input.problem { border-bottom-color: var(--danger); }
+  .msg { font-size: 11px; min-height: 0; white-space: nowrap; }
+  .msg:empty { display: none; }
+  .msg.pending { color: var(--caution); }
+  .msg kbd, .msg .cap { font: 600 10px/1 -apple-system, system-ui, sans-serif; padding: 1px 4px; margin: 0 1px; border-radius: 3px;
+             color: inherit; border: .75px solid color-mix(in srgb, currentColor 55%, transparent);
+             background: color-mix(in srgb, currentColor 12%, transparent); }
+  .msg .cap { cursor: pointer; }
+  .msg .cap:hover { background: color-mix(in srgb, currentColor 24%, transparent); border-color: currentColor; }
+  .msg .cap:active { transform: translateY(1px); background: color-mix(in srgb, currentColor 32%, transparent); }
+  .msg .cap:focus-visible { outline: 1px solid currentColor; outline-offset: 1px; }
+  .msg.problem { color: var(--danger); }
+
+  .notes { margin-top: 22px; background: var(--page-card); border: 1px solid var(--page-line); border-radius: 12px; padding: 16px 18px; }
+  .notes h3 { margin: 0 0 6px; font-size: 15px; }
+  .notes ul { margin: 0; padding-left: 18px; color: var(--page-muted); }
+  .notes li { margin: 3px 0; }
+  @media (max-width: 420px) { .label { width: 92px; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>cl_audit · a name or label changed but not saved</h1>
+  <p class="lead">Settings ▸ a profile ▸ Profile card, as built on branch <code>name-field</code>: a thin hairline under the field and a line of text under it, like a validation message. No dot by the label.</p>
+  <p class="try"><b>Try it:</b> type in Name or Icon label, then press Return, Esc, or click elsewhere. Typing <b>Work</b> on Main (or <b>Main</b> on Work) shows the can't-save state. Switch tabs mid-edit: the text is saved to the profile it was typed for.</p>
+
+  <div class="faces" id="faces"><section class="face std">
+    <h2>Std face</h2>
+    <div class="strip">
+      <div class="display" role="status"><span class="main">Saved</span><span class="dim">· as you change</span></div>
+      <div class="tabs" role="tablist"><button class="tab" role="tab" data-id="main" aria-selected="true">Main</button><button class="tab" role="tab" data-id="work" aria-selected="false">Work</button></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Profile</div>
+      <div class="row">
+        <div class="label">Name <span class="info">i</span></div>
+        <div class="field"><input class="name" aria-label="Name" spellcheck="false"><div class="msg"></div></div>
+      </div>
+      <div class="row">
+        <div class="label">Icon label <span class="info">i</span></div>
+        <div class="field"><input class="label-in mono" aria-label="Icon label" spellcheck="false"><div class="msg"></div></div>
+      </div>
+    </div>
+  </section><section class="face silver">
+    <h2>Silver face</h2>
+    <div class="strip">
+      <div class="display" role="status"><span class="main">Saved</span><span class="dim">· as you change</span></div>
+      <div class="tabs" role="tablist"><button class="tab" role="tab" data-id="main" aria-selected="true">Main</button><button class="tab" role="tab" data-id="work" aria-selected="false">Work</button></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Profile</div>
+      <div class="row">
+        <div class="label">Name <span class="info">i</span></div>
+        <div class="field"><input class="name" aria-label="Name" spellcheck="false"><div class="msg"></div></div>
+      </div>
+      <div class="row">
+        <div class="label">Icon label <span class="info">i</span></div>
+        <div class="field"><input class="label-in mono" aria-label="Icon label" spellcheck="false"><div class="msg"></div></div>
+      </div>
+    </div>
+  </section></div>
+
+  <div class="notes">
+    <h3>States</h3>
+    <ul>
+      <li><b>Typed, not saved:</b> amber hairline; <i><kbd>Return</kbd> saves · <kbd>Esc</kbd> undoes</i> under the field. The caps are clickable: Return saves, Esc puts the saved text back (the field keeps the focus). The label stays level with the typed text.</li>
+      <li><b>Can't be saved:</b> red hairline; the reason under the field (<i>Another profile is called “Work”</i>); the top display says <i>Not saved · see below</i>.</li>
+      <li><b>Saved:</b> back to the normal engraved line; the top display says <i>Saved · Dock icon renamed</i> for a few seconds.</li>
+      <li><b>Esc:</b> the saved text comes back; no message.</li>
+    </ul>
+  </div>
+</main>
+
+<template id="face-tpl">
+  <section class="face">
+    <h2></h2>
+    <div class="strip">
+      <div class="display" role="status"><span class="main">Saved</span><span class="dim">· as you change</span></div>
+      <div class="tabs" role="tablist"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Profile</div>
+      <div class="row">
+        <div class="label">Name <span class="info">i</span></div>
+        <div class="field"><input class="name" aria-label="Name" spellcheck="false"><div class="msg"></div></div>
+      </div>
+      <div class="row">
+        <div class="label">Icon label <span class="info">i</span></div>
+        <div class="field"><input class="label-in mono" aria-label="Icon label" spellcheck="false"><div class="msg"></div></div>
+      </div>
+    </div>
+  </section>
+</template>
+
+</body></html>

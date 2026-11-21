@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Profiles and seats</title>
+<style>
+  :root {
+    --bg: #f5f5f3; --fg: #1d1d1f; --muted: #5f6368; --card: #ffffff; --line: #dcdcd8; --soft: #efefec;
+    --accent: #c2410c; --ok: #15803d; --warn: #b45309; --bad: #b91c1c; --info: #1d4ed8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #141415; --fg: #ececec; --muted: #a1a1a6; --card: #1d1d1f; --line: #2f2f32; --soft: #242427;
+            --accent: #fb923c; --ok: #4ade80; --warn: #fbbf24; --bad: #f87171; --info: #93c5fd; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+  main { max-width: 1040px; margin: 0 auto; padding: 32px 16px 72px; }
+  h1 { font-size: 26px; margin: 0 0 6px; letter-spacing: -.01em; }
+  h2 { font-size: 19px; margin: 40px 0 10px; }
+  h3 { font-size: 15px; margin: 0 0 6px; }
+  p { margin: 0 0 10px; }
+  .lead { color: var(--muted); font-size: 16px; max-width: 780px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .muted { color: var(--muted); }
+  code { font: 12.5px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--soft); padding: 1px 5px; border-radius: 4px; }
+  ul { margin: 6px 0 0; padding-left: 20px; } li { margin: 4px 0; }
+
+  /* the model, as boxes */
+  .model { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; gap: 10px; margin-top: 8px; }
+  .box { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; height: 100%; }
+  .box .tag { font-size: 11px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .box.profile { border-color: var(--accent); }
+  .box.seat { border-color: var(--info); }
+  .arrow { color: var(--muted); font-size: 13px; text-align: center; white-space: nowrap; }
+  .arrow b { display: block; font-size: 20px; color: var(--fg); line-height: 1; }
+  .signins { display: grid; gap: 8px; }
+  .signin { background: var(--soft); border-radius: 8px; padding: 8px 10px; font-size: 13.5px; }
+  @media (max-width: 760px) { .model { grid-template-columns: 1fr; } .arrow b { transform: rotate(90deg); display: inline-block; } }
+
+  /* cases */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+  th { font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); font-weight: 700; }
+  td:first-child { width: 30%; } td:nth-child(2) { width: 30%; }
+  .st { display: inline-block; font: 600 11px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .06em;
+        text-transform: uppercase; padding: 0 6px; border-radius: 4px; border: 1px solid currentColor; white-space: nowrap; }
+  .st.ok { color: var(--ok); } .st.warn { color: var(--warn); } .st.bad { color: var(--bad); } .st.info { color: var(--info); } .st.plain { color: var(--muted); }
+  .tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 4px 8px; }
+  .group td { background: var(--soft); font-weight: 600; font-size: 12.5px; letter-spacing: .04em; color: var(--muted); }
+
+  /* plan */
+  .stages { counter-reset: s; display: grid; gap: 12px; }
+  .stage { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; }
+  .stage h3::before { counter-increment: s; content: counter(s); display: inline-grid; place-items: center; width: 22px; height: 22px;
+                      margin-right: 8px; border-radius: 50%; background: var(--accent); color: var(--card); font-size: 12px; }
+  .row3 { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-top: 8px; }
+  .row3 div { background: var(--soft); border-radius: 8px; padding: 8px 10px; font-size: 13.5px; }
+  .row3 b { display: block; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: 2px; }
+  .decided li::marker { content: "✓  "; color: var(--ok); }
+</style>
+</head>
+<body>
+<main>
+  <h1>cl_audit · profiles and Claude account seats</h1>
+  <p class="lead">A profile is always linked to one Claude account seat. cl_audit stores that link itself and checks every sign-in against it, so a change of account is never silent. Draft for review, 2026-10-25; nothing here is built yet.</p>
+
+  <h2>Decided</h2>
+  <div class="card">
+    <ul class="decided">
+      <li><b>One profile per seat, strictly.</b> A second profile for a seat that already has one is refused.</li>
+      <li><b>Every set-up profile has exactly one seat.</b> Only a profile still being set up has none yet.</li>
+      <li><b>Re-linking a profile to another seat keeps its name, look and place in the Dock.</b></li>
+      <li><b>The Claude window signed in to another account is a warning</b>, not an error: the usage numbers come from Claude Code and stay right.</li>
+      <li><b>The Dock icon app's file stays named after the profile</b> (<code>cl_audit Work.app</code>).</li>
+    </ul>
+  </div>
+
+  <h2>The model</h2>
+  <div class="model">
+    <div class="box profile">
+      <div class="tag">Profile</div>
+      <h3>Work</h3>
+      <p class="muted">What you name and set up in cl_audit: its Claude Code folder, its Claude window, its Dock icon and how that looks.</p>
+      <p class="muted" style="margin:0">Inside, a fixed hidden handle (<code>studio</code>) that macOS uses for the Dock icon app, its settings and login item. Never shown, never treated as the account.</p>
+    </div>
+    <div class="arrow"><b>→</b>linked to<br>exactly one</div>
+    <div class="box seat">
+      <div class="tag">Seat</div>
+      <h3>Account in an organisation</h3>
+      <p class="muted">Account id + organisation id, as Claude records them. Usage limits belong to the seat: a personal plan and a team seat on the same email are two seats.</p>
+      <p class="muted" style="margin:0">Stored in the profile with its plan and the email (shown only), and when it was linked.</p>
+    </div>
+    <div class="arrow"><b>←</b>checked on<br>every refresh</div>
+    <div class="box">
+      <div class="tag">Sign-ins on this Mac</div>
+      <div class="signins">
+        <div class="signin"><b>Claude Code folder</b><br><span class="muted">its login (where the numbers come from) and <code>.claude.json</code>: account id, organisation id</span></div>
+        <div class="signin"><b>The profile's Claude window</b><br><span class="muted"><code>config.json</code>: the account it last used</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="muted" style="margin-top:10px">Today cl_audit stores no link: it re-reads whatever the folder is signed in to, so signing the folder in to someone else silently becomes the "expected" account. The ids already exist in both places; only the stored link and the checks are new.</p>
+
+  <h2>Every case</h2>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Case</th><th>What you see</th><th>What you can do</th></tr></thead>
+      <tbody>
+        <tr class="group"><td colspan="3">Setting up and normal use</td></tr>
+        <tr><td>New profile, not signed in yet</td><td><span class="st plain">Setting up</span> no Dock icon yet</td><td>Sign in; the seat is linked then. Refused if another profile already has that seat (it says which).</td></tr>
+        <tr><td>Signed in to the linked seat</td><td><span class="st ok">Linked</span> normal numbers</td><td>—</td></tr>
+        <tr><td>Same email, personal plan and a team seat</td><td>Two seats, so two profiles</td><td>—</td></tr>
+        <tr><td>Rename</td><td>Name and Dock icon follow, in the same Dock place; the seat doesn't change</td><td>—</td></tr>
+
+        <tr class="group"><td colspan="3">Sign-in problems</td></tr>
+        <tr><td>Login expired or signed out</td><td><span class="st warn">Sign-in needed</span> still names the linked account</td><td>Renew sign-in</td></tr>
+        <tr><td>Folder signed in to another account</td><td><span class="st bad">Wrong account</span> signed in as X, linked to Y; numbers not shown (they would be X's)</td><td>Sign in as Y again · Link this profile to X (only if no other profile has X; keeps name, look, Dock place) · Remove</td></tr>
+        <tr><td>Claude window signed in to another account</td><td><span class="st warn">Window on another account</span> numbers still right</td><td>Sign the window in as Y · leave it</td></tr>
+        <tr><td>Account or seat gone (left the team, account closed)</td><td><span class="st bad">Account unavailable</span> sign-in refused</td><td>Link to another seat · Remove</td></tr>
+        <tr><td>Orphaned: nothing on this Mac signed in to the linked seat, and no sign-in in progress</td><td><span class="st bad">Not linked to a signed-in account</span></td><td>Sign in again · Link to another seat · Remove</td></tr>
+
+        <tr class="group"><td colspan="3">Folders and apps</td></tr>
+        <tr><td>Claude Code folder deleted or moved</td><td><span class="st bad">Folder missing</span></td><td>Pick the folder · Remove</td></tr>
+        <tr><td>Window folder deleted</td><td><span class="st warn">Window folder missing</span></td><td>Make a new one · Remove</td></tr>
+        <tr><td>Dock icon app missing or left over</td><td>Reinstalled, or its leftovers removed, by the next sync</td><td>—</td></tr>
+        <tr><td>Profile removed</td><td>App, Dock pin, login item and leftovers go</td><td>—</td></tr>
+
+        <tr class="group"><td colspan="3">Upgrading from today's versions</td></tr>
+        <tr><td>Existing profiles</td><td>Each linked once to the seat its folder is signed in to now</td><td>—</td></tr>
+        <tr><td>Two existing profiles on one seat</td><td><span class="st bad">Same seat as Work</span> on the newer one</td><td>Link it to another seat · Remove it</td></tr>
+        <tr><td>Existing profile not signed in</td><td><span class="st warn">Sign-in needed</span> linked at the next sign-in</td><td>Renew sign-in</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>What cl_audit keeps</h2>
+  <div class="grid">
+    <div class="card">
+      <h3>In each profile (profiles file)</h3>
+      <ul>
+        <li>The linked seat: account id, organisation id, plan, email (shown only), linked at.</li>
+        <li>Everything it keeps today: name, label, folders, look, Dock and opening settings.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>In each Dock icon's status</h3>
+      <ul>
+        <li>Signed in now, in the folder: account id, organisation id.</li>
+        <li>Signed in now, in the Claude window: account id.</li>
+        <li>The state from the table above.</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h3>Rules</h3>
+      <ul>
+        <li>Checks compare ids; the email is only shown, so hiding emails weakens nothing.</li>
+        <li>One profile per seat, enforced in Settings and New profile.</li>
+        <li>Ids aren't secret (no tokens); tokens stay in the Keychain as today.</li>
+      </ul>
+    </div>
+  </div>
+
+  <h2>Build plan</h2>
+  <div class="stages">
+    <div class="stage">
+      <h3>Renames keep one Dock icon in place</h3>
+      <p>The fix for the duplicate tile, on the same footing as the rest: everything macOS keeps about a Dock icon app follows the profile's hidden handle, while the file follows the name.</p>
+      <div class="row3">
+        <div><b>Built</b>A rename moves the existing app instead of rebuilding it; "running" and "quit" by bundle id; one step after every sync matches Dock pins to profiles by id (always reading the Dock fresh), moving a renamed pin in place and dropping doubles and dead entries.</div>
+        <div><b>Your part</b>OK a live test on a throwaway profile (rename, hide, show, remove, quit and restart; a few Dock restarts).</div>
+        <div><b>Ends with</b>A rename shows one tile, in its place, with the new name and picture. Your stray "cl_audit Main" tile is gone.</div>
+      </div>
+    </div>
+    <div class="stage">
+      <h3>Every profile knows its seat</h3>
+      <p>The link is stored; nothing visible changes yet except duplicates being flagged.</p>
+      <div class="row3">
+        <div><b>Built</b>The seat in each profile record; New profile links it at the first sign-in and refuses a seat already taken; the upgrade links existing profiles from their folders' current sign-in.</div>
+        <div><b>Your part</b>None, unless two of your profiles turn out to share a seat.</div>
+        <div><b>Ends with</b>Main and Work each linked to their seat in the profiles file.</div>
+      </div>
+    </div>
+    <div class="stage">
+      <h3>Sign-in states are named, everywhere</h3>
+      <p>Each Dock icon compares the folder's and the window's sign-in with the linked seat on every refresh; Settings, the dashboard and the Dock icon show the state and its actions.</p>
+      <div class="row3">
+        <div><b>Built</b>The states and actions from the table (except re-linking): Renew sign-in, Sign in as…, Pick folder, Remove; numbers hidden while on a wrong account; checks by id instead of email.</div>
+        <div><b>Your part</b>Look at an HTML sketch of the states first (Settings card, dashboard card, Dock icon), pick, then it's built.</div>
+        <div><b>Ends with</b>Every case in the table shows what it should; a wrong account is never silent.</div>
+      </div>
+    </div>
+    <div class="stage">
+      <h3>A profile can move to another seat</h3>
+      <p>"Link this profile to the account signed in now", for a wrong account, an orphaned profile or a seat that's gone.</p>
+      <div class="row3">
+        <div><b>Built</b>Re-linking keeps name, look, Dock place and settings; refused when another profile has that seat; asks before it changes anything.</div>
+        <div><b>Your part</b>Pick the wording from an HTML sketch.</div>
+        <div><b>Ends with</b>No profile can be left stuck on an account it can't use.</div>
+      </div>
+    </div>
+    <div class="stage">
+      <h3>Checked, released and on the site</h3>
+      <p>The cases table becomes the test list.</p>
+      <div class="row3">
+        <div><b>Built</b>Offscreen tests for every case (with sample sign-in files, never your real ones); the live throwaway test; CHANGELOG; the faces session updates the home site.</div>
+        <div><b>Your part</b>OK to merge and release.</div>
+        <div><b>Ends with</b>A new cl_audit release with profiles linked to seats.</div>
+      </div>
+    </div>
+  </div>
+
+  <h2>Not decided yet</h2>
+  <div class="card">
+    <ul>
+      <li>The usual Claude app (profiles using <code>~/.claude</code>) has no window folder of its own to check; it's shared by every profile on the standard window. Proposal: check it only for the profile linked as standard, and show nothing for the others.</li>
+      <li>Whether the dashboard should group history by seat as well as by profile (they're the same now that a seat has one profile, so probably not needed).</li>
+    </ul>
+  </div>
+</main>
+</body>
+</html>

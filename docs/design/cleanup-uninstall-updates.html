@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>cl_audit Cleanup Design</title>
+<style>
+:root {
+  --bg: #f6f6f4; --card: #ffffff; --text: #1f2328; --muted: #5f6670; --faint: #8b929b; --rule: #e1e3e6;
+  --a: #2f6fdb; --a-bg: #e8f0fd; --ok: #1a7f45; --ok-bg: #e6f4ec; --warn: #b45309; --warn-bg: #fdf1e3;
+  --bad: #b42318; --bad-bg: #fdecea; --code: #eef0f2; --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #161719; --card: #1f2023; --text: #e8e8ea; --muted: #a3a6ad; --faint: #7c8088; --rule: #2e3035;
+    --a: #7aa7ff; --a-bg: #1d2840; --ok: #4ade80; --ok-bg: #16281e; --warn: #fbbf24; --warn-bg: #2d2412;
+    --bad: #f87171; --bad-bg: #321a1a; --code: #2a2c30;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #161719; --card: #1f2023; --text: #e8e8ea; --muted: #a3a6ad; --faint: #7c8088; --rule: #2e3035;
+  --a: #7aa7ff; --a-bg: #1d2840; --ok: #4ade80; --ok-bg: #16281e; --warn: #fbbf24; --warn-bg: #2d2412;
+  --bad: #f87171; --bad-bg: #321a1a; --code: #2a2c30;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 -apple-system, system-ui, sans-serif; }
+main { max-width: 1040px; margin: 0 auto; padding: 28px 16px 80px; }
+h1 { font-size: 26px; letter-spacing: -.02em; margin: 0 0 6px; }
+h2 { font-size: 19px; margin: 44px 0 6px; letter-spacing: -.01em; }
+h2 small { font: 600 11px var(--mono); color: var(--a); letter-spacing: .1em; margin-right: 8px; }
+h3 { font-size: 15px; margin: 20px 0 6px; }
+p { margin: 0 0 10px; max-width: 78ch; }
+.lede { color: var(--muted); font-size: 15.5px; }
+code { font: 12.5px var(--mono); background: var(--code); padding: 1px 5px; border-radius: 4px; }
+.tldr { margin: 18px 0 8px; padding: 16px 18px; border-radius: 12px; background: var(--a-bg); border: 1px solid color-mix(in srgb, var(--a) 35%, transparent); }
+.tldr b { color: var(--a); }
+.tldr ul { margin: 8px 0 0; padding-left: 20px; }
+.tldr li { margin: 3px 0; }
+.card { background: var(--card); border: 1px solid var(--rule); border-radius: 12px; padding: 16px; }
+
+/* architecture diagrams */
+.arch { display: grid; gap: 10px; }
+.lane { display: grid; grid-template-columns: 150px 1fr; gap: 12px; align-items: stretch; }
+.lane > .lbl { font: 600 11px/1.3 -apple-system, system-ui, sans-serif; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding-top: 10px; }
+.lane > .lbl small { display: block; text-transform: none; letter-spacing: 0; font-weight: 400; margin-top: 3px; }
+.boxes { display: flex; flex-wrap: wrap; gap: 8px; }
+.box { flex: 1 1 220px; min-width: 0; border-radius: 9px; padding: 10px 12px; border: 1px solid var(--rule); background: var(--card); font-size: 13px; }
+.box b { display: block; font-size: 14px; margin-bottom: 4px; }
+.box ul { margin: 0; padding-left: 17px; color: var(--muted); }
+.box li { margin: 1px 0; }
+.box.many { box-shadow: 4px 4px 0 -1px var(--card), 4px 4px 0 0 var(--rule), 8px 8px 0 -1px var(--card), 8px 8px 0 0 var(--rule); margin-right: 8px; margin-bottom: 8px; }
+.box.a { border-color: color-mix(in srgb, var(--a) 55%, transparent); background: color-mix(in srgb, var(--a) 7%, var(--card)); }
+.box.ok { border-color: color-mix(in srgb, var(--ok) 55%, transparent); background: color-mix(in srgb, var(--ok) 7%, var(--card)); }
+.box.warn { border-color: color-mix(in srgb, var(--warn) 55%, transparent); background: color-mix(in srgb, var(--warn) 7%, var(--card)); }
+.box.ext { border-style: dashed; background: transparent; }
+.box .x { color: var(--bad); }
+.flow { font-size: 12.5px; color: var(--muted); padding: 2px 0 2px 162px; }
+.flow span { display: inline-block; margin-right: 18px; }
+.flow i { font-style: normal; color: var(--a); font-weight: 600; }
+
+/* tables */
+.tw { overflow-x: auto; margin: 8px 0; border: 1px solid var(--rule); border-radius: 10px; background: var(--card); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+th, td { text-align: left; padding: 8px 11px; border-top: 1px solid var(--rule); vertical-align: top; }
+thead th { border-top: 0; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; background: color-mix(in srgb, var(--rule) 35%, transparent); }
+td.c { text-align: center; }
+.y { color: var(--ok); font-weight: 700; }
+.n { color: var(--faint); }
+.bad { color: var(--bad); }
+.warnc { color: var(--warn); }
+.tag { display: inline-block; font: 600 10.5px/1.6 var(--mono); padding: 0 6px; border-radius: 4px; letter-spacing: .04em; }
+.tag.bad { background: var(--bad-bg); color: var(--bad); }
+.tag.ok { background: var(--ok-bg); color: var(--ok); }
+.tag.warn { background: var(--warn-bg); color: var(--warn); }
+
+/* problems */
+.probs { display: grid; gap: 10px; counter-reset: p; }
+.prob { display: grid; grid-template-columns: 28px 1fr; gap: 10px; padding: 12px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--rule); }
+.prob::before { counter-increment: p; content: counter(p); width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; font: 600 12px var(--mono); background: var(--bad-bg); color: var(--bad); }
+.prob b { display: block; }
+.prob p { margin: 3px 0 0; color: var(--muted); font-size: 13.5px; }
+
+/* principles */
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+.rule { padding: 12px 14px; border-radius: 10px; background: var(--card); border: 1px solid var(--rule); font-size: 13.5px; }
+.rule b { display: block; margin-bottom: 3px; font-size: 14px; }
+.rule span { color: var(--muted); }
+
+/* settings mock */
+.mock { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; }
+.mcard { background: #1f1f21; color: #e6e6e8; border-radius: 10px; padding: 12px 14px; font-size: 13px; box-shadow: 0 0 0 1px #000, 0 6px 16px rgba(0,0,0,.25); }
+.mcard h4 { margin: 0 0 8px; font: 600 10px/1 -apple-system, system-ui, sans-serif; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.5); }
+.mrow { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 10px; padding: 7px 0; border-top: 1px solid rgba(255,255,255,.07); }
+.mrow:first-of-type { border-top: 0; }
+.mrow .k { width: 110px; flex: none; color: #d6d6d8; }
+.mrow .v { flex: 1 1 250px; color: rgba(255,255,255,.62); font-size: 12.5px; }
+.seg { display: inline-flex; border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 1px #000; margin-bottom: 4px; white-space: nowrap; }
+.seg span { padding: 3px 9px; font: 600 10px/1.6 -apple-system, system-ui, sans-serif; letter-spacing: .08em; text-transform: uppercase; background: #2c2c2f; color: rgba(255,255,255,.55); }
+.seg span.on { background: #48484c; color: #fff; box-shadow: inset 0 2px 0 rgb(74,222,128); }
+.sw { display: inline-block; width: 30px; height: 17px; border-radius: 9px; background: #3a3a3d; position: relative; vertical-align: -3px; margin-right: 6px; }
+.sw.on { background: #2f8f55; }
+.sw::after { content: ""; position: absolute; top: 2px; left: 2px; width: 13px; height: 13px; border-radius: 50%; background: #ddd; }
+.sw.on::after { left: 15px; }
+.strip { margin: 2px 0 6px; padding: 6px 10px; border-radius: 6px; background: #121214; box-shadow: inset 0 1px 2px rgba(0,0,0,.8); font: 600 9px/1.4 -apple-system, system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: rgba(255,255,255,.5); }
+.disp { display: inline-block; padding: 4px 10px; border-radius: 4px; background: #050809; box-shadow: inset 0 1px 3px #000; font: 600 10.5px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: rgb(74,222,128); text-shadow: 0 0 4px rgba(74,222,128,.5); }
+.disp em { font-style: normal; color: rgba(74,222,128,.45); text-shadow: none; }
+.disp.amber { color: #ffb24a; text-shadow: 0 0 4px rgba(255,170,60,.5); }
+
+/* stages */
+.stages { display: grid; gap: 12px; counter-reset: s; }
+.stage { padding: 14px 16px; border-radius: 12px; background: var(--card); border: 1px solid var(--rule); }
+.stage h3 { margin: 0 0 8px; display: flex; gap: 10px; align-items: center; }
+.stage h3::before { counter-increment: s; content: counter(s); flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 600 12.5px var(--mono); background: var(--a-bg); color: var(--a); }
+.stage dl { display: grid; grid-template-columns: 110px 1fr; gap: 4px 12px; margin: 0; font-size: 13.5px; }
+.stage dt { color: var(--muted); font-weight: 600; }
+.stage dd { margin: 0; }
+.note { padding: 12px 14px; border-radius: 10px; background: var(--warn-bg); border: 1px solid color-mix(in srgb, var(--warn) 35%, transparent); font-size: 14px; margin: 12px 0; }
+.dec { display: grid; gap: 10px; }
+.dec .card b { display: block; }
+.dec .card p { margin: 4px 0 0; color: var(--muted); font-size: 13.5px; }
+.files { columns: 2 280px; column-gap: 24px; font-size: 13.5px; padding-left: 18px; margin: 6px 0; }
+.files li { break-inside: avoid; margin: 0 0 6px; }
+
+@media (max-width: 640px) {
+  .lane { grid-template-columns: 1fr; gap: 4px; }
+  .lane > .lbl { padding-top: 0; }
+  .flow { padding-left: 0; }
+  .stage dl { grid-template-columns: 1fr; }
+  .stage dd { margin-bottom: 6px; }
+  h1 { font-size: 22px; }
+}
+</style>
+</head>
+<body><main>
+<h1>cl_audit: clean-up, uninstall, Claude updates</h1>
+<p class="lede">Answers to three questions, with what the code and your Mac's Claude logs show today and a recommendation for each. They fit the background-agent design being built now. Concept only: nothing changes until you pick.</p>
+
+<div class="tldr"><b>In short.</b>
+<ul>
+  <li><b>Leftover apps:</b> yes, automatic clean-up makes sense, and the agent is the right owner. It runs at login, after every change and a few times a day. It removes only things it can prove are cl_audit's, and never a Claude Code or Claude window folder.</li>
+  <li><b>Uninstall:</b> there's none today. Dragging cl_audit to the Trash leaves every Dock icon app running, starting at login and reading usage. Add <b>Uninstall cl_audit…</b> with a per-profile choice of folders, a command-line version, and a self-clean-up when cl_audit is dragged to the Trash.</li>
+  <li><b>Claude updates:</b> you're right, they aren't graceful with several windows. Your logs show an update that couldn't install for 17 hours while other Claude windows were open. Each attempt closed the window that tried, for about 5 minutes. The agent can fix it: when one window starts updating, it quits the others normally, lets the update install, then reopens every profile's window with its own folders.</li>
+</ul></div>
+
+<h2><small>1</small>Leftover apps: automatic clean-up</h2>
+<p>cl_audit already cleans up a lot, but only while the cl_audit window is open (it runs on start and after you save).</p>
+<div class="tw"><table>
+<thead><tr><th>What can be left behind</th><th>Cleaned today?</th><th>Gap</th></tr></thead>
+<tbody>
+<tr><td>A Dock icon app whose profile is gone (also the old <code>~/Applications</code> copies)</td><td class="y">yes, removed with its files</td><td class="warnc">only while cl_audit is open; never if the profiles file is missing</td></tr>
+<tr><td>A second copy of the same profile (an interrupted rename)</td><td class="y">yes, moved or removed</td><td class="warnc">same</td></tr>
+<tr><td>Preferences, caches, saved state of removed profiles</td><td class="y">yes, from 4 places</td><td class="warnc">web storage and app support folders aren't scanned for orphans</td></tr>
+<tr><td>Dock pins of apps that are gone</td><td class="y">yes, when pins are reconciled</td><td>none</td></tr>
+<tr><td>Saved usage of removed profiles</td><td class="y">when the app is removed</td><td class="warnc">not for orphans with no other files</td></tr>
+<tr><td>Login items of removed Dock icon apps</td><td class="warnc">only if the app was running when removed</td><td class="warnc">a stopped app's entry isn't unregistered; the agent design removes per-profile login items anyway</td></tr>
+<tr><td>Terminal sign-in scripts in the temporary folder</td><td class="y">on Remove profile</td><td>macOS clears its temporary folder too</td></tr>
+<tr><td>A running Dock icon app whose profile was just removed</td><td class="bad">no: it reads the missing profile as a new one</td><td class="bad">it can register a login item or put itself back in the Dock; being fixed in the agent work</td></tr>
+<tr><td>Notification settings of removed Dock icon apps</td><td class="n">can't be</td><td>macOS keeps them; harmless. With the agent, new alerts come only from cl_audit.</td></tr>
+</tbody></table></div>
+
+<h3>Recommendation</h3>
+<div class="rules">
+  <div class="rule"><b>The agent owns it</b><span>It runs at login, after every saved change and every 6 hours. The window no longer needs to be open.</span></div>
+  <div class="rule"><b>Only what's provably cl_audit's</b><span>An app in /Applications or ~/Applications whose bundle id starts with <code>local.usage-n-uf.</code> and that carries a profile id, plus the files macOS keeps under that id.</span></div>
+  <div class="rule"><b>Never automatically</b><span>Claude Code folders (<code>~/.claude*</code>), Claude window data folders, Keychain sign-ins, or anything without cl_audit's id. Deleting those always needs you, in Remove profile or Uninstall.</span></div>
+  <div class="rule"><b>Fail safe</b><span>If the profiles file is missing or unreadable, nothing is removed. An unreadable list must never read as "no profiles". A Dock icon app is never removed in the first minute after it was installed or renamed.</span></div>
+  <div class="rule"><b>One Dock change</b><span>All stale pins go in one Dock restart, through the one-writer path, and only when one was there.</span></div>
+  <div class="rule"><b>Visible, not noisy</b><span>General settings shows the last run, for example "Cleaned up 2 leftovers · 26 Oct". The log lists each item.</span></div>
+</div>
+<div style="margin-top:10px;font-size:14px">What it sweeps:
+<ul style="margin:4px 0 0;font-size:14px">
+  <li>unwanted apps;</li>
+  <li>duplicates of a wanted profile;</li>
+  <li>leftovers in all six Library places (also web storage and app support);</li>
+  <li>saved usage of unknown profiles;</li>
+  <li>stale pins and recent-app entries;</li>
+  <li>old temporary scripts.</li>
+</ul>
+With "Usage in the Dock off removes the app", the same sweep keeps /Applications to exactly the profiles that show in the Dock.</div>
+
+<h2><small>2</small>Uninstall cl_audit</h2>
+<p>There's no uninstall today: nothing in the menus, Settings or the README. Dragging cl_audit.app to the Trash leaves all of this behind:</p>
+<ul style="font-size:14px;max-width:80ch">
+  <li>every <b>Dock icon app</b> in /Applications, still pinned, still starting at login and reading usage;</li>
+  <li>with the agent design, a <b>background item</b> pointing into the trashed app (what macOS does with it is to be checked);</li>
+  <li>the <b>profiles file, saved usage, preferences and caches</b>;</li>
+  <li>every profile's <b>Claude Code folder and window data folder</b>, which is fine: those are yours to keep or delete.</li>
+</ul>
+
+<h3>Recommendation: one Uninstall, three ways in</h3>
+<div class="mock">
+  <div class="mcard"><h4>Uninstall cl_audit</h4>
+    <div class="mrow"><span class="k">Always removed</span><span class="v">3 Dock icon apps and their pins · the background agent and its login item · saved usage, settings, caches · Terminal scripts · cl_audit itself (to the Trash)</span></div>
+    <div class="mrow"><span class="k">Main</span><span class="v">~/.claude · the standard window<br><span style="color:rgba(255,255,255,.4)">never deleted</span></span></div>
+    <div class="mrow"><span class="k">Work</span><span class="v"><span class="sw"></span>Delete ~/.claude-work (632 MB), signed out first<br><span class="sw"></span>Delete its Claude window data (455 MB)</span></div>
+    <div class="mrow"><span class="k">Studio</span><span class="v"><span class="sw on"></span>Delete ~/.claude-studio (210 MB), signed out first<br><span style="color:rgba(255,255,255,.4)">no window data of its own</span></span></div>
+    <div class="mrow"><span class="k">Dock</span><span class="v">cl_audit's pins go; your other pins stay as they are</span></div>
+    <div class="strip">Close first · a Terminal session is using ~/.claude-studio</div>
+  </div>
+  <div class="mcard"><h4>cl_audit was moved to the Trash</h4>
+    <div class="mrow"><span class="k">Found</span><span class="v">3 Dock icon apps, the background agent and saved settings that belong to it</span></div>
+    <div class="mrow"><span class="k">Remove them</span><span class="v">Everything in "Always removed". Every Claude Code and Claude window folder is kept.</span></div>
+    <div class="mrow"><span class="k">Or</span><span class="v">Put cl_audit back from the Trash and keep using it</span></div>
+    <div class="mrow"><span class="k">Shown by</span><span class="v">the agent (still running from the Trash), or the first Dock icon app that starts and finds cl_audit gone</span></div>
+  </div>
+</div>
+<ul class="files" style="margin-top:12px">
+  <li><b>In the app:</b> Settings ▸ General ▸ <i>Uninstall cl_audit…</i> (red, at the end) and the cl_audit menu. It opens the sheet on the left. Folder choices are per profile and off by default. <code>~/.claude</code> and the standard window are never offered. A folder another profile shares items from can only go if that profile's folder goes too.</li>
+  <li><b>From Terminal:</b> <code>cl_audit.app/Contents/MacOS/UsageDock --uninstall</code> lists what would go. Add <code>--yes</code> to do it, and <code>--delete-folders=work,studio</code> for folders. The README gets an Uninstall section.</li>
+  <li><b>Dragged to the Trash:</b> the self-clean-up on the right. Every Dock icon app is a full copy of the program, so whichever runs first can do it. It never deletes folders, since there's no one to ask about them.</li>
+  <li><b>Order:</b> stop the agent and unregister it; quit the Dock icon apps; take out every pin in one Dock change; delete the apps and their files; sign out and delete the chosen folders (Claude windows quit normally first); delete settings; move cl_audit to the Trash; quit. A final note lists what was kept.</li>
+  <li><b>Reuses:</b> Remove profile's code: what always goes, folder sizes, "close Claude first", sign-out before delete.</li>
+</ul>
+
+<h2><small>3</small>Claude windows and Anthropic updates</h2>
+<p>Every Claude window, the standard one and each profile's own, is a separate run of the same <code>/Applications/Claude.app</code> (now 3.6556.2). Claude updates itself with the usual Mac updater: it downloads in the background, then installs when that window quits or restarts, and after some hours it restarts itself to install. All windows write one shared log, so the updates can be followed there.</p>
+
+<h3>What your logs show (22–23 Oct)</h3>
+<div class="tw"><table>
+<thead><tr><th>When</th><th>What happened</th></tr></thead>
+<tbody>
+<tr><td>22 Oct 19:23</td><td>Update 3.6556.2 downloaded, ready to install</td></tr>
+<tr><td>20:55:42</td><td>One window quits to install it; other Claude windows keep running</td></tr>
+<tr><td>21:00:57</td><td>That window starts again, <b>5 min later</b>, still on the old version: "update did not apply". It comes back with its own data folder.</td></tr>
+<tr><td>21:12 · 01:00 · 02:26</td><td>The same again, "failed to apply" 1 and 2 times; each time the window is gone for a while</td></tr>
+<tr><td>23 Oct 13:11</td><td>Finally applied (3.6556.1 → 3.6556.2), presumably once all windows had quit</td></tr>
+<tr><td>14:10</td><td>Another window notices the new version only when it starts again</td></tr>
+</tbody></table></div>
+<ul style="font-size:14px;max-width:80ch">
+  <li><b>Not graceful:</b> while other windows are open, the update most likely can't install. The window that tries disappears for minutes and comes back on the old version, again and again.</li>
+  <li><b>Profiles survive the restart:</b> the restarted window came back with its own data folder, not as the standard window. That's one observation; the agent should still check for it.</li>
+  <li><b>Windows that keep running</b> stay on the old version until they restart. Claude Code sessions inside a window stop when it quits for an update ("Stopping 5 active sessions on quit").</li>
+  <li><b>cl_audit today:</b> a Dock icon that follows its window waits 10 s, then quits during the 5-minute gap, and nothing reopens the window. With the agent, usage keeps being read, but the window still stays closed.</li>
+</ul>
+
+<h3>Recommendation: the agent helps Claude update</h3>
+<div class="stages">
+  <div class="stage"><h3>Notice</h3><dl><dt>How</dt><dd>A Claude window quits and Claude's installer process appears, or the app on disk changes version. The agent records which profiles had a window open, and on which version.</dd></dl></div>
+  <div class="stage"><h3>Clear the way</h3><dl><dt>Ask (default)</dt><dd>The main display says <span class="disp amber">Claude update waiting <em>· 2 windows hold it</em></span> with <b>Restart Claude windows</b>. The card of each window that's running Claude Code sessions says so.</dd>
+    <dt>Or automatic</dt><dd>A General setting: "Claude updates: Ask · Restart windows when idle".</dd>
+    <dt>Then</dt><dd>Each remaining window gets a normal quit, so Claude asks about unsent work, shown as "Claude is asking · Show", as today.</dd></dl></div>
+  <div class="stage"><h3>Reopen</h3><dl><dt>How</dt><dd>Once the update has installed (the version on disk changed), every profile whose window was open gets it back with its own data folder and Claude Code folder. The display says <span class="disp">Claude updated <em>· 3.6556.2 · 3 windows reopened</em></span>.</dd>
+    <dt>Guard</dt><dd>If Claude comes back as the standard window for a profile that has its own, the agent quits it and opens the right one.</dd></dl></div>
+  <div class="stage"><h3>Stay calm meanwhile</h3><dl><dt>Rules</dt><dd>While an update restart is under way, no Dock icon follows its window and no window follows its Dock icon. Cards say "Updating Claude…".</dd>
+    <dt>Any time</dt><dd>"Restart all Claude windows" in the cl_audit menu and the launcher does the same quit-all and reopen-each by hand.</dd></dl></div>
+</div>
+<div class="note"><b>Limits.</b> cl_audit can't see "update downloaded" before a window quits without reading Claude's private files, so the first signal is that quit. Whether other open windows are what blocks the install is the most likely reading of the logs, not proven; the first build should confirm it.</div>
+
+<h2><small>4</small>Where these fit</h2>
+<div class="tw"><table>
+<thead><tr><th>Piece</th><th>Fits</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td>Automatic clean-up</td><td>Agent stage 3</td><td>Same installer and removal code as "Usage in the Dock off removes the app"</td></tr>
+<tr><td>Uninstall + self-clean-up</td><td>Agent stage 4</td><td>Needs the agent's registration and the final app layout; README and site text land there too</td></tr>
+<tr><td>Claude update helper</td><td>A new stage 5, after the agent release</td><td>A new feature on top of the agent's window rules; best tested on its own with the next Claude update</td></tr>
+</tbody></table></div>
+
+<h2><small>5</small>To check while building</h2>
+<ul style="font-size:14px;max-width:80ch">
+  <li>What macOS does with the agent's background item when cl_audit.app is in the Trash, and after the Trash is emptied: does it keep starting, stop, or disappear from Login Items?</li>
+  <li>Whether a profile window always comes back with its folders after an update restart, including Claude's own automatic restart after some hours.</li>
+  <li>That Claude's update installs once all windows have quit, so "Restart Claude windows" really clears the way.</li>
+</ul>
+</main></body>
+</html>

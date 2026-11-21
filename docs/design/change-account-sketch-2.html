@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Change account, round 2</title>
+<style>
+/* cl_audit ▸ Settings ▸ a profile: changing the account a profile uses. Round 2, after B was turned down.
+   Std face only; Black and Silver follow the same tokens. HTML only, nothing built. */
+:root {
+  --bg: #121214; --text: #ececee; --muted: #9a9aa0; --faint: #6e6e74;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --grain: repeating-linear-gradient(90deg, rgba(255,255,255,.028) 0 1px, rgba(0,0,0,.035) 1px 2px);
+  --alu: repeating-linear-gradient(90deg, rgba(255,255,255,.06) 0 1px, rgba(0,0,0,.06) 1px 2px), linear-gradient(180deg, #74746f, #52524e);
+  --key-up: inset 0 1px 0 rgba(255,255,255,.28), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #2e2e2c, 0 2px 0 #121211, 0 3px 7px rgba(0,0,0,.45);
+  --key-down: inset 0 1px 0 rgba(255,255,255,.2), inset 0 -1px 0 rgba(0,0,0,.3), 0 0 0 1px #2e2e2c, 0 1px 0 #121211, 0 2px 4px rgba(0,0,0,.45);
+  --well: inset 0 1px 3px rgba(0,0,0,.75), 0 1px 0 rgba(255,255,255,.05);
+  --glow: 127, 249, 234;
+  --ok: #4ade80; --caution: #f5a524; --danger: #f2655a;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 var(--font); -webkit-font-smoothing: antialiased; }
+.page { max-width: 1120px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { margin: 0 0 4px; font-size: 21px; letter-spacing: -.01em; }
+h2 { margin: 34px 0 6px; font-size: 17px; }
+h2 small, .opt h3 small { font: 600 11px var(--mono); letter-spacing: .12em; color: #ff7a3d; margin-right: 8px; }
+.lede, .note { margin: 0 0 12px; color: rgba(236,236,238,.8); max-width: 96ch; }
+.note { font-size: 13.5px; }
+ul.tight { margin: 6px 0 0; padding-left: 18px; } ul.tight li { margin: 3px 0; }
+code { font: 12.5px var(--mono); background: rgba(255,255,255,.07); padding: 0 4px; border-radius: 4px; }
+a { color: #e8a07f; }
+
+/* the settings card, as the app draws it */
+.card { position: relative; padding: 14px 18px 10px; border-radius: 10px; background: var(--grain), linear-gradient(180deg, #29292b, #222224);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.07), inset 0 -1px 0 rgba(0,0,0,.35), 0 0 0 1px #0c0c0d, 0 4px 12px rgba(0,0,0,.25); }
+.card h4 { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; font: 600 11px/1.2 var(--font); letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.55); }
+.card h4::after { content: ""; flex: 1; min-width: 12px; height: 1px; background: rgba(0,0,0,.5); box-shadow: 0 1px 0 rgba(255,255,255,.05); }
+.i { display: inline-grid; place-items: center; width: 15px; height: 15px; border-radius: 50%; border: 1.2px solid rgba(255,255,255,.4); font: 700 9px/1 var(--font); color: rgba(255,255,255,.55); letter-spacing: 0; flex: none; }
+.srow { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 42px; padding: 5px 0; border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.035); font-size: 14.5px; }
+.card h4 + .srow { border-top: 0; box-shadow: none; }
+.srow .k { display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+.srow .v { display: inline-flex; align-items: center; gap: 8px; min-width: 0; justify-content: flex-end; }
+.srow.tight { border-top: 0; box-shadow: none; min-height: 0; padding-top: 0; }
+.desc { margin: -3px 0 8px; font-size: 12px; line-height: 1.45; color: var(--muted); }
+.desc b { color: #d4d4d8; font-weight: 600; }
+.rest { padding: 8px 0 4px; border-top: 1px solid rgba(0,0,0,.45); box-shadow: inset 0 1px 0 rgba(255,255,255,.035); font-size: 12px; color: var(--faint); }
+.email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.muted { color: var(--muted); } .faint { color: var(--faint); }
+.t-ok { color: var(--ok); } .t-caution { color: var(--caution); } .t-danger { color: var(--danger); }
+
+.key { position: relative; display: inline-flex; align-items: center; justify-content: center; gap: 7px; height: 28px; padding: 0 12px; border: 0; border-radius: 3px; cursor: pointer; user-select: none; flex: none;
+  font: 600 10.5px/1 var(--font); letter-spacing: .1em; text-transform: uppercase; color: #f1f1f0; text-shadow: 0 -1px 0 rgba(0,0,0,.35); white-space: nowrap;
+  background: var(--alu); box-shadow: var(--key-up); transition: transform .06s, box-shadow .06s, filter .15s; }
+.key:hover { filter: brightness(1.06); } .key:active { transform: translateY(1px); box-shadow: var(--key-down); }
+.key.icon { width: 36px; padding: 0; }
+.dot, .led { width: 7px; height: 7px; border-radius: 50%; flex: none; display: inline-block; }
+.ok-l { background: var(--ok); box-shadow: 0 0 5px rgba(74,222,128,.8); }
+.caution-l { background: var(--caution); box-shadow: 0 0 5px rgba(245,165,36,.8); }
+.danger-l { background: var(--danger); box-shadow: 0 0 5px rgba(242,101,90,.8); }
+.blink { animation: blink 1s steps(2, start) infinite; }
+@keyframes blink { to { visibility: hidden; } }
+.mswitch { display: inline-grid; place-items: center; width: 36px; height: 26px; border-radius: 3px; background: var(--alu); box-shadow: var(--key-up); }
+/* the pop-up, as Folder draws it: a recessed well with ⌃⌄ */
+.popup { display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px; border-radius: 6px; background: rgba(0,0,0,.45); box-shadow: var(--well); font: 600 13px var(--mono); max-width: 230px; min-width: 0; cursor: default; }
+.popup.sans { font: 500 13.5px var(--font); }
+.popup .chev { color: var(--faint); font-size: 11px; flex: none; }
+.field { display: inline-flex; align-items: center; height: 30px; padding: 0 10px; border-radius: 6px; background: rgba(0,0,0,.45); box-shadow: var(--well), inset 0 0 0 1px rgba(255,122,61,.55); font: 13.5px var(--font); min-width: 0; flex: 1; max-width: 230px; }
+.field .caret { width: 1px; height: 15px; background: #ff9a66; margin-left: 1px; animation: blink 1s steps(2, start) infinite; }
+.plan { display: inline-flex; align-items: center; height: 22px; padding: 0 8px; border-radius: 4px; flex: none;
+  background: linear-gradient(180deg, #030607, #0a1113 70%, #0c1517); box-shadow: inset 0 1px 3px rgba(0,0,0,.9), 0 0 0 1px rgba(0,0,0,.55), 0 1px 0 rgba(255,255,255,.07);
+  font: 600 10px/1 var(--mono); letter-spacing: .14em; color: rgb(var(--glow)); text-shadow: 0 0 3px rgba(var(--glow), .75), 0 0 9px rgba(var(--glow), .35); }
+.textval { font-size: 14px; }
+
+/* the macOS menu, open */
+.menu-open { width: 330px; max-width: 100%; padding: 5px; border-radius: 9px; background: rgba(44,44,47,.97); box-shadow: 0 0 0 .5px rgba(255,255,255,.18), 0 10px 30px rgba(0,0,0,.6); font: 13px var(--font); }
+.mi { display: grid; grid-template-columns: 16px 1fr auto; gap: 6px; align-items: center; padding: 4px 8px; border-radius: 5px; color: #f2f2f4; }
+.mi.hl { background: #2e6ee6; color: #fff; } .mi.hl .s { color: rgba(255,255,255,.8); }
+.mi.dis { color: rgba(242,242,244,.35); }
+.mi .s { font-size: 11.5px; color: rgba(242,242,244,.5); }
+.mi.dis .s { color: rgba(242,242,244,.3); }
+.msep { height: 1px; margin: 5px 8px; background: rgba(255,255,255,.12); }
+
+/* page layout */
+.switcher { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 9px; margin: 10px 0 12px; border-radius: 8px;
+  background: var(--grain), linear-gradient(180deg, #48484b, #333336); box-shadow: inset 0 1px 0 rgba(255,255,255,.12), inset 0 -1px 0 rgba(0,0,0,.4), 0 0 0 1px #0b0b0c, 0 6px 16px rgba(0,0,0,.45); }
+.switcher .lbl { font: 600 9.5px var(--font); letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.5); margin-right: 4px; }
+.switcher .key { height: 26px; font-size: 10px; padding: 0 10px; }
+.switcher .key.on { padding-top: 3px; }
+.switcher .key.on::before { content: ""; position: absolute; left: 5px; right: 5px; top: 3px; height: 2px; border-radius: 2px; background: linear-gradient(180deg, #ffb08a, #ff7a3d 60%, #f0612a); box-shadow: 0 0 3px rgba(255,122,61,.8), 0 0 8px rgba(255,122,61,.45); }
+.story { margin: 0 0 16px; padding: 10px 13px; border-radius: 8px; background: rgba(255,255,255,.03); box-shadow: inset 0 0 0 1px rgba(255,255,255,.06); font-size: 13.5px; max-width: 96ch; }
+.story b { color: #ffb08a; font-weight: 600; }
+.pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; }
+.opt { display: grid; gap: 10px; align-content: start; }
+.opt > .card, .opt > .menu-wrap { max-width: 440px; width: 100%; }
+.opt h3 { margin: 0; font-size: 15px; }
+.opt .why { font-size: 13px; color: rgba(236,236,238,.75); max-width: 440px; margin: 0; }
+.cap { font: 600 10px var(--font); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.45); margin: 6px 0 6px; }
+@media (max-width: 900px) { .pair { grid-template-columns: 1fr; } }
+.rec { margin: 26px 0 0; padding: 12px 14px; border-radius: 10px; background: rgba(255,122,61,.08); box-shadow: inset 0 0 0 1px rgba(255,122,61,.35); max-width: 96ch; font-size: 13.5px; }
+.rec b { color: #ffb08a; }
+table.cmp { width: 100%; border-collapse: collapse; font-size: 13px; margin-top: 8px; }
+table.cmp th, table.cmp td { text-align: left; padding: 7px 8px; border-bottom: 1px solid rgba(255,255,255,.07); vertical-align: top; }
+table.cmp th { color: var(--muted); font-weight: 600; }
+</style></head>
+<body><div class="page">
+  <h1>Changing a profile's account · round 2</h1>
+  <p class="lede">B is out. Round 1 was <a href="cl-audit-change-account-sketch.html">here</a>. The look changes, and so does how the switch works.</p>
+
+  <div class="story"><b>The look:</b> nothing that profile settings don't already have.
+    <ul class="tight">
+      <li>Rows with the label on the left and the address in plain text, with its light.</li>
+      <li>A pop-up drawn like Folder's.</li>
+      <li>Keys with a light.</li>
+      <li>One short grey line under a row saying what it means.</li>
+    </ul>
+    No display windows full of addresses and no boxed messages. A problem shows as its own row only while it lasts, like today's "Wrong account" row. The only display left is the plan ("MAX"), as on the dashboard card.</div>
+
+  <div class="story"><b>How the switch works now:</b>
+    <ul class="tight">
+      <li><b>Started in cl_audit:</b> you type the new address and sign in with Claude Code's own screen. cl_audit then links the profile by itself, so there's no second question.</li>
+      <li><b>Done outside cl_audit,</b> like today's Terminal sign-in: cl_audit notices at once (no Refresh now) and asks once: <b>Use this account</b> or <b>Log in</b> again.</li>
+      <li><b>The Claude window:</b> cl_audit knows only the account id the Claude app saves, never its address. So it says "another account" when the window doesn't match, and checks the standard window too.</li>
+      <li><b>One profile per account</b> still holds, checked by account id.</li>
+    </ul></div>
+
+  <div class="switcher" id="sw"><span class="lbl">Moment</span><button class="key on" data-m="ok">1 · In step</button><button class="key" data-m="window">2 · Window moved</button><button class="key" data-m="ask">3 · Change…</button><button class="key" data-m="signing">4 · Signing in</button><button class="key" data-m="outside">5 · Signed in elsewhere</button><button class="key" data-m="taken">6 · Account taken</button><button class="key" data-m="moved">7 · Linked</button></div>
+  <div class="story" id="story">Main is linked to <b>ann@example.com</b>, and Claude Code and the Claude window are both signed in to it. This is how a profile looks almost all the time: one address, one light, nothing else.</div>
+
+  <div class="pair">
+    <div class="opt">
+      <h3><small>D</small>Account in the Profile card</h3>
+      <p class="why">The account becomes part of who the profile is: a row under Name, with the plan and a Change… key. The Claude Code card keeps only Folder and Renew sign-in. Problems with either sign-in show as rows here, so there's one place to look.</p>
+      <div class="card" id="cardD"><h4>Profile <span class="i">i</span></h4><div class="srow "><span class="k">Name</span><span class="v"><span class="textval">Main</span></span></div><div class="srow "><span class="k">Account <span class="i">i</span></span><span class="v"><span class="email ">ann@example.com</span><span class="plan">MAX</span><button class="key">Change…</button></span></div><div class="desc">Claude Code and the Claude window both use it.</div><div class="rest">Icon label · Colour · Fable's limit · Usage in the Dock · Claude window</div><h4 style="margin-top:12px">Claude Code <span class="i">i</span></h4><div class="srow "><span class="k">Folder <span class="i">i</span></span><span class="v"><span class="popup">~/.claude <span class="chev">⌃⌄</span></span><button class="key icon"><svg width="15" height="12" viewBox="0 0 15 12" fill="none" stroke="#f1f1f0" stroke-width="1.3"><path d="M1 2.2c0-.6.4-1 1-1h3.2l1.3 1.4H13c.6 0 1 .4 1 1v6.2c0 .6-.4 1-1 1H2c-.6 0-1-.4-1-1z"></path></svg></button></span></div><div class="srow "><span class="k">Renew sign-in <span class="i">i</span></span><span class="v"><span class="mswitch"><span class="led ok-l"></span></span></span></div></div>
+    </div>
+    <div class="opt">
+      <h3><small>E</small>The Login row becomes a pop-up</h3>
+      <p class="why">Today's Claude Code card, with one change: Login is a pop-up like Folder. It lists the addresses cl_audit knows and marks the ones other profiles use, with "Sign in to another account…" at the bottom. The existing Wrong account row gains Use this account.</p>
+      <div class="card" id="cardE"><h4>Claude Code <span class="i">i</span></h4><div class="srow "><span class="k">Folder <span class="i">i</span></span><span class="v"><span class="popup">~/.claude <span class="chev">⌃⌄</span></span><button class="key icon"><svg width="15" height="12" viewBox="0 0 15 12" fill="none" stroke="#f1f1f0" stroke-width="1.3"><path d="M1 2.2c0-.6.4-1 1-1h3.2l1.3 1.4H13c.6 0 1 .4 1 1v6.2c0 .6-.4 1-1 1H2c-.6 0-1-.4-1-1z"></path></svg></button></span></div><div class="srow "><span class="k">Login <span class="i">i</span></span><span class="v"><span class="led ok-l"></span><span class="popup sans"><span class="email"><span class="t-ok">ann@example.com</span></span><span class="chev">⌃⌄</span></span></span></div><div class="srow "><span class="k">Renew sign-in <span class="i">i</span></span><span class="v"><span class="mswitch"><span class="led ok-l"></span></span></span></div></div>
+      <div class="menu-wrap"><div class="cap">E's Login pop-up, open</div><div class="menu-open" id="menuE"><div class="mi"><span>✓</span><span>ann@example.com</span><span class="s">Max · this profile</span></div>
+    <div class="mi"><span></span><span>ben@example.com</span><span class="s">in ~/.claude-newacct</span></div>
+    <div class="mi dis"><span></span><span>cat@example.com</span><span class="s">Team · Work's</span></div>
+    <div class="msep"></div>
+    <div class="mi hl"><span></span><span>Sign in to another account…</span><span></span></div></div></div>
+    </div>
+  </div>
+
+  <h2>Side by side</h2>
+  <table class="cmp">
+    <tbody><tr><th></th><th>D · Account in the Profile card</th><th>E · Login pop-up</th></tr>
+    <tr><td>Change to today's settings</td><td>Moves the account up to the Profile card; Login leaves the Claude Code card</td><td>Login turns into a pop-up; one more key on the Wrong account row</td></tr>
+    <tr><td>Where you start a switch</td><td>Change… on the Account row</td><td>Sign in to another account… in the pop-up</td></tr>
+    <tr><td>Shows the plan</td><td>Yes, next to the address</td><td>In the pop-up</td></tr>
+    <tr><td>Window on another account</td><td>A row in the Profile card</td><td>A row in the Claude Code card</td></tr>
+    <tr><td>Familiar from</td><td>Name and Icon label rows</td><td>The Folder pop-up and the Wrong account row</td></tr>
+  </tbody></table>
+
+  <p class="rec"><b>Recommended: E.</b> It's today's card with the Folder pop-up's pattern applied to Login, and the Wrong account row you already know gains one key. Nothing moves, so the three columns stay as they are. Pick D if you want the account to read as the profile's identity, right under its name.</p>
+
+  <h2>Open points</h2>
+  <ul class="tight note">
+    <li><b>Which addresses the pop-up lists:</b> this profile's account, the other profiles' accounts (marked, can't be picked) and Claude Code folders on this Mac that no profile uses (like <code>~/.claude-newacct</code>). Picking one only fills in the sign-in; cl_audit never copies a sign-in between folders.</li>
+    <li><b>The old account afterwards:</b> the last moment offers "Add as a profile…", so its limits stay watched. Keep or drop it?</li>
+    <li><b>Numbers while signed in elsewhere:</b> hidden until you choose, as the seat design says. With the instant re-read, that's only until you click.</li>
+    <li><b>The window's earlier Code sessions</b> stay under the old account. The last moment links to the claude-transplant how-to; nothing in cl_audit moves them.</li>
+  </ul>
+</div>
+
+</body></html>

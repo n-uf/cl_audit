@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Profile Sketch</title>
+<style>
+  body{margin:0;padding:0 16px 48px;font:13px/1.45 -apple-system,system-ui,sans-serif;color:#374151;background:#f4f4f2}
+  main{max-width:1260px;margin:0 auto}
+  h1{font:700 15px ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.06em;margin:20px 0 4px;color:#111827}
+  h2{font:700 12px ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.08em;margin:30px 0 4px;color:#111827}
+  .note{margin:0 0 10px;color:#6b7280;font-size:12.5px;max-width:110ch}
+  .note b{color:#111827}
+  .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;align-items:start}
+
+  /* dark app surfaces */
+  .win{background:#1e1e20;border-radius:14px;box-shadow:0 0 0 1px #000,0 14px 30px rgba(0,0,0,.2);padding:14px;color:#ececee}
+  .cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;align-items:start}
+  .col{display:grid;gap:10px}
+  .card{background:rgba(255,255,255,.045);border-radius:12px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);padding:11px 13px}
+  .ct{font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#8e8e93;margin:0 0 6px;display:flex;align-items:center;gap:6px}
+  .row{display:grid;grid-template-columns:118px 1fr;gap:10px;align-items:center;padding:6px 0;border-top:1px solid rgba(255,255,255,.06);font-size:12px}
+  .row:first-of-type{border-top:0}
+  .row.stack{grid-template-columns:1fr}
+  .l{color:#c7c7cc;display:flex;align-items:center;gap:5px}
+  .i{width:11px;height:11px;border-radius:50%;box-shadow:inset 0 0 0 1px #6e6e74;display:inline-grid;place-items:center;font:600 8px Georgia,serif;color:#8e8e93;cursor:help}
+  .sub{font-size:10.5px;color:#9a9aa0}
+  .inp{padding:2px 8px;border-radius:6px;background:rgba(0,0,0,.25);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);width:150px}
+  .menu{padding:2px 9px;border-radius:7px;background:rgba(255,255,255,.08);display:inline-block}
+  .menu::after{content:" ⌄";color:#8e8e93}
+  .step{display:inline-flex;align-items:center;gap:7px}
+  .step b{width:24px;height:20px;border-radius:10px;background:rgba(255,255,255,.08);display:grid;place-items:center;font-weight:500}
+  .seg{display:inline-flex;padding:2px;border-radius:99px;background:rgba(255,255,255,.06)}
+  .seg span{padding:2px 9px;border-radius:99px;color:#9a9aa0;font-size:11.5px;cursor:pointer}
+  .seg span.on{background:rgba(255,255,255,.16);color:#fff;font-weight:600}
+  .sw{width:28px;height:16px;border-radius:99px;background:#48484d;position:relative;cursor:pointer;flex:none;display:inline-block;transition:background .15s}
+  .sw::after{content:"";position:absolute;left:2px;top:2px;width:12px;height:12px;border-radius:50%;background:#fff;transition:left .15s}
+  .sw.on{background:#22c55e}.sw.on::after{left:14px}
+  .dots{display:flex;gap:4px;flex-wrap:wrap}
+  .dots span{width:14px;height:14px;border-radius:50%;cursor:pointer}
+  .dots span.on{box-shadow:0 0 0 2px #1e1e20,0 0 0 3.5px #fff}
+  .danger{color:#f87171;font-size:11.5px;margin-top:6px;display:block}
+  .ok{color:#4ade80}
+  .changed{display:inline-block;font:700 9px ui-monospace,Menlo,monospace;padding:1px 5px;border-radius:4px;background:#22c55e;color:#062;margin-left:6px;letter-spacing:.04em}
+
+  /* the icon (as in the app) */
+  .fam{font-size:10.5px;color:#9a9aa0;margin:6px 0 3px}
+  .gal{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+  .gal .g{display:grid;justify-items:center;gap:3px;padding:6px 0;border-radius:9px;font-size:10.5px;color:#9a9aa0;cursor:pointer}
+  .gal .g.on{background:rgba(255,255,255,.1);color:#fff;font-weight:600}
+  .tile{width:38px;height:38px;border-radius:9px;background:linear-gradient(#2c2c30,#141416);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);position:relative;display:grid;place-items:center;font:700 13px -apple-system,system-ui,sans-serif;color:#fff}
+  .tile small{position:absolute;top:2px;left:0;right:0;text-align:center;font:700 6.5px ui-monospace,Menlo,monospace;color:#e5e5e5}
+  .tile.green{background:linear-gradient(#5ecb6e,#3ea24f)}
+  .tile.ring::before{content:"";position:absolute;inset:5px;border-radius:50%;border:3px solid #3a3a3f;border-top-color:#22c55e;border-right-color:#22c55e}
+  .tile .d{position:absolute;top:-3px;left:-3px;width:10px;height:10px;border-radius:50%;background:#d97757;box-shadow:0 0 0 2px #1e1e20;display:none}
+  .withdot .tile .d{display:block}
+  .lane{background:rgba(255,255,255,.06);border-radius:10px;padding:8px 10px;margin:4px 0}
+  .lane .bar{display:grid;grid-template-columns:repeat(5,1fr);gap:4px;margin:4px 0}
+  .lane .bar i{height:3px;border-radius:2px}
+  .lane .tiles{display:grid;grid-template-columns:repeat(5,1fr);justify-items:center;margin-top:6px}
+  .dotpick{display:flex;gap:8px}
+  .dotpick .opt{display:grid;justify-items:center;gap:2px;font-size:10px;color:#9a9aa0;padding:4px 6px;border-radius:8px;cursor:pointer}
+  .dotpick .opt.on{background:rgba(255,255,255,.1);color:#fff}
+  .dotpick .tile{width:28px;height:28px;border-radius:7px;font-size:10px}
+
+  /* Dock icon card */
+  .state{display:inline-flex;align-items:center;gap:6px;font-size:12px}
+  .state i{width:7px;height:7px;border-radius:50%}
+  .caution{font-size:10.5px;color:#fbbf24;padding:0 0 6px;margin-top:-3px}
+  .caution.busy{color:#fde68a}
+
+  /* opening and closing */
+  .q{border-radius:10px;background:rgba(255,255,255,.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);padding:8px 10px;margin-top:6px}
+  .qt{font-size:11.5px;color:#c7c7cc;margin-bottom:4px}
+  .opt2{display:flex;align-items:flex-start;gap:7px;font-size:11.5px;padding:3px 0;cursor:pointer}
+  .rad{width:12px;height:12px;border-radius:50%;box-shadow:inset 0 0 0 1.4px #8e8e93;flex:none;margin-top:2px}
+  .opt2.on .rad{box-shadow:inset 0 0 0 4px #fff}
+  .opt2 small{display:block;color:#9a9aa0;font-size:10px}
+  .story{margin-top:8px;padding:9px 10px;border-radius:10px;background:rgba(217,119,87,.09);box-shadow:inset 0 0 0 1px rgba(217,119,87,.35)}
+  .pic{display:flex;align-items:center;gap:6px;margin-bottom:5px}
+  .pic .ic{width:20px;height:20px;border-radius:5px;background:linear-gradient(#2c2c30,#141416);box-shadow:inset 0 0 0 1px rgba(255,255,255,.25)}
+  .pic .wn{width:26px;height:17px;border-radius:4px;background:linear-gradient(#e08a68,#c9643f)}
+  .pic svg{width:36px;height:12px}
+  .story b{font-size:12px}
+  .story ul{margin:2px 0 0;padding-left:15px;font-size:11px;color:#d4d4d8}
+
+  /* dashboard card */
+  .pc{background:#262628;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);padding:13px 14px;color:#ececee}
+  .top{display:flex;gap:10px;align-items:flex-start}
+  .who{flex:1;min-width:0}
+  .title{display:flex;align-items:center;gap:6px;font-size:14.5px;font-weight:600}
+  .title i{width:9px;height:9px;border-radius:50%}
+  .mail{font-size:11.5px;color:#9a9aa0}
+  .plan{font-size:11px;font-weight:600;padding:1px 8px;border-radius:99px;background:rgba(255,255,255,.08)}
+  .ctrls{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 2px}
+  .ctl{flex:1 1 auto;min-width:fit-content;display:flex;align-items:center;gap:7px;padding:4px 6px 4px 9px;border-radius:9px;background:rgba(255,255,255,.05);box-shadow:inset 0 0 0 1px rgba(255,255,255,.08);font-size:11.5px;color:#d4d4d8;min-width:0}
+  .ctl .t{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ctl .t small{display:block;color:#8e8e93;font-size:10px}
+  .ctl.warn{background:rgba(245,158,11,.1);box-shadow:inset 0 0 0 1px rgba(245,158,11,.5)}
+  .ico{flex:none}
+  .ico.wico{width:15px;height:10px;border-radius:2px;background:linear-gradient(#e08a68,#c9643f)}
+  .ico.dock{width:12px;height:12px;border-radius:3px;background:linear-gradient(#2c2c30,#141416);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
+  .off .ico{opacity:.35}
+  .fix{padding:1px 8px;border-radius:99px;font-size:10.5px;font-weight:600;background:#f59e0b;color:#1f1300;cursor:pointer}
+  .lr{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;font-weight:600;margin-top:8px}
+  .lr small{font-weight:400;color:#9a9aa0;font-size:11px}
+  .segs{display:grid;grid-template-columns:repeat(12,1fr);gap:3px;margin-top:4px}
+  .segs i{height:6px;border-radius:2px;background:#3a3a3f}.segs i.f{background:#5ecb6e}.segs i.r{background:#ef4444}
+  .foot{display:flex;align-items:center;gap:6px;margin-top:10px}
+  .b{padding:2px 10px;border-radius:99px;font-size:11.5px;font-weight:600;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);white-space:nowrap}
+  .b.p{background:rgba(217,119,87,.28);box-shadow:inset 0 0 0 1px rgba(217,119,87,.65)}
+  .more{width:24px;height:21px;border-radius:99px;display:grid;place-items:center;background:rgba(255,255,255,.08);font-size:13px;color:#c7c7cc}
+  .ago{margin-left:auto;font-size:11px;color:#8e8e93}
+  .hint{font-size:11px;color:#6b7280;margin-top:6px}
+
+  .res{margin-top:8px;border-radius:10px;overflow:hidden;box-shadow:inset 0 0 0 1px rgba(255,255,255,.09)}
+  .res .h{display:flex;align-items:center;gap:8px;padding:7px 10px;background:rgba(217,119,87,.12);font-size:12px;font-weight:700}
+  .res .h small{font-weight:400;color:#9a9aa0;font-size:10.5px;margin-left:auto}
+  .res table{width:100%;border-collapse:collapse;font-size:11.5px}
+  .res td{padding:5px 10px;border-top:1px solid rgba(255,255,255,.06);vertical-align:middle}
+  .res td:first-child{color:#c7c7cc;width:46%;white-space:nowrap}
+  .res .who{display:inline-block;width:14px;height:10px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+  .res .who.w{background:linear-gradient(#e08a68,#c9643f)}
+  .res .who.d{width:10px;height:10px;border-radius:3px;background:linear-gradient(#2c2c30,#141416);box-shadow:inset 0 0 0 1px rgba(255,255,255,.35)}
+  .res .eff{display:inline-flex;align-items:center;gap:6px;padding:1px 8px;border-radius:99px;background:rgba(34,197,94,.16);color:#86efac;font-weight:600}
+  .res .none{color:#6e6e74}
+  .res .note2{color:#9a9aa0;font-size:10.5px;margin-left:4px}
+
+  /* transitions */
+  .tx{display:grid;gap:10px}
+  .tx > .seg{background:#e5e5e2;justify-self:start;flex-wrap:wrap}
+  .tx > .seg span{color:#4b5563}
+  .tx > .seg span.on{background:#111827;color:#fff}
+  .txbar{display:flex;align-items:center;gap:10px}
+  .txbar .b{cursor:pointer;background:#111827;color:#fff;box-shadow:none}
+  .txbar input{flex:1;max-width:520px;accent-color:#d97757}
+  .txclock{font:600 12px ui-monospace,Menlo,monospace;color:#111827;width:52px}
+  .txreal{display:flex;gap:10px;align-items:center;font-size:12.5px;color:#111827;padding:7px 11px;border-radius:9px;background:#fff;box-shadow:inset 0 0 0 1px #e5e7eb;max-width:900px}
+  .txk{font:700 10px ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.06em;color:#9ca3af;flex:none}
+  .txlanes{display:grid;grid-template-columns:repeat(2,minmax(0,440px));gap:14px}
+  .txh{font:700 11px ui-monospace,Menlo,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+  .txh.bad{color:#b91c1c}.txh.good{color:#15803d}
+  .txcard{padding:10px 12px}
+  .txcard .title{font-size:13px}
+  .txcard .ctrls{margin:8px 0 0}
+  .ctl.clicked{box-shadow:inset 0 0 0 1px rgba(255,255,255,.08),0 0 0 2px #60a5fa}
+  .sw.busy{opacity:.75}
+  .sw.busy::after{background:transparent;border:2px solid #fff;border-right-color:transparent;width:8px;height:8px;animation:txspin .7s linear infinite}
+  @keyframes txspin{to{transform:rotate(360deg)}}
+  .fix.n{background:rgba(255,255,255,.12);color:#ececee}
+  .ctl.lock{opacity:.9}
+  .txlog{list-style:none;margin:8px 0 0;padding:0;font-size:12px;display:grid;gap:2px}
+  .txlog li{display:grid;grid-template-columns:44px 1fr;gap:6px;padding:4px 8px;border-radius:7px;color:#9ca3af;cursor:pointer}
+  .txlog li b{font:600 11px ui-monospace,Menlo,monospace}
+  .txlog li.past{color:#4b5563}
+  .txlog li.cur{background:#fff;color:#111827;box-shadow:inset 0 0 0 1px #e5e7eb}
+  .txlog li .bad{color:#b91c1c;font-weight:600}
+  .txrules{font-size:12.5px;max-width:900px;padding:10px 14px;border-radius:10px;background:#fff;box-shadow:inset 0 0 0 1px #e5e7eb}
+  .txrules ol{margin:4px 0 0;padding-left:18px;display:grid;gap:3px}
+  @media (max-width:760px){ .txlanes{grid-template-columns:1fr} .cards,.cols{grid-template-columns:1fr} }
+</style>
+</head>
+<body>
+<main>
+<h1>cl_audit · profile: Dock icon and Claude window</h1>
+<p class="note">Clickable sketch: switches, the Claude open dot and the opening-and-closing answers all work. Dark = the app; light = notes. In the app it's always <b>Dock icon</b> and <b>Claude window</b>.</p>
+
+<h2>1 · Dashboard cards</h2>
+<p class="note">Both switches sit on one row across the card, under the name. <b>Dock icon</b> starts and quits the profile's Dock icon app: its pin stays and the Dock is never restarted. Off means no refreshes or alerts for that profile. Studio's Dock icon follows its window, so flip Studio's window switch too. Only a missing app gets an orange button.</p>
+<div class="cards" id="cards"><div class="pc"><div class="top"><div class="tile" style="width:44px;height:44px;flex:none"><small>MAIN</small>3<span class="d" style="display:block"></span></div>
+    <div class="who"><div class="title"><i style="background:#d97757"></i>Claude main</div><div class="mail">ann@example.com</div></div><span class="plan">Max</span></div>
+    <div class="ctrls"><div class="ctl "><span class="ico wico"></span><span class="t">Claude window<small>open</small></span><span class="sw on" data-win="0"></span></div><div class="ctl "><span class="ico dock"></span><span class="t">Dock icon<small>running</small></span><span class="sw on" data-dock="0"></span></div></div>
+    <div class="lr"><span>5-hour <small>· in 2 h 57 min</small></span><b style="color:#4ade80">3%</b></div><div class="segs"><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div>
+    <div class="lr"><span>Week <small>· in 3 days</small></span><b style="color:#4ade80">13%</b></div><div class="segs"><i class="f"></i><i class="f"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div>
+    <div class="foot"><span class="b p">Show window</span><span class="b">Terminal</span><span class="more">⋯</span><span class="ago">1 min ago</span></div></div><div class="pc"><div class="top"><div class="tile" style="width:44px;height:44px;flex:none"><small>STAR</small>26</div>
+    <div class="who"><div class="title"><i style="background:#14b8a6"></i>Claude Studio</div><div class="mail">ben@…</div></div><span class="plan">Team</span></div>
+    <div class="ctrls"><div class="ctl off"><span class="ico wico"></span><span class="t">Claude window<small>closed</small></span><span class="sw " data-win="1"></span></div><div class="ctl off"><span class="ico dock"></span><span class="t">Dock icon<small>waits for the window</small></span><span class="sw " data-dock="1"></span></div></div>
+    <div class="lr"><span>5-hour <small>· in 2 h 57 min</small></span><b style="color:#4ade80">26%</b></div><div class="segs"><i class="f"></i><i class="f"></i><i class="f"></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div>
+    <div class="lr"><span>Week <small>· in 3 days</small></span><b style="color:#f87171">99%</b></div><div class="segs"><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i><i class="r"></i></div>
+    <div class="foot"><span class="b p">Open window</span><span class="b">Terminal</span><span class="more">⋯</span><span class="ago">1 min ago</span></div></div><div class="pc"><div class="top"><div class="tile" style="width:44px;height:44px;flex:none"><small>WORK</small>–</div>
+    <div class="who"><div class="title"><i style="background:#8b5cf6"></i>Claude work</div><div class="mail" style="color:#fbbf24">not signed in</div></div></div>
+    <div class="ctrls"><div class="ctl off"><span class="ico wico"></span><span class="t">Claude window<small>closed</small></span><span class="sw " data-win="2"></span></div><div class="ctl warn"><span class="ico dock" style="opacity:.35"></span><span class="t">Dock icon<small>missing</small></span><span class="fix" data-fix="2">Reinstall</span></div></div>
+    <div class="lr"><span>5-hour <small></small></span><b style="color:#8e8e93">–</b></div><div class="segs"><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div>
+    <div class="lr"><span>Week <small></small></span><b style="color:#8e8e93">–</b></div><div class="segs"><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i><i class=""></i></div>
+    <div class="foot"><span class="b p">Sign in…</span><span class="b">Terminal</span><span class="more">⋯</span><span class="ago">—</span></div></div></div>
+
+<h2>2 · Profile settings · Studio</h2>
+<p class="note">The page as a whole, in its three columns. Unchanged except: <b>Icon</b> gets the <b>Claude open dot</b> (was “Window-open dot”, now picked like Colour and shown on every icon), Clicking and panels moves to the left column, and two new cards, <b>Dock icon</b> and <b>Opening and closing</b>, take the right one. Changed parts are tagged <span class="changed" style="margin:0">NEW</span>.</p>
+<div class="win">
+  <div class="cols">
+    <div class="col">
+      <div class="card"><div class="ct">Profile</div>
+        <div class="row"><span class="l">Name</span><span class="inp">Studio</span></div>
+        <div class="row"><span class="l">Icon label <span class="i">i</span></span><span class="inp" style="width:60px">STU</span></div>
+        <div class="row"><span class="l">Colour <span class="i">i</span></span><div class="dots"><span style="background:#d97757"></span><span style="background:#eab308"></span><span style="background:#84cc16"></span><span class="on" style="background:#14b8a6"></span><span style="background:#06b6d4"></span><span style="background:#3b82f6"></span><span style="background:#6366f1"></span><span style="background:#8b5cf6"></span></div></div>
+        <span class="danger">Remove profile…</span>
+      </div>
+      <div class="card"><div class="ct">Claude Code and window <span class="i">i</span></div>
+        <div class="row"><span class="l">Folder</span><span><span class="menu">~/.claude-studio</span></span></div>
+        <div class="row"><span class="l">Login</span><span class="ok">● ben@example.com</span></div>
+        <div class="row"><span class="l">Renew if expired <span class="i">i</span></span><span><span class="sw on"></span></span></div>
+        <div class="row"><span class="l">Claude window <span class="i">i</span></span><span><span class="menu">Its own</span></span></div>
+        <div class="row"><span class="l">Data folder</span><span><span class="menu">Claude-Studio</span></span></div>
+      </div>
+      <div class="card"><div class="ct">Updates and alerts</div>
+        <div class="row"><span class="l">Refresh every</span><span><span class="menu">5 min</span></span></div>
+        <div class="row"><span class="l">Notify at <span class="i">i</span></span><span class="step"><span class="sw on"></span><b>–</b>90%<b>+</b></span></div>
+      </div>
+      <div class="card"><div class="ct">Clicking and panels <span class="i">i</span></div>
+        <div class="row"><span class="l">Click</span><span><span class="menu">Usage, then Claude</span></span></div>
+        <div class="row"><span class="l">Show usage for</span><span class="step"><b>–</b>0.75 s<b>+</b></span></div>
+        <div class="row"><span class="l">Press and hold <span class="i">i</span></span><span><span class="sw on"></span></span></div>
+        <div class="row stack"><span class="l">Panel design</span><span class="seg"><span>Glow</span><span>Rings</span><span>Numbers</span><span class="on">Segments</span><span>Pace</span></span></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card withdot" id="iconcard"><div class="ct">Icon</div>
+        <div class="fam">Classic</div>
+        <div class="gal"><div class="g"><div class="tile"><small>STU</small><span class="d"></span>26</div>Two numbers</div><div class="g on"><div class="tile ring"><span class="d"></span>26</div>Rings</div><div class="g"><div class="tile" style="background:linear-gradient(#5b8def,#3b6fd8)"><small>STU</small><span class="d"></span>26%</div>Big number</div></div>
+        <div class="lane"><b style="font-size:11.5px">Preview</b> <span class="sub">as the limit fills up</span>
+          <div class="bar"><i style="background:#22c55e"></i><i style="background:#22c55e"></i><i style="background:#f59e0b"></i><i style="background:#ef4444"></i><i style="background:#ef4444"></i></div>
+          <div class="tiles"><div class="tile ring"><span class="d"></span>5</div><div class="tile ring"><span class="d"></span>30</div><div class="tile ring" style="--c:#f59e0b"><span class="d"></span>58</div><div class="tile ring"><span class="d"></span>84</div><div class="tile ring"><span class="d"></span>97</div></div></div>
+        <div class="fam">Like the panels</div>
+        <div class="gal"><div class="g"><div class="tile"><small>STU</small><span class="d"></span>26</div>Twin rings</div><div class="g"><div class="tile"><small>STU</small><span class="d"></span>26</div>Segmented</div><div class="g"><div class="tile"><small>STU</small><span class="d"></span>26</div>Pace bars</div></div>
+        <div class="fam">Status colours</div>
+        <div class="gal"><div class="g"><div class="tile green"><small>STU</small><span class="d"></span>26%</div>Tile</div><div class="g"><div class="tile"><small>STU</small><span class="d"></span>26%</div>Gauge</div><div class="g"><div class="tile" style="background:linear-gradient(#ef6b6b,#d94545)"><small>STU</small><span class="d"></span>26%</div>Worst</div><div class="g"><div class="tile green"><small>STU</small><span class="d"></span>26%</div>Tile + bar</div></div>
+        <div class="row stack" style="margin-top:6px"><span class="l">Colour <span class="i">i</span></span><div class="dots"><span style="background:#d97757"></span><span style="background:#eab308"></span><span style="background:#84cc16"></span><span style="background:#14b8a6"></span><span style="background:#06b6d4"></span><span class="on" style="background:#3b82f6"></span><span style="background:#6366f1"></span><span style="background:#8b5cf6"></span><span style="background:#d946ef"></span><span style="background:#ec4899"></span><span style="background:#3f3f46"></span></div></div>
+        <div class="row stack"><span class="l">Frame</span><div class="dots"><span style="box-shadow:inset 0 0 0 1.5px #8e8e93"></span><span style="background:#d97757"></span><span style="background:#eab308"></span><span style="background:#14b8a6"></span><span style="background:#3b82f6"></span></div></div>
+        <div class="row stack"><span class="l">Claude open dot <span class="i" title="An orange dot at the icon's corner while this profile's Claude window is open">i</span><span class="changed">NEW</span></span>
+          <div class="dotpick"><div class="opt" data-dot="0"><div class="tile ring">26</div>none</div><div class="opt on" data-dot="1"><div class="tile ring" style="overflow:visible"><span class="d" style="display:block"></span>26</div>while open</div></div>
+          <span class="sub">Shown on every icon above while picked, like the colour.</span></div>
+      </div>
+    </div>
+
+    <div class="col">
+      <div class="card"><div class="ct">Dock icon <span class="changed">NEW</span></div>
+        <div class="row"><span class="l">Show in the Dock</span><span style="display:flex;align-items:center;gap:8px"><span class="sw on" id="showDock"></span><span class="sub" id="showDockSub">pinned in the Dock</span></span></div>
+        <div class="caution" id="showDockNote">⟳ Changing this restarts the Dock (takes the pin out or puts it back)</div>
+        <div class="row"><span class="l">Open at login</span><span><span class="sw on" id="atLogin"></span></span></div>
+        <div class="row"><span class="l">Now</span><span class="state" id="dockState"><i style="background:#f59e0b"></i>running, not pinned <span class="fix" id="pinNow" style="margin-left:4px">Pin</span></span></div>
+      </div>
+      <div class="card"><div class="ct">Opening and closing <span class="changed">NEW</span></div>
+        <div class="q"><div class="qt">When Studio's <b>Claude window</b> opens or quits</div>
+          <div class="opt2" data-q="a" data-v="0"><span class="rad"></span><span>leave the Dock icon alone</span></div>
+          <div class="opt2 on" data-q="a" data-v="1"><span class="rad"></span><span>start or quit the Dock icon too<small>it quits 10 s after the window; starting needs cl_audit running</small></span></div></div>
+        <div class="q"><div class="qt">When Studio's <b>Dock icon</b> starts or quits</div>
+          <div class="opt2 on" data-q="b" data-v="0"><span class="rad"></span><span>leave the Claude window alone</span></div>
+          <div class="opt2" data-q="b" data-v="1"><span class="rad"></span><span>open or quit the Claude window too<small>not at login; Claude asks about unsent work</small></span></div></div>
+        <div class="res" id="story"><div class="h">The Dock icon follows the window<small>Studio</small></div><table><tbody><tr><td><span class="who w"></span>You open the window</td><td><span class="eff">Dock icon starts</span></td></tr><tr><td><span class="who w"></span>You quit the window</td><td><span class="eff">Dock icon quits</span><span class="note2">10 s later</span></td></tr><tr><td><span class="who d"></span>You start the Dock icon</td><td><span class="none">not touched</span></td></tr><tr><td><span class="who d"></span>You quit the Dock icon</td><td><span class="none">not touched</span></td></tr></tbody></table></div>
+      </div>
+    </div>
+  </div>
+</div>
+<p class="hint">Try: flip the card switches; pick “none” for the Claude open dot; switch “Show in the Dock” off (it says it restarts the Dock); press Pin on the Now row; answer the two questions.</p>
+
+<h2>3 · What the switches do while things change</h2>
+<p class="note">Opening and quitting take seconds. Pick a case and press play; time runs at double speed. <b>Window cases</b> are already built (commit fba1fc9): Before is the build before it, After is what you have now. <b>Dock icon cases</b> are proposed: Before is today's switch, which hides and shows and restarts the Dock; After starts and quits, and never touches the Dock.</p>
+<div class="tx">
+  <div class="seg" id="txCases"><span class="on" data-k="open">Open the window</span><span class="" data-k="quit">Quit the window</span><span class="" data-k="ask">Quit, Claude asks</span><span class="" data-k="qdock">Quit the Dock icon</span><span class="" data-k="sdock">Start the Dock icon</span><span class="" data-k="qdockw">Quit the Dock icon, window follows</span><span class="" data-k="follow">Quit the window, icon follows</span></div>
+  <div class="txbar"><span class="b" id="txPlay">▶ Play</span><input type="range" id="txT" min="0" max="12" step="0.1" value="0"><span class="txclock" id="txClock">0.0 s</span></div>
+  <div class="txreal"><span class="txk">On screen</span><span id="txReal">you flip Claude window on</span></div>
+  <div class="txlanes">
+    <div class="txlane"><div class="txh bad">Before</div><div class="win txcard" id="txNow"><div class="title"><i style="background:#14b8a6;width:9px;height:9px;border-radius:50%"></i>Claude Studio</div><div class="ctrls"><div class="ctl   clicked"><span class="ico wico"></span><span class="t">Claude window<small>closed</small></span><span class="sw on "></span></div><div class="ctl   "><span class="ico dock"></span><span class="t">Dock icon<small>in the Dock</small></span><span class="sw on "></span></div></div></div><ol class="txlog" id="txNowLog"><li class="cur" data-t="0"><b>0.0 s</b><span class="">switch moves on</span></li><li class="" data-t="0.2"><b>0.2 s</b><span class="bad">switch snaps back off: nothing is open yet</span></li><li class="" data-t="5"><b>5.0 s</b><span class="bad">window is up, card still says closed</span></li><li class="" data-t="10"><b>10.0 s</b><span class="">next 10 s check: open</span></li></ol></div>
+    <div class="txlane"><div class="txh good">After</div><div class="win txcard" id="txProp"><div class="title"><i style="background:#14b8a6;width:9px;height:9px;border-radius:50%"></i>Claude Studio</div><div class="ctrls"><div class="ctl   clicked"><span class="ico wico"></span><span class="t">Claude window<small>opening…</small></span><span class="sw on busy"></span></div><div class="ctl   "><span class="ico dock"></span><span class="t">Dock icon<small>running</small></span><span class="sw on "></span></div></div></div><ol class="txlog" id="txPropLog"><li class="cur" data-t="0"><b>0.0 s</b><span class="">switch moves on and stays; spinner</span></li><li class="" data-t="5.3"><b>5.3 s</b><span class="">0.5 s checks: open</span></li><li class="" data-t="11.9"><b>11.9 s</b><span class="">(had it not opened in 30 s: back off, “didn’t open · Retry”)</span></li></ol></div>
+  </div>
+  <div class="txrules">
+    <b>Rules</b>
+    <ol>
+      <li>The switch moves at once and <b>stays</b>; its line says what is happening (“opening…”, “starting…”) and it ignores clicks until done.</li>
+      <li>While something is changing the card looks every 0.5 s, so “open” shows within half a second of the window appearing.</li>
+      <li>Each change has a time limit. Past it the switch goes back and says why, with one button (“Show”, “Retry”, “Pin”).</li>
+      <li>No orange fix buttons while cl_audit is still in the middle of a change it started itself.</li>
+      <li>A change caused by the Opening and closing answers is announced on the other switch (“quits in 8 s”) and ends neutral, not orange.</li>
+      <li><span class="changed" style="margin:0 4px 0 0">NEW</span>The Dock icon switch starts and quits the app. It never touches pins, so the Dock never restarts; hiding lives in profile settings ▸ Dock icon.</li>
+    </ol>
+  </div>
+</div>
+</main>
+
+</body></html>

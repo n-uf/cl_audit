@@ -30,6 +30,22 @@ A sketch shows what was proposed at the time. The app and the CHANGELOG say what
   not decided yet.
 - [settings-sidebar-1A.html](settings-sidebar-1A.html): the Settings sidebar, kept for later.
 
+Older sketches (earlier rounds, kept for the record):
+
+- [app-faces-sketch.html](app-faces-sketch.html): the app's faces (Dock icon, window, menu bar).
+- [app-dock-off-sketch.html](app-dock-off-sketch.html): what a profile shows when its Dock icon is hidden.
+- [app-watch-only-sketch.html](app-watch-only-sketch.html): what a profile includes, and a usage-only profile.
+- [change-account-sketch.html](change-account-sketch.html), [change-account-sketch-2.html](change-account-sketch-2.html):
+  changing a profile's account (Profile settings ▸ Claude Code), rounds 1 and 2.
+- [cleanup-uninstall-updates.html](cleanup-uninstall-updates.html): clean-up, uninstall and Claude updates.
+- [general-settings-sketch.html](general-settings-sketch.html): Settings ▸ General, with About in column 1.
+- [profile-seat-design.html](profile-seat-design.html): profiles and Claude account seats.
+- [profile-sketch.html](profile-sketch.html): a profile's Dock icon and Claude window.
+- [settings-harmonize-sketch.html](settings-harmonize-sketch.html): profile settings in one pattern.
+- [settings-widget-sketch.html](settings-widget-sketch.html), [sketch-round2.html](sketch-round2.html): settings,
+  widget and menu bar sketches, and round 2.
+- [unsaved-name-sketch.html](unsaved-name-sketch.html): a name or label changed but not saved.
+
 ## Architecture
 
 - [architecture/architecture-review.html](architecture/architecture-review.html): processes, files and the target
