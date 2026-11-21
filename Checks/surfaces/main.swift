@@ -2894,16 +2894,30 @@ do {
     move(w6, bareNoOrg)
     check(asked6() == 0 && w6.note == nil && w6.turns.isEmpty,
           "a seat with no organisation, then an empty one, then a record from before codeOrganization: not a move, nothing goes: \(w6.note ?? "none")")
-    // a wait started from an address-only reading (the record has no seat: its address only, no id, no organisation) and a move to
-    // the same login's Team seat: the wait's own seat is known by its address, so the Team seat of that address is the same account
-    // as far as the wait can tell, and the question isn't sent (the fail-safe: no "switched to", the question stays typed). A
-    // change here is deliberate, so it fails this check
-    let (w10, asked10) = typedThenSwitch(rec(week: 100, weekIn: 3 * 3600, login: u1.email, code: nil))
-    check(w10.target?.account?.account == nil && w10.target?.account?.organization == nil && w10.offer != nil,
-          "(the wait starts from an address-only reading, with the switch on offer: account \(w10.target?.account?.account ?? "nil"), org \(w10.target?.account?.organization ?? "nil"))")
+    // a wait started from an address-only reading (the record has no seat: its address only, no id) and a move to the same login's
+    // Team seat (L407): the reading made for that address names its organisation (the profile reply's organization.uuid), which is
+    // compared too, so the Team seat is another one and the question goes. When the reading doesn't name one (nil), or was made
+    // for another address, the organisation isn't known: the address alone is compared, so it is the same account as far as the
+    // wait can tell, and the question isn't sent (the fail-safe: no "switched to", the question stays typed)
+    func addressOnly(org: String?, owner: String? = u1.email) -> IconStatus {
+        var r = rec(week: 100, weekIn: 3 * 3600, login: u1.email, code: nil)
+        r.numbersOwner = owner; r.numbersAccount = owner == nil ? nil : u1.account; r.numbersOrganization = org
+        return r
+    }
+    let (w10, asked10) = typedThenSwitch(addressOnly(org: u1.organization))
+    check(w10.target?.account?.account == nil && w10.target?.account?.organization == u1.organization && w10.offer != nil,
+          "(the wait starts from an address-only reading that names its organisation, with the switch on offer: account \(w10.target?.account?.account ?? "nil"), org \(w10.target?.account?.organization ?? "nil"))")
     move(w10, rec(week: 10, code: team))
-    check(w10.target?.account?.organization == team.organization?.lowercased() && asked10() == 0 && w10.turns.isEmpty && w10.note == nil && w10.field == "what's typed",
-          "a wait from an address-only reading, then the same login's Team seat: not a move as far as it can tell, nothing sent, no note, the question kept: \(w10.note ?? "none")")
+    check(w10.target?.account?.organization == team.organization?.lowercased() && asked10() == 1 && w10.turns.map(\.question) == ["what's typed"] && w10.note == switchedNote,
+          "a wait from an address-only reading of the personal seat, then the same login's Team seat: a move, what was typed goes: \(w10.note ?? "none")")
+    for (what, from) in [("the reading naming no organisation (not known)", addressOnly(org: nil)), ("no reading's own account (a record from before it)", addressOnly(org: u1.organization, owner: nil)),
+                         ("the reading's organisation the Team seat's own", addressOnly(org: team.organization))] {
+        let (wn, askedN) = typedThenSwitch(from)
+        check(wn.target?.account?.account == nil && wn.offer != nil, "(the wait starts from an address-only reading: \(what))")
+        move(wn, rec(week: 10, code: team))
+        check(asked10() == 1 && askedN() == 0 && wn.turns.isEmpty && wn.note == nil && wn.field == "what's typed",
+              "a wait from an address-only reading, \(what), then the same login's Team seat: not a move as far as it can tell, nothing sent, no note, the question kept: \(wn.note ?? "none")")
+    }
     // …and the same from a seat with no organisation ("") and from a record that doesn't know it (nil), into another profile's
     // account: a clash never sends, whichever way the wait started
     for (what, from) in [("a seat with no organisation", rec(week: 100, weekIn: 3 * 3600, code: bare)), ("an address-only reading", rec(week: 100, weekIn: 3 * 3600, login: u1.email, code: nil)),

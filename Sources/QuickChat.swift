@@ -122,7 +122,8 @@ struct QuickChatTarget: Equatable {
     /// switch wait compare `account`.
     var email: String?
     /// The folder's account as one seat: the record's codeAccount with its organisation (a login's personal and Team seats
-    /// are two), and `email` for a record that names no id. Compared by `sameAccount`, so an address in another case, or a
+    /// are two), and `email` for a record that names no id (with the organisation of the reading made for that address, when
+    /// it gave one). Compared by `sameAccount`, so an address in another case, or a
     /// reading from the status line (no address of its own) after one from the endpoint, is never a move. nil: the record
     /// names no account for the folder.
     var account: AccountIdentity?
@@ -182,10 +183,13 @@ struct QuickChatTarget: Equatable {
         let raw = Store.status(e.id), h = raw?.headline(now: now, ages: Store.ages(e))
         let view = AccountView.of(rec)
         email = view.numbersOwner
-        // (the organisation only beside an id: an address alone is matched by the address)
+        // (the organisation beside an id: the record's. An address alone takes the organisation of the reading made for that
+        // very address (the profile reply's organization.uuid), so a login's personal and Team seats are two there too; nil
+        // when the reading doesn't say, or was for another address: then the address alone is matched)
         let id = view.codeAccount
+        let readingOrg = raw.flatMap { r in r.numbersOwner?.lowercased() == email?.lowercased() ? r.readingOrganization : nil }
         account = id == nil && email == nil ? nil
-            : AccountIdentity(account: id, email: email, organization: id == nil ? nil : raw?.resolved?.codeOrganization, source: .guessed)
+            : AccountIdentity(account: id, email: email, organization: id == nil ? readingOrg : raw?.resolved?.codeOrganization, source: .guessed)
         clashName = raw?.resolved?.clash
         clashID = clashName == nil ? nil : raw?.resolved?.clashID
         let clashed = clashName != nil
